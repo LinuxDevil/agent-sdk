@@ -423,6 +423,7 @@ function assembleConfig(
     instructions,
     ...optional('provider', source.provider),
     ...optional('model', source.model),
+    // Discovered/directory-declared options (a caller override wins each).
     ...optional('tools', overrides.tools ?? (fileTools.length > 0 ? fileTools : undefined)),
     ...optional('memory', mergeMemory(memorySlots, overrides.memory)),
     ...optional('skills', overrides.skills ?? (skills.length > 0 ? skills : undefined)),
@@ -430,18 +431,33 @@ function assembleConfig(
     ...optional('maxSteps', overrides.maxSteps ?? config.maxSteps),
     ...optional('toolConcurrency', overrides.toolConcurrency ?? config.toolConcurrency),
     ...optional('projectInstructions', overrides.projectInstructions ?? config.projectInstructions),
+    ...configOptions(dir, configFile, config, overrides, configured, approver),
+    // Override-only options: no config key declares them.
+    ...optional('approvalStore', overrides.approvalStore),
+    ...optional('onPermissionDecision', overrides.onPermissionDecision),
+    ...optional('exporter', overrides.exporter),
+  } as CreateAgentConfig;
+}
+
+/** The config-file options (`permissionMode`, `permissions`, ..., `store`), each taking a caller override first. */
+function configOptions(
+  dir: string,
+  configFile: string | undefined,
+  config: AgentDirConfig,
+  overrides: AgentDirOverrides,
+  configured: { hooks: readonly AgentHook[]; file?: string } | undefined,
+  approver: { approve: ApproveToolCall; file?: string } | undefined
+): Partial<CreateAgentConfig> {
+  return {
     ...optional('permissionMode', overrides.permissionMode ?? config.permissionMode),
     ...optional('permissions', overrides.permissions ?? permissionRulesOf(configFile ?? dir, config.permissions)),
     ...optional('compaction', overrides.compaction ?? config.compaction),
     ...optional('limits', overrides.limits ?? config.limits),
     ...optional('hooks', overrides.hooks ?? configured?.hooks),
     ...optional('approve', overrides.approve ?? approver?.approve),
-    ...optional('approvalStore', overrides.approvalStore),
     ...optional('approvalTtlMs', overrides.approvalTtlMs ?? config.approvalTtlMs),
     ...optional('store', overrides.store ?? configuredStore(dir, config, configFile)),
-    ...optional('onPermissionDecision', overrides.onPermissionDecision),
-    ...optional('exporter', overrides.exporter),
-  } as CreateAgentConfig;
+  };
 }
 
 async function resolveWith(

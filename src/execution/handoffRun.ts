@@ -34,7 +34,7 @@ import { ToolRegistry } from '../tools/ToolRegistry';
 import { legacyAiTool } from '../tools/toolContract';
 import { NoopSandbox } from '../security/sandboxCore';
 import { prepareToolCall, settleToolCall, toolHookContext, type ToolCallContext, type ToolCallOutcome } from './toolCallExecution';
-import { toolResultContent } from './toolResult';
+import { toolOutcomeMessage, toolResultContent } from './toolResult';
 import type { ToolCallScope } from './subagentRuntime';
 
 /** What a handoff's `inputFilter` and `onHandoff` get. */
@@ -203,7 +203,7 @@ export function handoffToolRegistry(options: Pick<ExecuteOptions, 'handoffs'>): 
  * permission rules, mode, guardrails, callbacks), with the handoff tools as
  * the registry - `transfer_to_*` is not in the run's tool registry.
  */
-export function handoffCallContext(options: ExecuteOptions, messages: Message[], toolCall: ToolCall): ToolCallContext {
+function handoffCallContext(options: ExecuteOptions, messages: Message[], toolCall: ToolCall): ToolCallContext {
   const scope: ToolCallScope = {
     runtime: options,
     toolCallId: toolCall.id,
@@ -227,19 +227,6 @@ export function handoffCallContext(options: ExecuteOptions, messages: Message[],
 }
 
 /** The `tool` message carrying a settled handoff call's outcome (like pushToolResult() for a batch call). */
-function outcomeMessage(toolCall: ToolCall, outcome: ToolCallOutcome): Message {
-  const failed = outcome.error !== undefined;
-  const failurePayload = outcome.result ?? { error: outcome.error };
-  return {
-    role: 'tool',
-    content: toolResultContent(failed ? failurePayload : outcome.result),
-    name: toolCall.function.name,
-    toolCallId: toolCall.id,
-    toolName: toolCall.function.name,
-    ...(failed && { isError: true }),
-    ...(outcome.replacedByHook !== undefined && { metadata: { replacedByHook: outcome.replacedByHook } }),
-  };
-}
 
 /**
  * The `maxHandoffs` budget, checked after the call's gate cleared: a call
@@ -293,7 +280,7 @@ export async function takeHandoffCalls(options: ExecuteOptions, state: AgentRunS
       gate.approval = { toolCall, outcome };
       continue;
     }
-    insertToolResult(state.messages, outcomeMessage(toolCall, outcome));
+    insertToolResult(state.messages, toolOutcomeMessage(toolCall, outcome));
     sink?.toolSettled({ toolCallId: toolCall.id, toolName, result: outcome.result, error: outcome.error });
   }
   return gate;
@@ -353,7 +340,7 @@ function forgetApprovals(messages: readonly Message[]): Message[] {
  * `activeAgentOf`) recognise it - `removeToolCalls` keeps it; a custom
  * `inputFilter` may still drop or replace it.
  */
-export function routingNote(marker: HandoffMarker, args: Record<string, unknown>): Message {
+function routingNote(marker: HandoffMarker, args: Record<string, unknown>): Message {
   const rendered = Object.keys(args)
     .sort()
     .map((key) => `${key}=${JSON.stringify(args[key])}`)

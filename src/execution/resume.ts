@@ -562,20 +562,22 @@ async function decidedToolMessage(
  * (post hooks may rewrite the routing result the target reads). The caller
  * continues the run with `handoff.options`/`handoff.messages`.
  */
-async function resumeHandoffCall(
-  ctx: ResumeContext,
-  pending: PendingApproval,
-  handoff: ResolvedHandoff
-): Promise<{ message: Message } | { handoff: HandoffSwitch }> {
+/**
+ * The tool-call and hook context for a paused call's post-approval pass
+ * (`resumedAfterApproval: true`, and a `hookArgs` copy hooks may not change
+ * away from the approved args - LOU-X3.2 compares it with `pending.args`).
+ * Shared by the tool-call and handoff-call resume paths.
+ */
+function resumedHookCall(
+  ctx: Pick<ResumeContext, 'snapshot' | 'messages' | 'executeOptions'>,
+  pending: PendingApproval
+): { toolCall: ToolCall; hookArgs: Record<string, unknown>; hookCtx: ToolCallHookContext } {
   const { snapshot, messages, executeOptions } = ctx;
-  const hooks: HookRegistry | undefined = executeOptions.hooks;
   const toolCall: ToolCall = {
     id: pending.toolCallId,
     type: 'function',
     function: { name: pending.toolName, arguments: JSON.stringify(pending.args) },
   };
-  // The call's second pass through the hooks (its first was the paused run's
-  // gate): flagged, and a copy hooks may not change away from the approved args.
   const hookArgs: Record<string, unknown> = structuredClone(pending.args);
   const hookCtx: ToolCallHookContext = {
     agentId: snapshot.agent.id,
@@ -590,6 +592,17 @@ async function resumeHandoffCall(
     resumedAfterApproval: true,
     toolCall,
   };
+  return { toolCall, hookArgs, hookCtx };
+}
+
+async function resumeHandoffCall(
+  ctx: ResumeContext,
+  pending: PendingApproval,
+  handoff: ResolvedHandoff
+): Promise<{ message: Message } | { handoff: HandoffSwitch }> {
+  const { snapshot, messages, executeOptions } = ctx;
+  const hooks: HookRegistry | undefined = executeOptions.hooks;
+  const { toolCall, hookArgs, hookCtx } = resumedHookCall(ctx, pending);
   const verdict = hooks
     ? await runPreToolHooks(hooks, hookCtx, { toolRegistry: handoffToolRegistry(executeOptions), runtime: executeOptions, approvedArgs: pending.args })
     : { args: hookArgs };
@@ -611,19 +624,28 @@ async function resumeHandoffCall(
   };
   const state = { messages, agentName: activeAgentOf(messages) ?? snapshot.agent.name };
   const switched = await handOff(options, state, { handoff, toolCall, args: verdict.args, gatedAt: Date.now() }, extendRunOptions);
-  if (hooks) {
-    const payload = { result: { transferred_to: switched.marker.to } };
-    const hook = await hooks.runPostToolCall(hookCtx, payload);
-    if (hook !== undefined) {
-      const written = switched.messages.find((m) => m.role === 'tool' && m.toolCallId === pending.toolCallId);
-      if (written) {
-        written.content = toolResultContent(payload.result);
-        written.metadata = { ...written.metadata, replacedByHook: hook };
-      }
-      return { handoff: { ...switched, result: payload.result, replacedByHook: hook } };
-    }
+  const replaced = hooks
+    ? await replaceHandoffResultByHook(hooks, hookCtx, switched, pending.toolCallId)
+    : undefined;
+  return { handoff: replaced ?? switched };
+}
+
+/** A post-tool hook may replace the transfer's result; the transcript tool message is rewritten to match. */
+async function replaceHandoffResultByHook(
+  hooks: HookRegistry,
+  hookCtx: ToolCallHookContext,
+  switched: HandoffSwitch,
+  toolCallId: string
+): Promise<HandoffSwitch | undefined> {
+  const payload = { result: { transferred_to: switched.marker.to } };
+  const hook = await hooks.runPostToolCall(hookCtx, payload);
+  if (hook === undefined) return undefined;
+  const written = switched.messages.find((m) => m.role === 'tool' && m.toolCallId === toolCallId);
+  if (written) {
+    written.content = toolResultContent(payload.result);
+    written.metadata = { ...written.metadata, replacedByHook: hook };
   }
-  return { handoff: switched };
+  return { ...switched, result: payload.result, replacedByHook: hook };
 }
 
 /**
@@ -861,27 +883,9 @@ async function runApprovedToolCall(
   // redact-pii) can rewrite in place before the real execution below, the
   // same contract AgentExecutor.executeToolCall() offers.
   const hooks: HookRegistry | undefined = executeOptions.hooks;
-  // A copy hooks may change freely: LOU-X3.2 compares it with `pending.args`.
-  const hookArgs: Record<string, unknown> = structuredClone(pending.args);
-  const hookCtx = {
-    agentId: snapshot.agent.id,
-    agentName: snapshot.agent.name,
-    sessionId: snapshot.sessionId,
-    ...(executeOptions.principal && { principal: executeOptions.principal }),
-    metadata: executeOptions.metadata,
-    messages,
-    toolCallId: pending.toolCallId,
-    toolName: pending.toolName,
-    args: hookArgs,
-    // This is the call's second pass through the hooks (its first was the
-    // paused run's gate): flag it so stateful hooks can skip the re-fire.
-    resumedAfterApproval: true,
-    toolCall: {
-      id: pending.toolCallId,
-      type: 'function' as const,
-      function: { name: pending.toolName, arguments: JSON.stringify(pending.args) },
-    },
-  };
+  // LOU-X3.2 compares hookArgs with `pending.args`; the ctx is flagged so
+  // stateful hooks can skip the re-fire (see resumedHookCall).
+  const { hookArgs, hookCtx } = resumedHookCall({ snapshot, messages, executeOptions }, pending);
 
   // LOU-X3: a pre-hook may deny the call or supply its result; input it
   // supplies must match what the human approved.

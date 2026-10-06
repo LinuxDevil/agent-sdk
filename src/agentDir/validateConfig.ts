@@ -224,7 +224,17 @@ function assertProjectInstructions(file: string, value: unknown): void {
 const PERMISSION_MODE_NAMES: ReadonlySet<string> = new Set<PermissionMode>(['default', 'plan', 'acceptEdits', 'dontAsk']);
 const PERMISSION_ACTIONS: ReadonlySet<string> = new Set<PermissionAction>(['allow', 'deny', 'ask']);
 const RULE_KEYS = new Set(['tool', 'when', 'action', 'reason', 'ttlMs']);
-const WHEN_OPERATORS = new Set<keyof WhenArgMatcher>(['eq', 'ne', 'lt', 'lte', 'gt', 'gte', 'matches']);
+/** The operand kind each `when` operator takes; {@link WHEN_OPERATORS} is derived from it. */
+const OPERAND_KIND: Record<keyof WhenArgMatcher, 'scalar' | 'number' | 'regex'> = {
+  eq: 'scalar',
+  ne: 'scalar',
+  lt: 'number',
+  lte: 'number',
+  gt: 'number',
+  gte: 'number',
+  matches: 'regex',
+};
+const WHEN_OPERATORS = new Set<keyof WhenArgMatcher>(Object.keys(OPERAND_KIND) as (keyof WhenArgMatcher)[]);
 const LIMIT_KEYS: ReadonlySet<string> = new Set<keyof RunLimits>([
   'maxTokens',
   'maxInputTokens',
@@ -272,27 +282,50 @@ function assertWhenMatcher(file: string, where: string, matcher: unknown): void 
     fail(file, `${where} must be a regular expression or an operator object like { "lt": 10 }, got ${describeValue(matcher)}.`);
   }
   for (const [op, operand] of Object.entries(matcher)) {
-    if (!WHEN_OPERATORS.has(op as keyof WhenArgMatcher)) {
-      fail(file, `${where}.${op} is not a known operator. Allowed operators: eq, ne, lt, lte, gt, gte, matches.`);
+    assertWhenOperand(file, where, op, operand);
+  }
+}
+
+/** One `when` operator/operand pair: known operator, operand of the kind that operator takes. */
+function assertWhenOperand(file: string, where: string, op: string, operand: unknown): void {
+  const kind = OPERAND_KIND[op as keyof WhenArgMatcher];
+  if (!WHEN_OPERATORS.has(op as keyof WhenArgMatcher)) {
+    fail(file, `${where}.${op} is not a known operator. Allowed operators: eq, ne, lt, lte, gt, gte, matches.`);
+  }
+  if (kind === 'scalar' && operand !== null && typeof operand !== 'string' && typeof operand !== 'number' && typeof operand !== 'boolean') {
+    fail(file, `${where}.${op} must be a string, number, boolean or null, got ${describeValue(operand)}.`);
+  }
+  if (kind === 'regex') {
+    if (typeof operand !== 'string') {
+      fail(file, `${where}.matches must be a regular expression string, got ${describeValue(operand)}.`);
     }
-    switch (op) {
-      case 'eq':
-      case 'ne':
-        if (operand !== null && typeof operand !== 'string' && typeof operand !== 'number' && typeof operand !== 'boolean') {
-          fail(file, `${where}.${op} must be a string, number, boolean or null, got ${describeValue(operand)}.`);
-        }
-        break;
-      case 'matches':
-        if (typeof operand !== 'string') {
-          fail(file, `${where}.matches must be a regular expression string, got ${describeValue(operand)}.`);
-        }
-        assertRegex(file, `${where}.matches`, operand);
-        break;
-      default:
-        if (typeof operand !== 'number' || !Number.isFinite(operand)) {
-          fail(file, `${where}.${op} must be a finite number, got ${describeValue(operand)}.`);
-        }
-    }
+    assertRegex(file, `${where}.matches`, operand);
+  }
+  if (kind === 'number' && (typeof operand !== 'number' || !Number.isFinite(operand))) {
+    fail(file, `${where}.${op} must be a finite number, got ${describeValue(operand)}.`);
+  }
+}
+
+/** A rule's `ttlMs`: an 'ask'-only positive pause deadline. */
+function assertRuleTtl(file: string, where: string, rule: Record<string, unknown>): void {
+  if (rule.ttlMs === undefined) return;
+  if (rule.action !== 'ask') {
+    fail(file, `${where}.ttlMs only applies to 'ask' rules (it is how long the pause waits for a decision), but the action is '${rule.action}'.`);
+  }
+  if (typeof rule.ttlMs !== 'number' || !Number.isFinite(rule.ttlMs) || rule.ttlMs <= 0) {
+    fail(file, `${where}.ttlMs must be a positive number of milliseconds, got ${describeValue(rule.ttlMs)}.`);
+  }
+}
+
+/** A rule's `when`: a predicate (code config) or a non-empty record of argument names to matchers. */
+function assertRuleWhen(file: string, where: string, when: unknown): void {
+  if (when === undefined || typeof when === 'function') return;
+  if (!isPlainObject(when)) {
+    fail(file, `${where}.when must be a predicate (a code config) or a record of argument names to matchers, got ${describeValue(when)}.`);
+  }
+  if (Object.keys(when).length === 0) fail(file, `${where}.when must name at least one argument.`);
+  for (const [arg, matcher] of Object.entries(when)) {
+    assertWhenMatcher(file, `${where}.when.${arg}`, matcher);
   }
 }
 
@@ -305,27 +338,9 @@ function assertPermissionRule(file: string, index: number, rule: unknown): void 
   if (typeof rule.action !== 'string' || !PERMISSION_ACTIONS.has(rule.action)) {
     fail(file, `${where}.action must be 'allow', 'deny' or 'ask', got ${describeValue(rule.action)}.`);
   }
-  if (rule.ttlMs !== undefined) {
-    if (rule.action !== 'ask') {
-      fail(file, `${where}.ttlMs only applies to 'ask' rules (it is how long the pause waits for a decision), but the action is '${rule.action}'.`);
-    }
-    if (typeof rule.ttlMs !== 'number' || !Number.isFinite(rule.ttlMs) || rule.ttlMs <= 0) {
-      fail(file, `${where}.ttlMs must be a positive number of milliseconds, got ${describeValue(rule.ttlMs)}.`);
-    }
-  }
+  assertRuleTtl(file, where, rule);
   if (rule.reason !== undefined && typeof rule.reason !== 'string') fail(file, `${where}.reason must be a string, got ${describeValue(rule.reason)}.`);
-  if (rule.when !== undefined && typeof rule.when !== 'function' && !isPlainObject(rule.when)) {
-    fail(
-      file,
-      `${where}.when must be a predicate (a code config) or a record of argument names to matchers, got ${describeValue(rule.when)}.`
-    );
-  }
-  if (isPlainObject(rule.when)) {
-    if (Object.keys(rule.when).length === 0) fail(file, `${where}.when must name at least one argument.`);
-    for (const [arg, matcher] of Object.entries(rule.when)) {
-      assertWhenMatcher(file, `${where}.when.${arg}`, matcher);
-    }
-  }
+  assertRuleWhen(file, where, rule.when);
 }
 
 function assertPermissions(file: string, value: unknown): void {
@@ -394,34 +409,31 @@ const STORE_PART_METHOD: Record<keyof AgentStore, string> = {
  * must be present and look like a store (extra keys are ignored: a class
  * instance like `SqliteStore` carries more than the store parts).
  */
-function assertStore(file: string, value: unknown): void {
-  if (value === undefined) return;
-  const shape = `a file-store options object like { "dir": "./.lousho" } or - in a code config - an AgentStore`;
-  if (typeof value !== 'object' || value === null || Array.isArray(value) || value instanceof RegExp) {
-    fail(file, `'store' must be ${shape}, got ${describeValue(value)}.`);
+const STORE_SHAPE = `a file-store options object like { "dir": "./.lousho" } or - in a code config - an AgentStore`;
+
+/** The `{ dir, historyLimit?, tokenKey? }` form of `store` - keys beyond FILE_STORE_KEYS are rejected. */
+function assertFileStore(file: string, keys: string[], store: Record<string, unknown>): void {
+  const unknown = keys.filter((key) => !FILE_STORE_KEYS.has(key as keyof AgentDirFileStore));
+  if (unknown.length > 0) {
+    fail(file, `'store': unknown key(s) ${unknown.join(', ')}. The file-store form allows: dir, historyLimit, tokenKey.`);
   }
-  const store = value as Record<string, unknown>;
-  const keys = Object.keys(store);
-  if (keys.includes('dir')) {
-    const unknown = keys.filter((key) => !FILE_STORE_KEYS.has(key as keyof AgentDirFileStore));
-    if (unknown.length > 0) {
-      fail(file, `'store': unknown key(s) ${unknown.join(', ')}. The file-store form allows: dir, historyLimit, tokenKey.`);
-    }
-    if (typeof store.dir !== 'string' || store.dir.trim() === '') {
-      fail(file, `'store.dir' must be a non-empty string (a path relative to the agent directory, e.g. "./.lousho"), got ${describeValue(store.dir)}.`);
-    }
-    const { historyLimit, tokenKey } = store;
-    if (historyLimit !== undefined && !(typeof historyLimit === 'number' && Number.isInteger(historyLimit) && historyLimit >= 0)) {
-      fail(file, `'store.historyLimit' must be a non-negative integer, got ${describeValue(historyLimit)}.`);
-    }
-    if (tokenKey !== undefined && !(typeof tokenKey === 'string' || (Array.isArray(tokenKey) && tokenKey.length > 0 && tokenKey.every((key) => typeof key === 'string')))) {
-      fail(file, `'store.tokenKey' must be a base64 key string or a list of them (generateTokenKey() makes one), got ${describeValue(tokenKey)}.`);
-    }
-    return;
+  if (typeof store.dir !== 'string' || store.dir.trim() === '') {
+    fail(file, `'store.dir' must be a non-empty string (a path relative to the agent directory, e.g. "./.lousho"), got ${describeValue(store.dir)}.`);
   }
+  const { historyLimit, tokenKey } = store;
+  if (historyLimit !== undefined && !(typeof historyLimit === 'number' && Number.isInteger(historyLimit) && historyLimit >= 0)) {
+    fail(file, `'store.historyLimit' must be a non-negative integer, got ${describeValue(historyLimit)}.`);
+  }
+  if (tokenKey !== undefined && !(typeof tokenKey === 'string' || (Array.isArray(tokenKey) && tokenKey.length > 0 && tokenKey.every((key) => typeof key === 'string')))) {
+    fail(file, `'store.tokenKey' must be a base64 key string or a list of them (generateTokenKey() makes one), got ${describeValue(tokenKey)}.`);
+  }
+}
+
+/** The `AgentStore` instance form: at least one store part, each shaped like a store. */
+function assertStoreParts(file: string, value: unknown, keys: string[], store: Record<string, unknown>): void {
   const parts = keys.filter((key) => (STORE_PART_METHOD as Record<string, string>)[key] !== undefined);
   if (parts.length === 0) {
-    fail(file, `'store' must be ${shape}, got ${describeValue(value)}.`);
+    fail(file, `'store' must be ${STORE_SHAPE}, got ${describeValue(value)}.`);
   }
   for (const part of parts) {
     const method = STORE_PART_METHOD[part as keyof AgentStore];
@@ -429,6 +441,20 @@ function assertStore(file: string, value: unknown): void {
     if (typeof target !== 'object' || target === null || typeof (target as Record<string, unknown>)[method] !== 'function') {
       fail(file, `'store.${part}' must be a store (an object with ${method}()), got ${describeValue(target)}.`);
     }
+  }
+}
+
+function assertStore(file: string, value: unknown): void {
+  if (value === undefined) return;
+  if (typeof value !== 'object' || value === null || Array.isArray(value) || value instanceof RegExp) {
+    fail(file, `'store' must be ${STORE_SHAPE}, got ${describeValue(value)}.`);
+  }
+  const store = value as Record<string, unknown>;
+  const keys = Object.keys(store);
+  if (keys.includes('dir')) {
+    assertFileStore(file, keys, store);
+  } else {
+    assertStoreParts(file, value, keys, store);
   }
 }
 
@@ -488,6 +514,29 @@ function permissionRuleOf(file: string, rule: AgentDirPermissionRule, index: num
   };
 }
 
+const NUMERIC_COMPARISONS: Record<'lt' | 'lte' | 'gt' | 'gte', (n: number, limit: number) => boolean> = {
+  lt: (n, limit) => n < limit,
+  lte: (n, limit) => n <= limit,
+  gt: (n, limit) => n > limit,
+  gte: (n, limit) => n >= limit,
+};
+
+/** A number or non-empty numeric string; everything else fails closed (`Number(null)`/`Number('')` would coerce to 0). */
+function numericValue(value: unknown): number {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string' && value.trim() !== '') return Number(value);
+  return Number.NaN;
+}
+
+/**
+ * The `lt`/`lte`/`gt`/`gte` argument test: the argument is compared as a
+ * number and fails closed - only a number or a non-empty numeric string can
+ * match (`Number(null)`/`Number('')`/`Number(false)` would coerce to 0).
+ */
+function numericComparison(op: 'lt' | 'lte' | 'gt' | 'gte', limit: number): (value: unknown) => boolean {
+  return (value) => Number.isFinite(numericValue(value)) && NUMERIC_COMPARISONS[op](numericValue(value), limit);
+}
+
 /** Compiles a `when` regular expression; `file`/`index`/`arg` only name errors. */
 function regexOf(file: string, index: number, arg: string, pattern: string): RegExp {
   try {
@@ -519,17 +568,8 @@ function argMatcher(file: string, index: number, arg: string, matcher: string | 
         const regex = regexOf(file, index, arg, String(operand));
         return (value) => regex.test(String(value ?? ''));
       }
-      default: {
-        const limit = operand as number;
-        return (value) => {
-          // lt / lte / gt / gte compare the argument as a number and fail
-          // closed: only a number or a non-empty numeric string can match
-          // (`Number(null)`/`Number('')`/`Number(false)` would coerce to 0).
-          const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() !== '' ? Number(value) : Number.NaN;
-          if (!Number.isFinite(n)) return false;
-          return op === 'lt' ? n < limit : op === 'lte' ? n <= limit : op === 'gt' ? n > limit : n >= limit;
-        };
-      }
+      default:
+        return numericComparison(op as 'lt' | 'lte' | 'gt' | 'gte', operand as number);
     }
   });
   return (value) => tests.every((test) => test(value));

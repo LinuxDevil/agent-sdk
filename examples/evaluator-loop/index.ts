@@ -116,19 +116,7 @@ export async function runEvaluatorLoop(options: EvaluatorLoopOptions): Promise<E
   const history: EvaluatorRound[] = [];
 
   for (let round = 1; round <= maxRounds; round++) {
-    const previous = history.at(-1);
-    const input =
-      previous === undefined
-        ? prompt
-        : [
-            `Your draft scored ${previous.score.toFixed(2)} against the rubric (passing: ${passScore}).`,
-            previous.feedback
-              ? `Critic feedback: ${previous.feedback}`
-              : 'The critic gave no actionable feedback.',
-            'Revise the draft to address the feedback.',
-          ].join('\n');
-
-    const result = await session.send(input);
+    const result = await session.send(roundInput(prompt, history.at(-1), passScore));
     const { score, feedback: note } = await critic(result);
     const passed = score >= passScore;
     // No revision follows a passing score or the final round, so the
@@ -140,6 +128,16 @@ export async function runEvaluatorLoop(options: EvaluatorLoopOptions): Promise<E
 
   const last = history[history.length - 1];
   return { text: last.text, score: last.score, rounds: history.length, history };
+}
+
+/** The opening prompt on round one, then a revision request quoting the last score and feedback. */
+function roundInput(prompt: string, previous: EvaluatorRound | undefined, passScore: number): string {
+  if (previous === undefined) return prompt;
+  return [
+    `Your draft scored ${previous.score.toFixed(2)} against the rubric (passing: ${passScore}).`,
+    previous.feedback ? `Critic feedback: ${previous.feedback}` : 'The critic gave no actionable feedback.',
+    'Revise the draft to address the feedback.',
+  ].join('\n');
 }
 
 // ---------------------------------------------------------------------------
