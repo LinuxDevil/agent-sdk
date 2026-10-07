@@ -5878,27 +5878,39 @@ const { answers } = await decide({
 
 const route = answers[0];
 if (route.type === 'choice' && route.confidence >= 0.7) {
-  dispatch(route.choice); // 'billing'
+  console.log(`routing to ${route.choice}`); // routing to billing
 }
 ```
 
 ## Question types
 
 ```ts no-run
-const questions = [
+import { decide, type DecisionQuestion } from '@lousho/build-ai-agent';
+
+const questions: DecisionQuestion[] = [
   // predicate: probability 0-1 that a condition holds
   { type: 'predicate', name: 'is_spam', instructions: 'Is this message spam?' },
   // choice: one of a fixed unordered set
-  { type: 'choice', name: 'route', instructions: 'Which team?', choices: [
-    { value: 'billing', description: 'Payments and refunds.' },
-    { value: 'shipping', description: 'Delivery and tracking.' },
-  ]},
+  {
+    type: 'choice',
+    name: 'route',
+    instructions: 'Which team?',
+    choices: [
+      { value: 'billing', description: 'Payments and refunds.' },
+      { value: 'shipping', description: 'Delivery and tracking.' },
+    ],
+  },
   // score: probability-weighted position across ordered levels
-  { type: 'score', name: 'severity', instructions: 'How severe is this issue?', levels: [
-    { label: 'Cosmetic', description: 'Appearance only.' },
-    { label: 'Workaround available', description: 'Fails, but another way works.' },
-    { label: 'Fully blocked', description: 'Fails with no workaround.' },
-  ]},
+  {
+    type: 'score',
+    name: 'severity',
+    instructions: 'How severe is this issue?',
+    levels: [
+      { label: 'Cosmetic', description: 'Appearance only.' },
+      { label: 'Workaround available', description: 'Fails, but another way works.' },
+      { label: 'Fully blocked', description: 'Fails with no workaround.' },
+    ],
+  },
 ];
 ```
 
@@ -5910,10 +5922,20 @@ const questions = [
 Independent questions share one `input` and one request:
 
 ```ts no-run
-const { answers } = await decide({
-  input: userMessage,
-  questions: [spamQuestion, routeQuestion, severityQuestion],
-});
+import { decide, type DecisionQuestion } from '@lousho/build-ai-agent';
+
+const questions: DecisionQuestion[] = [
+  { type: 'predicate', name: 'is_spam', instructions: 'Is this spam?' },
+  {
+    type: 'choice',
+    name: 'route',
+    instructions: 'Which team?',
+    choices: [{ value: 'billing' }, { value: 'shipping' }],
+  },
+];
+
+const userMessage = 'I was charged twice for my order.';
+const { answers } = await decide({ input: userMessage, questions });
 const byName = Object.fromEntries(answers.map((a) => [a.name, a]));
 ```
 
@@ -5922,9 +5944,11 @@ const byName = Object.fromEntries(answers.map((a) => [a.name, a]));
 ## Options
 
 ```ts no-run
+import { decide } from '@lousho/build-ai-agent';
+
 const result = await decide({
   input: '...',
-  questions,
+  questions: [{ type: 'predicate', name: 'relevant', instructions: 'Is this relevant?' }],
   model: 'gpt-6-luna',                    // default; currently the only served model
   apiKey: process.env.OPENAI_API_KEY,     // default: OPENAI_API_KEY
   baseURL: 'https://api.openai.com/v1',   // override for a compatible endpoint
