@@ -128,6 +128,11 @@ is the full example: a coding agent driven by a deterministic workflow whose
 branch points are typed decisions, where confidence below the floor exits
 `needs-human` instead of patching.
 
+On OpenAI there is also a dedicated fast path: [`decide()`](./decisions.md)
+calls the Decisions API, which returns the same three shapes — predicate
+probability, choice with a distribution, rubric score — as one call, roughly
+10x faster than an agent turn and without any generated prose.
+
 ## Where to go next
 
 - [Structured output](./structured-output.md), [evals](./evals.md)

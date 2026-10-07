@@ -146,3 +146,7 @@ const agent = createAgent({ provider: mockModel(['{"city":"Paris","tempC":21}'])
 const { object } = await agent.send('Weather in Paris?');
 console.log(object?.city); // 'Paris'
 ```
+
+## See also
+
+- [Decisions](./decisions.md): `decide()` answers predicate / choice / score questions over one input on a dedicated fast endpoint — the right call when you need a classification or confidence, not an object.
