@@ -6,7 +6,7 @@
  */
 
 // Version
-export const VERSION = '1.0.0-alpha.5';
+export const VERSION = '1.0.0-alpha.15';
 
 // A3: the executor API (AgentBuilder, AgentExecutor, resume functions,
 // ToolRegistry) moved to '@lousho/build-ai-agent/executor'.
