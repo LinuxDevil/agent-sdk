@@ -62,16 +62,65 @@ interface UsageRollup {
   estimated: boolean;
 }
 
-/** Open spans by id; a span's finished children add their usage here. */
-const rollups = new Map<string, UsageRollup>();
+/**
+ * One span tracked for the rollup. An ended span stays here while it still
+ * has open descendants, so a span that outlives its parent (a background
+ * sub-agent's run, whose `task` tool span has already ended) can still find
+ * the nearest open ancestor (Eve MA-F2).
+ */
+interface RollupNode {
+  rollup: UsageRollup;
+  parentId?: string;
+  open: boolean;
+  openChildren: number;
+}
+
+/** Spans by id: open ones, and ended ones with open descendants. */
+const nodes = new Map<string, RollupNode>();
+
+function track(span: Span, rollup: UsageRollup): void {
+  nodes.set(span.id, { rollup, parentId: span.parentId, open: true, openChildren: 0 });
+  const parent = span.parentId ? nodes.get(span.parentId) : undefined;
+  if (parent) parent.openChildren += 1;
+}
+
+/** Marks a span ended and drops it, and any ended ancestors it kept alive, once nothing below is open. */
+function untrack(id: string): void {
+  const node = nodes.get(id);
+  if (!node) return;
+  node.open = false;
+  let current: RollupNode | undefined = node;
+  let currentId = id;
+  while (current && !current.open && current.openChildren === 0) {
+    nodes.delete(currentId);
+    if (!current.parentId) break;
+    const parent = nodes.get(current.parentId);
+    if (parent) parent.openChildren -= 1;
+    currentId = current.parentId;
+    current = parent;
+  }
+}
+
+/** The rollup of the nearest still-open ancestor of `span`. */
+function openAncestor(span: Span): UsageRollup | undefined {
+  let id = span.parentId;
+  while (id) {
+    const node = nodes.get(id);
+    if (!node) return undefined;
+    if (node.open) return node.rollup;
+    id = node.parentId;
+  }
+  return undefined;
+}
 
 /**
- * Adds a finished span's usage to its parent's rollup: its `lousho.cost_usd`
- * (or, with tokens but no price, marks the parent as unpriced), and whether
- * any of it was estimated.
+ * Adds a finished span's usage to its nearest open ancestor's rollup (its
+ * parent, unless the parent already ended): its `lousho.cost_usd` (or, with
+ * tokens but no price, marks the ancestor as unpriced), and whether any of it
+ * was estimated.
  */
 function rollUpUsage(span: Span, own: UsageRollup): void {
-  const parent = span.parentId ? rollups.get(span.parentId) : undefined;
+  const parent = openAncestor(span);
   if (!parent) return;
   const cost = span.attributes[SdkAttr.COST_USD];
   if (typeof cost === 'number') {
@@ -125,7 +174,8 @@ export interface TraceExporter {
  * - Before `onSpanEnd`, a span whose child spans carried `lousho.cost_usd`
  *   gets the sum as its own (cumulative) `lousho.cost_usd`, absent when a
  *   child with token usage had no known price, and `lousho.usage.estimated`
- *   when any child's tokens were estimated (LOU-D48).
+ *   when any child's tokens were estimated (LOU-D48). A span that ends after
+ *   its parent adds to the nearest ancestor still open instead.
  */
 export async function withSpan<T>(
   exporter: TraceExporter | undefined,
@@ -145,7 +195,7 @@ export async function withSpan<T>(
   };
 
   const own: UsageRollup = { costUsd: 0, priced: false, unpriced: false, estimated: false };
-  rollups.set(span.id, own);
+  track(span, own);
   exporter?.onSpanStart(span);
 
   try {
@@ -155,9 +205,9 @@ export async function withSpan<T>(
     throw error;
   } finally {
     span.endTime = Date.now();
-    rollups.delete(span.id);
     applyRollup(span, own);
     rollUpUsage(span, own);
+    untrack(span.id);
     exporter?.onSpanEnd(span);
   }
 }

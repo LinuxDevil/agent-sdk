@@ -151,4 +151,38 @@ describe('withSpan cost rollup (LOU-D48)', () => {
     const run = ends[ends.length - 1];
     expect(run.attributes).toEqual({ 'lousho.cost_usd': 1, 'lousho.usage.estimated': true });
   });
+
+  it('rolls a span that outlives its parent up to the nearest open ancestor (Eve MA-F2)', async () => {
+    const { exporter, ends } = createSpyExporter();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let background!: Promise<void>;
+    await withSpan(exporter, 'run', {}, async (run) => {
+      await withSpan(exporter, 'chat', { 'lousho.cost_usd': 0.5 }, async () => undefined, run.id);
+      // A background sub-agent: its run starts under the `task` tool span and ends after it.
+      await withSpan(
+        exporter,
+        'task',
+        {},
+        async (task) => {
+          background = withSpan(
+            exporter,
+            'sub-run',
+            {},
+            async (sub) => {
+              await gate;
+              await withSpan(exporter, 'chat', { 'lousho.cost_usd': 2 }, async () => undefined, sub.id);
+            },
+            task.id
+          );
+        },
+        run.id
+      );
+      release();
+      await background;
+    });
+    expect(ends.find((span) => span.name === 'task')!.attributes).not.toHaveProperty('lousho.cost_usd');
+    expect(ends.find((span) => span.name === 'sub-run')!.attributes['lousho.cost_usd']).toBe(2);
+    expect(ends[ends.length - 1].attributes['lousho.cost_usd']).toBe(2.5);
+  });
 });

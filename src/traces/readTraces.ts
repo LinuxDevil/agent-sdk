@@ -26,7 +26,7 @@ export interface TraceSummary {
   toolCalls: number;
   inputTokens: number;
   outputTokens: number;
-  /** The root's rolled-up `lousho.cost_usd`; absent when a model's price is unknown. */
+  /** The sum of the chat spans' `lousho.cost_usd` (sub-agents included); absent when a model's price is unknown. */
   costUsd?: number;
   /** Absolute path of the trace file. */
   file: string;
@@ -113,13 +113,28 @@ function numberAttr(span: TraceLine, key: string): number {
   return typeof value === 'number' ? value : 0;
 }
 
+/**
+ * The trace's cost: the sum of its chat spans' `lousho.cost_usd`, which also
+ * counts a background sub-agent that finished after the root's rollup (Eve
+ * MA-F2). Falls back to the root's rollup when a chat with token usage has no
+ * price, and is absent when nothing is priced.
+ */
+function traceCost(root: TraceLine, chats: TraceLine[]): number | undefined {
+  const rootCost = root.attributes?.[SdkAttr.COST_USD];
+  const costs = chats.map((line) => line.attributes?.[SdkAttr.COST_USD]);
+  const unpriced = chats.some((line, i) => typeof costs[i] !== 'number' && line.attributes?.[GenAiAttr.USAGE_INPUT_TOKENS] !== undefined);
+  const priced = costs.filter((cost): cost is number => typeof cost === 'number');
+  if (unpriced || priced.length === 0) return typeof rootCost === 'number' ? rootCost : undefined;
+  return priced.reduce((sum, cost) => sum + cost, 0);
+}
+
 /** Sums one trace's spans; the root is the trace id's span, else the earliest span. */
 function summarize(entry: TraceFile, lines: TraceLine[]): TraceSummary | undefined {
   if (lines.length === 0) return undefined;
   const root = lines.find((line) => line.id === entry.traceId) ?? lines[0];
   const op = (line: TraceLine) => line.attributes?.[GenAiAttr.OPERATION_NAME];
   const chats = lines.filter((line) => op(line) === GenAiOperation.CHAT);
-  const rootCost = root.attributes?.[SdkAttr.COST_USD];
+  const costUsd = traceCost(root, chats);
   const end = Math.max(...lines.map((line) => line.endTime ?? line.startTime));
   const agent = root.attributes?.[GenAiAttr.AGENT_NAME];
   return {
@@ -133,7 +148,7 @@ function summarize(entry: TraceFile, lines: TraceLine[]): TraceSummary | undefin
     toolCalls: lines.filter((line) => op(line) === GenAiOperation.EXECUTE_TOOL).length,
     inputTokens: chats.reduce((sum, line) => sum + numberAttr(line, GenAiAttr.USAGE_INPUT_TOKENS), 0),
     outputTokens: chats.reduce((sum, line) => sum + numberAttr(line, GenAiAttr.USAGE_OUTPUT_TOKENS), 0),
-    ...(typeof rootCost === 'number' && { costUsd: rootCost }),
+    ...(costUsd !== undefined && { costUsd }),
     file: entry.file,
   };
 }
