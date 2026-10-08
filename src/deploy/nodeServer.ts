@@ -31,7 +31,7 @@ const API_TOKEN_ENV = 'LOUSHO_API_TOKEN';
 /** Environment variable choosing where sessions live: `memory` (default) or `sqlite:<path>`. */
 const STORE_ENV = 'LOUSHO_STORE';
 
-/** A1: `authorizeSession`, `authorizeApproval` and `exposeErrors` work as on `createRouteHandler()` (docs/auth.md). */
+/** A1: `authorizeSession`, `authorizeApproval` and `exposeErrors` work as on `createRouteHandler()` (docs/auth.md); B4: so do `onDisconnect` and `waitUntil`. */
 export interface DeployedServerOptions extends ChatRoutesAccess {
   /**
    * `{ token }` (the build options' `auth.token`): the bearer token when
@@ -94,7 +94,7 @@ export function createDeployedServer(agent: SimpleAgent, options: DeployedServer
   // Channels authenticate themselves (their own verify), so they sit beside the bearer-protected chat routes.
   const channels = options.channels?.length ? mountChannels(agent, options.channels) : undefined;
   // N9b: a channel turn paused on a sign-in continues on its surface once the callback stored the token.
-  const { authorizeSession, authorizeApproval, exposeErrors } = options;
+  const { authorizeSession, authorizeApproval, exposeErrors, onDisconnect, waitUntil } = options;
   const chat: ChatRoutesContext = {
     name: 'lousho server',
     agent: () => agent,
@@ -102,6 +102,8 @@ export function createDeployedServer(agent: SimpleAgent, options: DeployedServer
     authorizeSession,
     authorizeApproval,
     exposeErrors,
+    onDisconnect,
+    waitUntil,
   };
   const handle = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
     if (await channels?.(req, res)) return;

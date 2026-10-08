@@ -79,6 +79,15 @@ own call. An error reaches the client as its `name` and `code` with a generic
 message; `exposeErrors: true` sends the raw text. See
 [Who may decide an approval](./auth.md#who-may-decide-an-approval).
 
+If the client goes away while a session turn streams (a closed tab, a dropped
+connection), the turn still runs to its end on the server and is saved to the
+session, so a tool that already ran (a refund, an email) is in the transcript
+and the user's next message can ask about it. Nothing more is written to the
+closed stream. On a serverless host, pass the platform's `waitUntil` (for
+example `waitUntil` from `@vercel/functions`) so the function is kept alive
+until the turn is saved. `onDisconnect: 'abort'` aborts the turn instead, as
+before; tool results it already has are still kept.
+
 `auth` also takes an ordered list of `jwt()`, `oidc()`, `basic()` and
 `apiToken()` entries, and the caller it accepts reaches the run as `principal`:
 see [Route auth and principals](./auth.md).

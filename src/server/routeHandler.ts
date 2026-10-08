@@ -7,7 +7,7 @@
  */
 import type { SimpleAgent } from '../createAgent';
 import { newId } from '../utils/id';
-import { callbackPrincipal, handleChatFetch, publicEvents, sessionForbidden, type ChatRoutesAccess, type ChatRoutesContext } from './fetchRoutes';
+import { callbackPrincipal, disconnectAborts, handleChatFetch, outliveClient, publicEvents, sessionForbidden, type ChatRoutesAccess, type ChatRoutesContext } from './fetchRoutes';
 import { AuthError, type AuthFn, type Principal } from '../auth/types';
 import { routeAuth } from '../auth/routeAuth';
 import { apiToken } from '../auth/basic';
@@ -90,7 +90,9 @@ async function uiChat(agent: SimpleAgent, request: Request, principal: Principal
   const forbidden = await sessionForbidden(ctx, principal, id, 'chat');
   if (forbidden) return forbidden;
   const input = fromUIMessages(body.messages, { lastUserOnly: true });
-  return toUIMessageStreamResponse(publicEvents(ctx, agent.session({ id }).stream(input, { signal: request.signal, principal })));
+  // B4: a session turn outlives its client unless `onDisconnect: 'abort'`.
+  const run = agent.session({ id }).stream(input, { ...(disconnectAborts(ctx) && { signal: request.signal }), principal });
+  return toUIMessageStreamResponse(publicEvents(ctx, outliveClient(ctx, run)));
 }
 
 /**
@@ -133,8 +135,8 @@ async function hookRoute(agent: SimpleAgent, request: Request, path: string): Pr
  */
 export function createRouteHandler(agent: SimpleAgent, options: RouteHandlerOptions = {}): RouteHandlers {
   const base = (options.basePath ?? '/api/agent').replace(/\/+$/, '');
-  const { authorizeSession, authorizeApproval, exposeErrors } = options;
-  const ctx: ChatRoutesContext = { name: 'route', agent: () => agent, authorizeSession, authorizeApproval, exposeErrors };
+  const { authorizeSession, authorizeApproval, exposeErrors, onDisconnect, waitUntil } = options;
+  const ctx: ChatRoutesContext = { name: 'route', agent: () => agent, authorizeSession, authorizeApproval, exposeErrors, onDisconnect, waitUntil };
   const auth = authList(options.auth);
   if (!auth) warnOpenInProduction();
   const handler: RouteHandler = async (request) => {

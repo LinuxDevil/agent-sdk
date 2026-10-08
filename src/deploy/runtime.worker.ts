@@ -298,6 +298,8 @@ export async function handleWorkerAgentDirRequest(
     name: 'lousho worker',
     agent: makeAgent,
     durableMessage: true,
+    // B4: a turn whose client went away finishes (and is saved) inside `ctx.waitUntil`.
+    ...(ctx && { waitUntil: (promise: Promise<unknown>) => ctx.waitUntil(promise) }),
     // N9b: a channel turn paused on a sign-in continues on its surface once the callback stored the token.
     ...(channels === undefined ? {} : { afterSignIn: (result: OAuthCompleteResult) => continueChannelSignIn(channels, result) }),
   };

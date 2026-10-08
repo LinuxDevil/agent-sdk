@@ -81,7 +81,11 @@ console.log((await second) === (await first)); // true: one turn, one result
 
 A `send()` that throws (a provider error, or a tool that throws a
 `PropagatingToolError`) or is aborted with `signal` leaves the transcript
-exactly as it was before that call. An aborted `send()` resolves with
+exactly as it was before that call, with one exception: an aborted `send()`
+keeps the turn up to the last tool call that ran (its user message, the
+assistant's tool calls and their results; calls of that batch that never
+started keep a "cancelled" result), so a side effect such as a refund is never
+missing from the transcript. An aborted `send()` resolves with
 `finishReason: 'aborted'`, as `agent.send()` does. The stored transcript never
 contains an assistant tool-call turn without the matching tool results.
 
@@ -123,7 +127,8 @@ const { text } = await session.send('What is my name?');
   the `for await` loop ends, or `run.result` resolves, the transcript is
   complete. The events carry the `runId` of the returned handle.
 - An aborted run (`signal`, or breaking out of the loop early) or a failed one
-  leaves the transcript as it was before the call, like `send()`. A run that
+  leaves the transcript as it was before the call, like `send()` (an aborted
+  run keeps the tool calls that ran). A run that
   was already finished when the loop was left is saved. A failed run ends the
   stream with `error` and `run.done` (`finishReason: 'error'`), and
   `run.result` rejects. This includes a store that fails to load or save: the
@@ -188,7 +193,8 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   once before resolving, so the agent knows which session the approval belongs
   to; give both agents the same durable `store` (or `approvalStore`).
 - An aborted turn is dropped (its checkpoint is deleted), as without a
-  checkpoint store. `clear()` deletes a pending turn too.
+  checkpoint store, except for the tool calls that ran in it, which join the
+  transcript. `clear()` deletes a pending turn too.
 
 ## Stores
 

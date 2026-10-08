@@ -862,6 +862,8 @@ interface ChatRoutesAccess {
     // Warning: (ae-forgotten-export) The symbol "SessionAccessRequest" needs to be exported by the entry point worker.d.ts
     authorizeSession?: (request: SessionAccessRequest) => boolean | Promise<boolean>;
     exposeErrors?: boolean;
+    onDisconnect?: 'continue' | 'abort';
+    waitUntil?: (promise: Promise<unknown>) => void;
 }
 
 // Warning: (ae-forgotten-export) The symbol "ChatRoutesAccess" needs to be exported by the entry point worker.d.ts
@@ -4243,11 +4245,11 @@ interface WithRetryOptions {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-Crz4-SFr.d.ts:768:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-Crz4-SFr.d.ts:785:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-Crz4-SFr.d.ts:1146:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-Crz4-SFr.d.ts:3143:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-Crz4-SFr.d.ts:3144:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-D0QXz1ve.d.ts:768:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-D0QXz1ve.d.ts:785:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-D0QXz1ve.d.ts:1146:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-D0QXz1ve.d.ts:3143:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-D0QXz1ve.d.ts:3144:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
 // dist/index-C1NnbLr9.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
 // dist/index-C1NnbLr9.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point worker.d.ts

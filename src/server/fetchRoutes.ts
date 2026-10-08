@@ -51,7 +51,7 @@ export interface ApprovalAccessRequest {
   approval: PendingApproval;
 }
 
-/** A1: who may use which session and decide which approval over HTTP, and how much of an error a client sees. */
+/** A1: who may use which session and decide which approval over HTTP, and how much of an error a client sees; B4: what a client disconnect does to a turn. */
 export interface ChatRoutesAccess {
   /**
    * Whether `principal` may `action` session `sessionId` (read it, send it a
@@ -77,6 +77,24 @@ export interface ChatRoutesAccess {
    * message, and the full error is logged on the server. `lousho dev` sets it.
    */
   exposeErrors?: boolean;
+  /**
+   * B4: what happens to a session turn when its client goes away mid-stream
+   * (a closed tab, a dropped connection). `'continue'` (default): the turn
+   * runs to its end on the server and is saved to the session, so a tool
+   * call that already ran (a refund, an email) is in the transcript and the
+   * next turn knows about it; nothing more is written to the closed stream.
+   * `'abort'`: the turn is aborted, as a `signal` aborts it (tool results it
+   * already has are kept).
+   */
+  onDisconnect?: 'continue' | 'abort';
+  /**
+   * B4: keeps the host alive for a turn that outlives its client: called
+   * with a promise that settles once the turn has finished and been saved.
+   * Pass the platform's `waitUntil` on serverless hosts (`ctx.waitUntil` on
+   * Cloudflare, `waitUntil` from `@vercel/functions`); a long-running Node
+   * server needs none.
+   */
+  waitUntil?: (promise: Promise<unknown>) => void;
 }
 
 /**
@@ -168,10 +186,53 @@ export async function* publicEvents(ctx: ChatRoutesContext, run: AsyncIterable<A
 }
 const warnedLegacy = new Set<string>();
 
+/** B4: whether a client disconnect aborts the turn it was streaming (`onDisconnect: 'abort'`). */
+export function disconnectAborts(access: ChatRoutesAccess): boolean {
+  return access.onDisconnect === 'abort';
+}
+
+/**
+ * B4: `run` for a client that may go away. When the consumer stops early (the
+ * response body is cancelled), `run` is not returned, which would abort the
+ * turn: it is read to its end in the background, so the turn finishes and is
+ * saved, and that read is handed to `waitUntil`. With `onDisconnect: 'abort'`
+ * it is `run` itself.
+ */
+export function outliveClient(ctx: ChatRoutesAccess & { name: string }, run: AsyncIterable<AgentEvent>): AsyncIterable<AgentEvent> {
+  if (disconnectAborts(ctx)) return run;
+  return {
+    [Symbol.asyncIterator]() {
+      const iterator = run[Symbol.asyncIterator]();
+      let detached: Promise<void> | undefined;
+      const finish = async () => {
+        try {
+          for (let next = await iterator.next(); !next.done; next = await iterator.next()) {
+            if (next.value.type === 'error') console.error(`[${ctx.name}] run failed after its client disconnected:`, next.value.error);
+          }
+        } catch (error) {
+          console.error(`[${ctx.name}] run failed after its client disconnected:`, error);
+        }
+      };
+      return {
+        next: () => iterator.next(),
+        return: () => {
+          if (!detached) {
+            detached = finish();
+            ctx.waitUntil?.(detached);
+          }
+          return Promise.resolve({ done: true, value: undefined });
+        },
+      };
+    },
+  };
+}
+
 /**
  * Streams `events` as SSE (`data: <AgentEvent JSON>`, then `event: done`); a
- * failure becomes `error` + `run.done` events. The turn is aborted when the
- * client goes away (the request's signal, or the response body cancelled).
+ * failure becomes `error` + `run.done` events. Writing stops when the client
+ * goes away (the request's signal, or the response body cancelled); B4: the
+ * turn runs on and is saved ({@link outliveClient}), or with `onDisconnect:
+ * 'abort'` it is aborted.
  */
 function sseResponse(
   request: Request,
@@ -179,26 +240,35 @@ function sseResponse(
   events: (signal: AbortSignal) => AsyncIterable<AgentEvent>,
   aborter?: AbortController
 ): Response {
+  const aborts = disconnectAborts(ctx);
   const controller = aborter ?? new AbortController();
-  if (!aborter) request.signal.addEventListener('abort', () => controller.abort());
+  if (!aborter && aborts) request.signal.addEventListener('abort', () => controller.abort());
   const encoder = new TextEncoder();
   const frame = (event: AgentEvent) => encoder.encode(`data: ${JSON.stringify(publicEvent(ctx, event))}\n\n`);
-  const iterator = events(controller.signal)[Symbol.asyncIterator]();
+  const iterator = outliveClient(ctx, events(controller.signal))[Symbol.asyncIterator]();
+  let gone = false;
+  const leave = async () => {
+    if (gone) return;
+    gone = true;
+    if (aborts) controller.abort();
+    await iterator.return?.();
+  };
+  if (!aborts) request.signal.addEventListener('abort', () => void leave());
   const body = new ReadableStream<Uint8Array>({
     async pull(out) {
+      if (gone) return out.close();
       try {
         const next = await iterator.next();
+        if (gone) return;
         if (!next.done) return out.enqueue(frame(next.value));
       } catch (error) {
+        if (gone) return;
         errorEvents(error).forEach((event) => out.enqueue(frame(event)));
       }
       out.enqueue(encoder.encode(DONE_FRAME));
       out.close();
     },
-    cancel() {
-      controller.abort();
-      return iterator.return?.().then(() => undefined);
-    },
+    cancel: leave,
   });
   return new Response(body, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' } });
 }
@@ -336,7 +406,8 @@ const runApproval: RouteHandler = async (request, ctx, [sessionId, id], principa
   // LOU-D32.2: the continuation streams live (decided call, text deltas, a further pause, run.done).
   // N10b: the caller route auth accepted is the approver (`ctx.approval.by`); the run keeps its own principal.
   const controller = new AbortController();
-  request.signal.addEventListener('abort', () => controller.abort());
+  // B4: by default the decided call runs to its end even when the client leaves (sseResponse).
+  if (disconnectAborts(ctx)) request.signal.addEventListener('abort', () => controller.abort());
   const run =
     typeof answer === 'string'
       ? agent.approvals.streamAnswer({ id, answer }, { signal: controller.signal, principal })
