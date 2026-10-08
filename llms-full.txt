@@ -6838,6 +6838,13 @@ or pass your own `provider` instance.
 **Means:** a model call failed (`LLMProviderError`, and
 `CompactedLLMProviderError`, whose `compacted.category` says why:
 `rate-limit`, `timeout`, `context-length-exceeded`, `auth-failure`, `unknown`).
+A context overflow is `context-length-exceeded` (not retryable) whatever the
+status, including llama.cpp / LM Studio's "exceeds the available context size"
+and "Context size has been exceeded", and whether it arrives from the request
+or as a stream error. A connection failure is `timeout` and names the cause,
+e.g. `connection refused (ECONNREFUSED) at http://localhost:1234/v1/responses -
+is the server running?`. When the provider's error body could not be parsed
+(the message is only `Bad Request`), a short snippet of the body is appended.
 
 **Fix:** for `auth-failure`, fix the API key; for `context-length-exceeded`,
 shorten the conversation (see [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md)); for

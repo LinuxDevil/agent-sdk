@@ -32,6 +32,9 @@ This section lists what is on `main` and not yet on npm.
 ### Fixed
 - Shell tool: under cmd.exe, `%` (variable expansion) and `^` (escape) now count as shell operators for `allow` string patterns, so `node --test %COMSPEC%` no longer passes as `node --test`.
 
+### Fixed
+- Provider errors from local runtimes are classified correctly. A llama.cpp / LM Studio context overflow ("request (N tokens) exceeds the available context size (M tokens)", `exceed_context_size_error`, "Context size has been exceeded") is now `context-length-exceeded` and not retryable, whether it comes back as a 400, a 500 or a stream error event, so it is no longer retried as a transient 5xx. A refused or failed connection now names the cause and URL (`connection refused (ECONNREFUSED) at http://localhost:1234/v1/responses - is the server running?`, also `ENOTFOUND`, `ECONNRESET` and undici's headers timeout) and is `timeout`/retryable. An object-valued stream error no longer reads `[object Object]`, and when the provider's error body could not be parsed (message just `Bad Request`) a short snippet of the body is appended. See [Errors](docs/errors.md#lousho_provider_request_failed).
+
 ## [1.0.0-rc.0] - 2026-10-04
 
 The first 1.0 release candidate. Upgrading from a `1.0.0-alpha.*` release?
