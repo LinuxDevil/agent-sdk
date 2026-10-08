@@ -18,6 +18,7 @@ describe('fromAiSdk() types (M2)', () => {
     expectTypeOf<FromAiSdkOptions>().toEqualTypeOf<{
       name?: string;
       fileMediaTypes?: readonly string[];
+      unsupportedFiles?: 'error' | 'text-note';
       replaysReasoning?: boolean;
       maxRetries?: number;
     }>();

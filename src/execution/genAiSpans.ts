@@ -175,7 +175,7 @@ type RawResponseModel = { response?: { modelId?: unknown }; modelId?: unknown; m
 function responseModel(generated: GenerateResult): string | undefined {
   const raw = generated.rawResponse as RawResponseModel | null | undefined;
   const model = raw?.response?.modelId ?? raw?.modelId ?? raw?.model;
-  return typeof model === 'string' ? model : undefined;
+  return typeof model === 'string' ? model : generated.servedBy?.model;
 }
 
 /**

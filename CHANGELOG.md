@@ -44,6 +44,12 @@ This section lists what is on `main` and not yet on npm.
 ### Security
 - Registry: the approval an install receipt enforces for an `exec: true` or `needsApproval: true` item (and for an unattested one) can no longer be waived from inside the agent directory. Before, an `allow` permission rule, `permissionMode: 'acceptEdits'` or the directory's own `approve` file - all shipped in the same untrusted directory - let its tools run without asking. Now such a call always pauses: rules and modes may still deny it, the directory's `approve` file defers it, and only a person (`agent.approvals.resolve()`) or an `approve` callback passed in code (`loadAgentDir(dir, { approve })`) decides it. `lousho add` now also says an `exec` item's tools ask for approval, instead of "its tools run without asking". See [Registry](docs/registry.md).
 
+### Changed
+- A user file part (e.g. a PDF) that the provider cannot send now rejects the call with the new error code `LOUSHO_UNSUPPORTED_CONTENT` instead of being replaced by a `[file ... not sent]` text note, so a model never answers (or, under fallback, invents an invoice) without the file it was given. Under `withFallback()` / `fallbackModels` the next provider gets the call. To keep the old note, set `unsupportedFiles: 'text-note'` in the built-in providers' config or in `fromAiSdk(model, { unsupportedFiles })`. The `pi` provider is unchanged. See [Multimodal input](docs/providers.md#multimodal-input).
+
+### Fixed
+- `withFallback()` (and `fallbackModels`) kept one shared "active provider" for all calls, so concurrent calls reported wrong `onFallback` / `provider.fallback` transitions, could send the fallback's model id to the primary, and booked usage and cost of calls the fallback served under the primary's model (a 16x cost under-report in the audit repro). Fallback state is now per call; the wrapper's `name` and `defaultModel` are always the first provider's, and each result (and stream) carries the new `servedBy: { provider, model }`, under which the run books that call's `usage.byModel` and `costUsd`.
+
 ## [1.0.0-rc.0] - 2026-10-04
 
 The first 1.0 release candidate. Upgrading from a `1.0.0-alpha.*` release?

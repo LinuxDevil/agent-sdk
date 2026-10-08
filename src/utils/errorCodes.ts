@@ -29,6 +29,8 @@ export const ERROR_CODES = {
   LOUSHO_PEER_MISSING: 'Run the npm install command shown in the message.',
   LOUSHO_HOSTED_TOOL_UNSUPPORTED:
     'Use a provider and package pairing that runs this hosted tool (see docs/hosted-tools.md), or leave the tool out of `tools`.',
+  LOUSHO_UNSUPPORTED_CONTENT:
+    "Send this content to a provider that takes it (see docs/providers.md#multimodal-input), put the file's text in the message, or set the provider's `unsupportedFiles: 'text-note'`.",
   LOUSHO_SPEC_NOT_FOUND: 'Check the spec file path in the message; no file exists there.',
   LOUSHO_SPEC_INVALID: 'Fix the spec fields named in the message (each is shown as its path and the problem).',
   LOUSHO_SPEC_UNKNOWN_FIELD: 'Rename the field to the suggested spec field, or remove it.',

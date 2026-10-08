@@ -140,17 +140,22 @@ console.log(textOf(messages[0]), '->', result.text);
 
   | Provider | `ai` 4 | `ai` 6 / 7 |
   | -------- | ------ | ---------- |
-  | `openai` | text note | `application/pdf` |
-  | `anthropic` | text note | `application/pdf`, `text/plain` |
-  | `openrouter` | text note | `application/pdf` |
-  | `ollama` | text note | text note |
-  | `pi` | text note | text note (pi has no file part) |
+  | `openai` | none | `application/pdf` |
+  | `anthropic` | none | `application/pdf`, `text/plain` |
+  | `openrouter` | none | `application/pdf` |
+  | `ollama` | none | none |
+  | `pi` | none (always a text note) | none (always a text note; pi has no file part) |
 
-  Any other file part is sent as a text note
-  (`[file report.pdf (application/pdf) not sent]`), and the provider warns once
-  per media type, naming it and the `ai` major. On `ai` 4 the accepted
-  `@ai-sdk/*` range includes 0.0.x packages that have no file parts, so every
-  file becomes the note there. A provider subclass whose model takes more types
+  Any other file part rejects the call with
+  [`LOUSHO_UNSUPPORTED_CONTENT`](./errors.md#lousho_unsupported_content)
+  before anything is sent, so the model never answers without the file (and
+  under `withFallback()` the next provider gets the call). To send a text note
+  in its place instead (`[file report.pdf (application/pdf) not sent]`, with
+  one warning per media type), set the provider config's
+  `unsupportedFiles: 'text-note'` (`fromAiSdk()` takes the same option). On
+  `ai` 4 the accepted `@ai-sdk/*` range includes 0.0.x packages that have no
+  file parts, so every file is unsupported there. The `pi` provider still
+  sends every file part as a text note with a one-time warning. A provider subclass whose model takes more types
   overrides `protected fileMediaTypes(): readonly string[]` to list them, or
   sets `protected readonly acceptsFileParts = true` to send every type.
 - `system`, `assistant` and `tool` messages are sent as their text parts.
@@ -228,7 +233,8 @@ your installed `ai`, so install the provider package major that pairs with it
 | Option | Default | Description |
 | ------ | ------- | ----------- |
 | `name` | the model's `provider` field, else `'ai-sdk'` | Provider name in events, spans and warnings. |
-| `fileMediaTypes` | `[]` | Media types sent as `file` parts; other file parts become a text note. Images are always sent. |
+| `fileMediaTypes` | `[]` | Media types sent as `file` parts. Images are always sent. |
+| `unsupportedFiles` | `'error'` | Any other file part: reject the call with `LOUSHO_UNSUPPORTED_CONTENT` (`'error'`), or send a text note in its place (`'text-note'`). |
 | `replaysReasoning` | `false` | Send signed reasoning blocks back on assistant turns (Anthropic models). |
 | `maxRetries` | `0` | The AI SDK's own retries per call; `createAgent()` retries through its `retry` option. |
 

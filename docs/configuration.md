@@ -244,7 +244,11 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 - `withFallback` tries each provider in order and rethrows the last error
   when all fail. By default it falls back on any error except a cancellation
   (`fallbackOn` changes that). Each fallback runs on its own `defaultModel`.
-  `name` and `defaultModel` report the provider that served the latest call.
+  Every call keeps its own fallback state, so concurrent calls never see each
+  other's switches. `name` and `defaultModel` are the first provider's; the
+  result of a call (and a stream) names the provider and model that served it
+  as `servedBy`, and the run books that call's usage and cost under that
+  model in `usage.byModel`.
 - `resilientProvider(provider, { maxRetries, timeout })` applies the
   `LLMProviderConfig` fields of the same names.
 - The built-in providers pass their config's `maxRetries` (default 2) to the
