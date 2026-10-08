@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { z } from 'zod';
 import type { ToolExecutionOptions } from 'ai';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { loadMcpTools, type McpApproval } from './McpToolLoader';
@@ -79,6 +80,23 @@ describe('loadMcpTools', () => {
     } as unknown as Client;
     const descriptors = await loadMcpTools(client, 'srv');
     expect(Object.keys(descriptors)).toEqual(['srv__create']);
+  });
+
+  it('Eve TOOLS-F4: a tool whose root schema is not an object gets a passthrough object schema', async () => {
+    const client = {
+      listTools: async () => ({
+        tools: [
+          {
+            name: 'pick',
+            inputSchema: { anyOf: [{ type: 'object', properties: { a: { type: 'string' } } }, { type: 'object', properties: { b: { type: 'number' } } }] },
+          },
+        ],
+      }),
+    } as unknown as Client;
+    const descriptors = await loadMcpTools(client, 'srv');
+    const inputSchema = descriptors['srv__pick'].inputSchema;
+    expect(inputSchema).toBeInstanceOf(z.ZodObject);
+    expect(inputSchema!.safeParse({ a: 'x', extra: 1 })).toMatchObject({ success: true, data: { a: 'x', extra: 1 } });
   });
 
   it('produces distinctly-named descriptors with zero collision across two connections exposing a tool of the same name', async () => {
