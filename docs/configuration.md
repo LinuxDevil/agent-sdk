@@ -362,7 +362,7 @@ agent) or on `AgentExecutor.execute()` / `stream()`:
 | `maxTokens`       | Prompt plus completion tokens of the run (`usage.totalTokens`). |
 | `maxInputTokens`  | Prompt tokens (`usage.inputTokens`). |
 | `maxOutputTokens` | Completion tokens (`usage.outputTokens`). |
-| `maxCostUsd`      | Estimated USD (`usage.costUsd`, from the [price table](./models-and-cost.md#models-and-the-price-table)). Not checked while a model used has unknown pricing (`costUsd` is `undefined`). |
+| `maxCostUsd`      | USD (`usage.costUsd`): the cost the provider reported for each call (OpenRouter's `usage.cost`), else the [price table](./models-and-cost.md#models-and-the-price-table) estimate. Not checked while a model used has unknown pricing (`costUsd` is `undefined`); a warning is logged once. |
 | `maxDurationMs`   | Wall-clock time of the `execute()` / `stream()` call. |
 | `maxSteps`        | Model steps. An alias of the `maxSteps` option: when both are set the stricter wins (the option's tie reports `'max-steps'`); alone, it replaces the default of 10. |
 

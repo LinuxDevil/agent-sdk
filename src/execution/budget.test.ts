@@ -1,7 +1,7 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import { AgentExecutor, type ExecuteOptions } from './AgentExecutor';
-import { BudgetExceededError, type RunLimits } from './budget';
+import { BudgetExceededError, startBudget, type RunLimits } from './budget';
 import type { AgentEvent } from './agentEvents';
 import { ToolRegistry } from '../tools';
 import { defineTool } from '../tools/defineTool';
@@ -200,5 +200,19 @@ describe('session limits (LOU-V6)', () => {
     const agent = createAgent({ provider: priced([callEcho(100, 100)]), tools: [echo], limits: { maxTokens: 250 } });
     const result = await agent.session({ limits: { maxTokens: 10_000 } }).send('go');
     expect(result.budget).toEqual({ limit: 'maxTokens', value: 400, max: 250, scope: 'run' });
+  });
+});
+
+describe('unknown cost under maxCostUsd (Eve PROV-F3)', () => {
+  it('warns once that the cost limit cannot be enforced', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const budget = startBudget({ maxCostUsd: 1 })!;
+    const usage = { inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: undefined };
+    expect(budget.check(usage, 1)).toBeUndefined();
+    budget.check(usage, 2);
+    budget.dispose();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain('maxCostUsd');
+    warn.mockRestore();
   });
 });

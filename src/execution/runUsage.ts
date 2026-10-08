@@ -60,7 +60,10 @@ export function measureUsage(
 ): CallUsage {
   const reported = normalizeUsage(generated.usage);
   const usage = reported ?? estimatedUsage(model, requestMessages, generated);
-  return { model, usage, estimated: !reported, costUsd: estimateCost(usage, model) };
+  // A cost the provider billed (OpenRouter's `usage.cost`) beats the registry's estimate.
+  const billed = generated.usage?.costUsd;
+  const costUsd = typeof billed === 'number' && Number.isFinite(billed) && billed >= 0 ? billed : estimateCost(usage, model);
+  return { model, usage, estimated: !reported, costUsd };
 }
 
 type OptionalCount = 'cachedInputTokens' | 'reasoningTokens';
@@ -69,13 +72,10 @@ function addOptional(run: RunUsage, key: OptionalCount, add: number | undefined)
   if (add !== undefined) run[key] = (run[key] ?? 0) + add;
 }
 
-/** Recomputes per-model and total cost from the token counts, and the legacy aliases. */
+/** Sums the per-model costs into the total, and sets the legacy aliases. */
 function refreshDerived(run: RunUsage): void {
   let total: number | undefined = 0;
-  for (const [model, entry] of Object.entries(run.byModel)) {
-    if (!isRemoteKey(model)) entry.costUsd = estimateCost(entry, model);
-    total = addCost(total, entry.costUsd);
-  }
+  for (const entry of Object.values(run.byModel)) total = addCost(total, entry.costUsd);
   run.costUsd = total;
   run.promptTokens = run.inputTokens;
   run.completionTokens = run.outputTokens;
@@ -92,7 +92,7 @@ function addToModel(
   entry.inputTokens += tokens.inputTokens;
   entry.outputTokens += tokens.outputTokens;
   entry.calls += calls;
-  if (isRemoteKey(model)) entry.costUsd = existing ? addCost(existing.costUsd, tokens.costUsd) : tokens.costUsd;
+  entry.costUsd = existing ? addCost(existing.costUsd, tokens.costUsd) : tokens.costUsd;
 }
 
 /** Adds one model call to the run total (mutates). */
@@ -105,7 +105,7 @@ export function recordStepUsage(run: RunUsage, step: CallUsage): void {
   run.estimated ||= step.estimated;
   addOptional(run, 'cachedInputTokens', usage.cachedInputTokens);
   addOptional(run, 'reasoningTokens', usage.reasoningTokens);
-  addToModel(run, step.model, usage, 1);
+  addToModel(run, step.model, { ...usage, costUsd: step.costUsd ?? estimateCost(usage, step.model) }, 1);
   refreshDerived(run);
 }
 
@@ -223,8 +223,10 @@ export function restoreRunUsage(saved: CheckpointUsage): RunUsage {
     run.inputTokens = saved.promptTokens;
     run.outputTokens = saved.completionTokens;
     run.totalTokens = saved.totalTokens;
-    if (saved.totalTokens > 0) addToModel(run, UNKNOWN_MODEL, run, 0);
+    if (saved.totalTokens > 0) addToModel(run, UNKNOWN_MODEL, { ...run, costUsd: undefined }, 0);
   }
+  // A saved entry keeps the cost it was billed at; one without is priced from the registry.
+  for (const [model, entry] of Object.entries(run.byModel)) entry.costUsd ??= isRemoteKey(model) ? undefined : estimateCost(entry, model);
   refreshDerived(run);
   return run;
 }

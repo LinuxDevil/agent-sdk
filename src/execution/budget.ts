@@ -15,7 +15,7 @@ export interface RunLimits {
   maxTokens?: number;
   maxInputTokens?: number;
   maxOutputTokens?: number;
-  /** Estimated USD (`usage.costUsd`); not checked while a model used has unknown pricing. */
+  /** USD (`usage.costUsd`): the provider-reported cost, else the registry's estimate; not checked (a warning is logged once) while a model used has unknown pricing. */
   maxCostUsd?: number;
   /** Wall-clock time; an in-flight model or tool call is aborted when it runs out. */
   maxDurationMs?: number;
@@ -71,6 +71,18 @@ const SPENT_KEYS: Record<BudgetLimit, keyof BudgetSpent> = {
   maxSteps: 'steps',
 };
 
+let warnedUnknownCost = false;
+
+/** Warns (once per process) that `maxCostUsd` cannot be enforced because a model used has no known price. */
+function warnUnknownCost(): void {
+  if (warnedUnknownCost) return;
+  warnedUnknownCost = true;
+  console.warn(
+    '[lousho] limits.maxCostUsd is set, but the cost of a model call is unknown (the model is not in the price registry and the provider reported no cost), ' +
+      'so the cost limit is not enforced. Register a price with registerModel({ id, provider, inputCostPerMTok, outputCostPerMTok }), or use a provider that reports cost (OpenRouter does).'
+  );
+}
+
 const NOTHING_SPENT: BudgetSpent = { inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0, steps: 0, durationMs: 0 };
 
 /** `a + b`, field by field (`costUsd` is unknown when either is). */
@@ -120,6 +132,7 @@ export function startBudget(limits?: RunLimits, session?: SessionBudget, signal?
       for (const [limit, key] of Object.entries(SPENT_KEYS) as Array<[BudgetLimit, keyof BudgetSpent]>) {
         const value = total[key];
         const cap = max[limit];
+        if (cap !== undefined && value === undefined && limit === 'maxCostUsd') warnUnknownCost();
         if (cap === undefined || value === undefined || (afterModelCall && limit === 'maxSteps')) continue;
         if (value >= cap) return { limit, value, max: cap, scope };
       }

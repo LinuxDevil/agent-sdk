@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { AgentEventUsage } from './agentEvents';
-import { emptyRunUsage, fromEventUsage, mergeDelegatedUsage, recordStepUsage, remoteModelKey, restoreRunUsage, usageSince } from './runUsage';
+import { emptyRunUsage, fromEventUsage, measureUsage, mergeDelegatedUsage, recordStepUsage, remoteModelKey, restoreRunUsage, usageSince } from './runUsage';
 
 const event = (inputTokens: number, outputTokens: number, extra: Partial<AgentEventUsage> = {}): AgentEventUsage => ({
   inputTokens,
@@ -67,5 +67,22 @@ describe('remote sub-agent usage helpers (M10b)', () => {
     expect(smaller).toMatchObject({ inputTokens: 0, outputTokens: 0, totalTokens: 0, modelCalls: 0, costUsd: 0 });
     expect(usageSince(fromEventUsage(event(5, 5), 'remote:r'), before).costUsd).toBeUndefined();
     expect(usageSince(now, fromEventUsage(event(1, 1), 'remote:other')).byModel['remote:r'].costUsd).toBe(0.4);
+  });
+});
+
+describe('provider-reported cost (Eve PROV-F3)', () => {
+  const generated = (costUsd?: number) => ({ text: 'x', finishReason: 'stop' as const, usage: { promptTokens: 100, completionTokens: 10, totalTokens: 110, costUsd } });
+
+  it('prefers the reported cost over the registry estimate, even for a priced model', () => {
+    expect(measureUsage('gpt-4o-mini', [], generated(2)).costUsd).toBe(2);
+    expect(measureUsage('gpt-4o-mini', [], generated()).costUsd).toBeCloseTo((100 * 0.15 + 10 * 0.6) / 1_000_000);
+  });
+
+  it('totals reported costs for a model the registry does not know, and keeps them through a checkpoint', () => {
+    const run = emptyRunUsage();
+    for (let i = 0; i < 3; i++) recordStepUsage(run, measureUsage('some/unpriced-model', [], generated(2)));
+    expect(run.costUsd).toBe(6);
+    expect(run.byModel['some/unpriced-model'].costUsd).toBe(6);
+    expect(restoreRunUsage(structuredClone(run)).costUsd).toBe(6);
   });
 });

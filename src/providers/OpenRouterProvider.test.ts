@@ -220,3 +220,16 @@ describe('OpenRouterProvider', () => {
     expect(provider.name).toBe('openrouter');
   });
 });
+
+describe('OpenRouterProvider reported cost (Eve PROV-F3)', () => {
+  it("fills usage.costUsd from the response's usage.cost", async () => {
+    const body = {
+      id: 'x', object: 'chat.completion', created: 0, model: 'm',
+      choices: [{ index: 0, message: { role: 'assistant', content: 'hi' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15, cost: 0.0123 },
+    };
+    const provider = new OpenRouterProvider({ apiKey: 'k', defaultModel: 'anthropic/claude-haiku-4.5', fetch: async () => new Response(JSON.stringify(body), { status: 200 }) });
+    const result = await provider.generate({ messages: [{ role: 'user', content: 'hi' }] });
+    expect(result.usage).toMatchObject({ promptTokens: 10, completionTokens: 5, costUsd: 0.0123 });
+  });
+});
