@@ -231,7 +231,8 @@ export function generateInSpan(
       );
       const llmLatencyMs = Date.now() - llmStart;
 
-      const measured = measureUsage(resolveModel(options) ?? provider.name, messages, generated);
+      // A fallback's call is booked under the model that served it.
+      const measured = measureUsage(generated.servedBy?.model ?? resolveModel(options) ?? provider.name, messages, generated);
       if (inputCheck) {
         // N5b: a reply that came first waits for the checks; a trip (which aborts `callSignal`) discards it.
         inputCheck.response = { generated, measured };

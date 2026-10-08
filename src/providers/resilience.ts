@@ -12,7 +12,7 @@
  * included).
  */
 
-import type { GenerateOptions, LLMProvider, LLMProviderConfig, StreamChunk, StreamResult } from './llm';
+import type { GenerateOptions, LLMProvider, LLMProviderConfig, ServedBy, StreamChunk, StreamResult } from './llm';
 import { abortableDelay } from './abortableDelay';
 import { providerEventsOf } from './providerEvents';
 import {
@@ -116,6 +116,8 @@ interface OpenedStream {
   streamed: StreamResult;
   iterator: AsyncIterator<StreamChunk>;
   first: IteratorResult<StreamChunk>;
+  /** Who serves the stream: the stream's own `servedBy`, else what `withFallback()` sets. */
+  servedBy?: ServedBy;
 }
 
 /** The final values of a discarded stream() attempt, marked read so they cannot reject unhandled. */
@@ -147,18 +149,18 @@ async function openStream(provider: LLMProvider, call: GenerateOptions): Promise
     silence(streamed);
     throw first.value.error ?? new Error('The model stream reported an error without details');
   }
-  return { streamed, iterator, first };
+  return { streamed, iterator, first, servedBy: streamed.servedBy };
 }
 
 /** `opened` as the StreamResult of a committed attempt: its first chunk, then the rest of the stream. */
-function streamResultOf({ streamed, iterator, first }: OpenedStream): StreamResult {
+function streamResultOf({ streamed, iterator, first, servedBy }: OpenedStream): StreamResult {
   silence(streamed);
   const fullStream = (async function* (): AsyncGenerator<StreamChunk> {
     if (first.done) return;
     yield first.value;
     for (let next = await iterator.next(); !next.done; next = await iterator.next()) yield next.value;
   })();
-  return { ...streamed, fullStream };
+  return { ...streamed, fullStream, ...(servedBy && { servedBy }) };
 }
 
 /**
@@ -220,17 +222,20 @@ export interface WithFallbackOptions {
 
 /**
  * Try each provider in order until one succeeds; every call starts with the
- * first. Rethrows the last error when all fail. `name` and `defaultModel`
- * report the provider that served (or is serving) the latest call;
- * `supportsTools`, `supportsStreaming`, `getModels` and `supportsHostedTool` ask the first.
+ * first. Rethrows the last error when all fail. Each call keeps its own
+ * fallback state, so concurrent calls never see each other's switches.
+ * `name`, `defaultModel`, `supportsTools`, `supportsStreaming`, `getModels`
+ * and `supportsHostedTool` are the first provider's; the provider and model
+ * that served a call are on its result as `servedBy`, which the executor
+ * books the call's usage and cost under.
  *
  * A `stream()` call falls back on the same boundary `withRetry()` retries on:
  * establishing the stream failing (up to its first chunk). A failure after
  * the first chunk propagates unchanged.
  *
  * A call's `model` goes only to the first provider, and only when it differs
- * from this wrapper's `defaultModel`; otherwise, and always for fallbacks,
- * each provider uses its own `defaultModel`.
+ * from the first provider's `defaultModel`; otherwise, and always for
+ * fallbacks, each provider uses its own `defaultModel`.
  *
  * @example
  * ```ts
@@ -246,23 +251,28 @@ export function withFallback(providers: LLMProvider[], options: WithFallbackOpti
     throw new ConfigurationError('withFallback() needs at least one provider', 'providers');
   }
   const { fallbackOn = (error: unknown) => !isAbortError(error), onFallback } = options;
-  let active = first;
 
-  async function run<T>(call: GenerateOptions, attempt: (provider: LLMProvider, call: GenerateOptions) => Promise<T>) {
-    const model = call.model && call.model !== active.defaultModel ? call.model : undefined;
+  async function run<T extends { servedBy?: ServedBy }>(
+    call: GenerateOptions,
+    attempt: (provider: LLMProvider, call: GenerateOptions) => Promise<T>
+  ): Promise<T> {
+    const model = call.model && call.model !== first.defaultModel ? call.model : undefined;
     let lastError: unknown;
     for (const [index, provider] of providers.entries()) {
       if (index > 0) {
         if (call.signal?.aborted || !fallbackOn(lastError)) {
           throw lastError;
         }
-        const info: FallbackInfo = { from: active.name, to: provider.name, error: lastError };
+        const info: FallbackInfo = { from: providers[index - 1].name, to: provider.name, error: lastError };
         onFallback?.(info);
         providerEventsOf(call)?.fallback(info);
       }
-      active = provider;
+      const sent = index === 0 ? model : undefined;
       try {
-        return await attempt(provider, { ...call, model: index === 0 ? model : undefined });
+        const result = await attempt(provider, { ...call, model: sent });
+        // A nested wrapper already knows which of its providers served.
+        result.servedBy ??= { provider: provider.name, model: sent ?? provider.defaultModel };
+        return result;
       } catch (error) {
         lastError = error;
       }
@@ -272,10 +282,10 @@ export function withFallback(providers: LLMProvider[], options: WithFallbackOpti
 
   return {
     get name() {
-      return active.name;
+      return first.name;
     },
     get defaultModel() {
-      return active.defaultModel;
+      return first.defaultModel;
     },
     generate: (call) => run(call, (provider, attempt) => provider.generate(attempt)),
     stream: async (call) => streamResultOf(await run(call, (provider, attempt) => openStream(provider, attempt))),

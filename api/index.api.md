@@ -486,6 +486,7 @@ abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLM
 interface AiSdkProviderConfig extends LLMProviderConfig {
     // (undocumented)
     defaultModel?: string;
+    unsupportedFiles?: UnsupportedFiles;
 }
 
 // @public
@@ -1884,6 +1885,7 @@ export const ERROR_CODES: {
     readonly LOUSHO_PROVIDER_RATE_LIMITED: "Wait and retry (withRetry() honours Retry-After), or lower the request rate.";
     readonly LOUSHO_PEER_MISSING: "Run the npm install command shown in the message.";
     readonly LOUSHO_HOSTED_TOOL_UNSUPPORTED: "Use a provider and package pairing that runs this hosted tool (see docs/hosted-tools.md), or leave the tool out of `tools`.";
+    readonly LOUSHO_UNSUPPORTED_CONTENT: "Send this content to a provider that takes it (see docs/providers.md#multimodal-input), put the file's text in the message, or set the provider's `unsupportedFiles: 'text-note'`.";
     readonly LOUSHO_SPEC_NOT_FOUND: "Check the spec file path in the message; no file exists there.";
     readonly LOUSHO_SPEC_INVALID: "Fix the spec fields named in the message (each is shown as its path and the problem).";
     readonly LOUSHO_SPEC_UNKNOWN_FIELD: "Rename the field to the suggested spec field, or remove it.";
@@ -2460,6 +2462,7 @@ export interface FromAiSdkOptions {
     maxRetries?: number;
     name?: string;
     replaysReasoning?: boolean;
+    unsupportedFiles?: UnsupportedFiles;
 }
 
 // @public
@@ -2627,6 +2630,7 @@ export interface GenerateResult {
     // (undocumented)
     rawResponse?: unknown;
     reasoning?: ReasoningBlock[];
+    servedBy?: ServedBy;
     // (undocumented)
     text: string;
     toolCalls?: ToolCall[];
@@ -5381,6 +5385,13 @@ export interface ServeAcpOptions {
 }
 
 // @public
+export interface ServedBy {
+    model?: string;
+    // (undocumented)
+    provider: string;
+}
+
+// @public
 export function serveMcp(options: ServeMcpOptions): Promise<ServeMcpHandle>;
 
 // @public
@@ -5848,6 +5859,7 @@ export interface StreamResult {
     finishReason: Promise<string>;
     // (undocumented)
     fullStream: AsyncIterable<StreamChunk>;
+    servedBy?: ServedBy;
     // (undocumented)
     text: Promise<string>;
     // (undocumented)
@@ -6705,6 +6717,9 @@ export interface UIMessagePartLike {
 }
 
 // @public
+export type UnsupportedFiles = 'error' | 'text-note';
+
+// @public
 export interface Usage {
     cachedInputTokens?: number;
     inputTokens: number;
@@ -6972,8 +6987,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-teGCK4tt.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-teGCK4tt.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-CDCdpMkc.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-CDCdpMkc.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)

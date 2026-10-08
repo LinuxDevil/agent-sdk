@@ -467,7 +467,7 @@ class RunEvents {
       generate: async (provider, request, onOutput, hold) => {
         const call = withProviderEvents(request, this.providerEvents(subagent));
         const generated = settleHostedFinish(await this.generateStep(provider, call, subagent, onOutput, hold));
-        const measured = measureUsage(request.model ?? provider.name, request.messages, generated);
+        const measured = measureUsage(generated.servedBy?.model ?? request.model ?? provider.name, request.messages, generated);
         const measuredStep = { finishReason: generated.finishReason, ...measured, usage: measured.usage };
         // N5b: a step a parallel input guardrail blocked reports only the usage the provider reported.
         if (!hold || !measured.estimated) stepResult = measuredStep;

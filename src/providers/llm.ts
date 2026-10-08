@@ -251,7 +251,20 @@ export interface GenerateResult {
   hostedToolCalls?: HostedToolCall[];
   /** LOU-V13: the model's reasoning, in blocks, when it reported any. */
   reasoning?: ReasoningBlock[];
+  /**
+   * The provider and model that actually served this call, when a wrapper
+   * chose between several (`withFallback()` sets it). The executor books the
+   * call's usage and cost under this model.
+   */
+  servedBy?: ServedBy;
   rawResponse?: unknown;
+}
+
+/** Which provider, and which of its models, served a call (see `GenerateResult.servedBy`). */
+export interface ServedBy {
+  provider: string;
+  /** `undefined` when the provider reports no `defaultModel` and the call named none. */
+  model?: string;
 }
 
 /**
@@ -303,6 +316,8 @@ export interface StreamResult {
   usage: Promise<ProviderUsage | undefined>;
   finishReason: Promise<string>;
   toolCalls: Promise<ToolCall[]>;
+  /** The provider and model serving this stream, when a wrapper chose (see `GenerateResult.servedBy`). */
+  servedBy?: ServedBy;
 }
 
 /**

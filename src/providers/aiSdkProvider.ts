@@ -32,6 +32,7 @@ import type {
 import { reasoningProviderOptions } from './reasoning';
 import { hostedToolUnsupported, type HostedTool, type HostedToolType } from '../tools/hosted';
 import { textOf } from './content';
+import { SDKError } from '../utils/sdkError';
 import { isRawJsonSchema, schemaToJsonSchema } from '../utils/zodCompat';
 import { type AiSdkMessage, type AiSdkModule, aiMajorOf, compatGenerateText, streamCompat } from './aiSdkCompat';
 
@@ -44,9 +45,18 @@ type ReasoningPart = { type: 'reasoning'; text: string; signature?: string } | {
 /** A v4 `tool()` (the identity function in v4): `parameters` and a placeholder `execute`. */
 type AiSdkTool = { description: string; parameters: unknown; execute: () => Promise<null> };
 
+/**
+ * What a provider does with a user file part it cannot send (A9):
+ * `'error'` rejects the call with `LOUSHO_UNSUPPORTED_CONTENT`; `'text-note'`
+ * sends `[file <name> (<type>) not sent]` in its place, with a one-time warning.
+ */
+export type UnsupportedFiles = 'error' | 'text-note';
+
 /** Config fields shared by every 'ai'-SDK-backed provider. */
 export interface AiSdkProviderConfig extends LLMProviderConfig {
   defaultModel?: string;
+  /** A file part this provider cannot send: reject the call (`'error'`, the default) or send a text note. */
+  unsupportedFiles?: UnsupportedFiles;
 }
 
 /** `JSON.parse(text)`, or `fallback` when `text` is not a JSON string. */
@@ -107,8 +117,10 @@ function toToolResultMessage(msg: Message, toolNames: Map<string, string>): AiSd
 /** How a provider sends multimodal parts (LOU-V11). */
 interface PartSupport {
   provider: string;
-  /** Whether a file part of this media type is sent; `false`: it becomes a text note, with a one-time warning. */
+  /** Whether a file part of this media type is sent; `false`: see `unsupportedFiles`. */
   files: (mimeType: string) => boolean;
+  /** A file part that is not sent rejects the call (`'error'`) or becomes a text note, with a one-time warning. */
+  unsupportedFiles: UnsupportedFiles;
   /** The `ai` major in use, named in the warning. */
   aiMajor: number;
   /** LOU-V13: send an assistant turn's `reasoning` blocks back (Anthropic). */
@@ -126,6 +138,15 @@ function toUserPart(part: ContentPart, support: PartSupport): ContentPart {
   }
   if (support.files(part.mimeType)) {
     return { type: 'file', data: part.data, mimeType: part.mimeType, ...(part.filename ? { filename: part.filename } : {}) };
+  }
+  if (support.unsupportedFiles === 'error') {
+    // A9: never drop a file silently - the model would answer without it (and may invent its content).
+    throw new SDKError(
+      `The ${support.provider} provider cannot send ${part.mimeType} file parts on ai ${support.aiMajor} ` +
+        `(file ${part.filename ?? 'attachment'}). Use a provider and ai major that sends this type, put the file's text in the message, ` +
+        "or set the provider's `unsupportedFiles: 'text-note'` to send a note in its place.",
+      'LOUSHO_UNSUPPORTED_CONTENT'
+    );
   }
   const warnKey = `${support.provider}:${part.mimeType}`;
   if (!warnedFileParts.has(warnKey)) {
@@ -280,6 +301,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
     return toCoreMessages(messages, {
       provider: this.name,
       files: (mimeType) => this.acceptsFileParts || sendable.includes(mimeType.split(';')[0].trim().toLowerCase()),
+      unsupportedFiles: this.config.unsupportedFiles ?? 'error',
       aiMajor: aiMajorOf(this.ai),
       reasoning: this.replaysReasoning,
     });

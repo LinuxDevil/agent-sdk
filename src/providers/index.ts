@@ -16,6 +16,7 @@ export { PiProvider, type PiProviderConfig } from './pi/PiProvider';
 export * from './resolveProvider';
 export * from './resilience';
 export { fromAiSdk, type FromAiSdkOptions } from './fromAiSdk';
+export type { UnsupportedFiles } from './aiSdkProvider';
 export { MissingPeerDependencyError } from './optionalPeer';
 
 // Auto-register built-in providers for consumers of this barrel, so

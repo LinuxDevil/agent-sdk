@@ -473,6 +473,8 @@ abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLM
 interface AiSdkProviderConfig extends LLMProviderConfig {
     // (undocumented)
     defaultModel?: string;
+    // Warning: (ae-forgotten-export) The symbol "UnsupportedFiles" needs to be exported by the entry point worker.d.ts
+    unsupportedFiles?: UnsupportedFiles;
 }
 
 // @public
@@ -1404,6 +1406,7 @@ const ERROR_CODES: {
     readonly LOUSHO_PROVIDER_RATE_LIMITED: "Wait and retry (withRetry() honours Retry-After), or lower the request rate.";
     readonly LOUSHO_PEER_MISSING: "Run the npm install command shown in the message.";
     readonly LOUSHO_HOSTED_TOOL_UNSUPPORTED: "Use a provider and package pairing that runs this hosted tool (see docs/hosted-tools.md), or leave the tool out of `tools`.";
+    readonly LOUSHO_UNSUPPORTED_CONTENT: "Send this content to a provider that takes it (see docs/providers.md#multimodal-input), put the file's text in the message, or set the provider's `unsupportedFiles: 'text-note'`.";
     readonly LOUSHO_SPEC_NOT_FOUND: "Check the spec file path in the message; no file exists there.";
     readonly LOUSHO_SPEC_INVALID: "Fix the spec fields named in the message (each is shown as its path and the problem).";
     readonly LOUSHO_SPEC_UNKNOWN_FIELD: "Rename the field to the suggested spec field, or remove it.";
@@ -1673,6 +1676,7 @@ interface FromAiSdkOptions {
     maxRetries?: number;
     name?: string;
     replaysReasoning?: boolean;
+    unsupportedFiles?: UnsupportedFiles;
 }
 
 // Warning: (ae-forgotten-export) The symbol "HookContext" needs to be exported by the entry point worker.d.ts
@@ -1733,6 +1737,8 @@ interface GenerateResult {
     rawResponse?: unknown;
     // Warning: (ae-forgotten-export) The symbol "ReasoningBlock" needs to be exported by the entry point worker.d.ts
     reasoning?: ReasoningBlock[];
+    // Warning: (ae-forgotten-export) The symbol "ServedBy" needs to be exported by the entry point worker.d.ts
+    servedBy?: ServedBy;
     // (undocumented)
     text: string;
     toolCalls?: ToolCall[];
@@ -3243,6 +3249,13 @@ interface SequenceNode {
 export type ServeAuth = string | AuthFn | readonly AuthFn[];
 
 // @public
+interface ServedBy {
+    model?: string;
+    // (undocumented)
+    provider: string;
+}
+
+// @public
 export function serveFetch(request: Request, ctx: ChatRoutesContext, auth?: ServeAuth): Promise<Response>;
 
 // @public
@@ -3582,6 +3595,7 @@ interface StreamResult {
     //
     // (undocumented)
     fullStream: AsyncIterable<StreamChunk>;
+    servedBy?: ServedBy;
     // (undocumented)
     text: Promise<string>;
     // (undocumented)
@@ -4125,6 +4139,9 @@ interface UIComponentNode {
 }
 
 // @public
+type UnsupportedFiles = 'error' | 'text-note';
+
+// @public
 interface Usage {
     cachedInputTokens?: number;
     inputTokens: number;
@@ -4158,13 +4175,13 @@ interface WithRetryOptions {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-CwR5qs7_.d.ts:751:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CwR5qs7_.d.ts:768:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CwR5qs7_.d.ts:1118:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CwR5qs7_.d.ts:3088:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CwR5qs7_.d.ts:3089:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
-// dist/index-teGCK4tt.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
-// dist/index-teGCK4tt.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BdZjn_dW.d.ts:754:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BdZjn_dW.d.ts:771:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BdZjn_dW.d.ts:1121:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BdZjn_dW.d.ts:3091:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BdZjn_dW.d.ts:3092:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
+// dist/index-CDCdpMkc.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
+// dist/index-CDCdpMkc.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point worker.d.ts
 
 // (No @packageDocumentation comment for this package)

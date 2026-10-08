@@ -105,8 +105,8 @@ environment (`LOUSHO_CONFIG_MISSING_PROVIDER`).
 
 ### The model does not read my files
 
-- **Cause:** a built-in provider sends a file part only for the media types it supports on your `ai` major: on `ai` 6/7 `application/pdf` reaches `openai`, `anthropic` (which also sends `text/plain`) and `openrouter`. Every other media type — and every file on `ai` 4 or `ollama` — is sent as a text note (`[file report.pdf (application/pdf) not sent]`) and the provider warns once. Images are sent.
-- **Fix:** use `ai` 6 or 7 with a media type the provider sends (see the table), put the file's text in the message, or use a provider subclass whose model takes files.
+- **Cause:** a built-in provider sends a file part only for the media types it supports on your `ai` major: on `ai` 6/7 `application/pdf` reaches `openai`, `anthropic` (which also sends `text/plain`) and `openrouter`. Every other media type — and every file on `ai` 4 or `ollama` — rejects the call with `LOUSHO_UNSUPPORTED_CONTENT` (or, with the provider's `unsupportedFiles: 'text-note'`, is sent as a text note, `[file report.pdf (application/pdf) not sent]`). Images are sent.
+- **Fix:** use `ai` 6 or 7 with a media type the provider sends (see the table), put the file's text in the message, add a `fallbackModels` entry that takes the file, or use a provider subclass whose model takes files.
 - **More:** [Multimodal input](./providers.md#multimodal-input).
 
 ### I do not see the model's reasoning
