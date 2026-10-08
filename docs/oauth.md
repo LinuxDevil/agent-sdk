@@ -176,7 +176,11 @@ const agent = createAgent({ provider, tools: [listRepos], store: memoryStore() }
   (`credentialOwner: 'user'`, the default) or the app's own
   (`credentialOwner: 'app'`) from `store.tokens`. A token that expires within
   60 seconds and has a refresh token is refreshed at `tokenUrl` first and
-  saved; a refresh the server refuses deletes it.
+  saved. Concurrent calls in one process that need the same refresh share one
+  request, so a provider that rotates refresh tokens (single use) is not sent
+  the same one twice. A refresh the server refuses deletes the token, unless
+  the store meanwhile holds a different one (another process refreshed it);
+  that one is used instead.
 - Without a usable token the run **pauses**, exactly like an
   [approval](approvals.md): `finishReason: 'awaiting-approval'`, a pending
   approval with `kind: 'sign-in'`, durable in the agent's stores. Once the user
@@ -336,9 +340,14 @@ approval.
   ephemeral message in a shared channel (Slack, Discord), a 1:1 chat
   (Telegram, Teams), never a group chat or a public thread.
 - **Never return a token from a tool.** Return the API's answer. As a safety
-  net, a tool result that contains a token `getToken()` handed out during that
-  call has it replaced with `[REDACTED]` before it is recorded, and a warning
-  names the tool. Tokens never enter agent events, transcripts, checkpoints,
+  net, a tool result or a thrown error that contains a token `getToken()`
+  handed out during that call has it replaced with `[REDACTED]` before it is
+  recorded, and a warning names the tool. The result is checked in its JSON
+  form (values, keys, a `URL`, a class instance's fields), the error in its
+  message, stack and `cause` chain, and the token is matched verbatim and
+  base64 or base64url encoded (a `Basic` header). The redaction is a net, not
+  a guarantee: a token that is hashed, split or otherwise transformed is not
+  found. Tokens never enter agent events, transcripts, checkpoints,
   approval records, trace spans or recorded cassettes.
 
 ## MCP servers with OAuth
