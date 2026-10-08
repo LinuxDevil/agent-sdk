@@ -34,8 +34,9 @@ lousho build <agent-dir|spec> --target=<name> [--out=<dir>]    (or --agent=<path
 lousho studio [--port N] [--host H] [--prod|--dev]
 lousho mcp <agent.yaml|json> [--http --port N --host H]
 lousho doctor [agent.yaml|json] [--json] [--ping]
-lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts]
+lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
+lousho --version
 ```
 
 Every command parses its flags the same way (Node's `parseArgs`, strict):

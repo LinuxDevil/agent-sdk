@@ -58,8 +58,8 @@ export interface ChatIo {
 }
 
 /** Builds the target's agent; `model` (`provider/model`) replaces the one it names. Shared with `lousho acp`. */
-export async function buildAgent(path: string, io: Pick<ChatIo, 'overrides'>, model?: string): Promise<SimpleAgent> {
-  const target = detectTarget(path);
+export async function buildAgent(path: string, io: Pick<ChatIo, 'overrides'>, model?: string, command = 'chat'): Promise<SimpleAgent> {
+  const target = detectTarget(path, command);
   if (target.kind === 'spec' && model) {
     const spec = loadSpec(target.path);
     const [type, ...name] = model.split('/');

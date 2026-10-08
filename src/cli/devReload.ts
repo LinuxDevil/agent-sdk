@@ -70,19 +70,19 @@ function log(message: string): void {
   console.log(`[lousho dev] ${message}`);
 }
 
-/** Picks the target kind from the path: a directory, a spec by extension, or a module by extension. */
-export function detectTarget(rawPath: string): DevTarget {
+/** Picks the target kind from the path (`command` names the calling `lousho` command in errors): a directory, a spec by extension, or a module by extension. */
+export function detectTarget(rawPath: string, command = 'dev'): DevTarget {
   const file = path.resolve(rawPath);
   const ext = path.extname(file).toLowerCase();
   if (fs.existsSync(file) && fs.statSync(file).isDirectory()) return { kind: 'dir', path: file };
   // A missing spec keeps failing inside loadSpec, as it always did.
   if (SPEC_EXT.has(ext)) return { kind: 'spec', path: file };
   if (!fs.existsSync(file)) {
-    throw new SDKError(`lousho dev: '${rawPath}' does not exist.`, 'LOUSHO_CONFIG_INVALID', { hint: TARGET_HINT });
+    throw new SDKError(`lousho ${command}: '${rawPath}' does not exist.`, 'LOUSHO_CONFIG_INVALID', { hint: TARGET_HINT });
   }
   if (MODULE_EXT.has(ext)) return { kind: 'module', path: file };
   throw new SDKError(
-    `lousho dev: unsupported file type '${ext || '(none)'}' for '${rawPath}'.`,
+    `lousho ${command}: unsupported file type '${ext || '(none)'}' for '${rawPath}'.`,
     'LOUSHO_SPEC_UNSUPPORTED_FORMAT',
     { hint: TARGET_HINT }
   );

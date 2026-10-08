@@ -13,9 +13,10 @@ const USAGE = [
   '  lousho build <agent-dir|spec> --target=<name> [--out=<dir>]   (or --agent=<path>)',
   '  lousho studio [--port N] [--host H] [--prod|--dev]',
   '  lousho mcp <agent.yaml|json> [--http --port N --host H]',
-  '  lousho doctor [agent.yaml|json] [--json]',
-  '  lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts]',
+  '  lousho doctor [agent.yaml|json] [--json] [--ping]',
+  '  lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]',
   '  lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]',
+  '  lousho --version',
 ].join('\n');
 
 // Flag parsing for every command lives in src/cli/args.ts (node:util parseArgs, strict);
@@ -87,6 +88,11 @@ async function runTracesCommand(rest) {
   process.exitCode = await runTraces(rest);
 }
 
+// `lousho --version` / `-v` / `version` print the package version (kept in sync with VERSION by scripts/sync-version.mjs).
+function runVersion() {
+  console.log(require(path.join(__dirname, '..', 'package.json')).version);
+}
+
 function runHelp() {
   console.log(USAGE);
 }
@@ -107,6 +113,9 @@ const COMMANDS = new Map([
   ['--help', runHelp],
   ['-h', runHelp],
   ['help', runHelp],
+  ['--version', runVersion],
+  ['-v', runVersion],
+  ['version', runVersion],
 ]);
 
 async function main() {
