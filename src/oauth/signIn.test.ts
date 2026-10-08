@@ -13,7 +13,7 @@ import { memoryStore } from '../storage/agentStore';
 import type { AgentEvent, AgentEventOf } from '../execution/agentEvents';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import { defineOAuthProvider } from './defineOAuthProvider';
-import { SignInPendingError, completeSignIn, startSignIn } from './signIn';
+import { SignInPendingError, completeSignIn, redactHandedOutError, startSignIn } from './signIn';
 import { MemoryTokenStore } from './memoryTokenStore';
 import { ALICE, BOB, challengeOf, fakeOAuthServer, githubProvider, listReposTool, type FakeOAuthServer } from './__fixtures__/fakeOAuth';
 import type { TokenOwner } from './types';
@@ -376,6 +376,60 @@ describe('a tool never returns a token (N9b)', () => {
     expect(JSON.stringify(events)).not.toContain('gho_SECRET_leaky');
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("Tool 'list_repos' returned an OAuth token"));
     expect(warn.mock.calls.flat().join(' ')).not.toContain('gho_SECRET_leaky');
+  });
+
+  // Eve TOOLS-F2: the shapes a real tool plausibly returns or throws.
+  const TOKEN = 'gho_SECRET_shape_123456';
+  const BASIC = Buffer.from(`x-access-token:${TOKEN}`).toString('base64');
+  class Debug { header = `Bearer ${TOKEN}`; }
+  const shapes: Record<string, (token: string) => unknown> = {
+    'an object key': (token) => ({ [token]: 'scopes: repo' }),
+    'a URL instance': (token) => ({ next: new URL(`https://api.example/?access_token=${token}`) }),
+    'a class instance': () => new Debug(),
+    'a base64 Basic header': (token) => ({ basic: Buffer.from(`x-access-token:${token}`).toString('base64') }),
+    'a base64url value': (token) => ({ v: Buffer.from(`ab${token}`).toString('base64url') }),
+    'a thrown error': (token) => { throw new Error(`GitHub 401 for Authorization: Bearer ${token}`); },
+    'a thrown string': (token) => { throw `Bearer ${token}`; },
+  };
+  for (const [shape, make] of Object.entries(shapes)) {
+    it(`redacts a token in ${shape} (Eve TOOLS-F2)`, async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const github = githubProvider(fakeOAuthServer());
+      const tool = defineTool({
+        name: 'gh',
+        description: 'gh',
+        input: z.object({}),
+        execute: async (_args, ctx) => make((await ctx.getToken(github)).accessToken) as Record<string, unknown>,
+      });
+      const store = memoryStore();
+      await store.tokens.set('github', ALICE_OWNER, { accessToken: TOKEN, expiresAt: Date.now() + 3_600_000 });
+      const agent = createAgent({ provider: mockModel([{ toolCalls: [{ name: 'gh', id: 'call_1', args: {} }] }, { text: 'ok' }]), tools: [tool], store });
+      const { events, result } = await collect(agent.stream('go', { principal: ALICE }));
+      const recorded = JSON.stringify(result.messages) + JSON.stringify(events);
+      expect(recorded).toContain('[REDACTED]');
+      expect(recorded).not.toContain(TOKEN);
+      expect(recorded).not.toContain(BASIC.slice(24));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("Tool 'gh'"));
+    });
+  }
+
+  it('redacts the message, stack and cause chain of a thrown error, keeping its identity (Eve TOOLS-F2)', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const inner = new Error(`token ${TOKEN} refused`);
+    const error = Object.assign(new TypeError(`Bearer ${TOKEN}`, { cause: inner }), { code: 'E_GH' });
+    const out = redactHandedOutError('gh', error, new Set([TOKEN])) as TypeError & { code: string };
+    expect(out).toBe(error);
+    expect(out.code).toBe('E_GH');
+    expect(out.message).toBe('Bearer [REDACTED]');
+    expect(out.stack).not.toContain(TOKEN);
+    expect((out.cause as Error).message).toBe('token [REDACTED] refused');
+    expect((out.cause as Error).stack).not.toContain(TOKEN);
+    // A frozen error cannot be changed: a redacted copy is thrown instead.
+    const frozen = Object.freeze(new Error(`Bearer ${TOKEN}`));
+    expect((redactHandedOutError('gh', frozen, new Set([TOKEN])) as Error).message).toBe('Bearer [REDACTED]');
+    // An error without a token is left alone.
+    const clean = new Error('nothing here');
+    expect(redactHandedOutError('gh', clean, new Set([TOKEN]))).toBe(clean);
   });
 });
 

@@ -19,7 +19,7 @@
  */
 
 import { ToolDescriptor, type ToolExecutionContext } from '../types';
-import { redactHandedOutTokens } from '../oauth/signIn';
+import { redactHandedOutError, redactHandedOutTokens } from '../oauth/signIn';
 import { getToolExecute } from '../tools/toolContract';
 import { SandboxAdapter } from '../security/sandboxCore';
 import type { ToolCallScope } from './subagentRuntime';
@@ -83,7 +83,13 @@ export async function executeToolWithSandboxGuard(
   const ctx = buildToolRunContext({ ...input, signal, scope, handedOut });
   const redacted = (value: unknown) => (handedOut.size > 0 ? redactHandedOutTokens(toolName, value, handedOut) : value);
   // N13b: a snapshot is redacted like the result it may become.
-  const result = await runGuarded(toolName, toolDesc, args, sandbox, ctx, (snapshot) => onPartial?.(redacted(snapshot)));
+  let result: unknown;
+  try {
+    result = await runGuarded(toolName, toolDesc, args, sandbox, ctx, (snapshot) => onPartial?.(redacted(snapshot)));
+  } catch (error) {
+    // Eve TOOLS-F2: a thrown error becomes the call's error result, so it is redacted too.
+    throw handedOut.size > 0 ? redactHandedOutError(toolName, error, handedOut) : error;
+  }
   return normalizeToolResult(redacted(result));
 }
 

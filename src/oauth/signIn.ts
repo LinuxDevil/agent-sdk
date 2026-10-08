@@ -400,43 +400,148 @@ function tokenOf(json: Record<string, unknown>, accessToken: string): OAuthToken
 }
 
 const REDACTED = '[REDACTED]';
+/** A token shorter than this is matched only verbatim: its base64 fragments would be too short to mean anything. */
+const MIN_ENCODED_SECRET = 8;
+/** How deep an error's `cause` chain is followed. */
+const MAX_CAUSE_DEPTH = 8;
 
-function scrub(value: unknown, secrets: readonly string[], seen: WeakMap<object, unknown>): unknown {
-  if (typeof value === 'string') return secrets.reduce((text, secret) => text.split(secret).join(REDACTED), value);
+/**
+ * Eve TOOLS-F2: the base64 forms of `secret` wherever it sits inside an
+ * encoded value (`Basic base64(user:token)`). For each of the three byte
+ * alignments, the characters that encode only the secret's own bytes, in the
+ * URL-safe and the standard alphabet.
+ */
+function encodedForms(secret: string): string[] {
+  const bytes = new TextEncoder().encode(secret);
+  const forms: string[] = [];
+  for (let skip = 0; skip < 3; skip++) {
+    const aligned = bytes.subarray(skip, skip + Math.floor((bytes.length - skip) / 3) * 3);
+    if (aligned.length < 6) continue;
+    const url = base64url(aligned);
+    forms.push(url, url.replace(/-/g, '+').replace(/_/g, '/'));
+  }
+  return forms;
+}
+
+/** Every form of the handed-out tokens to look for (verbatim, JSON-escaped, base64), longest first. */
+function secretForms(handedOut: ReadonlySet<string>): string[] {
+  const forms = new Set<string>();
+  for (const secret of handedOut) {
+    if (secret.length === 0) continue;
+    forms.add(secret);
+    forms.add(JSON.stringify(secret).slice(1, -1));
+    if (secret.length >= MIN_ENCODED_SECRET) for (const form of encodedForms(secret)) forms.add(form);
+  }
+  return [...forms].sort((a, b) => b.length - a.length);
+}
+
+function hasSecret(text: string, secrets: readonly string[]): boolean {
+  return secrets.some((secret) => text.includes(secret));
+}
+
+function scrubText(text: string, secrets: readonly string[]): string {
+  return secrets.reduce((out, secret) => out.split(secret).join(REDACTED), text);
+}
+
+/** For a value `JSON.stringify` cannot serialize (a cycle, a BigInt): strings and keys of arrays and objects. */
+function scrubWalk(value: unknown, secrets: readonly string[], seen: WeakMap<object, unknown>, hit: { found: boolean }): unknown {
+  if (typeof value === 'string') {
+    if (!hasSecret(value, secrets)) return value;
+    hit.found = true;
+    return scrubText(value, secrets);
+  }
   if (typeof value !== 'object' || value === null) return value;
   if (seen.has(value)) return seen.get(value);
   if (Array.isArray(value)) {
     const copy: unknown[] = [];
     seen.set(value, copy);
-    for (const item of value) copy.push(scrub(item, secrets, seen));
+    for (const item of value) copy.push(scrubWalk(item, secrets, seen, hit));
     return copy;
   }
-  const proto: unknown = Object.getPrototypeOf(value);
-  if (proto !== Object.prototype && proto !== null) return value;
   const copy: Record<string, unknown> = {};
   seen.set(value, copy);
-  for (const [key, item] of Object.entries(value)) copy[key] = scrub(item, secrets, seen);
+  for (const [key, item] of Object.entries(value)) copy[scrubWalk(key, secrets, seen, hit) as string] = scrubWalk(item, secrets, seen, hit);
   return copy;
 }
 
-function contains(value: unknown, secrets: readonly string[], seen = new WeakSet<object>()): boolean {
-  if (typeof value === 'string') return secrets.some((secret) => value.includes(secret));
-  if (typeof value !== 'object' || value === null || seen.has(value)) return false;
-  seen.add(value);
-  const proto: unknown = Object.getPrototypeOf(value);
-  if (!Array.isArray(value) && proto !== Object.prototype && proto !== null) return false;
-  return Object.values(value).some((item) => contains(item, secrets, seen));
+/**
+ * `value` with the secrets replaced, judged on its JSON form (what the
+ * transcript records): values, keys, a `URL`, a class instance's fields.
+ * `undefined` when there is nothing to replace.
+ */
+function scrubValue(value: unknown, secrets: readonly string[]): { value: unknown } | undefined {
+  let json: string | undefined;
+  try {
+    json = JSON.stringify(value);
+  } catch {
+    const hit = { found: false };
+    const walked = scrubWalk(value, secrets, new WeakMap(), hit);
+    return hit.found ? { value: walked } : undefined;
+  }
+  if (json === undefined || !hasSecret(json, secrets)) return undefined;
+  return { value: JSON.parse(scrubText(json, secrets)) as unknown };
+}
+
+function warnRedacted(toolName: string, how: string): void {
+  console.warn(`[lousho] Tool '${toolName}' ${how} an OAuth token it got from ctx.getToken(); it was replaced with ${REDACTED}. Return the API's answer, not the token.`);
 }
 
 /**
  * The safety net behind "never return a token from a tool": a result that
- * contains a token handed out during the call has it replaced by
- * `[REDACTED]` (strings, arrays and plain objects; other objects are left as
- * they are), and a warning names the tool, never the token.
+ * contains a token handed out during the call (verbatim, JSON-escaped or
+ * base64-encoded, anywhere in its JSON form, keys included) is replaced by
+ * its JSON with the token turned into `[REDACTED]`, and a warning names the
+ * tool, never the token.
  */
 export function redactHandedOutTokens(toolName: string, result: unknown, handedOut: ReadonlySet<string>): unknown {
-  const secrets = [...handedOut].filter((secret) => secret.length > 0);
-  if (secrets.length === 0 || !contains(result, secrets)) return result;
-  console.warn(`[lousho] Tool '${toolName}' returned an OAuth token it got from ctx.getToken(); it was replaced with ${REDACTED}. Return the API's answer, not the token.`);
-  return scrub(result, secrets, new WeakMap());
+  const secrets = secretForms(handedOut);
+  if (secrets.length === 0) return result;
+  const scrubbed = scrubValue(result, secrets);
+  if (!scrubbed) return result;
+  warnRedacted(toolName, 'returned');
+  return scrubbed.value;
+}
+
+function setOwn(target: object, key: string, value: unknown): void {
+  try {
+    const enumerable = Object.prototype.propertyIsEnumerable.call(target, key);
+    Object.defineProperty(target, key, { value, writable: true, configurable: true, enumerable });
+  } catch {
+    // A frozen error: redactHandedOutError() throws a copy instead.
+  }
+}
+
+/**
+ * Eve TOOLS-F2: the same safety net for what a tool throws. The `message`,
+ * `stack` and `cause` chain of an error (or a thrown string or object) have
+ * the handed-out tokens replaced by `[REDACTED]` before the error becomes the
+ * call's error result. The error keeps its identity (class, name, code).
+ */
+export function redactHandedOutError(toolName: string, error: unknown, handedOut: ReadonlySet<string>): unknown {
+  const secrets = secretForms(handedOut);
+  if (secrets.length === 0) return error;
+  let found = false;
+  const visit = (value: unknown, depth: number): unknown => {
+    if (!(value instanceof Error)) {
+      const scrubbed = scrubValue(value, secrets);
+      if (scrubbed) found = true;
+      return scrubbed ? scrubbed.value : value;
+    }
+    for (const key of ['message', 'stack'] as const) {
+      const text = value[key];
+      if (typeof text === 'string' && hasSecret(text, secrets)) {
+        found = true;
+        setOwn(value, key, scrubText(text, secrets));
+      }
+    }
+    if (value.cause !== undefined && depth < MAX_CAUSE_DEPTH) setOwn(value, 'cause', visit(value.cause, depth + 1));
+    return value;
+  };
+  const result = visit(error, 0);
+  if (!found) return error;
+  warnRedacted(toolName, 'threw an error containing');
+  if (result instanceof Error && hasSecret(`${result.message}\n${result.stack ?? ''}`, secrets)) {
+    return new Error(scrubText(result.message, secrets));
+  }
+  return result;
 }
