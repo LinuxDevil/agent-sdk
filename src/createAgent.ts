@@ -629,10 +629,21 @@ export interface SendOptions {
    * `agent.approvals.resolve()` uses the agent's again.
    */
   approvalTtlMs?: number;
+  /**
+   * Parents this run's `invoke_agent` span to a span of yours, e.g. the
+   * `span.id` a `withSpan()` callback gets, so several `send()` calls land in
+   * one trace. See `ExecuteOptions.parentSpanId` and docs/observability.md.
+   *
+   * @example
+   * ```ts
+   * await withSpan(exporter, 'pipeline', {}, (span) => agent.send('hi', { parentSpanId: span.id }));
+   * ```
+   */
+  parentSpanId?: string;
 }
 
-/** How a run is checkpointed, plus (LOU-V13, N4, TTL) a `send()` / `stream()` call's own `reasoning`, `permissionMode`, `approvalTtlMs`. */
-type RunTurn = SessionTurnOptions & Pick<ExecuteOptions, 'reasoning' | 'permissionMode' | 'approvalTtlMs'>;
+/** How a run is checkpointed, plus (LOU-V13, N4, TTL) a `send()` / `stream()` call's own `reasoning`, `permissionMode`, `approvalTtlMs`, `parentSpanId`. */
+type RunTurn = SessionTurnOptions & Pick<ExecuteOptions, 'reasoning' | 'permissionMode' | 'approvalTtlMs' | 'parentSpanId'>;
 
 /** `TObject`: the type of `result.object` - `z.output` of the `output` schema. */
 export interface SimpleAgent<TObject = unknown> {
@@ -876,13 +887,14 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     }
     return { sessionId, checkpointStore: checkpoints };
   };
-  const callTurn = ({ sessionId, reasoning, permissionMode, approvalTtlMs }: SendOptions): RunTurn => {
+  const callTurn = ({ sessionId, reasoning, permissionMode, approvalTtlMs, parentSpanId }: SendOptions): RunTurn => {
     if (permissionMode !== undefined) assertPermissionMode(permissionMode, 'send');
     return {
       ...durable(sessionId),
       ...(reasoning !== undefined && { reasoning }),
       ...(permissionMode !== undefined && { permissionMode }),
       ...(approvalTtlMs !== undefined && { approvalTtlMs }),
+      ...(parentSpanId !== undefined && { parentSpanId }),
     };
   };
   /** LOU-W6: memory tools and recall bound to the run's scope keys; a handoff target (N6) has the tools already, so it gets the recall only. */

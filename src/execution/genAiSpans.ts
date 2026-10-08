@@ -251,7 +251,8 @@ export function recordToolOutcome(
     ...span.attributes,
     ...defined({
       ...(content.redactContent ? {} : { [LegacyAttr.ARGS]: outcome.args, [LegacyAttr.RESULT]: outcome.result }),
-      [LegacyAttr.ERROR]: !!outcome.error,
+      // The message, as on every other span's `error`; absent when the tool succeeded.
+      [LegacyAttr.ERROR]: outcome.error,
       [LegacyAttr.LATENCY_MS]: outcome.latencyMs,
       [ErrorAttr.TYPE]: outcome.error ? 'tool_error' : undefined,
       [GenAiAttr.TOOL_CALL_ARGUMENTS]: content.captureContent ? JSON.stringify(outcome.args) : undefined,

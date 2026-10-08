@@ -1317,7 +1317,7 @@ describe('AgentExecutor', () => {
       const toolSpan = ends.find((s) => s.name.startsWith('execute_tool'));
       expect(toolSpan?.attributes.args).toBeDefined();
       expect(toolSpan?.attributes.result).toBeDefined();
-      expect(toolSpan?.attributes.error).toBe(false);
+      expect(toolSpan?.attributes).not.toHaveProperty('error');
       expect(typeof toolSpan?.attributes.latencyMs).toBe('number');
     });
 
@@ -1361,7 +1361,7 @@ describe('AgentExecutor', () => {
       const toolSpan = ends.find((s) => s.name.startsWith('execute_tool'));
       expect(toolSpan?.attributes.args).toBeUndefined();
       expect(toolSpan?.attributes.result).toBeUndefined();
-      expect(toolSpan?.attributes.error).toBe(false);
+      expect(toolSpan?.attributes).not.toHaveProperty('error');
     });
 
     it('works without an exporter (execute() behaves as before)', async () => {

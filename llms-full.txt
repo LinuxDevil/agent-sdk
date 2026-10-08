@@ -2447,7 +2447,7 @@ task.
 - `agent.approvals.get(id)` returns one pending call without deciding it:
   `list()`'s entries first, then - with an `approvalStore` that implements
   `load()` - a pause saved before a restart, `undefined` when the id is
-  unknown or already resolved.
+  unknown (malformed ids included) or already resolved.
 - `agent.approvals.resolve({ id, approved, note? })` runs the call (approved)
   or gives the model a rejection with your `note` (rejected), continues the
   run, and resolves with the continued run's result, which may pause again.
@@ -11031,6 +11031,23 @@ invoke_agent {agent name}          INTERNAL
   execute_tool {tool name}         INTERNAL   one per tool call
 ```
 
+Each `send()` / `stream()` call is a trace of its own unless you parent it.
+To put several runs in one trace, pass a span id of yours as `parentSpanId`;
+the run's `invoke_agent` span becomes its child, and its cost rolls up into it:
+
+```ts
+import { withSpan, type SimpleAgent, type TraceExporter } from '@lousho/build-ai-agent';
+
+declare const exporter: TraceExporter;
+declare const planner: SimpleAgent;
+declare const writer: SimpleAgent;
+
+await withSpan(exporter, 'research pipeline', {}, async (span) => {
+  await planner.send('Plan the report.', { parentSpanId: span.id });
+  await writer.send('Write it.', { parentSpanId: span.id });
+});
+```
+
 A run continued after an approval (`agent.approvals.resolve()`) is a trace of its
 own: its `invoke_agent` span holds the approved call's `execute_tool` span
 (first, as the call runs before the model is called again), then the `chat`
@@ -11205,7 +11222,7 @@ changed (to what the spec requires); update queries that matched on them.
 | `totalTokens` | (sum the two usage attributes) |
 | `finishReason` | `gen_ai.response.finish_reasons` (an array; `tool_calls` is now `tool_call`) |
 | `toolName` | `gen_ai.tool.name` |
-| `error` (message on a thrown error; boolean on `execute_tool`) | `error.type` and the span status |
+| `error` (the error message; absent on success) | `error.type` and the span status |
 | `input`, `prompt`, `args`, `result` | `gen_ai.input.messages`, `gen_ai.tool.call.arguments`, `gen_ai.tool.call.result` (opt-in, see above) |
 
 The deprecated content attributes (`input`, `prompt`, `args`, `result`) keep
