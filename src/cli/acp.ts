@@ -50,7 +50,7 @@ export async function runAcp(args: string[], io: AcpIo = { stdin: process.stdin,
       io.stdout.write(`${USAGE}\n`);
       return 0;
     }
-    const agent = await buildAgent(parsed.path, io, parsed.model);
+    const agent = await buildAgent(parsed.path, io, parsed.model, 'acp');
     const input = readline.createInterface({ input: io.stdin, crlfDelay: Infinity });
     try {
       await withConsoleOnStderr(() => serveAcp(agent, { input, write: (line) => void io.stdout.write(`${line}\n`) }));
