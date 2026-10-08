@@ -664,6 +664,82 @@ describe('FlowExecutor', () => {
     });
   });
 
+  describe('A8: cancellation', () => {
+    it('starts no further step once the signal is aborted, and fails with its reason', async () => {
+      const controller = new AbortController();
+      const ran: string[] = [];
+      toolRegistry.register(defineTool({
+        name: 'work',
+        description: 'Work',
+        input: z.object({ n: z.string() }),
+        execute: async ({ n }) => {
+          ran.push(n);
+          if (n === '1') controller.abort(new Error('caller gave up'));
+          return n;
+        },
+      }));
+      const flow: AgentFlow = {
+        code: 'slow',
+        name: 'Slow',
+        flow: { type: 'sequence', steps: ['1', '2', '3'].map((n) => ({ type: 'toolCall', tool: 'work', arguments: { n } })) },
+      };
+
+      const result = await FlowExecutor.execute(flow, { ...context, signal: controller.signal });
+
+      expect(ran).toEqual(['1']);
+      expect(result.success).toBe(false);
+      expect(result.error?.message).toBe('caller gave up');
+    });
+
+    it('does not start at all with an already-aborted signal', async () => {
+      const result = await FlowExecutor.execute(
+        { code: 'r', name: 'R', flow: { type: 'return', value: 1 } },
+        { ...context, signal: AbortSignal.abort() }
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.events.some((e) => e.type === 'step-start')).toBe(false);
+    });
+
+    it('hands the signal to tools as ctx.abortSignal and to the model request', async () => {
+      const controller = new AbortController();
+      let toolSignal: AbortSignal | undefined;
+      toolRegistry.register(defineTool({ name: 'probe', description: 'Probe', input: z.object({}), execute: async (_args, ctx) => { toolSignal = ctx.abortSignal; return 'ok'; } }));
+      const generate = vi.spyOn(mockProvider, 'generate');
+
+      await FlowExecutor.execute(
+        { code: 'p', name: 'P', flow: { type: 'sequence', steps: [{ type: 'toolCall', tool: 'probe', arguments: {} }, { type: 'llmCall', prompt: 'hi' }] } },
+        { ...context, signal: controller.signal }
+      );
+
+      expect(toolSignal).toBe(controller.signal);
+      expect(generate).toHaveBeenCalledWith(expect.objectContaining({ signal: controller.signal }));
+    });
+  });
+
+  describe('A8: step ids', () => {
+    it('gives every step without an id a unique id within the run', async () => {
+      const flow: AgentFlow = {
+        code: 'ids',
+        name: 'Ids',
+        flow: {
+          type: 'sequence',
+          steps: [
+            { type: 'setVariable', variable: 'a', value: 1 },
+            { type: 'parallel', steps: [{ type: 'setVariable', variable: 'b', value: 2 }, { type: 'setVariable', variable: 'c', value: 3 }] },
+          ],
+        },
+      };
+
+      const result = await FlowExecutor.execute(flow, context);
+      const ids = result.events.filter((e) => e.type === 'step-start').map((e) => e.stepId);
+
+      expect(ids).toHaveLength(5);
+      expect(new Set(ids).size).toBe(5);
+      expect(ids[0]).toBe('step-1');
+    });
+  });
+
   describe('A8: flow inputs', () => {
     const flowWithInput: AgentFlow = {
       code: 'needs-doc',
