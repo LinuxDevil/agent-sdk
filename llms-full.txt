@@ -14686,6 +14686,16 @@ console.log(object?.note); // typed: string | undefined
    `finishReason: 'output-invalid'`, no `object`, and `outputError`:
    `{ message, issues: [{ path, message }] }`.
 
+## Out of steps
+
+When the model is still calling tools as `maxSteps` runs out, a run with
+`output` set does not give up: it makes one last model call with no tools
+offered ("answer now") and validates that reply the same way. A valid
+answer ends the run `finishReason: 'max-steps'` with `object` set; an
+invalid one ends it `'output-invalid'` with `outputError`. The extra call
+is skipped when another budget limit (tokens, cost, duration) is already
+spent.
+
 ## The schema in the prompt
 
 Steps 1 and 2 send the schema twice: once inside the `## Output format`
