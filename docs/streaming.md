@@ -74,6 +74,8 @@ console.log(result.finishReason, result.text);
 
 ## Listening without iterating
 
+A listener that throws does not fail the run (its tools may already have had side effects): the error is logged once per run with `console.warn` and the run continues.
+
 To observe every run without iterating one, give the agent a listener:
 `createAgent({ onEvent })`, or `onAgentEvent` in the `AgentExecutor.execute()`
 / `stream()` / `resumeAfterApproval()` options. It is called synchronously

@@ -302,7 +302,23 @@ class RunEvents {
     } as AgentEvent;
     if (!subagent) this.started ||= payload.type === 'run.start';
     if (!subagent) this.closed = payload.type === 'run.done';
-    for (const listener of this.listeners) listener(event);
+    // Eve CORE-F2: a listener is the caller's telemetry; a throw in it must not fail a run whose tools already ran.
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
+      } catch (error) {
+        this.listenerFailed(error);
+      }
+    }
+  }
+
+  private listenerErrorReported = false;
+
+  /** Reports a throwing listener once per run, then keeps quiet. */
+  private listenerFailed(error: unknown): void {
+    if (this.listenerErrorReported) return;
+    this.listenerErrorReported = true;
+    console.warn(`[lousho] An onEvent listener threw (${error instanceof Error ? error.message : String(error)}); the run continues. Further listener errors in this run are not reported.`);
   }
 
   private toolStarted(toolCall: ToolCall, subagent?: SubagentInfo, parent?: string): void {
