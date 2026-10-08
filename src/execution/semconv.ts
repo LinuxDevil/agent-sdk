@@ -112,6 +112,8 @@ export const SdkAttr = {
   HOSTED_TOOL_CALLS: 'lousho.hosted_tool_calls',
   /** N14: on the `execute_tool` span of a tool call a `run_code` script made, the `run_code` call's id (that span is its parent). */
   PARENT_TOOL_CALL_ID: 'lousho.tool.parent_call_id',
+  /** Audit C4: on a `chat` span of a side call a hook made for the run (e.g. `'compaction'` for the summarizer). */
+  CALL_PURPOSE: 'lousho.call.purpose',
 } as const;
 
 /**

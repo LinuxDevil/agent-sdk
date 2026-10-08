@@ -5093,7 +5093,7 @@ for await (const event of agent.stream('Audit the repository.')) {
 ```
 
 The object takes `strategy`, `thresholdPercent`, `contextWindow`,
-`protectedTokens` and `reserveOutputTokens` (as in the table below) and `summarizer`; combining
+`protectedTokens`, `reserveOutputTokens` and `onCompaction` (as in the table below) and `summarizer`; combining
 `summarizer` with `strategy` is a configuration error (pass
 `twoPhaseStrategy({ model })` as the `strategy` instead). `createAgent({ hooks })`
 takes any other `AgentHook`s, which run before the compaction hook, so
@@ -5109,17 +5109,22 @@ triggered it (see [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/
 | `type` | Fields |
 | --- | --- |
 | `compaction.start` | `strategy`, `tokensBefore`, `contextWindow`, `thresholdTokens`, `trigger?: 'manual'` |
-| `compaction.done` | `strategy`, `tokensBefore`, `tokensAfter`, `prunedToolCallIds`, `summary?: boolean`, `error?: { message }`, `trigger?: 'manual'` |
+| `compaction.done` | `strategy`, `appliedStrategy?`, `tokensBefore`, `tokensAfter`, `prunedToolCallIds`, `summary?: boolean`, `error?: { message }`, `trigger?: 'manual'` |
 
 Every `compaction.start` is followed by exactly one `compaction.done`. When the
 strategy could not shrink anything, `tokensAfter` equals `tokensBefore`; when it
 failed (or the summarizer failed and the hook fell back to pruning), `error` is
 set and the run continues. A summary that does not get the conversation under
 the threshold - or that makes it larger - is rejected the same way: `error` is
-set, the run keeps the pruned result instead, and the hook only prunes that
-transcript for the rest of the run, so a summarizer that cannot help is never
-called again step after step. `summary` is `true` when old turns were replaced by
-a summary (the text itself is not sent; use `onCompaction` for it). A
+set, the run keeps the pruned result instead, and `appliedStrategy` is
+`'prune-tool-results'`. The hook then only prunes that transcript until it has
+twice as many messages as at the rejection, and then lets the summarizer try
+again, so a summarizer that cannot help costs a few calls per run, not one per
+step, and one that was rejected for having too little to fold gets another
+chance. `strategy` is the strategy that ran, the same on `compaction.start` and
+`compaction.done` (`'prune-tool-results'` while summaries are paused).
+`summary` is `true` when old turns were replaced by a summary (the text itself
+is not sent; use `onCompaction`, which the object form also takes). A
 `send()` without a listener emits no events. Hooks add their own events with
 `ctx.emit?.(...)` on the `preGenerate` context, which exists when the run has
 listeners (`createAgent({ onEvent })`, `onAgentEvent`) or is streamed.
@@ -5170,11 +5175,18 @@ strategy name.
 | `reserveOutputTokens` | none | Tokens kept free for the reply: the threshold becomes at most `contextWindow - reserveOutputTokens`. It never raises the `thresholdPercent` threshold. |
 | `protectedTokens` | `40_000` | The newest messages that fit in this many tokens are never changed. |
 | `strategy` | `pruneToolResultsStrategy()` | How to compact (see below). `twoPhaseStrategy()` is recommended; it needs a summarizer model, so it is not the default. |
-| `onCompaction` | none | Called after each compaction that changed the conversation or reported an `error`. |
+| `onCompaction` | none | Called after each compaction that changed the conversation or reported an `error`, with the token counts, the pruned `toolCallId`s, `strategy`, `appliedStrategy`, the summary text and the `error`. |
 
 Compaction never fails a run. If the strategy throws, or the summarizer call
 fails, the run continues (with the pruned conversation, or unchanged) and
 `onCompaction` receives the `error`.
+
+Inside a run, the summarizer's model call is part of the run: its tokens are in
+`result.usage` (under the summarizer's model in `byModel`, and in
+`modelCalls`), it gets a `chat` span with `lousho.call.purpose: 'compaction'`
+under the run's span, and it counts toward the run's `limits` budgets.
+(`session.compact()` and `compactMessages()` run outside a run, so their
+summary calls are not counted anywhere.)
 
 The hook rewrites the run's transcript itself, not a copy: the request's
 `messages` array is the run's message list, and the hook changes it in place.
@@ -5244,8 +5256,12 @@ const result = await AgentExecutor.execute({ agent, input, provider, toolRegistr
 ### Pruning tool results
 
 `pruneToolResultsStrategy()` replaces the `content` of each tool result older
-than the protected tail with a marker such as
-`[pruned: search result, 18234 chars]`. It never changes:
+than the protected tail with a short stub that names the call, such as
+`[pruned: search({"query":"deploy"}) result, 18234 chars; already read]`
+(arguments longer than 120 characters are cut), so the model knows what it
+already fetched and does not call the same tool again just to see the result.
+Markers in the older `[pruned: search result, 18234 chars]` form are
+recognized and left alone. It never changes:
 
 - system messages, user messages (the first one included) or assistant turns,
   so every tool call keeps its result message and the transcript stays valid
@@ -5687,7 +5703,7 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `retry`    | `withRetry()` options for failed model calls, or `false`. Default `{ maxRetries: 2 }` for `model` strings; a `provider` instance is wrapped only when set. See [Provider retries and fallback](#provider-retries-and-fallback). |
 | `fallbackModels` | `provider/model` strings tried in order when the model still fails after its retries. |
 | `hooks`    | `AgentHook[]` run around every model call and tool call, in order, before the compaction hook (see [Hooks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hooks.md)). |
-| `compaction` | `true` (prune old tool results above 90% of the context window) or `{ strategy?, thresholdPercent?, contextWindow?, protectedTokens?, summarizer? }`; `summarizer` (`'provider/model'` or an `LLMProvider`) selects the two-phase strategy. `stream()` reports `compaction.start` / `compaction.done`. See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md#compacting-an-agent). |
+| `compaction` | `true` (prune old tool results above 90% of the context window) or `{ strategy?, thresholdPercent?, contextWindow?, protectedTokens?, reserveOutputTokens?, onCompaction?, summarizer? }`; `summarizer` (`'provider/model'` or an `LLMProvider`) selects the two-phase strategy. `stream()` reports `compaction.start` / `compaction.done`. See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md#compacting-an-agent). |
 
 With neither `model` nor `provider`, `createAgent()` resolves from the
 environment: `LOUSHO_MODEL` (a `'provider/model'` string) if set, otherwise
@@ -8829,7 +8845,7 @@ Every method is optional: implement only the points you need. A hook that return
 | `preGenerate(ctx)` | Before each model call. | `GenerateHookContext`: `request` (the live `GenerateOptions` about to be sent) and `emit?`, plus the common fields. | Nothing; mutate `ctx.messages` or `ctx.request`, or throw. |
 | `postGenerate(ctx, result)` | After each model call resolves, with its `GenerateResult`. | `GenerateHookContext`. | Nothing; or throw. |
 
-The common fields on every context are `agentId`, `agentName`, `sessionId`, `messages` (the live conversation history), `metadata` (a free-form bag) and `subagent` (set inside a sub-agent). Tool-call contexts also carry `resumedAfterApproval`: `true` only when the hook fires for a call being re-run after a human approved its pause, so a stateful hook (a loop guard, an audit counter) can skip the re-fire with `if (ctx.resumedAfterApproval) return;`. `ctx.emit` exists when the run has listeners (`createAgent({ onEvent })`, `onAgentEvent`) or is streamed, and adds `compaction.start` / `compaction.done` events to the run's events.
+The common fields on every context are `agentId`, `agentName`, `sessionId`, `messages` (the live conversation history), `metadata` (a free-form bag) and `subagent` (set inside a sub-agent). Tool-call contexts also carry `resumedAfterApproval`: `true` only when the hook fires for a call being re-run after a human approved its pause, so a stateful hook (a loop guard, an audit counter) can skip the re-fire with `if (ctx.resumedAfterApproval) return;`. `ctx.emit` exists when the run has listeners (`createAgent({ onEvent })`, `onAgentEvent`) or is streamed, and adds `compaction.start` / `compaction.done` events to the run's events. Inside an executor run, `preGenerate` also gets `ctx.generate(provider, request, purpose)`: a side model call (the compaction summarizer uses it) that gets its own `chat` span tagged `lousho.call.purpose` and counts in the run's `usage` and budgets.
 
 ## Hook outcomes
 
@@ -13533,7 +13549,7 @@ The event types and their extra fields:
 | `provider.retry`     | `attempt: number`, `maxRetries: number`, `delayMs: number`, `error: { message: string, category?: string }`, `provider: string` | A model call failed and is retried after `delayMs` (`createAgent({ retry })` or any `withRetry()` provider). `attempt` is the attempt that failed (1 = first); `category` is `'rate-limit'`, `'timeout'`, ... and absent when unknown (a 5xx, for example). |
 | `provider.fallback`  | `from: string`, `to: string`, `error: { message: string }` | A model call still failed after its retries and the next provider takes over (`createAgent({ fallbackModels })` or any `withFallback()` provider). `from` and `to` are provider names. |
 | `compaction.start`   | `strategy: string`, `tokensBefore: number`, `contextWindow: number`, `thresholdTokens: number`, `trigger?: 'manual'` | The compaction hook (`createAgent({ compaction })`) found the next model request above its threshold and starts compacting it. Exactly one `compaction.done` follows. `trigger: 'manual'` marks a `session.compact()` call (see `context.cleared`). See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md). |
-| `compaction.done`    | `strategy: string`, `tokensBefore: number`, `tokensAfter: number`, `prunedToolCallIds: string[]`, `summary?: boolean`, `error?: { message: string }`, `trigger?: 'manual'` | A compaction ended. `tokensAfter` equals `tokensBefore` when nothing could be compacted; `summary` is set when old turns were replaced by a summary; `error` is set when the strategy failed or fell back (the run continues). `trigger: 'manual'` marks a `session.compact()` call. |
+| `compaction.done`    | `strategy: string`, `appliedStrategy?: string`, `tokensBefore: number`, `tokensAfter: number`, `prunedToolCallIds: string[]`, `summary?: boolean`, `error?: { message: string }`, `trigger?: 'manual'` | A compaction ended. `tokensAfter` equals `tokensBefore` when nothing could be compacted; `summary` is set when old turns were replaced by a summary; `error` is set when the strategy failed or fell back (the run continues); `appliedStrategy` names the strategy whose result was applied when it differs from `strategy` (`'prune-tool-results'` after a rejected summary). `trigger: 'manual'` marks a `session.compact()` call. |
 | `context.cleared`    | `sessionId: string`, `messagesCleared: number` | `session.clear()` emptied a session's transcript. Delivered to `session.on()` listeners, not to a run's stream. `compaction.start` / `compaction.done` from `session.compact()` also reach `session.on()` and carry `trigger: 'manual'`. |
 | `budget.exceeded`    | `limit: string`, `value: number`, `max: number`, `scope: 'run' \| 'session'` | A [`limits` budget](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets) tripped: `limit` is `'maxTokens'`, `'maxInputTokens'`, `'maxOutputTokens'`, `'maxCostUsd'`, `'maxDurationMs'` or `'maxSteps'`, `value` what was spent, `max` the limit. `run.done` (`'budget-exceeded'`) follows; with `onExceeded: 'throw'`, `error` and `run.done` (`'error'`). |
 | `input.queued`       | `id: string`, `text: string` | `run.enqueue()` took an input (`id` is `EnqueueResult.id`, `text` its user text). Can come at any point of the run, also inside a step. See [Queued input](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/queue-and-steer.md#queued-input). |

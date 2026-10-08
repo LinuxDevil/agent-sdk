@@ -5,7 +5,7 @@
  * compaction of a generate() failure.
  */
 
-import { GenerateOptions, GenerateResult, Message, ToolDefinition } from '../providers';
+import { GenerateOptions, GenerateResult, LLMProvider, Message, ToolDefinition } from '../providers';
 import { interceptProvider } from '../providers/interception';
 import { textOf } from '../providers/content';
 import { AgentConfig } from '../types';
@@ -15,6 +15,7 @@ import { withSpan } from './tracing';
 import type { CallUsage } from '../models/usage';
 import { measureUsage } from './runUsage';
 import { llmSpanInit, recordLlmResult, resolveCaptureContent } from './genAiSpans';
+import { SdkAttr } from './semconv';
 import { GenerateHookContext } from './hooks';
 import {
   CompactedLLMProviderError,
@@ -76,7 +77,8 @@ export function buildTools(
 function generateHookContext(
   options: ExecuteOptions,
   messages: Message[],
-  request: GenerateOptions
+  request: GenerateOptions,
+  generate?: GenerateHookContext['generate']
 ): GenerateHookContext {
   return {
     agentId: options.agent.id,
@@ -87,6 +89,39 @@ function generateHookContext(
     messages,
     request,
     emit: runEventsOf(options)?.hookEvent,
+    ...(generate && { generate }),
+  };
+}
+
+/**
+ * Audit C4: `GenerateHookContext.generate` for a run - a side model call (the
+ * compaction summarizer) in its own `chat` span under the run's span, tagged
+ * with its purpose, whose usage `record` adds to the run's total.
+ */
+export function sideGenerator(
+  options: ExecuteOptions,
+  agentSpanId: string,
+  record: (measured: CallUsage) => void
+): NonNullable<GenerateHookContext['generate']> {
+  return (provider: LLMProvider, request: GenerateOptions, purpose: string) => {
+    const { exporter, redactContent = false } = options;
+    const captureContent = resolveCaptureContent(options.captureContent);
+    const init = llmSpanInit(provider, request, { redactContent, captureContent });
+    const attributes = { ...init.attributes, [SdkAttr.CALL_PURPOSE]: purpose };
+    return withSpan(
+      exporter,
+      init.name,
+      attributes,
+      async (span) => {
+        const generated = await provider.generate(request);
+        const measured = measureUsage(request.model || provider.defaultModel || provider.name, request.messages, generated);
+        recordLlmResult(span, generated, captureContent, measured);
+        record(measured);
+        return generated;
+      },
+      agentSpanId,
+      init.kind
+    );
   };
 }
 
@@ -104,7 +139,8 @@ export async function prepareGenerateRequest(
   options: ExecuteOptions,
   messages: Message[],
   tools: ToolDefinition[],
-  callSignal?: AbortSignal
+  callSignal?: AbortSignal,
+  generate?: GenerateHookContext['generate']
 ): Promise<GenerateOptions> {
   const { temperature, maxTokens, onLLMRequest, hooks } = options;
   // LOU-V10: a steer aborts this call alone (`callSignal`), the run's signal all of them.
@@ -139,7 +175,7 @@ export async function prepareGenerateRequest(
 
   if (hooks) {
     const before = generateRequest.tools;
-    await hooks.runPreGenerate(generateHookContext(options, messages, generateRequest));
+    await hooks.runPreGenerate(generateHookContext(options, messages, generateRequest, generate));
     if (deferral && generateRequest.tools === before) reloadTools(generateRequest, tools, messages, deferral);
   }
 

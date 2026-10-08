@@ -249,7 +249,7 @@ describe('tool search (N2): what is loaded persists through the transcript', () 
     // Step 2: the result is new (after the last assistant turn), so it is kept and the tool is loaded.
     expect(names(model, 1)).toEqual(['send_email', 'get_weather', 'tool_search']);
     // Step 3: the search result was pruned, so get_weather is withheld again.
-    expect(model.calls[2].messages.find((m) => m.toolCallId === 'call_search')?.content).toMatch(/^\[pruned: tool_search result/);
+    expect(model.calls[2].messages.find((m) => m.toolCallId === 'call_search')?.content).toMatch(/^\[pruned: tool_search\(/);
     expect(names(model, 2)).toEqual(['send_email', 'tool_search']);
     expect(result.text).toBe('Sunny.');
   });
