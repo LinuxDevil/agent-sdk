@@ -924,19 +924,67 @@ export class AgentExecutor {
       }
     }
 
-    return this.outOfSteps(options, state);
+    return this.outOfSteps(options, state, agentSpanId);
   }
 
   /** The run's end once the loop left without a result: aborted, or out of steps. */
-  private static outOfSteps(options: ExecuteOptions, state: AgentRunState): Promise<ExecutionResult> {
+  private static async outOfSteps(options: ExecuteOptions, state: AgentRunState, agentSpanId: string): Promise<ExecutionResult> {
     if (options.signal?.aborted) {
       return this.abortRun(options, state);
+    }
+    // Audit log-incident F21: with `output` set, one last tool-less call
+    // lets the model answer from what it gathered instead of returning
+    // nothing.
+    if (options.output) {
+      const output = await this.forcedAnswer(options, state, agentSpanId);
+      if (output && 'finishReason' in output) return output;
+      if (state.finishReason !== 'output-invalid') state.finishReason = 'max-steps';
+      return this.finishRun(options, state, output);
     }
     // LOU-U19: every non-final turn 'continue's, so leaving the loop here
     // means the step budget (counting `initialSteps` of a resumed run) is
     // spent while the model still wanted to go on.
     state.finishReason = 'max-steps';
     return this.finishRun(options, state);
+  }
+
+  /**
+   * The salvage call when `maxSteps` ran out with an `output` schema still
+   * unanswered (audit log-incident F21): one more model call, no tools
+   * offered, asking the model to answer from what it gathered. Its reply is
+   * validated like a normal final reply - a valid object ends the run
+   * 'max-steps' with `object` set, an invalid one 'output-invalid' (no
+   * repair: the step budget is spent). Returns the call's own terminal
+   * result when it ended the run early (blocked input, aborted mid-call),
+   * or `undefined` when no call could be made - another budget cap already
+   * spent, or a steered/failed generation - and the run ends 'max-steps'
+   * as before.
+   */
+  private static async forcedAnswer(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    agentSpanId: string
+  ): Promise<ExecutionResult | { object: unknown } | { outputError: OutputError } | undefined> {
+    if (state.budget?.check(state.usage, state.steps, true)) return undefined;
+    state.messages.push({
+      role: 'user',
+      content: 'You are out of steps. Answer now with the final JSON result only - no tools, no commentary.',
+    });
+    const generatedStep = await this.generateOrSurfaceError({ ...options, hostedTools: undefined }, state, [], agentSpanId);
+    if (!generatedStep || generatedStep === 'steered') return undefined;
+    if (!('generated' in generatedStep)) return generatedStep;
+    const { generated, measured } = generatedStep;
+    const stepUsage = recordStep(state, measured);
+    noteReasoning(state, generated.reasoning);
+    const text = await this.guardOutput(options, state, generated);
+    if (typeof text !== 'string') return text;
+    if (text) {
+      state.finalText = text;
+      runEventsOf(options)?.textDone(text, stepUsage);
+      state.messages.push(withHostedCalls({ role: 'assistant', content: text }, generated.hostedToolCalls));
+    }
+    const checked = await this.checkOutput(options, state, false);
+    return checked === 'repair' ? undefined : checked;
   }
 
   /** N6: the rest of the run, as the agent the last step handed off to. */

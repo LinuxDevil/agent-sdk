@@ -112,6 +112,57 @@ describe('structured output (LOU-V4)', () => {
     expect(model.calls[0].responseFormat?.type).toBe('json');
   });
 
+  it('makes one last tool-less call for the answer when maxSteps runs out', async () => {
+    const lookup = defineTool({
+      name: 'lookup',
+      description: 'Current temperature',
+      input: z.object({ city: z.string() }),
+      execute: async () => 21,
+    });
+    const model = mockModel([
+      { toolCalls: [{ name: 'lookup', args: { city: 'Paris' } }] },
+      { toolCalls: [{ name: 'lookup', args: { city: 'Paris' } }] },
+      '{"city":"Paris","tempC":21}',
+    ]);
+    const agent = createAgent({ provider: model, tools: [lookup], output: weather, maxSteps: 2 });
+
+    const result = await agent.send('Weather in Paris?');
+
+    expect(result.finishReason).toBe('max-steps');
+    expect(result.steps).toBe(2);
+    expect(result.object).toEqual({ city: 'Paris', tempC: 21 });
+    expect(model.calls).toHaveLength(3);
+    expect(model.calls[2].tools).toBeUndefined();
+  });
+
+  it('reports outputError when the forced answer at maxSteps is still invalid', async () => {
+    const lookup = defineTool({
+      name: 'lookup',
+      description: 'Current temperature',
+      input: z.object({ city: z.string() }),
+      execute: async () => 21,
+    });
+    const model = mockModel([{ toolCalls: [{ name: 'lookup', args: { city: 'Paris' } }] }, 'nope']);
+    const agent = createAgent({ provider: model, tools: [lookup], output: weather, maxSteps: 1 });
+
+    const result = await agent.send('go');
+
+    expect(result.finishReason).toBe('output-invalid');
+    expect(result.object).toBeUndefined();
+    expect(result.outputError).toBeDefined();
+  });
+
+  it('does not make the extra call without an output schema', async () => {
+    const model = mockModel([{ toolCalls: [{ name: 'ping', id: 'c' }] }], { onExhausted: 'repeat-last' });
+    const ping = defineTool({ name: 'ping', description: 'p', input: z.object({}), execute: async () => 'pong' });
+    const agent = createAgent({ provider: model, tools: [ping], maxSteps: 2 });
+
+    const result = await agent.send('go');
+
+    expect(result.finishReason).toBe('max-steps');
+    expect(model.calls).toHaveLength(2);
+  });
+
   it('stream(): run.result and run.done carry the object', async () => {
     const agent = createAgent({ provider: mockModel(['{"city":"Rome"', '{"city":"Rome","tempC":30}']), output: weather });
 
