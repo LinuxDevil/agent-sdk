@@ -149,6 +149,13 @@ describe('fileStore(dir) (R2)', () => {
     const pending = makePending('../evil');
     await expect(store.approvals.save(pending, makeSnapshot(pending))).rejects.toThrow(/Invalid approval id/);
   });
+
+  it('approvals.load reads a malformed id as not found (only writes reject it)', async () => {
+    const store = fileStore(tempDir());
+    for (const id of ['bogus id!', '../evil', '', undefined as unknown as string]) {
+      expect(await store.approvals.load!(id)).toBeNull();
+    }
+  });
 });
 
 describe('createAgent({ store: fileStore(dir) }) (R2)', () => {
@@ -183,5 +190,11 @@ describe('createAgent({ store: fileStore(dir) }) (R2)', () => {
     expect(sent).toBe(1);
     expect(await fileStore(dir).checkpoints.load('job-1')).toMatchObject({ status: 'finished' });
     expect(readdirSync(join(dir, 'approvals'))).toEqual([]);
+  });
+
+  it('agent.approvals.get() returns undefined for a malformed id', async () => {
+    const agent = createAgent({ provider: mockModel(['Hi.']), store: fileStore(tempDir()) });
+    expect(await agent.approvals.get('bogus id!')).toBeUndefined();
+    expect(await agent.approvals.get('')).toBeUndefined();
   });
 });

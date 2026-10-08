@@ -156,7 +156,6 @@ describe('OpenTelemetry GenAI semantic conventions (LOU-D9)', () => {
       toolName: 'get_weather',
       args: { city: 'Paris' },
       result: { city: 'Paris', tempC: 21 },
-      error: false,
       latencyMs: expect.any(Number),
     });
     expect(spans[2].status).toBeUndefined();
@@ -260,8 +259,9 @@ describe('OpenTelemetry GenAI semantic conventions (LOU-D9)', () => {
 
     const tool = spans.find((s) => s.name === 'execute_tool get_weather')!;
     expect(tool.attributes['error.type']).toBe('tool_error');
-    expect(tool.attributes.error).toBe(true);
+    expect(tool.attributes.error).toContain('upstream down');
     expect(tool.status?.code).toBe('error');
+    expect(tool.status?.message).toBe(tool.attributes.error);
     expect(tool.attributes).not.toHaveProperty('gen_ai.tool.call.result');
   });
 

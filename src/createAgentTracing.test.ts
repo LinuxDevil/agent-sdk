@@ -13,7 +13,7 @@ import { PropagatingToolError } from './execution/AgentExecutor';
 import { createOtelTraceExporter } from './execution/otel';
 import { fileTraceExporter } from './traces/fileTraceExporter';
 import type { TraceLine } from './traces/format';
-import type { Span, TraceExporter } from './execution/tracing';
+import { withSpan, type Span, type TraceExporter } from './execution/tracing';
 import { memoryStore } from './storage/agentStore';
 import { mockModel } from './testing';
 import { defineTool } from './tools/defineTool';
@@ -42,6 +42,35 @@ describe('createAgent({ exporter }) (M5a)', () => {
     for await (const event of run) void event;
 
     expect(ops(exporter.ended)).toEqual(['chat', 'invoke_agent']);
+  });
+
+  it('send({ parentSpanId }) parents the invoke_agent span to the caller span', async () => {
+    const exporter = recording();
+    const agent = createAgent({ provider: mockModel(['One.', 'Two.']), exporter });
+    await withSpan(exporter, 'pipeline', {}, async (span) => {
+      await agent.send('first', { parentSpanId: span.id });
+      await agent.send('second', { parentSpanId: span.id });
+    });
+
+    const pipeline = exporter.ended.find((span) => span.name === 'pipeline')!;
+    const runs = exporter.ended.filter((span) => op(span) === 'invoke_agent');
+    expect(runs).toHaveLength(2);
+    expect(runs.map((span) => span.parentId)).toEqual([pipeline.id, pipeline.id]);
+  });
+
+  it('stream({ parentSpanId }) parents the invoke_agent span to the caller span', async () => {
+    const exporter = recording();
+    const run = createAgent({ provider: mockModel(['Hi.']), exporter }).stream('Hello', { parentSpanId: 'caller-span' });
+    for await (const event of run) void event;
+
+    expect(exporter.ended.find((span) => op(span) === 'invoke_agent')!.parentId).toBe('caller-span');
+  });
+
+  it('send() without parentSpanId starts a root invoke_agent span', async () => {
+    const exporter = recording();
+    await createAgent({ provider: mockModel(['Hi.']), exporter }).send('Hello');
+
+    expect(exporter.ended.find((span) => op(span) === 'invoke_agent')!.parentId).toBeUndefined();
   });
 
   describe('agent.approvals.resolve() (#281)', () => {

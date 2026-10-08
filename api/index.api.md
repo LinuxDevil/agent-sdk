@@ -5429,6 +5429,7 @@ export function secretsGuardrail(options?: {
 export interface SendOptions {
     approvalTtlMs?: number;
     metadata?: Record<string, unknown>;
+    parentSpanId?: string;
     permissionMode?: PermissionMode;
     principal?: Principal;
     reasoning?: ReasoningOption;

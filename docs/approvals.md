@@ -202,7 +202,7 @@ task.
 - `agent.approvals.get(id)` returns one pending call without deciding it:
   `list()`'s entries first, then - with an `approvalStore` that implements
   `load()` - a pause saved before a restart, `undefined` when the id is
-  unknown or already resolved.
+  unknown (malformed ids included) or already resolved.
 - `agent.approvals.resolve({ id, approved, note? })` runs the call (approved)
   or gives the model a rejection with your `note` (rejected), continues the
   run, and resolves with the continued run's result, which may pause again.
