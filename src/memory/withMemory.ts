@@ -10,6 +10,7 @@ import { ToolRegistry } from '../tools/ToolRegistry';
 import type { ToolDescriptor } from '../types';
 import { HookRegistry, type AgentHook } from '../execution/hooks';
 import type { Message } from '../providers/llm';
+import type { AgentConfig } from '../types';
 import { textOf } from '../providers/content';
 import type { MemoryItem, MemoryScopeContext, MemorySlot } from './defineMemory';
 import { SDKError } from '../execution/errors';
@@ -70,14 +71,23 @@ function setBlocks(messages: Message[], names: ReadonlySet<string>, blocks: stri
   else if (blocks.length > 0) messages.unshift({ role: 'system', content });
 }
 
-/** Recalls into the system prompt on the run's first model call (not a sub-agent's). */
+/**
+ * Recalls into the system prompt on the run's first model call (not a
+ * sub-agent's). A handoff replaces the system prompt with the target's, so a
+ * later call puts the recalled blocks back when they are missing.
+ */
 function recallHook(bound: readonly BoundSlot[]): AgentHook {
-  let recalled = false;
+  let recalled: { names: Set<string>; blocks: string[] } | undefined;
   return {
     name: 'memory-recall',
     async preGenerate(ctx) {
-      if (recalled || ctx.subagent) return;
-      recalled = true;
+      if (ctx.subagent) return;
+      if (recalled) {
+        const { names, blocks } = recalled;
+        const system = ctx.request.messages[0]?.role === 'system' ? textOf(ctx.request.messages[0]) : '';
+        if (!blocks.every((text) => system.includes(text))) setBlocks(ctx.request.messages, names, blocks);
+        return;
+      }
       const lastInput = textOf([...ctx.messages].reverse().find((m) => m.role === 'user') ?? { content: '' });
       const recalling = bound.filter(([slot]) => slot.recall.onSessionStart);
       const blocks = await Promise.all(
@@ -87,7 +97,8 @@ function recallHook(bound: readonly BoundSlot[]): AgentHook {
           return items.length > 0 ? block(slot.name, items) : '';
         })
       );
-      setBlocks(ctx.request.messages, new Set(recalling.map(([slot]) => slot.name)), blocks.filter(Boolean));
+      recalled = { names: new Set(recalling.map(([slot]) => slot.name)), blocks: blocks.filter(Boolean) };
+      setBlocks(ctx.request.messages, recalled.names, recalled.blocks);
     },
   };
 }
@@ -115,12 +126,33 @@ class RunToolRegistry extends ToolRegistry {
 export interface AgentMemory {
   /** Adds the slots' tool names to the agent's tools; throws when one is taken. */
   addTools(toolsConfig: Record<string, { tool: string }>): void;
+  /**
+   * N6: the agent a run handed off to, with this run's memory tools added to
+   * its tools and registry (bound to the same scope keys), so the lead's
+   * memory stays on after a handoff.
+   */
+  forTarget<S extends { agent: AgentConfig; toolRegistry?: ToolRegistry }>(ctx: MemoryScopeContext, spec: S): S;
   /** One run's tool registry and hooks, for its session id / metadata. */
   forRun(
     ctx: MemoryScopeContext,
     toolRegistry: ToolRegistry | undefined,
     hooks: HookRegistry | undefined
   ): { toolRegistry: ToolRegistry; hooks: HookRegistry };
+}
+
+/** `slots` bound to the run's scope keys; a slot whose scope has no key for the run is left out. */
+function boundSlots(slots: readonly MemorySlot[], ctx: MemoryScopeContext): BoundSlot[] {
+  return slots.flatMap((slot): BoundSlot[] => {
+    const key = scopeKey(slot, ctx);
+    return key === undefined ? [] : [[slot, key]];
+  });
+}
+
+/** `toolRegistry` plus the memory tools of `bound`. */
+function runToolRegistry(bound: readonly BoundSlot[], toolRegistry: ToolRegistry | undefined): ToolRegistry {
+  const runTools = new RunToolRegistry(toolRegistry);
+  runTools.registerMany(bound.flatMap(memoryTools));
+  return runTools;
 }
 
 export function agentMemory(slots: readonly MemorySlot[] | undefined): AgentMemory | undefined {
@@ -139,13 +171,14 @@ export function agentMemory(slots: readonly MemorySlot[] | undefined): AgentMemo
         toolsConfig[tool] = { tool };
       }
     },
+    forTarget(ctx, spec) {
+      const tools = { ...spec.agent.tools };
+      for (const tool of slots.flatMap(toolNames)) tools[tool] ??= { tool };
+      return { ...spec, agent: { ...spec.agent, tools }, toolRegistry: runToolRegistry(boundSlots(slots, ctx), spec.toolRegistry) };
+    },
     forRun(ctx, toolRegistry, hooks) {
-      const bound = slots.flatMap((slot): BoundSlot[] => {
-        const key = scopeKey(slot, ctx);
-        return key === undefined ? [] : [[slot, key]];
-      });
-      const runTools = new RunToolRegistry(toolRegistry);
-      runTools.registerMany(bound.flatMap(memoryTools));
+      const bound = boundSlots(slots, ctx);
+      const runTools = runToolRegistry(bound, toolRegistry);
       const runHooks = new HookRegistry();
       runHooks.registerMany([recallHook(bound), ...(hooks?.list() ?? [])]);
       return { toolRegistry: runTools, hooks: runHooks };

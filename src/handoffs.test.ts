@@ -13,6 +13,7 @@ import { allow, ask, deny } from './execution/permissions';
 import { PropagatingToolError } from './execution/propagatingToolError';
 import { remoteAgent } from './subagents/remoteAgent';
 import { memoryStore } from './storage/agentStore';
+import { defineMemory, inMemoryMemory } from './memory';
 import { mockModel, type MockModel } from './testing';
 import type { AgentEvent } from './execution/agentEvents';
 import type { Message } from './providers';
@@ -72,8 +73,14 @@ function setup(
 
 const toolNames = (model: MockModel, call: number) => (model.calls[call].tools ?? []).map((tool) => tool.function.name);
 const systemPrompts = (messages: readonly Message[]) => messages.filter((m) => m.role === 'system').map((m) => m.content);
-/** The routing system notes of a transcript (each handoff leaves one, marked with `metadata.handoff`). */
-const routingNotes = (messages: readonly Message[]) => messages.filter((m) => m.role === 'system' && m.metadata?.handoff !== undefined).map((m) => String(m.content));
+/**
+ * The routing notes of a transcript (each handoff leaves a system message marked with `metadata.handoff`)
+ * or of a model request, where they are appended to the leading system prompt.
+ */
+const routingNotes = (messages: readonly Message[]) =>
+  messages
+    .filter((m) => m.role === 'system')
+    .flatMap((m) => (m.metadata?.handoff !== undefined ? [String(m.content)] : String(m.content).split('\n\n').filter((line) => line.startsWith('[routing note'))));
 const handoffResult = (messages: readonly Message[]) => messages.find((m) => m.role === 'tool' && m.toolCallId === 'call_handoff');
 
 afterEach(() => { vi.restoreAllMocks(); });
@@ -92,10 +99,9 @@ describe('handoffs (N6): send() and stream()', () => {
     // The lead offered its tools and the handoff; the target offers its own tools only.
     expect(toolNames(triageModel, 0)).toEqual(['lookup_account', 'transfer_to_billing']);
     expect(toolNames(billingModel, 0)).toEqual(['refund']);
-    // One system prompt, the target's, never both; the routing note is the only other system message.
+    // One system prompt, the target's, never both; the routing note is appended to it (no system message mid-conversation).
     expect(systemPrompts(billingModel.calls[0].messages as Message[])).toEqual([
-      'You handle billing.',
-      '[routing note - not from the user] handoff triage -> billing: reason="billing question"',
+      'You handle billing.\n\n[routing note - not from the user] handoff triage -> billing: reason="billing question"',
     ]);
     const marker = handoffResult(result.messages);
     expect(JSON.parse(marker?.content as string)).toEqual({ transferred_to: 'billing' });
@@ -182,11 +188,13 @@ describe('handoffs (N6): options', () => {
     const result = await triage.send('I was charged twice');
 
     const seen = billingModel.calls[0].messages as Message[];
-    expect(seen.map((m) => m.role)).toEqual(['system', 'user', 'assistant', 'system']);
+    // The transcript keeps the routing note last; the request carries it in the system prompt.
+    expect(result.messages.map((m) => m.role)).toEqual(['system', 'user', 'assistant', 'system', 'assistant']);
+    expect(result.messages[3].metadata?.handoff).toEqual({ from: 'triage', to: 'billing' });
+    expect(seen.map((m) => m.role)).toEqual(['system', 'user', 'assistant']);
     expect(seen[2]).not.toHaveProperty('toolCalls');
     expect(seen[2].content).toBe('Let me get billing.');
-    expect(seen[3].metadata?.handoff).toEqual({ from: 'triage', to: 'billing' });
-    expect(String(seen[3].content)).toContain('handoff triage -> billing');
+    expect(String(seen[0].content)).toContain('handoff triage -> billing');
     expect(result.messages.some((m) => m.role === 'tool')).toBe(false);
   });
 
@@ -363,8 +371,7 @@ describe('handoffs (N6): sessions', () => {
     expect(billingModel.calls).toHaveLength(2);
     // The session transcript still carries the handoff's routing note.
     expect(systemPrompts(billingModel.calls[1].messages as Message[])).toEqual([
-      'You handle billing.',
-      '[routing note - not from the user] handoff triage -> billing: reason="billing question"',
+      'You handle billing.\n\n[routing note - not from the user] handoff triage -> billing: reason="billing question"',
     ]);
     expect(toolNames(billingModel, 1)).toEqual(['refund']);
   });
@@ -388,9 +395,7 @@ describe('handoffs (N6): sessions', () => {
     expect(third.agentName).toBe('triage');
     expect(triageModel.calls).toHaveLength(3);
     expect(systemPrompts(triageModel.calls[1].messages as Message[])).toEqual([
-      'You route the user.',
-      '[routing note - not from the user] handoff triage -> billing: reason="billing question"',
-      '[routing note - not from the user] handoff billing -> triage',
+      'You route the user.\n\n[routing note - not from the user] handoff triage -> billing: reason="billing question"\n\n[routing note - not from the user] handoff billing -> triage',
     ]);
   });
 
@@ -470,8 +475,7 @@ describe('handoffs (N6): approvals and durable resume', () => {
     expect(restarted.triageModel.calls).toHaveLength(0);
     expect(restarted.billingModel.calls).toHaveLength(1);
     expect(systemPrompts(restarted.billingModel.calls[0].messages as Message[])).toEqual([
-      'You handle billing.',
-      '[routing note - not from the user] handoff triage -> billing: reason="billing question"',
+      'You handle billing.\n\n[routing note - not from the user] handoff triage -> billing: reason="billing question"',
     ]);
     expect(events.some((event) => event.type === 'agent.drift')).toBe(false);
     expect(warn.mock.calls.flat().join(' ')).not.toMatch(/drift|changed/i);
@@ -690,5 +694,75 @@ describe('handoffs (N6): configuration errors', () => {
     const clashing = defineTool({ name: 'transfer_to_billing', description: 'x', input: z.object({}), execute: async () => 'x' });
     const triage = createAgent({ provider: mockModel(['unused']), tools: () => [clashing], handoffs: [billing] });
     await expect(triage.send('Hi')).rejects.toThrow(/uses the tool name 'transfer_to_billing'/);
+  });
+});
+
+/** Whether any message after the first non-system one is a system message (Qwen/Llama chat templates reject that). */
+const hasLateSystem = (messages: readonly Message[]) => messages.some((m, i) => m.role === 'system' && messages.slice(0, i).some((before) => before.role !== 'system'));
+
+describe('handoffs (N6): local-model chat templates (audit A7)', () => {
+  it('no model request carries a system message after a non-system one, in the handoff run or a later session turn', async () => {
+    const billingHandoffs: Handoff[] = [];
+    const billingModel = mockModel(['Refund issued.', { toolCalls: [{ name: 'transfer_to_triage', args: {}, id: 'call_back' }] }]);
+    const billing = createAgent({ name: 'billing', description: 'Billing', instructions: 'You handle billing.', provider: billingModel, handoffs: billingHandoffs });
+    const triageModel = mockModel([toBilling(), 'Reset it under Settings > Password.']);
+    const triage = createAgent({ name: 'triage', description: 'Routes the user', instructions: 'You route the user.', provider: triageModel, handoffs: [billing] });
+    billingHandoffs.push(handoff(triage));
+    const session = triage.session();
+
+    await session.send('I was charged twice');
+    const second = await session.send('How do I reset my password?');
+
+    expect(second.text).toBe('Reset it under Settings > Password.');
+    for (const call of [...triageModel.calls, ...billingModel.calls]) expect(hasLateSystem(call.messages as Message[])).toBe(false);
+    // The transcript itself still records each routing note where it happened.
+    expect(routingNotes(second.messages)).toEqual([
+      '[routing note - not from the user] handoff triage -> billing: reason="billing question"',
+      '[routing note - not from the user] handoff billing -> triage',
+    ]);
+  });
+});
+
+describe('handoffs (N6): memory stays on after a handoff (audit A7)', () => {
+  const principal = { id: 'C100', type: 'user' as const, authenticator: 'custom' };
+
+  async function memorySetup(billingScript: Parameters<typeof mockModel>[0], billing: Partial<Parameters<typeof createAgent>[0]> = {}) {
+    const provider = inMemoryMemory();
+    await provider.add('customer:C100', { text: 'Shoe size EU 42.' });
+    const notes = defineMemory({ name: 'customer_notes', scope: ({ principal: who }) => (who ? `customer:${who.id}` : undefined), provider });
+    return { provider, ...setup([toBilling()], billingScript, { triage: { memory: [notes] }, billing }) };
+  }
+  const memoryBlock = (model: MockModel, call: number) => /<memory name="customer_notes">[\s\S]*Shoe size EU 42\.[\s\S]*<\/memory>/.test(String(model.calls[call].messages[0]?.content));
+
+  it('the target recalls and gets the lead\'s memory tools, bound to the same scope key, in the handoff run and later turns', async () => {
+    const remember = { toolCalls: [{ name: 'remember_customer_notes', args: { text: 'Prefers email.' }, id: 'call_remember' }] };
+    const { triage, triageModel, billingModel, provider } = await memorySetup(['Refund issued.', remember, 'Noted.']);
+    const session = triage.session();
+
+    await session.send('I was charged twice', { principal });
+    const second = await session.send('Please email me from now on.', { principal });
+
+    expect(second.agentName).toBe('billing');
+    expect(memoryBlock(triageModel, 0)).toBe(true);
+    // Call 0 is the handoff run's (the lead recalled); calls 1-2 are the next turn, which billing starts.
+    for (const call of [0, 1, 2]) {
+      expect(memoryBlock(billingModel, call)).toBe(true);
+      expect(toolNames(billingModel, call)).toEqual(['refund', 'remember_customer_notes', 'recall_customer_notes']);
+      expect(hasLateSystem(billingModel.calls[call].messages as Message[])).toBe(false);
+    }
+    expect((await provider.list('customer:C100')).map((item) => item.text).sort()).toEqual(['Prefers email.', 'Shoe size EU 42.']);
+  });
+
+  it('a target\'s own memory slots are not used; createAgent warns once', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const own = defineMemory({ name: 'billing_notes', scope: 'global', provider: inMemoryMemory() });
+    const { triage, billingModel } = await memorySetup(['Refund issued.'], { memory: [own] });
+
+    await triage.send('I was charged twice', { principal });
+
+    expect(toolNames(billingModel, 0)).toEqual(['refund', 'remember_customer_notes', 'recall_customer_notes']);
+    const warnings = warn.mock.calls.map((call) => String(call[0])).filter((line) => line.includes("'memory'"));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/handoff target 'billing'/);
   });
 });

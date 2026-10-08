@@ -34,9 +34,11 @@ describe('examples/support-desk', () => {
     expect(billing.calls).toHaveLength(3);
     expect(toolNames(billing, 0)).toEqual(['lookup_order', 'issue_refund', 'transfer_to_triage']);
     // the filtered transcript: triage's tool noise is gone, the routing note carried the args
+    // (a request carries it in the leading system prompt, never mid-conversation)
     const seen = billing.calls[0].messages;
     expect(seen.some((m) => m.role === 'tool')).toBe(false);
-    expect(String(seen.at(-1)?.content)).toContain('orderId="A-10042"');
+    expect(seen.slice(1).some((m) => m.role === 'system')).toBe(false);
+    expect(String(seen[0]?.content)).toContain('orderId="A-10042"');
 
     // (c) the refund write tool required approval, then ran
     expect(approve).toHaveBeenCalledWith(expect.objectContaining({ toolName: 'issue_refund', args: expect.objectContaining({ orderId: 'A-10042' }) }));

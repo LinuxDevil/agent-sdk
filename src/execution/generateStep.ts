@@ -7,6 +7,7 @@
 
 import { GenerateOptions, GenerateResult, Message, ToolDefinition } from '../providers';
 import { interceptProvider } from '../providers/interception';
+import { textOf } from '../providers/content';
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { getToolInputSchema } from '../tools/toolContract';
@@ -142,7 +143,27 @@ export async function prepareGenerateRequest(
     if (deferral && generateRequest.tools === before) reloadTools(generateRequest, tools, messages, deferral);
   }
 
+  generateRequest.messages = withLeadingSystemOnly(generateRequest.messages);
   return generateRequest;
+}
+
+/**
+ * `messages` with every system message after the first non-system one (a
+ * handoff's routing note, or one a caller put in the history) appended, in
+ * order, to the leading system message - created when there is none. Many
+ * chat templates (Qwen, Llama, Mistral via LM Studio, llama.cpp, vLLM, Ollama)
+ * and Anthropic's API reject a system message that is not at the start, so a
+ * request never carries one. Returns `messages` itself when there is nothing
+ * to move; the transcript is never changed.
+ */
+export function withLeadingSystemOnly(messages: Message[]): Message[] {
+  let lead = 0;
+  while (lead < messages.length && messages[lead].role === 'system') lead++;
+  if (!messages.slice(lead).some((message) => message.role === 'system')) return messages;
+  const system = [...messages.slice(0, lead), ...messages.slice(lead).filter((message) => message.role === 'system')];
+  const content = system.map((message) => textOf(message)).filter(Boolean).join('\n\n');
+  const head: Message = lead > 0 ? { ...messages[0], content } : { role: 'system', content };
+  return [head, ...messages.slice(lead).filter((message) => message.role !== 'system')];
 }
 
 /**
