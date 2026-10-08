@@ -253,7 +253,10 @@ What it checks:
    not pair with the installed `ai` (for example `ai` 7 with `@ai-sdk/openai`
    1.x) is flagged with the version to install instead.
 4. Whether each provider's API key variable is set. Only the variable name and
-   `set` / `not set` are printed, never the value. It also shows which
+   `set` / `not set` are printed, never the value. When `OPENAI_BASE_URL` or
+   `ANTHROPIC_BASE_URL` is set (a local or OpenAI-compatible server), that
+   provider's line also shows the base URL, without any credentials or query
+   string in it. It also shows which
    provider `createAgent()` would pick by default with your environment.
 5. With a spec path (`lousho doctor agent.yaml`): the spec is validated with
    field paths for every error, its provider package and key are checked

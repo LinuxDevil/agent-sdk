@@ -167,9 +167,27 @@ export function checkOptionalPeers(env: DoctorEnvironment, needs: SpecNeeds): Do
   return [...providers, ...features].map(([name, peer]) => checkOptionalPeer(env, name, peer));
 }
 
+/** The env variable the provider package reads for a custom endpoint (a local or OpenAI-compatible server). */
+const BASE_URL_ENV: Record<string, string> = { openai: 'OPENAI_BASE_URL', anthropic: 'ANTHROPIC_BASE_URL' };
+
+/** `; base URL <url> (from <VAR>)` when the provider's base-URL variable is set; credentials and query are left out. */
+function baseUrlNote(env: DoctorEnvironment, provider: string): string {
+  const name = BASE_URL_ENV[provider];
+  const raw = name ? env.env[name] : undefined;
+  if (!name || !raw) return '';
+  let shown: string;
+  try {
+    const url = new URL(raw);
+    shown = `${url.origin}${url.pathname}`;
+  } catch {
+    shown = '(not a valid URL)';
+  }
+  return `; base URL ${shown} (from ${name})`;
+}
+
 function checkApiKey(env: DoctorEnvironment, info: ProviderInfo, needs: SpecNeeds): DoctorCheck {
   const base = { id: `env.${info.name}`, title: `${info.name} (${info.envKey})` };
-  if (env.env[info.envKey]) return { ...base, status: 'ok', finding: 'set' };
+  if (env.env[info.envKey]) return { ...base, status: 'ok', finding: `set${baseUrlNote(env, info.name)}` };
   if (!info.envRequired) {
     const finding = info.envForInfoOnly
       ? 'not set (only needed by the matching nested provider; each pi provider reads its own env key)'
@@ -180,7 +198,7 @@ function checkApiKey(env: DoctorEnvironment, info: ProviderInfo, needs: SpecNeed
   return {
     ...base,
     status: needed ? 'fail' : 'warn',
-    finding: needed ? 'not set, and the agent spec needs it' : 'not set',
+    finding: `${needed ? 'not set, and the agent spec needs it' : 'not set'}${baseUrlNote(env, info.name)}`,
     fix: `Set ${info.envKey} in your environment, e.g. export ${info.envKey}=<your key>`,
   };
 }

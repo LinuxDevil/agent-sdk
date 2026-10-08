@@ -19,7 +19,7 @@ import { checkItem, formatFinding } from './addCheck';
 import { readReceipt, RECEIPT_FILE, writeReceipt } from './addReceipt';
 import { checkTargets, planFiles, writeFiles, type PlannedFile } from './addWrite';
 import { parseCommand, stringValue, usageError, type CommandSpec } from './args';
-import { loadIndex, loadItem, registrySource, type RegistryIndex, type RegistryItem, type RegistryOptions } from './registry';
+import { loadItem, openRegistry, type RegistryIndex, type RegistryItem, type RegistryOptions } from './registry';
 
 const USAGE = 'Usage: lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allow exec,fs-write,network,env] [--overwrite] [--dry-run]\n       lousho add --list [--registry <url-or-path>]';
 
@@ -129,14 +129,26 @@ function enforceManifest(item: RegistryItem, io: AddIo): void {
   );
 }
 
-/** With `--yes`, every elevated permission must be named in `--allow`. */
-function enforceAllow(args: AddArgs, item: RegistryItem): void {
+/**
+ * Checked before anything is printed, so a non-interactive run fails with one
+ * actionable line instead of after the whole manifest: with `--yes`, every
+ * elevated permission must be named in `--allow`; without it, stdin must be a
+ * terminal to ask. Both errors name the exact flags that install the item.
+ */
+function enforceFlags(args: AddArgs, item: RegistryItem, io: AddIo): void {
+  if (args.dryRun) return;
   const elevated = elevatedPermissions(item);
+  const flags = `--yes${elevated.length > 0 ? ` --allow ${elevated.join(',')}` : ''}`;
+  const review = `Run with --dry-run first to review its permissions and files.`;
+  if (!args.yes) {
+    if (io.stdin.isTTY) return;
+    throw usageError(SPEC, `stdin is not interactive, so it cannot ask for confirmation; pass ${flags} to install '${item.name}' without asking. ${review}`);
+  }
   const missing = elevated.filter((name) => !args.allow.includes(name));
   if (missing.length === 0) return;
   throw usageError(
     SPEC,
-    `'${item.name}' asks for elevated permissions that --yes does not grant on its own (missing: --allow ${missing.join(',')}); pass --allow ${elevated.join(',')} to install it without asking.`
+    `'${item.name}' asks for elevated permissions that --yes does not grant on its own (missing: --allow ${missing.join(',')}); pass ${flags} to install it without asking. ${review}`
   );
 }
 
@@ -168,6 +180,7 @@ async function install(args: AddArgs, registry: string, item: RegistryItem, io: 
   // A dry run writes nothing, so an existing file is reported, not refused.
   await checkTargets(item, files, agentDir, args.overwrite || args.dryRun);
   const receipt = await readReceipt(agentDir);
+  enforceFlags(args, item, io);
   const lines = [...manifestLines(item), ...planLines(files, args.overwrite)];
   if (item.dependencies?.length) lines.push('Dependencies (not installed; run this yourself):', `  npm install ${item.dependencies.join(' ')}`);
   io.stdout.write(`${lines.join('\n')}\n`);
@@ -176,10 +189,7 @@ async function install(args: AddArgs, registry: string, item: RegistryItem, io: 
     io.stdout.write('Dry run: nothing was written.\n');
     return 0;
   }
-  if (args.yes) {
-    enforceAllow(args, item);
-  } else {
-    if (!io.stdin.isTTY) throw usageError(SPEC, 'stdin is not interactive, so it cannot ask for confirmation; pass --yes to install without asking.');
+  if (!args.yes) {
     const elevated = elevatedPermissions(item);
     if (elevated.length > 0) io.stdout.write(`It asks for elevated permissions: ${elevated.join(', ')}.\n`);
     if (!(await confirm(io, `Write ${files.length} file(s) into ${agentDir}? [y/N] `))) {
@@ -194,8 +204,7 @@ async function install(args: AddArgs, registry: string, item: RegistryItem, io: 
 }
 
 async function runParsed(args: AddArgs, io: AddIo): Promise<number> {
-  const registry = registrySource({ registry: args.registry, env: io.env });
-  const index = await loadIndex(registry, io);
+  const { registry, index } = await openRegistry({ registry: args.registry, env: io.env, fetch: io.fetch });
   if (args.list || !args.name) {
     io.stdout.write(`${listLines(index).join('\n')}\n`);
     return 0;
