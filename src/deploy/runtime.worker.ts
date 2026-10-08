@@ -238,7 +238,7 @@ function boundMemory(slots: readonly MemorySlot[], env: WorkerEnv): MemorySlot[]
 
 /** The `createAgent()` agent `resolved` describes, over the Worker's store and `env` bindings (sub-agents included). */
 function workerAgentFromResolved(resolved: ResolvedWorkerAgentDir, env: WorkerEnv): SimpleAgent {
-  const { name, instructions, model, tools, skills, maxSteps, toolConcurrency, memory, subagents, permissionMode, permissions, compaction, limits, approvalTtlMs, hooks, approve } = resolved;
+  const { name, instructions, model, tools, skills, maxSteps, toolConcurrency, memory, subagents, permissionMode, permissions, compaction, limits, modelSettings, approvalTtlMs, hooks, approve } = resolved;
   const source =
     'provider' in model
       ? model
@@ -257,6 +257,7 @@ function workerAgentFromResolved(resolved: ResolvedWorkerAgentDir, env: WorkerEn
     ...(permissions === undefined ? {} : { permissions }),
     ...(compaction === undefined ? {} : { compaction }),
     ...(limits === undefined ? {} : { limits }),
+    ...(modelSettings === undefined ? {} : { modelSettings }),
     ...(approvalTtlMs === undefined ? {} : { approvalTtlMs }),
     ...(hooks === undefined ? {} : { hooks }),
     ...(approve === undefined ? {} : { approve }),

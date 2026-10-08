@@ -111,7 +111,7 @@ describe('resolveAgentDir', () => {
 const CREATE_AGENT_OPTIONS = {
   tools: true, mcpServers: true, skills: true, name: true, description: true, subagents: true, subagentOptions: true,
   handoffs: true, maxHandoffs: true, toolSearch: true, codeMode: true, maxSubagentDepth: true, maxSteps: true, limits: true,
-  guardrails: true, toolConcurrency: true, onAgentDrift: true, reasoning: true, onEvent: true, exporter: true,
+  guardrails: true, toolConcurrency: true, onAgentDrift: true, reasoning: true, modelSettings: true, onEvent: true, exporter: true,
   captureContent: true, redactContent: true, projectInstructions: true, store: true, approvalStore: true, approve: true,
   approvalTtlMs: true, askQuestion: true, retry: true, fallbackModels: true, output: true, hooks: true, compaction: true,
   memory: true, permissions: true, onPermissionDecision: true, permissionMode: true, onPermissionModeChange: true,
@@ -213,6 +213,7 @@ describe('agent.* run options (permissionMode, permissions, compaction, hooks, a
     expect(config.permissionMode).toBe('default');
     expect(config.compaction).toEqual({ thresholdPercent: 0.8 });
     expect(config.limits).toEqual({ maxCostUsd: 0.05, onExceeded: 'stop' });
+    expect(config.modelSettings).toEqual({ maxTokens: 2048, temperature: 0.2 });
     expect(config.permissions).toHaveLength(3);
     expect(config.permissions?.[0]).toMatchObject({ tool: 'shell', action: 'deny', reason: 'No deletes' });
     expect(typeof config.approve).toBe('function');

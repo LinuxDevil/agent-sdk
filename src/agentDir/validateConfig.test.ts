@@ -219,3 +219,17 @@ describe('store', () => {
     expect(invalidConfig({ store: { path: './.lousho' } }).message).toContain('or - in a code config - an AgentStore');
   });
 });
+
+describe('modelSettings (C6)', () => {
+  it('accepts the known sampling settings', () => {
+    const modelSettings = { maxTokens: 1024, temperature: 0.2, topP: 0.9, frequencyPenalty: 0, presencePenalty: 0.1, stop: ['END'], seed: 7 };
+    expect(validateConfig(FILE, { modelSettings }).modelSettings).toEqual(modelSettings);
+  });
+
+  it('rejects unknown keys and ill-typed values, naming them', () => {
+    expect(invalidConfig({ modelSettings: 1024 }).message).toContain("'modelSettings' must be an object");
+    expect(invalidConfig({ modelSettings: { maxOutputTokens: 10 } }).message).toContain("'modelSettings.maxOutputTokens' is not a known setting");
+    expect(invalidConfig({ modelSettings: { temperature: '0.2' } }).message).toContain("'modelSettings.temperature' must be a number");
+    expect(invalidConfig({ modelSettings: { stop: 'END' } }).message).toContain("'modelSettings.stop' must be an array of strings");
+  });
+});

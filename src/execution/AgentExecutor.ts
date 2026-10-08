@@ -10,7 +10,7 @@ import type { BackgroundTaskView } from '../subagents/backgroundTasks';
 import { assertMaxSubagentDepth, withSubagents } from '../subagents/withSubagents';
 import type { StandardSchemaV1 } from '../utils/zodCompat';
 import { newId } from '../utils/id';
-import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult, ToolDefinition, type ReasoningOption } from '../providers';
+import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult, ToolDefinition, type ReasoningOption, type ModelSettings } from '../providers';
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
@@ -235,8 +235,16 @@ export interface ExecuteOptions extends PermissionOptions {
   guardrails?: AgentGuardrails;
   /** LOU-V6: a session's `limits` and what its earlier turns spent; set by `agent.session({ limits })`. */
   sessionBudget?: SessionBudget;
+  /** Sent on every model call; wins over the same key in {@link ExecuteOptions.modelSettings}. */
   temperature?: number;
+  /** Sent on every model call; wins over the same key in {@link ExecuteOptions.modelSettings}. */
   maxTokens?: number;
+  /**
+   * C6: sampling settings sent on every model call of the run (`maxTokens`,
+   * `temperature`, `topP`, ...). A key left unset is not sent. Sub-agents
+   * and handoff targets use their own. See docs/configuration.md#model-settings.
+   */
+  modelSettings?: ModelSettings;
   /**
    * LOU-D41: called with every {@link AgentEvent} of the run, synchronously
    * as it happens - the same events, in the same order, as `stream()`

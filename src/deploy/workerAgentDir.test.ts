@@ -57,6 +57,11 @@ describe('resolveWorkerAgentDir (M3b)', () => {
     expect(resolved.permissions).toEqual([{ tool: 'deploy', action: 'ask', ttlMs: 30_000 }]);
   });
 
+  it('carries modelSettings over to the resolved options (C6)', () => {
+    const resolved = resolveWorkerAgentDir(dir({ config: { model: 'mock/x', modelSettings: { maxTokens: 512, stop: ['END'] } } }));
+    expect(resolved.modelSettings).toEqual({ maxTokens: 512, stop: ['END'] });
+  });
+
   it("takes an agent.ts config module's default export, and its provider instance", () => {
     const provider = createMockProvider({ name: 'mock', responses: ['hi'] });
     const resolved = resolveWorkerAgentDir(

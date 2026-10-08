@@ -160,6 +160,35 @@ export interface ToolDefinition {
 }
 
 /**
+ * C6: the sampling settings an agent sends on each of its model calls
+ * (`createAgent({ modelSettings })`, or a `send()` / `stream()` call's own).
+ * Each key is the {@link GenerateOptions} field of the same name; a key left
+ * out is not sent, so the provider (or a wrapping provider) applies its own
+ * default.
+ *
+ * @example
+ * ```ts
+ * createAgent({ model: 'openai/gpt-4o-mini', modelSettings: { maxTokens: 1024, temperature: 0.2 } });
+ * ```
+ */
+export interface ModelSettings {
+  /** Sampling temperature. */
+  temperature?: number;
+  /** The most tokens the model may write in one response. */
+  maxTokens?: number;
+  /** Nucleus sampling: only the tokens within this cumulative probability are sampled. */
+  topP?: number;
+  /** Penalizes tokens by how often they already appeared. */
+  frequencyPenalty?: number;
+  /** Penalizes tokens that already appeared at all. */
+  presencePenalty?: number;
+  /** Sequences that end the response when the model writes one. */
+  stop?: string[];
+  /** Seed for deterministic sampling, on providers that support one. */
+  seed?: number;
+}
+
+/**
  * Generation options
  */
 export interface GenerateOptions {

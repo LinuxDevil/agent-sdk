@@ -470,6 +470,7 @@ function configOptions(
     ...optional('permissions', overrides.permissions ?? permissionRulesOf(configFile ?? dir, config.permissions)),
     ...optional('compaction', overrides.compaction ?? config.compaction),
     ...optional('limits', overrides.limits ?? config.limits),
+    ...optional('modelSettings', overrides.modelSettings ?? config.modelSettings),
     ...optional('hooks', overrides.hooks ?? configured?.hooks),
     ...optional('approve', overrides.approve ?? approver?.approve),
     ...optional('approvalTtlMs', overrides.approvalTtlMs ?? config.approvalTtlMs),
@@ -584,7 +585,7 @@ async function skillsFor(dir: string, overrides: AgentDirOverrides): Promise<Ski
  *   agent.ts | agent.js | agent.json | agent.yaml   config: model, description, maxSteps,
  *                                                    permissionMode, permissions, compaction,
  *                                                    hooks (path), approve (path), approvalTtlMs,
- *                                                    limits, store ({ "dir": "./.lousho" }), ...
+ *                                                    limits, modelSettings, store ({ "dir": "./.lousho" }), ...
  *   instructions.md                                  system prompt
  *   instructions/<family>.md                         appended when the model id contains <family>
  *   hooks.ts | approve.ts (or any path the config names)  a hooks / approver file the config points at

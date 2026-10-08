@@ -68,6 +68,7 @@ export default {
 | `approve` | `createAgent({ approve })`: a path to a file default-exporting the approver function, or the function inline in a code config |
 | `approvalTtlMs` | `createAgent({ approvalTtlMs })`: milliseconds before an unanswered approval expires; an `ask` rule's `ttlMs` wins over it |
 | `limits` | `createAgent({ limits })`, e.g. `{ "maxCostUsd": 0.05 }` |
+| `modelSettings` | `createAgent({ modelSettings })`, e.g. `{ "maxTokens": 1024, "temperature": 0.2 }`; see [Model settings](./configuration.md#model-settings) |
 | `store` | `createAgent({ store })`: `{ "dir": "./.lousho" }` (resolved against the agent directory) becomes a `fileStore()` — sessions, checkpoints and paused approvals survive a restart; `historyLimit` and `tokenKey` may be set too. A code config may give an `AgentStore` instance instead. Node only |
 
 Unknown keys are an error with a suggestion (`'modle' (did you mean 'model'?)`).

@@ -282,6 +282,7 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `name`     | Agent name (default `'agent'`).                                    |
 | `description` | What the agent does, in a sentence. Required when it is used as a sub-agent. |
 | `maxSteps` | Passed through to `AgentExecutor.execute()`.                        |
+| `modelSettings` | Sampling settings sent on every model call: `{ maxTokens?, temperature?, topP?, frequencyPenalty?, presencePenalty?, stop?, seed? }`. A `send()` / `stream()` call's own `modelSettings` win key by key. See [Model settings](#model-settings). |
 | `limits`   | Budgets of each run: `{ maxTokens?, maxInputTokens?, maxOutputTokens?, maxCostUsd?, maxDurationMs?, maxSteps?, onExceeded? }`. A tripped limit ends the run with `finishReason: 'budget-exceeded'`. See [Budgets](#budgets). |
 | `toolConcurrency` | How many tool calls of one model turn run at once: a positive integer or `'unbounded'` (default). See [Parallel tool calls](./runs.md#parallel-tool-calls). |
 | `skills`   | Skills from `defineSkill()` / `loadSkills()`; see [Skills](./skills.md). |
@@ -310,6 +311,46 @@ Misconfiguration errors say how to fix themselves: a missing key names the
 variable (`createAgent: OPENAI_API_KEY is not set. ...`), an unknown prefix
 lists the supported ones and suggests the closest, and a missing optional peer
 dependency prints the exact `npm install` command.
+
+## Model settings
+
+`modelSettings` sets the sampling options of every model call an agent makes.
+A `send()` or `stream()` call can pass its own, which win key by key over the
+agent's:
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  modelSettings: { maxTokens: 1024, temperature: 0.2 },
+});
+
+// This run sends maxTokens: 256 and temperature: 0.2.
+await agent.send('Summarize the log in one line.', { modelSettings: { maxTokens: 256 } });
+```
+
+The keys are `maxTokens`, `temperature`, `topP`, `frequencyPenalty`,
+`presencePenalty`, `stop` and `seed`. A key you leave out is not sent at all,
+so the provider's own default applies, and so does a value that a wrapping
+provider adds to the request. Sub-agents and handoff targets use their own
+`modelSettings`, not the lead's. An agent directory can set the same object as
+`modelSettings` in its `agent.json`.
+
+To share options between agents, type them as `CreateAgentBase` and spread
+them into `createAgent()`. Do not use `Partial<CreateAgentConfig>`: that type
+keeps `model` / `provider` and `instructions` / `prompt` mutually exclusive,
+so TypeScript rejects spreading it next to a literal that sets one of them.
+
+```ts
+import { createAgent, type CreateAgentBase } from '@lousho/build-ai-agent';
+
+const shared: CreateAgentBase = { maxSteps: 8, modelSettings: { temperature: 0 } };
+
+function triageAgent(overrides: Partial<CreateAgentBase> = {}) {
+  return createAgent({ model: 'openai/gpt-4o-mini', instructions: 'Triage the incident.', ...shared, ...overrides });
+}
+```
 
 ## Budgets
 
