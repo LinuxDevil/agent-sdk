@@ -762,8 +762,8 @@ interface UIComponentNode {
 
 // Warnings were encountered during analysis:
 //
-// dist/index-Bv9yX21G.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-Bv9yX21G.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-B41xZFIC.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-B41xZFIC.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

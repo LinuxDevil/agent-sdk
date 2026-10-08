@@ -79,6 +79,9 @@ interface ApprovalCheckContext {
 }
 
 // @public
+type ApprovalKind = 'tool' | 'question' | 'sign-in';
+
+// @public
 type ApprovalOutcome = boolean | 'approve' | 'deny' | 'ask' | {
     deny: string;
 };
@@ -87,6 +90,27 @@ type ApprovalOutcome = boolean | 'approve' | 'deny' | 'ask' | {
 type ApprovalPredicate = {
     check(args: unknown, ctx: ApprovalCheckContext): ApprovalOutcome | Promise<ApprovalOutcome>;
 }['check'];
+
+// @public
+interface ApprovalQuestion {
+    allowFreeText?: boolean;
+    options?: string[];
+    // (undocumented)
+    text: string;
+}
+
+// @public
+interface ApprovalSignIn {
+    declined?: boolean;
+    displayName?: string;
+    provider: string;
+    url: string;
+}
+
+// Warning: (ae-forgotten-export) The symbol "PendingApproval" needs to be exported by the entry point index.d.ts
+//
+// @public
+type ApproveToolCall = (request: PendingApproval) => boolean | 'defer' | (string & {}) | Promise<boolean | 'defer' | (string & {})>;
 
 // @public (undocumented)
 export interface BestOfAllNode {
@@ -336,6 +360,8 @@ export interface FlowDefinitionNode {
 export interface FlowExecutionContext {
     // Warning: (ae-forgotten-export) The symbol "AgentConfig" needs to be exported by the entry point index.d.ts
     agent: AgentConfig;
+    // Warning: (ae-forgotten-export) The symbol "ApproveToolCall" needs to be exported by the entry point index.d.ts
+    approve?: ApproveToolCall;
     captureContent?: boolean;
     // (undocumented)
     currentDepth?: number;
@@ -345,7 +371,11 @@ export interface FlowExecutionContext {
     maxDepth?: number;
     // (undocumented)
     memory?: unknown[];
+    onPermissionDecision?: PermissionOptions['onPermissionDecision'];
     parentSpanId?: string;
+    permissionMode?: PermissionOptions['permissionMode'];
+    // Warning: (ae-forgotten-export) The symbol "PermissionOptions" needs to be exported by the entry point index.d.ts
+    permissions?: PermissionOptions['permissions'];
     // Warning: (ae-forgotten-export) The symbol "LLMProvider" needs to be exported by the entry point index.d.ts
     //
     // (undocumented)
@@ -814,6 +844,122 @@ export interface ParallelNode {
 }
 
 // @public
+interface PendingApproval {
+    // (undocumented)
+    agentId?: string;
+    // (undocumented)
+    args: Record<string, unknown>;
+    // (undocumented)
+    createdAt: string;
+    expiresAt?: string;
+    // (undocumented)
+    id: string;
+    // Warning: (ae-forgotten-export) The symbol "ApprovalKind" needs to be exported by the entry point index.d.ts
+    kind?: ApprovalKind;
+    principal?: Principal;
+    // Warning: (ae-forgotten-export) The symbol "ApprovalQuestion" needs to be exported by the entry point index.d.ts
+    question?: ApprovalQuestion;
+    sessionId?: string;
+    // Warning: (ae-forgotten-export) The symbol "ApprovalSignIn" needs to be exported by the entry point index.d.ts
+    signIn?: ApprovalSignIn;
+    subagentPath?: string[];
+    // (undocumented)
+    toolCallId: string;
+    // (undocumented)
+    toolName: string;
+}
+
+// @public
+type PermissionAction = 'allow' | 'deny' | 'ask';
+
+// @public
+interface PermissionAuditContext {
+    // (undocumented)
+    principal?: Readonly<Principal>;
+}
+
+// @public
+interface PermissionContext {
+    principal?: Readonly<Principal>;
+    // (undocumented)
+    sessionId?: string;
+    // (undocumented)
+    toolCallId: string;
+    // (undocumented)
+    toolName: string;
+}
+
+// Warning: (ae-forgotten-export) The symbol "PermissionAction" needs to be exported by the entry point index.d.ts
+//
+// @public
+type PermissionDecision = PermissionAction | 'default';
+
+// @public
+interface PermissionDecisionEntry {
+    args?: Record<string, unknown>;
+    at: string;
+    // Warning: (ae-forgotten-export) The symbol "PermissionDecision" needs to be exported by the entry point index.d.ts
+    //
+    // (undocumented)
+    decision: PermissionDecision;
+    hook?: string;
+    // Warning: (ae-forgotten-export) The symbol "PermissionMode" needs to be exported by the entry point index.d.ts
+    mode?: PermissionMode;
+    reason?: string;
+    rule?: {
+        index: number;
+        reason?: string;
+    };
+    // (undocumented)
+    toolCallId: string;
+    // (undocumented)
+    toolName: string;
+}
+
+// @public
+type PermissionMode = 'default' | 'plan' | 'acceptEdits' | 'dontAsk';
+
+// @public
+interface PermissionModeChange {
+    at: string;
+    // (undocumented)
+    from: PermissionMode;
+    // (undocumented)
+    sessionId: string;
+    // (undocumented)
+    to: PermissionMode;
+}
+
+// @public
+interface PermissionOptions {
+    // Warning: (ae-forgotten-export) The symbol "PermissionDecisionEntry" needs to be exported by the entry point index.d.ts
+    // Warning: (ae-forgotten-export) The symbol "PermissionAuditContext" needs to be exported by the entry point index.d.ts
+    onPermissionDecision?: (entry: PermissionDecisionEntry, context: PermissionAuditContext) => void;
+    // Warning: (ae-forgotten-export) The symbol "PermissionModeChange" needs to be exported by the entry point index.d.ts
+    onPermissionModeChange?: (change: PermissionModeChange) => void;
+    permissionMode?: PermissionMode | (() => PermissionMode);
+    // Warning: (ae-forgotten-export) The symbol "PermissionRule" needs to be exported by the entry point index.d.ts
+    permissions?: readonly PermissionRule[];
+}
+
+// @public
+interface PermissionRule {
+    // (undocumented)
+    action: PermissionAction;
+    reason?: string;
+    // Warning: (ae-forgotten-export) The symbol "PermissionToolMatcher" needs to be exported by the entry point index.d.ts
+    //
+    // (undocumented)
+    tool: PermissionToolMatcher;
+    ttlMs?: number;
+    // Warning: (ae-forgotten-export) The symbol "PermissionContext" needs to be exported by the entry point index.d.ts
+    when?: (args: Record<string, unknown>, ctx: PermissionContext) => boolean | Promise<boolean>;
+}
+
+// @public
+type PermissionToolMatcher = string | readonly string[] | RegExp;
+
+// @public
 interface Principal {
     authenticator: string;
     claims?: Readonly<Record<string, unknown>>;
@@ -1264,12 +1410,12 @@ export function validateFlowInput(input: Record<string, unknown>, variables: Flo
 
 // Warnings were encountered during analysis:
 //
-// dist/flows/index.d.ts:156:9 - (ae-forgotten-export) The symbol "ProviderUsage" needs to be exported by the entry point index.d.ts
-// dist/index-Bv9yX21G.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-Bv9yX21G.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-Bv9yX21G.d.ts:1905:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
-// dist/index-Bv9yX21G.d.ts:1943:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
-// dist/index-Bv9yX21G.d.ts:1943:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
+// dist/flows/index.d.ts:180:9 - (ae-forgotten-export) The symbol "ProviderUsage" needs to be exported by the entry point index.d.ts
+// dist/index-B41xZFIC.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-B41xZFIC.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-B41xZFIC.d.ts:1906:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
+// dist/index-B41xZFIC.d.ts:1944:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
+// dist/index-B41xZFIC.d.ts:1944:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

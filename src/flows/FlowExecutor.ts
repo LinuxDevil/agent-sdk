@@ -36,7 +36,11 @@ import {
   toolSpanInit,
 } from '../execution/genAiSpans';
 import { FLOW_NODE_SPAN_NAME, FlowAttr, GenAiAttr, GenAiOperation } from '../execution/semconv';
-import { SDKError } from '../execution/errors';
+import { SDKError, ValidationError } from '../execution/errors';
+import type { PermissionOptions } from '../execution/permissions';
+import type { ApproveToolCall } from '../createAgentApprovals';
+import { gateFlowToolCall } from './flowToolGate';
+import { validateFlowInput } from './inputs';
 
 /**
  * Flow execution context
@@ -86,6 +90,25 @@ export interface FlowExecutionContext {
   captureContent?: boolean;
   /** Omit the deprecated `prompt`/`args`/`result` attributes. */
   redactContent?: boolean;
+  /**
+   * A8: decides `toolCall` steps that need approval (the tool's
+   * `needsApproval`, or an `ask` permission rule), as `createAgent({ approve })`
+   * does: `true` (or a note) runs the tool, anything else fails the step with
+   * `LOUSHO_FLOW_TOOL_DENIED`. A flow cannot pause, so `'defer'` refuses too.
+   * Without it, a call that needs approval is refused, never run.
+   *
+   * @example
+   * ```ts
+   * await FlowExecutor.execute(flow, { agent, provider, variables, toolRegistry, approve: ({ args }) => Number(args.amount) < 1000 });
+   * ```
+   */
+  approve?: ApproveToolCall;
+  /** A8: permission rules for `toolCall` steps, checked as in an agent run (see `PermissionOptions.permissions`). */
+  permissions?: PermissionOptions['permissions'];
+  /** A8: the permission mode `toolCall` steps run under (see `PermissionOptions.permissionMode`). */
+  permissionMode?: PermissionOptions['permissionMode'];
+  /** A8: called with an audit entry for each `toolCall` step's permission decision. */
+  onPermissionDecision?: PermissionOptions['onPermissionDecision'];
 }
 
 /**
@@ -267,6 +290,9 @@ export class FlowExecutor {
     });
 
     try {
+      // A8: the flow's declared inputs (required ones, and their types) are checked before any step runs.
+      this.assertValidInputs(flow, variables);
+
       // Execute the flow
       // A flow without a root node fails in executeNode with a TypeError, reported as a flow-error.
       const output = await this.executeNode(
@@ -308,6 +334,13 @@ export class FlowExecutor {
         events,
         error: error as Error,
       };
+    }
+  }
+
+  private static assertValidInputs(flow: AgentFlow, variables: Record<string, unknown>): void {
+    const { valid, errors } = validateFlowInput(variables, flow.inputs ?? []);
+    if (!valid) {
+      throw new ValidationError(`Flow '${flow.code}' inputs are invalid: ${errors.join('; ')}`, { inputs: errors });
     }
   }
 
@@ -800,7 +833,13 @@ export class FlowExecutor {
     const { toolName, toolDesc } = this.lookupTool(node, context);
 
     // Interpolate arguments (an object, so interpolation returns an object)
-    const args = this.interpolateObject(node.arguments || {}, context.variables) as Record<string, unknown>;
+    const rawArgs = this.interpolateObject(node.arguments || {}, context.variables) as Record<string, unknown>;
+
+    // A8: the same gate as an agent run's tool call - schema validation,
+    // permission rules and modes, `needsApproval` (decided by `approve`, or
+    // refused) - so a flow step cannot run a tool the agent would not.
+    const toolCallId = `flow-${globalThis.crypto.randomUUID()}`;
+    const args = await gateFlowToolCall(toolName, toolDesc, rawArgs, context, toolCallId);
 
     // Emit tool call event
     emitEvent(events, onEvent, {
