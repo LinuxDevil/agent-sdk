@@ -660,7 +660,7 @@ async function replaceHandoffResultByHook(
  */
 async function runApprovedInSpan(ctx: ResumeContext, pending: PendingApproval, scope: ToolCallScope, run: () => Promise<Message>): Promise<Message> {
   const { executeOptions, snapshot } = ctx;
-  const { exporter, redactContent = false } = executeOptions;
+  const { exporter, redactContent } = executeOptions;
   const init = toolSpanInit({ id: pending.toolCallId, name: pending.toolName }, { agent: executeOptions.currentAgent ?? snapshot.agent, toolRegistry: ctx.toolRegistry, sessionId: snapshot.sessionId });
   const outcome = await withSpan(
     exporter,

@@ -63,6 +63,8 @@ async function runAgent(extra: { captureContent?: boolean; redactContent?: boole
     sessionId: 'session-9',
     temperature: 0.2,
     maxTokens: 256,
+    // The deprecated content attributes are dual-emitted only on an explicit opt-out of redaction (Eve MA-F4).
+    redactContent: false,
     ...extra,
   });
   return { spans, provider };

@@ -356,16 +356,16 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    */
   captureContent?: boolean;
   /**
-   * Keep prompt and tool content off the spans entirely (the deprecated
-   * `input`/`prompt`/`args`/`result` attributes are omitted). Set this for
-   * `fileTraceExporter()` so the `.lousho/traces` files hold no message or
-   * tool content. Only matters with an `exporter`. See
+   * Keep prompt and tool content off the spans (the deprecated
+   * `input`/`prompt`/`args`/`result` attributes are omitted). Defaults to
+   * true, so `fileTraceExporter()` files hold no message or tool content;
+   * pass `false` to record them. Only matters with an `exporter`. See
    * `ExecuteOptions.redactContent`.
    *
    * @example
    * ```ts
    * import { fileTraceExporter } from '@lousho/build-ai-agent/traces';
-   * createAgent({ model: 'openai/gpt-4o-mini', exporter: fileTraceExporter(), redactContent: true });
+   * createAgent({ model: 'openai/gpt-4o-mini', exporter: fileTraceExporter(), redactContent: false });
    * ```
    */
   redactContent?: boolean;

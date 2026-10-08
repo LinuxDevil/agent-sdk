@@ -8,8 +8,9 @@
  * attributes are only recorded when `captureContent` is true (or the
  * `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` environment variable
  * is `true` and `captureContent` was not set). The deprecated content
- * attributes (`input`, `prompt`, `args`, `result`) keep their previous
- * behavior: recorded unless `redactContent` is true.
+ * attributes (`input`, `prompt`, `args`, `result`) are only recorded when
+ * `redactContent` is explicitly false (Eve MA-F4: they used to be on by
+ * default, which put prompts and tool output on disk via `fileTraceExporter`).
  */
 
 import type { GenerateOptions, GenerateResult, LLMProvider, Message, ToolCall } from '../providers';
@@ -44,8 +45,16 @@ interface ContentOptions {
    * await AgentExecutor.execute({ agent, input, provider, exporter, captureContent: true });
    */
   captureContent?: boolean;
-  /** Omit the deprecated `prompt`/`args`/`result` attributes (default false). */
+  /**
+   * Omit the deprecated `input`/`prompt`/`args`/`result` attributes. Defaults
+   * to true: only an explicit `false` records them.
+   */
   redactContent?: boolean;
+}
+
+/** The deprecated content attributes are recorded only on an explicit opt-out of redaction. */
+function keepLegacyContent(content: ContentOptions): boolean {
+  return content.redactContent === false;
 }
 
 /** Resolves `captureContent`, falling back to the OTel content env var. */
@@ -135,7 +144,7 @@ export function agentRunSpanInit(
       [GenAiAttr.AGENT_ID]: agent.id,
       [GenAiAttr.PROVIDER_NAME]: provider?.name,
       [GenAiAttr.CONVERSATION_ID]: sessionId,
-      ...(content.redactContent ? {} : { [LegacyAttr.INPUT]: text }),
+      ...(!keepLegacyContent(content) ? {} : { [LegacyAttr.INPUT]: text }),
       [GenAiAttr.INPUT_MESSAGES]:
         content.captureContent && inputMessages.length > 0 ? JSON.stringify(inputMessages) : undefined,
     }),
@@ -158,7 +167,7 @@ export function llmSpanInit(
       [GenAiAttr.REQUEST_TEMPERATURE]: request.temperature,
       [GenAiAttr.REQUEST_MAX_TOKENS]: request.maxTokens,
       [LegacyAttr.MODEL]: request.model,
-      ...(content.redactContent ? {} : { [LegacyAttr.PROMPT]: JSON.stringify(request.messages) }),
+      ...(!keepLegacyContent(content) ? {} : { [LegacyAttr.PROMPT]: JSON.stringify(request.messages) }),
       ...(content.captureContent ? requestContent(request.messages) : {}),
     }),
   };
@@ -250,7 +259,7 @@ export function recordToolOutcome(
   span.attributes = {
     ...span.attributes,
     ...defined({
-      ...(content.redactContent ? {} : { [LegacyAttr.ARGS]: outcome.args, [LegacyAttr.RESULT]: outcome.result }),
+      ...(!keepLegacyContent(content) ? {} : { [LegacyAttr.ARGS]: outcome.args, [LegacyAttr.RESULT]: outcome.result }),
       // The message, as on every other span's `error`; absent when the tool succeeded.
       [LegacyAttr.ERROR]: outcome.error,
       [LegacyAttr.LATENCY_MS]: outcome.latencyMs,

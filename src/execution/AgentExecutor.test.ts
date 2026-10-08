@@ -1278,7 +1278,7 @@ describe('AgentExecutor', () => {
       expect(toolSpan.parentId).toBe(agentRunSpan.id);
     });
 
-    it('includes content in span attributes by default (redactContent omitted)', async () => {
+    it('includes content in span attributes when redactContent is false', async () => {
       const { tool } = await import('ai');
       const { z } = await import('zod');
 
@@ -1304,6 +1304,7 @@ describe('AgentExecutor', () => {
         provider: buildToolAgentAndProvider() as LLMProvider,
         toolRegistry,
         exporter,
+        redactContent: false,
       });
 
       const serialized = JSON.stringify(ends);

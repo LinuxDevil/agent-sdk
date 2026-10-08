@@ -90,7 +90,7 @@ describe('createAgent({ exporter }) (M5a)', () => {
 
     it('traces the continued run, with the approved tool as an execute_tool span under its invoke_agent span', async () => {
       const exporter = recording();
-      const agent = emailAgent({ exporter });
+      const agent = emailAgent({ exporter, redactContent: false });
       const paused = await agent.send('Email Sam');
       const before = exporter.ended.length;
 
@@ -275,6 +275,38 @@ describe('createAgent({ exporter }) (M5a)', () => {
       // Non-content fields are never redacted.
       expect(tool.attributes['gen_ai.tool.name']).toBe('lookup');
       expect(chat[0].attributes['gen_ai.response.finish_reasons']).toBeDefined();
+    });
+
+    const traceFileText = (dir: string) =>
+      fs
+        .readdirSync(dir)
+        .flatMap((day) => fs.readdirSync(path.join(dir, day)).map((name) => fs.readFileSync(path.join(dir, day, name), 'utf8')))
+        .join('');
+
+    it('keeps prompt and tool IO out of the .lousho/traces files by default (Eve MA-F4)', async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-traces-'));
+      try {
+        await agent({ exporter: fileTraceExporter({ dir }), instructions: 'system-secret' }).send('the prompt');
+
+        const text = traceFileText(dir);
+        expect(text.length).toBeGreaterThan(0);
+        for (const secret of ['the prompt', 'system-secret', 'private-query', 'result for private-query']) {
+          expect(text).not.toContain(secret);
+        }
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('records the deprecated content attributes only when redactContent is false', async () => {
+      const exporter = recording();
+      await agent({ exporter, redactContent: false }).send('the prompt');
+
+      const run = exporter.ended.find((span) => op(span) === 'invoke_agent')!;
+      const tool = exporter.ended.find((span) => op(span) === 'execute_tool')!;
+      expect(JSON.stringify(run.attributes.input)).toContain('the prompt');
+      expect(tool.attributes.args).toEqual({ q: 'private-query' });
+      expect(tool.attributes.result).toBe('result for private-query');
     });
 
     it('keeps prompt and tool IO out of the .lousho/traces files', async () => {

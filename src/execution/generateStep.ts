@@ -106,7 +106,7 @@ export function sideGenerator(
   record: (measured: CallUsage) => void
 ): NonNullable<GenerateHookContext['generate']> {
   return (provider: LLMProvider, request: GenerateOptions, purpose: string) => {
-    const { exporter, redactContent = false } = options;
+    const { exporter, redactContent } = options;
     const captureContent = resolveCaptureContent(options.captureContent);
     const init = llmSpanInit(provider, request, { redactContent, captureContent });
     const attributes = { ...init.attributes, [SdkAttr.CALL_PURPOSE]: purpose };
@@ -260,7 +260,7 @@ export function generateInSpan(
   callSignal?: AbortSignal,
   inputCheck?: ParallelInputCheck
 ): Promise<GeneratedStep> {
-  const { exporter, onLLMResponse, hooks, redactContent = false } = options;
+  const { exporter, onLLMResponse, hooks, redactContent } = options;
   // LOU-D46.2: the one place a run's model call is routed, so eval cassettes cover every entry point.
   const provider = interceptProvider(options.provider);
   const captureContent = resolveCaptureContent(options.captureContent);

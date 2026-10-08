@@ -342,7 +342,7 @@ export function nestedToolCaller(setup: NestedCallSetup): NestedToolCaller {
           recordToolOutcome(
             span,
             { args: settled.args ?? args, result: settled.result, error: settled.error, latencyMs: Date.now() - started },
-            { redactContent: tracing.redactContent ?? false, captureContent: resolveCaptureContent(tracing.captureContent) }
+            { redactContent: tracing.redactContent, captureContent: resolveCaptureContent(tracing.captureContent) }
           );
           return settled;
         },
