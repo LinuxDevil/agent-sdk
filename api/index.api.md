@@ -79,6 +79,7 @@ export interface AgentDirConfig {
     limits?: RunLimits;
     maxSteps?: number;
     model?: string;
+    modelSettings?: ModelSettings;
     name?: string;
     permissionMode?: PermissionMode | (() => PermissionMode);
     permissions?: readonly AgentDirPermissionRule[];
@@ -1407,6 +1408,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
     maxSubagentDepth?: number;
     mcpServers?: Record<string, McpServerSpec>;
     memory?: readonly MemorySlot[];
+    modelSettings?: ModelSettings;
     name?: string;
     onAgentDrift?: AgentDriftMode;
     onEvent?: (event: AgentEvent) => void;
@@ -2144,9 +2146,9 @@ interface ExecuteOptions extends PermissionOptions {
     // (undocumented)
     maxSteps?: number;
     maxSubagentDepth?: number;
-    // (undocumented)
     maxTokens?: number;
     metadata?: Record<string, unknown>;
+    modelSettings?: ModelSettings;
     onAgentDrift?: AgentDriftMode;
     onAgentEvent?: (event: AgentEvent) => void;
     onLLMRequest?: (request: GenerateOptions) => void | Promise<void>;
@@ -2180,7 +2182,6 @@ interface ExecuteOptions extends PermissionOptions {
     streamModelCalls?: boolean;
     subagents?: Subagents;
     surfaceRetryableProviderErrors?: boolean;
-    // (undocumented)
     temperature?: number;
     tokens?: OAuthTokenStore;
     toolConcurrency?: ToolConcurrency;
@@ -4006,6 +4007,17 @@ export interface ModelInfo {
 }
 
 // @public
+export interface ModelSettings {
+    frequencyPenalty?: number;
+    maxTokens?: number;
+    presencePenalty?: number;
+    seed?: number;
+    stop?: string[];
+    temperature?: number;
+    topP?: number;
+}
+
+// @public
 export interface ModelUsage {
     calls: number;
     costUsd?: number;
@@ -5447,6 +5459,7 @@ export function secretsGuardrail(options?: {
 export interface SendOptions {
     approvalTtlMs?: number;
     metadata?: Record<string, unknown>;
+    modelSettings?: ModelSettings;
     parentSpanId?: string;
     permissionMode?: PermissionMode;
     principal?: Principal;
@@ -6022,6 +6035,7 @@ interface SubagentSpec {
     maxSteps?: number;
     // (undocumented)
     maxSubagentDepth?: number;
+    modelSettings?: ModelSettings;
     output?: StandardSchemaV1 | OutputSpec;
     permissionMode?: PermissionOptions['permissionMode'];
     permissions?: readonly PermissionRule[];
@@ -7095,8 +7109,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-C1NnbLr9.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-C1NnbLr9.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-EAdyYObH.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-EAdyYObH.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)

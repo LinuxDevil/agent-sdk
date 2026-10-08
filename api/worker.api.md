@@ -1137,6 +1137,8 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
     mcpServers?: Record<string, McpServerSpec>;
     // Warning: (ae-forgotten-export) The symbol "MemorySlot" needs to be exported by the entry point worker.d.ts
     memory?: readonly MemorySlot[];
+    // Warning: (ae-forgotten-export) The symbol "ModelSettings" needs to be exported by the entry point worker.d.ts
+    modelSettings?: ModelSettings;
     name?: string;
     // Warning: (ae-forgotten-export) The symbol "AgentDriftMode" needs to be exported by the entry point worker.d.ts
     onAgentDrift?: AgentDriftMode;
@@ -2478,6 +2480,17 @@ interface MockProviderConfig extends LLMProviderConfig {
 }
 
 // @public
+interface ModelSettings {
+    frequencyPenalty?: number;
+    maxTokens?: number;
+    presencePenalty?: number;
+    seed?: number;
+    stop?: string[];
+    temperature?: number;
+    topP?: number;
+}
+
+// @public
 interface ModelUsage {
     calls: number;
     costUsd?: number;
@@ -3288,6 +3301,7 @@ interface SDKErrorOptions {
 export interface SendOptions {
     approvalTtlMs?: number;
     metadata?: Record<string, unknown>;
+    modelSettings?: ModelSettings;
     parentSpanId?: string;
     permissionMode?: PermissionMode;
     principal?: Principal;
@@ -4252,13 +4266,13 @@ interface WithRetryOptions {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-wczSqLgu.d.ts:768:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-wczSqLgu.d.ts:785:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-wczSqLgu.d.ts:1146:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-wczSqLgu.d.ts:3161:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-wczSqLgu.d.ts:3162:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
-// dist/index-C1NnbLr9.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
-// dist/index-C1NnbLr9.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BqTwKVm6.d.ts:768:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BqTwKVm6.d.ts:785:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BqTwKVm6.d.ts:1146:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BqTwKVm6.d.ts:3172:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BqTwKVm6.d.ts:3173:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
+// dist/index-EAdyYObH.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
+// dist/index-EAdyYObH.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point worker.d.ts
 
 // (No @packageDocumentation comment for this package)

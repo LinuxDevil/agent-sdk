@@ -848,9 +848,10 @@ export interface ExecuteOptions extends PermissionOptions {
     // (undocumented)
     maxSteps?: number;
     maxSubagentDepth?: number;
-    // (undocumented)
     maxTokens?: number;
     metadata?: Record<string, unknown>;
+    // Warning: (ae-forgotten-export) The symbol "ModelSettings" needs to be exported by the entry point index.d.ts
+    modelSettings?: ModelSettings;
     // Warning: (ae-forgotten-export) The symbol "AgentDriftMode" needs to be exported by the entry point index.d.ts
     onAgentDrift?: AgentDriftMode;
     onAgentEvent?: (event: AgentEvent) => void;
@@ -893,7 +894,6 @@ export interface ExecuteOptions extends PermissionOptions {
     // Warning: (ae-forgotten-export) The symbol "Subagents" needs to be exported by the entry point index.d.ts
     subagents?: Subagents;
     surfaceRetryableProviderErrors?: boolean;
-    // (undocumented)
     temperature?: number;
     // Warning: (ae-forgotten-export) The symbol "OAuthTokenStore" needs to be exported by the entry point index.d.ts
     tokens?: OAuthTokenStore;
@@ -1473,6 +1473,17 @@ interface Message {
 
 // @public
 type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
+
+// @public
+interface ModelSettings {
+    frequencyPenalty?: number;
+    maxTokens?: number;
+    presencePenalty?: number;
+    seed?: number;
+    stop?: string[];
+    temperature?: number;
+    topP?: number;
+}
 
 // @public
 interface ModelUsage {
@@ -2150,6 +2161,7 @@ interface SchemaIssue {
 interface SendOptions {
     approvalTtlMs?: number;
     metadata?: Record<string, unknown>;
+    modelSettings?: ModelSettings;
     parentSpanId?: string;
     permissionMode?: PermissionMode;
     principal?: Principal;
@@ -2526,6 +2538,7 @@ interface SubagentSpec {
     maxSteps?: number;
     // (undocumented)
     maxSubagentDepth?: number;
+    modelSettings?: ModelSettings;
     output?: StandardSchemaV1 | OutputSpec;
     permissionMode?: PermissionOptions['permissionMode'];
     permissions?: readonly PermissionRule[];
@@ -2903,14 +2916,14 @@ interface Usage {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-wczSqLgu.d.ts:768:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-wczSqLgu.d.ts:785:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-wczSqLgu.d.ts:1146:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
-// dist/index-C1NnbLr9.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-C1NnbLr9.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-C1NnbLr9.d.ts:1906:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
-// dist/index-C1NnbLr9.d.ts:1944:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
-// dist/index-C1NnbLr9.d.ts:1944:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BqTwKVm6.d.ts:768:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BqTwKVm6.d.ts:785:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BqTwKVm6.d.ts:1146:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/index-EAdyYObH.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-EAdyYObH.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-EAdyYObH.d.ts:1934:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
+// dist/index-EAdyYObH.d.ts:1972:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
+// dist/index-EAdyYObH.d.ts:1972:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
