@@ -121,6 +121,19 @@ describe('model registry', () => {
     expect(getModelInfo('does-not-exist')).toBeUndefined();
   });
 
+  it("treats '.' and '-' between version digits as one spelling (Eve PROV-F3)", () => {
+    expect(getModelInfo('anthropic/claude-haiku-4.5')?.id).toBe('claude-haiku-4-5');
+    expect(getModelInfo('claude-haiku-4.5-20251001')?.id).toBe('claude-haiku-4-5');
+    expect(getModelInfo('openai/gpt-4-1-mini')?.id).toBe('gpt-4.1-mini');
+    expect(estimateCost({ inputTokens: 1_000_000, outputTokens: 1_000_000 }, 'anthropic/claude-haiku-4.5')).toBe(6);
+  });
+
+  it('does not match a different model whose name only starts with a registered id (Eve PROV-F3)', () => {
+    expect(getModelInfo('mistral-7b-instruct')).toBeUndefined();
+    expect(getModelInfo('openai/gpt-4o-2024-05-13')?.id).toBe('gpt-4o-2024-05-13');
+    expect(estimateCost({ inputTokens: 1_000_000, outputTokens: 1_000_000 }, 'openai/gpt-4o-2024-05-13')).toBe(20);
+  });
+
   it('lets later registrations add and override', () => {
     registerModel({ id: 'my-llama', provider: 'ollama', contextWindow: 8192 });
     expect(getModelInfo('my-llama')?.contextWindow).toBe(8192);
