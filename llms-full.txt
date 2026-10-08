@@ -605,12 +605,17 @@ What it checks:
    provider's line also shows the base URL, without any credentials or query
    string in it. It also shows which
    provider `createAgent()` would pick by default with your environment.
+   `OPENAI_BASE_URL` is shown when set (without any credentials or query in it).
 5. With a spec path (`lousho doctor agent.yaml`): the spec is validated with
    field paths for every error, its provider package and key are checked
    (missing ones become failures), its `tools` must be built-in tools, and any
    `mcpServers` command must be resolvable.
 6. Ollama reachability, only when the spec uses Ollama or `OLLAMA_HOST` is set.
 7. Docker availability, a warning only when the spec uses a sandboxed tool.
+8. With `--ping`: `GET <base>/models` for each provider whose variable is set
+   (OpenAI at `OPENAI_BASE_URL` when set, Anthropic, OpenRouter), with a 5 s
+   timeout. An unreachable server or a rejected key is a warning. Keys are sent
+   to their own provider only and never printed.
 
 The exit code is `1` if any check fails and `0` otherwise (warnings do not
 fail), so it can gate CI. Add `--json` for machine-readable output. Colour is
@@ -4208,7 +4213,7 @@ Run it with `npx lousho <command>` inside a project that has the SDK installed.
 | Command | What it does | Details |
 | ------- | ------------ | ------- |
 | `lousho init [dir]` | Scaffold a project: an agent with an example tool, an offline test, `.env.example`; installs dependencies and runs `git init`. | [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#scaffolding-a-new-project) |
-| `lousho doctor [spec] [--json]` | Check Node, peer packages, provider keys, and optionally a spec file; prints a fix for every problem. | [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#troubleshooting-lousho-doctor) |
+| `lousho doctor [spec] [--json] [--ping]` | Check Node, peer packages, provider keys, and optionally a spec file; `--ping` also checks each configured provider endpoint answers. Prints a fix for every problem. | [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#troubleshooting-lousho-doctor) |
 | `lousho dev <path>` | Local dev server for a spec file, an agent directory or a TS agent: chat UI with a session per tab and streamed events, hot reload on save. | [Below](#lousho-dev) |
 | `lousho chat <path>` | Terminal REPL for a spec file, an agent directory or a TS agent: streams replies, shows tool calls, asks for approvals and questions. | [Below](#lousho-chat) |
 | `lousho acp <path>` | Serve a spec file, an agent directory or a TS agent to an editor (Zed and other ACP clients) over the Agent Client Protocol on stdio. | [ACP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md) |
@@ -4233,7 +4238,7 @@ lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allo
 lousho build <agent-dir|spec> --target=<name> [--out=<dir>]    (or --agent=<path>)
 lousho studio [--port N] [--host H] [--prod|--dev]
 lousho mcp <agent.yaml|json> [--http --port N --host H]
-lousho doctor [agent.yaml|json] [--json]
+lousho doctor [agent.yaml|json] [--json] [--ping]
 lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts]
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
 ```
@@ -11889,6 +11894,75 @@ What maps, per call:
 private catalog) ahead of the built-in list. `pi` is Node-only: the
 `cloudflare-worker` target refuses `pi/...` specs and its bundle redirects
 the package to a coded shim.
+
+## Local and OpenAI-compatible servers
+
+LM Studio, Ollama's `/v1`, vLLM, llama.cpp's `llama-server` and hosted
+OpenAI-compatible APIs (Groq, DeepSeek, Together, ...) all speak the OpenAI
+wire format. Point `OpenAIProvider` at the server's `/v1` URL and pick the API
+it implements with `api`:
+
+```ts no-run
+import { createAgent, OpenAIProvider } from '@lousho/build-ai-agent';
+
+const agent = createAgent({
+  provider: new OpenAIProvider({
+    name: 'openai',
+    baseURL: 'http://localhost:1234/v1', // LM Studio
+    apiKey: 'any', // local servers ignore the key, but one is required
+    api: 'chat', // POST /v1/chat/completions
+    defaultModel: 'qwen3-8b',
+  }),
+  compaction: { contextWindow: 8_192 }, // the window the model is loaded with
+  instructions: 'You are a helpful assistant.',
+});
+```
+
+| Server | Base URL | API |
+| ------ | -------- | --- |
+| LM Studio | `http://localhost:1234/v1` | `'chat'` or `'responses'` |
+| Ollama | `http://localhost:11434/v1` | `'chat'` (or use the native `ollama/<model>` provider) |
+| vLLM (`vllm serve`) | `http://localhost:8000/v1` | `'chat'` |
+| llama.cpp (`llama-server`) | `http://localhost:8080/v1` | `'chat'` |
+
+- `api` defaults to `'responses'` (`POST /v1/responses`, what api.openai.com
+  serves). Most compatible servers implement only Chat Completions, and then a
+  call fails with a 404, so set `api: 'chat'`. With `'chat'` the built-in hosted
+  tools (`webSearch()`, `codeInterpreter()`, `fileSearch()`) are refused, since
+  they are Responses API tools; `hostedTool()` still passes through, and
+  `reasoning` sends only the effort (no `summary`).
+- The key is a dummy: the provider needs a non-empty `apiKey`, and local servers
+  ignore it.
+- Structured output: LM Studio's `/v1/responses` does not enforce the JSON
+  schema, so the model follows it from the prompt alone. Use `api: 'chat'`, which
+  sends the schema as `response_format`.
+- Set the context window. The model registry does not know local models, so
+  compaction assumes `128_000` tokens and warns once. Pass
+  `compaction: { contextWindow }`, or call
+  `registerModel({ id, provider: 'openai', contextWindow })` once (see
+  [Local and unknown models](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md#local-and-unknown-models)).
+
+**The `openai/<model>` string with `OPENAI_BASE_URL`.** `@ai-sdk/openai` reads
+`OPENAI_BASE_URL`, so `createAgent({ model: 'openai/qwen3-8b' })` with
+`OPENAI_BASE_URL=http://localhost:1234/v1` and a dummy `OPENAI_API_KEY=any`
+calls the local server without code changes. That route always uses the
+Responses API, so it works only with servers that implement `/v1/responses`
+(LM Studio does); for the others construct `OpenAIProvider` with `api: 'chat'`.
+
+**Any AI SDK model.** `fromAiSdk()` wraps a Chat Completions model built with
+`@ai-sdk/openai` directly (or `@ai-sdk/openai-compatible`, if you use it):
+
+```ts no-run
+import { createOpenAI } from '@ai-sdk/openai';
+import { createAgent, fromAiSdk } from '@lousho/build-ai-agent';
+
+const local = createOpenAI({ baseURL: 'http://localhost:8080/v1', apiKey: 'any' });
+const agent = createAgent({ provider: fromAiSdk(local.chat('qwen3-8b')), instructions: 'You are a helpful assistant.' });
+```
+
+`npx lousho doctor` shows `OPENAI_BASE_URL` when it is set, and
+`npx lousho doctor --ping` calls `GET <base>/models` on each configured
+provider to check that the server answers.
 
 ## Vercel AI SDK versions
 

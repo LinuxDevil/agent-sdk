@@ -7,7 +7,9 @@ import {
   checkDocker,
   checkNode,
   checkOllama,
+  checkOpenAIBaseUrl,
   checkOptionalPeers,
+  checkPings,
   checkRequiredPeers,
 } from './doctorChecks';
 import { inspectSpec } from './doctorSpec';
@@ -19,17 +21,26 @@ function summarize(checks: DoctorCheck[]): Record<CheckStatus, number> {
   return summary;
 }
 
+export interface DoctorOptions {
+  /** `--ping`: GET `<base>/models` for each configured provider. */
+  ping?: boolean;
+}
+
 /** Runs every check and returns the report; never throws for a bad setup. */
-export async function runDoctor(env: DoctorEnvironment): Promise<DoctorReport> {
+export async function runDoctor(env: DoctorEnvironment, options: DoctorOptions = {}): Promise<DoctorReport> {
   const spec = inspectSpec(env);
   const ollama = await checkOllama(env, spec.needs);
   const docker = await checkDocker(env, spec.needs);
+  const baseUrl = checkOpenAIBaseUrl(env);
+  const pings = options.ping ? await checkPings(env) : [];
 
   const checks: DoctorCheck[] = [
     checkNode(env),
     ...checkRequiredPeers(env),
     ...checkOptionalPeers(env, spec.needs),
     ...checkApiKeys(env, spec.needs),
+    ...(baseUrl ? [baseUrl] : []),
+    ...pings,
     ...spec.checks,
     ...(ollama ? [ollama] : []),
     docker,

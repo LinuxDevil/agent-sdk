@@ -46,7 +46,7 @@ export interface DoctorEnvironment {
   resolveTool(name: string): { requiresSandbox?: boolean };
   /** True when `command` is an existing file or is found on PATH. */
   commandExists(command: string): boolean;
-  fetch(url: string, init: { signal: AbortSignal }): Promise<{ ok: boolean; status: number }>;
+  fetch(url: string, init: { signal: AbortSignal; headers?: Record<string, string> }): Promise<{ ok: boolean; status: number }>;
   /** True when a Docker daemon answers a ping. */
   dockerReachable(): Promise<boolean>;
 }

@@ -1,5 +1,5 @@
 /**
- * `lousho doctor [agent.yaml|json] [--json]` - first-run diagnostic.
+ * `lousho doctor [agent.yaml|json] [--json] [--ping]` - first-run diagnostic.
  *
  * Thin wrapper over the pure core in doctorCore.ts: builds the real
  * DoctorEnvironment (process, fs, module resolution, fetch, Docker),
@@ -21,18 +21,25 @@ const DOCKER_TIMEOUT_MS = 2000;
 export interface DoctorArgs {
   specPath?: string;
   json: boolean;
+  /** `--ping`: GET `<base>/models` for each configured provider. */
+  ping?: boolean;
   /** `-h` / `--help` was given: print the usage, run nothing. */
   help?: boolean;
 }
 
-const USAGE = 'Usage: lousho doctor [agent.yaml|json] [--json]';
+const USAGE = 'Usage: lousho doctor [agent.yaml|json] [--json] [--ping]';
 
-const SPEC: CommandSpec = { command: 'doctor', usage: USAGE, positionals: 1, options: { json: { type: 'boolean' } } };
+const SPEC: CommandSpec = {
+  command: 'doctor',
+  usage: USAGE,
+  positionals: 1,
+  options: { json: { type: 'boolean' }, ping: { type: 'boolean' } },
+};
 
 /** Parses `lousho doctor` arguments; throws `LOUSHO_CONFIG_INVALID` for an unknown flag or a second path. */
 export function parseDoctorArgs(argv: string[]): DoctorArgs {
   const { values, positionals, help } = parseCommand(SPEC, argv);
-  return { specPath: positionals[0], json: values.json === true, help: help || undefined };
+  return { specPath: positionals[0], json: values.json === true, ping: values.ping === true || undefined, help: help || undefined };
 }
 
 /** Walks up from a resolved entry file to the package.json named `name`. */
@@ -119,7 +126,7 @@ export async function runDoctorCommand(
     write(USAGE);
     return 0;
   }
-  const report = await runDoctor(env ?? buildEnvironment(args));
+  const report = await runDoctor(env ?? buildEnvironment(args), { ping: args.ping });
   const color = process.stdout.isTTY === true && !process.env.NO_COLOR;
   write(args.json ? renderJson(report) : renderReport(report, { color }));
   return report.exitCode;
