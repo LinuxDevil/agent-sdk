@@ -82,7 +82,7 @@ import {
 import { AgentRun, RUN_EVENTS, StreamingExecuteOptions, observeRun, partialSink, runEventsOf, startAgentRun } from './agentRun';
 import type { AgentEvent } from './agentEvents';
 import { withSteerSignal, type InputQueue } from './inputQueue';
-import { OutputError, outputInstruction, outputRepairMessage, validateOutput } from './structuredOutput';
+import { assertOutputSchema, OutputError, outputInstruction, outputRepairMessage, validateOutput } from './structuredOutput';
 import { PLAN_MODE_INSTRUCTION, permissionModeOf, type PermissionOptions } from './permissions';
 import { assertToolSearchOptions, withToolSearch, type ToolSearchOptions } from './toolSearch';
 import { withDeferral } from './toolDeferral';
@@ -661,6 +661,14 @@ export interface ExecutionResult<TObject = unknown> {
   object?: TObject;
   /** LOU-V4: why the final reply did not match `output` (`finishReason: 'output-invalid'`). */
   outputError?: OutputError;
+  /**
+   * Audit invoice F6: `true` when `object` came from the repair step - the
+   * first reply did not validate, and the model answered again. The repair
+   * may change values to satisfy the schema (a refinement such as
+   * `total = subtotal + tax` can make it rewrite a total), so check business
+   * rules on `object` yourself. Absent when the first reply validated.
+   */
+  outputRepaired?: true;
   /** LOU-Y4.2: the run's background sub-agents and their final statuses; absent when it started none. */
   backgroundTasks?: BackgroundTaskView[];
   /** LOU-V6: the limit that ended the run (`finishReason: 'budget-exceeded'`). */
@@ -897,7 +905,8 @@ export class AgentExecutor {
           repaired = true;
           continue;
         }
-        return this.finishRun(options, state, output);
+        // Audit invoice F6: the object came from the repair step, which may have changed values to make it validate.
+        return this.finishRun(options, state, repaired && output && 'object' in output ? { ...output, outputRepaired: true } : output);
       }
       if (typeof outcome !== 'string') {
         return outcome;
@@ -972,11 +981,11 @@ export class AgentExecutor {
     const checked = await validateOutput(options.output, state.finalText);
     if ('object' in checked) return checked;
     if (canRepair) {
-      state.messages.push(outputRepairMessage(checked.outputError));
+      state.messages.push(outputRepairMessage(options.output, checked));
       return 'repair';
     }
     state.finishReason = 'output-invalid';
-    return checked;
+    return { outputError: checked.outputError };
   }
 
   /**
@@ -1689,7 +1698,7 @@ export class AgentExecutor {
   private static async finishRun(
     options: ExecuteOptions,
     state: AgentRunState,
-    output?: Pick<ExecutionResult, 'object' | 'outputError'>
+    output?: Pick<ExecutionResult, 'object' | 'outputError' | 'outputRepaired'>
   ): Promise<ExecutionResult> {
     // LOU-T4: `maxSteps` was exhausted, but the very last thing that
     // happened was a surfaced-to-the-model provider failure (not a genuine
@@ -1796,5 +1805,6 @@ export class AgentExecutor {
     assertToolConcurrency(options.toolConcurrency, caller);
     assertMaxSubagentDepth(options.maxSubagentDepth, caller);
     assertToolSearchOptions(options.toolSearch, caller);
+    assertOutputSchema(options.output);
   }
 }

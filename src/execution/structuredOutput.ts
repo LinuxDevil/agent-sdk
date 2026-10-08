@@ -7,7 +7,8 @@
 import { zodSchema } from 'ai';
 import type { GenerateOptions, Message } from '../providers';
 import { formatIssues, parseWithIssues, type ToolArgumentIssue } from './toolArgsValidation';
-import { schemaToJsonSchema, type StandardSchemaV1 } from '../utils/zodCompat';
+import { schemaToJsonSchema, unrepresentableDates, type StandardSchemaV1 } from '../utils/zodCompat';
+import { ConfigurationError } from './errors';
 
 /** Why a run's final reply is not a valid `output` object (`finishReason: 'output-invalid'`). */
 export interface OutputError {
@@ -186,14 +187,70 @@ interface OutputJsonSchemas {
 function jsonSchemasOf(schema: StandardSchemaV1): OutputJsonSchemas {
   let json = jsonSchemas.get(schema);
   if (!json) {
+    assertNoDates(schema);
     const converted = schemaToJsonSchema(schema) ?? (zodSchema(schema as never).jsonSchema as Record<string, unknown>);
     const original = structuredClone(converted);
     const strict = structuredClone(converted);
     closeObjectSchemas(strict);
+    // After closing: a typed root union must not get `additionalProperties: false` of its own.
+    typeRootUnion(strict);
     json = { strict, original };
     jsonSchemas.set(schema, json);
   }
   return json;
+}
+
+/**
+ * Audit invoice F8: a zod 4 `z.date()` has no JSON form - it was sent as
+ * `{}` and no JSON reply could ever validate it. Throws a
+ * ConfigurationError naming each such field.
+ */
+function assertNoDates(schema: StandardSchemaV1): void {
+  const paths = unrepresentableDates(schema);
+  if (paths.length === 0) return;
+  throw new ConfigurationError(
+    `output: ${paths.map((path) => `'${path}'`).join(', ')} ${paths.length === 1 ? 'is a' : 'are'} z.date(), which JSON cannot carry, ` +
+      'so no reply could validate. Use z.iso.date() or z.iso.datetime() (an ISO string), ' +
+      'or z.iso.datetime().pipe(z.coerce.date()) for a Date.',
+    'output'
+  );
+}
+
+/** Whether `branch` (of `root`) is, or `$ref`s, an object schema. */
+function isObjectBranch(branch: unknown, root: unknown): boolean {
+  const node = isRecord(branch) && typeof branch.$ref === 'string' ? resolveRef(root, branch.$ref) : branch;
+  return isRecord(node) && isObjectSchemaNode(node);
+}
+
+/**
+ * Audit invoice F7: a root-level union (`z.union`, `z.discriminatedUnion`)
+ * converts to a bare `anyOf` with no `type`, and models answered it by
+ * echoing the schema. A union of objects gets `type: 'object'` at the root;
+ * one with another branch throws a ConfigurationError, since the final
+ * answer must be a JSON object.
+ */
+function typeRootUnion(root: Record<string, unknown>): void {
+  if (root.type !== undefined) return;
+  const branches = Array.isArray(root.anyOf) ? root.anyOf : Array.isArray(root.oneOf) ? root.oneOf : undefined;
+  if (!branches) return;
+  if (!branches.every((branch) => isObjectBranch(branch, root))) {
+    throw new ConfigurationError(
+      'output: the schema is a union at the root with a branch that is not an object, but the final answer must be a JSON object. ' +
+        'Wrap it: z.object({ result: z.union([...]) }).',
+      'output'
+    );
+  }
+  root.type = 'object';
+}
+
+/**
+ * Throws a ConfigurationError when `schema` cannot be used as `output` (a
+ * `z.date()` field, a root union with a non-object branch), so
+ * `createAgent()` and `AgentExecutor.execute()` fail at once rather than
+ * on the first model call.
+ */
+export function assertOutputSchema(schema: StandardSchemaV1 | undefined): void {
+  if (schema) jsonSchemasOf(schema);
 }
 
 function jsonSchemaOf(schema: StandardSchemaV1): Record<string, unknown> {
@@ -222,20 +279,105 @@ function unfence(text: string): string {
   return /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed)?.[1] ?? trimmed;
 }
 
-/** Parses the final reply as JSON and validates it with `schema`. */
-export async function validateOutput(
-  schema: StandardSchemaV1,
-  text: string
-): Promise<{ object: unknown } | { outputError: OutputError }> {
-  let value: unknown;
-  try {
-    value = JSON.parse(unfence(text));
-  } catch (error) {
-    const issues = [{ path: '(root)', message: `Not valid JSON: ${(error as Error).message}` }];
-    return { outputError: { message: `The reply is not a JSON object: ${formatIssues(issues)}`, issues } };
+/** `text` without `<think>`/`<thinking>` blocks, and without what precedes a stray closing tag. */
+function withoutThinking(text: string): string {
+  const stripped = text.replace(/<(think|thinking)>[\s\S]*?<\/\1>/gi, '');
+  const close = /<\/think(?:ing)?>/gi;
+  let end = -1;
+  for (let match = close.exec(stripped); match; match = close.exec(stripped)) end = match.index + match[0].length;
+  return end < 0 ? stripped : stripped.slice(end);
+}
+
+/** How many opening brackets {@link balancedSlices} tries before it gives up on a long prose reply. */
+const MAX_JSON_STARTS = 20;
+
+/**
+ * Each balanced `{...}`/`[...]` substring of `text`, left to right. The
+ * caller passes `true` to `next()` when the last one parsed as JSON, and
+ * the search goes on after it rather than inside it.
+ */
+function* balancedSlices(text: string): Generator<string, void, boolean | undefined> {
+  let starts = 0;
+  for (let start = 0; start < text.length && starts < MAX_JSON_STARTS; start++) {
+    if (text[start] !== '{' && text[start] !== '[') continue;
+    starts++;
+    const end = balancedEnd(text, start);
+    if (end < 0) continue;
+    const parsed = yield text.slice(start, end + 1);
+    if (parsed) start = end;
   }
-  // Audit A6: `null` for an optional key (made nullable for strict endpoints) means the key is absent.
-  const { original } = jsonSchemasOf(schema);
+}
+
+/** The index of the bracket that closes the one at `start` (strings and escapes respected), else -1. */
+function balancedEnd(text: string, start: number): number {
+  const closers: string[] = [];
+  let inString = false;
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+    if (inString) {
+      if (char === '\\') i++;
+      else if (char === '"') inString = false;
+    } else if (char === '"') inString = true;
+    else if (char === '{') closers.push('}');
+    else if (char === '[') closers.push(']');
+    else if (char === '}' || char === ']') {
+      if (closers.pop() !== char) return -1;
+      if (closers.length === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function tryParse(text: string): { value: unknown } | undefined {
+  try {
+    return { value: JSON.parse(text) };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The JSON values a final reply holds, best first (audit log F8): the whole
+ * reply (a code fence around it tolerated). Only when that is not JSON - a
+ * near miss - then, with `<think>` blocks removed: the rest, each fenced
+ * block, and each balanced object or array. A prose prefix, trailing prose
+ * or a reasoning block then validates without a repair call.
+ */
+function* jsonCandidates(text: string): Generator<unknown> {
+  const whole = tryParse(unfence(text));
+  if (whole) {
+    yield whole.value;
+    return;
+  }
+  const body = withoutThinking(text);
+  const tried = new Set<string>();
+  const parse = (slice: string): { value: unknown } | undefined => {
+    if (tried.has(slice)) return undefined;
+    tried.add(slice);
+    return tryParse(slice);
+  };
+  const fenced = [...body.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map((match) => match[1].trim());
+  for (const slice of [unfence(body), ...fenced]) {
+    const parsed = parse(slice);
+    if (parsed) yield parsed.value;
+  }
+  const slices = balancedSlices(body);
+  for (let next = slices.next(); !next.done; ) {
+    const parsed = parse(next.value);
+    if (parsed) yield parsed.value;
+    next = slices.next(parsed !== undefined);
+  }
+}
+
+/** A reply that does not validate: why, and whether it was the JSON Schema itself (audit docs-qa F9). */
+export interface OutputFailure {
+  outputError: OutputError;
+  schemaEcho?: true;
+}
+
+/** Validates one parsed reply with `schema` (audit A6: an optional key sent as `null` is absent). */
+async function validateValue(schema: StandardSchemaV1, value: unknown): Promise<{ object: unknown } | OutputFailure> {
+  const { original, strict } = jsonSchemasOf(schema);
   const cleaned = structuredClone(value);
   dropOptionalNulls(cleaned, original, original);
   let result = await parseWithIssues(schema, cleaned);
@@ -244,14 +386,110 @@ export async function validateOutput(
     if (raw.success) result = raw;
   }
   if (result.success) return { object: result.data };
+  if (isSchemaEcho(value, strict)) {
+    const issues = [{ path: '(root)', message: 'This is the output JSON Schema itself, not an answer that follows it' }];
+    return { outputError: { message: `The reply is the JSON Schema, not data: ${formatIssues(issues)}`, issues }, schemaEcho: true };
+  }
   const message = `The reply does not match the output schema: ${formatIssues(result.issues)}`;
   return { outputError: { message, issues: result.issues } };
 }
 
-/** The user message of the one repair step: the issues, and the ask to answer again. */
-export function outputRepairMessage(error: OutputError): Message {
+/**
+ * Parses the final reply as JSON - or the JSON in a near miss, see
+ * {@link jsonCandidates} - and validates it with `schema`. The first
+ * candidate that validates wins; otherwise the issues are the first
+ * parsed candidate's.
+ */
+export async function validateOutput(
+  schema: StandardSchemaV1,
+  text: string
+): Promise<{ object: unknown } | OutputFailure> {
+  let first: OutputFailure | undefined;
+  for (const value of jsonCandidates(text)) {
+    const checked = await validateValue(schema, value);
+    if ('object' in checked) return checked;
+    first ??= checked;
+  }
+  if (first) return first;
+  let reason = 'no JSON found';
+  try {
+    JSON.parse(unfence(text));
+  } catch (error) {
+    reason = (error as Error).message;
+  }
+  const issues = [{ path: '(root)', message: `Not valid JSON: ${reason}` }];
+  return { outputError: { message: `The reply is not a JSON object: ${formatIssues(issues)}`, issues } };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Whether `value` is the sent JSON Schema echoed back (audit docs-qa F9): a
+ * `$schema` key, or a `properties` map of subschemas over the schema's own
+ * property names next to an object `type` or a `required` list.
+ */
+function isSchemaEcho(value: unknown, sent: Record<string, unknown>): boolean {
+  if (!isRecord(value)) return false;
+  if (typeof value.$schema === 'string') return true;
+  const { properties } = value;
+  const sentProperties = sent.properties;
+  if (!isRecord(properties) || !isRecord(sentProperties)) return false;
+  if (value.type !== 'object' && !Array.isArray(value.required)) return false;
+  const keys = Object.keys(properties);
+  return keys.length > 0 && keys.every((key) => Object.hasOwn(sentProperties, key) && isRecord(properties[key]));
+}
+
+/** How deep {@link exampleOf} renders nested and recursive schemas before it writes `null`. */
+const MAX_EXAMPLE_DEPTH = 8;
+
+/** The placeholder {@link exampleOf} writes for each JSON type. */
+const EXAMPLE_VALUES: Record<string, unknown> = { string: '<string>', number: 0, integer: 0, boolean: true, null: null };
+
+/** An example instance of `node` (a subschema of `root`): the shape to answer with, placeholders for the values. */
+function exampleOf(node: unknown, root: unknown, depth = 0): unknown {
+  if (!isRecord(node) || depth > MAX_EXAMPLE_DEPTH) return null;
+  if (typeof node.$ref === 'string') return exampleOf(resolveRef(root, node.$ref), root, depth + 1);
+  if ('const' in node) return node.const;
+  if (Array.isArray(node.enum)) return node.enum[0];
+  for (const member of ['anyOf', 'oneOf', 'allOf']) {
+    const branches = node[member];
+    if (!Array.isArray(branches) || branches.length === 0) continue;
+    const branch = branches.find((item) => !(isRecord(item) && item.type === 'null')) ?? branches[0];
+    return exampleOf(branch, root, depth + 1);
+  }
+  const type = Array.isArray(node.type) ? (node.type.find((item) => item !== 'null') ?? 'null') : node.type;
+  if (type === 'array') {
+    const tuple = Array.isArray(node.prefixItems) ? node.prefixItems : Array.isArray(node.items) ? node.items : undefined;
+    return tuple ? tuple.map((item) => exampleOf(item, root, depth + 1)) : [exampleOf(node.items, root, depth + 1)];
+  }
+  if (type === 'object' || isObjectSchemaNode(node)) {
+    const properties = isRecord(node.properties) ? node.properties : {};
+    return Object.fromEntries(Object.entries(properties).map(([key, sub]) => [key, exampleOf(sub, root, depth + 1)]));
+  }
+  if (type === 'string' && node.format === 'date') return '2026-01-31';
+  if (type === 'string' && node.format === 'date-time') return '2026-01-31T12:00:00Z';
+  return typeof type === 'string' && type in EXAMPLE_VALUES ? EXAMPLE_VALUES[type] : null;
+}
+
+/**
+ * The user message of the one repair step: the issues, and the ask to
+ * answer again. When the reply echoed the JSON Schema (audit docs-qa F9),
+ * it says so and shows an example instance rather than the schema again.
+ */
+export function outputRepairMessage(schema: StandardSchemaV1, failure: OutputFailure): Message {
+  if (failure.schemaEcho) {
+    const sent = jsonSchemaOf(schema);
+    return {
+      role: 'user',
+      content:
+        '[output-invalid] Your reply is the JSON Schema itself. Do not repeat the schema: reply with only a JSON object ' +
+        `holding your actual answer, shaped like this example (placeholders for the values): ${JSON.stringify(exampleOf(sent, sent))}`,
+    };
+  }
   return {
     role: 'user',
-    content: `[output-invalid] ${error.message}. Reply again with only the corrected JSON object.`,
+    content: `[output-invalid] ${failure.outputError.message}. Reply again with only the corrected JSON object.`,
   };
 }

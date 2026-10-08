@@ -2204,6 +2204,7 @@ export interface ExecutionResult<TObject = unknown> {
     messages: Message[];
     object?: TObject;
     outputError?: OutputError;
+    outputRepaired?: true;
     reasoning?: string;
     // (undocumented)
     steps: number;
@@ -3205,11 +3206,11 @@ const ItemSchema: z.ZodObject<{
         path: z.ZodString;
         content: z.ZodString;
     }, "strip", z.ZodTypeAny, {
-        content: string;
         path: string;
+        content: string;
     }, {
-        content: string;
         path: string;
+        content: string;
     }>, "many">;
     permissions: z.ZodDefault<z.ZodObject<{
         network: z.ZodOptional<z.ZodArray<z.ZodEffects<z.ZodString, string, string>, "many">>;
@@ -3243,8 +3244,8 @@ const ItemSchema: z.ZodObject<{
         exec?: boolean | undefined;
     };
     files: {
-        content: string;
         path: string;
+        content: string;
     }[];
     dependencies?: string[] | undefined;
 }, {
@@ -3252,8 +3253,8 @@ const ItemSchema: z.ZodObject<{
     type: "tool" | "memory" | "skill" | "channel" | "schedule" | "kit";
     description: string;
     files: {
-        content: string;
         path: string;
+        content: string;
     }[];
     permissions?: {
         env?: string[] | undefined;
@@ -7063,11 +7064,11 @@ const writeFileInput: z.ZodObject<{
     path: z.ZodString;
     content: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    content: string;
     path: string;
+    content: string;
 }, {
-    content: string;
     path: string;
+    content: string;
 }>;
 
 // Warnings were encountered during analysis:

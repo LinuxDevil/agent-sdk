@@ -69,6 +69,28 @@ export function schemaToJsonSchema(schema: unknown): Record<string, unknown> | u
   return standardJsonSchema(schema)?.({ target: 'draft-07' });
 }
 
+/**
+ * The paths (`items[].due`) of each `z.date()` in a zod 4 schema, which
+ * {@link schemaToJsonSchema} renders as `{}` (audit invoice F8). A
+ * `z.coerce.date()` is not listed: it accepts the string a model writes.
+ */
+export function unrepresentableDates(schema: unknown): string[] {
+  if (!isZod4Schema(schema)) return [];
+  const paths: string[] = [];
+  toJSONSchema(schema, {
+    target: 'draft-7',
+    io: 'input',
+    unrepresentable: 'any',
+    override: ({ zodSchema, path }) => {
+      const def = zodSchema._zod.def as { type: string; coerce?: boolean };
+      if (def.type !== 'date' || def.coerce) return;
+      const parts = path.filter((part) => part !== 'properties' && part !== 'anyOf' && part !== 'oneOf' && typeof part !== 'number');
+      paths.push(parts.map(String).join('.').replace(/\.items/g, '[]').replace(/^items/, '[]') || '(root)');
+    },
+  });
+  return paths.sort();
+}
+
 /** Whether a schema can be sent to a model: zod 3, zod 4, or a Standard JSON Schema. */
 export function isModelSchema(value: unknown): boolean {
   return isZod3Schema(value) || isZod4Schema(value) || standardJsonSchema(value) !== undefined;

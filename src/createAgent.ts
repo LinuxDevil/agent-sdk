@@ -60,6 +60,7 @@ import { createAgentOAuth, type AgentOAuth } from './oauth/agentOAuth';
 import type { OAuthTokenStore } from './oauth/types';
 import { assertPermissionMode, type PermissionMode, type PermissionOptions } from './execution/permissions';
 import { assertToolSearchOptions, type ToolSearchOptions } from './execution/toolSearch';
+import { assertOutputSchema } from './execution/structuredOutput';
 import { assertCodeModeOptions, codeModeOption, type CodeModeOptions } from './execution/codeMode';
 import type { InferSchemaOutput, StandardSchemaV1 } from './utils/zodCompat';
 import type { McpServerSpec } from './spec/schema';
@@ -761,6 +762,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   if (typeof config.permissionMode === 'string') assertPermissionMode(config.permissionMode, 'createAgent');
   assertMaxHandoffs(config.maxHandoffs);
   assertToolSearchOptions(config.toolSearch, 'createAgent');
+  assertOutputSchema(config.output);
   assertCodeModeOptions(config.codeMode, 'createAgent');
   const agentName = config.name || 'agent';
   const handoffTools = checkHandoffs(config.handoffs, { name: agentName }, 'createAgent').map((checked) => checked.toolName);

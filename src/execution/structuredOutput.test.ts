@@ -283,3 +283,94 @@ describe('structured output with optional fields (audit A6)', () => {
     expect(result.outputError?.issues[0].path).toBe('city');
   });
 });
+
+describe('structured output near misses and repair (audit log F8, docs-qa F9, invoice F6-F8)', () => {
+  const J = '{"city":"Paris","tempC":21}';
+
+  it.each([
+    ['a prose prefix', `Here is the weather report:\n${J}`],
+    ['trailing prose after a fenced block', '```json\n' + J + '\n```\nLet me know if you need more detail.'],
+    ['a <think> block before the JSON', `<think>Paris is {mild} today.</think>\n${J}`],
+    ['a stray closing </think> tag', `Paris is {mild} today.</think>${J}`],
+    ['prose with braces before the JSON', `The {city} key holds the name: ${J} done.`],
+  ])('takes the JSON out of %s without a repair call', async (_name, reply) => {
+    const model = mockModel([reply]);
+    const result = await createAgent({ provider: model, output: weather }).send('Weather in Paris?');
+
+    expect(model.calls).toHaveLength(1);
+    expect(result.object).toEqual({ city: 'Paris', tempC: 21 });
+    expect(result.finishReason).toBe('stop');
+    expect(result.text).toBe(reply);
+    expect(result.outputRepaired).toBeUndefined();
+  });
+
+  it('reports the issues of the extracted JSON when it does not validate', async () => {
+    const model = mockModel(['Sure! {"city":"Paris","tempC":"warm"} hope that helps', J]);
+    const result = await createAgent({ provider: model, output: weather }).send('go');
+
+    expect(model.calls[1].messages.at(-1)?.content).toContain('tempC: Expected number, received string');
+    expect(result.object).toEqual({ city: 'Paris', tempC: 21 });
+  });
+
+  it('marks an object that came from the repair step: outputRepaired', async () => {
+    const result = await createAgent({ provider: mockModel(['{"city":"Paris"}', J]), output: weather }).send('go');
+
+    expect(result.object).toEqual({ city: 'Paris', tempC: 21 });
+    expect(result.outputRepaired).toBe(true);
+  });
+
+  it('detects a JSON Schema echo and answers it with an example instance, not the schema', async () => {
+    const echo = '{"type":"object","properties":{"city":{"type":"string"},"tempC":{"type":"number"}},"required":["city","tempC"]}';
+    const model = mockModel([echo, J]);
+    const result = await createAgent({ provider: model, output: weather }).send('go');
+
+    const repair = model.calls[1].messages.at(-1)?.content as string;
+    expect(repair).toMatch(/^\[output-invalid\] Your reply is the JSON Schema itself\./);
+    expect(repair).toContain('{"city":"<string>","tempC":0}');
+    expect(repair).not.toContain('"properties"');
+    expect(result.object).toEqual({ city: 'Paris', tempC: 21 });
+  });
+
+  it('reports a schema echo as outputError when the repair echoes it again', async () => {
+    const echo = '{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{}}';
+    const result = await createAgent({ provider: mockModel([echo, echo]), output: weather }).send('go');
+
+    expect(result.finishReason).toBe('output-invalid');
+    expect(result.outputError).toEqual({
+      message: 'The reply is the JSON Schema, not data: 1 issue ((root): This is the output JSON Schema itself, not an answer that follows it)',
+      issues: [{ path: '(root)', message: 'This is the output JSON Schema itself, not an answer that follows it' }],
+    });
+  });
+
+  it('sends a root union of objects with type: object (and no closing of the root)', async () => {
+    const output = z4.union([z4.object({ kind: z4.literal('a'), a: z4.string() }), z4.object({ kind: z4.literal('b'), b: z4.number() })]);
+    const model = mockModel(['{"kind":"b","b":2}']);
+    const result = await createAgent({ provider: model, output }).send('go');
+
+    const schema = model.calls[0].responseFormat?.schema as Record<string, unknown>;
+    expect(schema.type).toBe('object');
+    expect(schema.anyOf).toHaveLength(2);
+    expect(schema).not.toHaveProperty('additionalProperties');
+    expect(result.object).toEqual({ kind: 'b', b: 2 });
+  });
+
+  it('rejects a root union with a non-object branch at config time', () => {
+    expect(() => createAgent({ provider: mockModel([]), output: z4.union([z4.object({ a: z4.string() }), z4.string()]) })).toThrow(
+      /union at the root with a branch that is not an object.*z\.object\(\{ result: z\.union/
+    );
+  });
+
+  it('rejects z.date() in an output schema at config time, naming the field', () => {
+    const output = z4.object({ issued: z4.date(), lines: z4.array(z4.object({ due: z4.date().optional() })), ok: z4.coerce.date() });
+    expect(() => createAgent({ provider: mockModel([]), output })).toThrow(
+      "output: 'issued', 'lines[].due' are z.date(), which JSON cannot carry, so no reply could validate. Use z.iso.date()"
+    );
+  });
+
+  it('AgentExecutor.execute() rejects z.date() output schemas too', async () => {
+    const { AgentExecutor } = await import('./AgentExecutor');
+    const { AgentBuilder } = await import('../core');
+    const agent = AgentBuilder.create().setName('a').setPrompt('p').build();
+    expect(() => AgentExecutor.stream({ agent, input: 'go', provider: mockModel([]), output: z4.object({ d: z4.date() }) })).toThrow(/'d' is a z\.date\(\)/);
+  });
+});
