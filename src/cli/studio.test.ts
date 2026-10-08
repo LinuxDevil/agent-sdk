@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { startStudio, resolveAgentForgeDir } from './studio';
+import { startStudio, resolveAgentForgeDir, studioUrl } from './studio';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-studio-test-'));
 
@@ -113,6 +113,22 @@ describe('startStudio', () => {
     } finally {
       handle.stop();
     }
+  });
+
+  it('mints a per-launch token, hands it to the child and puts it in the printed URL (Eve DUI-F1)', async () => {
+    const repoRoot = tmp();
+    const packageRoot = tmp();
+    const out = path.join(tmp(), 'token.txt');
+    makeApp(packageRoot, `require('node:fs').writeFileSync(${JSON.stringify(out)}, process.env.LOUSHO_STUDIO_TOKEN);`);
+    const handle = startStudio({ repoRoot, packageRoot, apiPort: 0 });
+    try {
+      expect(handle.token).toMatch(/^[A-Za-z0-9_-]{32}$/);
+      expect(await waitForFile(out)).toBe(handle.token);
+    } finally {
+      handle.stop();
+    }
+    expect(studioUrl('0.0.0.0', 4750, 'abc')).toBe('http://127.0.0.1:4750/?token=abc');
+    expect(studioUrl('127.0.0.1', 5000, 'a+b')).toBe('http://127.0.0.1:5000/?token=a%2Bb');
   });
 
   // Actually spawning the real API server + Vite dev server child processes

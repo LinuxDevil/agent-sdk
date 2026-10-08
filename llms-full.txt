@@ -1814,7 +1814,7 @@ npx lousho studio
 ```
 
 This starts one local server and prints its URL (default
-`http://127.0.0.1:4750`). Open it in a browser - you'll see the canvas,
+`http://127.0.0.1:4750/?token=<random>`). Open that exact URL in a browser - you'll see the canvas,
 the left rail (your saved agents + a node/hook palette), the Inspector
 (right), and a bottom drawer with Chat/Logs/Trace/Output/Settings tabs.
 
@@ -1827,7 +1827,25 @@ npx lousho studio --prod            # force production mode (see below)
 npx lousho studio --dev             # force dev mode (monorepo only)
 ```
 
-Agent specs and run state are stored under `.lousho/` in the directory you
+### Access token
+
+The studio can store provider keys, start runs and execute hook code, so its
+API is locked to the browser tab you opened from the printed URL:
+
+- Each launch mints a random token and prints it in the URL (`?token=...`).
+  The page keeps it for that tab (it survives a reload) and sends it on
+  every API call (`x-lousho-studio-token` header) and on the WebSocket
+  (`?token=` query). A request without it gets `401`. Opening the bare
+  `http://127.0.0.1:4750` in a new tab loads the page, but its API calls
+  fail until you use the printed URL.
+- The server sends no CORS headers and refuses (`403`) a request whose
+  `Origin` is not the studio's own, or whose `Host` is not a loopback name
+  (`localhost`, `127.0.0.1`, `[::1]`) or the `--host` you bound to. With
+  `--host 0.0.0.0` any `Host` is accepted and the token is the only gate.
+- `GET /health` and the static client need no token.
+
+From `curl`, pass the token: `curl -H "x-lousho-studio-token: $TOKEN" localhost:4750/agents`.
+
 ran `lousho studio` from (agent YAML files under `.lousho/agents/`,
 checkpoints and approvals alongside them) - the same `.lousho/` layout
 `lousho dev`/`lousho build` use.
@@ -2010,14 +2028,15 @@ an agent's saved traces (the Trace tab uses them):
 The flow, for an agent `weather` that has run once:
 
 ```bash
-curl localhost:4750/runs/weather/history
+# $TOKEN is the ?token= value `lousho studio` printed
+curl -H "x-lousho-studio-token: $TOKEN" localhost:4750/runs/weather/history
 # {"runId":"weather","steps":[{"step":1,"status":"finished","finishReason":"stop","toolCalls":[],"tokens":...}]}
 
-curl -X POST localhost:4750/runs/weather/fork -H 'content-type: application/json' \
+curl -X POST localhost:4750/runs/weather/fork -H "x-lousho-studio-token: $TOKEN" -H 'content-type: application/json' \
   -d '{"fromStep":1,"patch":{"appendInput":"And in Celsius?"}}'
 # {"runId":"weather.fork-1","fromStep":1,"status":{"status":"running",...}}
 
-curl 'localhost:4750/runs/compare?a=weather&b=weather.fork-1'
+curl -H "x-lousho-studio-token: $TOKEN" 'localhost:4750/runs/compare?a=weather&b=weather.fork-1'
 # {"a":[...],"b":[...],"divergedAt":2,"drift":[{"field":"steps","committed":"1","current":"2"}]}
 ```
 
@@ -2052,7 +2071,8 @@ npx lousho studio --dev   # or just `npx lousho studio` before building
 
 This runs the API server straight from TypeScript (`tsx`) and a real Vite
 dev server with hot-module reload for `apps/agent-forge/src/**`, as two
-sibling processes. To build the production bundle used by everyone else
+sibling processes. Open the printed `http://localhost:5173/?token=...` URL; Vite
+is pinned to port 5173 and the API server accepts that origin. To build the production bundle used by everyone else
 (and to verify what actually ships):
 
 ```bash
@@ -4493,7 +4513,7 @@ Workers limits are in [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/
 ## `lousho studio`
 
 ```bash
-npx lousho studio            # http://127.0.0.1:4750
+npx lousho studio            # prints http://127.0.0.1:4750/?token=<per-launch token>
 npx lousho studio --port 5000
 ```
 

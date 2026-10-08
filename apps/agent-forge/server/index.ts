@@ -17,11 +17,16 @@ import { FileCheckpointStore } from './checkpointStore';
 import { FileApprovalStore } from './approvalStore';
 import { SecretsStore } from './secretsStore';
 import { SettingsStore } from './settingsStore';
+import { STUDIO_ALLOWED_ORIGINS_ENV, STUDIO_TOKEN_ENV, allowedHostsFor, mintStudioToken } from './auth';
 
 export interface StudioServerHandle {
   server: http.Server;
   port: number;
   runManager: RunManager;
+  /** Eve DUI-F1: the per-launch token every API/WebSocket request must carry. */
+  token: string;
+  /** The URL to open: the studio's own origin with `?token=` appended. */
+  url: string;
   close: () => Promise<void>;
 }
 
@@ -41,6 +46,12 @@ export interface StartStudioServerOptions {
    * itself serves the UI).
    */
   staticDir?: string | false;
+  /**
+   * Eve DUI-F1: the per-launch API token. Defaults to the
+   * `LOUSHO_STUDIO_TOKEN` env var (set by `lousho studio`), else a freshly
+   * minted random one.
+   */
+  token?: string;
 }
 
 async function listen(server: http.Server, port: number, host: string): Promise<void> {
@@ -86,16 +97,23 @@ export async function startStudioServer(
     settingsStore,
   });
 
-  const app = createApp({ agentStore, runManager, baseDir, secretsStore, settingsStore, staticDir });
+  const token = options.token ?? (process.env[STUDIO_TOKEN_ENV] || mintStudioToken());
+  const allowedOrigins = (process.env[STUDIO_ALLOWED_ORIGINS_ENV] ?? '').split(',').filter(Boolean);
+  const access = { token, allowedHosts: allowedHostsFor(host), allowedOrigins };
+  const app = createApp({ agentStore, runManager, baseDir, secretsStore, settingsStore, staticDir, access });
   const server = http.createServer(app);
-  attachWebSocketServer(server, runManager);
+  attachWebSocketServer(server, runManager, access);
 
   await listen(server, port, host);
+  const boundPort = (server.address() as { port: number }).port;
+  const urlHost = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host.includes(':') ? `[${host}]` : host;
 
   return {
     server,
-    port,
+    port: boundPort,
     runManager,
+    token,
+    url: `http://${urlHost}:${boundPort}/?token=${encodeURIComponent(token)}`,
     close: () => new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve()))),
   };
 }
@@ -125,6 +143,8 @@ if (isMainModule) {
   startStudioServer({ port, host, baseDir, staticDir })
     .then((handle) => {
       console.log(`[lousho studio] API server listening on http://${host ?? '127.0.0.1'}:${handle.port}`);
+      // `lousho studio` mints the token itself and prints this URL; only print it when launched directly.
+      if (!process.env[STUDIO_TOKEN_ENV]) console.log(`[lousho studio] Agent Forge: ${handle.url}`);
     })
     .catch((error) => {
       console.error(error instanceof Error ? error.message : String(error));

@@ -26,12 +26,15 @@ import type {
   TraceDetailPayload,
   TraceSummaryPayload,
 } from '../../shared/wireTypes';
+import { STUDIO_TOKEN_HEADER, loadStudioToken } from './studioToken';
 
 /** Same-origin default: `lousho studio` prints the API server's own URL, but in dev the Vite server proxies to it (see vite.config.ts). */
 const DEFAULT_BASE_URL = '';
 
 interface RuntimeClientOptions {
   baseUrl?: string;
+  /** Eve DUI-F1: the per-launch API token; defaults to the one in the page URL (see studioToken.ts). */
+  token?: string;
 }
 
 /** Builds the error for a non-ok response: the server's `{ error }` message when present, else `fallback`. */
@@ -50,9 +53,18 @@ export class RuntimeApiError extends Error {
 
 class RuntimeClient {
   private readonly baseUrl: string;
+  private readonly token: string | undefined;
 
   constructor(options: RuntimeClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
+    this.token = options.token ?? loadStudioToken();
+  }
+
+  /** `fetch` against the studio API, carrying the per-launch token (Eve DUI-F1). */
+  private fetch(path: string, init?: RequestInit): Promise<Response> {
+    const headers = new Headers(init?.headers);
+    if (this.token) headers.set(STUDIO_TOKEN_HEADER, this.token);
+    return fetch(`${this.baseUrl}${path}`, { ...init, headers });
   }
 
   private wsBaseUrl(): string {
@@ -64,7 +76,7 @@ class RuntimeClient {
   }
 
   private async request<T = AgentRunStatusPayload>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await this.fetch(path, {
       ...init,
       headers: { 'Content-Type': 'application/json', ...init?.headers },
     });
@@ -104,12 +116,12 @@ class RuntimeClient {
 
   /** O3: current breakpoints + pause state for `agentId` (see debugController.ts). */
   async debugState(agentId: string): Promise<DebugStatePayload> {
-    const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/debug`);
+    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/debug`);
     return (await res.json()) as DebugStatePayload;
   }
 
   async setBreakpoints(agentId: string, breakpoints: string[]): Promise<DebugStatePayload> {
-    const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/debug/breakpoints`, {
+    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/debug/breakpoints`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ breakpoints }),
@@ -118,12 +130,12 @@ class RuntimeClient {
   }
 
   async continueRun(agentId: string): Promise<DebugStatePayload> {
-    const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/debug/continue`, { method: 'POST' });
+    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/debug/continue`, { method: 'POST' });
     return (await res.json()) as DebugStatePayload;
   }
 
   async stepRun(agentId: string): Promise<DebugStatePayload> {
-    const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/debug/step`, { method: 'POST' });
+    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/debug/step`, { method: 'POST' });
     return (await res.json()) as DebugStatePayload;
   }
 
@@ -137,25 +149,25 @@ class RuntimeClient {
 
   /** P1: REST snapshot of the current live chat transcript (mirrors the WS stream's initial `{type:'chat'}` push). */
   async getChat(agentId: string): Promise<ChatStatePayload> {
-    const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/chat`);
+    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/chat`);
     return (await res.json()) as ChatStatePayload;
   }
 
   /** P3: archives the current chat session and starts a fresh, empty one. */
   async newChat(agentId: string): Promise<ChatStatePayload> {
-    const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/chat/new`, { method: 'POST' });
+    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/chat/new`, { method: 'POST' });
     return (await res.json()) as ChatStatePayload;
   }
 
   /** P3: metadata for every past (and current) chat session for `agentId`, newest first. */
   async listChats(agentId: string): Promise<ChatSessionMeta[]> {
-    const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/chats`);
+    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/chats`);
     return (await res.json()) as ChatSessionMeta[];
   }
 
   /** P3: a full past chat session's transcript. */
   async loadChatSession(agentId: string, sessionId: string): Promise<ChatSessionRecord> {
-    const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/chats/${encodeURIComponent(sessionId)}`);
+    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/chats/${encodeURIComponent(sessionId)}`);
     if (!res.ok) {
       const body = await res.json().catch(() => undefined);
       throw apiError(body, `Failed to load chat session '${sessionId}'`, res.status);
@@ -200,13 +212,13 @@ class RuntimeClient {
 
   /** R1: masked status of every managed provider's stored key. */
   async listProviderKeys(): Promise<ProviderKeyStatus[]> {
-    const res = await fetch(`${this.baseUrl}/settings/providers`);
+    const res = await this.fetch(`/settings/providers`);
     return (await res.json()) as ProviderKeyStatus[];
   }
 
   /** R1: stores (or replaces) `provider`'s API key. Resolves with the new masked status - never the real key. */
   async setProviderKey(provider: string, apiKey: string): Promise<ProviderKeyStatus> {
-    const res = await fetch(`${this.baseUrl}/settings/providers/${encodeURIComponent(provider)}`, {
+    const res = await this.fetch(`/settings/providers/${encodeURIComponent(provider)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ apiKey }),
@@ -218,18 +230,18 @@ class RuntimeClient {
 
   /** R1: removes `provider`'s stored key, if any. */
   async removeProviderKey(provider: string): Promise<void> {
-    await fetch(`${this.baseUrl}/settings/providers/${encodeURIComponent(provider)}`, { method: 'DELETE' });
+    await this.fetch(`/settings/providers/${encodeURIComponent(provider)}`, { method: 'DELETE' });
   }
 
   /** R3: every settings profile + which one is active. */
   async listSettingsProfiles(): Promise<SettingsFile> {
-    const res = await fetch(`${this.baseUrl}/settings/profiles`);
+    const res = await this.fetch(`/settings/profiles`);
     return (await res.json()) as SettingsFile;
   }
 
   /** R3: creates or replaces a profile by id. */
   async saveSettingsProfile(profile: SettingsProfile): Promise<SettingsFile> {
-    const res = await fetch(`${this.baseUrl}/settings/profiles/${encodeURIComponent(profile.id)}`, {
+    const res = await this.fetch(`/settings/profiles/${encodeURIComponent(profile.id)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(profile),
@@ -241,7 +253,7 @@ class RuntimeClient {
 
   /** R3: deletes a profile (refuses to delete the last remaining one). */
   async deleteSettingsProfile(profileId: string): Promise<SettingsFile> {
-    const res = await fetch(`${this.baseUrl}/settings/profiles/${encodeURIComponent(profileId)}`, { method: 'DELETE' });
+    const res = await this.fetch(`/settings/profiles/${encodeURIComponent(profileId)}`, { method: 'DELETE' });
     const body = await res.json().catch(() => undefined);
     if (!res.ok) throw apiError(body, 'Failed to delete settings profile', res.status);
     return body as SettingsFile;
@@ -249,7 +261,7 @@ class RuntimeClient {
 
   /** R3: switches the active profile. */
   async activateSettingsProfile(profileId: string): Promise<SettingsFile> {
-    const res = await fetch(`${this.baseUrl}/settings/profiles/${encodeURIComponent(profileId)}/activate`, { method: 'POST' });
+    const res = await this.fetch(`/settings/profiles/${encodeURIComponent(profileId)}/activate`, { method: 'POST' });
     const body = await res.json().catch(() => undefined);
     if (!res.ok) throw apiError(body, 'Failed to activate settings profile', res.status);
     return body as SettingsFile;
@@ -257,13 +269,13 @@ class RuntimeClient {
 
   /** R2: deploy-target names this app's Settings dropdown offers - see server/deployRunner.ts's DEPLOY_ADAPTERS. */
   async listDeployAdapters(): Promise<string[]> {
-    const res = await fetch(`${this.baseUrl}/settings/deploy-adapters`);
+    const res = await this.fetch(`/settings/deploy-adapters`);
     return (await res.json()) as string[];
   }
 
   /** R2: "Deploy this agent" - shells out to `lousho build --target=<adapter>` against this agent's saved spec. */
   async deployAgent(agentId: string, adapter: string): Promise<DeployResult> {
-    const res = await fetch(`${this.baseUrl}/agents/${encodeURIComponent(agentId)}/deploy`, {
+    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/deploy`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ adapter }),
@@ -283,7 +295,8 @@ class RuntimeClient {
     onMessage: (message: StreamMessage) => void,
     onError?: (event: Event) => void
   ): () => void {
-    const ws = new WebSocket(`${this.wsBaseUrl()}/agents/${encodeURIComponent(agentId)}/stream`);
+    const query = this.token ? `?${new URLSearchParams({ token: this.token })}` : '';
+    const ws = new WebSocket(`${this.wsBaseUrl()}/agents/${encodeURIComponent(agentId)}/stream${query}`);
     ws.addEventListener('message', (event) => {
       try {
         onMessage(JSON.parse(event.data as string) as StreamMessage);
@@ -296,4 +309,5 @@ class RuntimeClient {
   }
 }
 
+export { RuntimeClient };
 export const runtimeClient = new RuntimeClient();
