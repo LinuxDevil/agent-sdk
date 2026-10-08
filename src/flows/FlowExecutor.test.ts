@@ -1143,5 +1143,67 @@ describe('FlowExecutor', () => {
   });
 });
 
+describe('FlowExecutor loop variable scoping (Eve DUR-F1)', () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const flowOf = (root: EditorStep): AgentFlow => ({ code: 'f', name: 'f', flow: root });
+  const chargeRegistry = () => {
+    const charged: string[] = [];
+    const registry = new ToolRegistry();
+    registry.register(defineTool({
+      name: 'charge',
+      description: 'charge a customer',
+      input: z.object({ customer: z.string() }),
+      execute: async ({ customer }) => { await sleep(5); charged.push(customer); return 'ok'; },
+    }));
+    return { charged, registry };
+  };
+  const chargeEach = (items: string[]): EditorStep => ({
+    type: 'forEach',
+    items,
+    step: { type: 'sequence', steps: [
+      { type: 'llmCall', prompt: 'note for {{item}}' },
+      { type: 'toolCall', tool: 'charge', arguments: { customer: '{{item}}' } },
+    ] },
+  } as EditorStep);
+
+  it('gives each forEach iteration its own item, so parallel loops do not overwrite each other', async () => {
+    const { charged, registry } = chargeRegistry();
+    const provider = mockModel([{ text: 'note', delayMs: 3 }], { onExhausted: 'repeat-last' });
+    const result = await FlowExecutor.execute(
+      flowOf({ type: 'parallel', steps: [chargeEach(['alice', 'bob', 'carol']), chargeEach(['dave', 'erin', 'frank'])] } as EditorStep),
+      { agent: { name: 'f', prompt: 'x' }, provider, toolRegistry: registry, variables: {} }
+    );
+    expect(result.success).toBe(true);
+    expect([...charged].sort()).toEqual(['alice', 'bob', 'carol', 'dave', 'erin', 'frank']);
+  });
+
+  it('keeps loop variables local, lets other writes reach the flow, and shadows an outer variable of the same name', async () => {
+    const result = await FlowExecutor.execute(
+      flowOf({ type: 'sequence', steps: [
+        { type: 'forEach', items: ['a', 'b'], step: { type: 'sequence', steps: [
+          { type: 'setVariable', variable: 'last', value: '$item' },
+          { type: 'evaluator', expression: '{{item}} + {{index}}' },
+        ] } },
+        { type: 'return', value: '$item' },
+      ] } as EditorStep),
+      { agent: { name: 'f' }, provider: mockModel(['x']), variables: { item: 'outer' } }
+    );
+    expect(result.success).toBe(true);
+    expect(result.output).toBe('outer');
+    expect(result.variables.last).toBe('b');
+    expect(result.variables.index).toBeUndefined();
+  });
+
+  it('lets a nested loop read the outer loop variable in expressions and templates', async () => {
+    const result = await FlowExecutor.execute(
+      flowOf({ type: 'forEach', items: ['x', 'y'], itemVariable: 'outer', step: {
+        type: 'forEach', items: [1, 2], itemVariable: 'inner', step: { type: 'evaluator', expression: '{{outer}} + {{inner}}' },
+      } } as EditorStep),
+      { agent: { name: 'f' }, provider: mockModel(['x']), variables: {} }
+    );
+    expect(result.success).toBe(true);
+    expect(result.output).toEqual([['x1', 'x2'], ['y1', 'y2']]);
+  });
+});
 
 

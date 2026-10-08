@@ -42,7 +42,7 @@ const result = await FlowExecutor.execute(flow, { agent, provider, variables: { 
 | `toolCall` | Calls a tool with `arguments` (placeholders interpolated). |
 | `setVariable` | Sets `variable` to `value`. |
 | `oneOf` | Takes the first branch whose condition matches. |
-| `forEach` | Runs a step for each item of `items`, one after another. |
+| `forEach` | Runs a step for each item of `items`, one after another. The item and index (`itemVariable`, default `item`; `indexVariable`, default `index`) belong to that iteration only, so loops in `parallel` branches never see each other's item; other variables the step sets are written to the flow's variables. |
 | `evaluator` | Evaluates an expression over the flow's variables. |
 | `return`, `end` | Produce the node's `value` as the result. |
 | `throw` | Fails the flow with the node's `message` (`{{variable}}` placeholders interpolated; default `'Flow error'`). |
