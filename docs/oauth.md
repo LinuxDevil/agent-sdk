@@ -22,7 +22,33 @@ characters from `A-Z`, `a-z`, `0-9`, `_` and `-`) and an owner:
   from another are different owners. With [route auth](auth.md), a request's
   principal maps onto it as `{ owner: 'user', principalId: principal.id,
   issuer: principal.issuer }`; a user credential needs that principal,
-  because without one there is no user to own it.
+  because without one there is no user to own it. A principal without an
+  `issuer` (a Slack, GitHub, Telegram or Discord user, `basic()`, `apiToken()`)
+  gets `issuer: 'authenticator:<name>'`, so the same id from two authenticators
+  (Slack `U04ABCDEF` and a GitHub login `U04ABCDEF`) is two owners and never
+  shares a token.
+
+### Migrating tokens stored before the authenticator namespace
+
+Tokens stored for a principal without an issuer sit under the old key
+(`<provider>|user||<id>`). That key was shared by every authenticator, so the
+SDK does not read it as a fallback: doing so would hand one authenticator's
+token to another. Users whose token is not found sign in again. To keep a
+token, an operator who knows which authenticator the old tokens belong to moves
+them once:
+
+```ts
+const legacy = { owner: 'user', principalId: 'U04ABCDEF' } as const;
+const owner = { ...legacy, issuer: 'authenticator:slack' } as const;
+const token = await store.tokens!.get('gdrive', legacy);
+if (token) {
+  await store.tokens!.set('gdrive', owner, token);
+  await store.tokens!.delete('gdrive', legacy);
+}
+```
+
+A sign-in link issued before the upgrade is refused at its callback; the user
+asks for a fresh one.
 
 `tokenStoreKey(provider, owner)` is the record key of a credential:
 `<provider>|app`, or `<provider>|user|<issuer>|<principalId>` with the issuer
