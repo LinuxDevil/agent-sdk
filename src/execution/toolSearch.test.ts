@@ -117,6 +117,19 @@ describe('tool search (N2): deferral', () => {
     expect(names(model, 0)).toEqual(['send_email', 'tool_search']);
   });
 
+  it('warns once, naming toolSearch.contextWindow and registerModel(), when it assumes the 128,000-token fallback window', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const model = mockModel(['Hi.', 'Hi.']);
+    const agent = createAgent({ provider: model, model: 'unknown-local-tool-search-model', tools: catalog() });
+    await agent.send('hello');
+    await agent.send('again');
+    const warnings = warn.mock.calls.map(([text]) => String(text)).filter((text) => text.includes('unknown-local-tool-search-model'));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('tool search assumes a 128,000-token context window');
+    expect(warnings[0]).toContain("'toolSearch.contextWindow'");
+    expect(warnings[0]).toContain('registerModel(');
+  });
+
   it('toolSearch: false sends every tool upfront', async () => {
     const model = mockModel(['Hi.']);
     const agent = createAgent({ provider: model, tools: catalog(), toolSearch: false });

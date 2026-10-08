@@ -27,7 +27,7 @@ import { toolFailure } from '../tools/built-in/toolFailure';
 import { rankToolsByKeywords, type SearchableTool } from '../tools/toolSearchRank';
 import { withPromptTool } from '../skills/withSkills';
 import { estimateTokens } from '../models/estimateTokens';
-import { getModelInfo } from '../models/registry';
+import { resolveContextWindow } from '../context/contextWindow';
 import { schemaToJsonSchema } from '../utils/zodCompat';
 import { zodSchema } from 'ai';
 import { ConfigurationError } from './errors';
@@ -41,8 +41,6 @@ const NEVER_DEFERRED = new Set(['load_skill', 'task', 'ask_question', TOOL_SEARC
 
 const DEFAULT_THRESHOLD_PERCENT = 0.1;
 const DEFAULT_MAX_RESULTS = 5;
-/** The context window when neither `toolSearch.contextWindow` nor the model registry knows it (as compaction). */
-const FALLBACK_CONTEXT_WINDOW = 128_000;
 
 /**
  * Tuning of tool search (`createAgent({ toolSearch })`, `ExecuteOptions.toolSearch`).
@@ -54,7 +52,7 @@ export interface ToolSearchOptions {
   thresholdPercent?: number;
   /** Tools loaded per search. Default 5. */
   maxResults?: number;
-  /** The model's context window; default: the model registry, else 128,000. */
+  /** The model's context window; default: the model registry, else 128,000 (with a one-time `console.warn`). */
   contextWindow?: number;
   /** Custom ranking: return tool names, best first. Unknown names and duplicates are dropped. */
   search?: (query: string, tools: ReadonlyArray<{ name: string; description: string }>) => string[] | Promise<string[]>;
@@ -190,7 +188,7 @@ export function withToolSearch(
   const definitions = buildTools(agent, toolRegistry).filter(({ function: { name } }) => isDeferred(name, toolRegistry?.get(name)));
   if (definitions.length === 0) return { agent, toolRegistry };
   const model = modelOf(options, agent);
-  const contextWindow = settings?.contextWindow ?? (model ? getModelInfo(model)?.contextWindow : undefined) ?? FALLBACK_CONTEXT_WINDOW;
+  const contextWindow = resolveContextWindow(settings?.contextWindow, model, 'tool search', 'toolSearch.contextWindow');
   const thresholdPercent = settings?.thresholdPercent ?? DEFAULT_THRESHOLD_PERCENT;
   // Below the threshold there is nothing to gain: every tool loads upfront.
   if (thresholdPercent > 0 && definitionTokens(definitions, model) < thresholdPercent * contextWindow) return { agent, toolRegistry };

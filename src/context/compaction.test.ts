@@ -260,3 +260,86 @@ describe('compaction in a run', () => {
     expectValidTranscript(result.messages);
   });
 });
+
+describe('compaction request size and context window (audit C3)', () => {
+  const messages = () => transcript(4);
+  const bigSchema = z.object(Object.fromEntries(Array.from({ length: 60 }, (_, i) => [`field_${i}`, z.string().describe(`The value of field ${i}, as text`)])));
+  const withTools = (req: GenerateOptions): GenerateOptions => ({
+    ...req,
+    tools: [{ type: 'function', function: { name: 'search', description: 'Search the logs for a pattern', parameters: bigSchema } }],
+  });
+
+  async function preGenerate(hook: ReturnType<typeof createCompactionHook>, req: GenerateOptions) {
+    const hooks = new HookRegistry();
+    hooks.register(hook);
+    await hooks.runPreGenerate({ messages: req.messages, request: req });
+    return hooks;
+  }
+
+  it('warns once, naming compaction.contextWindow and registerModel(), when the model is unknown', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await preGenerate(createCompactionHook(), request(messages(), 'unknown-local-model-c3'));
+    await preGenerate(createCompactionHook(), request(messages(), 'unknown-local-model-c3'));
+    const warnings = warn.mock.calls.map(([text]) => String(text)).filter((text) => text.includes('unknown-local-model-c3'));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/128,000-token context window/);
+    expect(warnings[0]).toContain("'compaction.contextWindow'");
+    expect(warnings[0]).toContain("registerModel({ id: 'unknown-local-model-c3'");
+
+    // A known window (given, or registered) does not warn.
+    warn.mockClear();
+    await preGenerate(createCompactionHook({ contextWindow: 8_192 }), request(messages(), 'other-unknown-model-c3'));
+    await preGenerate(createCompactionHook(), request(messages()));
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it('counts the tool definitions toward the request size', async () => {
+    const tokens = estimateTokens(messages());
+    const onCompaction = vi.fn<[CompactionInfo], void>();
+    // Messages alone sit just under the threshold; with the tool schema the request is over it.
+    const options = { contextWindow: tokens + 10, thresholdPercent: 1, protectedTokens: 0, onCompaction };
+    const plain = request(messages());
+    await preGenerate(createCompactionHook(options), plain);
+    expect(onCompaction).not.toHaveBeenCalled();
+
+    const req = withTools(request(messages()));
+    await preGenerate(createCompactionHook(options), req);
+    expect(onCompaction).toHaveBeenCalledTimes(1);
+    const info = onCompaction.mock.calls[0][0];
+    expect(info.tokensBefore).toBeGreaterThan(tokens + 100);
+    expect(req.messages.filter(isMarker).length).toBeGreaterThan(0);
+  });
+
+  it("adds what the provider's reported prompt tokens exceeded the estimate by on the previous call", async () => {
+    const tokens = estimateTokens(messages());
+    const onCompaction = vi.fn();
+    const hook = createCompactionHook({ contextWindow: tokens + 200, thresholdPercent: 1, protectedTokens: 0, onCompaction });
+    const req = request(messages());
+    const hooks = await preGenerate(hook, req);
+    expect(onCompaction).not.toHaveBeenCalled();
+    // The provider billed 500 more tokens than estimated: the next call of this transcript compacts.
+    await hooks.runPostGenerate({ messages: req.messages, request: req }, { text: '', usage: { promptTokens: tokens + 500, completionTokens: 1, totalTokens: tokens + 501 } } as never);
+    await hooks.runPreGenerate({ messages: req.messages, request: req });
+    expect(onCompaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('reserveOutputTokens lowers the threshold to contextWindow - reserve, never raises it', async () => {
+    const tokens = estimateTokens(messages());
+    const onCompaction = vi.fn();
+    await preGenerate(createCompactionHook({ contextWindow: tokens + 100, thresholdPercent: 1, protectedTokens: 0, onCompaction }), request(messages()));
+    expect(onCompaction).not.toHaveBeenCalled();
+    await preGenerate(
+      createCompactionHook({ contextWindow: tokens + 100, thresholdPercent: 1, reserveOutputTokens: 500, protectedTokens: 0, onCompaction }),
+      request(messages())
+    );
+    expect(onCompaction).toHaveBeenCalledTimes(1);
+    // A small reserve does not raise a lower thresholdPercent.
+    onCompaction.mockClear();
+    await preGenerate(
+      createCompactionHook({ contextWindow: tokens * 2, thresholdPercent: 0.4, reserveOutputTokens: 1, protectedTokens: 0, onCompaction }),
+      request(messages())
+    );
+    expect(onCompaction).toHaveBeenCalledTimes(1);
+  });
+});

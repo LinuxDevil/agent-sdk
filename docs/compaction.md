@@ -36,8 +36,8 @@ for await (const event of agent.stream('Audit the repository.')) {
 }
 ```
 
-The object takes `strategy`, `thresholdPercent`, `contextWindow` and
-`protectedTokens` (as in the table below) and `summarizer`; combining
+The object takes `strategy`, `thresholdPercent`, `contextWindow`,
+`protectedTokens` and `reserveOutputTokens` (as in the table below) and `summarizer`; combining
 `summarizer` with `strategy` is a configuration error (pass
 `twoPhaseStrategy({ model })` as the `strategy` instead). `createAgent({ hooks })`
 takes any other `AgentHook`s, which run before the compaction hook, so
@@ -95,8 +95,14 @@ const agent = createAgent({
 ```
 
 Before every model call the hook estimates the request's size with
-`estimateTokens` (see [Models, tokens and cost](./models-and-cost.md#models-and-the-price-table)).
-When it is above `thresholdPercent` of the context window, the hook runs its
+`estimateTokens` (see [Models, tokens and cost](./models-and-cost.md#models-and-the-price-table)):
+the messages (the system prompt included), the tool definitions and the output
+schema. After a call whose provider reported its prompt tokens, the hook also
+adds what that report exceeded the estimate by to the next estimate of the same
+run, so a provider's hidden framing is counted too. Tool definitions cannot be
+compacted, so the conversation has to fit in what they leave of the threshold.
+The `compaction.start` / `compaction.done` token counts are these request
+sizes. When it is above `thresholdPercent` of the context window, the hook runs its
 strategy (and waits for it, if it is async) and calls `onCompaction` with the
 token counts, the pruned `toolCallId`s, the summary if there is one and the
 strategy name.
@@ -104,7 +110,8 @@ strategy name.
 | Option | Default | Meaning |
 | --- | --- | --- |
 | `thresholdPercent` | `0.9` | Compact when the estimated request is above this share of the context window. Must be in (0, 1]. |
-| `contextWindow` | registry, else `128_000` | Context window in tokens. By default it is looked up for `request.model` with `getModelInfo()`; register your own models with `registerModel()`. |
+| `contextWindow` | registry, else `128_000` | Context window in tokens. By default it is looked up for `request.model` with `getModelInfo()`; register your own models with `registerModel()`. The `128_000` fallback logs a one-time `console.warn` (see [Local and unknown models](#local-and-unknown-models)). |
+| `reserveOutputTokens` | none | Tokens kept free for the reply: the threshold becomes at most `contextWindow - reserveOutputTokens`. It never raises the `thresholdPercent` threshold. |
 | `protectedTokens` | `40_000` | The newest messages that fit in this many tokens are never changed. |
 | `strategy` | `pruneToolResultsStrategy()` | How to compact (see below). `twoPhaseStrategy()` is recommended; it needs a summarizer model, so it is not the default. |
 | `onCompaction` | none | Called after each compaction that changed the conversation or reported an `error`. |
@@ -120,6 +127,34 @@ A pruned result or a summary therefore stays in later steps, in checkpoints
 `result.messages`, and it is not compacted again on the next step.
 Compaction is lossy: if the model needs a pruned result again, it has to call
 the tool again.
+
+### Local and unknown models
+
+The threshold is a share of the model's context window, so compaction needs
+the real window. For a model the [model registry](./models-and-cost.md#models-and-the-price-table)
+does not know (most local models), the hook assumes `128_000` tokens and logs a
+one-time `console.warn` naming the model. A local server usually runs with a
+much smaller window, and then compaction never fires before the server rejects
+the request. Set the window you loaded the model with: in LM Studio it is the
+model's loaded context length (`loaded_context_length` from
+`GET /api/v0/models/<id>`), in Ollama the `num_ctx` option (`ollama show <model>`
+prints the model's default).
+
+```ts
+import { createAgent, registerModel } from '@lousho/build-ai-agent';
+
+// Either on the agent...
+const agent = createAgent({
+  model: 'ollama/qwen3:8b',
+  compaction: { contextWindow: 8_192, reserveOutputTokens: 1_024 },
+});
+
+// ...or once for every feature that reads the window (compaction, tool search).
+registerModel({ id: 'qwen3:8b', provider: 'ollama', contextWindow: 8_192 });
+```
+
+[Tool search](./tool-search.md) reads the window the same way and warns the same
+way; its own setting is `toolSearch.contextWindow`.
 
 #### Advanced: the executor API
 
