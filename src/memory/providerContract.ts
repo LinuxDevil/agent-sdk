@@ -32,6 +32,15 @@ export function describeMemoryProviderContract(
       expect((await provider.list('k')).map((i) => i.text)).toEqual(['two', 'one']);
     });
 
+    it('keeps scope keys that differ only in case apart (Eve MEM-F3)', async () => {
+      const provider = await make();
+      await provider.add('notes#user:Alice', { text: 'alice secret' });
+      await provider.add('notes#user:ALICE', { text: 'other user' });
+      expect((await provider.list('notes#user:Alice')).map((i) => i.text)).toEqual(['alice secret']);
+      expect((await provider.list('notes#user:ALICE')).map((i) => i.text)).toEqual(['other user']);
+      expect(await provider.list('notes#user:alice')).toEqual([]);
+    });
+
     it('dedupes on identical text, returning the stored item', async () => {
       const provider = await make();
       const first = await provider.add('k', { text: 'likes tea' });

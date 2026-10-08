@@ -214,7 +214,10 @@ interface SessionStore {
 - `MemorySessionStore` (the default, one new store per session) lives as long as
   the process. Share one instance between sessions to look them up by id.
 - `FileSessionStore(dir)` writes one JSON file per session (`<dir>/<id>.json`),
-  atomically (temp file, then rename), creating `dir` on first save.
+  atomically (temp file, then rename), creating `dir` on first save. Each
+  uppercase letter of the id is written as `^` and the letter in lowercase
+  (`Alice` -> `^alice.json`), so ids that differ only in case get different
+  files on Windows and macOS too.
 
 ```ts
 import { createAgent, FileSessionStore } from '@lousho/build-ai-agent';
@@ -266,6 +269,13 @@ const agent = createAgent({ provider, store: fileStore('./.lousho') });
 // ./.lousho/sessions/user-42.json, ./.lousho/checkpoints/..., ./.lousho/approvals/...
 await agent.session({ id: 'user-42' }).send('Hello');
 ```
+
+In every file name, an uppercase letter of the id is written as `^` and the
+letter in lowercase (`Alice` -> `sessions/^alice.json`): the default
+filesystems of Windows and macOS ignore case, and `alice` and `Alice` must not
+share a transcript. An id without uppercase letters keeps its plain name. A file
+saved by an older version under a mixed-case name (`Alice.json`) is still read
+for exactly that id, and moved to its new name on the next save.
 
 Each `checkpoints/<id>.json` has a `checkpoint-history/<id>.json` next to it:
 the checkpoint's bounded history, oldest first. Directories are created on

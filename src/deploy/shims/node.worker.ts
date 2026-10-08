@@ -29,6 +29,7 @@ export const writeFile = unavailable;
 export const mkdir = unavailable;
 export const rename = unavailable;
 export const rm = unavailable;
+export const readdir = unavailable;
 export const tmpdir = unavailable;
 export const join = unavailable;
 export const resolve = unavailable;

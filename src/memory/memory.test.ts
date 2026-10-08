@@ -1,5 +1,5 @@
 import { afterAll, describe, it, expect, vi } from 'vitest';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, rename, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
@@ -230,9 +230,27 @@ describe('memory providers', () => {
 
       const reopened = fileMemory({ dir: path.join(dir, 'mem') });
       expect((await reopened.list('session:a')).map((i) => i.text)).toEqual(['new', 'mid']);
-      expect(await readdir(path.join(dir, 'mem'))).toEqual(['global.json', 'session%3Aa.json']);
+      expect(await readdir(path.join(dir, 'mem'))).toEqual(['global.json', 'session%3aa.json']);
       await reopened.remove('session:a', newest.id);
       expect((await first.list('session:a')).map((i) => i.text)).toEqual(['mid']);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('fileMemory reads a file saved under the legacy percent-encoded name, and moves it on the next save (Eve MEM-F3)', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'lousho-memory-'));
+    try {
+      const provider = fileMemory({ dir });
+      await provider.add('notes#user:Alice', { text: 'old note' });
+      expect(await readdir(dir)).toEqual(['notes%23user%3a^alice.json']);
+      await rename(path.join(dir, 'notes%23user%3a^alice.json'), path.join(dir, 'notes%23user%3AAlice.json'));
+
+      expect((await provider.list('notes#user:Alice')).map((i) => i.text)).toEqual(['old note']);
+      expect(await provider.list('notes#user:ALICE')).toEqual([]);
+      await provider.add('notes#user:Alice', { text: 'new note' });
+      expect(await readdir(dir)).toEqual(['notes%23user%3a^alice.json']);
+      expect((await provider.list('notes#user:Alice')).map((i) => i.text)).toEqual(['new note', 'old note']);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
