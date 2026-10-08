@@ -252,6 +252,11 @@ export function providerValidPrefix(messages: readonly Message[]): Message[] {
   return messages.slice(0, i);
 }
 
+/** Whether two transcripts are the same (bytes compared by value). */
+function sameTranscript(a: readonly Message[], b: readonly Message[]): boolean {
+  return JSON.stringify(a, encodeBytes) === JSON.stringify(b, encodeBytes);
+}
+
 /** Whether `message` is the result a call got because the run stopped before it ran (`kind: 'not-run'`). */
 function notRun(message: Message): boolean {
   if (message.role !== 'tool' || !message.isError || typeof message.content !== 'string') return false;
@@ -333,6 +338,7 @@ export class AgentSession<TObject = unknown> {
   private running: { inputs: InputQueue; result: Promise<ExecutionResult> } | undefined;
   private turnStartedAt = 0;
   private transcript: Message[] = [];
+  /** Whether `transcript` was read in the queued call running now (each call reads it again, Eve DUR-F3). */
   private loaded = false;
 
   constructor(run: SessionRunner, options: SessionOptions = {}, streamRun?: SessionStreamRunner, spawn?: SessionSpawner) {
@@ -408,7 +414,9 @@ export class AgentSession<TObject = unknown> {
    * objects that share this transcript's `(store, id)` in this process.
    * A turn that still loses the race against a writer the queue cannot see
    * (a different store object or process) fails with `LOUSHO_SESSION_BUSY`
-   * instead of silently overwriting it.
+   * instead of silently overwriting it; tool calls of it that ran are kept,
+   * after the other writer's turn. Every call reads the transcript from the
+   * store again, so a turn another session object committed is never lost.
    *
    * A call that throws or is aborted leaves the transcript as it was before
    * the call (an aborted call resolves with `finishReason: 'aborted'`),
@@ -705,9 +713,15 @@ export class AgentSession<TObject = unknown> {
    * session objects cannot run turns concurrently (see `sessionQueues`).
    */
   private enqueue<T>(task: () => Promise<T>): Promise<T> {
-    return enqueueSessionWork(this.store, this.id, task);
+    return enqueueSessionWork(this.store, this.id, () => {
+      // Eve DUR-F3: every queued call reads the transcript again, so turns that another session object (or
+      // `agent.resume()` / `agent.approvals.resolve()`, which open their own) committed since are not lost on this one.
+      this.loaded = false;
+      return task();
+    });
   }
 
+  /** Reads the transcript from the store, once per queued call (see `enqueue`). */
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
     this.transcript = (await this.store.load(this.id)) ?? [];
@@ -847,7 +861,7 @@ export class AgentSession<TObject = unknown> {
       const sessionUsage = addSpent(sessionSpent(this.transcript), spent);
       next[next.length - 1] = { ...last, metadata: { ...last.metadata, sessionUsage } };
     }
-    await this.assertBaseUnchanged();
+    await this.assertBaseUnchanged(next);
     await this.store.save(this.id, next);
     const turn = this.turnCheckpoint();
     this.transcript = next;
@@ -861,16 +875,27 @@ export class AgentSession<TObject = unknown> {
    * transcript this turn started from, committing would overwrite the other
    * writer's turn without an error - instead the turn's leftover checkpoint
    * is dropped (replaying it later would clobber the committed transcript
-   * anyway) and the send fails with `LOUSHO_SESSION_BUSY`.
+   * anyway) and the send fails with `LOUSHO_SESSION_BUSY`. Tool calls of the
+   * turn that ran (an email, a refund) are not lost (Eve DUR-F3): the turn up
+   * to their results is added after the other writer's transcript, as an
+   * aborted turn keeps them (B4).
    */
-  private async assertBaseUnchanged(): Promise<void> {
+  private async assertBaseUnchanged(next: readonly Message[]): Promise<void> {
     const stored = (await this.store.load(this.id)) ?? [];
-    if (JSON.stringify(stored, encodeBytes) === JSON.stringify(this.transcript, encodeBytes)) return;
+    const base = this.transcript;
+    if (sameTranscript(stored, base)) return;
     const turn = this.turnCheckpoint();
     if (turn) await turn.checkpointStore.delete(turn.sessionId, { keepHistory: true });
+    const ran = sameTranscript(next.slice(0, base.length), base) ? completedToolPrefix(next, base) : undefined;
+    if (ran) {
+      const kept = [...stored, ...ran.slice(base.length)];
+      await this.store.save(this.id, kept);
+      this.transcript = kept;
+    }
     throw new SDKError(
       `Session '${this.id}' was changed by another session object or process while this turn ran; ` +
-        'the turn was not committed. Reload the transcript and send again.',
+        (ran ? "the turn was not committed, except its tool calls that ran, which were added after the other writer's turn. " : 'the turn was not committed. ') +
+        'Reload the transcript and send again.',
       'LOUSHO_SESSION_BUSY'
     );
   }
