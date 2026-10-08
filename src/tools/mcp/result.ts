@@ -27,7 +27,9 @@ export type McpContentPart =
  * Result of a successful MCP tool call that has no `structuredContent`.
  *
  * `text` is every text part joined with newlines; `content` keeps all parts
- * (including image/audio/resource) in order.
+ * (including image/audio/resource) in order. When every part is text,
+ * `content` is non-enumerable: still readable, but left out of the JSON the
+ * model gets, which would otherwise carry the text twice.
  */
 export interface McpToolResult {
   text: string;
@@ -122,7 +124,8 @@ function joinText(parts: McpContentPart[]): string {
  *
  * - `isError: true` throws an {@link McpToolError} carrying the joined text.
  * - `structuredContent` is preferred as the result object.
- * - Otherwise `{ text, content }` is returned with all parts preserved.
+ * - Otherwise `{ text, content }` is returned with all parts preserved
+ *   (`content` non-enumerable when every part is text, so it is not serialized).
  * - A result without a `content` array (legacy `toolResult` protocol shape)
  *   is returned unchanged.
  */
@@ -143,6 +146,9 @@ export function handleCallToolResult(
     const media = content.filter((part) => part.type !== 'text');
     if (media.length === 0) return raw.structuredContent;
     return { structuredContent: raw.structuredContent, text, content: media };
+  }
+  if (content.every((part) => part.type === 'text')) {
+    return Object.defineProperty({ text }, 'content', { value: content, writable: true, configurable: true, enumerable: false }) as McpToolResult;
   }
   return { text, content };
 }

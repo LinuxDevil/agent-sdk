@@ -46,6 +46,17 @@ request. An HTTP entry can also sign in with OAuth, as the MCP authorization
 spec describes: add `oauth: { redirectUri }` and an operator signs the agent in
 once; see [MCP servers with OAuth](./oauth.md#mcp-servers-with-oauth).
 
+Each tool call gets the run's abort signal, so aborting a run cancels the MCP
+call in flight. `timeoutMs` on an entry (stdio or HTTP) bounds each call to
+that server; without it the MCP SDK's default of 60 seconds applies.
+`loadMcpTools(client, name, { timeoutMs })` takes the same option.
+
+A tool result whose content is only text reaches the model as `{ "text": ... }`.
+The result object still has `content` (the parts) for code that reads it, but
+it is not sent to the model a second time. Results with images, audio or
+resources keep every part, and `structuredContent` is used as the result when
+the server sends it.
+
 The map is the same one a spec file declares; see
 [Configuration](./configuration.md) (the `mcpServers` section) for the YAML form.
 

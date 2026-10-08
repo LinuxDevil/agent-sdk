@@ -22,7 +22,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   ],
 }));
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => ({
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  // FIXTURE_DELAY_MS: a slow server, for the call timeout test.
+  await new Promise((resolve) => setTimeout(resolve, Number(process.env.FIXTURE_DELAY_MS ?? 0)));
+  return {
   content: [
     {
       type: 'text',
@@ -32,6 +35,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => ({
           : `${process.env.FIXTURE_PREFIX ?? ''}${request.params.arguments?.text}`,
     },
   ],
-}));
+  };
+});
 
 await server.connect(new StdioServerTransport());
