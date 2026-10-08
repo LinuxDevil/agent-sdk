@@ -571,6 +571,8 @@ interface GenerateResult {
     rawResponse?: unknown;
     // Warning: (ae-forgotten-export) The symbol "ReasoningBlock" needs to be exported by the entry point index.d.ts
     reasoning?: ReasoningBlock[];
+    // Warning: (ae-forgotten-export) The symbol "ServedBy" needs to be exported by the entry point index.d.ts
+    servedBy?: ServedBy;
     // (undocumented)
     text: string;
     // Warning: (ae-forgotten-export) The symbol "ToolCall" needs to be exported by the entry point index.d.ts
@@ -948,6 +950,13 @@ export interface SequenceNode {
 }
 
 // @public
+interface ServedBy {
+    model?: string;
+    // (undocumented)
+    provider: string;
+}
+
+// @public
 export interface SetVariableNode {
     // (undocumented)
     id?: string;
@@ -1056,6 +1065,7 @@ interface StreamResult {
     //
     // (undocumented)
     fullStream: AsyncIterable<StreamChunk>;
+    servedBy?: ServedBy;
     // (undocumented)
     text: Promise<string>;
     // (undocumented)
@@ -1254,11 +1264,11 @@ export function validateFlowInput(input: Record<string, unknown>, variables: Flo
 // Warnings were encountered during analysis:
 //
 // dist/flows/index.d.ts:156:9 - (ae-forgotten-export) The symbol "ProviderUsage" needs to be exported by the entry point index.d.ts
-// dist/index-teGCK4tt.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-teGCK4tt.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-teGCK4tt.d.ts:1877:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
-// dist/index-teGCK4tt.d.ts:1913:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
-// dist/index-teGCK4tt.d.ts:1913:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
+// dist/index-CDCdpMkc.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-CDCdpMkc.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-CDCdpMkc.d.ts:1892:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
+// dist/index-CDCdpMkc.d.ts:1928:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
+// dist/index-CDCdpMkc.d.ts:1928:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
