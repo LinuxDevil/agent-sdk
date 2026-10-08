@@ -22,9 +22,11 @@ import {
   createAgent,
   defineMemory,
   defineTool,
+  memoryKey,
   type AgentEvent,
   type AgentHook,
   type MemoryProvider,
+  type MemorySlot,
   type Principal,
 } from '@lousho/build-ai-agent';
 import { SqliteStore, sqliteMemory } from '@lousho/build-ai-agent/sqlite';
@@ -119,6 +121,8 @@ interface Companion {
   sniffer: { firstCallSystem: string | undefined; sawMemoryBlock: boolean };
   factsKey: string;
   stateKey: string;
+  userFacts: MemorySlot;
+  relationship: MemorySlot;
 }
 
 /** A full "process": its own SqliteStore connection, memory providers and agent. */
@@ -127,9 +131,9 @@ function buildCompanion(): Companion {
   const facts = sqliteMemory(store);
   const dynamics = sqliteMemory(store);
   const userKey = `user:${ALEX.authenticator}:${ALEX.id}`;
-  // WORKAROUND (see FINDINGS F-slot-collision): the slot NAME is not part of the
-  // storage key — two slots sharing a scope key share one item list. Distinct
-  // keys per slot keep the buckets separate.
+  // Slots sharing a scope now keep separate buckets: the storage key is
+  // `<slot name>#<scope>` (memoryKey()); distinct scope keys keep the buckets
+  // even further apart.
   const factsKey = `${userKey}:facts`;
   const stateKey = `${userKey}:state`;
 
@@ -160,7 +164,7 @@ function buildCompanion(): Companion {
     maxSteps: 8,
     compaction: { contextWindow: 128_000, thresholdPercent: 0.85, protectedTokens: 2_000 },
   });
-  return { agent, store, facts, dynamics, sniffer, factsKey, stateKey };
+  return { agent, store, facts, dynamics, sniffer, factsKey, stateKey, userFacts, relationship };
 }
 
 // ------------------------------------------------------------ stream helper
@@ -239,8 +243,8 @@ const t1 = await chatTurn(s1, "hey!! I'm Alex btw — just downloaded this app, 
 const t2 = await chatTurn(s1, 'ok rapid-fire facts: I could eat ramen every single day, loud chewing makes me want to flip tables, and my cat is called Captain Crumb because he steals breadcrumbs off the counter');
 const t3 = await chatTurn(s1, 'speaking of — Captain Crumb just knocked my ramen bowl off the desk. typical. say goodnight to me?');
 
-const day1Facts = await dumpMemory('user_facts after day 1', day1.facts, day1.factsKey);
-const day1Dynamics = await dumpMemory('relationship after day 1', day1.dynamics, day1.stateKey);
+const day1Facts = await dumpMemory('user_facts after day 1', day1.facts, memoryKey(day1.userFacts, { principal: ALEX })!);
+const day1Dynamics = await dumpMemory('relationship after day 1', day1.dynamics, memoryKey(day1.relationship, { principal: ALEX })!);
 const stateDay1 = readState();
 console.log(`\nrelationship.json after day 1: ${JSON.stringify(stateDay1)}`);
 const day1Transcript = s1.messages.length;
@@ -259,13 +263,13 @@ const t4 = await chatTurn(s2, 'morning! quiz time — do you remember my name? a
 const t5 = await chatTurn(s2, 'and what is the ONE thing that makes me want to flip tables? also be honest: how are we doing — what does our relationship snapshot say right now?');
 const t6 = await chatTurn(s2, "Captain Crumb says hi by the way. I feel like we really get each other — bump that trust up a notch");
 
-const day2Facts = await dumpMemory('user_facts after day 2', day2.facts, day2.factsKey);
-const day2Dynamics = await dumpMemory('relationship after day 2', day2.dynamics, day2.stateKey);
+const day2Facts = await dumpMemory('user_facts after day 2', day2.facts, memoryKey(day2.userFacts, { principal: ALEX })!);
+const day2Dynamics = await dumpMemory('relationship after day 2', day2.dynamics, memoryKey(day2.relationship, { principal: ALEX })!);
 const stateDay2 = readState();
 console.log(`\nrelationship.json after day 2: ${JSON.stringify(stateDay2)}`);
 
-// Cheapest scope-isolation proof: another user's scope is empty.
-const bobItems = await day2.facts.list('user:cli:bob:facts', { limit: 10 });
+// Cheapest scope-isolation proof: another user's namespaced scope is empty.
+const bobItems = await day2.facts.list('user_facts#user:cli:bob:facts', { limit: 10 });
 day2.store.close();
 
 // ================================================================ VERDICTS
