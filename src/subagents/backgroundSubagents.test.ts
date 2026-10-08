@@ -8,6 +8,7 @@ import { subagentOptionsOf, withSubagentOptions } from './backgroundTasks';
 import { AgentExecutor } from '../execution/AgentExecutor';
 import type { AgentEvent } from '../execution/agentEvents';
 import type { AgentConfig } from '../types';
+import type { Span } from '../execution/tracing';
 
 const bgTask = (agent: string, prompt: string) => ({
   name: 'task',
@@ -255,6 +256,35 @@ describe('background sub-agents at the end of the lead run (LOU-Y4.2)', () => {
 
     expect(result.text).toBe('done');
     expect(result.backgroundTasks).toEqual([{ taskId: 'task_1', agent: 'researcher', status: 'done', elapsedMs: expect.any(Number) }]);
+  });
+
+  it("rolls a background child's cost up to the lead's invoke_agent span (Eve MA-F2)", async () => {
+    const MODEL = 'openai/gpt-4o-mini';
+    const ended: Span[] = [];
+    const exporter = { onSpanStart: () => {}, onSpanEnd: (span: Span) => void ended.push({ ...span }) };
+    const worker = createAgent({
+      name: 'worker',
+      provider: mockModel([{ text: 'child', usage: { inputTokens: 100000, outputTokens: 10000 }, delayMs: 30 }], { defaultModel: MODEL }),
+      model: MODEL,
+      description: 'Worker',
+    });
+    const lead = createAgent({
+      name: 'lead',
+      provider: mockModel(
+        [{ toolCalls: [bgTask('worker', 'job')], usage: { inputTokens: 10, outputTokens: 1 } }, { text: 'done', usage: { inputTokens: 10, outputTokens: 1 } }],
+        { defaultModel: MODEL }
+      ),
+      model: MODEL,
+      subagents: { worker },
+      subagentOptions: { awaitBackgroundOnFinish: true },
+      exporter,
+    });
+
+    const result = await lead.send('go');
+
+    const leadSpan = ended.find((span) => span.name === 'invoke_agent lead')!;
+    expect(result.usage.costUsd).toBeGreaterThan(0.02);
+    expect(leadSpan.attributes['lousho.cost_usd']).toBeCloseTo(result.usage.costUsd!, 10);
   });
 
   it('createAgent({ subagentOptions }) is forwarded over withSubagentOptions(), without changing the subagents value', async () => {

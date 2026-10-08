@@ -116,7 +116,7 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `gen_ai.agent.id` | The agent's `id`, when set |
 | `gen_ai.provider.name` | The provider's `name` |
 | `gen_ai.conversation.id` | `sessionId`, when set |
-| `lousho.cost_usd` | Cumulative estimated USD of the run (every model call and delegated child run); absent when any model used has no known price |
+| `lousho.cost_usd` | Cumulative estimated USD of the run (every model call and delegated child run, including a background child that finishes before the run ends); absent when any model used has no known price |
 | `lousho.usage.estimated` | `true` when any of the run's tokens were estimated |
 
 ### Model call: `chat {model}` (CLIENT)
@@ -317,8 +317,9 @@ Options: `--dir D` reads another directory (default `.lousho/traces`),
 `--limit N` lists N runs (default 20), `--json` prints the summaries or the
 spans as JSON. An id prefix that matches several runs lists them and exits 1.
 Colour is off when `NO_COLOR` is set or the output is not a terminal. The
-token counts are the run's `chat` spans, sub-agents' included; the cost is the
-run's rolled-up `lousho.cost_usd`, blank (`-`) when a model's price is unknown.
+token counts and the cost are the sums of the run's `chat` spans, sub-agents'
+included (background ones too); the cost is blank (`-`) when a model's price is
+unknown.
 
 **Files.** One file per run at `<dir>/<YYYY-MM-DD>/<traceId>.jsonl` (the run's
 local start date; the trace id is the id of its `invoke_agent` span), so old

@@ -25,7 +25,7 @@ describe('listTraces (M5a)', () => {
     expect(await listTraces({ dir, limit: 1 })).toHaveLength(1);
   });
 
-  it('sums tokens and counts calls; the cost is the root rollup', async () => {
+  it('sums tokens, counts calls and sums the chat spans for the cost', async () => {
     const [, ok, older] = await listTraces({ dir });
     expect(ok).toMatchObject({
       name: 'invoke_agent weather',
@@ -36,11 +36,33 @@ describe('listTraces (M5a)', () => {
       toolCalls: 1,
       inputTokens: 159,
       outputTokens: 32,
-      costUsd: 0.0000431,
+      costUsd: expect.closeTo(0.0000431, 12),
       file: path.join(dir, '2026-10-01', `${OK}.jsonl`),
     });
-    // The sub-agent's chat and the `task` tool count; its cost is already in the root's.
-    expect(older).toMatchObject({ agent: 'lead', modelCalls: 3, toolCalls: 1, inputTokens: 220, outputTokens: 44, costUsd: 0.000064 });
+    // The sub-agent's chat and the `task` tool count, and its cost.
+    expect(older).toMatchObject({ agent: 'lead', modelCalls: 3, toolCalls: 1, inputTokens: 220, outputTokens: 44, costUsd: expect.closeTo(0.000064, 12) });
+  });
+
+  it('sums the chat spans for the cost, so a background sub-agent that outlived its parent span counts (Eve MA-F2)', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-traces-'));
+    try {
+      fs.mkdirSync(path.join(tmp, '2026-10-02'));
+      const chat = (id: string, parentId: string, cost: number) => ({
+        v: 1, traceId: 'root', id, parentId, name: 'chat m', startTime: 110, endTime: 120,
+        attributes: { 'gen_ai.operation.name': 'chat', 'gen_ai.usage.input_tokens': 10, 'lousho.cost_usd': cost },
+      });
+      const lines = [
+        { v: 1, traceId: 'root', id: 'root', name: 'invoke_agent lead', startTime: 100, endTime: 200, attributes: { 'gen_ai.operation.name': 'invoke_agent', 'lousho.cost_usd': 0.5 } },
+        chat('c1', 'root', 0.5),
+        chat('c2', 'sub', 2),
+      ];
+      fs.writeFileSync(path.join(tmp, '2026-10-02', 'root.jsonl'), lines.map((line) => JSON.stringify(line)).join('\n') + '\n');
+
+      const [summary] = await listTraces({ dir: tmp });
+      expect(summary).toMatchObject({ inputTokens: 20, costUsd: 2.5 });
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 
   it("reports the root span's error status", async () => {
