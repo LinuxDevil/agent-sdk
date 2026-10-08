@@ -459,3 +459,46 @@ describe('unsafe paths', () => {
     expect(fs.readdirSync(outside)).toEqual([]);
   });
 });
+
+describe('agent directory checks (Eve CLI-F3, CLI-F18)', () => {
+  it('warns that nothing loads tools/ when --dir is not an agent directory', async () => {
+    const result = await add(withRegistry('web-search', '--yes', '--allow', 'network,env'));
+    expect(result.code).toBe(0);
+    expect(result.out).toMatch(/is not an agent directory[^\n]*nothing loads files from tools\//);
+    expect(result.out.match(/is not an agent directory/g)).toHaveLength(2);
+  });
+
+  it('does not warn when the directory has an agent config', async () => {
+    fs.writeFileSync(path.join(agentDir, 'agent.json'), '{}');
+    const result = await add(withRegistry('web-search', '--yes', '--allow', 'network,env'));
+    expect(result.code).toBe(0);
+    expect(result.out).not.toContain('not an agent directory');
+  });
+
+  it('creates a missing --dir for a kit, and still refuses one for a tool', async () => {
+    writeJson(path.join(root, 'kit.json'), {
+      name: 'mini-kit',
+      type: 'kit',
+      description: 'A kit',
+      files: [{ path: 'agent.json', content: '{}' }],
+      permissions: {},
+    });
+    writeJson(registry, {
+      items: [
+        { name: 'mini-kit', type: 'kit', description: 'A kit', path: 'kit.json' },
+        { name: 'web-search', type: 'tool', description: 'Search the web', path: 'web-search.json' },
+      ],
+    });
+    const target = path.join(root, 'nested', 'new-agent');
+    const dry = await add(['mini-kit', '--registry', registry, '--dir', target, '--dry-run']);
+    expect(dry.code).toBe(0);
+    expect(fs.existsSync(target)).toBe(false);
+    const real = await add(['mini-kit', '--registry', registry, '--dir', target, '--yes']);
+    expect(real.code).toBe(0);
+    expect(real.out).not.toContain('not an agent directory');
+    expect(fs.readFileSync(path.join(target, 'agent.json'), 'utf8')).toBe('{}');
+    const tool = await add(['web-search', '--registry', registry, '--dir', path.join(root, 'missing'), '--yes', '--allow', 'network,env']);
+    expect(tool.code).toBe(1);
+    expect(tool.err).toContain('does not exist');
+  });
+});

@@ -57,7 +57,7 @@ lousho add --list --registry none       # fails: the registry is disabled
 | Flag | Meaning |
 | ---- | ------- |
 | `--registry <url-or-path>` | The index: an `http(s)` URL or a local path (`LOUSHO_REGISTRY` when absent, else the default registry). `none` disables the registry. |
-| `--dir <agent-dir>` | The agent directory to write into (default: the current directory; it must exist). |
+| `--dir <agent-dir>` | The agent directory to write into (default: the current directory). It must exist, except for a `kit`, which creates it. For any other item, a directory without `agent.*` or `instructions.md` gets a warning: only an agent directory loads `tools/` and `skills/` (a `lousho init` project imports tools in `src/agent.ts` instead). |
 | `--yes`, `-y` | Do not ask for confirmation. Required when stdin is not a terminal. Does not grant elevated permissions on its own (see `--allow`). Both flags are checked before anything is printed: a non-interactive run without them fails with one line naming the exact flags the item needs, e.g. `pass --yes --allow exec,fs-write`. |
 | `--allow <list>` | With `--yes`, the elevated permissions you grant, comma-separated: `exec`, `fs-write`, `network`, `env`. An item that asks for one you did not name is refused. |
 | `--overwrite` | Replace files that already exist (without it an existing file is `LOUSHO_REGISTRY_FILE_EXISTS`). |

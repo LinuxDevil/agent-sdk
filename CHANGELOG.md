@@ -48,6 +48,7 @@ This section lists what is on `main` and not yet on npm.
 - Structured output: when `maxSteps` runs out while the model is still calling tools, a run with `output` set now makes one last model call with no tools offered ("answer now") and validates its reply - the result carries `object` (still `finishReason: 'max-steps'`) or `outputError` (`'output-invalid'`) instead of neither. The extra call is skipped when another budget limit (tokens, cost, duration) is already spent. See [Structured output](docs/structured-output.md).
 
 ### Fixed
+- `lousho add` warns, before and after writing, when `--dir` is not an agent directory (nothing loads `tools/` or `skills/` there, e.g. a `lousho init` project), and a `kit` install creates a missing `--dir` instead of failing (Eve CLI-F3, F18).
 - `lousho mcp` accepts an agent directory or `agent.ts` module like `dev`/`chat`/`acp` (it crashed with a raw `EISDIR`), and its errors carry the `lousho mcp:` prefix (Eve CLI-F2).
 - Provider errors: an out-of-credit account (OpenAI's `insufficient_quota` 429, a 402 such as OpenRouter's "Insufficient credits") is the new non-retryable category `quota-exceeded` instead of a retried `rate-limit` (Eve PROV-F6).
 - Tracing: a background sub-agent's cost now rolls up into the lead's `invoke_agent` span `lousho.cost_usd` (a span that ends after its parent adds to the nearest open ancestor), and `listTraces()` / `lousho traces` report the sum of the chat spans' cost, so the cost matches the token counts and `result.usage.costUsd`. (Eve MA-F2)

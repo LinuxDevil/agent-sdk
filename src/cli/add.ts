@@ -171,17 +171,34 @@ async function confirm(io: AddIo, question: string): Promise<boolean> {
   }
 }
 
+/** Files that mark a directory as an agent directory (the ones `loadAgentDir` reads), so `tools/`, `skills/` and friends get loaded. */
+const AGENT_DIR_MARKERS = ['agent.ts', 'agent.mts', 'agent.js', 'agent.mjs', 'agent.cjs', 'agent.json', 'agent.yaml', 'agent.yml', 'instructions.md'];
+
+function isAgentDir(dir: string): boolean {
+  return AGENT_DIR_MARKERS.some((name) => fs.existsSync(path.join(dir, name)));
+}
+
+const NOT_AGENT_DIR_NOTE = (dir: string) =>
+  `Warning: ${dir} is not an agent directory (no agent.json, agent.yaml, agent.ts or instructions.md), so nothing loads files from tools/ or skills/ there. A 'lousho init' project wires tools in src/agent.ts: import the installed file there, or pass --dir <agent-dir>.`;
+
 async function install(args: AddArgs, registry: string, item: RegistryItem, io: AddIo): Promise<number> {
   const agentDir = path.resolve(io.cwd ?? process.cwd(), args.dir);
-  if (!fs.existsSync(agentDir) || !fs.statSync(agentDir).isDirectory()) {
+  // A kit is a whole agent directory, so it may be installed into one that does not exist yet.
+  const creating = item.type === 'kit' && !fs.existsSync(agentDir);
+  if (!creating && (!fs.existsSync(agentDir) || !fs.statSync(agentDir).isDirectory())) {
     throw new SDKError(`lousho add: the agent directory ${agentDir} does not exist.`, 'LOUSHO_CONFIG_INVALID', { hint: 'Create it, or pass --dir <agent-dir>.' });
   }
   const files = planFiles(item, agentDir);
+  if (creating) {
+    if (!args.dryRun) fs.mkdirSync(agentDir, { recursive: true });
+  }
   // A dry run writes nothing, so an existing file is reported, not refused.
-  await checkTargets(item, files, agentDir, args.overwrite || args.dryRun);
-  const receipt = await readReceipt(agentDir);
+  if (!(creating && args.dryRun)) await checkTargets(item, files, agentDir, args.overwrite || args.dryRun);
+  const receipt = creating && args.dryRun ? { v: 1 as const, items: {} } : await readReceipt(agentDir);
+  const notAgentDir = item.type !== 'kit' && !isAgentDir(agentDir);
   enforceFlags(args, item, io);
   const lines = [...manifestLines(item), ...planLines(files, args.overwrite)];
+  if (notAgentDir) lines.push(NOT_AGENT_DIR_NOTE(agentDir));
   if (item.dependencies?.length) lines.push('Dependencies (not installed; run this yourself):', `  npm install ${item.dependencies.join(' ')}`);
   io.stdout.write(`${lines.join('\n')}\n`);
   enforceManifest(item, io);
@@ -200,6 +217,7 @@ async function install(args: AddArgs, registry: string, item: RegistryItem, io: 
   await writeFiles(files);
   await writeReceipt(agentDir, receipt, item, files, registry);
   io.stdout.write(`Added ${item.name}: ${files.length} file(s) written, recorded in ${RECEIPT_FILE}.\n`);
+  if (notAgentDir) io.stdout.write(`${NOT_AGENT_DIR_NOTE(agentDir)}\n`);
   return 0;
 }
 
