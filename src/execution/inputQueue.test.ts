@@ -236,7 +236,14 @@ describe("agent.session({ turnPolicy: 'queue' })", () => {
 
     expect((await first).finishReason).toBe('aborted');
     expect((await second).text).toBe('Own turn.');
-    expect(conversation(session.messages)).toEqual(['user:And this.', 'assistant:Own turn.']);
+    // B4: the aborted turn keeps the tool call that ran (and its result); the rest of it is dropped.
+    expect(conversation(session.messages)).toEqual([
+      'user:Start.',
+      'assistant:',
+      'tool:"waited"',
+      'user:And this.',
+      'assistant:Own turn.',
+    ]);
   });
 
   it('joins a running turn from stream() too', async () => {

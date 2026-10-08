@@ -107,7 +107,7 @@ describe('AgentSession.stream()', () => {
     await expect(collect(run)).rejects.toMatchObject({ code: 'LOUSHO_RUN_ALREADY_ITERATED' });
   });
 
-  it('leaves the transcript unchanged when a stream is aborted by its signal', async () => {
+  it('keeps only the tool calls that ran when a stream is aborted by its signal (B4)', async () => {
     const controller = new AbortController();
     const slow = defineTool({
       name: 'slow',
@@ -128,12 +128,13 @@ describe('AgentSession.stream()', () => {
 
     expect((await run.result).finishReason).toBe('aborted');
     expect(events.at(-1)).toMatchObject({ type: 'run.done', finishReason: 'aborted' });
-    expect(session.messages).toEqual(before);
+    expect(session.messages.slice(0, before.length)).toEqual(before);
+    expect(roles(session.messages.slice(before.length))).toEqual(['user', 'assistant', 'tool', 'tool']);
     await session.send('still there?');
-    expect(roles(model.calls[2].messages.filter((m) => m.role !== 'system'))).toEqual(['user', 'assistant', 'user']);
+    expect(roles(model.calls[2].messages.filter((m) => m.role !== 'system'))).toEqual(['user', 'assistant', 'user', 'assistant', 'tool', 'tool', 'user']);
   });
 
-  it('leaves the transcript unchanged when the loop is exited early', async () => {
+  it('keeps the tool call that ran when the loop is exited early (B4)', async () => {
     const wait = defineTool({
       name: 'wait',
       description: 'waits',
@@ -151,7 +152,8 @@ describe('AgentSession.stream()', () => {
     }
 
     expect((await run.result).finishReason).toBe('aborted');
-    expect(session.messages).toEqual(before);
+    expect(session.messages.slice(0, before.length)).toEqual(before);
+    expect(session.messages.slice(before.length).map((m) => (m.role === 'tool' ? m.content : m.role))).toEqual(['user', 'assistant', '"waited"']);
     expect((await session.send('next')).text).toBe('never sent');
   });
 

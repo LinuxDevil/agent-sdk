@@ -160,7 +160,7 @@ describe('AgentSession', () => {
     expect(roles(convo(model.calls[2]))).toEqual(['user', 'assistant', 'user']);
   });
 
-  it('leaves the transcript unchanged when a send is aborted', async () => {
+  it('keeps only the tool calls that ran when a send is aborted (B4)', async () => {
     const controller = new AbortController();
     const slow = defineTool({
       name: 'slow',
@@ -179,9 +179,12 @@ describe('AgentSession', () => {
     const aborted = await session.send('go', { signal: controller.signal });
 
     expect(aborted.finishReason).toBe('aborted');
-    expect(session.messages).toEqual(before);
+    expect(session.messages.slice(0, before.length)).toEqual(before);
+    expect(roles(session.messages.slice(before.length))).toEqual(['user', 'assistant', 'tool', 'tool']);
+    // The second call never started: it keeps its cancelled result, so both calls are answered.
+    expect(session.messages.slice(-2).map((m) => JSON.parse(m.content as string))).toEqual(['done', expect.objectContaining({ kind: 'not-run' })]);
     await session.send('still there?');
-    expect(roles(convo(model.calls[2]))).toEqual(['user', 'assistant', 'user']);
+    expect(roles(convo(model.calls[2]))).toEqual(['user', 'assistant', 'user', 'assistant', 'tool', 'tool', 'user']);
   });
 
   it('clear() forgets the conversation, including in the store', async () => {

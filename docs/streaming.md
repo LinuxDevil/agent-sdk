@@ -312,7 +312,9 @@ for await (const event of agent.stream('Weather in Paris?')) {
 ## Example: Server-Sent Events
 
 Events are JSON-serializable, so an SSE endpoint is one `res.write` per
-event. Abort the run when the client disconnects.
+event. Abort the run when the client disconnects. For session turns,
+`createRouteHandler()` does the opposite by default: the turn finishes and is
+saved even when the client leaves (see [Next.js](./nextjs.md#routes)).
 
 ```ts
 import { createServer } from 'node:http';

@@ -1030,6 +1030,8 @@ export interface ChatRoutesAccess {
     authorizeApproval?: (request: ApprovalAccessRequest) => boolean | Promise<boolean>;
     authorizeSession?: (request: SessionAccessRequest) => boolean | Promise<boolean>;
     exposeErrors?: boolean;
+    onDisconnect?: 'continue' | 'abort';
+    waitUntil?: (promise: Promise<unknown>) => void;
 }
 
 // @public

@@ -224,6 +224,32 @@ export function providerValidPrefix(messages: readonly Message[]): Message[] {
   return messages.slice(0, i);
 }
 
+/** Whether `message` is the result a call got because the run stopped before it ran (`kind: 'not-run'`). */
+function notRun(message: Message): boolean {
+  if (message.role !== 'tool' || !message.isError || typeof message.content !== 'string') return false;
+  try {
+    return (JSON.parse(message.content) as { kind?: unknown } | null)?.kind === 'not-run';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * B4: what an aborted turn keeps: its `messages` up to the last result of a
+ * tool call that ran in it (with the rest of that call's batch, so every call
+ * is answered), or `undefined` when no tool call of the turn finished. A
+ * side effect that happened is then in the transcript.
+ */
+function completedToolPrefix(messages: readonly Message[], previous: readonly Message[]): Message[] | undefined {
+  const known = new Set(previous.flatMap((message) => (message.role === 'tool' && message.toolCallId ? [message.toolCallId] : [])));
+  let last = messages.length - 1;
+  while (last >= 0 && !(messages[last].role === 'tool' && !known.has(messages[last].toolCallId ?? '') && !notRun(messages[last]))) last -= 1;
+  if (last < 0) return undefined;
+  let end = last + 1;
+  while (end < messages.length && messages[end].role === 'tool') end += 1;
+  return messages.slice(0, end);
+}
+
 /**
  * A conversation that remembers earlier turns. Create one with
  * `agent.session()`.
@@ -357,7 +383,9 @@ export class AgentSession<TObject = unknown> {
    * instead of silently overwriting it.
    *
    * A call that throws or is aborted leaves the transcript as it was before
-   * the call (an aborted call resolves with `finishReason: 'aborted'`).
+   * the call (an aborted call resolves with `finishReason: 'aborted'`),
+   * except that an aborted call keeps the results of tool calls that already
+   * ran (B4), so a side effect is never missing from the transcript.
    * In a checkpointed session, a pending turn is resumed first (see `resume()`).
    *
    * @example
@@ -774,6 +802,9 @@ export class AgentSession<TObject = unknown> {
 
   private async record(result: ExecutionResult): Promise<ExecutionResult> {
     if (result.finishReason === 'aborted') {
+      // B4: tool calls that ran (a refund, an email) stay in the transcript; the rest of the turn is dropped.
+      const ran = completedToolPrefix(result.messages, this.transcript);
+      if (ran) await this.commit(ran, runSpent(result.usage, result.steps, Date.now() - this.turnStartedAt));
       await this.deleteCheckpoint();
       return result;
     }

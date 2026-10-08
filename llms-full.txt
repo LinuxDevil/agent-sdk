@@ -10529,6 +10529,15 @@ own call. An error reaches the client as its `name` and `code` with a generic
 message; `exposeErrors: true` sends the raw text. See
 [Who may decide an approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-decide-an-approval).
 
+If the client goes away while a session turn streams (a closed tab, a dropped
+connection), the turn still runs to its end on the server and is saved to the
+session, so a tool that already ran (a refund, an email) is in the transcript
+and the user's next message can ask about it. Nothing more is written to the
+closed stream. On a serverless host, pass the platform's `waitUntil` (for
+example `waitUntil` from `@vercel/functions`) so the function is kept alive
+until the turn is saved. `onDisconnect: 'abort'` aborts the turn instead, as
+before; tool results it already has are still kept.
+
 `auth` also takes an ordered list of `jwt()`, `oidc()`, `basic()` and
 `apiToken()` entries, and the caller it accepts reaches the run as `principal`:
 see [Route auth and principals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md).
@@ -13532,7 +13541,11 @@ console.log((await second) === (await first)); // true: one turn, one result
 
 A `send()` that throws (a provider error, or a tool that throws a
 `PropagatingToolError`) or is aborted with `signal` leaves the transcript
-exactly as it was before that call. An aborted `send()` resolves with
+exactly as it was before that call, with one exception: an aborted `send()`
+keeps the turn up to the last tool call that ran (its user message, the
+assistant's tool calls and their results; calls of that batch that never
+started keep a "cancelled" result), so a side effect such as a refund is never
+missing from the transcript. An aborted `send()` resolves with
 `finishReason: 'aborted'`, as `agent.send()` does. The stored transcript never
 contains an assistant tool-call turn without the matching tool results.
 
@@ -13574,7 +13587,8 @@ const { text } = await session.send('What is my name?');
   the `for await` loop ends, or `run.result` resolves, the transcript is
   complete. The events carry the `runId` of the returned handle.
 - An aborted run (`signal`, or breaking out of the loop early) or a failed one
-  leaves the transcript as it was before the call, like `send()`. A run that
+  leaves the transcript as it was before the call, like `send()` (an aborted
+  run keeps the tool calls that ran). A run that
   was already finished when the loop was left is saved. A failed run ends the
   stream with `error` and `run.done` (`finishReason: 'error'`), and
   `run.result` rejects. This includes a store that fails to load or save: the
@@ -13639,7 +13653,8 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   once before resolving, so the agent knows which session the approval belongs
   to; give both agents the same durable `store` (or `approvalStore`).
 - An aborted turn is dropped (its checkpoint is deleted), as without a
-  checkpoint store. `clear()` deletes a pending turn too.
+  checkpoint store, except for the tool calls that ran in it, which join the
+  transcript. `clear()` deletes a pending turn too.
 
 ## Stores
 
@@ -14424,7 +14439,9 @@ for await (const event of agent.stream('Weather in Paris?')) {
 ## Example: Server-Sent Events
 
 Events are JSON-serializable, so an SSE endpoint is one `res.write` per
-event. Abort the run when the client disconnects.
+event. Abort the run when the client disconnects. For session turns,
+`createRouteHandler()` does the opposite by default: the turn finishes and is
+saved even when the client leaves (see [Next.js](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md#routes)).
 
 ```ts
 import { createServer } from 'node:http';
