@@ -32,6 +32,7 @@ import { SubagentApprovalPause, subagentBudget, toolCallScopeOf, type ToolCallSc
 import { RUN_EVENTS, runEventsOf, type StreamingExecuteOptions } from './agentRun';
 import type { ToolRunContext } from './sandboxGuard';
 import { SDKError } from './errors';
+import { runUsageOfError } from './runUsage';
 import type { HostedTool } from '../tools/hosted';
 import type { ToolSearchOptions } from './toolSearch';
 
@@ -100,28 +101,35 @@ export async function runSubagent(
     throw new SDKError(`Sub-agent '${request.name}' can only be started by a tool call of an agent run.`, 'LOUSHO_CONFIG_INVALID');
   }
 
-  const resume = scope?.resume;
-  const result =
-    resume && capture.store
-      ? // M10c: the paused child is compared with its current definition, under the lead's `onAgentDrift`.
-        await resume.run(resume.decision, capture.store, spec.toolRegistry ?? new ToolRegistry(), spec.provider, {
-          ...options,
-          currentAgent: spec.agent,
-          // N10b: who decided, for the sub-agent's approved call.
-          ...(resume.approver && { approver: resume.approver }),
-        })
-      : await run({
-          ...options,
-          agent: spec.agent,
-          input: request.input,
-          provider: spec.provider,
-          toolRegistry: spec.toolRegistry,
-          // LOU-D23.2: its own id under the parent's session, for its tools and hooks (not checkpointed).
-          ...(scope?.runtime.sessionId && { sessionId: `${scope.runtime.sessionId}/${info.toolCallId}` }),
-        });
-
   // LOU-V5: the child's usage rolls up into the parent run's totals.
   const reportUsage = scope?.onDelegatedUsage ?? request.toolOptions?.onDelegatedUsage;
+  const resume = scope?.resume;
+  let result: ExecutionResult;
+  try {
+    result =
+      resume && capture.store
+        ? // M10c: the paused child is compared with its current definition, under the lead's `onAgentDrift`.
+          await resume.run(resume.decision, capture.store, spec.toolRegistry ?? new ToolRegistry(), spec.provider, {
+            ...options,
+            currentAgent: spec.agent,
+            // N10b: who decided, for the sub-agent's approved call.
+            ...(resume.approver && { approver: resume.approver }),
+          })
+        : await run({
+            ...options,
+            agent: spec.agent,
+            input: request.input,
+            provider: spec.provider,
+            toolRegistry: spec.toolRegistry,
+            // LOU-D23.2: its own id under the parent's session, for its tools and hooks (not checkpointed).
+            ...(scope?.runtime.sessionId && { sessionId: `${scope.runtime.sessionId}/${info.toolCallId}` }),
+          });
+  } catch (error) {
+    // Eve MA-F1: a child that failed after spending tokens still counts toward the lead's usage and limits.
+    const spent = runUsageOfError(error);
+    if (spent) reportUsage?.(spent);
+    throw error;
+  }
   reportUsage?.(result.usage);
   const paused = capture.saved();
   if (result.finishReason === 'awaiting-approval' && paused) {

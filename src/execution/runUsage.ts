@@ -130,6 +130,23 @@ function delegatedTotals(before: DelegatedUsage | undefined, child: RunUsage): D
   };
 }
 
+/** The usage a run had spent when it threw, by the error it threw (Eve MA-F1). */
+const failedRunUsage = new WeakMap<object, RunUsage>();
+
+/**
+ * Records on `error` what the run that threw it had spent, so a lead can still
+ * count a failed sub-agent's tokens. The outermost run that rethrows the same
+ * error records last (its usage includes its children's).
+ */
+export function attachRunUsage(error: unknown, usage: RunUsage): void {
+  if (typeof error === 'object' && error !== null) failedRunUsage.set(error, structuredClone(usage));
+}
+
+/** What the run that threw `error` had spent, when {@link attachRunUsage} recorded it. */
+export function runUsageOfError(error: unknown): RunUsage | undefined {
+  return typeof error === 'object' && error !== null ? failedRunUsage.get(error) : undefined;
+}
+
 /** Rolls a finished child agent run's total into the parent's (mutates the parent). */
 export function mergeDelegatedUsage(run: RunUsage, child: RunUsage): void {
   run.inputTokens += child.inputTokens;

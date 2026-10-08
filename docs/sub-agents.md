@@ -475,7 +475,7 @@ inherits:
 | Event listeners (`onAgentEvent`, `createAgent({ onEvent })`) and `stream()` | Yes | The sub-agent's events are forwarded with a `subagent` field. |
 | `toolConcurrency` | Yes, unless the sub-agent sets its own | |
 | `sandbox` | Yes | |
-| Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`); a remote sub-agent's under `byModel['remote:<name>']`. |
+| Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`) and counted against its `limits`, also when the sub-agent fails after spending tokens; a remote sub-agent's under `byModel['remote:<name>']`. |
 | `maxSubagentDepth` | The remaining budget | See [Depth](#depth). |
 | `permissionMode` | Yes, unless the lead's is `'default'` | The sub-agent runs under the lead's [permission mode](./permission-modes.md#sub-agents), read at each of its tool calls; while the lead's is `'default'`, under its own (a sub-agent whose own mode is `'plan'` always stays in plan mode). A remote sub-agent does not inherit it: plan mode refuses a `task` call to one. |
 | `principal` | Yes | Who the lead's run acts for (route auth's caller, a channel's sender); a remote sub-agent is not told. |

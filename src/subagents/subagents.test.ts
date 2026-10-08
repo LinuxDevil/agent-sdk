@@ -301,3 +301,49 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
     });
   });
 });
+
+describe('usage of a sub-agent that fails (Eve MA-F1)', () => {
+  const noop = defineTool({ name: 'noop', description: 'Does nothing', input: z.object({}), execute: async () => 'ok' });
+  const failingWorker = () =>
+    createAgent({
+      provider: mockModel(
+        [
+          { toolCalls: [{ name: 'noop' }], usage: { inputTokens: 1000, outputTokens: 100 } },
+          { error: Object.assign(new Error('400 Bad Request: context too long'), { status: 400 }) },
+        ],
+        { onExhausted: 'repeat-last' }
+      ),
+      description: 'Worker',
+      tools: [noop],
+      retry: false,
+    });
+  const taskCall = { name: 'task', args: { agent: 'worker', prompt: 'do it', description: 'do it' } };
+
+  it("adds the tokens it spent before failing to the lead's usage", async () => {
+    const lead = createAgent({
+      provider: mockModel([
+        { toolCalls: [taskCall], usage: { inputTokens: 10, outputTokens: 1 } },
+        { text: 'final', usage: { inputTokens: 10, outputTokens: 1 } },
+      ]),
+      subagents: { worker: failingWorker() },
+    });
+
+    const result = await lead.send('go');
+
+    expect(result.messages.find((m) => m.role === 'tool')?.content).toContain("Sub-agent 'worker' failed");
+    expect(result.usage).toMatchObject({ inputTokens: 1020, outputTokens: 102 });
+    expect(result.usage.delegated).toMatchObject({ inputTokens: 1000, outputTokens: 100, modelCalls: 1, runs: 1 });
+  });
+
+  it("counts the spend against the lead's limits", async () => {
+    const lead = createAgent({
+      provider: mockModel([{ toolCalls: [taskCall], usage: { inputTokens: 10, outputTokens: 1 } }, 'final'], { onExhausted: 'repeat-last' }),
+      subagents: { worker: failingWorker() },
+      limits: { maxTokens: 500 },
+    });
+
+    const result = await lead.send('go');
+
+    expect(result.finishReason).toBe('budget-exceeded');
+  });
+});
