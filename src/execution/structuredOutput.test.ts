@@ -462,22 +462,102 @@ describe('structured output near misses and repair (audit log F8, docs-qa F9, in
     });
   });
 
-  it('sends a root union of objects with type: object (and no closing of the root)', async () => {
+  it('Eve PROV-F1: wraps a root union as { result } for strict endpoints and unwraps the reply', async () => {
     const output = z4.union([z4.object({ kind: z4.literal('a'), a: z4.string() }), z4.object({ kind: z4.literal('b'), b: z4.number() })]);
-    const model = mockModel(['{"kind":"b","b":2}']);
+    const model = mockModel(['{"result":{"kind":"b","b":2}}']);
     const result = await createAgent({ provider: model, output }).send('go');
 
     const schema = model.calls[0].responseFormat?.schema as Record<string, unknown>;
-    expect(schema.type).toBe('object');
-    expect(schema.anyOf).toHaveLength(2);
-    expect(schema).not.toHaveProperty('additionalProperties');
+    expect(schema).toMatchObject({ type: 'object', required: ['result'], additionalProperties: false });
+    expect(schema).not.toHaveProperty('anyOf');
+    expect((schema.properties as Record<string, Record<string, unknown>>).result.anyOf).toHaveLength(2);
     expect(result.object).toEqual({ kind: 'b', b: 2 });
   });
 
-  it('rejects a root union with a non-object branch at config time', () => {
-    expect(() => createAgent({ provider: mockModel([]), output: z4.union([z4.object({ a: z4.string() }), z4.string()]) })).toThrow(
-      /union at the root with a branch that is not an object.*z\.object\(\{ result: z\.union/
-    );
+  it('Eve PROV-F1: a root union reply sent unwrapped (a model that ignored the wrapper) still validates', async () => {
+    const output = z4.union([z4.object({ a: z4.string() }), z4.object({ b: z4.number() })]);
+    expect((await createAgent({ provider: mockModel(['{"b":2}']), output }).send('go')).object).toEqual({ b: 2 });
+  });
+
+  it('Eve PROV-F1: a root union with a non-object branch is wrapped too, not rejected', async () => {
+    const output = z4.union([z4.object({ a: z4.string() }), z4.string()]);
+    const result = await createAgent({ provider: mockModel(['{"result":"hi"}']), output }).send('go');
+    expect(result.object).toBe('hi');
+  });
+
+  it('Eve PROV-F1: sends a discriminated union as anyOf, never oneOf', async () => {
+    const output = z4.object({
+      action: z4.discriminatedUnion('kind', [
+        z4.object({ kind: z4.literal('refund'), amount: z4.number() }),
+        z4.object({ kind: z4.literal('question'), text: z4.string() }),
+      ]),
+    });
+    const model = mockModel(['{"action":{"kind":"refund","amount":20}}']);
+    const result = await createAgent({ provider: model, output }).send('go');
+
+    expect(JSON.stringify(model.calls[0].responseFormat?.schema)).not.toContain('oneOf');
+    expect(result.object).toEqual({ action: { kind: 'refund', amount: 20 } });
+  });
+
+  for (const [zod, output] of [
+    ['zod 3', z.object({ counts: z.record(z.string(), z.number()) })],
+    ['zod 4', z4.object({ counts: z4.record(z4.string(), z4.number()) })],
+  ] as const) {
+    it(`Eve PROV-F1/F2 (${zod}): sends a record as a { key, value } array and decodes the reply back to a record`, async () => {
+      const model = mockModel(['{"counts":[{"key":"a","value":2},{"key":"b","value":1}]}']);
+      const result = await createAgent({ provider: model, output }).send('go');
+
+      const counts = ((model.calls[0].responseFormat?.schema as Record<string, unknown>).properties as Record<string, unknown>).counts;
+      expect(counts).toEqual({
+        type: 'array',
+        items: { type: 'object', properties: { key: { type: 'string' }, value: { type: 'number' } }, required: ['key', 'value'], additionalProperties: false },
+      });
+      expect(result.object).toEqual({ counts: { a: 2, b: 1 } });
+    });
+  }
+
+  it('Eve PROV-F1: a record reply in the record shape (a non-strict model) still validates', async () => {
+    const output = z4.object({ counts: z4.record(z4.string(), z4.number()) });
+    expect((await createAgent({ provider: mockModel(['{"counts":{"a":2}}']), output }).send('go')).object).toEqual({ counts: { a: 2 } });
+  });
+
+  it('Eve PROV-F1: an optional record sent as null is absent; nested records decode', async () => {
+    const output = z4.object({
+      byTeam: z4.record(z4.string(), z4.object({ lead: z4.string(), tags: z4.record(z4.string(), z4.boolean()) })).optional(),
+      n: z4.number(),
+    });
+    const one = await createAgent({ provider: mockModel(['{"byTeam":null,"n":1}']), output }).send('go');
+    expect(one.object).toEqual({ n: 1 });
+    const two = await createAgent({
+      provider: mockModel(['{"byTeam":[{"key":"web","value":{"lead":"ada","tags":[{"key":"oncall","value":true}]}}],"n":2}']),
+      output,
+    }).send('go');
+    expect(two.object).toEqual({ byTeam: { web: { lead: 'ada', tags: { oncall: true } } }, n: 2 });
+  });
+
+  for (const [zod, output] of [
+    ['zod 3', z.object({ point: z.tuple([z.number(), z.string()]) })],
+    ['zod 4', z4.object({ point: z4.tuple([z4.number(), z4.string()]) })],
+  ] as const) {
+    it(`Eve PROV-F1 (${zod}): sends a tuple as an object of _0.._n and decodes the reply back to an array`, async () => {
+      const model = mockModel(['{"point":{"_0":1,"_1":"x"}}']);
+      const result = await createAgent({ provider: model, output }).send('go');
+
+      const point = ((model.calls[0].responseFormat?.schema as Record<string, unknown>).properties as Record<string, unknown>).point;
+      expect(point).toEqual({
+        type: 'object',
+        properties: { _0: { type: 'number' }, _1: { type: 'string' } },
+        required: ['_0', '_1'],
+        additionalProperties: false,
+      });
+      expect(result.object).toEqual({ point: [1, 'x'] });
+    });
+  }
+
+  it('Eve PROV-F1: a root record is wrapped and decoded', async () => {
+    const output = z4.record(z4.string(), z4.number());
+    const result = await createAgent({ provider: mockModel(['{"result":[{"key":"a","value":1}]}']), output }).send('go');
+    expect(result.object).toEqual({ a: 1 });
   });
 
   it('rejects z.date() in an output schema at config time, naming the field', () => {
