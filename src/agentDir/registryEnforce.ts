@@ -357,9 +357,15 @@ export function confineToolsToReceipt(dir: string, tools: LoadedTool[], status: 
  * enforce: it comes from the same directory as the tools, so it may not
  * certify them. An enforced call is deferred - it waits for a human
  * (`agent.approvals.resolve()`) or an approver the host passes in code.
+ * `host` is that in-code approver as a sub-agent directory inherits it: it
+ * decides the enforced calls (a sub-agent's pause has no `resolve()` handle).
+ * Undefined when there is neither an approver nor an enforced call to route.
  */
-export function deferEnforcedApprovals(approve: ApproveToolCall, tools: LoadedTool[]): ApproveToolCall {
+export function deferEnforcedApprovals(approve: ApproveToolCall | undefined, tools: LoadedTool[], host?: ApproveToolCall): ApproveToolCall | undefined {
   const enforced = new Set(tools.filter((loaded) => hasEnforcedApproval(loaded.tool)).map((loaded) => loaded.tool.name));
-  if (enforced.size === 0) return approve;
-  return (request) => (enforced.has(request.toolName) ? 'defer' : approve(request));
+  if (enforced.size === 0 || (approve === undefined && host === undefined)) return approve;
+  return (request) => {
+    if (enforced.has(request.toolName)) return host === undefined ? 'defer' : host(request);
+    return approve === undefined ? 'defer' : approve(request);
+  };
 }

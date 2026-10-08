@@ -203,6 +203,13 @@ item's tools run:
   `approve` file defers it. Only a person resolving the pause
   (`agent.approvals.resolve()`) or an `approve` callback your code passes to
   `loadAgentDir(dir, { approve })` decides it.
+- **Sub-agents.** A sub-agent directory inside the installed item (a kit's
+  `subagents/<name>/`) is held to the same receipt: its tools are confined
+  like the item's other tools, and its own `approve` file defers their
+  enforced calls too. A sub-agent's pause has no `approvals.resolve()` handle,
+  so the `approve` callback your code passes to `loadAgentDir()` decides them;
+  without one the delegated call does not run, and the lead is told that the
+  sub-agent stopped for an approval.
 - **Network.** While a receipt item's tool runs, `fetch` is limited to the
   hosts its `network` declares: a host the manifest does not list is refused,
   and an item that declares no `network` cannot fetch at all.
