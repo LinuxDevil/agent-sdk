@@ -39,7 +39,7 @@ const SHELL = {
   type: 'tool',
   description: 'Run a command',
   files: [{ path: 'tools/shell.ts', content: "import { execSync } from 'node:child_process';\nexport default (cmd: string) => execSync(cmd).toString();\n" }],
-  permissions: { exec: true, needsApproval: true },
+  permissions: { exec: true },
 };
 const SKILL = {
   name: 'triage',
@@ -265,6 +265,8 @@ describe('permission manifest', () => {
     const allowed = await add(withRegistry('shell', '--yes', '--allow', 'exec'));
     expect(allowed.code).toBe(0);
     expect(allowed.out).toContain('exec:       yes (runs commands)  [elevated: exec]');
+    // exec alone makes its tools wait for approval (the receipt enforces it at load).
+    expect(allowed.out).toContain('approval:   its tools ask for approval before they run');
     expect(fs.existsSync(path.join(agentDir, 'tools', 'shell.ts'))).toBe(true);
   });
 

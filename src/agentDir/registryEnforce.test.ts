@@ -264,6 +264,67 @@ describe('loadAgentDir receipt enforcement', () => {
     expect(result.text).toBe('Done.');
   });
 
+  describe('an enforced approval is not overridable from the directory', () => {
+    // editsFiles, so that acceptEdits mode would run it without asking.
+    const SHELL = toolFile('shell', "editsFiles: true,\n  execute: async () => 'ran'");
+
+    /** An exec item whose directory allows every call, runs in the given mode and approves everything itself. */
+    function execAgentAllowingItself(permissionMode = 'default'): string {
+      const agent = makeAgent({
+        'tools/shell.ts': SHELL,
+        'agent.json': JSON.stringify({ permissionMode, permissions: [{ tool: 'shell', action: 'allow' }], approve: 'approve.ts' }),
+        'approve.ts': 'export default () => true;\n',
+      });
+      writeReceipt('shell', { exec: true }, [{ path: 'tools/shell.ts', content: SHELL }]);
+      return agent;
+    }
+
+    const shellCall = () => mockModel([{ toolCalls: [{ name: 'shell', args: {}, id: 'call_shell' }] }, 'Done.']);
+
+    it.each(['default', 'acceptEdits'])('pauses despite an allow rule and the directory approver (mode %s)', async (mode) => {
+      const decisions: string[] = [];
+      const agent = await loadAgentDir(execAgentAllowingItself(mode), { provider: shellCall(), onPermissionDecision: (entry) => decisions.push(entry.decision) });
+      const paused = await agent.send('run it');
+
+      expect(paused.finishReason).toBe('awaiting-approval');
+      expect(await agent.approvals.list()).toEqual([expect.objectContaining({ toolName: 'shell' })]);
+      expect(decisions).toEqual(['ask']);
+      // A human may still approve it.
+      const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+      expect(result.text).toBe('Done.');
+    });
+
+    it('pauses despite a host allow rule, but a host-supplied approver decides it', async () => {
+      const dirPath = execAgentAllowingItself();
+      const ruled = await loadAgentDir(dirPath, { provider: shellCall(), permissions: [{ tool: /.*/, action: 'allow' }] });
+      expect((await ruled.send('run it')).finishReason).toBe('awaiting-approval');
+
+      const seen: string[] = [];
+      const approved = await loadAgentDir(dirPath, { provider: shellCall(), approve: ({ toolName }) => (seen.push(toolName), true) });
+      const result = await approved.send('run it');
+      expect(result.finishReason).toBe('stop');
+      expect(seen).toEqual(['shell']);
+    });
+
+    it('a permission rule or mode may still deny the call', async () => {
+      const dirPath = execAgentAllowingItself();
+      const deny = await loadAgentDir(dirPath, { provider: shellCall(), permissions: [{ tool: 'shell', action: 'deny' }] });
+      const dontAsk = await loadAgentDir(dirPath, { provider: shellCall(), permissionMode: 'dontAsk' });
+      for (const agent of [deny, dontAsk]) {
+        const result = await agent.send('run it');
+        expect(result.finishReason).toBe('stop');
+        expect(JSON.stringify(result.messages)).toMatch(/denied/);
+      }
+    });
+
+    it('the directory approver still decides the tools the receipt does not cover', async () => {
+      const own = toolFile('own', "needsApproval: true,\n  execute: async () => 'ran'");
+      const agent = makeAgent({ 'tools/own.ts': own, 'agent.json': JSON.stringify({ approve: 'approve.ts' }), 'approve.ts': 'export default () => true;\n' });
+      const loaded = await loadAgentDir(agent, { provider: mockModel([{ toolCalls: [{ name: 'own', args: {} }] }, 'Done.']) });
+      expect((await loaded.send('run it')).finishReason).toBe('stop');
+    });
+  });
+
   it('does not confine or warn when there is no receipt', async () => {
     const own = toolFile('own', "execute: () => process.env.OTHER_SECRET ?? 'none'");
     const agent = makeAgent({ 'tools/own.ts': own });

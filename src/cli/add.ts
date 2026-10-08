@@ -113,7 +113,7 @@ function manifestLines(item: RegistryItem): string[] {
     `  env vars:   ${env?.length ? env.join(', ') : 'none'}${mark('env')}`,
     `  filesystem: ${filesystem ?? 'none'}${mark('fs-write')}`,
     `  exec:       ${exec ? 'yes (runs commands)' : 'no'}${mark('exec')}`,
-    `  approval:   ${needsApproval ? 'its tools ask for approval before they run' : 'its tools run without asking'}`,
+    `  approval:   ${exec || needsApproval ? 'its tools ask for approval before they run' : 'its tools run without asking'}`,
   ];
 }
 
