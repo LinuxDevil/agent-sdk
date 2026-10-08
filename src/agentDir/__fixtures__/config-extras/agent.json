@@ -10,5 +10,6 @@
   "compaction": { "thresholdPercent": 0.8 },
   "hooks": "hooks.ts",
   "approve": "approve.ts",
-  "limits": { "maxCostUsd": 0.05, "onExceeded": "stop" }
+  "limits": { "maxCostUsd": 0.05, "onExceeded": "stop" },
+  "modelSettings": { "maxTokens": 2048, "temperature": 0.2 }
 }

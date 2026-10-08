@@ -165,7 +165,7 @@ type LeadRunOptions = Omit<SubagentSpec, 'agent' | 'provider' | 'toolRegistry' |
 
 /**
  * A target's spec as it runs inside the lead's run: its own agent, provider,
- * tools, skills, sub-agents and reasoning; the lead's guardrails and
+ * tools, skills, sub-agents, reasoning and model settings; the lead's guardrails and
  * permission rules first, then its own; everything else the lead's.
  */
 function asTarget(spec: SubagentSpec, lead: LeadRunOptions): SubagentSpec {
@@ -177,6 +177,7 @@ function asTarget(spec: SubagentSpec, lead: LeadRunOptions): SubagentSpec {
     skills: own.skills,
     subagents: own.subagents,
     reasoning: own.reasoning,
+    modelSettings: own.modelSettings,
     guardrails: inheritGuardrails(lead.guardrails, own.guardrails),
     permissions,
   };

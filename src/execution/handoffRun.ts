@@ -393,6 +393,7 @@ function targetOptions(options: ExecuteOptions, target: HandoffTarget): ExecuteO
     skills: target.skills,
     subagents: target.subagents,
     reasoning: target.reasoning,
+    modelSettings: target.modelSettings,
     guardrails: target.guardrails,
     permissions: target.permissions,
     handoffs: target.handoffs,

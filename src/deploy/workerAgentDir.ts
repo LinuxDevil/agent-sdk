@@ -19,7 +19,7 @@ import { collectTools, type ToolModule } from '../agentDir/collectTools';
 import { permissionRulesOf, validateConfig, type AgentDirConfig } from '../agentDir/validateConfig';
 import type { DefinedTool } from '../tools/defineTool';
 import type { Skill } from '../skills/defineSkill';
-import type { LLMProvider } from '../providers/llm';
+import type { LLMProvider, ModelSettings } from '../providers/llm';
 import type { ToolConcurrency } from '../execution/toolBatch';
 import type { Channel } from '../channels/defineChannel';
 import { defineChannel } from '../channels/defineChannel';
@@ -108,6 +108,8 @@ export interface ResolvedWorkerAgentDir {
   permissions?: readonly PermissionRule[];
   compaction?: AgentCompaction;
   limits?: RunLimits;
+  /** `createAgent`'s `modelSettings` (C6). */
+  modelSettings?: ModelSettings;
   /** `createAgent`'s `approvalTtlMs`: how long a pause for approval stays decidable, in milliseconds. */
   approvalTtlMs?: number;
   /** Hooks a code config set inline; a `hooks` path is refused (a Worker cannot import a file). */
@@ -289,7 +291,7 @@ export function resolveWorkerAgentDir(dir: WorkerAgentDir, inherited?: WorkerAge
 function codeOnly(
   dir: WorkerAgentDir,
   config: AgentDirConfig
-): Pick<ResolvedWorkerAgentDir, 'permissionMode' | 'permissions' | 'compaction' | 'limits' | 'approvalTtlMs' | 'hooks' | 'approve'> {
+): Pick<ResolvedWorkerAgentDir, 'permissionMode' | 'permissions' | 'compaction' | 'limits' | 'modelSettings' | 'approvalTtlMs' | 'hooks' | 'approve'> {
   const where = dir.configFile ?? `the agent directory '${dir.name}'`;
   if (typeof config.hooks === 'string') unsupported(`${where}: 'hooks' points at a file ('${config.hooks}'), but a Worker cannot import it. Set the hooks inline in an agent.ts config.`);
   if (typeof config.approve === 'string') unsupported(`${where}: 'approve' points at a file ('${config.approve}'), but a Worker cannot import it. Set the approver inline in an agent.ts config.`);
@@ -299,6 +301,7 @@ function codeOnly(
     ...(permissions === undefined ? {} : { permissions }),
     ...(config.compaction === undefined ? {} : { compaction: config.compaction }),
     ...(config.limits === undefined ? {} : { limits: config.limits }),
+    ...(config.modelSettings === undefined ? {} : { modelSettings: config.modelSettings }),
     ...(config.approvalTtlMs === undefined ? {} : { approvalTtlMs: config.approvalTtlMs }),
     ...(config.hooks === undefined ? {} : { hooks: Array.isArray(config.hooks) ? config.hooks : [config.hooks as AgentHook] }),
     ...(config.approve === undefined ? {} : { approve: config.approve as ApproveToolCall }),

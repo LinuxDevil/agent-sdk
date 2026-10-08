@@ -28,6 +28,7 @@ import type { ExecuteOptions } from './AgentExecutor';
 import { runEventsOf } from './agentRun';
 import { outputResponseFormat } from './structuredOutput';
 import { withSteerSignal } from './inputQueue';
+import { mergeModelSettings } from './modelSettings';
 import { settleHostedFinish } from './hostedToolCalls';
 import { hostedToolsInMode, permissionModeOf } from './permissions';
 import type { ParallelInputCheck } from './ioGuardrails';
@@ -144,6 +145,8 @@ export async function prepareGenerateRequest(
   generate?: GenerateHookContext['generate']
 ): Promise<GenerateOptions> {
   const { temperature, maxTokens, onLLMRequest, hooks } = options;
+  // C6: the agent's / call's settings, then the run's own `temperature` / `maxTokens`; an unset key is not sent at all.
+  const settings = mergeModelSettings(options.modelSettings, { temperature, maxTokens });
   // LOU-V10: a steer aborts this call alone (`callSignal`), the run's signal all of them.
   const signal = withSteerSignal(options.signal, callSignal);
   // N1a x N4: read the mode at every call, so a switch to plan mode drops non-read-only hosted tools from the next one.
@@ -157,8 +160,7 @@ export async function prepareGenerateRequest(
     // undefined (the provider then applies its own built-in default).
     model: resolveModel(options),
     messages,
-    temperature,
-    maxTokens,
+    ...settings,
     tools: sent.length > 0 ? sent : undefined,
     // N1a: the provider's own tools, sent with every call of the run (plan mode: read-only ones only).
     ...(hostedTools?.length && { hostedTools }),

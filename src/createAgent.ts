@@ -20,6 +20,7 @@ import { AgentExecutor, ExecuteOptions, ExecutionResult } from './execution/Agen
 import { streamResumed, type AgentRun } from './execution/agentRun';
 import type { AgentEvent } from './execution/agentEvents';
 import type { TraceExporter } from './execution/tracing';
+import { mergeModelSettings } from './execution/modelSettings';
 import { LLMProvider, LLMProviderRegistry } from './providers/llm';
 import { ToolRegistry } from './tools/ToolRegistry';
 import { ToolDescriptor } from './types';
@@ -31,7 +32,7 @@ import { withAskQuestion, type ToolEntries } from './tools/built-in/askQuestion'
 import { toolEntries, type ToolsOption } from './tools/toolEntries';
 import { ToolConcurrency, assertToolConcurrency } from './execution/toolBatch';
 import type { Skill } from './skills/defineSkill';
-import type { Message } from './providers/llm';
+import type { Message, ModelSettings } from './providers/llm';
 import type { ReasoningOption } from './providers/reasoning';
 import {
   AgentSession,
@@ -302,6 +303,20 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    * ```
    */
   reasoning?: ReasoningOption;
+  /**
+   * C6: sampling settings sent on every model call of this agent's runs:
+   * `maxTokens`, `temperature`, `topP`, `frequencyPenalty`,
+   * `presencePenalty`, `stop`, `seed`. A key left out is not sent, so the
+   * provider's own default (or a wrapping provider's value) applies. A
+   * `send()` / `stream()` call's `modelSettings` win key by key. Sub-agents
+   * and handoff targets use their own. See docs/configuration.md#model-settings.
+   *
+   * @example
+   * ```ts
+   * createAgent({ model: 'openai/gpt-4o-mini', modelSettings: { maxTokens: 1024, temperature: 0.2 } });
+   * ```
+   */
+  modelSettings?: ModelSettings;
   /**
    * LOU-D41: called with every {@link AgentEvent} of this agent's runs -
    * `send()`, `stream()`, session turns and runs resumed after an approval -
@@ -627,6 +642,16 @@ export interface SendOptions {
   /** This run's reasoning (LOU-V13), instead of the agent's `reasoning`. */
   reasoning?: ReasoningOption;
   /**
+   * C6: this run's sampling settings, merged over the agent's
+   * `modelSettings` (a key set here wins; the others stay the agent's).
+   *
+   * @example
+   * ```ts
+   * await agent.send('Summarize the log.', { modelSettings: { maxTokens: 256 } });
+   * ```
+   */
+  modelSettings?: ModelSettings;
+  /**
    * This run's permission mode (N4), instead of the agent's `permissionMode`.
    * A run continued by `agent.approvals.resolve()` uses the agent's again.
    * See docs/permission-modes.md.
@@ -651,8 +676,8 @@ export interface SendOptions {
   parentSpanId?: string;
 }
 
-/** How a run is checkpointed, plus (LOU-V13, N4, TTL) a `send()` / `stream()` call's own `reasoning`, `permissionMode`, `approvalTtlMs`, `parentSpanId`. */
-type RunTurn = SessionTurnOptions & Pick<ExecuteOptions, 'reasoning' | 'permissionMode' | 'approvalTtlMs' | 'parentSpanId'>;
+/** How a run is checkpointed, plus (LOU-V13, C6, N4, TTL) a `send()` / `stream()` call's own `reasoning`, `modelSettings`, `permissionMode`, `approvalTtlMs`, `parentSpanId`. */
+type RunTurn = SessionTurnOptions & Pick<ExecuteOptions, 'reasoning' | 'modelSettings' | 'permissionMode' | 'approvalTtlMs' | 'parentSpanId'>;
 
 /** `TObject`: the type of `result.object` - `z.output` of the `output` schema. */
 export interface SimpleAgent<TObject = unknown> {
@@ -817,6 +842,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     approvalTtlMs: config.approvalTtlMs,
     onAgentDrift: config.onAgentDrift,
     reasoning: config.reasoning,
+    // C6: also for resumed runs and when this agent is a sub-agent.
+    modelSettings: config.modelSettings,
     toolSearch: config.toolSearch,
     // N14: also for resumed runs and when this agent is a sub-agent.
     ...codeModeOption(config.codeMode),
@@ -901,11 +928,12 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     }
     return { sessionId, checkpointStore: checkpoints };
   };
-  const callTurn = ({ sessionId, reasoning, permissionMode, approvalTtlMs, parentSpanId }: SendOptions): RunTurn => {
+  const callTurn = ({ sessionId, reasoning, modelSettings, permissionMode, approvalTtlMs, parentSpanId }: SendOptions): RunTurn => {
     if (permissionMode !== undefined) assertPermissionMode(permissionMode, 'send');
     return {
       ...durable(sessionId),
       ...(reasoning !== undefined && { reasoning }),
+      ...(modelSettings !== undefined && { modelSettings }),
       ...(permissionMode !== undefined && { permissionMode }),
       ...(approvalTtlMs !== undefined && { approvalTtlMs }),
       ...(parentSpanId !== undefined && { parentSpanId }),
@@ -945,6 +973,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       // LOU-R16: the call's metadata reaches every hook context as `ctx.metadata`.
       ...(ctx.metadata !== undefined && { metadata: ctx.metadata }),
       ...turnRest,
+      // C6: the call's settings win key by key over the agent's.
+      ...(turnRest.modelSettings && { modelSettings: mergeModelSettings(spec.modelSettings, turnRest.modelSettings) }),
       // LOU-W6: memory tools and recall bound to this run's scope keys.
       ...runMemory(spec, ctx, lead),
     };

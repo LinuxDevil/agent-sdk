@@ -3,7 +3,8 @@
  * `readConfig()` on a config read from disk and by the Cloudflare Worker
  * runtime (src/deploy/workerAgentDir.ts) on a config bundled at build time.
  */
-import type { LLMProvider } from '../providers/llm';
+import type { LLMProvider, ModelSettings } from '../providers/llm';
+import { MODEL_SETTING_KEYS } from '../execution/modelSettings';
 import { assertToolConcurrency, type ToolConcurrency } from '../execution/toolBatch';
 import { closest } from './closest';
 import { SDKError } from '../execution/errors';
@@ -130,6 +131,8 @@ export interface AgentDirConfig {
   approvalTtlMs?: number;
   /** `createAgent`'s `limits` (e.g. `{ "maxCostUsd": 0.05 }`). */
   limits?: RunLimits;
+  /** `createAgent`'s `modelSettings` (e.g. `{ "maxTokens": 1024, "temperature": 0.2 }`). */
+  modelSettings?: ModelSettings;
   /**
    * `createAgent`'s `store`: `{ "dir": "./.lousho" }` (an
    * {@link AgentDirFileStore}, resolved against the agent directory) becomes
@@ -163,6 +166,7 @@ const CONFIG_KEYS = [
   'approve',
   'approvalTtlMs',
   'limits',
+  'modelSettings',
   'store',
   'engine',
 ] as const;
@@ -390,6 +394,21 @@ function assertLimits(file: string, value: unknown): void {
   }
 }
 
+function assertModelSettings(file: string, value: unknown): void {
+  if (value === undefined) return;
+  if (!isPlainObject(value)) fail(file, `'modelSettings' must be an object like { "maxTokens": 1024 }, got ${describeValue(value)}.`);
+  for (const [key, entry] of Object.entries(value)) {
+    if (!(MODEL_SETTING_KEYS as readonly string[]).includes(key)) {
+      fail(file, `'modelSettings.${key}' is not a known setting. Allowed keys: ${MODEL_SETTING_KEYS.join(', ')}.`);
+    }
+    if (key === 'stop') {
+      if (!(Array.isArray(entry) && entry.every((stop) => typeof stop === 'string'))) fail(file, `'modelSettings.stop' must be an array of strings, got ${describeValue(entry)}.`);
+    } else if (!(typeof entry === 'number' && Number.isFinite(entry))) {
+      fail(file, `'modelSettings.${key}' must be a number, got ${describeValue(entry)}.`);
+    }
+  }
+}
+
 const FILE_STORE_KEYS = new Set<keyof AgentDirFileStore>(['dir', 'historyLimit', 'tokenKey']);
 /**
  * The method that proves an `AgentStore` part is a real store and not JSON
@@ -476,6 +495,7 @@ function assertValues(file: string, c: Record<string, unknown>): void {
   assertApprove(file, c.approve);
   assertApprovalTtlMs(file, c.approvalTtlMs);
   assertLimits(file, c.limits);
+  assertModelSettings(file, c.modelSettings);
   assertStore(file, c.store);
   assertEngine(file, c.engine);
   try {
