@@ -48,7 +48,7 @@ and in the template:
   nothing in a template. The commands (`send`, `stop`, `approve`, `reject`,
   `answer`) are plain functions with the React hook's signatures.
 - **`reset()`** aborts the run in flight, forgets the in-process session
-  (`{ agent, sessionId }` starts a new conversation) and clears the state.
+  (`{ agent, sessionId }` starts a new conversation; a remote `{ url }` source gets a new generated chat id) and clears the state.
 - **The source and options can be refs.** Pass a plain object or a `ref`; it is
   read when a turn starts, so a changed `url` or `agent` applies to the next
   turn.

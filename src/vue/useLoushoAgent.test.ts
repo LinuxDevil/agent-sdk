@@ -157,7 +157,7 @@ describe('useLoushoAgent for Vue remote (LOU-P2)', () => {
     const chat = mount({ url: '/api/agent', headers: { Authorization: 'Bearer t' }, fetch: remote.fetch }, { approvalsUrl: '/api/approvals' });
 
     await chat.send('Pay');
-    expect(remote.fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST', body: JSON.stringify({ input: 'Pay' }), headers: { Authorization: 'Bearer t' } });
+    expect(remote.fetchMock.mock.calls[0][1]).toMatchObject({ method: 'POST', body: expect.stringMatching(/^{"input":"Pay","sessionId":"[^"]+"}$/), headers: { Authorization: 'Bearer t' } });
     expect(chat.status.value).toBe('awaiting-approval');
     await chat.approve('ok');
 

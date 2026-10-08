@@ -52,7 +52,7 @@ The first argument says where the agent runs.
 
 | Source | What the hook does |
 | ------ | ------------------ |
-| `{ url, headers?, fetch? }` | **Remote.** `send(input)` POSTs `{ "input": "..." }` as JSON to `url` and reads the response body as an event stream: SSE (`data: {...}` lines) or newline-delimited JSON, one event per line. The server below writes exactly that. |
+| `{ url, sessionId?, headers?, fetch? }` | **Remote.** `send(input)` POSTs `{ "input": "...", "sessionId": "..." }` as JSON to `url` and reads the response body as an event stream: SSE (`data: {...}` lines) or newline-delimited JSON, one event per line. The server below writes exactly that. The hook generates one `sessionId` per chat and sends it with every turn, so a session-aware server (`createRouteHandler`) keeps the conversation; pass your own `sessionId` to resume a stored session. `reset()` starts a new chat id. |
 | `{ agent }` | **In process.** `send(input)` calls `agent.stream(input)`. Every turn is a new run with no history, like `agent.send()`. |
 | `{ agent, sessionId }` | **In process, multi-turn.** The hook creates `agent.session({ id: sessionId })` once and streams each turn with `session.stream()`, so turns see the conversation so far. |
 

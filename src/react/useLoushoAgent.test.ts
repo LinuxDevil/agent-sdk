@@ -193,7 +193,7 @@ describe('useLoushoAgent remote (LOU-D15)', () => {
 
     const [url, init] = remote.fetchMock.mock.calls[0];
     expect(url).toBe('/api/agent');
-    expect(init).toMatchObject({ method: 'POST', body: JSON.stringify({ input: 'Hello' }), headers: { Authorization: 'Bearer t' } });
+    expect(init).toMatchObject({ method: 'POST', body: expect.stringMatching(/^{"input":"Hello","sessionId":"[^"]+"}$/), headers: { Authorization: 'Bearer t' } });
     expect(hook.status).toBe('idle');
     expect(hook.messages[1].text).toBe('Hi from the server');
   });

@@ -1292,6 +1292,7 @@ export interface RemoteAgentSource {
     fetch?: typeof fetch;
     // (undocumented)
     headers?: Record<string, string>;
+    sessionId?: string;
     // (undocumented)
     url: string;
 }
