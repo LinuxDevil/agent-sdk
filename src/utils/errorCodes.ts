@@ -36,6 +36,7 @@ export const ERROR_CODES = {
   LOUSHO_SPEC_UNKNOWN_FIELD: 'Rename the field to the suggested spec field, or remove it.',
   LOUSHO_SPEC_UNSUPPORTED_FORMAT: 'Save the spec as .yaml, .yml or .json.',
   LOUSHO_SCHEDULE_INVALID: 'Fix the cron expression named in the message, and give the schedule exactly one of `prompt` or `run`.',
+  LOUSHO_SCHEDULE_RUN_INCOMPLETE: 'Resolve the pending approval named in the message, or change the prompt, tools or limits so an unattended turn can finish.',
   LOUSHO_CHANNEL_INVALID: 'Default-export a channel from defineChannel(), httpChannel(), webhookChannel() or slackChannel() in each channels/ file.',
   LOUSHO_MEMORY_INVALID: 'Default-export a memory slot from defineMemory() (or an object with a scope and a provider) in each memory/ file.',
   LOUSHO_REGISTRY_UNREACHABLE: 'Check the --registry url or path (http(s) or a local file) and that you are online; the message names what failed.',

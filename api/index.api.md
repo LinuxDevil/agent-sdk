@@ -1891,6 +1891,7 @@ export const ERROR_CODES: {
     readonly LOUSHO_SPEC_UNKNOWN_FIELD: "Rename the field to the suggested spec field, or remove it.";
     readonly LOUSHO_SPEC_UNSUPPORTED_FORMAT: "Save the spec as .yaml, .yml or .json.";
     readonly LOUSHO_SCHEDULE_INVALID: "Fix the cron expression named in the message, and give the schedule exactly one of `prompt` or `run`.";
+    readonly LOUSHO_SCHEDULE_RUN_INCOMPLETE: "Resolve the pending approval named in the message, or change the prompt, tools or limits so an unattended turn can finish.";
     readonly LOUSHO_CHANNEL_INVALID: "Default-export a channel from defineChannel(), httpChannel(), webhookChannel() or slackChannel() in each channels/ file.";
     readonly LOUSHO_MEMORY_INVALID: "Default-export a memory slot from defineMemory() (or an object with a scope and a provider) in each memory/ file.";
     readonly LOUSHO_REGISTRY_UNREACHABLE: "Check the --registry url or path (http(s) or a local file) and that you are online; the message names what failed.";
@@ -2322,6 +2323,16 @@ export class FileWorkspaceCheckpointStore implements WorkspaceCheckpointStore {
     removeBeforeTurn(sessionId: string, turn: number): Promise<void>;
     // (undocumented)
     removeFromTurn(sessionId: string, turn: number): Promise<void>;
+}
+
+// @public
+export function fireSchedule(agent: SimpleAgent, schedule: DefinedSchedule, options?: FireScheduleOptions): Promise<void>;
+
+// @public
+export interface FireScheduleOptions {
+    firedAt?: Date;
+    name?: string;
+    sessionId?: string;
 }
 
 // @public
@@ -5087,8 +5098,7 @@ export interface RunLimits {
 
 // @public
 export interface RunningSchedules {
-    // (undocumented)
-    stop(): void;
+    stop(): Promise<void>;
 }
 
 // @public
@@ -5779,6 +5789,7 @@ export function startSchedules(agent: SimpleAgent, schedules: readonly DefinedSc
 
 // @public (undocumented)
 export interface StartSchedulesOptions {
+    keepAlive?: boolean;
     now?: () => number;
     onError?: (error: unknown, schedule: {
         name: string;
@@ -6987,8 +6998,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-CDCdpMkc.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-CDCdpMkc.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-LV-9grnL.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-LV-9grnL.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
