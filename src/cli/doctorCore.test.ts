@@ -220,6 +220,14 @@ describe('API keys', () => {
     const result = await check(makeEnv({ env: { OPENAI_API_KEY: SECRET } }), 'env.openai');
     expect(result).toMatchObject({ status: 'ok', finding: 'set', title: 'openai (OPENAI_API_KEY)' });
   });
+  it('shows the base URL an OpenAI-compatible endpoint is read from, without credentials or query', async () => {
+    const env = makeEnv({ env: { OPENAI_API_KEY: SECRET, OPENAI_BASE_URL: 'http://user:pw@localhost:1234/v1?key=x' } });
+    const result = await check(env, 'env.openai');
+    expect(result.finding).toBe('set; base URL http://localhost:1234/v1 (from OPENAI_BASE_URL)');
+    expect((await check(makeEnv({ env: { OPENAI_BASE_URL: 'http://localhost:1234/v1' } }), 'env.openai')).finding).toBe(
+      'not set; base URL http://localhost:1234/v1 (from OPENAI_BASE_URL)'
+    );
+  });
   it('warn with a fix when not set', async () => {
     const result = await check(makeEnv(), 'env.anthropic');
     expect(result.status).toBe('warn');
