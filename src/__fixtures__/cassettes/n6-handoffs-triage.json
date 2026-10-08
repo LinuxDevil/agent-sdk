@@ -115,7 +115,7 @@
         "messages": [
           {
             "role": "system",
-            "content": "You route the user. Hand billing questions to billing and technical questions (logins, passwords) to tech-support. Do not answer them yourself."
+            "content": "You route the user. Hand billing questions to billing and technical questions (logins, passwords) to tech-support. Do not answer them yourself.\n\n[routing note - not from the user] handoff triage -> billing: reason=\"User was charged twice for their subscription.\"\n\n[routing note - not from the user] handoff billing -> triage: reason=\"User is asking about resetting their password.\""
           },
           {
             "role": "user",
@@ -136,10 +136,6 @@
             "content": "{\"transferred_to\":\"billing\"}",
             "name": "transfer_to_billing",
             "toolName": "transfer_to_billing"
-          },
-          {
-            "role": "system",
-            "content": "[routing note - not from the user] handoff triage -> billing: reason=\"User was charged twice for their subscription.\""
           },
           {
             "role": "assistant",
@@ -180,10 +176,6 @@
             "content": "{\"transferred_to\":\"triage\"}",
             "name": "transfer_to_triage",
             "toolName": "transfer_to_triage"
-          },
-          {
-            "role": "system",
-            "content": "[routing note - not from the user] handoff billing -> triage: reason=\"User is asking about resetting their password.\""
           }
         ],
         "tools": [

@@ -835,6 +835,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       const scope = { sessionId: ctx.sessionId, metadata: ctx.metadata, principal: ctx.principal };
       return { ...spec, toolRegistry: memory.forRun(scope, spec.toolRegistry, undefined).toolRegistry };
     },
+    // The agents it hands to keep its memory: the same slots, bound to the run's scope keys.
+    ...(memory && { target: (spec, ctx) => memory.forTarget({ sessionId: ctx.sessionId, metadata: ctx.metadata, principal: ctx.principal }, spec) }),
   });
   // N9b: tools' OAuth tokens (`ctx.getToken()`) and pending sign-ins.
   const tokens = config.store?.tokens;
@@ -881,7 +883,13 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       ...(approvalTtlMs !== undefined && { approvalTtlMs }),
     };
   };
-  /** `lead` (N6): false when the run starts as a handoff target, which gets none of this agent's memory. */
+  /** LOU-W6: memory tools and recall bound to the run's scope keys; a handoff target (N6) has the tools already, so it gets the recall only. */
+  const runMemory = (spec: SubagentSpec, ctx: RunConfigContext, lead: boolean): Partial<ExecuteOptions> => {
+    if (!memory) return {};
+    const run = memory.forRun({ sessionId: ctx.sessionId, metadata: ctx.metadata, principal: ctx.principal }, spec.toolRegistry, hooks);
+    return lead ? run : { hooks: run.hooks };
+  };
+  /** `lead` (N6): false when the run starts as a handoff target, whose spec already has this agent's memory tools (it still recalls). */
   const executeOptions = (
     spec: SubagentSpec,
     input: Message[],
@@ -910,7 +918,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       ...(ctx.metadata !== undefined && { metadata: ctx.metadata }),
       ...turnRest,
       // LOU-W6: memory tools and recall bound to this run's scope keys.
-      ...(lead && memory?.forRun({ sessionId: ctx.sessionId, metadata: ctx.metadata, principal: ctx.principal }, spec.toolRegistry, hooks)),
+      ...runMemory(spec, ctx, lead),
     };
   };
   /**
@@ -1003,7 +1011,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
 
 /** The entry agent's run-level options (N6): names a handoff target can never own. */
 function runLevelOptionNames(config: CreateAgentConfig): string[] {
-  return (['approve', 'approvalStore', 'permissionMode', 'approvalTtlMs', 'store'] as const).filter((key) => config[key] !== undefined);
+  return (['approve', 'approvalStore', 'permissionMode', 'approvalTtlMs', 'store', 'memory'] as const).filter((key) => config[key] !== undefined);
 }
 
 /** The approval store a run writes to: the explicit one, else the store bundle's, else in-memory. */
