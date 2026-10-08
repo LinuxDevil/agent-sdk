@@ -297,6 +297,56 @@ describe('LOU-U9: checkpoint after every model turn', () => {
     expect(roles(result.messages).filter((r) => r === 'user')).toHaveLength(1);
   });
 
+  it('a crash behind finished parallel calls resumes by running only the missing call', async () => {
+    // Audit log-incident F9: `b` and `c` finish while the slower `a` is still
+    // running and the process dies. Their results are checkpointed by
+    // toolCallId, so resume re-runs `a` only - never `b` or `c` again.
+    const runs: Runs = { a: 0, b: 0, c: 0 };
+    const checkpoints = checkpointStore();
+    const finished: string[] = [];
+    let release!: () => void;
+    const siblings = new Promise<void>((resolve) => (release = resolve));
+    const a = defineTool({
+      name: 'a',
+      description: 'a',
+      input: z.object({}),
+      execute: async () => {
+        runs.a++;
+        if (runs.a === 1) {
+          await siblings; // die only once `b` and `c` have results
+          throw new PropagatingToolError('process died while running a');
+        }
+        return 'a done';
+      },
+    });
+    const fast = (name: 'b' | 'c') =>
+      defineTool({
+        name,
+        description: name,
+        input: z.object({}),
+        execute: async () => {
+          runs[name]++;
+          finished.push(name);
+          if (finished.length === 2) release();
+          return `${name} done`;
+        },
+      });
+    const h: Harness = { tools: [a, fast('b'), fast('c')], checkpoints };
+
+    const crashed = execute(h, [turnCalling('a', 'b', 'c'), 'never reached']);
+    await expect(crashed.result).rejects.toThrow('process died');
+    expect(runs).toEqual({ a: 1, b: 1, c: 1 });
+
+    const resumed = execute(h, ['all done']);
+    const result = await resumed.result;
+
+    expect(result.text).toBe('all done');
+    expect(resumed.model.calls).toHaveLength(1);
+    expect(runs).toEqual({ a: 2, b: 1, c: 1 });
+    // The transcript keeps the model's call order for the results.
+    expect(toolIds(resumed.model.calls[0].messages as Message[])).toEqual(['call_a', 'call_b', 'call_c']);
+  });
+
   it('a store failure right after the model responded resumes without re-calling the model', async () => {
     const runs: Runs = {};
     const failing = checkpointStore(2); // save 1 = the model turn, save 2 = the first tool result

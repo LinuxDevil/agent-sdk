@@ -49,9 +49,16 @@ export interface ToolBatchCallbacks {
   start(toolCall: ToolCall): StartedToolCall;
   /** A call finished (completion order); never called for the approval call or a call paused for sign-in (N9b). */
   onComplete(outcome: ToolCallOutcome): void;
-  /** Appends a result to the transcript; called in call order. */
+  /**
+   * Records a result in the transcript; called as each call settles
+   * (completion order). The transcript keeps the model's call order, so
+   * the caller inserts the result where its call sits - a call that
+   * finishes behind a slower earlier call is still recorded (and
+   * checkpointed) at once, keyed by its toolCallId, so a crash resume
+   * never runs it again.
+   */
   record(toolCall: ToolCall, outcome: ToolCallOutcome): void;
-  /** Persists the transcript after the recorded prefix grew. */
+  /** Persists the transcript after another result was recorded. */
   persist(): Promise<void>;
 }
 
@@ -106,14 +113,14 @@ export class Limiter {
  * Runs one turn's tool calls. Calls are started in call order, each one
  * only after the previous one passed its gate (so the first call that needs
  * approval is known before anything after it starts) and a concurrency slot
- * is free. Results are recorded in call order as the completed prefix grows.
- * Resolves only once every started call has settled.
+ * is free. Each result is recorded as its call settles; the transcript
+ * keeps call order. Resolves only once every started call has settled.
  */
 class ToolBatch {
   private readonly slots: Slot[];
   private readonly limiter: Limiter;
   private readonly running: Array<Promise<void>> = [];
-  private recorded = 0;
+  private readonly recorded = new Set<number>();
   private halted = false;
   private persisting: Promise<void> = Promise.resolve();
 
@@ -179,7 +186,7 @@ class ToolBatch {
       // N9b: a call paused for sign-in has no result yet, like one awaiting approval.
       if (!outcome.requiresApproval && !outcome.signIn) {
         this.callbacks.onComplete(outcome);
-        await this.recordPrefix();
+        await this.record(index, outcome);
       }
     } catch (error) {
       this.slots[index] = { status: 'failed', error };
@@ -189,16 +196,10 @@ class ToolBatch {
     }
   }
 
-  /** Appends every newly contiguous completed result, then persists once. */
-  private async recordPrefix(): Promise<void> {
-    const before = this.recorded;
-    for (let slot = this.slots[this.recorded]; isRecordable(slot); slot = this.slots[this.recorded]) {
-      this.callbacks.record(this.toolCalls[this.recorded], slot.outcome);
-      this.recorded++;
-    }
-    if (this.recorded === before) {
-      return;
-    }
+  /** Records one settled call's result, then persists once it is in the transcript. */
+  private async record(index: number, outcome: ToolCallOutcome): Promise<void> {
+    this.callbacks.record(this.toolCalls[index], outcome);
+    this.recorded.add(index);
     // Checkpoint writes are serialized so an older snapshot can never land
     // after a newer one.
     const write = this.persisting.then(() => this.callbacks.persist());
@@ -216,18 +217,12 @@ class ToolBatch {
       if (slot.status === 'completed' && slot.outcome.requiresApproval) {
         result.approval = { toolCall, outcome: slot.outcome };
       }
-      if (index >= this.recorded) {
+      if (!this.recorded.has(index)) {
         result.unrecorded.push({ toolCall, ...(slot.status === 'completed' && { outcome: slot.outcome }) });
       }
     }
     return result;
   }
-}
-
-function isRecordable(
-  slot: Slot | undefined
-): slot is { status: 'completed'; outcome: ToolCallOutcome } {
-  return slot?.status === 'completed' && !slot.outcome.requiresApproval && !slot.outcome.signIn;
 }
 
 /** Runs one turn's tool calls - see {@link ToolBatch}. */
