@@ -11,7 +11,8 @@ import { textOf } from '../providers/content';
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { getToolInputSchema } from '../tools/toolContract';
-import { withSpan } from './tracing';
+import { withSpan, type Span } from './tracing';
+import { withProviderEvents } from '../providers/providerEvents';
 import type { CallUsage } from '../models/usage';
 import { measureUsage } from './runUsage';
 import { llmSpanInit, recordLlmResult, resolveCaptureContent } from './genAiSpans';
@@ -231,6 +232,19 @@ function abortable<T>(call: Promise<T>, signal: AbortSignal | undefined): Promis
   });
 }
 
+/** C2: `request` with each `withRetry()` retry of it recorded on its `chat` span (count, and category and status per failure). */
+function recordingRetries(request: GenerateOptions, span: Span): GenerateOptions {
+  const errors: string[] = [];
+  return withProviderEvents(request, {
+    retry: ({ error }) => {
+      const { category, statusCode } = compactProviderError(error);
+      errors.push(statusCode === undefined ? category : `${category} ${statusCode}`);
+      span.attributes = { ...span.attributes, [SdkAttr.RETRY_COUNT]: errors.length, [SdkAttr.RETRY_ERRORS]: [...errors] };
+    },
+    fallback: () => undefined,
+  });
+}
+
 /**
  * Runs provider.generate() inside a `chat {model}` span parented to the
  * run's `invoke_agent` span, followed by the onLLMResponse callback and
@@ -262,8 +276,9 @@ export function generateInSpan(
       const onOutput = () => options.inputQueue?.callOutput();
       // N5b: the sink holds the step's streamed output until the parallel input guardrails pass.
       const hold = inputCheck?.verdict;
+      const request = recordingRetries(generateRequest, llmSpan);
       const generated = settleHostedFinish(
-        await abortable(runEvents ? runEvents.generate(provider, generateRequest, onOutput, hold) : provider.generate(generateRequest), callSignal)
+        await abortable(runEvents ? runEvents.generate(provider, request, onOutput, hold) : provider.generate(request), callSignal)
       );
       const llmLatencyMs = Date.now() - llmStart;
 

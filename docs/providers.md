@@ -71,7 +71,9 @@ const agent = createAgent({
 
 The `model` string and each fallback are resolved with the `ai` SDK's own
 retries off, so `retry` is the only retry layer. A `provider` instance is
-wrapped only when you set `retry`. `agent.stream()` reports `provider.retry`
+wrapped only when you set `retry`, and then its own `ai` SDK retries are off
+too (`retry: false` sends each call once). A streamed step that fails before
+any text or tool call (after reasoning only) is retried as well. `agent.stream()` reports `provider.retry`
 and `provider.fallback` events. Details in
 [Provider retries and fallback](./configuration.md#provider-retries-and-fallback).
 
@@ -207,6 +209,34 @@ then wrap its model with `fromAiSdk()` (below). Otherwise implement the
 `supportsStreaming()`, `getModels()`, optionally `defaultModel`) and pass the
 instance as `provider`, or register a factory with
 `LLMProviderRegistry.register(name, factory)`.
+
+### Slow local models: a custom `fetch`
+
+`OpenAIProvider`, `AnthropicProvider`, `OpenRouterProvider` and
+`OllamaProvider` take a `fetch` option that their model calls go through.
+Node's built-in `fetch` gives up on a response whose headers take over 300
+seconds (`Headers Timeout Error`), which a large local model can hit on a
+long non-streamed generation. The SDK classifies that failure as a retryable
+`timeout`, but every retry starts the generation over, so raise the limit
+instead. Install `undici` and pass its `Agent` as the dispatcher:
+
+```ts
+import { Agent } from 'undici';
+import { createAgent, OpenAIProvider } from '@lousho/build-ai-agent';
+
+// Wait up to 15 minutes for the response headers and between body chunks.
+const dispatcher = new Agent({ headersTimeout: 15 * 60_000, bodyTimeout: 15 * 60_000 });
+
+const agent = createAgent({
+  provider: new OpenAIProvider({
+    apiKey: 'lm-studio',
+    baseURL: 'http://localhost:1234/v1',
+    defaultModel: 'qwen3-32b',
+    fetch: (input, init) => fetch(input, { ...init, dispatcher } as RequestInit),
+  }),
+  retry: { maxRetries: 2 },
+});
+```
 
 ### Any AI SDK model: fromAiSdk()
 

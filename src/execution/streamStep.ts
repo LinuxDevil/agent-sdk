@@ -6,6 +6,7 @@
 
 import type { GenerateOptions, GenerateResult, HostedToolCall, LLMProvider, ReasoningBlock, StreamChunk, StreamResult, ToolCall } from '../providers';
 import type { AgentEventPayload } from './agentEvents';
+import { withProviderEvents } from '../providers/providerEvents';
 
 const FINISH_REASONS: ReadonlySet<string> = new Set<GenerateResult['finishReason']>([
   'stop',
@@ -144,12 +145,19 @@ function silenceFinalValues(streamed: StreamResult): void {
  * there); finish reason and usage from the `finish` chunk, else from the
  * stream's promises. The signal is checked between chunks. Reasoning
  * (LOU-V13) is reported as `reasoning.*` events, ended before the first text
- * or tool call, and returned in blocks.
+ * or tool call (or a retry), and returned in blocks.
  */
 export async function generateViaStream(provider: LLMProvider, request: GenerateOptions, sink: StepSink): Promise<GenerateResult> {
-  const streamed = await provider.stream(request);
-  silenceFinalValues(streamed);
   const parts: StreamedParts = { text: '', toolCalls: [], hosted: new Map(), hostedDone: new Set(), reasoning: [], block: '', thought: '' };
+  // C2: withRetry() retries a stream that failed after reasoning only. The
+  // failed attempt's reasoning is ended (`reasoning.done`, before the
+  // `provider.retry` event) and dropped; the step keeps the retry's.
+  const retried = () => {
+    closeReasoning(parts, sink);
+    parts.reasoning = [];
+  };
+  const streamed = await provider.stream(withProviderEvents(request, { retry: retried, fallback: () => undefined }));
+  silenceFinalValues(streamed);
   for await (const chunk of streamed.fullStream) {
     request.signal?.throwIfAborted();
     CHUNK_HANDLERS[chunk.type]?.(parts, chunk, sink);

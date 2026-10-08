@@ -45,7 +45,11 @@ export class OllamaProvider extends AiSdkProvider<OllamaProviderConfig> {
       major === 4
         ? await loadOptionalPeer('ollama-ai-provider', () => import('ollama-ai-provider'), major)
         : await loadOptionalPeer('ollama-ai-provider-v2', () => import('ollama-ai-provider-v2'), major);
-    return { modern: major !== 4, ollama: createOllama({ baseURL: normalizeOllamaBaseUrl(this.config.baseURL) }) };
+    const ollama = createOllama({
+      baseURL: normalizeOllamaBaseUrl(this.config.baseURL),
+      ...(this.config.fetch && { fetch: this.config.fetch }),
+    });
+    return { modern: major !== 4, ollama };
   });
 
   constructor(config: OllamaProviderConfig, logger: Logger = noopLogger) {

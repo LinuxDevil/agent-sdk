@@ -199,8 +199,12 @@ for await (const event of agent.stream('Hello!')) {
   `fallbackModels` entry. createAgent builds those providers with the `ai`
   SDK's own retries off (`maxRetries: 0`), so retries happen in one place and
   the default `{ maxRetries: 2 }` makes as many calls as before.
-- A `provider` instance you pass keeps its own retry behaviour; it is wrapped
-  in `withRetry()` only when you set `retry`. `fallbackModels` work with it too.
+- A `provider` instance you pass keeps its own retry behaviour (for a built-in
+  provider, the `ai` SDK's `maxRetries`, default 2) unless you set `retry`.
+  With `retry` set, the instance is wrapped in `withRetry()` and that is the
+  only retry layer: a built-in provider's calls go out with the `ai` SDK's own
+  retries off, so `{ maxRetries: 2 }` makes at most 3 requests, and
+  `retry: false` sends each call once. `fallbackModels` work with it too.
 - `fallbackModels` are `provider/model` strings, resolved like `model` when the
   agent is created. The agent runs `withFallback([withRetry(primary), withRetry(fallback1), ...])`:
   every call starts with the primary model.
@@ -239,8 +243,17 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
   provider's `retryAfterMs` hint (a `Retry-After` header) replaces the backoff
   delay. Pass `retryOn(error, attempt)` to change the rule, `timeoutMs` for a
   per-attempt time limit, and `signal` to stop retrying.
-- A `stream()` call is retried only when it rejects. An error inside a stream
-  that was already returned is not retried.
+- A `stream()` call is retried when it rejects, and when its stream fails
+  before any output: reasoning chunks and empty text deltas don't count, so a
+  local runtime that sends an empty `reasoning-end` and then a 500 (LM Studio)
+  is retried. A failure after text, a tool call or the finish is not retried.
+  An agent streams its model calls whenever it has an event listener, so this
+  is what keeps `agent.stream()` as resilient as `send()`.
+- Reasoning streamed before such a failure was already reported. In an agent
+  run the failed attempt's reasoning ends with its `reasoning.done`, then
+  comes the `provider.retry` event, then the retried attempt's reasoning
+  starts again with `reasoning.start`. The step's (and the run's) `reasoning`
+  is the successful attempt's only.
 - `withFallback` tries each provider in order and rethrows the last error
   when all fail. By default it falls back on any error except a cancellation
   (`fallbackOn` changes that). Each fallback runs on its own `defaultModel`.
@@ -251,11 +264,11 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
   model in `usage.byModel`.
 - `resilientProvider(provider, { maxRetries, timeout })` applies the
   `LLMProviderConfig` fields of the same names.
-- The built-in providers pass their config's `maxRetries` (default 2) to the
-  `ai` SDK's own internal retries, which run inside each `withRetry` attempt.
-  Build a provider you wrap with `maxRetries: 0`
-  (`new OpenAIProvider({ apiKey, maxRetries: 0 })`) to retry in one place.
-  `createAgent()` does this for the models it resolves.
+- `withRetry` is the only retry layer: the built-in providers send its calls
+  with the `ai` SDK's own retries off, whatever their config's `maxRetries`.
+  That `maxRetries` (default 2) applies only to a provider used unwrapped.
+- Each retry is recorded on the call's `chat` span as `lousho.retry.count` and
+  `lousho.retry.errors` (see [Observability](./observability.md)).
 
 ## `createAgent()` options
 

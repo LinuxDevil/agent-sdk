@@ -607,6 +607,13 @@ describe('Error Classes', () => {
       expect(compacted).toMatchObject({ category: 'timeout', retryable: true });
       expect(compacted.error).toContain('UND_ERR_HEADERS_TIMEOUT');
     });
+
+    it('C2: maps a Headers Timeout Error without its cause (a stream error message) to timeout/retryable', () => {
+      expect(compactProviderError(new Error('Cannot connect to API: Headers Timeout Error'))).toMatchObject({
+        category: 'timeout',
+        retryable: true,
+      });
+    });
   });
 
   describe('LOU-T4: isModelActionableProviderErrorCategory', () => {

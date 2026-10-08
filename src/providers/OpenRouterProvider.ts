@@ -197,7 +197,7 @@ interface RequestChanges {
 }
 
 /** `fetch`, with each JSON request body changed as `changes` says (the reasoning merge and the tools append compose). */
-function withRequestChanges(changes: RequestChanges): typeof fetch {
+function withRequestChanges(changes: RequestChanges, send: typeof fetch): typeof fetch {
   return async (input, init) => {
     let body = init?.body;
     if (typeof body === 'string') {
@@ -205,7 +205,7 @@ function withRequestChanges(changes: RequestChanges): typeof fetch {
       const tools = changes.tools && [...(Array.isArray(json.tools) ? (json.tools as unknown[]) : []), ...changes.tools];
       body = JSON.stringify({ ...json, ...changes.merge, ...(tools && { tools }) });
     }
-    const response = await globalThis.fetch(input, { ...init, body });
+    const response = await send(input, { ...init, body });
     if (changes.observe && response.ok) {
       // The clone is read in the background; the caller reads the original as usual.
       changes.observe(
@@ -348,8 +348,10 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
   private async openRouter(changes?: RequestChanges) {
     // LOU-R5: every call goes through the fetch that keeps the body's error
     // message; the request `changes` compose inside it. `globalThis.fetch` is
-    // read per call so tests can stub it after the provider was created.
-    const inner: typeof fetch = changes ? withRequestChanges(changes) : (input, init) => globalThis.fetch(input, init);
+    // read per call so tests can stub it after the provider was created; a
+    // configured `fetch` (C2) is used instead.
+    const base: typeof fetch = (input, init) => (this.config.fetch ?? globalThis.fetch)(input, init);
+    const inner: typeof fetch = changes ? withRequestChanges(changes, base) : base;
     return (await this.loadFactory())({
       apiKey: this.config.apiKey,
       baseURL: OPENROUTER_API_URL,

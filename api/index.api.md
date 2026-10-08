@@ -487,6 +487,7 @@ abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLM
 interface AiSdkProviderConfig extends LLMProviderConfig {
     // (undocumented)
     defaultModel?: string;
+    fetch?: typeof globalThis.fetch;
     unsupportedFiles?: UnsupportedFiles;
 }
 
@@ -5380,6 +5381,8 @@ export const SdkAttr: {
     readonly HOSTED_TOOL_CALLS: "lousho.hosted_tool_calls";
     readonly PARENT_TOOL_CALL_ID: "lousho.tool.parent_call_id";
     readonly CALL_PURPOSE: "lousho.call.purpose";
+    readonly RETRY_COUNT: "lousho.retry.count";
+    readonly RETRY_ERRORS: "lousho.retry.errors";
 };
 
 // @public
