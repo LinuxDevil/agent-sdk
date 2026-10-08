@@ -46,6 +46,12 @@ lousho add coding-kit --dir ./my-agent --yes --allow exec,fs-write
 lousho dev ./my-agent
 ```
 
+The kit declares `exec`, so its install receipt makes every kit tool (the
+explorer's included) wait for approval, and the kit's own `approve.ts` may not
+decide those calls. Resolve them with `agent.approvals.resolve()`, or, if you
+trust the kit's approver, pass it in code:
+`loadAgentDir(dir, { approve: (await import('./my-agent/approve.ts')).default })`.
+
 `kit.test.ts` installs it with `lousho add`, loads it with `loadAgentDir()`,
 runs the same scripted scenario as `index.test.ts` (provider and explorer
 provider injected through loader overrides), and builds it into a node-server
