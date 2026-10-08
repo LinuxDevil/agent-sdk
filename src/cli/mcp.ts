@@ -1,15 +1,17 @@
 /**
- * `lousho mcp <agent.yaml|json> [--http --port N --host H]` - serve an agent
+ * `lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]` - serve an agent
  * spec over MCP (LOU-Z3). stdio by default; stdout carries only the MCP
  * protocol there, so every message from this command goes to stderr.
  */
 import * as path from 'node:path';
 import { loadSpec } from '../spec/loadSpec';
 import { specToAgent } from '../spec/specToAgent';
+import { detectTarget, loadTarget } from './devReload';
 import { parseCommand, portValue, stringValue, usageError, type CommandSpec } from './args';
+import type { SimpleAgent } from '../createAgent';
 import { serveMcp, type ServeMcpHandle } from '../tools/mcp/server/serveMcp';
 
-const USAGE = 'Usage: lousho mcp <agent.yaml|json> [--http --port N --host H]';
+const USAGE = 'Usage: lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]';
 
 /** Parsed `lousho mcp` arguments. */
 export interface McpCliArgs {
@@ -36,13 +38,22 @@ export function parseMcpArgs(rest: string[]): McpCliArgs {
   return { configPath: positionals[0], http: values.http === true, port: portValue(SPEC, values.port, 3920), host: stringValue(values.host) ?? '127.0.0.1' };
 }
 
-/** Loads the spec and starts serving it. Resolves with the running server. */
+/** Loads the target (a spec file, an agent directory or an agent module) and starts serving it. Resolves with the running server. */
 export async function startMcpServer(args: McpCliArgs): Promise<ServeMcpHandle> {
-  const spec = loadSpec(path.resolve(args.configPath));
-  const agent = specToAgent(spec);
+  const target = detectTarget(args.configPath, 'mcp');
+  let agent: SimpleAgent;
+  let name: string;
+  if (target.kind === 'spec') {
+    const spec = loadSpec(target.path);
+    agent = specToAgent(spec);
+    name = spec.name;
+  } else {
+    agent = await loadTarget(target);
+    name = path.basename(target.path, path.extname(target.path));
+  }
   return serveMcp({
     agent,
-    name: spec.name,
+    name,
     transport: args.http ? { type: 'http', port: args.port, host: args.host } : 'stdio',
     warn: (message) => console.error(message),
   });
@@ -60,7 +71,8 @@ export async function runMcp(rest: string[]): Promise<number> {
     if (server.url) console.error(`lousho mcp: serving on ${server.url}`);
     return 0;
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(message.startsWith('lousho') ? message : `lousho mcp: ${message}`);
     return 1;
   }
 }

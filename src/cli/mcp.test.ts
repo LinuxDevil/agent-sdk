@@ -60,3 +60,30 @@ describe('runMcp', () => {
     error.mockRestore();
   });
 });
+
+describe('lousho mcp with an agent directory (Eve CLI-F2)', () => {
+  it('serves an agent directory instead of crashing with EISDIR', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-mcp-dir-'));
+    fs.writeFileSync(path.join(dir, 'agent.json'), JSON.stringify({ model: 'openai/gpt-4o-mini' }));
+    fs.writeFileSync(path.join(dir, 'instructions.md'), 'Be brief.');
+    vi.stubEnv('OPENAI_API_KEY', 'test-key');
+    const server = await startMcpServer({ configPath: dir, http: true, port: 0, host: '127.0.0.1' });
+    try {
+      expect(server.url).toMatch(/\/mcp$/);
+      expect(server.agentToolName).toBe(path.basename(dir).replace(/[^A-Za-z0-9_-]/g, '_'));
+    } finally {
+      await server.close();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('prefixes failures with the command and never leaks a raw fs error', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-mcp-empty-'));
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await runMcp([dir, '--http', '--port', '0'])).toBe(1);
+    const message = String(error.mock.calls[0]?.[0]);
+    expect(message).toMatch(/^lousho mcp:|LOUSHO_/);
+    expect(message).not.toMatch(/EISDIR/);
+    error.mockRestore();
+  });
+});
