@@ -195,7 +195,9 @@ them, and `--drift` reports how each case's trajectory changed. See
 
 By default call N is answered by entry N, but only if the request still matches
 what was recorded: model, each message's role, content and tool calls, tool
-names and parameter schemas, `temperature` and `maxTokens`. On a mismatch the
+names and parameter schemas, `temperature` and `maxTokens`. Tools are compared
+by name, so registering the same tools in another order still matches (older
+cassettes, which kept the registration order, too). On a mismatch the
 error shows the first difference and the re-record hint:
 
 ```text
@@ -245,8 +247,13 @@ const provider = recordReplay(mockModel(['ok']), {
 - `stream()` records the chunks and replays them as an async iterable without
   delays; pass `replayTiming: true` to reproduce the inter-chunk timing. While
   recording, the real stream is read to the end before it is returned.
-- Token usage is recorded and replayed, so cost and usage features behave the
-  same in replay.
+- Token usage is recorded and replayed in full (including cached-input and
+  reasoning tokens, and a provider-reported cost), so cost and usage features
+  behave the same in replay.
+- A `generate()` call's reasoning blocks (`result.reasoning`, with their
+  signatures) are recorded and replayed; a stream keeps its reasoning in its
+  recorded chunks. Cassettes recorded before these were kept still replay,
+  without them.
 
 ### When the cassette is written
 

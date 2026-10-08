@@ -21,8 +21,8 @@ import { SDKError } from '../execution/errors';
 export interface EvalJudgeConfig {
   /** Provider that grades replies. Use `mockModel` in CI, a real provider in `*.judge.eval.ts`. */
   provider: LLMProvider;
-  /** Model id the judge runs on. */
-  model: string;
+  /** Model id the judge runs on. Defaults to the provider's own model. */
+  model?: string;
   temperature?: number;
 }
 

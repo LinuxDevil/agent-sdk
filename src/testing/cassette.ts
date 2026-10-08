@@ -17,7 +17,14 @@ const usageSchema = z.object({
   promptTokens: z.number(),
   completionTokens: z.number(),
   totalTokens: z.number(),
+  /** Optional, so cassettes recorded before they were kept still read. */
+  cachedInputTokens: z.number().optional(),
+  reasoningTokens: z.number().optional(),
+  costUsd: z.number().optional(),
 });
+
+/** LOU-V13: one block of the model's reasoning, as `GenerateResult.reasoning` holds it. */
+const reasoningSchema = z.object({ text: z.string(), signature: z.string().optional(), redactedData: z.string().optional() });
 
 const toolCallSchema = z.object({
   id: z.string(),
@@ -74,6 +81,8 @@ const responseSchema = z.object({
   usage: usageSchema.optional(),
   toolCalls: z.array(toolCallSchema).optional(),
   hostedToolCalls: z.array(hostedToolCallSchema).optional(),
+  /** `generate()` reasoning blocks (a stream keeps its reasoning in its chunks). */
+  reasoning: z.array(reasoningSchema).optional(),
   /** Present for `stream()` entries: the chunks and the delay before each. */
   chunks: z.array(z.object({ delayMs: z.number(), chunk: chunkSchema })).optional(),
 });

@@ -8034,6 +8034,14 @@ defineEval({
 });
 ```
 
+`judge.model` is optional: without it the judge runs on its provider's own
+model. The judge is asked for a bare number, but its reply is read leniently:
+the number after a `score` label (`Score: 0.9`), else the first number in the
+reply (`**0.9**`), scaled into 0 to 1 when it is written as `8/10`,
+`8 out of 10`, `85%` or a bare whole number from 2 to 100 (`8` reads as 8/10,
+`85` as 85/100). A reply with no number scores 0. `parseJudgeScore(text)`
+exposes the same parsing.
+
 Files named `*.judge.eval.ts` are never picked up by a normal run (and
 `npm test`); only `lousho eval --judge` (or `npm run test:evals:judge` in this
 repository) runs them.
@@ -15505,7 +15513,9 @@ them, and `--drift` reports how each case's trajectory changed. See
 
 By default call N is answered by entry N, but only if the request still matches
 what was recorded: model, each message's role, content and tool calls, tool
-names and parameter schemas, `temperature` and `maxTokens`. On a mismatch the
+names and parameter schemas, `temperature` and `maxTokens`. Tools are compared
+by name, so registering the same tools in another order still matches (older
+cassettes, which kept the registration order, too). On a mismatch the
 error shows the first difference and the re-record hint:
 
 ```text
@@ -15555,8 +15565,13 @@ const provider = recordReplay(mockModel(['ok']), {
 - `stream()` records the chunks and replays them as an async iterable without
   delays; pass `replayTiming: true` to reproduce the inter-chunk timing. While
   recording, the real stream is read to the end before it is returned.
-- Token usage is recorded and replayed, so cost and usage features behave the
-  same in replay.
+- Token usage is recorded and replayed in full (including cached-input and
+  reasoning tokens, and a provider-reported cost), so cost and usage features
+  behave the same in replay.
+- A `generate()` call's reasoning blocks (`result.reasoning`, with their
+  signatures) are recorded and replayed; a stream keeps its reasoning in its
+  recorded chunks. Cassettes recorded before these were kept still replay,
+  without them.
 
 ### When the cassette is written
 
