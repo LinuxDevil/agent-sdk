@@ -263,10 +263,10 @@ changed (to what the spec requires); update queries that matched on them.
 | `error` (the error message; absent on success) | `error.type` and the span status |
 | `input`, `prompt`, `args`, `result` | `gen_ai.input.messages`, `gen_ai.tool.call.arguments`, `gen_ai.tool.call.result` (opt-in, see above) |
 
-The deprecated content attributes (`input`, `prompt`, `args`, `result`) keep
-their old behavior: they are recorded unless `redactContent: true`. Set
-`redactContent: true` if you want no content on spans unless you opt in with
-`captureContent`.
+The deprecated content attributes (`input`, `prompt`, `args`, `result`) are
+off by default: `redactContent` defaults to `true`. Pass `redactContent: false`
+to record them as before; `captureContent` governs only the `gen_ai.*` content
+attributes.
 
 ## Local traces
 
@@ -335,8 +335,9 @@ died) is not in the file. If the directory cannot be written, the exporter
 warns once and the run goes on. `listTraces({ dir, limit })` and
 `readTrace(idOrPrefix, { dir })` read the files from code.
 
-The files hold what the spans hold: the deprecated `input`, `prompt`, `args`
-and `result` attributes carry message and tool content (see
+The files hold what the spans hold. By default that is no message or tool
+content: the deprecated `input`, `prompt`, `args` and `result` attributes are
+recorded only with `redactContent: false` (see
 [Deprecated attribute names](#deprecated-attribute-names)), and
 `captureContent: true` adds the `gen_ai.*` content. Keep `.lousho/` out of
 version control; projects made by `lousho init` ignore it.
@@ -344,9 +345,9 @@ version control; projects made by `lousho init` ignore it.
 `lousho dev` and `lousho chat` write these files when you pass `--traces`
 (into `.lousho/traces`) or `--traces=<dir>`, for a spec file, an agent
 directory or a module, so a spec-file agent needs no code to be traced. It is
-opt-in on purpose: the files persist prompt and tool content, and
-`captureContent: false` does not remove it (only `redactContent: true` does),
-so nothing is written to disk unless you ask. The spec file format has no
+opt-in on purpose: the files persist span timings, token counts and costs,
+and prompt and tool content only if the agent sets `redactContent: false` or
+`captureContent: true`, so nothing is written to disk unless you ask. The spec file format has no
 traces setting.
 
 ## Backends

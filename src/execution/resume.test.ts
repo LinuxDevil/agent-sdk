@@ -1314,7 +1314,7 @@ describe('Execution - resumeAfterApproval: the span of the approved call (#281)'
     expect(redacted.attributes.result).toBeUndefined();
     expect(redacted.attributes['gen_ai.tool.call.result']).toBeUndefined();
 
-    const captured = await approvedRun({ captureContent: true });
+    const captured = await approvedRun({ captureContent: true, redactContent: false });
     expect(captured.attributes.result).toEqual({ charged: true });
     expect(captured.attributes['gen_ai.tool.call.result']).toBe('{"charged":true}');
   });

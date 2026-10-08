@@ -420,11 +420,12 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   exporter?: TraceExporter;
   /**
-   * When true, the DEPRECATED span attributes omit potentially sensitive
-   * content (the `invoke_agent` span leaves out `input`, `chat` leaves out
-   * `prompt` and `execute_tool` leaves out `args`/`result`). Token counts,
-   * finish reason, tool name and error/latency are never redacted.
-   * Defaults to false. The `gen_ai.*` content attributes are governed by
+   * When true (the default), the DEPRECATED span attributes omit potentially
+   * sensitive content (the `invoke_agent` span leaves out `input`, `chat`
+   * leaves out `prompt` and `execute_tool` leaves out `args`/`result`). Set
+   * it to false to record them. Token counts, finish reason, tool name and
+   * error/latency are never redacted. Permission-decision events still carry
+   * the call's args unless this is explicitly true. The `gen_ai.*` content attributes are governed by
    * `captureContent` instead.
    */
   redactContent?: boolean;
@@ -1520,7 +1521,7 @@ export class AgentExecutor {
       hooks,
       sessionId,
       exporter,
-      redactContent = false,
+      redactContent,
       signal,
     } = options;
 
