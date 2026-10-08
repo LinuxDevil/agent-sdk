@@ -13,9 +13,12 @@ import { WorkspaceError } from './paths';
  *   by whitespace: `'git status'` matches `git status -s` but not `git statusx`.
  *   The command must not contain shell operators or a path that leaves the
  *   working directory — a `..` segment, `~` or an absolute path, anywhere in
- *   the command including a `--flag=value` — so `node --test --out=../x` does
- *   not pass as `node --test`. Use a {@link CommandRule} or an anchored
- *   RegExp for arguments like that.
+ *   the command including a `--flag=value`, also once quotes and (under sh)
+ *   backslash escapes are removed (`"../x"`, `'..'/x`) or as a glob that can
+ *   expand to `..` (`.?/x`) — so `node --test --out=../x` does not pass as
+ *   `node --test`. It must not contain `$`, `{` or `}` either (`$HOME`,
+ *   `${IFS}`, `{..,x}`). Use a {@link CommandRule} or an anchored RegExp for
+ *   arguments like that.
  * - A {@link CommandRule} pins the arguments: `{ command: 'npm test' }` matches
  *   only `npm test`; add `args` to validate what follows.
  * - A RegExp is tested against the whole command line; anchor it (`/^npm (test|run lint)$/`).
@@ -62,7 +65,9 @@ export interface ShellToolOptions {
    * cmd.exe), so `git status; rm -rf ~` does not pass as `git status`. A
    * command matched only by a string pattern must also not contain a path
    * that leaves the working directory (a `..` segment, `~` or an absolute
-   * path), so `node --test --out=../x` does not pass as `node --test`.
+   * path, also when quoted or globbed) or a `$`, `{` or `}` expansion, so
+   * `node --test --out=../x`, `cat "../x"` and `cat $HOME/.ssh/id_rsa` do not
+   * pass as `node --test` or `cat`.
    *
    * Use a {@link CommandRule} to pin arguments, or an anchored RegExp to
    * allow arguments like those.
@@ -98,6 +103,59 @@ const COMMAND_SEPARATORS = /[;&|`()\n\r]|\$\(/;
  * `main..feature` and `https://...` are not matches.
  */
 const ESCAPING_TOKEN = /(?:^|[/\\=])\.\.(?:[/\\]|$)|(?:^|=)(?:~(?:[/\\]|$)|[/\\]|[a-zA-Z]:[/\\])/;
+/**
+ * Expansions a string pattern cannot see through: `$` (`$HOME`, `${IFS}`,
+ * `$PWD/..`) and braces (`{..,x}`). Refused in a command matched only by a
+ * string pattern.
+ */
+const EXPANSION = /[${}]/;
+const GLOB = /[*?[]/;
+
+/** Converts one glob path segment to an anchored RegExp. */
+function globRegex(glob: string): RegExp {
+  let source = '';
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i];
+    if (c === '*') source += '.*';
+    else if (c === '?') source += '.';
+    else if (c === '[' && glob.indexOf(']', i + 2) !== -1) {
+      const end = glob.indexOf(']', i + 2);
+      source += `[${glob.slice(i + 1, end).replace(/^!/, '^').replace(/\\/g, '\\\\')}]`;
+      i = end;
+    } else source += c.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+  }
+  return new RegExp(`^${source}$`);
+}
+
+/** A path segment a glob could expand to `..` (`.?`, `.*`, `.[.]`): a literal leading dot plus a glob that matches `.`. */
+function globMatchesDotDot(segment: string): boolean {
+  if (!segment.startsWith('.') || !GLOB.test(segment)) return false;
+  try {
+    return globRegex(segment.slice(1)).test('.');
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * True when a whitespace-separated token names a path outside the working
+ * directory once the shell has removed its quotes (`"../x"`, `'..'/x`) and,
+ * under sh, its backslash escapes (`.\./x`), or when a glob in it can expand
+ * to `..`.
+ */
+function isEscapingToken(token: string, cmd: boolean): boolean {
+  const unquoted = token.replace(/["']/g, '');
+  const forms = cmd ? [token, unquoted] : [token, unquoted, unquoted.replace(/\\(.)/g, '$1')];
+  return forms.some((form) => ESCAPING_TOKEN.test(form) || form.split(/[/\\=]/).some(globMatchesDotDot));
+}
+
+/** What makes a command unsafe to match by a string pattern alone. */
+function stringPatternRisks(command: string, cmd: boolean): { escaping: boolean; expansion: boolean } {
+  return {
+    escaping: command.split(/\s+/).some((token) => isEscapingToken(token, cmd)),
+    expansion: EXPANSION.test(command),
+  };
+}
 
 /** The shell a provider runs, when it says so (`NodeWorkspace`, `SandboxShell`). */
 function providerShell(shell: ShellProvider): string | undefined {
@@ -146,15 +204,17 @@ function deniedBy(command: string, deny: readonly CommandPattern[]): CommandPatt
   });
 }
 
-function isAllowed(command: string, allow: readonly CommandPattern[], operators: RegExp): boolean {
+function isAllowed(command: string, allow: readonly CommandPattern[], operators: RegExp, cmd: boolean): boolean {
   const hasOperators = operators.test(command);
   // A string pattern allows the command and ordinary flags only: arguments
-  // that leave the workspace need a CommandRule or an anchored RegExp.
-  const escaping = command.split(/\s+/).some((token) => ESCAPING_TOKEN.test(token));
+  // that leave the workspace, or that the shell expands, need a CommandRule
+  // or an anchored RegExp.
+  const risks = stringPatternRisks(command, cmd);
+  const risky = risks.escaping || risks.expansion;
   return allow.some((p) => {
     if (p instanceof RegExp) return testRegex(p, command);
     if (hasOperators) return false;
-    return typeof p === 'string' ? !escaping && matchesPrefix(command, p) : matchesRule(command, p);
+    return typeof p === 'string' ? !risky && matchesPrefix(command, p) : matchesRule(command, p);
   });
 }
 
@@ -165,14 +225,16 @@ function policyViolation(command: string, options: ShellToolOptions, cmd: boolea
     return `Command refused: it matches the deny pattern ${patternText(denied)}. Use a different command.`;
   }
   const operators = cmd ? CMD_OPERATORS : SHELL_OPERATORS;
-  if (options.allow && !isAllowed(command, options.allow, operators)) {
+  if (options.allow && !isAllowed(command, options.allow, operators, cmd)) {
     const allowed = options.allow.map(patternText).join(', ');
     const hasStrings = options.allow.some((p) => typeof p === 'string');
+    const risks = stringPatternRisks(command, cmd);
     const restricted = [
       operators.test(command) && `Chaining, pipes, substitution and redirection (; & | \` $( < >${cmd ? ' % ^' : ''})`,
       hasStrings &&
-        command.split(/\s+/).some((token) => ESCAPING_TOKEN.test(token)) &&
-        "paths outside the workspace ('..' segments, '~' and absolute paths)",
+        risks.escaping &&
+        "paths outside the workspace ('..' segments, '~' and absolute paths, also when quoted or globbed)",
+      hasStrings && risks.expansion && 'variable and brace expansion ($ { })',
     ]
       .filter(Boolean)
       .join(' and ');

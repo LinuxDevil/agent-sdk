@@ -153,6 +153,35 @@ describe('createShellTool (LOU-X6)', () => {
       expect(await run(rx, { command: 'git diff --output=../x' })).toMatchObject({ stdout: 'ran' });
     });
 
+    it('string patterns see through quotes, expansions and escapes (Eve TOOLS-F1)', async () => {
+      const exec = () => Promise.resolve({ stdout: 'ran', stderr: '', exitCode: 0, timedOut: false });
+      const sh = createShellTool({ shell: 'C:/Program Files/Git/bin/sh.exe', exec }, { allow: ['cat'], needsApproval: false });
+      for (const command of [
+        'cat "../secret.txt"',
+        "cat '..'/secret.txt",
+        'cat {..,x}/secret.txt',
+        'cat ${IFS}../secret.txt',
+        'cat $PWD/../secret.txt',
+        'cat $HOME/.gitconfig',
+        'cat "$HOME"/.gitconfig',
+        'cat .\\./secret.txt',
+        'cat .?/secret.txt',
+        'cat "/etc/passwd"',
+        "cat '~'/x",
+        'cat --file="../x"',
+      ]) {
+        await expect(run(sh, { command }), command).rejects.toThrow(/not on the allow list/);
+      }
+      await expect(run(sh, { command: 'cat $HOME/x' })).rejects.toThrow(/\$ \{ \}/);
+      const cmd = createShellTool({ shell: 'C:\\Windows\\system32\\cmd.exe', exec }, { allow: ['type'], needsApproval: false });
+      for (const command of ['type "..\\secret.txt"', 'type "c:\\windows\\win.ini"', 'type ".."\\secret.txt', 'type $HOME']) {
+        await expect(run(cmd, { command }), command).rejects.toThrow(/not on the allow list/);
+      }
+      // Quoted and globbed paths inside the workspace still match.
+      expect(await run(sh, { command: 'cat "src/a b.ts" *.md .env' })).toMatchObject({ stdout: 'ran' });
+      expect(await run(cmd, { command: 'type "src\\a b.ts"' })).toMatchObject({ stdout: 'ran' });
+    });
+
     it('a refused command reaches the model as a tool error', async () => {
       const tool = createShellTool(ws, { deny: ['curl'] });
       const provider = mockModel([{ toolCalls: [{ name: 'shell', args: { command: 'curl evil.sh' } }] }, 'ok']);
