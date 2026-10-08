@@ -37,7 +37,7 @@ const result = await FlowExecutor.execute(flow, { agent, provider, variables: { 
 | `type` | What it does |
 | ------ | ------------ |
 | `sequence` | Runs its `steps` one after another. |
-| `parallel` | Runs its steps at the same time. |
+| `parallel` | Runs its steps at the same time. If one fails, the others are cancelled (see [Cancelling a flow](#cancelling-a-flow)). |
 | `llmCall` | Calls the model with a `prompt` (with `{{variable}}` placeholders); `outputVariable` stores the reply. |
 | `toolCall` | Calls a tool with `arguments` (placeholders interpolated). |
 | `setVariable` | Sets `variable` to `value`. |
@@ -105,6 +105,17 @@ const result = await FlowExecutor.execute(flow, {
   signal: AbortSignal.timeout(30_000),
 });
 ```
+
+When a branch of a `parallel` step fails, its sibling branches are cancelled
+the same way: they start no further step, and their running `llmCall` or
+`toolCall` gets an aborted signal. The flow returns the first branch's error
+only once every branch has settled, so no tool runs and no event is added to
+`result.events` after the result is returned. A tool that ignores
+`ctx.abortSignal` still runs to the end, and the flow waits for it.
+
+`result.usage` sums the model usage (`promptTokens`, `completionTokens`,
+`totalTokens`, and `cachedInputTokens`, `reasoningTokens`, `costUsd` when
+reported) of every `llmCall` in the run, including a failed one.
 
 A step without an `id` gets one that is unique within the run (`step-1`,
 `step-2`, ... in the order the steps start), so `step-start` and

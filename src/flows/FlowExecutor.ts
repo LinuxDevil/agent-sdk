@@ -189,6 +189,32 @@ export interface FlowExecutionResult {
   steps: number;
   events: FlowExecutionEvent[];
   error?: Error;
+  /**
+   * MA-F11: the model usage of every `llmCall` step of the run, summed (zeros
+   * when no step reported usage). `cachedInputTokens`, `reasoningTokens` and
+   * `costUsd` are present only when some call reported them.
+   */
+  usage: ProviderUsage;
+}
+
+/** The summed usage of a run's `llm-response` events. */
+function sumUsage(events: FlowExecutionEvent[]): ProviderUsage {
+  const total: ProviderUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  for (const event of events) {
+    const usage = event.type === 'llm-response' ? event.data?.usage : undefined;
+    if (!usage) {
+      continue;
+    }
+    total.promptTokens += usage.promptTokens;
+    total.completionTokens += usage.completionTokens;
+    total.totalTokens += usage.totalTokens;
+    for (const key of ['cachedInputTokens', 'reasoningTokens', 'costUsd'] as const) {
+      if (usage[key] !== undefined) {
+        total[key] = (total[key] ?? 0) + usage[key];
+      }
+    }
+  }
+  return total;
 }
 
 /** Record an event and notify the optional listener. */
@@ -373,6 +399,7 @@ export class FlowExecutor {
         variables,
         steps,
         events,
+        usage: sumUsage(events),
       };
     } catch (error) {
       // Emit flow error event
@@ -389,6 +416,7 @@ export class FlowExecutor {
         steps: this.countCompletedSteps(events),
         events,
         error: error as Error,
+        usage: sumUsage(events),
       };
     }
   }
@@ -581,13 +609,40 @@ export class FlowExecutor {
   ): Promise<unknown[]> {
     const steps = node.steps || [];
 
-    const results = await Promise.all(
-      steps.map((step) =>
-        this.executeNode(step, this.childContext(context), events, onEvent)
-      )
-    );
+    // DUR-F12 / MA-F11: the branches share a signal linked to the run's. The
+    // first branch to fail aborts it, so its siblings start no further step
+    // and their in-flight model/tool calls get the abort; the node settles only
+    // once every branch has, so nothing runs (or emits events) after the flow
+    // has reported the failure.
+    const controller = new AbortController();
+    const parentSignal = context.signal;
+    const abortFromParent = () => controller.abort(parentSignal?.reason);
+    if (parentSignal?.aborted) {
+      abortFromParent();
+    }
+    parentSignal?.addEventListener('abort', abortFromParent, { once: true });
 
-    return results;
+    let failure: { error: unknown } | undefined;
+    const branchContext = { ...this.childContext(context), signal: controller.signal };
+    try {
+      const settled = await Promise.allSettled(
+        steps.map((step) =>
+          this.executeNode(step, branchContext, events, onEvent).catch((error: unknown) => {
+            if (!failure) {
+              failure = { error };
+              controller.abort(error);
+            }
+            throw error;
+          })
+        )
+      );
+      if (failure) {
+        throw failure.error;
+      }
+      return settled.map((outcome) => (outcome as PromiseFulfilledResult<unknown>).value);
+    } finally {
+      parentSignal?.removeEventListener('abort', abortFromParent);
+    }
   }
 
   /**
