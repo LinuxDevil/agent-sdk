@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.tests.json",
+  "compilerOptions": { "noEmit": true, "rootDir": ".", "noUnusedLocals": false, "noUnusedParameters": false, "allowImportingTsExtensions": true },
+  "include": ["examples/**/*.ts", "examples/**/*.mjs", "typings/**/*.d.ts"],
+  "exclude": ["node_modules", "dist"]
+}

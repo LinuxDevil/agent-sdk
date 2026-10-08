@@ -14,6 +14,7 @@
  *    synthetic NullPointerException.
  */
 import { GenerateOptions, GenerateResult, LLMProvider, StreamResult } from '../../src/providers';
+import { textOf } from '../../src/providers/content';
 
 const DEMO_FIXER_DIFF_RESPONSE = [
   'Root cause: `order` is not null-checked before `charge()` is called.',
@@ -39,7 +40,7 @@ function usageFor(text: string): GenerateResult['usage'] {
 
 function lastUserContent(options: GenerateOptions): string {
   const lastUser = [...options.messages].reverse().find((m) => m.role === 'user');
-  return lastUser?.content ?? '';
+  return lastUser ? textOf(lastUser) : '';
 }
 
 /** Monitor agent's first turn: delegate the triggering message to the fixer. */

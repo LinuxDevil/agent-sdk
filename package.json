@@ -158,6 +158,7 @@
     "lint": "eslint src --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "typecheck:tests": "tsc -p tsconfig.tests.json",
+    "typecheck:examples": "tsc -p tsconfig.examples.json",
     "test:types": "tsc -p tsconfig.test-d.json && vitest run --typecheck.only",
     "example:tracing:console": "tsx examples/tracing/run-console.ts",
     "example:tracing:otel": "tsx examples/tracing/run-otel.ts",

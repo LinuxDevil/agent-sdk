@@ -29,7 +29,7 @@ async function basicGeneration() {
   });
 
   console.log('Response:', result.text);
-  console.log('Tokens used:', result.usage.totalTokens);
+  console.log('Tokens used:', result.usage?.totalTokens);
 }
 
 /** Streaming text generation. */
@@ -51,7 +51,7 @@ async function streamingGeneration() {
   }
 
   const usage = await stream.usage;
-  console.log('\n\nTokens used:', usage.totalTokens);
+  console.log('\n\nTokens used:', usage?.totalTokens);
 }
 
 /** Using different model providers behind the one OpenRouter key. */
@@ -79,7 +79,7 @@ async function multiModelComparison() {
     });
 
     console.log(result.text);
-    console.log(`\nTokens: ${result.usage.totalTokens}`);
+    console.log(`\nTokens: ${result.usage?.totalTokens}`);
   }
 }
 
@@ -187,7 +187,7 @@ async function costOptimizedGeneration() {
   });
 
   console.log('Simple task result:', simpleTask.text);
-  console.log('Tokens used:', simpleTask.usage.totalTokens);
+  console.log('Tokens used:', simpleTask.usage?.totalTokens);
 
   const complexTask = await provider.generate({
     model: 'anthropic/claude-sonnet-4',
@@ -202,7 +202,7 @@ async function costOptimizedGeneration() {
   });
 
   console.log('\nComplex task result length:', complexTask.text.length);
-  console.log('Tokens used:', complexTask.usage.totalTokens);
+  console.log('Tokens used:', complexTask.usage?.totalTokens);
 }
 
 /** Maps a provider error message to a friendly description. */
@@ -257,7 +257,7 @@ async function conversation() {
 
   const response2 = await provider.generate({ model: 'openai/gpt-4o-mini', messages });
   console.log('\nAssistant:', response2.text);
-  console.log('\nTotal tokens used:', response2.usage.totalTokens);
+  console.log('\nTotal tokens used:', response2.usage?.totalTokens);
 }
 
 /** Model capabilities check. */

@@ -143,7 +143,7 @@ describe('the installed kit, loaded', () => {
     const { config, manifest } = await resolveAgentDir(root, { provider: mockModel(['x']) });
 
     expect(manifest.subagents).toEqual(['coder', 'explorer']);
-    const toolNames = (config.tools as { name: string }[]).map((t) => t.name);
+    const toolNames = (config.tools as unknown as { name: string }[]).map((t) => t.name);
     expect(toolNames).toContain('delegate_to_explorer');
     expect(toolNames).not.toContain('delegate_to_coder');
     const coder = (config.subagents as Record<string, unknown>).coder as { run?: unknown; description?: string };
