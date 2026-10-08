@@ -17,6 +17,7 @@ import { toolErrorResult, type ToolErrorKind } from './toolErrors';
 import { ToolArgumentsValidationError, parseToolArguments, validateToolArguments } from './toolArgsValidation';
 import {
   checkPermission,
+  hasEnforcedApproval,
   permissionModeOf,
   permissionModeVerdict,
   reportHookDenial,
@@ -189,6 +190,9 @@ export async function prepareToolCall(toolCall: ToolCall, ctx: ToolCallContext):
   return gateToolCall(toolCall, ctx, hooked.args);
 }
 
+/** Why an `allow` rule did not run a call whose approval is enforced (see `enforceApproval()`). */
+const ENFORCED_APPROVAL_REASON = 'its install receipt requires approval';
+
 /** Permission rules, tool guardrails and `needsApproval`, on the hook-processed args. */
 async function gateToolCall(toolCall: ToolCall, ctx: ToolCallContext, hookedArgs: Record<string, unknown>): Promise<PreparedToolCall> {
   // N4: the mode is read once per call, so a switch applies from the next call.
@@ -206,11 +210,16 @@ async function gateToolCall(toolCall: ToolCall, ctx: ToolCallContext, hookedArgs
       : hookedArgs;
     // LOU-X8 follow-up: an `allow` / `ask` rule replaces the tool's own ask, not its deny.
     const own = await checkNeedsApproval(toolCall, ctx, args);
-    const { denied, ...gate } = own.rejection ? own : (ruled ?? own);
+    // An enforced ask (an install receipt's exec / needsApproval item) is not replaced by an `allow` rule.
+    const enforced = !own.rejection && own.requiresApproval && hasEnforcedApproval(ctx.toolRegistry && findExecutableTool(ctx.toolRegistry, toolCall.function.name));
+    const { denied, ...gate } = own.rejection || (enforced && !ruled?.requiresApproval) ? own : (ruled ?? own);
     // LOU-X8: the tool's own deny is audited like a rule's.
     if (denied && audit) audit = { ...audit, decision: 'deny', ...(denied.reason !== undefined && { reason: denied.reason }) };
-    // N4: the permission mode applies last, to a call nothing above denied: it never turns a deny into a run.
-    const moded = gate.rejection ? undefined : applyPermissionMode(mode, toolCall, ctx, gate.requiresApproval);
+    if (enforced && audit?.decision === 'allow') audit = { ...audit, decision: 'ask', reason: ENFORCED_APPROVAL_REASON };
+    // N4: the permission mode applies last, to a call nothing above denied: it never turns a deny into a run,
+    // nor an enforced ask.
+    const verdict = gate.rejection ? undefined : applyPermissionMode(mode, toolCall, ctx, gate.requiresApproval);
+    const moded = enforced && verdict?.gate.rejection === undefined ? undefined : verdict;
     if (moded && audit) audit = { ...audit, ...moded.audit };
     return { toolCall, args, ...(moded?.gate ?? gate) };
   } finally {

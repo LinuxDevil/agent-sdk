@@ -181,7 +181,13 @@ item's tools run:
   `needsApproval: true` - and of any unattested item, whose stale receipt no
   longer certifies the modified code - always wait for
   [approval](./approvals.md); a `deny` from the tool's own `needsApproval`
-  still denies.
+  still denies. Nothing in the agent directory can waive it: an `allow`
+  [permission rule](./approvals.md#permission-policies) and a
+  [permission mode](./permission-modes.md) (`acceptEdits`) do not run the call
+  (a `deny` rule, `plan` or `dontAsk` still refuses it), and the directory's own
+  `approve` file defers it. Only a person resolving the pause
+  (`agent.approvals.resolve()`) or an `approve` callback your code passes to
+  `loadAgentDir(dir, { approve })` decides it.
 - **Network.** While a receipt item's tool runs, `fetch` is limited to the
   hosts its `network` declares: a host the manifest does not list is refused,
   and an item that declares no `network` cannot fetch at all.

@@ -21,7 +21,7 @@ import { loadMemory, mergeMemory } from './loadMemory';
 import type { MemorySlot } from '../memory/defineMemory';
 import { loadSchedules } from './loadSchedules';
 import { loadTools, type LoadedTool } from './loadTools';
-import { confineToolsToReceipt, registryWarnings, verifyReceipt, type RegistryStatus } from './registryEnforce';
+import { confineToolsToReceipt, deferEnforcedApprovals, registryWarnings, verifyReceipt, type RegistryStatus } from './registryEnforce';
 import { readConfig, type AgentDirConfig } from './readConfig';
 import { fail, permissionRulesOf } from './validateConfig';
 import { delegateTool, listSubagentDirs, requireDescription, type LoadedSubagent } from './subagents';
@@ -479,11 +479,13 @@ async function resolveWith(
   const { instructions, familyFile } = await resolveInstructions(dir, config, fromFile, overrides, source);
   // Hooks/approver files are only imported when the caller did not override them.
   const configured = overrides.hooks === undefined ? await configuredHooks(dir, config, configFile) : undefined;
-  const approver = overrides.approve === undefined ? await configuredApprove(dir, config, configFile) : undefined;
+  const configuredApprover = overrides.approve === undefined ? await configuredApprove(dir, config, configFile) : undefined;
   // #272: verify the install receipt before its code runs, then bind its tools to the accepted manifests.
   const registry = await verifyReceipt(dir);
   for (const warning of registryWarnings(registry)) console.warn(`[lousho] ${warning}`);
   const tools: LoadedTool[] = confineToolsToReceipt(dir, await loadTools(dir), registry);
+  // The directory's own approver does not decide the calls the receipt makes wait for approval.
+  const approver = configuredApprover && { ...configuredApprover, approve: deferEnforcedApprovals(configuredApprover.approve, tools) };
   const skills = await skillsFor(dir, overrides);
   const subagents = overrides.subagents === undefined ? await loadSubagents(dir, overrides, source) : { delegated: [], remote: {}, names: [] };
   const schedules = await loadSchedules(dir);
