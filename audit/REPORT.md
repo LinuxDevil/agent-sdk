@@ -96,7 +96,7 @@ All harnesses re-run against a freshly packed `1.0.0-alpha.19` built from `main`
 | `support-desk` (LM Studio qwen3.5-9b) | scenarios all exercised | cross-process approval resume, `LOUSHO_APPROVAL_FORBIDDEN` for wrong principal, namespaced per-customer memory isolation, SSE event validity, disconnect keeps committed turn (B4 live). Self-approval by the requester returns 200 — upstream `callerOwnsApproval` default; `authorizeApproval` is the opt-in for stricter policy |
 | `log-incident` (LM Studio 8K window) | run reached `max-steps` | model-capacity outcome, not an SDK defect; compaction two-phase→prune fallback, `appliedStrategy`, `prunedToolCallIds`, summarizer error passthrough, and the `agent.resume` retry loop all exercised live |
 | `invoice-extract` (LM Studio) | partial | successful docs extract + validate + route correctly (`auto` vs `awaiting-approval`, `tax_math` flags); remaining docs hit the harness's own 240s per-doc timeout on the shared 9B model — timeout machinery itself works (`aborted` via per-request `AbortSignal`) |
-| `docs-qa` (LM Studio) | ran | a weak-model reply that echoed the JSON Schema was correctly rejected as `output-invalid` ("the reply is the JSON Schema, not data") — the schema-echo guard fires as designed |
+| `docs-qa` (LM Studio) | ran | a weak-model reply that echoed the JSON Schema was correctly rejected as `output-invalid` ("the reply is the JSON Schema, not data") — the schema-echo guard fires as designed. A rerun after #445 verified D3 live: with `maxSteps: 2` spent on tool calls, the forced no-tools answer call produced a valid `object` (`finishReason: 'max-steps'`, `object` populated, `outputError: null`) |
 
 **Harness fixes made during revalidation** (harness bugs, not SDK bugs):
 
