@@ -202,11 +202,22 @@ describe('structured output (LOU-V4)', () => {
         geo: { required: string[]; properties: { note: unknown } };
       };
     };
+    // zod 3 emits a bare {type:'string'} that the normalizer wraps in
+    // `anyOf: [T, null]`; zod 4 already emits `type: ['string','null']`
+    // for optional fields, which stays as is. Either is a `T | null` union.
+    const admitsNull = (sub: unknown): boolean => {
+      const s = sub as { type?: unknown; anyOf?: Array<{ type?: unknown }> };
+      return (
+        s?.type === 'null' ||
+        (Array.isArray(s?.type) && s.type.includes('null')) ||
+        (Array.isArray(s?.anyOf) && s.anyOf.some((branch) => branch.type === 'null'))
+      );
+    };
     expect(schema.required).toEqual(expect.arrayContaining(['city', 'nick', 'when', 'geo']));
-    expect(schema.properties.nick).toEqual({ anyOf: [{ type: 'string' }, { type: 'null' }] });
-    expect(schema.properties.when).toEqual({ anyOf: [{ type: 'string' }, { type: 'null' }] });
+    expect(admitsNull(schema.properties.nick)).toBe(true);
+    expect(admitsNull(schema.properties.when)).toBe(true);
     expect(schema.properties.geo.required).toEqual(expect.arrayContaining(['lat', 'note']));
-    expect(schema.properties.geo.properties.note).toEqual({ anyOf: [{ type: 'string' }, { type: 'null' }] });
+    expect(admitsNull(schema.properties.geo.properties.note)).toBe(true);
     // The strict endpoint could not omit the keys, so the model wrote nulls.
     // The optional `nick`/`note` nulls validate back as "absent"; `when`'s
     // null is a real value (the field is genuinely nullable), so it stays.
