@@ -78,6 +78,8 @@ export interface TelegramTarget {
   chatId: number;
   messageThreadId?: number;
   replyToMessageId?: number;
+  /** Whether the chat is a 1:1 chat with the bot. A sign-in link is only sent when this is true. */
+  private?: boolean;
 }
 
 const API = 'https://api.telegram.org';
@@ -85,6 +87,7 @@ const MAX_LENGTH = 4096;
 const MAX_CALLBACK_BYTES = 64;
 const NOT_ALLOWED = 'You are not allowed to approve this request.';
 const COMMAND = '/ask';
+const SIGN_IN_PRIVATELY = 'This needs a sign-in. Please sign in from a private chat with me: send me a direct message and ask again there. Sign-in links are not posted in a group.';
 
 const topicOf = (message: TelegramMessage): number | undefined => (message.is_topic_message ? message.message_thread_id : undefined);
 
@@ -96,7 +99,7 @@ function sessionKey(message: TelegramMessage): string {
 
 function targetOf(message: TelegramMessage): TelegramTarget {
   const topic = topicOf(message);
-  return { chatId: message.chat.id, ...(topic === undefined ? {} : { messageThreadId: topic }), replyToMessageId: message.message_id };
+  return { chatId: message.chat.id, ...(topic === undefined ? {} : { messageThreadId: topic }), replyToMessageId: message.message_id, private: message.chat.type === 'private' };
 }
 
 function userOf(from: TelegramUser): ChannelUser {
@@ -238,8 +241,9 @@ export function telegramChannel(options: TelegramChannelOptions): Channel<Telegr
     reply: ({ inbound, text }) => post(inbound.replyTo as TelegramTarget, text),
     async onApproval({ inbound, approval, text }) {
       const target = inbound.replyTo as TelegramTarget;
-      // N9b: a sign-in is its link as text, no Approve / Deny keyboard (Telegram has no message only one user sees).
-      if (approval.kind === 'sign-in') return post(target, text);
+      // N9b: a sign-in is its link as text, no Approve / Deny keyboard. Telegram has no message only one user sees, and
+      // whoever opens the link binds their own account to the asker's grant: so the link is sent only in a 1:1 chat.
+      if (approval.kind === 'sign-in') return post(target, target.private === true ? text : SIGN_IN_PRIVATELY);
       if (approval.question) {
         questions.set(inbound.sessionKey, approval.id);
         return post(target, text, { force_reply: true });

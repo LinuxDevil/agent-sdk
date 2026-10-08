@@ -62,7 +62,11 @@ export interface TeamsTarget {
   serviceUrl: string;
   conversationId: string;
   replyToId?: string;
+  /** Whether the conversation is a 1:1 (`personal`) chat with the bot. A sign-in link is only sent when this is true. */
+  private?: boolean;
 }
+
+const SIGN_IN_PRIVATELY = 'This needs a sign-in. Please sign in from a private chat with me: send me a direct message and ask again there. Sign-in links are not posted in a group chat or channel.';
 
 /** The fixed, documented Bot Framework OpenID metadata; its `jwks_uri` serves the signing keys. Never read from a token. */
 const OPENID_METADATA = 'https://login.botframework.com/v1/.well-known/openidconfiguration';
@@ -242,6 +246,7 @@ export function teamsChannel(options: TeamsChannelOptions): Channel<TeamsActivit
   const targetOf = (activity: TeamsActivity, replyToId: string | undefined = activity.id): TeamsTarget => ({
     serviceUrl: activity.serviceUrl,
     conversationId: activity.conversation.id,
+    private: activity.conversation.conversationType === 'personal',
     ...(replyToId ? { replyToId } : {}),
   });
 
@@ -333,8 +338,9 @@ export function teamsChannel(options: TeamsChannelOptions): Channel<TeamsActivit
     reply: ({ inbound, text }) => post(inbound.replyTo as TeamsTarget, text),
     async onApproval({ inbound, approval, text }) {
       const target = inbound.replyTo as TeamsTarget;
-      // N9b: a sign-in is its link as text, no Approve / Deny card (Teams has no message only one user sees).
-      if (approval.kind === 'sign-in') return post(target, text);
+      // N9b: a sign-in is its link as text, no Approve / Deny card. Teams has no message only one user sees, and whoever
+      // opens the link binds their own account to the asker's grant: so the link is sent only in a 1:1 chat.
+      if (approval.kind === 'sign-in') return post(target, target.private === true ? text : SIGN_IN_PRIVATELY);
       if (approval.question) {
         questions.set(inbound.sessionKey, approval.id);
         return post(target, text);

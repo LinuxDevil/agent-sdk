@@ -6175,6 +6175,7 @@ export interface TeamsChannelOptions {
 export interface TeamsTarget {
     // (undocumented)
     conversationId: string;
+    private?: boolean;
     // (undocumented)
     replyToId?: string;
     // (undocumented)
@@ -6239,6 +6240,7 @@ export interface TelegramTarget {
     chatId: number;
     // (undocumented)
     messageThreadId?: number;
+    private?: boolean;
     // (undocumented)
     replyToMessageId?: number;
 }
