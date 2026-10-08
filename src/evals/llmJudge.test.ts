@@ -45,6 +45,21 @@ describe('parseJudgeScore', () => {
     expect(parseJudgeScore('250').score).toBe(1);
   });
 
+  it('reads the last labelled score, not the first number in the reasoning (Eve MA-F8)', () => {
+    expect(parseJudgeScore('Only 1 of 5 requirements is satisfied.\nSCORE: 0.2').score).toBe(0.2);
+    expect(parseJudgeScore('3 of 4 criteria met. Score: 0.75').score).toBe(0.75);
+    expect(parseJudgeScore('Step 2 is wrong. SCORE: 0.4\nOn reflection:\nSCORE: 0.6').score).toBe(0.6);
+    expect(parseJudgeScore('{"score": 0.8, "reason": "2 of 3 facts"}').score).toBe(0.8);
+  });
+
+  it('treats unlabelled prose as unparseable instead of guessing a number (Eve MA-F8)', () => {
+    for (const text of ['Only 1 of 5 requirements is satisfied. Final: 0.2', 'Step 2 is wrong; overall 0.4']) {
+      const { score, reason } = parseJudgeScore(text);
+      expect(score).toBe(0);
+      expect(reason).toBeDefined();
+    }
+  });
+
   it('treats an empty response the same as a malformed one', () => {
     const { score, reason } = parseJudgeScore('');
     expect(score).toBe(0);
@@ -207,5 +222,27 @@ describe('llmCritique()', () => {
     expect(score).toBe(0);
     expect(feedback).toBe('no idea');
     expect(reason).toBeDefined();
+  });
+});
+
+describe('llmJudge() prompt and sampling (Eve MA-F8)', () => {
+  it('shows the judge the user input, asks for a final SCORE line and defaults temperature to 0', async () => {
+    const seen: Array<{ prompt: string; temperature?: number }> = [];
+    const provider = {
+      generate: async (o: { messages: Array<{ content: string }>; temperature?: number }) => (
+        seen.push({ prompt: o.messages[0].content, temperature: o.temperature }), { text: 'Fine.\nSCORE: 0.7' }
+      ),
+    } as never;
+    const result = {
+      text: 'Canberra',
+      messages: [
+        { role: 'user', content: 'What is the capital of Australia?' },
+        { role: 'assistant', content: 'Canberra' },
+      ],
+    } as never;
+    await expect(llmJudge({ provider, rubric: 'be right', allowOutsideJudgeRunner: true })(result)).resolves.toBe(0.7);
+    expect(seen[0].prompt).toContain('What is the capital of Australia?');
+    expect(seen[0].prompt).toContain('SCORE:');
+    expect(seen[0].temperature).toBe(0);
   });
 });

@@ -18,6 +18,7 @@
 import { LLMProvider } from '../providers/llm';
 import { ExecutionResult } from '../execution/AgentExecutor';
 import { SDKError } from '../execution/errors';
+import { textOf } from '../providers/content';
 
 export interface LLMJudgeConfig {
   /** Real LLMProvider instance used to grade the output. */
@@ -26,6 +27,7 @@ export interface LLMJudgeConfig {
   model?: string;
   /** Grading rubric / instructions shown to the judge model. */
   rubric: string;
+  /** Sampling temperature for the judge call. Defaults to 0 so a grade is repeatable. */
   temperature?: number;
   /**
    * Skip the "only inside the judge-eval runner" guard. `t.judge()` sets this
@@ -34,18 +36,35 @@ export interface LLMJudgeConfig {
   allowOutsideJudgeRunner?: boolean;
 }
 
-/**
- * Builds the grading prompt sent to the judge model.
- */
-function buildGradePrompt(rubric: string, outputText: string): string {
+/** The text of the latest user message in the run, i.e. what the agent was asked. */
+function userInputOf(result: ExecutionResult): string {
+  const messages = result.messages ?? [];
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') return textOf(messages[i]);
+  }
+  return '';
+}
+
+/** The rubric, the user's request and the agent output, in the order the judge reads them. */
+function gradeBody(rubric: string, input: string, outputText: string): string[] {
   return [
-    'You are grading the output of an AI agent against a rubric.',
-    'Respond with ONLY a single number between 0 and 1 (inclusive), representing how well the output satisfies the rubric.',
-    'Do not include any explanation, units, or extra text - just the number.',
-    '',
     `Rubric:\n${rubric}`,
     '',
+    ...(input ? [`User input the agent was answering:\n${input}`, ''] : []),
     `Agent output to grade:\n${outputText}`,
+  ];
+}
+
+/**
+ * Builds the grading prompt sent to the judge model. The judge may reason
+ * first; the grade is the LAST `SCORE: <0..1>` line (see parseJudgeScore).
+ */
+function buildGradePrompt(rubric: string, input: string, outputText: string): string {
+  return [
+    'You are grading the output of an AI agent against a rubric.',
+    'You may explain your reasoning briefly. Your LAST line must be exactly `SCORE: <a single number between 0 and 1 (inclusive)>`, for how well the output satisfies the rubric.',
+    '',
+    ...gradeBody(rubric, input, outputText),
   ].join('\n');
 }
 
@@ -55,16 +74,14 @@ function buildGradePrompt(rubric: string, outputText: string): string {
  * SCORE line plus a FEEDBACK line, so revision loops get the critic's
  * fix-it note in the same provider call as the score.
  */
-function buildCritiquePrompt(rubric: string, outputText: string): string {
+function buildCritiquePrompt(rubric: string, input: string, outputText: string): string {
   return [
     'You are grading the output of an AI agent against a rubric.',
     'Respond with exactly two lines, in this order:',
     'SCORE: <a single number between 0 and 1 (inclusive), for how well the output satisfies the rubric>',
     'FEEDBACK: <the single most important fix the author should make on revision; "none" if the output fully satisfies the rubric>',
     '',
-    `Rubric:\n${rubric}`,
-    '',
-    `Agent output to grade:\n${outputText}`,
+    ...gradeBody(rubric, input, outputText),
   ].join('\n');
 }
 
@@ -94,18 +111,20 @@ async function generateJudgeResponse(config: LLMJudgeConfig, prompt: string): Pr
   const response = await config.provider.generate({
     model: config.model,
     messages: [{ role: 'user', content: prompt }],
-    temperature: config.temperature,
+    temperature: config.temperature ?? 0,
   });
   return response.text;
 }
 
-/** `8/10`, `8 out of 10`, `85%`, or a bare number; the first one in the text wins. */
-const SCORE_PATTERN = /(-?\d+(?:\.\d+)?|-?\.\d+)\s*(?:(?:\/|out\s+of)\s*(\d+(?:\.\d+)?)|(%))?/i;
-/** A score right after a `score` label (`Score: 0.9`, `**Score** = 8/10`), preferred over the first number. */
-const LABELLED_PATTERN = /score\W{0,6}?((?:-?\d+(?:\.\d+)?|-?\.\d+)\s*(?:(?:\/|out\s+of)\s*\d+(?:\.\d+)?|%)?)/i;
+const NUMBER = '(-?\\d+(?:\\.\\d+)?|-?\\.\\d+)';
+const SUFFIX = '\\s*(?:(?:\\/|out\\s+of)\\s*(\\d+(?:\\.\\d+)?)|(%))?';
+/** A score right after a `score`/`rating`/`grade` label (`Score: 0.9`, `**Score** = 8/10`, `"score": 0.8`). */
+const LABELLED_PATTERN = new RegExp(`\\b(?:scores?|rating|grade)\\b\\W{0,6}?${NUMBER}${SUFFIX}`, 'gi');
+/** A response that is nothing but one number (`0.9`, `**0.9**`, `85%`, `8/10`). */
+const BARE_PATTERN = new RegExp(`^[\\s*_\\x60]*${NUMBER}${SUFFIX}[\\s*_\\x60.]*$`, 'i');
 
 /** The [0, 1] value one score match stands for. */
-function scaleScore(match: RegExpExecArray): number {
+function scaleScore(match: RegExpMatchArray): number {
   const value = parseFloat(match[1]);
   if (match[2] !== undefined) return parseFloat(match[2]) > 0 ? value / parseFloat(match[2]) : 0;
   if (match[3] !== undefined) return value / 100;
@@ -117,18 +136,20 @@ function scaleScore(match: RegExpExecArray): number {
 
 /**
  * Parses a judge model's raw text response into a score clamped to [0, 1].
- * Judges do not always answer with a bare number, so it reads the number
- * after a `score` label, else the first number in the text (`**0.9**`),
- * and scales `8/10`, `8 out of 10`, `85%` and bare whole numbers 2-100
- * (`8` is 8/10, `85` is 85/100) into [0, 1]. A response with no number is
- * handled explicitly - it returns 0 with a reason, rather than letting
+ * The LAST `score`-labelled number wins (`SCORE: 0.9`, `**Score:** 8/10`,
+ * `{"score": 0.8}`), so reasoning that mentions other numbers ("1 of 5
+ * criteria ... Score: 0.2") cannot be misread. Without a label the whole
+ * response must be a single number (`0.9`, `**0.9**`, `85%`); any other
+ * unlabelled prose is unparseable. `8/10`, `8 out of 10`, `85%` and bare
+ * whole numbers 2-100 (`8` is 8/10, `85` is 85/100) are scaled into [0, 1].
+ * An unparseable response returns 0 with a reason, rather than letting
  * `parseFloat` produce NaN and relying on NaN's comparisons always being
  * false in `expect(score).toBeGreaterThanOrEqual(threshold)` to
  * accidentally fail closed.
  */
 export function parseJudgeScore(rawText: string): { score: number; reason?: string } {
-  const labelled = LABELLED_PATTERN.exec(rawText);
-  const match = SCORE_PATTERN.exec(labelled ? labelled[1] : rawText);
+  const labelled = [...rawText.matchAll(LABELLED_PATTERN)];
+  const match = labelled.length > 0 ? labelled[labelled.length - 1] : BARE_PATTERN.exec(rawText);
 
   if (!match) {
     return { score: 0, reason: `judge response was not a number: ${JSON.stringify(rawText)}` };
@@ -162,10 +183,11 @@ export interface LLMCritique {
  * malformed response scores 0 with a reason, like parseJudgeScore().
  */
 export function parseJudgeCritique(rawText: string): LLMCritique {
-  const scoreMatch = /^\s*SCORE:\s*([^\n]*)$/im.exec(rawText);
+  const scoreLines = [...rawText.matchAll(/^\s*SCORE:[^\n]*$/gim)];
+  const scoreMatch = scoreLines.length > 0 ? scoreLines[scoreLines.length - 1] : null;
   const feedbackMatch = /^\s*FEEDBACK:\s*([\s\S]*)$/im.exec(rawText);
 
-  const { score, reason } = scoreMatch ? parseJudgeScore(scoreMatch[1]) : parseJudgeScore(rawText);
+  const { score, reason } = scoreMatch ? parseJudgeScore(scoreMatch[0]) : parseJudgeScore(rawText);
 
   let feedback = '';
   if (feedbackMatch) {
@@ -194,7 +216,7 @@ export function llmJudge(config: LLMJudgeConfig): (result: ExecutionResult) => P
   return async (result: ExecutionResult): Promise<number> => {
     assertInsideJudgeRunner(config, 'llmJudge()');
 
-    const responseText = await generateJudgeResponse(config, buildGradePrompt(config.rubric, result.text ?? ''));
+    const responseText = await generateJudgeResponse(config, buildGradePrompt(config.rubric, userInputOf(result), result.text ?? ''));
 
     const { score } = parseJudgeScore(responseText);
     return score;
@@ -213,7 +235,7 @@ export function llmCritique(config: LLMJudgeConfig): (result: ExecutionResult) =
   return async (result: ExecutionResult): Promise<LLMCritique> => {
     assertInsideJudgeRunner(config, 'llmCritique()');
 
-    const responseText = await generateJudgeResponse(config, buildCritiquePrompt(config.rubric, result.text ?? ''));
+    const responseText = await generateJudgeResponse(config, buildCritiquePrompt(config.rubric, userInputOf(result), result.text ?? ''));
 
     return parseJudgeCritique(responseText);
   };
