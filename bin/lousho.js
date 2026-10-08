@@ -12,7 +12,7 @@ const USAGE = [
   '  lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allow <list>] [--overwrite] [--dry-run] | --list',
   '  lousho build <agent-dir|spec> --target=<name> [--out=<dir>]   (or --agent=<path>)',
   '  lousho studio [--port N] [--host H] [--prod|--dev]',
-  '  lousho mcp <agent.yaml|json> [--http --port N --host H]',
+  '  lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]',
   '  lousho doctor [agent.yaml|json] [--json] [--ping]',
   '  lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]',
   '  lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]',

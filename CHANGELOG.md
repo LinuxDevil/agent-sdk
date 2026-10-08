@@ -48,6 +48,7 @@ This section lists what is on `main` and not yet on npm.
 - Structured output: when `maxSteps` runs out while the model is still calling tools, a run with `output` set now makes one last model call with no tools offered ("answer now") and validates its reply - the result carries `object` (still `finishReason: 'max-steps'`) or `outputError` (`'output-invalid'`) instead of neither. The extra call is skipped when another budget limit (tokens, cost, duration) is already spent. See [Structured output](docs/structured-output.md).
 
 ### Fixed
+- `lousho mcp` accepts an agent directory or `agent.ts` module like `dev`/`chat`/`acp` (it crashed with a raw `EISDIR`), and its errors carry the `lousho mcp:` prefix (Eve CLI-F2).
 - Tracing: a background sub-agent's cost now rolls up into the lead's `invoke_agent` span `lousho.cost_usd` (a span that ends after its parent adds to the nearest open ancestor), and `listTraces()` / `lousho traces` report the sum of the chat spans' cost, so the cost matches the token counts and `result.usage.costUsd`. (Eve MA-F2)
 - `WebhookTriggerAdapter` reads the body through the 1 MB capped reader channels use and answers `413` instead of buffering any size before auth, and a failing handler's `500` no longer echoes the internal error message (Eve DUR-F18)
 - CLI: `lousho --version` / `-v` prints the version; the top-level `lousho --help` lists `doctor --ping` and `eval --timeout`; `lousho chat` and `lousho acp` name themselves (not `lousho dev:`) when the target path is missing or unsupported (Eve CLI-F8, F9, F10).
