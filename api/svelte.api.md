@@ -1805,6 +1805,7 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
     args: Record<string, unknown>;
     executedBy?: 'provider';
     parentToolCallId?: string;
+    rawArgs?: string;
     // (undocumented)
     toolCallId: string;
     // (undocumented)
@@ -1867,11 +1868,11 @@ interface Usage {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-Bt6qTtwI.d.ts:762:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-Bt6qTtwI.d.ts:779:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-Bt6qTtwI.d.ts:1131:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-Bt6qTtwI.d.ts:3116:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
-// dist/createAgent-Bt6qTtwI.d.ts:3117:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BsgBKsuI.d.ts:762:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BsgBKsuI.d.ts:779:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BsgBKsuI.d.ts:1140:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BsgBKsuI.d.ts:3125:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BsgBKsuI.d.ts:3126:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
 // dist/index-B41xZFIC.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
 // dist/index-B41xZFIC.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/index-B41xZFIC.d.ts:1442:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts

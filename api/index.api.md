@@ -6710,6 +6710,7 @@ export interface ToolStartEvent extends AgentEventBase<'tool.start'> {
     args: Record<string, unknown>;
     executedBy?: 'provider';
     parentToolCallId?: string;
+    rawArgs?: string;
     // (undocumented)
     toolCallId: string;
     // (undocumented)

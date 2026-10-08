@@ -343,6 +343,14 @@ a failed call; their message is the tool's result, so it carries no appended
 schema (a `ToolArgumentsValidationError`). Inside a run the model gets the
 issues as a tool result and can retry, so a run seldom ends on it.
 
+Arguments that are not valid JSON (truncated, say) get the same error, with one
+`(root)` issue: `arguments are not valid JSON: <parse error>; received: <the
+text, truncated>`. The tool does not run. A small repair is tried first: a
+surrounding markdown code fence, trailing commas and double-encoded JSON are
+fixed when the result is a JSON object. Empty arguments (`""`) mean `{}`. The
+call's `tool.start` event carries `rawArgs`, the text the model sent, whenever
+it was repaired or failed to parse.
+
 **Fix:** if you called the tool yourself, fix the arguments named in the message;
 if the model keeps getting them wrong, make the field `.describe()`
 text clearer. `error.issues` lists each path and problem. See [Tools](./tools.md).

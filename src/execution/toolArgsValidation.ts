@@ -11,16 +11,102 @@ import { getToolInputSchema } from '../tools/toolContract';
 import { toolErrorResult, type ToolErrorResult } from './toolErrors';
 import { issueMessage, issuePath, type SchemaIssue, type StandardSchemaV1 } from '../utils/zodCompat';
 
+/** A tool call's raw `arguments`, decoded (see {@link decodeToolArguments}). */
+export type DecodedToolArguments =
+  | {
+      ok: true;
+      /** The parsed arguments. */
+      value: unknown;
+      /** True when the text only parsed after a repair (code fence, trailing comma, double encoding). */
+      repaired?: boolean;
+    }
+  | {
+      ok: false;
+      /** The JSON parser's message. */
+      error: string;
+    };
+
+/** Strips a surrounding markdown code fence (` ```json ... ``` `). */
+function stripCodeFence(text: string): string {
+  const fenced = /^```[\w-]*\s*([\s\S]*?)\s*```$/.exec(text.trim());
+  return fenced ? fenced[1] : text;
+}
+
+/** Removes commas directly before a closing `}` or `]`, leaving string contents alone. */
+function stripTrailingCommas(text: string): string {
+  let out = '';
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (inString) {
+      out += char;
+      if (char === '\\') out += text[++i] ?? '';
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    if (char === ',' && /^\s*[}\]]/.test(text.slice(i + 1))) continue;
+    out += char;
+  }
+  return out;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Parses `text` to an object, unwrapping one level of double encoding; undefined otherwise. */
+function parseObject(text: string): Record<string, unknown> | undefined {
+  try {
+    const value: unknown = JSON.parse(text);
+    if (isObject(value)) return value;
+    if (typeof value === 'string') {
+      const inner: unknown = JSON.parse(value);
+      if (isObject(inner)) return inner;
+    }
+  } catch {
+    // not this shape
+  }
+  return undefined;
+}
+
 /**
- * Best-effort parse of a tool call's JSON `arguments`, returning
- * `fallback` when they are not valid JSON.
+ * Decodes a tool call's JSON `arguments`. An empty string means no
+ * arguments (`{}`), as many models send for a tool without parameters.
+ * Text that is not valid JSON gets one small repair pass (a surrounding
+ * markdown code fence, trailing commas, a double-encoded JSON string),
+ * kept only when it yields an object; otherwise the parse error is returned.
+ */
+export function decodeToolArguments(raw: unknown): DecodedToolArguments {
+  if (typeof raw !== 'string') return { ok: true, value: raw ?? {} };
+  if (raw.trim() === '') return { ok: true, value: {} };
+  let error: string;
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== 'string') return { ok: true, value };
+    const unwrapped = parseObject(raw);
+    return unwrapped ? { ok: true, value: unwrapped, repaired: true } : { ok: true, value };
+  } catch (parseError) {
+    error = parseError instanceof Error ? parseError.message : String(parseError);
+  }
+  const unfenced = stripCodeFence(raw);
+  const repaired = parseObject(unfenced) ?? parseObject(stripTrailingCommas(unfenced));
+  return repaired ? { ok: true, value: repaired, repaired: true } : { ok: false, error };
+}
+
+/** The model-readable reason a call's arguments could not be decoded, with the (truncated) raw text. */
+export function invalidJsonMessage(raw: string, error: string): string {
+  const received = raw.length > 200 ? `${raw.slice(0, 200)}... (${raw.length} chars)` : raw;
+  return `arguments are not valid JSON: ${error}; received: ${received}`;
+}
+
+/**
+ * Best-effort parse of a tool call's JSON `arguments` (see
+ * {@link decodeToolArguments}), returning `fallback` when they are not valid JSON.
  */
 export function parseToolArguments(toolCall: ToolCall, fallback: unknown): unknown {
-  try {
-    return JSON.parse(toolCall.function.arguments);
-  } catch {
-    return fallback;
-  }
+  const decoded = decodeToolArguments(toolCall.function.arguments);
+  return decoded.ok ? decoded.value : fallback;
 }
 
 /** One problem found while validating a tool call's arguments. */

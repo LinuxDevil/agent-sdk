@@ -14,7 +14,8 @@ import type { ToolRunContext } from './toolRunContext';
 import { HookRegistry, ToolCallHookContext, type PreToolCallDecision } from './hooks';
 import { toolErrorMessage } from './propagatingToolError';
 import { toolErrorResult, type ToolErrorKind } from './toolErrors';
-import { ToolArgumentsValidationError, parseToolArguments, validateToolArguments } from './toolArgsValidation';
+import { ToolArgumentsValidationError, decodeToolArguments, invalidJsonMessage, parseToolArguments, validateToolArguments } from './toolArgsValidation';
+import { toolNotFoundMessage } from './toolNames';
 import {
   checkPermission,
   hasEnforcedApproval,
@@ -164,17 +165,14 @@ export async function prepareToolCall(toolCall: ToolCall, ctx: ToolCallContext):
     await ctx.onToolCall(toolCall);
   }
 
-  // Parse args up front (best-effort) so hooks get a real object to
-  // inspect/mutate. LOU-U4: the args are then validated against the tool's
-  // schema FIRST, so pre-tool hooks, `needsApproval` and `execute` all see
-  // the parsed (defaults/transforms applied) value. Invalid args skip the
-  // pre-hooks and `execute`; the structured error flows through the normal
-  // error-outcome path (post hook, onToolResult, events, tracing).
-  const checked = await checkToolArguments(
-    toolCall,
-    ctx.toolRegistry,
-    parseToolArguments(toolCall, {})
-  );
+  // Parse args up front so hooks get a real object to inspect/mutate.
+  // LOU-U4: the args are then validated against the tool's schema FIRST, so
+  // pre-tool hooks, `needsApproval` and `execute` all see the parsed
+  // (defaults/transforms applied) value. Invalid args (and arguments that
+  // are not valid JSON) skip the pre-hooks and `execute`; the structured
+  // error flows through the normal error-outcome path (post hook,
+  // onToolResult, events, tracing).
+  const checked = await checkToolArguments(toolCall, ctx.toolRegistry);
   if (checked.rejection) {
     return { toolCall, args: checked.args, rejection: checked.rejection, requiresApproval: false };
   }
@@ -445,20 +443,31 @@ async function executePrepared(
 }
 
 /**
- * Validates `rawArgs` against the called tool's schema. Returns the parsed
- * args, or a `rejection` outcome (structured error as `result`, message as
- * `error`) when they do not match. Unknown/non-executable tools and tools
- * without a zod schema pass through for the normal path to handle.
+ * Validates `args` (default: the call's decoded JSON arguments) against the
+ * called tool's schema. Returns the parsed args, or a `rejection` outcome
+ * (structured error as `result`, message as `error`) when they are not valid
+ * JSON or do not match. Unknown/non-executable tools and tools without a zod
+ * schema pass through for the normal path to handle.
  */
 async function checkToolArguments(
   toolCall: ToolCall,
   toolRegistry: ToolRegistry | undefined,
-  rawArgs: unknown
+  args?: Record<string, unknown>
 ): Promise<{ args: Record<string, unknown>; rejection?: ToolCallOutcome }> {
   const toolName = toolCall.function.name;
+  // `args` (a hook's input) are checked as given; otherwise the model's text is decoded.
+  const decoded = args ? { ok: true as const, value: args } : decodeToolArguments(toolCall.function.arguments);
+  const rawArgs = decoded.ok ? decoded.value : {};
   const toolDesc = toolRegistry && findExecutableTool(toolRegistry, toolName);
   if (!toolDesc) {
     return { args: rawArgs as Record<string, unknown> };
+  }
+  if (!decoded.ok) {
+    // F7: unparseable arguments are an error the model can fix, never `{}`.
+    const error = new ToolArgumentsValidationError(toolName, [
+      { path: '(root)', message: invalidJsonMessage(String(toolCall.function.arguments), decoded.error) },
+    ]);
+    return { args: {}, rejection: { ...toolFailure(toolCall, 'validation', error.message), result: error.toToolResult() } };
   }
   try {
     const parsed = await validateToolArguments(toolName, toolDesc, rawArgs);
@@ -486,6 +495,13 @@ function toolFailure(toolCall: ToolCall, kind: ToolErrorKind, error: string): To
     result: toolErrorResult({ toolName: toolCall.function.name, error, kind }),
     error,
   };
+}
+
+/** The call's decoded arguments (see `decodeToolArguments()`); throws when they are not valid JSON. */
+function decodedArgsOrThrow(toolCall: ToolCall): unknown {
+  const decoded = decodeToolArguments(toolCall.function.arguments);
+  if (!decoded.ok) throw new SyntaxError(invalidJsonMessage(String(toolCall.function.arguments), decoded.error));
+  return decoded.value;
 }
 
 /** Returns the named tool only if it has a directly callable `execute`. */
@@ -553,7 +569,7 @@ async function doExecuteToolCall(
   try {
     const toolDesc = findExecutableTool(toolRegistry, toolCall.function.name);
     if (!toolDesc) {
-      return toolFailure(toolCall, 'not-found', `Tool '${toolCall.function.name}' not found`);
+      return toolFailure(toolCall, 'not-found', toolNotFoundMessage(toolCall.function.name, toolRegistry.list()));
     }
 
     // `overrideArgs` is the (possibly hook-mutated) object built by
@@ -561,7 +577,7 @@ async function doExecuteToolCall(
     // instead of re-parsing `toolCall.function.arguments` is what makes a
     // `preToolCall` hook (e.g. redact-pii) that mutates `ctx.args`
     // actually affect what the tool is invoked with.
-    const args = overrideArgs ?? JSON.parse(toolCall.function.arguments);
+    const args = overrideArgs ?? (decodedArgsOrThrow(toolCall) as Record<string, unknown>);
 
     // The 'ai' SDK tool.execute expects (args, context). Tools flagged
     // `requiresSandbox` (LOU-F5) are routed through the configured

@@ -119,8 +119,17 @@ export interface ReasoningDoneEvent extends AgentEventBase<'reasoning.done'> {
 export interface ToolStartEvent extends AgentEventBase<'tool.start'> {
   toolCallId: string;
   toolName: string;
-  /** The arguments the model sent, parsed from JSON (`{}` when they are not valid JSON). */
+  /**
+   * The arguments the model sent, parsed from JSON (`{}` when they are not
+   * valid JSON; the call then fails with a validation error the model sees).
+   */
   args: Record<string, unknown>;
+  /**
+   * The raw `arguments` text, set only when it was not valid JSON as sent:
+   * it failed to parse, or parsed only after a repair (a markdown code
+   * fence, trailing commas, double-encoded JSON).
+   */
+  rawArgs?: string;
   /**
    * N1a: `'provider'` for a hosted tool (`webSearch()`, ...) the provider ran
    * inside the model call; absent for a tool the SDK ran. A provider-run call
