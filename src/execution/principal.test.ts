@@ -359,7 +359,11 @@ describe('approvers over HTTP and channels (N10b)', () => {
   it("the approvals route passes route auth's principal as the approver; the run keeps its own", async () => {
     const deploy = probe('deploy', { needsApproval: true });
     const agent = createAgent({ provider: mockModel([calling('deploy'), 'shipped']), tools: [deploy.tool], store: memoryStore() });
-    const { handler } = createRouteHandler(agent, { auth: [apiToken('alice-token', { id: 'alice' }), apiToken('bob-token', { id: 'bob' })] });
+    const { handler } = createRouteHandler(agent, {
+      auth: [apiToken('alice-token', { id: 'alice' }), apiToken('bob-token', { id: 'bob' })],
+      // A1: by default only alice may decide her own call; bob is her approver here.
+      authorizeApproval: ({ principal }) => principal?.id === 'bob',
+    });
     const as = (token: string) => ({ authorization: `Bearer ${token}` });
 
     await (await handler(request('/api/agent/chat', { sessionId: 'h1', input: 'deploy' }, as('alice-token')))).text();

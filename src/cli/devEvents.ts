@@ -19,8 +19,9 @@ function runEvents(payloads: AgentEventPayload[]): AgentEvent[] {
 export function errorEvents(error: unknown): AgentEvent[] {
   const message = error instanceof Error ? error.message : String(error);
   const name = error instanceof Error ? error.name : 'Error';
+  const code = (error as { code?: unknown } | null)?.code;
   return runEvents([
-    { type: 'error', error: { name, message } },
+    { type: 'error', error: { name, message, ...(typeof code === 'string' && code && { code }) } },
     { type: 'run.done', finishReason: 'error', text: '' },
   ]);
 }

@@ -154,6 +154,7 @@ interface AgentEventBase<TType extends string> {
 
 // @public
 interface AgentEventError {
+    code?: string;
     // (undocumented)
     message: string;
     // (undocumented)
@@ -513,9 +514,16 @@ interface AnthropicProviderConfig extends AiSdkProviderConfig {
 }
 
 // @public
+interface ApprovalAccessRequest {
+    approval: PendingApproval;
+    // Warning: (ae-forgotten-export) The symbol "Principal" needs to be exported by the entry point worker.d.ts
+    principal: Principal | undefined;
+    sessionId: string;
+}
+
+// @public
 interface ApprovalCheckContext {
     messages: readonly Message[];
-    // Warning: (ae-forgotten-export) The symbol "Principal" needs to be exported by the entry point worker.d.ts
     principal?: Readonly<Principal>;
     // (undocumented)
     sessionId?: string;
@@ -847,7 +855,18 @@ interface ChannelUser {
 }
 
 // @public
-export interface ChatRoutesContext {
+interface ChatRoutesAccess {
+    // Warning: (ae-forgotten-export) The symbol "ApprovalAccessRequest" needs to be exported by the entry point worker.d.ts
+    authorizeApproval?: (request: ApprovalAccessRequest) => boolean | Promise<boolean>;
+    // Warning: (ae-forgotten-export) The symbol "SessionAccessRequest" needs to be exported by the entry point worker.d.ts
+    authorizeSession?: (request: SessionAccessRequest) => boolean | Promise<boolean>;
+    exposeErrors?: boolean;
+}
+
+// Warning: (ae-forgotten-export) The symbol "ChatRoutesAccess" needs to be exported by the entry point worker.d.ts
+//
+// @public
+export interface ChatRoutesContext extends ChatRoutesAccess {
     afterSignIn?: (result: OAuthCompleteResult) => void;
     agent: () => SimpleAgent;
     durableMessage?: boolean;
@@ -1439,6 +1458,9 @@ const ERROR_CODES: {
     readonly LOUSHO_CHANNEL_REQUEST_FAILED: "Check the platform's token and permissions and its status page; the message names the call and its status.";
     readonly LOUSHO_APPROVAL_STORE_MISSING: "Pass an approvalStore (e.g. new InMemoryApprovalStore()), or use createAgent(), which has one.";
     readonly LOUSHO_APPROVAL_NOT_FOUND: "Resolve an id that is still pending (agent.approvals.list() lists them); each approval resolves once.";
+    readonly LOUSHO_APPROVAL_CONFLICT: "Another request decided this approval at the same time; read the session to see the outcome instead of deciding again.";
+    readonly LOUSHO_APPROVAL_FORBIDDEN: "Decide the approval as a caller the route's authorizeApproval accepts (by default, the caller the run acts for).";
+    readonly LOUSHO_SESSION_FORBIDDEN: "Use a session the route's authorizeSession lets this caller read, continue or decide approvals in.";
     readonly LOUSHO_SESSION_AWAITING_APPROVAL: "Resolve the pending approval first (agent.approvals.resolve() or resumeAfterApproval()), then send again.";
     readonly LOUSHO_SESSION_ID_INVALID: "Use 1-128 characters from A-Z, a-z, 0-9, '_' and '-', or omit the id.";
     readonly LOUSHO_SESSION_BUSY: "Wait for the running turn to finish (await its send(), or abort it), then call again.";
@@ -2737,6 +2759,7 @@ interface PendingApproval {
     kind?: ApprovalKind;
     principal?: Principal;
     question?: ApprovalQuestion;
+    sessionId?: string;
     signIn?: ApprovalSignIn;
     subagentPath?: string[];
     // (undocumented)
@@ -3271,6 +3294,20 @@ interface ServedBy {
 
 // @public
 export function serveFetch(request: Request, ctx: ChatRoutesContext, auth?: ServeAuth): Promise<Response>;
+
+// @public
+interface SessionAccessRequest {
+    // Warning: (ae-forgotten-export) The symbol "SessionAction" needs to be exported by the entry point worker.d.ts
+    //
+    // (undocumented)
+    action: SessionAction;
+    principal: Principal | undefined;
+    // (undocumented)
+    sessionId: string;
+}
+
+// @public
+type SessionAction = 'read' | 'chat' | 'approve';
 
 // @public
 interface SessionBudget {
@@ -4190,13 +4227,13 @@ interface WithRetryOptions {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-C91cXsHp.d.ts:762:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-C91cXsHp.d.ts:779:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-C91cXsHp.d.ts:1129:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-C91cXsHp.d.ts:3114:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-C91cXsHp.d.ts:3115:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
-// dist/index-DmsA2WFr.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
-// dist/index-DmsA2WFr.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-D7n2e_nX.d.ts:762:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-D7n2e_nX.d.ts:779:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-D7n2e_nX.d.ts:1131:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-D7n2e_nX.d.ts:3116:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-D7n2e_nX.d.ts:3117:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
+// dist/index-EApDIE02.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
+// dist/index-EApDIE02.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point worker.d.ts
 
 // (No @packageDocumentation comment for this package)
