@@ -91,10 +91,12 @@ provider's content filter stopped the model, and `cancelled` after
 `session/cancel`.
 
 **Errors.** An unknown method answers JSON-RPC error `-32601`, a line that is
-not JSON `-32700`, an unknown `sessionId` or an empty prompt `-32602`, and a
+not JSON `-32700`, a line that is JSON but not a request object (`null`, an
+array, a string, a number, or a non-string `method`) `-32600`, an unknown `sessionId` or an empty prompt `-32602`, and a
 second prompt while one runs in the same session `-32600`. A run that fails
 answers `-32603` with the error's message, and its SDK error code (for
-example `LOUSHO_PROVIDER_RATE_LIMITED`) in `error.data.code`.
+example `LOUSHO_PROVIDER_RATE_LIMITED`) in `error.data.code`. A `null` or
+non-object `params` reads as `{}`. A malformed line never stops the server.
 
 ## Not supported
 
