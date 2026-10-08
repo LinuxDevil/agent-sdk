@@ -56,6 +56,28 @@ export function splitPendingTurn(messages: Message[]): PendingTurn {
     : { messages: turn, pendingToolCalls, queuedInput: others };
 }
 
+/**
+ * Inserts a tool result where the model's call order puts it among the
+ * results that follow its assistant turn (appended when the turn is not
+ * found). Results may settle in any order (parallel calls, a crash resume
+ * replaying a checkpointed result); the transcript still keeps call order,
+ * so `splitPendingTurn()` and the provider see one deterministic shape.
+ */
+export function insertToolResult(messages: Message[], result: Message): void {
+  const id = result.toolCallId;
+  let turn = messages.length - 1;
+  while (turn >= 0 && !(messages[turn].role === 'assistant' && messages[turn].toolCalls?.some((call) => call.id === id))) turn--;
+  if (turn === -1) {
+    messages.push(result);
+    return;
+  }
+  const order = new Map((messages[turn].toolCalls ?? []).map((call, index) => [call.id, index]));
+  const mine = order.get(id ?? '') ?? 0;
+  let at = turn + 1;
+  while (at < messages.length && messages[at].role === 'tool' && (order.get(messages[at].toolCallId ?? '') ?? -1) < mine) at++;
+  messages.splice(at, 0, result);
+}
+
 /** `input` as messages (a string is one user message). */
 export function inputMessages(input: string | Message[]): Message[] {
   return typeof input === 'string' ? [{ role: 'user', content: input }] : [...input];

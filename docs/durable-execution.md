@@ -140,9 +140,10 @@ you pass a different one in the options.
 - **Every tool call gets exactly one result, in call order**, after any
   sequence of crashes, aborts, pauses and resumes. (An aborted call gets a
   "cancelled" result; a rejected call gets a rejection result.)
-- **A recorded result is never re-executed.** Results are checkpointed as
-  the in-order prefix of finished calls grows; a resumed run only runs calls
-  that have no recorded result.
+- **A recorded result is never re-executed.** Each result is checkpointed
+  by its `toolCallId` as soon as its call settles - even one that finished
+  behind a slower earlier call of the same turn - so a resumed run only
+  runs calls that have no recorded result.
 - **A checkpointed model turn is never generated again.** If the process
   dies after the model answered, the resumed run executes that answer's tool
   calls instead of asking the model again (no extra cost, no different

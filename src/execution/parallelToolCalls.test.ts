@@ -298,7 +298,7 @@ describe('parallel tool calls (LOU-V3)', () => {
     expect(JSON.parse(textOf(toolMessages[2]))).toMatchObject({ kind: 'not-run', message: expect.stringContaining('cancelled') });
   });
 
-  it('checkpoints only the in-order prefix of finished calls', async () => {
+  it('checkpoints each result as its call settles, even behind a slower earlier call', async () => {
     const saved: Array<Array<string | undefined>> = [];
     const checkpoints = new Map<string, Checkpoint>();
     const checkpointStore: CheckpointStore = {
@@ -324,12 +324,15 @@ describe('parallel tool calls (LOU-V3)', () => {
 
     b.release.resolve('B');
     await tick();
-    expect(saved).toEqual([[]]); // `b` finished, but `a` (before it) has not
+    // `b` finished behind the still-running `a`; its result is checkpointed
+    // by toolCallId at once, so a crash never runs it again (audit log F9).
+    expect(saved).toEqual([[], ['call_b']]);
 
     a.release.resolve('A');
     await result;
-    // Then the in-order prefix once, then the 'finished' checkpoint (LOU-U8).
-    expect(saved).toEqual([[], ['call_a', 'call_b'], ['call_a', 'call_b']]);
+    // `a`'s result lands before `b`'s (call order), then the 'finished'
+    // checkpoint (LOU-U8).
+    expect(saved).toEqual([[], ['call_b'], ['call_a', 'call_b'], ['call_a', 'call_b']]);
   });
 
   describe('approval inside a batch', () => {

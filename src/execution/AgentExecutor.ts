@@ -564,8 +564,9 @@ export interface ExecuteOptions extends PermissionOptions {
    * - An abort (`signal`) mid-batch resolves with `finishReason: 'aborted'`:
    *   finished calls keep their results, the rest get a "cancelled" result.
    * - With checkpointing, the model's turn is checkpointed before any call
-   *   starts, and results as the in-order prefix of finished calls grows,
-   *   so a resumed run never re-runs a recorded call.
+   *   starts, and each result is checkpointed by its toolCallId as soon as
+   *   its call settles, so a resumed run never re-runs a finished call -
+   *   even one that completed behind a slower earlier call.
    *
    * @example
    * ```ts
@@ -1312,6 +1313,10 @@ export class AgentExecutor {
     );
     options.inputQueue?.endPhase();
 
+    // record() runs in completion order; the run pauses on the suspended
+    // sub-agent that comes first in CALL order, so sort them back.
+    const callOrder = new Map(toolCalls.map((call, index) => [call.id, index]));
+    suspensions.sort((a, b) => (callOrder.get(a.toolCallId) ?? 0) - (callOrder.get(b.toolCallId) ?? 0));
     const stopped = this.settleToolBatch(options, state, batch, suspensions, handoffCalls);
     // A steer cut the batch short (its calls, the handoff calls too, were cancelled).
     if (stopped || handoffCalls.length === 0 || batch.unrecorded.length > 0) return stopped;

@@ -13,7 +13,7 @@ import { checkAgentDrift, fingerprintOf, type AgentFingerprint } from './agentFi
 import { runEventsOf } from './agentRun';
 import { baseAgentOf } from './subagentRuntime';
 import { CompactedLLMProviderError, SessionAwaitingApprovalError } from './errors';
-import { inputMessages, newSessionMessages, splitPendingTurn } from './transcript';
+import { inputMessages, insertToolResult, newSessionMessages, splitPendingTurn } from './transcript';
 import type { CallUsage, RunUsage, StepUsage } from '../models/usage';
 import { emptyRunUsage, recordStepUsage, restoreRunUsage } from './runUsage';
 import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
@@ -277,7 +277,13 @@ export async function saveStepCheckpoint(
   await saved;
 }
 
-/** Appends one settled tool call's result to the transcript. */
+/**
+ * Records one settled tool call's result in the transcript, where the
+ * model's call order puts it. Results may arrive out of order - a parallel
+ * call is recorded as soon as it settles (audit log-incident F9), so a
+ * checkpoint holds every finished call and a crash never re-runs it - and
+ * the transcript still keeps call order for the provider.
+ */
 export function pushToolResult(
   state: AgentRunState,
   toolCall: ToolCall,
@@ -286,7 +292,7 @@ export function pushToolResult(
   // The message shape (the `{error}` payload, isError, LOU-X3's
   // replacedByHook record) is toolOutcomeMessage()'s, shared with the
   // handoff settle path in handoffRun.ts.
-  state.messages.push(toolOutcomeMessage(toolCall, outcome));
+  insertToolResult(state.messages, toolOutcomeMessage(toolCall, outcome));
 }
 
 /**
@@ -296,7 +302,7 @@ export function pushToolResult(
  * the provider rejecting an unanswered tool call.
  */
 function pushCancelledToolResult(state: AgentRunState, toolCall: ToolCall, reason: string): void {
-  state.messages.push({
+  insertToolResult(state.messages, {
     role: 'tool',
     content: JSON.stringify(
       toolErrorResult({
