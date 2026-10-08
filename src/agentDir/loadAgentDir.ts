@@ -418,7 +418,11 @@ function assembleConfig(
   const { name, instructions, tools, delegated, remote, overrides, memorySlots, skills, configured, approver } = parts;
   const fileTools = [...tools.map((t) => t.tool), ...delegated.map(delegateTool)];
   const subagents = Object.keys(remote).length > 0 ? remote : undefined;
+  // Every other createAgent() option the caller passed (guardrails, onEvent, retry, ...) is forwarded as is;
+  // the keys below are resolved against the directory first. `piAgent` is not a createAgent() option.
+  const { approve: _approve, hooks: _hooks, piAgent: _piAgent, prompt: _prompt, provider: _provider, model: _model, ...forwarded } = overrides;
   return {
+    ...forwarded,
     name,
     instructions,
     ...optional('provider', source.provider),
