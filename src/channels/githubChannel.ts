@@ -384,14 +384,14 @@ export function githubChannel(options: GitHubChannelOptions): Channel<GitHubComm
   async function readDecision(event: GitHubCommentEvent, command: { approved: boolean; id: string; note?: string }, ctx: ChannelContext): Promise<ChannelDecision | null> {
     const key = keyOf(event);
     const known = await ctx.approval(command.id); // only what this process paused on: after a restart the store alone knows
-    if (known?.question || decided.has(command.id)) return null; // a question is answered by a comment; a repeated command (a redelivery) decides nothing twice
+    if (!known) return null; // not pending (stale, made-up): no "Approved by" for a decision core would refuse, no reply for anyone to provoke
+    if (known.question || decided.has(command.id)) return null; // a question is answered by a comment; a repeated command (a redelivery) decides nothing twice
     const promptedIn = prompts.get(command.id);
     if (promptedIn !== undefined && promptedIn !== key) return null; // the prompt was posted in another thread
     const target = targetOf(event);
     const user: ChannelUser = { id: event.author, name: event.author, roles: [event.association] };
     if (!(await mayDecide(user, event.association, command.id, ctx, key))) {
-      // refuse aloud only for an approval this process knows, so a made-up id gets no reply for anyone to provoke
-      if (known) await best(target, `@${event.author} ${NOT_ALLOWED}`, key);
+      await best(target, `@${event.author} ${NOT_ALLOWED}`, key);
       return null;
     }
     decided.add(command.id);

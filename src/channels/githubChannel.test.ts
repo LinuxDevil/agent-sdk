@@ -506,7 +506,7 @@ describe('githubChannel (N11b)', () => {
       expect(t.calls).toHaveLength(posts);
     });
 
-    it('a made-up id gets no reply from the bot for a commenter who may not approve; for one who may, it fails on the unknown approval', async () => {
+    it('a made-up id gets no reply and no "Approved by" confirmation, whoever sends it (Eve E17 / F5)', async () => {
       const onError = vi.fn();
       const execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`);
       const t = setup([emailCall], { tools: [emailTool(execute)] }, { channel: { onError } });
@@ -518,7 +518,8 @@ describe('githubChannel (N11b)', () => {
       expect(onError).not.toHaveBeenCalled();
 
       await t.send(issueComment('/approve 00000000-0000-0000-0000-000000000000', { login: 'maintainer', association: 'OWNER' }));
-      expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'LOUSHO_APPROVAL_NOT_FOUND' }), expect.objectContaining({ stage: 'approval' }));
+      expect(t.calls).toHaveLength(posts);
+      expect(onError).not.toHaveBeenCalled();
       expect(execute).not.toHaveBeenCalled();
     });
 
