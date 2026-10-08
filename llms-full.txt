@@ -14644,6 +14644,33 @@ console.log(object?.note); // typed: string | undefined
    `finishReason: 'output-invalid'`, no `object`, and `outputError`:
    `{ message, issues: [{ path, message }] }`.
 
+## The schema in the prompt
+
+Steps 1 and 2 send the schema twice: once inside the `## Output format`
+system-prompt block, and once on `responseFormat`. When the provider enforces
+`responseFormat` (OpenAI structured outputs, OpenRouter, the `pi` provider)
+the prompt copy is redundant - on a large schema it costs around a thousand
+tokens per call. Pass `output` as `{ schema, promptSchema: false }` to leave
+the schema out of the prompt; the JSON-only ask stays and `responseFormat` is
+sent unchanged:
+
+```ts
+import { z } from 'zod';
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openai/gpt-4o',
+  output: { schema: z.object({ city: z.string(), tempC: z.number() }), promptSchema: false },
+});
+const { object } = await agent.send('Weather in Paris?');
+```
+
+Keep the default (`promptSchema: true`, or a bare `output: schema`) when the
+provider - or model - treats `responseFormat` as a JSON-mode hint only (the
+built-in `ai`-SDK providers drop the schema for models without
+structured-outputs support; a custom provider may ignore it entirely). The
+prompt copy is then the only place the model sees the shape to answer with.
+
 ## Repaired output and business rules
 
 When `object` came from the repair step, the result has

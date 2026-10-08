@@ -871,7 +871,8 @@ export interface ExecuteOptions extends PermissionOptions {
         requiresApproval?: boolean;
         args?: Record<string, unknown>;
     } | undefined, latencyMs: number, error?: unknown) => void | Promise<void>;
-    output?: StandardSchemaV1;
+    // Warning: (ae-forgotten-export) The symbol "OutputSpec" needs to be exported by the entry point index.d.ts
+    output?: StandardSchemaV1 | OutputSpec;
     parentSpanId?: string;
     principal?: Principal;
     // (undocumented)
@@ -1648,6 +1649,12 @@ interface OutputError {
     // Warning: (ae-forgotten-export) The symbol "ToolArgumentIssue" needs to be exported by the entry point index.d.ts
     issues: ToolArgumentIssue[];
     message: string;
+}
+
+// @public
+interface OutputSpec<TSchema extends StandardSchemaV1 = StandardSchemaV1> {
+    promptSchema?: boolean;
+    schema: TSchema;
 }
 
 // @public (undocumented)
@@ -2519,7 +2526,7 @@ interface SubagentSpec {
     maxSteps?: number;
     // (undocumented)
     maxSubagentDepth?: number;
-    output?: StandardSchemaV1;
+    output?: StandardSchemaV1 | OutputSpec;
     permissionMode?: PermissionOptions['permissionMode'];
     permissions?: readonly PermissionRule[];
     // (undocumented)
@@ -2896,9 +2903,9 @@ interface Usage {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-D0QXz1ve.d.ts:768:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-D0QXz1ve.d.ts:785:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-D0QXz1ve.d.ts:1146:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-wczSqLgu.d.ts:768:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-wczSqLgu.d.ts:785:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-wczSqLgu.d.ts:1146:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
 // dist/index-C1NnbLr9.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
 // dist/index-C1NnbLr9.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/index-C1NnbLr9.d.ts:1906:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts

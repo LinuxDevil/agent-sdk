@@ -7,7 +7,7 @@
 import { zodSchema } from 'ai';
 import type { GenerateOptions, Message } from '../providers';
 import { formatIssues, parseWithIssues, type ToolArgumentIssue } from './toolArgsValidation';
-import { schemaToJsonSchema, unrepresentableDates, type StandardSchemaV1 } from '../utils/zodCompat';
+import { isModelSchema, schemaToJsonSchema, unrepresentableDates, type StandardSchemaV1 } from '../utils/zodCompat';
 import { ConfigurationError } from './errors';
 
 /** Why a run's final reply is not a valid `output` object (`finishReason: 'output-invalid'`). */
@@ -16,6 +16,33 @@ export interface OutputError {
   message: string;
   /** Each problem with its path (`(root)` for the whole reply). */
   issues: ToolArgumentIssue[];
+}
+
+/**
+ * `ExecuteOptions.output` / `createAgent({ output })` as an options object
+ * instead of a bare schema (audit invoice F12). `promptSchema: false` leaves
+ * the JSON Schema out of the system prompt: it is sent only on
+ * `GenerateOptions.responseFormat`, so a provider that enforces it no longer
+ * pays for the schema twice (~1k prompt tokens a call on a large one). Keep
+ * the default (`true`, or a bare `output: schema`) when the provider takes
+ * `responseFormat` as a JSON-mode hint only - the prompt copy is then the
+ * only place the model sees the shape to answer with.
+ */
+export interface OutputSpec<TSchema extends StandardSchemaV1 = StandardSchemaV1> {
+  /** The schema the final reply is validated into `result.object` with (what a bare `output` is). */
+  schema: TSchema;
+  /** Also write the JSON Schema into the system prompt (default `true`). */
+  promptSchema?: boolean;
+}
+
+/** `output` given as an {@link OutputSpec} vs a bare schema: the spec has a `schema` key and is not itself a schema. */
+function isOutputSpec(output: StandardSchemaV1 | OutputSpec): output is OutputSpec {
+  return isRecord(output) && 'schema' in output && !('~standard' in output) && !isModelSchema(output);
+}
+
+/** The schema of an `output` option - `output` itself, or `output.schema` of the spec form. */
+function outputSchemaOf(output: StandardSchemaV1 | OutputSpec): StandardSchemaV1 {
+  return isOutputSpec(output) ? output.schema : output;
 }
 
 const jsonSchemas = new WeakMap<StandardSchemaV1, OutputJsonSchemas>();
@@ -249,28 +276,38 @@ function typeRootUnion(root: Record<string, unknown>): void {
  * `createAgent()` and `AgentExecutor.execute()` fail at once rather than
  * on the first model call.
  */
-export function assertOutputSchema(schema: StandardSchemaV1 | undefined): void {
-  if (schema) jsonSchemasOf(schema);
+export function assertOutputSchema(schema: StandardSchemaV1 | OutputSpec | undefined): void {
+  if (schema) jsonSchemasOf(outputSchemaOf(schema));
 }
 
 function jsonSchemaOf(schema: StandardSchemaV1): Record<string, unknown> {
   return jsonSchemasOf(schema).strict;
 }
 
-/** The system-prompt block that asks for the final answer as JSON matching `schema`. */
-export function outputInstruction(schema: StandardSchemaV1): string {
+/**
+ * The system-prompt block that asks for the final answer as JSON matching
+ * `schema`. An `output` spec's `promptSchema: false` leaves the schema itself
+ * out (audit invoice F12): the ask to answer with only JSON stays, the copy
+ * `responseFormat` already carries does not.
+ */
+export function outputInstruction(output: StandardSchemaV1 | OutputSpec): string {
+  if (isOutputSpec(output) && output.promptSchema === false) {
+    return ['## Output format', '', 'You may call tools first. Your final answer must be only a JSON object (no other text, no code fences).'].join(
+      '\n'
+    );
+  }
   return [
     '## Output format',
     '',
     'You may call tools first. Your final answer must be only a JSON object (no other text, no code fences) that matches this JSON Schema:',
     '',
-    JSON.stringify(jsonSchemaOf(schema)),
+    JSON.stringify(jsonSchemaOf(outputSchemaOf(output))),
   ].join('\n');
 }
 
 /** The `responseFormat` hint sent with every model call of the run. */
-export function outputResponseFormat(schema: StandardSchemaV1): GenerateOptions['responseFormat'] {
-  return { type: 'json', schema: jsonSchemaOf(schema) };
+export function outputResponseFormat(output: StandardSchemaV1 | OutputSpec): GenerateOptions['responseFormat'] {
+  return { type: 'json', schema: jsonSchemaOf(outputSchemaOf(output)) };
 }
 
 /** `text` without surrounding whitespace and a ```/```json code fence. */
@@ -401,9 +438,10 @@ async function validateValue(schema: StandardSchemaV1, value: unknown): Promise<
  * parsed candidate's.
  */
 export async function validateOutput(
-  schema: StandardSchemaV1,
+  output: StandardSchemaV1 | OutputSpec,
   text: string
 ): Promise<{ object: unknown } | OutputFailure> {
+  const schema = outputSchemaOf(output);
   let first: OutputFailure | undefined;
   for (const value of jsonCandidates(text)) {
     const checked = await validateValue(schema, value);
@@ -478,9 +516,9 @@ function exampleOf(node: unknown, root: unknown, depth = 0): unknown {
  * answer again. When the reply echoed the JSON Schema (audit docs-qa F9),
  * it says so and shows an example instance rather than the schema again.
  */
-export function outputRepairMessage(schema: StandardSchemaV1, failure: OutputFailure): Message {
+export function outputRepairMessage(output: StandardSchemaV1 | OutputSpec, failure: OutputFailure): Message {
   if (failure.schemaEcho) {
-    const sent = jsonSchemaOf(schema);
+    const sent = jsonSchemaOf(outputSchemaOf(output));
     return {
       role: 'user',
       content:

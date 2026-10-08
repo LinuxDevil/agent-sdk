@@ -85,7 +85,7 @@ export type {
   PermissionRule,
   PermissionToolMatcher,
 } from './permissions';
-export type { OutputError } from './structuredOutput';
+export type { OutputError, OutputSpec } from './structuredOutput';
 export type { ToolConcurrency } from './toolBatch';
 export {
   AGENT_EVENT_SCHEMA_VERSION,

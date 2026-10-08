@@ -1141,7 +1141,8 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
     // Warning: (ae-forgotten-export) The symbol "AgentDriftMode" needs to be exported by the entry point worker.d.ts
     onAgentDrift?: AgentDriftMode;
     onEvent?: (event: AgentEvent) => void;
-    output?: TOutput;
+    // Warning: (ae-forgotten-export) The symbol "OutputSpec" needs to be exported by the entry point worker.d.ts
+    output?: TOutput | OutputSpec<TOutput>;
     projectInstructions?: boolean | {
         cwd?: string;
         files?: readonly string[];
@@ -2745,6 +2746,12 @@ interface OutputError {
     message: string;
 }
 
+// @public
+interface OutputSpec<TSchema extends StandardSchemaV1 = StandardSchemaV1> {
+    promptSchema?: boolean;
+    schema: TSchema;
+}
+
 // @public (undocumented)
 interface ParallelNode {
     // (undocumented)
@@ -4245,11 +4252,11 @@ interface WithRetryOptions {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-D0QXz1ve.d.ts:768:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-D0QXz1ve.d.ts:785:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-D0QXz1ve.d.ts:1146:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-D0QXz1ve.d.ts:3143:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-D0QXz1ve.d.ts:3144:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-wczSqLgu.d.ts:768:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-wczSqLgu.d.ts:785:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-wczSqLgu.d.ts:1146:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-wczSqLgu.d.ts:3161:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-wczSqLgu.d.ts:3162:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
 // dist/index-C1NnbLr9.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
 // dist/index-C1NnbLr9.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point worker.d.ts
