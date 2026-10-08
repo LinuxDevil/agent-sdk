@@ -16,6 +16,8 @@ import { durableStores } from './__fixtures__/durableStores';
 import { mountChannels, type ChannelsHandler } from './mountChannels';
 import { httpChannel } from './httpChannel';
 import { defineMemory, inMemoryMemory, type MemoryScopeContext } from '../memory';
+import { memoryStore } from '../storage/agentStore';
+import { SessionAwaitingApprovalError } from '../execution/errors';
 
 interface Posted {
   handled: boolean;
@@ -410,6 +412,35 @@ describe('defineChannel / mountChannels (LOU-P7)', () => {
 
       await post(second.handler, '/channels/test', { user: 'ali', click: ali });
       expect(await second.ctx().approval(ali)).toBeUndefined();
+    });
+  });
+
+  describe("without a `store` option, channel sessions use the agent's store (Eve EVE-0)", () => {
+    it('agent.resume() refuses a paused channel turn and the transcript is the one agent.session() sees', async () => {
+      const store = memoryStore();
+      const { tool } = emailTool();
+      const agent = createAgent({ provider: mockModel(['Hello.', callEmail]), tools: [tool], store });
+      const { channel } = recordingChannel();
+      const handler = mountChannels(agent, [channel]);
+      const id = channelSessionId(channel, { sessionKey: 'ali', input: '', replyTo: undefined });
+
+      await post(handler, '/channels/test', { user: 'ali', text: 'hi' });
+      expect(await store.sessions.load(id)).toHaveLength(2);
+
+      await post(handler, '/channels/test', { user: 'ali', text: 'Email Sam' });
+      expect((await agent.approvals.list()).map((request) => request.toolName)).toEqual(['send_email']);
+      await expect(agent.resume(id)).rejects.toBeInstanceOf(SessionAwaitingApprovalError);
+      expect(await agent.session({ id }).pending()).toMatchObject({ status: 'awaiting-approval' });
+    });
+
+    it('an agent without a store still keeps channel transcripts across turns', async () => {
+      const model = mockModel(['One.', 'Two.']);
+      const { channel, replies } = recordingChannel();
+      const handler = mountChannels(createAgent({ provider: model }), [channel]);
+      await post(handler, '/channels/test', { user: 'ali', text: 'first' });
+      await post(handler, '/channels/test', { user: 'ali', text: 'second' });
+      expect(replies.map((r) => r.text)).toEqual(['One.', 'Two.']);
+      expect((model.calls[1].messages as Message[]).filter((m) => m.role === 'user').map((m) => m.content)).toEqual(['first', 'second']);
     });
   });
 
