@@ -64,6 +64,14 @@ accepted, and a request outside the base path is a 404).
 Sessions are kept by the agent's `store` (`createAgent({ store })`), so give
 the agent one that outlives a serverless invocation when you use sessions.
 
+For an app with more than one user, also pass `authorizeSession`, so a user
+cannot read or continue another user's session. If an approval must come from
+someone other than the user (a supervisor approving a refund), pass
+`authorizeApproval` too: by default the user the run acts for may approve their
+own call. An error reaches the client as its `name` and `code` with a generic
+message; `exposeErrors: true` sends the raw text. See
+[Who may decide an approval](./auth.md#who-may-decide-an-approval).
+
 `auth` also takes an ordered list of `jwt()`, `oidc()`, `basic()` and
 `apiToken()` entries, and the caller it accepts reaches the run as `principal`:
 see [Route auth and principals](./auth.md).

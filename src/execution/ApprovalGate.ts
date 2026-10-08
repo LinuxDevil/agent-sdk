@@ -55,6 +55,14 @@ export interface PendingApproval {
    * Absent for a run without a principal.
    */
   principal?: Principal;
+  /**
+   * A1: the `agent.session()` id the paused run belongs to, as
+   * `agent.approvals.list()` / `get()` report it when this process ran (or
+   * resumed) that session's turn. Absent for a run outside a session, and for
+   * a pause loaded from the store that no session of this process has opened
+   * yet. Never saved with the approval.
+   */
+  sessionId?: string;
 }
 
 /**

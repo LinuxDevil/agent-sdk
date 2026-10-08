@@ -13,7 +13,7 @@
 import * as http from 'node:http';
 import type { SimpleAgent } from '../createAgent';
 import { relayFetch } from '../server/chatRoutes';
-import { serveFetch, type ChatRoutesContext } from '../server/fetchRoutes';
+import { serveFetch, type ChatRoutesAccess, type ChatRoutesContext } from '../server/fetchRoutes';
 import { startSchedules, type StartSchedulesOptions } from '../schedules/startSchedules';
 import type { DefinedSchedule } from '../schedules/defineSchedule';
 import type { Channel } from '../channels/defineChannel';
@@ -31,7 +31,8 @@ const API_TOKEN_ENV = 'LOUSHO_API_TOKEN';
 /** Environment variable choosing where sessions live: `memory` (default) or `sqlite:<path>`. */
 const STORE_ENV = 'LOUSHO_STORE';
 
-export interface DeployedServerOptions {
+/** A1: `authorizeSession`, `authorizeApproval` and `exposeErrors` work as on `createRouteHandler()` (docs/auth.md). */
+export interface DeployedServerOptions extends ChatRoutesAccess {
   /**
    * `{ token }` (the build options' `auth.token`): the bearer token when
    * `LOUSHO_API_TOKEN` is not set. Or (N10a) an auth entry or ordered list
@@ -93,7 +94,15 @@ export function createDeployedServer(agent: SimpleAgent, options: DeployedServer
   // Channels authenticate themselves (their own verify), so they sit beside the bearer-protected chat routes.
   const channels = options.channels?.length ? mountChannels(agent, options.channels) : undefined;
   // N9b: a channel turn paused on a sign-in continues on its surface once the callback stored the token.
-  const chat: ChatRoutesContext = { name: 'lousho server', agent: () => agent, afterSignIn: (result) => continueChannelSignIn(channels, result) };
+  const { authorizeSession, authorizeApproval, exposeErrors } = options;
+  const chat: ChatRoutesContext = {
+    name: 'lousho server',
+    agent: () => agent,
+    afterSignIn: (result) => continueChannelSignIn(channels, result),
+    authorizeSession,
+    authorizeApproval,
+    exposeErrors,
+  };
   const handle = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
     if (await channels?.(req, res)) return;
     await relayFetch(req, res, (request) => serveFetch(request, chat, auth));

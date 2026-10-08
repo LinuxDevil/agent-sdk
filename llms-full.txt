@@ -2970,13 +2970,22 @@ permission rules and sub-agents see it too: see
 
 ## Security notes
 
-- **Route auth does not check who owns a session.** Any caller who passes auth
-  and knows a session id can read its transcript (`GET /chat/:id`), continue
-  it, and decide its pending approvals. Use session ids that cannot be guessed,
-  derive them from the principal on your side, or check ownership in your own
-  route before calling the handler. A caller who decides another caller's
-  approval is recorded as the approver (`ctx.approval.by`); the run keeps
-  acting for the caller that started it.
+- **Route auth does not check who owns a session** unless you pass
+  `authorizeSession`. Without it, any caller who passes auth and knows a session
+  id can read its transcript (`GET /chat/:id`) and continue it. Pass
+  `authorizeSession`, use session ids that cannot be guessed, or derive them
+  from the principal on your side. See
+  [Who may use a session](#who-may-use-a-session).
+- **Approvals.** A decision only reaches an approval of the session in the URL
+  (another session's approval is a `404`). By default only the caller the run
+  acts for may decide it. If an approval must come from someone else, such as a
+  supervisor approving a customer's refund, set `authorizeApproval`. Otherwise
+  the customer can approve their own call: the approval id is in their own
+  stream. See [Who may decide an approval](#who-may-decide-an-approval).
+- **Errors.** The session routes send an error's `name` and `code` with a
+  generic message. The full error (a provider's response body, a chat template)
+  goes to the server log (`console.error`) and to `onEvent`. Pass
+  `exposeErrors: true` to send the raw message, as `lousho dev` does.
 - `basic()` only over HTTPS; a bearer token is a password too, so terminate TLS
   in front of any server that is not on localhost.
 - Keep `issuer` and `audience` set for `jwt()`: a token minted for another of
@@ -3088,6 +3097,53 @@ callback, or posted to `/channels/<name>/approvals/:id`, have no approver.
 The approver never becomes the run's principal: the approved call and the
 rest of the run act for the caller that paused it. A credential or a grant that
 belongs to that caller is used only for that caller's calls, whoever approves.
+
+### Who may use a session
+
+`createRouteHandler()` and `createDeployedServer()` take `authorizeSession`.
+It is asked before a caller reads a session (`action: 'read'`), sends it a
+turn (`'chat'`, also `POST <basePath>` and the `useChat` endpoint) or decides
+one of its approvals (`'approve'`). Return `false` for a `403`
+(`LOUSHO_SESSION_FORBIDDEN`). Without it every caller route auth accepted may
+use every session.
+
+### Who may decide an approval
+
+A decision posted to `POST /chat/:sessionId/approvals/:id` must name the
+session the approval belongs to; any other session answers `404`, as for an
+approval that was already decided. `POST <basePath>/approvals/:id` (the route
+`useLoushoAgent` posts to) names no session, so it is checked against the
+approval's own session.
+
+Then `authorizeApproval({ principal, sessionId, approval })` decides; `false`
+is a `403` (`LOUSHO_APPROVAL_FORBIDDEN`). The default, `callerOwnsApproval`,
+lets only the caller the paused run acts for decide (`approval.principal`,
+compared by `id`, `type`, `authenticator` and `issuer`). A user can confirm
+their own call, and cannot decide another user's. A run without a principal,
+or a route without auth, accepts any caller.
+
+When `needsApproval` means that someone else must approve, say who. Here a
+customer can no longer approve their own refund, and a supervisor can decide in
+any session:
+
+```ts
+import { createAgent, createRouteHandler, memoryStore } from '@lousho/build-ai-agent';
+import { jwt } from '@lousho/build-ai-agent/auth';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', store: memoryStore() });
+const isSupervisor = (principal?: { claims?: Readonly<Record<string, unknown>> }) => principal?.claims?.role === 'supervisor';
+
+export const { GET, POST } = createRouteHandler(agent, {
+  auth: jwt({ secret: process.env.JWT_SECRET!, issuer: 'https://auth.example.com', audience: 'agent-api' }),
+  // Customers use their own sessions (ids that start with their id); supervisors may decide in any session.
+  authorizeSession: ({ principal, sessionId, action }) =>
+    sessionId.startsWith(`${principal?.id}-`) || (action === 'approve' && isSupervisor(principal)),
+  authorizeApproval: ({ principal }) => isSupervisor(principal),
+});
+```
+
+Two requests that decide the same approval at once get one continuation: the
+other request is a `409` (`LOUSHO_APPROVAL_CONFLICT`), and a later one a `404`.
 
 ### Pauses, crashes and forks
 
@@ -6773,7 +6829,7 @@ Find a code by area:
 | [Providers and peers](#providers-and-peers) | [`LOUSHO_PROVIDER_SPEC_INVALID`](#lousho_provider_spec_invalid), [`LOUSHO_PROVIDER_UNKNOWN`](#lousho_provider_unknown), [`LOUSHO_PROVIDER_MISSING_API_KEY`](#lousho_provider_missing_api_key), [`LOUSHO_PROVIDER_REQUEST_FAILED`](#lousho_provider_request_failed), [`LOUSHO_PROVIDER_RATE_LIMITED`](#lousho_provider_rate_limited), [`LOUSHO_PEER_MISSING`](#lousho_peer_missing), [`LOUSHO_HOSTED_TOOL_UNSUPPORTED`](#lousho_hosted_tool_unsupported), [`LOUSHO_UNSUPPORTED_CONTENT`](#lousho_unsupported_content) | Resolving a model string, a missing API key or peer package, a failed or rate-limited model request, a hosted tool the provider cannot run, a file the provider cannot send. |
 | [Agent spec files](#agent-spec-files) | [`LOUSHO_SPEC_NOT_FOUND`](#lousho_spec_not_found), [`LOUSHO_SPEC_INVALID`](#lousho_spec_invalid), [`LOUSHO_SPEC_UNKNOWN_FIELD`](#lousho_spec_unknown_field), [`LOUSHO_SPEC_UNSUPPORTED_FORMAT`](#lousho_spec_unsupported_format) | Loading an `AgentSpec` file with `loadSpec()` or `specToAgent()`. |
 | [Tools](#tools) | [`LOUSHO_TOOL_NOT_FOUND`](#lousho_tool_not_found), [`LOUSHO_TOOL_NEEDS_CREDENTIALS`](#lousho_tool_needs_credentials), [`LOUSHO_TOOL_EXECUTION_FAILED`](#lousho_tool_execution_failed), [`LOUSHO_TOOL_ARGS_INVALID`](#lousho_tool_args_invalid) | A tool the model called is unknown, needs credentials, threw, or got invalid arguments. |
-| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
+| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
 | [Schedules](#schedules) | [`LOUSHO_SCHEDULE_INVALID`](#lousho_schedule_invalid), [`LOUSHO_SCHEDULE_RUN_INCOMPLETE`](#lousho_schedule_run_incomplete) | Defining or loading a schedule, or a scheduled turn that did not finish. |
 | [Channels](#channels) | [`LOUSHO_CHANNEL_INVALID`](#lousho_channel_invalid), [`LOUSHO_MEMORY_INVALID`](#lousho_memory_invalid) | Defining a channel or a memory slot. |
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
@@ -7078,6 +7134,41 @@ is not pending: unknown, or already resolved.
 paused result); each approval resolves once.
 
 **Example:** calling `agent.approvals.resolve({ id, approved: true })` twice.
+
+The approvals route (`POST /chat/:sessionId/approvals/:id`) answers this code
+with a `404` also when the approval belongs to another session than the one
+in the URL.
+
+### LOUSHO_APPROVAL_CONFLICT
+
+**Means:** a `409` from the approvals route: another request decided the same
+approval while this one was being checked, and won.
+
+**Fix:** do not decide again; read the session (`GET /chat/:sessionId`) to see
+how the turn went on.
+
+**Example:** two supervisors click "Approve" on the same refund at once.
+
+### LOUSHO_APPROVAL_FORBIDDEN
+
+**Means:** a `403` from the approvals route: the route's `authorizeApproval`
+refused this caller. By default only the caller the paused run acts for may
+decide it (see [Route auth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-decide-an-approval)).
+
+**Fix:** decide as a caller `authorizeApproval` accepts, or change
+`authorizeApproval`.
+
+**Example:** user `bob` posts a decision on an approval of `alice`'s run.
+
+### LOUSHO_SESSION_FORBIDDEN
+
+**Means:** a `403` from a session route: the route's `authorizeSession`
+refused this caller the action (`read`, `chat` or `approve`) on this session.
+
+**Fix:** use a session this caller owns, or change `authorizeSession`.
+
+**Example:** user `bob` reads `GET /chat/alice-1`, and `authorizeSession`
+only allows ids that start with the caller's id.
 
 ### LOUSHO_SESSION_AWAITING_APPROVAL
 
@@ -10225,6 +10316,14 @@ accepted, and a request outside the base path is a 404).
 
 Sessions are kept by the agent's `store` (`createAgent({ store })`), so give
 the agent one that outlives a serverless invocation when you use sessions.
+
+For an app with more than one user, also pass `authorizeSession`, so a user
+cannot read or continue another user's session. If an approval must come from
+someone other than the user (a supervisor approving a refund), pass
+`authorizeApproval` too: by default the user the run acts for may approve their
+own call. An error reaches the client as its `name` and `code` with a generic
+message; `exposeErrors: true` sends the raw text. See
+[Who may decide an approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-decide-an-approval).
 
 `auth` also takes an ordered list of `jwt()`, `oidc()`, `basic()` and
 `apiToken()` entries, and the caller it accepts reaches the run as `principal`:

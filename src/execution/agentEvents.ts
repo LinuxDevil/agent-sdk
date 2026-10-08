@@ -47,6 +47,8 @@ export interface AgentEventUsage {
 export interface AgentEventError {
   name: string;
   message: string;
+  /** A1: the error's `code` (e.g. `'LOUSHO_APPROVAL_NOT_FOUND'`), when it has a string one. */
+  code?: string;
 }
 
 /** Fields every {@link AgentEvent} carries. */

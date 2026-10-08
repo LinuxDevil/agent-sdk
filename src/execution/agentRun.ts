@@ -204,10 +204,11 @@ export type RunStarter = (wiring: {
 }) => Promise<ExecutionResult>;
 
 function toEventError(error: unknown): AgentEventError {
-  const err = error as { name?: unknown; message?: unknown } | null | undefined;
+  const err = error as { name?: unknown; message?: unknown; code?: unknown } | null | undefined;
   return {
     name: typeof err?.name === 'string' && err.name ? err.name : 'Error',
     message: typeof err?.message === 'string' ? err.message : String(error),
+    ...(typeof err?.code === 'string' && err.code && { code: err.code }),
   };
 }
 

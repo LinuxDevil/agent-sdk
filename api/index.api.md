@@ -181,6 +181,7 @@ export interface AgentEventBase<TType extends string> {
 
 // @public
 export interface AgentEventError {
+    code?: string;
     // (undocumented)
     message: string;
     // (undocumented)
@@ -533,6 +534,13 @@ export function appendToRing<T>(ring: readonly T[], entry: T, limit: number): T[
 export const APPROVAL_EXPIRED_REASON = "approval expired";
 
 // @public
+export interface ApprovalAccessRequest {
+    approval: PendingApproval;
+    principal: Principal | undefined;
+    sessionId: string;
+}
+
+// @public
 export interface ApprovalCheckContext {
     messages: readonly Message[];
     principal?: Readonly<Principal>;
@@ -882,6 +890,9 @@ export interface CalledToolOptions {
 }
 
 // @public
+export function callerOwnsApproval(input: ApprovalAccessRequest): boolean;
+
+// @public
 export type CallUsage = Omit<StepUsage, 'step'>;
 
 // @public
@@ -1011,6 +1022,13 @@ export interface ChannelUser {
     name?: string;
     // (undocumented)
     roles?: string[];
+}
+
+// @public
+export interface ChatRoutesAccess {
+    authorizeApproval?: (request: ApprovalAccessRequest) => boolean | Promise<boolean>;
+    authorizeSession?: (request: SessionAccessRequest) => boolean | Promise<boolean>;
+    exposeErrors?: boolean;
 }
 
 // @public
@@ -1918,6 +1936,9 @@ export const ERROR_CODES: {
     readonly LOUSHO_CHANNEL_REQUEST_FAILED: "Check the platform's token and permissions and its status page; the message names the call and its status.";
     readonly LOUSHO_APPROVAL_STORE_MISSING: "Pass an approvalStore (e.g. new InMemoryApprovalStore()), or use createAgent(), which has one.";
     readonly LOUSHO_APPROVAL_NOT_FOUND: "Resolve an id that is still pending (agent.approvals.list() lists them); each approval resolves once.";
+    readonly LOUSHO_APPROVAL_CONFLICT: "Another request decided this approval at the same time; read the session to see the outcome instead of deciding again.";
+    readonly LOUSHO_APPROVAL_FORBIDDEN: "Decide the approval as a caller the route's authorizeApproval accepts (by default, the caller the run acts for).";
+    readonly LOUSHO_SESSION_FORBIDDEN: "Use a session the route's authorizeSession lets this caller read, continue or decide approvals in.";
     readonly LOUSHO_SESSION_AWAITING_APPROVAL: "Resolve the pending approval first (agent.approvals.resolve() or resumeAfterApproval()), then send again.";
     readonly LOUSHO_SESSION_ID_INVALID: "Use 1-128 characters from A-Z, a-z, 0-9, '_' and '-', or omit the id.";
     readonly LOUSHO_SESSION_BUSY: "Wait for the running turn to finish (await its send(), or abort it), then call again.";
@@ -4397,6 +4418,7 @@ export interface PendingApproval {
     kind?: ApprovalKind;
     principal?: Principal;
     question?: ApprovalQuestion;
+    sessionId?: string;
     signIn?: ApprovalSignIn;
     subagentPath?: string[];
     // (undocumented)
@@ -5062,7 +5084,7 @@ export interface RewindResult {
 export type RouteHandler = (request: Request) => Promise<Response>;
 
 // @public (undocumented)
-export interface RouteHandlerOptions {
+export interface RouteHandlerOptions extends ChatRoutesAccess {
     auth?: string | ((request: Request) => boolean | Promise<boolean>) | AuthFn | readonly AuthFn[];
     basePath?: string;
     uiMessageStream?: boolean;
@@ -5438,6 +5460,18 @@ export interface ServeMcpOptions {
     version?: string;
     warn?: (message: string) => void;
 }
+
+// @public
+export interface SessionAccessRequest {
+    // (undocumented)
+    action: SessionAction;
+    principal: Principal | undefined;
+    // (undocumented)
+    sessionId: string;
+}
+
+// @public
+export type SessionAction = 'read' | 'chat' | 'approve';
 
 // @public
 export class SessionAwaitingApprovalError extends SDKError {
@@ -7013,8 +7047,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-DmsA2WFr.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-DmsA2WFr.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-EApDIE02.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-EApDIE02.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
