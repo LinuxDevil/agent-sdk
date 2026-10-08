@@ -12,7 +12,7 @@ import { getModelInfo } from '../models/registry';
 import { schemaToJsonSchema } from '../utils/zodCompat';
 
 /** Context window assumed for a model the registry does not know. */
-export const FALLBACK_CONTEXT_WINDOW = 128_000;
+const FALLBACK_CONTEXT_WINDOW = 128_000;
 
 /** `feature:model` pairs already warned about (one console.warn each per process). */
 const warned = new Set<string>();
