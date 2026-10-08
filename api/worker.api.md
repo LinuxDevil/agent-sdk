@@ -1238,6 +1238,7 @@ interface DefineMemoryOptions {
         remember?: boolean;
         recall?: boolean;
     };
+    itemSchema?: StandardSchemaV1;
     name: string;
     // Warning: (ae-forgotten-export) The symbol "MemoryProvider" needs to be exported by the entry point worker.d.ts
     //
@@ -1540,6 +1541,7 @@ interface ExecutionResult<TObject = unknown> {
     object?: TObject;
     // Warning: (ae-forgotten-export) The symbol "OutputError" needs to be exported by the entry point worker.d.ts
     outputError?: OutputError;
+    outputRepaired?: true;
     reasoning?: string;
     // (undocumented)
     steps: number;
@@ -1794,6 +1796,7 @@ interface GitHubChannelOptions {
     fetch?: typeof fetch;
     name?: string;
     onError?: ChannelErrorHandler;
+    pullRequestOpened?: boolean;
     token?: string | (() => string | Promise<string>);
     // Warning: (ae-forgotten-export) The symbol "GitHubTriggers" needs to be exported by the entry point worker.d.ts
     triggers?: GitHubTriggers;
@@ -2398,6 +2401,8 @@ interface MemorySlot {
         remember: boolean;
         recall: boolean;
     };
+    // (undocumented)
+    readonly itemSchema?: StandardSchemaV1;
     // (undocumented)
     readonly name: string;
     // (undocumented)
@@ -3274,6 +3279,7 @@ interface SDKErrorOptions {
 export interface SendOptions {
     approvalTtlMs?: number;
     metadata?: Record<string, unknown>;
+    parentSpanId?: string;
     permissionMode?: PermissionMode;
     principal?: Principal;
     reasoning?: ReasoningOption;
@@ -4173,6 +4179,7 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
     args: Record<string, unknown>;
     executedBy?: 'provider';
     parentToolCallId?: string;
+    rawArgs?: string;
     // (undocumented)
     toolCallId: string;
     // (undocumented)
@@ -4236,13 +4243,13 @@ interface WithRetryOptions {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-DRQC5lEX.d.ts:768:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-DRQC5lEX.d.ts:785:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-DRQC5lEX.d.ts:1137:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-DRQC5lEX.d.ts:3122:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-DRQC5lEX.d.ts:3123:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
-// dist/index-B41xZFIC.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
-// dist/index-B41xZFIC.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-Crz4-SFr.d.ts:768:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-Crz4-SFr.d.ts:785:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-Crz4-SFr.d.ts:1146:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-Crz4-SFr.d.ts:3143:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-Crz4-SFr.d.ts:3144:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
+// dist/index-C1NnbLr9.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
+// dist/index-C1NnbLr9.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point worker.d.ts
 
 // (No @packageDocumentation comment for this package)
