@@ -175,7 +175,35 @@ export type SessionSpawner = (options: SessionOptions) => AgentSession;
  * or `fileStore(dir)` built twice) cannot share this queue; `commit()`
  * guards that case instead.
  */
-const sessionQueues = new WeakMap<SessionStore, Map<string, Promise<unknown>>>();
+const sessionQueues = new WeakMap<object, Map<string, Promise<unknown>>>();
+
+/**
+ * Runs `task` after everything queued before it under `(store, id)` in this
+ * process (see `sessionQueues`). Sessions queue on their transcript store;
+ * `agent.send(msg, { sessionId })` runs (Eve DUR-F2) on their checkpoint
+ * store, so two concurrent calls with one id no longer both continue the same
+ * 'finished' checkpoint and silently drop one turn.
+ */
+export function enqueueSessionWork<T>(store: object, id: string, task: () => Promise<T>): Promise<T> {
+  let perStore = sessionQueues.get(store);
+  if (!perStore) {
+    perStore = new Map();
+    sessionQueues.set(store, perStore);
+  }
+  const queue = perStore;
+  const tail = queue.get(id) ?? Promise.resolve();
+  const result = tail.then(task);
+  const next = result.then(
+    () => undefined,
+    () => undefined
+  );
+  queue.set(id, next);
+  // Drop the entry once the queue drains, so the map does not grow forever.
+  void next.then(() => {
+    if (queue.get(id) === next) queue.delete(id);
+  });
+  return result;
+}
 
 /** `store` as its parts: a plain `SessionStore` is the transcript store. */
 function splitStores(store: SessionOptions['store']): Partial<SessionStores> {
@@ -677,23 +705,7 @@ export class AgentSession<TObject = unknown> {
    * session objects cannot run turns concurrently (see `sessionQueues`).
    */
   private enqueue<T>(task: () => Promise<T>): Promise<T> {
-    let perStore = sessionQueues.get(this.store);
-    if (!perStore) {
-      perStore = new Map();
-      sessionQueues.set(this.store, perStore);
-    }
-    const tail = perStore.get(this.id) ?? Promise.resolve();
-    const result = tail.then(task);
-    const next = result.then(
-      () => undefined,
-      () => undefined
-    );
-    perStore.set(this.id, next);
-    // Drop the entry once the queue drains, so the map does not grow forever.
-    void next.then(() => {
-      if (perStore.get(this.id) === next) perStore.delete(this.id);
-    });
-    return result;
+    return enqueueSessionWork(this.store, this.id, task);
   }
 
   private async ensureLoaded(): Promise<void> {

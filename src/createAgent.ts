@@ -36,6 +36,7 @@ import type { Message, ModelSettings } from './providers/llm';
 import type { ReasoningOption } from './providers/reasoning';
 import {
   AgentSession,
+  enqueueSessionWork,
   withDefaultStores,
   type SessionOptions,
   type SessionTurnCall,
@@ -1017,17 +1018,33 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
 
   // `object` was validated with `config.output`, so it has its output type.
   type Typed = InferSchemaOutput<TOutput>;
+  /**
+   * Eve DUR-F2: runs with one `sessionId` continue its checkpoint one after another (per checkpoint store, in this
+   * process), like a session's turns, so a concurrent call never continues the same 'finished' checkpoint and drops a turn.
+   */
+  const serially = <T>(turn: RunTurn, task: () => Promise<T>): Promise<T> =>
+    turn.sessionId !== undefined && turn.checkpointStore ? enqueueSessionWork(turn.checkpointStore, turn.sessionId, task) : task();
   const simpleAgent: SimpleAgent<Typed> = {
-    async send(message: AgentInput, options: SendOptions = {}): Promise<ExecutionResult<Typed>> {
+    send(message: AgentInput, options: SendOptions = {}): Promise<ExecutionResult<Typed>> {
       const { sessionId, metadata, principal } = options;
-      const turn = callTurn(options);
-      const result = await run(toMessages(message), { sessionId, input: message, metadata, principal }, options.signal, turn);
-      // N4: an `approve` callback's decisions continue the run under this call's mode.
-      return approvals.settle(result, options.signal, undefined, turn.permissionMode) as Promise<ExecutionResult<Typed>>;
+      let turn: RunTurn;
+      try {
+        turn = callTurn(options);
+      } catch (error) {
+        return Promise.reject(error);
+      }
+      return serially(turn, async () => {
+        const result = await run(toMessages(message), { sessionId, input: message, metadata, principal }, options.signal, turn);
+        // N4: an `approve` callback's decisions continue the run under this call's mode.
+        return approvals.settle(result, options.signal, undefined, turn.permissionMode) as Promise<ExecutionResult<Typed>>;
+      });
     },
     stream(message: AgentInput, options: SendOptions = {}): AgentRun<Typed> {
       const { sessionId, metadata, principal } = options;
-      return stream(toMessages(message), { sessionId, input: message, metadata, principal }, options.signal, callTurn(options)) as AgentRun<Typed>;
+      const turn = callTurn(options);
+      const ctx = { sessionId, input: message, metadata, principal };
+      if (sessionId === undefined) return stream(toMessages(message), ctx, options.signal, turn) as AgentRun<Typed>;
+      return streamPrepared(() => prepare(toMessages(message), ctx, options.signal, turn), options.signal, turn.inputQueue, (task) => serially(turn, task)) as AgentRun<Typed>;
     },
     session,
     async resume(sessionId: string, { signal } = {}): Promise<ExecutionResult<Typed> | null> {

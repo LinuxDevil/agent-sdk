@@ -7,7 +7,7 @@ import type { ToolDescriptor } from '../../types';
 import type { OAuthTokenStore } from '../../oauth/types';
 import type { McpOAuthSignIn } from '../../oauth/agentOAuth';
 import { ConfigurationError } from '../../execution/errors';
-import { AgentExecutor, type ExecuteOptions } from '../../execution/AgentExecutor';
+import { AgentExecutor, type ExecuteOptions, type ExecutionResult } from '../../execution/AgentExecutor';
 import { RUN_EVENTS, startAgentRun, type AgentRun, type StreamingExecuteOptions } from '../../execution/agentRun';
 import { lazyValue } from '../../providers/optionalPeer';
 import { connectMcp, type McpConnections } from './connect';
@@ -95,15 +95,24 @@ export function streamAfter(ready: () => Promise<void>, options: ExecuteOptions)
   );
 }
 
-/** `AgentExecutor.stream()` of the options `prepare()` resolves to (LOU-V15); a rejection fails the run. */
+/**
+ * `AgentExecutor.stream()` of the options `prepare()` resolves to (LOU-V15); a rejection fails the run.
+ * `around` (Eve DUR-F2) wraps the preparation and the whole run, e.g. to queue it behind other runs.
+ */
 export function streamPrepared(
   prepare: () => Promise<ExecuteOptions>,
   runSignal?: AbortSignal,
-  runInputQueue?: ExecuteOptions['inputQueue']
+  runInputQueue?: ExecuteOptions['inputQueue'],
+  around: (task: () => Promise<ExecutionResult>) => Promise<ExecutionResult> = (task) => task()
 ): AgentRun {
-  return startAgentRun(async ({ signal, sink, inputQueue }) => {
-    const options = await prepare();
-    const streaming: StreamingExecuteOptions = { ...options, signal, inputQueue, [RUN_EVENTS]: sink };
-    return AgentExecutor.execute(streaming);
-  }, runSignal, runInputQueue);
+  return startAgentRun(
+    ({ signal, sink, inputQueue }) =>
+      around(async () => {
+        const options = await prepare();
+        const streaming: StreamingExecuteOptions = { ...options, signal, inputQueue, [RUN_EVENTS]: sink };
+        return AgentExecutor.execute(streaming);
+      }),
+    runSignal,
+    runInputQueue
+  );
 }
