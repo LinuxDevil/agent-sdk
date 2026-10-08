@@ -319,8 +319,11 @@ function truncateMessage(message: string): string {
 // which is the safe (reject-to-caller) default; there is no false-positive
 // cost that would make retryable/actionable categories fire spuriously
 // often enough to matter for this text.
+// `context.size` / `exceed_context_size` / `n_ctx`: llama.cpp and LM Studio
+// ("request (N tokens) exceeds the available context size (M tokens)",
+// "Context size has been exceeded."), sent as a 400, a 500 or an in-stream error.
 const CONTEXT_LENGTH_PATTERN =
-  /context.length|context.window|context_length_exceeded|maximum context|max(?:imum)? tokens|too many tokens|reduce the length|prompt is too long/i;
+  /context.length|context.window|context_length_exceeded|context.size|exceed_context_size|\bn_ctx\b|maximum context|max(?:imum)? tokens|too many tokens|reduce the length|prompt is too long/i;
 const TIMEOUT_PATTERN = /\btimed?.?out\b|\betimedout\b|\babort(ed)?\b/i;
 const RATE_LIMIT_PATTERN = /rate.?limit|too many requests/i;
 const AUTH_PATTERN =
@@ -352,11 +355,13 @@ function categorizeMessage(message: string): {
   if (RATE_LIMIT_PATTERN.test(message)) {
     return { category: 'rate-limit', retryable: true };
   }
-  if (TIMEOUT_PATTERN.test(message)) {
-    return { category: 'timeout', retryable: true };
-  }
+  // Before the timeout check, in the same order as categorizeApiCallError(), so
+  // one failure classifies the same via generate() and via a stream error chunk.
   if (CONTEXT_LENGTH_PATTERN.test(message)) {
     return { category: 'context-length-exceeded', retryable: false };
+  }
+  if (TIMEOUT_PATTERN.test(message)) {
+    return { category: 'timeout', retryable: true };
   }
   return undefined;
 }
@@ -374,15 +379,15 @@ function categorizeApiCallError(err: APICallError): {
   if (status === 429) {
     return { category: 'rate-limit', retryable: true };
   }
+  // A body/message that reads as "your prompt is too big" is a
+  // context-length-exceeded failure whatever the status: OpenAI and Anthropic
+  // send it as a 400, llama.cpp / LM Studio as a 500 on /responses. Checked
+  // before the status fallbacks so a 5xx is not retried as transient.
+  if (CONTEXT_LENGTH_PATTERN.test(text)) {
+    return { category: 'context-length-exceeded', retryable: false };
+  }
   if (status === 408) {
     return { category: 'timeout', retryable: true };
-  }
-  // A 400 whose body/message reads as "your prompt is too big" is a
-  // context-length-exceeded failure, not a generic bad-request - real
-  // providers (OpenAI, Anthropic) both report this as a 400 with wording
-  // matched by CONTEXT_LENGTH_PATTERN rather than a dedicated status code.
-  if (status === 400 && CONTEXT_LENGTH_PATTERN.test(text)) {
-    return { category: 'context-length-exceeded', retryable: false };
   }
 
   const byMessage = categorizeMessage(text);
@@ -394,6 +399,93 @@ function categorizeApiCallError(err: APICallError): {
   // 5xx/408/429 as retryable when constructing APICallError) rather than
   // guessing further - this is real signal the SDK computed for us.
   return { category: 'unknown', retryable: err.isRetryable };
+}
+
+/** Network error codes (Node / undici) worth naming in the message. */
+const NETWORK_CODE_TEXT: Record<string, string> = {
+  ECONNREFUSED: 'connection refused',
+  ENOTFOUND: 'host not found',
+  EAI_AGAIN: 'host lookup failed',
+  ECONNRESET: 'connection reset',
+  ETIMEDOUT: 'connection timed out',
+  EHOSTUNREACH: 'host unreachable',
+  ENETUNREACH: 'network unreachable',
+  UND_ERR_CONNECT_TIMEOUT: 'connect timed out',
+  UND_ERR_HEADERS_TIMEOUT: 'no response headers before the timeout',
+  UND_ERR_BODY_TIMEOUT: 'response body timed out',
+  UND_ERR_SOCKET: 'socket closed',
+};
+
+/** The first known network `code` along an error's `cause` chain (and an
+ * AggregateError's `errors`), e.g. `ECONNREFUSED` under the 'ai' SDK's
+ * "Cannot connect to API: " APICallError. */
+function findNetworkCode(error: unknown, depth = 0): string | undefined {
+  if (depth > 6 || typeof error !== 'object' || error === null) return undefined;
+  const { code, cause, errors } = error as { code?: unknown; cause?: unknown; errors?: unknown };
+  if (typeof code === 'string' && Object.hasOwn(NETWORK_CODE_TEXT, code)) return code;
+  for (const inner of Array.isArray(errors) ? errors : []) {
+    const found = findNetworkCode(inner, depth + 1);
+    if (found) return found;
+  }
+  return findNetworkCode(cause, depth + 1);
+}
+
+/** The request URL without query string or credentials (a key may ride in `?key=`). */
+function safeUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return undefined;
+  }
+}
+
+/** "Cannot connect to API: connection refused (ECONNREFUSED) at <url> - is the server running?" */
+function networkMessage(message: string, code: string, url: string | undefined): string {
+  const base = message.replace(/:\s*$/, '');
+  const where = url ? ` at ${url}` : '';
+  const hint =
+    code === 'ECONNREFUSED' ? ' - is the server running?' : code === 'ENOTFOUND' || code === 'EAI_AGAIN' ? ' - check the base URL' : '';
+  const detail = `${NETWORK_CODE_TEXT[code]} (${code})${where}${hint}`;
+  return base ? `${base}: ${detail}` : detail;
+}
+
+/** Any thrown value as text. A non-Error (e.g. an object-valued stream error
+ * chunk) gives its `message`, a nested `error.message` / string `error`, or
+ * else its JSON - never "[object Object]". */
+function describeThrown(value: unknown, depth = 0): string {
+  if (value instanceof Error) return value.message;
+  if (typeof value !== 'object' || value === null) return String(value);
+  const { message, error } = value as { message?: unknown; error?: unknown };
+  if (typeof message === 'string' && message) return message;
+  if (typeof error === 'string' && error) return error;
+  if (typeof error === 'object' && error !== null && depth < 3) return describeThrown(error, depth + 1);
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+/** A bare HTTP status phrase ("Bad Request"): what the 'ai' SDK uses as the
+ * message when it cannot parse the provider's error body. Also OpenRouter's
+ * generic "Provider returned error", whose body carries the upstream reason. */
+const STATUS_TEXT_PATTERN =
+  /^(?:bad request|unauthorized|payment required|forbidden|not found|method not allowed|not acceptable|request timeout|conflict|gone|payload too large|content too large|unprocessable (?:entity|content)|too many requests|internal server error|not implemented|bad gateway|service unavailable|gateway timeout|provider returned error)$/i;
+const MAX_BODY_SNIPPET_LENGTH = 300;
+
+/** The APICallError's message, plus a snippet of `responseBody` when the
+ * message is only a status phrase (the body then holds the real reason).
+ * The body is the provider's response, so no request headers can leak. */
+function apiCallErrorMessage(err: APICallError): string {
+  const message = err.message.trim();
+  const body = err.responseBody?.replace(/\s+/g, ' ').trim();
+  if (!body || body === message || !STATUS_TEXT_PATTERN.test(message)) {
+    return err.message;
+  }
+  const snippet = body.length > MAX_BODY_SNIPPET_LENGTH ? `${body.slice(0, MAX_BODY_SNIPPET_LENGTH)}...` : body;
+  return `${message}: ${snippet}`;
 }
 
 /**
@@ -437,10 +529,24 @@ export function compactProviderError(
     cause = cause.lastError;
   }
 
+  // A connection failure (refused, DNS, reset, headers timeout) keeps its code
+  // in the `cause` chain: name it and the URL. Transient like a timeout.
+  const networkCode = findNetworkCode(cause);
+  if (networkCode) {
+    const apiCall = APICallError.isInstance(cause) ? cause : undefined;
+    return {
+      error: truncateMessage(networkMessage(describeThrown(cause), networkCode, safeUrl(apiCall?.url))),
+      category: 'timeout',
+      retryable: true,
+      providerName,
+      statusCode: apiCall?.statusCode,
+    };
+  }
+
   if (APICallError.isInstance(cause)) {
     const { category, retryable } = categorizeApiCallError(cause);
     return {
-      error: truncateMessage(cause.message),
+      error: truncateMessage(apiCallErrorMessage(cause)),
       category,
       retryable,
       providerName,
@@ -458,7 +564,7 @@ export function compactProviderError(
     };
   }
 
-  const message = cause instanceof Error ? cause.message : String(cause);
+  const message = describeThrown(cause);
 
   if (cause instanceof Error && isNetworkError(cause)) {
     // A bare network failure (connection refused/reset, DNS failure, ...)
