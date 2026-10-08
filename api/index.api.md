@@ -1973,6 +1973,7 @@ export const ERROR_CODES: {
     readonly LOUSHO_OAUTH_STATE_INVALID: "Start the sign-in again from a fresh link: a state works once, for 10 minutes, and only for the user it was made for.";
     readonly LOUSHO_SIGNIN_PENDING: "Open the sign-in link first and let the provider redirect to the callback, then approve again (or approve with false to cancel).";
     readonly LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED: "Check the provider's tokenUrl, clientId, clientSecret and redirectUri (it must match the one registered with the provider), then sign in again.";
+    readonly LOUSHO_MCP_START_FAILED: "Run the server's command yourself to see why it fails; the message has its exit code and last stderr lines, and `connectTimeoutMs` bounds a server that never answers.";
     readonly LOUSHO_MCP_AUTH_REQUIRED: "Sign the app in to the MCP server once: open the URL from agent.oauth.mcpSignInUrl('<server>') and let the callback store the token.";
 };
 
@@ -3625,6 +3626,7 @@ export interface McpClientLike {
 // @public
 export interface McpConnections {
     close(): Promise<void>;
+    reconnect(): Promise<void>;
     status(): Record<string, McpServerStatus>;
     readonly tools: Record<string, NamedToolDescriptor>;
 }
@@ -3663,6 +3665,7 @@ export type McpContentPart = {
 // @public
 export interface McpHttpServerSpec {
     approval?: McpApproval;
+    connectTimeoutMs?: number;
     deferLoading?: boolean;
     // (undocumented)
     headers?: Record<string, string>;
@@ -3706,15 +3709,31 @@ export const mcpServerSpecSchema: SpecSchema<McpServerSpec>;
 export type McpServerStatus = 'idle' | 'connected' | 'failed' | 'needs-auth';
 
 // @public
+export class McpStartError extends SDKError {
+    constructor(server: string, reason: string, details: {
+        exitCode?: number;
+        signal?: string;
+        stderr: string;
+        cause?: unknown;
+    });
+    readonly exitCode?: number;
+    readonly signal?: string;
+    readonly stderr: string;
+}
+
+// @public
 export interface McpStdioServerSpec {
     approval?: McpApproval;
     // (undocumented)
     args?: string[];
     // (undocumented)
     command: string;
+    connectTimeoutMs?: number;
+    cwd?: string;
     deferLoading?: boolean;
     // (undocumented)
     env?: Record<string, string>;
+    stderr?: 'forward' | 'capture' | 'inherit' | 'ignore';
     timeoutMs?: number;
     tools?: McpToolFilter;
 }
@@ -7051,8 +7070,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-EApDIE02.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-EApDIE02.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-Bv9yX21G.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-Bv9yX21G.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)

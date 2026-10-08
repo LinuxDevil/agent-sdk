@@ -20,8 +20,8 @@ export them too. `createAgent({ mcpServers })` needs no import from the subpath.
 `await agent.ready()` or, automatically, on the first `send()` / `stream()`;
 each server's tools are added as `<server>__<tool>` (e.g. `docs__search`).
 A server that cannot connect fails that call, and the next call tries again.
-`agent.close()` disconnects them (stops stdio processes); a later tool call
-reconnects. Without `mcpServers`, `ready()` and `close()` do nothing. The
+`agent.close()` disconnects them (stops stdio processes); a later tool call,
+or `ready()`, reconnects. Without `mcpServers`, `ready()` and `close()` do nothing. The
 `vendor/` model prefix chooses the provider; with OpenRouter use
 `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
@@ -39,8 +39,15 @@ const { text } = await agent.send('List the files here.');
 await agent.close();
 ```
 
-stdio entries are spawned with `command` and `args`; `env` is added to the
-default environment (`PATH` and the like), not a replacement for it. HTTP
+stdio entries are spawned with `command` and `args` (in `cwd`, when set); `env`
+is added to the default environment (`PATH` and the like), not a replacement for
+it. A server that does not start fails with
+[`LOUSHO_MCP_START_FAILED`](./errors.md#lousho_mcp_start_failed), whose message
+has the exit code and the last lines the process wrote to stderr.
+`stderr: 'forward'` (default) also copies the process's stderr to this one's,
+`'capture'` only keeps the last lines, and `'inherit'` / `'ignore'` keep none.
+`connectTimeoutMs` (stdio or HTTP) bounds the `initialize` handshake; the
+default is the MCP SDK's 60 seconds. HTTP
 entries use the streamable HTTP transport and send the static `headers` on every
 request. An HTTP entry can also sign in with OAuth, as the MCP authorization
 spec describes: add `oauth: { redirectUri }` and an operator signs the agent in

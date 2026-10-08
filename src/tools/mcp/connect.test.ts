@@ -1,15 +1,19 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { z } from 'zod';
 import { createAgent } from '../../createAgent';
 import { specToAgent } from '../../spec/specToAgent';
 import { mockModel } from '../../testing';
 import { defineTool } from '../defineTool';
 import type { Logger } from '../../execution/logger';
-import { connectMcp, type McpConnections } from './connect';
+import { connectMcp, McpStartError, type McpConnections } from './connect';
 import { serveMcp } from './server/serveMcp';
 
 const fixture = fileURLToPath(new URL('./__fixtures__/stdioServer.mjs', import.meta.url));
+const failing = fileURLToPath(new URL('./__fixtures__/failingServer.mjs', import.meta.url));
 const stdio = (prefix = '') => ({ command: process.execPath, args: [fixture], env: { FIXTURE_PREFIX: prefix } });
 
 const closers: Array<() => Promise<unknown>> = [];
@@ -69,7 +73,7 @@ describe('connectMcp (LOU-Z4)', () => {
 
   it('rejects by default when a server cannot connect, naming it', async () => {
     await expect(connectMcp({ files: stdio(), broken: { command: 'lousho-no-such-command-z4' } })).rejects.toThrow(
-      /connectMcp: MCP server 'broken' failed to connect/
+      /MCP server 'broken' failed to start/
     );
   });
 
@@ -84,6 +88,36 @@ describe('connectMcp (LOU-Z4)', () => {
   it('timeoutMs on the server entry bounds each tool call (audit D4)', async () => {
     const mcp = await connect({ slow: { ...stdio(), env: { FIXTURE_DELAY_MS: '5000' }, timeoutMs: 100 } });
     await expect(callEcho(mcp, 'slow__echo', 'x')).rejects.toThrow(/timed out/i);
+  });
+
+  it('a server that exits while starting fails with LOUSHO_MCP_START_FAILED, its exit code and its last stderr lines (audit D4)', async () => {
+    const error = (await connectMcp({ broken: { command: process.execPath, args: [failing], env: { FIXTURE_MODE: 'exit' }, stderr: 'capture' } }).catch(
+      (e: unknown) => e
+    )) as McpStartError;
+    expect(error).toBeInstanceOf(McpStartError);
+    expect(error.code).toBe('LOUSHO_MCP_START_FAILED');
+    expect(error.exitCode).toBe(3);
+    expect(error.stderr).toContain('npm error 404 Not Found');
+    expect(error.stderr).not.toMatch(/^log line 1$/m);
+    expect(error.message).toMatch(/MCP server 'broken' failed to start/);
+    expect(error.message).toContain('exit code 3');
+    expect(error.message).toContain('npm error 404');
+  });
+
+  it('connectTimeoutMs bounds the start of a server that never answers (audit D4)', async () => {
+    const started = Date.now();
+    const error = (await connectMcp({
+      mute: { command: process.execPath, args: [failing], env: { FIXTURE_MODE: 'silent' }, connectTimeoutMs: 200 },
+    }).catch((e: unknown) => e)) as McpStartError;
+    expect(error).toBeInstanceOf(McpStartError);
+    expect(error.message).toMatch(/timed out/i);
+    expect(Date.now() - started).toBeLessThan(5000);
+  });
+
+  it('cwd sets the working directory of a stdio server (audit D4)', async () => {
+    const dir = fileURLToPath(new URL('./__fixtures__/', import.meta.url));
+    const mcp = await connect({ files: { command: process.execPath, args: ['stdioServer.mjs'], cwd: dir } });
+    await expect(callEcho(mcp, 'files__echo', 'x')).resolves.toMatchObject({ text: 'x' });
   });
 
   it('tools.include / tools.exclude on the server entry filter its tools (audit D4)', async () => {
@@ -148,10 +182,21 @@ describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
     await expect(plain.close()).resolves.toBeUndefined();
   });
 
+  it('ready() after close() reconnects the servers (audit D4)', async () => {
+    const log = join(mkdtempSync(join(tmpdir(), 'lousho-mcp-')), 'starts.log');
+    closers.push(async () => rmSync(dirname(log), { recursive: true, force: true }));
+    const agent = createAgent({ provider: mockModel(['a']), mcpServers: { files: { ...stdio(), env: { FIXTURE_START_LOG: log } } } });
+    closers.push(() => agent.close());
+    await agent.ready();
+    await agent.close();
+    await agent.ready();
+    expect(readFileSync(log, 'utf8').match(/start/g)).toHaveLength(2);
+  });
+
   it('send() rejects when a server cannot connect, and retries on the next call', async () => {
     const agent = createAgent({ provider: mockModel(['a', 'b']), mcpServers: { broken: { command: 'lousho-no-such-command-z4' } } });
-    await expect(agent.send('hi')).rejects.toThrow(/'broken' failed to connect/);
-    await expect(agent.ready()).rejects.toThrow(/'broken' failed to connect/);
+    await expect(agent.send('hi')).rejects.toThrow(/'broken' failed to start/);
+    await expect(agent.ready()).rejects.toThrow(/'broken' failed to start/);
     await expect(agent.close()).resolves.toBeUndefined();
   });
 

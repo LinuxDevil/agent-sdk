@@ -63,12 +63,22 @@ export interface McpStdioServerSpec {
   command: string;
   args?: string[];
   env?: Record<string, string>;
+  /** The process's working directory. Default: this process's. */
+  cwd?: string;
+  /**
+   * The process's stderr: `'forward'` (default) copies it to this process's
+   * stderr and keeps the last lines for a start failure (`LOUSHO_MCP_START_FAILED`);
+   * `'capture'` only keeps them; `'inherit'` and `'ignore'` keep nothing.
+   */
+  stderr?: 'forward' | 'capture' | 'inherit' | 'ignore';
   /** Which of this server's tools ask for approval (LOU-Z5). Default `'annotations'`. */
   approval?: McpApproval;
   /** N2: withhold this server's tools from the model until `tool_search` finds them (docs/tool-search.md). */
   deferLoading?: boolean;
   /** How long one tool call may take, in milliseconds. Default: the MCP SDK's 60 seconds. */
   timeoutMs?: number;
+  /** How long connecting (the `initialize` handshake) may take, in milliseconds. Default: the MCP SDK's 60 seconds. */
+  connectTimeoutMs?: number;
   /** Load only some of this server's tools, by their MCP names: `{ include?, exclude? }`. */
   tools?: McpToolFilter;
 }
@@ -101,6 +111,8 @@ export interface McpHttpServerSpec {
   deferLoading?: boolean;
   /** How long one tool call may take, in milliseconds. Default: the MCP SDK's 60 seconds. */
   timeoutMs?: number;
+  /** How long connecting (the `initialize` handshake) may take, in milliseconds. Default: the MCP SDK's 60 seconds. */
+  connectTimeoutMs?: number;
   /** Load only some of this server's tools, by their MCP names: `{ include?, exclude? }`. */
   tools?: McpToolFilter;
   /** Sign in to this server with OAuth (N9c); see {@link McpOAuthOptions}. */
@@ -236,7 +248,7 @@ function mcpServerProblem(server: Record<string, unknown>): string | undefined {
       ? "set either 'command' (stdio) or 'url' (HTTP), not both"
       : "missing 'command' (stdio server) or 'url' (HTTP server)";
   }
-  const stray = (stdio ? ['headers', 'oauth'] : ['args', 'env']).find((key) => server[key] !== undefined);
+  const stray = (stdio ? ['headers', 'oauth'] : ['args', 'env', 'cwd', 'stderr']).find((key) => server[key] !== undefined);
   return stray && `'${stray}' does not apply to ${stdio ? "a stdio ('command')" : "an HTTP ('url')"} server`;
 }
 
@@ -266,6 +278,11 @@ const mcpServerSchema = z
       oauth: mcpOAuthSchema.optional(),
       deferLoading: z.boolean(typeErrors({ invalid: `${MCP_PREFIX} 'deferLoading' must be true or false` })).optional(),
       timeoutMs: mcpMilliseconds('timeoutMs').optional(),
+      connectTimeoutMs: mcpMilliseconds('connectTimeoutMs').optional(),
+      cwd: z.string(typeErrors({ invalid: `${MCP_PREFIX} 'cwd' must be a string` })).min(1).optional(),
+      stderr: z
+        .enum(['forward', 'capture', 'inherit', 'ignore'], anyError(`${MCP_PREFIX} 'stderr' must be 'forward', 'capture', 'inherit' or 'ignore'`))
+        .optional(),
       tools: mcpToolFilterSchema.optional(),
     },
     typeErrors({ invalid: `${MCP_PREFIX} each mcpServers entry must be an object with 'command' or 'url'` })

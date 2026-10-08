@@ -2,6 +2,10 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { appendFileSync } from 'node:fs';
+
+// FIXTURE_START_LOG: one line per start, for the reconnect test.
+if (process.env.FIXTURE_START_LOG) appendFileSync(process.env.FIXTURE_START_LOG, 'start\n');
 
 const server = new Server({ name: 'fixture', version: '1.0.0' }, { capabilities: { tools: {} } });
 

@@ -107,6 +107,8 @@ export const ERROR_CODES = {
   LOUSHO_SIGNIN_PENDING: 'Open the sign-in link first and let the provider redirect to the callback, then approve again (or approve with false to cancel).',
   LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED:
     "Check the provider's tokenUrl, clientId, clientSecret and redirectUri (it must match the one registered with the provider), then sign in again.",
+  LOUSHO_MCP_START_FAILED:
+    "Run the server's command yourself to see why it fails; the message has its exit code and last stderr lines, and `connectTimeoutMs` bounds a server that never answers.",
   LOUSHO_MCP_AUTH_REQUIRED: "Sign the app in to the MCP server once: open the URL from agent.oauth.mcpSignInUrl('<server>') and let the callback store the token.",
 } as const;
 

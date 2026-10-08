@@ -27,6 +27,18 @@ describe('AgentSpec.mcpServers (LOU-D20)', () => {
     ]);
   });
 
+  it("accepts stdio 'cwd', 'stderr' and 'connectTimeoutMs'; refuses stdio-only fields on an HTTP entry (audit D4)", () => {
+    const mcpServers: AgentSpec['mcpServers'] = {
+      fs: { command: 'npx', cwd: '/srv', stderr: 'capture', connectTimeoutMs: 10_000 },
+      docs: { url: 'https://example.com/mcp', connectTimeoutMs: 5000 },
+    };
+    expect(agentSpecSchema.parse({ ...base, mcpServers }).mcpServers).toEqual(mcpServers);
+    expect(issues({ fs: { command: 'npx', stderr: 'loud' } })).toEqual([
+      "mcpServers.fs.stderr: AgentSpec validation failed: 'stderr' must be 'forward', 'capture', 'inherit' or 'ignore'",
+    ]);
+    expect(issues({ docs: { url: 'https://example.com/mcp', cwd: '/srv' } })[0]).toMatch(/'cwd' does not apply to an HTTP/);
+  });
+
   it("accepts a per-server 'tools' filter and rejects a malformed one (audit D4)", () => {
     const mcpServers: AgentSpec['mcpServers'] = { fs: { command: 'npx', tools: { include: ['read'], exclude: ['write'] } } };
     expect(agentSpecSchema.parse({ ...base, mcpServers }).mcpServers).toEqual(mcpServers);

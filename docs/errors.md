@@ -66,7 +66,7 @@ Find a code by area:
 | [Configuration](#configuration) | [`LOUSHO_CONFIG_INVALID`](#lousho_config_invalid), [`LOUSHO_CONFIG_MISSING_PROVIDER`](#lousho_config_missing_provider), [`LOUSHO_CONFIG_MISSING_AGENT`](#lousho_config_missing_agent), [`LOUSHO_CONFIG_MISSING_INPUT`](#lousho_config_missing_input), [`LOUSHO_CONFIG_CONFLICTING_OPTIONS`](#lousho_config_conflicting_options), [`LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE`](#lousho_config_missing_checkpoint_store), [`LOUSHO_CONFIG_RESOLVER_FAILED`](#lousho_config_resolver_failed) | A `createAgent()` or executor call that is missing or mixing options, or a config resolver that failed. |
 | [Providers and peers](#providers-and-peers) | [`LOUSHO_PROVIDER_SPEC_INVALID`](#lousho_provider_spec_invalid), [`LOUSHO_PROVIDER_UNKNOWN`](#lousho_provider_unknown), [`LOUSHO_PROVIDER_MISSING_API_KEY`](#lousho_provider_missing_api_key), [`LOUSHO_PROVIDER_REQUEST_FAILED`](#lousho_provider_request_failed), [`LOUSHO_PROVIDER_RATE_LIMITED`](#lousho_provider_rate_limited), [`LOUSHO_PEER_MISSING`](#lousho_peer_missing), [`LOUSHO_HOSTED_TOOL_UNSUPPORTED`](#lousho_hosted_tool_unsupported), [`LOUSHO_UNSUPPORTED_CONTENT`](#lousho_unsupported_content) | Resolving a model string, a missing API key or peer package, a failed or rate-limited model request, a hosted tool the provider cannot run, a file the provider cannot send. |
 | [Agent spec files](#agent-spec-files) | [`LOUSHO_SPEC_NOT_FOUND`](#lousho_spec_not_found), [`LOUSHO_SPEC_INVALID`](#lousho_spec_invalid), [`LOUSHO_SPEC_UNKNOWN_FIELD`](#lousho_spec_unknown_field), [`LOUSHO_SPEC_UNSUPPORTED_FORMAT`](#lousho_spec_unsupported_format) | Loading an `AgentSpec` file with `loadSpec()` or `specToAgent()`. |
-| [Tools](#tools) | [`LOUSHO_TOOL_NOT_FOUND`](#lousho_tool_not_found), [`LOUSHO_TOOL_NEEDS_CREDENTIALS`](#lousho_tool_needs_credentials), [`LOUSHO_TOOL_EXECUTION_FAILED`](#lousho_tool_execution_failed), [`LOUSHO_TOOL_ARGS_INVALID`](#lousho_tool_args_invalid) | A tool the model called is unknown, needs credentials, threw, or got invalid arguments. |
+| [Tools](#tools) | [`LOUSHO_TOOL_NOT_FOUND`](#lousho_tool_not_found), [`LOUSHO_TOOL_NEEDS_CREDENTIALS`](#lousho_tool_needs_credentials), [`LOUSHO_TOOL_EXECUTION_FAILED`](#lousho_tool_execution_failed), [`LOUSHO_TOOL_ARGS_INVALID`](#lousho_tool_args_invalid), [`LOUSHO_MCP_START_FAILED`](#lousho_mcp_start_failed) | A tool the model called is unknown, needs credentials, threw, or got invalid arguments; a stdio MCP server did not start. |
 | [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
 | [Schedules](#schedules) | [`LOUSHO_SCHEDULE_INVALID`](#lousho_schedule_invalid), [`LOUSHO_SCHEDULE_RUN_INCOMPLETE`](#lousho_schedule_run_incomplete) | Defining or loading a schedule, or a scheduled turn that did not finish. |
 | [Channels](#channels) | [`LOUSHO_CHANNEL_INVALID`](#lousho_channel_invalid), [`LOUSHO_MEMORY_INVALID`](#lousho_memory_invalid) | Defining a channel or a memory slot. |
@@ -348,6 +348,23 @@ if the model keeps getting them wrong, make the field `.describe()`
 text clearer. `error.issues` lists each path and problem. See [Tools](./tools.md).
 
 **Example:** the model sends `{ to: 42 }` to a tool whose `to` is a string.
+
+### LOUSHO_MCP_START_FAILED
+
+**Means:** a stdio MCP server (`mcpServers` entry with `command`) did not
+start: the command was not found, the process exited during the `initialize`
+handshake, or it did not answer within `connectTimeoutMs` (default 60
+seconds). The error (`McpStartError`) carries `exitCode` (or `signal`) and
+`stderr`, the last 20 lines the process wrote there, and the message shows
+both. `connectMcp()` and `agent.ready()` (or the first `send()`) fail with it.
+
+**Fix:** read the stderr lines in the message, or run the `command` with its
+`args` yourself. Check the package name and version for an `npx` server,
+the `env` it needs, and `cwd`. With `stderr: 'inherit'` or `'ignore'` there
+are no lines to show. See [MCP](./mcp.md#use-mcp-servers-in-an-agent).
+
+**Example:** `npx -y some-mcp-server` for a package that does not exist exits
+with an `npm error 404` line on stderr.
 
 ## Approvals and sessions
 
