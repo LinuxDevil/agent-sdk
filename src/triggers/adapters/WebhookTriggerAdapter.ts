@@ -24,6 +24,7 @@ import { Logger, noopLogger } from '../../execution/logger';
 import { RunnableAgent, TriggerAdapter, TriggerContext, TriggerHandle } from '../types';
 import type { WebhookAuth } from '../webhookAuth';
 import { toChannelRequest } from '../../channels/defineChannel';
+import { readRawBody, PayloadTooLargeError } from '../../server/chatRoutes';
 import { webhookChannel, type WebhookChannel } from '../../channels/webhookChannel';
 
 /**
@@ -65,17 +66,6 @@ export interface WebhookTriggerHandle extends TriggerHandle {
   readonly port: number;
 }
 
-function readBody(req: http.IncomingMessage): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer | string) => {
-      chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
-    });
-    req.on('end', () => resolve(Buffer.concat(chunks)));
-    req.on('error', reject);
-  });
-}
-
 function writeJson(res: http.ServerResponse, status: number, value: unknown): void {
   res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(value));
 }
@@ -95,7 +85,7 @@ async function respondWithAgentResult(
   res: http.ServerResponse
 ): Promise<void> {
   try {
-    const request = toChannelRequest(req, await readBody(req));
+    const request = toChannelRequest(req, await readRawBody(req));
     const { ok, reason } = await runtime.channel.verify(request);
     if (!ok) {
       runtime.logger.warn('webhook request rejected: authentication failed', { reason, remoteAddress: req.socket.remoteAddress });
@@ -107,7 +97,13 @@ async function respondWithAgentResult(
     const result = await runtime.onEvent(input, { channel: res, request: req });
     writeJson(res, 200, result);
   } catch (error) {
-    writeJson(res, 500, { error: (error as Error).message });
+    if (error instanceof PayloadTooLargeError) {
+      writeJson(res, 413, { error: 'Payload too large' });
+      return;
+    }
+    // Never echo internal error messages to the (possibly unauthenticated) caller.
+    runtime.logger.error('webhook request failed', { error: (error as Error).message });
+    writeJson(res, 500, { error: 'Internal error' });
   }
 }
 

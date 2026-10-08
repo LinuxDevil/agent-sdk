@@ -49,6 +49,7 @@ This section lists what is on `main` and not yet on npm.
 
 ### Fixed
 - Tracing: a background sub-agent's cost now rolls up into the lead's `invoke_agent` span `lousho.cost_usd` (a span that ends after its parent adds to the nearest open ancestor), and `listTraces()` / `lousho traces` report the sum of the chat spans' cost, so the cost matches the token counts and `result.usage.costUsd`. (Eve MA-F2)
+- `WebhookTriggerAdapter` reads the body through the 1 MB capped reader channels use and answers `413` instead of buffering any size before auth, and a failing handler's `500` no longer echoes the internal error message (Eve DUR-F18)
 - `githubChannel`: a `/approve` or `/deny` for an approval that is not pending (stale or made-up id) no longer posts "Approved by @x" before the failure; it is ignored silently (Eve E17 / channels F5).
 - Model price lookup: `claude-haiku-4.5` (OpenRouter spelling) now finds `claude-haiku-4-5`, and a snapshot match needs a date, `-latest` or a `:tag`, so `mistral-7b-instruct` no longer resolves to `mistral`; `gpt-4o-2024-05-13` has its own price (Eve PROV-F3).
 - Flows: when a `parallel` branch fails, its siblings are now aborted (no further step starts; running model/tool calls get the aborted signal) and the flow returns only after every branch settles, so tools no longer keep running and events are no longer appended to `result.events` after the failure is returned. `FlowExecutionResult` gains `usage`, the summed model usage of the run. (Eve DUR-F12 / MA-F11)
