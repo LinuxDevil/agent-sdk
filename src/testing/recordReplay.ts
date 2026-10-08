@@ -24,7 +24,7 @@ import {
   type CassetteRequest,
   type CassetteResponse,
 } from './cassette';
-import { createSanitizer, firstDifference, stableStringify, type Sanitizer } from './fingerprint';
+import { createSanitizer, firstDifference, sortTools, stableStringify, type Sanitizer } from './fingerprint';
 import { SDKError } from '../execution/errors';
 import type { HostedToolType } from '../tools/hosted';
 import type { HostedToolCall } from '../providers/llm';
@@ -155,11 +155,20 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-/** Only the token counts are stored; a call that reported no usage records none. */
+/** Only the token counts (and a reported cost) are stored; a call that reported no usage records none. */
 function recordedUsage(usage: ProviderUsage | undefined): { usage?: ProviderUsage } {
   if (!usage) return {};
-  const { promptTokens, completionTokens, totalTokens } = usage;
-  return { usage: { promptTokens, completionTokens, totalTokens } };
+  const { promptTokens, completionTokens, totalTokens, cachedInputTokens, reasoningTokens, costUsd } = usage;
+  return {
+    usage: {
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
+      ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
+      ...(costUsd !== undefined ? { costUsd } : {}),
+    },
+  };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -197,6 +206,7 @@ function toGenerateResult(response: CassetteResponse): GenerateResult {
     ...(response.usage ? { usage: clone(response.usage) } : {}),
     ...(response.toolCalls?.length ? { toolCalls: clone(response.toolCalls) } : {}),
     ...(response.hostedToolCalls?.length ? { hostedToolCalls: clone(response.hostedToolCalls) as HostedToolCall[] } : {}),
+    ...(response.reasoning?.length ? { reasoning: clone(response.reasoning) } : {}),
   };
 }
 
@@ -316,6 +326,7 @@ class Recorder implements RecordReplayProvider {
       ...recordedUsage(result.usage),
       ...(result.toolCalls?.length ? { toolCalls: result.toolCalls } : {}),
       ...(result.hostedToolCalls?.length ? { hostedToolCalls: clone(result.hostedToolCalls) } : {}),
+      ...(result.reasoning?.length ? { reasoning: clone(result.reasoning) } : {}),
     });
   }
 
@@ -357,6 +368,8 @@ class Player implements RecordReplayProvider {
     private readonly options: RecordReplayOptions
   ) {
     this.cassette = readCassette(options.cassette);
+    // Cassettes recorded before tools were sorted by name store them in registration order.
+    for (const entry of this.cassette.entries) entry.request.tools = sortTools(entry.request.tools);
     const identity: { name: string; defaultModel?: string } = provider ?? this.cassette.provider;
     this.name = identity.name;
     this.defaultModel = identity.defaultModel;

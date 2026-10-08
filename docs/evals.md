@@ -160,6 +160,14 @@ defineEval({
 });
 ```
 
+`judge.model` is optional: without it the judge runs on its provider's own
+model. The judge is asked for a bare number, but its reply is read leniently:
+the number after a `score` label (`Score: 0.9`), else the first number in the
+reply (`**0.9**`), scaled into 0 to 1 when it is written as `8/10`,
+`8 out of 10`, `85%` or a bare whole number from 2 to 100 (`8` reads as 8/10,
+`85` as 85/100). A reply with no number scores 0. `parseJudgeScore(text)`
+exposes the same parsing.
+
 Files named `*.judge.eval.ts` are never picked up by a normal run (and
 `npm test`); only `lousho eval --judge` (or `npm run test:evals:judge` in this
 repository) runs them.

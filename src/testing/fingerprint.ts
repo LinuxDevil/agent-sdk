@@ -257,6 +257,16 @@ export interface Sanitizer {
   redact<T>(value: T): T;
 }
 
+/**
+ * Tools sorted by name (a stable sort): the order an agent registers its
+ * tools in is not part of what a request means, so reordering them must not
+ * break replay. Applied to new requests and to recorded ones, so cassettes
+ * recorded before tools were sorted still match.
+ */
+export function sortTools<T extends { name: string }>(tools: readonly T[]): T[] {
+  return [...tools].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+}
+
 /** Build the request/response sanitizer shared by record and replay. */
 export function createSanitizer(options: SanitizerOptions): Sanitizer {
   const redactText = (text: string): string => {
@@ -270,7 +280,7 @@ export function createSanitizer(options: SanitizerOptions): Sanitizer {
       const canonical: CassetteRequest = {
         model: source.model || options.defaultModel || null,
         messages: source.messages.map(toCassetteMessage),
-        tools: (source.tools ?? []).map(toCassetteTool),
+        tools: sortTools((source.tools ?? []).map(toCassetteTool)),
         temperature: source.temperature ?? null,
         maxTokens: source.maxTokens ?? null,
       };

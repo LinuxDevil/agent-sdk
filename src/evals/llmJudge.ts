@@ -22,8 +22,8 @@ import { SDKError } from '../execution/errors';
 export interface LLMJudgeConfig {
   /** Real LLMProvider instance used to grade the output. */
   provider: LLMProvider;
-  /** Model id passed through to provider.generate(). */
-  model: string;
+  /** Model id passed through to provider.generate(). Defaults to the provider's own model. */
+  model?: string;
   /** Grading rubric / instructions shown to the judge model. */
   rubric: string;
   temperature?: number;
@@ -99,22 +99,42 @@ async function generateJudgeResponse(config: LLMJudgeConfig, prompt: string): Pr
   return response.text;
 }
 
+/** `8/10`, `8 out of 10`, `85%`, or a bare number; the first one in the text wins. */
+const SCORE_PATTERN = /(-?\d+(?:\.\d+)?|-?\.\d+)\s*(?:(?:\/|out\s+of)\s*(\d+(?:\.\d+)?)|(%))?/i;
+/** A score right after a `score` label (`Score: 0.9`, `**Score** = 8/10`), preferred over the first number. */
+const LABELLED_PATTERN = /score\W{0,6}?((?:-?\d+(?:\.\d+)?|-?\.\d+)\s*(?:(?:\/|out\s+of)\s*\d+(?:\.\d+)?|%)?)/i;
+
+/** The [0, 1] value one score match stands for. */
+function scaleScore(match: RegExpExecArray): number {
+  const value = parseFloat(match[1]);
+  if (match[2] !== undefined) return parseFloat(match[2]) > 0 ? value / parseFloat(match[2]) : 0;
+  if (match[3] !== undefined) return value / 100;
+  // A bare whole number above 1 is a score out of 10 (`8`) or out of 100 (`85`).
+  if (Number.isInteger(value) && value > 1 && value <= 10) return value / 10;
+  if (Number.isInteger(value) && value > 10 && value <= 100) return value / 100;
+  return value;
+}
+
 /**
  * Parses a judge model's raw text response into a score clamped to [0, 1].
- * A malformed (non-numeric) response is handled explicitly - it returns 0
- * with a reason, rather than letting `parseFloat` produce NaN and relying
- * on NaN's comparisons always being false in `expect(score).toBeGreaterThanOrEqual(threshold)`
- * to accidentally fail closed.
+ * Judges do not always answer with a bare number, so it reads the number
+ * after a `score` label, else the first number in the text (`**0.9**`),
+ * and scales `8/10`, `8 out of 10`, `85%` and bare whole numbers 2-100
+ * (`8` is 8/10, `85` is 85/100) into [0, 1]. A response with no number is
+ * handled explicitly - it returns 0 with a reason, rather than letting
+ * `parseFloat` produce NaN and relying on NaN's comparisons always being
+ * false in `expect(score).toBeGreaterThanOrEqual(threshold)` to
+ * accidentally fail closed.
  */
 export function parseJudgeScore(rawText: string): { score: number; reason?: string } {
-  const trimmed = rawText.trim();
-  const parsed = parseFloat(trimmed);
+  const labelled = LABELLED_PATTERN.exec(rawText);
+  const match = SCORE_PATTERN.exec(labelled ? labelled[1] : rawText);
 
-  if (Number.isNaN(parsed)) {
+  if (!match) {
     return { score: 0, reason: `judge response was not a number: ${JSON.stringify(rawText)}` };
   }
 
-  const clamped = Math.min(1, Math.max(0, parsed));
+  const clamped = Math.min(1, Math.max(0, scaleScore(match)));
   return { score: clamped };
 }
 

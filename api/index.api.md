@@ -2036,7 +2036,7 @@ export interface EvalConfig {
 
 // @public
 export interface EvalJudgeConfig {
-    model: string;
+    model?: string;
     provider: LLMProvider;
     // (undocumented)
     temperature?: number;
@@ -3354,7 +3354,7 @@ export function llmJudge(config: LLMJudgeConfig): (result: ExecutionResult) => P
 // @public
 export interface LLMJudgeConfig {
     allowOutsideJudgeRunner?: boolean;
-    model: string;
+    model?: string;
     provider: LLMProvider;
     rubric: string;
     // (undocumented)

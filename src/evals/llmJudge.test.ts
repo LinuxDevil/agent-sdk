@@ -27,6 +27,24 @@ describe('parseJudgeScore', () => {
     expect(reason).toContain('the output looks great');
   });
 
+  it('reads a labelled or decorated score, not just a bare number (docs-qa F12)', () => {
+    expect(parseJudgeScore('Score: 0.9').score).toBe(0.9);
+    expect(parseJudgeScore('**0.9**').score).toBe(0.9);
+    expect(parseJudgeScore('The answer is grounded.\n\n**Score:** 0.75').score).toBe(0.75);
+    expect(parseJudgeScore('Score: -0.3').score).toBe(0);
+  });
+
+  it('scales N/10, N out of 10, percentages and bare whole numbers out of 10 or 100 into [0, 1]', () => {
+    expect(parseJudgeScore('9/10').score).toBe(0.9);
+    expect(parseJudgeScore('7 out of 10').score).toBe(0.7);
+    expect(parseJudgeScore('Rating: 4/5').score).toBe(0.8);
+    expect(parseJudgeScore('85%').score).toBe(0.85);
+    expect(parseJudgeScore('Score: 8').score).toBe(0.8);
+    expect(parseJudgeScore('85').score).toBe(0.85);
+    expect(parseJudgeScore('10').score).toBe(1);
+    expect(parseJudgeScore('250').score).toBe(1);
+  });
+
   it('treats an empty response the same as a malformed one', () => {
     const { score, reason } = parseJudgeScore('');
     expect(score).toBe(0);
@@ -112,6 +130,14 @@ describe('llmJudge() structural isolation guard', () => {
     process.env.LOUSHO_ALLOW_LLM_JUDGE = '1';
     const scorer = llmJudge({ provider: mockProvider, model: 'test-model', rubric: 'be good' });
     await expect(scorer({ text: 'hello' } as never)).resolves.toBe(0.9);
+  });
+
+  it("runs on the provider's own model when no model is given", async () => {
+    process.env.LOUSHO_ALLOW_LLM_JUDGE = '1';
+    const models: Array<string | undefined> = [];
+    const provider = { generate: async (options: { model?: string }) => (models.push(options.model), { text: 'Score: 0.6' }) } as never;
+    await expect(llmJudge({ provider, rubric: 'be good' })({ text: 'hello' } as never)).resolves.toBe(0.6);
+    expect(models).toEqual([undefined]);
   });
 });
 
