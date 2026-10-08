@@ -19,6 +19,7 @@ import { ToolRegistry } from '../tools/ToolRegistry';
 import type { Skill } from '../skills/defineSkill';
 import type { Subagents } from '../subagents/types';
 import type { StandardSchemaV1 } from '../utils/zodCompat';
+import type { OutputSpec } from './structuredOutput';
 import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
 import type { ResumeExecuteOptions } from './resume';
 import type { ApprovalStore, ExecutionSnapshot } from './ApprovalGate';
@@ -53,7 +54,7 @@ export interface SubagentSpec {
   /** LOU-V13: the sub-agent's own `reasoning` (not inherited: it may run another model). */
   reasoning?: ReasoningOption;
   /** LOU-V4.2: the sub-agent's own `output` schema (never the lead's); its validated object is the `task` result. */
-  output?: StandardSchemaV1;
+  output?: StandardSchemaV1 | OutputSpec;
   /** N1a: the sub-agent's own hosted tools (never the lead's). */
   hostedTools?: readonly HostedTool[];
   /** N2: the sub-agent's own tool search tuning (never the lead's); see docs/tool-search.md. */

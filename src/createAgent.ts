@@ -60,7 +60,7 @@ import { createAgentOAuth, type AgentOAuth } from './oauth/agentOAuth';
 import type { OAuthTokenStore } from './oauth/types';
 import { assertPermissionMode, type PermissionMode, type PermissionOptions } from './execution/permissions';
 import { assertToolSearchOptions, type ToolSearchOptions } from './execution/toolSearch';
-import { assertOutputSchema } from './execution/structuredOutput';
+import { assertOutputSchema, type OutputSpec } from './execution/structuredOutput';
 import { assertCodeModeOptions, codeModeOption, type CodeModeOptions } from './execution/codeMode';
 import type { InferSchemaOutput, StandardSchemaV1 } from './utils/zodCompat';
 import type { McpServerSpec } from './spec/schema';
@@ -465,13 +465,17 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    * `finishReason: 'output-invalid'` and `outputError`. See
    * docs/structured-output.md and `ExecuteOptions.output`.
    *
+   * As `{ schema, promptSchema: false }` the schema goes only on
+   * `responseFormat`, not into the system prompt too - for providers that
+   * enforce it, that saves sending the schema twice (audit invoice F12).
+   *
    * @example
    * ```ts
    * const agent = createAgent({ model: 'openai/gpt-4o-mini', output: z.object({ city: z.string(), tempC: z.number() }) });
    * const { object } = await agent.send('Weather in Paris?');
    * ```
    */
-  output?: TOutput;
+  output?: TOutput | OutputSpec<TOutput>;
   /**
    * Hooks run around every model call and tool call (LOU-W3.2), in the order
    * given, before the hook `compaction` installs. See `AgentHook` and

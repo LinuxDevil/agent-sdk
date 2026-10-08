@@ -442,4 +442,35 @@ describe('structured output near misses and repair (audit log F8, docs-qa F9, in
     const agent = AgentBuilder.create().setName('a').setPrompt('p').build();
     expect(() => AgentExecutor.stream({ agent, input: 'go', provider: mockModel([]), output: z4.object({ d: z4.date() }) })).toThrow(/'d' is a z\.date\(\)/);
   });
+
+  it('audit invoice F12: output { schema, promptSchema: false } sends the schema only as responseFormat', async () => {
+    const model = mockModel(['{"city":"Paris","tempC":21}']);
+    const agent = createAgent({ provider: model, instructions: 'You report weather.', output: { schema: weather, promptSchema: false } });
+
+    const result = await agent.send('Weather in Paris?');
+
+    expect(result.object).toEqual({ city: 'Paris', tempC: 21 });
+    expect(model.calls[0].responseFormat).toMatchObject({ type: 'json', schema: { type: 'object', required: ['city', 'tempC'] } });
+    const system = model.calls[0].messages[0];
+    expect(system.role).toBe('system');
+    // The JSON-only ask stays; the schema copy does not.
+    expect(system.content).toBe(
+      'You report weather.\n\n## Output format\n\nYou may call tools first. Your final answer must be only a JSON object (no other text, no code fences).'
+    );
+    expect(system.content).not.toContain('"tempC"');
+  });
+
+  it('audit invoice F12: output { schema } keeps the schema in the prompt, like a bare schema', async () => {
+    const model = mockModel(['{"city":"Paris","tempC":21}']);
+    const agent = createAgent({ provider: model, instructions: 'You report weather.', output: { schema: weather } });
+
+    const result = await agent.send('go');
+
+    expect(result.object).toEqual({ city: 'Paris', tempC: 21 });
+    expect(model.calls[0].messages[0].content).toContain('"tempC":{"type":"number"}');
+  });
+
+  it('audit invoice F12: a wrapped schema is checked at config time ({ schema } rejects z.date())', () => {
+    expect(() => createAgent({ provider: mockModel([]), output: { schema: z4.object({ d: z4.date() }) } })).toThrow(/'d' is a z\.date\(\)/);
+  });
 });

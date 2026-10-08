@@ -1410,7 +1410,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
     name?: string;
     onAgentDrift?: AgentDriftMode;
     onEvent?: (event: AgentEvent) => void;
-    output?: TOutput;
+    output?: TOutput | OutputSpec<TOutput>;
     projectInstructions?: boolean | {
         cwd?: string;
         files?: readonly string[];
@@ -2164,7 +2164,7 @@ interface ExecuteOptions extends PermissionOptions {
         requiresApproval?: boolean;
         args?: Record<string, unknown>;
     } | undefined, latencyMs: number, error?: unknown) => void | Promise<void>;
-    output?: StandardSchemaV1;
+    output?: StandardSchemaV1 | OutputSpec;
     parentSpanId?: string;
     principal?: Principal;
     // (undocumented)
@@ -4397,6 +4397,12 @@ export interface OutputError {
     message: string;
 }
 
+// @public
+export interface OutputSpec<TSchema extends StandardSchemaV1 = StandardSchemaV1> {
+    promptSchema?: boolean;
+    schema: TSchema;
+}
+
 // @public (undocumented)
 interface ParallelNode {
     // (undocumented)
@@ -6016,7 +6022,7 @@ interface SubagentSpec {
     maxSteps?: number;
     // (undocumented)
     maxSubagentDepth?: number;
-    output?: StandardSchemaV1;
+    output?: StandardSchemaV1 | OutputSpec;
     permissionMode?: PermissionOptions['permissionMode'];
     permissions?: readonly PermissionRule[];
     // (undocumented)

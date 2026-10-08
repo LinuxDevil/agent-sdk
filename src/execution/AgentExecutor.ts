@@ -82,7 +82,7 @@ import {
 import { AgentRun, RUN_EVENTS, StreamingExecuteOptions, observeRun, partialSink, runEventsOf, startAgentRun } from './agentRun';
 import type { AgentEvent } from './agentEvents';
 import { withSteerSignal, type InputQueue } from './inputQueue';
-import { assertOutputSchema, OutputError, outputInstruction, outputRepairMessage, validateOutput } from './structuredOutput';
+import { assertOutputSchema, OutputError, outputInstruction, outputRepairMessage, validateOutput, type OutputSpec } from './structuredOutput';
 import { PLAN_MODE_INSTRUCTION, permissionModeOf, type PermissionOptions } from './permissions';
 import { assertToolSearchOptions, withToolSearch, type ToolSearchOptions } from './toolSearch';
 import { withDeferral } from './toolDeferral';
@@ -578,14 +578,16 @@ export interface ExecuteOptions extends PermissionOptions {
    * still be called first). It is validated into `result.object`; an invalid
    * reply gets one repair step (counted against `maxSteps`), then the run
    * ends with `finishReason: 'output-invalid'` and `outputError`. See
-   * docs/structured-output.md.
+   * docs/structured-output.md. As `{ schema, promptSchema: false }`, the
+   * schema is sent only on `responseFormat`, not in the system prompt too
+   * (audit invoice F12).
    *
    * @example
    * ```ts
    * const { object } = await AgentExecutor.execute({ agent, input: 'Weather in Paris?', provider, output: z.object({ tempC: z.number() }) });
    * ```
    */
-  output?: StandardSchemaV1;
+  output?: StandardSchemaV1 | OutputSpec;
   /**
    * LOU-Y4.2: called exactly once when this run ends, however it ends: with
    * `{ result }` when it resolves (any `finishReason`, including `'aborted'`,
