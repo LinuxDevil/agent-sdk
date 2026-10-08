@@ -306,7 +306,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
   reasoning?: ReasoningOption;
   /**
    * C6: sampling settings sent on every model call of this agent's runs:
-   * `maxTokens`, `temperature`, `topP`, `frequencyPenalty`,
+   * `maxTokens`, `temperature`, `topP`, `frequencyPenalty`, `toolChoice`,
    * `presencePenalty`, `stop`, `seed`. A key left out is not sent, so the
    * provider's own default (or a wrapping provider's value) applies. A
    * `send()` / `stream()` call's `modelSettings` win key by key. Sub-agents

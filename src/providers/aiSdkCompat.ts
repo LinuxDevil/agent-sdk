@@ -50,6 +50,10 @@ export interface AiSdkCallSettings {
   frequencyPenalty?: number;
   presencePenalty?: number;
   seed?: number;
+  /** `GenerateOptions.stop`, sent as the SDK's `stopSequences` (both majors). */
+  stopSequences?: string[];
+  /** The SDK's `toolChoice` (set only for a call with tools). */
+  toolChoice?: 'auto' | 'none' | 'required' | { type: 'tool'; toolName: string };
   maxRetries: number;
   abortSignal?: AbortSignal;
   /** LOU-V13: the reasoning options (`ai` 4.3 and 6/7 take the same field). */
@@ -280,6 +284,8 @@ function toModernRequest(ai: AiSdkModule, settings: AiSdkCallSettings, options: 
     frequencyPenalty: settings.frequencyPenalty,
     presencePenalty: settings.presencePenalty,
     seed: settings.seed,
+    stopSequences: settings.stopSequences,
+    toolChoice: settings.toolChoice,
     tools: modernToolSet(ai, options.tools, settings.hostedTools),
     stopWhen: ai.stepCountIs?.(1), // Single step - tool execution happens in AgentExecutor
     providerOptions: settings.providerOptions,

@@ -401,7 +401,12 @@ function assertModelSettings(file: string, value: unknown): void {
     if (!(MODEL_SETTING_KEYS as readonly string[]).includes(key)) {
       fail(file, `'modelSettings.${key}' is not a known setting. Allowed keys: ${MODEL_SETTING_KEYS.join(', ')}.`);
     }
-    if (key === 'stop') {
+    if (key === 'toolChoice') {
+      const named = isPlainObject(entry) && entry.type === 'function' && isPlainObject(entry.function) && typeof entry.function.name === 'string';
+      if (!(entry === 'auto' || entry === 'required' || entry === 'none' || named)) {
+        fail(file, `'modelSettings.toolChoice' must be "auto", "required", "none" or { "type": "function", "function": { "name": ... } }, got ${describeValue(entry)}.`);
+      }
+    } else if (key === 'stop') {
       if (!(Array.isArray(entry) && entry.every((stop) => typeof stop === 'string'))) fail(file, `'modelSettings.stop' must be an array of strings, got ${describeValue(entry)}.`);
     } else if (!(typeof entry === 'number' && Number.isFinite(entry))) {
       fail(file, `'modelSettings.${key}' must be a number, got ${describeValue(entry)}.`);

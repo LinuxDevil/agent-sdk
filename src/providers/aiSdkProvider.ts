@@ -35,7 +35,7 @@ import { hostedToolUnsupported, type HostedTool, type HostedToolType } from '../
 import { textOf } from './content';
 import { SDKError } from '../utils/sdkError';
 import { isRawJsonSchema, schemaToJsonSchema } from '../utils/zodCompat';
-import { type AiSdkMessage, type AiSdkModule, aiMajorOf, compatGenerateText, streamCompat } from './aiSdkCompat';
+import { type AiSdkCallSettings, type AiSdkMessage, type AiSdkModule, aiMajorOf, compatGenerateText, streamCompat } from './aiSdkCompat';
 
 // The `ai` v4 request shapes built here, as our own structural types (LOU-D28a):
 // `ai` v6/v7 do not export the v4 ones, and aiSdkCompat maps these to v6/v7.
@@ -230,6 +230,13 @@ function supportsStructuredOutputs(model: unknown): boolean {
   return typeof model === 'object' && model !== null && Boolean((model as { supportsStructuredOutputs?: unknown }).supportsStructuredOutputs);
 }
 
+/** F9: the AI SDK's `toolChoice` for a call, only when the call has tools (a forced-answer call has none, and a choice without tools is an API error). */
+function toolChoiceOf(options: GenerateOptions, hostedTools: Record<string, unknown> | undefined): { toolChoice?: AiSdkCallSettings['toolChoice'] } {
+  const choice = options.toolChoice;
+  if (choice === undefined || !(options.tools?.length || (hostedTools && Object.keys(hostedTools).length))) return {};
+  return { toolChoice: typeof choice === 'string' ? choice : { type: 'tool', toolName: choice.function.name } };
+}
+
 /**
  * LOU-V4: `responseFormat` as an 'ai' SDK output spec - JSON mode, with the
  * schema only for models that support structured outputs (as
@@ -374,6 +381,8 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
       frequencyPenalty: options.frequencyPenalty,
       presencePenalty: options.presencePenalty,
       seed: options.seed,
+      ...(options.stop?.length && { stopSequences: options.stop }),
+      ...toolChoiceOf(options, hostedTools),
       tools: convertTools(this.ai, options.tools),
       maxSteps: 1, // Single step - tool execution happens in AgentExecutor
       // The 'ai' SDK's own retries (its default is 2), off for a call that
