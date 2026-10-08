@@ -63,6 +63,12 @@ export interface RecordReplayOptions {
   redact?: (text: string) => string;
   /** Replay `stream()` with the recorded inter-chunk delays. Default `false` (no delays). */
   replayTiming?: boolean;
+  /**
+   * How a replay mismatch tells the reader to re-record, appended to the
+   * error. Defaults to naming `LOUSHO_RECORD=1` and `mode: 'record'`; set it
+   * when the cassette is recorded some other way (`lousho eval` sets its own).
+   */
+  rerecordHint?: string;
 }
 
 /**
@@ -194,6 +200,21 @@ function toGenerateResult(response: CassetteResponse): GenerateResult {
   };
 }
 
+/** The cassette already at `file`, or undefined when there is none (or it is unreadable). */
+function previousRecording(file: string): Cassette | undefined {
+  if (!fs.existsSync(file)) return undefined;
+  try {
+    return readCassette(file);
+  } catch {
+    return undefined;
+  }
+}
+
+/** True when two cassettes hold the same provider and exchanges (headers aside). */
+function sameRecording(a: Cassette, b: Cassette): boolean {
+  return stableStringify({ provider: a.provider, entries: a.entries }) === stableStringify({ provider: b.provider, entries: b.entries });
+}
+
 class Recorder implements RecordReplayProvider {
   readonly mode = 'record';
   readonly name: string;
@@ -202,6 +223,8 @@ class Recorder implements RecordReplayProvider {
   private readonly slots: Array<CassetteEntry | undefined> = [];
   private readonly sanitizer: Sanitizer;
   private writing: Promise<void> = Promise.resolve();
+  /** The cassette this recording replaces, read before the first write. */
+  private readonly previous: Cassette | undefined;
 
   constructor(
     private readonly provider: LLMProvider,
@@ -213,6 +236,7 @@ class Recorder implements RecordReplayProvider {
       name: provider.name,
       ...(provider.defaultModel ? { defaultModel: provider.defaultModel } : {}),
     });
+    this.previous = previousRecording(options.cassette);
     this.sanitizer = createSanitizer({
       normalize: options.normalize,
       redact: options.redact,
@@ -254,6 +278,11 @@ class Recorder implements RecordReplayProvider {
   async save(): Promise<void> {
     this.cassette.entries = this.slots.filter((entry): entry is CassetteEntry => entry !== undefined);
     const snapshot = clone(this.cassette);
+    // Re-recording an unchanged run keeps the old header, so the file shows no diff.
+    if (this.previous && sameRecording(this.previous, snapshot)) {
+      snapshot.recordedAt = this.previous.recordedAt;
+      snapshot.sdkVersion = this.previous.sdkVersion;
+    }
     this.writing = this.writing.catch(() => undefined).then(() => writeCassette(this.options.cassette, snapshot));
     await this.writing;
   }
@@ -413,7 +442,7 @@ class Player implements RecordReplayProvider {
     throw new CassetteMismatchError(
       `${prefix}Call #${callNumber} does not match the recorded request in ${this.options.cassette}.\n` +
         `First difference at ${diff.path}:\n  recorded: ${diff.expected}\n  actual:   ${diff.actual}\n` +
-        RERECORD_HINT,
+        (this.options.rerecordHint ?? RERECORD_HINT),
       this.options.cassette,
       callNumber
     );
@@ -424,7 +453,7 @@ class Player implements RecordReplayProvider {
     return new CassetteMismatchError(
       `Call #${callNumber} has no recorded entry: ${this.options.cassette} holds ${total} ` +
         `entr${total === 1 ? 'y' : 'ies'} and all were used. The agent now makes more model calls than when ` +
-        `it was recorded. ${RERECORD_HINT}`,
+        `it was recorded. ${this.options.rerecordHint ?? RERECORD_HINT}`,
       this.options.cassette,
       callNumber
     );

@@ -14,7 +14,7 @@ import { createRequire } from 'node:module';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { CASSETTES_ENV, DRIFT_DIR_ENV, driftCassettePath } from '../evals/cassettes';
+import { CASSETTES_ENV, CONFIG_ENV, DRIFT_DIR_ENV, driftCassettePath } from '../evals/cassettes';
 import { diffTrajectories, trajectoryOf, type Trajectory } from '../evals/drift';
 import type { EvalResult } from '../evals/evalResult';
 import { RESULTS_ENV, TAGS_ENV } from '../evals/recorder';
@@ -22,10 +22,10 @@ import { REMOTE_TOKEN_ENV, REMOTE_URL_ENV } from '../evals/remoteTarget';
 import { SDKError } from '../execution/errors';
 import { readCassette } from '../testing/cassette';
 import { parseCommand, stringValue, usageError, type CommandSpec } from './args';
-import { failsRun, parseResults, renderDriftTable, renderJson, renderJunit, renderTable, type DriftRow } from './evalReport';
+import { failsRun, parseResults, renderDriftTable, renderJson, renderJunit, renderTable, unreportedFailures, type DriftRow } from './evalReport';
 
 const USAGE =
-  'Usage: lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts]';
+  'Usage: lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]';
 
 /** Parsed `lousho eval` arguments. */
 export interface EvalCliArgs {
@@ -41,6 +41,12 @@ export interface EvalCliArgs {
   judge: boolean;
   /** Use this vitest config instead of the generated one. */
   config?: string;
+  /**
+   * Per-case time limit in ms (0 = none). Without it the generated config
+   * allows {@link LIVE_TEST_TIMEOUT_MS} except under `--replay`, and a `--config`
+   * keeps its own `testTimeout`. `defineEval({ timeoutMs })` wins over both.
+   */
+  timeout?: number;
   /** Run the cases against the deployed agent at this base URL instead of in-process (LOU-D47). */
   url?: string;
   /** Bearer token for `url`; defaults to the `LOUSHO_EVAL_TOKEN` environment variable. Never printed. */
@@ -66,6 +72,7 @@ const SPEC: CommandSpec = {
     junit: { type: 'string' },
     json: { type: 'string' },
     config: { type: 'string' },
+    timeout: { type: 'string' },
     url: { type: 'string' },
     token: { type: 'string' },
     strict: { type: 'boolean' },
@@ -76,6 +83,20 @@ const SPEC: CommandSpec = {
     'drift-usage': { type: 'boolean' },
   },
 };
+
+/**
+ * The default per-case limit for runs that may call a real model (live,
+ * `--record`, `--drift`, CI auto): vitest's own 5 s default fails nearly every
+ * agent run on a real model. `--replay` keeps vitest's default.
+ */
+export const LIVE_TEST_TIMEOUT_MS = 10 * 60_000;
+
+function parseTimeout(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const ms = Number(value);
+  if (!Number.isInteger(ms) || ms < 0) throw usageError(SPEC, `--timeout must be a whole number of milliseconds (0 = no limit), got '${value}'.`);
+  return ms;
+}
 
 function assertOneCassetteMode(args: EvalCliArgs): void {
   if (args.driftUsage) args.drift = true;
@@ -102,6 +123,7 @@ export function parseEvalArgs(rest: string[]): EvalCliArgs {
     junit: stringValue(v.junit),
     json: stringValue(v.json),
     config: stringValue(v.config),
+    timeout: parseTimeout(stringValue(v.timeout)),
     url: stringValue(v.url),
     token: stringValue(v.token),
     record: v.record === true || undefined,
@@ -152,7 +174,10 @@ export function createVitestSpawner(stdio: 'inherit' | 'ignore' = 'inherit'): Vi
  * a temp directory). Normal runs never include `*.judge.eval.*`; judge runs
  * only include them and set the env var llmJudge() requires.
  */
-export function buildVitestConfig(args: Pick<EvalCliArgs, 'globs' | 'judge'>): string {
+export function buildVitestConfig(
+  args: Pick<EvalCliArgs, 'globs' | 'judge' | 'replay' | 'timeout'>,
+  vitestJson?: string
+): string {
   const defaults = args.judge ? ['**/*.judge.eval.{ts,mts,js,mjs}'] : ['**/*.eval.{ts,mts,js,mjs}'];
   const exclude = ['**/node_modules/**', '**/dist/**', ...(args.judge ? [] : ['**/*.judge.eval.*'])];
   const test = {
@@ -161,8 +186,16 @@ export function buildVitestConfig(args: Pick<EvalCliArgs, 'globs' | 'judge'>): s
     include: args.globs.length > 0 ? args.globs : defaults,
     exclude,
     env: args.judge ? { LOUSHO_ALLOW_LLM_JUDGE: '1' } : {},
+    ...testTimeout(args),
+    // vitest's own JSON report names the files that failed without an eval result (a load error).
+    ...(vitestJson ? { reporters: ['default', 'json'], outputFile: { json: vitestJson } } : {}),
   };
   return `export default ${JSON.stringify({ test }, null, 2)};\n`;
+}
+
+function testTimeout(args: Pick<EvalCliArgs, 'replay' | 'timeout'>): { testTimeout?: number } {
+  if (args.timeout !== undefined) return { testTimeout: args.timeout };
+  return args.replay ? {} : { testTimeout: LIVE_TEST_TIMEOUT_MS };
 }
 
 function writeReport(file: string, content: string): void {
@@ -174,6 +207,8 @@ interface VitestInvocation {
   args: string[];
   env: NodeJS.ProcessEnv;
   resultsFile: string;
+  /** vitest's JSON report (generated config only). */
+  vitestJson?: string;
 }
 
 /** Drops VITEST_* variables, so running inside another vitest run (a test, an npm script) cannot confuse the child. */
@@ -192,14 +227,18 @@ function prepareInvocation(args: EvalCliArgs, cwd: string, workDir: string): Vit
   fs.writeFileSync(resultsFile, '');
   const globs = args.globs.map((glob) => toRootRelativeGlob(glob, cwd));
   let config = args.config;
+  let vitestJson: string | undefined;
   if (!config) {
     config = path.join(workDir, 'vitest.eval.config.mjs');
-    fs.writeFileSync(config, buildVitestConfig({ ...args, globs }));
+    vitestJson = path.join(workDir, 'vitest.json');
+    fs.writeFileSync(config, buildVitestConfig({ ...args, globs }, vitestJson));
   }
-  // With the user's own config, globs narrow its files as vitest filters.
+  // With the user's own config, globs narrow its files as vitest filters; its
+  // own testTimeout stands unless --timeout was given.
   const filters = args.config ? globs : [];
+  const timeout = args.config && args.timeout !== undefined ? [`--testTimeout=${args.timeout}`] : [];
   return {
-    args: ['run', '--config', config, '--root', cwd, ...filters],
+    args: ['run', '--config', config, '--root', cwd, ...timeout, ...filters],
     env: {
       ...withoutVitestVars(process.env),
       [RESULTS_ENV]: resultsFile,
@@ -209,8 +248,10 @@ function prepareInvocation(args: EvalCliArgs, cwd: string, workDir: string): Vit
       [CASSETTES_ENV]: cassetteMode(args),
       [REMOTE_URL_ENV]: args.url ?? '',
       [DRIFT_DIR_ENV]: args.drift ? path.join(workDir, 'drift') : '',
+      [CONFIG_ENV]: args.config ? toRootRelativeGlob(args.config, cwd) : '',
     },
     resultsFile,
+    vitestJson,
   };
 }
 
@@ -254,12 +295,22 @@ function applyDrift(results: EvalResult[], args: EvalCliArgs, driftDir: string):
   return rows;
 }
 
+function readVitestJson(file: string | undefined): unknown {
+  if (!file || !fs.existsSync(file)) return undefined;
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch {
+    return undefined;
+  }
+}
+
 async function runAndReport(args: EvalCliArgs, deps: Required<EvalDeps>, vitestBin: string): Promise<number> {
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-eval-'));
   try {
     const invocation = prepareInvocation(args, deps.cwd, workDir);
     const vitestCode = await deps.spawnVitest(vitestBin, invocation.args, invocation.env);
     const results = parseResults(fs.readFileSync(invocation.resultsFile, 'utf8'));
+    results.push(...unreportedFailures(results, readVitestJson(invocation.vitestJson), vitestCode, { cwd: deps.cwd, strict: args.strict }));
     const drift = args.drift ? applyDrift(results, args, invocation.env[DRIFT_DIR_ENV] as string) : undefined;
     deps.log(results.length > 0 ? `\n${renderTable(results, args.strict)}` : '\nlousho eval: no eval results were recorded.');
     if (drift) deps.log(`\n${renderDriftTable(drift)}`);

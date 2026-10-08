@@ -12,7 +12,7 @@
 import type * as Vitest from 'vitest';
 import { AgentExecutor, ExecuteOptions, ExecutionResult } from '../execution/AgentExecutor';
 import { withEvalCassettes } from './cassettes';
-import { scoreAssertion } from './evalResult';
+import { scoreAssertion, type EvalResult } from './evalResult';
 import { matchesTagFilter, recordEvalResult } from './recorder';
 import { remoteTargetFromEnv } from './remoteTarget';
 import { SDKError } from '../execution/errors';
@@ -60,6 +60,8 @@ export interface EvalConfig {
   threshold: number;
   /** Tags for `lousho eval --tag`. */
   tags?: string[];
+  /** Per-case time limit in ms (0 = none); overrides `lousho eval --timeout` and the vitest config. */
+  timeoutMs?: number;
 }
 
 /**
@@ -100,21 +102,29 @@ export interface TrajectoryEvalConfig<C = Record<string, never>> {
   cases?: readonly C[];
   /** Judge provider for `t.judge()`. Without it `t.judge()` throws; no LLM is ever called implicitly. */
   judge?: EvalJudgeConfig;
+  /**
+   * Per-case time limit in ms (0 = none). Overrides `lousho eval --timeout`
+   * and the vitest config's `testTimeout`; a case on a real model usually
+   * needs far more than vitest's 5 s default.
+   */
+  timeoutMs?: number;
   /** The test body. Gate assertions fail the case; `t.soft()` ones are only reported. */
   test(t: EvalTestContext, c: C): void | Promise<void>;
 }
 
 const NO_CASE = {} as never;
 
-function caseLabel(c: unknown, index: number): string {
+/** A case's display label, and the untruncated one its cassette is named after. */
+function caseLabel(c: unknown, index: number): { label: string; key: string } {
   const record = (typeof c === 'object' && c !== null ? c : {}) as Record<string, unknown>;
   for (const key of ['label', 'name']) {
-    if (typeof record[key] === 'string') return record[key] as string;
+    if (typeof record[key] === 'string') return { label: record[key] as string, key: record[key] as string };
   }
   if (typeof record.input === 'string') {
-    return record.input.length > 48 ? `${record.input.slice(0, 45)}...` : record.input;
+    const label = record.input.length > 48 ? `${record.input.slice(0, 45)}...` : record.input;
+    return { label, key: record.input };
   }
-  return `case ${index + 1}`;
+  return { label: `case ${index + 1}`, key: `case ${index + 1}` };
 }
 
 function currentTestPath(expect: Pick<typeof Vitest, 'expect'>['expect']): string | undefined {
@@ -125,16 +135,64 @@ function currentTestPath(expect: Pick<typeof Vitest, 'expect'>['expect']): strin
   }
 }
 
-async function runAndReport(
-  config: TrajectoryEvalConfig<unknown>,
-  c: unknown,
-  label: string | undefined,
-  file: string | undefined
-): Promise<void> {
+/** What identifies one case to its report and its cassette. */
+interface CaseRef {
+  name: string;
+  tags: string[];
+  label?: string;
+  key?: string;
+  index?: number;
+}
+
+/** The vitest test context's `onTestFailed`, whose callback gets the task result (vitest 1-2) or the context (vitest 3+). */
+type FailureHook = (fn: (arg: unknown) => void) => void;
+
+function vitestErrorMessage(arg: unknown): string {
+  const holder = arg as { errors?: unknown[]; task?: { result?: { errors?: unknown[] } } } | undefined;
+  const first = (holder?.errors ?? holder?.task?.result?.errors)?.[0] as { message?: unknown } | undefined;
+  const message = typeof first?.message === 'string' ? first.message : 'vitest failed the test';
+  return /timed out/i.test(message)
+    ? `${message} Raise the limit with defineEval({ timeoutMs }) or lousho eval --timeout <ms>.`
+    : message;
+}
+
+/**
+ * Runs `run` as one vitest test and records its result exactly once. When
+ * vitest fails the test before the case finished (a timeout, mostly), an
+ * error result is recorded instead, so `lousho eval` reports never miss the
+ * case; the abandoned run's own result is then dropped.
+ */
+async function runCase(ref: CaseRef, file: string | undefined, context: unknown, run: () => Promise<EvalResult>): Promise<EvalResult> {
+  const started = Date.now();
+  let recorded = false;
+  const record = (result: EvalResult) => {
+    if (recorded) return;
+    recorded = true;
+    recordEvalResult(result);
+  };
+  (context as { onTestFailed?: FailureHook } | undefined)?.onTestFailed?.((arg) =>
+    record({
+      name: ref.name,
+      ...(ref.label !== undefined ? { case: ref.label } : {}),
+      tags: ref.tags,
+      passed: false,
+      assertions: [],
+      durationMs: Date.now() - started,
+      steps: 0,
+      toolCalls: [],
+      error: vitestErrorMessage(arg),
+      file,
+    })
+  );
+  const result = await withEvalCassettes({ file, name: ref.name, label: ref.label, key: ref.key, index: ref.index }, run);
+  record(result);
+  return result;
+}
+
+async function runTrajectory(config: TrajectoryEvalConfig<unknown>, c: unknown, ref: CaseRef, file: string | undefined, context: unknown): Promise<void> {
   const agent = remoteTargetFromEnv() ?? config.target ?? config.agent;
   const spec = { ...config, agent: agent ?? missingAgent };
-  const result = await withEvalCassettes({ file, name: config.name, label }, () => runTrajectoryCase(spec, c, label, file));
-  recordEvalResult(result);
+  const result = await runCase(ref, file, context, () => runTrajectoryCase(spec, c, ref.label, file));
   if (!result.passed) throw new SDKError(describeFailure(result), 'LOUSHO_TEST_FAILED');
 }
 
@@ -147,13 +205,15 @@ function defineTrajectoryEval(config: TrajectoryEvalConfig<unknown>): void {
   // expect.getState().testPath is only set while a test runs, not at collection.
   const file = () => currentTestPath(expect);
   const register = matchesTagFilter(config.tags ?? []) ? test : test.skip;
+  const tags = config.tags ?? [];
   if (config.cases === undefined) {
-    register(config.name, () => runAndReport(config, NO_CASE, undefined, file()));
+    register(config.name, (context) => runTrajectory(config, NO_CASE, { name: config.name, tags }, file(), context), config.timeoutMs);
     return;
   }
   config.cases.forEach((c, index) => {
-    const label = caseLabel(c, index);
-    register(`${config.name} [${label}]`, () => runAndReport(config, c, label, file()));
+    const { label, key } = caseLabel(c, index);
+    const ref = { name: config.name, tags, label, key, index };
+    register(`${config.name} [${label}]`, (context) => runTrajectory(config, c, ref, file(), context), config.timeoutMs);
   });
 }
 
@@ -182,16 +242,16 @@ function currentVitest(): Pick<typeof Vitest, 'test' | 'expect'> {
 
 
 function defineClassicEval(config: EvalConfig): void {
-  const { name, score, threshold, tags, ...executeFields } = config;
+  const { name, score, threshold, tags, timeoutMs, ...executeFields } = config;
   const { test, expect } = currentVitest();
   const register = matchesTagFilter(tags ?? []) ? test : test.skip;
 
-  register(name, async () => {
+  register(name, async (context) => {
     if (remoteTargetFromEnv()) {
       throw new SDKError(`eval '${name}' is a score/threshold eval, which runs an in-process provider and cannot run with --url; use a trajectory eval`, 'LOUSHO_CONFIG_CONFLICTING_OPTIONS');
     }
     const file = currentTestPath(expect);
-    const evalResult = await withEvalCassettes({ file, name }, async () => {
+    const evalResult = await runCase({ name, tags: tags ?? [] }, file, context, async () => {
       const started = Date.now();
       const result = await AgentExecutor.execute({
         agent: executeFields.agent,
@@ -215,10 +275,8 @@ function defineClassicEval(config: EvalConfig): void {
         file,
       };
     });
-    recordEvalResult(evalResult);
-
     expect(evalResult.assertions[0].score).toBeGreaterThanOrEqual(threshold);
-  });
+  }, timeoutMs);
 }
 
 /**

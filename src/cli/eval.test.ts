@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {
+  LIVE_TEST_TIMEOUT_MS,
   buildVitestConfig,
   createVitestSpawner,
   parseEvalArgs,
@@ -13,6 +14,8 @@ import {
 } from './eval';
 import type { EvalResult } from '../evals/evalResult';
 import { RESULTS_ENV, TAGS_ENV } from '../evals/recorder';
+import { CONFIG_ENV, cassettePath } from '../evals/cassettes';
+import { renderJunit, unreportedFailures } from './evalReport';
 
 const FIXTURES = path.resolve(__dirname, '__fixtures__', 'eval');
 
@@ -257,7 +260,7 @@ describe('lousho eval end to end (real vitest, mockModel fixtures)', () => {
 describe('lousho eval --record / --replay / --drift (real vitest, mockModel as the "real" provider)', () => {
   const fixture = path.join(FIXTURES, 'replay.eval.ts');
   const cassettes = path.join(FIXTURES, '__cassettes__');
-  const cassette = path.join(cassettes, 'recorded-refund', 'plain.json');
+  const cassette = cassettePath(fixture, 'recorded refund', 'plain');
   const quietVitest = createVitestSpawner('ignore');
   const cli = (args: string[]) => {
     const log = vi.fn();
@@ -305,11 +308,120 @@ describe('lousho eval --record / --replay / --drift (real vitest, mockModel as t
     const drifted = await cli([fixture, '--drift', '--junit', junit]);
     expect(drifted.code).toBe(0);
     expect(drifted.output).toMatch(/recorded refund\s+plain\s+args\s+lookup_order \{"orderId":"42"\}\s+lookup_order \{"orderId":"43"\}/);
-    expect(fs.readFileSync(junit, 'utf8')).toContain('<system-out>soft failure: drift from plain.json: args lookup_order');
+    expect(fs.readFileSync(junit, 'utf8')).toContain(`<system-out>soft failure: drift from ${path.basename(cassette)}: args lookup_order`);
     expect(fs.readFileSync(cassette, 'utf8')).toContain('\\"orderId\\":\\"42\\"');
 
     const strict = await cli([fixture, '--drift', '--strict', '--junit', junit]);
     expect(strict.code).toBe(1);
-    expect(fs.readFileSync(junit, 'utf8')).toContain('<failure message="drift from plain.json: args lookup_order');
+    expect(fs.readFileSync(junit, 'utf8')).toContain(`<failure message="drift from ${path.basename(cassette)}: args lookup_order`);
   }, 120_000);
+});
+
+describe('lousho eval time limits (docs-qa F1)', () => {
+  it('parses --timeout as whole milliseconds, 0 meaning no limit', () => {
+    expect(parseEvalArgs(['--timeout', '120000'])).toMatchObject({ timeout: 120_000 });
+    expect(parseEvalArgs(['--timeout=0'])).toMatchObject({ timeout: 0 });
+    expect(() => parseEvalArgs(['--timeout', '2m'])).toThrow(/--timeout must be a whole number of milliseconds/);
+  });
+
+  it('gives live, --record and --drift runs a long default; --replay keeps vitest default; --timeout wins', () => {
+    expect(buildVitestConfig({ globs: [], judge: false })).toContain(`"testTimeout": ${LIVE_TEST_TIMEOUT_MS}`);
+    expect(buildVitestConfig({ globs: [], judge: false, replay: true })).not.toContain('testTimeout');
+    expect(buildVitestConfig({ globs: [], judge: false, replay: true, timeout: 30_000 })).toContain('"testTimeout": 30000');
+  });
+
+  it("keeps a --config's own testTimeout unless --timeout is given, and tells the worker the config for hints", async () => {
+    const config = tempFile('v.config.mjs');
+    fs.writeFileSync(config, 'export default {};');
+    const fake = fakeVitest([result({})]);
+    await runEval(['--config', config], { resolveVitest: () => 'v', spawnVitest: fake.spawnVitest, log: () => {} });
+    await runEval(['--config', config, '--timeout', '90000', '--record'], { resolveVitest: () => 'v', spawnVitest: fake.spawnVitest, log: () => {} });
+    expect(fake.calls[0].args.some((a) => a.startsWith('--testTimeout'))).toBe(false);
+    expect(fake.calls[1].args).toContain('--testTimeout=90000');
+    expect(fake.calls[1].env[CONFIG_ENV]).toBe(toRootRelativeGlob(config, process.cwd()));
+  });
+});
+
+describe('unreportedFailures (docs-qa F2)', () => {
+  const options = { cwd: path.resolve('proj'), strict: false };
+  const file = (name: string) => path.join(options.cwd, name);
+
+  it('adds an error per vitest-failed file no eval case reported, naming the load error or failing tests', () => {
+    const report = {
+      testResults: [
+        { name: file('broken.eval.ts'), status: 'failed', message: 'fixture failed to load', assertionResults: [] },
+        { name: file('plain.eval.ts'), status: 'failed', message: '', assertionResults: [{ fullName: 'raw test', status: 'failed', failureMessages: ['boom'] }] },
+        { name: file('reported.eval.ts'), status: 'failed', message: '', assertionResults: [] },
+        { name: file('ok.eval.ts'), status: 'passed', assertionResults: [] },
+      ],
+    };
+    const failed = result({ passed: false, file: file('reported.eval.ts'), error: 'x' });
+    const extra = unreportedFailures([failed], report, 1, options);
+    expect(extra.map((r) => [r.name, r.case, r.error])).toEqual([
+      ['vitest', 'broken.eval.ts', 'fixture failed to load'],
+      ['vitest', 'plain.eval.ts', 'raw test: boom'],
+    ]);
+    expect(renderJunit(extra, false)).toContain('<error message="fixture failed to load" type="EvalError">');
+  });
+
+  it('falls back to one error for the run when vitest failed with nothing failing and no report', () => {
+    expect(unreportedFailures([result({})], undefined, 1, options)).toEqual([
+      expect.objectContaining({ name: 'vitest', case: 'run', passed: false, error: expect.stringContaining('vitest exited with code 1') }),
+    ]);
+    expect(unreportedFailures([result({ passed: false })], undefined, 1, options)).toEqual([]);
+    expect(unreportedFailures([], undefined, 0, options)).toEqual([]);
+  });
+
+  it('writes the fallback error into the reports of a crashed run instead of empty ones', async () => {
+    const junit = tempFile('junit.xml');
+    const code = await runEval(['--junit', junit], { resolveVitest: () => 'v', spawnVitest: fakeVitest([], 1).spawnVitest, log: () => {} });
+    expect(code).toBe(1);
+    expect(fs.readFileSync(junit, 'utf8')).toContain('<testsuites name="lousho eval" tests="1" failures="0" errors="1"');
+  });
+});
+
+describe('lousho eval failures vitest reports itself (real vitest)', () => {
+  const quietVitest = createVitestSpawner('ignore');
+  const cli = (args: string[]) => {
+    const log = vi.fn();
+    return runEval(args, { log, spawnVitest: quietVitest }).then((code) => ({ code, output: log.mock.calls.map((c) => String(c[0])).join('\n') }));
+  };
+
+  it('a case past its defineEval timeoutMs is an <error> naming the timeout and how to raise it', async () => {
+    const junit = tempFile('junit.xml');
+    const { code } = await cli([path.join(FIXTURES, 'slow.eval.ts'), '--junit', junit]);
+    expect(code).toBe(1);
+    const xml = fs.readFileSync(junit, 'utf8');
+    expect(xml).toContain('<testsuite name="slow flow" tests="1" failures="0" errors="1"');
+    expect(xml).toMatch(/<error message="Test timed out in 200ms\.[^"]*Raise the limit with defineEval\(\{ timeoutMs \}\) or lousho eval --timeout &lt;ms&gt;\."/);
+  }, 60_000);
+
+  it('a file that fails to load is an <error> for that file', async () => {
+    const junit = tempFile('junit.xml');
+    const json = tempFile('results.json');
+    const { code } = await cli([path.join(FIXTURES, 'load-error.eval.ts'), path.join(FIXTURES, 'refund.eval.ts'), '--junit', junit, '--json', json]);
+    expect(code).toBe(1);
+    expect(fs.readFileSync(junit, 'utf8')).toMatch(/<testcase classname="vitest" name="[^"]*load-error\.eval\.ts"[^>]*>\s*<error message="fixture failed to load"/);
+    const parsed = JSON.parse(fs.readFileSync(json, 'utf8')) as { summary: { failed: number; total: number } };
+    expect(parsed.summary).toMatchObject({ total: 4, failed: 1 });
+  }, 60_000);
+});
+
+describe('lousho eval --record with labels that truncate alike (docs-qa F3)', () => {
+  const fixture = path.join(FIXTURES, 'collide.eval.ts');
+  const cassettes = path.join(FIXTURES, '__cassettes__', 'slug-collision');
+  const quietVitest = createVitestSpawner('ignore');
+  const clean = () => fs.rmSync(cassettes, { recursive: true, force: true });
+  beforeAll(clean);
+  afterAll(clean);
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('records one cassette per case and replays both', async () => {
+    expect(await runEval([fixture, '--record'], { log: () => {}, spawnVitest: quietVitest })).toBe(0);
+    expect(fs.readdirSync(cassettes)).toHaveLength(2);
+    vi.stubEnv('FIXTURE_PROVIDER', 'offline');
+    expect(await runEval([fixture, '--replay'], { log: () => {}, spawnVitest: quietVitest })).toBe(0);
+  }, 60_000);
 });
