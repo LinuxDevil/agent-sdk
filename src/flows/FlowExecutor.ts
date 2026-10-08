@@ -229,6 +229,40 @@ type NodeHandler<N extends ExecutableNode = ExecutableNode> = (
 /** One handler per node type, each typed with its own node shape. */
 type NodeHandlers = { [T in ExecutableNode['type']]: NodeHandler<Extract<ExecutableNode, { type: T }>> };
 
+/**
+ * DUR-F1: the scope objects of `forEach` iterations. Each iteration runs with
+ * its own variables object whose prototype is the enclosing scope, holding
+ * only the loop's item/index variables, so parallel branches and iterations
+ * never overwrite each other's `{{item}}`. Reads fall through to the enclosing
+ * scope; writes of any other name go to the nearest scope that owns it (the
+ * flow's variables, unless an outer loop declared it), as before.
+ */
+const loopScopes = new WeakSet<Record<string, unknown>>();
+
+/** A new iteration scope over `parent` with the given loop variables. */
+function loopScope(parent: Record<string, unknown>, locals: Record<string, unknown>): Record<string, unknown> {
+  const scope = Object.assign(Object.create(parent) as Record<string, unknown>, locals);
+  loopScopes.add(scope);
+  return scope;
+}
+
+/** Write a variable to the scope that owns it (see {@link loopScopes}). */
+function writeVariable(variables: Record<string, unknown>, name: string, value: unknown): void {
+  let target = variables;
+  while (loopScopes.has(target) && !Object.hasOwn(target, name)) {
+    target = Object.getPrototypeOf(target) as Record<string, unknown>;
+  }
+  target[name] = value;
+}
+
+/** A plain object of every variable visible in a scope, for the expression evaluator (own properties only). */
+function flattenScope(variables: Record<string, unknown>): Record<string, unknown> {
+  if (!loopScopes.has(variables)) {
+    return variables;
+  }
+  return { ...flattenScope(Object.getPrototypeOf(variables) as Record<string, unknown>), ...variables };
+}
+
 /** A8: the number of step ids handed out so far in each run, keyed by the run's event list. */
 const stepCounts = new WeakMap<FlowExecutionEvent[], number>();
 
@@ -639,9 +673,9 @@ export class FlowExecutor {
     const results: unknown[] = [];
 
     for (let i = 0; i < items.length; i++) {
-      // Set loop variables in the current context
-      context.variables[itemVar] = items[i];
-      context.variables[indexVar] = i;
+      // DUR-F1: the loop variables live in this iteration's own scope, not the
+      // shared variables, so a parallel sibling cannot overwrite them.
+      const variables = loopScope(context.variables, { [itemVar]: items[i], [indexVar]: i });
 
       // Emit loop iteration event
       emitEvent(events, onEvent, {
@@ -650,9 +684,9 @@ export class FlowExecutor {
         data: { item: items[i], index: i },
       });
 
-      // Execute step with updated context
+      // Execute step with the iteration's scope
       if (node.step) {
-        const result = await this.executeNode(node.step, this.childContext(context), events, onEvent);
+        const result = await this.executeNode(node.step, { ...this.childContext(context), variables }, events, onEvent);
         results.push(result);
       }
     }
@@ -692,7 +726,7 @@ export class FlowExecutor {
       return;
     }
 
-    context.variables[node.outputVariable] = value;
+    writeVariable(context.variables, node.outputVariable, value);
 
     emitEvent(events, onEvent, {
       type: 'variable-set',
@@ -909,7 +943,7 @@ export class FlowExecutor {
     const variableName = node.variable || '';
     const value = this.resolveValue(node.value, context.variables);
 
-    context.variables[variableName] = value;
+    writeVariable(context.variables, variableName, value);
 
     emitEvent(events, onEvent, {
       type: 'variable-set',
@@ -994,7 +1028,7 @@ export class FlowExecutor {
       // Evaluate with the safe expression evaluator (./safeExpression), which
       // binds {{vars}} as values. Invalid/unsupported syntax is a failed
       // condition (false), exactly as a throwing eval() was before.
-      return !!evaluateSafeExpression(condition, variables, { bindPlaceholders: true });
+      return !!evaluateSafeExpression(condition, flattenScope(variables), { bindPlaceholders: true });
     } catch {
       return false;
     }
@@ -1005,7 +1039,7 @@ export class FlowExecutor {
    */
   private static evaluateExpression(expression: string, variables: Record<string, unknown>): unknown {
     try {
-      return evaluateSafeExpression(expression, variables, { bindPlaceholders: true });
+      return evaluateSafeExpression(expression, flattenScope(variables), { bindPlaceholders: true });
     } catch (error) {
       const detail = error instanceof ExpressionError ? ` (${error.message})` : '';
       throw new SDKError(`Failed to evaluate expression: ${expression}${detail}`, 'LOUSHO_FLOW_EXECUTION_FAILED');
