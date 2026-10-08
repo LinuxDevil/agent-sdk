@@ -9,6 +9,7 @@
 import type { McpToolAnnotations, NamedToolDescriptor, ToolDescriptor } from '../../types';
 import { noopLogger, type Logger } from '../../execution/logger';
 import { handleCallToolResult } from './result';
+import { z, type ZodTypeAny } from 'zod';
 import { jsonSchemaToZod } from './schema';
 import { toolDescriptorFromSchema } from '../toolContract';
 
@@ -229,6 +230,15 @@ function callOptions(signal: AbortSignal | undefined, timeoutMs: number | undefi
   return { ...(signal && { signal }), ...(timeoutMs !== undefined && { timeout: timeoutMs }) };
 }
 
+/**
+ * Providers require a tool's argument schema to be an object. A root that
+ * converts to anything else (a union, `z.any()`) becomes a passthrough
+ * object so the tool still loads and the server validates (Eve TOOLS-F4).
+ */
+function objectRoot(schema: ZodTypeAny): ZodTypeAny {
+  return schema instanceof z.ZodObject ? schema : z.object({}).passthrough();
+}
+
 function buildDescriptor(
   client: McpClientLike,
   rawTool: RawMcpTool,
@@ -239,7 +249,7 @@ function buildDescriptor(
   return toolDescriptorFromSchema({
     displayName: rawTool.annotations?.title || rawTool.description || rawTool.name,
     description: rawTool.description || '',
-    inputSchema: jsonSchemaToZod(rawTool.inputSchema),
+    inputSchema: objectRoot(jsonSchemaToZod(rawTool.inputSchema)),
     needsApproval: needsApproval(approval, rawTool.name, rawTool.annotations),
     metadata: { mcp: { annotations: rawTool.annotations, server, tool: rawTool.name } },
     execute: async (args, ctx) =>

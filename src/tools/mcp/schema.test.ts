@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { z } from 'zod';
 import { jsonSchemaToZod } from './schema';
 
 describe('jsonSchemaToZod', () => {
@@ -143,6 +144,34 @@ describe('jsonSchemaToZod (LOU-Z1 features)', () => {
       expect(accepts(schema, 2)).toBe(true);
       expect(accepts(schema, true)).toBe(false);
     }
+  });
+
+  it('Eve TOOLS-F4: keeps an object schema whose sibling oneOf/anyOf only adds required branches', () => {
+    const base = {
+      type: 'object',
+      properties: { owner: { type: 'string' }, repo: { type: 'string' }, issue_number: { type: 'integer' }, title: { type: 'string' } },
+      required: ['owner', 'repo'],
+    };
+    for (const key of ['oneOf', 'anyOf']) {
+      const zodSchema = jsonSchemaToZod({ ...base, [key]: [{ required: ['issue_number'] }, { required: ['title'] }] });
+      expect(zodSchema).toBeInstanceOf(z.ZodObject);
+      expect(Object.keys((zodSchema as z.AnyZodObject).shape)).toEqual(['owner', 'repo', 'issue_number', 'title']);
+      expect(zodSchema.safeParse({ owner: 'o', repo: 'r', issue_number: 1 }).success).toBe(true);
+      expect(zodSchema.safeParse({ owner: 42, bogus: 1 }).success).toBe(false);
+      expect(zodSchema.safeParse({}).success).toBe(false);
+    }
+  });
+
+  it('Eve TOOLS-F4: keeps the base object when sibling branches are full object schemas', () => {
+    const zodSchema = jsonSchemaToZod({
+      type: 'object',
+      properties: { kind: { type: 'string' } },
+      required: ['kind'],
+      anyOf: [{ type: 'object', properties: { a: { type: 'string' } } }, { type: 'object', properties: { b: { type: 'number' } } }],
+    });
+    expect(zodSchema).toBeInstanceOf(z.ZodObject);
+    expect(zodSchema.safeParse({ kind: 'x' }).success).toBe(true);
+    expect(zodSchema.safeParse({}).success).toBe(false);
   });
 
   it('converts type arrays, including null', () => {

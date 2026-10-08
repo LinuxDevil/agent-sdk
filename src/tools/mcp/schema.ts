@@ -33,7 +33,8 @@ const MAX_DEPTH = 64;
  *
  * Supported: `type` (string or array of types, including `null`), `enum`
  * (mixed types), `const`, `anyOf` / `oneOf` (union; `[X, {type:'null'}]`
- * becomes `X.nullable()`), `allOf` (merge / intersection), local `$ref` into
+ * becomes `X.nullable()`; next to an object's own `type` / `properties` the
+ * branches are ignored and the object is kept), `allOf` (merge / intersection), local `$ref` into
  * `$defs` / `definitions` (a recursive ref falls back to `z.any()` for the
  * inner occurrence), `properties` / `required`, `additionalProperties`
  * (boolean or schema), `items`, `default`, `description`, and the
@@ -76,8 +77,28 @@ function convertKeywords(schema: JsonSchema, ctx: Context): ZodTypeAny {
   if (Array.isArray(schema.enum)) return convertEnum(schema.enum);
   if (Array.isArray(schema.allOf)) return convertAllOf(schema, ctx);
   const variants = schema.anyOf ?? schema.oneOf;
-  if (Array.isArray(variants)) return convertUnion(variants, ctx);
+  if (Array.isArray(variants)) {
+    if (isObjectBase(schema)) return convertObjectWithSiblingUnion(schema, ctx);
+    return convertUnion(variants, ctx);
+  }
   return withDefault(convertTyped(schema, ctx), schema);
+}
+
+/** `type: 'object'` or `properties` next to the keyword: the schema is an object. */
+function isObjectBase(schema: JsonSchema): boolean {
+  return schema.type === 'object' || isRecord(schema.properties);
+}
+
+/**
+ * An object schema with a sibling `anyOf` / `oneOf` (often required-only
+ * branches like `oneOf: [{ required: ['id'] }, { required: ['title'] }]`)
+ * keeps its object shape; the branches are left to the server to enforce.
+ * Converting them to a union would turn the root into `anyOf: [{}, {}]`,
+ * which providers reject (Eve TOOLS-F4).
+ */
+function convertObjectWithSiblingUnion(schema: JsonSchema, ctx: Context): ZodTypeAny {
+  const { anyOf: _anyOf, oneOf: _oneOf, ...base } = schema;
+  return withDefault(convertTyped(base, ctx), base);
 }
 
 function applyDescription(zodType: ZodTypeAny, schema: JsonSchema): ZodTypeAny {
