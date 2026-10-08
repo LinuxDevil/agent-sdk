@@ -993,9 +993,9 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-BqTwKVm6.d.ts:768:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point hooks.d.ts
-// dist/createAgent-BqTwKVm6.d.ts:785:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point hooks.d.ts
-// dist/createAgent-BqTwKVm6.d.ts:1146:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point hooks.d.ts
+// dist/createAgent-WYk2TmSx.d.ts:768:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point hooks.d.ts
+// dist/createAgent-WYk2TmSx.d.ts:785:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point hooks.d.ts
+// dist/createAgent-WYk2TmSx.d.ts:1146:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point hooks.d.ts
 // dist/index-EAdyYObH.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point hooks.d.ts
 // dist/index-EAdyYObH.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point hooks.d.ts
 // dist/index-EAdyYObH.d.ts:1442:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point hooks.d.ts
