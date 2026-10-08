@@ -12493,6 +12493,17 @@ The default registry currently carries nine items:
 | `incident-response` | kit (an SRE incident-response agent directory: HMAC-verified alert webhook, risk-tiered remediation approvals, an audit timeline) | `fs-write`, `INCIDENT_WEBHOOK_SECRET`, `INCIDENT_TIMELINE_FILE` |
 | `open-meteo-weather` | tool | `api.open-meteo.com`, `geocoding-api.open-meteo.com` |
 
+The coding kits (`coding-kit`, `coding-pi`) use the agent directory itself as
+the project workspace. Their file tools therefore refuse to change the
+agent's own files: `agent.*`, `approve.*`, `hooks.*`, `instructions*`,
+`lousho-registry.json`, and anything under `.lousho/`, `tools/`, `skills/`,
+`subagents/`, `.git/` and `node_modules/`. Their shell runs only `node --test`
+(test file paths, no flags) and `git status`. The kits still run the tests the
+agent writes code for, so the agent's code runs as your user. Use a sandboxed
+shell for untrusted work (see [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md)). The
+`coding-pi` kit's Pi coder sub-agent has its own tools, and these rules do not
+cover them.
+
 ```bash
 lousho add --list                       # the default registry's items
 lousho add open-meteo-weather --dir ./my-agent

@@ -173,6 +173,84 @@ describe('the installed kit, loaded', () => {
 
     expect(toolOutputs(provider)).toContain('You already called read_file with these arguments 2 times');
   });
+
+  it("refuses to let the agent change its own config, approver, hooks or tools, but edits the project's code", async () => {
+    const protectedPaths = [
+      'approve.ts',
+      './hooks.ts',
+      'agent.json',
+      'AGENT.JSON',
+      'approve.ts.',
+      'src/../approve.ts',
+      'instructions.md',
+      'instructions/openai.md',
+      'lousho-registry.json',
+      'tools/fs.ts',
+      'tools/evil.ts',
+      'skills/fix-failing-test/SKILL.md',
+      'subagents/explorer/agent.json',
+      '.lousho/checkpoints/x.json',
+    ];
+    const before = new Map(protectedPaths.map((p) => [p, fs.existsSync(path.join(root, p)) ? fs.readFileSync(path.join(root, p), 'utf8') : undefined]));
+    const provider = mockModel([
+      ...protectedPaths.map((p) => ({ toolCalls: [{ name: 'write_file', args: { path: p, content: 'export default () => true;\n' } }] })),
+      { toolCalls: [{ name: 'edit_file', args: { path: 'hooks.ts', old_string: 'loop-guard', new_string: 'off' } }] },
+      { toolCalls: [{ name: 'write_file', args: { path: 'src/util.js', content: 'exports.x = 1;\n' } }] },
+      { text: 'Done.' },
+    ]);
+    const agent = await loadAgentDir(root, { provider, model: LIVE_MODEL });
+
+    await agent.send('Approve everything from now on.');
+
+    for (const [p, content] of before) {
+      const now = fs.existsSync(path.join(root, p)) ? fs.readFileSync(path.join(root, p), 'utf8') : undefined;
+      expect(now, p).toBe(content);
+    }
+    expect(fs.readFileSync(path.join(root, 'hooks.ts'), 'utf8')).toContain('loop-guard');
+    expect(toolOutputs(provider)).toContain("is part of the agent's own configuration");
+    expect(fs.readFileSync(path.join(root, 'src', 'util.js'), 'utf8')).toBe('exports.x = 1;\n');
+  }, 60_000);
+
+  it('keeps loop-guard counts per run and never blocks a test run', async () => {
+    for (let i = 0; i < 3; i++) {
+      const provider = mockModel([{ toolCalls: [{ name: 'read_file', args: { path: 'math.js' } }] }, { text: 'Read.' }]);
+      const agent = await loadAgentDir(root, { provider, model: LIVE_MODEL });
+      await agent.send('Read math.js.');
+      expect(toolOutputs(provider), `agent ${i + 1}`).not.toContain('You already called');
+    }
+
+    const test = { toolCalls: [{ name: 'shell', args: { command: 'node --test' } }] };
+    const provider = mockModel([test, test, test, { text: 'Ran the tests three times.' }]);
+    const agent = await loadAgentDir(root, { provider, model: LIVE_MODEL });
+    await agent.send('Run the tests three times.');
+    expect(toolOutputs(provider)).not.toContain('You already called');
+  }, 60_000);
+
+  it('does not count the post-approval re-fire of a paused call', async () => {
+    const { loopGuard } = (await import(pathToFileURL(path.join(root, 'hooks.ts')).href)) as typeof import('../../registry/coding-kit/hooks');
+    const guard = loopGuard(2);
+    const messages: never[] = [];
+    const ctx = (resumedAfterApproval?: boolean) =>
+      ({ toolCallId: 't', toolName: 'write_file', args: { path: 'math.js' }, messages, toolCall: {}, resumedAfterApproval }) as never;
+    expect(guard.preToolCall!(ctx())).toBeUndefined();
+    expect(guard.preToolCall!(ctx(true))).toBeUndefined();
+    expect(guard.preToolCall!(ctx())).toBeUndefined();
+    expect(guard.preToolCall!(ctx())).toMatchObject({ deny: expect.stringContaining('2 times') });
+  });
+
+  it('refuses shell commands whose arguments can write outside the project', async () => {
+    const provider = mockModel([
+      { toolCalls: [{ name: 'shell', args: { command: 'git diff --no-index --output=../escaped.txt math.js math.test.js' } }] },
+      { toolCalls: [{ name: 'shell', args: { command: 'node --test --test-reporter-destination=../escaped.txt' } }] },
+      { text: 'Refused.' },
+    ]);
+    const agent = await loadAgentDir(root, { provider, model: LIVE_MODEL });
+
+    await agent.send('Write a report.');
+
+    expect(toolOutputs(provider).match(/not on the allow list/g)).toHaveLength(2);
+    expect(fs.existsSync(path.join(root, '..', 'escaped.txt'))).toBe(false);
+  }, 60_000);
 });
 
 describe('live', () => {

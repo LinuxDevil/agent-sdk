@@ -1,4 +1,4 @@
-import type { AgentHook } from '@lousho/build-ai-agent';
+import type { AgentHook, Message } from '@lousho/build-ai-agent';
 
 /**
  * The kit's hooks (pointed at by `agent.json`'s `hooks`): a loop guard that
@@ -7,13 +7,26 @@ import type { AgentHook } from '@lousho/build-ai-agent';
  * Ported from examples/coding-harness/index.ts.
  */
 
-/** Deny a tool call the model already made `maxRepeats` times with the same arguments. */
+/** Test runs are expected to repeat (before and after every change), so the loop guard lets them through. */
+const TEST_COMMAND = /^\s*node --test\b/;
+
+/**
+ * Deny a tool call the model already made `maxRepeats` times with the same
+ * arguments in the same run. Counts are kept per run (keyed by the run's
+ * message list), so separate runs and separately loaded agents never share
+ * them; test commands and the post-approval re-fire of a paused call are not
+ * counted.
+ */
 export function loopGuard(maxRepeats = 2): AgentHook {
-  const seen = new Map<string, number>();
+  const runs = new WeakMap<Message[], Map<string, number>>();
   return {
     name: 'loop-guard',
     preToolCall(ctx) {
-      const key = `${ctx.sessionId ?? ''}:${ctx.toolName}:${JSON.stringify(ctx.args)}`;
+      if (ctx.resumedAfterApproval) return undefined;
+      if (ctx.toolName === 'shell' && TEST_COMMAND.test(String(ctx.args.command ?? ''))) return undefined;
+      let seen = runs.get(ctx.messages);
+      if (!seen) runs.set(ctx.messages, (seen = new Map()));
+      const key = `${ctx.toolName}:${JSON.stringify(ctx.args)}`;
       const count = (seen.get(key) ?? 0) + 1;
       seen.set(key, count);
       if (count > maxRepeats) {

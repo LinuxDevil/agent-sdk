@@ -31,6 +31,7 @@ import {
   WorkspaceCheckpoints,
   type AgentHook,
   type LLMProvider,
+  type Message,
 } from '../../src';
 import { mockModel } from '../../src/testing';
 
@@ -63,13 +64,19 @@ export function instructionsFor(model: string): string {
 }
 
 // 5a. Loop guard: deny a tool call the model already made twice with the same arguments.
-//     Crush, Cline and Gemini CLI all ship a version of this.
+//     Crush, Cline and Gemini CLI all ship a version of this. Counts are per run
+//     (keyed by the run's message list); test runs and the post-approval
+//     re-fire of a paused call are not counted.
 function loopGuard(maxRepeats = 2): AgentHook {
-  const seen = new Map<string, number>();
+  const runs = new WeakMap<Message[], Map<string, number>>();
   return {
     name: 'loop-guard',
     preToolCall(ctx) {
-      const key = `${ctx.sessionId ?? ''}:${ctx.toolName}:${JSON.stringify(ctx.args)}`;
+      if (ctx.resumedAfterApproval) return undefined;
+      if (ctx.toolName === 'shell' && /^\s*node --test\b/.test(String(ctx.args.command ?? ''))) return undefined;
+      let seen = runs.get(ctx.messages);
+      if (!seen) runs.set(ctx.messages, (seen = new Map()));
+      const key = `${ctx.toolName}:${JSON.stringify(ctx.args)}`;
       const count = (seen.get(key) ?? 0) + 1;
       seen.set(key, count);
       if (count > maxRepeats) {
@@ -126,10 +133,12 @@ export function createCodingHarness(options: CodingHarnessOptions) {
   const fsTools = createFsTools(workspace, { checkpoints });
   const readOnlyTools = fsTools.filter((tool) => ['read_file', 'list_dir', 'glob', 'grep'].includes(tool.name));
 
-  // 3. A shell that only runs the commands the harness needs.
+  // 3. A shell that only runs the commands the harness needs. `node --test` takes
+  //    test file paths but no flags (`--test-reporter-destination=../x` writes
+  //    outside the project); `git diff` is left out (`--output=<file>` writes anywhere).
   const shell = createShellTool(workspace, {
     needsApproval: false,
-    allow: ['node --test', 'git status', 'git diff'],
+    allow: [/^node --test( (?!-)(?![^ ]*\.\.)[\w./-]+)*$/, /^git status( (-s|--short|--porcelain))?$/],
   });
 
   // 8. A read-only explorer the lead can hand a question to, in a clean context.
