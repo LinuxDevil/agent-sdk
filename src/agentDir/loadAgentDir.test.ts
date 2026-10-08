@@ -165,10 +165,14 @@ describe('loadAgentDir', () => {
     expect(systemOf(first)).not.toContain('Bump the version');
     expect(first.tools?.map((t) => t.function.name).sort()).toEqual([
       'add',
+      'agent_await',
+      'agent_cancel',
+      'agent_status',
       'delegate_to_researcher',
       'double',
       'echo',
       'load_skill',
+      'task',
     ]);
     const outputs = toolMessages(model.calls[1]).join('\n');
     expect(outputs).toContain('echo: hi');

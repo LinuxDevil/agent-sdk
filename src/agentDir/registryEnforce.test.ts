@@ -366,15 +366,18 @@ describe('loadAgentDir receipt enforcement', () => {
         .map((m) => JSON.stringify(m.content))
         .join('\n');
 
-    it("pauses the sub-agent's call despite its own approver, and tells the lead why", async () => {
+    it("pauses the lead on the sub-agent's call despite the sub-agent's own approver (Eve MA-F5)", async () => {
       const model = delegation();
       const agent = await loadAgentDir(kitWithExplorer(), { provider: model });
       const result = await agent.send('go');
 
-      expect(result.finishReason).toBe('stop');
-      expect(model.calls).toHaveLength(3); // lead, explorer (paused), lead
-      expect(toolOutputs(model)).toContain("The 'explorer' agent stopped: one of its tool calls needs approval");
-      expect(toolOutputs(model)).not.toContain('read-ran');
+      expect(result.finishReason).toBe('awaiting-approval');
+      expect(model.calls).toHaveLength(2); // lead, explorer (paused)
+      expect(await agent.approvals.get(result.approvalId!)).toMatchObject({ toolName: 'read', subagentPath: ['explorer'] });
+
+      const resumed = await agent.approvals.resolve({ id: result.approvalId!, approved: true });
+      expect(resumed.text).toBe('Lead done.');
+      expect(toolOutputs(model)).toContain('Explorer done.');
     });
 
     it('lets the approver the host passes in code decide the sub-agent call', async () => {
