@@ -252,7 +252,7 @@ async function startSlackInteractionsServer(
  */
 export async function startOpsPipeline(deps: OpsPipelineDeps = {}): Promise<OpsPipelineHandle> {
   const provider = deps.provider ?? createDemoProvider();
-  const githubCreatePrTool = deps.githubCreatePrTool ?? createMockGithubTool().tool;
+  const githubCreatePrTool = deps.githubCreatePrTool ?? createMockGithubTool({ log: (m) => console.log(m) }).tool;
   const slackTool = deps.slackTool ?? createMockSlackTool().tool;
   const approvalStore = deps.approvalStore ?? createInMemoryApprovalStore();
   const channel = deps.channel ?? DEFAULT_CHANNEL;
@@ -303,7 +303,10 @@ export async function startOpsPipeline(deps: OpsPipelineDeps = {}): Promise<OpsP
  * covers the case where it was invoked through a symlink.
  */
 if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
-  startOpsPipeline()
+  startOpsPipeline({
+    monitorPort: Number(process.env.MONITOR_PORT ?? 8787),
+    slackPort: Number(process.env.SLACK_PORT ?? 8788),
+  })
     .then((handle) => {
       console.log(`ops-pipeline demo is running (mock tools, no external calls):`);
       console.log(`  monitor webhook:       POST http://127.0.0.1:${handle.monitor.port}/webhook`);
