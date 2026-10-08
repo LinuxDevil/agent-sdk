@@ -13,7 +13,7 @@ import { lazyValue } from '../../providers/optionalPeer';
 import { connectMcp, type McpConnections } from './connect';
 import { assertMcpOAuth, completeMcpSignIn, hasMcpOAuth, mcpStoreMissing, startMcpSignIn, type McpOAuthServerSpec } from './mcpOAuth';
 
-/** An agent's MCP servers: connected once by `ready()`, disconnected by `close()`. */
+/** An agent's MCP servers: connected by `ready()` (again after a `close()`), disconnected by `close()`. */
 export interface AgentMcp {
   ready(): Promise<void>;
   close(): Promise<void>;
@@ -65,12 +65,20 @@ export function agentMcp(
     return connections;
   });
   let latest: Promise<McpConnections> | undefined;
+  let closed = false;
+  // After close(), the next ready() reconnects the servers (their tools stay registered).
   const ready = async () => {
-    await (latest = connect());
+    const connections = await (latest = connect());
+    if (!closed) return;
+    closed = false;
+    await connections.reconnect();
   };
   // Closes what the latest ready() opened; never starts a connection.
   const close = async () => {
-    await (await latest?.catch(() => undefined))?.close();
+    const connections = await latest?.catch(() => undefined);
+    if (!connections) return;
+    closed = true;
+    await connections.close();
   };
   return { ready, close, ...(oauth && { oauth }) };
 }
