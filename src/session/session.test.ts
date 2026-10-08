@@ -129,6 +129,70 @@ describe('AgentSession', () => {
     expect((await inner.load('shared'))!.map((m) => m.content)).toEqual(['second', 'fast answer']);
   });
 
+  // Eve DUR-F3: a session object cached its transcript after the first read, so once another object committed a turn it
+  // stayed stale forever: load() returned the old transcript and every send() failed LOUSHO_SESSION_BUSY.
+  it('a session object sees turns another object committed, and keeps sending (sequential use)', async () => {
+    const agent = createAgent({ provider: mockModel([(r) => `ack ${String(r.messages.at(-1)?.content)}`], { onExhausted: 'repeat-last' }) });
+    const store = new MemorySessionStore();
+    const tabA = agent.session({ id: 'user-1', store });
+    const tabB = agent.session({ id: 'user-1', store });
+    await tabB.load();
+
+    await tabA.send('hello from A');
+    expect((await tabB.load()).map((m) => m.content)).toEqual(['hello from A', 'ack hello from A']);
+    await tabA.send('again from A');
+    expect(await tabB.history()).toHaveLength(2);
+
+    const result = await tabB.send('hello from B');
+    expect(result.text).toBe('ack hello from B');
+    expect((await store.load('user-1'))!.map((m) => m.content)).toEqual([
+      'hello from A',
+      'ack hello from A',
+      'again from A',
+      'ack again from A',
+      'hello from B',
+      'ack hello from B',
+    ]);
+    expect(tabB.messages).toHaveLength(6);
+  });
+
+  it('a turn that loses the commit race keeps the tool calls that ran, then fails LOUSHO_SESSION_BUSY', async () => {
+    const inner = new MemorySessionStore();
+    const wrap = (): SessionStore => ({
+      load: (id) => inner.load(id),
+      save: (id, messages) => inner.save(id, messages),
+      delete: (id) => inner.delete(id),
+    });
+    let emails = 0;
+    const sendEmail = defineTool({
+      name: 'send_email',
+      description: 'send email',
+      input: z.object({}),
+      execute: async () => {
+        emails++;
+        // Another process commits a turn while this one's tool runs.
+        await agent.session({ id: 'u2', store: wrap() }).send('hi');
+        return 'sent';
+      },
+    });
+    const reply = (r: MockRequest) => {
+      const last = r.messages.at(-1);
+      if (last?.role === 'tool') return 'Email sent.';
+      return String(last?.content).includes('email') ? { toolCalls: [{ name: 'send_email', id: 'call_1', args: {} }] } : 'hello';
+    };
+    const agent = createAgent({ provider: mockModel([reply], { onExhausted: 'repeat-last' }), tools: [sendEmail] });
+
+    await expect(agent.session({ id: 'u2', store: wrap() }).send('email my boss')).rejects.toMatchObject({ code: 'LOUSHO_SESSION_BUSY' });
+
+    expect(emails).toBe(1);
+    const stored = (await inner.load('u2'))!;
+    // The other writer's turn, then this turn up to the tool result: the email that was sent is in the transcript.
+    expect(stored.map((m) => m.role)).toEqual(['user', 'assistant', 'user', 'assistant', 'tool']);
+    expect(stored.map((m) => m.content).slice(0, 3)).toEqual(['hi', 'hello', 'email my boss']);
+    expect(stored[4]).toMatchObject({ role: 'tool', toolCallId: 'call_1' });
+    expect(providerValidPrefix(stored)).toHaveLength(stored.length);
+  });
+
   it('keeps the queue alive after a failed send', async () => {
     const model = mockModel([{ error: new Error('boom') }, 'fine']);
     const session = createAgent({ provider: model }).session();
