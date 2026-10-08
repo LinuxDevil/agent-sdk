@@ -18,6 +18,7 @@ import type { ModelInfo } from './registry';
  */
 export const BUILT_IN_MODELS: readonly ModelInfo[] = [
   { id: 'gpt-4o', provider: 'openai', contextWindow: 128000, maxOutputTokens: 16384, inputCostPerMTok: 2.5, outputCostPerMTok: 10 },
+  { id: 'gpt-4o-2024-05-13', provider: 'openai', contextWindow: 128000, maxOutputTokens: 4096, inputCostPerMTok: 5, outputCostPerMTok: 15 },
   { id: 'gpt-4o-mini', provider: 'openai', contextWindow: 128000, maxOutputTokens: 16384, inputCostPerMTok: 0.15, outputCostPerMTok: 0.6 },
   { id: 'gpt-4.1', provider: 'openai', contextWindow: 1047576, maxOutputTokens: 32768, inputCostPerMTok: 2, outputCostPerMTok: 8 },
   { id: 'gpt-4.1-mini', provider: 'openai', contextWindow: 1000000, maxOutputTokens: 32768, inputCostPerMTok: 0.4, outputCostPerMTok: 1.6 },

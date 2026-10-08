@@ -57,23 +57,37 @@ export function registerModel(info: ModelInfo): void {
   registry.set(info.id, { ...info });
 }
 
-/** A snapshot/tag suffix: `-2024-07-18`, `-20251001`, `-latest`, `:8b`, `@20251001`. */
-const SNAPSHOT_SUFFIX = /^([:@]|-(\d|latest))/;
+/**
+ * A snapshot/tag suffix: a date (`-2024-07-18`, `-20251001`, `-0613`), `-latest`,
+ * or a `:tag` / `@version`. A bare `-7b-instruct` or `-5` names a different
+ * model, not a snapshot of this one.
+ */
+const SNAPSHOT_SUFFIX = /^([:@]|-latest|-\d{4}-\d{2}-\d{2}(?!\d)|-\d{8}(?!\d)|-\d{4}(?!\d))/;
+
+/** A model id with version dots written as dashes, so `claude-haiku-4.5` (OpenRouter) and `claude-haiku-4-5` (Anthropic) are one key. */
+const canonical = (id: string): string => id.toLowerCase().replace(/(\d)\.(?=\d)/g, '$1-');
 
 function lookupExactOrPrefix(id: string): ModelInfo | undefined {
   const exact = registry.get(id);
   if (exact) return exact;
+  const wanted = canonical(id);
   let best: ModelInfo | undefined;
+  let bestLength = -1;
   for (const info of registry.values()) {
-    const isSnapshot = id.startsWith(info.id) && SNAPSHOT_SUFFIX.test(id.slice(info.id.length));
-    if (isSnapshot && (!best || info.id.length > best.id.length)) best = info;
+    const key = canonical(info.id);
+    const matches = wanted === key || (wanted.startsWith(key) && SNAPSHOT_SUFFIX.test(wanted.slice(key.length)));
+    if (matches && key.length > bestLength) {
+      best = info;
+      bestLength = key.length;
+    }
   }
   return best;
 }
 
 /**
- * Look up a model. Matching order: exact id, then the longest registered id
- * the given id is a snapshot of (so `gpt-4o-mini-2024-07-18` resolves to
+ * Look up a model. Matching order: exact id (`.` and `-` between version digits
+ * are the same, so `claude-haiku-4.5` finds `claude-haiku-4-5`), then the longest registered id
+ * the given id is a dated snapshot of (so `gpt-4o-mini-2024-07-18` resolves to
  * `gpt-4o-mini`, but `o3-mini` does not resolve to `o3`), each also tried
  * without a `provider/` prefix (as in `resolveProvider('openai/gpt-4o-mini')`).
  * Returns `undefined` for unknown models.
