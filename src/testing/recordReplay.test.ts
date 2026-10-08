@@ -144,6 +144,19 @@ describe('recordReplay mismatches', () => {
     expect(error.message).toContain('LOUSHO_RECORD=1');
   });
 
+  it('uses rerecordHint instead of the default hint when given', async () => {
+    await record(['a'], [ask('one')]);
+    const replay = recordReplay(undefined, { cassette: file, mode: 'replay', rerecordHint: 'Run npm run record.' });
+    const mismatch = await replay.generate(ask('two')).catch((e) => e);
+    const again = recordReplay(undefined, { cassette: file, mode: 'replay', rerecordHint: 'Run npm run record.' });
+    await again.generate(ask('one'));
+    const exhausted = await again.generate(ask('one')).catch((e) => e);
+    expect(mismatch.message).toContain('Run npm run record.');
+    expect(mismatch.message).not.toContain('LOUSHO_RECORD');
+    expect(exhausted.message).toContain('all were used');
+    expect(exhausted.message).toContain('Run npm run record.');
+  });
+
   it('detects changed tools, schemas, temperature and a missing message', async () => {
     const tool = (shape: z.ZodRawShape) => ({
       type: 'function' as const,
@@ -442,6 +455,20 @@ describe('recordReplay persistence', () => {
     await record(['c'], [ask('3')]);
 
     expect(readJson().entries).toHaveLength(1);
+  });
+
+  it('re-recording an unchanged run rewrites the file byte for byte, keeping recordedAt (docs-qa F14)', async () => {
+    await record(['a', 'b'], [ask('1'), ask('2')]);
+    const header = JSON.parse(fs.readFileSync(file, 'utf8')) as { recordedAt: string };
+    header.recordedAt = '2020-01-01T00:00:00.000Z';
+    fs.writeFileSync(file, `${JSON.stringify(header, null, 2)}\n`);
+    const before = fs.readFileSync(file, 'utf8');
+
+    await record(['a', 'b'], [ask('1'), ask('2')]);
+    expect(fs.readFileSync(file, 'utf8')).toBe(before);
+
+    await record(['a', 'changed'], [ask('1'), ask('2')]);
+    expect((JSON.parse(fs.readFileSync(file, 'utf8')) as { recordedAt: string }).recordedAt).not.toBe('2020-01-01T00:00:00.000Z');
   });
 });
 

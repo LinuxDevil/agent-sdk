@@ -206,6 +206,10 @@ First difference at request.messages[1].content:
 If the change is intentional, re-record the cassette (run with LOUSHO_RECORD=1, or set mode: 'record').
 ```
 
+That hint assumes you wired `mode` to `LOUSHO_RECORD` as above. If you record
+some other way, pass `rerecordHint` with the command your project uses; under
+`lousho eval` the hint names `npx lousho eval --record` instead.
+
 For parallel or unordered calls pass `match: 'request'`: each call finds the
 first unused entry with an identical request, in any order. Running out of
 entries is also a `CassetteMismatchError`.
@@ -250,7 +254,9 @@ Recording writes the cassette atomically (temp file plus rename) after every
 call, so a test that fails midway leaves a valid cassette with every call made
 so far, never a half-written one. `await provider.save()` forces a write. There
 is no process-exit hook. Each record session starts a fresh cassette and
-replaces the old file.
+replaces the old file. When the new recording holds exactly the same exchanges
+as the old file, the old `recordedAt` and `sdkVersion` are kept, so an
+unchanged re-record leaves the file byte for byte the same and shows no diff.
 
 ### Redaction (read this before committing)
 

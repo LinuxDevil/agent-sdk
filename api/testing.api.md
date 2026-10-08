@@ -501,6 +501,7 @@ export interface RecordReplayOptions {
     normalize?: (request: GenerateOptions) => GenerateOptions;
     redact?: (text: string) => string;
     replayTiming?: boolean;
+    rerecordHint?: string;
 }
 
 // @public

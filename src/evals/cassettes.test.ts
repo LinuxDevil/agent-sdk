@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { createAgent } from '../createAgent';
 import { mockModel } from '../testing';
-import { CASSETTES_ENV, DRIFT_DIR_ENV, cassettePath, driftCassettePath, withEvalCassettes } from './cassettes';
+import { CASSETTES_ENV, CONFIG_ENV, DRIFT_DIR_ENV, cassettePath, driftCassettePath, legacyCassettePath, withEvalCassettes } from './cassettes';
 import type { EvalResult } from './evalResult';
 
 afterEach(() => {
@@ -28,9 +28,17 @@ async function runCase(file: string, provider: ReturnType<typeof mockModel>): Pr
 describe('cassettePath', () => {
   it('names cassettes deterministically next to the eval file', () => {
     expect(cassettePath('/p/evals/refund.eval.ts', 'Refund flow', 'Order #42')).toBe(
-      path.join('/p/evals', '__cassettes__', 'refund-flow', 'order-42.json')
+      path.join('/p/evals', '__cassettes__', 'refund-flow', 'order-42-7c381e70.json')
     );
     expect(cassettePath('/p/a.eval.ts', 'e', undefined, 1)).toBe(path.join('/p', '__cassettes__', 'e', 'default.2.json'));
+  });
+
+  it('hashes the full label, so labels that slug or truncate alike get their own cassette (docs-qa F3)', () => {
+    const a = cassettePath('/p/a.eval.ts', 'e', 'How do I configure the retry policy and backoff for the OpenAI provider?');
+    const b = cassettePath('/p/a.eval.ts', 'e', 'How do I configure the retry policy and backoff for the Anthropic provider?');
+    expect(a).not.toBe(b);
+    expect(cassettePath('/p/a.eval.ts', 'e', 'Hello?')).not.toBe(cassettePath('/p/a.eval.ts', 'e', 'hello!'));
+    expect(legacyCassettePath('/p/a.eval.ts', 'e', 'Hello?')).toBe(path.join('/p', '__cassettes__', 'e', 'hello.json'));
   });
 
   it('maps a committed cassette to a stable drift location', () => {
@@ -130,5 +138,79 @@ describe('withEvalCassettes', () => {
     const offline = mockModel([]);
     expect(await stream(offline)).toBe('streamed words');
     expect(offline.calls).toHaveLength(0);
+  });
+});
+
+describe('cassette names (docs-qa F3, F14)', () => {
+  const caseResult = (label: string): EvalResult => ({ name: 'Refund flow', case: label, tags: [], passed: true, assertions: [], durationMs: 0, steps: 1, toolCalls: [] });
+  const send = async (file: string, provider: ReturnType<typeof mockModel>, info: { label: string; key?: string; index?: number }) => {
+    let reply = '';
+    const result = await withEvalCassettes({ file, name: 'Refund flow', ...info }, async () => {
+      reply = (await createAgent({ provider, prompt: 'You handle refunds.' }).send('Refund 42')).text;
+      return caseResult(info.label);
+    });
+    return { reply, result };
+  };
+
+  it('records two cases whose display labels are equal to two cassettes, and replays each', async () => {
+    const file = evalFile();
+    const label = 'How do I configure the retry policy and backof...';
+    const openai = { label, key: `${label}OpenAI`, index: 0 };
+    const anthropic = { label, key: `${label}Anthropic`, index: 1 };
+    vi.stubEnv(CASSETTES_ENV, 'record');
+    await send(file, mockModel(['openai answer']), openai);
+    await send(file, mockModel(['anthropic answer']), anthropic);
+    vi.stubEnv(CASSETTES_ENV, 'replay');
+    expect((await send(file, mockModel([]), openai)).reply).toBe('openai answer');
+    expect((await send(file, mockModel([]), anthropic)).reply).toBe('anthropic answer');
+  });
+
+  it('fails the second of two cases that would record to the same cassette instead of overwriting the first', async () => {
+    const file = evalFile();
+    vi.stubEnv(CASSETTES_ENV, 'record');
+    await send(file, mockModel(['first']), { label: 'same', index: 0 });
+    await expect(send(file, mockModel(['second']), { label: 'same', index: 1 })).rejects.toThrow(
+      /"Refund flow \[same\]" would record to .*which "Refund flow \[same\]" already recorded in this run\. Give each case a distinct `label`/
+    );
+    // Recording the same case again (a retry) is fine.
+    await send(file, mockModel(['first again']), { label: 'same', index: 0 });
+  });
+
+  it('still replays (and drifts against) a cassette recorded under the old, unhashed name', async () => {
+    const file = evalFile();
+    vi.stubEnv(CASSETTES_ENV, 'record');
+    const { result } = await send(file, mockModel(['old reply']), { label: 'Order #42' });
+    const legacy = legacyCassettePath(file, 'Refund flow', 'Order #42');
+    fs.mkdirSync(path.dirname(legacy), { recursive: true });
+    fs.renameSync(result.cassettes![0], legacy);
+
+    vi.stubEnv(CASSETTES_ENV, 'replay');
+    const replayed = await send(file, mockModel([]), { label: 'Order #42' });
+    expect(replayed.reply).toBe('old reply');
+    expect(replayed.result.cassettes).toEqual([legacy]);
+
+    vi.stubEnv(CASSETTES_ENV, 'record');
+    vi.stubEnv(DRIFT_DIR_ENV, fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-drift-')));
+    expect((await send(file, mockModel(['new reply']), { label: 'Order #42' })).result.cassettes).toEqual([legacy]);
+  });
+
+  it('repeats the --config of the run in the re-record hints', async () => {
+    const file = evalFile();
+    vi.stubEnv(CONFIG_ENV, 'vitest.eval.config.mts');
+    vi.stubEnv(CASSETTES_ENV, 'replay');
+    await expect(send(file, mockModel(['x']), { label: 'a' })).rejects.toThrow(/npx lousho eval --record --config vitest\.eval\.config\.mts /);
+
+    vi.stubEnv(CASSETTES_ENV, 'record');
+    await send(file, mockModel(['x']), { label: 'a' });
+    vi.stubEnv(CASSETTES_ENV, 'replay');
+    let caught: unknown;
+    await withEvalCassettes({ file, name: 'Refund flow', label: 'a' }, async () => {
+      caught = await createAgent({ provider: mockModel([]), prompt: 'Different prompt.' })
+        .send('Refund 42')
+        .catch((error: unknown) => error);
+      return caseResult('a');
+    });
+    expect(String((caught as Error).message)).toContain('re-record it with: npx lousho eval --record --config vitest.eval.config.mts');
+    expect(String((caught as Error).message)).not.toContain('LOUSHO_RECORD');
   });
 });

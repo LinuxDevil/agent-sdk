@@ -2028,6 +2028,7 @@ export interface EvalConfig {
     // (undocumented)
     temperature?: ExecuteOptions['temperature'];
     threshold: number;
+    timeoutMs?: number;
     toolRegistry?: ExecuteOptions['toolRegistry'];
 }
 
@@ -6727,6 +6728,7 @@ export interface TrajectoryEvalConfig<C = Record<string, never>> {
     tags?: string[];
     target?: AgentSource;
     test(t: EvalTestContext, c: C): void | Promise<void>;
+    timeoutMs?: number;
 }
 
 // @public
