@@ -57,6 +57,11 @@ export function registerSubagent(agent: object, registration: RegisteredSubagent
   registeredSubagents.set(agent, registration);
 }
 
+/** The run spec `agent` was registered with as a sub-agent (Eve MA-F5: the agent-directory `delegate_to_<name>` alias). */
+export function subagentSpecOf(agent: object): RegisteredSubagent['spec'] | undefined {
+  return registeredSubagents.get(agent)?.spec;
+}
+
 function isCatalog(subagents: Subagents): subagents is SubagentCatalog {
   const candidate = subagents as Partial<SubagentCatalog>;
   return typeof candidate.list === 'function' && typeof candidate.resolve === 'function';

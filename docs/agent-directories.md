@@ -161,15 +161,37 @@ export default defineTool({
 ### Sub-agents
 
 Every directory in `subagents/` is itself an agent directory (and can have its
-own `subagents/`). It must have a `description` in its config. The parent gets a
-`delegate_to_<name>` tool that runs the sub-agent with the task text and returns
-its final answer. A sub-agent uses its own `model` if it sets one, otherwise it
-inherits the parent's; a `provider` override passed to `loadAgentDir()` reaches
-all of them.
+own `subagents/`). It must have a `description` in its config. Each one is a
+native sub-agent of the parent: it lands in the parent's `subagents` map, so
+the parent's model delegates to it with the `task` tool (see
+[Sub-agents](sub-agents.md)). The parent also gets a `delegate_to_<name>` tool,
+kept as a backward-compatible alias: it takes the task text and returns the
+sub-agent's final answer, and it runs through the same runtime as `task`.
+A sub-agent uses its own `model` if it sets one, otherwise it inherits the
+parent's; a `provider` override passed to `loadAgentDir()` reaches all of them.
+
+Either way the sub-agent runs inside the parent's run, like any `createAgent()`
+sub-agent:
+
+- the parent's `permissions` rules come first in the sub-agent, so a
+  `deny('write_file')` on the parent holds for the whole tree;
+- a sub-agent call that needs approval pauses the parent run
+  (`finishReason: 'awaiting-approval'`, the pending approval's `subagentPath`
+  names the sub-agent) and `agent.approvals.resolve()` continues it. The
+  sub-agent directory's own `approve` decides its calls first; without one, an
+  `approve` passed to `loadAgentDir()` in code does, and otherwise the call
+  waits for a human. The parent directory's own `approve` file does not decide
+  its sub-agents' calls;
+- its token usage is added to the parent's (`result.usage.delegated`), its
+  events reach the parent's listeners tagged with `event.subagent`, and its
+  spans nest under the parent's trace.
+
+Nested `subagents/` directories raise the parent's `maxSubagentDepth` to the
+depth of the tree (unless you pass one), so every level can delegate.
 
 A sub-agent directory whose config sets `"engine": "pi"` becomes a Pi
 coding-agent sub-agent instead: it lands in the parent's `subagents` map (the
-`task` tool) rather than getting a `delegate_to_<name>` tool, and its sessions
+`task` tool) without a `delegate_to_<name>` alias, and its sessions
 run in the parent's directory - the workspace the parent's file tools and the
 Pi session share. `model` takes the usual `pi/<provider>/<model>` id, and
 `permissions` rules gate the Pi session's own tool calls (`read`, `bash`,
@@ -251,7 +273,7 @@ console.log(manifest.memory); // names found in memory/
 | `agent.*` keys | the options in the table above |
 | `tools/` | `tools: [...]` |
 | `skills/` | `skills: await loadSkills('./skills')` |
-| `subagents/<name>/` | one `delegate_to_<name>` entry in `tools` |
+| `subagents/<name>/` | one `subagents` entry (the `task` tool), plus a `delegate_to_<name>` alias in `tools` |
 
 `resolveAgentDir()` returns the assembled options and a manifest, which is
 handy for tests and tooling:

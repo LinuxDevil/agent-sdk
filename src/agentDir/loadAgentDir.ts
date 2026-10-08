@@ -24,7 +24,7 @@ import { loadTools, type LoadedTool } from './loadTools';
 import { confineToolsToReceipt, deferEnforcedApprovals, registryWarnings, verifyReceipt, type RegistryStatus } from './registryEnforce';
 import { readConfig, type AgentDirConfig } from './readConfig';
 import { fail, permissionRulesOf } from './validateConfig';
-import { delegateTool, listSubagentDirs, requireDescription, type LoadedSubagent } from './subagents';
+import { delegateTool, listSubagentDirs, requireDescription, routeSubagentApprovals, type LoadedSubagent } from './subagents';
 import { piAgent, type PiAgentOptions } from '../subagents/piAgent';
 import type { RemoteSubagent } from '../subagents/types';
 import { SDKError } from '../execution/errors';
@@ -307,7 +307,7 @@ async function loadSkillsIfPresent(dir: string): Promise<Skill[]> {
 }
 
 interface LoadedSubagents {
-  /** Nested `createAgent` sub-agents; each becomes a `delegate_to_<name>` tool. */
+  /** Nested `createAgent` sub-agents; each joins the `subagents` map (the `task` tool) with a `delegate_to_<name>` alias. */
   delegated: LoadedSubagent[];
   /** `engine: 'pi'` sub-agents; each becomes an entry of the parent's `subagents` map (the `task` tool). */
   remote: Record<string, RemoteSubagent>;
@@ -384,9 +384,21 @@ async function loadSubagents(dir: string, overrides: AgentDirOverrides, inherite
     }
     const child = await resolveWith(childDir, childOverrides, inherited, scope);
     const description = requireDescription(childDir, child.manifest.description);
-    loaded.delegated.push({ name, description, agent: createAgent(child.config) });
+    // Eve MA-F5: a native sub-agent (the lead's `subagents` map), so it needs its description on the agent.
+    const agent = createAgent({ ...child.config, description });
+    const levels = child.config.maxSubagentDepth ?? (child.config.subagents === undefined ? 0 : 1);
+    loaded.delegated.push({ name, description, agent, depth: 1 + levels, ...optional('approve', child.config.approve) });
   }
   return loaded;
+}
+
+/**
+ * The `maxSubagentDepth` a directory's tree of sub-agent directories needs to
+ * run end to end (the levels below it), when it is more than the default 1.
+ */
+function treeDepth(delegated: readonly LoadedSubagent[], remote: Record<string, RemoteSubagent>): number | undefined {
+  const levels = Math.max(Object.keys(remote).length > 0 ? 1 : 0, ...delegated.map((s) => s.depth));
+  return levels > 1 ? levels : undefined;
 }
 
 function optional<K extends string, V>(key: K, value: V | undefined): { [P in K]?: V } {
@@ -426,11 +438,19 @@ function assembleConfig(
     skills: Skill[];
     configured?: { hooks: readonly AgentHook[]; file?: string };
     approver?: { approve: ApproveToolCall; file?: string };
+    /** The in-code approver the host passed (`loadAgentDir(dir, { approve })`), inherited by sub-agent directories. */
+    hostApprove?: ApproveToolCall;
   }
 ): CreateAgentConfig {
-  const { name, instructions, tools, delegated, remote, overrides, memorySlots, skills, configured, approver } = parts;
+  const { name, instructions, tools, delegated, remote, overrides, memorySlots, skills, configured, approver, hostApprove } = parts;
+  // Eve MA-F5: every sub-agent directory is a native sub-agent (the `task` tool); `delegate_to_<name>` is its alias.
   const fileTools = [...tools.map((t) => t.tool), ...delegated.map(delegateTool)];
-  const subagents = Object.keys(remote).length > 0 ? remote : undefined;
+  const native: Record<string, RemoteSubagent | SimpleAgent> = { ...remote };
+  for (const subagent of delegated) native[subagent.name] = subagent.agent;
+  const subagents = Object.keys(native).length > 0 ? native : undefined;
+  const options = configOptions(dir, configFile, config, overrides, configured, approver);
+  // A sub-agent's paused call reaches the lead's approver: route it to the sub-agent directory's own (`null` strips them all).
+  const approve = overrides.approve === null ? options.approve : routeSubagentApprovals(options.approve, delegated, hostApprove);
   // Every other createAgent() option the caller passed (guardrails, onEvent, retry, ...) is forwarded as is;
   // the keys below are resolved against the directory first. `piAgent` is not a createAgent() option.
   const { approve: _approve, hooks: _hooks, piAgent: _piAgent, prompt: _prompt, provider: _provider, model: _model, ...forwarded } = overrides;
@@ -448,7 +468,9 @@ function assembleConfig(
     ...optional('maxSteps', overrides.maxSteps ?? config.maxSteps),
     ...optional('toolConcurrency', overrides.toolConcurrency ?? config.toolConcurrency),
     ...optional('projectInstructions', overrides.projectInstructions ?? config.projectInstructions),
-    ...configOptions(dir, configFile, config, overrides, configured, approver),
+    ...optional('maxSubagentDepth', overrides.maxSubagentDepth ?? treeDepth(delegated, remote)),
+    ...options,
+    ...optional('approve', approve),
     // Override-only options: no config key declares them.
     ...optional('approvalStore', overrides.approvalStore),
     ...optional('onPermissionDecision', overrides.onPermissionDecision),
@@ -530,6 +552,7 @@ async function resolveWith(
     skills,
     configured,
     approver,
+    ...optional('hostApprove', scope.hostApprove),
   });
 
   const files = [...new Set([configFile, fromFile?.file, familyFile, configured?.file, approver?.file, ...tools.map((t) => t.file)])].filter(
