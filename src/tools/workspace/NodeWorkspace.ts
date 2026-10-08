@@ -118,7 +118,8 @@ export class NodeWorkspace implements Workspace {
   /** The real, absolute path of the root directory. */
   readonly root: string;
   private readonly env: Record<string, string>;
-  private readonly shell: string;
+  /** The shell binary commands run in (`/bin/sh`, or cmd.exe on Windows, unless set). */
+  readonly shell: string;
   private readonly maxOutputBytes: number;
 
   constructor(options: NodeWorkspaceOptions) {

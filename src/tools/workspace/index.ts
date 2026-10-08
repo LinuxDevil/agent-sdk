@@ -38,4 +38,4 @@ export {
   type WorkspaceFileBackup,
 } from './checkpoints';
 export { FileWorkspaceCheckpointStore } from './checkpointFileStore';
-export { createShellTool, type CommandPattern, type ShellToolOptions, type ShellToolResult } from './shellTool';
+export { createShellTool, type CommandPattern, type CommandRule, type ShellToolOptions, type ShellToolResult } from './shellTool';
