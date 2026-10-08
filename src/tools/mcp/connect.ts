@@ -9,10 +9,12 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import type { McpServerSpec } from '../../spec/schema';
+import type { RequestOptions } from '@modelcontextprotocol/sdk/shared/protocol.js';
+import type { McpServerSpec, McpStdioServerSpec } from '../../spec/schema';
 import type { NamedToolDescriptor } from '../../types';
 import type { OAuthTokenStore } from '../../oauth/types';
 import { noopLogger, type Logger } from '../../execution/logger';
+import { SDKError } from '../../utils/sdkError';
 import { loadOptionalPeer, MissingPeerDependencyError } from '../../providers/optionalPeer';
 import { loadMcpTools, type McpClientLike } from './McpToolLoader';
 import { assertMcpOAuth, hasMcpOAuth, isMcpAuthError, mcpAuthRequired, mcpFetch, mcpStoreMissing, storeOAuthProvider } from './mcpOAuth';
@@ -53,11 +55,96 @@ export interface McpConnections {
   readonly tools: Record<string, NamedToolDescriptor>;
   /** Disconnects every server (stops stdio processes). */
   close(): Promise<void>;
+  /**
+   * Reconnects every loaded server that is not connected (after `close()` or a
+   * dropped connection), also with `lazy: false`; resolves once they are.
+   */
+  reconnect(): Promise<void>;
   /** Each server's {@link McpServerStatus}, keyed by name. */
   status(): Record<string, McpServerStatus>;
 }
 
 const PEER = '@modelcontextprotocol/sdk';
+
+/** How many trailing stderr lines a start failure keeps. */
+const STDERR_TAIL_LINES = 20;
+
+/**
+ * A stdio MCP server failed to start (`LOUSHO_MCP_START_FAILED`): the command
+ * is missing, the process exited, or it did not answer `initialize` in time.
+ * Carries the exit code and the last lines the process wrote to stderr.
+ */
+export class McpStartError extends SDKError {
+  /** The process's exit code, when it exited. */
+  readonly exitCode?: number;
+  /** The signal that ended the process, when one did. */
+  readonly signal?: string;
+  /** The last lines the process wrote to stderr (empty with `stderr: 'inherit'` or `'ignore'`). */
+  readonly stderr: string;
+
+  constructor(server: string, reason: string, details: { exitCode?: number; signal?: string; stderr: string; cause?: unknown }) {
+    const exit = details.exitCode !== undefined ? `exit code ${details.exitCode}` : details.signal && `signal ${details.signal}`;
+    const stderr = details.stderr.trim();
+    super(
+      `MCP server '${server}' failed to start: ${reason}${exit ? ` (${exit})` : ''}.${stderr ? `\nLast stderr lines:\n${stderr}` : ''}`,
+      'LOUSHO_MCP_START_FAILED',
+      { cause: details.cause }
+    );
+    this.name = 'McpStartError';
+    if (details.exitCode !== undefined) this.exitCode = details.exitCode;
+    if (details.signal) this.signal = details.signal;
+    this.stderr = details.stderr;
+  }
+}
+
+/** What a stdio server's process did while starting: its stderr tail and how it exited. */
+interface StdioWatch {
+  stderr(): string;
+  exit(): { exitCode?: number; signal?: string };
+}
+
+/** The part of a spawned process the watch reads. */
+interface ExitEmitter {
+  once(event: 'exit', listener: (code: number | null, signal: string | null) => void): unknown;
+}
+
+/**
+ * Keeps the last {@link STDERR_TAIL_LINES} stderr lines of a stdio server
+ * (copying them to this process's stderr with `'forward'`, the default) and
+ * its exit code. The process is the transport's own (`_process`, set by
+ * `start()`); without it only stderr is kept.
+ */
+function watchStdio(transport: Transport, mode: McpStdioServerSpec['stderr']): StdioWatch {
+  let lines: string[] = [];
+  let partial = '';
+  const stream = (transport as { stderr?: { on(event: 'data', listener: (chunk: unknown) => void): unknown } | null }).stderr;
+  if (stream && (mode === undefined || mode === 'forward' || mode === 'capture')) {
+    stream.on('data', (chunk) => {
+      const text = String(chunk);
+      if (mode !== 'capture') process.stderr.write(text);
+      const split = (partial + text).split(/\r?\n/);
+      partial = split.pop() ?? '';
+      lines = [...lines, ...split].slice(-STDERR_TAIL_LINES);
+    });
+  }
+  let exited: { exitCode?: number; signal?: string } = {};
+  const start = transport.start.bind(transport);
+  transport.start = async () => {
+    await start();
+    (transport as { _process?: ExitEmitter })._process?.once('exit', (code, signal) => {
+      exited = { ...(code !== null && { exitCode: code }), ...(signal !== null && { signal }) };
+    });
+  };
+  return {
+    stderr: () => [...lines, ...(partial ? [partial] : [])].slice(-STDERR_TAIL_LINES).join('\n'),
+    exit: () => exited,
+  };
+}
+
+/** The `stderr` option of the MCP SDK's stdio transport for a spec's `stderr`. */
+function stdioStderr(mode: McpStdioServerSpec['stderr']): 'pipe' | 'inherit' | 'ignore' {
+  return mode === 'inherit' || mode === 'ignore' ? mode : 'pipe';
+}
 
 async function openTransport(server: McpServerSpec, authProvider?: OAuthClientProvider): Promise<Transport> {
   if ('url' in server) {
@@ -75,7 +162,13 @@ async function openTransport(server: McpServerSpec, authProvider?: OAuthClientPr
   );
   // A given `env` replaces the child's whole environment in the SDK; keep PATH and friends.
   const env = server.env && { ...getDefaultEnvironment(), ...server.env };
-  return new StdioClientTransport({ command: server.command, args: server.args, env });
+  return new StdioClientTransport({
+    command: server.command,
+    args: server.args,
+    env,
+    stderr: stdioStderr(server.stderr),
+    ...(server.cwd !== undefined && { cwd: server.cwd }),
+  });
 }
 
 /** N9c: the OAuth provider of a server with `oauth` (validated, and refused without a token store). */
@@ -101,8 +194,12 @@ class ServerConnection {
 
   /** What the tool descriptors call through: the current client, reconnected if needed. */
   readonly handle: McpClientLike = {
-    listTools: (params) => this.use().then((client) => client.listTools(params).catch((error: unknown) => this.failed(error))),
-    callTool: (params) => this.use().then((client) => client.callTool(params).catch((error: unknown) => this.failed(error))),
+    listTools: (params, options) =>
+      this.use().then((client) => client.listTools(params, options as RequestOptions).catch((error: unknown) => this.failed(error))),
+    callTool: (params, resultSchema, options) =>
+      this.use().then((client) =>
+        client.callTool(params, resultSchema as never, options as RequestOptions).catch((error: unknown) => this.failed(error))
+      ),
   };
 
   /**
@@ -127,10 +224,20 @@ class ServerConnection {
   }
 
   private async open(): Promise<Client> {
+    let watch: StdioWatch | undefined;
     try {
       const { Client } = await loadOptionalPeer(PEER, () => import('@modelcontextprotocol/sdk/client/index.js'));
       const client = new Client({ name: `lousho-${this.name}`, version: '1.0.0' });
-      await client.connect(await openTransport(this.server, this.authProvider));
+      const transport = await openTransport(this.server, this.authProvider);
+      if ('command' in this.server) watch = watchStdio(transport, this.server.stderr);
+      const timeout = this.server.connectTimeoutMs;
+      try {
+        await client.connect(transport, timeout === undefined ? undefined : { timeout });
+      } catch (error) {
+        // Stop the process (or session) a failed or timed-out start left behind.
+        await client.close().catch(() => undefined);
+        throw error;
+      }
       const current = this.client;
       // A dropped connection (e.g. the process exited) counts as closed.
       client.onclose = () => {
@@ -148,8 +255,16 @@ class ServerConnection {
         throw mcpAuthRequired(this.name);
       }
       this.status = 'failed';
-      throw error;
+      if (!watch || error instanceof MissingPeerDependencyError) throw error;
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new McpStartError(this.name, reason, { ...watch.exit(), stderr: watch.stderr(), cause: error });
     }
+  }
+
+  /** Opens the connection again after `close()`, whatever `lazy` says. */
+  async reopen(): Promise<void> {
+    this.closed = false;
+    await this.use();
   }
 
   async close(): Promise<void> {
@@ -186,6 +301,8 @@ export async function connectMcp(
       loadMcpTools(connection.handle, connection.name, {
         logger,
         approval: servers[connection.name].approval,
+        timeoutMs: servers[connection.name].timeoutMs,
+        tools: servers[connection.name].tools,
         // N2: a server with `deferLoading` has all its tools withheld until `tool_search` finds them.
         ...(servers[connection.name].deferLoading && { deferLoading: true }),
       })
@@ -193,9 +310,21 @@ export async function connectMcp(
   );
 
   const tools: Record<string, NamedToolDescriptor> = {};
+  const loadedConnections: ServerConnection[] = [];
   for (const [index, result] of loaded.entries()) {
     if (result.status === 'fulfilled') {
-      Object.assign(tools, result.value);
+      loadedConnections.push(connections[index]);
+      for (const [key, tool] of Object.entries(result.value)) {
+        // Two server names can sanitize to the same prefix (`a.b` and `a_b`); the first server keeps the name.
+        if (Object.hasOwn(tools, key)) {
+          logger.warn(`connectMcp: MCP server '${connections[index].name}': skipping tool '${key}', the name is taken by another server`, {
+            server: connections[index].name,
+            tool: key,
+          });
+          continue;
+        }
+        tools[key] = tool;
+      }
       continue;
     }
     const { name } = connections[index];
@@ -203,8 +332,8 @@ export async function connectMcp(
     const reason = error instanceof Error ? error.message : String(error);
     if (onError === 'throw' || error instanceof MissingPeerDependencyError) {
       await close();
-      // N9c: LOUSHO_MCP_AUTH_REQUIRED keeps its code.
-      throw error instanceof MissingPeerDependencyError || connections[index].status === 'needs-auth'
+      // N9c: LOUSHO_MCP_AUTH_REQUIRED (and LOUSHO_MCP_START_FAILED) keep their code.
+      throw error instanceof MissingPeerDependencyError || error instanceof McpStartError || connections[index].status === 'needs-auth'
         ? error
         : new Error(`connectMcp: MCP server '${name}' failed to connect: ${reason}`, { cause: error });
     }
@@ -214,6 +343,9 @@ export async function connectMcp(
   return {
     tools,
     close,
+    reconnect: async () => {
+      await Promise.all(loadedConnections.map((connection) => connection.reopen()));
+    },
     status: () => Object.fromEntries(connections.map((connection) => [connection.name, connection.status])),
   };
 }

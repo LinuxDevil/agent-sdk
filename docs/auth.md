@@ -272,29 +272,22 @@ permission rules and sub-agents see it too: see
 
 ## Security notes
 
-- **A session id is bound to its first caller.** Once an authenticated
-  principal posts to `POST /chat` with a `sessionId` (or reads `GET
-  /chat/:id`), that id belongs to that principal: another principal gets 403
-  on read and on write. The binding is kept in memory per agent, so a restart
-  forgets it (a session id an authenticated caller touches first is then
-  theirs); unauthenticated routes bind nothing. For a durable or shared
-  policy, pass `ownsSession(principal, sessionId)` (`createRouteHandler`,
-  or `ChatRoutesContext` for `serveFetch`/`handleChatRequest`) - e.g. derive
-  the session id from the principal: `(p, id) => id === \`u-${p?.id}\``.
-- **A `user` principal cannot approve its own gated call.** `POST
-  /chat/:sessionId/approvals/:id` answers 403 when the caller equals the
-  `user` principal the paused run acts for - self-approval would defeat
-  `needsApproval` on a consumer-facing route. Any *other* authenticated caller
-  may decide (and is recorded as the approver, `ctx.approval.by`); the run
-  keeps acting for the caller that started it. `service` principals are
-  exempt: a shared token or a remote agent's continuation is one identity, so
-  every decision would be "self". `question` and `sign-in` pauses stay the
-  run's own user's to answer. To name the approvers, set
-  `approvers` (a list of principal ids, or `(caller, pending) => boolean`,
-  which sees `pending.principal` and `pending.kind` and then decides every
-  kind) on `createRouteHandler` / `ChatRoutesContext`. The session in the
-  path must also be the one waiting on the pause: a checkpointed session that
-  waits on another approval (or is mid-turn) answers 404.
+- **Route auth does not check who owns a session** unless you pass
+  `authorizeSession`. Without it, any caller who passes auth and knows a session
+  id can read its transcript (`GET /chat/:id`) and continue it. Pass
+  `authorizeSession`, use session ids that cannot be guessed, or derive them
+  from the principal on your side. See
+  [Who may use a session](#who-may-use-a-session).
+- **Approvals.** A decision only reaches an approval of the session in the URL
+  (another session's approval is a `404`). By default only the caller the run
+  acts for may decide it. If an approval must come from someone else, such as a
+  supervisor approving a customer's refund, set `authorizeApproval`. Otherwise
+  the customer can approve their own call: the approval id is in their own
+  stream. See [Who may decide an approval](#who-may-decide-an-approval).
+- **Errors.** The session routes send an error's `name` and `code` with a
+  generic message. The full error (a provider's response body, a chat template)
+  goes to the server log (`console.error`) and to `onEvent`. Pass
+  `exposeErrors: true` to send the raw message, as `lousho dev` does.
 - `basic()` only over HTTPS; a bearer token is a password too, so terminate TLS
   in front of any server that is not on localhost.
 - Keep `issuer` and `audience` set for `jwt()`: a token minted for another of
@@ -406,6 +399,53 @@ callback, or posted to `/channels/<name>/approvals/:id`, have no approver.
 The approver never becomes the run's principal: the approved call and the
 rest of the run act for the caller that paused it. A credential or a grant that
 belongs to that caller is used only for that caller's calls, whoever approves.
+
+### Who may use a session
+
+`createRouteHandler()` and `createDeployedServer()` take `authorizeSession`.
+It is asked before a caller reads a session (`action: 'read'`), sends it a
+turn (`'chat'`, also `POST <basePath>` and the `useChat` endpoint) or decides
+one of its approvals (`'approve'`). Return `false` for a `403`
+(`LOUSHO_SESSION_FORBIDDEN`). Without it every caller route auth accepted may
+use every session.
+
+### Who may decide an approval
+
+A decision posted to `POST /chat/:sessionId/approvals/:id` must name the
+session the approval belongs to; any other session answers `404`, as for an
+approval that was already decided. `POST <basePath>/approvals/:id` (the route
+`useLoushoAgent` posts to) names no session, so it is checked against the
+approval's own session.
+
+Then `authorizeApproval({ principal, sessionId, approval })` decides; `false`
+is a `403` (`LOUSHO_APPROVAL_FORBIDDEN`). The default, `callerOwnsApproval`,
+lets only the caller the paused run acts for decide (`approval.principal`,
+compared by `id`, `type`, `authenticator` and `issuer`). A user can confirm
+their own call, and cannot decide another user's. A run without a principal,
+or a route without auth, accepts any caller.
+
+When `needsApproval` means that someone else must approve, say who. Here a
+customer can no longer approve their own refund, and a supervisor can decide in
+any session:
+
+```ts
+import { createAgent, createRouteHandler, memoryStore } from '@lousho/build-ai-agent';
+import { jwt } from '@lousho/build-ai-agent/auth';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', store: memoryStore() });
+const isSupervisor = (principal?: { claims?: Readonly<Record<string, unknown>> }) => principal?.claims?.role === 'supervisor';
+
+export const { GET, POST } = createRouteHandler(agent, {
+  auth: jwt({ secret: process.env.JWT_SECRET!, issuer: 'https://auth.example.com', audience: 'agent-api' }),
+  // Customers use their own sessions (ids that start with their id); supervisors may decide in any session.
+  authorizeSession: ({ principal, sessionId, action }) =>
+    sessionId.startsWith(`${principal?.id}-`) || (action === 'approve' && isSupervisor(principal)),
+  authorizeApproval: ({ principal }) => isSupervisor(principal),
+});
+```
+
+Two requests that decide the same approval at once get one continuation: the
+other request is a `409` (`LOUSHO_APPROVAL_CONFLICT`), and a later one a `404`.
 
 ### Pauses, crashes and forks
 

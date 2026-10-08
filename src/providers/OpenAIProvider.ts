@@ -9,6 +9,7 @@ import { aiMajorOf } from './aiSdkCompat';
 import { lazyValue, loadOptionalPeer } from './optionalPeer';
 import { mappedHostedOptions, type HostedOptionMapping } from './hostedToolMapping';
 import { hostedToolUnsupported, type HostedTool, type HostedToolType } from '../tools/hosted';
+import type { GenerateOptions } from './llm';
 
 /** The `openai.tools` factories the hosted helpers map to (N1a). */
 type OpenAIToolFactories = Partial<Record<'webSearch' | 'codeInterpreter' | 'fileSearch', (args: Record<string, unknown>) => unknown>>;
@@ -42,6 +43,14 @@ export interface OpenAIProviderConfig extends AiSdkProviderConfig {
   organization?: string;
   baseURL?: string;
   defaultModel?: string;
+  /**
+   * Which OpenAI API the model calls: `'responses'` (default, `/responses`) or
+   * `'chat'` (`/chat/completions`). Use `'chat'` for OpenAI-compatible servers
+   * that only implement Chat Completions (llama.cpp, vLLM, Ollama's `/v1`, Groq,
+   * DeepSeek, ...). Hosted tools (`webSearch()`, `codeInterpreter()`,
+   * `fileSearch()`) need `'responses'`; `hostedTool()` pass-through works on both.
+   */
+  api?: 'responses' | 'chat';
 }
 
 /**
@@ -67,12 +76,31 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
     return aiMajorOf(this.ai) >= 6 ? ['application/pdf'] : [];
   }
 
-  protected async createModel(modelId: string): Promise<LanguageModel> {
-    return (await this.loadProvider())(modelId);
+  /** `api: 'chat'`: the Chat Completions API (`/chat/completions`) instead of the Responses API. */
+  private get usesChat(): boolean {
+    return this.config.api === 'chat';
   }
 
-  /** N1a: web search, code interpreter, file search and `hostedTool()`, on ai 6 (@ai-sdk/openai 3) and ai 7 (@ai-sdk/openai 4). */
-  supportsHostedTool(_type: HostedToolType | 'custom'): boolean {
+  protected async createModel(modelId: string): Promise<LanguageModel> {
+    const provider = await this.loadProvider();
+    // `@ai-sdk/openai` 2+ makes the bare call a Responses API model; `.chat()` is Chat Completions on every major.
+    return this.usesChat ? provider.chat(modelId) : provider(modelId);
+  }
+
+  /** Chat Completions has no reasoning summary, so only the effort is sent. */
+  protected reasoningOptions(modelId: string, options: GenerateOptions): Record<string, unknown> | undefined {
+    const sent = super.reasoningOptions(modelId, options);
+    if (!this.usesChat || !sent) return sent;
+    const { reasoningSummary: _summary, ...openai } = sent.openai as Record<string, unknown>;
+    return { ...sent, openai };
+  }
+
+  /**
+   * N1a: web search, code interpreter, file search and `hostedTool()`, on ai 6 (@ai-sdk/openai 3) and ai 7 (@ai-sdk/openai 4).
+   * With `api: 'chat'` only `hostedTool()` pass-through: the built-in tools are Responses API tools.
+   */
+  supportsHostedTool(type: HostedToolType | 'custom'): boolean {
+    if (this.usesChat) return super.supportsHostedTool(type);
     return aiMajorOf(this.ai) >= 6;
   }
 
@@ -85,6 +113,9 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
   protected async hostedToolsFor(tools: readonly HostedTool[], _modelId: string): Promise<Record<string, unknown>> {
     const { passed: result, builtIn } = this.splitHostedTools(tools);
     if (builtIn.length === 0) return result;
+    if (this.usesChat) {
+      throw hostedToolUnsupported(this.name, builtIn[0], `${builtIn[0].type} is a Responses API tool, and this provider is set to api: 'chat'`);
+    }
     const factories = ((await this.loadProvider()) as unknown as { tools?: OpenAIToolFactories }).tools;
     for (const tool of builtIn) {
       const mapping = OPENAI_HOSTED_TOOLS[tool.type as HostedToolType];

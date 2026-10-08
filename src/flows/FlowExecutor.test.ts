@@ -15,6 +15,8 @@ import { SandboxAdapter } from '../security/sandbox';
 import { createAgent } from '../createAgent';
 import { mockModel } from '../testing';
 import { SDKError } from '../execution/errors';
+import { defineTool } from '../tools/defineTool';
+import { allow, ask, deny } from '../execution/permissions';
 
 describe('FlowExecutor', () => {
   let mockProvider: MockLLMProvider;
@@ -33,7 +35,7 @@ describe('FlowExecutor', () => {
       displayName: 'Test tool',
       tool: {
         description: 'Test tool',
-        parameters: z.object({}),
+        parameters: z.object({ value: z.string().optional() }),
         execute: async (args: unknown) => {
           return { success: true, input: args };
         },
@@ -554,6 +556,219 @@ describe('FlowExecutor', () => {
 
       expect(result.success).toBe(false);
       expect(result.error?.message).toContain('not found');
+    });
+  });
+
+  describe('A8: toolCall steps pass the agent gate', () => {
+    const payFlow = (amount: string): AgentFlow => ({
+      code: 'pay-flow',
+      name: 'Pay flow',
+      flow: { type: 'toolCall', tool: 'pay', arguments: { amount } },
+    });
+
+    function registerPay(needsApproval: ToolDescriptor['needsApproval'] = true) {
+      const execute = vi.fn(async ({ amount }: { amount: string }) => `PAID ${amount}`);
+      toolRegistry.register(defineTool({ name: 'pay', description: 'Pay a vendor', input: z.object({ amount: z.string() }), needsApproval, execute }));
+      return execute;
+    }
+
+    it('refuses a needsApproval tool when the flow has no approve callback (fail closed)', async () => {
+      const execute = registerPay();
+
+      const result = await FlowExecutor.execute(payFlow('25000.00'), context);
+
+      expect(result.success).toBe(false);
+      expect(execute).not.toHaveBeenCalled();
+      expect(result.error).toBeInstanceOf(SDKError);
+      expect((result.error as SDKError).code).toBe('LOUSHO_FLOW_TOOL_DENIED');
+      expect(result.error?.message).toContain("Tool 'pay' needs approval");
+    });
+
+    it('asks the approve callback, and runs the tool only when it approves', async () => {
+      const execute = registerPay();
+      const approve = vi.fn(({ args }: { args: Record<string, unknown> }) => Number(args.amount) < 1000);
+
+      const small = await FlowExecutor.execute(payFlow('10.00'), { ...context, approve });
+      const large = await FlowExecutor.execute(payFlow('25000.00'), { ...context, approve });
+
+      expect(small.success).toBe(true);
+      expect(small.output).toBe('PAID 10.00');
+      expect(approve).toHaveBeenCalledWith(expect.objectContaining({ toolName: 'pay', args: { amount: '10.00' }, toolCallId: expect.any(String) }));
+      expect(large.success).toBe(false);
+      expect((large.error as SDKError).code).toBe('LOUSHO_FLOW_TOOL_DENIED');
+      expect(execute).toHaveBeenCalledTimes(1);
+    });
+
+    it("treats 'defer' as a refusal, since a flow cannot pause", async () => {
+      const execute = registerPay();
+
+      const result = await FlowExecutor.execute(payFlow('10.00'), { ...context, approve: () => 'defer' });
+
+      expect((result.error as SDKError).code).toBe('LOUSHO_FLOW_TOOL_DENIED');
+      expect(execute).not.toHaveBeenCalled();
+    });
+
+    it('applies permission rules: deny refuses, ask needs approve, allow skips needsApproval', async () => {
+      const execute = registerPay();
+      const onPermissionDecision = vi.fn();
+
+      const denied = await FlowExecutor.execute(payFlow('1'), { ...context, approve: () => true, permissions: [deny('pay', 'No payments')], onPermissionDecision });
+      expect((denied.error as SDKError).code).toBe('LOUSHO_FLOW_TOOL_DENIED');
+      expect(denied.error?.message).toContain('No payments');
+      expect(onPermissionDecision).toHaveBeenCalledWith(expect.objectContaining({ toolName: 'pay', decision: 'deny' }), expect.anything());
+
+      const asked = await FlowExecutor.execute(
+        { code: 'echo', name: 'Echo', flow: { type: 'toolCall', tool: 'testTool', arguments: {} } },
+        { ...context, permissions: [ask('testTool')] }
+      );
+      expect((asked.error as SDKError).code).toBe('LOUSHO_FLOW_TOOL_DENIED');
+
+      const allowed = await FlowExecutor.execute(payFlow('2'), { ...context, permissions: [allow('pay')] });
+      expect(allowed.success).toBe(true);
+      expect(execute).toHaveBeenCalledTimes(1);
+    });
+
+    it("applies a needsApproval policy's deny", async () => {
+      const execute = registerPay(() => ({ deny: 'Vendor is blocked' }));
+
+      const result = await FlowExecutor.execute(payFlow('1'), { ...context, approve: () => true });
+
+      expect((result.error as SDKError).code).toBe('LOUSHO_FLOW_TOOL_DENIED');
+      expect(result.error?.message).toContain('Vendor is blocked');
+      expect(execute).not.toHaveBeenCalled();
+    });
+
+    it('validates arguments against the tool schema before running it', async () => {
+      const execute = vi.fn(async () => 'ran');
+      toolRegistry.register(defineTool({ name: 'charge', description: 'Charge', input: z.object({ amount: z.number(), docId: z.string().min(1) }), execute }));
+
+      const result = await FlowExecutor.execute(
+        { code: 'charge', name: 'Charge', flow: { type: 'toolCall', tool: 'charge', arguments: { amount: '{{inv}}', docId: '{{missing}}' } } },
+        { ...context, variables: { inv: { total: 1 } } }
+      );
+
+      expect(result.success).toBe(false);
+      expect((result.error as SDKError).code).toBe('LOUSHO_TOOL_ARGS_INVALID');
+      expect(result.error?.message).toContain('amount');
+      expect(result.error?.message).toContain('docId');
+      expect(execute).not.toHaveBeenCalled();
+    });
+
+    it('runs the tool with the schema-parsed arguments (defaults applied)', async () => {
+      const execute = vi.fn(async (args: { currency: string }) => args);
+      toolRegistry.register(defineTool({ name: 'quote', description: 'Quote', input: z.object({ currency: z.string().default('EUR') }), execute }));
+
+      const result = await FlowExecutor.execute({ code: 'q', name: 'Q', flow: { type: 'toolCall', tool: 'quote', arguments: {} } }, context);
+
+      expect(result.output).toEqual({ currency: 'EUR' });
+    });
+  });
+
+  describe('A8: cancellation', () => {
+    it('starts no further step once the signal is aborted, and fails with its reason', async () => {
+      const controller = new AbortController();
+      const ran: string[] = [];
+      toolRegistry.register(defineTool({
+        name: 'work',
+        description: 'Work',
+        input: z.object({ n: z.string() }),
+        execute: async ({ n }) => {
+          ran.push(n);
+          if (n === '1') controller.abort(new Error('caller gave up'));
+          return n;
+        },
+      }));
+      const flow: AgentFlow = {
+        code: 'slow',
+        name: 'Slow',
+        flow: { type: 'sequence', steps: ['1', '2', '3'].map((n) => ({ type: 'toolCall', tool: 'work', arguments: { n } })) },
+      };
+
+      const result = await FlowExecutor.execute(flow, { ...context, signal: controller.signal });
+
+      expect(ran).toEqual(['1']);
+      expect(result.success).toBe(false);
+      expect(result.error?.message).toBe('caller gave up');
+    });
+
+    it('does not start at all with an already-aborted signal', async () => {
+      const result = await FlowExecutor.execute(
+        { code: 'r', name: 'R', flow: { type: 'return', value: 1 } },
+        { ...context, signal: AbortSignal.abort() }
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.events.some((e) => e.type === 'step-start')).toBe(false);
+    });
+
+    it('hands the signal to tools as ctx.abortSignal and to the model request', async () => {
+      const controller = new AbortController();
+      let toolSignal: AbortSignal | undefined;
+      toolRegistry.register(defineTool({ name: 'probe', description: 'Probe', input: z.object({}), execute: async (_args, ctx) => { toolSignal = ctx.abortSignal; return 'ok'; } }));
+      const generate = vi.spyOn(mockProvider, 'generate');
+
+      await FlowExecutor.execute(
+        { code: 'p', name: 'P', flow: { type: 'sequence', steps: [{ type: 'toolCall', tool: 'probe', arguments: {} }, { type: 'llmCall', prompt: 'hi' }] } },
+        { ...context, signal: controller.signal }
+      );
+
+      expect(toolSignal).toBe(controller.signal);
+      expect(generate).toHaveBeenCalledWith(expect.objectContaining({ signal: controller.signal }));
+    });
+  });
+
+  describe('A8: step ids', () => {
+    it('gives every step without an id a unique id within the run', async () => {
+      const flow: AgentFlow = {
+        code: 'ids',
+        name: 'Ids',
+        flow: {
+          type: 'sequence',
+          steps: [
+            { type: 'setVariable', variable: 'a', value: 1 },
+            { type: 'parallel', steps: [{ type: 'setVariable', variable: 'b', value: 2 }, { type: 'setVariable', variable: 'c', value: 3 }] },
+          ],
+        },
+      };
+
+      const result = await FlowExecutor.execute(flow, context);
+      const ids = result.events.filter((e) => e.type === 'step-start').map((e) => e.stepId);
+
+      expect(ids).toHaveLength(5);
+      expect(new Set(ids).size).toBe(5);
+      expect(ids[0]).toBe('step-1');
+    });
+  });
+
+  describe('A8: flow inputs', () => {
+    const flowWithInput: AgentFlow = {
+      code: 'needs-doc',
+      name: 'Needs doc',
+      inputs: [{ name: 'docId', type: 'shortText', required: true }],
+      flow: { type: 'return', value: '$docId' },
+    };
+
+    it('fails the flow before any step when a required input is missing', async () => {
+      const result = await FlowExecutor.execute(flowWithInput, context);
+
+      expect(result.success).toBe(false);
+      expect((result.error as SDKError).code).toBe('LOUSHO_VALIDATION_FAILED');
+      expect(result.error?.message).toContain("Required input variable 'docId' is missing");
+      expect(result.events.some((e) => e.type === 'step-start')).toBe(false);
+    });
+
+    it('fails the flow when an input has the wrong type', async () => {
+      const result = await FlowExecutor.execute(flowWithInput, { ...context, variables: { docId: 42 } });
+
+      expect(result.success).toBe(false);
+      expect(result.error?.message).toContain("Input variable 'docId' must be a string");
+    });
+
+    it('runs when the inputs are valid', async () => {
+      const result = await FlowExecutor.execute(flowWithInput, { ...context, variables: { docId: 'inv-1' } });
+
+      expect(result.success).toBe(true);
+      expect(result.output).toBe('inv-1');
     });
   });
 

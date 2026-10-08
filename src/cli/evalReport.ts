@@ -9,6 +9,7 @@ import {
   type EvalResult,
 } from '../evals/evalResult';
 import type { DriftEntry } from '../evals/drift';
+import * as path from 'node:path';
 
 /** Totals over a run of evals. */
 export interface EvalSummary {
@@ -206,4 +207,61 @@ export function renderJunit(results: readonly EvalResult[], strict: boolean): st
     '</testsuites>',
     '',
   ].join('\n');
+}
+
+/** The part of vitest's JSON report (`--reporter=json`) read here. */
+interface VitestJsonReport {
+  testResults?: Array<{
+    name: string;
+    status: string;
+    message?: string;
+    assertionResults?: Array<{ fullName?: string; title?: string; status: string; failureMessages?: string[] }>;
+  }>;
+}
+
+function sameFile(a: string, b: string): boolean {
+  const norm = (file: string) => {
+    const resolved = path.resolve(file).split(path.sep).join('/');
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  };
+  return norm(a) === norm(b);
+}
+
+function vitestError(label: string, message: string): EvalResult {
+  return { name: 'vitest', case: label, tags: [], passed: false, assertions: [], durationMs: 0, steps: 0, toolCalls: [], error: message };
+}
+
+/**
+ * Error results for what vitest failed without any eval case reporting it:
+ * one per test file vitest marked failed (a file that failed to load, a test
+ * outside `defineEval()`), else one for the whole run when vitest exited
+ * non-zero with nothing failing. Without them a crashed run would write
+ * empty (green-looking) JUnit and JSON reports.
+ */
+export function unreportedFailures(
+  results: readonly EvalResult[],
+  vitestReport: unknown,
+  vitestCode: number,
+  options: { cwd: string; strict: boolean }
+): EvalResult[] {
+  const failingFiles = results.filter((r) => failsRun(r, options.strict) && r.file).map((r) => r.file as string);
+  const extra: EvalResult[] = [];
+  for (const file of (vitestReport as VitestJsonReport | undefined)?.testResults ?? []) {
+    if (file.status !== 'failed' || failingFiles.some((f) => sameFile(f, file.name))) continue;
+    const failedTests = (file.assertionResults ?? []).filter((a) => a.status === 'failed');
+    const message =
+      file.message ||
+      failedTests.map((a) => `${a.fullName ?? a.title ?? 'test'}: ${a.failureMessages?.[0] ?? 'failed'}`).join('\n') ||
+      'vitest reported this file as failed';
+    extra.push({ ...vitestError(path.relative(options.cwd, file.name).split(path.sep).join('/'), message), file: file.name });
+  }
+  if (vitestCode !== 0 && extra.length === 0 && !results.some((r) => failsRun(r, options.strict))) {
+    extra.push(
+      vitestError(
+        'run',
+        `vitest exited with code ${vitestCode} but no eval case failed: an eval file failed to load, a test outside defineEval() failed, or vitest crashed. See the vitest output above.`
+      )
+    );
+  }
+  return extra;
 }

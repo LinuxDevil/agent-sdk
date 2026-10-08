@@ -13,6 +13,9 @@ import { mockModel } from '../testing';
 import { isRemoteSubagent } from '../subagents/remoteAgent';
 import { explainImportError } from './importModule';
 import { closest } from './closest';
+import { SDKError } from '../utils/sdkError';
+import type { CreateAgentBase } from '../createAgent';
+import type { IoGuardrail } from '../execution/ioGuardrails';
 
 const fixture = (name: string): string => path.join(__dirname, '__fixtures__', name);
 const systemOf = (call: { messages: readonly { role: string; content: unknown }[] }): string =>
@@ -97,6 +100,45 @@ describe('resolveAgentDir', () => {
     await expect(resolveAgentDir(path.join(fixture('full'), 'instructions.md'))).rejects.toThrow(
       /is not a directory/
     );
+  });
+});
+
+/**
+ * F2 (audit A3): every `createAgent()` option, so a new one cannot be added
+ * without this test noticing. `satisfies` fails to compile on a missing or an
+ * unknown key.
+ */
+const CREATE_AGENT_OPTIONS = {
+  tools: true, mcpServers: true, skills: true, name: true, description: true, subagents: true, subagentOptions: true,
+  handoffs: true, maxHandoffs: true, toolSearch: true, codeMode: true, maxSubagentDepth: true, maxSteps: true, limits: true,
+  guardrails: true, toolConcurrency: true, onAgentDrift: true, reasoning: true, onEvent: true, exporter: true,
+  captureContent: true, redactContent: true, projectInstructions: true, store: true, approvalStore: true, approve: true,
+  approvalTtlMs: true, askQuestion: true, retry: true, fallbackModels: true, output: true, hooks: true, compaction: true,
+  memory: true, permissions: true, onPermissionDecision: true, permissionMode: true, onPermissionModeChange: true,
+} satisfies Record<keyof CreateAgentBase, true>;
+
+describe('createAgent() overrides', () => {
+  it('forwards every createAgent() option to the assembled config', async () => {
+    const keys = Object.keys(CREATE_AGENT_OPTIONS) as (keyof CreateAgentBase)[];
+    // A distinct value per option (an array, since `skills` and `memory` are copied, not passed by reference).
+    const overrides = Object.fromEntries(keys.map((key) => [key, [{ name: `override-${key}` }]]));
+    const { config } = await resolveAgentDir(fixture('js-json'), { provider: mockModel(['x']), ...overrides } as never);
+
+    const assembled = config as unknown as Record<string, unknown>;
+    const dropped = keys.filter((key) => JSON.stringify(assembled[key]) !== JSON.stringify(overrides[key]));
+    expect(dropped).toEqual([]);
+  });
+
+  it('runs the agent with an onEvent and guardrails override (they were dropped before)', async () => {
+    const events: string[] = [];
+    const blockPing: IoGuardrail = { name: 'block-ping', check: ({ toolName }) => (toolName === 'ping' ? { ok: false, reason: 'no ping' } : { ok: true }) };
+    const model = mockModel([{ toolCalls: [{ name: 'ping', args: {} }] }, 'done']);
+    const agent = await loadAgentDir(fixture('js-json'), { provider: model, onEvent: (event) => events.push(event.type), guardrails: { tools: [blockPing] } });
+
+    await agent.send('go').catch(() => undefined);
+
+    expect(events).toContain('guardrail.tripped');
+    expect(events).not.toContain('tool.done');
   });
 });
 
@@ -557,6 +599,23 @@ describe('helpers', () => {
     expect(ts.message).toContain('compile');
     expect(explainImportError('/x/tools/a.js', cause).message).toContain('failed to import /x/tools/a.js');
     expect(explainImportError('/x/a.ts', new Error('boom')).message).toContain('failed to import /x/a.ts: boom');
+  });
+
+  it('codes an unresolvable package import with a hint naming the package and where Node looks for it', () => {
+    const esm = Object.assign(new Error("Cannot find package '@lousho/build-ai-agent' imported from /k/tools/fs.ts"), { code: 'ERR_MODULE_NOT_FOUND' });
+    const error = explainImportError('/k/tools/fs.ts', esm) as SDKError;
+    expect(error).toBeInstanceOf(SDKError);
+    expect(error.code).toBe('LOUSHO_AGENT_DIR_INVALID');
+    expect(error.message).toContain('failed to import /k/tools/fs.ts');
+    expect(error.hint).toContain('npm install @lousho/build-ai-agent');
+    expect(error.hint).toContain('node_modules');
+    const cjs = Object.assign(new Error("Cannot find module 'zod/v4'\nRequire stack:\n- /k/a.ts"), { code: 'MODULE_NOT_FOUND' });
+    expect((explainImportError('/k/a.ts', cjs) as SDKError).hint).toContain('npm install zod');
+    // A missing relative file is not a package to install; it keeps the generic code and hint.
+    const relative = Object.assign(new Error("Cannot find module './helpers'"), { code: 'MODULE_NOT_FOUND' });
+    const plain = explainImportError('/k/a.ts', relative) as SDKError;
+    expect(plain.code).toBe('LOUSHO_AGENT_DIR_INVALID');
+    expect(plain.hint).not.toContain('npm install');
   });
 
   it('suggests close keys and nothing for distant ones', () => {

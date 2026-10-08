@@ -64,15 +64,15 @@ Find a code by area:
 | Area | Codes | When you meet them |
 | ---- | ----- | ------------------ |
 | [Configuration](#configuration) | [`LOUSHO_CONFIG_INVALID`](#lousho_config_invalid), [`LOUSHO_CONFIG_MISSING_PROVIDER`](#lousho_config_missing_provider), [`LOUSHO_CONFIG_MISSING_AGENT`](#lousho_config_missing_agent), [`LOUSHO_CONFIG_MISSING_INPUT`](#lousho_config_missing_input), [`LOUSHO_CONFIG_CONFLICTING_OPTIONS`](#lousho_config_conflicting_options), [`LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE`](#lousho_config_missing_checkpoint_store), [`LOUSHO_CONFIG_RESOLVER_FAILED`](#lousho_config_resolver_failed) | A `createAgent()` or executor call that is missing or mixing options, or a config resolver that failed. |
-| [Providers and peers](#providers-and-peers) | [`LOUSHO_PROVIDER_SPEC_INVALID`](#lousho_provider_spec_invalid), [`LOUSHO_PROVIDER_UNKNOWN`](#lousho_provider_unknown), [`LOUSHO_PROVIDER_MISSING_API_KEY`](#lousho_provider_missing_api_key), [`LOUSHO_PROVIDER_REQUEST_FAILED`](#lousho_provider_request_failed), [`LOUSHO_PROVIDER_RATE_LIMITED`](#lousho_provider_rate_limited), [`LOUSHO_PEER_MISSING`](#lousho_peer_missing), [`LOUSHO_HOSTED_TOOL_UNSUPPORTED`](#lousho_hosted_tool_unsupported) | Resolving a model string, a missing API key or peer package, a failed or rate-limited model request, a hosted tool the provider cannot run. |
+| [Providers and peers](#providers-and-peers) | [`LOUSHO_PROVIDER_SPEC_INVALID`](#lousho_provider_spec_invalid), [`LOUSHO_PROVIDER_UNKNOWN`](#lousho_provider_unknown), [`LOUSHO_PROVIDER_MISSING_API_KEY`](#lousho_provider_missing_api_key), [`LOUSHO_PROVIDER_REQUEST_FAILED`](#lousho_provider_request_failed), [`LOUSHO_PROVIDER_RATE_LIMITED`](#lousho_provider_rate_limited), [`LOUSHO_PEER_MISSING`](#lousho_peer_missing), [`LOUSHO_HOSTED_TOOL_UNSUPPORTED`](#lousho_hosted_tool_unsupported), [`LOUSHO_UNSUPPORTED_CONTENT`](#lousho_unsupported_content) | Resolving a model string, a missing API key or peer package, a failed or rate-limited model request, a hosted tool the provider cannot run, a file the provider cannot send. |
 | [Agent spec files](#agent-spec-files) | [`LOUSHO_SPEC_NOT_FOUND`](#lousho_spec_not_found), [`LOUSHO_SPEC_INVALID`](#lousho_spec_invalid), [`LOUSHO_SPEC_UNKNOWN_FIELD`](#lousho_spec_unknown_field), [`LOUSHO_SPEC_UNSUPPORTED_FORMAT`](#lousho_spec_unsupported_format) | Loading an `AgentSpec` file with `loadSpec()` or `specToAgent()`. |
-| [Tools](#tools) | [`LOUSHO_TOOL_NOT_FOUND`](#lousho_tool_not_found), [`LOUSHO_TOOL_NEEDS_CREDENTIALS`](#lousho_tool_needs_credentials), [`LOUSHO_TOOL_EXECUTION_FAILED`](#lousho_tool_execution_failed), [`LOUSHO_TOOL_ARGS_INVALID`](#lousho_tool_args_invalid) | A tool the model called is unknown, needs credentials, threw, or got invalid arguments. |
-| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
-| [Schedules](#schedules) | [`LOUSHO_SCHEDULE_INVALID`](#lousho_schedule_invalid) | Defining or loading a schedule. |
+| [Tools](#tools) | [`LOUSHO_TOOL_NOT_FOUND`](#lousho_tool_not_found), [`LOUSHO_TOOL_NEEDS_CREDENTIALS`](#lousho_tool_needs_credentials), [`LOUSHO_TOOL_EXECUTION_FAILED`](#lousho_tool_execution_failed), [`LOUSHO_TOOL_ARGS_INVALID`](#lousho_tool_args_invalid), [`LOUSHO_MCP_START_FAILED`](#lousho_mcp_start_failed) | A tool the model called is unknown, needs credentials, threw, or got invalid arguments; a stdio MCP server did not start. |
+| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
+| [Schedules](#schedules) | [`LOUSHO_SCHEDULE_INVALID`](#lousho_schedule_invalid), [`LOUSHO_SCHEDULE_RUN_INCOMPLETE`](#lousho_schedule_run_incomplete) | Defining or loading a schedule, or a scheduled turn that did not finish. |
 | [Channels](#channels) | [`LOUSHO_CHANNEL_INVALID`](#lousho_channel_invalid), [`LOUSHO_MEMORY_INVALID`](#lousho_memory_invalid) | Defining a channel or a memory slot. |
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
 | [Sandbox](#sandbox) | [`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`](#lousho_sandbox_egress_unsupported) | Asking a sandbox for something it cannot do on the current platform. |
-| [Agent directories, skills and flows](#agent-directories-skills-and-flows) | [`LOUSHO_AGENT_DIR_INVALID`](#lousho_agent_dir_invalid), [`LOUSHO_SKILL_INVALID`](#lousho_skill_invalid), [`LOUSHO_FLOW_INVALID`](#lousho_flow_invalid) | Loading an agent directory, a skill, or a flow definition. |
+| [Agent directories, skills and flows](#agent-directories-skills-and-flows) | [`LOUSHO_AGENT_DIR_INVALID`](#lousho_agent_dir_invalid), [`LOUSHO_SKILL_INVALID`](#lousho_skill_invalid), [`LOUSHO_FLOW_INVALID`](#lousho_flow_invalid), [`LOUSHO_FLOW_TOOL_DENIED`](#lousho_flow_tool_denied) | Loading an agent directory, a skill, or a flow definition, and gating a flow's tool calls. |
 | [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed) | A storage backend, a trigger, a channel request or `lousho build`. |
 | [Tests and evals](#tests-and-evals) | [`LOUSHO_EVALS_INVALID`](#lousho_evals_invalid), [`LOUSHO_TEST_FAILED`](#lousho_test_failed), [`LOUSHO_CASSETTE_INVALID`](#lousho_cassette_invalid) | `defineEval()`, `mockModel` and cassettes. |
 | [General](#general) | [`LOUSHO_GENERIC_ERROR`](#lousho_generic_error), [`LOUSHO_AGENT_EXECUTION_FAILED`](#lousho_agent_execution_failed), [`LOUSHO_FLOW_EXECUTION_FAILED`](#lousho_flow_execution_failed), [`LOUSHO_VALIDATION_FAILED`](#lousho_validation_failed), [`LOUSHO_OPERATION_TIMEOUT`](#lousho_operation_timeout), [`LOUSHO_OUTPUT_INVALID`](#lousho_output_invalid), [`LOUSHO_BUDGET_EXCEEDED`](#lousho_budget_exceeded), [`LOUSHO_GUARDRAIL_TRIPPED`](#lousho_guardrail_tripped) | Run-level failures: a timeout, a budget or guardrail stop, invalid output, and the catch-all codes. |
@@ -192,6 +192,13 @@ or pass your own `provider` instance.
 **Means:** a model call failed (`LLMProviderError`, and
 `CompactedLLMProviderError`, whose `compacted.category` says why:
 `rate-limit`, `timeout`, `context-length-exceeded`, `auth-failure`, `unknown`).
+A context overflow is `context-length-exceeded` (not retryable) whatever the
+status, including llama.cpp / LM Studio's "exceeds the available context size"
+and "Context size has been exceeded", and whether it arrives from the request
+or as a stream error. A connection failure is `timeout` and names the cause,
+e.g. `connection refused (ECONNREFUSED) at http://localhost:1234/v1/responses -
+is the server running?`. When the provider's error body could not be parsed
+(the message is only `Bad Request`), a short snippet of the body is appended.
 
 **Fix:** for `auth-failure`, fix the API key; for `context-length-exceeded`,
 shorten the conversation (see [Context compaction](./compaction.md)); for
@@ -235,6 +242,23 @@ this provider.
 
 **Example:** `createAgent({ model: 'ollama/llama3.2', tools: [webSearch()] })`
 rejects its first `send()`.
+
+### LOUSHO_UNSUPPORTED_CONTENT
+
+**Means:** a user message has a file part (`{ type: 'file', data, mimeType }`)
+that the provider cannot send: its media type is not one the provider sends on
+your `ai` major (see [Multimodal input](./providers.md#multimodal-input)). The
+call is rejected before anything is sent, so the model never answers without
+the file. Under `withFallback()` (or `fallbackModels`) the next provider gets
+the call. Inside an agent run the error reaches you as the `cause` of a
+`LOUSHO_PROVIDER_REQUEST_FAILED` error, with the same message.
+
+**Fix:** send the file to a provider and `ai` major that takes its type (or
+list the type in `fromAiSdk(model, { fileMediaTypes })`), put the file's text
+in the message, or set the provider's `unsupportedFiles: 'text-note'` to send
+`[file <name> (<type>) not sent]` in its place, as before.
+
+**Example:** a PDF sent to `new OllamaProvider({ name: 'ollama' })`.
 
 ## Agent spec files
 
@@ -319,11 +343,36 @@ a failed call; their message is the tool's result, so it carries no appended
 schema (a `ToolArgumentsValidationError`). Inside a run the model gets the
 issues as a tool result and can retry, so a run seldom ends on it.
 
+Arguments that are not valid JSON (truncated, say) get the same error, with one
+`(root)` issue: `arguments are not valid JSON: <parse error>; received: <the
+text, truncated>`. The tool does not run. A small repair is tried first: a
+surrounding markdown code fence, trailing commas and double-encoded JSON are
+fixed when the result is a JSON object. Empty arguments (`""`) mean `{}`. The
+call's `tool.start` event carries `rawArgs`, the text the model sent, whenever
+it was repaired or failed to parse.
+
 **Fix:** if you called the tool yourself, fix the arguments named in the message;
 if the model keeps getting them wrong, make the field `.describe()`
 text clearer. `error.issues` lists each path and problem. See [Tools](./tools.md).
 
 **Example:** the model sends `{ to: 42 }` to a tool whose `to` is a string.
+
+### LOUSHO_MCP_START_FAILED
+
+**Means:** a stdio MCP server (`mcpServers` entry with `command`) did not
+start: the command was not found, the process exited during the `initialize`
+handshake, or it did not answer within `connectTimeoutMs` (default 60
+seconds). The error (`McpStartError`) carries `exitCode` (or `signal`) and
+`stderr`, the last 20 lines the process wrote there, and the message shows
+both. `connectMcp()` and `agent.ready()` (or the first `send()`) fail with it.
+
+**Fix:** read the stderr lines in the message, or run the `command` with its
+`args` yourself. Check the package name and version for an `npx` server,
+the `env` it needs, and `cwd`. With `stderr: 'inherit'` or `'ignore'` there
+are no lines to show. See [MCP](./mcp.md#use-mcp-servers-in-an-agent).
+
+**Example:** `npx -y some-mcp-server` for a package that does not exist exits
+with an `npm error 404` line on stderr.
 
 ## Approvals and sessions
 
@@ -348,6 +397,41 @@ is not pending: unknown, or already resolved.
 paused result); each approval resolves once.
 
 **Example:** calling `agent.approvals.resolve({ id, approved: true })` twice.
+
+The approvals route (`POST /chat/:sessionId/approvals/:id`) answers this code
+with a `404` also when the approval belongs to another session than the one
+in the URL.
+
+### LOUSHO_APPROVAL_CONFLICT
+
+**Means:** a `409` from the approvals route: another request decided the same
+approval while this one was being checked, and won.
+
+**Fix:** do not decide again; read the session (`GET /chat/:sessionId`) to see
+how the turn went on.
+
+**Example:** two supervisors click "Approve" on the same refund at once.
+
+### LOUSHO_APPROVAL_FORBIDDEN
+
+**Means:** a `403` from the approvals route: the route's `authorizeApproval`
+refused this caller. By default only the caller the paused run acts for may
+decide it (see [Route auth](./auth.md#who-may-decide-an-approval)).
+
+**Fix:** decide as a caller `authorizeApproval` accepts, or change
+`authorizeApproval`.
+
+**Example:** user `bob` posts a decision on an approval of `alice`'s run.
+
+### LOUSHO_SESSION_FORBIDDEN
+
+**Means:** a `403` from a session route: the route's `authorizeSession`
+refused this caller the action (`read`, `chat` or `approve`) on this session.
+
+**Fix:** use a session this caller owns, or change `authorizeSession`.
+
+**Example:** user `bob` reads `GET /chat/alice-1`, and `authorizeSession`
+only allows ids that start with the caller's id.
 
 ### LOUSHO_SESSION_AWAITING_APPROVAL
 
@@ -547,6 +631,19 @@ See [Schedules](./schedules.md).
 
 **Example:** `defineSchedule({ cron: '61 * * * *', prompt: 'hi' })`.
 
+### LOUSHO_SCHEDULE_RUN_INCOMPLETE
+
+**Means:** a prompt schedule's turn ended with a `finishReason` other than
+`'stop'`; the message names it. `startSchedules()` passes this to `onError`,
+`fireSchedule()` rejects with it, and a Worker's `scheduled()` logs it. With
+`'awaiting-approval'` the message names the approval, which stays pending.
+
+**Fix:** resolve the pending approval with `agent.approvals.resolve()`, or
+change the prompt, tools, `output` schema or limits so an unattended turn can
+finish. See [Schedules](./schedules.md).
+
+**Example:** a schedule whose prompt makes the agent call a `needsApproval` tool.
+
 ## Channels
 
 ### LOUSHO_CHANNEL_INVALID
@@ -684,6 +781,19 @@ missing flow name or code, or a node of an unknown type.
 **Fix:** fix the part of the flow the message names. See [Flows](./flows.md).
 
 **Example:** two `.input('city')` calls on one `FlowBuilder`.
+
+### LOUSHO_FLOW_TOOL_DENIED
+
+**Means:** a flow's `toolCall` step was not run. A permission rule or the tool's
+`needsApproval` policy denied it, or the call needs approval and the flow
+context's `approve` callback rejected it, returned `'defer'` (a flow cannot
+pause), or was not passed at all.
+
+**Fix:** pass `approve` in the flow context to decide calls that need approval,
+or change the rule that denied the call. See [Flows](./flows.md#tool-calls).
+
+**Example:** a flow step that calls a `needsApproval: true` payment tool, run
+with no `approve` callback.
 
 ## Storage, deployment and integrations
 

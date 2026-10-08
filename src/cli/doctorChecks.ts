@@ -10,6 +10,8 @@ import { satisfiesRange } from './versionRange';
 const REQUIRED_PEERS = ['ai', 'zod'];
 const DEFAULT_OLLAMA_URL = 'http://localhost:11434';
 const OLLAMA_TIMEOUT_MS = 2000;
+const PING_TIMEOUT_MS = 5000;
+const DEFAULT_OPENAI_URL = 'https://api.openai.com/v1';
 
 /** What the agent spec (if any) needs from the rest of the setup. */
 export interface SpecNeeds {
@@ -167,9 +169,27 @@ export function checkOptionalPeers(env: DoctorEnvironment, needs: SpecNeeds): Do
   return [...providers, ...features].map(([name, peer]) => checkOptionalPeer(env, name, peer));
 }
 
+/** The env variable the provider package reads for a custom endpoint (a local or OpenAI-compatible server). */
+const BASE_URL_ENV: Record<string, string> = { openai: 'OPENAI_BASE_URL', anthropic: 'ANTHROPIC_BASE_URL' };
+
+/** `; base URL <url> (from <VAR>)` when the provider's base-URL variable is set; credentials and query are left out. */
+function baseUrlNote(env: DoctorEnvironment, provider: string): string {
+  const name = BASE_URL_ENV[provider];
+  const raw = name ? env.env[name] : undefined;
+  if (!name || !raw) return '';
+  let shown: string;
+  try {
+    const url = new URL(raw);
+    shown = `${url.origin}${url.pathname}`;
+  } catch {
+    shown = '(not a valid URL)';
+  }
+  return `; base URL ${shown} (from ${name})`;
+}
+
 function checkApiKey(env: DoctorEnvironment, info: ProviderInfo, needs: SpecNeeds): DoctorCheck {
   const base = { id: `env.${info.name}`, title: `${info.name} (${info.envKey})` };
-  if (env.env[info.envKey]) return { ...base, status: 'ok', finding: 'set' };
+  if (env.env[info.envKey]) return { ...base, status: 'ok', finding: `set${baseUrlNote(env, info.name)}` };
   if (!info.envRequired) {
     const finding = info.envForInfoOnly
       ? 'not set (only needed by the matching nested provider; each pi provider reads its own env key)'
@@ -180,7 +200,7 @@ function checkApiKey(env: DoctorEnvironment, info: ProviderInfo, needs: SpecNeed
   return {
     ...base,
     status: needed ? 'fail' : 'warn',
-    finding: needed ? 'not set, and the agent spec needs it' : 'not set',
+    finding: `${needed ? 'not set, and the agent spec needs it' : 'not set'}${baseUrlNote(env, info.name)}`,
     fix: `Set ${info.envKey} in your environment, e.g. export ${info.envKey}=<your key>`,
   };
 }
@@ -203,6 +223,83 @@ function checkDefaultProvider(env: DoctorEnvironment): DoctorCheck {
 /** Reports only whether each provider's env var is set - never its value. */
 export function checkApiKeys(env: DoctorEnvironment, needs: SpecNeeds): DoctorCheck[] {
   return [...listProviders().map((info) => checkApiKey(env, info, needs)), checkDefaultProvider(env)];
+}
+
+/** `raw` without credentials, query or fragment (they may hold a key), or null when it is not a URL. */
+function displayUrl(raw: string): string | null {
+  try {
+    const url = new URL(raw);
+    url.username = '';
+    url.password = '';
+    url.search = '';
+    url.hash = '';
+    return url.toString().replace(/\/+$/, '');
+  } catch {
+    return null;
+  }
+}
+
+/** OPENAI_BASE_URL (read by `@ai-sdk/openai`, so `openai/<model>` calls it); only shown when set. */
+export function checkOpenAIBaseUrl(env: DoctorEnvironment): DoctorCheck | null {
+  const raw = env.env.OPENAI_BASE_URL;
+  if (!raw) return null;
+  const base = { id: 'env.openai-base-url', title: 'openai base URL (OPENAI_BASE_URL)' };
+  const shown = displayUrl(raw);
+  if (shown) return { ...base, status: 'ok', finding: shown };
+  return { ...base, status: 'warn', finding: 'not a valid URL', fix: "Set OPENAI_BASE_URL to the server's /v1 URL, e.g. http://localhost:1234/v1" };
+}
+
+interface PingTarget {
+  provider: string;
+  envKey: string;
+  /** The env var that moves the endpoint, named in the fix. */
+  urlVar?: string;
+  base: string;
+  headers: Record<string, string>;
+}
+
+/** The `/models` endpoints of the providers configured in the environment (Ollama has its own check). */
+function pingTargets(env: DoctorEnvironment): PingTarget[] {
+  const vars = env.env;
+  const bearer = (key: string | undefined): Record<string, string> => (key ? { Authorization: `Bearer ${key}` } : {});
+  const targets: PingTarget[] = [];
+  if (vars.OPENAI_API_KEY || vars.OPENAI_BASE_URL) {
+    const base = (vars.OPENAI_BASE_URL || DEFAULT_OPENAI_URL).replace(/\/+$/, '');
+    targets.push({ provider: 'openai', envKey: 'OPENAI_API_KEY', urlVar: 'OPENAI_BASE_URL', base, headers: bearer(vars.OPENAI_API_KEY) });
+  }
+  if (vars.ANTHROPIC_API_KEY) {
+    const headers = { 'x-api-key': vars.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' };
+    targets.push({ provider: 'anthropic', envKey: 'ANTHROPIC_API_KEY', base: 'https://api.anthropic.com/v1', headers });
+  }
+  if (vars.OPENROUTER_API_KEY) {
+    targets.push({ provider: 'openrouter', envKey: 'OPENROUTER_API_KEY', base: 'https://openrouter.ai/api/v1', headers: bearer(vars.OPENROUTER_API_KEY) });
+  }
+  return targets;
+}
+
+async function ping(env: DoctorEnvironment, target: PingTarget): Promise<DoctorCheck> {
+  const url = `${target.base}/models`;
+  const base = { id: `ping.${target.provider}`, title: `${target.provider} endpoint (GET ${displayUrl(url) ?? 'invalid URL'})` };
+  const where = target.urlVar ? `, and that ${target.urlVar} points at it` : '';
+  try {
+    const response = await env.fetch(url, { signal: AbortSignal.timeout(PING_TIMEOUT_MS), headers: target.headers });
+    if (response.ok) return { ...base, status: 'ok', finding: `reachable (HTTP ${response.status})` };
+    if (response.status === 401 || response.status === 403) {
+      return { ...base, status: 'warn', finding: `reachable, but the key was rejected (HTTP ${response.status})`, fix: `Check ${target.envKey}.` };
+    }
+    return { ...base, status: 'warn', finding: `answered HTTP ${response.status}`, fix: `Check the server is up${where}.` };
+  } catch (error) {
+    return { ...base, status: 'warn', finding: `unreachable (${message(error)})`, fix: `Check the server is up${where}.` };
+  }
+}
+
+/** `--ping`: GET `<base>/models` for each configured provider. Never prints a key. */
+export async function checkPings(env: DoctorEnvironment): Promise<DoctorCheck[]> {
+  const targets = pingTargets(env);
+  if (targets.length === 0) {
+    return [{ id: 'ping', title: 'Provider endpoints', status: 'ok', finding: 'nothing to ping (no provider env var set)' }];
+  }
+  return Promise.all(targets.map((target) => ping(env, target)));
 }
 
 function ollamaBaseUrl(env: DoctorEnvironment): string {

@@ -204,7 +204,9 @@ console.log((await store.list(memoryKey(notes)!)).map((item) => item.text)); // 
 ## Limitations
 
 - Recall and the memory tools apply to the agent's own runs, not to its
-  sub-agents. When `agent.approvals.resolve()` continues a run after an
+  sub-agents. A [handoff](./handoffs.md#what-switches-and-what-stays) target
+  keeps the lead's memory (the recalled blocks and the tools, under the same
+  scope keys); a target's own `memory` slots are not used. When `agent.approvals.resolve()` continues a run after an
   approval pause, the recalled block stays in the prompt but the memory tools
   are not offered for the rest of that run.
 - An agent directory's `memory/` folder is part of the agent: see

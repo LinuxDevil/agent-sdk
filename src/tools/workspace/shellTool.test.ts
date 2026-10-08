@@ -91,6 +91,14 @@ describe('createShellTool (LOU-X6)', () => {
     expect(await run(aborted, { command: 'sleep' })).toMatchObject({ aborted: true, note: expect.stringMatching(/cancelled/) });
   });
 
+  it('tells the model which shell runs the commands', () => {
+    const exec = () => Promise.resolve({ stdout: '', stderr: '', exitCode: 0, timedOut: false });
+    const cmd = createShellTool({ shell: 'C:\\Windows\\system32\\cmd.exe', exec });
+    expect(cmd.description).toMatch(/cmd\.exe.*double quotes.*%NAME%/);
+    expect(createShellTool({ shell: '/bin/sh', exec }).description).toMatch(/POSIX shell \(\/bin\/sh\)/);
+    expect(createShellTool({ exec }).description).not.toMatch(/cmd\.exe|POSIX/);
+  });
+
   describe('allow / deny', () => {
     const ws = new MemoryWorkspace({ exec: () => ({ stdout: 'ran' }) });
 
@@ -153,6 +161,40 @@ describe('createShellTool (LOU-X6)', () => {
       const toolMessage = provider.calls[1].messages.find((m) => m.role === 'tool');
       expect(toolMessage?.isError).toBe(true);
       expect(JSON.parse(toolMessage!.content as string)).toMatchObject({ error: 'WorkspaceError', toolName: 'shell' });
+    });
+
+    it('a CommandRule without args is an exact match; with args it validates them', async () => {
+      const tool = createShellTool(ws, {
+        allow: [{ command: 'npm test' }, { command: 'node --test', args: (rest) => /^([\w./-]+\.test\.js\s*)*$/.test(rest) }],
+        needsApproval: false,
+      });
+      expect(await run(tool, { command: 'npm test' })).toMatchObject({ stdout: 'ran' });
+      expect(await run(tool, { command: 'node --test' })).toMatchObject({ stdout: 'ran' });
+      expect(await run(tool, { command: 'node --test test/a.test.js' })).toMatchObject({ stdout: 'ran' });
+      for (const command of [
+        'npm test -- --test-reporter-destination=../x',
+        'node --test --test-reporter-destination=../x',
+        'node --testx',
+        'node --test a.test.js; rm x',
+      ]) {
+        await expect(run(tool, { command }), command).rejects.toThrow(/not on the allow list \(npm test \(exactly\)/);
+      }
+    });
+
+    it('a CommandRule in deny is checked against each part', async () => {
+      const tool = createShellTool(ws, { deny: [{ command: 'git push', args: (rest) => rest.includes('--force') }] });
+      await expect(run(tool, { command: 'git status && git push --force' })).rejects.toThrow(/deny pattern git push <checked arguments>/);
+      expect(await approvalFor(tool, 'git push origin main')).toBe(true);
+    });
+
+    it('treats % and ^ as operators under cmd.exe, but not under sh', async () => {
+      const exec = () => Promise.resolve({ stdout: 'ran', stderr: '', exitCode: 0, timedOut: false });
+      const cmdTool = createShellTool({ shell: 'C:\\Windows\\system32\\cmd.exe', exec }, { allow: ['node --test'], needsApproval: false });
+      for (const command of ['node --test %COMSPEC%', 'node --test ^& echo chained']) {
+        await expect(run(cmdTool, { command }), command).rejects.toThrow(/% \^\) are not allowed/);
+      }
+      const shTool = createShellTool({ shell: '/bin/sh', exec }, { allow: ['git log'], needsApproval: false });
+      expect(await run(shTool, { command: 'git log --format=%h HEAD^' })).toMatchObject({ stdout: 'ran' });
     });
 
     it('resets the lastIndex of global regex patterns', async () => {

@@ -9,7 +9,7 @@
  */
 import { z } from 'zod';
 import { anyError, typeErrors, type SafeParser } from '../utils/zodCompat';
-import type { McpApproval } from '../tools/mcp/McpToolLoader';
+import type { McpApproval, McpToolFilter } from '../tools/mcp/McpToolLoader';
 import type { RunLimits } from '../execution/budget';
 import { guardrailEntrySchema, type AgentSpecGuardrail } from './guardrailOptions';
 
@@ -63,10 +63,24 @@ export interface McpStdioServerSpec {
   command: string;
   args?: string[];
   env?: Record<string, string>;
+  /** The process's working directory. Default: this process's. */
+  cwd?: string;
+  /**
+   * The process's stderr: `'forward'` (default) copies it to this process's
+   * stderr and keeps the last lines for a start failure (`LOUSHO_MCP_START_FAILED`);
+   * `'capture'` only keeps them; `'inherit'` and `'ignore'` keep nothing.
+   */
+  stderr?: 'forward' | 'capture' | 'inherit' | 'ignore';
   /** Which of this server's tools ask for approval (LOU-Z5). Default `'annotations'`. */
   approval?: McpApproval;
   /** N2: withhold this server's tools from the model until `tool_search` finds them (docs/tool-search.md). */
   deferLoading?: boolean;
+  /** How long one tool call may take, in milliseconds. Default: the MCP SDK's 60 seconds. */
+  timeoutMs?: number;
+  /** How long connecting (the `initialize` handshake) may take, in milliseconds. Default: the MCP SDK's 60 seconds. */
+  connectTimeoutMs?: number;
+  /** Load only some of this server's tools, by their MCP names: `{ include?, exclude? }`. */
+  tools?: McpToolFilter;
 }
 
 /**
@@ -95,6 +109,12 @@ export interface McpHttpServerSpec {
   approval?: McpApproval;
   /** N2: withhold this server's tools from the model until `tool_search` finds them (docs/tool-search.md). */
   deferLoading?: boolean;
+  /** How long one tool call may take, in milliseconds. Default: the MCP SDK's 60 seconds. */
+  timeoutMs?: number;
+  /** How long connecting (the `initialize` handshake) may take, in milliseconds. Default: the MCP SDK's 60 seconds. */
+  connectTimeoutMs?: number;
+  /** Load only some of this server's tools, by their MCP names: `{ include?, exclude? }`. */
+  tools?: McpToolFilter;
   /** Sign in to this server with OAuth (N9c); see {@link McpOAuthOptions}. */
   oauth?: McpOAuthOptions;
 }
@@ -175,7 +195,7 @@ const MCP_PREFIX = 'AgentSpec validation failed:';
 const mcpStringMap = (field: string) =>
   z.record(z.string(), z.string(), typeErrors({ invalid: `${MCP_PREFIX} '${field}' must be a map of string to string` }));
 
-/** `approval`: a mode, or (in code, not YAML/JSON) a predicate over a tool's name and annotations. */
+/** `approval`: a mode, or (in code, not YAML/JSON) a predicate over a tool's name, annotations and call arguments. */
 const mcpApprovalSchema = z.union(
   [z.enum(['annotations', 'always', 'never']), z.custom<McpApproval>((value) => typeof value === 'function')],
   anyError(`${MCP_PREFIX} 'approval' must be 'annotations', 'always' or 'never'`)
@@ -203,6 +223,23 @@ const mcpOAuthSchema = z
     message: `${MCP_PREFIX} 'oauth.clientSecret' needs 'oauth.clientId' (a pre-registered client)`,
   });
 
+const mcpMilliseconds = (field: string) =>
+  z
+    .number(typeErrors({ invalid: `${MCP_PREFIX} '${field}' must be a number of milliseconds` }))
+    .positive(`${MCP_PREFIX} '${field}' must be a positive number of milliseconds`)
+    .finite(`${MCP_PREFIX} '${field}' must be a positive number of milliseconds`);
+
+const mcpToolNames = (field: string) =>
+  z.array(z.string(), typeErrors({ invalid: `${MCP_PREFIX} 'tools.${field}' must be a list of tool names` }));
+
+/** `tools` of an entry: which of the server's tools to load. */
+const mcpToolFilterSchema = z
+  .object(
+    { include: mcpToolNames('include').optional(), exclude: mcpToolNames('exclude').optional() },
+    typeErrors({ invalid: `${MCP_PREFIX} 'tools' must be an object with 'include' and/or 'exclude'` })
+  )
+  .strict();
+
 /** What is wrong with a loosely-parsed `mcpServers` entry, if anything. */
 function mcpServerProblem(server: Record<string, unknown>): string | undefined {
   const stdio = server.command !== undefined;
@@ -211,7 +248,7 @@ function mcpServerProblem(server: Record<string, unknown>): string | undefined {
       ? "set either 'command' (stdio) or 'url' (HTTP), not both"
       : "missing 'command' (stdio server) or 'url' (HTTP server)";
   }
-  const stray = (stdio ? ['headers', 'oauth'] : ['args', 'env']).find((key) => server[key] !== undefined);
+  const stray = (stdio ? ['headers', 'oauth'] : ['args', 'env', 'cwd', 'stderr']).find((key) => server[key] !== undefined);
   return stray && `'${stray}' does not apply to ${stdio ? "a stdio ('command')" : "an HTTP ('url')"} server`;
 }
 
@@ -240,6 +277,13 @@ const mcpServerSchema = z
       approval: mcpApprovalSchema.optional(),
       oauth: mcpOAuthSchema.optional(),
       deferLoading: z.boolean(typeErrors({ invalid: `${MCP_PREFIX} 'deferLoading' must be true or false` })).optional(),
+      timeoutMs: mcpMilliseconds('timeoutMs').optional(),
+      connectTimeoutMs: mcpMilliseconds('connectTimeoutMs').optional(),
+      cwd: z.string(typeErrors({ invalid: `${MCP_PREFIX} 'cwd' must be a string` })).min(1).optional(),
+      stderr: z
+        .enum(['forward', 'capture', 'inherit', 'ignore'], anyError(`${MCP_PREFIX} 'stderr' must be 'forward', 'capture', 'inherit' or 'ignore'`))
+        .optional(),
+      tools: mcpToolFilterSchema.optional(),
     },
     typeErrors({ invalid: `${MCP_PREFIX} each mcpServers entry must be an object with 'command' or 'url'` })
   )

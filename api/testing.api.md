@@ -71,11 +71,13 @@ const ERROR_CODES: {
     readonly LOUSHO_PROVIDER_RATE_LIMITED: "Wait and retry (withRetry() honours Retry-After), or lower the request rate.";
     readonly LOUSHO_PEER_MISSING: "Run the npm install command shown in the message.";
     readonly LOUSHO_HOSTED_TOOL_UNSUPPORTED: "Use a provider and package pairing that runs this hosted tool (see docs/hosted-tools.md), or leave the tool out of `tools`.";
+    readonly LOUSHO_UNSUPPORTED_CONTENT: "Send this content to a provider that takes it (see docs/providers.md#multimodal-input), put the file's text in the message, or set the provider's `unsupportedFiles: 'text-note'`.";
     readonly LOUSHO_SPEC_NOT_FOUND: "Check the spec file path in the message; no file exists there.";
     readonly LOUSHO_SPEC_INVALID: "Fix the spec fields named in the message (each is shown as its path and the problem).";
     readonly LOUSHO_SPEC_UNKNOWN_FIELD: "Rename the field to the suggested spec field, or remove it.";
     readonly LOUSHO_SPEC_UNSUPPORTED_FORMAT: "Save the spec as .yaml, .yml or .json.";
     readonly LOUSHO_SCHEDULE_INVALID: "Fix the cron expression named in the message, and give the schedule exactly one of `prompt` or `run`.";
+    readonly LOUSHO_SCHEDULE_RUN_INCOMPLETE: "Resolve the pending approval named in the message, or change the prompt, tools or limits so an unattended turn can finish.";
     readonly LOUSHO_CHANNEL_INVALID: "Default-export a channel from defineChannel(), httpChannel(), webhookChannel() or slackChannel() in each channels/ file.";
     readonly LOUSHO_MEMORY_INVALID: "Default-export a memory slot from defineMemory() (or an object with a scope and a provider) in each memory/ file.";
     readonly LOUSHO_REGISTRY_UNREACHABLE: "Check the --registry url or path (http(s) or a local file) and that you are online; the message names what failed.";
@@ -91,6 +93,7 @@ const ERROR_CODES: {
     readonly LOUSHO_AGENT_DIR_INVALID: "Fix the file or folder the message names; docs/agent-directories.md shows the layout.";
     readonly LOUSHO_SKILL_INVALID: "Fix the skill the message names (a name, a description and content), or the skills option it was passed to.";
     readonly LOUSHO_FLOW_INVALID: "Fix the flow definition the message names (its name, code, inputs and node types).";
+    readonly LOUSHO_FLOW_TOOL_DENIED: "Pass an approve callback in the flow context to decide tool calls that need approval, or change the permission rule or needsApproval policy that denied the call.";
     readonly LOUSHO_STORAGE_FAILED: "Read the message: it names the database or file that failed; check the path, permissions and Node version, and the `cause`.";
     readonly LOUSHO_TRIGGER_INVALID: "Fix the trigger option the message names; the message shows a working example.";
     readonly LOUSHO_DEPLOY_FAILED: "Read the message: it names the missing option, file or unsupported feature; docs/deployment.md covers each target.";
@@ -100,6 +103,9 @@ const ERROR_CODES: {
     readonly LOUSHO_CHANNEL_REQUEST_FAILED: "Check the platform's token and permissions and its status page; the message names the call and its status.";
     readonly LOUSHO_APPROVAL_STORE_MISSING: "Pass an approvalStore (e.g. new InMemoryApprovalStore()), or use createAgent(), which has one.";
     readonly LOUSHO_APPROVAL_NOT_FOUND: "Resolve an id that is still pending (agent.approvals.list() lists them); each approval resolves once.";
+    readonly LOUSHO_APPROVAL_CONFLICT: "Another request decided this approval at the same time; read the session to see the outcome instead of deciding again.";
+    readonly LOUSHO_APPROVAL_FORBIDDEN: "Decide the approval as a caller the route's authorizeApproval accepts (by default, the caller the run acts for).";
+    readonly LOUSHO_SESSION_FORBIDDEN: "Use a session the route's authorizeSession lets this caller read, continue or decide approvals in.";
     readonly LOUSHO_SESSION_AWAITING_APPROVAL: "Resolve the pending approval first (agent.approvals.resolve() or resumeAfterApproval()), then send again.";
     readonly LOUSHO_SESSION_ID_INVALID: "Use 1-128 characters from A-Z, a-z, 0-9, '_' and '-', or omit the id.";
     readonly LOUSHO_SESSION_BUSY: "Wait for the running turn to finish (await its send(), or abort it), then call again.";
@@ -134,6 +140,7 @@ const ERROR_CODES: {
     readonly LOUSHO_OAUTH_STATE_INVALID: "Start the sign-in again from a fresh link: a state works once, for 10 minutes, and only for the user it was made for.";
     readonly LOUSHO_SIGNIN_PENDING: "Open the sign-in link first and let the provider redirect to the callback, then approve again (or approve with false to cancel).";
     readonly LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED: "Check the provider's tokenUrl, clientId, clientSecret and redirectUri (it must match the one registered with the provider), then sign in again.";
+    readonly LOUSHO_MCP_START_FAILED: "Run the server's command yourself to see why it fails; the message has its exit code and last stderr lines, and `connectTimeoutMs` bounds a server that never answers.";
     readonly LOUSHO_MCP_AUTH_REQUIRED: "Sign the app in to the MCP server once: open the URL from agent.oauth.mcpSignInUrl('<server>') and let the callback store the token.";
 };
 
@@ -207,6 +214,8 @@ interface GenerateResult {
     rawResponse?: unknown;
     // Warning: (ae-forgotten-export) The symbol "ReasoningBlock" needs to be exported by the entry point index.d.ts
     reasoning?: ReasoningBlock[];
+    // Warning: (ae-forgotten-export) The symbol "ServedBy" needs to be exported by the entry point index.d.ts
+    servedBy?: ServedBy;
     // (undocumented)
     text: string;
     // Warning: (ae-forgotten-export) The symbol "ToolCall" needs to be exported by the entry point index.d.ts
@@ -494,6 +503,7 @@ export interface RecordReplayOptions {
     normalize?: (request: GenerateOptions) => GenerateOptions;
     redact?: (text: string) => string;
     replayTiming?: boolean;
+    rerecordHint?: string;
 }
 
 // @public
@@ -571,6 +581,13 @@ interface SDKErrorOptions {
 }
 
 // @public
+interface ServedBy {
+    model?: string;
+    // (undocumented)
+    provider: string;
+}
+
+// @public
 export function setProviderInterceptor(next: ProviderInterceptor | undefined): ProviderInterceptor | undefined;
 
 // @public (undocumented)
@@ -630,6 +647,7 @@ interface StreamResult {
     //
     // (undocumented)
     fullStream: AsyncIterable<StreamChunk>;
+    servedBy?: ServedBy;
     // (undocumented)
     text: Promise<string>;
     // (undocumented)
@@ -699,9 +717,9 @@ interface ToolExecutionContext {
 
 // Warnings were encountered during analysis:
 //
-// dist/index-DyKWxFSZ.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-DyKWxFSZ.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-DyKWxFSZ.d.ts:1427:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
+// dist/index-B41xZFIC.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-B41xZFIC.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-B41xZFIC.d.ts:1442:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

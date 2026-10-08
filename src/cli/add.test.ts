@@ -7,7 +7,7 @@ import { PassThrough, Writable } from 'node:stream';
 import { resolveAgentDir } from '../agentDir';
 import { runAdd, parseAddArgs, type AddIo } from './add';
 import { planFiles } from './addWrite';
-import { DEFAULT_REGISTRY, type RegistryItem } from './registry';
+import { DEFAULT_REGISTRY, DEFAULT_REGISTRY_FALLBACK, type RegistryItem } from './registry';
 
 function sink() {
   const chunks: string[] = [];
@@ -39,7 +39,7 @@ const SHELL = {
   type: 'tool',
   description: 'Run a command',
   files: [{ path: 'tools/shell.ts', content: "import { execSync } from 'node:child_process';\nexport default (cmd: string) => execSync(cmd).toString();\n" }],
-  permissions: { exec: true, needsApproval: true },
+  permissions: { exec: true },
 };
 const SKILL = {
   name: 'triage',
@@ -197,6 +197,35 @@ describe('lousho add', () => {
     expect(seen).toEqual([DEFAULT_REGISTRY]);
   });
 
+  it('falls back to the raw GitHub copy when the default registry host is unreachable, and only for the default', async () => {
+    const dist = path.join(__dirname, '..', '..', 'registry', 'dist');
+    const fallbackBase = DEFAULT_REGISTRY_FALLBACK.replace(/index\.json$/, '');
+    const seen: string[] = [];
+    const fetchStub = (async (input: string | URL | Request) => {
+      const url = String(input);
+      seen.push(url);
+      if (url.startsWith(fallbackBase)) return new Response(fs.readFileSync(path.join(dist, url.slice(fallbackBase.length)), 'utf8'));
+      throw new TypeError('fetch failed: getaddrinfo ENOTFOUND registry.lousho.com');
+    }) as typeof fetch;
+    const added = await add(['changelog', '--yes', '--dir', 'agent'], { fetch: fetchStub });
+    expect(added.code).toBe(0);
+    expect(seen).toEqual([DEFAULT_REGISTRY, DEFAULT_REGISTRY_FALLBACK, `${fallbackBase}items/changelog.json`]);
+    expect(readReceipt().items.changelog.registry).toBe(DEFAULT_REGISTRY_FALLBACK);
+    // An explicit registry never falls back.
+    const explicit = await add(['--list', '--registry', DEFAULT_REGISTRY.replace('index.json', 'other.json')], { fetch: fetchStub });
+    expect(explicit.code).toBe(1);
+    expect(explicit.err).toContain('LOUSHO_REGISTRY_UNREACHABLE');
+    // Both down: one error naming both.
+    const offline = (async () => {
+      throw new TypeError('fetch failed');
+    }) as typeof fetch;
+    const down = await add(['--list'], { fetch: offline });
+    expect(down.code).toBe(1);
+    expect(down.err).toContain('the default registry is unreachable');
+    expect(down.err).toContain(DEFAULT_REGISTRY_FALLBACK);
+    expect(down.err).toContain('--registry');
+  });
+
   it('suggests the closest name for an unknown item', async () => {
     const result = await add(withRegistry('web-serach', '--yes'));
     expect(result.err).toContain("Did you mean 'web-search'?");
@@ -265,7 +294,26 @@ describe('permission manifest', () => {
     const allowed = await add(withRegistry('shell', '--yes', '--allow', 'exec'));
     expect(allowed.code).toBe(0);
     expect(allowed.out).toContain('exec:       yes (runs commands)  [elevated: exec]');
+    // exec alone makes its tools wait for approval (the receipt enforces it at load).
+    expect(allowed.out).toContain('approval:   its tools ask for approval before they run');
     expect(fs.existsSync(path.join(agentDir, 'tools', 'shell.ts'))).toBe(true);
+  });
+
+  it('checks --yes and --allow before printing the manifest, naming the exact flags', async () => {
+    const noYes = await add(withRegistry('web-search'));
+    expect(noYes.code).toBe(1);
+    expect(noYes.out).toBe('');
+    expect(noYes.err).toContain('stdin is not interactive');
+    expect(noYes.err).toContain('pass --yes --allow network,env');
+    const noAllow = await add(withRegistry('shell', '--yes'));
+    expect(noAllow.out).toBe('');
+    expect(noAllow.err).toContain('pass --yes --allow exec');
+    const plain = await add(withRegistry('triage'));
+    expect(plain.err).toContain('pass --yes to install');
+    // A dry run needs neither flag and still prints everything.
+    const dry = await add(withRegistry('shell', '--dry-run'));
+    expect(dry.code).toBe(0);
+    expect(dry.out).toContain('Permissions it asks for');
   });
 
   it('rejects an unknown --allow value', async () => {

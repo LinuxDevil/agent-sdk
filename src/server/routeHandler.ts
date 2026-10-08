@@ -7,16 +7,18 @@
  */
 import type { SimpleAgent } from '../createAgent';
 import { newId } from '../utils/id';
-import { callbackPrincipal, handleChatFetch, sessionAccessAllowed, type RouteApprovers } from './fetchRoutes';
+import { callbackPrincipal, handleChatFetch, publicEvents, sessionForbidden, type ChatRoutesAccess, type ChatRoutesContext } from './fetchRoutes';
 import { AuthError, type AuthFn, type Principal } from '../auth/types';
 import { routeAuth } from '../auth/routeAuth';
 import { apiToken } from '../auth/basic';
 import { fromUIMessages, toUIMessageStreamResponse, type UIMessageLike } from './uiMessageStream';
 
+export { callerOwnsApproval, type ApprovalAccessRequest, type ChatRoutesAccess, type SessionAccessRequest, type SessionAction } from './fetchRoutes';
+
 /** A Fetch handler: what a route file exports as `GET` / `POST`. */
 export type RouteHandler = (request: Request) => Promise<Response>;
 
-export interface RouteHandlerOptions {
+export interface RouteHandlerOptions extends ChatRoutesAccess {
   /** Where the route is mounted, without a trailing slash. Default `/api/agent` (for `app/api/agent/[[...path]]/route.ts`). */
   basePath?: string;
   /**
@@ -30,27 +32,6 @@ export interface RouteHandlerOptions {
   auth?: string | ((request: Request) => boolean | Promise<boolean>) | AuthFn | readonly AuthFn[];
   /** Adds `POST <basePath>/ui`, the endpoint the AI SDK's `useChat` posts to (docs/ai-sdk-ui.md). */
   uiMessageStream?: boolean;
-  /**
-   * Who may decide a `needsApproval` pause through the approvals route: a list
-   * of principal ids, or a function of the caller and the pending call
-   * (`pending.principal` is who the paused run acts for, `pending.kind` what it
-   * waits on). Default: the `user` principal a run acts for cannot approve its
-   * own pause - self-approval would defeat the gate for a consumer-facing
-   * route; a `service` principal (a shared token, a remote agent's
-   * continuation) can, and `question` / `sign-in` pauses stay the run's own
-   * user's to answer. Set it (e.g. `(caller) => caller?.claims?.role === 'staff'`)
-   * to name the approvers; it then decides every kind.
-   */
-  approvers?: RouteApprovers;
-  /**
-   * Whether the caller may use a session id (post a turn, read the
-   * transcript): `false` answers 403. Default: a session id is bound to the
-   * first authenticated principal that uses it (in memory, per agent) and any
-   * other principal gets 403; a route without `auth` binds nothing. For a
-   * durable policy, pass your own - e.g. derive the session id from the
-   * principal (`(p, id) => id === \`u-${p?.id}\``).
-   */
-  ownsSession?: (principal: Principal | undefined, sessionId: string) => boolean | Promise<boolean>;
 }
 
 export interface RouteHandlers {
@@ -101,25 +82,37 @@ function warnOpenInProduction(): void {
   console.warn('[lousho] createRouteHandler() has no `auth`: anyone who can reach this route can use the agent. See docs/auth.md.');
 }
 
-async function uiChat(ctx: { name: string; agent: () => SimpleAgent; ownsSession?: RouteHandlerOptions['ownsSession'] }, request: Request, principal: Principal | undefined): Promise<Response> {
+async function uiChat(agent: SimpleAgent, request: Request, principal: Principal | undefined, ctx: ChatRoutesContext): Promise<Response> {
   const body = (await request.json().catch(() => undefined)) as { messages?: UIMessageLike[]; id?: unknown } | undefined;
   if (!Array.isArray(body?.messages)) return json(400, { error: "Request body must be JSON with a 'messages' array" });
   const { id } = body;
-  const agent = ctx.agent();
-  if (typeof id !== 'string' || !id) return toUIMessageStreamResponse(agent.stream(fromUIMessages(body.messages), { principal }));
-  if (!(await sessionAccessAllowed(ctx, id, principal))) return json(403, { error: 'This session belongs to another caller' });
+  if (typeof id !== 'string' || !id) return toUIMessageStreamResponse(publicEvents(ctx, agent.stream(fromUIMessages(body.messages), { principal })));
+  const forbidden = await sessionForbidden(ctx, principal, id, 'chat');
+  if (forbidden) return forbidden;
   const input = fromUIMessages(body.messages, { lastUserOnly: true });
-  return toUIMessageStreamResponse(agent.session({ id }).stream(input, { signal: request.signal, principal }));
+  return toUIMessageStreamResponse(publicEvents(ctx, agent.session({ id }).stream(input, { signal: request.signal, principal })));
 }
 
 /**
  * The routes `useLoushoAgent({ url, approvalsUrl })` talks to, mapped onto the
  * session API: `POST <base>` takes `{ input, sessionId? }` (a fresh session when
- * none is sent) and `POST <base>/approvals/:id` decides a pending approval.
+ * none is sent) and `POST <base>/approvals/:id` decides a pending approval (A1:
+ * as a decision in the session the approval belongs to, so the session and
+ * approval checks apply).
  */
-async function hookRoute(request: Request, path: string): Promise<{ path: string; body?: string }> {
+async function hookRoute(agent: SimpleAgent, request: Request, path: string): Promise<{ path: string; body?: string }> {
   const approval = /^\/approvals\/([^/]+)$/.exec(path);
-  if (approval) return { path: `/chat/hook/approvals/${approval[1]}` };
+  if (approval) {
+    const id = (() => {
+      try {
+        return decodeURIComponent(approval[1]);
+      } catch {
+        return undefined;
+      }
+    })();
+    const sessionId = id === undefined ? undefined : (await agent.approvals.get(id))?.sessionId;
+    return { path: `/chat/${encodeURIComponent(sessionId ?? 'hook')}/approvals/${approval[1]}` };
+  }
   if (path !== '/') return { path };
   const body = ((await request.json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
   return { path: '/chat', body: JSON.stringify({ ...body, sessionId: body.sessionId ?? newId() }) };
@@ -140,7 +133,8 @@ async function hookRoute(request: Request, path: string): Promise<{ path: string
  */
 export function createRouteHandler(agent: SimpleAgent, options: RouteHandlerOptions = {}): RouteHandlers {
   const base = (options.basePath ?? '/api/agent').replace(/\/+$/, '');
-  const ctx = { name: 'route', agent: () => agent, approvers: options.approvers, ownsSession: options.ownsSession };
+  const { authorizeSession, authorizeApproval, exposeErrors } = options;
+  const ctx: ChatRoutesContext = { name: 'route', agent: () => agent, authorizeSession, authorizeApproval, exposeErrors };
   const auth = authList(options.auth);
   if (!auth) warnOpenInProduction();
   const handler: RouteHandler = async (request) => {
@@ -158,9 +152,13 @@ export function createRouteHandler(agent: SimpleAgent, options: RouteHandlerOpti
       principal = outcome.principal;
     }
     if (options.uiMessageStream && request.method === 'POST' && path === '/ui') {
-      return uiChat(ctx, request, principal).catch((error) => json(500, { error: (error as Error).message }));
+      return uiChat(agent, request, principal, ctx).catch((error) => {
+        if (exposeErrors) return json(500, { error: (error as Error).message });
+        console.error('[route] request failed:', error);
+        return json(500, { error: 'The request failed. The server log has the details.' });
+      });
     }
-    const routed = request.method === 'POST' ? await hookRoute(request.clone(), path) : { path };
+    const routed = request.method === 'POST' ? await hookRoute(agent, request.clone(), path) : { path };
     url.pathname = routed.path;
     const forwarded = routed.body === undefined ? new Request(url, request) : new Request(url, { method: 'POST', headers: request.headers, body: routed.body });
     return (await handleChatFetch(forwarded, ctx, principal)) ?? text(404, 'not found');

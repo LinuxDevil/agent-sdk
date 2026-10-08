@@ -24,7 +24,7 @@ import {
   type CassetteRequest,
   type CassetteResponse,
 } from './cassette';
-import { createSanitizer, firstDifference, stableStringify, type Sanitizer } from './fingerprint';
+import { createSanitizer, firstDifference, sortTools, stableStringify, type Sanitizer } from './fingerprint';
 import { SDKError } from '../execution/errors';
 import type { HostedToolType } from '../tools/hosted';
 import type { HostedToolCall } from '../providers/llm';
@@ -63,6 +63,12 @@ export interface RecordReplayOptions {
   redact?: (text: string) => string;
   /** Replay `stream()` with the recorded inter-chunk delays. Default `false` (no delays). */
   replayTiming?: boolean;
+  /**
+   * How a replay mismatch tells the reader to re-record, appended to the
+   * error. Defaults to naming `LOUSHO_RECORD=1` and `mode: 'record'`; set it
+   * when the cassette is recorded some other way (`lousho eval` sets its own).
+   */
+  rerecordHint?: string;
 }
 
 /**
@@ -149,11 +155,20 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-/** Only the token counts are stored; a call that reported no usage records none. */
+/** Only the token counts (and a reported cost) are stored; a call that reported no usage records none. */
 function recordedUsage(usage: ProviderUsage | undefined): { usage?: ProviderUsage } {
   if (!usage) return {};
-  const { promptTokens, completionTokens, totalTokens } = usage;
-  return { usage: { promptTokens, completionTokens, totalTokens } };
+  const { promptTokens, completionTokens, totalTokens, cachedInputTokens, reasoningTokens, costUsd } = usage;
+  return {
+    usage: {
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
+      ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
+      ...(costUsd !== undefined ? { costUsd } : {}),
+    },
+  };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -191,7 +206,23 @@ function toGenerateResult(response: CassetteResponse): GenerateResult {
     ...(response.usage ? { usage: clone(response.usage) } : {}),
     ...(response.toolCalls?.length ? { toolCalls: clone(response.toolCalls) } : {}),
     ...(response.hostedToolCalls?.length ? { hostedToolCalls: clone(response.hostedToolCalls) as HostedToolCall[] } : {}),
+    ...(response.reasoning?.length ? { reasoning: clone(response.reasoning) } : {}),
   };
+}
+
+/** The cassette already at `file`, or undefined when there is none (or it is unreadable). */
+function previousRecording(file: string): Cassette | undefined {
+  if (!fs.existsSync(file)) return undefined;
+  try {
+    return readCassette(file);
+  } catch {
+    return undefined;
+  }
+}
+
+/** True when two cassettes hold the same provider and exchanges (headers aside). */
+function sameRecording(a: Cassette, b: Cassette): boolean {
+  return stableStringify({ provider: a.provider, entries: a.entries }) === stableStringify({ provider: b.provider, entries: b.entries });
 }
 
 class Recorder implements RecordReplayProvider {
@@ -202,6 +233,8 @@ class Recorder implements RecordReplayProvider {
   private readonly slots: Array<CassetteEntry | undefined> = [];
   private readonly sanitizer: Sanitizer;
   private writing: Promise<void> = Promise.resolve();
+  /** The cassette this recording replaces, read before the first write. */
+  private readonly previous: Cassette | undefined;
 
   constructor(
     private readonly provider: LLMProvider,
@@ -213,6 +246,7 @@ class Recorder implements RecordReplayProvider {
       name: provider.name,
       ...(provider.defaultModel ? { defaultModel: provider.defaultModel } : {}),
     });
+    this.previous = previousRecording(options.cassette);
     this.sanitizer = createSanitizer({
       normalize: options.normalize,
       redact: options.redact,
@@ -254,6 +288,11 @@ class Recorder implements RecordReplayProvider {
   async save(): Promise<void> {
     this.cassette.entries = this.slots.filter((entry): entry is CassetteEntry => entry !== undefined);
     const snapshot = clone(this.cassette);
+    // Re-recording an unchanged run keeps the old header, so the file shows no diff.
+    if (this.previous && sameRecording(this.previous, snapshot)) {
+      snapshot.recordedAt = this.previous.recordedAt;
+      snapshot.sdkVersion = this.previous.sdkVersion;
+    }
     this.writing = this.writing.catch(() => undefined).then(() => writeCassette(this.options.cassette, snapshot));
     await this.writing;
   }
@@ -287,6 +326,7 @@ class Recorder implements RecordReplayProvider {
       ...recordedUsage(result.usage),
       ...(result.toolCalls?.length ? { toolCalls: result.toolCalls } : {}),
       ...(result.hostedToolCalls?.length ? { hostedToolCalls: clone(result.hostedToolCalls) } : {}),
+      ...(result.reasoning?.length ? { reasoning: clone(result.reasoning) } : {}),
     });
   }
 
@@ -328,6 +368,8 @@ class Player implements RecordReplayProvider {
     private readonly options: RecordReplayOptions
   ) {
     this.cassette = readCassette(options.cassette);
+    // Cassettes recorded before tools were sorted by name store them in registration order.
+    for (const entry of this.cassette.entries) entry.request.tools = sortTools(entry.request.tools);
     const identity: { name: string; defaultModel?: string } = provider ?? this.cassette.provider;
     this.name = identity.name;
     this.defaultModel = identity.defaultModel;
@@ -413,7 +455,7 @@ class Player implements RecordReplayProvider {
     throw new CassetteMismatchError(
       `${prefix}Call #${callNumber} does not match the recorded request in ${this.options.cassette}.\n` +
         `First difference at ${diff.path}:\n  recorded: ${diff.expected}\n  actual:   ${diff.actual}\n` +
-        RERECORD_HINT,
+        (this.options.rerecordHint ?? RERECORD_HINT),
       this.options.cassette,
       callNumber
     );
@@ -424,7 +466,7 @@ class Player implements RecordReplayProvider {
     return new CassetteMismatchError(
       `Call #${callNumber} has no recorded entry: ${this.options.cassette} holds ${total} ` +
         `entr${total === 1 ? 'y' : 'ies'} and all were used. The agent now makes more model calls than when ` +
-        `it was recorded. ${RERECORD_HINT}`,
+        `it was recorded. ${this.options.rerecordHint ?? RERECORD_HINT}`,
       this.options.cassette,
       callNumber
     );

@@ -12,13 +12,13 @@
  * `ExecutionResult.messages`, and is not pruned again on the next step.
  */
 
-import type { LLMProvider, Message } from '../providers/llm';
+import type { GenerateOptions, GenerateResult, LLMProvider, Message } from '../providers/llm';
 import { textOf } from '../providers/content';
 import { resolveProvider } from '../providers/resolveProvider';
 import type { AgentHook, GenerateHookContext } from '../execution/hooks';
 import { estimateTokens } from '../models/estimateTokens';
-import { getModelInfo, warnUnknownContextWindow } from '../models/registry';
 import { SDKError } from '../execution/errors';
+import { requestOverheadTokens, resolveContextWindow } from './contextWindow';
 
 /** Counts the tokens of a message or a conversation. */
 export type CompactionTokenCounter = (input: Message | Message[]) => number;
@@ -37,6 +37,11 @@ export interface CompactionInput {
   thresholdTokens: number;
   /** The run's cancellation signal, for strategies that call a model. */
   signal?: AbortSignal;
+  /**
+   * Inside a run, makes a model call that counts in the run's usage, traces
+   * and budgets. Strategies that call a model should use it when it is set.
+   */
+  generate?: (provider: LLMProvider, request: GenerateOptions) => Promise<GenerateResult>;
 }
 
 /** What a {@link CompactionStrategy} returns. */
@@ -76,11 +81,12 @@ export function isPinned(message: Message): boolean {
 }
 
 const DEFAULT_PROTECTED_TOKENS = 40_000;
-/** Context window assumed for a model the registry does not know. */
-const FALLBACK_CONTEXT_WINDOW = 128_000;
 const DEFAULT_THRESHOLD_PERCENT = 0.9;
 
-const PRUNED_MARKER = /^\[pruned: .* result, \d+ chars\]$/;
+/** A pruned result: `[pruned: search result, 18234 chars]`, or since audit C4 with the call's arguments and a note. */
+const PRUNED_MARKER = /^\[pruned: [\s\S]* result, \d+ chars[\s\S]*\]$/;
+/** Longest arguments a pruned-result stub repeats. */
+const MAX_STUB_ARGS = 120;
 
 /** The strategy a marked (LOU-R11) transcript compacts with: prune only, never summarize. */
 const PRUNE_ONLY = pruneToolResultsStrategy();
@@ -88,10 +94,15 @@ const PRUNE_ONLY = pruneToolResultsStrategy();
 const toError = (cause: unknown): Error => (cause instanceof Error ? cause : new Error(String(cause)));
 
 /** The message with its result replaced by a marker, or `undefined` when it is not a tool result worth pruning. */
-function prunedToolResult(message: Message): Message | undefined {
+function prunedToolResult(message: Message, args: string | undefined): Message | undefined {
   const text = textOf(message);
   if (message.role !== 'tool' || isPinned(message) || PRUNED_MARKER.test(text)) return undefined;
-  const marker = `[pruned: ${message.toolName ?? 'tool'} result, ${text.length} chars]`;
+  // Name the call, so a small model does not re-issue it to "see" the result again.
+  const name = message.toolName ?? 'tool';
+  const compact = args?.replace(/\s+/g, ' ').trim();
+  const shown = compact && compact.length > MAX_STUB_ARGS ? `${compact.slice(0, MAX_STUB_ARGS)}...` : compact;
+  const call = shown === undefined ? name : `${name}(${shown})`;
+  const marker = `[pruned: ${call} result, ${text.length} chars; already read]`;
   return marker.length < text.length ? { ...message, content: marker } : undefined;
 }
 
@@ -114,7 +125,9 @@ function protectedTailStart(messages: Message[], count: CompactionTokenCounter, 
 
 /**
  * Replaces the content of tool results older than the protected tail with a
- * short marker such as `[pruned: search result, 18234 chars]`. Only `tool`
+ * short stub that names the call, such as
+ * `[pruned: search({"query":"deploy"}) result, 18234 chars; already read]`
+ * (arguments past 120 characters are cut). Only `tool`
  * messages change (system, user and assistant messages, tool calls included,
  * are kept as they are), so every tool call still has its result and the
  * transcript stays valid. A pinned result, a result that is already a
@@ -131,7 +144,10 @@ export function pruneToolResultsStrategy(): CompactionStrategy {
 function pruneToolResults({ messages, estimateTokens: count, protectedTokens }: CompactionInput): CompactionResult {
   const tokensBefore = count(messages);
   const tailStart = protectedTailStart(messages, count, protectedTokens);
-  const compacted = messages.map((message, index) => (index < tailStart && prunedToolResult(message)) || message);
+  const args = new Map(messages.flatMap((m) => (m.toolCalls ?? []).map((c) => [c.id, c.function.arguments] as const)));
+  const compacted = messages.map(
+    (message, index) => (index < tailStart && prunedToolResult(message, message.toolCallId ? args.get(message.toolCallId) : undefined)) || message
+  );
   const pruned = compacted.filter((message, index) => message !== messages[index]);
   const prunedToolCallIds = pruned.flatMap((message) => (message.toolCallId ? [message.toolCallId] : []));
   if (pruned.length === 0) return { messages, tokensBefore, tokensAfter: tokensBefore, prunedToolCallIds };
@@ -223,14 +239,16 @@ export function summarizeStrategy(options: SummarizeStrategyOptions): Compaction
       if (folded.length === 0) return { messages, tokensBefore, tokensAfter: tokensBefore, prunedToolCallIds: [] };
       try {
         provider ??= typeof options.model === 'string' ? resolveProvider(options.model) : options.model;
-        const { text } = await provider.generate({
+        const request: GenerateOptions = {
           messages: [
             { role: 'system', content: options.prompt ?? DEFAULT_SUMMARY_PROMPT },
             { role: 'user', content: renderForSummary(folded) },
           ],
           maxTokens: options.maxSummaryTokens,
           signal,
-        });
+        };
+        // Inside a run, the call counts in its usage, traces and budgets.
+        const { text } = await (input.generate ? input.generate(provider, request) : provider.generate(request));
         const summary = text.trim();
         if (!summary) throw new SDKError('the summarizer returned an empty summary', 'LOUSHO_AGENT_EXECUTION_FAILED');
         kept.splice(summaryAt, 0, { role: 'user', content: `${SUMMARY_HEADER}\n${summary}` });
@@ -269,27 +287,34 @@ export function twoPhaseStrategy(options: SummarizeStrategyOptions): CompactionS
 export interface CompactMessagesOptions {
   /** Defaults to {@link pruneToolResultsStrategy}. */
   strategy?: CompactionStrategy;
-  /** Defaults to the model's window in the model registry, else 128,000. */
+  /**
+   * Defaults to the model's window in the model registry, else 128,000 (with
+   * a one-time `console.warn`). Set it for a local model: LM Studio's loaded
+   * context length, Ollama's `num_ctx`.
+   */
   contextWindow?: number;
   /** How many recent tokens to keep intact. Defaults to 40,000. */
   protectedTokens?: number;
   /** Share of the context window to compact below (`CompactionInput.thresholdTokens`). Defaults to 0.9. */
   thresholdPercent?: number;
+  /**
+   * Tokens kept free for the model's reply. When set, the threshold is at
+   * most `contextWindow - reserveOutputTokens` (it never rises above
+   * `thresholdPercent` of the window). Default: no reserve.
+   */
+  reserveOutputTokens?: number;
   /** Model id, used for the context-window lookup and passed to the token estimator. */
   model?: string;
 }
 
 /** The strategy and input {@link compactMessages} runs with (also used by `session.compact()`, LOU-W8). */
 export function prepareCompaction(messages: Message[], options: CompactMessagesOptions, signal?: AbortSignal) {
-  const { model, protectedTokens = DEFAULT_PROTECTED_TOKENS, thresholdPercent = DEFAULT_THRESHOLD_PERCENT } = options;
+  const { model, protectedTokens = DEFAULT_PROTECTED_TOKENS, thresholdPercent = DEFAULT_THRESHOLD_PERCENT, reserveOutputTokens } = options;
   const strategy = options.strategy ?? pruneToolResultsStrategy();
-  const known = options.contextWindow ?? (model ? getModelInfo(model)?.contextWindow : undefined);
-  // An unregistered (typically local) model silently compacted against 128k
-  // would let the real window overflow long before the threshold - say so once.
-  if (known === undefined) warnUnknownContextWindow('compaction', model, FALLBACK_CONTEXT_WINDOW);
-  const contextWindow = known ?? FALLBACK_CONTEXT_WINDOW;
+  const contextWindow = resolveContextWindow(options.contextWindow, model, 'compaction', 'compaction.contextWindow');
   const count: CompactionTokenCounter = (input) => estimateTokens(input, { model });
-  const thresholdTokens = thresholdPercent * contextWindow;
+  const reserved = reserveOutputTokens === undefined ? Infinity : contextWindow - reserveOutputTokens;
+  const thresholdTokens = Math.max(0, Math.min(thresholdPercent * contextWindow, reserved));
   const input: CompactionInput = { messages, estimateTokens: count, contextWindow, protectedTokens, thresholdTokens, signal };
   return { strategy, input };
 }
@@ -312,8 +337,10 @@ export interface CompactionInfo {
   tokensBefore: number;
   tokensAfter: number;
   prunedToolCallIds: string[];
-  /** The strategy's `name`. */
+  /** The `name` of the strategy that ran (prune only, after a rejected summary). */
   strategy: string;
+  /** The strategy whose result was applied, when it differs from `strategy` (`'prune-tool-results'` after a rejected summary). */
+  appliedStrategy?: string;
   /** The summary that replaced old turns, when the strategy summarized. */
   summary?: string;
   /** Set when the strategy failed or fell back; the run continues either way. */
@@ -330,7 +357,9 @@ export interface CompactionHookOptions extends Omit<CompactMessagesOptions, 'mod
  * An `AgentHook` named `compaction` that compacts the conversation before a
  * model call whose estimated size is above `thresholdPercent` of the context
  * window (looked up by `request.model` unless `contextWindow` is given). The
- * compacted messages replace the run's transcript in place, so they are what
+ * estimate counts the messages, the tool definitions and the output schema,
+ * plus whatever the provider's reported prompt tokens exceeded the estimate
+ * by on the transcript's previous call. The compacted messages replace the run's transcript in place, so they are what
  * later steps, checkpoints and the result see. The strategy may be async; if
  * it throws, the run continues uncompacted and `onCompaction` gets the `error`.
  *
@@ -344,47 +373,70 @@ export function createCompactionHook(options: CompactionHookOptions = {}): Agent
   if (!(thresholdPercent > 0 && thresholdPercent <= 1)) {
     throw new RangeError(`createCompactionHook: thresholdPercent must be in (0, 1], got ${thresholdPercent}`);
   }
-  // LOU-R11: transcripts whose summary was rejected. Keyed on the run's
-  // transcript array (ctx.request.messages IS it - it stays the same array
-  // through the in-place rewrite below and dies with the run), so a marked
-  // transcript prunes only for the rest of that run.
-  const rejected = new WeakSet<Message[]>();
+  // LOU-R11: transcripts whose summary was rejected, with their length at the
+  // rejection. Keyed on the run's transcript array (ctx.request.messages IS
+  // it - it stays the same array through the in-place rewrite below and dies
+  // with the run). A marked transcript prunes only until it has twice as many
+  // messages (audit C4), so a summarizer that cannot help costs a few calls
+  // per run, not one per step, and one that failed on too little content gets
+  // another chance.
+  const rejected = new WeakMap<Message[], number>();
+  // Per transcript: how many prompt tokens the provider reported for its last
+  // call beyond the estimate (framing, hidden prompts, tokenizer differences).
+  const underestimate = new WeakMap<Message[], number>();
   return {
     name: 'compaction',
     async preGenerate(ctx: GenerateHookContext) {
       const messages = ctx.request.messages;
-      const { strategy, input } = prepareCompaction(messages, { ...options, model: ctx.request.model }, ctx.request.signal);
-      const tokens = input.estimateTokens(messages);
-      if (tokens <= input.thresholdTokens) return;
-      const { contextWindow, thresholdTokens } = input;
-      // A rejected summary is not tried again on this transcript.
-      const active = rejected.has(messages) ? PRUNE_ONLY : strategy;
+      const { strategy, input: prepared } = prepareCompaction(messages, { ...options, model: ctx.request.model }, ctx.request.signal);
+      const { contextWindow, thresholdTokens } = prepared;
+      // Tool definitions, the output schema and the last call's underestimate count toward the
+      // request but cannot be compacted: the conversation has to fit in what is left of the threshold.
+      const overhead = requestOverheadTokens(ctx.request) + (underestimate.get(messages) ?? 0);
+      const tokens = prepared.estimateTokens(messages) + overhead;
+      if (tokens <= thresholdTokens) return;
+      const generate = ctx.generate;
+      const input: CompactionInput = {
+        ...prepared,
+        thresholdTokens: Math.max(0, thresholdTokens - overhead),
+        ...(generate && { generate: (provider: LLMProvider, request: GenerateOptions) => generate(provider, request, 'compaction') }),
+      };
+      const rejectedAt = rejected.get(messages);
+      const active = rejectedAt !== undefined && messages.length < 2 * rejectedAt ? PRUNE_ONLY : strategy;
       ctx.emit?.({ type: 'compaction.start', strategy: active.name, tokensBefore: tokens, contextWindow, thresholdTokens });
       let result: CompactionResult;
       try {
         result = await active.compact(input);
       } catch (cause) {
-        result = { messages, tokensBefore: tokens, tokensAfter: tokens, prunedToolCallIds: [], error: toError(cause) };
+        result = { messages, tokensBefore: tokens - overhead, tokensAfter: tokens - overhead, prunedToolCallIds: [], error: toError(cause) };
       }
       // LOU-R11: a summary that does not shrink the conversation, or that
       // leaves it over the threshold, is rejected. Applied anyway it kept the
       // request over threshold, so the hook summarized again on every step
       // until max-steps. Fall back to pruning alone and mark the transcript,
-      // so the rest of the run prunes instead of summarizing each step.
-      if (result.summary !== undefined && (result.tokensAfter >= result.tokensBefore || result.tokensAfter > thresholdTokens)) {
-        rejected.add(messages);
+      // so the run prunes instead of summarizing each step.
+      let appliedStrategy: string | undefined;
+      if (result.summary !== undefined && (result.tokensAfter >= result.tokensBefore || result.tokensAfter > input.thresholdTokens)) {
+        rejected.set(messages, messages.length);
+        appliedStrategy = PRUNE_ONLY.name;
         result = {
           ...pruneToolResults(input),
           error: new SDKError(
-            `the summary did not compact the conversation below the threshold (${result.tokensBefore} -> ${result.tokensAfter} tokens); this transcript is pruned only for the rest of the run`,
+            `the summary did not compact the conversation below the threshold (${result.tokensBefore + overhead} -> ${result.tokensAfter + overhead} tokens); old tool results are pruned instead until the conversation has doubled`,
             'LOUSHO_AGENT_EXECUTION_FAILED'
           ),
         };
+      } else if (result.summary !== undefined) {
+        rejected.delete(messages);
       }
-      const { tokensBefore, tokensAfter, prunedToolCallIds, summary, error } = result;
+      // Reported as request sizes: the conversation plus the tool definitions and output schema.
+      const { prunedToolCallIds, summary, error } = result;
+      const tokensBefore = result.tokensBefore + overhead;
+      const tokensAfter = result.tokensAfter + overhead;
       ctx.emit?.({
         type: 'compaction.done',
-        strategy: strategy.name,
+        strategy: active.name,
+        ...(appliedStrategy && { appliedStrategy }),
         tokensBefore,
         tokensAfter,
         prunedToolCallIds,
@@ -394,7 +446,15 @@ export function createCompactionHook(options: CompactionHookOptions = {}): Agent
       if (result.messages === messages && !error) return;
       // In place: request.messages is the run's transcript (see the file comment).
       if (result.messages !== messages) messages.splice(0, messages.length, ...result.messages);
-      onCompaction?.({ tokensBefore, tokensAfter, prunedToolCallIds, strategy: strategy.name, summary, error });
+      onCompaction?.({ tokensBefore, tokensAfter, prunedToolCallIds, strategy: active.name, ...(appliedStrategy && { appliedStrategy }), summary, error });
+    },
+    postGenerate(ctx: GenerateHookContext, generated) {
+      // Calibrate the next estimate of this transcript with what the provider billed for this request.
+      const reported = generated.usage?.promptTokens;
+      if (!reported) return;
+      const request = ctx.request;
+      const estimated = estimateTokens(request.messages, { model: request.model }) + requestOverheadTokens(request);
+      underestimate.set(request.messages, Math.max(0, reported - estimated));
     },
   };
 }

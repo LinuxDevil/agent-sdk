@@ -21,7 +21,7 @@ import { loadMemory, mergeMemory } from './loadMemory';
 import type { MemorySlot } from '../memory/defineMemory';
 import { loadSchedules } from './loadSchedules';
 import { loadTools, type LoadedTool } from './loadTools';
-import { confineToolsToReceipt, registryWarnings, verifyReceipt, type RegistryStatus } from './registryEnforce';
+import { confineToolsToReceipt, deferEnforcedApprovals, registryWarnings, verifyReceipt, type RegistryStatus } from './registryEnforce';
 import { readConfig, type AgentDirConfig } from './readConfig';
 import { fail, permissionRulesOf } from './validateConfig';
 import { delegateTool, listSubagentDirs, requireDescription, type LoadedSubagent } from './subagents';
@@ -358,7 +358,20 @@ function piSubagent(
   );
 }
 
-async function loadSubagents(dir: string, overrides: AgentDirOverrides, inherited: Inherited): Promise<LoadedSubagents> {
+/**
+ * What a sub-agent directory inherits about the install receipt: the receipt
+ * of the directory it was installed with (a kit's `subagents/<name>/` files
+ * are recorded in the kit's receipt at the kit root), and the approver the
+ * host passed in code, the only one that may decide receipt-enforced calls.
+ */
+interface ReceiptScope {
+  /** The nearest enclosing receipt and the directory its paths are relative to. */
+  receipt?: { root: string; status: RegistryStatus };
+  /** `loadAgentDir(dir, { approve })`: decides the enforced calls of every sub-agent too. */
+  hostApprove?: ApproveToolCall;
+}
+
+async function loadSubagents(dir: string, overrides: AgentDirOverrides, inherited: Inherited, scope: ReceiptScope): Promise<LoadedSubagents> {
   const loaded: LoadedSubagents = { delegated: [], remote: {}, names: [] };
   const childOverrides: AgentDirOverrides = overrides.provider ? { provider: overrides.provider } : {};
   for (const name of await listSubagentDirs(dir)) {
@@ -369,7 +382,7 @@ async function loadSubagents(dir: string, overrides: AgentDirOverrides, inherite
       loaded.remote[name] = piSubagent(dir, name, childDir, childConfigFile, childConfig, overrides.piAgent);
       continue;
     }
-    const child = await resolveWith(childDir, childOverrides, inherited);
+    const child = await resolveWith(childDir, childOverrides, inherited, scope);
     const description = requireDescription(childDir, child.manifest.description);
     loaded.delegated.push({ name, description, agent: createAgent(child.config) });
   }
@@ -418,7 +431,11 @@ function assembleConfig(
   const { name, instructions, tools, delegated, remote, overrides, memorySlots, skills, configured, approver } = parts;
   const fileTools = [...tools.map((t) => t.tool), ...delegated.map(delegateTool)];
   const subagents = Object.keys(remote).length > 0 ? remote : undefined;
+  // Every other createAgent() option the caller passed (guardrails, onEvent, retry, ...) is forwarded as is;
+  // the keys below are resolved against the directory first. `piAgent` is not a createAgent() option.
+  const { approve: _approve, hooks: _hooks, piAgent: _piAgent, prompt: _prompt, provider: _provider, model: _model, ...forwarded } = overrides;
   return {
+    ...forwarded,
     name,
     instructions,
     ...optional('provider', source.provider),
@@ -463,7 +480,8 @@ function configOptions(
 async function resolveWith(
   rawDir: string,
   overrides: AgentDirOverrides,
-  inherited: Inherited
+  inherited: Inherited,
+  parentScope: ReceiptScope = {}
 ): Promise<ResolvedAgentDir> {
   const dir = path.resolve(rawDir);
   if (!(await isDirectory(dir))) {
@@ -479,13 +497,22 @@ async function resolveWith(
   const { instructions, familyFile } = await resolveInstructions(dir, config, fromFile, overrides, source);
   // Hooks/approver files are only imported when the caller did not override them.
   const configured = overrides.hooks === undefined ? await configuredHooks(dir, config, configFile) : undefined;
-  const approver = overrides.approve === undefined ? await configuredApprove(dir, config, configFile) : undefined;
+  const configuredApprover = overrides.approve === undefined ? await configuredApprove(dir, config, configFile) : undefined;
   // #272: verify the install receipt before its code runs, then bind its tools to the accepted manifests.
   const registry = await verifyReceipt(dir);
   for (const warning of registryWarnings(registry)) console.warn(`[lousho] ${warning}`);
-  const tools: LoadedTool[] = confineToolsToReceipt(dir, await loadTools(dir), registry);
+  // A sub-agent directory without a receipt of its own is held to the receipt it was installed with.
+  const scope: ReceiptScope = {
+    receipt: registry === undefined ? parentScope.receipt : { root: dir, status: registry },
+    hostApprove: parentScope.hostApprove ?? overrides.approve ?? undefined,
+  };
+  const tools: LoadedTool[] = confineToolsToReceipt(scope.receipt?.root ?? dir, await loadTools(dir), scope.receipt?.status);
+  // The directory's own approver does not decide the calls the receipt makes wait for approval; in a
+  // sub-agent, the host's in-code approver (not passed down as an override) decides them instead.
+  const approver = directoryApprover(configuredApprover, tools, parentScope.hostApprove);
   const skills = await skillsFor(dir, overrides);
-  const subagents = overrides.subagents === undefined ? await loadSubagents(dir, overrides, source) : { delegated: [], remote: {}, names: [] };
+  const subagents =
+    overrides.subagents === undefined ? await loadSubagents(dir, overrides, source, scope) : { delegated: [], remote: {}, names: [] };
   const schedules = await loadSchedules(dir);
   const channels = await loadChannels(dir);
   const memorySlots = await loadMemory(dir);
@@ -526,6 +553,16 @@ async function resolveWith(
       ...optional('registry', registry),
     },
   };
+}
+
+/** The directory's approver with receipt-enforced calls taken out of its hands (see {@link deferEnforcedApprovals}). */
+function directoryApprover(
+  configured: { approve: ApproveToolCall; file?: string } | undefined,
+  tools: LoadedTool[],
+  hostApprove: ApproveToolCall | undefined
+): { approve: ApproveToolCall; file?: string } | undefined {
+  const approve = deferEnforcedApprovals(configured?.approve, tools, hostApprove);
+  return approve === undefined ? undefined : { ...configured, approve };
 }
 
 /** Discovered skills, unless the caller overrides them (then the skills directory is not even read). */

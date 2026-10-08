@@ -7,7 +7,7 @@ import { CassetteMismatchError, mockModel, recordReplay, setProviderInterceptor 
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { CompactedLLMProviderError, SDKError } from '../execution/errors';
-import type { GenerateOptions, StreamChunk } from '../providers/llm';
+import type { GenerateOptions, GenerateResult, LLMProvider, StreamChunk } from '../providers/llm';
 import { textOf } from '../providers';
 import { resolveProvider } from '../providers/resolveProvider';
 
@@ -142,6 +142,19 @@ describe('recordReplay mismatches', () => {
     expect(error.message).toContain('order 1234');
     expect(error.message).toContain('order 9999');
     expect(error.message).toContain('LOUSHO_RECORD=1');
+  });
+
+  it('uses rerecordHint instead of the default hint when given', async () => {
+    await record(['a'], [ask('one')]);
+    const replay = recordReplay(undefined, { cassette: file, mode: 'replay', rerecordHint: 'Run npm run record.' });
+    const mismatch = await replay.generate(ask('two')).catch((e) => e);
+    const again = recordReplay(undefined, { cassette: file, mode: 'replay', rerecordHint: 'Run npm run record.' });
+    await again.generate(ask('one'));
+    const exhausted = await again.generate(ask('one')).catch((e) => e);
+    expect(mismatch.message).toContain('Run npm run record.');
+    expect(mismatch.message).not.toContain('LOUSHO_RECORD');
+    expect(exhausted.message).toContain('all were used');
+    expect(exhausted.message).toContain('Run npm run record.');
   });
 
   it('detects changed tools, schemas, temperature and a missing message', async () => {
@@ -443,6 +456,20 @@ describe('recordReplay persistence', () => {
 
     expect(readJson().entries).toHaveLength(1);
   });
+
+  it('re-recording an unchanged run rewrites the file byte for byte, keeping recordedAt (docs-qa F14)', async () => {
+    await record(['a', 'b'], [ask('1'), ask('2')]);
+    const header = JSON.parse(fs.readFileSync(file, 'utf8')) as { recordedAt: string };
+    header.recordedAt = '2020-01-01T00:00:00.000Z';
+    fs.writeFileSync(file, `${JSON.stringify(header, null, 2)}\n`);
+    const before = fs.readFileSync(file, 'utf8');
+
+    await record(['a', 'b'], [ask('1'), ask('2')]);
+    expect(fs.readFileSync(file, 'utf8')).toBe(before);
+
+    await record(['a', 'changed'], [ask('1'), ask('2')]);
+    expect((JSON.parse(fs.readFileSync(file, 'utf8')) as { recordedAt: string }).recordedAt).not.toBe('2020-01-01T00:00:00.000Z');
+  });
 });
 
 describe('recordReplay errors', () => {
@@ -558,6 +585,96 @@ describe('recordReplay stream()', () => {
 
     expect(chunk.error?.name).toBe('StreamError');
     expect(chunk.error?.message).toBe('mid-stream');
+  });
+});
+
+describe('recordReplay keeps reasoning and full usage (docs-qa F4)', () => {
+  const usage = { promptTokens: 40, completionTokens: 350, totalTokens: 390, cachedInputTokens: 32, reasoningTokens: 336, costUsd: 0.0012 };
+  const reasoning = [{ text: '17 has no divisors but 1 and itself.', signature: 'sig-abc' }, { text: '', redactedData: 'ZW5jcnlwdGVk' }];
+  const thinker = (): LLMProvider => ({
+    name: 'thinker',
+    defaultModel: 'think-1',
+    generate: async (): Promise<GenerateResult> => ({ text: 'yes', finishReason: 'stop', usage, reasoning }),
+    stream: async () => {
+      throw new Error('not used');
+    },
+    supportsTools: () => true,
+    supportsStreaming: () => false,
+    getModels: async () => ['think-1'],
+  });
+
+  it('replays generate() reasoning blocks and cached/reasoning token counts', async () => {
+    const live = await recordReplay(thinker(), { cassette: file, mode: 'record' }).generate(ask('Is 17 prime?'));
+    const replayed = await recordReplay(forbidden, { cassette: file, mode: 'replay' }).generate(ask('Is 17 prime?'));
+
+    expect(live.reasoning).toEqual(reasoning);
+    expect(replayed.reasoning).toEqual(reasoning);
+    expect(replayed.usage).toEqual(usage);
+  });
+
+  it('keeps the full usage of a recorded stream', async () => {
+    const streamed: LLMProvider = {
+      ...thinker(),
+      supportsStreaming: () => true,
+      stream: async () => {
+        const chunks: StreamChunk[] = [{ type: 'text-delta', textDelta: 'yes' }, { type: 'finish', finishReason: 'stop', usage }];
+        return {
+          fullStream: (async function* () {
+            yield* chunks;
+          })(),
+          textStream: (async function* () {
+            yield 'yes';
+          })(),
+          text: Promise.resolve('yes'),
+          usage: Promise.resolve(usage),
+          finishReason: Promise.resolve('stop'),
+          toolCalls: Promise.resolve([]),
+        };
+      },
+    };
+    await (await recordReplay(streamed, { cassette: file, mode: 'record' }).stream(ask('q'))).text;
+    const replayed = await recordReplay(forbidden, { cassette: file, mode: 'replay' }).stream(ask('q'));
+    expect(await replayed.usage).toEqual(usage);
+    const finish: StreamChunk[] = [];
+    for await (const chunk of replayed.fullStream) if (chunk.type === 'finish') finish.push(chunk);
+    expect(finish[0].usage).toEqual(usage);
+  });
+
+  it('still replays a cassette recorded without them', async () => {
+    await record([{ text: 'old', usage: { inputTokens: 3, outputTokens: 2 } }], [ask('q')]);
+    const replayed = await recordReplay(forbidden, { cassette: file, mode: 'replay' }).generate(ask('q'));
+    expect(replayed).toMatchObject({ text: 'old', usage: { promptTokens: 3, completionTokens: 2, totalTokens: 5 } });
+    expect(replayed.reasoning).toBeUndefined();
+  });
+});
+
+describe('recordReplay and tool order (docs-qa F7)', () => {
+  const tool = (name: string) => ({ type: 'function' as const, function: { name, description: `the ${name} tool`, parameters: { type: 'object', properties: {} } } });
+
+  it('replays when the agent registers the same tools in another order', async () => {
+    await record(['ok'], [ask('q', { tools: [tool('search'), tool('fetch')] })]);
+    const replayed = await recordReplay(forbidden, { cassette: file, mode: 'replay' }).generate(ask('q', { tools: [tool('fetch'), tool('search')] }));
+    expect(replayed.text).toBe('ok');
+  });
+
+  it('replays a cassette recorded with unsorted tools in any order', async () => {
+    await record(['ok'], [ask('q', { tools: [tool('fetch'), tool('search')] })]);
+    const cassette = JSON.parse(fs.readFileSync(file, 'utf8')) as { entries: Array<{ request: { tools: unknown[] } }> };
+    cassette.entries[0].request.tools.reverse();
+    fs.writeFileSync(file, JSON.stringify(cassette));
+    const replay = () => recordReplay(forbidden, { cassette: file, mode: 'replay' });
+    expect((await replay().generate(ask('q', { tools: [tool('search'), tool('fetch')] }))).text).toBe('ok');
+    expect((await replay().generate(ask('q', { tools: [tool('fetch'), tool('search')] }))).text).toBe('ok');
+  });
+
+  it('still names the tool that really changed', async () => {
+    await record(['ok'], [ask('q', { tools: [tool('search'), tool('fetch')] })]);
+    const changed = { ...tool('search'), function: { ...tool('search').function, description: 'search the web' } };
+    const error = await recordReplay(forbidden, { cassette: file, mode: 'replay' })
+      .generate(ask('q', { tools: [tool('fetch'), changed] }))
+      .catch((e) => e);
+    expect(error.message).toContain('First difference at request.tools[1].description');
+    expect(error.message).toContain('search the web');
   });
 });
 

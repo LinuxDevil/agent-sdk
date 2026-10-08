@@ -14,7 +14,7 @@
         "messages": [
           {
             "role": "system",
-            "content": "You are tech support. Use send_reset_link for password resets and answer in one or two sentences.\n\n[routing note - not from the user] handoff triage -> tech-support: reason=\"User is asking about resetting their password.\""
+            "content": "You are tech support. Use send_reset_link for password resets and answer in one or two sentences.\n\n[routing note - not from the user] handoff triage -> billing: reason=\"User was charged twice for their subscription.\"\n\n[routing note - not from the user] handoff billing -> triage: reason=\"User is asking about resetting their password.\"\n\n[routing note - not from the user] handoff triage -> tech-support: reason=\"User is asking about resetting their password.\""
           },
           {
             "role": "user",
@@ -161,7 +161,7 @@
         "messages": [
           {
             "role": "system",
-            "content": "You are tech support. Use send_reset_link for password resets and answer in one or two sentences.\n\n[routing note - not from the user] handoff triage -> tech-support: reason=\"User is asking about resetting their password.\""
+            "content": "You are tech support. Use send_reset_link for password resets and answer in one or two sentences.\n\n[routing note - not from the user] handoff triage -> billing: reason=\"User was charged twice for their subscription.\"\n\n[routing note - not from the user] handoff billing -> triage: reason=\"User is asking about resetting their password.\"\n\n[routing note - not from the user] handoff triage -> tech-support: reason=\"User is asking about resetting their password.\""
           },
           {
             "role": "user",

@@ -37,20 +37,54 @@ export interface RawMcpTool {
  * Which MCP tools ask for approval (LOU-Z5). `'annotations'` (default) follows the
  * server's hints: `readOnlyHint: true` runs, `destructiveHint` true or absent (the
  * MCP spec's default) asks, `destructiveHint: false` runs. `'always'` / `'never'`
- * ask for every / no tool. A function decides per tool from its bare name and
- * annotations (`{}` when it sent none).
+ * ask for every / no tool. A function decides per call from the tool's bare name,
+ * its annotations (`{}` when it sent none) and the call's `args`.
  */
 export type McpApproval =
   | 'annotations'
   | 'always'
   | 'never'
-  | ((tool: { name: string; annotations: McpToolAnnotations }) => boolean);
+  | ((tool: { name: string; annotations: McpToolAnnotations; args?: Record<string, unknown> }) => boolean);
 
-function needsApproval(approval: McpApproval, name: string, annotations: McpToolAnnotations = {}): boolean {
+function needsApproval(approval: McpApproval, name: string, annotations: McpToolAnnotations = {}): ToolDescriptor['needsApproval'] {
   if (approval === 'always') return true;
   if (approval === 'never') return false;
-  if (typeof approval === 'function') return approval({ name, annotations });
+  if (typeof approval === 'function') return (args: unknown) => approval({ name, annotations, args: args as Record<string, unknown> });
   return annotations.readOnlyHint !== true && annotations.destructiveHint !== false;
+}
+
+/** Which of a server's tools to load, by their bare MCP names. */
+export interface McpToolFilter {
+  /** Load only these tools. */
+  include?: readonly string[];
+  /** Leave these tools out (applied after `include`). */
+  exclude?: readonly string[];
+}
+
+const TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
+const TOOL_NAME_MAX = 64;
+
+/** A short, stable hash of `text` (FNV-1a), to keep shortened names distinct. */
+function shortHash(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+/**
+ * The name the model calls an MCP tool by: `<server>__<tool>` with characters
+ * outside `[a-zA-Z0-9_-]` replaced by `_`, cut to 64 characters (with a hash of
+ * the original name, so cut names stay distinct). A valid name is unchanged.
+ */
+function modelToolName(server: string, tool: string, taken: Set<string>): string {
+  const raw = `${server}__${tool}`;
+  let name = raw.replace(/[^a-zA-Z0-9_-]/g, '_');
+  if (name.length > TOOL_NAME_MAX) name = `${name.slice(0, TOOL_NAME_MAX - 9)}_${shortHash(raw)}`;
+  for (let n = 2; taken.has(name); n++) {
+    const suffix = `_${n}`;
+    name = `${name.slice(0, TOOL_NAME_MAX - suffix.length)}${suffix}`;
+  }
+  return name;
 }
 
 /**
@@ -102,13 +136,23 @@ export interface LoadMcpToolsOptions {
   approval?: McpApproval;
   /** N2: mark every tool `deferLoading`, so an agent offers them through `tool_search` (docs/tool-search.md). */
   deferLoading?: boolean;
+  /**
+   * How long one tool call may take, in milliseconds, before it fails with a
+   * timeout error. Default: the MCP SDK's 60 seconds. The run's abort signal
+   * also cancels a call in flight.
+   */
+  timeoutMs?: number;
+  /** Load only some of the server's tools; see {@link McpToolFilter}. */
+  tools?: McpToolFilter;
 }
 
 /**
  * Load a connected MCP client's tools and synthesize a ToolDescriptor for
  * each one, keyed by `${connectionName}__${tool.name}` so tools from
  * different MCP connections can never collide even if they share a bare
- * name (e.g. two servers both exposing a `search` tool).
+ * name (e.g. two servers both exposing a `search` tool). A key that is not
+ * a valid model tool name (`^[a-zA-Z0-9_-]{1,64}$`) is sanitized; the
+ * original name stays in `metadata.mcp.tool`.
  *
  * Each synthesized descriptor's `execute` calls back through
  * `client.callTool({ name: tool.name, arguments: args })` - the *raw*
@@ -134,17 +178,26 @@ export async function loadMcpTools(
   connectionName: string,
   options: LoadMcpToolsOptions = {}
 ): Promise<Record<string, NamedToolDescriptor>> {
-  const { logger = noopLogger, onSkip, approval = 'annotations', deferLoading } = options;
-  const rawTools = await listRemoteTools(client);
+  const { logger = noopLogger, onSkip, approval = 'annotations', deferLoading, timeoutMs, tools: filter } = options;
+  const rawTools = selectTools(await listRemoteTools(client), connectionName, filter, logger);
   const descriptors: Record<string, NamedToolDescriptor> = {};
+  const taken = new Set<string>();
 
   for (const rawTool of rawTools) {
     try {
       // LOU-R12: the descriptor carries its `<server>__<tool>` name, so
       // `Object.values(tools)` also works in a `tools` array.
-      const name = `${connectionName}__${rawTool.name}`;
-      const descriptor: NamedToolDescriptor = { ...buildDescriptor(client, rawTool, approval, connectionName), name };
+      const name = modelToolName(connectionName, rawTool.name, taken);
+      if (!TOOL_NAME_PATTERN.test(`${connectionName}__${rawTool.name}`)) {
+        logger.warn(`MCP server '${connectionName}': tool '${rawTool.name}' is offered to the model as '${name}'`, {
+          server: connectionName,
+          tool: rawTool.name,
+          name,
+        });
+      }
+      const descriptor: NamedToolDescriptor = { ...buildDescriptor(client, rawTool, approval, connectionName, timeoutMs), name };
       descriptors[name] = deferLoading ? { ...descriptor, deferLoading: true } : descriptor;
+      taken.add(name);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       logger.warn(`MCP server '${connectionName}': skipping tool '${rawTool.name}': ${reason}`, {
@@ -159,14 +212,40 @@ export async function loadMcpTools(
   return descriptors;
 }
 
-function buildDescriptor(client: McpClientLike, rawTool: RawMcpTool, approval: McpApproval, server: string): ToolDescriptor {
+/** The tools `filter` keeps; warns about `include` names the server does not have. */
+function selectTools(rawTools: RawMcpTool[], server: string, filter: McpToolFilter | undefined, logger: Logger): RawMcpTool[] {
+  if (!filter) return rawTools;
+  const { include, exclude } = filter;
+  for (const name of include ?? []) {
+    if (!rawTools.some((tool) => tool.name === name)) {
+      logger.warn(`MCP server '${server}': tools.include names '${name}', which the server does not offer`, { server, tool: name });
+    }
+  }
+  return rawTools.filter((tool) => (!include || include.includes(tool.name)) && !exclude?.includes(tool.name));
+}
+
+/** The MCP SDK's `RequestOptions` of one call: the run's signal and the server's timeout, when set. */
+function callOptions(signal: AbortSignal | undefined, timeoutMs: number | undefined): { signal?: AbortSignal; timeout?: number } {
+  return { ...(signal && { signal }), ...(timeoutMs !== undefined && { timeout: timeoutMs }) };
+}
+
+function buildDescriptor(
+  client: McpClientLike,
+  rawTool: RawMcpTool,
+  approval: McpApproval,
+  server: string,
+  timeoutMs: number | undefined
+): ToolDescriptor {
   return toolDescriptorFromSchema({
     displayName: rawTool.annotations?.title || rawTool.description || rawTool.name,
     description: rawTool.description || '',
     inputSchema: jsonSchemaToZod(rawTool.inputSchema),
     needsApproval: needsApproval(approval, rawTool.name, rawTool.annotations),
-    metadata: { mcp: { annotations: rawTool.annotations, server } },
-    execute: async (args) =>
-      handleCallToolResult(await client.callTool({ name: rawTool.name, arguments: args }), rawTool.name),
+    metadata: { mcp: { annotations: rawTool.annotations, server, tool: rawTool.name } },
+    execute: async (args, ctx) =>
+      handleCallToolResult(
+        await client.callTool({ name: rawTool.name, arguments: args }, undefined, callOptions(ctx?.abortSignal, timeoutMs)),
+        rawTool.name
+      ),
   });
 }

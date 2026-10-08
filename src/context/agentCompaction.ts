@@ -9,7 +9,8 @@ import { ConfigurationError } from '../execution/errors';
 import { createCompactionHook, twoPhaseStrategy, type CompactMessagesOptions, type CompactionHookOptions } from './compaction';
 
 /** The object form of `createAgent({ compaction })`. */
-export interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens'> {
+export interface AgentCompactionOptions
+  extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens' | 'reserveOutputTokens' | 'onCompaction'> {
   /**
    * A model that summarizes old turns: a `"provider/model"` spec or an
    * `LLMProvider`. Selects `twoPhaseStrategy()` with it (prune first, then
@@ -42,6 +43,11 @@ export function compactionHookFor(compaction: AgentCompaction | undefined): Agen
 /** The options `session.compact()` runs with for an agent's `compaction` (LOU-W8): its strategy (`summarizer` selects `twoPhaseStrategy()`) and sizes. */
 export function manualCompactionOptions(compaction: AgentCompaction | undefined): CompactMessagesOptions {
   if (!compaction || compaction === true) return {};
-  const { summarizer, strategy, contextWindow, protectedTokens } = compaction;
-  return { strategy: strategy ?? (summarizer === undefined ? undefined : twoPhaseStrategy({ model: summarizer })), contextWindow, protectedTokens };
+  const { summarizer, strategy, contextWindow, protectedTokens, reserveOutputTokens } = compaction;
+  return {
+    strategy: strategy ?? (summarizer === undefined ? undefined : twoPhaseStrategy({ model: summarizer })),
+    contextWindow,
+    protectedTokens,
+    reserveOutputTokens,
+  };
 }

@@ -8,6 +8,8 @@ import type { GenerateOptions, LLMProvider, StreamChunk } from './llm';
 import { MockLLMProvider } from './mock';
 import { isRetryableProviderError, resilientProvider, withFallback, withRetry } from './resilience';
 import { CompactedLLMProviderError, compactProviderError } from '../execution/errors';
+import { createAgent } from '../createAgent';
+import { estimateCost } from '../models';
 
 function apiError(statusCode: number, headers?: Record<string, string>): APICallError {
   return new APICallError({
@@ -333,8 +335,10 @@ describe('withFallback', () => {
 
     expect(result.text).toBe('backup ok');
     expect(onFallback).toHaveBeenCalledWith({ from: 'primary', to: 'backup', error: primaryError });
-    expect(provider.name).toBe('backup');
-    expect(provider.defaultModel).toBe('backup-model');
+    expect(result.servedBy).toEqual({ provider: 'backup', model: 'backup-model' });
+    // the wrapper itself keeps reporting the first provider
+    expect(provider.name).toBe('primary');
+    expect(provider.defaultModel).toBe('primary-model');
     // each provider ran on its own default model
     expect(primary.calls[0].model).toBeUndefined();
     expect(backup.calls[0].model).toBeUndefined();
@@ -350,7 +354,7 @@ describe('withFallback', () => {
 
     expect(result.text).toBe('primary ok');
     expect(primary.calls[1].model).toBe('gpt-x');
-    expect(provider.name).toBe('primary');
+    expect(result.servedBy).toEqual({ provider: 'primary', model: 'gpt-x' });
   });
 
   it('rethrows the last error when every provider fails', async () => {
@@ -404,6 +408,7 @@ describe('withFallback', () => {
     const chunks = await collect(stream.fullStream);
 
     expect(textOf(chunks)).toBe('backup ok');
+    expect(stream.servedBy).toEqual({ provider: 'backup', model: 'backup-model' });
     expect(primary.calls).toHaveLength(1);
     expect(backup.calls).toHaveLength(1);
     expect(onFallback).toHaveBeenCalledWith({ from: 'primary', to: 'backup', error: expect.objectContaining({ statusCode: 503 }) });
@@ -426,5 +431,52 @@ describe('withFallback', () => {
 
   it('needs at least one provider', () => {
     expect(() => withFallback([])).toThrow('at least one provider');
+  });
+
+  it('keeps fallback state per call: concurrent calls report their own switch and serving model (A9)', async () => {
+    const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+    const seen: Record<string, Array<string | undefined>> = { primary: [], backup: [] };
+    const timed = (name: string, defaultModel: string, behave: (prompt: string) => Promise<void>): LLMProvider => ({
+      name,
+      defaultModel,
+      generate: async (call) => {
+        seen[name].push(call.model);
+        const prompt = String(call.messages.at(-1)?.content);
+        await behave(prompt);
+        return { text: `${name}:${prompt}`, finishReason: 'stop', usage: { promptTokens: 1000, completionTokens: 1000, totalTokens: 2000 } };
+      },
+      stream: async () => Promise.reject(new Error('n/a')),
+      supportsTools: () => true,
+      supportsStreaming: () => false,
+      getModels: async () => [defaultModel],
+    });
+    // A fails after 10 ms and B after 40 ms (while A is on the backup); C starts at 60 ms and the
+    // primary serves it before the backup answers A and B.
+    const primary = timed('primary', 'gpt-4o-mini', async (prompt) => {
+      await sleep(prompt === 'A' ? 10 : prompt === 'B' ? 40 : 5);
+      if (prompt !== 'C') throw apiError(503);
+    });
+    const backup = timed('backup', 'gpt-4o', () => sleep(100));
+    const onFallback = vi.fn();
+    const provider = withFallback([primary, backup], { onFallback });
+    const agent = createAgent({ provider, instructions: 'x', retry: false });
+
+    const [a, b, c] = await Promise.all([
+      agent.send('A'),
+      agent.send('B'),
+      sleep(60).then(() => agent.send('C')),
+    ]);
+
+    expect([a.text, b.text, c.text]).toEqual(['backup:A', 'backup:B', 'primary:C']);
+    expect(onFallback.mock.calls.map(([info]) => `${info.from}->${info.to}`)).toEqual(['primary->backup', 'primary->backup']);
+    // the primary always ran on its own default model; C was never sent the backup's model
+    expect(seen.primary).toEqual([undefined, undefined, undefined]);
+    expect(seen.backup).toEqual([undefined, undefined]);
+    // usage and cost are booked under the model that served each call
+    expect(Object.keys(a.usage.byModel)).toEqual(['gpt-4o']);
+    expect(Object.keys(b.usage.byModel)).toEqual(['gpt-4o']);
+    expect(Object.keys(c.usage.byModel)).toEqual(['gpt-4o-mini']);
+    expect(a.usage.costUsd).toBeCloseTo(estimateCost({ inputTokens: 1000, outputTokens: 1000 }, 'gpt-4o')!);
+    expect(a.usage.costUsd).toBeGreaterThan(c.usage.costUsd!);
   });
 });

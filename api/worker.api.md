@@ -39,7 +39,7 @@ type AgentCompaction = boolean | AgentCompactionOptions;
 // Warning: (ae-forgotten-export) The symbol "CompactionHookOptions" needs to be exported by the entry point worker.d.ts
 //
 // @public
-interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens'> {
+interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens' | 'reserveOutputTokens' | 'onCompaction'> {
     summarizer?: LLMProvider | string;
 }
 
@@ -154,6 +154,7 @@ interface AgentEventBase<TType extends string> {
 
 // @public
 interface AgentEventError {
+    code?: string;
     // (undocumented)
     message: string;
     // (undocumented)
@@ -473,6 +474,8 @@ abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLM
 interface AiSdkProviderConfig extends LLMProviderConfig {
     // (undocumented)
     defaultModel?: string;
+    // Warning: (ae-forgotten-export) The symbol "UnsupportedFiles" needs to be exported by the entry point worker.d.ts
+    unsupportedFiles?: UnsupportedFiles;
 }
 
 // @public
@@ -511,9 +514,16 @@ interface AnthropicProviderConfig extends AiSdkProviderConfig {
 }
 
 // @public
+interface ApprovalAccessRequest {
+    approval: PendingApproval;
+    // Warning: (ae-forgotten-export) The symbol "Principal" needs to be exported by the entry point worker.d.ts
+    principal: Principal | undefined;
+    sessionId: string;
+}
+
+// @public
 interface ApprovalCheckContext {
     messages: readonly Message[];
-    // Warning: (ae-forgotten-export) The symbol "Principal" needs to be exported by the entry point worker.d.ts
     principal?: Readonly<Principal>;
     // (undocumented)
     sessionId?: string;
@@ -845,14 +855,22 @@ interface ChannelUser {
 }
 
 // @public
-export interface ChatRoutesContext {
+interface ChatRoutesAccess {
+    // Warning: (ae-forgotten-export) The symbol "ApprovalAccessRequest" needs to be exported by the entry point worker.d.ts
+    authorizeApproval?: (request: ApprovalAccessRequest) => boolean | Promise<boolean>;
+    // Warning: (ae-forgotten-export) The symbol "SessionAccessRequest" needs to be exported by the entry point worker.d.ts
+    authorizeSession?: (request: SessionAccessRequest) => boolean | Promise<boolean>;
+    exposeErrors?: boolean;
+}
+
+// Warning: (ae-forgotten-export) The symbol "ChatRoutesAccess" needs to be exported by the entry point worker.d.ts
+//
+// @public
+export interface ChatRoutesContext extends ChatRoutesAccess {
     afterSignIn?: (result: OAuthCompleteResult) => void;
     agent: () => SimpleAgent;
-    // Warning: (ae-forgotten-export) The symbol "RouteApprovers" needs to be exported by the entry point worker.d.ts
-    approvers?: RouteApprovers;
     durableMessage?: boolean;
     name: string;
-    ownsSession?: (principal: Principal | undefined, sessionId: string) => boolean | Promise<boolean>;
     // Warning: (ae-forgotten-export) The symbol "AgentSession" needs to be exported by the entry point worker.d.ts
     session?: (agent: SimpleAgent, id: string) => AgentSession;
 }
@@ -949,12 +967,12 @@ type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length
 
 // @public
 interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
+    appliedStrategy?: string;
     // (undocumented)
     error?: {
         message: string;
     };
     prunedToolCallIds: string[];
-    // (undocumented)
     strategy: string;
     summary?: boolean;
     // (undocumented)
@@ -974,6 +992,7 @@ interface CompactionHookOptions extends Omit<CompactMessagesOptions, 'model'> {
 
 // @public
 interface CompactionInfo {
+    appliedStrategy?: string;
     error?: Error;
     // (undocumented)
     prunedToolCallIds: string[];
@@ -990,6 +1009,7 @@ interface CompactionInput {
     contextWindow: number;
     // Warning: (ae-forgotten-export) The symbol "CompactionTokenCounter" needs to be exported by the entry point worker.d.ts
     estimateTokens: CompactionTokenCounter;
+    generate?: (provider: LLMProvider, request: GenerateOptions) => Promise<GenerateResult>;
     messages: Message[];
     protectedTokens: number;
     signal?: AbortSignal;
@@ -1036,6 +1056,7 @@ interface CompactMessagesOptions {
     contextWindow?: number;
     model?: string;
     protectedTokens?: number;
+    reserveOutputTokens?: number;
     // Warning: (ae-forgotten-export) The symbol "CompactionStrategy" needs to be exported by the entry point worker.d.ts
     strategy?: CompactionStrategy;
     thresholdPercent?: number;
@@ -1216,7 +1237,6 @@ interface DefineMemoryOptions {
         remember?: boolean;
         recall?: boolean;
     };
-    itemSchema?: StandardSchemaV1;
     name: string;
     // Warning: (ae-forgotten-export) The symbol "MemoryProvider" needs to be exported by the entry point worker.d.ts
     //
@@ -1407,11 +1427,13 @@ const ERROR_CODES: {
     readonly LOUSHO_PROVIDER_RATE_LIMITED: "Wait and retry (withRetry() honours Retry-After), or lower the request rate.";
     readonly LOUSHO_PEER_MISSING: "Run the npm install command shown in the message.";
     readonly LOUSHO_HOSTED_TOOL_UNSUPPORTED: "Use a provider and package pairing that runs this hosted tool (see docs/hosted-tools.md), or leave the tool out of `tools`.";
+    readonly LOUSHO_UNSUPPORTED_CONTENT: "Send this content to a provider that takes it (see docs/providers.md#multimodal-input), put the file's text in the message, or set the provider's `unsupportedFiles: 'text-note'`.";
     readonly LOUSHO_SPEC_NOT_FOUND: "Check the spec file path in the message; no file exists there.";
     readonly LOUSHO_SPEC_INVALID: "Fix the spec fields named in the message (each is shown as its path and the problem).";
     readonly LOUSHO_SPEC_UNKNOWN_FIELD: "Rename the field to the suggested spec field, or remove it.";
     readonly LOUSHO_SPEC_UNSUPPORTED_FORMAT: "Save the spec as .yaml, .yml or .json.";
     readonly LOUSHO_SCHEDULE_INVALID: "Fix the cron expression named in the message, and give the schedule exactly one of `prompt` or `run`.";
+    readonly LOUSHO_SCHEDULE_RUN_INCOMPLETE: "Resolve the pending approval named in the message, or change the prompt, tools or limits so an unattended turn can finish.";
     readonly LOUSHO_CHANNEL_INVALID: "Default-export a channel from defineChannel(), httpChannel(), webhookChannel() or slackChannel() in each channels/ file.";
     readonly LOUSHO_MEMORY_INVALID: "Default-export a memory slot from defineMemory() (or an object with a scope and a provider) in each memory/ file.";
     readonly LOUSHO_REGISTRY_UNREACHABLE: "Check the --registry url or path (http(s) or a local file) and that you are online; the message names what failed.";
@@ -1427,6 +1449,7 @@ const ERROR_CODES: {
     readonly LOUSHO_AGENT_DIR_INVALID: "Fix the file or folder the message names; docs/agent-directories.md shows the layout.";
     readonly LOUSHO_SKILL_INVALID: "Fix the skill the message names (a name, a description and content), or the skills option it was passed to.";
     readonly LOUSHO_FLOW_INVALID: "Fix the flow definition the message names (its name, code, inputs and node types).";
+    readonly LOUSHO_FLOW_TOOL_DENIED: "Pass an approve callback in the flow context to decide tool calls that need approval, or change the permission rule or needsApproval policy that denied the call.";
     readonly LOUSHO_STORAGE_FAILED: "Read the message: it names the database or file that failed; check the path, permissions and Node version, and the `cause`.";
     readonly LOUSHO_TRIGGER_INVALID: "Fix the trigger option the message names; the message shows a working example.";
     readonly LOUSHO_DEPLOY_FAILED: "Read the message: it names the missing option, file or unsupported feature; docs/deployment.md covers each target.";
@@ -1436,6 +1459,9 @@ const ERROR_CODES: {
     readonly LOUSHO_CHANNEL_REQUEST_FAILED: "Check the platform's token and permissions and its status page; the message names the call and its status.";
     readonly LOUSHO_APPROVAL_STORE_MISSING: "Pass an approvalStore (e.g. new InMemoryApprovalStore()), or use createAgent(), which has one.";
     readonly LOUSHO_APPROVAL_NOT_FOUND: "Resolve an id that is still pending (agent.approvals.list() lists them); each approval resolves once.";
+    readonly LOUSHO_APPROVAL_CONFLICT: "Another request decided this approval at the same time; read the session to see the outcome instead of deciding again.";
+    readonly LOUSHO_APPROVAL_FORBIDDEN: "Decide the approval as a caller the route's authorizeApproval accepts (by default, the caller the run acts for).";
+    readonly LOUSHO_SESSION_FORBIDDEN: "Use a session the route's authorizeSession lets this caller read, continue or decide approvals in.";
     readonly LOUSHO_SESSION_AWAITING_APPROVAL: "Resolve the pending approval first (agent.approvals.resolve() or resumeAfterApproval()), then send again.";
     readonly LOUSHO_SESSION_ID_INVALID: "Use 1-128 characters from A-Z, a-z, 0-9, '_' and '-', or omit the id.";
     readonly LOUSHO_SESSION_BUSY: "Wait for the running turn to finish (await its send(), or abort it), then call again.";
@@ -1470,6 +1496,7 @@ const ERROR_CODES: {
     readonly LOUSHO_OAUTH_STATE_INVALID: "Start the sign-in again from a fresh link: a state works once, for 10 minutes, and only for the user it was made for.";
     readonly LOUSHO_SIGNIN_PENDING: "Open the sign-in link first and let the provider redirect to the callback, then approve again (or approve with false to cancel).";
     readonly LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED: "Check the provider's tokenUrl, clientId, clientSecret and redirectUri (it must match the one registered with the provider), then sign in again.";
+    readonly LOUSHO_MCP_START_FAILED: "Run the server's command yourself to see why it fails; the message has its exit code and last stderr lines, and `connectTimeoutMs` bounds a server that never answers.";
     readonly LOUSHO_MCP_AUTH_REQUIRED: "Sign the app in to the MCP server once: open the URL from agent.oauth.mcpSignInUrl('<server>') and let the callback store the token.";
 };
 
@@ -1512,6 +1539,7 @@ interface ExecutionResult<TObject = unknown> {
     object?: TObject;
     // Warning: (ae-forgotten-export) The symbol "OutputError" needs to be exported by the entry point worker.d.ts
     outputError?: OutputError;
+    outputRepaired?: true;
     reasoning?: string;
     // (undocumented)
     steps: number;
@@ -1676,6 +1704,7 @@ interface FromAiSdkOptions {
     maxRetries?: number;
     name?: string;
     replaysReasoning?: boolean;
+    unsupportedFiles?: UnsupportedFiles;
 }
 
 // Warning: (ae-forgotten-export) The symbol "HookContext" needs to be exported by the entry point worker.d.ts
@@ -1684,6 +1713,7 @@ interface FromAiSdkOptions {
 interface GenerateHookContext extends HookContext {
     // Warning: (ae-forgotten-export) The symbol "HookEventPayload" needs to be exported by the entry point worker.d.ts
     emit?: (event: HookEventPayload) => void;
+    generate?: (provider: LLMProvider, request: GenerateOptions, purpose: string) => Promise<GenerateResult>;
     request: GenerateOptions;
 }
 
@@ -1736,6 +1766,8 @@ interface GenerateResult {
     rawResponse?: unknown;
     // Warning: (ae-forgotten-export) The symbol "ReasoningBlock" needs to be exported by the entry point worker.d.ts
     reasoning?: ReasoningBlock[];
+    // Warning: (ae-forgotten-export) The symbol "ServedBy" needs to be exported by the entry point worker.d.ts
+    servedBy?: ServedBy;
     // (undocumented)
     text: string;
     toolCalls?: ToolCall[];
@@ -1762,7 +1794,6 @@ interface GitHubChannelOptions {
     fetch?: typeof fetch;
     name?: string;
     onError?: ChannelErrorHandler;
-    pullRequestOpened?: boolean;
     token?: string | (() => string | Promise<string>);
     // Warning: (ae-forgotten-export) The symbol "GitHubTriggers" needs to be exported by the entry point worker.d.ts
     triggers?: GitHubTriggers;
@@ -2239,17 +2270,22 @@ type MaybePromise<T> = T | Promise<T>;
 type McpApproval = 'annotations' | 'always' | 'never' | ((tool: {
     name: string;
     annotations: McpToolAnnotations;
+    args?: Record<string, unknown>;
 }) => boolean);
 
 // @public
 interface McpHttpServerSpec {
     // Warning: (ae-forgotten-export) The symbol "McpApproval" needs to be exported by the entry point worker.d.ts
     approval?: McpApproval;
+    connectTimeoutMs?: number;
     deferLoading?: boolean;
     // (undocumented)
     headers?: Record<string, string>;
     // Warning: (ae-forgotten-export) The symbol "McpOAuthOptions" needs to be exported by the entry point worker.d.ts
     oauth?: McpOAuthOptions;
+    timeoutMs?: number;
+    // Warning: (ae-forgotten-export) The symbol "McpToolFilter" needs to be exported by the entry point worker.d.ts
+    tools?: McpToolFilter;
     // (undocumented)
     url: string;
 }
@@ -2277,9 +2313,14 @@ interface McpStdioServerSpec {
     args?: string[];
     // (undocumented)
     command: string;
+    connectTimeoutMs?: number;
+    cwd?: string;
     deferLoading?: boolean;
     // (undocumented)
     env?: Record<string, string>;
+    stderr?: 'forward' | 'capture' | 'inherit' | 'ignore';
+    timeoutMs?: number;
+    tools?: McpToolFilter;
 }
 
 // @public
@@ -2292,6 +2333,12 @@ interface McpToolAnnotations {
     readOnlyHint?: boolean;
     // (undocumented)
     title?: string;
+}
+
+// @public
+interface McpToolFilter {
+    exclude?: readonly string[];
+    include?: readonly string[];
 }
 
 // @public
@@ -2351,8 +2398,6 @@ interface MemorySlot {
         remember: boolean;
         recall: boolean;
     };
-    // (undocumented)
-    readonly itemSchema?: StandardSchemaV1;
     // (undocumented)
     readonly name: string;
     // (undocumented)
@@ -2619,13 +2664,15 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
     protected readonly mapsHostedTools = true;
     // (undocumented)
     readonly name = "openai";
-    supportsHostedTool(_type: HostedToolType | 'custom'): boolean;
+    protected reasoningOptions(modelId: string, options: GenerateOptions): Record<string, unknown> | undefined;
+    supportsHostedTool(type: HostedToolType | 'custom'): boolean;
     supportsStreaming(_model: string): boolean;
     supportsTools(model: string): boolean;
 }
 
 // @public
 interface OpenAIProviderConfig extends AiSdkProviderConfig {
+    api?: 'responses' | 'chat';
     // (undocumented)
     apiKey: string;
     // (undocumented)
@@ -2721,6 +2768,7 @@ interface PendingApproval {
     kind?: ApprovalKind;
     principal?: Principal;
     question?: ApprovalQuestion;
+    sessionId?: string;
     signIn?: ApprovalSignIn;
     subagentPath?: string[];
     // (undocumented)
@@ -3046,9 +3094,6 @@ interface ReturnNode {
 }
 
 // @public
-type RouteApprovers = readonly string[] | ((caller: Principal | undefined, pending: PendingApproval) => boolean | Promise<boolean>);
-
-// @public
 export interface RunConfigContext {
     input: AgentInput;
     metadata?: Record<string, unknown>;
@@ -3251,7 +3296,28 @@ interface SequenceNode {
 export type ServeAuth = string | AuthFn | readonly AuthFn[];
 
 // @public
+interface ServedBy {
+    model?: string;
+    // (undocumented)
+    provider: string;
+}
+
+// @public
 export function serveFetch(request: Request, ctx: ChatRoutesContext, auth?: ServeAuth): Promise<Response>;
+
+// @public
+interface SessionAccessRequest {
+    // Warning: (ae-forgotten-export) The symbol "SessionAction" needs to be exported by the entry point worker.d.ts
+    //
+    // (undocumented)
+    action: SessionAction;
+    principal: Principal | undefined;
+    // (undocumented)
+    sessionId: string;
+}
+
+// @public
+type SessionAction = 'read' | 'chat' | 'approve';
 
 // @public
 interface SessionBudget {
@@ -3590,6 +3656,7 @@ interface StreamResult {
     //
     // (undocumented)
     fullStream: AsyncIterable<StreamChunk>;
+    servedBy?: ServedBy;
     // (undocumented)
     text: Promise<string>;
     // (undocumented)
@@ -4048,6 +4115,7 @@ interface ToolMetadata {
     mcp?: {
         annotations?: McpToolAnnotations;
         server?: string;
+        tool?: string;
     };
 }
 
@@ -4106,6 +4174,7 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
     args: Record<string, unknown>;
     executedBy?: 'provider';
     parentToolCallId?: string;
+    rawArgs?: string;
     // (undocumented)
     toolCallId: string;
     // (undocumented)
@@ -4131,6 +4200,9 @@ interface UIComponentNode {
     // (undocumented)
     type: 'uiComponent';
 }
+
+// @public
+type UnsupportedFiles = 'error' | 'text-note';
 
 // @public
 interface Usage {
@@ -4166,13 +4238,13 @@ interface WithRetryOptions {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-Ct6a5flu.d.ts:751:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-Ct6a5flu.d.ts:768:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-Ct6a5flu.d.ts:1118:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-Ct6a5flu.d.ts:3080:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-Ct6a5flu.d.ts:3081:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
-// dist/index-DyKWxFSZ.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
-// dist/index-DyKWxFSZ.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BqUGcotX.d.ts:762:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BqUGcotX.d.ts:779:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BqUGcotX.d.ts:1140:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BqUGcotX.d.ts:3133:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BqUGcotX.d.ts:3134:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
+// dist/index-B41xZFIC.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
+// dist/index-B41xZFIC.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point worker.d.ts
 
 // (No @packageDocumentation comment for this package)

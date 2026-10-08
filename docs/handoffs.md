@@ -106,14 +106,16 @@ The target sees the conversation as `inputFilter` returns it, under its own
 system prompt (the system prompt of the agent that handed off is replaced,
 never kept). The filter gets `{ messages, from, to, args }`; `messages` is the
 transcript so far without the system prompt, ending with the handoff call, its
-result, and a **routing note**: a marked message the run appends so the target
+result, and a **routing note**: a system message the run appends so the target
 reads who was transferred and the validated `args`
 (`[routing note - not from the user] handoff triage -> billing: reason="..."`).
 It is marked with `metadata.handoff`, so a filter can recognise it - drop it or
-replace it to shape the target's context yourself. A kept note is folded into
-the target's system prompt rather than staying mid-conversation as a `system`
-message, which the chat templates of local-model servers (llama.cpp, LM
-Studio, vLLM, Ollama) reject. Two filters are built in:
+replace it to shape the target's context yourself. The note stays where it is
+in the transcript, but no model request carries a system message after the
+conversation has started: each request appends such messages, in order, to its
+leading system prompt. The chat templates of Qwen, Llama and Mistral models (LM
+Studio, llama.cpp, vLLM, Ollama) and Anthropic's API reject a system message in
+the middle of a conversation. Two filters are built in:
 
 - `handoffFilters.removeToolCalls`: keeps user and assistant text (and the
   routing note), drops tool calls and tool results.
@@ -143,21 +145,21 @@ dropped at a handoff, so a target's tools ask again.
 | | `output`: the result is typed by the lead's schema (a target's own `output` is not used) |
 | | the permission mode and the principal (who the run acts for) |
 | | the approval configuration: `approve`, `approvalStore`, `approvalTtlMs`, `onPermissionDecision` |
-| | the [memory](./memory.md) slots: bound once to the run's scope keys |
+| | the lead's [memory](./memory.md) slots, bound to the run's scope keys |
 
 The agent the run started with is the lead. A target gets none of the lead's
-tools or sub-agents, but the run's memory slots follow it: a slot scoped per
-customer (or per session) recalls and offers its `remember_*`/`recall_*` tools
-to every agent the run hands off to, keyed by the same session id, metadata
-and principal. A target's own `memory` option is not used (as for a
-sub-agent). The lead's `output` instruction is added to every target's
-system prompt.
+tools or sub-agents, but it keeps the lead's [memory](./memory.md): the recalled
+`<memory>` blocks are put back into the target's system prompt, and the
+`remember_<name>` / `recall_<name>` tools are still offered, bound to the same
+scope keys (the same customer, user or session). This holds in the handoff run
+and in every later session turn the target runs. A target's own memory slots
+are not used; give the slots to the agent runs start with. The lead's `output`
+instruction is added to every target's system prompt.
 
-Because approvals and memory are run-level, options like `approve`,
-`approvalStore`, `permissionMode`, `approvalTtlMs`, `store` or `memory` on a
-target agent are never consulted after a handoff - `createAgent()` warns
-once (per target) when a reachable target was created with them; set them on
-the agent runs start with.
+Because approvals and memory are run-level, options like `approve`, `approvalStore`,
+`permissionMode`, `approvalTtlMs`, `store` or `memory` on a target agent are never
+consulted after a handoff - `createAgent()` warns once (per target) when a
+reachable target was created with them; set them on the agent runs start with.
 
 ## Sessions
 

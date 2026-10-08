@@ -18,6 +18,7 @@ import type { LLMProvider } from './llm';
 import type { AiSdkModule } from './aiSdkCompat';
 import { itOnAiV4 } from './aiMajor.testkit';
 import { createFromAiSdk, fromAiSdk } from './fromAiSdk';
+import { withFallback } from './resilience';
 import * as root from '../index';
 
 type V7Generate = Awaited<ReturnType<MockLanguageModelV4['doGenerate']>>;
@@ -226,7 +227,7 @@ describe('fromAiSdk() options and metadata (M2)', () => {
     expect(provider.supportsStreaming('gemini-test')).toBe(true);
   });
 
-  it('fileMediaTypes sends a PDF as a file part; without it the PDF becomes a text note', async () => {
+  it('fileMediaTypes sends a PDF as a file part; without it the call is rejected, or the PDF becomes a text note on request', async () => {
     const input = [
       { type: 'text' as const, text: 'Summarize.' },
       { type: 'file' as const, data: PDF, mimeType: 'application/pdf', filename: 'a.pdf' },
@@ -239,9 +240,37 @@ describe('fromAiSdk() options and metadata (M2)', () => {
       expect.objectContaining({ type: 'file', mediaType: 'application/pdf', filename: 'a.pdf' }),
     ]);
 
+    const strict = v7Model();
+    await expect(onV7(strict.model).generate({ messages: [{ role: 'user', content: input }] })).rejects.toMatchObject({
+      code: 'LOUSHO_UNSUPPORTED_CONTENT',
+    });
+    expect(strict.calls).toHaveLength(0);
+
     const without = v7Model();
-    await createAgent({ provider: onV7(without.model) }).send(input);
+    await createAgent({ provider: onV7(without.model, { unsupportedFiles: 'text-note' }) }).send(input);
     expect(JSON.stringify(without.calls[0]!.prompt)).toContain('[file a.pdf (application/pdf) not sent]');
+  });
+
+  it('under withFallback, a PDF the first model cannot take goes to the next model instead of being dropped (A9)', async () => {
+    const input = [
+      { type: 'text' as const, text: 'Extract the invoice.' },
+      { type: 'file' as const, data: PDF, mimeType: 'application/pdf', filename: 'invoice.pdf' },
+    ];
+    const strict = v7Model();
+    const pdf = v7Model();
+    const provider = withFallback([
+      onV7(strict.model, { name: 'text-only' }),
+      onV7(pdf.model, { name: 'reads-pdf', fileMediaTypes: ['application/pdf'] }),
+    ]);
+
+    await createAgent({ provider, retry: false }).send(input);
+
+    expect(strict.calls).toHaveLength(0);
+    const user = pdf.calls[0]!.prompt.find((m) => m.role === 'user')!;
+    expect(user.content).toEqual([
+      { type: 'text', text: 'Extract the invoice.' },
+      expect.objectContaining({ type: 'file', mediaType: 'application/pdf', filename: 'invoice.pdf' }),
+    ]);
   });
 
   it('is exported from the package root', () => {

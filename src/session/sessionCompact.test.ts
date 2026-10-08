@@ -50,7 +50,7 @@ describe.each(stores())('session.compact() / clear() on the %s store', (_name, m
     expect(events.map((e) => e.seq)).toEqual([0, 1]);
     const saved = await store.load('s1');
     expect(saved?.[0]).toMatchObject({ content: 'Always answer in French.', metadata: { pinned: true } });
-    expect(saved?.[3].content).toMatch(/^\[pruned: lookup result/);
+    expect(saved?.[3].content).toMatch(/^\[pruned: lookup\(/);
     expect(session.messages[3].content).toMatch(/^\[pruned/);
   });
 

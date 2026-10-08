@@ -18,6 +18,7 @@ import { AnthropicProvider } from './AnthropicProvider';
 import { OllamaProvider } from './OllamaProvider';
 import { OpenRouterProvider } from './OpenRouterProvider';
 import type { LLMProvider, Message } from './llm';
+import type { UnsupportedFiles } from './aiSdkProvider';
 import { textOf } from './content';
 import { AgentExecutor } from '../execution/AgentExecutor';
 import { AgentBuilder } from '../core';
@@ -27,11 +28,13 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2
 // Real PDF magic bytes: `ai` 5+ sniffs the media type from the bytes, so a PNG labelled a PDF would come out an image.
 const PDF = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 1, 2, 3]);
 
-const providers: Array<[string, () => LLMProvider]> = [
-  ['openai', () => new OpenAIProvider({ name: 'openai', apiKey: 'k' })],
-  ['anthropic', () => new AnthropicProvider({ name: 'anthropic', apiKey: 'k' })],
-  ['ollama', () => new OllamaProvider({ name: 'ollama' })],
-  ['openrouter', () => new OpenRouterProvider({ name: 'openrouter', apiKey: 'k' })],
+type Extra = { unsupportedFiles?: UnsupportedFiles };
+
+const providers: Array<[string, (extra?: Extra) => LLMProvider]> = [
+  ['openai', (extra) => new OpenAIProvider({ name: 'openai', apiKey: 'k', ...extra })],
+  ['anthropic', (extra) => new AnthropicProvider({ name: 'anthropic', apiKey: 'k', ...extra })],
+  ['ollama', (extra) => new OllamaProvider({ name: 'ollama', ...extra })],
+  ['openrouter', (extra) => new OpenRouterProvider({ name: 'openrouter', apiKey: 'k', ...extra })],
 ];
 
 /** Point a provider at a mock model of the installed major and capture the prompts it receives. */
@@ -92,9 +95,30 @@ describe.each(providers)('%s provider: multimodal user content (LOU-V11)', (_nam
     });
   });
 
-  it('sends a file part as a text note on ai 4 and for Ollama, with one warning per media type', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('rejects a file part it cannot send (ai 4, Ollama) with LOUSHO_UNSUPPORTED_CONTENT by default (A9)', async () => {
     const provider = make();
+    const sendsPdf = installedAiMajor >= 6 && provider.name !== 'ollama';
+    const { prompts } = withMockModel(provider);
+    const file: Message = {
+      role: 'user',
+      content: [{ type: 'file', data: PDF, mimeType: 'application/pdf', filename: 'report.pdf' }],
+    };
+
+    if (sendsPdf) {
+      await provider.generate({ messages: [file] });
+      expect(prompts[0][0]).toMatchObject({ role: 'user', content: [{ type: 'file', mimeType: 'application/pdf' }] });
+      return;
+    }
+    await expect(provider.generate({ messages: [file] })).rejects.toMatchObject({
+      code: 'LOUSHO_UNSUPPORTED_CONTENT',
+      message: expect.stringContaining(`The ${provider.name} provider cannot send application/pdf file parts on ai ${installedAiMajor}`),
+    });
+    expect(prompts).toHaveLength(0);
+  });
+
+  it("with unsupportedFiles: 'text-note', sends a file part as a text note on ai 4 and for Ollama, with one warning per media type", async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const provider = make({ unsupportedFiles: 'text-note' });
     // The installed major decides: on ai 6/7 the OpenAI, Anthropic and OpenRouter providers send a PDF.
     const sendsPdf = installedAiMajor >= 6 && provider.name !== 'ollama';
     const { prompts } = withMockModel(provider);
@@ -225,9 +249,9 @@ const fileMessage = (mimeType: string, data: Uint8Array = PDF): Message => ({
 });
 
 describe.each([
-  ['openai', () => new OpenAIProvider({ name: 'openai', apiKey: 'k' }), false],
-  ['anthropic', () => new AnthropicProvider({ name: 'anthropic', apiKey: 'k' }), true],
-  ['openrouter', () => new OpenRouterProvider({ name: 'openrouter', apiKey: 'k' }), false],
+  ['openai', (extra?: Extra) => new OpenAIProvider({ name: 'openai', apiKey: 'k', ...extra }), false],
+  ['anthropic', (extra?: Extra) => new AnthropicProvider({ name: 'anthropic', apiKey: 'k', ...extra }), true],
+  ['openrouter', (extra?: Extra) => new OpenRouterProvider({ name: 'openrouter', apiKey: 'k', ...extra }), false],
 ] as const)('%s provider on ai 7: file parts', (_name, make, sendsPlainText) => {
   it('sends a PDF as a file part', async () => {
     const provider = make();
@@ -236,9 +260,17 @@ describe.each([
     expect(prompts[0][0].content[0]).toMatchObject({ type: 'file', mediaType: 'application/pdf' });
   });
 
-  it('sends an unsupported type as a text note, warning once per media type', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('rejects an unsupported type with LOUSHO_UNSUPPORTED_CONTENT by default (A9)', async () => {
     const provider = make();
+    const prompts = onAi7(provider);
+    const xls = fileMessage('application/vnd.ms-excel', new Uint8Array([1, 2, 3]));
+    await expect(provider.generate({ messages: [xls] })).rejects.toMatchObject({ code: 'LOUSHO_UNSUPPORTED_CONTENT' });
+    expect(prompts).toHaveLength(0);
+  });
+
+  it("with unsupportedFiles: 'text-note', sends an unsupported type as a text note, warning once per media type", async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const provider = make({ unsupportedFiles: 'text-note' });
     const prompts = onAi7(provider);
     const xls = fileMessage('application/vnd.ms-excel', new Uint8Array([1, 2, 3]));
     await provider.generate({ messages: [xls] });
@@ -250,9 +282,9 @@ describe.each([
     );
   });
 
-  it(`sends text/plain ${sendsPlainText ? 'as a file part' : 'as a text note'}`, async () => {
+  it(`sends text/plain ${sendsPlainText ? 'as a file part' : "as a text note with unsupportedFiles: 'text-note'"}`, async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const provider = make();
+    const provider = make({ unsupportedFiles: 'text-note' });
     const prompts = onAi7(provider);
     await provider.generate({ messages: [fileMessage('text/plain; charset=utf-8', new TextEncoder().encode('hello'))] });
     const part = prompts[0][0].content[0];
@@ -262,9 +294,12 @@ describe.each([
 });
 
 describe('ollama provider on ai 7: file parts', () => {
-  it('sends a PDF as a text note', async () => {
+  it('rejects a PDF by default, and sends it as a text note with unsupportedFiles: text-note', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const provider = new OllamaProvider({ name: 'ollama' });
+    const strict = new OllamaProvider({ name: 'ollama' });
+    onAi7(strict);
+    await expect(strict.generate({ messages: [fileMessage('application/pdf')] })).rejects.toMatchObject({ code: 'LOUSHO_UNSUPPORTED_CONTENT' });
+    const provider = new OllamaProvider({ name: 'ollama', unsupportedFiles: 'text-note' });
     const prompts = onAi7(provider);
     await provider.generate({ messages: [fileMessage('application/pdf')] });
     expect(prompts[0][0].content[0]).toMatchObject({ type: 'text', text: '[file doc (application/pdf) not sent]' });

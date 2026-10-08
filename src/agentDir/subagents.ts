@@ -53,6 +53,15 @@ export function delegateTool(subagent: LoadedSubagent): DefinedTool {
     name: `delegate_to_${subagent.name}`,
     description: `Delegate a task to the '${subagent.name}' agent. ${subagent.description}`,
     input: z.object({ task: z.string().describe('The complete task for the agent, with all needed context') }),
-    execute: async ({ task }, ctx) => (await subagent.agent.send(task, { signal: ctx.abortSignal })).text,
+    execute: async ({ task }, ctx) => {
+      const result = await subagent.agent.send(task, { signal: ctx.abortSignal });
+      if (result.finishReason !== 'awaiting-approval') return result.text;
+      // Nobody can resolve a sub-agent's pause (its agent is not exposed), so say why it stopped instead of returning ''.
+      return (
+        `The '${subagent.name}' agent stopped: one of its tool calls needs approval, and a sub-agent's approvals are ` +
+        'decided only by an `approve` callback passed to loadAgentDir() in code. The call did not run.' +
+        (result.text ? ` Its answer so far: ${result.text}` : '')
+      );
+    },
   });
 }

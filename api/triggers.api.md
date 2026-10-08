@@ -169,6 +169,7 @@ interface ExecutionResult<TObject = unknown> {
     object?: TObject;
     // Warning: (ae-forgotten-export) The symbol "OutputError" needs to be exported by the entry point index.d.ts
     outputError?: OutputError;
+    outputRepaired?: true;
     reasoning?: string;
     // (undocumented)
     steps: number;
@@ -206,6 +207,8 @@ interface GenerateResult {
     rawResponse?: unknown;
     // Warning: (ae-forgotten-export) The symbol "ReasoningBlock" needs to be exported by the entry point index.d.ts
     reasoning?: ReasoningBlock[];
+    // Warning: (ae-forgotten-export) The symbol "ServedBy" needs to be exported by the entry point index.d.ts
+    servedBy?: ServedBy;
     // (undocumented)
     text: string;
     toolCalls?: ToolCall[];
@@ -423,6 +426,13 @@ interface RunUsage {
 }
 
 // @public
+interface ServedBy {
+    model?: string;
+    // (undocumented)
+    provider: string;
+}
+
+// @public
 export interface SlackHttpResponse {
     // (undocumented)
     body: Record<string, unknown>;
@@ -590,8 +600,8 @@ export interface WebhookTriggerHandle extends TriggerHandle {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-Ct6a5flu.d.ts:751:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-Ct6a5flu.d.ts:768:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BqUGcotX.d.ts:762:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BqUGcotX.d.ts:779:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

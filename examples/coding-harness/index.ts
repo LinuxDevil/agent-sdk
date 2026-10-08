@@ -31,6 +31,7 @@ import {
   WorkspaceCheckpoints,
   type AgentHook,
   type LLMProvider,
+  type Message,
 } from '../../src';
 import { mockModel } from '../../src/testing';
 
@@ -63,16 +64,38 @@ export function instructionsFor(model: string): string {
 }
 
 // 5a. Loop guard: deny a tool call the model already made twice with the same arguments.
-//     Crush, Cline and Gemini CLI all ship a version of this.
+//     Crush, Cline and Gemini CLI all ship a version of this. The count is read from
+//     the current turn of the conversation (since the last user message), so
+//     separate runs never share it and a pause for approval does not reset it;
+//     test runs and the post-approval re-fire of a paused call are let through.
+function canonical(value: unknown): string {
+  const record = (value ?? {}) as Record<string, unknown>;
+  return JSON.stringify(Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b))));
+}
+
+function earlierCalls(messages: readonly Message[], toolCallId: string, toolName: string, args: unknown): number {
+  const key = canonical(args);
+  let count = 0;
+  for (let i = messages.length - 1; i >= 0 && messages[i].role !== 'user'; i--) {
+    for (const call of messages[i].toolCalls ?? []) {
+      if (call.id === toolCallId || call.function.name !== toolName) continue;
+      try {
+        if (canonical(JSON.parse(call.function.arguments || '{}')) === key) count++;
+      } catch {
+        // unparseable arguments never match
+      }
+    }
+  }
+  return count;
+}
+
 function loopGuard(maxRepeats = 2): AgentHook {
-  const seen = new Map<string, number>();
   return {
     name: 'loop-guard',
     preToolCall(ctx) {
-      const key = `${ctx.sessionId ?? ''}:${ctx.toolName}:${JSON.stringify(ctx.args)}`;
-      const count = (seen.get(key) ?? 0) + 1;
-      seen.set(key, count);
-      if (count > maxRepeats) {
+      if (ctx.resumedAfterApproval) return undefined;
+      if (ctx.toolName === 'shell' && /^\s*node --test\b/.test(String(ctx.args.command ?? ''))) return undefined;
+      if (earlierCalls(ctx.messages, ctx.toolCallId, ctx.toolName, ctx.args) >= maxRepeats) {
         return { deny: `You already called ${ctx.toolName} with these arguments ${maxRepeats} times. Try something else.` };
       }
       return undefined;
@@ -126,10 +149,12 @@ export function createCodingHarness(options: CodingHarnessOptions) {
   const fsTools = createFsTools(workspace, { checkpoints });
   const readOnlyTools = fsTools.filter((tool) => ['read_file', 'list_dir', 'glob', 'grep'].includes(tool.name));
 
-  // 3. A shell that only runs the commands the harness needs.
+  // 3. A shell that only runs the commands the harness needs. `node --test` takes
+  //    test file paths but no flags (`--test-reporter-destination=../x` writes
+  //    outside the project); `git diff` is left out (`--output=<file>` writes anywhere).
   const shell = createShellTool(workspace, {
     needsApproval: false,
-    allow: ['node --test', 'git status', 'git diff'],
+    allow: [/^node --test( (?!-)(?![^ ]*\.\.)[\w./-]+)*$/, /^git status( (-s|--short|--porcelain))?$/],
   });
 
   // 8. A read-only explorer the lead can hand a question to, in a clean context.

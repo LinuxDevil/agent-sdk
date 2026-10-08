@@ -5,8 +5,9 @@
  * compaction of a generate() failure.
  */
 
-import { GenerateOptions, GenerateResult, Message, ToolDefinition } from '../providers';
+import { GenerateOptions, GenerateResult, LLMProvider, Message, ToolDefinition } from '../providers';
 import { interceptProvider } from '../providers/interception';
+import { textOf } from '../providers/content';
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { getToolInputSchema } from '../tools/toolContract';
@@ -14,6 +15,7 @@ import { withSpan } from './tracing';
 import type { CallUsage } from '../models/usage';
 import { measureUsage } from './runUsage';
 import { llmSpanInit, recordLlmResult, resolveCaptureContent } from './genAiSpans';
+import { SdkAttr } from './semconv';
 import { GenerateHookContext } from './hooks';
 import {
   CompactedLLMProviderError,
@@ -75,7 +77,8 @@ export function buildTools(
 function generateHookContext(
   options: ExecuteOptions,
   messages: Message[],
-  request: GenerateOptions
+  request: GenerateOptions,
+  generate?: GenerateHookContext['generate']
 ): GenerateHookContext {
   return {
     agentId: options.agent.id,
@@ -86,6 +89,39 @@ function generateHookContext(
     messages,
     request,
     emit: runEventsOf(options)?.hookEvent,
+    ...(generate && { generate }),
+  };
+}
+
+/**
+ * Audit C4: `GenerateHookContext.generate` for a run - a side model call (the
+ * compaction summarizer) in its own `chat` span under the run's span, tagged
+ * with its purpose, whose usage `record` adds to the run's total.
+ */
+export function sideGenerator(
+  options: ExecuteOptions,
+  agentSpanId: string,
+  record: (measured: CallUsage) => void
+): NonNullable<GenerateHookContext['generate']> {
+  return (provider: LLMProvider, request: GenerateOptions, purpose: string) => {
+    const { exporter, redactContent = false } = options;
+    const captureContent = resolveCaptureContent(options.captureContent);
+    const init = llmSpanInit(provider, request, { redactContent, captureContent });
+    const attributes = { ...init.attributes, [SdkAttr.CALL_PURPOSE]: purpose };
+    return withSpan(
+      exporter,
+      init.name,
+      attributes,
+      async (span) => {
+        const generated = await provider.generate(request);
+        const measured = measureUsage(request.model || provider.defaultModel || provider.name, request.messages, generated);
+        recordLlmResult(span, generated, captureContent, measured);
+        record(measured);
+        return generated;
+      },
+      agentSpanId,
+      init.kind
+    );
   };
 }
 
@@ -103,7 +139,8 @@ export async function prepareGenerateRequest(
   options: ExecuteOptions,
   messages: Message[],
   tools: ToolDefinition[],
-  callSignal?: AbortSignal
+  callSignal?: AbortSignal,
+  generate?: GenerateHookContext['generate']
 ): Promise<GenerateOptions> {
   const { temperature, maxTokens, onLLMRequest, hooks } = options;
   // LOU-V10: a steer aborts this call alone (`callSignal`), the run's signal all of them.
@@ -138,11 +175,31 @@ export async function prepareGenerateRequest(
 
   if (hooks) {
     const before = generateRequest.tools;
-    await hooks.runPreGenerate(generateHookContext(options, messages, generateRequest));
+    await hooks.runPreGenerate(generateHookContext(options, messages, generateRequest, generate));
     if (deferral && generateRequest.tools === before) reloadTools(generateRequest, tools, messages, deferral);
   }
 
+  generateRequest.messages = withLeadingSystemOnly(generateRequest.messages);
   return generateRequest;
+}
+
+/**
+ * `messages` with every system message after the first non-system one (a
+ * handoff's routing note, or one a caller put in the history) appended, in
+ * order, to the leading system message - created when there is none. Many
+ * chat templates (Qwen, Llama, Mistral via LM Studio, llama.cpp, vLLM, Ollama)
+ * and Anthropic's API reject a system message that is not at the start, so a
+ * request never carries one. Returns `messages` itself when there is nothing
+ * to move; the transcript is never changed.
+ */
+export function withLeadingSystemOnly(messages: Message[]): Message[] {
+  let lead = 0;
+  while (lead < messages.length && messages[lead].role === 'system') lead++;
+  if (!messages.slice(lead).some((message) => message.role === 'system')) return messages;
+  const system = [...messages.slice(0, lead), ...messages.slice(lead).filter((message) => message.role === 'system')];
+  const content = system.map((message) => textOf(message)).filter(Boolean).join('\n\n');
+  const head: Message = lead > 0 ? { ...messages[0], content } : { role: 'system', content };
+  return [head, ...messages.slice(lead).filter((message) => message.role !== 'system')];
 }
 
 /**
@@ -210,7 +267,8 @@ export function generateInSpan(
       );
       const llmLatencyMs = Date.now() - llmStart;
 
-      const measured = measureUsage(resolveModel(options) ?? provider.name, messages, generated);
+      // A fallback's call is booked under the model that served it.
+      const measured = measureUsage(generated.servedBy?.model ?? resolveModel(options) ?? provider.name, messages, generated);
       if (inputCheck) {
         // N5b: a reply that came first waits for the checks; a trip (which aborts `callSignal`) discards it.
         inputCheck.response = { generated, measured };

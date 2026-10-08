@@ -16,6 +16,7 @@ import { AnthropicProvider } from './AnthropicProvider';
 import { OllamaProvider } from './OllamaProvider';
 import { OpenRouterProvider } from './OpenRouterProvider';
 import type { LLMProvider, Message } from './llm';
+import type { UnsupportedFiles } from './aiSdkProvider';
 import { isModernAi, type AiSdkModule } from './aiSdkCompat';
 import { installedAiMajor } from './aiMajor.testkit';
 import { AgentExecutor } from '../execution/AgentExecutor';
@@ -29,11 +30,13 @@ type ModelResult = Awaited<ReturnType<DoGenerate>>;
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 const PDF = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 1]);
 
-const providers: Array<[string, () => LLMProvider]> = [
-  ['openai', () => new OpenAIProvider({ name: 'openai', apiKey: 'k', maxRetries: 0 })],
-  ['anthropic', () => new AnthropicProvider({ name: 'anthropic', apiKey: 'k', maxRetries: 0 })],
-  ['ollama', () => new OllamaProvider({ name: 'ollama', maxRetries: 0 })],
-  ['openrouter', () => new OpenRouterProvider({ name: 'openrouter', apiKey: 'k', maxRetries: 0 })],
+type Extra = { unsupportedFiles?: UnsupportedFiles };
+
+const providers: Array<[string, (extra?: Extra) => LLMProvider]> = [
+  ['openai', (extra) => new OpenAIProvider({ name: 'openai', apiKey: 'k', maxRetries: 0, ...extra })],
+  ['anthropic', (extra) => new AnthropicProvider({ name: 'anthropic', apiKey: 'k', maxRetries: 0, ...extra })],
+  ['ollama', (extra) => new OllamaProvider({ name: 'ollama', maxRetries: 0, ...extra })],
+  ['openrouter', (extra) => new OpenRouterProvider({ name: 'openrouter', apiKey: 'k', maxRetries: 0, ...extra })],
 ];
 
 function modelResult(overrides: Partial<ModelResult> = {}): ModelResult {
@@ -249,9 +252,9 @@ describe.each(providers)('%s provider on ai v7: generate() (LOU-D26)', (_name, m
     });
   });
 
-  it('sends an unsupported file type as a text note, and the text of system and assistant parts', async () => {
+  it("with unsupportedFiles: 'text-note', sends an unsupported file type as a text note, and the text of system and assistant parts", async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const provider = make();
+    const provider = make({ unsupportedFiles: 'text-note' });
     const calls = onV7(provider);
 
     await provider.generate({
@@ -267,6 +270,18 @@ describe.each(providers)('%s provider on ai v7: generate() (LOU-D26)', (_name, m
       { role: 'user', content: [{ type: 'text', text: '[file report.pdf (application/vnd.ms-excel) not sent]' }] },
       { role: 'assistant', content: [{ type: 'text', text: 'Hello' }] },
     ]);
+  });
+
+  it('rejects an unsupported file type with LOUSHO_UNSUPPORTED_CONTENT by default, sending nothing (A9)', async () => {
+    const provider = make();
+    const calls = onV7(provider);
+
+    await expect(
+      provider.generate({
+        messages: [{ role: 'user', content: [{ type: 'file', data: PNG, mimeType: 'application/vnd.ms-excel', filename: 'report.xls' }] }],
+      })
+    ).rejects.toMatchObject({ code: 'LOUSHO_UNSUPPORTED_CONTENT', message: expect.stringContaining('application/vnd.ms-excel') });
+    expect(calls).toHaveLength(0);
   });
 });
 

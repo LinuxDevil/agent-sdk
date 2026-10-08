@@ -253,14 +253,22 @@ What it checks:
    not pair with the installed `ai` (for example `ai` 7 with `@ai-sdk/openai`
    1.x) is flagged with the version to install instead.
 4. Whether each provider's API key variable is set. Only the variable name and
-   `set` / `not set` are printed, never the value. It also shows which
+   `set` / `not set` are printed, never the value. When `OPENAI_BASE_URL` or
+   `ANTHROPIC_BASE_URL` is set (a local or OpenAI-compatible server), that
+   provider's line also shows the base URL, without any credentials or query
+   string in it. It also shows which
    provider `createAgent()` would pick by default with your environment.
+   `OPENAI_BASE_URL` is shown when set (without any credentials or query in it).
 5. With a spec path (`lousho doctor agent.yaml`): the spec is validated with
    field paths for every error, its provider package and key are checked
    (missing ones become failures), its `tools` must be built-in tools, and any
    `mcpServers` command must be resolvable.
 6. Ollama reachability, only when the spec uses Ollama or `OLLAMA_HOST` is set.
 7. Docker availability, a warning only when the spec uses a sandboxed tool.
+8. With `--ping`: `GET <base>/models` for each provider whose variable is set
+   (OpenAI at `OPENAI_BASE_URL` when set, Anthropic, OpenRouter), with a 5 s
+   timeout. An unreachable server or a rejected key is a warning. Keys are sent
+   to their own provider only and never printed.
 
 The exit code is `1` if any check fails and `0` otherwise (warnings do not
 fail), so it can gate CI. Add `--json` for machine-readable output. Colour is

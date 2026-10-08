@@ -122,6 +122,12 @@ export interface ShellExecResult {
  * ```
  */
 export interface ShellProvider {
+  /**
+   * The shell binary commands run in, e.g. `'/bin/sh'` or `'C:\\Windows\\system32\\cmd.exe'`.
+   * Optional. When set, the `shell` tool names it to the model and applies
+   * cmd.exe's extra operators (`%` `^`) to `allow` checks.
+   */
+  readonly shell?: string;
   exec(command: string, options?: ShellExecOptions): Promise<ShellExecResult>;
 }
 

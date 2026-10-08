@@ -26,8 +26,8 @@ const cleanup = defineSchedule({
 });
 
 const running = startSchedules(agent, [morning, cleanup]);
-// later, on shutdown:
-running.stop();
+// later, on shutdown (resolves once the runs in flight have finished):
+await running.stop();
 ```
 
 - `cron`: five fields (`minute hour day-of-month month day-of-week`) or
@@ -37,22 +37,49 @@ running.stop();
   not at the first fire. See [Errors](errors.md#lousho_schedule_invalid).
 - `run` receives `{ agent, firedAt, name }`.
 
-`startSchedules(agent, schedules, { now?, setTimer?, onError? })` keeps one
+`startSchedules(agent, schedules, { now?, setTimer?, onError?, keepAlive? })` keeps one
 timer per schedule. A run that throws goes to `onError` (default: `console.error`)
-and never stops the other schedules. A schedule does not overlap itself: if the
+and never stops the other schedules. A prompt schedule's turn that ends with any
+`finishReason` other than `'stop'` is a failed run too: `onError` receives a
+`LOUSHO_SCHEDULE_RUN_INCOMPLETE` error naming the reason, for example
+`'awaiting-approval'` (with the pending approval's id, which stays pending until
+you resolve it with `agent.approvals.resolve()`), `'output-invalid'` or
+`'max-steps'`. A schedule does not overlap itself: if the
 previous fire is still running, the next one is skipped and reported to
 `onError`. Fires missed while the process was suspended are skipped, not
 replayed. `now` and `setTimer` are injectable so tests never sleep.
 
-A `prompt` fire runs as a turn of the durable `schedule-<name>` session — the
-same convention as the Workers target below — so its transcript is inspectable
-and an interrupted fire is resumable when the agent has a checkpoint store; on
-one without, the fire falls back to a plain ephemeral turn.
+`stop()` clears the timers, so nothing fires again, and returns a promise that
+resolves once the runs already in flight have finished. You can call it without
+`await`.
 
-To fire a schedule on demand (an ops "run now", a test), call
-`fireSchedule(agent, schedule, name, firedAt, sessionId?)` — the same function
-`startSchedules` calls: a `run` schedule invokes its function, a `prompt`
-schedule sends the prompt, under `sessionId` when given.
+The timers are unref'd: they never keep a process alive on their own, so a
+server or a test exits normally. A script that does nothing but run schedules
+would therefore exit straight away; pass `keepAlive: true` for that:
+
+```ts
+import { createAgent, createMockProvider, defineSchedule, startSchedules } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider() });
+const running = startSchedules(agent, [defineSchedule({ cron: '@hourly', prompt: 'Check the queue.' })], { keepAlive: true });
+process.once('SIGTERM', () => void running.stop().then(() => agent.close()));
+```
+
+## Run a schedule now
+
+`fireSchedule(agent, schedule, { name?, firedAt?, sessionId? })` fires a schedule
+once, immediately, exactly as a tick would: it calls `run`, or sends `prompt`
+as a turn (in `sessionId` when given, which needs an agent with a store). It
+rejects when the run fails, including with `LOUSHO_SCHEDULE_RUN_INCOMPLETE`, so
+it suits an ops "run now" and tests.
+
+```ts
+import { createAgent, createMockProvider, defineSchedule, fireSchedule } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider() });
+const report = defineSchedule({ name: 'report', cron: '0 9 * * *', prompt: 'Run the daily report.' });
+await fireSchedule(agent, report);
+```
 
 ## In an agent directory
 
@@ -125,7 +152,9 @@ happens inside `ctx.waitUntil()`, past the request's lifetime, so give the
 agent a store (`KVStore` on `AGENT_CHECKPOINTS`) — an in-memory one keeps the
 `schedule-<name>` sessions only until the isolate is recycled. A failing
 trigger is logged with `console.error` (name and error code) and never
-stops the others, and `scheduled()` never throws.
+stops the others, and `scheduled()` never throws. A turn that ends with a
+`finishReason` other than `'stop'` is logged the same way, as
+`LOUSHO_SCHEDULE_RUN_INCOMPLETE`.
 
 Cloudflare's cron triggers differ from the in-process ones, so the build fails
 with `LOUSHO_SCHEDULE_INVALID` naming the trigger instead of emitting a config

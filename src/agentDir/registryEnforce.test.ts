@@ -264,6 +264,131 @@ describe('loadAgentDir receipt enforcement', () => {
     expect(result.text).toBe('Done.');
   });
 
+  describe('an enforced approval is not overridable from the directory', () => {
+    // editsFiles, so that acceptEdits mode would run it without asking.
+    const SHELL = toolFile('shell', "editsFiles: true,\n  execute: async () => 'ran'");
+
+    /** An exec item whose directory allows every call, runs in the given mode and approves everything itself. */
+    function execAgentAllowingItself(permissionMode = 'default'): string {
+      const agent = makeAgent({
+        'tools/shell.ts': SHELL,
+        'agent.json': JSON.stringify({ permissionMode, permissions: [{ tool: 'shell', action: 'allow' }], approve: 'approve.ts' }),
+        'approve.ts': 'export default () => true;\n',
+      });
+      writeReceipt('shell', { exec: true }, [{ path: 'tools/shell.ts', content: SHELL }]);
+      return agent;
+    }
+
+    const shellCall = () => mockModel([{ toolCalls: [{ name: 'shell', args: {}, id: 'call_shell' }] }, 'Done.']);
+
+    it.each(['default', 'acceptEdits'])('pauses despite an allow rule and the directory approver (mode %s)', async (mode) => {
+      const decisions: string[] = [];
+      const agent = await loadAgentDir(execAgentAllowingItself(mode), { provider: shellCall(), onPermissionDecision: (entry) => decisions.push(entry.decision) });
+      const paused = await agent.send('run it');
+
+      expect(paused.finishReason).toBe('awaiting-approval');
+      expect(await agent.approvals.list()).toEqual([expect.objectContaining({ toolName: 'shell' })]);
+      expect(decisions).toEqual(['ask']);
+      // A human may still approve it.
+      const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+      expect(result.text).toBe('Done.');
+    });
+
+    it('pauses despite a host allow rule, but a host-supplied approver decides it', async () => {
+      const dirPath = execAgentAllowingItself();
+      const ruled = await loadAgentDir(dirPath, { provider: shellCall(), permissions: [{ tool: /.*/, action: 'allow' }] });
+      expect((await ruled.send('run it')).finishReason).toBe('awaiting-approval');
+
+      const seen: string[] = [];
+      const approved = await loadAgentDir(dirPath, { provider: shellCall(), approve: ({ toolName }) => (seen.push(toolName), true) });
+      const result = await approved.send('run it');
+      expect(result.finishReason).toBe('stop');
+      expect(seen).toEqual(['shell']);
+    });
+
+    it('a permission rule or mode may still deny the call', async () => {
+      const dirPath = execAgentAllowingItself();
+      const deny = await loadAgentDir(dirPath, { provider: shellCall(), permissions: [{ tool: 'shell', action: 'deny' }] });
+      const dontAsk = await loadAgentDir(dirPath, { provider: shellCall(), permissionMode: 'dontAsk' });
+      for (const agent of [deny, dontAsk]) {
+        const result = await agent.send('run it');
+        expect(result.finishReason).toBe('stop');
+        expect(JSON.stringify(result.messages)).toMatch(/denied/);
+      }
+    });
+
+    it('the directory approver still decides the tools the receipt does not cover', async () => {
+      const own = toolFile('own', "needsApproval: true,\n  execute: async () => 'ran'");
+      const agent = makeAgent({ 'tools/own.ts': own, 'agent.json': JSON.stringify({ approve: 'approve.ts' }), 'approve.ts': 'export default () => true;\n' });
+      const loaded = await loadAgentDir(agent, { provider: mockModel([{ toolCalls: [{ name: 'own', args: {} }] }, 'Done.']) });
+      expect((await loaded.send('run it')).finishReason).toBe('stop');
+    });
+  });
+
+  describe("a kit's sub-agent directories are held to the kit's receipt", () => {
+    // The tool sits three levels deeper (subagents/explorer/tools/) than toolFile() assumes.
+    const READ = toolFile('read', "execute: async () => 'read-ran'").replace('../../../../tools/defineTool', '../../../../../../tools/defineTool');
+
+    /** A kit (exec: true) whose explorer sub-agent ships its own tool and an approver that approves everything. */
+    function kitWithExplorer(): string {
+      const agent = makeAgent({
+        'subagents/explorer/agent.json': JSON.stringify({ description: 'Reads files', approve: 'approve.ts' }),
+        'subagents/explorer/instructions.md': 'You read.',
+        'subagents/explorer/approve.ts': 'export default () => true;\n',
+        'subagents/explorer/tools/read.ts': READ,
+      });
+      const receipt = {
+        v: 1,
+        items: {
+          kit: {
+            type: 'kit',
+            registry: 'test-registry',
+            installedAt: '2026-01-01T00:00:00.000Z',
+            permissions: { exec: true, filesystem: 'write' },
+            files: [{ path: 'subagents/explorer/tools/read.ts', sha256: sha256(READ) }],
+          },
+        },
+      };
+      fs.writeFileSync(path.join(agent, 'lousho-registry.json'), JSON.stringify(receipt));
+      return agent;
+    }
+
+    const delegation = () =>
+      mockModel([
+        { toolCalls: [{ name: 'delegate_to_explorer', args: { task: 'read it' } }] },
+        { toolCalls: [{ name: 'read', args: {} }] }, // the explorer's step
+        'Explorer done.', // the explorer's answer (only reached when its call was approved)
+        'Lead done.',
+      ]);
+    const toolOutputs = (model: ReturnType<typeof mockModel>): string =>
+      model.calls[model.calls.length - 1].messages
+        .filter((m) => m.role === 'tool')
+        .map((m) => JSON.stringify(m.content))
+        .join('\n');
+
+    it("pauses the sub-agent's call despite its own approver, and tells the lead why", async () => {
+      const model = delegation();
+      const agent = await loadAgentDir(kitWithExplorer(), { provider: model });
+      const result = await agent.send('go');
+
+      expect(result.finishReason).toBe('stop');
+      expect(model.calls).toHaveLength(3); // lead, explorer (paused), lead
+      expect(toolOutputs(model)).toContain("The 'explorer' agent stopped: one of its tool calls needs approval");
+      expect(toolOutputs(model)).not.toContain('read-ran');
+    });
+
+    it('lets the approver the host passes in code decide the sub-agent call', async () => {
+      const seen: string[] = [];
+      const model = delegation();
+      const agent = await loadAgentDir(kitWithExplorer(), { provider: model, approve: ({ toolName }) => (seen.push(toolName), true) });
+      const result = await agent.send('go');
+
+      expect(result.text).toBe('Lead done.');
+      expect(seen).toEqual(['read']);
+      expect(toolOutputs(model)).toContain('Explorer done.');
+    });
+  });
+
   it('does not confine or warn when there is no receipt', async () => {
     const own = toolFile('own', "execute: () => process.env.OTHER_SECRET ?? 'none'");
     const agent = makeAgent({ 'tools/own.ts': own });

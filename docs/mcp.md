@@ -20,8 +20,8 @@ export them too. `createAgent({ mcpServers })` needs no import from the subpath.
 `await agent.ready()` or, automatically, on the first `send()` / `stream()`;
 each server's tools are added as `<server>__<tool>` (e.g. `docs__search`).
 A server that cannot connect fails that call, and the next call tries again.
-`agent.close()` disconnects them (stops stdio processes); a later tool call
-reconnects. Without `mcpServers`, `ready()` and `close()` do nothing. The
+`agent.close()` disconnects them (stops stdio processes); a later tool call,
+or `ready()`, reconnects. Without `mcpServers`, `ready()` and `close()` do nothing. The
 `vendor/` model prefix chooses the provider; with OpenRouter use
 `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
@@ -39,12 +39,30 @@ const { text } = await agent.send('List the files here.');
 await agent.close();
 ```
 
-stdio entries are spawned with `command` and `args`; `env` is added to the
-default environment (`PATH` and the like), not a replacement for it. HTTP
+stdio entries are spawned with `command` and `args` (in `cwd`, when set); `env`
+is added to the default environment (`PATH` and the like), not a replacement for
+it. A server that does not start fails with
+[`LOUSHO_MCP_START_FAILED`](./errors.md#lousho_mcp_start_failed), whose message
+has the exit code and the last lines the process wrote to stderr.
+`stderr: 'forward'` (default) also copies the process's stderr to this one's,
+`'capture'` only keeps the last lines, and `'inherit'` / `'ignore'` keep none.
+`connectTimeoutMs` (stdio or HTTP) bounds the `initialize` handshake; the
+default is the MCP SDK's 60 seconds. HTTP
 entries use the streamable HTTP transport and send the static `headers` on every
 request. An HTTP entry can also sign in with OAuth, as the MCP authorization
 spec describes: add `oauth: { redirectUri }` and an operator signs the agent in
 once; see [MCP servers with OAuth](./oauth.md#mcp-servers-with-oauth).
+
+Each tool call gets the run's abort signal, so aborting a run cancels the MCP
+call in flight. `timeoutMs` on an entry (stdio or HTTP) bounds each call to
+that server; without it the MCP SDK's default of 60 seconds applies.
+`loadMcpTools(client, name, { timeoutMs })` takes the same option.
+
+A tool result whose content is only text reaches the model as `{ "text": ... }`.
+The result object still has `content` (the parts) for code that reads it, but
+it is not sent to the model a second time. Results with images, audio or
+resources keep every part, and `structuredContent` is used as the result when
+the server sends it.
 
 The map is the same one a spec file declares; see
 [Configuration](./configuration.md) (the `mcpServers` section) for the YAML form.
@@ -95,6 +113,26 @@ mix: `tools: [mcp.tools, weatherTool]` or `tools: [...createFsTools(workspace),
 ...Object.values(mcp.tools)]` (each MCP descriptor carries its
 `<server>__<tool>` name, so `Object.values` works too).
 
+### Tool names and filtering
+
+Providers accept tool names matching `^[a-zA-Z0-9_-]{1,64}$`; MCP allows more.
+A `<server>__<tool>` name with other characters has them replaced by `_`, and a
+name over 64 characters is shortened, with a short hash so names stay distinct;
+names that still collide get a `_2`, `_3` suffix. The server is always called
+with the tool's own name, which `descriptor.metadata.mcp.tool` keeps, and a
+renamed tool is logged as a warning. Valid names are unchanged.
+
+`tools: { include, exclude }` on a server entry (or
+`loadMcpTools(client, name, { tools })`) loads only some of its tools, by their
+MCP names: `include` keeps only those listed, then `exclude` drops those listed.
+An `include` name the server does not offer is logged as a warning.
+
+```ts no-run
+const mcpServers = {
+  hosting: { command: 'npx', args: ['-y', 'hosting-mcp'], tools: { exclude: ['multi-execute'] } },
+};
+```
+
 ### Approval for MCP tools
 
 MCP servers describe each tool with annotations (`readOnlyHint`,
@@ -111,9 +149,11 @@ in `loadMcpTools(client, name, { approval })`:
 
 - `'annotations'` (default): as above.
 - `'always'` / `'never'`: ask for every tool / none of them.
-- A function `({ name, annotations }) => boolean` decides per tool (`name` is
-  the bare tool name; `annotations` is `{}` when the server sent none). Only
-  in code; a spec file takes the three strings.
+- A function `({ name, annotations, args }) => boolean` decides per call
+  (`name` is the bare tool name; `annotations` is `{}` when the server sent
+  none; `args` are the call's arguments). It lets you gate a meta-tool such as
+  `execute({ operation })` by its arguments, since server hints are not always
+  right. Only in code; a spec file takes the three strings.
 
 [Permission rules](./approvals.md#permission-policies) run first and can still
 `allow`, `deny` or `ask`.

@@ -81,6 +81,8 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   const chat: ChatRoutesContext = {
     name: 'lousho dev',
     agent: () => holder.agent,
+    // A1: a local dev server shows the developer the provider's own error text.
+    exposeErrors: true,
     // The dev store keeps sessions across reloads, unless the agent brought its own.
     session: (agent, id) => agent.session(hasOwnStore(agent) ? { id } : { id, store: holder.store }),
     // N9b: a channel turn paused on a sign-in continues on its surface after the callback.

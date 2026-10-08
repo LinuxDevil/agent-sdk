@@ -21,20 +21,31 @@ async function run(callResult: unknown) {
 }
 
 describe('MCP result handling (LOU-Z2)', () => {
-  it('joins text parts and keeps the typed parts', async () => {
-    const result = await run({
+  it('joins text parts; with only text the parts stay readable but are not serialized twice (audit D4)', async () => {
+    const result = (await run({
       content: [
         { type: 'text', text: 'line 1' },
         { type: 'text', text: 'line 2' },
       ],
-    });
-    expect(result).toEqual({
-      text: 'line 1\nline 2',
-      content: [
-        { type: 'text', text: 'line 1' },
-        { type: 'text', text: 'line 2' },
-      ],
-    });
+    })) as { text: string; content: unknown[] };
+    expect(result.text).toBe('line 1\nline 2');
+    expect(result.content).toEqual([
+      { type: 'text', text: 'line 1' },
+      { type: 'text', text: 'line 2' },
+    ]);
+    expect(JSON.stringify(result)).toBe('{"text":"line 1\\nline 2"}');
+  });
+
+  it('sends a text-only result to the model once, not twice (audit D4)', async () => {
+    const payload = JSON.stringify({ usage: Object.fromEntries(Array.from({ length: 50 }, (_, i) => [String(i), i * 1000])) });
+    const toolRegistry = new ToolRegistry();
+    toolRegistry.registerMany(await loadMcpTools(fakeClient({ content: [{ type: 'text', text: payload }] }), 'srv', { approval: 'never' }));
+    const agent = AgentBuilder.create().setName('t').addTool('srv__do_it', { tool: 'srv__do_it', options: {} }).build();
+    const provider = mockModel([{ toolCalls: [{ name: 'srv__do_it' }] }, 'done']);
+    await AgentExecutor.execute({ agent, input: 'go', provider, toolRegistry });
+    const toolMessage = provider.calls[1].messages.find((m) => m.role === 'tool');
+    expect(JSON.parse(toolMessage!.content as string)).toEqual({ text: payload });
+    expect((toolMessage!.content as string).length).toBeLessThan(payload.length * 1.3);
   });
 
   it('prefers structuredContent as the result object', async () => {

@@ -223,6 +223,16 @@ export function createAgentApprovals(options: {
    * not wired - it only exists once this process opened a session itself.
    */
   let sessionSpawner: SessionSpawner | undefined;
+  // A1: the session each pause belongs to, kept until the pause is claimed (unlike `sessions`, which a decision clears first).
+  const sessionIds = new Map<string, string>();
+  const bind = (id: string, session: ApprovalSession) => {
+    sessions.set(id, session);
+    sessionIds.set(id, session.id);
+  };
+  const withSession = (request: PendingApproval): PendingApproval => {
+    const sessionId = sessionIds.get(request.id);
+    return sessionId === undefined ? request : { ...request, sessionId };
+  };
   const store: ApprovalStore = {
     async save(raw, snapshot) {
       // LOU-X9: an `ask_question` call is recorded as `kind: 'question'`.
@@ -233,6 +243,7 @@ export function createAgentApprovals(options: {
     async resolve(id) {
       const record = await options.store.resolve(id);
       pending.delete(id);
+      sessionIds.delete(id);
       return record;
     },
   };
@@ -288,7 +299,7 @@ export function createAgentApprovals(options: {
 
   function inSession(session: ApprovalSession | undefined, result: ExecutionResult): ExecutionResult {
     if (session && result.finishReason === 'awaiting-approval' && result.approvalId) {
-      sessions.set(result.approvalId, session);
+      bind(result.approvalId, session);
     }
     return result;
   }
@@ -302,7 +313,7 @@ export function createAgentApprovals(options: {
       steer: (input) => run.steer(input),
       async *[Symbol.asyncIterator]() {
         for await (const event of run) {
-          if (event.type === 'approval.requested') sessions.set(event.approvalId, session);
+          if (event.type === 'approval.requested') bind(event.approvalId, session);
           yield event;
         }
       },
@@ -311,7 +322,7 @@ export function createAgentApprovals(options: {
 
   /** N9b: a sign-in pause approved too early stays paused, and stays bound to its session. */
   function keepPendingSession(id: string, session: ApprovalSession | undefined, error: unknown): void {
-    if (session && error instanceof Error && error.name === 'SignInPendingError') sessions.set(id, session);
+    if (session && error instanceof Error && error.name === 'SignInPendingError') bind(id, session);
   }
 
   /**
@@ -401,11 +412,11 @@ export function createAgentApprovals(options: {
   }
 
   const approvals: AgentApprovals = {
-    list: async () => [...pending.values()],
+    list: async () => [...pending.values()].map(withSession),
     // #280: the durable store answers too, so a pause this process did not make is found again.
     get: async (id) => {
       const found = pending.get(id) ?? (await options.store.load?.(id))?.pending;
-      return found === undefined ? undefined : describeApproval(found);
+      return found === undefined ? undefined : withSession(describeApproval(found));
     },
     resolve,
     answer: ({ id, answer }, resolveOptions) => resolve({ id, approved: true, note: answer }, resolveOptions),
@@ -430,7 +441,7 @@ export function createAgentApprovals(options: {
             return inSession(session, await settle(await run(input, signal, turn, call), signal, turn?.checkpointStore, turn?.permissionMode));
           } catch (error) {
             // A checkpointed turn found paused (e.g. after a restart): resolving it continues this session.
-            if (error instanceof SessionAwaitingApprovalError && error.approvalId) sessions.set(error.approvalId, session);
+            if (error instanceof SessionAwaitingApprovalError && error.approvalId) bind(error.approvalId, session);
             throw error;
           }
         },
@@ -438,7 +449,7 @@ export function createAgentApprovals(options: {
         (input, signal, turn, call) => inSessionRun(session, stream(input, signal, turn, call)),
         spawn ?? ((forkOptions) => this.session(run, stream, forkOptions))
       );
-      session.binds = (approvalId) => sessions.set(approvalId, session);
+      session.binds = (approvalId) => bind(approvalId, session);
       return session;
     },
   };

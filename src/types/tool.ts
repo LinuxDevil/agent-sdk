@@ -115,6 +115,8 @@ export interface ToolMetadata {
     annotations?: McpToolAnnotations;
     /** N2: the name of the server (the `<server>` of `<server>__<tool>`), when loaded by `loadMcpTools()` / `connectMcp()`. */
     server?: string;
+    /** The tool's own MCP name, which `<server>__<tool>` may have sanitized; calls go to the server under this name. */
+    tool?: string;
   };
   /**
    * N4: the tool edits files in a workspace (`defineTool({ editsFiles })`):

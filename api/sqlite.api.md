@@ -630,6 +630,7 @@ interface PendingApproval {
     principal?: Principal;
     // Warning: (ae-forgotten-export) The symbol "ApprovalQuestion" needs to be exported by the entry point index.d.ts
     question?: ApprovalQuestion;
+    sessionId?: string;
     // Warning: (ae-forgotten-export) The symbol "ApprovalSignIn" needs to be exported by the entry point index.d.ts
     signIn?: ApprovalSignIn;
     subagentPath?: string[];

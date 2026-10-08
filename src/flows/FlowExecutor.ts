@@ -36,7 +36,11 @@ import {
   toolSpanInit,
 } from '../execution/genAiSpans';
 import { FLOW_NODE_SPAN_NAME, FlowAttr, GenAiAttr, GenAiOperation } from '../execution/semconv';
-import { SDKError } from '../execution/errors';
+import { SDKError, ValidationError } from '../execution/errors';
+import type { PermissionOptions } from '../execution/permissions';
+import type { ApproveToolCall } from '../createAgentApprovals';
+import { gateFlowToolCall } from './flowToolGate';
+import { validateFlowInput } from './inputs';
 
 /**
  * Flow execution context
@@ -86,6 +90,37 @@ export interface FlowExecutionContext {
   captureContent?: boolean;
   /** Omit the deprecated `prompt`/`args`/`result` attributes. */
   redactContent?: boolean;
+  /**
+   * A8: decides `toolCall` steps that need approval (the tool's
+   * `needsApproval`, or an `ask` permission rule), as `createAgent({ approve })`
+   * does: `true` (or a note) runs the tool, anything else fails the step with
+   * `LOUSHO_FLOW_TOOL_DENIED`. A flow cannot pause, so `'defer'` refuses too.
+   * Without it, a call that needs approval is refused, never run.
+   *
+   * @example
+   * ```ts
+   * await FlowExecutor.execute(flow, { agent, provider, variables, toolRegistry, approve: ({ args }) => Number(args.amount) < 1000 });
+   * ```
+   */
+  approve?: ApproveToolCall;
+  /** A8: permission rules for `toolCall` steps, checked as in an agent run (see `PermissionOptions.permissions`). */
+  permissions?: PermissionOptions['permissions'];
+  /** A8: the permission mode `toolCall` steps run under (see `PermissionOptions.permissionMode`). */
+  permissionMode?: PermissionOptions['permissionMode'];
+  /** A8: called with an audit entry for each `toolCall` step's permission decision. */
+  onPermissionDecision?: PermissionOptions['onPermissionDecision'];
+  /**
+   * A8: cancels the run. It is checked before every step, so once it is
+   * aborted no further step starts and the flow fails with the signal's
+   * `reason`; the step running then gets it too (`llmCall` as the request's
+   * `signal`, `toolCall` as the tool's `ctx.abortSignal`).
+   *
+   * @example
+   * ```ts
+   * await FlowExecutor.execute(flow, { agent, provider, variables, signal: AbortSignal.timeout(30_000) });
+   * ```
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -194,6 +229,16 @@ type NodeHandler<N extends ExecutableNode = ExecutableNode> = (
 /** One handler per node type, each typed with its own node shape. */
 type NodeHandlers = { [T in ExecutableNode['type']]: NodeHandler<Extract<ExecutableNode, { type: T }>> };
 
+/** A8: the number of step ids handed out so far in each run, keyed by the run's event list. */
+const stepCounts = new WeakMap<FlowExecutionEvent[], number>();
+
+/** A8: a run-unique id for a node without one (`step-1`, `step-2`, ... in start order). */
+function nextStepId(events: FlowExecutionEvent[]): string {
+  const count = (stepCounts.get(events) ?? 0) + 1;
+  stepCounts.set(events, count);
+  return `step-${count}`;
+}
+
 /**
  * Flow Executor
  */
@@ -267,6 +312,9 @@ export class FlowExecutor {
     });
 
     try {
+      // A8: the flow's declared inputs (required ones, and their types) are checked before any step runs.
+      this.assertValidInputs(flow, variables);
+
       // Execute the flow
       // A flow without a root node fails in executeNode with a TypeError, reported as a flow-error.
       const output = await this.executeNode(
@@ -308,6 +356,13 @@ export class FlowExecutor {
         events,
         error: error as Error,
       };
+    }
+  }
+
+  private static assertValidInputs(flow: AgentFlow, variables: Record<string, unknown>): void {
+    const { valid, errors } = validateFlowInput(variables, flow.inputs ?? []);
+    if (!valid) {
+      throw new ValidationError(`Flow '${flow.code}' inputs are invalid: ${errors.join('; ')}`, { inputs: errors });
     }
   }
 
@@ -383,9 +438,12 @@ export class FlowExecutor {
     onEvent?: (event: FlowExecutionEvent) => void
   ): Promise<unknown> {
     this.assertWithinDepthLimit(context);
+    // A8: an aborted run starts no further step.
+    context.signal?.throwIfAborted();
 
-    // Editor-side shapes have no `id`; the executor-side ones may.
-    const stepId = (node as { id?: string }).id || `step-${Date.now()}`;
+    // Editor-side shapes have no `id`; the executor-side ones may. A8: a
+    // missing id is unique within the run (it was `step-${Date.now()}`, which collided).
+    const stepId = (node as { id?: string }).id || nextStepId(events);
 
     return withSpan(
       context.exporter,
@@ -694,7 +752,7 @@ export class FlowExecutor {
     });
 
     // Call LLM, in a `chat {model}` span under this node's span
-    const request = { model, messages, temperature: node.temperature, maxTokens: node.maxTokens };
+    const request = { model, messages, temperature: node.temperature, maxTokens: node.maxTokens, signal: context.signal };
     const captureContent = resolveCaptureContent(context.captureContent);
     const init = llmSpanInit(context.provider, request, {
       redactContent: context.redactContent,
@@ -760,7 +818,8 @@ export class FlowExecutor {
     toolDesc: NonNullable<ReturnType<ToolRegistry['get']>>,
     args: Record<string, unknown>,
     sandbox: SandboxAdapter,
-    context: FlowExecutionContext
+    context: FlowExecutionContext,
+    toolCallId: string
   ): Promise<unknown> {
     const init = toolSpanInit(
       { name: toolName },
@@ -772,7 +831,8 @@ export class FlowExecutor {
       init.attributes,
       async (toolSpan) => {
         const start = Date.now();
-        const result = await executeToolWithSandboxGuard(toolName, toolDesc, args, sandbox);
+        // A8: the tool gets the run's signal as `ctx.abortSignal`, and the gate's call id.
+        const result = await executeToolWithSandboxGuard(toolName, toolDesc, args, sandbox, context.signal, { toolCallId });
         recordToolOutcome(
           toolSpan,
           { args, result, latencyMs: Date.now() - start },
@@ -800,7 +860,13 @@ export class FlowExecutor {
     const { toolName, toolDesc } = this.lookupTool(node, context);
 
     // Interpolate arguments (an object, so interpolation returns an object)
-    const args = this.interpolateObject(node.arguments || {}, context.variables) as Record<string, unknown>;
+    const rawArgs = this.interpolateObject(node.arguments || {}, context.variables) as Record<string, unknown>;
+
+    // A8: the same gate as an agent run's tool call - schema validation,
+    // permission rules and modes, `needsApproval` (decided by `approve`, or
+    // refused) - so a flow step cannot run a tool the agent would not.
+    const toolCallId = `flow-${globalThis.crypto.randomUUID()}`;
+    const args = await gateFlowToolCall(toolName, toolDesc, rawArgs, context, toolCallId);
 
     // Emit tool call event
     emitEvent(events, onEvent, {
@@ -816,7 +882,7 @@ export class FlowExecutor {
     // (LOU-F fix), so this entry point can't silently bypass the sandbox
     // seam the way it previously did.
     const sandbox = context.sandbox ?? NoopSandbox;
-    const result = await this.executeToolInSpan(toolName, toolDesc, args, sandbox, context);
+    const result = await this.executeToolInSpan(toolName, toolDesc, args, sandbox, context, toolCallId);
 
     // Emit tool result event
     emitEvent(events, onEvent, {

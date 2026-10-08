@@ -244,7 +244,11 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 - `withFallback` tries each provider in order and rethrows the last error
   when all fail. By default it falls back on any error except a cancellation
   (`fallbackOn` changes that). Each fallback runs on its own `defaultModel`.
-  `name` and `defaultModel` report the provider that served the latest call.
+  Every call keeps its own fallback state, so concurrent calls never see each
+  other's switches. `name` and `defaultModel` are the first provider's; the
+  result of a call (and a stream) names the provider and model that served it
+  as `servedBy`, and the run books that call's usage and cost under that
+  model in `usage.byModel`.
 - `resilientProvider(provider, { maxRetries, timeout })` applies the
   `LLMProviderConfig` fields of the same names.
 - The built-in providers pass their config's `maxRetries` (default 2) to the
@@ -279,7 +283,7 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `retry`    | `withRetry()` options for failed model calls, or `false`. Default `{ maxRetries: 2 }` for `model` strings; a `provider` instance is wrapped only when set. See [Provider retries and fallback](#provider-retries-and-fallback). |
 | `fallbackModels` | `provider/model` strings tried in order when the model still fails after its retries. |
 | `hooks`    | `AgentHook[]` run around every model call and tool call, in order, before the compaction hook (see [Hooks](./hooks.md)). |
-| `compaction` | `true` (prune old tool results above 90% of the context window) or `{ strategy?, thresholdPercent?, contextWindow?, protectedTokens?, summarizer? }`; `summarizer` (`'provider/model'` or an `LLMProvider`) selects the two-phase strategy. `stream()` reports `compaction.start` / `compaction.done`. See [Context compaction](./compaction.md#compacting-an-agent). |
+| `compaction` | `true` (prune old tool results above 90% of the context window) or `{ strategy?, thresholdPercent?, contextWindow?, protectedTokens?, reserveOutputTokens?, onCompaction?, summarizer? }`; `summarizer` (`'provider/model'` or an `LLMProvider`) selects the two-phase strategy. `stream()` reports `compaction.start` / `compaction.done`. See [Context compaction](./compaction.md#compacting-an-agent). |
 
 With neither `model` nor `provider`, `createAgent()` resolves from the
 environment: `LOUSHO_MODEL` (a `'provider/model'` string) if set, otherwise

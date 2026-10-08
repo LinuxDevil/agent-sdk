@@ -34,7 +34,7 @@ function deployed(script: MockTurn[], token = TOKEN, requests: Request[] = []): 
   return async (input, init) => {
     const request = new Request(input as string, init);
     requests.push(request.clone());
-    return serveFetch(request, { name: 'remote', agent: () => agent }, token);
+    return serveFetch(request, { name: 'remote', agent: () => agent, exposeErrors: true }, token);
   };
 }
 

@@ -70,6 +70,11 @@ export class SandboxShell implements ShellProvider {
     this.env = commandEnv({ env: options.env, inheritEnv: names }, { base: false });
   }
 
+  /** The shell binary inside the sandbox (`options.shell`, default `'sh'`). */
+  get shell(): string {
+    return this.options.shell ?? 'sh';
+  }
+
   async exec(command: string, options: ShellExecOptions = {}): Promise<ShellExecResult> {
     const aborted: ShellExecResult = { stdout: '', stderr: '', exitCode: null, timedOut: false, aborted: true };
     if (options.signal?.aborted) return aborted;

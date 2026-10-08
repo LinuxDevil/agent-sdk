@@ -168,5 +168,6 @@ export async function generateViaStream(provider: LLMProvider, request: Generate
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
     ...(hostedToolCalls.length > 0 && { hostedToolCalls }),
     ...(parts.reasoning.length > 0 && { reasoning: parts.reasoning }),
+    ...(streamed.servedBy && { servedBy: streamed.servedBy }),
   };
 }

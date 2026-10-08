@@ -44,33 +44,33 @@ describe('createAgent({ exporter }) (M5a)', () => {
     expect(ops(exporter.ended)).toEqual(['chat', 'invoke_agent']);
   });
 
-  describe('SendOptions.parentSpanId (research-analyst F1)', () => {
-    it("parents the run's invoke_agent span under the caller's withSpan span", async () => {
-      const exporter = recording();
-      const agent = createAgent({ provider: mockModel(['Hi.']), exporter });
-
-      await withSpan(exporter, 'research.wave.1', {}, async (span) => {
-        await agent.send('Hello', { parentSpanId: span.id });
-      });
-
-      const run = exporter.ended.find((span) => op(span) === 'invoke_agent')!;
-      const parent = exporter.ended.find((span) => span.name === 'research.wave.1')!;
-      expect(run.parentId).toBe(parent.id);
+  it('send({ parentSpanId }) parents the invoke_agent span to the caller span', async () => {
+    const exporter = recording();
+    const agent = createAgent({ provider: mockModel(['One.', 'Two.']), exporter });
+    await withSpan(exporter, 'pipeline', {}, async (span) => {
+      await agent.send('first', { parentSpanId: span.id });
+      await agent.send('second', { parentSpanId: span.id });
     });
 
-    it('stream() parents its invoke_agent span too', async () => {
-      const exporter = recording();
-      const agent = createAgent({ provider: mockModel(['Hi.']), exporter });
+    const pipeline = exporter.ended.find((span) => span.name === 'pipeline')!;
+    const runs = exporter.ended.filter((span) => op(span) === 'invoke_agent');
+    expect(runs).toHaveLength(2);
+    expect(runs.map((span) => span.parentId)).toEqual([pipeline.id, pipeline.id]);
+  });
 
-      await withSpan(exporter, 'research.wave.2', {}, async (span) => {
-        const run = agent.stream('Hello', { parentSpanId: span.id });
-        for await (const event of run) void event;
-      });
+  it('stream({ parentSpanId }) parents the invoke_agent span to the caller span', async () => {
+    const exporter = recording();
+    const run = createAgent({ provider: mockModel(['Hi.']), exporter }).stream('Hello', { parentSpanId: 'caller-span' });
+    for await (const event of run) void event;
 
-      const run = exporter.ended.find((span) => op(span) === 'invoke_agent')!;
-      const parent = exporter.ended.find((span) => span.name === 'research.wave.2')!;
-      expect(run.parentId).toBe(parent.id);
-    });
+    expect(exporter.ended.find((span) => op(span) === 'invoke_agent')!.parentId).toBe('caller-span');
+  });
+
+  it('send() without parentSpanId starts a root invoke_agent span', async () => {
+    const exporter = recording();
+    await createAgent({ provider: mockModel(['Hi.']), exporter }).send('Hello');
+
+    expect(exporter.ended.find((span) => op(span) === 'invoke_agent')!.parentId).toBeUndefined();
   });
 
   describe('agent.approvals.resolve() (#281)', () => {

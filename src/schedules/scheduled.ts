@@ -53,7 +53,7 @@ export function handleScheduled(
     .map((schedule, index) => ({ schedule, name: scheduleName(schedule, index) }))
     .filter(({ schedule }) => normalize(schedule.cron) === normalize(controller.cron))
     .map(({ schedule, name }) =>
-      fireSchedule(agent, schedule, name, firedAt, `schedule-${name}`).catch((error: unknown) =>
+      fireSchedule(agent, schedule, { name, firedAt, sessionId: `schedule-${name}` }).catch((error: unknown) =>
         logScheduleFailure(name, error)
       )
     );

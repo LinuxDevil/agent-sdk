@@ -28,7 +28,7 @@ import {
   AgentEventPayload,
   AgentEventUsage,
 } from './agentEvents';
-import { parseToolArguments } from './toolArgsValidation';
+import { decodeToolArguments } from './toolArgsValidation';
 import type { PermissionDecisionEntry } from './permissions';
 import { canStream, generateViaStream, reportReasoning, type StepSink } from './streamStep';
 import { measureUsage } from './runUsage';
@@ -204,10 +204,11 @@ export type RunStarter = (wiring: {
 }) => Promise<ExecutionResult>;
 
 function toEventError(error: unknown): AgentEventError {
-  const err = error as { name?: unknown; message?: unknown } | null | undefined;
+  const err = error as { name?: unknown; message?: unknown; code?: unknown } | null | undefined;
   return {
     name: typeof err?.name === 'string' && err.name ? err.name : 'Error',
     message: typeof err?.message === 'string' ? err.message : String(error),
+    ...(typeof err?.code === 'string' && err.code && { code: err.code }),
   };
 }
 
@@ -317,13 +318,16 @@ class RunEvents {
     this.toolStarts.set(toolStartKey(toolCall.id, subagent), Date.now());
     // N13b: a call that runs again (after a sign-in, or on a resume) counts its snapshots from 0.
     this.partials.delete(toolStartKey(toolCall.id, subagent));
-    const args = parseToolArguments(toolCall, {});
+    const decoded = decodeToolArguments(toolCall.function.arguments);
+    const args = decoded.ok ? decoded.value : {};
     this.emit(
       {
         type,
         toolCallId: toolCall.id,
         toolName: toolCall.function.name,
         args: (typeof args === 'object' && args !== null ? args : {}) as Record<string, unknown>,
+        // F7: the text the model sent, when it was not valid JSON as sent.
+        ...((!decoded.ok || decoded.repaired) && { rawArgs: String(toolCall.function.arguments) }),
         ...parentOf(parent),
       },
       subagent
@@ -467,7 +471,7 @@ class RunEvents {
       generate: async (provider, request, onOutput, hold) => {
         const call = withProviderEvents(request, this.providerEvents(subagent));
         const generated = settleHostedFinish(await this.generateStep(provider, call, subagent, onOutput, hold));
-        const measured = measureUsage(request.model ?? provider.name, request.messages, generated);
+        const measured = measureUsage(generated.servedBy?.model ?? request.model ?? provider.name, request.messages, generated);
         const measuredStep = { finishReason: generated.finishReason, ...measured, usage: measured.usage };
         // N5b: a step a parallel input guardrail blocked reports only the usage the provider reported.
         if (!hold || !measured.estimated) stepResult = measuredStep;

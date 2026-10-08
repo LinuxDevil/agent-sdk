@@ -37,7 +37,7 @@ export interface AgentApprovals {
 export type AgentCompaction = boolean | AgentCompactionOptions;
 
 // @public
-export interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens'> {
+export interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens' | 'reserveOutputTokens' | 'onCompaction'> {
     summarizer?: LLMProvider | string;
 }
 
@@ -181,6 +181,7 @@ export interface AgentEventBase<TType extends string> {
 
 // @public
 export interface AgentEventError {
+    code?: string;
     // (undocumented)
     message: string;
     // (undocumented)
@@ -486,6 +487,7 @@ abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLM
 interface AiSdkProviderConfig extends LLMProviderConfig {
     // (undocumented)
     defaultModel?: string;
+    unsupportedFiles?: UnsupportedFiles;
 }
 
 // @public
@@ -530,6 +532,13 @@ export function appendToRing<T>(ring: readonly T[], entry: T, limit: number): T[
 
 // @public
 export const APPROVAL_EXPIRED_REASON = "approval expired";
+
+// @public
+export interface ApprovalAccessRequest {
+    approval: PendingApproval;
+    principal: Principal | undefined;
+    sessionId: string;
+}
 
 // @public
 export interface ApprovalCheckContext {
@@ -881,6 +890,9 @@ export interface CalledToolOptions {
 }
 
 // @public
+export function callerOwnsApproval(input: ApprovalAccessRequest): boolean;
+
+// @public
 export type CallUsage = Omit<StepUsage, 'step'>;
 
 // @public
@@ -1010,6 +1022,13 @@ export interface ChannelUser {
     name?: string;
     // (undocumented)
     roles?: string[];
+}
+
+// @public
+export interface ChatRoutesAccess {
+    authorizeApproval?: (request: ApprovalAccessRequest) => boolean | Promise<boolean>;
+    authorizeSession?: (request: SessionAccessRequest) => boolean | Promise<boolean>;
+    exposeErrors?: boolean;
 }
 
 // @public
@@ -1178,7 +1197,13 @@ export interface CommandCheckOptions {
 }
 
 // @public
-export type CommandPattern = string | RegExp;
+export type CommandPattern = string | RegExp | CommandRule;
+
+// @public
+export interface CommandRule {
+    args?: (args: string) => boolean;
+    command: string;
+}
 
 // @public
 export class CompactedLLMProviderError extends LLMProviderError {
@@ -1203,12 +1228,12 @@ export type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context
 
 // @public
 interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
+    appliedStrategy?: string;
     // (undocumented)
     error?: {
         message: string;
     };
     prunedToolCallIds: string[];
-    // (undocumented)
     strategy: string;
     summary?: boolean;
     // (undocumented)
@@ -1228,6 +1253,7 @@ export interface CompactionHookOptions extends Omit<CompactMessagesOptions, 'mod
 
 // @public
 export interface CompactionInfo {
+    appliedStrategy?: string;
     error?: Error;
     // (undocumented)
     prunedToolCallIds: string[];
@@ -1243,6 +1269,7 @@ export interface CompactionInfo {
 export interface CompactionInput {
     contextWindow: number;
     estimateTokens: CompactionTokenCounter;
+    generate?: (provider: LLMProvider, request: GenerateOptions) => Promise<GenerateResult>;
     messages: Message[];
     protectedTokens: number;
     signal?: AbortSignal;
@@ -1289,6 +1316,7 @@ export interface CompactMessagesOptions {
     contextWindow?: number;
     model?: string;
     protectedTokens?: number;
+    reserveOutputTokens?: number;
     strategy?: CompactionStrategy;
     thresholdPercent?: number;
 }
@@ -1599,7 +1627,6 @@ export interface DefineMemoryOptions {
         remember?: boolean;
         recall?: boolean;
     };
-    itemSchema?: StandardSchemaV1;
     name: string;
     // (undocumented)
     provider: MemoryProvider;
@@ -1878,11 +1905,13 @@ export const ERROR_CODES: {
     readonly LOUSHO_PROVIDER_RATE_LIMITED: "Wait and retry (withRetry() honours Retry-After), or lower the request rate.";
     readonly LOUSHO_PEER_MISSING: "Run the npm install command shown in the message.";
     readonly LOUSHO_HOSTED_TOOL_UNSUPPORTED: "Use a provider and package pairing that runs this hosted tool (see docs/hosted-tools.md), or leave the tool out of `tools`.";
+    readonly LOUSHO_UNSUPPORTED_CONTENT: "Send this content to a provider that takes it (see docs/providers.md#multimodal-input), put the file's text in the message, or set the provider's `unsupportedFiles: 'text-note'`.";
     readonly LOUSHO_SPEC_NOT_FOUND: "Check the spec file path in the message; no file exists there.";
     readonly LOUSHO_SPEC_INVALID: "Fix the spec fields named in the message (each is shown as its path and the problem).";
     readonly LOUSHO_SPEC_UNKNOWN_FIELD: "Rename the field to the suggested spec field, or remove it.";
     readonly LOUSHO_SPEC_UNSUPPORTED_FORMAT: "Save the spec as .yaml, .yml or .json.";
     readonly LOUSHO_SCHEDULE_INVALID: "Fix the cron expression named in the message, and give the schedule exactly one of `prompt` or `run`.";
+    readonly LOUSHO_SCHEDULE_RUN_INCOMPLETE: "Resolve the pending approval named in the message, or change the prompt, tools or limits so an unattended turn can finish.";
     readonly LOUSHO_CHANNEL_INVALID: "Default-export a channel from defineChannel(), httpChannel(), webhookChannel() or slackChannel() in each channels/ file.";
     readonly LOUSHO_MEMORY_INVALID: "Default-export a memory slot from defineMemory() (or an object with a scope and a provider) in each memory/ file.";
     readonly LOUSHO_REGISTRY_UNREACHABLE: "Check the --registry url or path (http(s) or a local file) and that you are online; the message names what failed.";
@@ -1898,6 +1927,7 @@ export const ERROR_CODES: {
     readonly LOUSHO_AGENT_DIR_INVALID: "Fix the file or folder the message names; docs/agent-directories.md shows the layout.";
     readonly LOUSHO_SKILL_INVALID: "Fix the skill the message names (a name, a description and content), or the skills option it was passed to.";
     readonly LOUSHO_FLOW_INVALID: "Fix the flow definition the message names (its name, code, inputs and node types).";
+    readonly LOUSHO_FLOW_TOOL_DENIED: "Pass an approve callback in the flow context to decide tool calls that need approval, or change the permission rule or needsApproval policy that denied the call.";
     readonly LOUSHO_STORAGE_FAILED: "Read the message: it names the database or file that failed; check the path, permissions and Node version, and the `cause`.";
     readonly LOUSHO_TRIGGER_INVALID: "Fix the trigger option the message names; the message shows a working example.";
     readonly LOUSHO_DEPLOY_FAILED: "Read the message: it names the missing option, file or unsupported feature; docs/deployment.md covers each target.";
@@ -1907,6 +1937,9 @@ export const ERROR_CODES: {
     readonly LOUSHO_CHANNEL_REQUEST_FAILED: "Check the platform's token and permissions and its status page; the message names the call and its status.";
     readonly LOUSHO_APPROVAL_STORE_MISSING: "Pass an approvalStore (e.g. new InMemoryApprovalStore()), or use createAgent(), which has one.";
     readonly LOUSHO_APPROVAL_NOT_FOUND: "Resolve an id that is still pending (agent.approvals.list() lists them); each approval resolves once.";
+    readonly LOUSHO_APPROVAL_CONFLICT: "Another request decided this approval at the same time; read the session to see the outcome instead of deciding again.";
+    readonly LOUSHO_APPROVAL_FORBIDDEN: "Decide the approval as a caller the route's authorizeApproval accepts (by default, the caller the run acts for).";
+    readonly LOUSHO_SESSION_FORBIDDEN: "Use a session the route's authorizeSession lets this caller read, continue or decide approvals in.";
     readonly LOUSHO_SESSION_AWAITING_APPROVAL: "Resolve the pending approval first (agent.approvals.resolve() or resumeAfterApproval()), then send again.";
     readonly LOUSHO_SESSION_ID_INVALID: "Use 1-128 characters from A-Z, a-z, 0-9, '_' and '-', or omit the id.";
     readonly LOUSHO_SESSION_BUSY: "Wait for the running turn to finish (await its send(), or abort it), then call again.";
@@ -1941,6 +1974,7 @@ export const ERROR_CODES: {
     readonly LOUSHO_OAUTH_STATE_INVALID: "Start the sign-in again from a fresh link: a state works once, for 10 minutes, and only for the user it was made for.";
     readonly LOUSHO_SIGNIN_PENDING: "Open the sign-in link first and let the provider redirect to the callback, then approve again (or approve with false to cancel).";
     readonly LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED: "Check the provider's tokenUrl, clientId, clientSecret and redirectUri (it must match the one registered with the provider), then sign in again.";
+    readonly LOUSHO_MCP_START_FAILED: "Run the server's command yourself to see why it fails; the message has its exit code and last stderr lines, and `connectTimeoutMs` bounds a server that never answers.";
     readonly LOUSHO_MCP_AUTH_REQUIRED: "Sign the app in to the MCP server once: open the URL from agent.oauth.mcpSignInUrl('<server>') and let the callback store the token.";
 };
 
@@ -1996,12 +2030,13 @@ export interface EvalConfig {
     // (undocumented)
     temperature?: ExecuteOptions['temperature'];
     threshold: number;
+    timeoutMs?: number;
     toolRegistry?: ExecuteOptions['toolRegistry'];
 }
 
 // @public
 export interface EvalJudgeConfig {
-    model: string;
+    model?: string;
     provider: LLMProvider;
     // (undocumented)
     temperature?: number;
@@ -2169,6 +2204,7 @@ export interface ExecutionResult<TObject = unknown> {
     messages: Message[];
     object?: TObject;
     outputError?: OutputError;
+    outputRepaired?: true;
     reasoning?: string;
     // (undocumented)
     steps: number;
@@ -2317,7 +2353,14 @@ export class FileWorkspaceCheckpointStore implements WorkspaceCheckpointStore {
 }
 
 // @public
-export function fireSchedule(agent: SimpleAgent, schedule: DefinedSchedule, name: string, firedAt: Date, sessionId?: string): Promise<void>;
+export function fireSchedule(agent: SimpleAgent, schedule: DefinedSchedule, options?: FireScheduleOptions): Promise<void>;
+
+// @public
+export interface FireScheduleOptions {
+    firedAt?: Date;
+    name?: string;
+    sessionId?: string;
+}
 
 // @public
 export const FLOW_NODE_SPAN_NAME = "flow.node";
@@ -2457,6 +2500,7 @@ export interface FromAiSdkOptions {
     maxRetries?: number;
     name?: string;
     replaysReasoning?: boolean;
+    unsupportedFiles?: UnsupportedFiles;
 }
 
 // @public
@@ -2576,6 +2620,7 @@ export const GenAiOperation: {
 // @public
 export interface GenerateHookContext extends HookContext {
     emit?: (event: HookEventPayload) => void;
+    generate?: (provider: LLMProvider, request: GenerateOptions, purpose: string) => Promise<GenerateResult>;
     request: GenerateOptions;
 }
 
@@ -2624,6 +2669,7 @@ export interface GenerateResult {
     // (undocumented)
     rawResponse?: unknown;
     reasoning?: ReasoningBlock[];
+    servedBy?: ServedBy;
     // (undocumented)
     text: string;
     toolCalls?: ToolCall[];
@@ -2667,7 +2713,6 @@ export interface GitHubChannelOptions {
     fetch?: typeof fetch;
     name?: string;
     onError?: ChannelErrorHandler;
-    pullRequestOpened?: boolean;
     token?: string | (() => string | Promise<string>);
     triggers?: GitHubTriggers;
     webhookSecret: string;
@@ -3161,11 +3206,11 @@ const ItemSchema: z.ZodObject<{
         path: z.ZodString;
         content: z.ZodString;
     }, "strip", z.ZodTypeAny, {
-        content: string;
         path: string;
+        content: string;
     }, {
-        content: string;
         path: string;
+        content: string;
     }>, "many">;
     permissions: z.ZodDefault<z.ZodObject<{
         network: z.ZodOptional<z.ZodArray<z.ZodEffects<z.ZodString, string, string>, "many">>;
@@ -3199,8 +3244,8 @@ const ItemSchema: z.ZodObject<{
         exec?: boolean | undefined;
     };
     files: {
-        content: string;
         path: string;
+        content: string;
     }[];
     dependencies?: string[] | undefined;
 }, {
@@ -3208,8 +3253,8 @@ const ItemSchema: z.ZodObject<{
     type: "tool" | "memory" | "skill" | "channel" | "schedule" | "kit";
     description: string;
     files: {
-        content: string;
         path: string;
+        content: string;
     }[];
     permissions?: {
         env?: string[] | undefined;
@@ -3309,7 +3354,7 @@ export function llmJudge(config: LLMJudgeConfig): (result: ExecutionResult) => P
 // @public
 export interface LLMJudgeConfig {
     allowOutsideJudgeRunner?: boolean;
-    model: string;
+    model?: string;
     provider: LLMProvider;
     rubric: string;
     // (undocumented)
@@ -3390,6 +3435,8 @@ export interface LoadMcpToolsOptions {
     deferLoading?: boolean;
     logger?: Logger;
     onSkip?: (skipped: SkippedMcpTool) => void;
+    timeoutMs?: number;
+    tools?: McpToolFilter;
 }
 
 // @public
@@ -3562,6 +3609,7 @@ type MaybePromise<T> = T | Promise<T>;
 export type McpApproval = 'annotations' | 'always' | 'never' | ((tool: {
     name: string;
     annotations: McpToolAnnotations;
+    args?: Record<string, unknown>;
 }) => boolean);
 
 // @public
@@ -3580,6 +3628,7 @@ export interface McpClientLike {
 // @public
 export interface McpConnections {
     close(): Promise<void>;
+    reconnect(): Promise<void>;
     status(): Record<string, McpServerStatus>;
     readonly tools: Record<string, NamedToolDescriptor>;
 }
@@ -3618,10 +3667,13 @@ export type McpContentPart = {
 // @public
 export interface McpHttpServerSpec {
     approval?: McpApproval;
+    connectTimeoutMs?: number;
     deferLoading?: boolean;
     // (undocumented)
     headers?: Record<string, string>;
     oauth?: McpOAuthOptions;
+    timeoutMs?: number;
+    tools?: McpToolFilter;
     // (undocumented)
     url: string;
 }
@@ -3659,15 +3711,33 @@ export const mcpServerSpecSchema: SpecSchema<McpServerSpec>;
 export type McpServerStatus = 'idle' | 'connected' | 'failed' | 'needs-auth';
 
 // @public
+export class McpStartError extends SDKError {
+    constructor(server: string, reason: string, details: {
+        exitCode?: number;
+        signal?: string;
+        stderr: string;
+        cause?: unknown;
+    });
+    readonly exitCode?: number;
+    readonly signal?: string;
+    readonly stderr: string;
+}
+
+// @public
 export interface McpStdioServerSpec {
     approval?: McpApproval;
     // (undocumented)
     args?: string[];
     // (undocumented)
     command: string;
+    connectTimeoutMs?: number;
+    cwd?: string;
     deferLoading?: boolean;
     // (undocumented)
     env?: Record<string, string>;
+    stderr?: 'forward' | 'capture' | 'inherit' | 'ignore';
+    timeoutMs?: number;
+    tools?: McpToolFilter;
 }
 
 // @public
@@ -3695,6 +3765,12 @@ export interface McpToolAnnotations {
 export class McpToolError extends Error {
     constructor(message: string);
     readonly toolErrorKind: "mcp";
+}
+
+// @public
+export interface McpToolFilter {
+    exclude?: readonly string[];
+    include?: readonly string[];
 }
 
 // @public
@@ -3729,9 +3805,6 @@ export interface MemoryItem {
     // (undocumented)
     text: string;
 }
-
-// @public
-export function memoryKey(slot: MemorySlot, ctx?: MemoryScopeContext): string | undefined;
 
 // @public
 export interface MemoryProvider {
@@ -3785,8 +3858,6 @@ export interface MemorySlot {
         remember: boolean;
         recall: boolean;
     };
-    // (undocumented)
-    readonly itemSchema?: StandardSchemaV1;
     // (undocumented)
     readonly name: string;
     // (undocumented)
@@ -3991,6 +4062,7 @@ export class NodeWorkspace implements Workspace {
         recursive?: boolean;
     }): Promise<void>;
     readonly root: string;
+    readonly shell: string;
     // (undocumented)
     stat(path: string): Promise<WorkspaceStat | undefined>;
     // (undocumented)
@@ -4198,13 +4270,15 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
     protected readonly mapsHostedTools = true;
     // (undocumented)
     readonly name = "openai";
-    supportsHostedTool(_type: HostedToolType | 'custom'): boolean;
+    protected reasoningOptions(modelId: string, options: GenerateOptions): Record<string, unknown> | undefined;
+    supportsHostedTool(type: HostedToolType | 'custom'): boolean;
     supportsStreaming(_model: string): boolean;
     supportsTools(model: string): boolean;
 }
 
 // @public
 export interface OpenAIProviderConfig extends AiSdkProviderConfig {
+    api?: 'responses' | 'chat';
     // (undocumented)
     apiKey: string;
     // (undocumented)
@@ -4368,6 +4442,7 @@ export interface PendingApproval {
     kind?: ApprovalKind;
     principal?: Principal;
     question?: ApprovalQuestion;
+    sessionId?: string;
     signIn?: ApprovalSignIn;
     subagentPath?: string[];
     // (undocumented)
@@ -5030,18 +5105,12 @@ export interface RewindResult {
 }
 
 // @public
-type RouteApprovers = readonly string[] | ((caller: Principal | undefined, pending: PendingApproval) => boolean | Promise<boolean>);
-
-// @public
 export type RouteHandler = (request: Request) => Promise<Response>;
 
 // @public (undocumented)
-export interface RouteHandlerOptions {
-    // Warning: (ae-forgotten-export) The symbol "RouteApprovers" needs to be exported by the entry point index.d.ts
-    approvers?: RouteApprovers;
+export interface RouteHandlerOptions extends ChatRoutesAccess {
     auth?: string | ((request: Request) => boolean | Promise<boolean>) | AuthFn | readonly AuthFn[];
     basePath?: string;
-    ownsSession?: (principal: Principal | undefined, sessionId: string) => boolean | Promise<boolean>;
     uiMessageStream?: boolean;
 }
 
@@ -5088,8 +5157,7 @@ export interface RunLimits {
 
 // @public
 export interface RunningSchedules {
-    // (undocumented)
-    stop(): void;
+    stop(): Promise<void>;
 }
 
 // @public
@@ -5209,6 +5277,7 @@ export class SandboxShell implements ShellProvider {
     constructor(sandbox: SandboxAdapter, options?: SandboxShellOptions);
     // (undocumented)
     exec(command: string, options?: ShellExecOptions): Promise<ShellExecResult>;
+    get shell(): string;
 }
 
 // @public
@@ -5247,9 +5316,6 @@ export interface ScheduledController {
 
 // @public
 export type ScheduleInput = PromptScheduleInput | RunScheduleInput;
-
-// @public
-export function scheduleName(schedule: DefinedSchedule, index: number): string;
 
 // @public
 interface SchemaIssue {
@@ -5306,6 +5372,7 @@ export const SdkAttr: {
     readonly USAGE_REASONING_TOKENS: "lousho.usage.reasoning_tokens";
     readonly HOSTED_TOOL_CALLS: "lousho.hosted_tool_calls";
     readonly PARENT_TOOL_CALL_ID: "lousho.tool.parent_call_id";
+    readonly CALL_PURPOSE: "lousho.call.purpose";
 };
 
 // @public
@@ -5389,6 +5456,13 @@ export interface ServeAcpOptions {
 }
 
 // @public
+export interface ServedBy {
+    model?: string;
+    // (undocumented)
+    provider: string;
+}
+
+// @public
 export function serveMcp(options: ServeMcpOptions): Promise<ServeMcpHandle>;
 
 // @public
@@ -5411,6 +5485,18 @@ export interface ServeMcpOptions {
     version?: string;
     warn?: (message: string) => void;
 }
+
+// @public
+export interface SessionAccessRequest {
+    // (undocumented)
+    action: SessionAction;
+    principal: Principal | undefined;
+    // (undocumented)
+    sessionId: string;
+}
+
+// @public
+export type SessionAction = 'read' | 'chat' | 'approve';
 
 // @public
 export class SessionAwaitingApprovalError extends SDKError {
@@ -5581,6 +5667,7 @@ export interface ShellExecResult {
 export interface ShellProvider {
     // (undocumented)
     exec(command: string, options?: ShellExecOptions): Promise<ShellExecResult>;
+    readonly shell?: string;
 }
 
 // @public
@@ -5775,6 +5862,7 @@ export function startSchedules(agent: SimpleAgent, schedules: readonly DefinedSc
 
 // @public (undocumented)
 export interface StartSchedulesOptions {
+    keepAlive?: boolean;
     now?: () => number;
     onError?: (error: unknown, schedule: {
         name: string;
@@ -5855,6 +5943,7 @@ export interface StreamResult {
     finishReason: Promise<string>;
     // (undocumented)
     fullStream: AsyncIterable<StreamChunk>;
+    servedBy?: ServedBy;
     // (undocumented)
     text: Promise<string>;
     // (undocumented)
@@ -6513,6 +6602,7 @@ export interface ToolMetadata {
     mcp?: {
         annotations?: McpToolAnnotations;
         server?: string;
+        tool?: string;
     };
 }
 
@@ -6622,6 +6712,7 @@ export interface ToolStartEvent extends AgentEventBase<'tool.start'> {
     args: Record<string, unknown>;
     executedBy?: 'provider';
     parentToolCallId?: string;
+    rawArgs?: string;
     // (undocumented)
     toolCallId: string;
     // (undocumented)
@@ -6660,6 +6751,7 @@ export interface TrajectoryEvalConfig<C = Record<string, never>> {
     tags?: string[];
     target?: AgentSource;
     test(t: EvalTestContext, c: C): void | Promise<void>;
+    timeoutMs?: number;
 }
 
 // @public
@@ -6712,6 +6804,9 @@ export interface UIMessagePartLike {
 }
 
 // @public
+export type UnsupportedFiles = 'error' | 'text-note';
+
+// @public
 export interface Usage {
     cachedInputTokens?: number;
     inputTokens: number;
@@ -6741,10 +6836,7 @@ export type VectorMemoryProvider = MemoryProvider & {
 };
 
 // @public
-export const VERSION = "1.0.0-alpha.18";
-
-// @public
-export function warnUnknownContextWindow(feature: string, model: string | undefined, assumed: number): void;
+export const VERSION = "1.0.0-alpha.19";
 
 // @public (undocumented)
 const webFetchInput: z.ZodObject<{
@@ -6973,17 +7065,17 @@ const writeFileInput: z.ZodObject<{
     path: z.ZodString;
     content: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    content: string;
     path: string;
+    content: string;
 }, {
-    content: string;
     path: string;
+    content: string;
 }>;
 
 // Warnings were encountered during analysis:
 //
-// dist/index-DyKWxFSZ.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-DyKWxFSZ.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-B41xZFIC.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-B41xZFIC.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)

@@ -115,7 +115,7 @@ gets now:
 | `start` (`agentId`, `agentName`) | `run.start` (`agentId`, `agentName`) |
 | `text-delta` (never emitted) | `text.delta` (`text`) |
 | `text-complete` (`text`, `stepUsage`) | `text.done` (`text`); the step's usage is on `step.done` (`usage`) |
-| `tool-call` (`toolCall`) | `tool.start` (`toolCallId`, `toolName`, parsed `args`) |
+| `tool-call` (`toolCall`) | `tool.start` (`toolCallId`, `toolName`, parsed `args`; `rawArgs` when the model's text was not valid JSON as sent) |
 | `tool-result` (`toolResult`) | `tool.done` (`result`, `durationMs`, `replacedByHook`), or `tool.error` (`error.name`, `error.message`) |
 | `error` (`error: Error`) | `error` (`error: { name, message }`) |
 | `abort` (`abortReason`, `usage`) | `run.done` with `finishReason: 'aborted'` (the reason is your signal's `reason`) |

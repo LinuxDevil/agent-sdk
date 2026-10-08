@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { pathToFileURL } from 'node:url';
+import { SDKError } from '../utils/sdkError';
 
 const cacheBust = new AsyncLocalStorage<string>();
 
@@ -34,9 +35,28 @@ export function explainImportError(file: string, error: unknown): Error {
       { cause: error }
     );
   }
-  return new Error(`loadAgentDir: failed to import ${file}: ${cause.message ?? String(error)}`, {
-    cause: error,
-  });
+  const message = `loadAgentDir: failed to import ${file}: ${cause.message ?? String(error)}`;
+  const missing = missingPackage(cause);
+  if (missing !== undefined) {
+    // Typically a kit installed (lousho add) into a folder with no node_modules
+    // above it: Node resolves a bare import from the importing file's folder up.
+    return new SDKError(message, 'LOUSHO_AGENT_DIR_INVALID', {
+      cause: error,
+      hint:
+        `Node resolves '${missing}' from node_modules in the folder of ${file} or one of its parents, and found none. ` +
+        `Install it in the project that contains the agent directory (npm install ${missing}), or move the agent directory inside a project that has it installed.`,
+    });
+  }
+  return new SDKError(message, 'LOUSHO_AGENT_DIR_INVALID', { cause: error });
+}
+
+/** The bare package name a "module not found" import error is about, or undefined (also for a missing relative file). */
+function missingPackage(cause: NodeJS.ErrnoException): string | undefined {
+  if (cause.code !== 'ERR_MODULE_NOT_FOUND' && cause.code !== 'MODULE_NOT_FOUND') return undefined;
+  const specifier = /Cannot find (?:module|package) '([^']+)'/.exec(cause.message ?? '')?.[1];
+  if (specifier === undefined || /^(?:\.|\/|[A-Za-z]:[\\/]|file:)/.test(specifier)) return undefined;
+  const parts = specifier.split('/');
+  return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
 }
 
 /** Dynamically imports a user file, with path-bearing errors (see {@link explainImportError}). */

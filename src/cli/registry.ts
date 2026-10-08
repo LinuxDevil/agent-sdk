@@ -27,6 +27,14 @@ const itemType = z.enum(['tool', 'skill', 'channel', 'schedule', 'memory', 'kit'
  */
 export const DEFAULT_REGISTRY = 'https://registry.lousho.com/index.json';
 
+/**
+ * Where the default registry is read from when `DEFAULT_REGISTRY` cannot be
+ * reached: the same committed `registry/dist/` folder, served raw from the
+ * repository's main branch. Only the default falls back; an explicit
+ * `--registry` or `LOUSHO_REGISTRY` never does.
+ */
+export const DEFAULT_REGISTRY_FALLBACK = 'https://raw.githubusercontent.com/LinuxDevil/agent-sdk/main/registry/dist/index.json';
+
 /** The registry index document; also what `scripts/build-registry.ts` writes as `registry/dist/index.json`. */
 export const IndexSchema = z.object({
   items: z.array(
@@ -128,6 +136,32 @@ export function registrySource(options: RegistryOptions): string {
 
 export async function loadIndex(registry: string, options: RegistryOptions): Promise<RegistryIndex> {
   return readJson(registry, IndexSchema, options);
+}
+
+/**
+ * Loads the index of the configured registry (see `registrySource`) and
+ * returns it with the location that answered, which item references resolve
+ * against. The default registry falls back to `DEFAULT_REGISTRY_FALLBACK`
+ * when its host is unreachable.
+ */
+export async function openRegistry(options: RegistryOptions): Promise<{ registry: string; index: RegistryIndex }> {
+  const registry = registrySource(options);
+  try {
+    return { registry, index: await loadIndex(registry, options) };
+  } catch (error) {
+    if (registry !== DEFAULT_REGISTRY || !(error instanceof SDKError) || error.code !== 'LOUSHO_REGISTRY_UNREACHABLE') throw error;
+    try {
+      return { registry: DEFAULT_REGISTRY_FALLBACK, index: await loadIndex(DEFAULT_REGISTRY_FALLBACK, options) };
+    } catch (fallbackError) {
+      if (!(fallbackError instanceof SDKError) || fallbackError.code !== 'LOUSHO_REGISTRY_UNREACHABLE') throw fallbackError;
+      const reason = (e: SDKError) => e.detail.replace(/^lousho add: /, '');
+      throw new SDKError(
+        `lousho add: the default registry is unreachable: ${reason(error)}; and its fallback: ${reason(fallbackError)}`,
+        'LOUSHO_REGISTRY_UNREACHABLE',
+        { cause: fallbackError, hint: 'Check that you are online, or pass --registry <url-or-path> (e.g. a local copy of registry/dist/index.json).' }
+      );
+    }
+  }
 }
 
 /** Resolves an index entry's `url` / `path` against the registry's own location. */

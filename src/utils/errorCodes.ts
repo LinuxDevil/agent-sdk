@@ -29,11 +29,14 @@ export const ERROR_CODES = {
   LOUSHO_PEER_MISSING: 'Run the npm install command shown in the message.',
   LOUSHO_HOSTED_TOOL_UNSUPPORTED:
     'Use a provider and package pairing that runs this hosted tool (see docs/hosted-tools.md), or leave the tool out of `tools`.',
+  LOUSHO_UNSUPPORTED_CONTENT:
+    "Send this content to a provider that takes it (see docs/providers.md#multimodal-input), put the file's text in the message, or set the provider's `unsupportedFiles: 'text-note'`.",
   LOUSHO_SPEC_NOT_FOUND: 'Check the spec file path in the message; no file exists there.',
   LOUSHO_SPEC_INVALID: 'Fix the spec fields named in the message (each is shown as its path and the problem).',
   LOUSHO_SPEC_UNKNOWN_FIELD: 'Rename the field to the suggested spec field, or remove it.',
   LOUSHO_SPEC_UNSUPPORTED_FORMAT: 'Save the spec as .yaml, .yml or .json.',
   LOUSHO_SCHEDULE_INVALID: 'Fix the cron expression named in the message, and give the schedule exactly one of `prompt` or `run`.',
+  LOUSHO_SCHEDULE_RUN_INCOMPLETE: 'Resolve the pending approval named in the message, or change the prompt, tools or limits so an unattended turn can finish.',
   LOUSHO_CHANNEL_INVALID: 'Default-export a channel from defineChannel(), httpChannel(), webhookChannel() or slackChannel() in each channels/ file.',
   LOUSHO_MEMORY_INVALID: 'Default-export a memory slot from defineMemory() (or an object with a scope and a provider) in each memory/ file.',
   LOUSHO_REGISTRY_UNREACHABLE: 'Check the --registry url or path (http(s) or a local file) and that you are online; the message names what failed.',
@@ -49,6 +52,8 @@ export const ERROR_CODES = {
   LOUSHO_AGENT_DIR_INVALID: 'Fix the file or folder the message names; docs/agent-directories.md shows the layout.',
   LOUSHO_SKILL_INVALID: 'Fix the skill the message names (a name, a description and content), or the skills option it was passed to.',
   LOUSHO_FLOW_INVALID: 'Fix the flow definition the message names (its name, code, inputs and node types).',
+  LOUSHO_FLOW_TOOL_DENIED:
+    "Pass an approve callback in the flow context to decide tool calls that need approval, or change the permission rule or needsApproval policy that denied the call.",
   LOUSHO_STORAGE_FAILED: 'Read the message: it names the database or file that failed; check the path, permissions and Node version, and the `cause`.',
   LOUSHO_TRIGGER_INVALID: 'Fix the trigger option the message names; the message shows a working example.',
   LOUSHO_DEPLOY_FAILED: 'Read the message: it names the missing option, file or unsupported feature; docs/deployment.md covers each target.',
@@ -58,6 +63,9 @@ export const ERROR_CODES = {
   LOUSHO_CHANNEL_REQUEST_FAILED: "Check the platform's token and permissions and its status page; the message names the call and its status.",
   LOUSHO_APPROVAL_STORE_MISSING: 'Pass an approvalStore (e.g. new InMemoryApprovalStore()), or use createAgent(), which has one.',
   LOUSHO_APPROVAL_NOT_FOUND: 'Resolve an id that is still pending (agent.approvals.list() lists them); each approval resolves once.',
+  LOUSHO_APPROVAL_CONFLICT: 'Another request decided this approval at the same time; read the session to see the outcome instead of deciding again.',
+  LOUSHO_APPROVAL_FORBIDDEN: 'Decide the approval as a caller the route\'s authorizeApproval accepts (by default, the caller the run acts for).',
+  LOUSHO_SESSION_FORBIDDEN: 'Use a session the route\'s authorizeSession lets this caller read, continue or decide approvals in.',
   LOUSHO_SESSION_AWAITING_APPROVAL: 'Resolve the pending approval first (agent.approvals.resolve() or resumeAfterApproval()), then send again.',
   LOUSHO_SESSION_ID_INVALID: "Use 1-128 characters from A-Z, a-z, 0-9, '_' and '-', or omit the id.",
   LOUSHO_SESSION_BUSY: 'Wait for the running turn to finish (await its send(), or abort it), then call again.',
@@ -101,6 +109,8 @@ export const ERROR_CODES = {
   LOUSHO_SIGNIN_PENDING: 'Open the sign-in link first and let the provider redirect to the callback, then approve again (or approve with false to cancel).',
   LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED:
     "Check the provider's tokenUrl, clientId, clientSecret and redirectUri (it must match the one registered with the provider), then sign in again.",
+  LOUSHO_MCP_START_FAILED:
+    "Run the server's command yourself to see why it fails; the message has its exit code and last stderr lines, and `connectTimeoutMs` bounds a server that never answers.",
   LOUSHO_MCP_AUTH_REQUIRED: "Sign the app in to the MCP server once: open the URL from agent.oauth.mcpSignInUrl('<server>') and let the callback store the token.",
 } as const;
 

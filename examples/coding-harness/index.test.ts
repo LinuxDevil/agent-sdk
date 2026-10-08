@@ -67,6 +67,25 @@ describe('examples/coding-harness', () => {
     expect(toolOutputs(lead)).toContain('You already called read_file with these arguments 2 times');
   });
 
+  it('counts repeats per run, never blocks test runs, and refuses git diff', async () => {
+    const workspace = memoryWorkspace();
+    const read = { toolCalls: [{ name: 'read_file', args: { path: 'math.js' } }] };
+    const test = { toolCalls: [{ name: 'shell', args: { command: 'node --test' } }] };
+    const lead = mockModel([
+      read, { text: '1' }, read, { text: '2' }, read, { text: '3' },
+      test, test, test,
+      { toolCalls: [{ name: 'shell', args: { command: 'git diff --output=../x' } }] },
+      { text: 'Done.' },
+    ]);
+    const { agent } = createCodingHarness({ workspace, provider: lead });
+
+    for (const prompt of ['a', 'b', 'c']) await agent.send(prompt);
+    await agent.send('Run the tests three times, then diff.');
+
+    expect(toolOutputs(lead)).not.toContain('You already called');
+    expect(toolOutputs(lead)).toContain('not on the allow list');
+  });
+
   it('adds a family-specific tail to the instructions', () => {
     expect(instructionsFor('openrouter/openai/gpt-4o-mini')).toContain('one tool at a time');
     expect(instructionsFor('openrouter/anthropic/claude-haiku-4-5')).toContain('Prefer edit_file');

@@ -90,6 +90,30 @@ const result = await lead.send('What is the weather in Paris?');
 console.log(result.text);
 ```
 
+## Optional fields
+
+Optional fields work on strict structured-output endpoints (OpenAI,
+OpenRouter), which require every property to be listed in `required`. In the
+JSON Schema sent to the model, each optional property (`.optional()`,
+`.default()`) is required and nullable instead, at every level: nested
+objects, array items and union branches. A `null` the model returns for such a
+field is removed before validation, so the schema you wrote still validates it
+and `result.object` has no key for it. A field that accepts `null` itself
+(`.nullable()`, `.nullish()`) keeps the `null`.
+
+```ts
+import { z } from 'zod';
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openrouter/openai/gpt-4o-mini',
+  output: z.object({ verdict: z.string(), note: z.string().optional() }),
+});
+const { object } = await agent.send('Review this change.');
+// The model may answer {"verdict":"approve","note":null}; object is { verdict: 'approve' }.
+console.log(object?.note); // typed: string | undefined
+```
+
 ## How it works
 
 1. The system prompt gets an `## Output format` section asking for the final
@@ -100,14 +124,58 @@ console.log(result.text);
    outputs); a custom provider may use it or ignore it.
 3. When the model replies without tool calls, the reply is parsed as JSON (a
    ```` ```json ```` code fence around it is tolerated) and validated with
-   the schema.
+   the schema. A near miss is read without a repair call: when the whole
+   reply is not JSON, `<think>…</think>` blocks are removed and the first
+   fenced block, or balanced `{…}` / `[…]`, that parses and validates is
+   used. So a prose prefix, trailing prose after a fenced block, or a
+   reasoning block before the JSON costs nothing extra. `result.text` keeps
+   the reply as the model wrote it.
 4. If it is invalid, the model gets one repair step: a user message
    starting with `[output-invalid]` that lists the issues, for example
-   `1 issue (tempC: Expected number, received string)`. The repair step
+   `1 issue (tempC: Expected number, received string)`. When the reply was
+   the JSON Schema itself (some local models echo it), the message says so
+   and shows an example object of the right shape instead. The repair step
    counts against `maxSteps`, and there is none when the budget is spent.
 5. Still invalid, the run resolves (it does not reject) with
    `finishReason: 'output-invalid'`, no `object`, and `outputError`:
    `{ message, issues: [{ path, message }] }`.
+
+## Repaired output and business rules
+
+When `object` came from the repair step, the result has
+`outputRepaired: true`. A repair answers the issues it is shown, so it can
+**change values** to make them validate. If the schema encodes a business
+rule, such as a refinement that `total` equals `subtotal + tax`, a model
+asked to repair an invoice whose printed total breaks the rule may rewrite
+the total so the object passes. Keep the schema to the document's
+structure, and check business rules on `result.object` after extraction,
+where a failure is yours to report:
+
+```ts
+import { z } from 'zod';
+import { createAgent } from '@lousho/build-ai-agent';
+
+const Invoice = z.object({ subtotal: z.number(), tax: z.number(), total: z.number() });
+const agent = createAgent({ model: 'openai/gpt-4o-mini', output: Invoice });
+
+const result = await agent.send('Extract the invoice: subtotal 100.00, tax 19.00, total 120.00');
+const invoice = result.object;
+if (invoice && Math.abs(invoice.subtotal + invoice.tax - invoice.total) > 0.005) {
+  console.warn('Totals do not add up', invoice, result.outputRepaired ? '(after a repair)' : '');
+}
+```
+
+## Schema limits
+
+- **The root must be an object.** A root-level union of objects
+  (`z.union`, `z.discriminatedUnion`) is sent with `type: 'object'` next to
+  its `anyOf`. A root union with a branch that is not an object throws a
+  `ConfigurationError` from `createAgent()`: wrap it, as in
+  `z.object({ result: z.union([...]) })`.
+- **No `z.date()`.** JSON has no date type, so a zod 4 `z.date()` field could
+  never validate. `createAgent()` throws a `ConfigurationError` naming the
+  field. Use `z.iso.date()` or `z.iso.datetime()` for an ISO string, or
+  `z.iso.datetime().pipe(z.coerce.date())` for a `Date` in `result.object`.
 
 ## Streaming
 

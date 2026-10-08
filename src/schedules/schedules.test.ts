@@ -1,11 +1,16 @@
-import { describe, it, expect, vi } from 'vitest';
-import { createAgent, type RunConfigContext } from '../createAgent';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { z } from 'zod';
+import { createAgent } from '../createAgent';
 import { SDKError } from '../execution/errors';
 import { memoryStore } from '../storage/agentStore';
 import { mockModel } from '../testing';
+import { defineTool } from '../tools/defineTool';
 import { defineSchedule, isDefinedSchedule } from './defineSchedule';
-import { fireSchedule, scheduleName } from './fireSchedule';
+import { fireSchedule as fireScheduleFromIndex, type FireScheduleOptions } from '../index';
+import { fireSchedule } from './fireSchedule';
 import { startSchedules } from './startSchedules';
+
+afterEach(() => { vi.restoreAllMocks(); });
 
 const MINUTE = 60_000;
 
@@ -149,58 +154,96 @@ describe('startSchedules', () => {
     expect(run).not.toHaveBeenCalled();
   });
 
-  it('a prompt fire runs as the durable `schedule-<name>` session, like the Workers target', async () => {
-    const store = memoryStore();
-    const sessions: Array<string | undefined> = [];
-    const agent = createAgent({
-      provider: mockModel(['one']),
-      instructions: (ctx: RunConfigContext) => (sessions.push(ctx.sessionId), 'x'),
-      store,
-    });
+  it('reports a prompt turn that pauses for approval as LOUSHO_SCHEDULE_RUN_INCOMPLETE, naming the approval', async () => {
+    const tool = defineTool({ name: 'send_email', description: 'Sends', input: z.object({ to: z.string() }), needsApproval: true, execute: async () => 'sent' });
+    const call = { toolCalls: [{ name: 'send_email', args: { to: 'sam@example.com' }, id: 'call_1' }] };
+    const agent = createAgent({ provider: mockModel([call]), tools: [tool] });
+    const onError = vi.fn();
     const clock = fakeClock();
-    const running = startSchedules(agent, [defineSchedule({ ...every5, name: 'watch', prompt: 'Status?' })], clock);
+    const running = startSchedules(agent, [defineSchedule({ ...every5, name: 'mail', prompt: 'Email Sam.' })], { ...clock, onError });
 
     await clock.advance(5 * MINUTE);
-    expect(sessions).toEqual(['schedule-watch']);
-    // the run is checkpointed under the session id, so it is inspectable and resumable
-    await vi.waitFor(async () => {
-      expect(JSON.stringify(await store.checkpoints.load('schedule-watch'))).toContain('Status?');
-    });
-    running.stop();
-    await agent.close();
+    await running.stop();
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [error, schedule] = onError.mock.calls[0] as [SDKError, { name: string }];
+    expect(schedule).toEqual({ name: 'mail' });
+    expect(error).toBeInstanceOf(SDKError);
+    expect(error.code).toBe('LOUSHO_SCHEDULE_RUN_INCOMPLETE');
+    const [pending] = await agent.approvals.list();
+    expect(error.detail).toContain('awaiting-approval');
+    expect(error.detail).toContain(pending.id);
   });
 
-  it('a prompt fire on an agent without a store still runs, ephemerally', async () => {
-    const provider = mockModel(['one']);
-    const agent = createAgent({ provider, instructions: 'x' });
-    const clock = fakeClock();
+  it("reports a prompt turn that ends 'output-invalid'", async () => {
+    const agent = createAgent({ provider: mockModel(['not json', 'still not']), output: z.object({ ok: z.boolean() }) });
     const onError = vi.fn();
-    const running = startSchedules(agent, [defineSchedule({ ...every5, name: 'watch', prompt: 'Status?' })], { ...clock, onError });
+    const clock = fakeClock();
+    const running = startSchedules(agent, [defineSchedule({ ...every5, name: 'json', prompt: 'Reply.' })], { ...clock, onError });
 
     await clock.advance(5 * MINUTE);
-    expect(provider.calls).toHaveLength(1);
-    expect(onError).not.toHaveBeenCalled();
-    running.stop();
-    await agent.close();
+    await running.stop();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ code: 'LOUSHO_SCHEDULE_RUN_INCOMPLETE', detail: expect.stringContaining('output-invalid') }), { name: 'json' });
+  });
+
+  it('stop() resolves only once the run in flight has finished', async () => {
+    const agent = createAgent({ provider: mockModel(['x']), instructions: 'x' });
+    let release: () => void = () => undefined;
+    let finished = false;
+    const run = vi.fn(() => new Promise<void>((resolve) => (release = resolve)).then(() => void (finished = true)));
+    const clock = fakeClock();
+    const running = startSchedules(agent, [defineSchedule({ ...every5, run })], clock);
+    await clock.advance(5 * MINUTE);
+    expect(run).toHaveBeenCalledTimes(1);
+
+    let stopped = false;
+    const stopping = running.stop().then(() => void (stopped = true));
+    expect(clock.pending()).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(stopped).toBe(false);
+    release();
+    await stopping;
+    expect(finished).toBe(true);
+  });
+
+  it("unrefs the default timers unless keepAlive is set", async () => {
+    const agent = createAgent({ provider: mockModel(['x']), instructions: 'x' });
+    const timers: NodeJS.Timeout[] = [];
+    const real = globalThis.setTimeout;
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms: number) => {
+      const timer = real(fn, ms);
+      timers.push(timer);
+      return timer;
+    }) as typeof setTimeout);
+    const schedule = defineSchedule({ ...every5, run: async () => undefined });
+
+    const detached = startSchedules(agent, [schedule]);
+    const kept = startSchedules(agent, [schedule], { keepAlive: true });
+    expect(timers.map((timer) => timer.hasRef())).toEqual([false, true]);
+    await detached.stop();
+    await kept.stop();
   });
 });
 
 describe('fireSchedule', () => {
-  it('is exported: fires a prompt as a turn under the given session id, and a run function directly', async () => {
+  it('is exported and fires a schedule once, now, in the given session', async () => {
+    expect(fireScheduleFromIndex).toBe(fireSchedule);
+    const provider = mockModel(['done']);
     const store = memoryStore();
-    const agent = createAgent({ provider: mockModel(['tick']), instructions: 'x', store });
-    const prompt = defineSchedule({ ...every5, name: 'report', prompt: 'Weekly report.' });
-    await fireSchedule(agent, prompt, scheduleName(prompt, 0), new Date('2026-01-01T00:00:00Z'), 'schedule-report');
-    expect(JSON.stringify(await store.checkpoints.load('schedule-report'))).toContain('Weekly report.');
+    const agent = createAgent({ provider, instructions: 'x', store });
+    const options: FireScheduleOptions = { sessionId: 'ops-run' };
+    await fireSchedule(agent, defineSchedule({ ...every5, prompt: 'Run now.' }), options);
+    expect(provider.calls).toHaveLength(1);
+    expect(JSON.stringify(provider.calls[0].messages)).toContain('Run now.');
+    expect(JSON.stringify(await store.checkpoints?.load('ops-run'))).toContain('Run now.');
 
-    const seen: Array<{ firedAt: Date; name: string }> = [];
-    const run = defineSchedule({ ...every5, name: 'job', run: async (ctx) => void seen.push({ firedAt: ctx.firedAt, name: ctx.name }) });
-    await fireSchedule(agent, run, 'job', new Date('2026-01-01T00:05:00Z'));
-    expect(seen).toEqual([{ firedAt: new Date('2026-01-01T00:05:00Z'), name: 'job' }]);
-    await agent.close();
+    const run = vi.fn(async () => undefined);
+    const firedAt = new Date('2026-02-01T00:00:00Z');
+    await fireSchedule(agent, defineSchedule({ ...every5, name: 'tick', run }), { firedAt });
+    expect(run).toHaveBeenCalledWith({ agent, firedAt, name: 'tick' });
   });
 
-  it('scheduleName falls back to schedule-<position>', () => {
-    expect(scheduleName(defineSchedule({ ...every5, prompt: 'x' }), 2)).toBe('schedule-3');
+  it('rejects with LOUSHO_SCHEDULE_RUN_INCOMPLETE when the turn does not stop', async () => {
+    const agent = createAgent({ provider: mockModel(['a', 'b']), output: z.object({ ok: z.boolean() }) });
+    await expect(fireSchedule(agent, defineSchedule({ ...every5, name: 'n', prompt: 'p' }))).rejects.toMatchObject({ code: 'LOUSHO_SCHEDULE_RUN_INCOMPLETE' });
   });
 });

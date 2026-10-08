@@ -11,15 +11,17 @@ import * as aiModule from 'ai';
 import type { LanguageModel } from 'ai';
 import { ConfigurationError } from '../execution/errors';
 import type { GenerateOptions, LLMProvider } from './llm';
-import { AiSdkProvider, type AiSdkProviderConfig } from './aiSdkProvider';
+import { AiSdkProvider, type AiSdkProviderConfig, type UnsupportedFiles } from './aiSdkProvider';
 import { aiMajorOf, type AiSdkModule } from './aiSdkCompat';
 
 /** Options of {@link fromAiSdk}. */
 export interface FromAiSdkOptions {
   /** Provider name used in events, spans and warnings. Default: the model's `provider` field (e.g. 'google.generative-ai'), else 'ai-sdk'. */
   name?: string;
-  /** Media types sent as file parts (e.g. `['application/pdf']`). Default: [] (file parts become a text note). Image parts are always sent. */
+  /** Media types sent as file parts (e.g. `['application/pdf']`). Default: [] (other file parts: see `unsupportedFiles`). Image parts are always sent. */
   fileMediaTypes?: readonly string[];
+  /** A file part not in `fileMediaTypes`: reject the call with `LOUSHO_UNSUPPORTED_CONTENT` (`'error'`, the default) or send a text note. */
+  unsupportedFiles?: UnsupportedFiles;
   /** Send signed reasoning blocks back on assistant turns (Anthropic models). Default false. */
   replaysReasoning?: boolean;
   /** The AI SDK's own retries per call. Default 0: createAgent() retries through `retry`. */
@@ -83,7 +85,7 @@ class FromAiSdkProvider extends AiSdkProvider<AiSdkProviderConfig> {
     checkModel(model, ai);
     const modelId = field(model, 'modelId') ?? 'ai-sdk-model';
     const name = options.name ?? field(model, 'provider') ?? 'ai-sdk';
-    super({ name, defaultModel: modelId, maxRetries: options.maxRetries ?? 0 });
+    super({ name, defaultModel: modelId, maxRetries: options.maxRetries ?? 0, unsupportedFiles: options.unsupportedFiles });
     this.ai = ai;
     this.name = name;
     this.fallbackModel = modelId;

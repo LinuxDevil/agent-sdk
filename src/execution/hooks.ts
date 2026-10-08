@@ -43,7 +43,7 @@
  * HALT the run) - swallowing its errors would silently defeat its purpose.
  */
 
-import { GenerateOptions, GenerateResult, Message, ToolCall } from '../providers';
+import { GenerateOptions, GenerateResult, LLMProvider, Message, ToolCall } from '../providers';
 import type { AgentEventPayload } from './agentEvents';
 import { instanceOfBranded } from '../utils/brand';
 import type { Principal } from '../auth/types';
@@ -181,6 +181,14 @@ export interface GenerateHookContext extends HookContext {
    * fills in `runId`, `seq`, `timestamp` and `v`, and tags a sub-agent's events.
    */
   emit?: (event: HookEventPayload) => void;
+  /**
+   * Makes a side model call that counts as part of the run (audit C4): it
+   * gets a `chat` span under the run's span tagged `lousho.call.purpose`,
+   * and its usage is added to the run's `usage` (`byModel`, `modelCalls`)
+   * and budgets. Set on `preGenerate` inside an AgentExecutor run; the
+   * compaction hook uses it for the summarizer.
+   */
+  generate?: (provider: LLMProvider, request: GenerateOptions, purpose: string) => Promise<GenerateResult>;
   /**
    * Live reference to the request about to be sent to
    * `provider.generate()`. Mutating it (e.g. appending a message, changing

@@ -27,8 +27,8 @@ export interface HandoffRegistration {
   /**
    * `createAgent()` options this agent was built with that only apply to the
    * agent a run starts with - a handoff keeps the run's approval
-   * configuration and permission mode, so e.g. a target's `approve` is never
-   * consulted. Reported (once) so the setting is not silently ignored.
+   * configuration, permission mode and memory slots, so e.g. a target's
+   * `approve` is never consulted. Reported (once) so the setting is not silently ignored.
    */
   runLevelOptions?: readonly string[];
 }
@@ -202,9 +202,12 @@ export function handoffRunner(lead: {
   /** The lead's spec; `viaHandoff` when a target hands back to it. */
   spec: (ctx: RunConfigContext, pinned: unknown, viaHandoff: boolean) => Promise<SubagentSpec>;
   runOptions: LeadRunOptions;
+  /** What the lead's run adds to every other agent it hands to (its memory tools). */
+  target?: (spec: SubagentSpec, ctx: RunConfigContext) => SubagentSpec;
 }): { has: () => boolean; run: (active: string | undefined, ctx: RunConfigContext, pinned?: unknown) => Promise<HandoffRun> } {
   const caller = `createAgent '${lead.name}'`;
   const own = () => registrationOf(lead.agent(), caller);
+  const withLead = (spec: SubagentSpec, ctx: RunConfigContext) => (lead.target ? lead.target(spec, ctx) : spec);
 
   const handoffsOf = async (node: HandoffNode, nodes: Map<string, HandoffNode>, ctx: RunConfigContext): Promise<ResolvedHandoff[]> => {
     const resolved: ResolvedHandoff[] = [];
@@ -226,7 +229,10 @@ export function handoffRunner(lead: {
   };
 
   const targetOf = async (node: HandoffNode, nodes: Map<string, HandoffNode>, ctx: RunConfigContext, pinned: unknown, viaHandoff: boolean): Promise<HandoffTarget> => {
-    const spec = node.agent === lead.agent() ? await lead.spec(ctx, pinned, viaHandoff) : asTarget(await node.registration.resolve(ctx, pinned), lead.runOptions);
+    const spec =
+      node.agent === lead.agent()
+        ? await lead.spec(ctx, pinned, viaHandoff)
+        : withLead(asTarget(await node.registration.resolve(ctx, pinned), lead.runOptions), ctx);
     return { ...spec, handoffs: await handoffsOf(node, nodes, ctx) };
   };
 

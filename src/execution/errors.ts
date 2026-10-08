@@ -319,12 +319,11 @@ function truncateMessage(message: string): string {
 // which is the safe (reject-to-caller) default; there is no false-positive
 // cost that would make retryable/actionable categories fire spuriously
 // often enough to matter for this text.
-// `context.size` covers "context size" (llama.cpp's "... exceeds the
-// available context size ...", LM Studio's "Context size has been
-// exceeded.") and the `exceed_context_size` error type those runtimes send;
-// `n_ctx` is llama.cpp/ollama's own name for the window ("exceeds n_ctx").
+// `context.size` / `exceed_context_size` / `n_ctx`: llama.cpp and LM Studio
+// ("request (N tokens) exceeds the available context size (M tokens)",
+// "Context size has been exceeded."), sent as a 400, a 500 or an in-stream error.
 const CONTEXT_LENGTH_PATTERN =
-  /context.length|context.window|context_length_exceeded|context.size|n_ctx|maximum context|max(?:imum)? tokens|too many tokens|reduce the length|prompt is too long/i;
+  /context.length|context.window|context_length_exceeded|context.size|exceed_context_size|\bn_ctx\b|maximum context|max(?:imum)? tokens|too many tokens|reduce the length|prompt is too long/i;
 const TIMEOUT_PATTERN = /\btimed?.?out\b|\betimedout\b|\babort(ed)?\b/i;
 const RATE_LIMIT_PATTERN = /rate.?limit|too many requests/i;
 const AUTH_PATTERN =
@@ -356,11 +355,13 @@ function categorizeMessage(message: string): {
   if (RATE_LIMIT_PATTERN.test(message)) {
     return { category: 'rate-limit', retryable: true };
   }
-  if (TIMEOUT_PATTERN.test(message)) {
-    return { category: 'timeout', retryable: true };
-  }
+  // Before the timeout check, in the same order as categorizeApiCallError(), so
+  // one failure classifies the same via generate() and via a stream error chunk.
   if (CONTEXT_LENGTH_PATTERN.test(message)) {
     return { category: 'context-length-exceeded', retryable: false };
+  }
+  if (TIMEOUT_PATTERN.test(message)) {
+    return { category: 'timeout', retryable: true };
   }
   return undefined;
 }
@@ -378,18 +379,15 @@ function categorizeApiCallError(err: APICallError): {
   if (status === 429) {
     return { category: 'rate-limit', retryable: true };
   }
-  if (status === 408) {
-    return { category: 'timeout', retryable: true };
-  }
-  // A response whose body/message reads as "your prompt is too big" is a
-  // context-length-exceeded failure whatever the status code says: OpenAI
-  // and Anthropic report it as a 400, but llama.cpp/LM Studio wrap the same
-  // condition in a 500 ("request (N tokens) exceeds the available context
-  // size (M tokens)", `"type":"exceed_context_size_error"`) - and a wrapped
-  // 5xx would otherwise look retryable. The unambiguous status codes above
-  // (401/403 auth, 429 throttling) still win.
+  // A body/message that reads as "your prompt is too big" is a
+  // context-length-exceeded failure whatever the status: OpenAI and Anthropic
+  // send it as a 400, llama.cpp / LM Studio as a 500 on /responses. Checked
+  // before the status fallbacks so a 5xx is not retried as transient.
   if (CONTEXT_LENGTH_PATTERN.test(text)) {
     return { category: 'context-length-exceeded', retryable: false };
+  }
+  if (status === 408) {
+    return { category: 'timeout', retryable: true };
   }
 
   const byMessage = categorizeMessage(text);
@@ -403,64 +401,91 @@ function categorizeApiCallError(err: APICallError): {
   return { category: 'unknown', retryable: err.isRetryable };
 }
 
-/** `error.metadata.raw` (or top-level `metadata.raw`) of a parsed JSON error body. */
-function rawUpstreamBody(body: unknown): string | undefined {
-  if (typeof body !== 'object' || body === null) return undefined;
-  const { error, metadata } = body as { error?: unknown; metadata?: { raw?: unknown } };
-  const nested =
-    typeof error === 'object' && error !== null ? (error as { metadata?: { raw?: unknown } }).metadata?.raw : undefined;
-  const raw = nested ?? metadata?.raw;
-  return typeof raw === 'string' && raw.trim() !== '' ? raw : undefined;
+/** Network error codes (Node / undici) worth naming in the message. */
+const NETWORK_CODE_TEXT: Record<string, string> = {
+  ECONNREFUSED: 'connection refused',
+  ENOTFOUND: 'host not found',
+  EAI_AGAIN: 'host lookup failed',
+  ECONNRESET: 'connection reset',
+  ETIMEDOUT: 'connection timed out',
+  EHOSTUNREACH: 'host unreachable',
+  ENETUNREACH: 'network unreachable',
+  UND_ERR_CONNECT_TIMEOUT: 'connect timed out',
+  UND_ERR_HEADERS_TIMEOUT: 'no response headers before the timeout',
+  UND_ERR_BODY_TIMEOUT: 'response body timed out',
+  UND_ERR_SOCKET: 'socket closed',
+};
+
+/** The first known network `code` along an error's `cause` chain (and an
+ * AggregateError's `errors`), e.g. `ECONNREFUSED` under the 'ai' SDK's
+ * "Cannot connect to API: " APICallError. */
+function findNetworkCode(error: unknown, depth = 0): string | undefined {
+  if (depth > 6 || typeof error !== 'object' || error === null) return undefined;
+  const { code, cause, errors } = error as { code?: unknown; cause?: unknown; errors?: unknown };
+  if (typeof code === 'string' && Object.hasOwn(NETWORK_CODE_TEXT, code)) return code;
+  for (const inner of Array.isArray(errors) ? errors : []) {
+    const found = findNetworkCode(inner, depth + 1);
+    if (found) return found;
+  }
+  return findNetworkCode(cause, depth + 1);
 }
 
-/** The message of a parsed JSON error body: `error` itself, `error.message`, or `message`. */
-function messageOfBody(body: unknown, depth = 0): string | undefined {
-  if (depth > 3 || typeof body !== 'object' || body === null) return undefined;
-  const { error, message } = body as { error?: unknown; message?: unknown };
-  // The upstream body may itself be a proxy wrap with its own metadata.raw.
-  const raw = rawUpstreamBody(body);
-  if (raw !== undefined) {
-    try {
-      const found = messageOfBody(JSON.parse(raw), depth + 1);
-      if (found) return found;
-    } catch {
-      // metadata.raw was not JSON - keep looking at this body's own fields.
-    }
+/** The request URL without query string or credentials (a key may ride in `?key=`). */
+function safeUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return undefined;
   }
-  if (typeof error === 'string' && error.trim() !== '') return error;
-  if (typeof error === 'object' && error !== null) return messageOfBody(error, depth + 1);
-  return typeof message === 'string' && message.trim() !== '' ? message : undefined;
 }
 
-/**
- * The upstream provider's own explanation an APICallError hides: a proxy can
- * replace the real error with a generic wrapper and keep the upstream body
- * nested - OpenRouter reports "Provider returned error" with the upstream
- * body verbatim in `error.metadata.raw` (a JSON string). Only that nested
- * message is folded into the compacted error: an arbitrary response body is
- * NOT consulted, since the compacted form deliberately keeps bodies out
- * (LOU-T4) and a provider's multi-kilobyte dump would otherwise land in the
- * thrown message.
- */
-function upstreamErrorMessage(err: APICallError): string | undefined {
-  const raws = [rawUpstreamBody(err.data)];
-  if (typeof err.responseBody === 'string') {
-    try {
-      raws.push(rawUpstreamBody(JSON.parse(err.responseBody)));
-    } catch {
-      // not JSON - nothing nested to read
-    }
+/** "Cannot connect to API: connection refused (ECONNREFUSED) at <url> - is the server running?" */
+function networkMessage(message: string, code: string, url: string | undefined): string {
+  const base = message.replace(/:\s*$/, '');
+  const where = url ? ` at ${url}` : '';
+  const hint =
+    code === 'ECONNREFUSED' ? ' - is the server running?' : code === 'ENOTFOUND' || code === 'EAI_AGAIN' ? ' - check the base URL' : '';
+  const detail = `${NETWORK_CODE_TEXT[code]} (${code})${where}${hint}`;
+  return base ? `${base}: ${detail}` : detail;
+}
+
+/** Any thrown value as text. A non-Error (e.g. an object-valued stream error
+ * chunk) gives its `message`, a nested `error.message` / string `error`, or
+ * else its JSON - never "[object Object]". */
+function describeThrown(value: unknown, depth = 0): string {
+  if (value instanceof Error) return value.message;
+  if (typeof value !== 'object' || value === null) return String(value);
+  const { message, error } = value as { message?: unknown; error?: unknown };
+  if (typeof message === 'string' && message) return message;
+  if (typeof error === 'string' && error) return error;
+  if (typeof error === 'object' && error !== null && depth < 3) return describeThrown(error, depth + 1);
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
   }
-  for (const raw of raws) {
-    if (raw === undefined) continue;
-    try {
-      const found = messageOfBody(JSON.parse(raw));
-      if (found && !err.message.includes(found)) return found;
-    } catch {
-      // upstream body was not JSON - nothing to fold in
-    }
+}
+
+/** A bare HTTP status phrase ("Bad Request"): what the 'ai' SDK uses as the
+ * message when it cannot parse the provider's error body. Also OpenRouter's
+ * generic "Provider returned error", whose body carries the upstream reason. */
+const STATUS_TEXT_PATTERN =
+  /^(?:bad request|unauthorized|payment required|forbidden|not found|method not allowed|not acceptable|request timeout|conflict|gone|payload too large|content too large|unprocessable (?:entity|content)|too many requests|internal server error|not implemented|bad gateway|service unavailable|gateway timeout|provider returned error)$/i;
+const MAX_BODY_SNIPPET_LENGTH = 300;
+
+/** The APICallError's message, plus a snippet of `responseBody` when the
+ * message is only a status phrase (the body then holds the real reason).
+ * The body is the provider's response, so no request headers can leak. */
+function apiCallErrorMessage(err: APICallError): string {
+  const message = err.message.trim();
+  const body = err.responseBody?.replace(/\s+/g, ' ').trim();
+  if (!body || body === message || !STATUS_TEXT_PATTERN.test(message)) {
+    return err.message;
   }
-  return undefined;
+  const snippet = body.length > MAX_BODY_SNIPPET_LENGTH ? `${body.slice(0, MAX_BODY_SNIPPET_LENGTH)}...` : body;
+  return `${message}: ${snippet}`;
 }
 
 /**
@@ -504,15 +529,24 @@ export function compactProviderError(
     cause = cause.lastError;
   }
 
+  // A connection failure (refused, DNS, reset, headers timeout) keeps its code
+  // in the `cause` chain: name it and the URL. Transient like a timeout.
+  const networkCode = findNetworkCode(cause);
+  if (networkCode) {
+    const apiCall = APICallError.isInstance(cause) ? cause : undefined;
+    return {
+      error: truncateMessage(networkMessage(describeThrown(cause), networkCode, safeUrl(apiCall?.url))),
+      category: 'timeout',
+      retryable: true,
+      providerName,
+      statusCode: apiCall?.statusCode,
+    };
+  }
+
   if (APICallError.isInstance(cause)) {
     const { category, retryable } = categorizeApiCallError(cause);
-    // The wrapped message can be a bare status text or a proxy's generic
-    // wrapper ("Provider returned error") while the real explanation sits in
-    // the response body (`error.message`, or OpenRouter's
-    // `error.metadata.raw`) - fold it in, still bounded like any message.
-    const upstream = upstreamErrorMessage(cause);
     return {
-      error: truncateMessage(upstream ? `${cause.message} (${upstream})` : cause.message),
+      error: truncateMessage(apiCallErrorMessage(cause)),
       category,
       retryable,
       providerName,
@@ -530,7 +564,7 @@ export function compactProviderError(
     };
   }
 
-  const message = cause instanceof Error ? cause.message : String(cause);
+  const message = describeThrown(cause);
 
   if (cause instanceof Error && isNetworkError(cause)) {
     // A bare network failure (connection refused/reset, DNS failure, ...)

@@ -271,7 +271,9 @@ permission manifest it was installed with.
 ## Overrides
 
 The second argument takes the same options as `createAgent()` and wins over the
-files. Use it to swap the model in tests:
+files. Every option is passed on to the agent, including the ones no file
+declares (`guardrails`, `onEvent`, `retry`, `reasoning`, `redactContent`,
+`output`, ...). Use it to swap the model in tests:
 
 ```ts
 import { loadAgentDir } from '@lousho/build-ai-agent';

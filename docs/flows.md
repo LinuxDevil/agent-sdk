@@ -52,6 +52,64 @@ language (no `eval`, no host code; `{{name}}` placeholders are bound as
 values, never pasted into the expression). Its grammar and failure rules are
 in [Flow expressions](#flow-expressions).
 
+## Tool calls
+
+A `toolCall` step passes the same checks as a tool call in an agent run before
+its tool runs:
+
+- Its arguments, after `{{variable}}` interpolation, are validated against the
+  tool's input schema. Arguments that do not match fail the step with
+  `LOUSHO_TOOL_ARGS_INVALID`, listing each problem, and the tool is not called.
+- The flow context's `permissions`, `permissionMode` and `onPermissionDecision`
+  apply as they do for `createAgent()` (see [Permission policies](./approvals.md#permission-policies) and [Permission modes](./permission-modes.md)).
+- A call that needs approval (the tool's `needsApproval`, or an `ask` rule) is
+  decided by the context's `approve` callback, which has the same shape as
+  `createAgent({ approve })`. A flow cannot pause, so a call is refused with
+  `LOUSHO_FLOW_TOOL_DENIED` when there is no `approve` callback, or when it
+  returns `false` or `'defer'`. The tool is never run unapproved.
+
+```ts
+import { FlowExecutor, type AgentFlow } from '@lousho/build-ai-agent/flows';
+
+declare const flow: AgentFlow;
+
+const result = await FlowExecutor.execute(flow, {
+  agent,
+  provider,
+  toolRegistry,
+  variables: { invoiceId: 'inv-1' },
+  approve: ({ toolName, args }) => toolName !== 'pay_vendor' || Number(args.amount) < 1000,
+});
+```
+
+A flow's declared inputs are checked before the first step runs. A missing
+`required` input, or a value of the wrong type, fails the flow with
+`LOUSHO_VALIDATION_FAILED`.
+
+## Cancelling a flow
+
+Pass `signal` in the context to cancel a run. It is checked before every step:
+once it is aborted, no further step starts and the flow fails with the signal's
+`reason`. The step that is running gets the signal too: an `llmCall` passes it
+to the model request, and a `toolCall` hands it to the tool as `ctx.abortSignal`.
+
+```ts
+import { FlowExecutor, type AgentFlow } from '@lousho/build-ai-agent/flows';
+
+declare const flow: AgentFlow;
+
+const result = await FlowExecutor.execute(flow, {
+  agent,
+  provider,
+  variables: {},
+  signal: AbortSignal.timeout(30_000),
+});
+```
+
+A step without an `id` gets one that is unique within the run (`step-1`,
+`step-2`, ... in the order the steps start), so `step-start` and
+`step-complete` events can be paired by `stepId`.
+
 ## Flows, sub-agents or skills?
 
 Use a flow when the pipeline is known in advance; use

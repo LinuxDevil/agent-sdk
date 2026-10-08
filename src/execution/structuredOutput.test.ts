@@ -253,3 +253,182 @@ describe('structured output (LOU-V4)', () => {
     expect(schema.additionalProperties).toBe(false);
   });
 });
+
+describe('structured output with optional fields (audit A6)', () => {
+  // OpenAI-strict json_schema requires `required` to list every key of
+  // `properties`; an optional field is sent required + nullable instead,
+  // and the model's `null` for it is read back as an absent key.
+  type Node = { anyOf?: Node[]; type?: unknown; required?: string[]; properties?: Record<string, Node>; items?: Node };
+  const sentSchema = (model: ReturnType<typeof mockModel>) => model.calls[0].responseFormat?.schema as Node;
+
+  it('zod 4: lists every key in required and makes optional ones nullable (nested, in items, in union branches)', async () => {
+    const output = z4.object({
+      title: z4.string(),
+      note: z4.string().optional(),
+      score: z4.number().nullable(),
+      geo: z4.object({ lat: z4.number(), label: z4.string().optional() }),
+      hits: z4.array(z4.object({ id: z4.string(), line: z4.number().int().optional() })),
+      choice: z4.union([z4.object({ a: z4.string().optional() }), z4.object({ b: z4.number() })]),
+    });
+    const model = mockModel(['{"title":"t","note":null,"score":null,"geo":{"lat":1,"label":null},"hits":[],"choice":{"b":1}}']);
+    await createAgent({ provider: model, output }).send('go');
+
+    const schema = sentSchema(model);
+    expect(schema.required).toEqual(['title', 'note', 'score', 'geo', 'hits', 'choice']);
+    expect(schema.properties?.note).toEqual({ anyOf: [{ type: 'string' }, { type: 'null' }] });
+    // Already nullable: kept as is, not wrapped again.
+    expect(JSON.stringify(schema.properties?.score)).not.toContain('"anyOf":[{"anyOf"');
+    expect(schema.properties?.geo.required).toEqual(['lat', 'label']);
+    expect(schema.properties?.geo.properties?.label).toEqual({ anyOf: [{ type: 'string' }, { type: 'null' }] });
+    expect(schema.properties?.hits.items?.required).toEqual(['id', 'line']);
+    expect(schema.properties?.choice.anyOf?.map((b) => b.required)).toEqual([['a'], ['b']]);
+  });
+
+  it('zod 3: the same normalization on the ai converter path', async () => {
+    const output = z.object({ a: z.string().optional(), b: z.number().nullable().optional(), n: z.object({ x: z.string().optional() }) });
+    const model = mockModel(['{"a":null,"b":null,"n":{"x":null}}']);
+    const result = await createAgent({ provider: model, output }).send('go');
+
+    const schema = sentSchema(model);
+    expect(schema.required).toEqual(['a', 'b', 'n']);
+    expect(schema.properties?.a).toEqual({ anyOf: [{ type: 'string' }, { type: 'null' }] });
+    expect(schema.properties?.b).toEqual({ type: ['number', 'null'] });
+    expect(schema.properties?.n.required).toEqual(['x']);
+    // `b` accepts null itself, so its null is kept; `a` and `n.x` read back as absent.
+    expect(result.object).toEqual({ b: null, n: {} });
+    expect(result.object).not.toHaveProperty('a');
+  });
+
+  it('zod 4: a reply with null for optional keys validates, and the keys are absent in result.object', async () => {
+    const output = z4.object({
+      verdict: z4.enum(['approve', 'request_changes']),
+      summary: z4.string().optional(),
+      maybe: z4.string().nullish(),
+      issues: z4.array(z4.object({ file: z4.string(), line: z4.number().int().optional() })),
+      meta: z4.object({ by: z4.string().optional() }).optional(),
+    });
+    const reply = '{"verdict":"approve","summary":null,"maybe":null,"issues":[{"file":"a.ts","line":null},{"file":"b.ts","line":3}],"meta":{"by":null}}';
+    const result = await createAgent({ provider: mockModel([reply]), output }).send('go');
+
+    expect(result.outputError).toBeUndefined();
+    expect(result.steps).toBe(1);
+    expect(result.object).toEqual({ verdict: 'approve', maybe: null, issues: [{ file: 'a.ts' }, { file: 'b.ts', line: 3 }], meta: {} });
+    expect(result.object).not.toHaveProperty('summary');
+    expect((result.object as { issues: object[] }).issues[0]).not.toHaveProperty('line');
+  });
+
+  it('zod 4: null for an optional object is dropped too, and a recursive ($ref) schema is walked', async () => {
+    type Tree = { name: string; children?: Tree[] };
+    const tree: z4.ZodType<Tree> = z4.object({
+      name: z4.string(),
+      get children() {
+        return z4.array(tree).optional();
+      },
+    });
+    const model = mockModel(['{"name":"root","children":[{"name":"leaf","children":null}]}']);
+    const result = await createAgent({ provider: model, output: tree }).send('go');
+
+    expect(result.outputError).toBeUndefined();
+    expect(result.object).toEqual({ name: 'root', children: [{ name: 'leaf' }] });
+    expect(sentSchema(model).required).toEqual(['name', 'children']);
+  });
+
+  it('still reports a null for a required, non-nullable key', async () => {
+    const output = z4.object({ city: z4.string(), note: z4.string().optional() });
+    const result = await createAgent({ provider: mockModel(['{"city":null}', '{"city":null}']), output }).send('go');
+
+    expect(result.finishReason).toBe('output-invalid');
+    expect(result.outputError?.issues[0].path).toBe('city');
+  });
+});
+
+describe('structured output near misses and repair (audit log F8, docs-qa F9, invoice F6-F8)', () => {
+  const J = '{"city":"Paris","tempC":21}';
+
+  it.each([
+    ['a prose prefix', `Here is the weather report:\n${J}`],
+    ['trailing prose after a fenced block', '```json\n' + J + '\n```\nLet me know if you need more detail.'],
+    ['a <think> block before the JSON', `<think>Paris is {mild} today.</think>\n${J}`],
+    ['a stray closing </think> tag', `Paris is {mild} today.</think>${J}`],
+    ['prose with braces before the JSON', `The {city} key holds the name: ${J} done.`],
+  ])('takes the JSON out of %s without a repair call', async (_name, reply) => {
+    const model = mockModel([reply]);
+    const result = await createAgent({ provider: model, output: weather }).send('Weather in Paris?');
+
+    expect(model.calls).toHaveLength(1);
+    expect(result.object).toEqual({ city: 'Paris', tempC: 21 });
+    expect(result.finishReason).toBe('stop');
+    expect(result.text).toBe(reply);
+    expect(result.outputRepaired).toBeUndefined();
+  });
+
+  it('reports the issues of the extracted JSON when it does not validate', async () => {
+    const model = mockModel(['Sure! {"city":"Paris","tempC":"warm"} hope that helps', J]);
+    const result = await createAgent({ provider: model, output: weather }).send('go');
+
+    expect(model.calls[1].messages.at(-1)?.content).toContain('tempC: Expected number, received string');
+    expect(result.object).toEqual({ city: 'Paris', tempC: 21 });
+  });
+
+  it('marks an object that came from the repair step: outputRepaired', async () => {
+    const result = await createAgent({ provider: mockModel(['{"city":"Paris"}', J]), output: weather }).send('go');
+
+    expect(result.object).toEqual({ city: 'Paris', tempC: 21 });
+    expect(result.outputRepaired).toBe(true);
+  });
+
+  it('detects a JSON Schema echo and answers it with an example instance, not the schema', async () => {
+    const echo = '{"type":"object","properties":{"city":{"type":"string"},"tempC":{"type":"number"}},"required":["city","tempC"]}';
+    const model = mockModel([echo, J]);
+    const result = await createAgent({ provider: model, output: weather }).send('go');
+
+    const repair = model.calls[1].messages.at(-1)?.content as string;
+    expect(repair).toMatch(/^\[output-invalid\] Your reply is the JSON Schema itself\./);
+    expect(repair).toContain('{"city":"<string>","tempC":0}');
+    expect(repair).not.toContain('"properties"');
+    expect(result.object).toEqual({ city: 'Paris', tempC: 21 });
+  });
+
+  it('reports a schema echo as outputError when the repair echoes it again', async () => {
+    const echo = '{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{}}';
+    const result = await createAgent({ provider: mockModel([echo, echo]), output: weather }).send('go');
+
+    expect(result.finishReason).toBe('output-invalid');
+    expect(result.outputError).toEqual({
+      message: 'The reply is the JSON Schema, not data: 1 issue ((root): This is the output JSON Schema itself, not an answer that follows it)',
+      issues: [{ path: '(root)', message: 'This is the output JSON Schema itself, not an answer that follows it' }],
+    });
+  });
+
+  it('sends a root union of objects with type: object (and no closing of the root)', async () => {
+    const output = z4.union([z4.object({ kind: z4.literal('a'), a: z4.string() }), z4.object({ kind: z4.literal('b'), b: z4.number() })]);
+    const model = mockModel(['{"kind":"b","b":2}']);
+    const result = await createAgent({ provider: model, output }).send('go');
+
+    const schema = model.calls[0].responseFormat?.schema as Record<string, unknown>;
+    expect(schema.type).toBe('object');
+    expect(schema.anyOf).toHaveLength(2);
+    expect(schema).not.toHaveProperty('additionalProperties');
+    expect(result.object).toEqual({ kind: 'b', b: 2 });
+  });
+
+  it('rejects a root union with a non-object branch at config time', () => {
+    expect(() => createAgent({ provider: mockModel([]), output: z4.union([z4.object({ a: z4.string() }), z4.string()]) })).toThrow(
+      /union at the root with a branch that is not an object.*z\.object\(\{ result: z\.union/
+    );
+  });
+
+  it('rejects z.date() in an output schema at config time, naming the field', () => {
+    const output = z4.object({ issued: z4.date(), lines: z4.array(z4.object({ due: z4.date().optional() })), ok: z4.coerce.date() });
+    expect(() => createAgent({ provider: mockModel([]), output })).toThrow(
+      "output: 'issued', 'lines[].due' are z.date(), which JSON cannot carry, so no reply could validate. Use z.iso.date()"
+    );
+  });
+
+  it('AgentExecutor.execute() rejects z.date() output schemas too', async () => {
+    const { AgentExecutor } = await import('./AgentExecutor');
+    const { AgentBuilder } = await import('../core');
+    const agent = AgentBuilder.create().setName('a').setPrompt('p').build();
+    expect(() => AgentExecutor.stream({ agent, input: 'go', provider: mockModel([]), output: z4.object({ d: z4.date() }) })).toThrow(/'d' is a z\.date\(\)/);
+  });
+});

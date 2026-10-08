@@ -22,7 +22,7 @@ import type { AgentEvent } from './execution/agentEvents';
 import type { TraceExporter } from './execution/tracing';
 import { LLMProvider, LLMProviderRegistry } from './providers/llm';
 import { ToolRegistry } from './tools/ToolRegistry';
-import { ToolDescriptor, type AgentConfig } from './types';
+import { ToolDescriptor } from './types';
 import { modelFromEnv, resolveProviderSpec } from './providers/providerSpec';
 import { withFallback, withRetry, type WithRetryOptions } from './providers/resilience';
 import { isDefinedTool } from './tools/defineTool';
@@ -60,6 +60,7 @@ import { createAgentOAuth, type AgentOAuth } from './oauth/agentOAuth';
 import type { OAuthTokenStore } from './oauth/types';
 import { assertPermissionMode, type PermissionMode, type PermissionOptions } from './execution/permissions';
 import { assertToolSearchOptions, type ToolSearchOptions } from './execution/toolSearch';
+import { assertOutputSchema } from './execution/structuredOutput';
 import { assertCodeModeOptions, codeModeOption, type CodeModeOptions } from './execution/codeMode';
 import type { InferSchemaOutput, StandardSchemaV1 } from './utils/zodCompat';
 import type { McpServerSpec } from './spec/schema';
@@ -481,8 +482,8 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    * Keeps long runs under the model's context window (LOU-W3.2): `true`
    * installs `createCompactionHook()` with its defaults (prune old tool
    * results above 90% of the window); an object sets `strategy`,
-   * `thresholdPercent`, `contextWindow` and `protectedTokens`, and
-   * `summarizer` (a `'provider/model'` string or an `LLMProvider`) selects
+   * `thresholdPercent`, `contextWindow`, `protectedTokens`,
+   * `reserveOutputTokens` and `onCompaction`, and `summarizer` (a `'provider/model'` string or an `LLMProvider`) selects
    * `twoPhaseStrategy()` with that model. `stream()` reports each compaction
    * as `compaction.start` / `compaction.done` events. See docs/compaction.md.
    *
@@ -629,16 +630,13 @@ export interface SendOptions {
    */
   approvalTtlMs?: number;
   /**
-   * Span id to parent this run's `invoke_agent` span to: pass the `span.id`
-   * a `withSpan()` callback received so the run's span nests under your span
-   * (and a multi-`send()` pipeline rolls up into one trace). See
-   * `ExecuteOptions.parentSpanId` and docs/observability.md.
+   * Parents this run's `invoke_agent` span to a span of yours, e.g. the
+   * `span.id` a `withSpan()` callback gets, so several `send()` calls land in
+   * one trace. See `ExecuteOptions.parentSpanId` and docs/observability.md.
    *
    * @example
    * ```ts
-   * await withSpan(exporter, 'research.wave.1', {}, async (span) => {
-   *   await agent.send('Research this', { parentSpanId: span.id });
-   * });
+   * await withSpan(exporter, 'pipeline', {}, (span) => agent.send('hi', { parentSpanId: span.id }));
    * ```
    */
   parentSpanId?: string;
@@ -775,6 +773,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   if (typeof config.permissionMode === 'string') assertPermissionMode(config.permissionMode, 'createAgent');
   assertMaxHandoffs(config.maxHandoffs);
   assertToolSearchOptions(config.toolSearch, 'createAgent');
+  assertOutputSchema(config.output);
   assertCodeModeOptions(config.codeMode, 'createAgent');
   const agentName = config.name || 'agent';
   const handoffTools = checkHandoffs(config.handoffs, { name: agentName }, 'createAgent').map((checked) => checked.toolName);
@@ -849,6 +848,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       const scope = { sessionId: ctx.sessionId, metadata: ctx.metadata, principal: ctx.principal };
       return { ...spec, toolRegistry: memory.forRun(scope, spec.toolRegistry, undefined).toolRegistry };
     },
+    // The agents it hands to keep its memory: the same slots, bound to the run's scope keys.
+    ...(memory && { target: (spec, ctx) => memory.forTarget({ sessionId: ctx.sessionId, metadata: ctx.metadata, principal: ctx.principal }, spec) }),
   });
   // N9b: tools' OAuth tokens (`ctx.getToken()`) and pending sign-ins.
   const tokens = config.store?.tokens;
@@ -901,25 +902,27 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       ...(parentSpanId !== undefined && { parentSpanId }),
     };
   };
+  /** LOU-W6: memory tools and recall bound to the run's scope keys; a handoff target (N6) has the tools already, so it gets the recall only. */
+  const runMemory = (spec: SubagentSpec, ctx: RunConfigContext, lead: boolean): Partial<ExecuteOptions> => {
+    if (!memory) return {};
+    const run = memory.forRun({ sessionId: ctx.sessionId, metadata: ctx.metadata, principal: ctx.principal }, spec.toolRegistry, hooks);
+    return lead ? run : { hooks: run.hooks };
+  };
+  /** `lead` (N6): false when the run starts as a handoff target, whose spec already has this agent's memory tools (it still recalls). */
   const executeOptions = (
     spec: SubagentSpec,
     input: Message[],
     ctx: RunConfigContext,
     signal?: AbortSignal,
-    turn?: RunTurn
+    turn?: RunTurn,
+    lead = true
   ): ExecuteOptions => {
     // LOU-R18: a session's turn carries its on() forwarder; it joins the agent's listener instead of replacing it.
     const { onAgentEvent: turnListener, ...turnRest } = turn ?? {};
-    // LOU-W6: memory tools and recall bound to this run's scope keys. N6: the
-    // binding is the run's, so it holds when the run starts as a handoff
-    // target (the session kept the target) - the target's agent did not list
-    // the slot tools, so they are added to what it offers the model.
-    const bound = memory?.forRun({ sessionId: ctx.sessionId, metadata: ctx.metadata, principal: ctx.principal }, spec.toolRegistry, hooks);
     return {
       ...spec,
-      ...(bound && { agent: offeringBoundTools(spec.agent, spec.toolRegistry, bound.toolRegistry) }),
       output: config.output,
-      hooks: bound?.hooks ?? hooks,
+      hooks,
       approvalStore: approvals.store,
       input,
       signal,
@@ -933,7 +936,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       // LOU-R16: the call's metadata reaches every hook context as `ctx.metadata`.
       ...(ctx.metadata !== undefined && { metadata: ctx.metadata }),
       ...turnRest,
-      ...(bound && { toolRegistry: bound.toolRegistry }),
+      // LOU-W6: memory tools and recall bound to this run's scope keys.
+      ...runMemory(spec, ctx, lead),
     };
   };
   /**
@@ -1027,19 +1031,6 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
 /** The entry agent's run-level options (N6): names a handoff target can never own. */
 function runLevelOptionNames(config: CreateAgentConfig): string[] {
   return (['approve', 'approvalStore', 'permissionMode', 'approvalTtlMs', 'store', 'memory'] as const).filter((key) => config[key] !== undefined);
-}
-
-/**
- * `agent` also offering the tools `bound` added over `base` - the run's
- * memory slot tools (`remember_*`/`recall_*`): the agent the run started
- * with listed them itself; a handoff target's `agent.tools` does not, and
- * without an entry they are never sent to the model.
- */
-function offeringBoundTools(agent: AgentConfig, base: ToolRegistry | undefined, bound: ToolRegistry): AgentConfig {
-  const own = new Set(Object.keys(base?.getAll() ?? {}));
-  const missing = Object.keys(bound.getAll()).filter((name) => !own.has(name) && agent.tools?.[name] === undefined);
-  if (missing.length === 0) return agent;
-  return { ...agent, tools: { ...agent.tools, ...Object.fromEntries(missing.map((name) => [name, { tool: name }])) } };
 }
 
 /** The approval store a run writes to: the explicit one, else the store bundle's, else in-memory. */

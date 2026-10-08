@@ -160,6 +160,14 @@ defineEval({
 });
 ```
 
+`judge.model` is optional: without it the judge runs on its provider's own
+model. The judge is asked for a bare number, but its reply is read leniently:
+the number after a `score` label (`Score: 0.9`), else the first number in the
+reply (`**0.9**`), scaled into 0 to 1 when it is written as `8/10`,
+`8 out of 10`, `85%` or a bare whole number from 2 to 100 (`8` reads as 8/10,
+`85` as 85/100). A reply with no number scores 0. `parseJudgeScore(text)`
+exposes the same parsing.
+
 Files named `*.judge.eval.ts` are never picked up by a normal run (and
 `npm test`); only `lousho eval --judge` (or `npm run test:evals:judge` in this
 repository) runs them.
@@ -167,7 +175,7 @@ repository) runs them.
 ## `lousho eval`
 
 ```text
-lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]]
+lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config path] [--timeout ms]
 ```
 
 | Option | Meaning |
@@ -180,6 +188,7 @@ lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judg
 | `--judge` | run `*.judge.eval.ts` files instead of the normal ones |
 | `--url base` | run every case against the deployed agent at `base` instead of in-process; `--token` (or `LOUSHO_EVAL_TOKEN`) is the bearer token. See [Run evals against a deployment](#run-evals-against-a-deployment) |
 | `--config path` | use your own vitest config instead of the generated one |
+| `--timeout ms` | time limit per case in milliseconds (`0` = none); see [Time limits](#time-limits) |
 | `--record` | run against the real provider and write one cassette per case ([below](#record-replay-and-drift)) |
 | `--replay` | run every case from its cassette, with no network; a missing cassette fails the case |
 | `--drift` | re-record into a temp directory and report how each case's trajectory changed (`--drift-usage` also compares tokens) |
@@ -198,12 +207,42 @@ the `LOUSHO_EVAL_RESULTS` environment variable, which `lousho eval` sets and
 reads back. This is more robust than a custom vitest reporter: it works across
 vitest versions and worker pools, and needs no module loaded from your project.
 
+### Time limits
+
+An agent run on a real model takes far longer than vitest's 5 s default test
+timeout. The config `lousho eval` generates gives every case 10 minutes, except
+under `--replay`, which keeps vitest's default because nothing waits on a
+model. `--timeout ms` sets the limit for every case (`0` turns it off). With
+`--config`, your config's `testTimeout` applies unless you pass `--timeout`.
+One eval can set its own limit, which wins over both:
+
+```ts
+import { createAgent, defineEval } from '@lousho/build-ai-agent';
+
+defineEval({
+  name: 'research report',
+  agent: createAgent({ model: 'openai/gpt-4o-mini' }),
+  timeoutMs: 15 * 60_000,
+  async test(t) {
+    await t.send('Summarize the latest release notes.');
+    t.completed();
+  },
+});
+```
+
+A case that runs out of time is reported as an error naming the limit, in the
+summary and in the JUnit and JSON reports.
+
 ### JUnit
 
 The report is standard JUnit: one `testsuite` per eval, one `testcase` per case.
 A failed gate is a `<failure message="...">` carrying the diagnostic message; a
-case that threw is an `<error>`; soft failures are `<system-out>` notes (or
-failures under `--strict`).
+case that threw or timed out is an `<error>`; soft failures are `<system-out>`
+notes (or failures under `--strict`). When vitest fails something no eval case
+reported - an eval file that does not load, a plain `test()` that fails - the
+report gets an `<error>` testcase for it under a `vitest` suite, one per file
+(or one for the whole run when `--config` is used and vitest names no file), so
+a broken run never writes an empty, green-looking report.
 
 ### In CI
 
@@ -250,16 +289,25 @@ npx lousho eval --drift         # re-record and diff each case's trajectory
 
 - **`--record`** runs every case with its agent's real provider and writes one
   cassette per case next to the eval file:
-  `__cassettes__/<eval-name>/<case>.json` (names are slugged, for example
-  `refund-flow/polite.json`; an eval without `cases` writes `default.json`).
-  Give each case a unique `label` so the names stay stable. A case whose agent
-  uses more than one provider (a sub-agent on another model) gets
-  `<case>.2.json` and so on. The files use the normal cassette format, with
-  API keys redacted; review and commit them.
+  `__cassettes__/<eval-name>/<case>-<hash>.json`. The name is the slugged case
+  label plus a short hash of the full label, for example
+  `refund-flow/polite-1f3a9c2e.json`, so two cases whose labels slug or
+  truncate alike still get their own file; an eval without `cases` writes
+  `default.json`. Give each case a unique `label` so the names stay stable:
+  two cases that would still share a cassette (the same label twice) fail at
+  record time instead of overwriting each other. A case whose agent uses more
+  than one provider (a sub-agent on another model) gets `<case>-<hash>.2.json`
+  and so on. The files use the normal cassette format, with API keys redacted;
+  review and commit them. Re-recording a case whose exchanges did not change
+  leaves its file untouched (`recordedAt` is kept), so only real changes show
+  in a diff. Cassettes recorded by an older SDK under the unhashed
+  `<case>.json` name are still replayed; the next `--record` writes the new
+  name, after which the old file can be deleted.
 - **`--replay`** never calls the model. A case with no cassette fails with
-  `no cassette for "<eval> [<case>]" at ...` and the `--record` command to run;
-  when the agent's requests changed, the replayed model call fails with a
-  `CassetteMismatchError` naming the first difference. Plain
+  `no cassette for "<eval> [<case>]" at ...` and the `--record` command to run
+  (with your `--config`, if you gave one); when the agent's requests changed,
+  the replayed model call fails with a `CassetteMismatchError` naming the first
+  difference and the same `lousho eval --record` command. Plain
   `lousho eval` with `CI` set replays every case that has a cassette and runs the
   rest live; without `CI` it runs live as before.
 - **`--drift`** re-records every case into a temp directory (the committed

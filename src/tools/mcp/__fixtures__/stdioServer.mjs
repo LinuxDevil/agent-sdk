@@ -2,6 +2,10 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { appendFileSync } from 'node:fs';
+
+// FIXTURE_START_LOG: one line per start, for the reconnect test.
+if (process.env.FIXTURE_START_LOG) appendFileSync(process.env.FIXTURE_START_LOG, 'start\n');
 
 const server = new Server({ name: 'fixture', version: '1.0.0' }, { capabilities: { tools: {} } });
 
@@ -22,7 +26,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   ],
 }));
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => ({
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  // FIXTURE_DELAY_MS: a slow server, for the call timeout test.
+  await new Promise((resolve) => setTimeout(resolve, Number(process.env.FIXTURE_DELAY_MS ?? 0)));
+  return {
   content: [
     {
       type: 'text',
@@ -32,6 +39,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => ({
           : `${process.env.FIXTURE_PREFIX ?? ''}${request.params.arguments?.text}`,
     },
   ],
-}));
+  };
+});
 
 await server.connect(new StdioServerTransport());

@@ -35,6 +35,8 @@ import { createHash } from 'node:crypto';
 import * as path from 'node:path';
 import { RECEIPT_FILE, readReceipt, type Receipt, type ReceiptEntry } from '../cli/addReceipt';
 import { SDKError } from '../execution/errors';
+import { enforceApproval, hasEnforcedApproval } from '../execution/permissions';
+import type { ApproveToolCall } from '../createAgentApprovals';
 import { isPartialStream } from '../execution/toolPartials';
 import { commandEnv } from '../security/commandEnv';
 import { matchesHost } from '../security/hostPattern';
@@ -264,11 +266,12 @@ function confineStream(envelope: Envelope, value: unknown): unknown {
  * still runs first so a deny stays a deny; anything else becomes `'ask'`.
  */
 function enforcedApproval(own: ToolDescriptor['needsApproval']): NonNullable<ToolDescriptor['needsApproval']> {
-  return async (args: unknown, ctx: ApprovalCheckContext): Promise<ApprovalOutcome> => {
+  // Enforced: no permission rule or mode turns the 'ask' into a run, and the directory's own approver defers it.
+  return enforceApproval(async (args: unknown, ctx: ApprovalCheckContext): Promise<ApprovalOutcome> => {
     const outcome = typeof own === 'function' ? await own(args, ctx) : own;
     if (outcome === 'deny' || (typeof outcome === 'object' && outcome !== null)) return outcome;
     return 'ask';
-  };
+  });
 }
 
 /**
@@ -347,4 +350,22 @@ export function confineToolsToReceipt(dir: string, tools: LoadedTool[], status: 
     const item = owner.get(relative);
     return item === undefined ? loaded : { ...loaded, tool: confineTool(loaded.tool, item) };
   });
+}
+
+/**
+ * The directory's own approver, restricted to the calls the receipt does not
+ * enforce: it comes from the same directory as the tools, so it may not
+ * certify them. An enforced call is deferred - it waits for a human
+ * (`agent.approvals.resolve()`) or an approver the host passes in code.
+ * `host` is that in-code approver as a sub-agent directory inherits it: it
+ * decides the enforced calls (a sub-agent's pause has no `resolve()` handle).
+ * Undefined when there is neither an approver nor an enforced call to route.
+ */
+export function deferEnforcedApprovals(approve: ApproveToolCall | undefined, tools: LoadedTool[], host?: ApproveToolCall): ApproveToolCall | undefined {
+  const enforced = new Set(tools.filter((loaded) => hasEnforcedApproval(loaded.tool)).map((loaded) => loaded.tool.name));
+  if (enforced.size === 0 || (approve === undefined && host === undefined)) return approve;
+  return (request) => {
+    if (enforced.has(request.toolName)) return host === undefined ? 'defer' : host(request);
+    return approve === undefined ? 'defer' : approve(request);
+  };
 }

@@ -215,7 +215,7 @@ describe('twoPhaseStrategy', () => {
     expect(result.tokensBefore).toBe(estimateTokens(original));
     expect(result.messages).toEqual([original[0], summaryOf('S'), ...original.slice(-2)]);
     // The summarizer read the pruned results, not the full ones.
-    expect(summarizer.calls[0].messages[1].content).toContain('[pruned: search result');
+    expect(summarizer.calls[0].messages[1].content).toContain('[pruned: search({}) result');
     expect(summarizer.calls[0].messages[1].content).not.toContain(BIG);
   });
 

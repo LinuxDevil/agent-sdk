@@ -13,6 +13,10 @@ while adding it.
 `lousho add` works out of the box: without `--registry` or `LOUSHO_REGISTRY` it
 reads the default registry at `https://registry.lousho.com/index.json`, which
 is the `registry/dist/` folder of the SDK's repository served as static JSON.
+When that host cannot be reached, `lousho add` reads the same committed folder
+from the repository's `main` branch instead
+(`https://raw.githubusercontent.com/LinuxDevil/agent-sdk/main/registry/dist/index.json`);
+only the default falls back, never a registry you named.
 `--registry` and `LOUSHO_REGISTRY` point it at another registry, and the value
 `none` (in either place) disables the registry entirely — `lousho add` then
 fails with `LOUSHO_CONFIG_INVALID`, for offline or locked-down use.
@@ -31,6 +35,17 @@ The default registry currently carries nine items:
 | `incident-response` | kit (an SRE incident-response agent directory: HMAC-verified alert webhook, risk-tiered remediation approvals, an audit timeline) | `fs-write`, `INCIDENT_WEBHOOK_SECRET`, `INCIDENT_TIMELINE_FILE` |
 | `open-meteo-weather` | tool | `api.open-meteo.com`, `geocoding-api.open-meteo.com` |
 
+The coding kits (`coding-kit`, `coding-pi`) use the agent directory itself as
+the project workspace. Their file tools therefore refuse to change the
+agent's own files: `agent.*`, `approve.*`, `hooks.*`, `instructions*`,
+`lousho-registry.json`, and anything under `.lousho/`, `tools/`, `skills/`,
+`subagents/`, `.git/` and `node_modules/`. Their shell runs only `node --test`
+(test file paths, no flags) and `git status`. The kits still run the tests the
+agent writes code for, so the agent's code runs as your user. Use a sandboxed
+shell for untrusted work (see [Workspace tools](./workspace-tools.md)). The
+`coding-pi` kit's Pi coder sub-agent has its own tools, and these rules do not
+cover them.
+
 ```bash
 lousho add --list                       # the default registry's items
 lousho add open-meteo-weather --dir ./my-agent
@@ -43,7 +58,7 @@ lousho add --list --registry none       # fails: the registry is disabled
 | ---- | ------- |
 | `--registry <url-or-path>` | The index: an `http(s)` URL or a local path (`LOUSHO_REGISTRY` when absent, else the default registry). `none` disables the registry. |
 | `--dir <agent-dir>` | The agent directory to write into (default: the current directory; it must exist). |
-| `--yes`, `-y` | Do not ask for confirmation. Required when stdin is not a terminal. Does not grant elevated permissions on its own (see `--allow`). |
+| `--yes`, `-y` | Do not ask for confirmation. Required when stdin is not a terminal. Does not grant elevated permissions on its own (see `--allow`). Both flags are checked before anything is printed: a non-interactive run without them fails with one line naming the exact flags the item needs, e.g. `pass --yes --allow exec,fs-write`. |
 | `--allow <list>` | With `--yes`, the elevated permissions you grant, comma-separated: `exec`, `fs-write`, `network`, `env`. An item that asks for one you did not name is refused. |
 | `--overwrite` | Replace files that already exist (without it an existing file is `LOUSHO_REGISTRY_FILE_EXISTS`). |
 | `--dry-run` | Print the manifest and the files, write nothing, exit 0. |
@@ -181,7 +196,20 @@ item's tools run:
   `needsApproval: true` - and of any unattested item, whose stale receipt no
   longer certifies the modified code - always wait for
   [approval](./approvals.md); a `deny` from the tool's own `needsApproval`
-  still denies.
+  still denies. Nothing in the agent directory can waive it: an `allow`
+  [permission rule](./approvals.md#permission-policies) and a
+  [permission mode](./permission-modes.md) (`acceptEdits`) do not run the call
+  (a `deny` rule, `plan` or `dontAsk` still refuses it), and the directory's own
+  `approve` file defers it. Only a person resolving the pause
+  (`agent.approvals.resolve()`) or an `approve` callback your code passes to
+  `loadAgentDir(dir, { approve })` decides it.
+- **Sub-agents.** A sub-agent directory inside the installed item (a kit's
+  `subagents/<name>/`) is held to the same receipt: its tools are confined
+  like the item's other tools, and its own `approve` file defers their
+  enforced calls too. A sub-agent's pause has no `approvals.resolve()` handle,
+  so the `approve` callback your code passes to `loadAgentDir()` decides them;
+  without one the delegated call does not run, and the lead is told that the
+  sub-agent stopped for an approval.
 - **Network.** While a receipt item's tool runs, `fetch` is limited to the
   hosts its `network` declares: a host the manifest does not list is refused,
   and an item that declares no `network` cannot fetch at all.

@@ -2,7 +2,7 @@
  * OpenAI Provider Tests
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { OpenAIProvider } from './OpenAIProvider';
 
 describe('OpenAIProvider', () => {
@@ -62,6 +62,23 @@ describe('OpenAIProvider', () => {
       expect(models).toContain('gpt-4');
       expect(models).toContain('gpt-4o');
       expect(models).toContain('gpt-3.5-turbo');
+    });
+  });
+
+  describe('request path', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    // Audit C5: OpenAI-compatible servers that only implement Chat Completions (llama.cpp, vLLM, Ollama's /v1).
+    it("api: 'chat' calls <baseURL>/chat/completions", async () => {
+      const fetchMock = vi.fn().mockImplementation(
+        async () => new Response(JSON.stringify({ error: { message: 'stub' } }), { status: 400 })
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      const local = new OpenAIProvider({ name: 'openai', apiKey: 'any', baseURL: 'http://localhost:1234/v1', api: 'chat', maxRetries: 0 });
+      await expect(local.generate({ messages: [{ role: 'user', content: 'hi' }], model: 'qwen3' })).rejects.toThrow();
+      expect(String(fetchMock.mock.calls[0][0])).toBe('http://localhost:1234/v1/chat/completions');
     });
   });
 

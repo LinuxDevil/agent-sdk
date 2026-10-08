@@ -140,17 +140,22 @@ console.log(textOf(messages[0]), '->', result.text);
 
   | Provider | `ai` 4 | `ai` 6 / 7 |
   | -------- | ------ | ---------- |
-  | `openai` | text note | `application/pdf` |
-  | `anthropic` | text note | `application/pdf`, `text/plain` |
-  | `openrouter` | text note | `application/pdf` |
-  | `ollama` | text note | text note |
-  | `pi` | text note | text note (pi has no file part) |
+  | `openai` | none | `application/pdf` |
+  | `anthropic` | none | `application/pdf`, `text/plain` |
+  | `openrouter` | none | `application/pdf` |
+  | `ollama` | none | none |
+  | `pi` | none (always a text note) | none (always a text note; pi has no file part) |
 
-  Any other file part is sent as a text note
-  (`[file report.pdf (application/pdf) not sent]`), and the provider warns once
-  per media type, naming it and the `ai` major. On `ai` 4 the accepted
-  `@ai-sdk/*` range includes 0.0.x packages that have no file parts, so every
-  file becomes the note there. A provider subclass whose model takes more types
+  Any other file part rejects the call with
+  [`LOUSHO_UNSUPPORTED_CONTENT`](./errors.md#lousho_unsupported_content)
+  before anything is sent, so the model never answers without the file (and
+  under `withFallback()` the next provider gets the call). To send a text note
+  in its place instead (`[file report.pdf (application/pdf) not sent]`, with
+  one warning per media type), set the provider config's
+  `unsupportedFiles: 'text-note'` (`fromAiSdk()` takes the same option). On
+  `ai` 4 the accepted `@ai-sdk/*` range includes 0.0.x packages that have no
+  file parts, so every file is unsupported there. The `pi` provider still
+  sends every file part as a text note with a one-time warning. A provider subclass whose model takes more types
   overrides `protected fileMediaTypes(): readonly string[]` to list them, or
   sets `protected readonly acceptsFileParts = true` to send every type.
 - `system`, `assistant` and `tool` messages are sent as their text parts.
@@ -228,7 +233,8 @@ your installed `ai`, so install the provider package major that pairs with it
 | Option | Default | Description |
 | ------ | ------- | ----------- |
 | `name` | the model's `provider` field, else `'ai-sdk'` | Provider name in events, spans and warnings. |
-| `fileMediaTypes` | `[]` | Media types sent as `file` parts; other file parts become a text note. Images are always sent. |
+| `fileMediaTypes` | `[]` | Media types sent as `file` parts. Images are always sent. |
+| `unsupportedFiles` | `'error'` | Any other file part: reject the call with `LOUSHO_UNSUPPORTED_CONTENT` (`'error'`), or send a text note in its place (`'text-note'`). |
 | `replaysReasoning` | `false` | Send signed reasoning blocks back on assistant turns (Anthropic models). |
 | `maxRetries` | `0` | The AI SDK's own retries per call; `createAgent()` retries through its `retry` option. |
 
@@ -294,6 +300,75 @@ What maps, per call:
 private catalog) ahead of the built-in list. `pi` is Node-only: the
 `cloudflare-worker` target refuses `pi/...` specs and its bundle redirects
 the package to a coded shim.
+
+## Local and OpenAI-compatible servers
+
+LM Studio, Ollama's `/v1`, vLLM, llama.cpp's `llama-server` and hosted
+OpenAI-compatible APIs (Groq, DeepSeek, Together, ...) all speak the OpenAI
+wire format. Point `OpenAIProvider` at the server's `/v1` URL and pick the API
+it implements with `api`:
+
+```ts no-run
+import { createAgent, OpenAIProvider } from '@lousho/build-ai-agent';
+
+const agent = createAgent({
+  provider: new OpenAIProvider({
+    name: 'openai',
+    baseURL: 'http://localhost:1234/v1', // LM Studio
+    apiKey: 'any', // local servers ignore the key, but one is required
+    api: 'chat', // POST /v1/chat/completions
+    defaultModel: 'qwen3-8b',
+  }),
+  compaction: { contextWindow: 8_192 }, // the window the model is loaded with
+  instructions: 'You are a helpful assistant.',
+});
+```
+
+| Server | Base URL | API |
+| ------ | -------- | --- |
+| LM Studio | `http://localhost:1234/v1` | `'chat'` or `'responses'` |
+| Ollama | `http://localhost:11434/v1` | `'chat'` (or use the native `ollama/<model>` provider) |
+| vLLM (`vllm serve`) | `http://localhost:8000/v1` | `'chat'` |
+| llama.cpp (`llama-server`) | `http://localhost:8080/v1` | `'chat'` |
+
+- `api` defaults to `'responses'` (`POST /v1/responses`, what api.openai.com
+  serves). Most compatible servers implement only Chat Completions, and then a
+  call fails with a 404, so set `api: 'chat'`. With `'chat'` the built-in hosted
+  tools (`webSearch()`, `codeInterpreter()`, `fileSearch()`) are refused, since
+  they are Responses API tools; `hostedTool()` still passes through, and
+  `reasoning` sends only the effort (no `summary`).
+- The key is a dummy: the provider needs a non-empty `apiKey`, and local servers
+  ignore it.
+- Structured output: LM Studio's `/v1/responses` does not enforce the JSON
+  schema, so the model follows it from the prompt alone. Use `api: 'chat'`, which
+  sends the schema as `response_format`.
+- Set the context window. The model registry does not know local models, so
+  compaction assumes `128_000` tokens and warns once. Pass
+  `compaction: { contextWindow }`, or call
+  `registerModel({ id, provider: 'openai', contextWindow })` once (see
+  [Local and unknown models](./compaction.md#local-and-unknown-models)).
+
+**The `openai/<model>` string with `OPENAI_BASE_URL`.** `@ai-sdk/openai` reads
+`OPENAI_BASE_URL`, so `createAgent({ model: 'openai/qwen3-8b' })` with
+`OPENAI_BASE_URL=http://localhost:1234/v1` and a dummy `OPENAI_API_KEY=any`
+calls the local server without code changes. That route always uses the
+Responses API, so it works only with servers that implement `/v1/responses`
+(LM Studio does); for the others construct `OpenAIProvider` with `api: 'chat'`.
+
+**Any AI SDK model.** `fromAiSdk()` wraps a Chat Completions model built with
+`@ai-sdk/openai` directly (or `@ai-sdk/openai-compatible`, if you use it):
+
+```ts no-run
+import { createOpenAI } from '@ai-sdk/openai';
+import { createAgent, fromAiSdk } from '@lousho/build-ai-agent';
+
+const local = createOpenAI({ baseURL: 'http://localhost:8080/v1', apiKey: 'any' });
+const agent = createAgent({ provider: fromAiSdk(local.chat('qwen3-8b')), instructions: 'You are a helpful assistant.' });
+```
+
+`npx lousho doctor` shows `OPENAI_BASE_URL` when it is set, and
+`npx lousho doctor --ping` calls `GET <base>/models` on each configured
+provider to check that the server answers.
 
 ## Vercel AI SDK versions
 

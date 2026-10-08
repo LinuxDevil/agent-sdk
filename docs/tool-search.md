@@ -115,7 +115,7 @@ the search. Deferral itself is turned on by marking tools or servers
 | ------ | ------- | ----------- |
 | `thresholdPercent` | `0.1` | Defer only when the deferred definitions reach this share of the context window. `0` always defers. |
 | `maxResults` | `5` | Tools loaded per search. |
-| `contextWindow` | the model registry, else 128,000 | The model's context window, for the threshold. |
+| `contextWindow` | the model registry, else 128,000 | The model's context window, for the threshold. The 128,000 fallback logs a one-time `console.warn`; set it (or `registerModel()`) for local models. |
 | `search(query, tools)` | keyword ranking | Your own ranking (for example embeddings): return tool names, best first. Unknown names and duplicates are dropped. If it throws, the call is a tool error and loads nothing. |
 
 ```ts

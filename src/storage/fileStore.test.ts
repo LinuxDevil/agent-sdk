@@ -150,18 +150,11 @@ describe('fileStore(dir) (R2)', () => {
     await expect(store.approvals.save(pending, makeSnapshot(pending))).rejects.toThrow(/Invalid approval id/);
   });
 
-  it('approvals.load treats a malformed id as not found, so agent.approvals.get returns undefined', async () => {
-    // incident-responder F1: `assertId` fired before the not-found path, so
-    // `agent.approvals.get('bogus id!')` threw LOUSHO_CONFIG_INVALID instead of
-    // returning `undefined` for an unknown id (ids arrive from HTTP input).
+  it('approvals.load reads a malformed id as not found (only writes reject it)', async () => {
     const store = fileStore(tempDir());
-    expect(await store.approvals.load!('bogus id!')).toBeNull();
-    expect(await store.approvals.load!('')).toBeNull();
-    expect(await store.approvals.load!('../evil')).toBeNull();
-
-    const agent = createAgent({ provider: mockModel([]), store });
-    expect(await agent.approvals.get('bogus id!')).toBeUndefined();
-    expect(await agent.approvals.get('appr_never_saved')).toBeUndefined();
+    for (const id of ['bogus id!', '../evil', '', undefined as unknown as string]) {
+      expect(await store.approvals.load!(id)).toBeNull();
+    }
   });
 });
 
@@ -197,5 +190,11 @@ describe('createAgent({ store: fileStore(dir) }) (R2)', () => {
     expect(sent).toBe(1);
     expect(await fileStore(dir).checkpoints.load('job-1')).toMatchObject({ status: 'finished' });
     expect(readdirSync(join(dir, 'approvals'))).toEqual([]);
+  });
+
+  it('agent.approvals.get() returns undefined for a malformed id', async () => {
+    const agent = createAgent({ provider: mockModel(['Hi.']), store: fileStore(tempDir()) });
+    expect(await agent.approvals.get('bogus id!')).toBeUndefined();
+    expect(await agent.approvals.get('')).toBeUndefined();
   });
 });

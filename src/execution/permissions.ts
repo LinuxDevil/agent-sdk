@@ -202,6 +202,26 @@ export function allowInPlanMode<T extends object>(tool: T): T {
   return tool;
 }
 
+/** `needsApproval` policies whose 'ask' no permission rule or mode may turn into a run (see {@link enforceApproval}). */
+const enforcedApprovals = new WeakSet<object>();
+
+/**
+ * Marks a `needsApproval` policy as enforced: when it asks, the call waits for
+ * an approver or a human whatever the permission rules (`allow`) or the
+ * permission mode (`acceptEdits`) say. A deny from either still denies. Used
+ * for an install receipt's `exec` / `needsApproval` items (docs/registry.md).
+ */
+export function enforceApproval<T extends object>(policy: T): T {
+  enforcedApprovals.add(policy);
+  return policy;
+}
+
+/** Whether `tool`'s `needsApproval` is marked by {@link enforceApproval}. */
+export function hasEnforcedApproval(tool: ToolDescriptor | undefined): boolean {
+  const policy = tool?.needsApproval;
+  return typeof policy === 'function' && enforcedApprovals.has(policy);
+}
+
 /** N4: plan mode lets a tool run when it declares `readOnlyHint: true` or is a built-in marked by {@link allowInPlanMode}. */
 function isReadOnlyTool(tool: ToolDescriptor): boolean {
   return tool.metadata?.mcp?.annotations?.readOnlyHint === true || planModeTools.has(tool);

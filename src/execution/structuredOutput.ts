@@ -7,7 +7,8 @@
 import { zodSchema } from 'ai';
 import type { GenerateOptions, Message } from '../providers';
 import { formatIssues, parseWithIssues, type ToolArgumentIssue } from './toolArgsValidation';
-import { schemaToJsonSchema, type StandardSchemaV1 } from '../utils/zodCompat';
+import { schemaToJsonSchema, unrepresentableDates, type StandardSchemaV1 } from '../utils/zodCompat';
+import { ConfigurationError } from './errors';
 
 /** Why a run's final reply is not a valid `output` object (`finishReason: 'output-invalid'`). */
 export interface OutputError {
@@ -17,7 +18,7 @@ export interface OutputError {
   issues: ToolArgumentIssue[];
 }
 
-const jsonSchemas = new WeakMap<StandardSchemaV1, Record<string, unknown>>();
+const jsonSchemas = new WeakMap<StandardSchemaV1, OutputJsonSchemas>();
 
 /** JSON-Schema members that hold a keyed map of subschemas; every other member is a subschema, a list of them, or data. */
 const SCHEMA_MAP_MEMBERS = new Set(['$defs', 'definitions', 'dependentSchemas', 'patternProperties', 'properties']);
@@ -53,34 +54,6 @@ function isObjectSchemaNode(node: Record<string, unknown>): boolean {
   );
 }
 
-function isSchemaMap(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/** Whether `node` already accepts `null`, so marking its property `required` needs no `| null` union. */
-function acceptsNull(node: unknown): boolean {
-  if (node === true) return true;
-  if (!isSchemaMap(node)) return false;
-  const type = node.type;
-  if (type === 'null' || (Array.isArray(type) && type.includes('null'))) return true;
-  if (node.const === null || (Array.isArray(node.enum) && node.enum.includes(null))) return true;
-  for (const member of ['anyOf', 'oneOf'] as const) {
-    const subs = node[member];
-    if (Array.isArray(subs) && subs.some(acceptsNull)) return true;
-  }
-  // An unconstrained schema ({}, a bare description, ...) accepts anything.
-  return !('type' in node) && !('const' in node) && !('enum' in node) && !('anyOf' in node) && !('oneOf' in node) && !('allOf' in node) && !('$ref' in node) && !('not' in node);
-}
-
-/**
- * The `{anyOf: [<original>, {type:'null'}]}` wrappers `closeObjectSchemas`
- * adds for formerly-optional properties (LOU-R7.2): strict endpoints cannot
- * omit a key, so the model writes `null` for an absent optional field while
- * the source schema still rejects it - `validateOutput` turns that `null`
- * back into an absent key before validating.
- */
-const widenedToNullable = new WeakSet<object>();
-
 /**
  * `schema`, with `additionalProperties: false` on every object node that
  * does not set it (LOU-R7): OpenAI-compatible strict structured-output
@@ -89,23 +62,28 @@ const widenedToNullable = new WeakSet<object>();
  * documented way) produced an unclosable schema. An explicit
  * `additionalProperties` (`z.strictObject`, `z.looseObject`, `catchall`,
  * `record`) is left alone - it says what the author meant.
+ *
+ * Strict endpoints also require `required` to list every key of
+ * `properties` (audit A6): each optional property is made required and
+ * nullable instead, and {@link dropOptionalNulls} turns the model's `null`
+ * back into an absent key before validation.
  */
 /** `closeObjectSchemas` applied where one member points: a name -> schema map, or a single subschema. */
-function closeMember(member: string, value: unknown): void {
+function closeMember(member: string, value: unknown, root: unknown): void {
   if (SCHEMA_MAP_MEMBERS.has(member)) {
     if (typeof value === 'object' && value !== null) {
-      for (const sub of Object.values(value)) closeObjectSchemas(sub);
+      for (const sub of Object.values(value)) closeObjectSchemas(sub, root);
     }
     return;
   }
   if (SUBSCHEMA_MEMBERS.has(member)) {
-    closeObjectSchemas(value);
+    closeObjectSchemas(value, root);
   }
 }
 
-function closeObjectSchemas(node: unknown): void {
+function closeObjectSchemas(node: unknown, root: unknown = node): void {
   if (Array.isArray(node)) {
-    for (const item of node) closeObjectSchemas(item);
+    for (const item of node) closeObjectSchemas(item, root);
     return;
   }
   if (typeof node !== 'object' || node === null) return;
@@ -113,42 +91,170 @@ function closeObjectSchemas(node: unknown): void {
   if (isObjectSchemaNode(schema) && schema.additionalProperties === undefined) {
     schema.additionalProperties = false;
   }
-  // LOU-R7.2: strict structured outputs also require `required` to list
-  // every key of `properties`; a key the source schema left optional (a zod
-  // `.optional()`/`.default()` produces exactly that) keeps its slot by
-  // becoming a `... | null` union - which is also how the model reports
-  // "absent", since the strict response cannot omit the key.
+  requireEveryProperty(schema, root);
+  for (const [member, value] of Object.entries(schema)) closeMember(member, value, root);
+}
+
+/** Every key of `schema.properties` in `required`; each one that was optional also accepts `null` (audit A6). */
+function requireEveryProperty(schema: Record<string, unknown>, root: unknown): void {
   const properties = schema.properties;
-  if (isSchemaMap(properties)) {
-    const required = new Set(Array.isArray(schema.required) ? schema.required : []);
-    for (const key of Object.keys(properties)) {
-      if (required.has(key)) continue;
-      required.add(key);
-      if (!acceptsNull(properties[key])) {
-        const widened = { anyOf: [properties[key], { type: 'null' }] };
-        widenedToNullable.add(widened);
-        properties[key] = widened;
-      }
-    }
-    schema.required = [...required];
+  if (typeof properties !== 'object' || properties === null || Array.isArray(properties)) return;
+  const props = properties as Record<string, unknown>;
+  const required = new Set(Array.isArray(schema.required) ? (schema.required as unknown[]) : []);
+  for (const [key, sub] of Object.entries(props)) {
+    if (!required.has(key) && !admitsNull(sub, root)) props[key] = { anyOf: [sub, { type: 'null' }] };
   }
-  for (const [member, value] of Object.entries(schema)) closeMember(member, value);
+  schema.required = Object.keys(props);
+}
+
+/** The subschema a local `$ref` (`#`, `#/$defs/x`, ...) points at, else `undefined`. */
+function resolveRef(root: unknown, ref: string): unknown {
+  if (!ref.startsWith('#')) return undefined;
+  let node: unknown = root;
+  for (const raw of ref.slice(1).split('/').filter(Boolean)) {
+    if (typeof node !== 'object' || node === null) return undefined;
+    node = (node as Record<string, unknown>)[raw.replace(/~1/g, '/').replace(/~0/g, '~')];
+  }
+  return node;
+}
+
+/** Whether `node` (a subschema of `root`) accepts `null`: a null type, const or enum value, a branch that does, or no constraint at all. */
+function admitsNull(node: unknown, root: unknown, refs: ReadonlySet<string> = new Set()): boolean {
+  if (node === true) return true;
+  if (typeof node !== 'object' || node === null || Array.isArray(node)) return false;
+  const schema = node as Record<string, unknown>;
+  if (typeof schema.$ref === 'string') {
+    return !refs.has(schema.$ref) && admitsNull(resolveRef(root, schema.$ref), root, new Set(refs).add(schema.$ref));
+  }
+  const type = schema.type;
+  if (type === 'null' || (Array.isArray(type) && type.includes('null'))) return true;
+  if ('const' in schema) return schema.const === null;
+  if (Array.isArray(schema.enum)) return schema.enum.includes(null);
+  if (Array.isArray(schema.anyOf)) return schema.anyOf.some((branch) => admitsNull(branch, root, refs));
+  if (Array.isArray(schema.oneOf)) return schema.oneOf.some((branch) => admitsNull(branch, root, refs));
+  if (Array.isArray(schema.allOf)) return schema.allOf.every((branch) => admitsNull(branch, root, refs));
+  return type === undefined && !('not' in schema) && !('items' in schema) && !isObjectSchemaNode(schema);
+}
+
+/**
+ * Removes from `value` (parsed JSON, in place) each `null` that the strict
+ * schema allowed only because {@link requireEveryProperty} made an optional
+ * property nullable (audit A6). `node` is the unnormalized schema: a key it
+ * leaves out of `required` whose own schema rejects `null` is deleted, so
+ * the user's `.optional()` schema sees it absent. Walks nested objects,
+ * array items, combinator branches and local `$ref`s.
+ */
+function dropOptionalNulls(value: unknown, node: unknown, root: unknown, refs: ReadonlySet<string> = new Set()): void {
+  if (typeof value !== 'object' || value === null) return;
+  if (typeof node !== 'object' || node === null || Array.isArray(node)) return;
+  const schema = node as Record<string, unknown>;
+  if (typeof schema.$ref === 'string' && !refs.has(schema.$ref)) {
+    dropOptionalNulls(value, resolveRef(root, schema.$ref), root, new Set(refs).add(schema.$ref));
+  }
+  for (const member of ['allOf', 'anyOf', 'oneOf']) {
+    const branches = schema[member];
+    if (Array.isArray(branches)) for (const branch of branches) dropOptionalNulls(value, branch, root, refs);
+  }
+  if (Array.isArray(value)) {
+    const tuple = Array.isArray(schema.prefixItems) ? schema.prefixItems : Array.isArray(schema.items) ? schema.items : undefined;
+    value.forEach((item, index) => dropOptionalNulls(item, tuple ? (tuple[index] ?? schema.additionalItems) : schema.items, root));
+    return;
+  }
+  const object = value as Record<string, unknown>;
+  const properties = (typeof schema.properties === 'object' && schema.properties !== null ? schema.properties : {}) as Record<string, unknown>;
+  const required = new Set(Array.isArray(schema.required) ? (schema.required as unknown[]) : []);
+  for (const [key, item] of Object.entries(object)) {
+    const declared = Object.hasOwn(properties, key);
+    const sub = declared ? properties[key] : schema.additionalProperties;
+    if (item === null && declared && !required.has(key) && !admitsNull(sub, root)) delete object[key];
+    else dropOptionalNulls(item, sub, root);
+  }
+}
+
+/** The JSON Schema sent to the model, and the schema's own conversion (what {@link dropOptionalNulls} reads). */
+interface OutputJsonSchemas {
+  strict: Record<string, unknown>;
+  original: Record<string, unknown>;
 }
 
 /**
  * The schema as JSON Schema, computed once per schema: `z.toJSONSchema` for
- * zod 4 (LOU-D29), the `ai` SDK's zod converter for zod 3. Object nodes are
- * closed (`additionalProperties: false`) for strict structured-output
- * endpoints (LOU-R7).
+ * zod 4 (LOU-D29), the `ai` SDK's zod converter for zod 3. In the copy sent
+ * to the model, object nodes are closed (`additionalProperties: false`,
+ * LOU-R7) and list every property in `required` (audit A6) for strict
+ * structured-output endpoints.
  */
-function jsonSchemaOf(schema: StandardSchemaV1): Record<string, unknown> {
+function jsonSchemasOf(schema: StandardSchemaV1): OutputJsonSchemas {
   let json = jsonSchemas.get(schema);
   if (!json) {
-    json = schemaToJsonSchema(schema) ?? (zodSchema(schema as never).jsonSchema as Record<string, unknown>);
-    closeObjectSchemas(json);
+    assertNoDates(schema);
+    const converted = schemaToJsonSchema(schema) ?? (zodSchema(schema as never).jsonSchema as Record<string, unknown>);
+    const original = structuredClone(converted);
+    const strict = structuredClone(converted);
+    closeObjectSchemas(strict);
+    // After closing: a typed root union must not get `additionalProperties: false` of its own.
+    typeRootUnion(strict);
+    json = { strict, original };
     jsonSchemas.set(schema, json);
   }
   return json;
+}
+
+/**
+ * Audit invoice F8: a zod 4 `z.date()` has no JSON form - it was sent as
+ * `{}` and no JSON reply could ever validate it. Throws a
+ * ConfigurationError naming each such field.
+ */
+function assertNoDates(schema: StandardSchemaV1): void {
+  const paths = unrepresentableDates(schema);
+  if (paths.length === 0) return;
+  throw new ConfigurationError(
+    `output: ${paths.map((path) => `'${path}'`).join(', ')} ${paths.length === 1 ? 'is a' : 'are'} z.date(), which JSON cannot carry, ` +
+      'so no reply could validate. Use z.iso.date() or z.iso.datetime() (an ISO string), ' +
+      'or z.iso.datetime().pipe(z.coerce.date()) for a Date.',
+    'output'
+  );
+}
+
+/** Whether `branch` (of `root`) is, or `$ref`s, an object schema. */
+function isObjectBranch(branch: unknown, root: unknown): boolean {
+  const node = isRecord(branch) && typeof branch.$ref === 'string' ? resolveRef(root, branch.$ref) : branch;
+  return isRecord(node) && isObjectSchemaNode(node);
+}
+
+/**
+ * Audit invoice F7: a root-level union (`z.union`, `z.discriminatedUnion`)
+ * converts to a bare `anyOf` with no `type`, and models answered it by
+ * echoing the schema. A union of objects gets `type: 'object'` at the root;
+ * one with another branch throws a ConfigurationError, since the final
+ * answer must be a JSON object.
+ */
+function typeRootUnion(root: Record<string, unknown>): void {
+  if (root.type !== undefined) return;
+  const branches = Array.isArray(root.anyOf) ? root.anyOf : Array.isArray(root.oneOf) ? root.oneOf : undefined;
+  if (!branches) return;
+  if (!branches.every((branch) => isObjectBranch(branch, root))) {
+    throw new ConfigurationError(
+      'output: the schema is a union at the root with a branch that is not an object, but the final answer must be a JSON object. ' +
+        'Wrap it: z.object({ result: z.union([...]) }).',
+      'output'
+    );
+  }
+  root.type = 'object';
+}
+
+/**
+ * Throws a ConfigurationError when `schema` cannot be used as `output` (a
+ * `z.date()` field, a root union with a non-object branch), so
+ * `createAgent()` and `AgentExecutor.execute()` fail at once rather than
+ * on the first model call.
+ */
+export function assertOutputSchema(schema: StandardSchemaV1 | undefined): void {
+  if (schema) jsonSchemasOf(schema);
+}
+
+function jsonSchemaOf(schema: StandardSchemaV1): Record<string, unknown> {
+  return jsonSchemasOf(schema).strict;
 }
 
 /** The system-prompt block that asks for the final answer as JSON matching `schema`. */
@@ -173,83 +279,217 @@ function unfence(text: string): string {
   return /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed)?.[1] ?? trimmed;
 }
 
-/** The schema a local `#/a/b` $ref points at, or `undefined` when it cannot be resolved. */
-function resolveLocalRef(root: unknown, ref: string): unknown {
-  if (!ref.startsWith('#/')) return undefined;
-  let target: unknown = root;
-  for (const segment of ref.slice(2).split('/')) {
-    if (!isSchemaMap(target)) return undefined;
-    target = target[segment];
+/** `text` without `<think>`/`<thinking>` blocks, and without what precedes a stray closing tag. */
+function withoutThinking(text: string): string {
+  const stripped = text.replace(/<(think|thinking)>[\s\S]*?<\/\1>/gi, '');
+  const close = /<\/think(?:ing)?>/gi;
+  let end = -1;
+  for (let match = close.exec(stripped); match; match = close.exec(stripped)) end = match.index + match[0].length;
+  return end < 0 ? stripped : stripped.slice(end);
+}
+
+/** How many opening brackets {@link balancedSlices} tries before it gives up on a long prose reply. */
+const MAX_JSON_STARTS = 20;
+
+/**
+ * Each balanced `{...}`/`[...]` substring of `text`, left to right. The
+ * caller passes `true` to `next()` when the last one parsed as JSON, and
+ * the search goes on after it rather than inside it.
+ */
+function* balancedSlices(text: string): Generator<string, void, boolean | undefined> {
+  let starts = 0;
+  for (let start = 0; start < text.length && starts < MAX_JSON_STARTS; start++) {
+    if (text[start] !== '{' && text[start] !== '[') continue;
+    starts++;
+    const end = balancedEnd(text, start);
+    if (end < 0) continue;
+    const parsed = yield text.slice(start, end + 1);
+    if (parsed) start = end;
   }
-  return target;
+}
+
+/** The index of the bracket that closes the one at `start` (strings and escapes respected), else -1. */
+function balancedEnd(text: string, start: number): number {
+  const closers: string[] = [];
+  let inString = false;
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+    if (inString) {
+      if (char === '\\') i++;
+      else if (char === '"') inString = false;
+    } else if (char === '"') inString = true;
+    else if (char === '{') closers.push('}');
+    else if (char === '[') closers.push(']');
+    else if (char === '}' || char === ']') {
+      if (closers.pop() !== char) return -1;
+      if (closers.length === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function tryParse(text: string): { value: unknown } | undefined {
+  try {
+    return { value: JSON.parse(text) };
+  } catch {
+    return undefined;
+  }
 }
 
 /**
- * Walks `value` (the parsed reply) alongside the sent JSON schema and
- * deletes every `null` sitting in a property `closeObjectSchemas` widened
- * to `... | null` (the markers are in {@link widenedToNullable}): under a
- * strict `required` the model has to write `null` for an absent optional
- * field, but the source schema - a zod `.optional()` - still wants the key
- * gone. A genuinely `.nullable()` field is untouched: its `null` is real.
+ * The JSON values a final reply holds, best first (audit log F8): the whole
+ * reply (a code fence around it tolerated). Only when that is not JSON - a
+ * near miss - then, with `<think>` blocks removed: the rest, each fenced
+ * block, and each balanced object or array. A prose prefix, trailing prose
+ * or a reasoning block then validates without a repair call.
  */
-function stripWidenedNulls(value: unknown, node: unknown, root: unknown): void {
-  if (!isSchemaMap(node)) return;
-  const ref = node.$ref;
-  if (typeof ref === 'string') stripWidenedNulls(value, resolveLocalRef(root, ref), root);
-  if (Array.isArray(value)) {
-    for (const item of value) stripWidenedNulls(item, node.items, root);
-    const prefix = node.prefixItems;
-    if (Array.isArray(prefix)) prefix.forEach((subschema, index) => stripWidenedNulls(value[index], subschema, root));
-  } else if (isSchemaMap(value)) {
-    const properties = isSchemaMap(node.properties) ? node.properties : {};
-    for (const [key, prop] of Object.entries(properties)) {
-      if (!(key in value)) continue;
-      if (value[key] === null && widenedToNullable.has(prop as object)) delete value[key];
-      else stripWidenedNulls(value[key], prop, root);
-    }
-    if (isSchemaMap(node.additionalProperties)) {
-      for (const [key, item] of Object.entries(value)) {
-        if (!(key in properties)) stripWidenedNulls(item, node.additionalProperties, root);
-      }
-    }
-    if (isSchemaMap(node.patternProperties)) {
-      for (const [pattern, subschema] of Object.entries(node.patternProperties)) {
-        for (const [key, item] of Object.entries(value)) {
-          if (new RegExp(pattern).test(key)) stripWidenedNulls(item, subschema, root);
-        }
-      }
-    }
+function* jsonCandidates(text: string): Generator<unknown> {
+  const whole = tryParse(unfence(text));
+  if (whole) {
+    yield whole.value;
+    return;
   }
-  for (const member of ['anyOf', 'oneOf', 'allOf'] as const) {
-    const subs = node[member];
-    if (Array.isArray(subs)) for (const subschema of subs) stripWidenedNulls(value, subschema, root);
+  const body = withoutThinking(text);
+  const tried = new Set<string>();
+  const parse = (slice: string): { value: unknown } | undefined => {
+    if (tried.has(slice)) return undefined;
+    tried.add(slice);
+    return tryParse(slice);
+  };
+  const fenced = [...body.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)].map((match) => match[1].trim());
+  for (const slice of [unfence(body), ...fenced]) {
+    const parsed = parse(slice);
+    if (parsed) yield parsed.value;
+  }
+  const slices = balancedSlices(body);
+  for (let next = slices.next(); !next.done; ) {
+    const parsed = parse(next.value);
+    if (parsed) yield parsed.value;
+    next = slices.next(parsed !== undefined);
   }
 }
 
-/** Parses the final reply as JSON and validates it with `schema`. */
-export async function validateOutput(
-  schema: StandardSchemaV1,
-  text: string
-): Promise<{ object: unknown } | { outputError: OutputError }> {
-  let value: unknown;
-  try {
-    value = JSON.parse(unfence(text));
-  } catch (error) {
-    const issues = [{ path: '(root)', message: `Not valid JSON: ${(error as Error).message}` }];
-    return { outputError: { message: `The reply is not a JSON object: ${formatIssues(issues)}`, issues } };
+/** A reply that does not validate: why, and whether it was the JSON Schema itself (audit docs-qa F9). */
+export interface OutputFailure {
+  outputError: OutputError;
+  schemaEcho?: true;
+}
+
+/** Validates one parsed reply with `schema` (audit A6: an optional key sent as `null` is absent). */
+async function validateValue(schema: StandardSchemaV1, value: unknown): Promise<{ object: unknown } | OutputFailure> {
+  const { original, strict } = jsonSchemasOf(schema);
+  const cleaned = structuredClone(value);
+  dropOptionalNulls(cleaned, original, original);
+  let result = await parseWithIssues(schema, cleaned);
+  if (!result.success && JSON.stringify(cleaned) !== JSON.stringify(value)) {
+    const raw = await parseWithIssues(schema, value);
+    if (raw.success) result = raw;
   }
-  const json = jsonSchemaOf(schema);
-  stripWidenedNulls(value, json, json);
-  const result = await parseWithIssues(schema, value);
   if (result.success) return { object: result.data };
+  if (isSchemaEcho(value, strict)) {
+    const issues = [{ path: '(root)', message: 'This is the output JSON Schema itself, not an answer that follows it' }];
+    return { outputError: { message: `The reply is the JSON Schema, not data: ${formatIssues(issues)}`, issues }, schemaEcho: true };
+  }
   const message = `The reply does not match the output schema: ${formatIssues(result.issues)}`;
   return { outputError: { message, issues: result.issues } };
 }
 
-/** The user message of the one repair step: the issues, and the ask to answer again. */
-export function outputRepairMessage(error: OutputError): Message {
+/**
+ * Parses the final reply as JSON - or the JSON in a near miss, see
+ * {@link jsonCandidates} - and validates it with `schema`. The first
+ * candidate that validates wins; otherwise the issues are the first
+ * parsed candidate's.
+ */
+export async function validateOutput(
+  schema: StandardSchemaV1,
+  text: string
+): Promise<{ object: unknown } | OutputFailure> {
+  let first: OutputFailure | undefined;
+  for (const value of jsonCandidates(text)) {
+    const checked = await validateValue(schema, value);
+    if ('object' in checked) return checked;
+    first ??= checked;
+  }
+  if (first) return first;
+  let reason = 'no JSON found';
+  try {
+    JSON.parse(unfence(text));
+  } catch (error) {
+    reason = (error as Error).message;
+  }
+  const issues = [{ path: '(root)', message: `Not valid JSON: ${reason}` }];
+  return { outputError: { message: `The reply is not a JSON object: ${formatIssues(issues)}`, issues } };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Whether `value` is the sent JSON Schema echoed back (audit docs-qa F9): a
+ * `$schema` key, or a `properties` map of subschemas over the schema's own
+ * property names next to an object `type` or a `required` list.
+ */
+function isSchemaEcho(value: unknown, sent: Record<string, unknown>): boolean {
+  if (!isRecord(value)) return false;
+  if (typeof value.$schema === 'string') return true;
+  const { properties } = value;
+  const sentProperties = sent.properties;
+  if (!isRecord(properties) || !isRecord(sentProperties)) return false;
+  if (value.type !== 'object' && !Array.isArray(value.required)) return false;
+  const keys = Object.keys(properties);
+  return keys.length > 0 && keys.every((key) => Object.hasOwn(sentProperties, key) && isRecord(properties[key]));
+}
+
+/** How deep {@link exampleOf} renders nested and recursive schemas before it writes `null`. */
+const MAX_EXAMPLE_DEPTH = 8;
+
+/** The placeholder {@link exampleOf} writes for each JSON type. */
+const EXAMPLE_VALUES: Record<string, unknown> = { string: '<string>', number: 0, integer: 0, boolean: true, null: null };
+
+/** An example instance of `node` (a subschema of `root`): the shape to answer with, placeholders for the values. */
+function exampleOf(node: unknown, root: unknown, depth = 0): unknown {
+  if (!isRecord(node) || depth > MAX_EXAMPLE_DEPTH) return null;
+  if (typeof node.$ref === 'string') return exampleOf(resolveRef(root, node.$ref), root, depth + 1);
+  if ('const' in node) return node.const;
+  if (Array.isArray(node.enum)) return node.enum[0];
+  for (const member of ['anyOf', 'oneOf', 'allOf']) {
+    const branches = node[member];
+    if (!Array.isArray(branches) || branches.length === 0) continue;
+    const branch = branches.find((item) => !(isRecord(item) && item.type === 'null')) ?? branches[0];
+    return exampleOf(branch, root, depth + 1);
+  }
+  const type = Array.isArray(node.type) ? (node.type.find((item) => item !== 'null') ?? 'null') : node.type;
+  if (type === 'array') {
+    const tuple = Array.isArray(node.prefixItems) ? node.prefixItems : Array.isArray(node.items) ? node.items : undefined;
+    return tuple ? tuple.map((item) => exampleOf(item, root, depth + 1)) : [exampleOf(node.items, root, depth + 1)];
+  }
+  if (type === 'object' || isObjectSchemaNode(node)) {
+    const properties = isRecord(node.properties) ? node.properties : {};
+    return Object.fromEntries(Object.entries(properties).map(([key, sub]) => [key, exampleOf(sub, root, depth + 1)]));
+  }
+  if (type === 'string' && node.format === 'date') return '2026-01-31';
+  if (type === 'string' && node.format === 'date-time') return '2026-01-31T12:00:00Z';
+  return typeof type === 'string' && type in EXAMPLE_VALUES ? EXAMPLE_VALUES[type] : null;
+}
+
+/**
+ * The user message of the one repair step: the issues, and the ask to
+ * answer again. When the reply echoed the JSON Schema (audit docs-qa F9),
+ * it says so and shows an example instance rather than the schema again.
+ */
+export function outputRepairMessage(schema: StandardSchemaV1, failure: OutputFailure): Message {
+  if (failure.schemaEcho) {
+    const sent = jsonSchemaOf(schema);
+    return {
+      role: 'user',
+      content:
+        '[output-invalid] Your reply is the JSON Schema itself. Do not repeat the schema: reply with only a JSON object ' +
+        `holding your actual answer, shaped like this example (placeholders for the values): ${JSON.stringify(exampleOf(sent, sent))}`,
+    };
+  }
   return {
     role: 'user',
-    content: `[output-invalid] ${error.message}. Reply again with only the corrected JSON object.`,
+    content: `[output-invalid] ${failure.outputError.message}. Reply again with only the corrected JSON object.`,
   };
 }

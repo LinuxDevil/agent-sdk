@@ -493,6 +493,120 @@ describe('Error Classes', () => {
     });
   });
 
+  describe('C1: local-runtime errors (llama.cpp / LM Studio)', () => {
+    // Bodies verbatim from audit/_cross X1, audit/invoice-extract repro/error-body.ts
+    // and audit/coding-agent repro/classify-lmstudio-error.out.txt.
+    const LLAMA_CPP_BODY = JSON.stringify({
+      error: {
+        code: 500,
+        message: 'request (20018 tokens) exceeds the available context size (8192 tokens), try increasing it',
+        type: 'exceed_context_size_error',
+        n_prompt_tokens: 20018,
+        n_ctx: 8192,
+      },
+    });
+    const BODY_CHAT = JSON.stringify({ error: 'Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","type":"server_error"}' });
+    const BODY_RESP = JSON.stringify({ error: { message: 'Engine protocol predict stream returned an error: Context size has been exceeded.', type: 'internal_error', param: null, code: 'unknown' } });
+
+    const apiError = (statusCode: number, message: string, responseBody: string, extra: Partial<ConstructorParameters<typeof APICallError>[0]> = {}) =>
+      new APICallError({
+        message,
+        url: 'http://localhost:1234/v1/responses',
+        requestBodyValues: {},
+        statusCode,
+        responseBody,
+        isRetryable: statusCode >= 500,
+        ...extra,
+      });
+
+    it('maps the llama.cpp exceed_context_size_error 500 to context-length-exceeded/non-retryable', () => {
+      const compacted = compactProviderError(apiError(500, 'request (20018 tokens) exceeds the available context size (8192 tokens), try increasing it', LLAMA_CPP_BODY));
+      expect(compacted).toMatchObject({ category: 'context-length-exceeded', retryable: false, statusCode: 500 });
+    });
+
+    it('matches on the body alone (type / n_ctx) when the message is generic', () => {
+      const compacted = compactProviderError(apiError(500, 'Internal Server Error', LLAMA_CPP_BODY));
+      expect(compacted).toMatchObject({ category: 'context-length-exceeded', retryable: false });
+    });
+
+    it('unwraps a RetryError around the llama.cpp 500 to the same classification', () => {
+      const last = apiError(500, 'request (20018 tokens) exceeds the available context size (8192 tokens), try increasing it', LLAMA_CPP_BODY);
+      const raw = new RetryError({ message: 'Failed after 3 attempts', reason: 'maxRetriesExceeded', errors: [last, last, last] });
+      expect(compactProviderError(raw)).toMatchObject({ category: 'context-length-exceeded', retryable: false });
+    });
+
+    it('maps LM Studio "Context size has been exceeded" the same on chat (400), responses (500) and the stream', () => {
+      const chat = compactProviderError(apiError(400, 'Bad Request', BODY_CHAT));
+      const responses = compactProviderError(
+        apiError(500, 'Engine protocol predict stream returned an error: Context size has been exceeded.', BODY_RESP)
+      );
+      const streamError = compactProviderError(
+        new Error('Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","type":"server_error"}')
+      );
+      const streamObject = compactProviderError({ type: 'error', error: { code: 500, message: 'Context size has been exceeded.' } });
+      for (const compacted of [chat, responses, streamError, streamObject]) {
+        expect(compacted).toMatchObject({ category: 'context-length-exceeded', retryable: false });
+      }
+    });
+
+    it('never turns an object-valued stream error into "[object Object]"', () => {
+      expect(compactProviderError({ code: 500, message: 'Context size has been exceeded.' }).error).toBe('Context size has been exceeded.');
+      expect(compactProviderError({ type: 'error', error: { code: 500, message: 'boom' } }).error).toBe('boom');
+      expect(compactProviderError({ code: 'weird', detail: 'x' }).error).toBe('{"code":"weird","detail":"x"}');
+    });
+
+    it('appends a snippet of an unparsed body to a bare status-text message', () => {
+      const compacted = compactProviderError(apiError(400, 'Bad Request', BODY_CHAT, { requestBodyValues: { secret: 'do-not-leak' } }));
+      expect(compacted.error).toMatch(/^Bad Request: \{"error":"Engine protocol predict stream returned an error/);
+      expect(compacted.error).not.toContain('do-not-leak');
+      const long = compactProviderError(apiError(400, 'Bad Request', `{"error":"${'y'.repeat(5000)}"}`));
+      expect(long.error.length).toBeLessThan(600);
+    });
+
+    it('leaves a parsed message alone (no body snippet)', () => {
+      const compacted = compactProviderError(
+        apiError(500, 'Engine protocol predict stream returned an error: Context size has been exceeded.', BODY_RESP)
+      );
+      expect(compacted.error).toBe('Engine protocol predict stream returned an error: Context size has been exceeded.');
+    });
+
+    it('names ECONNREFUSED and the URL for a refused connection (cause chain) as timeout/retryable', () => {
+      const refused = Object.assign(new AggregateError([new Error('connect ECONNREFUSED 127.0.0.1:1234')], ''), { code: 'ECONNREFUSED' });
+      const raw = new APICallError({
+        message: 'Cannot connect to API: ',
+        url: 'http://localhost:1234/v1/responses?key=secret',
+        requestBodyValues: {},
+        cause: refused,
+        isRetryable: true,
+      });
+      const compacted = compactProviderError(raw, 'openai');
+      expect(compacted).toMatchObject({ category: 'timeout', retryable: true });
+      expect(compacted.error).toBe('Cannot connect to API: connection refused (ECONNREFUSED) at http://localhost:1234/v1/responses - is the server running?');
+      expect(compacted.error).not.toContain('secret');
+    });
+
+    it('names ENOTFOUND for a plain fetch failure whose cause carries the code', () => {
+      const raw = new TypeError('fetch failed', { cause: Object.assign(new Error('getaddrinfo ENOTFOUND nohost'), { code: 'ENOTFOUND' }) });
+      const compacted = compactProviderError(raw);
+      expect(compacted).toMatchObject({ category: 'timeout', retryable: true });
+      expect(compacted.error).toContain('ENOTFOUND');
+    });
+
+    it('maps an undici Headers Timeout Error to timeout/retryable', () => {
+      const cause = Object.assign(new Error('Headers Timeout Error'), { name: 'HeadersTimeoutError', code: 'UND_ERR_HEADERS_TIMEOUT' });
+      const raw = new APICallError({
+        message: 'Cannot connect to API: Headers Timeout Error',
+        url: 'http://localhost:1234/v1/chat/completions',
+        requestBodyValues: {},
+        cause,
+        isRetryable: true,
+      });
+      const compacted = compactProviderError(raw);
+      expect(compacted).toMatchObject({ category: 'timeout', retryable: true });
+      expect(compacted.error).toContain('UND_ERR_HEADERS_TIMEOUT');
+    });
+  });
+
   describe('LOU-T4: isModelActionableProviderErrorCategory', () => {
     it('treats rate-limit, timeout and context-length-exceeded as model-actionable', () => {
       expect(isModelActionableProviderErrorCategory('rate-limit')).toBe(true);
