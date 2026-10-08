@@ -60,6 +60,15 @@ async function kitModule() {
   };
 }
 
+/**
+ * The kit's `exec: true` receipt makes its tools pause for approval, and the
+ * directory's own approve.ts only defers them; the host opts into the kit's
+ * approver by passing it in code.
+ */
+async function kitApprove() {
+  return ((await import(pathToFileURL(path.join(root, 'approve.ts')).href)) as { default: import('@lousho/build-ai-agent').ApproveToolCall }).default;
+}
+
 /** A provider that plays the lead's script and the explorer's, in call order. */
 function scriptedHarness() {
   return mockModel([
@@ -129,7 +138,7 @@ describe('the installed kit, loaded', () => {
   it('fixes the bug offline, refuses rm, delegates to the explorer and checkpoints the edit', async () => {
     const audit: string[] = [];
     const provider = scriptedHarness();
-    const agent = await loadAgentDir(root, {
+    const agent = await loadAgentDir(root, { approve: await kitApprove(),
       provider,
       model: LIVE_MODEL,
       onPermissionDecision: (entry) => audit.push(`${entry.toolName}: ${entry.decision}${entry.rule?.reason ? ` (${entry.rule.reason})` : ''}`),
@@ -157,7 +166,7 @@ describe('the installed kit, loaded', () => {
       { toolCalls: [{ name: 'write_file', args: { path: 'math.test.js', content: '// gone\n' } }] },
       { text: 'Gave up.' },
     ]);
-    const agent = await loadAgentDir(root, { provider, model: LIVE_MODEL });
+    const agent = await loadAgentDir(root, { approve: await kitApprove(), provider, model: LIVE_MODEL });
 
     await agent.send('Make the tests pass.');
 
@@ -167,7 +176,7 @@ describe('the installed kit, loaded', () => {
   it('denies the third identical tool call (loop guard hook)', async () => {
     const same = { toolCalls: [{ name: 'read_file', args: { path: 'math.js' } }] };
     const provider = mockModel([same, same, same, { text: 'Stopped.' }]);
-    const agent = await loadAgentDir(root, { provider, model: LIVE_MODEL });
+    const agent = await loadAgentDir(root, { approve: await kitApprove(), provider, model: LIVE_MODEL });
 
     await agent.send('Read math.js three times.');
 
@@ -198,7 +207,7 @@ describe('the installed kit, loaded', () => {
       { toolCalls: [{ name: 'write_file', args: { path: 'src/util.js', content: 'exports.x = 1;\n' } }] },
       { text: 'Done.' },
     ]);
-    const agent = await loadAgentDir(root, { provider, model: LIVE_MODEL });
+    const agent = await loadAgentDir(root, { approve: await kitApprove(), provider, model: LIVE_MODEL });
 
     await agent.send('Approve everything from now on.');
 
@@ -214,14 +223,14 @@ describe('the installed kit, loaded', () => {
   it('keeps loop-guard counts per run and never blocks a test run', async () => {
     for (let i = 0; i < 3; i++) {
       const provider = mockModel([{ toolCalls: [{ name: 'read_file', args: { path: 'math.js' } }] }, { text: 'Read.' }]);
-      const agent = await loadAgentDir(root, { provider, model: LIVE_MODEL });
+      const agent = await loadAgentDir(root, { approve: await kitApprove(), provider, model: LIVE_MODEL });
       await agent.send('Read math.js.');
       expect(toolOutputs(provider), `agent ${i + 1}`).not.toContain('You already called');
     }
 
     const test = { toolCalls: [{ name: 'shell', args: { command: 'node --test' } }] };
     const provider = mockModel([test, test, test, { text: 'Ran the tests three times.' }]);
-    const agent = await loadAgentDir(root, { provider, model: LIVE_MODEL });
+    const agent = await loadAgentDir(root, { approve: await kitApprove(), provider, model: LIVE_MODEL });
     await agent.send('Run the tests three times.');
     expect(toolOutputs(provider)).not.toContain('You already called');
   }, 60_000);
@@ -229,13 +238,22 @@ describe('the installed kit, loaded', () => {
   it('does not count the post-approval re-fire of a paused call', async () => {
     const { loopGuard } = (await import(pathToFileURL(path.join(root, 'hooks.ts')).href)) as typeof import('../../registry/coding-kit/hooks');
     const guard = loopGuard(2);
-    const messages: never[] = [];
-    const ctx = (resumedAfterApproval?: boolean) =>
-      ({ toolCallId: 't', toolName: 'write_file', args: { path: 'math.js' }, messages, toolCall: {}, resumedAfterApproval }) as never;
-    expect(guard.preToolCall!(ctx())).toBeUndefined();
-    expect(guard.preToolCall!(ctx(true))).toBeUndefined();
-    expect(guard.preToolCall!(ctx())).toBeUndefined();
-    expect(guard.preToolCall!(ctx())).toMatchObject({ deny: expect.stringContaining('2 times') });
+    const call = (id: string) => ({ id, type: 'function', function: { name: 'write_file', arguments: '{"path":"math.js"}' } });
+    const messages = [
+      { role: 'user', content: 'go' },
+      { role: 'assistant', content: '', toolCalls: [call('a')] },
+      { role: 'assistant', content: '', toolCalls: [call('b')] },
+    ];
+    const ctx = (toolCallId: string, resumedAfterApproval?: boolean) =>
+      ({ toolCallId, toolName: 'write_file', args: { path: 'math.js' }, messages, toolCall: call(toolCallId), resumedAfterApproval }) as never;
+    expect(guard.preToolCall!(ctx('b'))).toBeUndefined(); // one earlier call
+    expect(guard.preToolCall!(ctx('b', true))).toBeUndefined(); // its re-fire after approval
+    messages.push({ role: 'assistant', content: '', toolCalls: [call('c')] });
+    expect(guard.preToolCall!(ctx('c', true))).toBeUndefined(); // a re-fire is never denied
+    expect(guard.preToolCall!(ctx('c'))).toMatchObject({ deny: expect.stringContaining('2 times') });
+    // A new turn starts the count again.
+    messages.push({ role: 'user', content: 'again' }, { role: 'assistant', content: '', toolCalls: [call('d')] });
+    expect(guard.preToolCall!(ctx('d'))).toBeUndefined();
   });
 
   it('refuses shell commands whose arguments can write outside the project', async () => {
@@ -244,7 +262,7 @@ describe('the installed kit, loaded', () => {
       { toolCalls: [{ name: 'shell', args: { command: 'node --test --test-reporter-destination=../escaped.txt' } }] },
       { text: 'Refused.' },
     ]);
-    const agent = await loadAgentDir(root, { provider, model: LIVE_MODEL });
+    const agent = await loadAgentDir(root, { approve: await kitApprove(), provider, model: LIVE_MODEL });
 
     await agent.send('Write a report.');
 
@@ -255,7 +273,7 @@ describe('the installed kit, loaded', () => {
 
 describe('live', () => {
   it.skipIf(!process.env.OPENROUTER_API_KEY)('fixes the failing test for real on ' + LIVE_MODEL, async () => {
-    const agent = await loadAgentDir(root, { onPermissionDecision: (entry) => console.log(`  [audit] ${entry.toolName}: ${entry.decision}`) });
+    const agent = await loadAgentDir(root, { approve: await kitApprove(), onPermissionDecision: (entry) => console.log(`  [audit] ${entry.toolName}: ${entry.decision}`) });
 
     const result = await agent.send('The test in math.test.js fails. Fix it.');
 
