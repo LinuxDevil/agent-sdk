@@ -24,6 +24,7 @@ import type { OAuthTokenStore } from '../oauth/types';
 import type { TokenKeyInput } from '../oauth/tokenCipher';
 import { kvTokenStore } from './kvTokenStore';
 import { DEFAULT_KV_KEY_PREFIX, KVCheckpointStore, type KVBinding } from './kvCheckpointStore';
+import { fromKVJson, toKVJson } from './kvBytes';
 
 /** Options of {@link KVStore}. */
 export interface KVStoreOptions {
@@ -42,20 +43,6 @@ export interface KVStoreOptions {
   tokenKey?: TokenKeyInput;
 }
 
-/** Bytes inside a transcript (image and file parts) as `{ "$bytes": "<base64>" }`, the encoding of `FileSessionStore`; `Buffer` does not exist on Workers. */
-function encodeBytes(this: Record<string, unknown>, key: string, value: unknown): unknown {
-  const raw = this[key];
-  if (!(raw instanceof Uint8Array)) return value;
-  let binary = '';
-  for (let start = 0; start < raw.length; start += 0x8000) binary += String.fromCharCode(...raw.subarray(start, start + 0x8000));
-  return { $bytes: btoa(binary) };
-}
-
-function decodeBytes(_key: string, value: unknown): unknown {
-  const base64 = typeof value === 'object' && value !== null && Object.keys(value).length === 1 ? (value as Record<string, unknown>).$bytes : undefined;
-  return typeof base64 === 'string' ? Uint8Array.from(atob(base64), (char) => char.charCodeAt(0)) : value;
-}
-
 const putOptions = (expirationTtl?: number) => (expirationTtl ? { expirationTtl } : undefined);
 
 class KVSessionStore implements SessionStore {
@@ -72,11 +59,11 @@ class KVSessionStore implements SessionStore {
 
   async load(id: string): Promise<Message[] | undefined> {
     const raw = await this.kv.get(this.key(id));
-    return raw === null ? undefined : (JSON.parse(raw, decodeBytes) as Message[]);
+    return raw === null ? undefined : fromKVJson<Message[]>(raw);
   }
 
   async save(id: string, messages: readonly Message[]): Promise<void> {
-    await this.kv.put(this.key(id), JSON.stringify(messages, encodeBytes), putOptions(this.ttl));
+    await this.kv.put(this.key(id), toKVJson(messages), putOptions(this.ttl));
   }
 
   async delete(id: string): Promise<void> {
@@ -94,19 +81,19 @@ class KVApprovalStore implements ApprovalStore {
 
   async save(pending: PendingApproval, snapshot: ExecutionSnapshot): Promise<void> {
     const record: ResolvedApproval = { pending, snapshot };
-    await this.kv.put(`${this.prefix}${pending.id}`, JSON.stringify(record), putOptions(this.ttl));
+    await this.kv.put(`${this.prefix}${pending.id}`, toKVJson(record), putOptions(this.ttl));
   }
 
   async resolve(id: string): Promise<ResolvedApproval | null> {
     const raw = await this.kv.get(`${this.prefix}${id}`);
     if (raw === null) return null;
     await this.kv.delete(`${this.prefix}${id}`);
-    return JSON.parse(raw) as ResolvedApproval;
+    return fromKVJson<ResolvedApproval>(raw);
   }
 
   async load(id: string): Promise<ResolvedApproval | null> {
     const raw = await this.kv.get(`${this.prefix}${id}`);
-    return raw === null ? null : (JSON.parse(raw) as ResolvedApproval);
+    return raw === null ? null : fromKVJson<ResolvedApproval>(raw);
   }
 }
 

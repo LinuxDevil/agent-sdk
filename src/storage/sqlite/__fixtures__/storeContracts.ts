@@ -16,6 +16,38 @@ const convo: Message[] = [
   { role: 'assistant', content: 'hello' },
 ];
 
+/** A transcript holding image and file bytes (Eve DUR-F5): they must come back as `Uint8Array`, not `{ "0": 137, ... }`. */
+const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
+export const convoWithBytes: Message[] = [
+  {
+    role: 'user',
+    content: [
+      { type: 'text', text: 'photo of the dent' },
+      { type: 'image', image: png, mimeType: 'image/png' },
+      { type: 'file', data: new Uint8Array([37, 80, 68, 70]), mimeType: 'application/pdf' },
+    ],
+  },
+  { role: 'assistant', content: 'got it' },
+];
+
+const bytesOf = (messages: readonly Message[] | undefined): unknown[] =>
+  (messages ?? []).flatMap((message) =>
+    Array.isArray(message.content)
+      ? message.content.map((part) => ('image' in part ? part.image : 'data' in part ? part.data : undefined)).filter((v) => v !== undefined)
+      : []
+  );
+
+/** Asserts every image/file part came back as a `Uint8Array` with the original bytes. */
+export function expectBytesRoundTrip(messages: readonly Message[] | undefined): void {
+  const got = bytesOf(messages);
+  const want = bytesOf(convoWithBytes);
+  expect(got).toHaveLength(want.length);
+  got.forEach((value, i) => {
+    expect(value).toBeInstanceOf(Uint8Array);
+    expect(Array.from(value as Uint8Array)).toEqual(Array.from(want[i] as Uint8Array));
+  });
+}
+
 export function describeSessionStoreContract(name: string, factory: Factory<SessionStore>): void {
   describe(`SessionStore contract: ${name}`, () => {
     it('returns undefined for an id that was never saved', async () => {
@@ -46,6 +78,12 @@ export function describeSessionStoreContract(name: string, factory: Factory<Sess
       await store.save('a', messages);
       messages[0].content = 'tampered';
       expect((await store.load('a'))?.[0].content).toBe('hi');
+    });
+
+    it('round-trips image and file bytes as Uint8Array (Eve DUR-F5)', async () => {
+      const store = await factory();
+      await store.save('a', convoWithBytes);
+      expectBytesRoundTrip(await store.load('a'));
     });
 
     it('refuses invalid session ids', async () => {
@@ -99,6 +137,12 @@ export function describeCheckpointStoreContract(name: string, factory: Factory<C
       const extended = { ...makeCheckpoint(), futureField: { nested: [1, 'two'] } } as Checkpoint;
       await store.save('run-1', extended);
       expect(await store.load('run-1')).toEqual(extended);
+    });
+
+    it('round-trips image and file bytes as Uint8Array (Eve DUR-F5)', async () => {
+      const store = await factory();
+      await store.save('run-1', makeCheckpoint({ messages: convoWithBytes }));
+      expectBytesRoundTrip((await store.load('run-1'))?.messages);
     });
   });
 }
@@ -166,6 +210,14 @@ export function describeApprovalStoreContract(name: string, factory: Factory<App
       expect(await store.load!('a')).toEqual({ pending, snapshot });
       expect(await store.resolve('a')).toEqual({ pending, snapshot }); // the read did not claim it
       expect(await store.load!('a')).toBeNull();
+    });
+
+    it('round-trips image and file bytes in the snapshot as Uint8Array (Eve DUR-F5)', async () => {
+      const store = await factory();
+      const pending = makePending('a');
+      await store.save(pending, { ...makeSnapshot(pending), currentMessages: convoWithBytes });
+      expectBytesRoundTrip((await store.load!('a'))?.snapshot.currentMessages);
+      expectBytesRoundTrip((await store.resolve('a'))?.snapshot.currentMessages);
     });
   });
 }

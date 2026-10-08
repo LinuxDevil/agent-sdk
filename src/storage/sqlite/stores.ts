@@ -140,7 +140,7 @@ export class SqliteApprovalStore implements ApprovalStore {
     const record: ResolvedApproval = { pending, snapshot };
     const now = Date.now();
     this.connection.transaction(() => {
-      this.sql.get(upsert('approvals', 'id')).run(pending.id, JSON.stringify(record), now, now);
+      this.sql.get(upsert('approvals', 'id')).run(pending.id, JSON.stringify(record, encodeBytes), now, now);
       // Saving again re-opens an approval that was already resolved.
       this.sql.get('UPDATE approvals SET resolved_at = NULL WHERE id = ?').run(pending.id);
     });

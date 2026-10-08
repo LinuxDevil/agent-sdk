@@ -20,7 +20,7 @@ import {
   makePending,
   makeSnapshot,
 } from './__fixtures__/storeContracts';
-import { MemorySessionStore, FileSessionStore } from '../../session/sessionStore';
+import { MemorySessionStore, FileSessionStore, decodeBytes, encodeBytes } from '../../session/sessionStore';
 import type { Checkpoint, CheckpointStore } from '../../execution/checkpoint';
 import type { ApprovalStore, ResolvedApproval } from '../../execution/ApprovalGate';
 import { AgentExecutor } from '../../execution/AgentExecutor';
@@ -53,11 +53,11 @@ function inMemoryCheckpointStore(): CheckpointStore {
   const map = new Map<string, string>();
   return {
     async save(id, checkpoint) {
-      map.set(id, JSON.stringify(checkpoint));
+      map.set(id, JSON.stringify(checkpoint, encodeBytes));
     },
     async load(id) {
       const raw = map.get(id);
-      return raw === undefined ? null : (JSON.parse(raw) as Checkpoint);
+      return raw === undefined ? null : (JSON.parse(raw, decodeBytes) as Checkpoint);
     },
     async delete(id) {
       map.delete(id);
@@ -69,17 +69,17 @@ function inMemoryApprovalStore(): ApprovalStore {
   const map = new Map<string, string>();
   return {
     async save(pending, snapshot) {
-      map.set(pending.id, JSON.stringify({ pending, snapshot }));
+      map.set(pending.id, JSON.stringify({ pending, snapshot }, encodeBytes));
     },
     async load(id) {
       const raw = map.get(id);
-      return raw === undefined ? null : (JSON.parse(raw) as ResolvedApproval);
+      return raw === undefined ? null : (JSON.parse(raw, decodeBytes) as ResolvedApproval);
     },
     async resolve(id) {
       const raw = map.get(id);
       if (raw === undefined) return null;
       map.delete(id);
-      return JSON.parse(raw) as ResolvedApproval;
+      return JSON.parse(raw, decodeBytes) as ResolvedApproval;
     },
   };
 }
