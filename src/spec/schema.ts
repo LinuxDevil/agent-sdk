@@ -9,7 +9,7 @@
  */
 import { z } from 'zod';
 import { anyError, typeErrors, type SafeParser } from '../utils/zodCompat';
-import type { McpApproval } from '../tools/mcp/McpToolLoader';
+import type { McpApproval, McpToolFilter } from '../tools/mcp/McpToolLoader';
 import type { RunLimits } from '../execution/budget';
 import { guardrailEntrySchema, type AgentSpecGuardrail } from './guardrailOptions';
 
@@ -69,6 +69,8 @@ export interface McpStdioServerSpec {
   deferLoading?: boolean;
   /** How long one tool call may take, in milliseconds. Default: the MCP SDK's 60 seconds. */
   timeoutMs?: number;
+  /** Load only some of this server's tools, by their MCP names: `{ include?, exclude? }`. */
+  tools?: McpToolFilter;
 }
 
 /**
@@ -99,6 +101,8 @@ export interface McpHttpServerSpec {
   deferLoading?: boolean;
   /** How long one tool call may take, in milliseconds. Default: the MCP SDK's 60 seconds. */
   timeoutMs?: number;
+  /** Load only some of this server's tools, by their MCP names: `{ include?, exclude? }`. */
+  tools?: McpToolFilter;
   /** Sign in to this server with OAuth (N9c); see {@link McpOAuthOptions}. */
   oauth?: McpOAuthOptions;
 }
@@ -179,7 +183,7 @@ const MCP_PREFIX = 'AgentSpec validation failed:';
 const mcpStringMap = (field: string) =>
   z.record(z.string(), z.string(), typeErrors({ invalid: `${MCP_PREFIX} '${field}' must be a map of string to string` }));
 
-/** `approval`: a mode, or (in code, not YAML/JSON) a predicate over a tool's name and annotations. */
+/** `approval`: a mode, or (in code, not YAML/JSON) a predicate over a tool's name, annotations and call arguments. */
 const mcpApprovalSchema = z.union(
   [z.enum(['annotations', 'always', 'never']), z.custom<McpApproval>((value) => typeof value === 'function')],
   anyError(`${MCP_PREFIX} 'approval' must be 'annotations', 'always' or 'never'`)
@@ -212,6 +216,17 @@ const mcpMilliseconds = (field: string) =>
     .number(typeErrors({ invalid: `${MCP_PREFIX} '${field}' must be a number of milliseconds` }))
     .positive(`${MCP_PREFIX} '${field}' must be a positive number of milliseconds`)
     .finite(`${MCP_PREFIX} '${field}' must be a positive number of milliseconds`);
+
+const mcpToolNames = (field: string) =>
+  z.array(z.string(), typeErrors({ invalid: `${MCP_PREFIX} 'tools.${field}' must be a list of tool names` }));
+
+/** `tools` of an entry: which of the server's tools to load. */
+const mcpToolFilterSchema = z
+  .object(
+    { include: mcpToolNames('include').optional(), exclude: mcpToolNames('exclude').optional() },
+    typeErrors({ invalid: `${MCP_PREFIX} 'tools' must be an object with 'include' and/or 'exclude'` })
+  )
+  .strict();
 
 /** What is wrong with a loosely-parsed `mcpServers` entry, if anything. */
 function mcpServerProblem(server: Record<string, unknown>): string | undefined {
@@ -251,6 +266,7 @@ const mcpServerSchema = z
       oauth: mcpOAuthSchema.optional(),
       deferLoading: z.boolean(typeErrors({ invalid: `${MCP_PREFIX} 'deferLoading' must be true or false` })).optional(),
       timeoutMs: mcpMilliseconds('timeoutMs').optional(),
+      tools: mcpToolFilterSchema.optional(),
     },
     typeErrors({ invalid: `${MCP_PREFIX} each mcpServers entry must be an object with 'command' or 'url'` })
   )

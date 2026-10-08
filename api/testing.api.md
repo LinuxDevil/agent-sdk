@@ -77,6 +77,7 @@ const ERROR_CODES: {
     readonly LOUSHO_SPEC_UNKNOWN_FIELD: "Rename the field to the suggested spec field, or remove it.";
     readonly LOUSHO_SPEC_UNSUPPORTED_FORMAT: "Save the spec as .yaml, .yml or .json.";
     readonly LOUSHO_SCHEDULE_INVALID: "Fix the cron expression named in the message, and give the schedule exactly one of `prompt` or `run`.";
+    readonly LOUSHO_SCHEDULE_RUN_INCOMPLETE: "Resolve the pending approval named in the message, or change the prompt, tools or limits so an unattended turn can finish.";
     readonly LOUSHO_CHANNEL_INVALID: "Default-export a channel from defineChannel(), httpChannel(), webhookChannel() or slackChannel() in each channels/ file.";
     readonly LOUSHO_MEMORY_INVALID: "Default-export a memory slot from defineMemory() (or an object with a scope and a provider) in each memory/ file.";
     readonly LOUSHO_REGISTRY_UNREACHABLE: "Check the --registry url or path (http(s) or a local file) and that you are online; the message names what failed.";
@@ -710,9 +711,9 @@ interface ToolExecutionContext {
 
 // Warnings were encountered during analysis:
 //
-// dist/index-CDCdpMkc.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-CDCdpMkc.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-CDCdpMkc.d.ts:1428:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
+// dist/index-DmsA2WFr.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-DmsA2WFr.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-DmsA2WFr.d.ts:1429:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

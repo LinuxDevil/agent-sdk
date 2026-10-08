@@ -27,6 +27,14 @@ describe('AgentSpec.mcpServers (LOU-D20)', () => {
     ]);
   });
 
+  it("accepts a per-server 'tools' filter and rejects a malformed one (audit D4)", () => {
+    const mcpServers: AgentSpec['mcpServers'] = { fs: { command: 'npx', tools: { include: ['read'], exclude: ['write'] } } };
+    expect(agentSpecSchema.parse({ ...base, mcpServers }).mcpServers).toEqual(mcpServers);
+    expect(issues({ fs: { command: 'npx', tools: { include: 'read' } } })).toEqual([
+      "mcpServers.fs.tools.include: AgentSpec validation failed: 'tools.include' must be a list of tool names",
+    ]);
+  });
+
   it("accepts a per-server 'approval' mode (or a predicate in code) on both shapes (LOU-Z5)", () => {
     const predicate = () => true;
     const mcpServers: AgentSpec['mcpServers'] = {
