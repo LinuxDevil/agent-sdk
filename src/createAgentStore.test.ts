@@ -159,4 +159,25 @@ describe('createAgent({ store }) defaults and precedence (LOU-D30)', () => {
     await createAgent({ provider: mockModel(['Hi.']), store }).send('hi');
     expect(await store.checkpoints.load('job-1')).toBeNull();
   });
+
+  // Eve DUR-F2: concurrent send({ sessionId }) calls on one id read the same 'finished' checkpoint and the last save dropped the other turn.
+  it.each(stores)('concurrent send()/stream() with one sessionId run one after another, keeping every turn (%s)', async (_name, makeStore) => {
+    const store = makeStore();
+    const echo: MockTurn = (request) => ({ text: `ack ${String(request.messages.at(-1)?.content)}`, delayMs: 20 });
+    const agent = createAgent({ provider: mockModel([echo], { onExhausted: 'repeat-last' }), store });
+    await agent.send('first', { sessionId: 'chat-42' });
+
+    const streamed = agent.stream('order ramen', { sessionId: 'chat-42' });
+    const results = await Promise.all([
+      agent.send('order pizza', { sessionId: 'chat-42' }),
+      agent.send('order sushi', { sessionId: 'chat-42' }),
+      streamed.result,
+    ]);
+
+    expect(results.map((r) => r.finishReason)).toEqual(['stop', 'stop', 'stop']);
+    const users = (await store.checkpoints.load('chat-42'))!.messages.filter((m) => m.role === 'user').map((m) => m.content);
+    expect(users[0]).toBe('first');
+    expect(users.slice(1).sort()).toEqual(['order pizza', 'order ramen', 'order sushi']);
+    store.close?.();
+  });
 });

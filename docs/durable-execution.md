@@ -474,9 +474,12 @@ if (original && replayed) {
 
 ## Limits
 
-- A `sessionId` identifies one logical conversation; running two
-  `send()` calls (or two `execute()` calls) on the same id at the same time
-  is not supported.
+- A `sessionId` identifies one logical conversation. Concurrent
+  `agent.send()` / `agent.stream()` calls with the same `sessionId` on one
+  agent store run one after another, in call order, in this process. Two
+  processes (or two store objects over the same data), or two raw
+  `AgentExecutor.execute()` calls, on the same id at the same time are not
+  supported: the last save wins.
 - If you call `resumeAfterApproval()` (the function behind
   `agent.approvals.resolve()`) without the `checkpointStore`, the session
   keeps its `'awaiting-approval'` mark and later `send()` (or `execute()`)
