@@ -16,6 +16,7 @@ import { emptyRunUsage } from '../execution/runUsage';
 import { WebhookTriggerAdapter, type WebhookTriggerHandle } from '../triggers/adapters/WebhookTriggerAdapter';
 import type { WebhookAuth } from '../triggers/webhookAuth';
 import { mountChannels } from './mountChannels';
+import { mountFetchChannels } from './fetchChannels';
 import { webhookChannel } from './webhookChannel';
 import type { Channel } from './defineChannel';
 import { defineMemory, inMemoryMemory, type MemoryScopeContext } from '../memory';
@@ -155,5 +156,39 @@ describe('webhookChannel parity with WebhookTriggerAdapter (LOU-P7, D13 vectors)
 
     expect(res.status).toBe(200);
     expect(scopes[0]?.principal).toBeUndefined();
+  });
+});
+
+describe('webhookChannel on a Fetch host (Eve E17 / F2)', () => {
+  const fakeAgent = {
+    session: () => ({
+      stream: () => ({
+        async *[Symbol.asyncIterator]() {
+          yield { type: 'text.delta', text: 'ok' };
+        },
+        result: Promise.resolve({ text: 'ok', finishReason: 'stop' }),
+      }),
+      pending: async () => undefined,
+      resume: async () => undefined,
+    }),
+    approvals: { list: async () => [], get: async () => undefined },
+  };
+  const post = async (auth: WebhookAuth, headers: Record<string, string>) => {
+    const handler = mountFetchChannels(fakeAgent as never, [webhookChannel({ auth })]);
+    const res = await handler(new Request('http://h/channels/webhook', { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body }), { waitUntil: () => {} });
+    return res?.status;
+  };
+
+  it('accepts a correctly signed request and rejects a bad one', async () => {
+    expect(await post(hmacAuth, { 'x-signature-256': `sha256=${hmac(body)}` })).toBe(200);
+    expect(await post(hmacAuth, { 'x-signature-256': `sha256=${hmac(body, 'wrong')}` })).toBe(401);
+  });
+
+  it('supports bearer and custom auth', async () => {
+    expect(await post({ type: 'bearer', token: 't' }, { authorization: 'Bearer t' })).toBe(200);
+    expect(await post({ type: 'bearer', token: 't' }, { authorization: 'Bearer x' })).toBe(401);
+    const custom: WebhookAuth = { type: 'custom', verify: (req) => req.headers['x-api-key'] === 'k' };
+    expect(await post(custom, { 'x-api-key': 'k' })).toBe(200);
+    expect(await post(custom, {})).toBe(401);
   });
 });

@@ -43,11 +43,23 @@ function parseWebhookInput(raw: string): { input: string; sessionKey?: unknown; 
   }
 }
 
+/**
+ * The request `checkWebhookAuth` reads headers from. A Node request is passed
+ * through (custom verifiers may use other fields); on a Fetch host `native` is
+ * a `Request` whose `Headers` cannot be indexed node-style, so the channel's
+ * normalized (lower-cased) headers stand in for it.
+ */
+function authRequest(req: ChannelRequest): IncomingMessage {
+  const headers = (req.native as { headers?: unknown } | undefined)?.headers;
+  const nodeStyle = headers !== undefined && typeof (headers as { get?: unknown }).get !== 'function';
+  return (nodeStyle ? req.native : { headers: req.headers }) as IncomingMessage;
+}
+
 /** Checks `req` against `auth`; `reason` (never a secret or signature) says why it failed. */
 async function verifyWebhook(auth: WebhookAuth | undefined, req: ChannelRequest): Promise<ChannelAuthResult> {
   if (!auth) return { ok: true };
   const body = Buffer.from(req.rawBody.buffer, req.rawBody.byteOffset, req.rawBody.byteLength);
-  const reason = await checkWebhookAuth(auth, (req.native ?? { headers: req.headers }) as IncomingMessage, body);
+  const reason = await checkWebhookAuth(auth, authRequest(req), body);
   return { ok: reason === undefined, reason };
 }
 
