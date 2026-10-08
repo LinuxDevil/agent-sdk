@@ -101,6 +101,9 @@ function toRpcError(error: unknown): Json {
   return { code: -32603, message, data: { code: /\[([A-Z][A-Z0-9_]+)\]/.exec(message)?.[1] ?? 'LOUSHO_GENERIC_ERROR' } };
 }
 
+const isObject = (value: unknown): value is Json => typeof value === 'object' && value !== null && !Array.isArray(value);
+const isId = (value: unknown): value is Id => value === null || typeof value === 'string' || typeof value === 'number';
+
 /**
  * Serves `agent` over ACP until `input` ends. One ACP session is one SDK
  * session (`agent.session()`), so its prompts share history. Tool approvals
@@ -237,7 +240,12 @@ export async function serveAcp(agent: SimpleAgent, options: ServeAcpOptions): Pr
   };
 
   function dispatch(message: RpcMessage): void {
-    const { id, method, params = {} } = message;
+    const { id, method } = message;
+    // A null or non-object `params` reads as empty: a handler never destructures null.
+    const params = isObject(message.params) ? message.params : {};
+    if (method !== undefined && typeof method !== 'string') {
+      return void send({ id: isId(id) ? id : null, error: { code: -32600, message: 'Invalid Request' } });
+    }
     if (method === undefined) return void (id !== undefined && waiting.get(String(id))?.(message));
     if (id === undefined) return void notifications[method]?.(params);
     const handler = methods[method];
@@ -259,7 +267,17 @@ export async function serveAcp(agent: SimpleAgent, options: ServeAcpOptions): Pr
       send({ id: null, error: { code: -32700, message: 'Parse error' } });
       continue;
     }
-    dispatch(message);
+    // A line that parses to null, an array, a string or a number is not a JSON-RPC message.
+    if (!isObject(message)) {
+      send({ id: null, error: { code: -32600, message: 'Invalid Request' } });
+      continue;
+    }
+    try {
+      dispatch(message);
+    } catch (error) {
+      // A throwing notification handler must not end the server.
+      if (message.id !== undefined && typeof message.method === 'string') send({ id: isId(message.id) ? message.id : null, error: toRpcError(error) });
+    }
   }
   // The client went away: stop what is running and let it settle.
   for (const session of sessions.values()) session.abort?.abort();

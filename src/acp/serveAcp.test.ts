@@ -271,6 +271,19 @@ describe('serveAcp', () => {
     await c.end();
   });
 
+  it('answers -32600 for a line that is not a JSON-RPC object and keeps serving (Eve TOOLS-F14)', async () => {
+    const c = client([]);
+    for (const bad of ['null', '[]', '"str"', '42', '{"id":9,"method":7}']) c.push(bad);
+    await c.waitFor(() => c.out.filter((m) => m.error?.code === (-32600 as unknown as Loose)).length === 5);
+    expect(c.out.filter((m) => m.id === null).map((m) => m.error.code)).toEqual([-32600, -32600, -32600, -32600]);
+    expect(c.out.find((m) => m.id === 9)?.error).toMatchObject({ code: -32600 });
+    // A null params on a request or a notification is answered, not a crash.
+    c.push(JSON.stringify({ jsonrpc: '2.0', method: 'session/cancel', params: null }));
+    expect((await c.call('session/new', null)).result.sessionId).toMatch(/^acp-/);
+    expect((await c.call('initialize', {})).result.protocolVersion).toBe(1);
+    await c.end();
+  });
+
   it('turns a failed run into a JSON-RPC error carrying the SDK error code', async () => {
     const c = client([{ error: new Error('boom') }]);
     const sessionId = await c.newSession();
