@@ -90,6 +90,30 @@ const result = await lead.send('What is the weather in Paris?');
 console.log(result.text);
 ```
 
+## Optional fields
+
+Optional fields work on strict structured-output endpoints (OpenAI,
+OpenRouter), which require every property to be listed in `required`. In the
+JSON Schema sent to the model, each optional property (`.optional()`,
+`.default()`) is required and nullable instead, at every level: nested
+objects, array items and union branches. A `null` the model returns for such a
+field is removed before validation, so the schema you wrote still validates it
+and `result.object` has no key for it. A field that accepts `null` itself
+(`.nullable()`, `.nullish()`) keeps the `null`.
+
+```ts
+import { z } from 'zod';
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({
+  model: 'openrouter/openai/gpt-4o-mini',
+  output: z.object({ verdict: z.string(), note: z.string().optional() }),
+});
+const { object } = await agent.send('Review this change.');
+// The model may answer {"verdict":"approve","note":null}; object is { verdict: 'approve' }.
+console.log(object?.note); // typed: string | undefined
+```
+
 ## How it works
 
 1. The system prompt gets an `## Output format` section asking for the final

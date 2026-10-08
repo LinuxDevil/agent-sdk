@@ -195,3 +195,91 @@ describe('structured output (LOU-V4)', () => {
     expect(schema.additionalProperties).toBe(false);
   });
 });
+
+describe('structured output with optional fields (audit A6)', () => {
+  // OpenAI-strict json_schema requires `required` to list every key of
+  // `properties`; an optional field is sent required + nullable instead,
+  // and the model's `null` for it is read back as an absent key.
+  type Node = { anyOf?: Node[]; type?: unknown; required?: string[]; properties?: Record<string, Node>; items?: Node };
+  const sentSchema = (model: ReturnType<typeof mockModel>) => model.calls[0].responseFormat?.schema as Node;
+
+  it('zod 4: lists every key in required and makes optional ones nullable (nested, in items, in union branches)', async () => {
+    const output = z4.object({
+      title: z4.string(),
+      note: z4.string().optional(),
+      score: z4.number().nullable(),
+      geo: z4.object({ lat: z4.number(), label: z4.string().optional() }),
+      hits: z4.array(z4.object({ id: z4.string(), line: z4.number().int().optional() })),
+      choice: z4.union([z4.object({ a: z4.string().optional() }), z4.object({ b: z4.number() })]),
+    });
+    const model = mockModel(['{"title":"t","note":null,"score":null,"geo":{"lat":1,"label":null},"hits":[],"choice":{"b":1}}']);
+    await createAgent({ provider: model, output }).send('go');
+
+    const schema = sentSchema(model);
+    expect(schema.required).toEqual(['title', 'note', 'score', 'geo', 'hits', 'choice']);
+    expect(schema.properties?.note).toEqual({ anyOf: [{ type: 'string' }, { type: 'null' }] });
+    // Already nullable: kept as is, not wrapped again.
+    expect(JSON.stringify(schema.properties?.score)).not.toContain('"anyOf":[{"anyOf"');
+    expect(schema.properties?.geo.required).toEqual(['lat', 'label']);
+    expect(schema.properties?.geo.properties?.label).toEqual({ anyOf: [{ type: 'string' }, { type: 'null' }] });
+    expect(schema.properties?.hits.items?.required).toEqual(['id', 'line']);
+    expect(schema.properties?.choice.anyOf?.map((b) => b.required)).toEqual([['a'], ['b']]);
+  });
+
+  it('zod 3: the same normalization on the ai converter path', async () => {
+    const output = z.object({ a: z.string().optional(), b: z.number().nullable().optional(), n: z.object({ x: z.string().optional() }) });
+    const model = mockModel(['{"a":null,"b":null,"n":{"x":null}}']);
+    const result = await createAgent({ provider: model, output }).send('go');
+
+    const schema = sentSchema(model);
+    expect(schema.required).toEqual(['a', 'b', 'n']);
+    expect(schema.properties?.a).toEqual({ anyOf: [{ type: 'string' }, { type: 'null' }] });
+    expect(schema.properties?.b).toEqual({ type: ['number', 'null'] });
+    expect(schema.properties?.n.required).toEqual(['x']);
+    // `b` accepts null itself, so its null is kept; `a` and `n.x` read back as absent.
+    expect(result.object).toEqual({ b: null, n: {} });
+    expect(result.object).not.toHaveProperty('a');
+  });
+
+  it('zod 4: a reply with null for optional keys validates, and the keys are absent in result.object', async () => {
+    const output = z4.object({
+      verdict: z4.enum(['approve', 'request_changes']),
+      summary: z4.string().optional(),
+      maybe: z4.string().nullish(),
+      issues: z4.array(z4.object({ file: z4.string(), line: z4.number().int().optional() })),
+      meta: z4.object({ by: z4.string().optional() }).optional(),
+    });
+    const reply = '{"verdict":"approve","summary":null,"maybe":null,"issues":[{"file":"a.ts","line":null},{"file":"b.ts","line":3}],"meta":{"by":null}}';
+    const result = await createAgent({ provider: mockModel([reply]), output }).send('go');
+
+    expect(result.outputError).toBeUndefined();
+    expect(result.steps).toBe(1);
+    expect(result.object).toEqual({ verdict: 'approve', maybe: null, issues: [{ file: 'a.ts' }, { file: 'b.ts', line: 3 }], meta: {} });
+    expect(result.object).not.toHaveProperty('summary');
+    expect((result.object as { issues: object[] }).issues[0]).not.toHaveProperty('line');
+  });
+
+  it('zod 4: null for an optional object is dropped too, and a recursive ($ref) schema is walked', async () => {
+    type Tree = { name: string; children?: Tree[] };
+    const tree: z4.ZodType<Tree> = z4.object({
+      name: z4.string(),
+      get children() {
+        return z4.array(tree).optional();
+      },
+    });
+    const model = mockModel(['{"name":"root","children":[{"name":"leaf","children":null}]}']);
+    const result = await createAgent({ provider: model, output: tree }).send('go');
+
+    expect(result.outputError).toBeUndefined();
+    expect(result.object).toEqual({ name: 'root', children: [{ name: 'leaf' }] });
+    expect(sentSchema(model).required).toEqual(['name', 'children']);
+  });
+
+  it('still reports a null for a required, non-nullable key', async () => {
+    const output = z4.object({ city: z4.string(), note: z4.string().optional() });
+    const result = await createAgent({ provider: mockModel(['{"city":null}', '{"city":null}']), output }).send('go');
+
+    expect(result.finishReason).toBe('output-invalid');
+    expect(result.outputError?.issues[0].path).toBe('city');
+  });
+});
