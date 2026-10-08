@@ -28,7 +28,7 @@ import {
   AgentEventPayload,
   AgentEventUsage,
 } from './agentEvents';
-import { parseToolArguments } from './toolArgsValidation';
+import { decodeToolArguments } from './toolArgsValidation';
 import type { PermissionDecisionEntry } from './permissions';
 import { canStream, generateViaStream, reportReasoning, type StepSink } from './streamStep';
 import { measureUsage } from './runUsage';
@@ -318,13 +318,16 @@ class RunEvents {
     this.toolStarts.set(toolStartKey(toolCall.id, subagent), Date.now());
     // N13b: a call that runs again (after a sign-in, or on a resume) counts its snapshots from 0.
     this.partials.delete(toolStartKey(toolCall.id, subagent));
-    const args = parseToolArguments(toolCall, {});
+    const decoded = decodeToolArguments(toolCall.function.arguments);
+    const args = decoded.ok ? decoded.value : {};
     this.emit(
       {
         type,
         toolCallId: toolCall.id,
         toolName: toolCall.function.name,
         args: (typeof args === 'object' && args !== null ? args : {}) as Record<string, unknown>,
+        // F7: the text the model sent, when it was not valid JSON as sent.
+        ...((!decoded.ok || decoded.repaired) && { rawArgs: String(toolCall.function.arguments) }),
         ...parentOf(parent),
       },
       subagent

@@ -48,6 +48,7 @@ import {
   parseToolArguments,
   runToolCall,
 } from './toolCallExecution';
+import { resolveToolCallNames } from './toolNames';
 import {
   StartedToolCall,
   ToolBatchResult,
@@ -1039,7 +1040,9 @@ export class AgentExecutor {
 
     const text = await this.guardOutput(options, state, generated);
     if (typeof text !== 'string') return text;
-    const result = { ...generated, text };
+    // F13: `functions.read_file` runs `read_file` when that is a known tool.
+    const known = new Set([...tools.map((tool) => tool.function.name), ...(options.toolRegistry?.list() ?? [])]);
+    const result = { ...generated, text, toolCalls: resolveToolCallNames(generated.toolCalls, known) };
     noteReasoning(state, result.reasoning);
 
     // Handle text response
