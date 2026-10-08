@@ -254,6 +254,10 @@ export function getRetryDelay(error: Error): number | undefined {
  * - 'context-length-exceeded': the request itself is too large for the
  *   model's context window. Handling: truncate/summarize history and
  *   retry - retrying the SAME request verbatim will never succeed.
+ * - 'quota-exceeded': the account is out of quota or credits (OpenAI's
+ *   `insufficient_quota` 429, a 402 such as OpenRouter's "Insufficient
+ *   credits"). Handling: fail immediately - waiting does not add credit; a
+ *   human must top up, or the caller falls back to another provider.
  * - 'auth-failure': bad/missing/revoked API key, or a 401/403 response.
  *   Handling: fail immediately and surface to a human - no amount of
  *   retrying or context-shrinking fixes an invalid credential.
@@ -265,6 +269,7 @@ export type CompactedProviderErrorCategory =
   | 'rate-limit'
   | 'timeout'
   | 'context-length-exceeded'
+  | 'quota-exceeded'
   | 'auth-failure'
   | 'unknown';
 
@@ -325,6 +330,9 @@ function truncateMessage(message: string): string {
 const CONTEXT_LENGTH_PATTERN =
   /context.length|context.window|context_length_exceeded|context.size|exceed_context_size|\bn_ctx\b|maximum context|max(?:imum)? tokens|too many tokens|reduce the length|prompt is too long/i;
 const TIMEOUT_PATTERN = /\btimed?.?out\b|\betimedout\b|\babort(ed)?\b/i;
+// Billing, not throttling: waiting never helps. Deliberately narrow (a bare
+// "quota" also appears in retryable per-minute limits).
+const QUOTA_PATTERN = /insufficient_quota|exceeded your current quota|insufficient credits|payment required/i;
 const RATE_LIMIT_PATTERN = /rate.?limit|too many requests/i;
 const AUTH_PATTERN =
   /unauthorized|invalid api key|incorrect api key|authentication|api key.*(missing|invalid|not found)|\bforbidden\b/i;
@@ -363,6 +371,9 @@ function categorizeMessage(message: string): {
   if (AUTH_PATTERN.test(message)) {
     return { category: 'auth-failure', retryable: false };
   }
+  if (QUOTA_PATTERN.test(message)) {
+    return { category: 'quota-exceeded', retryable: false };
+  }
   if (RATE_LIMIT_PATTERN.test(message)) {
     return { category: 'rate-limit', retryable: true };
   }
@@ -386,6 +397,10 @@ function categorizeApiCallError(err: APICallError): {
 
   if (status === 401 || status === 403) {
     return { category: 'auth-failure', retryable: false };
+  }
+  // Before the 429 check: OpenAI sends an out-of-credit account as a 429.
+  if (status === 402 || QUOTA_PATTERN.test(text)) {
+    return { category: 'quota-exceeded', retryable: false };
   }
   if (status === 429) {
     return { category: 'rate-limit', retryable: true };

@@ -191,7 +191,8 @@ or pass your own `provider` instance.
 
 **Means:** a model call failed (`LLMProviderError`, and
 `CompactedLLMProviderError`, whose `compacted.category` says why:
-`rate-limit`, `timeout`, `context-length-exceeded`, `auth-failure`, `unknown`).
+`rate-limit`, `timeout`, `context-length-exceeded`, `quota-exceeded`, `auth-failure`,
+`unknown`).
 A context overflow is `context-length-exceeded` (not retryable) whatever the
 status, including llama.cpp / LM Studio's "exceeds the available context size"
 and "Context size has been exceeded", and whether it arrives from the request
@@ -200,7 +201,9 @@ e.g. `connection refused (ECONNREFUSED) at http://localhost:1234/v1/responses -
 is the server running?`. When the provider's error body could not be parsed
 (the message is only `Bad Request`), a short snippet of the body is appended.
 
-**Fix:** for `auth-failure`, fix the API key; for `context-length-exceeded`,
+**Fix:** for `quota-exceeded` (OpenAI's `insufficient_quota` 429, a 402 such as
+OpenRouter's "Insufficient credits"; not retryable, retrying cannot add credit),
+top up the account or fall back to another provider; for `auth-failure`, fix the API key; for `context-length-exceeded`,
 shorten the conversation (see [Context compaction](./compaction.md)); for
 transient failures, use `withRetry()` / `fallbackModels`
 (see [Providers](./providers.md)).

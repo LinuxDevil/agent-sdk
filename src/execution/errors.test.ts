@@ -239,6 +239,30 @@ describe('Error Classes', () => {
       expect(compacted.error).toBe('Rate limit reached for requests');
     });
 
+    it.each([
+      [429, '{"error":{"type":"insufficient_quota","code":"insufficient_quota","message":"You exceeded your current quota, please check your plan and billing details."}}'],
+      [402, '{"error":{"message":"Insufficient credits. Add more using https://openrouter.ai/settings/credits","code":402}}'],
+    ])('maps a %i out-of-quota response to a non-retryable quota-exceeded (Eve PROV-F6)', (statusCode, responseBody) => {
+      const raw = new APICallError({
+        message: 'Provider returned error',
+        url: 'https://api.example.com/v1/chat/completions',
+        requestBodyValues: {},
+        statusCode,
+        responseBody,
+        isRetryable: statusCode === 429,
+      });
+
+      expect(compactProviderError(raw)).toMatchObject({ category: 'quota-exceeded', retryable: false, statusCode });
+    });
+
+    it('maps an in-stream insufficient_quota message to quota-exceeded, but a plain rate limit stays retryable', () => {
+      expect(compactProviderError(new Error('You exceeded your current quota (insufficient_quota)'))).toMatchObject({
+        category: 'quota-exceeded',
+        retryable: false,
+      });
+      expect(compactProviderError(new Error('Rate limit reached for requests'))).toMatchObject({ category: 'rate-limit', retryable: true });
+    });
+
     it('maps a 401 APICallError (bad/revoked API key) to auth-failure/non-retryable', () => {
       const raw = new APICallError({
         message: 'Incorrect API key provided',
