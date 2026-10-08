@@ -91,6 +91,8 @@ export * from './agentDir';
 // Claude-Code-compatible project context (CLAUDE.md, .claude/{skills,agents,rules,scratchpad})
 export * from './claude';
 
+export * from './decisions';
+
 // Schedules: defineSchedule() and startSchedules() (LOU-P8)
 export * from './schedules';
 

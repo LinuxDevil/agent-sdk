@@ -1091,6 +1091,37 @@ export interface CheckpointStore {
 // @public
 type CheckpointUsage = Pick<RunUsage, 'promptTokens' | 'completionTokens' | 'totalTokens'> & Partial<RunUsage>;
 
+// @public (undocumented)
+export interface ChoiceAnswer {
+    // (undocumented)
+    choice: string;
+    // (undocumented)
+    confidence: number;
+    // (undocumented)
+    name: string;
+    probabilities: {
+        value: string;
+        probability: number;
+    }[];
+    // (undocumented)
+    type: 'choice';
+}
+
+// @public
+export interface ChoiceQuestion {
+    // (undocumented)
+    choices: {
+        value: string;
+        description?: string;
+    }[];
+    // (undocumented)
+    instructions: string;
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    type: 'choice';
+}
+
 // @public
 export interface ClaudeProject {
     instructions?: string;
@@ -1469,6 +1500,59 @@ interface CustomWebhookAuth {
 
 // @public
 export const dayNameTool: ToolDescriptor;
+
+// @public
+export function decide(options: DecideOptions): Promise<DecisionResult>;
+
+// @public (undocumented)
+export interface DecideOptions {
+    apiKey?: string;
+    baseURL?: string;
+    fetch?: typeof globalThis.fetch;
+    input: string | DecisionInputMessage[];
+    model?: string;
+    questions: DecisionQuestion[];
+    signal?: AbortSignal;
+    timeoutMs?: number;
+}
+
+// @public (undocumented)
+export type DecisionAnswer = PredicateAnswer | ChoiceAnswer | ScoreAnswer | RefusalAnswer;
+
+// @public
+export interface DecisionImagePart {
+    image_url: string;
+    // (undocumented)
+    type: 'input_image';
+}
+
+// @public
+export interface DecisionInputMessage {
+    // (undocumented)
+    content: DecisionInputPart[];
+    // (undocumented)
+    role: string;
+}
+
+// @public (undocumented)
+export type DecisionInputPart = DecisionTextPart | DecisionImagePart;
+
+// @public (undocumented)
+export type DecisionQuestion = PredicateQuestion | ChoiceQuestion | ScoreQuestion;
+
+// @public (undocumented)
+export interface DecisionResult {
+    // (undocumented)
+    answers: DecisionAnswer[];
+}
+
+// @public
+export interface DecisionTextPart {
+    // (undocumented)
+    text: string;
+    // (undocumented)
+    type: 'input_text';
+}
 
 // @public
 export const DEFAULT_CHECKPOINT_HISTORY_LIMIT = 50;
@@ -4492,6 +4576,26 @@ export interface PostToolCallOutcome {
     result: unknown;
 }
 
+// @public (undocumented)
+export interface PredicateAnswer {
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    probability: number;
+    // (undocumented)
+    type: 'predicate';
+}
+
+// @public
+export interface PredicateQuestion {
+    // (undocumented)
+    instructions: string;
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    type: 'predicate';
+}
+
 // @public
 export function prepareCompaction(messages: Message[], options: CompactMessagesOptions, signal?: AbortSignal): {
     strategy: CompactionStrategy;
@@ -4719,6 +4823,14 @@ interface ReceiptEntry {
 
 // @public
 export function recordSpanError(span: Span, error: unknown): void;
+
+// @public
+export interface RefusalAnswer {
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    type: 'refusal';
+}
 
 // @public
 export function regexGuardrail(options: {
@@ -5130,8 +5242,40 @@ interface SchemaIssue {
     }>;
 }
 
+// @public (undocumented)
+export interface ScoreAnswer {
+    // (undocumented)
+    confidence: number;
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    probabilities: {
+        value: number;
+        label: string;
+        probability: number;
+    }[];
+    score: number;
+    // (undocumented)
+    type: 'score';
+}
+
 // @public
 export function scoreAssertion(score: number, threshold: number): AssertionResult;
+
+// @public
+export interface ScoreQuestion {
+    // (undocumented)
+    instructions: string;
+    // (undocumented)
+    levels: {
+        label: string;
+        description?: string;
+    }[];
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    type: 'score';
+}
 
 // @public
 const SDK_ERROR_BRAND: unique symbol;
@@ -6577,7 +6721,7 @@ export type VectorMemoryProvider = MemoryProvider & {
 };
 
 // @public
-export const VERSION = "1.0.0-alpha.5";
+export const VERSION = "1.0.0-alpha.15";
 
 // @public (undocumented)
 const webFetchInput: z.ZodObject<{
