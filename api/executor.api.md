@@ -65,7 +65,7 @@ type AgentCompaction = boolean | AgentCompactionOptions;
 // Warning: (ae-forgotten-export) The symbol "CompactionHookOptions" needs to be exported by the entry point index.d.ts
 //
 // @public
-interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens' | 'reserveOutputTokens'> {
+interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens' | 'reserveOutputTokens' | 'onCompaction'> {
     // Warning: (ae-forgotten-export) The symbol "LLMProvider" needs to be exported by the entry point index.d.ts
     summarizer?: LLMProvider | string;
 }
@@ -597,12 +597,12 @@ type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length
 
 // @public
 interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
+    appliedStrategy?: string;
     // (undocumented)
     error?: {
         message: string;
     };
     prunedToolCallIds: string[];
-    // (undocumented)
     strategy: string;
     summary?: boolean;
     // (undocumented)
@@ -622,6 +622,7 @@ interface CompactionHookOptions extends Omit<CompactMessagesOptions, 'model'> {
 
 // @public
 interface CompactionInfo {
+    appliedStrategy?: string;
     error?: Error;
     // (undocumented)
     prunedToolCallIds: string[];
@@ -638,6 +639,8 @@ interface CompactionInput {
     contextWindow: number;
     // Warning: (ae-forgotten-export) The symbol "CompactionTokenCounter" needs to be exported by the entry point index.d.ts
     estimateTokens: CompactionTokenCounter;
+    // Warning: (ae-forgotten-export) The symbol "GenerateOptions" needs to be exported by the entry point index.d.ts
+    generate?: (provider: LLMProvider, request: GenerateOptions) => Promise<GenerateResult>;
     messages: Message[];
     protectedTokens: number;
     signal?: AbortSignal;
@@ -850,7 +853,6 @@ export interface ExecuteOptions extends PermissionOptions {
     // Warning: (ae-forgotten-export) The symbol "AgentDriftMode" needs to be exported by the entry point index.d.ts
     onAgentDrift?: AgentDriftMode;
     onAgentEvent?: (event: AgentEvent) => void;
-    // Warning: (ae-forgotten-export) The symbol "GenerateOptions" needs to be exported by the entry point index.d.ts
     onLLMRequest?: (request: GenerateOptions) => void | Promise<void>;
     // Warning: (ae-forgotten-export) The symbol "CallUsage" needs to be exported by the entry point index.d.ts
     onLLMResponse?: (response: GenerateResult, latencyMs: number, usage: CallUsage) => void | Promise<void>;
@@ -1076,6 +1078,7 @@ interface ForkResult {
 interface GenerateHookContext extends HookContext {
     // Warning: (ae-forgotten-export) The symbol "HookEventPayload" needs to be exported by the entry point index.d.ts
     emit?: (event: HookEventPayload) => void;
+    generate?: (provider: LLMProvider, request: GenerateOptions, purpose: string) => Promise<GenerateResult>;
     request: GenerateOptions;
 }
 
@@ -2888,9 +2891,9 @@ interface Usage {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-Ca_vf8pu.d.ts:754:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-Ca_vf8pu.d.ts:771:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-Ca_vf8pu.d.ts:1121:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-C91cXsHp.d.ts:762:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-C91cXsHp.d.ts:779:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-C91cXsHp.d.ts:1129:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
 // dist/index-DmsA2WFr.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
 // dist/index-DmsA2WFr.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/index-DmsA2WFr.d.ts:1893:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts

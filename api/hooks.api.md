@@ -203,12 +203,12 @@ type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length
 
 // @public
 interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
+    appliedStrategy?: string;
     // (undocumented)
     error?: {
         message: string;
     };
     prunedToolCallIds: string[];
-    // (undocumented)
     strategy: string;
     summary?: boolean;
     // (undocumented)
@@ -259,7 +259,9 @@ interface FileContentPart {
 // @public
 export interface GenerateHookContext extends HookContext {
     emit?: (event: HookEventPayload) => void;
+    // Warning: (ae-forgotten-export) The symbol "LLMProvider" needs to be exported by the entry point hooks.d.ts
     // Warning: (ae-forgotten-export) The symbol "GenerateOptions" needs to be exported by the entry point hooks.d.ts
+    generate?: (provider: LLMProvider, request: GenerateOptions, purpose: string) => Promise<GenerateResult>;
     request: GenerateOptions;
 }
 
@@ -490,6 +492,19 @@ interface InputSteeredEvent extends AgentEventBase<'input.steered'> {
 
 // @public
 type IoGuardrailKind = 'input' | 'output' | 'tool';
+
+// @public
+interface LLMProvider {
+    readonly defaultModel?: string;
+    generate(options: GenerateOptions): Promise<GenerateResult>;
+    getModels(): Promise<string[]>;
+    readonly name: string;
+    // Warning: (ae-forgotten-export) The symbol "StreamResult" needs to be exported by the entry point hooks.d.ts
+    stream(options: GenerateOptions): Promise<StreamResult>;
+    supportsHostedTool?(type: HostedToolType | 'custom'): boolean;
+    supportsStreaming(model: string): boolean;
+    supportsTools(model: string): boolean;
+}
 
 // @public (undocumented)
 type MaybePromise<T> = T | Promise<T>;
@@ -759,6 +774,51 @@ interface StepStartEvent extends AgentEventBase<'step.start'> {
 }
 
 // @public
+interface StreamChunk {
+    // (undocumented)
+    error?: Error;
+    // (undocumented)
+    finishReason?: string;
+    hostedToolCall?: HostedToolCall;
+    reasoning?: Omit<ReasoningBlock, 'text'>;
+    // (undocumented)
+    textDelta?: string;
+    // (undocumented)
+    toolCall?: ToolCall;
+    // (undocumented)
+    toolResult?: {
+        toolCallId: string;
+        result: unknown;
+    };
+    // Warning: (ae-forgotten-export) The symbol "StreamChunkType" needs to be exported by the entry point hooks.d.ts
+    //
+    // (undocumented)
+    type: StreamChunkType;
+    usage?: ProviderUsage;
+}
+
+// @public
+type StreamChunkType = 'text-delta' | 'reasoning-delta' | 'reasoning-end' | 'tool-call' | 'hosted-tool-call' | 'hosted-tool-result' | 'tool-result' | 'finish' | 'error';
+
+// @public
+interface StreamResult {
+    // (undocumented)
+    finishReason: Promise<string>;
+    // Warning: (ae-forgotten-export) The symbol "StreamChunk" needs to be exported by the entry point hooks.d.ts
+    //
+    // (undocumented)
+    fullStream: AsyncIterable<StreamChunk>;
+    servedBy?: ServedBy;
+    // (undocumented)
+    text: Promise<string>;
+    // (undocumented)
+    textStream: AsyncIterable<string>;
+    // (undocumented)
+    toolCalls: Promise<ToolCall[]>;
+    usage: Promise<ProviderUsage | undefined>;
+}
+
+// @public
 export interface SubagentInfo {
     depth: number;
     description?: string;
@@ -931,9 +991,9 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-Ca_vf8pu.d.ts:754:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point hooks.d.ts
-// dist/createAgent-Ca_vf8pu.d.ts:771:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point hooks.d.ts
-// dist/createAgent-Ca_vf8pu.d.ts:1121:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point hooks.d.ts
+// dist/createAgent-C91cXsHp.d.ts:762:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point hooks.d.ts
+// dist/createAgent-C91cXsHp.d.ts:779:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point hooks.d.ts
+// dist/createAgent-C91cXsHp.d.ts:1129:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point hooks.d.ts
 // dist/index-DmsA2WFr.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point hooks.d.ts
 // dist/index-DmsA2WFr.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point hooks.d.ts
 // dist/index-DmsA2WFr.d.ts:1429:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point hooks.d.ts
