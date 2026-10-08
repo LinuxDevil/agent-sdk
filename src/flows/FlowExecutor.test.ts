@@ -1143,6 +1143,78 @@ describe('FlowExecutor', () => {
   });
 });
 
+describe('FlowExecutor parallel failure (Eve DUR-F12 / MA-F11)', () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  const flowOf = (root: EditorStep): AgentFlow => ({ code: 'f', name: 'f', flow: root });
+
+  it('aborts sibling branches when one fails and returns only after they settle', async () => {
+    const charged: string[] = [];
+    const registry = new ToolRegistry();
+    registry.register(defineTool({
+      name: 'charge',
+      description: 'charge a customer',
+      input: z.object({ customer: z.string() }),
+      execute: async ({ customer }) => { await sleep(10); charged.push(customer); return 'ok'; },
+    }));
+    const provider = mockModel([{ text: 'note', delayMs: 5 }], { onExhausted: 'repeat-last' });
+    const result = await FlowExecutor.execute(
+      flowOf({ type: 'parallel', steps: [
+        { type: 'throw', message: 'validation failed' },
+        { type: 'forEach', items: ['x1', 'x2', 'x3'], step: { type: 'sequence', steps: [
+          { type: 'llmCall', prompt: 'note for {{item}}' },
+          { type: 'toolCall', tool: 'charge', arguments: { customer: '{{item}}' } },
+        ] } },
+      ] } as EditorStep),
+      { agent: { name: 'f' }, provider, toolRegistry: registry, variables: {} }
+    );
+    expect(result.success).toBe(false);
+    expect(result.error?.message).toBe('validation failed');
+    const chargedAtReturn = charged.length;
+    const eventsAtReturn = result.events.length;
+    await sleep(100);
+    expect(charged).toHaveLength(chargedAtReturn);
+    expect(charged).toHaveLength(0);
+    expect(result.events).toHaveLength(eventsAtReturn);
+    expect(result.events.at(-1)?.type).toBe('flow-error');
+  });
+
+  it('passes an aborted signal to an in-flight sibling model call and waits for it', async () => {
+    let sawAbort = false;
+    const provider = mockModel([{ text: 'slow', delayMs: 200 }]);
+    const generate = provider.generate.bind(provider);
+    provider.generate = async (request) => {
+      request.signal?.addEventListener('abort', () => { sawAbort = true; });
+      return generate(request);
+    };
+    const result = await FlowExecutor.execute(
+      flowOf({ type: 'parallel', steps: [
+        { type: 'llmCall', prompt: 'expensive' },
+        { type: 'throw', message: 'validation failed' },
+      ] } as EditorStep),
+      { agent: { name: 'f' }, provider, variables: {} }
+    );
+    expect(result.success).toBe(false);
+    expect(result.error?.message).toBe('validation failed');
+    expect(sawAbort).toBe(true);
+    const eventsAtReturn = result.events.length;
+    await sleep(300);
+    expect(result.events).toHaveLength(eventsAtReturn);
+  });
+
+  it('reports the summed model usage of the run on the result', async () => {
+    const provider = mockModel([
+      { text: 'a', usage: { inputTokens: 10, outputTokens: 2 } },
+      { text: 'b', usage: { inputTokens: 5, outputTokens: 1 } },
+    ]);
+    const result = await FlowExecutor.execute(
+      flowOf({ type: 'parallel', steps: [{ type: 'llmCall', prompt: 'a' }, { type: 'llmCall', prompt: 'b' }] } as EditorStep),
+      { agent: { name: 'f' }, provider, variables: {} }
+    );
+    expect(result.success).toBe(true);
+    expect(result.usage).toMatchObject({ promptTokens: 15, completionTokens: 3, totalTokens: 18 });
+  });
+});
+
 describe('FlowExecutor loop variable scoping (Eve DUR-F1)', () => {
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const flowOf = (root: EditorStep): AgentFlow => ({ code: 'f', name: 'f', flow: root });

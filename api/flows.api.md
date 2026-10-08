@@ -492,6 +492,7 @@ export interface FlowExecutionResult {
     steps: number;
     // (undocumented)
     success: boolean;
+    usage: ProviderUsage;
     // (undocumented)
     variables: Record<string, unknown>;
 }
