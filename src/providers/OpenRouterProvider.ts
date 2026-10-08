@@ -70,6 +70,8 @@ interface CallObservation {
   /** Reasoning text fragments and detail end-markers, in arrival order. */
   reasoning: ReasoningPiece[];
   reasoningTokens?: number;
+  /** `usage.cost`: the USD OpenRouter billed for the call. */
+  costUsd?: number;
 }
 
 /** The parts of a response body or stream chunk that a web search or the reasoning leaves. */
@@ -79,6 +81,7 @@ interface ResponseBody {
     server_tool_use?: { web_search_requests?: unknown };
     completion_tokens_details?: { reasoning_tokens?: unknown };
     reasoning_tokens?: unknown;
+    cost?: unknown;
   };
   choices?: Array<{
     message?: { annotations?: unknown; reasoning?: unknown; reasoning_details?: unknown };
@@ -125,6 +128,8 @@ function scanUsage(usage: ResponseBody['usage'], found: CallObservation): void {
   if (typeof requests === 'number') found.requests = Math.max(found.requests ?? 0, requests);
   const reasoningTokens = usage?.completion_tokens_details?.reasoning_tokens ?? usage?.reasoning_tokens;
   if (typeof reasoningTokens === 'number') found.reasoningTokens = reasoningTokens;
+  const cost = usage?.cost;
+  if (typeof cost === 'number' && Number.isFinite(cost) && cost >= 0) found.costUsd = cost;
 }
 
 /** The citations and the reasoning of one `choice` (`message` or `delta`). */
@@ -313,10 +318,17 @@ function withErrorMessage(inner: typeof fetch): typeof fetch {
   };
 }
 
-/** `usage`, with the observed reasoning token count it lacks (the same instance when nothing is added). */
-function withReasoningTokens(usage: ProviderUsage | undefined, found: CallObservation | undefined): ProviderUsage | undefined {
-  if (!usage || found?.reasoningTokens === undefined || usage.reasoningTokens !== undefined) return usage;
-  return { ...usage, reasoningTokens: found.reasoningTokens };
+/**
+ * `usage`, with the observed reasoning token count and the cost OpenRouter
+ * billed (`usage.cost`) that the SDK's usage lacks (the same instance when
+ * nothing is added).
+ */
+function withObservedUsage(usage: ProviderUsage | undefined, found: CallObservation | undefined): ProviderUsage | undefined {
+  if (!usage || !found) return usage;
+  const reasoningTokens = usage.reasoningTokens === undefined ? found.reasoningTokens : undefined;
+  const costUsd = usage.costUsd === undefined ? found.costUsd : undefined;
+  if (reasoningTokens === undefined && costUsd === undefined) return usage;
+  return { ...usage, ...(reasoningTokens !== undefined && { reasoningTokens }), ...(costUsd !== undefined && { costUsd }) };
 }
 
 /** The hosted call a step's search left, from what its response reported (undefined when it did not search). */
@@ -385,18 +397,17 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
       const parameters = mappedHostedOptions('OpenRouter', search, OPENROUTER_SEARCH_PARAMETERS);
       changes.tools = [{ type: 'openrouter:web_search', ...(Object.keys(parameters).length > 0 && { parameters }) }];
     }
-    if (changes.merge || changes.tools) {
-      if (options) {
-        // The response is watched for what `@ai-sdk/openai` drops: the reasoning
-        // fields (LOU-R8) and the server-side search's traces (N1b).
-        const watch: { settled?: Promise<CallObservation | undefined> } = {};
-        this.observed.set(options, watch);
-        changes.observe = (settled) => {
-          watch.settled = settled;
-        };
-      }
-      return (await this.openRouter(changes)).chat(modelId);
+    if (options) {
+      // The response is watched for what `@ai-sdk/openai` drops: the reasoning
+      // fields (LOU-R8), the server-side search's traces (N1b) and the cost
+      // OpenRouter billed (PROV-F3).
+      const watch: { settled?: Promise<CallObservation | undefined> } = {};
+      this.observed.set(options, watch);
+      changes.observe = (settled) => {
+        watch.settled = settled;
+      };
     }
+    if (options || changes.merge || changes.tools) return (await this.openRouter(changes)).chat(modelId);
     // `.chat()` is the Chat Completions API, the only one OpenRouter implements. `@ai-sdk/openai`
     // 2+ makes the bare call a Responses API model, so the factory is named on every major.
     return (await this.loadProvider()).chat(modelId);
@@ -431,7 +442,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
     if (!found) return result;
     const call = searchCallOf(found);
     const reasoning = reasoningBlocks(found);
-    const usage = withReasoningTokens(result.usage, found);
+    const usage = withObservedUsage(result.usage, found);
     return {
       ...result,
       ...(usage && { usage }),
@@ -451,7 +462,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
 
   /** `usage`, with the observed reasoning token count when the SDK's stream did not carry it. */
   private async usageWithReasoning(usage: Promise<ProviderUsage | undefined>, options: GenerateOptions): Promise<ProviderUsage | undefined> {
-    return withReasoningTokens(await usage, await this.observation(options));
+    return withObservedUsage(await usage, await this.observation(options));
   }
 
   /**
@@ -478,7 +489,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
         yield { type: 'hosted-tool-call', hostedToolCall: { id: call.id, name: call.name, args: call.args } };
         yield { type: 'hosted-tool-result', hostedToolCall: call };
       }
-      yield chunk.usage ? { ...chunk, usage: withReasoningTokens(chunk.usage, found) } : chunk;
+      yield chunk.usage ? { ...chunk, usage: withObservedUsage(chunk.usage, found) } : chunk;
     }
     if (!flushed && !sdkReasoning) yield* reasoningChunks(await this.observation(options));
   }

@@ -111,7 +111,7 @@ function piUsage(usage: PiAssistantMessage['usage'] | undefined): ProviderUsage 
     totalTokens: typeof usage.totalTokens === 'number' ? usage.totalTokens : usage.input + usage.output,
     ...(usage.cacheRead > 0 ? { cachedInputTokens: usage.cacheRead } : {}),
     ...(typeof usage.reasoning === 'number' ? { reasoningTokens: usage.reasoning } : {}),
-    ...(usage.cost && typeof usage.cost.total === 'number' ? { costUsd: usage.cost.total } : {}),
+    ...(usage.cost && typeof usage.cost.total === 'number' && usage.cost.total > 0 ? { costUsd: usage.cost.total } : {}), // 0 = pi priced nothing: the registry's catalog price applies
   };
 }
 
