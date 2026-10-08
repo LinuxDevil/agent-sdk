@@ -319,8 +319,12 @@ function truncateMessage(message: string): string {
 // which is the safe (reject-to-caller) default; there is no false-positive
 // cost that would make retryable/actionable categories fire spuriously
 // often enough to matter for this text.
+// `context.size` covers "context size" (llama.cpp's "... exceeds the
+// available context size ...", LM Studio's "Context size has been
+// exceeded.") and the `exceed_context_size` error type those runtimes send;
+// `n_ctx` is llama.cpp/ollama's own name for the window ("exceeds n_ctx").
 const CONTEXT_LENGTH_PATTERN =
-  /context.length|context.window|context_length_exceeded|maximum context|max(?:imum)? tokens|too many tokens|reduce the length|prompt is too long/i;
+  /context.length|context.window|context_length_exceeded|context.size|n_ctx|maximum context|max(?:imum)? tokens|too many tokens|reduce the length|prompt is too long/i;
 const TIMEOUT_PATTERN = /\btimed?.?out\b|\betimedout\b|\babort(ed)?\b/i;
 const RATE_LIMIT_PATTERN = /rate.?limit|too many requests/i;
 const AUTH_PATTERN =
@@ -377,11 +381,14 @@ function categorizeApiCallError(err: APICallError): {
   if (status === 408) {
     return { category: 'timeout', retryable: true };
   }
-  // A 400 whose body/message reads as "your prompt is too big" is a
-  // context-length-exceeded failure, not a generic bad-request - real
-  // providers (OpenAI, Anthropic) both report this as a 400 with wording
-  // matched by CONTEXT_LENGTH_PATTERN rather than a dedicated status code.
-  if (status === 400 && CONTEXT_LENGTH_PATTERN.test(text)) {
+  // A response whose body/message reads as "your prompt is too big" is a
+  // context-length-exceeded failure whatever the status code says: OpenAI
+  // and Anthropic report it as a 400, but llama.cpp/LM Studio wrap the same
+  // condition in a 500 ("request (N tokens) exceeds the available context
+  // size (M tokens)", `"type":"exceed_context_size_error"`) - and a wrapped
+  // 5xx would otherwise look retryable. The unambiguous status codes above
+  // (401/403 auth, 429 throttling) still win.
+  if (CONTEXT_LENGTH_PATTERN.test(text)) {
     return { category: 'context-length-exceeded', retryable: false };
   }
 
@@ -394,6 +401,66 @@ function categorizeApiCallError(err: APICallError): {
   // 5xx/408/429 as retryable when constructing APICallError) rather than
   // guessing further - this is real signal the SDK computed for us.
   return { category: 'unknown', retryable: err.isRetryable };
+}
+
+/** `error.metadata.raw` (or top-level `metadata.raw`) of a parsed JSON error body. */
+function rawUpstreamBody(body: unknown): string | undefined {
+  if (typeof body !== 'object' || body === null) return undefined;
+  const { error, metadata } = body as { error?: unknown; metadata?: { raw?: unknown } };
+  const nested =
+    typeof error === 'object' && error !== null ? (error as { metadata?: { raw?: unknown } }).metadata?.raw : undefined;
+  const raw = nested ?? metadata?.raw;
+  return typeof raw === 'string' && raw.trim() !== '' ? raw : undefined;
+}
+
+/** The message of a parsed JSON error body: `error` itself, `error.message`, or `message`. */
+function messageOfBody(body: unknown, depth = 0): string | undefined {
+  if (depth > 3 || typeof body !== 'object' || body === null) return undefined;
+  const { error, message } = body as { error?: unknown; message?: unknown };
+  // The upstream body may itself be a proxy wrap with its own metadata.raw.
+  const raw = rawUpstreamBody(body);
+  if (raw !== undefined) {
+    try {
+      const found = messageOfBody(JSON.parse(raw), depth + 1);
+      if (found) return found;
+    } catch {
+      // metadata.raw was not JSON - keep looking at this body's own fields.
+    }
+  }
+  if (typeof error === 'string' && error.trim() !== '') return error;
+  if (typeof error === 'object' && error !== null) return messageOfBody(error, depth + 1);
+  return typeof message === 'string' && message.trim() !== '' ? message : undefined;
+}
+
+/**
+ * The upstream provider's own explanation an APICallError hides: a proxy can
+ * replace the real error with a generic wrapper and keep the upstream body
+ * nested - OpenRouter reports "Provider returned error" with the upstream
+ * body verbatim in `error.metadata.raw` (a JSON string). Only that nested
+ * message is folded into the compacted error: an arbitrary response body is
+ * NOT consulted, since the compacted form deliberately keeps bodies out
+ * (LOU-T4) and a provider's multi-kilobyte dump would otherwise land in the
+ * thrown message.
+ */
+function upstreamErrorMessage(err: APICallError): string | undefined {
+  const raws = [rawUpstreamBody(err.data)];
+  if (typeof err.responseBody === 'string') {
+    try {
+      raws.push(rawUpstreamBody(JSON.parse(err.responseBody)));
+    } catch {
+      // not JSON - nothing nested to read
+    }
+  }
+  for (const raw of raws) {
+    if (raw === undefined) continue;
+    try {
+      const found = messageOfBody(JSON.parse(raw));
+      if (found && !err.message.includes(found)) return found;
+    } catch {
+      // upstream body was not JSON - nothing to fold in
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -439,8 +506,13 @@ export function compactProviderError(
 
   if (APICallError.isInstance(cause)) {
     const { category, retryable } = categorizeApiCallError(cause);
+    // The wrapped message can be a bare status text or a proxy's generic
+    // wrapper ("Provider returned error") while the real explanation sits in
+    // the response body (`error.message`, or OpenRouter's
+    // `error.metadata.raw`) - fold it in, still bounded like any message.
+    const upstream = upstreamErrorMessage(cause);
     return {
-      error: truncateMessage(cause.message),
+      error: truncateMessage(upstream ? `${cause.message} (${upstream})` : cause.message),
       category,
       retryable,
       providerName,

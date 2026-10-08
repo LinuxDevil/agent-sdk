@@ -43,7 +43,10 @@ function startOne(agent: SimpleAgent, schedule: DefinedSchedule, name: string, o
       arm();
       if (running) return options.onError(new Error(`schedule '${name}' skipped: its previous run is still going`), { name });
       running = true;
-      fireSchedule(agent, schedule, name, new Date(target))
+      // A prompt fire runs as a turn of the durable `schedule-<name>` session
+      // (the same convention as the Workers target, docs/schedules.md), so its
+      // transcript is inspectable and an interrupted fire is resumable.
+      fireSchedule(agent, schedule, name, new Date(target), `schedule-${name}`)
         .catch((error: unknown) => options.onError(error, { name }))
         .finally(() => (running = false));
     }, Math.min(Math.max(0, target - options.now()), MAX_DELAY_MS));

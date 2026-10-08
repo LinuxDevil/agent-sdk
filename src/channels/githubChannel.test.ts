@@ -219,6 +219,49 @@ describe('githubChannel (N11b)', () => {
     expect(t.calls.map((c) => [c.path, text(c)])).toEqual([['/repos/acme/widgets/issues/12/comments', 'Looks fine']]);
   });
 
+  it('pull_request.opened starts a turn in the PR session and posts a PR comment, when pullRequestOpened is set', async () => {
+    const t = setup(['Reviewed.', 'Timeouts too.'], {}, { channel: { pullRequestOpened: true } });
+
+    await t.send(
+      {
+        action: 'opened',
+        repository: { name: 'widgets', owner: { login: 'acme' } },
+        pull_request: { number: 12, title: 'Add retry', body: 'Retries the fetch.', author_association: 'CONTRIBUTOR', user: { login: 'octocat', type: 'User' } },
+      },
+      { event: 'pull_request' }
+    );
+
+    expect(t.userTexts(0)).toEqual(['Pull request #12 opened by @octocat: Add retry\n\nRetries the fetch.']);
+    expect(t.calls.map((c) => [c.path, text(c)])).toEqual([['/repos/acme/widgets/issues/12/comments', 'Reviewed.']]);
+
+    // the PR's comments share the session: a follow-up comment needs no mention
+    await t.send(issueComment('what about timeouts?', { number: 12 }, true));
+    expect(t.userTexts(1)).toEqual(['Pull request #12 opened by @octocat: Add retry\n\nRetries the fetch.', 'what about timeouts?']);
+    expect(t.calls.at(-1)?.path).toBe('/repos/acme/widgets/issues/12/comments');
+  });
+
+  it('pull_request events are ignored without pullRequestOpened, and bot-opened or untriggered PRs never start a turn', async () => {
+    const off = setup(['never']);
+    await off.send(
+      { action: 'opened', repository: { name: 'widgets', owner: { login: 'acme' } }, pull_request: { number: 1, title: 'x', user: { login: 'octocat', type: 'User' } } },
+      { event: 'pull_request' }
+    );
+    expect(off.model.calls).toHaveLength(0);
+
+    const on = setup(['never'], {}, { channel: { pullRequestOpened: true, triggers: ({ association }) => association !== 'NONE' } });
+    const pr = (over: { action?: string; pull_request?: object }) => ({
+      action: 'opened',
+      repository: { name: 'widgets', owner: { login: 'acme' } },
+      ...over,
+      pull_request: { number: 2, title: 'x', author_association: 'CONTRIBUTOR', user: { login: 'octocat', type: 'User' }, ...over.pull_request },
+    });
+    await on.send(pr({ pull_request: { number: 2, title: 'x', user: { login: 'dependabot[bot]', type: 'Bot' } } }), { event: 'pull_request' });
+    await on.send(pr({ action: 'synchronize' }), { event: 'pull_request' });
+    await on.send(pr({ pull_request: { number: 3, title: 'x', author_association: 'NONE', user: { login: 'stranger', type: 'User' } } }), { event: 'pull_request' });
+    expect(on.model.calls).toHaveLength(0);
+    expect(on.calls).toHaveLength(0);
+  });
+
   it('the same number in another repository is another session', async () => {
     const t = setup(['one', 'two']);
     const other = issueComment('@my-agent hi', { number: 7 });

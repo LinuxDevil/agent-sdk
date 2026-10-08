@@ -1,0 +1,61 @@
+finishReason: stop text: done
+
+# truncated JSON: read_file("{\"path\": \"a.txt\"")
+  tool.start args = {}
+  event: tool.error ToolArgumentsValidationError: Invalid arguments for tool 'read_file': 1 issue (path: Required)
+  model sees: {"error":"ToolArgumentsValidationError","toolName":"read_file","message":"Invalid arguments for tool 'read_file': 1 issue (path: Required)","kind":"validation","issues":[{"path":"path","message":"Required"}]}
+
+# empty string: read_file("")
+  tool.start args = {}
+  event: tool.error ToolArgumentsValidationError: Invalid arguments for tool 'read_file': 1 issue (path: Required)
+  model sees: {"error":"ToolArgumentsValidationError","toolName":"read_file","message":"Invalid arguments for tool 'read_file': 1 issue (path: Required)","kind":"validation","issues":[{"path":"path","message":"Required"}]}
+
+# wrong type: read_file("{\"path\": 42}")
+  tool.start args = {"path":42}
+  event: tool.error ToolArgumentsValidationError: Invalid arguments for tool 'read_file': 1 issue (path: Expected string, received number)
+  model sees: {"error":"ToolArgumentsValidationError","toolName":"read_file","message":"Invalid arguments for tool 'read_file': 1 issue (path: Expected string, received number)","kind":"validation","issues":[{"path":"path","message":"Expected string, received number"}]}
+
+# unknown tool (dash): read-file("{\"path\":\"a.txt\"}")
+  tool.start args = {"path":"a.txt"}
+  event: tool.error ToolNotFoundError: Tool 'read-file' not found
+  model sees: {"error":"ToolNotFoundError","toolName":"read-file","message":"Tool 'read-file' not found","kind":"not-found"}
+
+# namespaced name: functions.read_file("{\"path\":\"a.txt\"}")
+  tool.start args = {"path":"a.txt"}
+  event: tool.error ToolNotFoundError: Tool 'functions.read_file' not found
+  model sees: {"error":"ToolNotFoundError","toolName":"functions.read_file","message":"Tool 'functions.read_file' not found","kind":"not-found"}
+
+# double-encoded JSON: read_file("\"{\\\"path\\\":\\\"a.txt\\\"}\"")
+  tool.start args = {}
+  event: tool.error ToolArgumentsValidationError: Invalid arguments for tool 'read_file': 1 issue ((root): Expected object, received string)
+  model sees: {"error":"ToolArgumentsValidationError","toolName":"read_file","message":"Invalid arguments for tool 'read_file': 1 issue ((root): Expected object, received string)","kind":"validation","issues":[{"path":"(root)","message":"Expected object, received string"}]}
+
+# extra key: read_file("{\"path\":\"a.txt\",\"encoding\":\"utf8\"}")
+  tool.start args = {"path":"a.txt","encoding":"utf8"}
+  event: tool.done 
+  model sees: "     1\tline1\n     2\tline2"
+
+# wrong key name: read_file("{\"file_path\":\"a.txt\"}")
+  tool.start args = {"file_path":"a.txt"}
+  event: tool.error ToolArgumentsValidationError: Invalid arguments for tool 'read_file': 1 issue (path: Required)
+  model sees: {"error":"ToolArgumentsValidationError","toolName":"read_file","message":"Invalid arguments for tool 'read_file': 1 issue (path: Required)","kind":"validation","issues":[{"path":"path","message":"Required"}]}
+
+# markdown fenced: read_file("```json\n{\"path\":\"a.txt\"}\n```")
+  tool.start args = {}
+  event: tool.error ToolArgumentsValidationError: Invalid arguments for tool 'read_file': 1 issue (path: Required)
+  model sees: {"error":"ToolArgumentsValidationError","toolName":"read_file","message":"Invalid arguments for tool 'read_file': 1 issue (path: Required)","kind":"validation","issues":[{"path":"path","message":"Required"}]}
+
+# string number: read_file("{\"path\":\"a.txt\",\"offset\":\"2\"}")
+  tool.start args = {"path":"a.txt","offset":"2"}
+  event: tool.error ToolArgumentsValidationError: Invalid arguments for tool 'read_file': 1 issue (offset: Expected number, received string)
+  model sees: {"error":"ToolArgumentsValidationError","toolName":"read_file","message":"Invalid arguments for tool 'read_file': 1 issue (offset: Expected number, received string)","kind":"validation","issues":[{"path":"offset","message":"Expected number, received string"}]}
+
+# trailing comma: read_file("{\"path\":\"a.txt\",}")
+  tool.start args = {}
+  event: tool.error ToolArgumentsValidationError: Invalid arguments for tool 'read_file': 1 issue (path: Required)
+  model sees: {"error":"ToolArgumentsValidationError","toolName":"read_file","message":"Invalid arguments for tool 'read_file': 1 issue (path: Required)","kind":"validation","issues":[{"path":"path","message":"Required"}]}
+
+# truncated JSON, all-optional schema: list_dir("{\"path\": \"src\"")
+  tool.start args = {}
+  event: tool.done 
+  model sees: "a.txt\nsrc/"

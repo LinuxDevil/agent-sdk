@@ -184,6 +184,30 @@ describe('OpenRouterProvider', () => {
       const error = await errorOf(502, 'bad gateway');
       expect(error).toBeInstanceOf(Error);
     });
+
+    it("keeps the upstream provider's own message (error.metadata.raw) on the thrown error", async () => {
+      // What OpenRouter returns when the upstream provider rejects the call:
+      // "Provider returned error", with the upstream body verbatim in
+      // metadata.raw (audit repo-maintainer F2 - the generic message alone
+      // hid the real cause).
+      const error = await errorOf(
+        400,
+        JSON.stringify({
+          error: {
+            message: 'Provider returned error',
+            code: 400,
+            metadata: {
+              raw: JSON.stringify({
+                error: { message: "Invalid schema for response_format 'r': 'required' is required to be supplied", type: 'invalid_request_error' },
+              }),
+              provider_name: 'OpenAI',
+            },
+          },
+        })
+      );
+      expect(error.message).toContain('Provider returned error');
+      expect(error.message).toContain("Invalid schema for response_format 'r'");
+    });
   });
 
   it('should handle configuration without optional fields', () => {

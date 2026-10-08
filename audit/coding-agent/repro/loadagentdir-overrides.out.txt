@@ -1,0 +1,12 @@
+--- A. overrides
+loadAgentDir(dir, {onEvent, guardrails}): perm=allow ran(exit=1) run.done=stop; onEvent calls=0
+keys resolveAgentDir kept: approve, compaction, instructions, limits, maxSteps, name, permissionMode, permissions, provider, skills, tools
+createAgent({...config, onEvent, guardrails}): perm=allow guardrail.tripped(block-shell) run.done=guardrail; onEvent calls=7
+--- B. receipt approval enforcement (hooks: null so the loop guard stays out of it)
+kit as installed (approve.ts + agent.json rules):      perm=allow ran(exit=1) run.done=stop
+approve: null, kit's agent.json rules kept:             perm=allow ran(exit=1) run.done=stop
+approve: null, permissions: []:                         perm=default approval.requested run.done=awaiting-approval
+--- C. kit hooks are shared module state across separately loaded agents
+agent #1: perm=allow ran(exit=undefined) run.done=stop
+agent #2: perm=allow ran(exit=undefined) run.done=stop
+agent #3: perm=deny/hook=loop-guard tool.error(Tool 'shell' was denied by hook 'loop-guard': You already called shell) run.done=stop

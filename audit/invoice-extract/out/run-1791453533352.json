@@ -1,0 +1,99 @@
+{
+ "concurrency": 3,
+ "flowWallMs": 240009,
+ "totalWallMs": 240009,
+ "providerEvents": {
+  "retries": [
+   {
+    "attempt": 1,
+    "delayMs": 440,
+    "error": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"
+   },
+   {
+    "attempt": 1,
+    "delayMs": 364,
+    "error": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"
+   },
+   {
+    "attempt": 1,
+    "delayMs": 281,
+    "error": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"
+   },
+   {
+    "attempt": 2,
+    "delayMs": 907,
+    "error": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"
+   },
+   {
+    "attempt": 2,
+    "delayMs": 563,
+    "error": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"
+   },
+   {
+    "attempt": 2,
+    "delayMs": 981,
+    "error": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"
+   }
+  ],
+  "fallbacks": [
+   {
+    "from": "openai",
+    "to": "openai.chat",
+    "error": "Invalid type for 'input'."
+   },
+   {
+    "from": "openai",
+    "to": "openai.chat",
+    "error": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"
+   },
+   {
+    "from": "openai.chat",
+    "to": "openai.chat",
+    "error": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"
+   },
+   {
+    "from": "openai.chat",
+    "to": "openai.chat",
+    "error": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"
+   }
+  ]
+ },
+ "decisions": {},
+ "docs": [
+  {
+   "id": "inv-01-acme-us",
+   "attempts": [
+    "text"
+   ],
+   "timings": {
+    "extractMs": 240004,
+    "flowMs": 240006
+   },
+   "finishReason": "aborted",
+   "steps": 1
+  },
+  {
+   "id": "inv-10-horizon-quote",
+   "attempts": [
+    "text"
+   ],
+   "timings": {
+    "flowMs": 220637
+   }
+  },
+  {
+   "id": "inv-16-summit-pdf",
+   "attempts": [
+    "pdf-file-part",
+    "pdf-file-part threw: Bad Request",
+    "pdf-text"
+   ],
+   "timings": {
+    "extractMs": 240004,
+    "flowMs": 240004
+   },
+   "finishReason": "aborted",
+   "steps": 1
+  }
+ ]
+}

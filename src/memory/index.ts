@@ -1,5 +1,6 @@
 export {
   defineMemory,
+  memoryKey,
   type DefineMemoryOptions,
   type MemoryItem,
   type MemoryProvider,

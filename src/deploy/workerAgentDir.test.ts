@@ -286,7 +286,7 @@ describe('the Worker runtime of an agent directory: subagents, channels, memory,
       put: async (key: string, value: string) => void kv.set(key, value),
       delete: async (key: string) => void kv.delete(key),
     };
-    kv.set('memory/global', JSON.stringify([{ id: '1', text: 'likes tea', createdAt: '2024-01-01T00:00:00.000Z' }]));
+    kv.set('memory/notes#global', JSON.stringify([{ id: '1', text: 'likes tea', createdAt: '2024-01-01T00:00:00.000Z' }]));
     const agentDir = dir({
       memoryModules: [
         { file: 'memory/notes.ts', module: { default: defineMemory({ name: 'notes', scope: 'global', provider: kvMemory() }) } },

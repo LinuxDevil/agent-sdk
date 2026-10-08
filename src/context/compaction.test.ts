@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   compactMessages,
   createCompactionHook,
+  prepareCompaction,
   pruneToolResultsStrategy,
   type CompactionInfo,
   type CompactionStrategy,
@@ -258,5 +259,34 @@ describe('compaction in a run', () => {
     const markers = result.messages.filter((m) => m.role === 'tool' && textOf(m).startsWith('[pruned: fetch_page result'));
     expect(markers.map((m) => m.toolCallId)).toEqual(pruned);
     expectValidTranscript(result.messages);
+  });
+});
+
+describe('unknown model context window (audit _cross X2)', () => {
+  it('warns once when it must assume the 128k fallback, silent with an explicit or registered window', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      // A model the registry does not know (a local llama.cpp/LM Studio id).
+      const { input } = prepareCompaction([], { model: 'audit-x2-local-9b' });
+      expect(input.contextWindow).toBe(128_000);
+      expect(warn).toHaveBeenCalledTimes(1);
+      const text = String(warn.mock.calls[0][0]);
+      expect(text).toContain('audit-x2-local-9b');
+      expect(text).toContain('128,000');
+      expect(text).toContain('contextWindow');
+      expect(text).toContain('registerModel');
+
+      // Once per (feature, model) - not on every step.
+      prepareCompaction([], { model: 'audit-x2-local-9b' });
+      expect(warn).toHaveBeenCalledTimes(1);
+
+      // An explicit contextWindow or a registered model does not warn.
+      prepareCompaction([], { model: 'audit-x2-local-9b', contextWindow: 8_192 });
+      prepareCompaction([], { model: 'gpt-4o-mini' });
+      prepareCompaction([], { contextWindow: 8_192 });
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

@@ -1,0 +1,50 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+5 0 obj
+<< /Length 698 >>
+stream
+BT
+/F1 10 Tf
+14 TL
+50 780 Td
+(SUMMIT IT SERVICES) Tj T*
+(2200 Mountain View Rd, Denver, CO 80202) Tj T*
+() Tj T*
+(INVOICE  SIT-5520) Tj T*
+(Invoice date: 2026-03-25      Terms: Net 30      Due: 2026-04-24) Tj T*
+(Bill to: Northwind Traders LLC) Tj T*
+() Tj T*
+(Description                         Qty     Unit        Amount) Tj T*
+(Laptop setup and imaging              3    $75.00      $225.00) Tj T*
+(Network cable Cat6 \(5m\)              10     $8.90       $89.00) Tj T*
+() Tj T*
+(Subtotal                                              $314.00) Tj T*
+(Sales tax 8%                                           $25.12) Tj T*
+(TOTAL DUE \(USD\)                                       $339.12) Tj T*
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000241 00000 n 
+0000000309 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1058
+%%EOF

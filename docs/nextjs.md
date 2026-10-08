@@ -63,6 +63,13 @@ accepted, and a request outside the base path is a 404).
 
 Sessions are kept by the agent's `store` (`createAgent({ store })`), so give
 the agent one that outlives a serverless invocation when you use sessions.
+A session id is bound to the first authenticated caller that uses it - a
+different principal gets 403 (see [Route auth and principals](./auth.md) for
+the default, its in-memory limit, and `ownsSession` to override it; deriving
+the id from the caller, `u-${userId}`, keeps it obvious). Approvals are
+decided by `approvers`: by default the user a gated call runs for cannot
+approve it themselves, so a single-user app that prompts its own user should
+set `approvers: (caller) => caller !== undefined` (or finer).
 
 `auth` also takes an ordered list of `jwt()`, `oidc()`, `basic()` and
 `apiToken()` entries, and the caller it accepts reaches the run as `principal`:

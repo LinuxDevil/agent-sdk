@@ -8,6 +8,8 @@ import type * as http from 'node:http';
 import { createHmac } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { createAgent } from '../createAgent';
+import { z } from 'zod';
+import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import { emptyRunUsage } from '../execution/runUsage';
@@ -122,6 +124,25 @@ describe('webhookChannel parity with WebhookTriggerAdapter (LOU-P7, D13 vectors)
     const principal = { id: 'pagerduty', type: 'service', authenticator: 'webhook', claims: { via: 'pd-eu' } };
     expect(scopes[0]?.principal).toEqual(principal);
     expect(seen).toEqual([principal]);
+  });
+
+  it('an approval pause replies with the result and the computed approval prompt text', async () => {
+    const restart = defineTool({
+      name: 'restart_service',
+      description: 'Restarts a service',
+      input: z.object({ service: z.string() }),
+      needsApproval: true,
+      execute: async ({ service }) => `restarted ${service}`,
+    });
+    const agent = createAgent({ provider: mockModel([{ toolCalls: [{ name: 'restart_service', args: { service: 'checkout' }, id: 'c1' }] }]), tools: [restart] });
+
+    const res = await viaChannel(webhookChannel({}), body, {}, agent);
+
+    expect(res.status).toBe(200);
+    expect(res.json).toMatchObject({ finishReason: 'awaiting-approval' });
+    expect(res.json.approvalPrompt).toContain('Approve restart_service');
+    expect(res.json.approvalPrompt).toContain('checkout');
+    expect(res.json.approvalPrompt).toContain(String(res.json.approvalId));
   });
 
   it('a body without what `principal` needs runs without one', async () => {

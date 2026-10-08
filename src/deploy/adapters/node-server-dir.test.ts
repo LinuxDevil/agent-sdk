@@ -101,7 +101,8 @@ describe('NodeServerAdapter with an agent directory', () => {
       expect(await chat({})).toBe(401);
       expect(await chat({ Authorization: 'Bearer wrong' })).toBe(401);
       expect(await chat({ Authorization: 'Bearer dir-token' })).toBe(200);
-      expect(await chat({ Authorization: `Basic ${btoa('ops:pw')}` })).toBe(200);
+      // the session is bound to the first authenticated caller: another principal gets 403
+      expect(await chat({ Authorization: `Basic ${btoa('ops:pw')}` })).toBe(403);
     } finally {
       stop();
     }

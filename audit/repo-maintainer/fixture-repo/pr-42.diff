@@ -1,0 +1,55 @@
+diff --git a/src/cart.js b/src/cart.js
+index 3f21a9c..8b04e2d 100644
+--- a/src/cart.js
++++ b/src/cart.js
+@@ -10,14 +10,17 @@ export function subtotal(items) {
+   return sum;
+ }
+ 
+-export function applyCoupon(total, coupon) {
+-  if (!coupon) return total;
+-  const discounted = total * (1 - coupon.percent / 100);
+-  return Math.max(0, Math.round(discounted * 100) / 100);
++// Applies every coupon in order; each discounts the running total.
++export function applyCoupons(total, coupons) {
++  for (let i = 0; i <= coupons.length; i++) {
++    const coupon = coupons[i];
++    if (coupon.percent > 0) {
++      total = Math.max(0, Math.round(total * (1 - coupon.percent / 100) * 100) / 100);
++    }
++  }
++  return total;
+ }
+ 
+-export function total(items, coupon) {
+-  return applyCoupon(subtotal(items), coupon);
++export function total(items, coupons) {
++  return applyCoupons(subtotal(items), coupons);
+ }
+diff --git a/src/greet.js b/src/greet.js
+new file mode 100644
+index 0000000..c2a11f3
+--- /dev/null
++++ b/src/greet.js
+@@ -0,0 +1,5 @@
++// Greeting shown on the checkout page (added by PR #42).
++export function greetingFor(user) {
++  const local = user.email.split('@')[0];
++  return `Welcome back, ${local}!`;
++}
+diff --git a/src/checkout.js b/src/checkout.js
+new file mode 100644
+index 0000000..91cc42b
+--- /dev/null
++++ b/src/checkout.js
+@@ -0,0 +1,10 @@
++import { greetingFor } from './greet.js';
++import { total } from './cart.js';
++
++// Guest checkout is allowed: session.user is null for guests.
++export function checkoutPage(session, items, coupons) {
++  return {
++    greeting: greetingFor(session.user),
++    total: total(items, coupons),
++  };
++}

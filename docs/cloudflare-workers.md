@@ -126,7 +126,7 @@ cd .lousho/build/cloudflare-worker && npx wrangler deploy
   `LOUSHO_API_TOKEN` does not cover them. A turn that outlives its acknowledged webhook
   keeps running under `ctx.waitUntil`.
 - `memory/` slots need a provider that works without a file system. `kvMemory()` keeps a
-  slot's items under `memory/<scope>` keys of the `AGENT_CHECKPOINTS` KV namespace (or of
+  slot's items under `memory/<slot>#<scope>` keys of the `AGENT_CHECKPOINTS` KV namespace (or of
   the binding its `binding` option names); without that binding, items live in one
   isolate's memory. `inMemoryMemory()` works the same way; `fileMemory()` cannot run here.
 - `projectInstructions: true` reads the nearest `AGENTS.md` / `CLAUDE.md` **at build time**
@@ -227,7 +227,7 @@ Worker reads). `KVStore`'s keys, with an optional `prefix` before each:
 | `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, with its history under `checkpoints/<id>#history`). |
 | `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided). |
 | `oauth/tokens/<key>`, `oauth/pending/<state>` | OAuth tokens and pending sign-ins, encrypted with `tokenKey` (the `LOUSHO_TOKEN_KEY` secret in the generated Worker); see [OAuth](oauth.md#token-storage). |
-| `memory/<scopeKey>` | The items of a `kvMemory()` memory slot (`global`, `session:<id>` or a custom scope's key) - written by the provider itself, not `KVStore`. |
+| `memory/<slot>#<scope>` | The items of a `kvMemory()` memory slot (`notes#global`, `prefs#session:<id>` or a custom scope's key) - written by the provider itself, not `KVStore`. |
 
 `ttl: { sessions?, checkpoints?, approvals? }` (seconds, KV accepts 60 or more)
 makes each kind of record expire that long after its last write; by default

@@ -17,7 +17,7 @@ import { textOf } from '../providers/content';
 import { resolveProvider } from '../providers/resolveProvider';
 import type { AgentHook, GenerateHookContext } from '../execution/hooks';
 import { estimateTokens } from '../models/estimateTokens';
-import { getModelInfo } from '../models/registry';
+import { getModelInfo, warnUnknownContextWindow } from '../models/registry';
 import { SDKError } from '../execution/errors';
 
 /** Counts the tokens of a message or a conversation. */
@@ -283,8 +283,11 @@ export interface CompactMessagesOptions {
 export function prepareCompaction(messages: Message[], options: CompactMessagesOptions, signal?: AbortSignal) {
   const { model, protectedTokens = DEFAULT_PROTECTED_TOKENS, thresholdPercent = DEFAULT_THRESHOLD_PERCENT } = options;
   const strategy = options.strategy ?? pruneToolResultsStrategy();
-  const contextWindow =
-    options.contextWindow ?? (model ? getModelInfo(model)?.contextWindow : undefined) ?? FALLBACK_CONTEXT_WINDOW;
+  const known = options.contextWindow ?? (model ? getModelInfo(model)?.contextWindow : undefined);
+  // An unregistered (typically local) model silently compacted against 128k
+  // would let the real window overflow long before the threshold - say so once.
+  if (known === undefined) warnUnknownContextWindow('compaction', model, FALLBACK_CONTEXT_WINDOW);
+  const contextWindow = known ?? FALLBACK_CONTEXT_WINDOW;
   const count: CompactionTokenCounter = (input) => estimateTokens(input, { model });
   const thresholdTokens = thresholdPercent * contextWindow;
   const input: CompactionInput = { messages, estimateTokens: count, contextWindow, protectedTokens, thresholdTokens, signal };

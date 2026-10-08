@@ -1,0 +1,15 @@
+Desert Rose Catering LLC — Abu Dhabi, UAE — TRN 100987654300003
+
+TAX INVOICE   No. DRC-2026-221
+Invoice date: 22/03/2026
+Payment within 15 days of invoice date (due 06/04/2026)
+
+Event: Corporate lunch, 40 guests
+
+Item                          Qty     Unit price (AED)    Line total (AED)
+Lunch buffet per person        40          85.00              3,400.00
+Beverage package per person    40          15.00                600.00
+
+Taxable amount                                               4,000.00
+VAT 5%                                                         250.00
+Grand total AED                                              4,250.00

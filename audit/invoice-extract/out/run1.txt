@@ -1,0 +1,5 @@
+[batch] 16 documents, concurrency 2, per-invoice timeout 600000ms
+[flow] inv-01-acme-us               FAIL 504300ms kind=- usd=- flags=[] route=- pay=- error=Bad Request
+[flow] inv-02-mueller-de            FAIL 504462ms kind=- usd=- flags=[] route=- pay=- error=Bad Request
+[flow] inv-03-alnoor-aed            FAIL 600003ms kind=- usd=- flags=[] route=- pay=- error=extraction failed for inv-03-alnoor-aed: aborted  (timed out)
+[flow] inv-04-streamline-saas       FAIL 600007ms kind=- usd=- flags=[] route=- pay=- error=extraction failed for inv-04-streamline-saas: aborted  (timed out)

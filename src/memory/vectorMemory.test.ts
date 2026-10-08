@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { createAgent } from '../createAgent';
 import { hashEmbedder, mockModel } from '../testing';
-import { defineMemory } from './defineMemory';
+import { defineMemory, memoryKey } from './defineMemory';
 import type { EmbeddingProvider } from './embeddings';
 import { describeMemoryProviderContract } from './providerContract';
 import { inMemoryMemory } from './providers';
@@ -64,8 +64,10 @@ describe('inMemoryVectorMemory', () => {
 
   it('breaks ties by newest first', async () => {
     const memory = inMemoryVectorMemory({ embedder });
-    await memory.add('k', { text: 'tea' });
-    await memory.add('k', { text: 'tea' });
+    // Same bag of words, different text (identical text would dedupe on add):
+    // both rows score the same, so the newer one ranks first.
+    await memory.add('k', { text: 'green tea' });
+    await memory.add('k', { text: 'tea green' });
     const [newer, older] = await memory.list('k', { query: 'tea' });
     expect(newer.id).not.toBe(older.id);
     expect((await memory.list('k')).map((i) => i.id)).toEqual([newer.id, older.id]);
@@ -144,8 +146,9 @@ describe('inMemoryVectorMemory', () => {
 describe('semantic recall in a run', () => {
   it('puts the most relevant item first in the memory block and says so in the recall tool', async () => {
     const provider = inMemoryVectorMemory({ embedder, minScore: 0 });
-    for (const text of ['The office is in Oslo', 'Sam is vegetarian food lover', 'Prefers dark mode']) await provider.add('global', { text });
     const notes = defineMemory({ name: 'notes', scope: 'global', provider, recall: { query: 'last-input', maxItems: 3 } });
+    for (const text of ['The office is in Oslo', 'Sam is vegetarian food lover', 'Prefers dark mode'])
+      await provider.add(memoryKey(notes)!, { text });
     const model = mockModel(['ok']);
     await createAgent({ provider: model, memory: [notes] }).send('vegetarian food');
     const system = String(model.lastCall?.messages.find((m) => m.role === 'system')?.content);

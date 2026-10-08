@@ -1,0 +1,23 @@
+diff --git a/src/greet.js b/src/greet.js
+index c2a11f3..7d9aa01 100644
+--- a/src/greet.js
++++ b/src/greet.js
+@@ -1,5 +1,6 @@
+-// Greeting shown on the checkout page (added by PR #42).
++// Greeting shown on the checkout page (added by PR #42, punctuated by PR #43).
+ export function greetingFor(user) {
+   const local = user.email.split('@')[0];
+-  return `Welcome back, ${local}!`;
++  const excited = local.length > 0;
++  return `Welcome back, ${local}${excited ? '!' : '.'}`;
+ }
+diff --git a/README.md b/README.md
+index 3a6f3f9..9c2b1e0 100644
+--- a/README.md
++++ b/README.md
+@@ -2,3 +2,5 @@
+ 
+ Checkout totals and greetings. Guest checkout is supported: `session.user`
+ is `null` for guests — every consumer must handle that.
++
++Greetings are punctuated based on the local part of the user's email.

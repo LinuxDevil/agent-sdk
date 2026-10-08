@@ -1,0 +1,4 @@
+OpenAIProvider (responses) #0 66585 ms FAILED Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been excee
+OpenAIProvider (responses) #1 67382 ms FAILED Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been excee
+fromAiSdk(openai.chat) #0 8219 ms FAILED Bad Request
+fromAiSdk(openai.chat) #1 34958 ms FAILED Bad Request

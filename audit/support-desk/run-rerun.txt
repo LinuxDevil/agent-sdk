@@ -1,0 +1,67 @@
+[server] READY pid=53188 port=4321
+
+==================== S1 refund > $50 pauses, process exits, NEW process approves (x2 concurrently + once more) ====================
+> [tok-alice] alice-refund: Hi, the trail running shoes from order A-1001 do not fit. Please refund the full $129.
+  (200, 29801 ms)
+  run.start
+  step.start
+  error(CompactedLLMProviderError: Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","type":"server_error"})
+  step.done(1,error)
+  run.done(error) text=""
+refunds before approval: 0 | checkpoints: [] | approvals: []
+!! model did not reach issue_refund; rerun
+
+==================== S4 handoff, then follow-up turn: does the specialist keep the session? ====================
+> [tok-alice] alice-followup: Where is my order A-1002?
+  (200, 46928 ms)
+  run.start
+  step.start
+  tool.start(transfer_to_orders {"reason":"Customer wants to know the status and location of order A-1002."})
+  tool.done(transfer_to_orders -> {"transferred_to":"orders"})
+  handoff(triage->orders)
+  step.done(1,tool_calls)
+  step.start
+  tool.start(lookup_order {"orderId":"A-1002"})
+  tool.done(lookup_order -> {"id":"A-1002","customerId":"C100","items":["Water bottle"],"totalUsd":24.5,"status":"shipped","carrier":"USPS","trackin)
+  step.done(2,tool_calls)
+  step.start
+  error(CompactedLLMProviderError: Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","type":"server_error"})
+  step.done(3,error)
+  run.done(error) text=""
+> [tok-alice] alice-followup: What is the tracking number for it?
+  (200, 36513 ms)
+  run.start
+  step.start
+  text.done
+  step.done(1,stop)
+  run.done(stop) text="The tracking number for order A-1002 is 9400111899223856."
+run.start.agentName on turn 2: orders | handoff events in turn 2: 0
+> [tok-alice] alice-followup: Thanks. Also, what shoe size did I tell you before?
+  (200, 17991 ms)
+  run.start
+  step.start
+  error(CompactedLLMProviderError: Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","type":"server_error"})
+  step.done(1,error)
+  run.done(error) text=""
+
+==================== S7 SSE event shape + client disconnect mid-stream ====================
+> [tok-alice] alice-sse: Where is order A-1002?
+  (200, 14176 ms)
+  run.start
+  step.start
+  error(CompactedLLMProviderError: Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","type":"server_error"})
+  step.done(1,error)
+  run.done(error) text=""
+events: 5 | all isAgentEvent: true | v: [ 1 ] expected 1 | seq contiguous: true | one runId: true | first: run.start | last: run.done | done frame: true
+handoff event: undefined
+agentName on step.start events: ["(none)"]
+client aborted after: tool.start(issue_refund {"orderId":"A-1001","amountUsd":20,"reason":"damaged laces"})
+refunds +1; stored transcript: 0 msgs; pending: null
+> [tok-alice] alice-disconnect: My connection dropped. Did my $20 refund for A-1001 go through? If not, please do it.
+  (200, 30862 ms)
+  run.start
+  step.start
+  error(CompactedLLMProviderError: terminated)
+  step.done(1,error)
+  run.done(error) text=""
+refund rows on A-1001 with $20: 1

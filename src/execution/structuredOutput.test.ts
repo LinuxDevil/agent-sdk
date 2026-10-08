@@ -176,6 +176,64 @@ describe('structured output (LOU-V4)', () => {
     expect(schema.properties.choice.anyOf.map((b) => b.additionalProperties)).toEqual([false, false]);
   });
 
+  it('LOU-R7.2: optional fields become required `| null` unions, and a strict null validates as absent', async () => {
+    // Strict structured outputs reject a schema whose `required` does not
+    // list every `properties` key (OpenRouter/OpenAI 400: "'required' is
+    // required to be supplied and to be an array including every key in
+    // properties"). The sent schema must therefore mark every key required
+    // and turn each formerly-optional field into a `... | null` union; a
+    // field already accepting null is required but not wrapped twice.
+    const output = z4.object({
+      city: z4.string(),
+      nick: z4.string().optional(),
+      when: z4.string().nullable().optional(),
+      geo: z4.object({ lat: z4.number(), note: z4.string().optional() }),
+    });
+    const model = mockModel(['{"city":"Paris","nick":null,"when":null,"geo":{"lat":1,"note":null}}']);
+    const agent = createAgent({ provider: model, output });
+
+    const result = await agent.send('go');
+
+    const schema = model.calls[0].responseFormat?.schema as {
+      required: string[];
+      properties: {
+        nick: unknown;
+        when: unknown;
+        geo: { required: string[]; properties: { note: unknown } };
+      };
+    };
+    expect(schema.required).toEqual(expect.arrayContaining(['city', 'nick', 'when', 'geo']));
+    expect(schema.properties.nick).toEqual({ anyOf: [{ type: 'string' }, { type: 'null' }] });
+    expect(schema.properties.when).toEqual({ anyOf: [{ type: 'string' }, { type: 'null' }] });
+    expect(schema.properties.geo.required).toEqual(expect.arrayContaining(['lat', 'note']));
+    expect(schema.properties.geo.properties.note).toEqual({ anyOf: [{ type: 'string' }, { type: 'null' }] });
+    // The strict endpoint could not omit the keys, so the model wrote nulls.
+    // The optional `nick`/`note` nulls validate back as "absent"; `when`'s
+    // null is a real value (the field is genuinely nullable), so it stays.
+    expect(result.object).toEqual({ city: 'Paris', when: null, geo: { lat: 1 } });
+    expect(result.finishReason).toBe('stop');
+  });
+
+  it('LOU-R7.2: a null the model sent for a genuinely nullable field is kept', async () => {
+    const output = z4.object({ city: z4.string(), when: z4.string().nullable() });
+    const agent = createAgent({ provider: mockModel(['{"city":"Paris","when":null}']), output });
+
+    expect((await agent.send('go')).object).toEqual({ city: 'Paris', when: null });
+  });
+
+  it('LOU-R7.2: the zod 3 path expands required the same way', async () => {
+    const output = z.object({ city: z.string(), nick: z.string().optional() });
+    const model = mockModel(['{"city":"Paris","nick":null}']);
+    const agent = createAgent({ provider: model, output });
+
+    const result = await agent.send('go');
+
+    const schema = model.calls[0].responseFormat?.schema as { required: string[]; properties: { nick: unknown } };
+    expect(schema.required).toEqual(expect.arrayContaining(['city', 'nick']));
+    expect(schema.properties.nick).toEqual({ anyOf: [{ type: 'string' }, { type: 'null' }] });
+    expect(result.object).toEqual({ city: 'Paris' });
+  });
+
   it('LOU-R7: an explicit additionalProperties is kept, never forced closed', async () => {
     const strict = mockModel(['{"city":"Paris"}']);
     await createAgent({ provider: strict, output: z4.strictObject({ city: z4.string() }) }).send('go');

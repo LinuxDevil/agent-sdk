@@ -15,7 +15,7 @@ import type { Checkpoint, CheckpointStore } from '../execution/checkpoint';
 import type { ApprovalKind } from '../execution/ApprovalGate';
 import { ConfigurationError, SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 import { streamSessionTurn } from './sessionStream';
-import { MemorySessionStore, assertSessionId, type SessionStore } from './sessionStore';
+import { MemorySessionStore, assertSessionId, encodeBytes, type SessionStore } from './sessionStore';
 import { addSpent, runSpent, sessionSpent, type BudgetSpent, type RunLimits, type SessionBudget } from '../execution/budget';
 import { restoreRunUsage } from '../execution/runUsage';
 import { AGENT_EVENT_SCHEMA_VERSION, type AgentEvent, type AgentEventPayload } from '../execution/agentEvents';
@@ -164,6 +164,19 @@ export type SessionStreamRunner = (
  */
 export type SessionSpawner = (options: SessionOptions) => AgentSession;
 
+/**
+ * The queued work of a session, shared by every AgentSession object that
+ * wraps the same `(store, id)` transcript in this process (e.g. two
+ * `agent.session({ id })` objects, or the per-request objects a route
+ * handler opens). Without it two objects' turns ran concurrently over the
+ * same transcript and `commit()` overwrote the loser's turn silently
+ * (last write won). Now they take turns, exactly like `send()` calls on
+ * one object do. Different store objects over the same data (two processes,
+ * or `fileStore(dir)` built twice) cannot share this queue; `commit()`
+ * guards that case instead.
+ */
+const sessionQueues = new WeakMap<SessionStore, Map<string, Promise<unknown>>>();
+
 /** `store` as its parts: a plain `SessionStore` is the transcript store. */
 function splitStores(store: SessionOptions['store']): Partial<SessionStores> {
   if (!store) return {};
@@ -267,7 +280,6 @@ export class AgentSession<TObject = unknown> {
   private turnStartedAt = 0;
   private transcript: Message[] = [];
   private loaded = false;
-  private tail: Promise<unknown> = Promise.resolve();
 
   constructor(run: SessionRunner, options: SessionOptions = {}, streamRun?: SessionStreamRunner, spawn?: SessionSpawner) {
     if (options.id !== undefined) assertSessionId(options.id);
@@ -325,14 +337,24 @@ export class AgentSession<TObject = unknown> {
 
   /** Read the saved transcript from the store (done automatically by `send()`). */
   async load(): Promise<readonly Message[]> {
-    await this.enqueue(() => this.ensureLoaded());
+    await this.enqueue(async () => {
+      await this.ensureLoaded();
+      // A turn that finished but was never committed (e.g. its approval was
+      // resolved by another process) joins the transcript here, exactly as
+      // pending()/send()/resume() adopt it.
+      await this.pendingCheckpoint();
+    });
     return this.messages;
   }
 
   /**
    * Send a user message (a string, content parts or a `Message[]`, see
    * `AgentInput`) with the whole conversation so far. Concurrent calls
-   * run one after another, in call order.
+   * run one after another, in call order - also across `AgentSession`
+   * objects that share this transcript's `(store, id)` in this process.
+   * A turn that still loses the race against a writer the queue cannot see
+   * (a different store object or process) fails with `LOUSHO_SESSION_BUSY`
+   * instead of silently overwriting it.
    *
    * A call that throws or is aborted leaves the transcript as it was before
    * the call (an aborted call resolves with `finishReason: 'aborted'`).
@@ -527,6 +549,7 @@ export class AgentSession<TObject = unknown> {
   history(): Promise<SessionHistoryStep[]> {
     return this.enqueue(async () => {
       await this.ensureLoaded();
+      await this.pendingCheckpoint();
       return transcriptSteps(structuredClone(this.transcript)).map(({ step }) => step);
     });
   }
@@ -557,6 +580,8 @@ export class AgentSession<TObject = unknown> {
     }
     return this.idle(async () => {
       await this.ensureLoaded();
+      // A finished-but-uncommitted turn is part of the transcript a fork sees.
+      await this.pendingCheckpoint();
       const messages = forkTranscript(this.transcript, options, this.id, providerValidPrefix);
       const id = options.id ?? (await this.nextForkId(messages.length));
       assertSessionId(id);
@@ -618,9 +643,28 @@ export class AgentSession<TObject = unknown> {
     };
   }
 
+  /**
+   * Runs `task` after everything queued before it - on this object AND on
+   * every other AgentSession sharing this `(store, id)` transcript, so two
+   * session objects cannot run turns concurrently (see `sessionQueues`).
+   */
   private enqueue<T>(task: () => Promise<T>): Promise<T> {
-    const result = this.tail.then(task);
-    this.tail = result.catch(() => undefined);
+    let perStore = sessionQueues.get(this.store);
+    if (!perStore) {
+      perStore = new Map();
+      sessionQueues.set(this.store, perStore);
+    }
+    const tail = perStore.get(this.id) ?? Promise.resolve();
+    const result = tail.then(task);
+    const next = result.then(
+      () => undefined,
+      () => undefined
+    );
+    perStore.set(this.id, next);
+    // Drop the entry once the queue drains, so the map does not grow forever.
+    void next.then(() => {
+      if (perStore.get(this.id) === next) perStore.delete(this.id);
+    });
     return result;
   }
 
@@ -745,8 +789,12 @@ export class AgentSession<TObject = unknown> {
 
   /**
    * Saves `messages` (minus the system prompt) as the transcript, then drops
-   * the finished turn's checkpoint. With `limits`, the last message records
-   * what the session has spent, this turn included (LOU-V6).
+   * the finished turn's checkpoint - keeping its checkpoint HISTORY (the
+   * ring a `checkpointStore.history()` store appends to), so the turn stays
+   * forkable through `agent.fork('<id>.turn-<n>', { fromStep })` exactly like
+   * a `send(msg, { sessionId })` run's 'finished' checkpoint does.
+   * With `limits`, the last message records what the session has spent,
+   * this turn included (LOU-V6).
    */
   private async commit(messages: readonly Message[], spent?: BudgetSpent): Promise<void> {
     const withoutSystem = messages[0]?.role === 'system' ? messages.slice(1) : messages;
@@ -756,9 +804,31 @@ export class AgentSession<TObject = unknown> {
       const sessionUsage = addSpent(sessionSpent(this.transcript), spent);
       next[next.length - 1] = { ...last, metadata: { ...last.metadata, sessionUsage } };
     }
+    await this.assertBaseUnchanged();
     await this.store.save(this.id, next);
     const turn = this.turnCheckpoint();
     this.transcript = next;
-    if (turn) await turn.checkpointStore.delete(turn.sessionId);
+    if (turn) await turn.checkpointStore.delete(turn.sessionId, { keepHistory: true });
+  }
+
+  /**
+   * Optimistic concurrency for turns that CANNOT share this process's queue:
+   * a second `SessionStore` object over the same transcript (another process,
+   * or `fileStore(dir)` built twice). If the store no longer holds the
+   * transcript this turn started from, committing would overwrite the other
+   * writer's turn without an error - instead the turn's leftover checkpoint
+   * is dropped (replaying it later would clobber the committed transcript
+   * anyway) and the send fails with `LOUSHO_SESSION_BUSY`.
+   */
+  private async assertBaseUnchanged(): Promise<void> {
+    const stored = (await this.store.load(this.id)) ?? [];
+    if (JSON.stringify(stored, encodeBytes) === JSON.stringify(this.transcript, encodeBytes)) return;
+    const turn = this.turnCheckpoint();
+    if (turn) await turn.checkpointStore.delete(turn.sessionId, { keepHistory: true });
+    throw new SDKError(
+      `Session '${this.id}' was changed by another session object or process while this turn ran; ` +
+        'the turn was not committed. Reload the transcript and send again.',
+      'LOUSHO_SESSION_BUSY'
+    );
   }
 }

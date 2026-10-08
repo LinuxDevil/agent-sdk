@@ -1,0 +1,4 @@
+Error: 
+loadAgentDir: failed to import C:\Users\recti\AppData\Local\Temp\tmp.7OyewSdhD3\tools\fs.ts: Cannot find module '@lousho/build-ai-agent'
+Require stack:
+- C:\Users\recti\AppData\Local\Temp\tmp.7OyewSdhD3\tools\fs.ts

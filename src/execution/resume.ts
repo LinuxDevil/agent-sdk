@@ -223,27 +223,29 @@ async function resumeObserved(
         if (refusedResumes.has(error as object)) await restorePause({ pending, snapshot }, approvalStore, staleCheckpoint, checkpointStore);
         throw error;
       }
+      const businessState = executeOptions.businessState !== undefined ? executeOptions.businessState : staleBusinessState;
       if ('paused' in step) {
         // LOU-U8: the sub-agent paused again, so the session still awaits an approval.
-        const businessState = executeOptions.businessState !== undefined ? executeOptions.businessState : staleBusinessState;
         await markAwaitingApproval(snapshot, step.paused, checkpointStore, businessState);
         return step.paused;
       }
       // N6: the approved transfer completed its switch - continue the run as the target.
       if ('handoff' in step) {
-        return AgentExecutor.execute({
-          ...step.handoff.options,
-          agentSpanId: span.id,
-          input: step.handoff.messages,
-          sessionId: snapshot.sessionId,
-          checkpointStore,
-          approvalStore: executeOptions.approvalStore ?? ctx.approvalStore,
-          businessState: executeOptions.businessState !== undefined ? executeOptions.businessState : staleBusinessState,
-          // The switched transcript already starts with the target's system prompt.
-          skipSystemPromptInjection: true,
-          initialSteps: snapshot.steps,
-          initialUsage: ctx.usage,
-        });
+        return keepTurnOnFailure(snapshot, step.handoff.messages, checkpointStore, businessState, ctx.usage, () =>
+          AgentExecutor.execute({
+            ...step.handoff.options,
+            agentSpanId: span.id,
+            input: step.handoff.messages,
+            sessionId: snapshot.sessionId,
+            checkpointStore,
+            approvalStore: executeOptions.approvalStore ?? ctx.approvalStore,
+            businessState,
+            // The switched transcript already starts with the target's system prompt.
+            skipSystemPromptInjection: true,
+            initialSteps: snapshot.steps,
+            initialUsage: ctx.usage,
+          })
+        );
       }
       // LOU-Y1: a call whose sub-agent paused already has a placeholder result.
       replaceToolResult(messages, step.message);
@@ -254,16 +256,18 @@ async function resumeObserved(
       // LOU-U7: the turn's remaining calls still have no result here;
       // AgentExecutor.execute() finds them in the transcript and runs them
       // through its normal batch path before calling the model again.
-      return continueResumedRun(snapshot, messages, {
-        provider,
-        toolRegistry,
-        executeOptions,
-        checkpointStore,
-        approvalStore,
-        staleBusinessState,
-        usage: ctx.usage,
-        agentSpanId: span.id,
-      });
+      return keepTurnOnFailure(snapshot, messages, checkpointStore, businessState, ctx.usage, () =>
+        continueResumedRun(snapshot, messages, {
+          provider,
+          toolRegistry,
+          executeOptions,
+          checkpointStore,
+          approvalStore,
+          staleBusinessState,
+          usage: ctx.usage,
+          agentSpanId: span.id,
+        })
+      );
     },
     executeOptions.parentSpanId,
     init.kind
@@ -764,6 +768,59 @@ async function clearStaleCheckpoint(
   const staleCheckpoint: Checkpoint | null = await checkpointStore.load(sessionId);
   await checkpointStore.delete(sessionId);
   return staleCheckpoint;
+}
+
+/**
+ * When the continuation after an approval fails, the approved call's result
+ * must not vanish with it: the stale pre-pause checkpoint was already deleted
+ * (clearStaleCheckpoint) and the decided tool call already ran, so if the
+ * continued execute() threw before its own first checkpoint write, nothing
+ * recorded the result anywhere - the whole paused turn (the session's user
+ * message, the call, its result) was lost and `pending()` came back null.
+ *
+ * Fix: write an 'in-progress' checkpoint holding the transcript the
+ * continuation started from (decided call's result included), so a later
+ * `execute()`/`session.resume()` on the same sessionId finishes the turn
+ * instead of replaying or dropping it. Skipped when the continuation already
+ * wrote a newer checkpoint before failing - that one holds the result too.
+ *
+ * This deliberately runs only AFTER the continued execute() rejects: writing
+ * the checkpoint earlier would make that execute() rehydrate from it and
+ * double its input transcript onto the checkpointed messages.
+ */
+async function keepTurnOnFailure(
+  snapshot: ExecutionSnapshot,
+  messages: Message[],
+  checkpointStore: CheckpointStore | undefined,
+  businessState: unknown,
+  usage: RunUsage,
+  continuation: () => Promise<ExecutionResult>
+): Promise<ExecutionResult> {
+  try {
+    return await continuation();
+  } catch (error) {
+    try {
+      if (snapshot.sessionId && checkpointStore && !(await checkpointStore.load(snapshot.sessionId))) {
+        await checkpointStore.save(snapshot.sessionId, {
+          agentId: snapshot.agent.id || '',
+          sessionId: snapshot.sessionId,
+          stepIndex: snapshot.steps,
+          messages,
+          toolCalls: [],
+          usage: structuredClone(usage),
+          businessState,
+          status: 'in-progress',
+          ...(snapshot.agentFingerprint && { agentFingerprint: snapshot.agentFingerprint }),
+          ...(snapshot.agent.metadata?.[RUN_CONFIG_KEY] !== undefined && { runConfig: snapshot.agent.metadata[RUN_CONFIG_KEY] }),
+          ...(snapshot.principal && { principal: snapshot.principal }),
+          ...(snapshot.metadata !== undefined && { metadata: snapshot.metadata }),
+        });
+      }
+    } catch {
+      // A best-effort preserve: never mask the continuation's own error.
+    }
+    throw error;
+  }
 }
 
 /**

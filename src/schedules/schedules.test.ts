@@ -1,8 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createAgent } from '../createAgent';
+import { createAgent, type RunConfigContext } from '../createAgent';
 import { SDKError } from '../execution/errors';
+import { memoryStore } from '../storage/agentStore';
 import { mockModel } from '../testing';
 import { defineSchedule, isDefinedSchedule } from './defineSchedule';
+import { fireSchedule, scheduleName } from './fireSchedule';
 import { startSchedules } from './startSchedules';
 
 const MINUTE = 60_000;
@@ -145,5 +147,60 @@ describe('startSchedules', () => {
     expect(clock.pending()).toBe(0);
     await clock.advance(30 * MINUTE);
     expect(run).not.toHaveBeenCalled();
+  });
+
+  it('a prompt fire runs as the durable `schedule-<name>` session, like the Workers target', async () => {
+    const store = memoryStore();
+    const sessions: Array<string | undefined> = [];
+    const agent = createAgent({
+      provider: mockModel(['one']),
+      instructions: (ctx: RunConfigContext) => (sessions.push(ctx.sessionId), 'x'),
+      store,
+    });
+    const clock = fakeClock();
+    const running = startSchedules(agent, [defineSchedule({ ...every5, name: 'watch', prompt: 'Status?' })], clock);
+
+    await clock.advance(5 * MINUTE);
+    expect(sessions).toEqual(['schedule-watch']);
+    // the run is checkpointed under the session id, so it is inspectable and resumable
+    await vi.waitFor(async () => {
+      expect(JSON.stringify(await store.checkpoints.load('schedule-watch'))).toContain('Status?');
+    });
+    running.stop();
+    await agent.close();
+  });
+
+  it('a prompt fire on an agent without a store still runs, ephemerally', async () => {
+    const provider = mockModel(['one']);
+    const agent = createAgent({ provider, instructions: 'x' });
+    const clock = fakeClock();
+    const onError = vi.fn();
+    const running = startSchedules(agent, [defineSchedule({ ...every5, name: 'watch', prompt: 'Status?' })], { ...clock, onError });
+
+    await clock.advance(5 * MINUTE);
+    expect(provider.calls).toHaveLength(1);
+    expect(onError).not.toHaveBeenCalled();
+    running.stop();
+    await agent.close();
+  });
+});
+
+describe('fireSchedule', () => {
+  it('is exported: fires a prompt as a turn under the given session id, and a run function directly', async () => {
+    const store = memoryStore();
+    const agent = createAgent({ provider: mockModel(['tick']), instructions: 'x', store });
+    const prompt = defineSchedule({ ...every5, name: 'report', prompt: 'Weekly report.' });
+    await fireSchedule(agent, prompt, scheduleName(prompt, 0), new Date('2026-01-01T00:00:00Z'), 'schedule-report');
+    expect(JSON.stringify(await store.checkpoints.load('schedule-report'))).toContain('Weekly report.');
+
+    const seen: Array<{ firedAt: Date; name: string }> = [];
+    const run = defineSchedule({ ...every5, name: 'job', run: async (ctx) => void seen.push({ firedAt: ctx.firedAt, name: ctx.name }) });
+    await fireSchedule(agent, run, 'job', new Date('2026-01-01T00:05:00Z'));
+    expect(seen).toEqual([{ firedAt: new Date('2026-01-01T00:05:00Z'), name: 'job' }]);
+    await agent.close();
+  });
+
+  it('scheduleName falls back to schedule-<position>', () => {
+    expect(scheduleName(defineSchedule({ ...every5, prompt: 'x' }), 2)).toBe('schedule-3');
   });
 });

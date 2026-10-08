@@ -25,9 +25,11 @@ export interface HandoffOptions {
   input?: StandardSchemaV1;
   /**
    * What the target sees; default: everything. `data.messages` includes the
-   * handoff's routing system note (who was transferred, with the validated
+   * handoff's routing note (who was transferred, with the validated
    * arguments) - return them as they are to keep it, or drop or replace it.
-   * See {@link handoffFilters}.
+   * A kept note is folded into the target's system prompt, so it never sits
+   * mid-conversation (chat templates of local-model servers reject a system
+   * message that is not the first one). See {@link handoffFilters}.
    */
   inputFilter?: (data: HandoffInputData) => Message[] | Promise<Message[]>;
   /** Called once the handoff is decided, before the target's first model call. */
@@ -71,8 +73,8 @@ function hasText(message: Message): boolean {
 export const handoffFilters = {
   /**
    * Drops tool calls and tool results, keeps user and assistant text - and the
-   * handoff's routing system note, so the target still reads the validated
-   * handoff arguments.
+   * handoff's routing note, so the target still reads the validated handoff
+   * arguments (in its system prompt).
    *
    * @example
    * ```ts

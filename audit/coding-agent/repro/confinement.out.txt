@@ -1,0 +1,73 @@
+  (could not create dir-symlink: EPERM: operation not permitted, symlink 'C:\Users\recti\AppData\Local\Temp\lousho-conf-Fe7ejf\outside' -> 'C:\Users\recti\AppData\Local\Temp\lousho-conf-Fe7ejf\root\dirlink')
+  (could not create file-symlink: EPERM: operation not permitted, symlink 'C:\Users\recti\AppData\Local\Temp\lousho-conf-Fe7ejf\outside\secret.txt' -> 'C:\Users\recti\AppData\Local\Temp\lousho-conf-Fe7ejf\root\filelink.txt')
+  (could not create dangling-symlink: EPERM: operation not permitted, symlink 'C:\Users\recti\AppData\Local\Temp\lousho-conf-Fe7ejf\outside\nope.txt' -> 'C:\Users\recti\AppData\Local\Temp\lousho-conf-Fe7ejf\root\dangling.txt')
+platform=win32 links=junction,hardlink
+ok  read_file {"path":"src/a.txt"}
+      -> "     1\tinside"
+ok  read_file {"path":"../outside/secret.txt"}
+      -> WorkspaceError: Path "../outside/secret.txt" is outside the workspace ('..' climbs above the workspace root). Use a path relative to the workspace root, e.g. "s
+ok  read_file {"path":"src/../../outside/secret.txt"}
+      -> WorkspaceError: Path "src/../../outside/secret.txt" is outside the workspace ('..' climbs above the workspace root). Use a path relative to the workspace root, 
+ok  read_file {"path":"src\\..\\..\\outside\\secret.txt"}
+      -> WorkspaceError: Path "src\\..\\..\\outside\\secret.txt" is outside the workspace ('..' climbs above the workspace root). Use a path relative to the workspace ro
+ok  read_file {"path":"../root-evil/x.txt"}
+      -> WorkspaceError: Path "../root-evil/x.txt" is outside the workspace ('..' climbs above the workspace root). Use a path relative to the workspace root, e.g. "src/
+ok  read_file {"path":"C:\\Users\\recti\\AppData\\Local\\Temp\\lousho-conf-Fe7ejf\\o
+      -> WorkspaceError: Path "C:\\Users\\recti\\AppData\\Local\\Temp\\lousho-conf-Fe7ejf\\outside\\secret.txt" is outside the workspace (drive-letter paths are not allo
+ok  read_file {"path":"C:\\Users\\recti\\AppData\\Local\\Temp\\lousho-conf-Fe7ejf\\r
+      -> WorkspaceError: Path "C:\\Users\\recti\\AppData\\Local\\Temp\\lousho-conf-Fe7ejf\\root\\src\\a.txt" is outside the workspace (drive-letter paths are not allowed
+ok  read_file {"path":"C:Users\\recti\\AppData\\Local\\Temp\\lousho-conf-Fe7ejf\\out
+      -> WorkspaceError: Path "C:Users\\recti\\AppData\\Local\\Temp\\lousho-conf-Fe7ejf\\outside\\secret.txt" is outside the workspace (drive-letter paths are not allowe
+ok  read_file {"path":"/C:/Users/recti/AppData/Local/Temp/lousho-conf-Fe7ejf/outside
+      -> WorkspaceError: Path "/C:/Users/recti/AppData/Local/Temp/lousho-conf-Fe7ejf/outside/secret.txt" is outside the workspace (absolute and UNC paths are not allowed
+ok  read_file {"path":"\\\\?\\C:\\Users\\recti\\AppData\\Local\\Temp\\lousho-conf-Fe
+      -> WorkspaceError: Path "\\\\?\\C:\\Users\\recti\\AppData\\Local\\Temp\\lousho-conf-Fe7ejf\\outside\\secret.txt" is outside the workspace (absolute and UNC paths a
+ok  read_file {"path":"\\\\localhost\\c$\\Windows\\win.ini"}
+      -> WorkspaceError: Path "\\\\localhost\\c$\\Windows\\win.ini" is outside the workspace (absolute and UNC paths are not allowed). Use a path relative to the workspa
+ok  read_file {"path":"file:///C:/Users/recti/AppData/Local/Temp/lousho-conf-Fe7ejf/
+      -> WorkspaceError: Path "file:///C:/Users/recti/AppData/Local/Temp/lousho-conf-Fe7ejf/outside/secret.txt" is outside the workspace (':' is not allowed in Windows p
+ok  read_file {"path":".. /outside/secret.txt"}
+      -> WorkspaceError: Path ".. /outside/secret.txt" is outside the workspace (segments made only of dots and spaces are not allowed on Windows). Use a path relative t
+ok  read_file {"path":"src/a.txt::$DATA"}
+      -> WorkspaceError: Path "src/a.txt::$DATA" is outside the workspace (':' is not allowed in Windows paths (drive letters, alternate data streams)). Use a path relat
+ok  read_file {"path":"NUL"}
+      -> WorkspaceError: Path "NUL" names a reserved Windows device and cannot be used.
+ok  read_file {"path":"src/con.txt"}
+      -> WorkspaceError: Path "src/con.txt" names a reserved Windows device and cannot be used.
+ok  read_file {"path":"~/.ssh/id_rsa"}
+      -> WorkspaceError: File not found: ~/.ssh/id_rsa
+ok  read_file {"path":"%USERPROFILE%\\.ssh\\id_rsa"}
+      -> WorkspaceError: File not found: %USERPROFILE%/.ssh/id_rsa
+ok  read_file {"path":"junc/secret.txt"}
+      -> WorkspaceError: Path "junc/secret.txt" resolves outside the workspace (through a symlink). Only paths inside the workspace root are allowed.
+ok  write_file {"path":"junc/new.txt","content":"pwned"}
+      -> WorkspaceError: Path "junc/new.txt" resolves outside the workspace (through a symlink). Only paths inside the workspace root are allowed.
+ok  list_dir {"path":"junc"}
+      -> WorkspaceError: Path "junc" resolves outside the workspace (through a symlink). Only paths inside the workspace root are allowed.
+ok  grep {"pattern":"SECRET"}
+      -> "hard.txt:1: TOP SECRET"
+ok  glob {"pattern":"**/*.txt"}
+      -> "hard.txt\nsrc/a.txt"
+ok  read_file {"path":"hard.txt"}
+      -> "     1\tTOP SECRET"
+ok  write_file {"path":"../outside/written.txt","content":"x"}
+      -> WorkspaceError: Path "../outside/written.txt" is outside the workspace ('..' climbs above the workspace root). Use a path relative to the workspace root, e.g. "
+ok  write_file {"path":".","content":"x"}
+      -> WorkspaceError: Cannot write a file at the workspace root path ".".
+ok  edit_file {"path":"../outside/secret.txt","old_string":"TOP","new_string":"X"}
+      -> WorkspaceError: Path "../outside/secret.txt" is outside the workspace ('..' climbs above the workspace root). Use a path relative to the workspace root, e.g. "s
+ok  list_dir {"path":".."}
+      -> WorkspaceError: Path ".." is outside the workspace ('..' climbs above the workspace root). Use a path relative to the workspace root, e.g. "src/index.ts".
+ok  glob {"pattern":"../**/*.txt"}
+      -> WorkspaceError: Path "../**/*.txt" is outside the workspace ('..' climbs above the workspace root). Use a path relative to the workspace root, e.g. "src/index.t
+ok  glob {"pattern":"../outside/*.txt"}
+      -> WorkspaceError: Path "../outside/*.txt" is outside the workspace ('..' climbs above the workspace root). Use a path relative to the workspace root, e.g. "src/in
+ok  grep {"pattern":"SECRET","path":".."}
+      -> WorkspaceError: Path ".." is outside the workspace ('..' climbs above the workspace root). Use a path relative to the workspace root, e.g. "src/index.ts".
+ok  grep {"pattern":"SECRET","glob":"../outside/*"}
+      -> WorkspaceError: Path "../outside/*" is outside the workspace ('..' climbs above the workspace root). Use a path relative to the workspace root, e.g. "src/index.
+shell allow-list passed "dir ..\\outside" exit=0 sees secret=true
+shell allow-list passed "ls ../outside" exit=0 sees secret=true
+shell allow-list passed "node --test ..\\outside" exit=1 sees secret=false
+shell allow-list passed "dir \"C:\\Users\\recti\\AppData\\Local\\Temp\\lousho-conf-Fe7ejf\\outside\"" exit=0 sees secret=true
+outside files after probes: false false TOP SECRET

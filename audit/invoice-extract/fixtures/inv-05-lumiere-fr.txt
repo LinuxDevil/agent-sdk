@@ -1,0 +1,16 @@
+IMPRIMERIE LUMIÈRE SARL
+8 rue de la République, 69002 Lyon, France — TVA intracom. FR45123456789
+
+FACTURE / INVOICE  n° F-2026-118
+Date: 2026-02-28        Échéance (due): 2026-03-30 — paiement à 30 jours
+
+Désignation                        Qté     P.U. HT      Montant HT
+Brochures A5 (lot de 1000 ex.)       3      180,00 €       540,00 €
+Affiches A2                         20        6,50 €       130,00 €
+Design graphique                     1      330,00 €       330,00 €
+
+Total HT avant remise                                   1 000,00 €
+Remise fidélité 10 %                                     -100,00 €
+Total HT                                                  900,00 €
+TVA 20 %                                                  180,00 €
+TOTAL TTC (EUR)                                         1 080,00 €

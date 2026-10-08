@@ -1,0 +1,2 @@
+timeout_ms=1500: returned after 2173ms exitCode=null timedOut=true aborted=undefined note="The command timed out after 1500ms and was killed. Pass a larger timeout_ms if it needs longer."; grandchild still alive=false
+abort after 1500ms: returned after 2308ms exitCode=null timedOut=undefined aborted=true note="The run was cancelled, so the command was killed."; grandchild still alive=false

@@ -11,17 +11,17 @@ import type { ToolDescriptor } from '../types';
 import { HookRegistry, type AgentHook } from '../execution/hooks';
 import type { Message } from '../providers/llm';
 import { textOf } from '../providers/content';
-import type { MemoryItem, MemoryScopeContext, MemorySlot } from './defineMemory';
+import { memoryKey, type MemoryItem, type MemoryScopeContext, type MemorySlot } from './defineMemory';
 import { SDKError } from '../execution/errors';
 
-/** A slot bound to a run's scope key. */
+/** A slot bound to a run's provider key (`<slot name>#<scope key>`). */
 type BoundSlot = readonly [slot: MemorySlot, key: string];
 
-/** The run's key for `slot`: `'global'`, `'session:<id>'`, or the scope function's value. */
-function scopeKey(slot: MemorySlot, ctx: MemoryScopeContext): string | undefined {
-  if (slot.scope === 'global') return 'global';
-  if (slot.scope === 'session') return ctx.sessionId && `session:${ctx.sessionId}`;
-  return slot.scope(ctx) || undefined;
+/** JSON.stringify with object keys sorted, so equal values serialize identically (items dedupe on text). */
+function stableStringify(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    typeof v === 'object' && v !== null && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v
+  );
 }
 
 function toolNames({ name, expose }: MemorySlot): string[] {
@@ -33,8 +33,15 @@ function memoryTools([slot, key]: BoundSlot): DefinedTool[] {
   const remember = defineTool({
     name: `remember_${slot.name}`,
     description: `Save a fact to the "${slot.name}" memory so it is recalled in later conversations.${about}`,
-    input: z.object({ text: z.string().min(1).describe('The fact, written so it makes sense on its own') }),
-    execute: async ({ text }) => ({ remembered: (await slot.provider.add(key, { text })).id }),
+    input: slot.itemSchema ?? z.object({ text: z.string().min(1).describe('The fact, written so it makes sense on its own') }),
+    execute: async (args) => {
+      // With an itemSchema the parsed arguments are the item: canonical JSON
+      // for its text, the parsed object for its metadata.
+      const item = slot.itemSchema
+        ? { text: stableStringify(args), metadata: args as Record<string, unknown> }
+        : { text: (args as { text: string }).text };
+      return { remembered: (await slot.provider.add(key, item)).id };
+    },
   });
   const recall = defineTool({
     name: `recall_${slot.name}`,
@@ -141,7 +148,7 @@ export function agentMemory(slots: readonly MemorySlot[] | undefined): AgentMemo
     },
     forRun(ctx, toolRegistry, hooks) {
       const bound = slots.flatMap((slot): BoundSlot[] => {
-        const key = scopeKey(slot, ctx);
+        const key = memoryKey(slot, ctx);
         return key === undefined ? [] : [[slot, key]];
       });
       const runTools = new RunToolRegistry(toolRegistry);

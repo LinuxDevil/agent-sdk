@@ -307,6 +307,102 @@ describe('Error Classes', () => {
       expect(compactProviderError(raw, 'anthropic').category).toBe('context-length-exceeded');
     });
 
+    it('maps a llama.cpp/LM Studio context overflow (HTTP 500) to context-length-exceeded, not retryable', () => {
+      // The exact bodies llama.cpp / LM Studio answer with (audit _cross X1,
+      // log-incident F2): the overflow is wrapped in a 500, which used to
+      // fall through to `err.isRetryable` (true for a 5xx) - so withRetry()
+      // retried a request that can never succeed.
+      const raw = new APICallError({
+        message: 'request (20018 tokens) exceeds the available context size (8192 tokens)',
+        url: 'http://localhost:1234/v1/chat/completions',
+        requestBodyValues: {},
+        statusCode: 500,
+        responseBody: JSON.stringify({
+          error: {
+            message: 'request (20018 tokens) exceeds the available context size (8192 tokens)',
+            type: 'exceed_context_size_error',
+          },
+        }),
+        isRetryable: true,
+      });
+
+      const compacted = compactProviderError(raw, 'lmstudio');
+      expect(compacted.category).toBe('context-length-exceeded');
+      expect(compacted.retryable).toBe(false);
+    });
+
+    it("recognizes the 'exceed_context_size_error' type even with a generic message", () => {
+      const raw = new APICallError({
+        message: 'Internal Server Error',
+        url: 'http://localhost:1234/v1/chat/completions',
+        requestBodyValues: {},
+        statusCode: 500,
+        responseBody: '{"type":"exceed_context_size_error"}',
+        isRetryable: true,
+      });
+
+      expect(compactProviderError(raw, 'llamacpp')).toMatchObject({
+        category: 'context-length-exceeded',
+        retryable: false,
+      });
+    });
+
+    it('classifies a streamed context-overflow error event the same way as a generate() one', () => {
+      // LM Studio's streamed variant arrives as an SSE error event, surfaced
+      // as a plain Error, not an APICallError (log-incident F2).
+      const streamed = compactProviderError(new Error('Context size has been exceeded.'), 'lmstudio');
+      expect(streamed.category).toBe('context-length-exceeded');
+      expect(streamed.retryable).toBe(false);
+    });
+
+    it("folds the upstream provider's message (OpenRouter error.metadata.raw) into the compacted error", () => {
+      // What OpenRouter returns when the upstream provider rejects the call:
+      // the generic "Provider returned error", the upstream body verbatim in
+      // error.metadata.raw (audit repo-maintainer F2).
+      const upstream =
+        "Invalid schema for response_format 'r': 'required' is required to be supplied " +
+        "and to be an array including every key in properties. Missing 's'.";
+      const raw = new APICallError({
+        message: 'Provider returned error',
+        url: 'https://openrouter.ai/api/v1/chat/completions',
+        requestBodyValues: {},
+        statusCode: 400,
+        responseBody: JSON.stringify({
+          error: {
+            message: 'Provider returned error',
+            code: 400,
+            metadata: {
+              raw: JSON.stringify({ error: { message: upstream, type: 'invalid_request_error' } }),
+              provider_name: 'OpenAI',
+            },
+          },
+        }),
+        isRetryable: false,
+      });
+
+      const compacted = compactProviderError(raw, 'openrouter');
+      expect(compacted.error).toContain('Provider returned error');
+      expect(compacted.error).toContain("Invalid schema for response_format 'r'");
+      expect(compacted.category).toBe('unknown');
+    });
+
+    it('bounds the upstream message folded into the compacted error', () => {
+      const raw = new APICallError({
+        message: 'Provider returned error',
+        url: 'https://openrouter.ai/api/v1/chat/completions',
+        requestBodyValues: {},
+        statusCode: 500,
+        responseBody: JSON.stringify({
+          error: { message: 'Provider returned error', metadata: { raw: JSON.stringify({ error: { message: 'y'.repeat(5000) } }) } },
+        }),
+        isRetryable: true,
+      });
+
+      const compacted = compactProviderError(raw, 'openrouter');
+      expect(compacted.error.length).toBeLessThan(600);
+      expect(compacted.error.endsWith('(truncated)')).toBe(true);
+    });
+
     it('falls back to the APICallError isRetryable flag for an unrecognized 5xx', () => {
       const raw = new APICallError({
         message: 'Internal server error',

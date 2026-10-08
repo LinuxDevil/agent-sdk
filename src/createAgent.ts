@@ -22,7 +22,7 @@ import type { AgentEvent } from './execution/agentEvents';
 import type { TraceExporter } from './execution/tracing';
 import { LLMProvider, LLMProviderRegistry } from './providers/llm';
 import { ToolRegistry } from './tools/ToolRegistry';
-import { ToolDescriptor } from './types';
+import { ToolDescriptor, type AgentConfig } from './types';
 import { modelFromEnv, resolveProviderSpec } from './providers/providerSpec';
 import { withFallback, withRetry, type WithRetryOptions } from './providers/resilience';
 import { isDefinedTool } from './tools/defineTool';
@@ -628,10 +628,24 @@ export interface SendOptions {
    * `agent.approvals.resolve()` uses the agent's again.
    */
   approvalTtlMs?: number;
+  /**
+   * Span id to parent this run's `invoke_agent` span to: pass the `span.id`
+   * a `withSpan()` callback received so the run's span nests under your span
+   * (and a multi-`send()` pipeline rolls up into one trace). See
+   * `ExecuteOptions.parentSpanId` and docs/observability.md.
+   *
+   * @example
+   * ```ts
+   * await withSpan(exporter, 'research.wave.1', {}, async (span) => {
+   *   await agent.send('Research this', { parentSpanId: span.id });
+   * });
+   * ```
+   */
+  parentSpanId?: string;
 }
 
-/** How a run is checkpointed, plus (LOU-V13, N4, TTL) a `send()` / `stream()` call's own `reasoning`, `permissionMode`, `approvalTtlMs`. */
-type RunTurn = SessionTurnOptions & Pick<ExecuteOptions, 'reasoning' | 'permissionMode' | 'approvalTtlMs'>;
+/** How a run is checkpointed, plus (LOU-V13, N4, TTL) a `send()` / `stream()` call's own `reasoning`, `permissionMode`, `approvalTtlMs`, `parentSpanId`. */
+type RunTurn = SessionTurnOptions & Pick<ExecuteOptions, 'reasoning' | 'permissionMode' | 'approvalTtlMs' | 'parentSpanId'>;
 
 /** `TObject`: the type of `result.object` - `z.output` of the `output` schema. */
 export interface SimpleAgent<TObject = unknown> {
@@ -858,6 +872,11 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
         const request = await resumeRequestFor(approvalStore, decision, undefined, checkpointStore, permissionMode, approver, onAgentEvent);
         return resumeRequest({ ...request, executeOptions: wire(request.executeOptions ?? {}) });
       }, signal, inputQueue),
+    // A pause resolved in a fresh process re-binds to the session its turn
+    // belongs to (coding-agent F1): `checkpoints` tells a session turn apart
+    // from a send({ sessionId }) run; `openSession` re-opens it.
+    checkpoints,
+    openSession: (id) => session({ id }),
   });
   /** A run under `sessionId`, checkpointed in the agent's store (LOU-D30). */
   const durable = (sessionId: string | undefined): Partial<SessionTurnCheckpoint> => {
@@ -872,30 +891,35 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     }
     return { sessionId, checkpointStore: checkpoints };
   };
-  const callTurn = ({ sessionId, reasoning, permissionMode, approvalTtlMs }: SendOptions): RunTurn => {
+  const callTurn = ({ sessionId, reasoning, permissionMode, approvalTtlMs, parentSpanId }: SendOptions): RunTurn => {
     if (permissionMode !== undefined) assertPermissionMode(permissionMode, 'send');
     return {
       ...durable(sessionId),
       ...(reasoning !== undefined && { reasoning }),
       ...(permissionMode !== undefined && { permissionMode }),
       ...(approvalTtlMs !== undefined && { approvalTtlMs }),
+      ...(parentSpanId !== undefined && { parentSpanId }),
     };
   };
-  /** `lead` (N6): false when the run starts as a handoff target, which gets none of this agent's memory. */
   const executeOptions = (
     spec: SubagentSpec,
     input: Message[],
     ctx: RunConfigContext,
     signal?: AbortSignal,
-    turn?: RunTurn,
-    lead = true
+    turn?: RunTurn
   ): ExecuteOptions => {
     // LOU-R18: a session's turn carries its on() forwarder; it joins the agent's listener instead of replacing it.
     const { onAgentEvent: turnListener, ...turnRest } = turn ?? {};
+    // LOU-W6: memory tools and recall bound to this run's scope keys. N6: the
+    // binding is the run's, so it holds when the run starts as a handoff
+    // target (the session kept the target) - the target's agent did not list
+    // the slot tools, so they are added to what it offers the model.
+    const bound = memory?.forRun({ sessionId: ctx.sessionId, metadata: ctx.metadata, principal: ctx.principal }, spec.toolRegistry, hooks);
     return {
       ...spec,
+      ...(bound && { agent: offeringBoundTools(spec.agent, spec.toolRegistry, bound.toolRegistry) }),
       output: config.output,
-      hooks,
+      hooks: bound?.hooks ?? hooks,
       approvalStore: approvals.store,
       input,
       signal,
@@ -909,8 +933,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       // LOU-R16: the call's metadata reaches every hook context as `ctx.metadata`.
       ...(ctx.metadata !== undefined && { metadata: ctx.metadata }),
       ...turnRest,
-      // LOU-W6: memory tools and recall bound to this run's scope keys.
-      ...(lead && memory?.forRun({ sessionId: ctx.sessionId, metadata: ctx.metadata, principal: ctx.principal }, spec.toolRegistry, hooks)),
+      ...(bound && { toolRegistry: bound.toolRegistry }),
     };
   };
   /**
@@ -923,7 +946,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     const active = activeAgentOf(checkpoint ? checkpoint.messages : inSession ? input : []);
     const runCtx = pinned?.ctx ?? ctx;
     const resolved = await handoffs.run(active, runCtx, pinned);
-    const options = { ...executeOptions(resolved.spec, input, runCtx, signal, turn, resolved.lead), handoffs: resolved.handoffs, maxHandoffs: config.maxHandoffs };
+    const options = { ...executeOptions(resolved.spec, input, runCtx, signal, turn), handoffs: resolved.handoffs, maxHandoffs: config.maxHandoffs };
     return pinned ? { ...options, principal: ctx.principal } : options;
   };
   /**
@@ -1003,7 +1026,20 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
 
 /** The entry agent's run-level options (N6): names a handoff target can never own. */
 function runLevelOptionNames(config: CreateAgentConfig): string[] {
-  return (['approve', 'approvalStore', 'permissionMode', 'approvalTtlMs', 'store'] as const).filter((key) => config[key] !== undefined);
+  return (['approve', 'approvalStore', 'permissionMode', 'approvalTtlMs', 'store', 'memory'] as const).filter((key) => config[key] !== undefined);
+}
+
+/**
+ * `agent` also offering the tools `bound` added over `base` - the run's
+ * memory slot tools (`remember_*`/`recall_*`): the agent the run started
+ * with listed them itself; a handoff target's `agent.tools` does not, and
+ * without an entry they are never sent to the model.
+ */
+function offeringBoundTools(agent: AgentConfig, base: ToolRegistry | undefined, bound: ToolRegistry): AgentConfig {
+  const own = new Set(Object.keys(base?.getAll() ?? {}));
+  const missing = Object.keys(bound.getAll()).filter((name) => !own.has(name) && agent.tools?.[name] === undefined);
+  if (missing.length === 0) return agent;
+  return { ...agent, tools: { ...agent.tools, ...Object.fromEntries(missing.map((name) => [name, { tool: name }])) } };
 }
 
 /** The approval store a run writes to: the explicit one, else the store bundle's, else in-memory. */

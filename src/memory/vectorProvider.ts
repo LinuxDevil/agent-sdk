@@ -119,6 +119,10 @@ export function vectorMemory(store: VectorItemStore, options: VectorMemoryOption
     },
     add: (key, { text, metadata }) =>
       serial(key, async () => {
+        // Dedupe on text, like itemsProvider: a stored duplicate is returned
+        // unchanged (and no embedding call is spent on it).
+        const existing = (await store.load(key)).find((row) => row.text === text);
+        if (existing) return toItem(existing);
         const [vector] = await embedAll(embedder, [text]);
         const row: VectorRow = { id: newId(), text, createdAt: new Date().toISOString(), embedder: embedder.id, vector, ...(metadata && { metadata }) };
         await store.insert(key, row);

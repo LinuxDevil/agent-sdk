@@ -1,0 +1,43 @@
+--- default shell (cmd.exe) ---
+[cmd] echo "double" 'single'
+    exit=0 out="\"double\" 'single'" err=""
+[cmd] node -e "console.log(process.argv.slice(1))" "a b" 'c d'
+    exit=0 out="[ 'a b', \"'c\", \"d'\" ]" err=""
+[cmd] node --test "test/a.test.js"
+    exit=0 out="✔ a (1.4372ms)\nℹ tests 1\nℹ suites 0\nℹ pass 1\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 131.6629" err=""
+[cmd] node --test 'test/a.test.js'
+    exit=1 out="" err="Could not find ''test/a.test.js''"
+[cmd] echo %USERPROFILE% %FAKE_SECRET_TOKEN%
+    exit=0 out="C:\\Users\\recti %FAKE_SECRET_TOKEN%" err=""
+[cmd] set
+    exit=0 out="COMSPEC=C:\\WINDOWS\\system32\\cmd.exe\r\nHOME=C:\\Users\\recti\r\nHOMEDRIVE=C:\r\nHOMEPATH=\\Users\\recti\r\nLOGONSERVER=\\\\LOUSH\r\nPATH=C:\\Program Files\\Gi" err=""
+[cmd] ls
+    exit=0 out="package.json\ntest" err=""
+[cmd] exit 3
+    exit=3 out="" err=""
+[cmd] definitely-not-a-command
+    exit=1 out="" err="'definitely-not-a-command' is not recognized as an internal or external command,\r\noperable program or batch file."
+--- NodeWorkspace({ shell: bash }) ---
+[bash] echo 'single' "double" $HOME
+    exit=0 out="single double /c/Users/recti" err=""
+[bash] node --test test/a.test.js
+    exit=0 out="✔ a (1.2328ms)\nℹ tests 1\nℹ suites 0\nℹ pass 1\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 102.6951" err=""
+[bash] ls
+    exit=0 out="package.json\ntest" err=""
+--- string allow prefixes accept any trailing arguments ---
+[allow] node --test --test-reporter=spec --test-reporter-destination=../escaped-report.txt
+    exit=0 out="" err=""
+[allow] node --test --import=data:text/javascript,import("node:fs").then(function(f){f.writeFileSync("../escaped-import.txt","code ran")})
+    exit=1 out="data:text/javascript,import(node:fs).then(function(f){f.writeFileSync(../escaped-import.txt,code ran)}):1\nimport(node:fs).then(function(f){f" err=""
+[allow] git diff --no-index --output=../escaped-diff.txt package.json test/a.test.js
+    exit=1 out="" err="warning: in the working copy of 'test/a.test.js', LF will be replaced by CRLF the next time Git touches it"
+[allow] npm test -- --test-reporter-destination=../escaped-npm.txt
+    exit=1 out="> test\n> node --test --test-reporter-destination=../escaped-npm.txt" err="node:internal/test_runner/utils:323\r\n      throw new ERR_INVALID_ARG_VALUE(\r\n      ^\r\n\r\nTypeError [ERR_INVALID_ARG_VALUE"
+[allow] node --test ^& echo chained
+    REFUSED Command refused: it is not on the allow list (node --test, npm test, git diff). Chaining, pipes, substitution and redirection (; & | ` $( < >) are not allowed w
+[allow] node --test %COMSPEC%
+    exit=1 out="C:\\WINDOWS\\system32\\cmd.exe:1\nMZ�\u0000\u0003\u0000\u0000\u0000\u0004\u0000\u0000\u0000��\u0000\u0000�\u0000\u0000\u0000\u0000\u0000\u0000\u0000@\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\b\u0001\u0000\u0000\u000e\u001f�\u000e\u0000�\t�!�\u0001L�!This program cannot be run in DO" err=""
+  outside root: escaped-report.txt exists=true
+  outside root: escaped-import.txt exists=false
+  outside root: escaped-diff.txt exists=true
+  outside root: escaped-npm.txt exists=false

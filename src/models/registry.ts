@@ -23,6 +23,28 @@ export interface ModelInfo {
 const registry = new Map<string, ModelInfo>();
 for (const info of BUILT_IN_MODELS) registry.set(info.id, info);
 
+/** `feature\0model` pairs the fallback context window was already warned about (one console.warn each). */
+const warnedUnknownWindow = new Set<string>();
+
+/**
+ * One `console.warn` per (feature, model) pair, for when `feature` fell back
+ * to `assumed` context tokens because the registry does not know `model` -
+ * a local or unregistered model otherwise sizes its compactions against a
+ * silently wrong window (e.g. a 128k assumption against an 8k llama.cpp
+ * server). Passing the feature's explicit `contextWindow`, or
+ * `registerModel({ id, provider, contextWindow })`, is the fix.
+ */
+export function warnUnknownContextWindow(feature: string, model: string | undefined, assumed: number): void {
+  const key = `${feature}|${model ?? ''}`;
+  if (warnedUnknownWindow.has(key)) return;
+  warnedUnknownWindow.add(key);
+  console.warn(
+    `[lousho] ${feature}: ${model === undefined ? 'no model id was given' : `model '${model}' is not in the model registry`}, ` +
+      `so a context window of ${assumed.toLocaleString('en-US')} tokens is assumed. ` +
+      `If the real window differs, pass 'contextWindow' or registerModel({ id: '${model ?? '<id>'}', provider: '<provider>', contextWindow: <tokens> }).`
+  );
+}
+
 /**
  * Add a model or override a built-in one (later registration wins). Use this
  * for self-hosted or fine-tuned models, and to override the built-in price

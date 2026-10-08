@@ -1,0 +1,21 @@
+Müller Industrietechnik GmbH · Werkstraße 12 · 10115 Berlin
+USt-IdNr.: DE123456789
+
+RECHNUNG
+
+Rechnungsnummer: RE-2026-0042
+Rechnungsdatum: 15.03.2026
+Kundennummer: K-7781
+Zahlungsziel: 14 Tage netto (fällig am 29.03.2026)
+
+Pos. Artikel-Nr.  Bezeichnung                 Menge   Einzelpreis   Gesamt
+1    HP-200       Hydraulikpumpe HP-200       2 Stk   845,00 €      1.690,00 €
+2    DS-12        Dichtungssatz DS-12        10 Stk    18,50 €        185,00 €
+3    -            Montage (Arbeitsstunden)    6 Std    72,00 €        432,00 €
+
+                                   Nettobetrag:        2.307,00 €
+                                   zzgl. 19 % MwSt.:     438,33 €
+                                   Rechnungsbetrag:    2.745,33 €
+
+Bitte überweisen Sie den Betrag unter Angabe der Rechnungsnummer.
+Bankverbindung: Berliner Volksbank, IBAN DE00 0000 0000 0000 0000 00

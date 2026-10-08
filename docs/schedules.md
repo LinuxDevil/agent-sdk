@@ -44,6 +44,16 @@ previous fire is still running, the next one is skipped and reported to
 `onError`. Fires missed while the process was suspended are skipped, not
 replayed. `now` and `setTimer` are injectable so tests never sleep.
 
+A `prompt` fire runs as a turn of the durable `schedule-<name>` session — the
+same convention as the Workers target below — so its transcript is inspectable
+and an interrupted fire is resumable when the agent has a checkpoint store; on
+one without, the fire falls back to a plain ephemeral turn.
+
+To fire a schedule on demand (an ops "run now", a test), call
+`fireSchedule(agent, schedule, name, firedAt, sessionId?)` — the same function
+`startSchedules` calls: a `run` schedule invokes its function, a `prompt`
+schedule sends the prompt, under `sessionId` when given.
+
 ## In an agent directory
 
 ```text

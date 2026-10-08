@@ -72,6 +72,16 @@ export interface GitHubChannelOptions {
    * command comment itself.
    */
   approvers?: Approvers;
+  /**
+   * When the App also subscribes to **Pull request** events: `true` starts a
+   * turn on `pull_request.opened` - the input names the PR, its author and its
+   * title and body, the session is the one the PR's comments share
+   * (`<owner>/<repo>#<number>`), and the reply is posted as a PR comment.
+   * `triggers` gates the PR's author exactly like a commenter; PRs opened by
+   * bots or by the channel's own account are ignored. Default: off (a
+   * `pull_request` subscription then only gets the `200` acknowledgement).
+   */
+  pullRequestOpened?: boolean;
   /** Failures after the webhook was acknowledged (reply delivery, the turn, an approval). Default: `console.error`. */
   onError?: ChannelErrorHandler;
 }
@@ -106,8 +116,26 @@ interface Payload {
   installation?: { id?: number };
   repository?: { name?: string; owner?: { login?: string } };
   issue?: { number?: number; pull_request?: unknown };
-  pull_request?: { number?: number };
+  pull_request?: {
+    number?: number;
+    title?: string;
+    body?: string | null;
+    author_association?: string;
+    user?: { login?: string; type?: string };
+  };
   comment?: { id?: number; body?: string | null; in_reply_to_id?: number; author_association?: string; user?: { login?: string; type?: string } };
+}
+
+/** A `pull_request.opened` webhook, as the channel reads it (`pullRequestOpened: true`). */
+interface PullRequestOpenedEvent {
+  owner: string;
+  repo: string;
+  number: number;
+  title: string;
+  body: string;
+  author: string;
+  association: string;
+  installationId?: number;
 }
 
 const MAX_COMMENT = 60_000; // GitHub's limit is 65,536
@@ -293,6 +321,46 @@ export function githubChannel(options: GitHubChannelOptions): Channel<GitHubComm
     return kind === 'pull_request_review_comment' ? readReviewEvent(base, payload) : null;
   }
 
+  /**
+   * A `pull_request` webhook to start a turn on (`pullRequestOpened: true`):
+   * only `opened`, only a human author who is not the channel itself - the same
+   * rules as a comment. Everything else (`synchronize`, `closed`, `reopened`,
+   * a bot's PR) is `null`.
+   */
+  function readPullRequestOpened(payload: Payload): PullRequestOpenedEvent | null {
+    const { pull_request: pr, repository } = payload;
+    const owner = repository?.owner?.login;
+    const repo = repository?.name;
+    const login = pr?.user?.login;
+    if (payload.action !== 'opened' || typeof pr?.number !== 'number' || !owner || !repo || !login) return null;
+    if (pr.user?.type === 'Bot' || ownLogins.has(login.toLowerCase())) return null;
+    const installationId = payload.installation?.id;
+    return {
+      owner,
+      repo,
+      number: pr.number,
+      title: pr.title ?? '',
+      body: pr.body ?? '',
+      author: login,
+      association: pr.author_association ?? 'NONE',
+      ...(typeof installationId === 'number' ? { installationId } : {}),
+    };
+  }
+
+  /** The opened PR as an inbound turn: the session it shares with the PR's comments, `triggers` applied to its author. */
+  async function openedToInbound(pr: PullRequestOpenedEvent): Promise<ChannelInbound<GitHubCommentEvent> | null> {
+    if (!(await mayTrigger({ login: pr.author, association: pr.association }))) return null;
+    const input = `Pull request #${pr.number} opened by @${pr.author}: ${pr.title}`.trim() + (pr.body ? `\n\n${pr.body}` : '');
+    const target: GitHubTarget = { owner: pr.owner, repo: pr.repo, number: pr.number, ...(pr.installationId === undefined ? {} : { installationId: pr.installationId }) };
+    return {
+      sessionKey: `${pr.owner}/${pr.repo}#${pr.number}`,
+      input,
+      replyTo: target,
+      metadata: { user: pr.author, association: pr.association },
+      principal: { id: pr.author, type: 'user', authenticator: 'github' },
+    };
+  }
+
   const keyOf = (event: GitHubCommentEvent): string =>
     event.kind === 'review_thread' ? `${event.owner}/${event.repo}#${event.number}:${event.inReplyTo ?? event.commentId}` : `${event.owner}/${event.repo}#${event.number}`;
 
@@ -361,6 +429,10 @@ export function githubChannel(options: GitHubChannelOptions): Channel<GitHubComm
     async parse(req: ChannelRequest, respond: ChannelRespond, ctx: ChannelContext) {
       respond(200, { ok: true }); // GitHub gives a webhook 10 seconds and does not retry
       const kind = req.headers['x-github-event'];
+      if (kind === 'pull_request') {
+        const pr = options.pullRequestOpened ? readPullRequestOpened(JSON.parse(req.text || '{}') as Payload) : null;
+        return pr ? openedToInbound(pr) : null;
+      }
       if (kind !== 'issue_comment' && kind !== 'pull_request_review_comment') return null; // ping and everything else
       const event = readEvent(kind, JSON.parse(req.text || '{}') as Payload);
       return event ? readMessage(event, ctx) : null;

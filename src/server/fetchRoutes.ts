@@ -21,6 +21,7 @@ import type { AgentEvent } from '../execution/agentEvents';
 import type { SimpleAgent } from '../createAgent';
 import { assertSessionId } from '../session/sessionStore';
 import type { AgentSession } from '../session/AgentSession';
+import type { PendingApproval } from '../execution/ApprovalGate';
 import { SessionAwaitingApprovalError } from '../execution/errors';
 import { errorEvents } from '../cli/devEvents';
 import type { AuthFn, Principal } from '../auth/types';
@@ -28,6 +29,16 @@ import { routeAuth } from '../auth/routeAuth';
 import { apiToken } from '../auth/basic';
 import type { OAuthCompleteResult } from '../oauth/signIn';
 import { awaitSignInGate } from '../oauth/signInPending';
+
+/**
+ * Who may decide a gated pause posted to `POST /chat/:sessionId/approvals/:id`:
+ * principal ids, or a function of the route-auth caller and the pending call
+ * (its `principal` is who the paused run acts for, its `kind` what the pause
+ * waits on). See `ChatRoutesContext.approvers` for the default policy.
+ */
+export type RouteApprovers =
+  | readonly string[]
+  | ((caller: Principal | undefined, pending: PendingApproval) => boolean | Promise<boolean>);
 
 /** What the routes need from their host: the live agent and how sessions are opened on it. */
 export interface ChatRoutesContext {
@@ -45,6 +56,29 @@ export interface ChatRoutesContext {
    * Not awaited by the response.
    */
   afterSignIn?: (result: OAuthCompleteResult) => void;
+  /**
+   * Who may decide a `needsApproval` pause through the approvals route (N10b):
+   * a list of principal ids, or a function of the caller and the pending call.
+   * Default: the caller the paused run acts for may **not** approve it when
+   * that principal is a `user` - self-approval would defeat the gate for a
+   * consumer-facing route; any other authenticated caller may, as the
+   * channels' approvers do. A `service` principal is the deployment's own
+   * identity (a shared token, a remote agent's continuation), so it is left to
+   * route auth alone. `question` and `sign-in` pauses are the run's own user's
+   * to answer and are exempt unless `approvers` is set (then it decides every
+   * kind; read `pending.kind`).
+   */
+  approvers?: RouteApprovers;
+  /**
+   * Whether `principal` may use the session `sessionId` (post a turn to it,
+   * read its transcript). `false` answers 403. Default: a session id used
+   * through these routes is bound to the first authenticated principal that
+   * used it (kept in memory per agent, so a restarted process - or a new
+   * Worker isolate - forgets the binding) and any other principal gets 403;
+   * an unauthenticated caller (no `auth`) binds nothing. For a durable
+   * policy, pass your own (e.g. derive the session id from the principal).
+   */
+  ownsSession?: (principal: Principal | undefined, sessionId: string) => boolean | Promise<boolean>;
 }
 
 /** Body-size cap for POST routes, matching common Node.js body-size-limit conventions. */
@@ -131,16 +165,84 @@ function openSession(ctx: ChatRoutesContext, sessionId: string): AgentSession | 
 
 type RouteHandler = (request: Request, ctx: ChatRoutesContext, params: string[], principal: Principal | undefined) => Promise<Response>;
 
+/** Whether `a` and `b` are the same caller: same `id`, `type`, `authenticator` and `issuer` (as `resumedRunPrincipal` compares them). */
+function samePrincipal(a: Principal, b: Principal): boolean {
+  return a.id === b.id && a.type === b.type && a.authenticator === b.authenticator && a.issuer === b.issuer;
+}
+
+/**
+ * The default session ownership of `ChatRoutesContext.ownsSession`: which
+ * principal key claimed each session id, per agent (a WeakMap entry dies with
+ * it). Bounded so a busy server does not grow it without limit; an evicted
+ * binding is simply claimed again by the next authenticated caller.
+ */
+const sessionOwners = new WeakMap<object, Map<string, string>>();
+const MAX_BOUND_SESSIONS = 10_000;
+
+const principalKey = (principal: Principal): string =>
+  JSON.stringify([principal.issuer ?? '', principal.authenticator, principal.type, principal.id]);
+
+function ownersOf(agent: SimpleAgent): Map<string, string> {
+  let owned = sessionOwners.get(agent);
+  if (owned === undefined) sessionOwners.set(agent, (owned = new Map()));
+  return owned;
+}
+
+/**
+ * Whether `principal` may use `sessionId` through these routes: `ctx.ownsSession`
+ * when set, else the default binding of the session id to the first
+ * authenticated caller that used it (a caller with no principal - a route
+ * without `auth` - binds and is bound by nothing). Shared by the `/chat`
+ * routes and `createRouteHandler`'s `useChat` endpoint.
+ */
+export async function sessionAccessAllowed(ctx: Pick<ChatRoutesContext, 'agent' | 'ownsSession'>, sessionId: string, principal: Principal | undefined): Promise<boolean> {
+  if (ctx.ownsSession !== undefined) return Boolean(await ctx.ownsSession(principal, sessionId));
+  if (principal === undefined) return true;
+  const owned = ownersOf(ctx.agent());
+  const key = principalKey(principal);
+  const owner = owned.get(sessionId);
+  if (owner !== undefined) return owner === key;
+  if (owned.size >= MAX_BOUND_SESSIONS) owned.delete(owned.keys().next().value as string);
+  owned.set(sessionId, key);
+  return true;
+}
+
+const SESSION_FORBIDDEN = { error: 'This session belongs to another caller' } as const;
+
+/**
+ * The default decider policy of `ChatRoutesContext.approvers` (N10b): a gated
+ * tool call may not be decided by the `user` principal the paused run acts
+ * for - a customer approving their own gated call defeats `needsApproval`.
+ * `service` principals are exempt (a shared token or a remote agent's
+ * continuation is one identity, so every decision would be "self"), and
+ * `question` / `sign-in` pauses are the run's own user's to answer. A run
+ * without a principal, or a caller without one, cannot be compared and is
+ * left to route auth alone.
+ */
+async function mayDecideApproval(approvers: RouteApprovers | undefined, caller: Principal | undefined, pending: PendingApproval): Promise<boolean> {
+  if (typeof approvers === 'function') return Boolean(await approvers(caller, pending));
+  if (approvers !== undefined) return caller !== undefined && approvers.includes(caller.id);
+  if ((pending.kind ?? 'tool') !== 'tool') return true;
+  const owner = pending.principal;
+  if (owner === undefined || owner.type !== 'user' || caller === undefined) return true;
+  return !samePrincipal(caller, owner);
+}
+
 const runChat: RouteHandler = async (request, ctx, _params, principal) => {
   const { sessionId, input, message } = await readJson(request);
   if (typeof sessionId === 'string' && (typeof input === 'string' ? input : Array.isArray(input))) {
     const session = openSession(ctx, sessionId);
-    return session instanceof Response ? session : sseResponse(request, (signal) => session.stream(input as AgentInput, { signal, principal }));
+    if (session instanceof Response) return session;
+    if (!(await sessionAccessAllowed(ctx, sessionId, principal))) return jsonResponse(403, SESSION_FORBIDDEN);
+    return sseResponse(request, (signal) => session.stream(input as AgentInput, { signal, principal }));
   }
   if (typeof message === 'string' && message) {
     if (sessionId !== undefined && typeof sessionId !== 'string') return jsonResponse(400, { error: "Request body's 'sessionId', if present, must be a string" });
     if (!warnedLegacy.has(ctx.name)) console.warn(`[${ctx.name}] POST /chat { message } is deprecated: send { sessionId, input } for a session and a streamed turn.`);
     warnedLegacy.add(ctx.name);
+    if (ctx.durableMessage && typeof sessionId === 'string' && !(await sessionAccessAllowed(ctx, sessionId, principal))) {
+      return jsonResponse(403, SESSION_FORBIDDEN);
+    }
     return jsonResponse(200, await ctx.agent().send(message, { ...(ctx.durableMessage && typeof sessionId === 'string' && { sessionId }), principal }), { Deprecation: 'true' });
   }
   return jsonResponse(400, { error: "Request body must be JSON with 'sessionId' and 'input' strings (or the deprecated 'message')" });
@@ -169,8 +271,26 @@ const runApproval: RouteHandler = async (request, ctx, [sessionId, id], principa
     return jsonResponse(400, { error: "Request body must be JSON with 'approved' (and optional 'note') or 'answer'" });
   }
   const agent = ctx.agent();
-  const pending = (await agent.approvals.list()).some((candidate) => candidate.id === id) || (await recoverApproval(session, id));
-  if (!pending) {
+  const waiting = await session.pending();
+  // The session in the path must be the one the pause belongs to, when it can
+  // tell: a checkpointed turn that is mid-flight or waits on another approval
+  // names a different session's pause (or a made-up pairing) - 404 either way.
+  if (waiting !== null && !(waiting.status === 'awaiting-approval' && waiting.approvalId === id)) {
+    return jsonResponse(404, { error: `No pending approval '${id}' in session '${sessionId}'` });
+  }
+  // `get` covers this process's pauses and a durable approval store's (#280), so
+  // the decider policy sees the paused call - and whose run it is - even after a restart.
+  const record = await agent.approvals.get(id);
+  // N10b: route auth says who calls; `ctx.approvers` (or the default
+  // no-self-approval policy) says whether this caller may decide this pause.
+  if (record !== undefined && !(await mayDecideApproval(ctx.approvers, principal, record))) {
+    return jsonResponse(403, { error: 'This caller may not decide this approval' });
+  }
+  // When the named session's checkpointed turn is the one waiting on `id`,
+  // recoverApproval binds the pause to it, so the continuation joins its transcript
+  // (a no-op for any other session). It also covers a pause the store lost.
+  const recovered = await recoverApproval(session, id);
+  if (record === undefined && !recovered) {
     return jsonResponse(404, { error: `No pending approval '${id}' (it was decided already, or the agent was reloaded)` });
   }
   // LOU-D32.2: the continuation streams live (decided call, text deltas, a further pause, run.done).
@@ -232,9 +352,11 @@ const runOAuthCallback: RouteHandler = async (request, ctx, _params, principal) 
   }
 };
 
-const runTranscript: RouteHandler = async (_request, ctx, [sessionId]) => {
+const runTranscript: RouteHandler = async (_request, ctx, [sessionId], principal) => {
   const session = openSession(ctx, sessionId);
-  return session instanceof Response ? session : jsonResponse(200, { sessionId, messages: await session.load(), pending: await session.pending() });
+  if (session instanceof Response) return session;
+  if (!(await sessionAccessAllowed(ctx, sessionId, principal))) return jsonResponse(403, SESSION_FORBIDDEN);
+  return jsonResponse(200, { sessionId, messages: await session.load(), pending: await session.pending() });
 };
 
 /** N9b: the sign-in callback, under any prefix (a proxy may mount the API below a path). */

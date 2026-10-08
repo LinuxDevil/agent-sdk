@@ -27,7 +27,7 @@ import { toolFailure } from '../tools/built-in/toolFailure';
 import { rankToolsByKeywords, type SearchableTool } from '../tools/toolSearchRank';
 import { withPromptTool } from '../skills/withSkills';
 import { estimateTokens } from '../models/estimateTokens';
-import { getModelInfo } from '../models/registry';
+import { getModelInfo, warnUnknownContextWindow } from '../models/registry';
 import { schemaToJsonSchema } from '../utils/zodCompat';
 import { zodSchema } from 'ai';
 import { ConfigurationError } from './errors';
@@ -190,7 +190,11 @@ export function withToolSearch(
   const definitions = buildTools(agent, toolRegistry).filter(({ function: { name } }) => isDeferred(name, toolRegistry?.get(name)));
   if (definitions.length === 0) return { agent, toolRegistry };
   const model = modelOf(options, agent);
-  const contextWindow = settings?.contextWindow ?? (model ? getModelInfo(model)?.contextWindow : undefined) ?? FALLBACK_CONTEXT_WINDOW;
+  const knownWindow = settings?.contextWindow ?? (model ? getModelInfo(model)?.contextWindow : undefined);
+  // An unregistered (typically local) model silently deferred against 128k
+  // would overflow the real window first - say so once (as compaction does).
+  if (knownWindow === undefined) warnUnknownContextWindow('toolSearch', model, FALLBACK_CONTEXT_WINDOW);
+  const contextWindow = knownWindow ?? FALLBACK_CONTEXT_WINDOW;
   const thresholdPercent = settings?.thresholdPercent ?? DEFAULT_THRESHOLD_PERCENT;
   // Below the threshold there is nothing to gain: every tool loads upfront.
   if (thresholdPercent > 0 && definitionTokens(definitions, model) < thresholdPercent * contextWindow) return { agent, toolRegistry };

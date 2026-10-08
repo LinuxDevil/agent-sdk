@@ -1,0 +1,16 @@
+node_modules/
+*.tgz
+.env
+.env.*
+*.log
+# runtime artifacts (regenerable by running the harnesses)
+.runs/
+.lousho/
+data/
+*.db
+*.sqlite
+*.sqlite3
+# generated fixtures / eval output (gen-fixtures.ts recreates them)
+log-incident/fixtures/
+docs-qa/evals/
+docs-qa/reports/

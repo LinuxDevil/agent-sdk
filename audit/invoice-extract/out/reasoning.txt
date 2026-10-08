@@ -1,0 +1,12 @@
+
+[OpenAIProvider (/responses)] finish=stop object={"vendor":"Foo Ltd","total":"28.05"}
+  text startsWith "{": true len 36
+  result.reasoning: undefined
+  usage.reasoningTokens: 277  streamed reasoning chars: 0
+  event counts: {"run.start":1,"step.start":1,"text.delta":14,"text.done":1,"step.done":1,"run.done":1}
+
+[fromAiSdk(openai.chat) (/chat/completions)] finish=stop object={"vendor":"Foo Ltd.","total":"28.05"}
+  text startsWith "{": true len 37
+  result.reasoning: undefined
+  usage.reasoningTokens: 327  streamed reasoning chars: 0
+  event counts: {"run.start":1,"step.start":1,"text.delta":14,"text.done":1,"step.done":1,"run.done":1}

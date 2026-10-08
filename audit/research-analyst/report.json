@@ -1,0 +1,228 @@
+{
+  "question": "What breaks first when a Node.js app is under memory pressure?",
+  "verdict": {
+    "pass": false,
+    "gaps": [
+      "Diagnostics (heap snapshots, tooling) - Some mentions of heap snapshots and memory metrics are present, but there is a lack of real substance in discussing tooling beyond basic usage, and no mention of alternative tools apart from basic ones.",
+      "Mitigations/backpressure - While some mitigation strategies are mentioned, detailed approaches or diverse strategies to handle backpressure in practical scenarios are insufficient."
+    ]
+  },
+  "report": {
+    "title": "Memory Pressure in Node.js Applications: Breakpoints and Effects",
+    "sections": [
+      {
+        "heading": "Garbage Collection Under Memory Pressure",
+        "body": "When a Node.js application experiences memory pressure, the V8 heap memory can approach its limits, leading to longer and more frequent garbage collection (GC) cycles. These cycles can drastically increase the duration of mark-sweep-compact processes, causing stop-the-world pauses, which can detrimentally affect application performance and responsiveness."
+      },
+      {
+        "heading": "Impacts on Event Loop and Application Responsiveness",
+        "body": "Prolonged GC pauses can lead to noticeable delays in the event loop, affecting the timing of I/O callbacks and timers. As a result, health checks may fail, and keep-alive timeouts can occur, making the application appear less responsive even when CPU usage is low."
+      },
+      {
+        "heading": "External Memory Allocations",
+        "body": "It's crucial to understand that not all memory usage is counted against the V8 heap limit. External allocations, such as Buffers and native addons, can cause the Resident Set Size (RSS) to exceed the limits set for the heap, which may lead to out-of-memory (OOM) issues without triggering expected heap errors."
+      },
+      {
+        "heading": "Container Environments and OOM Killer",
+        "body": "In containerized environments, if the total memory usage surpasses the container's limits, the Linux Out-Of-Memory (OOM) killer may terminate the Node.js process via SIGKILL, often before V8 can report a memory error. This highlights the importance of aligning the max old space size with container limits to avoid abrupt process termination."
+      },
+      {
+        "heading": "Strategies for Managing Memory Pressure",
+        "body": "To alleviate memory pressure issues, developers can use the `--max-old-space-size` flag to increase the V8 heap size and monitor event loop delays as potential indicators of memory stress. Implementing backpressure strategies, such as `highWaterMark`, helps manage allocation rates effectively."
+      }
+    ],
+    "citations": [
+      {
+        "id": "C1",
+        "title": "V8 heap limit and --max-old-space-size",
+        "url": "https://nodejs.org/api/cli.html#--max-old-space-sizesize-in-mib"
+      },
+      {
+        "id": "C2",
+        "title": "GC pauses under pressure",
+        "url": "https://nodejs.org/en/learn/diagnostics/memory"
+      },
+      {
+        "id": "C3",
+        "title": "Event loop lag under memory pressure",
+        "url": "https://nodejs.org/api/perf_hooks.html#performanceeventloopdelay"
+      },
+      {
+        "id": "C4",
+        "title": "RSS vs heap: external and native memory",
+        "url": "https://nodejs.org/api/process.html#processmemoryusage"
+      },
+      {
+        "id": "C5",
+        "title": "Container and OS OOM killer",
+        "url": "https://nodejs.org/api/process.html"
+      },
+      {
+        "id": "C8",
+        "title": "Mitigations and backpressure",
+        "url": "https://nodejs.org/api/stream.html"
+      }
+    ],
+    "confidence": 0.95
+  },
+  "usage": [
+    {
+      "label": "wave-1-coordinator",
+      "ms": 12343,
+      "usage": {
+        "inputTokens": 7006,
+        "outputTokens": 1556,
+        "totalTokens": 8562,
+        "costUsd": 0.0019844999999999997,
+        "modelCalls": 8,
+        "estimated": false,
+        "byModel": {
+          "openai/gpt-4o-mini": {
+            "inputTokens": 7006,
+            "outputTokens": 1556,
+            "calls": 8,
+            "costUsd": 0.0019844999999999997
+          }
+        },
+        "promptTokens": 7006,
+        "completionTokens": 1556,
+        "cachedInputTokens": 0,
+        "reasoningTokens": 0,
+        "delegated": {
+          "inputTokens": 4022,
+          "outputTokens": 1190,
+          "totalTokens": 5212,
+          "costUsd": 0.0013173,
+          "modelCalls": 6,
+          "estimated": false,
+          "runs": 3
+        }
+      },
+      "steps": 2,
+      "ownModelCalls": 2,
+      "finishReason": "stop",
+      "taskCalls": 3
+    },
+    {
+      "label": "wave-1-verifier",
+      "ms": 1006,
+      "usage": {
+        "inputTokens": 1415,
+        "outputTokens": 24,
+        "totalTokens": 1439,
+        "costUsd": 0.00022665,
+        "modelCalls": 1,
+        "estimated": false,
+        "byModel": {
+          "openai/gpt-4o-mini": {
+            "inputTokens": 1415,
+            "outputTokens": 24,
+            "calls": 1,
+            "costUsd": 0.00022665
+          }
+        },
+        "promptTokens": 1415,
+        "completionTokens": 24,
+        "cachedInputTokens": 0,
+        "reasoningTokens": 0
+      },
+      "steps": 1,
+      "ownModelCalls": 1,
+      "finishReason": "stop",
+      "taskCalls": 0
+    },
+    {
+      "label": "wave-2-coordinator",
+      "ms": 11841,
+      "usage": {
+        "inputTokens": 4768,
+        "outputTokens": 1083,
+        "totalTokens": 5851,
+        "costUsd": 0.001365,
+        "modelCalls": 6,
+        "estimated": false,
+        "byModel": {
+          "openai/gpt-4o-mini": {
+            "inputTokens": 4768,
+            "outputTokens": 1083,
+            "calls": 6,
+            "costUsd": 0.001365
+          }
+        },
+        "promptTokens": 4768,
+        "completionTokens": 1083,
+        "cachedInputTokens": 0,
+        "reasoningTokens": 0,
+        "delegated": {
+          "inputTokens": 2257,
+          "outputTokens": 777,
+          "totalTokens": 3034,
+          "costUsd": 0.0008047499999999999,
+          "modelCalls": 4,
+          "estimated": false,
+          "runs": 2
+        }
+      },
+      "steps": 2,
+      "ownModelCalls": 2,
+      "finishReason": "stop",
+      "taskCalls": 2
+    },
+    {
+      "label": "wave-2-verifier",
+      "ms": 3874,
+      "usage": {
+        "inputTokens": 2136,
+        "outputTokens": 83,
+        "totalTokens": 2219,
+        "costUsd": 0.0003702,
+        "modelCalls": 1,
+        "estimated": false,
+        "byModel": {
+          "openai/gpt-4o-mini": {
+            "inputTokens": 2136,
+            "outputTokens": 83,
+            "calls": 1,
+            "costUsd": 0.0003702
+          }
+        },
+        "promptTokens": 2136,
+        "completionTokens": 83,
+        "cachedInputTokens": 0,
+        "reasoningTokens": 0
+      },
+      "steps": 1,
+      "ownModelCalls": 1,
+      "finishReason": "stop",
+      "taskCalls": 0
+    },
+    {
+      "label": "report-writer",
+      "ms": 8347,
+      "usage": {
+        "inputTokens": 2410,
+        "outputTokens": 583,
+        "totalTokens": 2993,
+        "costUsd": 0.0007113,
+        "modelCalls": 1,
+        "estimated": false,
+        "byModel": {
+          "openai/gpt-4o-mini": {
+            "inputTokens": 2410,
+            "outputTokens": 583,
+            "calls": 1,
+            "costUsd": 0.0007113
+          }
+        },
+        "promptTokens": 2410,
+        "completionTokens": 583,
+        "cachedInputTokens": 0,
+        "reasoningTokens": 0
+      },
+      "steps": 1,
+      "ownModelCalls": 1,
+      "finishReason": "stop",
+      "taskCalls": 0
+    }
+  ]
+}

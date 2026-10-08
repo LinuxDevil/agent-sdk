@@ -205,6 +205,10 @@ class FileApprovalStore implements ApprovalStore {
 
   /** A record a resolver already claimed (its `.claim` file was left by a crash) reads as resolved, like `resolve` sees it. */
   async load(id: string): Promise<ResolvedApproval | null> {
+    // A malformed id cannot name a saved record: read it as not-found (like a
+    // missing id) rather than throwing, so `agent.approvals.get(id)` keeps its
+    // documented "`undefined` when `id` is unknown" contract for HTTP input.
+    if (typeof id !== 'string' || !APPROVAL_ID_PATTERN.test(id)) return null;
     const file = this.fileFor(id);
     const [raw, claim] = await Promise.all([readText(file), readText(`${file}.claim`)]);
     return raw === undefined || claim !== undefined ? null : (JSON.parse(raw, decodeBytes) as ResolvedApproval);

@@ -10,7 +10,7 @@ import { initialAgentUIState, reduceAgentEvents, type AgentUIState } from '../ui
 import { createRouteHandler, type RouteHandlerOptions } from './routeHandler';
 import { defineMemory, inMemoryMemory, type MemoryScopeContext } from '../memory';
 import type { RunConfigContext } from '../createAgent';
-import { AuthError, apiToken, basic, jwt, type Principal } from '../auth';
+import { AuthError, apiToken, basic, jwt, type AuthFn, type Principal } from '../auth';
 import { SECRET, hmacKey, signToken } from '../auth/__fixtures__/tokens';
 
 const deploy = defineTool({ name: 'deploy', description: 'Deploys', input: z.object({}), needsApproval: true, execute: () => 'shipped' });
@@ -170,6 +170,100 @@ describe('createRouteHandler (LOU-P4)', () => {
     expect((await handler(post('/api/agent/chat', { sessionId: 's5', input: 'hi' }))).status).toBe(404);
     expect((await handler(post('/v1/botany/chat', { sessionId: 's5', input: 'hi' }))).status).toBe(404);
     expect((await handler(get('/v1/bot/nope'))).status).toBe(404);
+  });
+
+  describe('session ownership and approval decisions (N10b)', () => {
+    /** `Bearer u-<id>` authenticates the user principal `{ id, type: 'user', authenticator: 'test' }`. */
+    const userAuth: AuthFn = async (request) => {
+      const id = /^Bearer u-(.+)$/.exec(request.headers.get('authorization') ?? '')?.[1];
+      return id === undefined ? null : { id, type: 'user', authenticator: 'test' };
+    };
+    const as = (user: string) => ({ authorization: `Bearer u-${user}` });
+    const authed = (replies: Parameters<typeof mockModel>[0], options?: RouteHandlerOptions) =>
+      createRouteHandler(createAgent({ provider: mockModel(replies), tools: [deploy], store: memoryStore() }), { auth: [userAuth], ...options });
+
+    it('a gated pause cannot be approved by the user it runs for; another caller can', async () => {
+      const { handler } = authed([{ toolCalls: [{ name: 'deploy', id: 'c1' }] }, 'Deployed.']);
+      const paused = await frames(await handler(post('/api/agent/chat', { sessionId: 'g1', input: 'ship it' }, as('alice'))));
+      const { approvalId } = paused.find((e) => e.type === 'approval.requested') as { approvalId: string };
+      const self = await handler(post(`/api/agent/chat/g1/approvals/${approvalId}`, { approved: true }, as('alice')));
+      expect(self.status).toBe(403);
+      expect(await self.json()).toEqual({ error: 'This caller may not decide this approval' });
+      const other = await frames(await handler(post(`/api/agent/chat/g1/approvals/${approvalId}`, { approved: true }, as('staff'))));
+      expect(other.find((e) => e.type === 'tool.done')).toMatchObject({ result: 'shipped' });
+    });
+
+    it('approvers as a list or a function names who may decide, self included', async () => {
+      const listed = authed([{ toolCalls: [{ name: 'deploy', id: 'c1' }] }, 'x', { toolCalls: [{ name: 'deploy', id: 'c2' }] }, 'y'], { approvers: ['staff'] });
+      const first = await frames(await listed.handler(post('/api/agent/chat', { sessionId: 'l1', input: 'a' }, as('alice'))));
+      const a1 = (first.find((e) => e.type === 'approval.requested') as { approvalId: string }).approvalId;
+      expect((await listed.handler(post(`/api/agent/chat/l1/approvals/${a1}`, { approved: true }, as('staff')))).status).toBe(200);
+      const second = await frames(await listed.handler(post('/api/agent/chat', { sessionId: 'l2', input: 'b' }, as('bob'))));
+      const a2 = (second.find((e) => e.type === 'approval.requested') as { approvalId: string }).approvalId;
+      expect((await listed.handler(post(`/api/agent/chat/l2/approvals/${a2}`, { approved: true }, as('bob')))).status).toBe(403);
+
+      const byFunction = authed([{ toolCalls: [{ name: 'deploy', id: 'c3' }] }, 'z'], {
+        approvers: (caller, pending) => caller?.id === 'alice' && pending.toolName === 'deploy',
+      });
+      const paused = await frames(await byFunction.handler(post('/api/agent/chat', { sessionId: 'f1', input: 'c' }, as('alice'))));
+      const a3 = (paused.find((e) => e.type === 'approval.requested') as { approvalId: string }).approvalId;
+      // an explicit policy can re-allow self-approval (e.g. a single-user app)
+      expect((await byFunction.handler(post(`/api/agent/chat/f1/approvals/${a3}`, { approved: true }, as('alice')))).status).toBe(200);
+    });
+
+    it('a service principal (a shared token, a remote agent) may decide its own pause', async () => {
+      const { handler } = routes([{ toolCalls: [{ name: 'deploy', id: 'c1' }] }, 'Deployed.'], { auth: 't' });
+      const headers = { authorization: 'Bearer t' };
+      const paused = await frames(await handler(post('/api/agent/chat', { sessionId: 'sv1', input: 'ship it' }, headers)));
+      const { approvalId } = paused.find((e) => e.type === 'approval.requested') as { approvalId: string };
+      const continued = await frames(await handler(post(`/api/agent/chat/sv1/approvals/${approvalId}`, { approved: true }, headers)));
+      expect(continued.find((e) => e.type === 'tool.done')).toMatchObject({ result: 'shipped' });
+    });
+
+    it('a session is bound to the first authenticated caller; others get 403 on read and write', async () => {
+      const { handler } = authed(['Hi Alice.', 'follow-up']);
+      await (await handler(post('/api/agent/chat', { sessionId: 'mine', input: 'hi' }, as('alice')))).text();
+      expect((await handler(get('/api/agent/chat/mine', as('bob')))).status).toBe(403);
+      expect((await handler(post('/api/agent/chat', { sessionId: 'mine', input: 'what did we discuss?' }, as('bob')))).status).toBe(403);
+      expect((await handler(get('/api/agent/chat/mine', as('alice')))).status).toBe(200);
+      expect((await handler(post('/api/agent/chat', { sessionId: 'mine', input: 'again' }, as('alice')))).status).toBe(200);
+    });
+
+    it('ownsSession replaces the default binding (e.g. shared or derived ids)', async () => {
+      const { handler } = authed(['a', 'b'], { ownsSession: (principal, sessionId) => sessionId === `u-${principal?.id}` });
+      expect((await handler(post('/api/agent/chat', { sessionId: 'u-alice', input: 'hi' }, as('alice')))).status).toBe(200);
+      expect((await handler(post('/api/agent/chat', { sessionId: 'u-alice', input: 'hi' }, as('bob')))).status).toBe(403);
+    });
+
+    it('the approvals route 404s when the named session waits on a different pause', async () => {
+      const { handler } = authed([
+        { toolCalls: [{ name: 'deploy', id: 'c1' }] },
+        { toolCalls: [{ name: 'deploy', id: 'c2' }] },
+        'x',
+      ]);
+      const first = await frames(await handler(post('/api/agent/chat', { sessionId: 'w1', input: 'a' }, as('alice'))));
+      const a1 = (first.find((e) => e.type === 'approval.requested') as { approvalId: string }).approvalId;
+      const second = await frames(await handler(post('/api/agent/chat', { sessionId: 'w2', input: 'b' }, as('staff'))));
+      expect(second.find((e) => e.type === 'approval.requested')).toBeDefined();
+      // w2 waits on its own pause, not a1: naming a1 under w2 is a mismatch
+      expect((await handler(post(`/api/agent/chat/w2/approvals/${a1}`, { approved: true }, as('staff')))).status).toBe(404);
+      // and a1 itself is still decidable by another caller under any session path not bound to a pause
+      expect((await handler(post(`/api/agent/chat/fresh/approvals/${a1}`, { approved: true }, as('staff')))).status).toBe(200);
+    });
+
+    it('a question pause is answered by the user it was asked of (self-resolution allowed)', async () => {
+      const agent = createAgent({
+        provider: mockModel([{ toolCalls: [{ name: 'ask_question', args: { question: 'Where?', options: ['Porto', 'Lisbon'] }, id: 'q1' }] }, 'Lisbon.']),
+        store: memoryStore(),
+        askQuestion: true,
+      });
+      const { handler } = createRouteHandler(agent, { auth: [userAuth] });
+      const paused = await frames(await handler(post('/api/agent/chat', { sessionId: 'q', input: 'plan' }, as('alice'))));
+      const question = paused.find((e) => e.type === 'approval.requested') as { approvalId: string };
+      expect(question).toMatchObject({ kind: 'question' });
+      const answered = await frames(await handler(post(`/api/agent/chat/q/approvals/${question.approvalId}`, { answer: 'Lisbon' }, as('alice'))));
+      expect(answered.find((e) => e.type === 'tool.done')).toBeDefined();
+    });
   });
 
   it('serves the remote createAgentRunner behind useLoushoAgent({ url, approvalsUrl }) unchanged, approvals included', async () => {

@@ -56,7 +56,9 @@ The shell tool asks for approval by default (`needsApproval: true`); the
 predicate above lets everything else, such as `npm test` or `git status`, run
 without asking. The other way to skip the question is an `allow` list of the
 commands you trust, with `needsApproval: false`, as shown at the top of
-[Workspace tools](./workspace-tools.md). The regular expression is a
+[Workspace tools](./workspace-tools.md). A string entry there allows the
+command and ordinary flags only — arguments that point outside the workspace
+(a `..` segment, `~` or an absolute path) still need an anchored RegExp. The regular expression is a
 convenience, not a security boundary: a shell command can be written in many
 ways. For anything you do not control, keep the default and approve every
 command, or run the shell in a sandbox (see `SandboxShell` in

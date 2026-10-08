@@ -1,0 +1,18 @@
+Streamline Analytics, Inc.
+500 Howard Street, San Francisco, CA 94105
+
+Invoice SA-88213
+Issued: March 2, 2026
+Payment due upon receipt
+
+Bill to: Northwind Traders LLC
+
+Item                                         Qty    Price      Total
+Pro plan - monthly seat (March 2026)          10    $39.90    $399.00
+Additional storage 500 GB                      1   $100.00    $100.00
+
+Subtotal                                                       $499.00
+Tax (0%) - SaaS not taxable in billing state                     $0.00
+Amount due (USD)                                               $499.00
+
+Questions? billing@streamline.example

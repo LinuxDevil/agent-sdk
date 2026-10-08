@@ -848,8 +848,11 @@ interface ChannelUser {
 export interface ChatRoutesContext {
     afterSignIn?: (result: OAuthCompleteResult) => void;
     agent: () => SimpleAgent;
+    // Warning: (ae-forgotten-export) The symbol "RouteApprovers" needs to be exported by the entry point worker.d.ts
+    approvers?: RouteApprovers;
     durableMessage?: boolean;
     name: string;
+    ownsSession?: (principal: Principal | undefined, sessionId: string) => boolean | Promise<boolean>;
     // Warning: (ae-forgotten-export) The symbol "AgentSession" needs to be exported by the entry point worker.d.ts
     session?: (agent: SimpleAgent, id: string) => AgentSession;
 }
@@ -1213,6 +1216,7 @@ interface DefineMemoryOptions {
         remember?: boolean;
         recall?: boolean;
     };
+    itemSchema?: StandardSchemaV1;
     name: string;
     // Warning: (ae-forgotten-export) The symbol "MemoryProvider" needs to be exported by the entry point worker.d.ts
     //
@@ -1758,6 +1762,7 @@ interface GitHubChannelOptions {
     fetch?: typeof fetch;
     name?: string;
     onError?: ChannelErrorHandler;
+    pullRequestOpened?: boolean;
     token?: string | (() => string | Promise<string>);
     // Warning: (ae-forgotten-export) The symbol "GitHubTriggers" needs to be exported by the entry point worker.d.ts
     triggers?: GitHubTriggers;
@@ -2346,6 +2351,8 @@ interface MemorySlot {
         remember: boolean;
         recall: boolean;
     };
+    // (undocumented)
+    readonly itemSchema?: StandardSchemaV1;
     // (undocumented)
     readonly name: string;
     // (undocumented)
@@ -3039,6 +3046,9 @@ interface ReturnNode {
 }
 
 // @public
+type RouteApprovers = readonly string[] | ((caller: Principal | undefined, pending: PendingApproval) => boolean | Promise<boolean>);
+
+// @public
 export interface RunConfigContext {
     input: AgentInput;
     metadata?: Record<string, unknown>;
@@ -3219,6 +3229,7 @@ interface SDKErrorOptions {
 export interface SendOptions {
     approvalTtlMs?: number;
     metadata?: Record<string, unknown>;
+    parentSpanId?: string;
     permissionMode?: PermissionMode;
     principal?: Principal;
     reasoning?: ReasoningOption;
@@ -4155,13 +4166,13 @@ interface WithRetryOptions {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-DElKbGoN.d.ts:751:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-DElKbGoN.d.ts:768:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-DElKbGoN.d.ts:1118:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-DElKbGoN.d.ts:3076:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-DElKbGoN.d.ts:3077:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
-// dist/index-teGCK4tt.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
-// dist/index-teGCK4tt.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-Ct6a5flu.d.ts:751:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-Ct6a5flu.d.ts:768:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-Ct6a5flu.d.ts:1118:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-Ct6a5flu.d.ts:3080:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-Ct6a5flu.d.ts:3081:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
+// dist/index-DyKWxFSZ.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
+// dist/index-DyKWxFSZ.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point worker.d.ts
 
 // (No @packageDocumentation comment for this package)

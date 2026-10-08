@@ -74,10 +74,11 @@ function registrationOf(target: unknown, caller: string): HandoffRegistration {
 const warnedTargets = new WeakSet<object>();
 
 /**
- * Warns once that `target`'s `approve`/`approvalStore`/permission-mode-style
- * options do not apply when it runs as a handoff target: a run keeps the
- * entry agent's (the run's) across a handoff. Not warned for `lead` itself -
- * when the lead is a target (a hand back), those options DO apply.
+ * Warns once that `target`'s run-level options (`approve`, `approvalStore`,
+ * `permissionMode`, `approvalTtlMs`, `store`, `memory`) do not apply when it
+ * runs as a handoff target: a run keeps the entry agent's (the run's) across
+ * a handoff. Not warned for `lead` itself - when the lead is a target (a
+ * hand back), those options DO apply.
  */
 function warnRunLevelOptions(target: object, lead: object, registration: HandoffRegistration, name: string, leadName: string): void {
   const options = registration.runLevelOptions;
@@ -86,7 +87,7 @@ function warnRunLevelOptions(target: object, lead: object, registration: Handoff
   const listed = options.map((option) => `'${option}'`).join(', ');
   console.warn(
     `createAgent '${leadName}': the handoff target '${name}' was created with ${listed}, ` +
-      `${options.length === 1 ? 'which applies' : 'which apply'} only to the agent a run starts with - after a handoff the run still uses the entry agent's approval and permission configuration. ` +
+      `${options.length === 1 ? 'which applies' : 'which apply'} only to the agent a run starts with - after a handoff the run still uses the entry agent's approval, permission and memory configuration. ` +
       `Move ${options.length === 1 ? 'it' : 'them'} to '${leadName}' (or whichever agent runs start on).`
   );
 }

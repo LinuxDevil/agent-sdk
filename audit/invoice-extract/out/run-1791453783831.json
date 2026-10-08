@@ -1,0 +1,62 @@
+{
+ "concurrency": 1,
+ "flowWallMs": 162917,
+ "totalWallMs": 162917,
+ "providerEvents": {
+  "retries": [
+   {
+    "attempt": 1,
+    "delayMs": 358,
+    "error": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"
+   },
+   {
+    "attempt": 2,
+    "delayMs": 726,
+    "error": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"
+   },
+   {
+    "attempt": 1,
+    "delayMs": 290,
+    "error": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"
+   },
+   {
+    "attempt": 2,
+    "delayMs": 610,
+    "error": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"
+   }
+  ],
+  "fallbacks": [
+   {
+    "from": "openai",
+    "to": "openai.chat",
+    "error": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"
+   },
+   {
+    "from": "openai",
+    "to": "openai.chat",
+    "error": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"
+   }
+  ]
+ },
+ "decisions": {},
+ "docs": [
+  {
+   "id": "inv-01-acme-us",
+   "attempts": [
+    "text"
+   ],
+   "timings": {
+    "flowMs": 73018
+   }
+  },
+  {
+   "id": "inv-10-horizon-quote",
+   "attempts": [
+    "text"
+   ],
+   "timings": {
+    "flowMs": 89898
+   }
+  }
+ ]
+}

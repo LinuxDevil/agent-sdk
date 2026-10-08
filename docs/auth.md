@@ -272,13 +272,29 @@ permission rules and sub-agents see it too: see
 
 ## Security notes
 
-- **Route auth does not check who owns a session.** Any caller who passes auth
-  and knows a session id can read its transcript (`GET /chat/:id`), continue
-  it, and decide its pending approvals. Use session ids that cannot be guessed,
-  derive them from the principal on your side, or check ownership in your own
-  route before calling the handler. A caller who decides another caller's
-  approval is recorded as the approver (`ctx.approval.by`); the run keeps
-  acting for the caller that started it.
+- **A session id is bound to its first caller.** Once an authenticated
+  principal posts to `POST /chat` with a `sessionId` (or reads `GET
+  /chat/:id`), that id belongs to that principal: another principal gets 403
+  on read and on write. The binding is kept in memory per agent, so a restart
+  forgets it (a session id an authenticated caller touches first is then
+  theirs); unauthenticated routes bind nothing. For a durable or shared
+  policy, pass `ownsSession(principal, sessionId)` (`createRouteHandler`,
+  or `ChatRoutesContext` for `serveFetch`/`handleChatRequest`) - e.g. derive
+  the session id from the principal: `(p, id) => id === \`u-${p?.id}\``.
+- **A `user` principal cannot approve its own gated call.** `POST
+  /chat/:sessionId/approvals/:id` answers 403 when the caller equals the
+  `user` principal the paused run acts for - self-approval would defeat
+  `needsApproval` on a consumer-facing route. Any *other* authenticated caller
+  may decide (and is recorded as the approver, `ctx.approval.by`); the run
+  keeps acting for the caller that started it. `service` principals are
+  exempt: a shared token or a remote agent's continuation is one identity, so
+  every decision would be "self". `question` and `sign-in` pauses stay the
+  run's own user's to answer. To name the approvers, set
+  `approvers` (a list of principal ids, or `(caller, pending) => boolean`,
+  which sees `pending.principal` and `pending.kind` and then decides every
+  kind) on `createRouteHandler` / `ChatRoutesContext`. The session in the
+  path must also be the one waiting on the pause: a checkpointed session that
+  waits on another approval (or is mid-turn) answers 404.
 - `basic()` only over HTTPS; a bearer token is a password too, so terminate TLS
   in front of any server that is not on localhost.
 - Keep `issuer` and `audience` set for `jwt()`: a token minted for another of

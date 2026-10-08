@@ -10,7 +10,7 @@ import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { PropagatingToolError } from '../execution/AgentExecutor';
 import { mockModel, type MockRequest } from '../testing';
-import { FileSessionStore, MemorySessionStore } from './index';
+import { FileSessionStore, MemorySessionStore, type SessionStore } from './index';
 import { AgentSession, providerValidPrefix } from './AgentSession';
 import type { Message, ToolCall } from '../providers/llm';
 
@@ -77,6 +77,56 @@ describe('AgentSession', () => {
     expect(results.map((r) => r.text)).toEqual(['r1', 'r2', 'r3']);
     expect(session.messages.map((m) => m.content)).toEqual(['a', 'r1', 'b', 'r2', 'c', 'r3']);
     expect(convo(model.calls[2]).map((m) => m.content)).toEqual(['a', 'r1', 'b', 'r2', 'c']);
+  });
+
+  it('serializes concurrent sends across session OBJECTS that share one transcript store', async () => {
+    // support-desk F3: two `agent.session({ id })` objects (e.g. two concurrent
+    // HTTP requests on one session) each kept their own queue, so both turns
+    // ran at once and the last commit silently overwrote the other.
+    const store = new MemorySessionStore();
+    const model = mockModel([
+      { text: 'r1', delayMs: 30 },
+      { text: 'r2', delayMs: 1 },
+    ]);
+    const agent = createAgent({ provider: model });
+    const a = agent.session({ id: 'shared', store });
+    const b = agent.session({ id: 'shared', store });
+
+    const [ra, rb] = await Promise.all([a.send('first'), b.send('second')]);
+
+    expect(ra.text).toBe('r1');
+    expect(rb.text).toBe('r2');
+    // Both turns are committed: the second turn saw the first's exchange.
+    expect((await store.load('shared'))!.map((m) => m.content)).toEqual(['first', 'r1', 'second', 'r2']);
+    expect(convo(model.calls[1]).map((m) => m.content)).toEqual(['first', 'r1', 'second']);
+  });
+
+  it('a turn losing the race against a writer the queue cannot see fails with LOUSHO_SESSION_BUSY', async () => {
+    // Two different store objects over the same transcript cannot share the
+    // in-process queue (two processes, or fileStore(dir) built twice), so the
+    // commit guards on the transcript instead: the loser rejects loudly
+    // instead of silently dropping a turn.
+    const inner = new MemorySessionStore();
+    const wrap = (): SessionStore => ({
+      load: (id) => inner.load(id),
+      save: (id, messages) => inner.save(id, messages),
+      delete: (id) => inner.delete(id),
+    });
+    const model = mockModel([
+      { text: 'slow answer', delayMs: 50 },
+      { text: 'fast answer', delayMs: 1 },
+    ]);
+    const agent = createAgent({ provider: model });
+    const slow = agent.session({ id: 'shared', store: wrap() });
+    const fast = agent.session({ id: 'shared', store: wrap() });
+
+    const [ra, rb] = await Promise.allSettled([slow.send('first'), fast.send('second')]);
+
+    expect(rb).toMatchObject({ status: 'fulfilled', value: { text: 'fast answer' } });
+    expect(ra.status).toBe('rejected');
+    expect((ra as PromiseRejectedResult).reason).toMatchObject({ name: 'SDKError', code: 'LOUSHO_SESSION_BUSY' });
+    // The winner's turn is intact; the loser's message was not half-written.
+    expect((await inner.load('shared'))!.map((m) => m.content)).toEqual(['second', 'fast answer']);
   });
 
   it('keeps the queue alive after a failed send', async () => {

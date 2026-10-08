@@ -53,6 +53,34 @@ function isObjectSchemaNode(node: Record<string, unknown>): boolean {
   );
 }
 
+function isSchemaMap(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Whether `node` already accepts `null`, so marking its property `required` needs no `| null` union. */
+function acceptsNull(node: unknown): boolean {
+  if (node === true) return true;
+  if (!isSchemaMap(node)) return false;
+  const type = node.type;
+  if (type === 'null' || (Array.isArray(type) && type.includes('null'))) return true;
+  if (node.const === null || (Array.isArray(node.enum) && node.enum.includes(null))) return true;
+  for (const member of ['anyOf', 'oneOf'] as const) {
+    const subs = node[member];
+    if (Array.isArray(subs) && subs.some(acceptsNull)) return true;
+  }
+  // An unconstrained schema ({}, a bare description, ...) accepts anything.
+  return !('type' in node) && !('const' in node) && !('enum' in node) && !('anyOf' in node) && !('oneOf' in node) && !('allOf' in node) && !('$ref' in node) && !('not' in node);
+}
+
+/**
+ * The `{anyOf: [<original>, {type:'null'}]}` wrappers `closeObjectSchemas`
+ * adds for formerly-optional properties (LOU-R7.2): strict endpoints cannot
+ * omit a key, so the model writes `null` for an absent optional field while
+ * the source schema still rejects it - `validateOutput` turns that `null`
+ * back into an absent key before validating.
+ */
+const widenedToNullable = new WeakSet<object>();
+
 /**
  * `schema`, with `additionalProperties: false` on every object node that
  * does not set it (LOU-R7): OpenAI-compatible strict structured-output
@@ -84,6 +112,25 @@ function closeObjectSchemas(node: unknown): void {
   const schema = node as Record<string, unknown>;
   if (isObjectSchemaNode(schema) && schema.additionalProperties === undefined) {
     schema.additionalProperties = false;
+  }
+  // LOU-R7.2: strict structured outputs also require `required` to list
+  // every key of `properties`; a key the source schema left optional (a zod
+  // `.optional()`/`.default()` produces exactly that) keeps its slot by
+  // becoming a `... | null` union - which is also how the model reports
+  // "absent", since the strict response cannot omit the key.
+  const properties = schema.properties;
+  if (isSchemaMap(properties)) {
+    const required = new Set(Array.isArray(schema.required) ? schema.required : []);
+    for (const key of Object.keys(properties)) {
+      if (required.has(key)) continue;
+      required.add(key);
+      if (!acceptsNull(properties[key])) {
+        const widened = { anyOf: [properties[key], { type: 'null' }] };
+        widenedToNullable.add(widened);
+        properties[key] = widened;
+      }
+    }
+    schema.required = [...required];
   }
   for (const [member, value] of Object.entries(schema)) closeMember(member, value);
 }
@@ -126,6 +173,59 @@ function unfence(text: string): string {
   return /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed)?.[1] ?? trimmed;
 }
 
+/** The schema a local `#/a/b` $ref points at, or `undefined` when it cannot be resolved. */
+function resolveLocalRef(root: unknown, ref: string): unknown {
+  if (!ref.startsWith('#/')) return undefined;
+  let target: unknown = root;
+  for (const segment of ref.slice(2).split('/')) {
+    if (!isSchemaMap(target)) return undefined;
+    target = target[segment];
+  }
+  return target;
+}
+
+/**
+ * Walks `value` (the parsed reply) alongside the sent JSON schema and
+ * deletes every `null` sitting in a property `closeObjectSchemas` widened
+ * to `... | null` (the markers are in {@link widenedToNullable}): under a
+ * strict `required` the model has to write `null` for an absent optional
+ * field, but the source schema - a zod `.optional()` - still wants the key
+ * gone. A genuinely `.nullable()` field is untouched: its `null` is real.
+ */
+function stripWidenedNulls(value: unknown, node: unknown, root: unknown): void {
+  if (!isSchemaMap(node)) return;
+  const ref = node.$ref;
+  if (typeof ref === 'string') stripWidenedNulls(value, resolveLocalRef(root, ref), root);
+  if (Array.isArray(value)) {
+    for (const item of value) stripWidenedNulls(item, node.items, root);
+    const prefix = node.prefixItems;
+    if (Array.isArray(prefix)) prefix.forEach((subschema, index) => stripWidenedNulls(value[index], subschema, root));
+  } else if (isSchemaMap(value)) {
+    const properties = isSchemaMap(node.properties) ? node.properties : {};
+    for (const [key, prop] of Object.entries(properties)) {
+      if (!(key in value)) continue;
+      if (value[key] === null && widenedToNullable.has(prop as object)) delete value[key];
+      else stripWidenedNulls(value[key], prop, root);
+    }
+    if (isSchemaMap(node.additionalProperties)) {
+      for (const [key, item] of Object.entries(value)) {
+        if (!(key in properties)) stripWidenedNulls(item, node.additionalProperties, root);
+      }
+    }
+    if (isSchemaMap(node.patternProperties)) {
+      for (const [pattern, subschema] of Object.entries(node.patternProperties)) {
+        for (const [key, item] of Object.entries(value)) {
+          if (new RegExp(pattern).test(key)) stripWidenedNulls(item, subschema, root);
+        }
+      }
+    }
+  }
+  for (const member of ['anyOf', 'oneOf', 'allOf'] as const) {
+    const subs = node[member];
+    if (Array.isArray(subs)) for (const subschema of subs) stripWidenedNulls(value, subschema, root);
+  }
+}
+
 /** Parses the final reply as JSON and validates it with `schema`. */
 export async function validateOutput(
   schema: StandardSchemaV1,
@@ -138,6 +238,8 @@ export async function validateOutput(
     const issues = [{ path: '(root)', message: `Not valid JSON: ${(error as Error).message}` }];
     return { outputError: { message: `The reply is not a JSON object: ${formatIssues(issues)}`, issues } };
   }
+  const json = jsonSchemaOf(schema);
+  stripWidenedNulls(value, json, json);
   const result = await parseWithIssues(schema, value);
   if (result.success) return { object: result.data };
   const message = `The reply does not match the output schema: ${formatIssues(result.issues)}`;

@@ -21,7 +21,11 @@ function select(items: readonly MemoryItem[], { limit, query }: { limit?: number
   return matching.slice().reverse().slice(0, limit);
 }
 
-/** A `MemoryProvider` over `store`. Changes to one key are made one at a time, so concurrent adds keep every item. */
+/**
+ * A `MemoryProvider` over `store`. Changes to one key are made one at a time,
+ * so concurrent adds keep every item. `add` dedupes on `text`: adding an item
+ * whose text is already stored returns the stored one unchanged.
+ */
 export function itemsProvider(store: ItemStore, { maxItems = 1000 }: MemoryProviderOptions = {}): MemoryProvider {
   const serial = keyedQueue();
   const update = (key: string, change: (items: MemoryItem[]) => MemoryItem[]): Promise<void> =>
@@ -29,9 +33,14 @@ export function itemsProvider(store: ItemStore, { maxItems = 1000 }: MemoryProvi
   return {
     list: async (key, options) => select(await store.load(key), options),
     async add(key, { text, metadata }) {
-      const item: MemoryItem = { id: newId(), text, createdAt: new Date().toISOString(), ...(metadata && { metadata }) };
-      await update(key, (items) => [...items, item].slice(-maxItems));
-      return item;
+      let stored: MemoryItem | undefined;
+      await update(key, (items) => {
+        stored = items.find((item) => item.text === text);
+        if (stored) return items;
+        stored = { id: newId(), text, createdAt: new Date().toISOString(), ...(metadata && { metadata }) };
+        return [...items, stored].slice(-maxItems);
+      });
+      return stored!;
     },
     remove: (key, id) => update(key, (items) => items.filter((item) => item.id !== id)),
   };

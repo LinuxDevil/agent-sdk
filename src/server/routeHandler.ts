@@ -7,7 +7,7 @@
  */
 import type { SimpleAgent } from '../createAgent';
 import { newId } from '../utils/id';
-import { callbackPrincipal, handleChatFetch } from './fetchRoutes';
+import { callbackPrincipal, handleChatFetch, sessionAccessAllowed, type RouteApprovers } from './fetchRoutes';
 import { AuthError, type AuthFn, type Principal } from '../auth/types';
 import { routeAuth } from '../auth/routeAuth';
 import { apiToken } from '../auth/basic';
@@ -30,6 +30,27 @@ export interface RouteHandlerOptions {
   auth?: string | ((request: Request) => boolean | Promise<boolean>) | AuthFn | readonly AuthFn[];
   /** Adds `POST <basePath>/ui`, the endpoint the AI SDK's `useChat` posts to (docs/ai-sdk-ui.md). */
   uiMessageStream?: boolean;
+  /**
+   * Who may decide a `needsApproval` pause through the approvals route: a list
+   * of principal ids, or a function of the caller and the pending call
+   * (`pending.principal` is who the paused run acts for, `pending.kind` what it
+   * waits on). Default: the `user` principal a run acts for cannot approve its
+   * own pause - self-approval would defeat the gate for a consumer-facing
+   * route; a `service` principal (a shared token, a remote agent's
+   * continuation) can, and `question` / `sign-in` pauses stay the run's own
+   * user's to answer. Set it (e.g. `(caller) => caller?.claims?.role === 'staff'`)
+   * to name the approvers; it then decides every kind.
+   */
+  approvers?: RouteApprovers;
+  /**
+   * Whether the caller may use a session id (post a turn, read the
+   * transcript): `false` answers 403. Default: a session id is bound to the
+   * first authenticated principal that uses it (in memory, per agent) and any
+   * other principal gets 403; a route without `auth` binds nothing. For a
+   * durable policy, pass your own - e.g. derive the session id from the
+   * principal (`(p, id) => id === \`u-${p?.id}\``).
+   */
+  ownsSession?: (principal: Principal | undefined, sessionId: string) => boolean | Promise<boolean>;
 }
 
 export interface RouteHandlers {
@@ -80,11 +101,13 @@ function warnOpenInProduction(): void {
   console.warn('[lousho] createRouteHandler() has no `auth`: anyone who can reach this route can use the agent. See docs/auth.md.');
 }
 
-async function uiChat(agent: SimpleAgent, request: Request, principal: Principal | undefined): Promise<Response> {
+async function uiChat(ctx: { name: string; agent: () => SimpleAgent; ownsSession?: RouteHandlerOptions['ownsSession'] }, request: Request, principal: Principal | undefined): Promise<Response> {
   const body = (await request.json().catch(() => undefined)) as { messages?: UIMessageLike[]; id?: unknown } | undefined;
   if (!Array.isArray(body?.messages)) return json(400, { error: "Request body must be JSON with a 'messages' array" });
   const { id } = body;
+  const agent = ctx.agent();
   if (typeof id !== 'string' || !id) return toUIMessageStreamResponse(agent.stream(fromUIMessages(body.messages), { principal }));
+  if (!(await sessionAccessAllowed(ctx, id, principal))) return json(403, { error: 'This session belongs to another caller' });
   const input = fromUIMessages(body.messages, { lastUserOnly: true });
   return toUIMessageStreamResponse(agent.session({ id }).stream(input, { signal: request.signal, principal }));
 }
@@ -117,7 +140,7 @@ async function hookRoute(request: Request, path: string): Promise<{ path: string
  */
 export function createRouteHandler(agent: SimpleAgent, options: RouteHandlerOptions = {}): RouteHandlers {
   const base = (options.basePath ?? '/api/agent').replace(/\/+$/, '');
-  const ctx = { name: 'route', agent: () => agent };
+  const ctx = { name: 'route', agent: () => agent, approvers: options.approvers, ownsSession: options.ownsSession };
   const auth = authList(options.auth);
   if (!auth) warnOpenInProduction();
   const handler: RouteHandler = async (request) => {
@@ -135,7 +158,7 @@ export function createRouteHandler(agent: SimpleAgent, options: RouteHandlerOpti
       principal = outcome.principal;
     }
     if (options.uiMessageStream && request.method === 'POST' && path === '/ui') {
-      return uiChat(agent, request, principal).catch((error) => json(500, { error: (error as Error).message }));
+      return uiChat(ctx, request, principal).catch((error) => json(500, { error: (error as Error).message }));
     }
     const routed = request.method === 'POST' ? await hookRoute(request.clone(), path) : { path };
     url.pathname = routed.path;

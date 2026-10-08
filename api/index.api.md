@@ -1599,6 +1599,7 @@ export interface DefineMemoryOptions {
         remember?: boolean;
         recall?: boolean;
     };
+    itemSchema?: StandardSchemaV1;
     name: string;
     // (undocumented)
     provider: MemoryProvider;
@@ -2316,6 +2317,9 @@ export class FileWorkspaceCheckpointStore implements WorkspaceCheckpointStore {
 }
 
 // @public
+export function fireSchedule(agent: SimpleAgent, schedule: DefinedSchedule, name: string, firedAt: Date, sessionId?: string): Promise<void>;
+
+// @public
 export const FLOW_NODE_SPAN_NAME = "flow.node";
 
 // @public
@@ -2663,6 +2667,7 @@ export interface GitHubChannelOptions {
     fetch?: typeof fetch;
     name?: string;
     onError?: ChannelErrorHandler;
+    pullRequestOpened?: boolean;
     token?: string | (() => string | Promise<string>);
     triggers?: GitHubTriggers;
     webhookSecret: string;
@@ -3726,6 +3731,9 @@ export interface MemoryItem {
 }
 
 // @public
+export function memoryKey(slot: MemorySlot, ctx?: MemoryScopeContext): string | undefined;
+
+// @public
 export interface MemoryProvider {
     add(scopeKey: string, item: {
         text: string;
@@ -3777,6 +3785,8 @@ export interface MemorySlot {
         remember: boolean;
         recall: boolean;
     };
+    // (undocumented)
+    readonly itemSchema?: StandardSchemaV1;
     // (undocumented)
     readonly name: string;
     // (undocumented)
@@ -5020,12 +5030,18 @@ export interface RewindResult {
 }
 
 // @public
+type RouteApprovers = readonly string[] | ((caller: Principal | undefined, pending: PendingApproval) => boolean | Promise<boolean>);
+
+// @public
 export type RouteHandler = (request: Request) => Promise<Response>;
 
 // @public (undocumented)
 export interface RouteHandlerOptions {
+    // Warning: (ae-forgotten-export) The symbol "RouteApprovers" needs to be exported by the entry point index.d.ts
+    approvers?: RouteApprovers;
     auth?: string | ((request: Request) => boolean | Promise<boolean>) | AuthFn | readonly AuthFn[];
     basePath?: string;
+    ownsSession?: (principal: Principal | undefined, sessionId: string) => boolean | Promise<boolean>;
     uiMessageStream?: boolean;
 }
 
@@ -5233,6 +5249,9 @@ export interface ScheduledController {
 export type ScheduleInput = PromptScheduleInput | RunScheduleInput;
 
 // @public
+export function scheduleName(schedule: DefinedSchedule, index: number): string;
+
+// @public
 interface SchemaIssue {
     // (undocumented)
     readonly message: string;
@@ -5343,6 +5362,7 @@ export function secretsGuardrail(options?: {
 export interface SendOptions {
     approvalTtlMs?: number;
     metadata?: Record<string, unknown>;
+    parentSpanId?: string;
     permissionMode?: PermissionMode;
     principal?: Principal;
     reasoning?: ReasoningOption;
@@ -6721,7 +6741,10 @@ export type VectorMemoryProvider = MemoryProvider & {
 };
 
 // @public
-export const VERSION = "1.0.0-alpha.15";
+export const VERSION = "1.0.0-alpha.18";
+
+// @public
+export function warnUnknownContextWindow(feature: string, model: string | undefined, assumed: number): void;
 
 // @public (undocumented)
 const webFetchInput: z.ZodObject<{
@@ -6959,8 +6982,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-teGCK4tt.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-teGCK4tt.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-DyKWxFSZ.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-DyKWxFSZ.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)

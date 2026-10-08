@@ -149,6 +149,20 @@ describe('fileStore(dir) (R2)', () => {
     const pending = makePending('../evil');
     await expect(store.approvals.save(pending, makeSnapshot(pending))).rejects.toThrow(/Invalid approval id/);
   });
+
+  it('approvals.load treats a malformed id as not found, so agent.approvals.get returns undefined', async () => {
+    // incident-responder F1: `assertId` fired before the not-found path, so
+    // `agent.approvals.get('bogus id!')` threw LOUSHO_CONFIG_INVALID instead of
+    // returning `undefined` for an unknown id (ids arrive from HTTP input).
+    const store = fileStore(tempDir());
+    expect(await store.approvals.load!('bogus id!')).toBeNull();
+    expect(await store.approvals.load!('')).toBeNull();
+    expect(await store.approvals.load!('../evil')).toBeNull();
+
+    const agent = createAgent({ provider: mockModel([]), store });
+    expect(await agent.approvals.get('bogus id!')).toBeUndefined();
+    expect(await agent.approvals.get('appr_never_saved')).toBeUndefined();
+  });
 });
 
 describe('createAgent({ store: fileStore(dir) }) (R2)', () => {

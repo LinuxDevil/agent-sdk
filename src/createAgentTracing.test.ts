@@ -13,7 +13,7 @@ import { PropagatingToolError } from './execution/AgentExecutor';
 import { createOtelTraceExporter } from './execution/otel';
 import { fileTraceExporter } from './traces/fileTraceExporter';
 import type { TraceLine } from './traces/format';
-import type { Span, TraceExporter } from './execution/tracing';
+import { withSpan, type Span, type TraceExporter } from './execution/tracing';
 import { memoryStore } from './storage/agentStore';
 import { mockModel } from './testing';
 import { defineTool } from './tools/defineTool';
@@ -42,6 +42,35 @@ describe('createAgent({ exporter }) (M5a)', () => {
     for await (const event of run) void event;
 
     expect(ops(exporter.ended)).toEqual(['chat', 'invoke_agent']);
+  });
+
+  describe('SendOptions.parentSpanId (research-analyst F1)', () => {
+    it("parents the run's invoke_agent span under the caller's withSpan span", async () => {
+      const exporter = recording();
+      const agent = createAgent({ provider: mockModel(['Hi.']), exporter });
+
+      await withSpan(exporter, 'research.wave.1', {}, async (span) => {
+        await agent.send('Hello', { parentSpanId: span.id });
+      });
+
+      const run = exporter.ended.find((span) => op(span) === 'invoke_agent')!;
+      const parent = exporter.ended.find((span) => span.name === 'research.wave.1')!;
+      expect(run.parentId).toBe(parent.id);
+    });
+
+    it('stream() parents its invoke_agent span too', async () => {
+      const exporter = recording();
+      const agent = createAgent({ provider: mockModel(['Hi.']), exporter });
+
+      await withSpan(exporter, 'research.wave.2', {}, async (span) => {
+        const run = agent.stream('Hello', { parentSpanId: span.id });
+        for await (const event of run) void event;
+      });
+
+      const run = exporter.ended.find((span) => op(span) === 'invoke_agent')!;
+      const parent = exporter.ended.find((span) => span.name === 'research.wave.2')!;
+      expect(run.parentId).toBe(parent.id);
+    });
   });
 
   describe('agent.approvals.resolve() (#281)', () => {

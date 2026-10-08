@@ -226,7 +226,31 @@ function withRequestChanges(changes: RequestChanges): typeof fetch {
  * `type`/`param`, which fails that schema - the SDK then reports only the
  * status text.
  */
-function normalizedOpenRouterError(body: string): { error: { message: string; type: string; param: unknown; code: string | null } } | undefined {
+/** Cap on the upstream body kept under `metadata.raw` of a normalized error. */
+const MAX_UPSTREAM_RAW_CHARS = 2000;
+
+/**
+ * The upstream provider's own error message inside OpenRouter's
+ * `error.metadata.raw` (a JSON string of the upstream body), bounded to
+ * {@link MAX_UPSTREAM_RAW_CHARS}.
+ */
+function upstreamRawMessage(raw: unknown): string | undefined {
+  if (typeof raw !== 'string' || raw.trim() === '') return undefined;
+  let parsed: { error?: { message?: unknown } | string; message?: unknown };
+  try {
+    parsed = JSON.parse(raw) as typeof parsed;
+  } catch {
+    return undefined;
+  }
+  const error = parsed?.error;
+  const message = typeof error === 'string' ? error : (error?.message ?? parsed?.message);
+  if (typeof message !== 'string' || message.trim() === '') return undefined;
+  return message.slice(0, MAX_UPSTREAM_RAW_CHARS);
+}
+
+function normalizedOpenRouterError(body: string): {
+  error: { message: string; type: string; param: unknown; code: string | null; metadata?: { raw: string } };
+} | undefined {
   let parsed: { error?: unknown; message?: unknown };
   try {
     parsed = JSON.parse(body) as typeof parsed;
@@ -234,15 +258,31 @@ function normalizedOpenRouterError(body: string): { error: { message: string; ty
     return undefined;
   }
   const error = parsed?.error;
-  const fields = (typeof error === 'object' && error !== null ? error : {}) as { message?: unknown; type?: unknown; param?: unknown; code?: unknown };
+  const fields = (typeof error === 'object' && error !== null ? error : {}) as {
+    message?: unknown;
+    type?: unknown;
+    param?: unknown;
+    code?: unknown;
+    metadata?: { raw?: unknown };
+  };
   const message = typeof error === 'string' ? error : (fields.message ?? parsed?.message);
   if (typeof message !== 'string' || message.trim() === '') return undefined;
+  // OpenRouter reports an upstream provider's failure with the generic
+  // "Provider returned error" and keeps the real explanation in
+  // `error.metadata.raw` - append it (bounded) so the thrown error, and its
+  // compacted form, say what actually failed.
+  const upstream = upstreamRawMessage(fields.metadata?.raw);
   return {
     error: {
-      message,
+      message: upstream && !message.includes(upstream) ? `${message} (${upstream})` : message,
       type: typeof fields.type === 'string' ? fields.type : 'openrouter_error',
       param: fields.param ?? null,
       code: fields.code == null ? null : String(fields.code),
+      // Kept for consumers reading `responseBody` (e.g. compactProviderError
+      // digs the upstream message out of it).
+      ...(typeof fields.metadata?.raw === 'string' && fields.metadata.raw.trim() !== ''
+        ? { metadata: { raw: fields.metadata.raw.slice(0, MAX_UPSTREAM_RAW_CHARS) } }
+        : {}),
     },
   };
 }

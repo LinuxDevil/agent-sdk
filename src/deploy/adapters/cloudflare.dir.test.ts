@@ -194,7 +194,7 @@ describe('cloudflare-worker target: agent directories (M3b, #298)', () => {
     });
 
     it('binds the memory/ slot\'s kvMemory() provider to the KV namespace and recalls from it', async () => {
-      const kv = new Map<string, string>([['memory/global', JSON.stringify([{ id: '1', text: 'likes tea', createdAt: '2024-01-01T00:00:00.000Z' }])]]);
+      const kv = new Map<string, string>([['memory/notes#global', JSON.stringify([{ id: '1', text: 'likes tea', createdAt: '2024-01-01T00:00:00.000Z' }])]]);
       const binding = {
         get: async (key: string) => kv.get(key) ?? null,
         put: async (key: string, value: string) => void kv.set(key, value),

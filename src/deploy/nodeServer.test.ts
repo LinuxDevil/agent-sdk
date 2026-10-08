@@ -160,8 +160,8 @@ describe('deployed node server auth list (N10a)', () => {
     server = created.server;
     await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve));
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-    const chat = async (headers: Record<string, string>) => {
-      const res = await fetch(`${base}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ sessionId: 's', input: 'hi' }) });
+    const chat = async (headers: Record<string, string>, sessionId = 's') => {
+      const res = await fetch(`${base}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ sessionId, input: 'hi' }) });
       await res.text();
       return res;
     };
@@ -171,8 +171,9 @@ describe('deployed node server auth list (N10a)', () => {
   it('checks the list, then LOUSHO_API_TOKEN appended after it, and the run sees who called', async () => {
     const { chat, seen, authenticated } = await serveWithPrincipal({ auth: [basic({ users: { ops: 'pw' } })], env: { LOUSHO_API_TOKEN: 'env-token' } });
     expect(authenticated).toBe(true);
-    expect((await chat(basicHeader('ops', 'pw'))).status).toBe(200);
-    expect((await chat({ Authorization: 'Bearer env-token' })).status).toBe(200);
+    // each principal chats in its own session: route auth binds a session id to its first caller (N10b)
+    expect((await chat(basicHeader('ops', 'pw'), 's-ops')).status).toBe(200);
+    expect((await chat({ Authorization: 'Bearer env-token' }, 's-svc')).status).toBe(200);
     const denied = await chat(basicHeader('ops', 'wrong'));
     expect(denied.status).toBe(401);
     expect(denied.headers.get('www-authenticate')).toBe('Basic realm="lousho", charset="UTF-8", Bearer');

@@ -1,0 +1,19 @@
+
+[OpenAIProvider /responses] THREW CompactedLLMProviderError code=LOUSHO_PROVIDER_REQUEST_FAILED status=400: Invalid type for 'input'.
+  wire /v1/responses 400 [{"type":"input_text","keys":["type","text"],"dataPrefix":"Extract the invoice number and total from the attached PDF. "},{"type":"input_file","keys":["type","filename","file_data"],"filename":"inv-16-summit-pdf.pdf","dataPrefix":"data:application/pdf;base64,JVBERi0xLjQKMSAwIG9iago8PCAvVHlw"}]
+  resp {
+  "error": {
+    "message": "Invalid type for 'input'.",
+    "type": "invalid_request_error",
+    "param": "input",
+    "code": "invalid_union"
+  }
+}
+
+[fromAiSdk(openai.chat) pdf opted-in] THREW CompactedLLMProviderError code=LOUSHO_PROVIDER_REQUEST_FAILED status=400: Bad Request
+  wire /v1/chat/completions 400 [{"type":"text","keys":["type","text"],"dataPrefix":"Extract the invoice number and total from the attached PDF. "},{"type":"file","keys":["type","file"],"filename":"inv-16-summit-pdf.pdf","dataPrefix":"data:application/pdf;base64,JVBERi0xLjQKMSAwIG9iago8PCAvVHlw"}]
+  resp {"error":"Invalid 'content': 'content' objects must have a 'type' field that is either 'text' or 'image_url'."}
+[lousho] The openai.chat provider cannot send application/pdf file parts on ai 7; they are sent as a text note.
+
+[fromAiSdk(openai.chat) default] 9042ms finish=stop object={"invoiceNumber":null,"total":null,"couldRead":false} outputError=undefined
+  wire /v1/chat/completions 200 [{"type":"text","keys":["type","text"],"dataPrefix":"Extract the invoice number and total from the attached PDF. "},{"type":"text","keys":["type","text"],"dataPrefix":"[file inv-16-summit-pdf.pdf (application/pdf) not sent]"}]

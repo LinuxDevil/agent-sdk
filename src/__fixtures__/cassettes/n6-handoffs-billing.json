@@ -14,7 +14,7 @@
         "messages": [
           {
             "role": "system",
-            "content": "You are the billing desk. Check charges with lookup_charges and answer in one or two sentences. For anything that is not about billing, hand back to triage."
+            "content": "You are the billing desk. Check charges with lookup_charges and answer in one or two sentences. For anything that is not about billing, hand back to triage.\n\n[routing note - not from the user] handoff triage -> billing: reason=\"User was charged twice for their subscription.\""
           },
           {
             "role": "user",
@@ -35,10 +35,6 @@
             "content": "{\"transferred_to\":\"billing\"}",
             "name": "transfer_to_billing",
             "toolName": "transfer_to_billing"
-          },
-          {
-            "role": "system",
-            "content": "[routing note - not from the user] handoff triage -> billing: reason=\"User was charged twice for their subscription.\""
           }
         ],
         "tools": [
@@ -126,7 +122,7 @@
         "messages": [
           {
             "role": "system",
-            "content": "You are the billing desk. Check charges with lookup_charges and answer in one or two sentences. For anything that is not about billing, hand back to triage."
+            "content": "You are the billing desk. Check charges with lookup_charges and answer in one or two sentences. For anything that is not about billing, hand back to triage.\n\n[routing note - not from the user] handoff triage -> billing: reason=\"User was charged twice for their subscription.\""
           },
           {
             "role": "user",
@@ -147,10 +143,6 @@
             "content": "{\"transferred_to\":\"billing\"}",
             "name": "transfer_to_billing",
             "toolName": "transfer_to_billing"
-          },
-          {
-            "role": "system",
-            "content": "[routing note - not from the user] handoff triage -> billing: reason=\"User was charged twice for their subscription.\""
           },
           {
             "role": "assistant",
@@ -510,10 +502,6 @@
             "content": "{\"transferred_to\":\"billing\"}",
             "name": "transfer_to_billing",
             "toolName": "transfer_to_billing"
-          },
-          {
-            "role": "system",
-            "content": "[routing note - not from the user] handoff triage -> billing: reason=\"User was charged twice for their subscription.\""
           },
           {
             "role": "assistant",
