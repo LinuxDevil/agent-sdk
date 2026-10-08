@@ -13,6 +13,8 @@ import { mockModel } from '../testing';
 import { isRemoteSubagent } from '../subagents/remoteAgent';
 import { explainImportError } from './importModule';
 import { closest } from './closest';
+import type { CreateAgentBase } from '../createAgent';
+import type { IoGuardrail } from '../execution/ioGuardrails';
 
 const fixture = (name: string): string => path.join(__dirname, '__fixtures__', name);
 const systemOf = (call: { messages: readonly { role: string; content: unknown }[] }): string =>
@@ -97,6 +99,45 @@ describe('resolveAgentDir', () => {
     await expect(resolveAgentDir(path.join(fixture('full'), 'instructions.md'))).rejects.toThrow(
       /is not a directory/
     );
+  });
+});
+
+/**
+ * F2 (audit A3): every `createAgent()` option, so a new one cannot be added
+ * without this test noticing. `satisfies` fails to compile on a missing or an
+ * unknown key.
+ */
+const CREATE_AGENT_OPTIONS = {
+  tools: true, mcpServers: true, skills: true, name: true, description: true, subagents: true, subagentOptions: true,
+  handoffs: true, maxHandoffs: true, toolSearch: true, codeMode: true, maxSubagentDepth: true, maxSteps: true, limits: true,
+  guardrails: true, toolConcurrency: true, onAgentDrift: true, reasoning: true, onEvent: true, exporter: true,
+  captureContent: true, redactContent: true, projectInstructions: true, store: true, approvalStore: true, approve: true,
+  approvalTtlMs: true, askQuestion: true, retry: true, fallbackModels: true, output: true, hooks: true, compaction: true,
+  memory: true, permissions: true, onPermissionDecision: true, permissionMode: true, onPermissionModeChange: true,
+} satisfies Record<keyof CreateAgentBase, true>;
+
+describe('createAgent() overrides', () => {
+  it('forwards every createAgent() option to the assembled config', async () => {
+    const keys = Object.keys(CREATE_AGENT_OPTIONS) as (keyof CreateAgentBase)[];
+    // A distinct value per option (an array, since `skills` and `memory` are copied, not passed by reference).
+    const overrides = Object.fromEntries(keys.map((key) => [key, [{ name: `override-${key}` }]]));
+    const { config } = await resolveAgentDir(fixture('js-json'), { provider: mockModel(['x']), ...overrides } as never);
+
+    const assembled = config as unknown as Record<string, unknown>;
+    const dropped = keys.filter((key) => JSON.stringify(assembled[key]) !== JSON.stringify(overrides[key]));
+    expect(dropped).toEqual([]);
+  });
+
+  it('runs the agent with an onEvent and guardrails override (they were dropped before)', async () => {
+    const events: string[] = [];
+    const blockPing: IoGuardrail = { name: 'block-ping', check: ({ toolName }) => (toolName === 'ping' ? { ok: false, reason: 'no ping' } : { ok: true }) };
+    const model = mockModel([{ toolCalls: [{ name: 'ping', args: {} }] }, 'done']);
+    const agent = await loadAgentDir(fixture('js-json'), { provider: model, onEvent: (event) => events.push(event.type), guardrails: { tools: [blockPing] } });
+
+    await agent.send('go').catch(() => undefined);
+
+    expect(events).toContain('guardrail.tripped');
+    expect(events).not.toContain('tool.done');
   });
 });
 
