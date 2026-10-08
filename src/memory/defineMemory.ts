@@ -1,5 +1,6 @@
 import { SDKError } from '../execution/errors';
 import type { Principal } from '../auth/types';
+import { isModelSchema, type StandardSchemaV1 } from '../utils/zodCompat';
 /**
  * Memory slots (LOU-W6): named, scoped long-term memory an agent recalls at
  * the start of a run and reads / writes with `remember_<name>` and
@@ -20,7 +21,11 @@ export interface MemoryProvider {
   /** The order `list()` gives for a query: `'newest'` (default) or `'relevance'` (by meaning). Only changes how the `recall_<name>` tool is described. */
   readonly ranking?: 'newest' | 'relevance';
   list(scopeKey: string, options?: { limit?: number; query?: string }): Promise<MemoryItem[]>;
-  /** Stores `item` and returns it with its `id` and `createdAt`. */
+  /**
+   * Stores `item` and returns it with its `id` and `createdAt`. The built-in
+   * providers dedupe on `text`: adding an item whose text is already stored
+   * returns the stored item instead of a duplicate.
+   */
   add(scopeKey: string, item: { text: string; metadata?: Record<string, unknown> }): Promise<MemoryItem>;
   remove(scopeKey: string, id: string): Promise<void>;
 }
@@ -44,6 +49,21 @@ export interface MemoryScopeContext {
  */
 export type MemoryScope = 'global' | 'session' | ((ctx: MemoryScopeContext) => string | undefined);
 
+/**
+ * The provider key a slot's items live under for a run that sees `ctx`:
+ * `<slot name>#<scope key>` (`notes#global`, `prefs#session:s1`,
+ * `user_facts#user:u-42`). The slot name is part of the key so two slots that
+ * resolve to the same scope keep separate item lists — share a provider (and a
+ * scope) between slots safely. `undefined` when the run has no scope key. Use
+ * it to seed, read or prune a slot's items from code:
+ * `provider.add(memoryKey(notes)!, { text })`.
+ */
+export function memoryKey(slot: MemorySlot, ctx: MemoryScopeContext = {}): string | undefined {
+  const scope =
+    slot.scope === 'global' ? 'global' : slot.scope === 'session' ? ctx.sessionId && `session:${ctx.sessionId}` : slot.scope(ctx);
+  return scope ? `${slot.name}#${scope}` : undefined;
+}
+
 /** Options for {@link defineMemory}. */
 export interface DefineMemoryOptions {
   /** Slot name: 1-55 characters of `A-Za-z0-9_-` (the tools are `remember_<name>` and `recall_<name>`). */
@@ -61,6 +81,15 @@ export interface DefineMemoryOptions {
   recall?: { onSessionStart?: boolean; maxItems?: number; query?: 'last-input' | 'none' };
   /** Which tools the model gets. Both default to `true`. */
   expose?: { remember?: boolean; recall?: boolean };
+  /**
+   * Schema of `remember_<name>`'s input (zod 3 or 4, or a Standard Schema).
+   * Default: `{ text: string }` — the item's text is that string. When set,
+   * the parsed arguments are stored instead: `text` is their canonical JSON
+   * (stable key order) and `metadata` is the parsed object, so a slot can
+   * enforce structured state rather than free text. `recall_<name>` returns
+   * the same JSON text.
+   */
+  itemSchema?: StandardSchemaV1;
 }
 
 /** A memory slot made by {@link defineMemory}, defaults applied. Pass it to `createAgent({ memory })`. */
@@ -71,6 +100,7 @@ export interface MemorySlot {
   readonly provider: MemoryProvider;
   readonly recall: { onSessionStart: boolean; maxItems: number; query: 'last-input' | 'none' };
   readonly expose: { remember: boolean; recall: boolean };
+  readonly itemSchema?: StandardSchemaV1;
 }
 
 const SLOT_NAME = /^[a-zA-Z0-9_-]{1,55}$/;
@@ -85,12 +115,18 @@ const SLOT_NAME = /^[a-zA-Z0-9_-]{1,55}$/;
  * ```
  */
 export function defineMemory(options: DefineMemoryOptions): MemorySlot {
-  const { name, description, scope, provider, recall = {}, expose = {} } = options;
+  const { name, description, scope, provider, recall = {}, expose = {}, itemSchema } = options;
   if (typeof name !== 'string' || !SLOT_NAME.test(name)) {
     throw new SDKError(`defineMemory: invalid name ${JSON.stringify(name)}. Use 1-55 characters of A-Z, a-z, 0-9, '_' and '-'.`, 'LOUSHO_MEMORY_INVALID');
   }
   if (typeof provider?.list !== 'function' || typeof provider.add !== 'function') {
     throw new SDKError(`defineMemory: memory '${name}' needs a provider, e.g. inMemoryMemory() or fileMemory({ dir }).`, 'LOUSHO_MEMORY_INVALID');
+  }
+  if (itemSchema !== undefined && !isModelSchema(itemSchema)) {
+    throw new SDKError(
+      `defineMemory: memory '${name}': itemSchema must be a zod schema (zod 3 or 4) or a Standard Schema.`,
+      'LOUSHO_MEMORY_INVALID'
+    );
   }
   const maxItems = recall.maxItems ?? 10;
   if (!Number.isInteger(maxItems) || maxItems < 1) {
@@ -103,5 +139,6 @@ export function defineMemory(options: DefineMemoryOptions): MemorySlot {
     provider,
     recall: { onSessionStart: recall.onSessionStart ?? true, maxItems, query: recall.query ?? 'none' },
     expose: { remember: expose.remember ?? true, recall: expose.recall ?? true },
+    ...(itemSchema !== undefined && { itemSchema }),
   });
 }

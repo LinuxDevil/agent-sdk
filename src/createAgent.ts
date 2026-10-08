@@ -873,6 +873,11 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
         const request = await resumeRequestFor(approvalStore, decision, undefined, checkpointStore, permissionMode, approver, onAgentEvent);
         return resumeRequest({ ...request, executeOptions: wire(request.executeOptions ?? {}) });
       }, signal, inputQueue),
+    // A pause resolved in a fresh process re-binds to the session its turn
+    // belongs to (coding-agent F1): `checkpoints` tells a session turn apart
+    // from a send({ sessionId }) run; `openSession` re-opens it.
+    checkpoints,
+    openSession: (id) => session({ id }),
   });
   /** A run under `sessionId`, checkpointed in the agent's store (LOU-D30). */
   const durable = (sessionId: string | undefined): Partial<SessionTurnCheckpoint> => {
@@ -945,7 +950,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     const active = activeAgentOf(checkpoint ? checkpoint.messages : inSession ? input : []);
     const runCtx = pinned?.ctx ?? ctx;
     const resolved = await handoffs.run(active, runCtx, pinned);
-    const options = { ...executeOptions(resolved.spec, input, runCtx, signal, turn, resolved.lead), handoffs: resolved.handoffs, maxHandoffs: config.maxHandoffs };
+    const options = { ...executeOptions(resolved.spec, input, runCtx, signal, turn), handoffs: resolved.handoffs, maxHandoffs: config.maxHandoffs };
     return pinned ? { ...options, principal: ctx.principal } : options;
   };
   /**

@@ -1,0 +1,46 @@
+[batch] 3 documents, concurrency 3, per-invoice timeout 240000ms
+[lousho] The openai.chat provider cannot send application/pdf file parts on ai 7; they are sent as a text note.
+[flow] inv-10-horizon-quote         FAIL 220637ms kind=- usd=- flags=[] route=- pay=- error=Bad Request
+[flow] inv-01-acme-us               FAIL 240006ms kind=- usd=- flags=[] route=- pay=- error=extraction failed for inv-01-acme-us: aborted  (timed out)
+[flow] inv-16-summit-pdf            FAIL 240004ms kind=- usd=- flags=[] route=- pay=- error=extraction failed for inv-16-summit-pdf: aborted  (timed out)
+[batch] peak concurrency 3
+
+[review] 0 payments awaiting approval: 
+[review] approval ids unique: true
+
+[bleed] no cross-request contamination detected
+
+[accuracy] per document
+  inv-01-acme-us               misses=[kind,invoiceNumber,vendor,issueDate,dueDate,currency,lineItems,discount,subtotal,taxAmount,total,terms] flags got=[] want=[] route got=undefined want=auto
+  inv-10-horizon-quote         misses=[kind] flags got=[] want=[] route got=undefined want=rejected
+  inv-16-summit-pdf            misses=[kind,invoiceNumber,vendor,issueDate,dueDate,currency,lineItems,discount,subtotal,taxAmount,total,terms] flags got=[] want=[] route got=undefined want=auto
+[accuracy] per field
+  kind           0/3
+  invoiceNumber  0/2
+  vendor         0/2
+  issueDate      0/2
+  dueDate        0/2
+  currency       0/2
+  lineItems      0/2
+  discount       0/2
+  subtotal       0/2
+  taxAmount      0/2
+  total          0/2
+  terms          0/2
+[accuracy] fields 0/25 = 0.0%  documents fully correct 0/3  flags correct 3/3  route correct 0/3
+
+[usage] runs=2 modelCalls=0 in=0 out=0 reasoning=0 total=0 costUsd=0 estimated=false
+[timing] flows 240009ms, with review 240009ms; 0.75 docs/min; extract avg 240004ms, route avg 0ms
+[provider] retries=6 fallbacks=4
+  fallback openai -> openai.chat: Invalid type for 'input'.
+  fallback openai -> openai.chat: Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","type":"server_error"}
+  fallback openai.chat -> openai.chat: Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","type":"server_error"}
+  fallback openai.chat -> openai.chat: Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","type":"server_error"}
+  retry #1 in 440ms: Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","type":"server_error"}
+  retry #1 in 364ms: Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","type":"server_error"}
+  retry #1 in 281ms: Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","type":"server_error"}
+  retry #2 in 907ms: Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","type":"server_error"}
+  retry #2 in 563ms: Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","type":"server_error"}
+  retry #2 in 981ms: Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","type":"server_error"}
+
+[export] E:\agent-sdk\audit\invoice-extract\out\invoices.csv (3 rows)

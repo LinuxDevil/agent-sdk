@@ -1,0 +1,11 @@
+import { createAgent, fromAiSdk, getModelInfo, defineTool } from '@lousho/build-ai-agent';
+import { createOpenAI } from '@ai-sdk/openai';
+import { z } from 'zod';
+const MODEL = 'qwen3.5-9b-uncensored-hauhaucs-aggressive';
+const oai = createOpenAI({ apiKey: 'x', baseURL: 'http://localhost:1234/v1' });
+const add = defineTool({ name: 'add', description: 'Add two integers', input: z.object({ a: z.number(), b: z.number() }), execute: async ({ a, b }) => ({ sum: a + b }) });
+const agent = createAgent({ provider: fromAiSdk(oai.chat(MODEL)), instructions: 'Use the add tool for arithmetic.', tools: [add] });
+const r = await agent.send('What is 19 + 23? Use the tool.');
+console.log('chat-completions via fromAiSdk:', JSON.stringify(r.text), 'steps:', r.steps?.length, 'usage:', JSON.stringify({ i: r.usage.inputTokens, o: r.usage.outputTokens, reasoning: (r.usage as any).reasoningTokens }));
+console.log('getModelInfo(local):', JSON.stringify(getModelInfo(MODEL)));
+console.log('getModelInfo(openai/local):', JSON.stringify(getModelInfo(`openai/${MODEL}`)));

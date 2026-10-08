@@ -12,9 +12,9 @@ For each slot, `createAgent({ memory })`:
    turn): on the run's first model call, the newest items go into the system
    prompt in a `<memory name="...">` block. The block stays for the rest of
    the run and is not saved in the session transcript.
-2. Gives the model a **`remember_<name>`** tool (input `{ text }`) to store a
-   new item, and a **`recall_<name>`** tool (input `{ query?, limit? }`) to
-   search the slot, newest items first.
+2. Gives the model a **`remember_<name>`** tool (input `{ text }`, or your own
+   `itemSchema`) to store a new item, and a **`recall_<name>`** tool (input
+   `{ query?, limit? }`) to search the slot, newest items first.
 
 ## Memory in code
 
@@ -52,7 +52,12 @@ The system prompt of the second conversation ends with:
 
 ## Scopes
 
-A run reads and writes the items of its **scope key**:
+A run reads and writes the items of its **scope key**. In the provider, items
+live under **`<slot name>#<scope key>`** (`notes#global`, `prefs#session:s1`),
+so two slots that resolve to the same scope keep separate lists — you can share
+one provider (and one `SqliteStore`) across slots safely. `memoryKey(slot, ctx)`
+returns that key for a run context (or `undefined` when the slot is off); use it
+when you seed, read or prune a slot's items from code.
 
 | `scope` | Scope key | One memory per |
 |---|---|---|
@@ -101,9 +106,23 @@ is safer to key on than `metadata` (the caller can send any metadata): see
 | `recall.query` | `'last-input' \| 'none'` | `'none'` | `'last-input'` passes the run's last user message to the provider as `query`, to recall relevant items rather than the newest. |
 | `expose.remember` | `boolean` | `true` | Offer the `remember_<name>` tool. |
 | `expose.recall` | `boolean` | `true` | Offer the `recall_<name>` tool. |
+| `itemSchema` | a zod or Standard Schema | `{ text: string }` | `remember_<name>`'s input. When set, the parsed arguments are the item: `text` is their canonical JSON and `metadata` is the parsed object, so the slot enforces structured state instead of free text. |
+
+```ts
+import { z } from 'zod';
+import { defineMemory, inMemoryMemory } from '@lousho/build-ai-agent';
+
+const relationship = defineMemory({
+  name: 'relationship',
+  scope: 'global',
+  provider: inMemoryMemory(),
+  itemSchema: z.object({ trust: z.number(), mood: z.string(), insideJokes: z.array(z.string()) }),
+});
+// remember_relationship now takes { trust, mood, insideJokes }; recall returns e.g. {"insideJokes":[],"mood":"playful","trust":10}
+```
 
 A slot with `expose: { remember: false }` is read-only for the model: you
-fill it from code with `provider.add(scopeKey, { text })`.
+fill it from code with `provider.add(memoryKey(slot)!, { text })`.
 
 ## Providers
 
@@ -119,6 +138,9 @@ fill it from code with `provider.add(scopeKey, { text })`.
 The first three keep at most `maxItems` items per scope key (default 1000;
 adding one more drops the oldest) and match a `query` by keyword: an item matches when it
 contains one of the query's words of three or more letters, ignoring case.
+Every built-in provider dedupes on `text`: adding an item whose text is
+already stored returns the stored item instead of a duplicate (so an agent
+that remembers the same fact twice keeps one copy).
 
 ### SQLite
 
@@ -165,18 +187,18 @@ With [`mockModel`](./testing.md), assert on the system prompt of the first
 request and drive the tools with scripted tool calls:
 
 ```ts
-import { createAgent, defineMemory, inMemoryMemory } from '@lousho/build-ai-agent';
+import { createAgent, defineMemory, inMemoryMemory, memoryKey } from '@lousho/build-ai-agent';
 import { mockModel } from '@lousho/build-ai-agent/testing';
 
 const store = inMemoryMemory();
-await store.add('global', { text: 'The user likes tea.' });
 const notes = defineMemory({ name: 'notes', scope: 'global', provider: store });
+await store.add(memoryKey(notes)!, { text: 'The user likes tea.' });
 
 const model = mockModel([{ toolCalls: [{ name: 'remember_notes', args: { text: 'Lives in Oslo.' } }] }, 'Noted.']);
 await createAgent({ provider: model, memory: [notes] }).send('I moved to Oslo.');
 
 console.log(model.calls[0].messages[0].content); // ends with <memory name="notes">\n- The user likes tea.\n</memory>
-console.log((await store.list('global')).map((item) => item.text)); // ['Lives in Oslo.', 'The user likes tea.']
+console.log((await store.list(memoryKey(notes)!)).map((item) => item.text)); // ['Lives in Oslo.', 'The user likes tea.']
 ```
 
 ## Limitations
@@ -246,8 +268,9 @@ Items are only ever compared within their own scope key, and only when the same
 embedder (its `id`) made them. The id is stored with each vector: after you
 change the model or the id, old items are skipped when ranking (they still show
 in listings without a query) until you call `await provider.reindex()`, which
-re-embeds them in batches and returns how many it changed. `reindex(scopeKey)`
-does one scope key only.
+re-embeds them in batches and returns how many it changed.
+`reindex(providerKey)` does one key only — for a slot's key, pass
+`memoryKey(slot, ctx)`.
 
 `hashEmbedder()` from `@lousho/build-ai-agent/testing` is a deterministic
 offline embedder for tests: a hashed bag of word stems, so texts that share

@@ -12,6 +12,7 @@ import { SessionAwaitingApprovalError } from '../execution/errors';
 import { InMemoryApprovalStore } from '../execution/InMemoryApprovalStore';
 import { KVCheckpointStore } from '../deploy/kvCheckpointStore';
 import { SqliteStore } from '../storage/sqlite';
+import { memoryStore } from '../storage/agentStore';
 import { mockModel, type MockTurn } from '../testing';
 import { MemorySessionStore } from './index';
 import type { AgentRun } from '../execution/agentRun';
@@ -212,6 +213,95 @@ describe('checkpointed sessions (LOU-W9)', () => {
     expect(roles(session.messages)).toEqual(['user', 'assistant']);
     expect(roles((await sessions.load('chat'))!)).toEqual(['user', 'assistant']);
     expect(checkpoints.data.size).toBe(0);
+  });
+
+  it('resolving a paused session turn from a fresh agent (session never opened) commits the turn', async () => {
+    // coding-agent F1: a restarted process had an empty `sessions` map, so
+    // resolve() resumed outside the session and the turn never joined the
+    // transcript.
+    const runs: Runs = {};
+    const tools = [tool('write_file', runs, { needsApproval: true })];
+    const store = memoryStore();
+    const before = createAgent({ provider: mockModel([calling('write_file'), 'never used']), tools, store });
+    const paused = await before.session({ id: 'chat' }).send('update a.txt');
+    expect(paused.finishReason).toBe('awaiting-approval');
+
+    const after = createAgent({ provider: mockModel(['Wrote it.']), tools, store });
+    expect(await after.approvals.get(paused.approvalId!)).toMatchObject({ toolName: 'write_file' });
+    const resolved = await after.approvals.resolve({ id: paused.approvalId!, approved: true });
+
+    expect(resolved.text).toBe('Wrote it.');
+    expect(runs.write_file).toBe(1);
+    const session = after.session({ id: 'chat' });
+    expect(roles(await session.load())).toEqual(['user', 'assistant', 'tool', 'assistant']);
+    expect(await session.pending()).toBeNull();
+    expect(await store.checkpoints.load('chat.turn-0')).toBeNull();
+  });
+
+  it('streamResolve() from a fresh agent commits the session turn too', async () => {
+    const runs: Runs = {};
+    const tools = [tool('write_file', runs, { needsApproval: true })];
+    const store = memoryStore();
+    const before = createAgent({ provider: mockModel([calling('write_file')]), tools, store });
+    const paused = await before.session({ id: 'chat' }).send('update a.txt');
+
+    const after = createAgent({ provider: mockModel(['Wrote it.']), tools, store });
+    const run = after.approvals.streamResolve({ id: paused.approvalId!, approved: true });
+    const events: string[] = [];
+    for await (const event of run) events.push(event.type);
+    const result = await run.result;
+
+    expect(result.text).toBe('Wrote it.');
+    expect(events).toContain('run.start');
+    expect(roles(await after.session({ id: 'chat' }).load())).toEqual(['user', 'assistant', 'tool', 'assistant']);
+  });
+
+  it('a continuation that fails after approval leaves a resumable turn holding the executed tool result', async () => {
+    // support-desk F4: the stale checkpoint was deleted before the continued
+    // run, so a failure there erased the approved, already-executed call.
+    const runs: Runs = {};
+    const tools = [tool('refund', runs, { needsApproval: true })];
+    const store = memoryStore();
+    const agent = createAgent({
+      provider: mockModel([calling('refund'), { error: new Error('Context size has been exceeded.') }, 'The $129 refund went through.']),
+      tools,
+      store,
+    });
+    const session = agent.session({ id: 'cust-1' });
+    const paused = await session.send('refund my $129 order');
+    await expect(agent.approvals.resolve({ id: paused.approvalId!, approved: true })).rejects.toThrow('Context size has been exceeded');
+    expect(runs.refund).toBe(1);
+
+    // The turn is still pending (in-progress), with the tool result recorded.
+    const checkpoint = await store.checkpoints.load('cust-1.turn-0');
+    expect(checkpoint?.status).toBe('in-progress');
+    expect(checkpoint?.messages.map((m) => m.role)).toContain('tool');
+
+    const fresh = agent.session({ id: 'cust-1' });
+    expect(await fresh.pending()).toMatchObject({ status: 'in-progress' });
+    const done = await fresh.resume();
+    expect(done?.text).toBe('The $129 refund went through.');
+    expect(runs.refund).toBe(1); // the approved call did not run again
+    expect(roles(await fresh.load())).toEqual(['user', 'assistant', 'tool', 'assistant']);
+    expect(await store.checkpoints.load('cust-1.turn-0')).toBeNull();
+  });
+
+  it('a finished turn keeps its checkpoint history, so the turn stays forkable', async () => {
+    // incident-responder F2: commit() deleted the turn's checkpoint AND its
+    // history, leaving nothing for agent.fork() - unlike a send({ sessionId })
+    // run, which keeps a 'finished' checkpoint.
+    const store = memoryStore();
+    const agent = createAgent({ provider: mockModel(['first answer', 'fork answer']), store });
+    await agent.session({ id: 'chat' }).send('hi');
+
+    expect(await store.checkpoints.load('chat.turn-0')).toBeNull();
+    const history = await store.checkpoints.history!('chat.turn-0');
+    expect(history.length).toBeGreaterThan(0);
+    expect(history[0].status).toBe('finished');
+
+    const forked = await agent.fork('chat.turn-0', { fromStep: history[0].step });
+    const out = await agent.send('again?', { sessionId: forked.sessionId });
+    expect(out.text).toBe('fork answer');
   });
 
   it('an aborted turn, discardPending() and clear() leave no pending turn', async () => {

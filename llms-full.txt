@@ -3933,7 +3933,7 @@ and a replayed tap does not run the tool twice.
 
 ## GitHub
 
-`githubChannel({ webhookSecret, botName, token?, app?, name?, apiUrl?, fetch?, triggers?, approvers?, onError? })`
+`githubChannel({ webhookSecret, botName, token?, app?, name?, apiUrl?, fetch?, triggers?, approvers?, pullRequestOpened?, onError? })`
 lets people summon an agent with `@<botName>` in a GitHub issue, pull-request
 or review comment; the agent answers with a comment in the same thread. It reads
 the webhooks of a GitHub App (or of one repository) and posts through the REST
@@ -3954,7 +3954,12 @@ so it also runs on Workers.
   mention. Edited and deleted comments, comments by bots (`user.type` is `Bot`),
   by `<botName>[bot]`, by `botLogin` and any comment the channel itself posted
   are ignored, so the agent never answers itself. Other events (issues opened,
-  pushes, reactions, check runs) are ignored.
+  pushes, reactions, check runs) are ignored — except `pull_request`: with
+  `pullRequestOpened: true` an `opened` action by a human `triggers` allows
+  starts a turn on the PR's own session (`<owner>/<repo>#<number>`, the same
+  one its comments share), so a review bot can read a PR the moment it opens.
+  `synchronize`, `closed`, `reopened`, bot-opened and untriggered PRs are
+  ignored.
 - One session per issue or pull request (`<owner>/<repo>#<number>`), and one
   per review thread (a review comment and the replies under it).
 - The reply is a new comment: a timeline comment on the issue or pull request,
@@ -4623,7 +4628,7 @@ cd .lousho/build/cloudflare-worker && npx wrangler deploy
   `LOUSHO_API_TOKEN` does not cover them. A turn that outlives its acknowledged webhook
   keeps running under `ctx.waitUntil`.
 - `memory/` slots need a provider that works without a file system. `kvMemory()` keeps a
-  slot's items under `memory/<scope>` keys of the `AGENT_CHECKPOINTS` KV namespace (or of
+  slot's items under `memory/<slot>#<scope>` keys of the `AGENT_CHECKPOINTS` KV namespace (or of
   the binding its `binding` option names); without that binding, items live in one
   isolate's memory. `inMemoryMemory()` works the same way; `fileMemory()` cannot run here.
 - `projectInstructions: true` reads the nearest `AGENTS.md` / `CLAUDE.md` **at build time**
@@ -4724,7 +4729,7 @@ Worker reads). `KVStore`'s keys, with an optional `prefix` before each:
 | `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, with its history under `checkpoints/<id>#history`). |
 | `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided). |
 | `oauth/tokens/<key>`, `oauth/pending/<state>` | OAuth tokens and pending sign-ins, encrypted with `tokenKey` (the `LOUSHO_TOKEN_KEY` secret in the generated Worker); see [OAuth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#token-storage). |
-| `memory/<scopeKey>` | The items of a `kvMemory()` memory slot (`global`, `session:<id>` or a custom scope's key) - written by the provider itself, not `KVStore`. |
+| `memory/<slot>#<scope>` | The items of a `kvMemory()` memory slot (`notes#global`, `prefs#session:<id>` or a custom scope's key) - written by the provider itself, not `KVStore`. |
 
 `ttl: { sessions?, checkpoints?, approvals? }` (seconds, KV accepts 60 or more)
 makes each kind of record expire that long after its last write; by default
@@ -9891,9 +9896,9 @@ For each slot, `createAgent({ memory })`:
    turn): on the run's first model call, the newest items go into the system
    prompt in a `<memory name="...">` block. The block stays for the rest of
    the run and is not saved in the session transcript.
-2. Gives the model a **`remember_<name>`** tool (input `{ text }`) to store a
-   new item, and a **`recall_<name>`** tool (input `{ query?, limit? }`) to
-   search the slot, newest items first.
+2. Gives the model a **`remember_<name>`** tool (input `{ text }`, or your own
+   `itemSchema`) to store a new item, and a **`recall_<name>`** tool (input
+   `{ query?, limit? }`) to search the slot, newest items first.
 
 ## Memory in code
 
@@ -9931,7 +9936,12 @@ The system prompt of the second conversation ends with:
 
 ## Scopes
 
-A run reads and writes the items of its **scope key**:
+A run reads and writes the items of its **scope key**. In the provider, items
+live under **`<slot name>#<scope key>`** (`notes#global`, `prefs#session:s1`),
+so two slots that resolve to the same scope keep separate lists — you can share
+one provider (and one `SqliteStore`) across slots safely. `memoryKey(slot, ctx)`
+returns that key for a run context (or `undefined` when the slot is off); use it
+when you seed, read or prune a slot's items from code.
 
 | `scope` | Scope key | One memory per |
 |---|---|---|
@@ -9980,9 +9990,23 @@ is safer to key on than `metadata` (the caller can send any metadata): see
 | `recall.query` | `'last-input' \| 'none'` | `'none'` | `'last-input'` passes the run's last user message to the provider as `query`, to recall relevant items rather than the newest. |
 | `expose.remember` | `boolean` | `true` | Offer the `remember_<name>` tool. |
 | `expose.recall` | `boolean` | `true` | Offer the `recall_<name>` tool. |
+| `itemSchema` | a zod or Standard Schema | `{ text: string }` | `remember_<name>`'s input. When set, the parsed arguments are the item: `text` is their canonical JSON and `metadata` is the parsed object, so the slot enforces structured state instead of free text. |
+
+```ts
+import { z } from 'zod';
+import { defineMemory, inMemoryMemory } from '@lousho/build-ai-agent';
+
+const relationship = defineMemory({
+  name: 'relationship',
+  scope: 'global',
+  provider: inMemoryMemory(),
+  itemSchema: z.object({ trust: z.number(), mood: z.string(), insideJokes: z.array(z.string()) }),
+});
+// remember_relationship now takes { trust, mood, insideJokes }; recall returns e.g. {"insideJokes":[],"mood":"playful","trust":10}
+```
 
 A slot with `expose: { remember: false }` is read-only for the model: you
-fill it from code with `provider.add(scopeKey, { text })`.
+fill it from code with `provider.add(memoryKey(slot)!, { text })`.
 
 ## Providers
 
@@ -9998,6 +10022,9 @@ fill it from code with `provider.add(scopeKey, { text })`.
 The first three keep at most `maxItems` items per scope key (default 1000;
 adding one more drops the oldest) and match a `query` by keyword: an item matches when it
 contains one of the query's words of three or more letters, ignoring case.
+Every built-in provider dedupes on `text`: adding an item whose text is
+already stored returns the stored item instead of a duplicate (so an agent
+that remembers the same fact twice keeps one copy).
 
 ### SQLite
 
@@ -10044,18 +10071,18 @@ With [`mockModel`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testin
 request and drive the tools with scripted tool calls:
 
 ```ts
-import { createAgent, defineMemory, inMemoryMemory } from '@lousho/build-ai-agent';
+import { createAgent, defineMemory, inMemoryMemory, memoryKey } from '@lousho/build-ai-agent';
 import { mockModel } from '@lousho/build-ai-agent/testing';
 
 const store = inMemoryMemory();
-await store.add('global', { text: 'The user likes tea.' });
 const notes = defineMemory({ name: 'notes', scope: 'global', provider: store });
+await store.add(memoryKey(notes)!, { text: 'The user likes tea.' });
 
 const model = mockModel([{ toolCalls: [{ name: 'remember_notes', args: { text: 'Lives in Oslo.' } }] }, 'Noted.']);
 await createAgent({ provider: model, memory: [notes] }).send('I moved to Oslo.');
 
 console.log(model.calls[0].messages[0].content); // ends with <memory name="notes">\n- The user likes tea.\n</memory>
-console.log((await store.list('global')).map((item) => item.text)); // ['Lives in Oslo.', 'The user likes tea.']
+console.log((await store.list(memoryKey(notes)!)).map((item) => item.text)); // ['Lives in Oslo.', 'The user likes tea.']
 ```
 
 ## Limitations
@@ -10125,8 +10152,9 @@ Items are only ever compared within their own scope key, and only when the same
 embedder (its `id`) made them. The id is stored with each vector: after you
 change the model or the id, old items are skipped when ranking (they still show
 in listings without a query) until you call `await provider.reindex()`, which
-re-embeds them in batches and returns how many it changed. `reindex(scopeKey)`
-does one scope key only.
+re-embeds them in batches and returns how many it changed.
+`reindex(providerKey)` does one key only — for a slot's key, pass
+`memoryKey(slot, ctx)`.
 
 `hashEmbedder()` from `@lousho/build-ai-agent/testing` is a deterministic
 offline embedder for tests: a hashed bag of word stems, so texts that share
@@ -10472,6 +10500,13 @@ accepted, and a request outside the base path is a 404).
 
 Sessions are kept by the agent's `store` (`createAgent({ store })`), so give
 the agent one that outlives a serverless invocation when you use sessions.
+A session id is bound to the first authenticated caller that uses it - a
+different principal gets 403 (see [Route auth and principals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md) for
+the default, its in-memory limit, and `ownsSession` to override it; deriving
+the id from the caller, `u-${userId}`, keeps it obvious). Approvals are
+decided by `approvers`: by default the user a gated call runs for cannot
+approve it themselves, so a single-user app that prompts its own user should
+set `approvers: (caller) => caller !== undefined` (or finer).
 
 For an app with more than one user, also pass `authorizeSession`, so a user
 cannot read or continue another user's session. If an approval must come from

@@ -1,0 +1,3 @@
+output: 40 parallel sends, wrong object 0, foreign messages 0, repaired 8 (expected 8), max user msgs seen 2
+approvals: 12 paused, 12 pending, unique ids 12
+approvals resolved in reverse order: paid DOC-0,DOC-10,DOC-2,DOC-4,DOC-6,DOC-8; mismatches 0

@@ -84,6 +84,10 @@ export function webhookChannel(options: WebhookChannelOptions = {}): WebhookChan
       return { sessionKey: typeof sessionKey === 'string' && sessionKey ? sessionKey : newId(), input, ...(principal && { principal }), replyTo: null };
     },
     async reply({ text, result, respond }) {
+      // On an approval pause `result.text` is empty (the last turn was a bare
+      // tool call), so the human-readable prompt the channel computed is sent
+      // too: a consumer can render it instead of rebuilding it from `approvalId`.
+      if (result?.finishReason === 'awaiting-approval') return respond?.(200, { ...result, approvalPrompt: text });
       respond?.(200, result ?? { text });
     },
   };

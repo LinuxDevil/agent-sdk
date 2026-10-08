@@ -45,6 +45,10 @@ export default defineConfig({
       // Agent worktrees (.claude/worktrees/*) are full checkouts of this repo;
       // without this the main checkout would run every copy's tests too.
       '.claude/**',
+      // audit/** harnesses are consumer projects that install the packed
+      // tarball: their fixture repos carry intentionally-broken suites and
+      // their *.eval.ts files run under `lousho eval`, not this config.
+      'audit/**',
     ],
     coverage: {
       provider: 'v8',

@@ -1,0 +1,20 @@
+[default] 40725ms THREW LOUSHO_PROVIDER_REQUEST_FAILED status=500 message="Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}" detail="Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"
+   wire 500 reasoning= undefined resp: {
+  "error": {
+    "message": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}",
+    "type": "internal_error"
+[effort-low] 5833ms THREW LOUSHO_PROVIDER_REQUEST_FAILED status=500 message="Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}" detail="Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"
+   wire 500 reasoning= undefined resp: {
+  "error": {
+    "message": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}",
+    "type": "internal_error"
+[effort-low-force] 19569ms THREW LOUSHO_PROVIDER_REQUEST_FAILED status=500 message="Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}" detail="Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"
+   wire 500 reasoning= undefined resp: {
+  "error": {
+    "message": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}",
+    "type": "internal_error"
+[effort-none-force] 29163ms THREW LOUSHO_PROVIDER_REQUEST_FAILED status=500 message="Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}" detail="Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"
+   wire 500 reasoning= undefined resp: {
+  "error": {
+    "message": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}",
+    "type": "internal_error"

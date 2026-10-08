@@ -13,7 +13,7 @@ import { allow, ask, deny } from './execution/permissions';
 import { PropagatingToolError } from './execution/propagatingToolError';
 import { remoteAgent } from './subagents/remoteAgent';
 import { memoryStore } from './storage/agentStore';
-import { defineMemory, inMemoryMemory } from './memory';
+import { defineMemory, inMemoryMemory, memoryKey } from './memory';
 import { mockModel, type MockModel } from './testing';
 import type { AgentEvent } from './execution/agentEvents';
 import type { Message } from './providers';
@@ -728,8 +728,8 @@ describe('handoffs (N6): memory stays on after a handoff (audit A7)', () => {
 
   async function memorySetup(billingScript: Parameters<typeof mockModel>[0], billing: Partial<Parameters<typeof createAgent>[0]> = {}) {
     const provider = inMemoryMemory();
-    await provider.add('customer:C100', { text: 'Shoe size EU 42.' });
     const notes = defineMemory({ name: 'customer_notes', scope: ({ principal: who }) => (who ? `customer:${who.id}` : undefined), provider });
+    await provider.add(memoryKey(notes, { principal })!, { text: 'Shoe size EU 42.' });
     return { provider, ...setup([toBilling()], billingScript, { triage: { memory: [notes] }, billing }) };
   }
   const memoryBlock = (model: MockModel, call: number) => /<memory name="customer_notes">[\s\S]*Shoe size EU 42\.[\s\S]*<\/memory>/.test(String(model.calls[call].messages[0]?.content));
@@ -750,7 +750,7 @@ describe('handoffs (N6): memory stays on after a handoff (audit A7)', () => {
       expect(toolNames(billingModel, call)).toEqual(['refund', 'remember_customer_notes', 'recall_customer_notes']);
       expect(hasLateSystem(billingModel.calls[call].messages as Message[])).toBe(false);
     }
-    expect((await provider.list('customer:C100')).map((item) => item.text).sort()).toEqual(['Prefers email.', 'Shoe size EU 42.']);
+    expect((await provider.list('customer_notes#customer:C100')).map((item) => item.text).sort()).toEqual(['Prefers email.', 'Shoe size EU 42.']);
   });
 
   it('a target\'s own memory slots are not used; createAgent warns once', async () => {

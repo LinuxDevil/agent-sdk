@@ -116,8 +116,8 @@ describe('the loaded kit, offline', () => {
     expect(readJson('inbox.json').find((m) => m.id === 'm-spam')).toMatchObject({ status: 'processed' });
     expect(audit).toContain('send_reply:ask');
 
-    // memory was written: senders slot, shared scope (no sender principal in a bare send)
-    const memoryFile = path.join(home, 'memory', 'shared.json');
+    // memory was written: senders slot, shared scope (no sender principal in a bare send); keys are `<slot>#<scope>`
+    const memoryFile = path.join(home, 'memory', `${encodeURIComponent('senders#shared')}.json`);
     expect(fs.existsSync(memoryFile)).toBe(true);
     expect(fs.readFileSync(memoryFile, 'utf8')).toContain('priya@acme.com');
 

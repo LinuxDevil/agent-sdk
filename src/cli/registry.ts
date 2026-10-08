@@ -124,7 +124,7 @@ async function readJson<T>(source: string, schema: SafeParser<T>, options: Regis
  * `DEFAULT_REGISTRY`. `'none'` (either source) disables the registry for
  * offline or locked-down use and restores the "no registry configured" error.
  */
-export function registrySource(options: RegistryOptions): string {
+function registrySource(options: RegistryOptions): string {
   const source = options.registry ?? (options.env ?? process.env).LOUSHO_REGISTRY;
   if (source === 'none') {
     throw new SDKError("lousho add: no registry configured ('none' disables the default registry).", 'LOUSHO_CONFIG_INVALID', {
@@ -134,7 +134,7 @@ export function registrySource(options: RegistryOptions): string {
   return source || DEFAULT_REGISTRY;
 }
 
-export async function loadIndex(registry: string, options: RegistryOptions): Promise<RegistryIndex> {
+async function loadIndex(registry: string, options: RegistryOptions): Promise<RegistryIndex> {
   return readJson(registry, IndexSchema, options);
 }
 

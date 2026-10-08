@@ -1,0 +1,15 @@
+BRIGHTLINE ELECTRICAL CONTRACTORS
+77 Industrial Way, Columbus, OH 43215 — License EC-44821
+
+INVOICE NO. BL-1049
+DATE: 2026-03-20
+TERMS: NET 30   DUE: 2026-04-19
+
+DESCRIPTION                          QTY      UNIT        AMOUNT
+Panel upgrade to 200A service          1   2,400.00      2,400.00
+New circuit installation               6     185.00      1,110.00
+City permit fee                        1     150.00        150.00
+
+SUBTOTAL                                                3,760.00
+SALES TAX 6%                                              225.60
+TOTAL                                                   3,985.60

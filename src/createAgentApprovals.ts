@@ -14,7 +14,7 @@ import type { CheckpointStore } from './execution/checkpoint';
 import { SessionAwaitingApprovalError } from './execution/errors';
 import type { InputQueue } from './execution/inputQueue';
 import { streamSessionTurn } from './session/sessionStream';
-import { AgentSession, type SessionOptions, type SessionRunner, type SessionSpawner, type SessionStreamRunner } from './session/AgentSession';
+import { AgentSession, type PendingTurn, type SessionOptions, type SessionRunner, type SessionSpawner, type SessionStreamRunner } from './session/AgentSession';
 import type { PermissionOptions } from './execution/permissions';
 import type { Principal } from './auth/types';
 
@@ -151,6 +151,20 @@ type StreamResumeRun = (
 
 /** A session whose paused turn can be continued by `agent.approvals.resolve()`. */
 class ApprovalSession extends AgentSession {
+  /** Set by createAgentApprovals(): binds an approval id to this session. */
+  binds?: (approvalId: string) => void;
+
+  /**
+   * coding-agent F2: finding a paused turn binds it - the natural
+   * "check pending(), then resolve()" flow then continues in this session
+   * instead of falling back to a session-less resume.
+   */
+  override async pending(): Promise<PendingTurn | null> {
+    const turn = await super.pending();
+    if (turn?.status === 'awaiting-approval' && turn.approvalId) this.binds?.(turn.approvalId);
+    return turn;
+  }
+
   resolveWith(
     next: (checkpointStore?: CheckpointStore, permissionMode?: ResumeMode, onAgentEvent?: (event: AgentEvent) => void) => Promise<ExecutionResult>
   ): Promise<ExecutionResult> {
@@ -186,10 +200,29 @@ export function createAgentApprovals(options: {
   approve?: ApproveToolCall;
   resume: ResumeRun;
   streamResume: StreamResumeRun;
+  /**
+   * The agent's checkpoint store, when it has one (LOU-D30). Used to tell a
+   * paused *session turn* apart from a `send(msg, { sessionId })` run when
+   * `resolve()` must rebind a session it never saw (see `coldSession`).
+   */
+  checkpoints?: CheckpointStore;
+  /**
+   * Opens the agent's session `id` (a fresh `agent.session({ id })`). Lets
+   * `resolve()`/`streamResolve()` continue a paused session turn inside its
+   * session even when that session was never opened in this process - without
+   * it such a resolve ran outside the session and the turn was never recorded.
+   */
+  openSession?: (id: string) => AgentSession;
 }) {
   const { approve, resume, streamResume } = options;
   const pending = new Map<string, PendingApproval>();
   const sessions = new Map<string, ApprovalSession>();
+  /**
+   * Session factory captured from `session()` calls (its `spawn` argument is
+   * the agent's session factory): the fallback opener when `openSession` was
+   * not wired - it only exists once this process opened a session itself.
+   */
+  let sessionSpawner: SessionSpawner | undefined;
   // A1: the session each pause belongs to, kept until the pause is claimed (unlike `sessions`, which a decision clears first).
   const sessionIds = new Map<string, string>();
   const bind = (id: string, session: ApprovalSession) => {
@@ -292,16 +325,54 @@ export function createAgentApprovals(options: {
     if (session && error instanceof Error && error.name === 'SignInPendingError') bind(id, session);
   }
 
+  /**
+   * The session a paused run belongs to, for a `resolve()`/`streamResolve()`
+   * made after a restart (or by a caller that never opened the session): the
+   * `sessions` map only knows pauses this process made or ran into. Without
+   * this, the resume ran outside the session - the 'finished' checkpoint it
+   * left behind was never committed to the transcript, which read as if the
+   * whole turn had been deleted (coding-agent F1).
+   *
+   * The pause record's `snapshot.sessionId` is read WITHOUT claiming it:
+   * `<id>.turn-<n>` means a durable session turn (the session's id is `<id>`);
+   * a bare `<id>` with no checkpoint under it is a session turn that ran
+   * without checkpointing (a `send(msg, { sessionId })` run of the same id
+   * would have left its own checkpoint). Returns `undefined` - falling back
+   * to the old session-less resume - when no opener exists or the pause was
+   * not a session turn.
+   */
+  async function coldSession(approvalId: string): Promise<ApprovalSession | undefined> {
+    const spawn = sessionSpawner;
+    const open = options.openSession ?? (spawn && ((id: string) => spawn({ id })));
+    if (!open || !options.store.load) return undefined;
+    const record = await options.store.load(approvalId);
+    const pausedAt = record?.snapshot.sessionId;
+    if (!pausedAt) return undefined;
+    const turn = /^([A-Za-z0-9_-]{1,128})\.turn-\d+$/.exec(pausedAt);
+    let sessionId: string | undefined;
+    if (turn) {
+      sessionId = turn[1];
+    } else if (options.checkpoints && (await options.checkpoints.load(pausedAt)) === null) {
+      sessionId = pausedAt;
+    }
+    if (!sessionId) return undefined;
+    const opened = open(sessionId);
+    return opened instanceof ApprovalSession ? opened : undefined;
+  }
+
   // N10b: `principal` is the approver of this decision only; the `approve` callback's later decisions have none.
   function resolve(decision: ApprovalDecision, { signal, principal }: ResolveApprovalOptions = {}): Promise<ExecutionResult> {
-    const session = sessions.get(decision.id);
+    let session = sessions.get(decision.id);
     sessions.delete(decision.id);
-    const next = async (checkpointStore?: CheckpointStore, permissionMode?: ResumeMode, onAgentEvent?: (event: AgentEvent) => void) =>
-      inSession(
-        session,
-        await settle(await resume(store, decision, signal, checkpointStore, permissionMode, principal, onAgentEvent), signal, checkpointStore, permissionMode, onAgentEvent)
-      );
-    const resolved = session ? session.resolveWith(next) : next();
+    const resolved = (async () => {
+      session ??= await coldSession(decision.id);
+      const next = async (checkpointStore?: CheckpointStore, permissionMode?: ResumeMode, onAgentEvent?: (event: AgentEvent) => void) =>
+        inSession(
+          session,
+          await settle(await resume(store, decision, signal, checkpointStore, permissionMode, principal, onAgentEvent), signal, checkpointStore, permissionMode, onAgentEvent)
+        );
+      return session ? session.resolveWith(next) : next();
+    })();
     return resolved.catch((error: unknown) => {
       keepPendingSession(decision.id, session, error);
       throw error;
@@ -309,15 +380,34 @@ export function createAgentApprovals(options: {
   }
 
   function streamResolve(decision: ApprovalDecision, { signal, principal }: ResolveApprovalOptions = {}): AgentRun {
-    const session = sessions.get(decision.id);
+    const bound = sessions.get(decision.id);
     sessions.delete(decision.id);
-    if (!session) return streamResume(store, decision, signal, undefined, undefined, undefined, principal);
-    const run = session.streamResolveWith(
+    if (!bound) {
+      // The pause may belong to a session this process never opened: find it
+      // before the resumed run starts (resolve() does the same lookup).
+      return streamSessionTurn(async (runSignal, started, inputs) => {
+        const session = await coldSession(decision.id);
+        if (session) {
+          const run = session.streamResolveWith(
+            (checkpointStore, innerSignal, _innerInputs, permissionMode, onAgentEvent) =>
+              inSessionRun(session, streamResume(store, decision, innerSignal, checkpointStore, inputs, permissionMode, principal, onAgentEvent)),
+            runSignal
+          );
+          started(run);
+          run.result.catch((error: unknown) => keepPendingSession(decision.id, session, error));
+          return run.result;
+        }
+        const run = streamResume(store, decision, runSignal, undefined, inputs, undefined, principal);
+        started(run);
+        return run.result;
+      }, signal);
+    }
+    const run = bound.streamResolveWith(
       (checkpointStore, runSignal, inputs, permissionMode, onAgentEvent) =>
-        inSessionRun(session, streamResume(store, decision, runSignal, checkpointStore, inputs, permissionMode, principal, onAgentEvent)),
+        inSessionRun(bound, streamResume(store, decision, runSignal, checkpointStore, inputs, permissionMode, principal, onAgentEvent)),
       signal
     );
-    run.result.catch((error: unknown) => keepPendingSession(decision.id, session, error));
+    run.result.catch((error: unknown) => keepPendingSession(decision.id, bound, error));
     return run;
   }
 
@@ -341,6 +431,10 @@ export function createAgentApprovals(options: {
     settle,
     /** A session of the agent; `spawn` creates its forks (N3a), by default another session with the same `run` / `stream`. */
     session(run: SessionRunner, stream: SessionStreamRunner, sessionOptions?: SessionOptions, spawn?: SessionSpawner): AgentSession {
+      // `spawn` is the agent's session factory (agentSession passes it): keep
+      // one around so a resolve() that never saw the pause can open the
+      // session it belongs to (coldSession).
+      if (spawn) sessionSpawner ??= spawn;
       const session: ApprovalSession = new ApprovalSession(
         async (input, signal, turn, call) => {
           try {
@@ -355,6 +449,7 @@ export function createAgentApprovals(options: {
         (input, signal, turn, call) => inSessionRun(session, stream(input, signal, turn, call)),
         spawn ?? ((forkOptions) => this.session(run, stream, forkOptions))
       );
+      session.binds = (approvalId) => bind(approvalId, session);
       return session;
     },
   };

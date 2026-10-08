@@ -1,0 +1,14 @@
+NORDHAVN SHIPP|NG ApS   Havnegade 4, 8000 Aarhus C, Denrnark   CVR/VAT DK12345678
+------------------------------------------------------------
+ INV0ICE   NS-2026-031O         1O MAR 2026
+ Payrnent: 30 days net    due 09 APR 2026        Currency: EUR
+------------------------------------------------------------
+ Freight Harnburg - Aarhus (FCL 20')  1 x 1.850,00 ...... 1.850,00
+ Fuel surcharge (BAF)                 1 x   277,50 ......   277,50
+ Custorns handling                    1 x   120,00 ......   120,00
+------------------------------------------------------------
+ Net arnount                                    2.247,50
+ VAT 25 %                                         561,88
+ T O T A L   E U R                              2.8O9,38
+------------------------------------------------------------
+ [page 1/1]  ~~ scan quality low ~~

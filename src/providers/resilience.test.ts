@@ -154,6 +154,22 @@ describe('withRetry', () => {
     expect(isRetryableProviderError(contextLength)).toBe(false);
   });
 
+  it('does not retry a llama.cpp/LM Studio context overflow, whether it arrives as a 500 or a stream error', () => {
+    // audit _cross X1 / log-incident F2: these runtimes wrap the overflow in
+    // an HTTP 500 (which isRetryable marks retryable) or send it as an SSE
+    // error event surfaced as a plain Error - both are deterministic
+    // failures and must classify non-retryable.
+    const wrapped = new APICallError({
+      message: 'request (20018 tokens) exceeds the available context size (8192 tokens)',
+      url: 'http://localhost:1234/v1/chat/completions',
+      requestBodyValues: {},
+      statusCode: 500,
+      isRetryable: true,
+    });
+    expect(isRetryableProviderError(wrapped)).toBe(false);
+    expect(isRetryableProviderError(new Error('Context size has been exceeded.'))).toBe(false);
+  });
+
   it('honors retryOn', async () => {
     const { provider, calls } = flaky([new Error('custom transient')]);
     const retryOn = vi.fn(() => true);

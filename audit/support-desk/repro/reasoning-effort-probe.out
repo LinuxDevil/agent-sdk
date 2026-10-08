@@ -1,0 +1,10 @@
+default #0 6189 ms reasoningChars 0 FAILED Engine protocol predict stream returned an error: {"code":500,"message":"Context size has 
+default #1 9753 ms reasoningChars 0 FAILED Engine protocol predict stream returned an error: {"code":500,"message":"Context size has 
+effort low (force) #0 13302 ms reasoningChars 0 FAILED Engine protocol predict stream returned an error: {"code":500,"message":"Context size has 
+(node:33928) Warning: AI SDK Warning System: To turn off warning logging, set the AI_SDK_LOG_WARNINGS global to false.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:33928) Warning: AI SDK Warning (openai.responses / qwen3.5-9b-uncensored-hauhaucs-aggressive): The feature "reasoningEffort" is not supported. reasoningEffort is not supported for non-reasoning models
+effort low (force) #1 17307 ms reasoningChars 0 FAILED Engine protocol predict stream returned an error: {"code":500,"message":"Context size has 
+(node:33928) Warning: AI SDK Warning (openai.responses / qwen3.5-9b-uncensored-hauhaucs-aggressive): The feature "reasoningEffort" is not supported. reasoningEffort is not supported for non-reasoning models
+/no_think in prompt #0 8547 ms reasoningChars 0 FAILED Engine protocol predict stream returned an error: {"code":500,"message":"Context size has 
+/no_think in prompt #1 32925 ms reasoningChars 0 FAILED Engine protocol predict stream returned an error: {"code":500,"message":"Context size has 

@@ -1,0 +1,14 @@
+THREW CompactedLLMProviderError code LOUSHO_PROVIDER_REQUEST_FAILED category undefined status 400 message: "Bad Request"
+error own keys: [
+  'code',
+  'hint',
+  'docs',
+  'detail',
+  'name',
+  'providerName',
+  'statusCode',
+  'cause',
+  'compacted'
+]
+wire /v1/chat/completions 400 response_format: {"type":"json_schema","json_schema":{"schema":{"$schema":"http://json-schema.org/draft-07/schema#","type":"object","properties":{"document":{"oneOf":[{"type":"o
+server said: {"error":"Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"}

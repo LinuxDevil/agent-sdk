@@ -101,6 +101,7 @@ describe('NodeServerAdapter with an agent directory', () => {
       expect(await chat({})).toBe(401);
       expect(await chat({ Authorization: 'Bearer wrong' })).toBe(401);
       expect(await chat({ Authorization: 'Bearer dir-token' })).toBe(200);
+      // any authenticated caller may use the session (ownership is authorizeSession's job)
       expect(await chat({ Authorization: `Basic ${btoa('ops:pw')}` })).toBe(200);
     } finally {
       stop();

@@ -1,0 +1,53 @@
+[server] READY pid=43872 port=4321
+
+==================== S1 refund > $50 pauses, process exits, NEW process approves (x2 concurrently + once more) ====================
+> [tok-alice] alice-refund: Hi, the trail running shoes from order A-1001 do not fit. Please refund the full $129.
+  (200, 104204 ms)
+  run.start
+  step.start
+  tool.start(recall_customer_notes {"query":"order A-1001 shoes size","limit":5})
+  tool.done(recall_customer_notes -> {"items":[]})
+  step.done(1,tool_calls)
+  step.start
+  tool.start(transfer_to_billing {"reason":"Customer requesting full $129 refund for trail running shoes from order A-1001 due to fit issues."})
+  tool.done(transfer_to_billing -> {"transferred_to":"billing"})
+  handoff(triage->billing)
+  step.done(2,tool_calls)
+  step.start
+  tool.start(lookup_order {"orderId":"A-1001"})
+  tool.done(lookup_order -> {"id":"A-1001","customerId":"C100","items":["Trail running shoes"],"totalUsd":129,"status":"delivered","carrier":"UPS",")
+  step.done(3,tool_calls)
+  step.start
+  tool.start(issue_refund {"orderId":"A-1001","amountUsd":129,"reason":"Trail running shoes do not fit."})
+  approval.requested(issue_refund {"orderId":"A-1001","amountUsd":129,"reason":"Trail running shoes do not fit."} id=c3f1ead2-2920-4f45-a10e-d0d4fbb2e6c8)
+  step.done(4,awaiting-approval)
+  run.done(awaiting-approval) text=""
+refunds before approval: 0 | checkpoints: [{"id":"alice-refund.turn-0","status":"awaiting-approval"}] | approvals: [{"id":"c3f1ead2-2920-4f45-a10e-d0d4fbb2e6c8","resolved":false,"tool":"issue_refund"}]
+killing server process (hard exit) ...
+[server] READY pid=51112 port=4321
+pending via GET after restart: {"status":"awaiting-approval","approvalId":"c3f1ead2-2920-4f45-a10e-d0d4fbb2e6c8"}
+> [tok-staff] decide c3f1ead2-2920-4f45-a10e-d0d4fbb2e6c8 {"approved":true,"note":"dup click"} -> 200
+  error(SDKError: No pending approval found for id 'c3f1ead2-2920-4f45-a10e-d0d4fbb2e6c8' (unknown or already resolved)
+[LOUSHO_APPROVAL_NOT_FOUND] Resolve an id that is still pe)
+  run.done(error) text=""
+> [tok-staff] decide c3f1ead2-2920-4f45-a10e-d0d4fbb2e6c8 {"approved":true,"note":"ok by Maria"} -> 200
+  run.start
+  tool.resume(issue_refund {"orderId":"A-1001","amountUsd":129,"reason":"Trail running shoes do not fit."})
+  tool.done(issue_refund -> {"refunded":true,"refundId":"R-aee2e0ec","amountUsd":129})
+  step.start
+  error(CompactedLLMProviderError: Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","type":"server_error"})
+  step.done(5,error)
+  run.done(error) text=""
+> [tok-staff] decide c3f1ead2-2920-4f45-a10e-d0d4fbb2e6c8 {"approved":true,"note":"third click"} -> 404
+  {"error":"No pending approval 'c3f1ead2-2920-4f45-a10e-d0d4fbb2e6c8' (it was decided already, or the agent was reloaded)"}
+refund rows for A-1001: [{"id":"R-aee2e0ec","orderId":"A-1001","customerId":"C100","amountUsd":129,"reason":"Trail running shoes do not fit.","toolCallId":"call_3914318223770061","approvedBy":"staff-maria","note":"ok by Maria","at":"2026-10-08T09:53:27.358Z","pid":51112}]
+session pending now: null | checkpoints: []
+transcript:
+  
+> [tok-alice] alice-refund: Thanks! Did the refund go through?
+  (200, 9690 ms)
+  run.start
+  step.start
+  error(CompactedLLMProviderError: Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","type":"server_error"})
+  step.done(1,error)
+  run.done(error) text=""

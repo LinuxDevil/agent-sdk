@@ -1,0 +1,62 @@
+[batch] 6 documents, concurrency 3, per-invoice timeout 1200000ms
+[flow] inv-02-mueller-de            ok   524300ms kind=invoice usd=2964.96 flags=[] route=approval pay=awaiting-approval
+[flow] inv-10-horizon-quote         ok    69584ms kind=not_invoice usd=0 flags=[] route=rejected pay=-
+[flow] inv-01-acme-us               FAIL 1200017ms kind=- usd=- flags=[] route=- pay=- error=extraction failed for inv-01-acme-us: aborted  (timed out)
+[flow] inv-08-brightline-mismatch   FAIL 1200022ms kind=- usd=- flags=[] route=- pay=- error=extraction failed for inv-08-brightline-mismatch: aborted  (timed out)
+[lousho] The openai.chat provider cannot send application/pdf file parts on ai 7; they are sent as a text note.
+[flow] inv-16-summit-pdf            ok    62054ms kind=invoice usd=9801 flags=[] route=approval pay=awaiting-approval
+[flow] inv-12-alwaha-arabic         FAIL 1200016ms kind=- usd=- flags=[] route=- pay=- error=extraction failed for inv-12-alwaha-arabic: aborted  (timed out)
+[batch] peak concurrency 3
+
+[review] 2 payments awaiting approval: inv-02-mueller-de, inv-16-summit-pdf
+[review] approval ids unique: true
+[review] inv-02-mueller-de: APPROVED -> stop
+[review] inv-16-summit-pdf: APPROVED -> stop
+
+[bleed] no cross-request contamination detected
+
+[accuracy] per document
+  inv-01-acme-us               misses=[kind,invoiceNumber,vendor,issueDate,dueDate,currency,lineItems,discount,subtotal,taxAmount,total,terms] flags got=[] want=[] route got=undefined want=auto
+  inv-02-mueller-de            misses=[] flags got=[] want=[] route got=approval want=approval
+  inv-08-brightline-mismatch   misses=[kind,invoiceNumber,vendor,issueDate,dueDate,currency,lineItems,discount,subtotal,taxAmount,total,terms] flags got=[] want=[line_items_sum] route got=undefined want=approval
+  inv-10-horizon-quote         misses=[] flags got=[] want=[] route got=rejected want=rejected
+  inv-12-alwaha-arabic         misses=[kind,invoiceNumber,vendor,issueDate,dueDate,currency,lineItems,discount,subtotal,taxAmount,total,terms] flags got=[] want=[] route got=undefined want=auto
+  inv-16-summit-pdf            misses=[invoiceNumber,issueDate,dueDate,currency,subtotal,taxAmount,total] flags got=[] want=[] route got=approval want=auto
+[accuracy] per field
+  kind           3/6
+  invoiceNumber  1/5
+  vendor         2/5
+  issueDate      1/5
+  dueDate        1/5
+  currency       1/5
+  lineItems      2/5
+  discount       2/5
+  subtotal       1/5
+  taxAmount      1/5
+  total          1/5
+  terms          2/5
+[accuracy] fields 18/61 = 29.5%  documents fully correct 2/6  flags correct 5/6  route correct 2/6
+
+[usage] runs=10 modelCalls=9 in=6077 out=4302 reasoning=3737 total=10379 costUsd=0 estimated=false
+[timing] flows 1793904ms, with review 1803535ms; 0.20 docs/min; extract avg 706459ms, route avg 8617ms
+[provider] retries=10 fallbacks=1
+  fallback openai -> openai.chat: Invalid type for 'input'. | {
+  "error": {
+    "message": "Invalid type for 'input'.",
+    "type": "invalid_request_error",
+    "param": "input",
+    "code": "invalid_union"
+  }
+}
+  retry #1 in 1693ms: Cannot connect to API: Headers Timeout Error | Headers Timeout Error
+  retry #1 in 2330ms: Cannot connect to API: Headers Timeout Error | Headers Timeout Error
+  retry #1 in 2208ms: Cannot connect to API: Headers Timeout Error | Headers Timeout Error
+  retry #2 in 3924ms: Cannot connect to API: Headers Timeout Error | Headers Timeout Error
+  retry #2 in 4495ms: Cannot connect to API: Headers Timeout Error | Headers Timeout Error
+  retry #1 in 2287ms: Cannot connect to API: Headers Timeout Error | Headers Timeout Error
+  retry #3 in 11199ms: Cannot connect to API: Headers Timeout Error | Headers Timeout Error
+  retry #3 in 7279ms: Cannot connect to API: Headers Timeout Error | Headers Timeout Error
+  retry #2 in 5098ms: Cannot connect to API: Headers Timeout Error | Headers Timeout Error
+  retry #3 in 9732ms: Cannot connect to API: Headers Timeout Error | Headers Timeout Error
+
+[export] E:\agent-sdk\audit\invoice-extract\out\invoices.csv (6 rows)

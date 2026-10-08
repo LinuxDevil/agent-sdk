@@ -1,0 +1,14 @@
+GREENLEAF LANDSCAPING CO.
+902 Elm Street, Portland, OR 97205
+
+Invoice: GL-3390
+Date: 2026-03-12
+Terms: Net 14 — due 2026-03-26
+
+Service                          Qty    Rate       Amount
+Monthly grounds maintenance        1   $800.00    $800.00
+Mulch delivery (cubic yard)        4    $50.00    $200.00
+
+Subtotal                                        $1,000.00
+Tax (Oregon - no sales tax)                         $0.00
+Invoice total                                   $1,000.00

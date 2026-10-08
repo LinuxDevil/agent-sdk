@@ -1,0 +1,6 @@
+system prompt chars 5212 schema chars 4215
+status 200 schema true usage undefined err event: error{"message":"Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}"}
+reasoning chars 906 content chars 0
+reasoning tail: "34567\n- **Document Type**: Invoice (Explicitly says \"INVOICE\")\n- **Invoice Number**: INV-2026-0315\n- **Issue Date**: 03/15/2026. Format looks like US format (MM/DD/YYYY) given the context of \"Austin, TX\". So March 15, 2026 -> 2026-03-15.\n- **Due Date**: 04/14/2026. April 14, 2026 -> 2026-04-14.\n- **Currency**: The amounts have \"$\" symbol, and address is USA. So \"USD\".\n- **Bill To**: Northwind Traders LLC (Not needed for vendor object, but good to know).\n- **Terms**: Net 30. This maps to payment terms type \"net\", days 30.\n- **Line Items**:\n    1. SKU: PAP-A4, Description: Copy paper A4, box of "
+content head: ""
+content tail: ""

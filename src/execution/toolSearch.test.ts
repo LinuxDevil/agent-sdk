@@ -308,3 +308,30 @@ describe('tool search (N2): per agent', () => {
     expect(names(childModel, 0)).toEqual(['send_email', 'tool_search']);
   });
 });
+
+describe('tool search: unknown model context window (audit _cross X2)', () => {
+  it('warns once when the model is unknown to the registry; silent with an explicit contextWindow', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const unknown = mockModel(['Hi.', 'Again.'], { defaultModel: 'audit-x2-local-7b' });
+      const agent = createAgent({ provider: unknown, tools: catalog(), toolSearch: always });
+      await agent.send('hi');
+      expect(warn).toHaveBeenCalledTimes(1);
+      const text = String(warn.mock.calls[0][0]);
+      expect(text).toContain('audit-x2-local-7b');
+      expect(text).toContain('128,000');
+      expect(text).toContain('registerModel');
+
+      // Once per (feature, model) - the second run does not warn again.
+      await agent.send('hi again');
+      expect(warn).toHaveBeenCalledTimes(1);
+
+      // An explicit contextWindow answers the lookup - no warning.
+      const explicit = mockModel(['Hi.'], { defaultModel: 'audit-x2-local-7b' });
+      await createAgent({ provider: explicit, tools: catalog(), toolSearch: { ...always, contextWindow: 8_192 } }).send('hi');
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});

@@ -1,0 +1,12 @@
+1a {{inv}} as arg -> {"args":{"invoice":"[object Object]","amount":"[object Object]"},"typeofAmount":"string","hasAbortSignal":false} success true
+1b "$inv" as arg -> {"args":{"invoice":"$inv","amount":5},"typeofAmount":"number","hasAbortSignal":false}
+2 needsApproval tool in flow -> success true output "PAID 25000.00" paid 25000.00
+3 throwing tool -> execute() rejected? false success false error Error "upstream extraction timed out" code E_TIMEOUT events flow-start,step-start,step-start,tool-call,step-error,step-error,flow-error
+4 after caller timeout (100ms): steps run so far []
+  ...flow kept going; all steps ran by 932 ms: [ 'slow1', 'slow2', 'slow3' ]
+5 auto step ids [
+  'step-1791453134991',
+  'step-1791453134991',
+  'step-1791453134991',
+  'step-1791453134991'
+] unique 1 of 4

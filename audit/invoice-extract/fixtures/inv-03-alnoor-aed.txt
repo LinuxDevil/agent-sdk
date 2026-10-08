@@ -1,0 +1,19 @@
+AL NOOR FACILITIES MANAGEMENT L.L.C.
+Office 1204, Business Bay, Dubai, United Arab Emirates
+TRN: 100234567800003
+
+TAX INVOICE
+Invoice No: ANF/26/0789          Date: 15-Mar-2026
+Customer: Gulf Horizon Properties   Payment terms: 30 days from invoice date
+Due date: 14-Apr-2026
+
+Description                              Qty    Rate (AED)    Amount (AED)
+Monthly cleaning services - March 2026     1      9,500.00       9,500.00
+Pest control visit                         2        750.00       1,500.00
+Waste disposal & recycling                 1      1,000.00       1,000.00
+
+Total excluding VAT                                            12,000.00
+VAT @ 5%                                                          600.00
+Total amount payable (AED)                                     12,600.00
+
+Amount in words: Twelve thousand six hundred dirhams only.

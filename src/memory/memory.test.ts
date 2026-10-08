@@ -8,14 +8,14 @@ import { defineTool } from '../tools/defineTool';
 import { mockModel, type MockRequest } from '../testing';
 import { memoryStore } from '../storage/agentStore';
 import { describeMemoryProviderContract } from './providerContract';
-import { defineMemory, fileMemory, inMemoryMemory, type MemoryProvider } from './index';
+import { defineMemory, fileMemory, inMemoryMemory, memoryKey, type MemoryProvider } from './index';
 
 const systemOf = (call: MockRequest | undefined): string =>
   String(call?.messages.find((m) => m.role === 'system')?.content ?? '');
 const toolsOf = (call: MockRequest | undefined): string[] => (call?.tools ?? []).map((t) => t.function.name);
 const lastToolResult = (call: MockRequest): unknown => JSON.parse(String(call.messages.at(-1)?.content));
 
-async function seeded(texts: string[], key = 'global'): Promise<MemoryProvider> {
+async function seeded(texts: string[], key = 'notes#global'): Promise<MemoryProvider> {
   const provider = inMemoryMemory();
   for (const text of texts) await provider.add(key, { text });
   return provider;
@@ -77,7 +77,7 @@ describe('createAgent({ memory })', () => {
 
     expect(toolsOf(model.calls[0])).toEqual(['remember_notes', 'recall_notes']);
     expect(model.calls[0].tools?.[0].function.description).toContain('It holds: user preferences');
-    const [item] = await provider.list('global');
+    const [item] = await provider.list('notes#global');
     expect(item.text).toBe('prefers green tea');
     expect(lastToolResult(model.calls[1])).toEqual({ remembered: item.id });
     expect(lastToolResult(model.calls[2])).toEqual({
@@ -98,7 +98,7 @@ describe('createAgent({ memory })', () => {
     expect(systemOf(model.lastCall)).not.toContain('<memory');
     await agent.session({ id: 'a' }).send('hi');
     expect(systemOf(model.lastCall)).toContain('<memory name="notes">\n- A-secret\n</memory>');
-    expect(await provider.list('session:b')).toEqual([]);
+    expect(await provider.list('notes#session:b')).toEqual([]);
 
     // No session id: the slot is off for that run (no tools, no recall).
     await agent.send('hi');
@@ -106,7 +106,7 @@ describe('createAgent({ memory })', () => {
   });
 
   it('resolves a scope function from send() metadata and sessionId, also when streaming', async () => {
-    const provider = await seeded(['u1 fact'], 'user:u1');
+    const provider = await seeded(['u1 fact'], 'user#user:u1');
     const notes = defineMemory({
       name: 'user',
       scope: ({ metadata }) => (metadata?.userId ? `user:${String(metadata.userId)}` : undefined),
@@ -147,6 +147,46 @@ describe('createAgent({ memory })', () => {
     const model = mockModel(['ok']);
     await createAgent({ provider: model, memory: [notes] }).send('Any cat food tips?');
     expect(systemOf(model.lastCall)).toContain('<memory name="notes">\n- owns a cat\n</memory>');
+  });
+
+  it('keeps two slots on the same scope key apart (F1: the slot name is part of the provider key)', async () => {
+    const provider = inMemoryMemory();
+    const facts = defineMemory({ name: 'facts', scope: 'global', provider });
+    const state = defineMemory({ name: 'state', scope: 'global', provider });
+    const model = mockModel([
+      { toolCalls: [{ name: 'remember_facts', args: { text: 'likes ramen' } }] },
+      { toolCalls: [{ name: 'remember_state', args: { text: '{"trust":10}' } }] },
+      'done.',
+    ]);
+    await createAgent({ provider: model, memory: [facts, state] }).send('hi');
+
+    expect((await provider.list(memoryKey(facts) as string)).map((i) => i.text)).toEqual(['likes ramen']);
+    expect((await provider.list(memoryKey(state) as string)).map((i) => i.text)).toEqual(['{"trust":10}']);
+    // The raw scope key is not used: nothing leaks between slots.
+    expect(await provider.list('global')).toEqual([]);
+  });
+
+  it('stores a structured itemSchema as canonical JSON in text and the parsed args in metadata', async () => {
+    const provider = inMemoryMemory();
+    const state = defineMemory({
+      name: 'state',
+      scope: 'global',
+      provider,
+      itemSchema: z.object({ trust: z.number(), mood: z.string() }),
+    });
+    const model = mockModel([
+      { toolCalls: [{ name: 'remember_state', args: { mood: 'playful', trust: 10 } }] },
+      { toolCalls: [{ name: 'recall_state' }] },
+      'done',
+    ]);
+    await createAgent({ provider: model, memory: [state] }).send('hi');
+
+    const [item] = await provider.list('state#global');
+    expect(item.text).toBe('{"mood":"playful","trust":10}');
+    expect(item.metadata).toEqual({ mood: 'playful', trust: 10 });
+    expect(lastToolResult(model.calls[1])).toEqual({ remembered: item.id });
+    expect(lastToolResult(model.calls[2])).toEqual({ items: [{ id: item.id, text: item.text, createdAt: item.createdAt }] });
+    expect(() => defineMemory({ name: 's', scope: 'global', provider, itemSchema: {} as never })).toThrow(/itemSchema must be a zod schema/);
   });
 
   it('expose: { remember: false } hides the tool; onSessionStart: false skips recall', async () => {

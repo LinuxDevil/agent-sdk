@@ -1,0 +1,7 @@
+1a maxSteps=5, looping model: finishReason=max-steps steps=5 modelCalls=5 tokens=550 text=""
+1b + loop-guard hook denying after 2: finishReason=max-steps steps=5 (hook deny is fed back; the model keeps looping until maxSteps)
+1c limits.maxSteps=4 (budget) instead: finishReason=budget-exceeded steps=4
+2  paused.usage.totalTokens=1010 resumed.usage.totalTokens=3030 modelCalls=2 (whole task = 3030)
+3  send() rejected: CompactedLLMProviderError code=LOUSHO_PROVIDER_REQUEST_FAILED usage on error=undefined result=undefined; run.done usage=undefined (7100 tokens were spent)
+4  hook deny: finishReason=stop steps=3 text="gave up"
+4  tool guardrail: finishReason=guardrail steps=1 guardrail={"name":"no-exit","kind":"tool","reason":"process.exit is not allowed","toolName":"edit_file"}

@@ -1,0 +1,6 @@
+{"message":"Engine protocol predict stream returned an error: {\"code\":50"}
+  retryable: false  compacted: {"error":"Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}","category":"unknown","retryable":false}
+{"message":"Engine protocol predict stream returned an error: {\"code\":50","statusCode":5
+  retryable: false  compacted: {"error":"Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}","category":"unknown","retryable":false}
+{"type":"error","error":{"code":500,"message":"Context size has been exceeded."}}
+  retryable: false  compacted: {"error":"[object Object]","category":"unknown","retryable":false}

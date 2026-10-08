@@ -11,8 +11,11 @@ import { WorkspaceError } from './paths';
  *
  * - A string matches a command that is exactly it or starts with it followed
  *   by whitespace: `'git status'` matches `git status -s` but not `git statusx`.
- *   It allows the command with ANY arguments, so it does not protect against
- *   flags that read or write files (`node --test --test-reporter-destination=../x`).
+ *   The command must not contain shell operators or a path that leaves the
+ *   working directory — a `..` segment, `~` or an absolute path, anywhere in
+ *   the command including a `--flag=value` — so `node --test --out=../x` does
+ *   not pass as `node --test`. Use a {@link CommandRule} or an anchored
+ *   RegExp for arguments like that.
  * - A {@link CommandRule} pins the arguments: `{ command: 'npm test' }` matches
  *   only `npm test`; add `args` to validate what follows.
  * - A RegExp is tested against the whole command line; anchor it (`/^npm (test|run lint)$/`).
@@ -56,10 +59,13 @@ export interface ShellToolOptions {
    * refused as a tool error before approval is asked. A command matched only
    * by a string pattern or {@link CommandRule} must not contain shell operators
    * (`;` `&` `|` `` ` `` `$(` `<` `>` or a newline; also `%` and `^` under
-   * cmd.exe), so `git status; rm -rf ~` does not pass as `git status`.
+   * cmd.exe), so `git status; rm -rf ~` does not pass as `git status`. A
+   * command matched only by a string pattern must also not contain a path
+   * that leaves the working directory (a `..` segment, `~` or an absolute
+   * path), so `node --test --out=../x` does not pass as `node --test`.
    *
-   * A string pattern allows the command with any arguments. Use a
-   * {@link CommandRule} or an anchored RegExp to restrict them.
+   * Use a {@link CommandRule} to pin arguments, or an anchored RegExp to
+   * allow arguments like those.
    */
   allow?: readonly CommandPattern[];
   /**
@@ -85,6 +91,13 @@ const SHELL_OPERATORS = /[;&|`<>\n\r]|\$\(/;
 /** cmd.exe also expands `%VAR%` and treats `^` as an escape character. */
 const CMD_OPERATORS = /[;&|`<>\n\r%^]|\$\(/;
 const COMMAND_SEPARATORS = /[;&|`()\n\r]|\$\(/;
+/**
+ * A whitespace-separated token that would read or write outside the working
+ * directory: a `..` path segment (`../x`, `a/../b`, `--out=../x`), a `~` home
+ * path, or an absolute path (`/x`, `C:\x`, `\\share`), including a `=value`.
+ * `main..feature` and `https://...` are not matches.
+ */
+const ESCAPING_TOKEN = /(?:^|[/\\=])\.\.(?:[/\\]|$)|(?:^|=)(?:~(?:[/\\]|$)|[/\\]|[a-zA-Z]:[/\\])/;
 
 /** The shell a provider runs, when it says so (`NodeWorkspace`, `SandboxShell`). */
 function providerShell(shell: ShellProvider): string | undefined {
@@ -135,10 +148,13 @@ function deniedBy(command: string, deny: readonly CommandPattern[]): CommandPatt
 
 function isAllowed(command: string, allow: readonly CommandPattern[], operators: RegExp): boolean {
   const hasOperators = operators.test(command);
+  // A string pattern allows the command and ordinary flags only: arguments
+  // that leave the workspace need a CommandRule or an anchored RegExp.
+  const escaping = command.split(/\s+/).some((token) => ESCAPING_TOKEN.test(token));
   return allow.some((p) => {
     if (p instanceof RegExp) return testRegex(p, command);
     if (hasOperators) return false;
-    return typeof p === 'string' ? matchesPrefix(command, p) : matchesRule(command, p);
+    return typeof p === 'string' ? !escaping && matchesPrefix(command, p) : matchesRule(command, p);
   });
 }
 
@@ -151,9 +167,16 @@ function policyViolation(command: string, options: ShellToolOptions, cmd: boolea
   const operators = cmd ? CMD_OPERATORS : SHELL_OPERATORS;
   if (options.allow && !isAllowed(command, options.allow, operators)) {
     const allowed = options.allow.map(patternText).join(', ');
-    const hint = operators.test(command)
-      ? ` Chaining, pipes, substitution and redirection (; & | \` $( < >${cmd ? ' % ^' : ''}) are not allowed with these patterns.`
-      : '';
+    const hasStrings = options.allow.some((p) => typeof p === 'string');
+    const restricted = [
+      operators.test(command) && `Chaining, pipes, substitution and redirection (; & | \` $( < >${cmd ? ' % ^' : ''})`,
+      hasStrings &&
+        command.split(/\s+/).some((token) => ESCAPING_TOKEN.test(token)) &&
+        "paths outside the workspace ('..' segments, '~' and absolute paths)",
+    ]
+      .filter(Boolean)
+      .join(' and ');
+    const hint = restricted ? ` ${restricted} are not allowed with ${hasStrings ? 'string patterns' : 'these patterns'}.` : '';
     return `Command refused: it is not on the allow list (${allowed}).${hint}`;
   }
   return undefined;

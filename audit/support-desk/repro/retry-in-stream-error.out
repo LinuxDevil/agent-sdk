@@ -1,0 +1,8 @@
+   error: Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","typ
+send #0: finishReason=error http requests=1 provider.retry events=0 text=""
+   error: Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","typ
+send #1: finishReason=error http requests=1 provider.retry events=0 text=""
+   error: Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","typ
+send #2: finishReason=error http requests=1 provider.retry events=0 text=""
+   error: Engine protocol predict stream returned an error: {"code":500,"message":"Context size has been exceeded.","typ
+send #3: finishReason=error http requests=1 provider.retry events=0 text=""

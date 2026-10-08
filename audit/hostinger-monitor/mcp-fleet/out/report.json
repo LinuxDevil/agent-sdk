@@ -1,0 +1,39 @@
+{
+  "generatedAt": "2026-10-08T10:29:00.013Z",
+  "windowHours": 6,
+  "model": "qwen3.5-9b-uncensored-hauhaucs-aggressive",
+  "fleetStatus": "ok",
+  "anomalies": [],
+  "vms": [
+    {
+      "id": 1924068,
+      "hostname": "srv1924068.hstgr.cloud",
+      "state": "running",
+      "plan": "KVM 2",
+      "ipv4": "187.77.87.202",
+      "cpuAvgPct": 2,
+      "cpuMaxPct": 2.3,
+      "ramUsedPct": 39.5,
+      "diskUsedPct": 11.7,
+      "netInMB": 5.5,
+      "netOutMB": 24.7,
+      "recentActions": [
+        "backup_create:success@2026-10-04T11:21:53Z",
+        "backup_create:success@2026-09-27T10:53:44Z",
+        "backup_create:success@2026-09-20T10:51:35Z",
+        "backup_create:success@2026-09-13T10:48:25Z",
+        "ct_restart:success@2026-09-06T19:05:22Z"
+      ],
+      "lastBackupAt": "2026-10-04T11:21:53Z",
+      "backupAgeHours": 95.1,
+      "samples": 12,
+      "anomalies": []
+    }
+  ],
+  "agent": {
+    "finishReason": "threw",
+    "error": "CompactedLLMProviderError: Model unloaded by user or API request.",
+    "ms": 1290
+  },
+  "discrepancies": []
+}

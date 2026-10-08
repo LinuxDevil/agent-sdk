@@ -1,0 +1,19 @@
+Van der Berg Horeca B.V. | Maasboulevard 100, 3011 TX Rotterdam | BTW NL123456789B01
+
+FACTUUR 2026-3307
+Factuurdatum: 05-03-2026
+Vervaldatum: 19-03-2026 (betaling binnen 14 dagen)
+
+Omschrijving                     Aantal   Prijs     Bedrag
+Koffiebonen 1kg                    12     18,75     225,00
+Volle melk 1L                      48      1,15      55,20
+Suikerzakjes (doos)                 4      9,80      39,20
+Thee assortiment                    6      7,45      44,70
+Croissants (doos 24)                5     21,60     108,00
+Jus d'orange 1L                    24      2,35      56,40
+Servetten (pak)                    10      3,20      32,00
+Bekers to-go (100 st.)              3     14,50      43,50
+
+Subtotaal (excl. BTW)                              604,00
+BTW 9%                                              54,36
+Totaal te betalen EUR                              658,36

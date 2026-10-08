@@ -12,11 +12,15 @@
  * principal) stays the run's.
  *
  * The transcript records each handoff as `metadata.handoff = { from, to }`
- * on the handoff call's result and on the routing note - a system message
- * carrying the call's validated arguments, which the target reads (or an
- * `inputFilter` drops/replaces; when the filter keeps neither, the marker
- * lands on the last message kept). The marker is written in the same step
- * as the switch, so "the last marker names the active agent" holds for every
+ * on the handoff call's result and on the routing note - a marked message
+ * carrying the call's validated arguments, which the target reads folded
+ * into its system prompt (or an `inputFilter` drops/replaces it; when the
+ * filter keeps neither, the marker lands on the last message kept). The
+ * note rides the target's prompt rather than sitting mid-transcript as a
+ * `system` message because the Qwen/Llama/Mistral chat templates of
+ * llama.cpp, LM Studio, vLLM and Ollama reject a system message that is
+ * not the first one. The marker is written in the same step as the
+ * switch, so "the last marker names the active agent" holds for every
  * checkpoint and approval snapshot.
  */
 
@@ -25,7 +29,7 @@ import type { StandardSchemaV1 } from '../utils/zodCompat';
 import type { ExecuteOptions } from './AgentExecutor';
 import type { SubagentSpec } from './delegation';
 import type { AgentRunState } from './agentRunState';
-import type { ToolDescriptor } from '../types';
+import type { AgentConfig, ToolDescriptor } from '../types';
 import { ConfigurationError, SDKError } from './errors';
 import { runEventsOf } from './agentRun';
 import { buildTools } from './generateStep';
@@ -338,7 +342,11 @@ function forgetApprovals(messages: readonly Message[]): Message[] {
  * validated arguments, rendered as `key=value` (keys sorted, so the note is
  * deterministic). Marked with the handoff marker so `handoffFilters` (and
  * `activeAgentOf`) recognise it - `removeToolCalls` keeps it; a custom
- * `inputFilter` may still drop or replace it.
+ * `inputFilter` may still drop or replace it. It is built as a `system`
+ * message because that is what filters expect, but {@link handOff} folds
+ * every kept note into the target's own system prompt: a system message
+ * that is not the conversation's first breaks the Qwen/Llama/Mistral chat
+ * templates local-model servers (llama.cpp, LM Studio, vLLM, Ollama) use.
  */
 function routingNote(marker: HandoffMarker, args: Record<string, unknown>): Message {
   const rendered = Object.keys(args)
@@ -360,13 +368,45 @@ function withMarker(messages: Message[], toolCallId: string, marker: HandoffMark
   return [...messages.slice(0, -1), { ...last, metadata: { ...last.metadata, handoff: marker } }];
 }
 
+/**
+ * The run's own per-run tools (`transient`: a memory slot's
+ * `remember_*`/`recall_*`, bound to the run's scope keys). Everything else in
+ * the registry belongs to the agent that handed off, which a target must not
+ * inherit.
+ */
+function runBoundTools(toolRegistry: ToolRegistry | undefined): [string, ToolDescriptor][] {
+  return Object.entries(toolRegistry?.getAll() ?? {}).filter(([, descriptor]) => descriptor.transient === true);
+}
+
+/**
+ * `registry` plus `tools`, on a fresh registry: registering onto the target's
+ * own registry would leak this run's bindings into the shared spec.
+ */
+function registryWith(registry: ToolRegistry | undefined, tools: readonly [string, ToolDescriptor][]): ToolRegistry {
+  const merged = new ToolRegistry();
+  if (registry) merged.registerMany(registry.getAll());
+  merged.registerMany(Object.fromEntries(tools));
+  return merged;
+}
+
+/** `agent` also offering the tool `names` it does not list yet. */
+function offeringTools(agent: AgentConfig, names: readonly string[]): AgentConfig {
+  const missing = names.filter((name) => agent.tools?.[name] === undefined);
+  if (missing.length === 0) return agent;
+  return { ...agent, tools: { ...agent.tools, ...Object.fromEntries(missing.map((name) => [name, { tool: name }])) } };
+}
+
 /** The run's options with the target's configuration in place of the agent's that handed off. */
 function targetOptions(options: ExecuteOptions, target: HandoffTarget): ExecuteOptions {
+  // N6: the run's per-run tools (memory slots bound to the run's scope keys)
+  // follow the handoff like the run's hooks and stores do; a tool the target
+  // has itself wins.
+  const carried = runBoundTools(options.toolRegistry).filter(([name]) => target.toolRegistry?.has(name) !== true);
   return {
     ...options,
-    agent: target.agent,
+    agent: carried.length === 0 ? target.agent : offeringTools(target.agent, carried.map(([name]) => name)),
     provider: target.provider,
-    toolRegistry: target.toolRegistry,
+    toolRegistry: carried.length === 0 ? target.toolRegistry : registryWith(target.toolRegistry, carried),
     hostedTools: target.hostedTools,
     skills: target.skills,
     subagents: target.subagents,
@@ -405,6 +445,10 @@ export async function handOff(
   const messages = withMarker(forgetApprovals(filtered), toolCall.id, marker);
   await handoff.onHandoff?.({ ...data, ...(options.sessionId !== undefined && { sessionId: options.sessionId }) });
   const next = await extend(targetOptions(options, target));
+  // The routing note stays in the transcript as a marked `system` message;
+  // `withLeadingSystemOnly` (generateStep) folds it into the request's
+  // leading system prompt so local-model chat templates never see a
+  // mid-conversation system message.
   const system: Message[] = next.agent.prompt ? [{ role: 'system', content: next.agent.prompt }] : [];
   return { options: next, messages: [...system, ...messages], marker };
 }

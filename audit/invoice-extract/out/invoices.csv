@@ -1,0 +1,7 @@
+docId,kind,invoiceNumber,vendor,issueDate,dueDate,currency,subtotal,taxAmount,total,amountUsd,flags,route,decision,extractMs,attempts,flowError
+inv-01-acme-us,failed,,,,,,,,,,,,,1200015,text,extraction failed for inv-01-acme-us: aborted 
+inv-02-mueller-de,invoice,RE-2026-0042,Müller Industrietechnik GmbH,2026-03-15,2026-03-29,EUR,2307.00,438.33,2745.33,2964.96,,approval,approved(human),514006,text,
+inv-08-brightline-mismatch,failed,,,,,,,,,,,,,1200022,text,extraction failed for inv-08-brightline-mismatch: aborted 
+inv-10-horizon-quote,not_invoice,,,,,,,,,0,,rejected,,69582,text,
+inv-12-alwaha-arabic,failed,,,,,,,,,,,,,1200016,text,extraction failed for inv-12-alwaha-arabic: aborted 
+inv-16-summit-pdf,invoice,16,Summit,2024-01-15,2024-02-14,EUR,7500.00,1575.00,9075.00,9801,,approval,approved(human),55111,pdf-file-part,

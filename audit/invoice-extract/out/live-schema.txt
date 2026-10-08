@@ -1,0 +1,61 @@
+
+== rootUnion (46238ms) finish=output-invalid steps=2 object=undefined
+   outputError: {"message":"The reply does not match the output schema: 1 issue (kind: Invalid discriminator value. Expected 'invoice' | 'other')","issues":[{"path":"kind","message":"Invalid discriminator value. Expected 'invoice' | 'other'"}]}
+   text: "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"oneOf\":[{\"type\":\"object\",\"properties\":{\"kind\":{\"type\":\"string\",\"const\":\"invoice\"},\"total\":{\"type\":\"number\"}},\"required\":[\"kind\",\"total\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"kin
+   user msgs: [
+  'Document: "Dear Sir, thank you for your letter." Classify it.',
+  "[output-invalid] The reply does not match the output schema: 1 issue (kind: Invalid discriminator value. Expected 'invoice' | 'other'). Reply again with only the corrected JSON object."
+]
+   wire /v1/responses 200 
+   wire /v1/responses 200 
+
+== optional (24698ms) finish=stop steps=1 object={"vendor":"Foo Ltd.","poNumber":""}
+   text: "{\"vendor\":\"Foo Ltd.\",\"poNumber\":\"\"}"
+   user msgs: [ 'Invoice from Foo Ltd. No PO number.' ]
+   wire /v1/responses 200 
+
+== refineFails (164994ms) finish=stop steps=2 object={"subtotal":100,"tax":19,"total":119}
+   text: "{\"subtotal\":100.0,\"tax\":19.0,\"total\":119.0}"
+   user msgs: [
+  'Invoice: subtotal 100.00, tax 19.00, TOTAL 120.00 (copy the numbers exactly as printed).',
+  '[output-invalid] The reply does not match the output schema: 1 issue (total: total must equal subtotal + tax). Reply again with only the corrected JSON object.'
+]
+   wire /v1/responses 500 {
+  "error": {
+    "message": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}",
+    "type": "internal_error",
+    "param": null,
+    "code": "unknown"
+  }
+}
+   wire /v1/responses 200 
+   wire /v1/responses 500 {
+  "error": {
+    "message": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}",
+    "type": "internal_error",
+    "param": null,
+    "code": "unknown"
+  }
+}
+   wire /v1/responses 200 
+
+== noRepairBudget (26097ms) finish=output-invalid steps=1 object=undefined
+   outputError: {"message":"The reply does not match the output schema: 1 issue (total: total must equal subtotal + tax)","issues":[{"path":"total","message":"total must equal subtotal + tax"}]}
+   text: "{\"subtotal\":100.0,\"tax\":19.0,\"total\":120.0}"
+   user msgs: [
+  'Invoice: subtotal 100.00, tax 19.00, TOTAL 120.00 (copy the numbers exactly as printed).'
+]
+   wire /v1/responses 500 {
+  "error": {
+    "message": "Engine protocol predict stream returned an error: {\"code\":500,\"message\":\"Context size has been exceeded.\",\"type\":\"server_error\"}",
+    "type": "internal_error",
+    "param": null,
+    "code": "unknown"
+  }
+}
+   wire /v1/responses 200 
+
+== tinyMaxTokens (6918ms) finish=stop steps=1 object={"vendor":"Foo Ltd."}
+   text: "{\"vendor\":\"Foo Ltd.\"}"
+   user msgs: [ 'Invoice from Foo Ltd.' ]
+   wire /v1/responses 200 

@@ -1,0 +1,18 @@
+ACME OFFICE SUPPLIES INC.
+4100 Congress Ave, Austin, TX 78745, USA   EIN 74-1234567
+
+INVOICE                                   Invoice #: INV-2026-0315
+Bill To: Northwind Traders LLC            Invoice Date: 03/15/2026
+         210 Pine St, Seattle WA          Terms: Net 30
+                                          Due Date: 04/14/2026
+
+SKU      Description                 Qty   Unit Price     Amount
+PAP-A4   Copy paper A4, box of 5       4       $42.50     $170.00
+TN-58A   Toner cartridge HP 58A        2       $89.99     $179.98
+ORG-01   Desk organizer, mesh          5       $12.40      $62.00
+
+                                         Subtotal:       $411.98
+                                         Sales Tax (8.25%): $33.99
+                                         TOTAL DUE:      $445.97
+
+Please remit payment to ACME Office Supplies, account ending 4421.

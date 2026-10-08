@@ -1,0 +1,7 @@
+[batch] 16 documents, concurrency 3, per-invoice timeout 300000ms
+[flow] inv-01-acme-us               FAIL 300018ms kind=- usd=- flags=[] route=- pay=- error=extraction failed for inv-01-acme-us: aborted  (timed out)
+[flow] inv-02-mueller-de            FAIL 300021ms kind=- usd=- flags=[] route=- pay=- error=extraction failed for inv-02-mueller-de: aborted  (timed out)
+[flow] inv-03-alnoor-aed            FAIL 300025ms kind=- usd=- flags=[] route=- pay=- error=extraction failed for inv-03-alnoor-aed: aborted  (timed out)
+[flow] inv-04-streamline-saas       FAIL 300004ms kind=- usd=- flags=[] route=- pay=- error=extraction failed for inv-04-streamline-saas: aborted  (timed out)
+[flow] inv-05-lumiere-fr            FAIL 300002ms kind=- usd=- flags=[] route=- pay=- error=extraction failed for inv-05-lumiere-fr: aborted  (timed out)
+[flow] inv-06-pacific-ocr           FAIL 300002ms kind=- usd=- flags=[] route=- pay=- error=extraction failed for inv-06-pacific-ocr: aborted  (timed out)

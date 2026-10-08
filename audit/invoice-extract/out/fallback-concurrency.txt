@@ -1,0 +1,7 @@
+onFallback reports:
+   primary -> fallback (503 overloaded (A))
+   fallback -> fallback (503 overloaded (B))
+A: text="fallback served \"A\"" byModel=["gpt-4o-mini"] costUsd=0.00075
+B: text="fallback served \"B\"" byModel=["gpt-4o-mini"] costUsd=0.00075
+C: text="primary served \"C\"" byModel=["gpt-4o-mini"] costUsd=0.00075
+models the primary was asked for: [ undefined, undefined, undefined ]  fallback: [ undefined, undefined ]

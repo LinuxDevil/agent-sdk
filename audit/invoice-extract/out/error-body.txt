@@ -1,0 +1,10 @@
+[chat (400, error is a string)] CompactedLLMProviderError code=LOUSHO_PROVIDER_REQUEST_FAILED status=400
+   message: "Bad Request"
+   detail : "Bad Request"
+   compacted: {"error":"Bad Request","category":"unknown","retryable":false,"providerName":"openai.chat","statusCode":400}
+   cause.responseBody present: true  http calls made: 1
+[responses (500, error is an object)] CompactedLLMProviderError code=LOUSHO_PROVIDER_REQUEST_FAILED status=500
+   message: "Engine protocol predict stream returned an error: Context size has been exceeded."
+   detail : "Engine protocol predict stream returned an error: Context size has been exceeded."
+   compacted: {"error":"Engine protocol predict stream returned an error: Context size has been exceeded.","category":"unknown","retryable":true,"providerName":"openai","statusCode":500}
+   cause.responseBody present: true  http calls made: 2

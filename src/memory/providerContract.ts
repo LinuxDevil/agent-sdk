@@ -32,6 +32,15 @@ export function describeMemoryProviderContract(
       expect((await provider.list('k')).map((i) => i.text)).toEqual(['two', 'one']);
     });
 
+    it('dedupes on identical text, returning the stored item', async () => {
+      const provider = await make();
+      const first = await provider.add('k', { text: 'likes tea' });
+      const again = await provider.add('k', { text: 'likes tea' });
+      await provider.add('other', { text: 'likes tea' }); // dedupe is per scope key
+      expect(again).toEqual(first);
+      expect(await provider.list('k')).toEqual([first]);
+    });
+
     it('round-trips metadata and keeps scope keys apart', async () => {
       const provider = await make();
       expect(await provider.list('session:a')).toEqual([]);
