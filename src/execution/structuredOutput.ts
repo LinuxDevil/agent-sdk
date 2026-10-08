@@ -9,6 +9,7 @@ import type { GenerateOptions, Message } from '../providers';
 import { formatIssues, parseWithIssues, type ToolArgumentIssue } from './toolArgsValidation';
 import { isModelSchema, schemaToJsonSchema, unrepresentableDates, type StandardSchemaV1 } from '../utils/zodCompat';
 import { ConfigurationError } from './errors';
+import { decodeStrictValue, resolveRef, rewriteStrictShapes, type StrictShapes } from './strictShapes';
 
 /** Why a run's final reply is not a valid `output` object (`finishReason: 'output-invalid'`). */
 export interface OutputError {
@@ -134,17 +135,6 @@ function requireEveryProperty(schema: Record<string, unknown>, root: unknown): v
   schema.required = Object.keys(props);
 }
 
-/** The subschema a local `$ref` (`#`, `#/$defs/x`, ...) points at, else `undefined`. */
-function resolveRef(root: unknown, ref: string): unknown {
-  if (!ref.startsWith('#')) return undefined;
-  let node: unknown = root;
-  for (const raw of ref.slice(1).split('/').filter(Boolean)) {
-    if (typeof node !== 'object' || node === null) return undefined;
-    node = (node as Record<string, unknown>)[raw.replace(/~1/g, '/').replace(/~0/g, '~')];
-  }
-  return node;
-}
-
 /** Whether `node` (a subschema of `root`) accepts `null`: a null type, const or enum value, a branch that does, or no constraint at all. */
 function admitsNull(node: unknown, root: unknown, refs: ReadonlySet<string> = new Set()): boolean {
   if (node === true) return true;
@@ -202,6 +192,8 @@ function dropOptionalNulls(value: unknown, node: unknown, root: unknown, refs: R
 interface OutputJsonSchemas {
   strict: Record<string, unknown>;
   original: Record<string, unknown>;
+  /** The nodes of `strict` rewritten for strict endpoints (Eve PROV-F1), which a reply is decoded through. */
+  shapes: StrictShapes;
 }
 
 /**
@@ -209,7 +201,9 @@ interface OutputJsonSchemas {
  * zod 4 (LOU-D29), the `ai` SDK's zod converter for zod 3. In the copy sent
  * to the model, object nodes are closed (`additionalProperties: false`,
  * LOU-R7) and list every property in `required` (audit A6) for strict
- * structured-output endpoints.
+ * structured-output endpoints. Shapes strict endpoints reject (`oneOf`,
+ * records, tuples, a root that is not an object) are then rewritten (Eve
+ * PROV-F1, see `strictShapes.ts`).
  */
 function jsonSchemasOf(schema: StandardSchemaV1): OutputJsonSchemas {
   let json = jsonSchemas.get(schema);
@@ -219,9 +213,8 @@ function jsonSchemasOf(schema: StandardSchemaV1): OutputJsonSchemas {
     const original = structuredClone(converted);
     const strict = structuredClone(converted);
     closeObjectSchemas(strict);
-    // After closing: a typed root union must not get `additionalProperties: false` of its own.
-    typeRootUnion(strict);
-    json = { strict, original };
+    const shapes = rewriteStrictShapes(strict);
+    json = { strict, original, shapes };
     jsonSchemas.set(schema, json);
   }
   return json;
@@ -243,36 +236,9 @@ function assertNoDates(schema: StandardSchemaV1): void {
   );
 }
 
-/** Whether `branch` (of `root`) is, or `$ref`s, an object schema. */
-function isObjectBranch(branch: unknown, root: unknown): boolean {
-  const node = isRecord(branch) && typeof branch.$ref === 'string' ? resolveRef(root, branch.$ref) : branch;
-  return isRecord(node) && isObjectSchemaNode(node);
-}
-
-/**
- * Audit invoice F7: a root-level union (`z.union`, `z.discriminatedUnion`)
- * converts to a bare `anyOf` with no `type`, and models answered it by
- * echoing the schema. A union of objects gets `type: 'object'` at the root;
- * one with another branch throws a ConfigurationError, since the final
- * answer must be a JSON object.
- */
-function typeRootUnion(root: Record<string, unknown>): void {
-  if (root.type !== undefined) return;
-  const branches = Array.isArray(root.anyOf) ? root.anyOf : Array.isArray(root.oneOf) ? root.oneOf : undefined;
-  if (!branches) return;
-  if (!branches.every((branch) => isObjectBranch(branch, root))) {
-    throw new ConfigurationError(
-      'output: the schema is a union at the root with a branch that is not an object, but the final answer must be a JSON object. ' +
-        'Wrap it: z.object({ result: z.union([...]) }).',
-      'output'
-    );
-  }
-  root.type = 'object';
-}
-
 /**
  * Throws a ConfigurationError when `schema` cannot be used as `output` (a
- * `z.date()` field, a root union with a non-object branch), so
+ * `z.date()` field), so
  * `createAgent()` and `AgentExecutor.execute()` fail at once rather than
  * on the first model call.
  */
@@ -412,14 +378,22 @@ export interface OutputFailure {
   schemaEcho?: true;
 }
 
-/** Validates one parsed reply with `schema` (audit A6: an optional key sent as `null` is absent). */
+/**
+ * Validates one parsed reply with `schema`: decoded from the strict shape
+ * (Eve PROV-F1: a wrapped root, `{ key, value }` records, `_0`.. tuples)
+ * and with an optional key sent as `null` absent (audit A6). When that
+ * does not validate, the decoded and then the raw reply are tried as sent.
+ */
 async function validateValue(schema: StandardSchemaV1, value: unknown): Promise<{ object: unknown } | OutputFailure> {
-  const { original, strict } = jsonSchemasOf(schema);
-  const cleaned = structuredClone(value);
+  const { original, strict, shapes } = jsonSchemasOf(schema);
+  const decoded = decodeStrictValue(value, strict, strict, shapes);
+  const cleaned = structuredClone(decoded);
   dropOptionalNulls(cleaned, original, original);
   let result = await parseWithIssues(schema, cleaned);
-  if (!result.success && JSON.stringify(cleaned) !== JSON.stringify(value)) {
-    const raw = await parseWithIssues(schema, value);
+  for (const candidate of [decoded, value]) {
+    if (result.success) break;
+    if (JSON.stringify(candidate) === JSON.stringify(cleaned)) continue;
+    const raw = await parseWithIssues(schema, candidate);
     if (raw.success) result = raw;
   }
   if (result.success) return { object: result.data };

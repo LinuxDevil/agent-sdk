@@ -204,11 +204,23 @@ if (invoice && Math.abs(invoice.subtotal + invoice.tax - invoice.total) > 0.005)
 
 ## Schema limits
 
-- **The root must be an object.** A root-level union of objects
-  (`z.union`, `z.discriminatedUnion`) is sent with `type: 'object'` next to
-  its `anyOf`. A root union with a branch that is not an object throws a
-  `ConfigurationError` from `createAgent()`: wrap it, as in
-  `z.object({ result: z.union([...]) })`.
+Strict structured-output endpoints (OpenAI, Anthropic, and OpenRouter in
+front of them) reject some JSON-Schema shapes with a 400, and Claude answered
+a record with `{}`. The schema sent to the model is rewritten into shapes
+they accept, and the model's reply is turned back into your schema's shape
+before validation, so `result.object` always has the type you wrote. Only
+`result.text` (the raw reply) shows the rewritten form.
+
+| Your schema | Sent to the model as | Reply decoded from |
+| --- | --- | --- |
+| `z.discriminatedUnion` (`oneOf`) | `anyOf` | (unchanged) |
+| A root that is not an object (`z.union`, `z.record`, `z.string()`, ...) | `{ result: <schema> }` | `{"result": ...}` |
+| `z.record(key, value)` | an array of `{ key, value }` objects | `[{"key":"a","value":2}]` → `{ a: 2 }` |
+| `z.tuple([a, b], rest?)` | an object `{ _0, _1, _rest? }` | `{"_0":1,"_1":"x"}` → `[1, 'x']` |
+
+A reply in your schema's own shape (from a model that does not enforce the
+schema) still validates.
+
 - **No `z.date()`.** JSON has no date type, so a zod 4 `z.date()` field could
   never validate. `createAgent()` throws a `ConfigurationError` naming the
   field. Use `z.iso.date()` or `z.iso.datetime()` for an ISO string, or

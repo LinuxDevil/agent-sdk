@@ -108,7 +108,7 @@ Failures are `SDKError`s: missing key is `LOUSHO_PROVIDER_MISSING_API_KEY`, a `4
 ## When to use what
 
 - **`decide()`** — a typed answer about one input: routing, filtering, severity, confidence gates. Fast and calibrated, but no prose and no tools.
-- **[Structured output](structured-output.md)** (`createAgent({ output })`) — when you need your own JSON schema: extracted fields, a written explanation, or an object shaped like your domain. Works on any provider.
+- **[Structured output](structured-output.md)** (`createAgent({ output })`) — when you need your own JSON schema: extracted fields, a written explanation, or an object shaped like your domain. Works on any provider, including strict structured-output endpoints (see [Schema limits](structured-output.md#schema-limits)).
 - **[Sub-agents](sub-agents.md)** or [flows](flows.md) — when the decision needs tools or multi-step reasoning before it answers.
 
 The [coding-agent-workflows example](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/coding-agent-workflows) shows the same route/confidence/floor pattern built on `output` schemas — swap its triage step for `decide()` when you are on OpenAI and want the dedicated endpoint. [Prompting techniques](prompting-techniques.md#typed-decisions-system-one-style) places both forms in the wider typed-decision catalog.
