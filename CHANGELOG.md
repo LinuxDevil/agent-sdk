@@ -49,6 +49,7 @@ This section lists what is on `main` and not yet on npm.
 
 ### Fixed
 - `withFallback()` (and `fallbackModels`) kept one shared "active provider" for all calls, so concurrent calls reported wrong `onFallback` / `provider.fallback` transitions, could send the fallback's model id to the primary, and booked usage and cost of calls the fallback served under the primary's model (a 16x cost under-report in the audit repro). Fallback state is now per call; the wrapper's `name` and `defaultModel` are always the first provider's, and each result (and stream) carries the new `servedBy: { provider, model }`, under which the run books that call's `usage.byModel` and `costUsd`.
+- `createAgent({ output })` with an optional field (`.optional()`, `.default()`) no longer fails with HTTP 400 on OpenAI-strict structured-output endpoints (OpenAI, OpenRouter): the JSON Schema sent to the model now lists every property in `required` and makes each optional one nullable, at every level (nested objects, array items, union branches), for zod 3 and zod 4. A `null` the model returns for such a field is read back as an absent key before validation, so your `.optional()` schema still validates and `result.object` has no key for it; fields that accept `null` themselves (`.nullable()`, `.nullish()`) keep it. See [Structured output](docs/structured-output.md#optional-fields).
 
 ## [1.0.0-rc.0] - 2026-10-04
 
