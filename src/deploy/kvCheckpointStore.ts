@@ -67,6 +67,7 @@ import {
   type CheckpointStore,
 } from '../execution/checkpoint';
 import { newId } from '../utils/id';
+import { fromKVJson, toKVJson } from './kvBytes';
 
 /** The `put()` option the stores use: seconds until the key expires (KV accepts 60 or more). */
 export interface KVPutOptions {
@@ -151,7 +152,7 @@ export class KVCheckpointStore implements CheckpointStore {
   }
 
   private put(key: string, value: unknown): Promise<void> {
-    return this.kv.put(key, JSON.stringify(value), this.expirationTtl ? { expirationTtl: this.expirationTtl } : undefined);
+    return this.kv.put(key, toKVJson(value), this.expirationTtl ? { expirationTtl: this.expirationTtl } : undefined);
   }
 
   /** The session's entry ids, oldest first; an unreadable index counts as empty. */
@@ -179,7 +180,7 @@ export class KVCheckpointStore implements CheckpointStore {
   async load(sessionId: string): Promise<Checkpoint | null> {
     const raw = await this.kv.get(this.key(sessionId));
     if (raw === null) return null;
-    return JSON.parse(raw) as Checkpoint;
+    return fromKVJson<Checkpoint>(raw);
   }
 
   async delete(sessionId: string, options: CheckpointDeleteOptions = {}): Promise<void> {
@@ -196,7 +197,7 @@ export class KVCheckpointStore implements CheckpointStore {
     const entries = await Promise.all(
       ids.map(async (id) => {
         const raw = await this.kv.get(this.entryKey(sessionId, id));
-        return raw === null ? null : (JSON.parse(raw) as CheckpointHistoryEntry);
+        return raw === null ? null : fromKVJson<CheckpointHistoryEntry>(raw);
       })
     );
     return entries.filter((entry): entry is CheckpointHistoryEntry => entry !== null);

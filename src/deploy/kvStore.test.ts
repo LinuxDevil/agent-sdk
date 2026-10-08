@@ -13,6 +13,11 @@ import type { ExecutionSnapshot, PendingApproval } from '../execution/ApprovalGa
 import { decodeBytes, encodeBytes } from '../session/sessionStore';
 import type { KVBinding, KVPutOptions } from './kvCheckpointStore';
 import { KVStore } from './kvStore';
+import {
+  describeApprovalStoreContract,
+  describeCheckpointStoreContract,
+  describeSessionStoreContract,
+} from '../storage/sqlite/__fixtures__/storeContracts';
 
 function fakeKV() {
   const data = new Map<string, string>();
@@ -27,6 +32,11 @@ function fakeKV() {
   };
   return { kv, data, ttls };
 }
+
+// The shared store contracts (LOU-W5), including the Uint8Array round-trip (Eve DUR-F5).
+describeSessionStoreContract('KVStore.sessions', () => new KVStore(fakeKV().kv).sessions);
+describeCheckpointStoreContract('KVStore.checkpoints', () => new KVStore(fakeKV().kv).checkpoints);
+describeApprovalStoreContract('KVStore.approvals', () => new KVStore(fakeKV().kv).approvals);
 
 const pending: PendingApproval = { id: 'ap-1', toolCallId: 'call-1', toolName: 'ping', args: { n: 1 }, createdAt: '2026-01-01T00:00:00.000Z' };
 const snapshot = { currentMessages: [{ role: 'user', content: 'hi' }], pendingToolCall: pending, steps: 1 } as unknown as ExecutionSnapshot;

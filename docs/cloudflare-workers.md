@@ -224,8 +224,8 @@ Worker reads). `KVStore`'s keys, with an optional `prefix` before each:
 | Key | Value |
 | --- | ----- |
 | `sessions/<id>` | The transcript as JSON (image and file bytes as `{ "$bytes": "<base64>" }`, like `FileSessionStore`). |
-| `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, with its history under `checkpoints/<id>#history`). |
-| `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided). |
+| `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, with its history under `checkpoints/<id>#history`; bytes encoded the same way). |
+| `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided; bytes encoded the same way). |
 | `oauth/tokens/<key>`, `oauth/pending/<state>` | OAuth tokens and pending sign-ins, encrypted with `tokenKey` (the `LOUSHO_TOKEN_KEY` secret in the generated Worker); see [OAuth](oauth.md#token-storage). |
 | `memory/<slot>#<scope>` | The items of a `kvMemory()` memory slot (`notes#global`, `prefs#session:<id>` or a custom scope's key) - written by the provider itself, not `KVStore`. |
 
