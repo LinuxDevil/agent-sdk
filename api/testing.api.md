@@ -93,6 +93,7 @@ const ERROR_CODES: {
     readonly LOUSHO_AGENT_DIR_INVALID: "Fix the file or folder the message names; docs/agent-directories.md shows the layout.";
     readonly LOUSHO_SKILL_INVALID: "Fix the skill the message names (a name, a description and content), or the skills option it was passed to.";
     readonly LOUSHO_FLOW_INVALID: "Fix the flow definition the message names (its name, code, inputs and node types).";
+    readonly LOUSHO_FLOW_TOOL_DENIED: "Pass an approve callback in the flow context to decide tool calls that need approval, or change the permission rule or needsApproval policy that denied the call.";
     readonly LOUSHO_STORAGE_FAILED: "Read the message: it names the database or file that failed; check the path, permissions and Node version, and the `cause`.";
     readonly LOUSHO_TRIGGER_INVALID: "Fix the trigger option the message names; the message shows a working example.";
     readonly LOUSHO_DEPLOY_FAILED: "Read the message: it names the missing option, file or unsupported feature; docs/deployment.md covers each target.";
@@ -716,9 +717,9 @@ interface ToolExecutionContext {
 
 // Warnings were encountered during analysis:
 //
-// dist/index-Bv9yX21G.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-Bv9yX21G.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-Bv9yX21G.d.ts:1441:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
+// dist/index-B41xZFIC.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-B41xZFIC.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-B41xZFIC.d.ts:1442:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

@@ -52,6 +52,8 @@ export const ERROR_CODES = {
   LOUSHO_AGENT_DIR_INVALID: 'Fix the file or folder the message names; docs/agent-directories.md shows the layout.',
   LOUSHO_SKILL_INVALID: 'Fix the skill the message names (a name, a description and content), or the skills option it was passed to.',
   LOUSHO_FLOW_INVALID: 'Fix the flow definition the message names (its name, code, inputs and node types).',
+  LOUSHO_FLOW_TOOL_DENIED:
+    "Pass an approve callback in the flow context to decide tool calls that need approval, or change the permission rule or needsApproval policy that denied the call.",
   LOUSHO_STORAGE_FAILED: 'Read the message: it names the database or file that failed; check the path, permissions and Node version, and the `cause`.',
   LOUSHO_TRIGGER_INVALID: 'Fix the trigger option the message names; the message shows a working example.',
   LOUSHO_DEPLOY_FAILED: 'Read the message: it names the missing option, file or unsupported feature; docs/deployment.md covers each target.',

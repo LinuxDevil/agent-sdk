@@ -72,7 +72,7 @@ Find a code by area:
 | [Channels](#channels) | [`LOUSHO_CHANNEL_INVALID`](#lousho_channel_invalid), [`LOUSHO_MEMORY_INVALID`](#lousho_memory_invalid) | Defining a channel or a memory slot. |
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
 | [Sandbox](#sandbox) | [`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`](#lousho_sandbox_egress_unsupported) | Asking a sandbox for something it cannot do on the current platform. |
-| [Agent directories, skills and flows](#agent-directories-skills-and-flows) | [`LOUSHO_AGENT_DIR_INVALID`](#lousho_agent_dir_invalid), [`LOUSHO_SKILL_INVALID`](#lousho_skill_invalid), [`LOUSHO_FLOW_INVALID`](#lousho_flow_invalid) | Loading an agent directory, a skill, or a flow definition. |
+| [Agent directories, skills and flows](#agent-directories-skills-and-flows) | [`LOUSHO_AGENT_DIR_INVALID`](#lousho_agent_dir_invalid), [`LOUSHO_SKILL_INVALID`](#lousho_skill_invalid), [`LOUSHO_FLOW_INVALID`](#lousho_flow_invalid), [`LOUSHO_FLOW_TOOL_DENIED`](#lousho_flow_tool_denied) | Loading an agent directory, a skill, or a flow definition, and gating a flow's tool calls. |
 | [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed) | A storage backend, a trigger, a channel request or `lousho build`. |
 | [Tests and evals](#tests-and-evals) | [`LOUSHO_EVALS_INVALID`](#lousho_evals_invalid), [`LOUSHO_TEST_FAILED`](#lousho_test_failed), [`LOUSHO_CASSETTE_INVALID`](#lousho_cassette_invalid) | `defineEval()`, `mockModel` and cassettes. |
 | [General](#general) | [`LOUSHO_GENERIC_ERROR`](#lousho_generic_error), [`LOUSHO_AGENT_EXECUTION_FAILED`](#lousho_agent_execution_failed), [`LOUSHO_FLOW_EXECUTION_FAILED`](#lousho_flow_execution_failed), [`LOUSHO_VALIDATION_FAILED`](#lousho_validation_failed), [`LOUSHO_OPERATION_TIMEOUT`](#lousho_operation_timeout), [`LOUSHO_OUTPUT_INVALID`](#lousho_output_invalid), [`LOUSHO_BUDGET_EXCEEDED`](#lousho_budget_exceeded), [`LOUSHO_GUARDRAIL_TRIPPED`](#lousho_guardrail_tripped) | Run-level failures: a timeout, a budget or guardrail stop, invalid output, and the catch-all codes. |
@@ -773,6 +773,19 @@ missing flow name or code, or a node of an unknown type.
 **Fix:** fix the part of the flow the message names. See [Flows](./flows.md).
 
 **Example:** two `.input('city')` calls on one `FlowBuilder`.
+
+### LOUSHO_FLOW_TOOL_DENIED
+
+**Means:** a flow's `toolCall` step was not run. A permission rule or the tool's
+`needsApproval` policy denied it, or the call needs approval and the flow
+context's `approve` callback rejected it, returned `'defer'` (a flow cannot
+pause), or was not passed at all.
+
+**Fix:** pass `approve` in the flow context to decide calls that need approval,
+or change the rule that denied the call. See [Flows](./flows.md#tool-calls).
+
+**Example:** a flow step that calls a `needsApproval: true` payment tool, run
+with no `approve` callback.
 
 ## Storage, deployment and integrations
 

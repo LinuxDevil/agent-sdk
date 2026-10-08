@@ -193,8 +193,12 @@ export async function prepareToolCall(toolCall: ToolCall, ctx: ToolCallContext):
 /** Why an `allow` rule did not run a call whose approval is enforced (see `enforceApproval()`). */
 const ENFORCED_APPROVAL_REASON = 'its install receipt requires approval';
 
-/** Permission rules, tool guardrails and `needsApproval`, on the hook-processed args. */
-async function gateToolCall(toolCall: ToolCall, ctx: ToolCallContext, hookedArgs: Record<string, unknown>): Promise<PreparedToolCall> {
+/**
+ * Permission rules, tool guardrails and `needsApproval`, on the hook-processed args.
+ *
+ * Exported for A8: a flow's `toolCall` step passes the same gate.
+ */
+export async function gateToolCall(toolCall: ToolCall, ctx: ToolCallContext, hookedArgs: Record<string, unknown>): Promise<PreparedToolCall> {
   // N4: the mode is read once per call, so a switch applies from the next call.
   const mode = ctx.scope ? permissionModeOf(ctx.scope.runtime) : 'default';
   // LOU-X2: a matching permission rule decides before `needsApproval` does.
