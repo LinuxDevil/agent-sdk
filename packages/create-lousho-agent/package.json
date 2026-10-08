@@ -1,6 +1,6 @@
 {
   "name": "create-lousho-agent",
-  "version": "0.1.2-alpha.2",
+  "version": "0.1.2-alpha.3",
   "description": "npm create lousho-agent: scaffold a new @lousho/build-ai-agent project (runs `lousho init`)",
   "license": "MIT",
   "homepage": "https://lousho.com",
@@ -30,7 +30,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@lousho/build-ai-agent": "^1.0.0-alpha.15",
+    "@lousho/build-ai-agent": "^1.0.0-alpha.18",
     "prompts": "^2.4.2"
   },
   "devDependencies": {
