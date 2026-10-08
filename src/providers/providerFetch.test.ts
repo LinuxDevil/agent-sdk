@@ -40,7 +40,9 @@ const providers: Array<[string, (fetch: typeof globalThis.fetch) => LLMProvider]
   ['anthropic', (fetch) => new AnthropicProvider({ apiKey: 'k', fetch, maxRetries: 0 })],
   ['openrouter', (fetch) => new OpenRouterProvider({ apiKey: 'k', fetch, maxRetries: 0 })],
   ...(ollamaPeerInstalled
-    ? [['ollama', (fetch: typeof globalThis.fetch) => new OllamaProvider({ fetch, maxRetries: 0 })]]
+    ? ([['ollama', (fetch: typeof globalThis.fetch) => new OllamaProvider({ fetch, maxRetries: 0 })]] satisfies Array<
+        [string, (fetch: typeof globalThis.fetch) => LLMProvider]
+      >)
     : []),
 ];
 
