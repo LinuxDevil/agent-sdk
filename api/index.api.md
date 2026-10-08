@@ -1627,6 +1627,7 @@ export interface DefineMemoryOptions {
         remember?: boolean;
         recall?: boolean;
     };
+    itemSchema?: StandardSchemaV1;
     name: string;
     // (undocumented)
     provider: MemoryProvider;
@@ -2713,6 +2714,7 @@ export interface GitHubChannelOptions {
     fetch?: typeof fetch;
     name?: string;
     onError?: ChannelErrorHandler;
+    pullRequestOpened?: boolean;
     token?: string | (() => string | Promise<string>);
     triggers?: GitHubTriggers;
     webhookSecret: string;
@@ -3807,6 +3809,9 @@ export interface MemoryItem {
 }
 
 // @public
+export function memoryKey(slot: MemorySlot, ctx?: MemoryScopeContext): string | undefined;
+
+// @public
 export interface MemoryProvider {
     add(scopeKey: string, item: {
         text: string;
@@ -3858,6 +3863,8 @@ export interface MemorySlot {
         remember: boolean;
         recall: boolean;
     };
+    // (undocumented)
+    readonly itemSchema?: StandardSchemaV1;
     // (undocumented)
     readonly name: string;
     // (undocumented)
@@ -6838,6 +6845,9 @@ export type VectorMemoryProvider = MemoryProvider & {
 // @public
 export const VERSION = "1.0.0-alpha.19";
 
+// @public
+export function warnUnknownContextWindow(feature: string, model: string | undefined, assumed: number): void;
+
 // @public (undocumented)
 const webFetchInput: z.ZodObject<{
     url: z.ZodString;
@@ -7074,8 +7084,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-B41xZFIC.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-B41xZFIC.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-C1NnbLr9.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-C1NnbLr9.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)

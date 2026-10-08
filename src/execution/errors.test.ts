@@ -400,7 +400,9 @@ describe('Error Classes', () => {
 
       const compacted = compactProviderError(raw, 'openrouter');
       expect(compacted.error.length).toBeLessThan(600);
-      expect(compacted.error.endsWith('(truncated)')).toBe(true);
+      // the bounded responseBody snippet still carries the upstream metadata.raw reason
+      expect(compacted.error.endsWith('...')).toBe(true);
+      expect(compacted.error).toContain('metadata');
     });
 
     it('falls back to the APICallError isRetryable flag for an unrecognized 5xx', () => {

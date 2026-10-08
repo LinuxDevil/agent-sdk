@@ -25,7 +25,6 @@
  */
 
 import type { Message, ToolCall, ToolDefinition } from '../providers';
-import { textOf } from '../providers';
 import type { StandardSchemaV1 } from '../utils/zodCompat';
 import type { ExecuteOptions } from './AgentExecutor';
 import type { SubagentSpec } from './delegation';
@@ -358,24 +357,6 @@ function routingNote(marker: HandoffMarker, args: Record<string, unknown>): Mess
   return { role: 'system', content, metadata: { handoff: marker } };
 }
 
-/**
- * `marked` with every kept routing note taken out and returned separately:
- * they join the target's system prompt instead of following the transcript
- * as mid-conversation `system` messages (see {@link routingNote}). The last
- * note's marker is reported so the folded prompt can carry it.
- */
-function takeRoutingNotes(marked: readonly Message[]): { notes: Message[]; messages: Message[] } {
-  const notes: Message[] = [];
-  const messages = marked.filter((message) => {
-    if (message.role === 'system' && message.metadata?.handoff !== undefined) {
-      notes.push(message);
-      return false;
-    }
-    return true;
-  });
-  return { notes, messages };
-}
-
 /** `messages` with the handoff's marker kept: on its result when the filter kept it, else on the last message. */
 function withMarker(messages: Message[], toolCallId: string, marker: HandoffMarker): Message[] {
   const kept = messages.some((message) => message.toolCallId === toolCallId && activeAgentOf([message]) === marker.to);
@@ -461,16 +442,13 @@ export async function handOff(
   const target = await handoff.spec(lastUserText(transcript));
   const data: HandoffInputData = { messages: transcript, ...marker, args };
   const filtered = handoff.inputFilter ? await handoff.inputFilter({ ...data, messages: [...transcript] }) : transcript;
-  const marked = withMarker(forgetApprovals(filtered), toolCall.id, marker);
+  const messages = withMarker(forgetApprovals(filtered), toolCall.id, marker);
   await handoff.onHandoff?.({ ...data, ...(options.sessionId !== undefined && { sessionId: options.sessionId }) });
   const next = await extend(targetOptions(options, target));
-  // F1: routing notes the filter kept ride the target's own system prompt; a
-  // `system` message later in the conversation breaks local-model chat
-  // templates. The folded prompt keeps the last note's handoff marker, so
-  // `activeAgentOf` still finds it.
-  const { notes, messages } = takeRoutingNotes(marked);
-  const content = [next.agent.prompt, ...notes.map((note) => textOf(note))].filter((text) => text !== '').join('\n\n');
-  const last = notes.at(-1);
-  const system: Message[] = content === '' ? [] : [{ role: 'system', content, ...(last && { metadata: last.metadata }) }];
+  // The routing note stays in the transcript as a marked `system` message;
+  // `withLeadingSystemOnly` (generateStep) folds it into the request's
+  // leading system prompt so local-model chat templates never see a
+  // mid-conversation system message.
+  const system: Message[] = next.agent.prompt ? [{ role: 'system', content: next.agent.prompt }] : [];
   return { options: next, messages: [...system, ...messages], marker };
 }
