@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import * as http from 'node:http';
 import { z } from 'zod';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -299,6 +300,52 @@ describe('serveMcp over HTTP', () => {
     const server = await start();
     const res = await fetch(server.url!, { method: 'POST', body: 'not json' });
     expect(res.status).toBe(400);
+  });
+
+  /** A raw request with a forged Host header (fetch() does not let us set one). */
+  function rawPost(port: number, headers: Record<string, string>): Promise<number> {
+    const body = JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+    return new Promise((resolve, reject) => {
+      const req = http.request(
+        {
+          host: '127.0.0.1',
+          port,
+          path: '/mcp',
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...headers },
+        },
+        (res) => {
+          res.resume();
+          res.on('end', () => resolve(res.statusCode ?? 0));
+        }
+      );
+      req.on('error', reject);
+      req.end(body);
+    });
+  }
+
+  it('Eve TOOLS-F5: rejects a foreign Host or Origin on a loopback bind (DNS rebinding)', async () => {
+    const server = await start();
+    const port = server.port!;
+    expect(await rawPost(port, { Host: `evil.example:${port}`, Origin: `http://evil.example:${port}` })).toBe(403);
+    expect(await rawPost(port, { Host: `evil.example:${port}` })).toBe(403);
+    expect(await rawPost(port, { Host: `127.0.0.1:${port}`, Origin: 'http://evil.example' })).toBe(403);
+    expect(await rawPost(port, { Host: `localhost:${port}`, Origin: `http://localhost:${port}` })).toBe(200);
+    expect(await rawPost(port, { Host: `127.0.0.1:${port}` })).toBe(200);
+  });
+
+  it('Eve TOOLS-F5: allowedHosts replaces the loopback default and allowedOrigins adds origins', async () => {
+    const server = await serveMcp({
+      agent,
+      name: 'a',
+      transport: { type: 'http', port: 0, allowedHosts: ['mcp.internal'], allowedOrigins: ['https://app.example'] },
+      warn: () => {},
+    });
+    closers.push(server.close);
+    const port = server.port!;
+    expect(await rawPost(port, { Host: `mcp.internal:${port}`, Origin: 'https://app.example' })).toBe(200);
+    expect(await rawPost(port, { Host: `127.0.0.1:${port}` })).toBe(403);
+    expect(await rawPost(port, { Host: `mcp.internal:${port}`, Origin: 'https://other.example' })).toBe(403);
   });
 
   it('warns once when bound to a non-loopback host without auth', async () => {

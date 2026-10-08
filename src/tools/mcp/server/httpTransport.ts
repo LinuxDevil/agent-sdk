@@ -29,6 +29,26 @@ export interface McpHttpTransportOptions {
    * ```
    */
   auth?: { type: 'bearer'; token: string };
+  /**
+   * Host names (or `host:port`) the `Host` header may carry; other requests
+   * get `403`. This guards against DNS rebinding, where a web page re-points
+   * its own domain at your machine. Defaults to loopback names (`localhost`,
+   * `127.x.x.x`, `[::1]`) when `host` is loopback, and to no check otherwise.
+   * `['*']` disables the check.
+   *
+   * @example
+   * ```ts
+   * const transport = { type: 'http', host: '0.0.0.0', allowedHosts: ['mcp.internal'], auth } as const;
+   * ```
+   */
+  allowedHosts?: string[];
+  /**
+   * Extra origins (`'https://app.example'`) a browser request may come from.
+   * A request with an `Origin` header that is neither same-origin with the
+   * `Host` header nor listed gets `403`. Requests without `Origin` (non-browser
+   * clients) are not affected. `['*']` disables the check.
+   */
+  allowedOrigins?: string[];
 }
 
 /** A running HTTP listener. */
@@ -43,6 +63,43 @@ const MAX_BODY_BYTES = 4 * 1024 * 1024;
 
 function isLoopbackHost(host: string): boolean {
   return host === 'localhost' || host === '::1' || host === '[::1]' || /^127\./.test(host);
+}
+
+/** The lowercased host name of a `Host` header value, without the port (IPv6 keeps its brackets). */
+function hostnameOf(hostHeader: string): string | undefined {
+  try {
+    return new URL(`http://${hostHeader}`).hostname.toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
+/** Why the request's `Host` / `Origin` is refused (DNS rebinding, Eve TOOLS-F5), else `undefined`. */
+function rebindingRefusal(
+  req: http.IncomingMessage,
+  boundHost: string,
+  options: Pick<McpHttpTransportOptions, 'allowedHosts' | 'allowedOrigins'>
+): string | undefined {
+  const hostHeader = (req.headers.host ?? '').toLowerCase();
+  const hostname = hostnameOf(hostHeader);
+  const allowedHosts = options.allowedHosts?.map((entry) => entry.toLowerCase());
+  if (!allowedHosts?.includes('*')) {
+    const hostAllowed = allowedHosts
+      ? hostname !== undefined && (allowedHosts.includes(hostname) || allowedHosts.includes(hostHeader))
+      : !isLoopbackHost(boundHost) || (hostname !== undefined && isLoopbackHost(hostname));
+    if (!hostAllowed) return `Forbidden: Host "${hostHeader}" is not allowed. Add it to transport.allowedHosts.`;
+  }
+  const origin = req.headers.origin;
+  if (origin === undefined || options.allowedOrigins?.includes('*')) return undefined;
+  if (options.allowedOrigins?.includes(origin)) return undefined;
+  let originHost: string | undefined;
+  try {
+    originHost = new URL(origin).host.toLowerCase();
+  } catch {
+    originHost = undefined;
+  }
+  if (originHost !== undefined && originHost === hostHeader) return undefined;
+  return `Forbidden: Origin "${origin}" is not allowed. Add it to transport.allowedOrigins.`;
 }
 
 function jsonRpcError(
@@ -97,13 +154,16 @@ async function serveRequest(
 async function handle(
   createServer: () => Promise<McpServer>,
   path: string,
-  auth: McpHttpTransportOptions['auth'],
+  options: McpHttpTransportOptions & { host: string },
   req: http.IncomingMessage,
   res: http.ServerResponse
 ): Promise<void> {
+  const { auth } = options;
   if (new URL(req.url ?? '/', 'http://localhost').pathname !== path) {
     return jsonRpcError(res, 404, `Not found. The MCP endpoint is ${path}.`);
   }
+  const refusal = rebindingRefusal(req, options.host, options);
+  if (refusal) return jsonRpcError(res, 403, refusal);
   if (auth && (await checkWebhookAuth(auth, req, Buffer.alloc(0)))) {
     return jsonRpcError(res, 401, 'Unauthorized: send "Authorization: Bearer <token>".', {
       'WWW-Authenticate': 'Bearer',
@@ -144,7 +204,7 @@ export function listenHttp(
     );
   }
   const server = http.createServer((req, res) => {
-    void handle(createServer, path, options.auth, req, res);
+    void handle(createServer, path, { ...options, host }, req, res);
   });
   return new Promise((resolve, reject) => {
     server.once('error', reject);

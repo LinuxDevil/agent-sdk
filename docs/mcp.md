@@ -231,7 +231,14 @@ await server.close();
 - **stdio.** Nothing but the MCP protocol is written to stdout; warnings go to stderr.
 - **HTTP.** Binds `127.0.0.1` by default. Add `auth: { type: 'bearer', token }`
   to require an `Authorization: Bearer` header; binding a non-loopback host
-  without `auth` logs a warning.
+  without `auth` logs a warning. To block DNS rebinding (a web page re-pointing
+  its own domain at your machine), a loopback bind answers `403` unless the
+  `Host` header is `localhost`, `127.x.x.x` or `[::1]`, and any request whose
+  `Origin` header is not same-origin with `Host` gets `403`. Set
+  `allowedHosts: ['mcp.internal']` to accept other names (it replaces the
+  loopback default; on a non-loopback bind there is no Host check unless you
+  set it) and `allowedOrigins: ['https://app.example']` to accept browser
+  requests from another origin. `['*']` turns either check off.
 
 ### Annotations
 
