@@ -19,6 +19,8 @@ import { telegramChannel, type TelegramMessage, type TelegramUpdate } from './te
 import { secretsEqual } from './channelSupport';
 import { defineMemory, inMemoryMemory, type MemoryScopeContext } from '../memory';
 import { durableStores } from './__fixtures__/durableStores';
+import { memoryStore } from '../storage/agentStore';
+import { fakeOAuthServer, githubProvider, listReposTool } from '../oauth/__fixtures__/fakeOAuth';
 
 const TOKEN = '123456:SECRET-bot-token';
 const SECRET = 'webhook-secret_1';
@@ -461,5 +463,27 @@ describe('telegramChannel (N11a)', () => {
     expect(spy).toHaveBeenCalled();
     expect(spy.mock.calls.flat().join(' ')).not.toContain('SECRET-bot-token');
     spy.mockRestore();
+  });
+});
+
+
+describe('telegramChannel sign-in (Eve TOOLS-F3)', () => {
+  const signInSetup = () => {
+    const { tool } = listReposTool(githubProvider(fakeOAuthServer()));
+    return setup([{ toolCalls: [{ name: 'list_repos', id: 'call_1', args: {} }] }, 'done'], { tools: [tool], store: memoryStore() });
+  };
+
+  it('sends the sign-in link in a private chat', async () => {
+    const t = signInSetup();
+    await t.send(message('list my repos'));
+    expect(t.calls[0].body.text).toMatch(/^Sign in to GitHub to continue: https:\/\/github\.example\.com\//);
+  });
+
+  it('never posts the sign-in link in a group: it asks for a private chat', async () => {
+    const t = signInSetup();
+    await t.send(group('/ask@lousho_bot list my repos', { from: { id: 7, first_name: 'Sam', username: 'sam' } }));
+    expect(t.calls).toHaveLength(1);
+    expect(t.calls[0].body.text).toMatch(/private chat/);
+    expect(JSON.stringify(t.calls.map((c) => c.body))).not.toContain('github.example.com');
   });
 });

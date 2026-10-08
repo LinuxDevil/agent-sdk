@@ -249,8 +249,10 @@ The pause is reported like any approval, with the link to open:
   continue: <url>" without Approve / Deny buttons. Slack sends it with
   `chat.postEphemeral` to the user who started the turn and Discord as an
   ephemeral follow-up, so nobody else in the thread sees the link. Teams and
-  Telegram post it in the conversation (they have no message only one user
-  sees), and GitHub never posts it in a public thread. Behind
+  Telegram have no message only one user sees, so they send the link only in a
+  1:1 chat with the bot; in a group chat or channel they post "please sign in
+  from a private chat with me" instead. GitHub never posts it in a public
+  thread. Behind
   `createDeployedServer()` and `lousho dev`, the callback continues the paused
   channel turn by itself, and the answer is posted where the question was asked.
 - `lousho dev`'s chat page shows the link with "I've signed in" and "Cancel";
@@ -331,8 +333,8 @@ approval.
   issuer is another user. An app credential is only signed in by the operator.
 - **Who sees the link.** Whoever opens a sign-in link binds their own account
   to the user who asked. Show it only to that user: the run's own stream, an
-  ephemeral message in a shared channel (Slack, Discord), never a public
-  thread.
+  ephemeral message in a shared channel (Slack, Discord), a 1:1 chat
+  (Telegram, Teams), never a group chat or a public thread.
 - **Never return a token from a tool.** Return the API's answer. As a safety
   net, a tool result that contains a token `getToken()` handed out during that
   call has it replaced with `[REDACTED]` before it is recorded, and a warning

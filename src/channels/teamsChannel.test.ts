@@ -21,6 +21,8 @@ import { rsaKey, signToken, nowSec, type PublicSigningKey } from '../auth/__fixt
 import { mountChannels, type ChannelsHandler } from './mountChannels';
 import { teamsChannel, type TeamsActivity } from './teamsChannel';
 import { durableStores } from './__fixtures__/durableStores';
+import { memoryStore } from '../storage/agentStore';
+import { fakeOAuthServer, githubProvider, listReposTool } from '../oauth/__fixtures__/fakeOAuth';
 
 const APP_ID = '11111111-2222-3333-4444-555555555555';
 const APP_PASSWORD = 'SECRET-app-password~1';
@@ -614,5 +616,27 @@ describe('teamsChannel (N11c)', () => {
       expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'model down' }), { channel: 'teams', stage: 'turn', sessionId: expect.stringContaining('teams') });
       expect(t.calls.map((c) => c.body.text)).toEqual(['Sorry, that request failed.']);
     });
+  });
+});
+
+
+describe('teamsChannel sign-in (Eve TOOLS-F3)', () => {
+  const signInSetup = () => {
+    const { tool } = listReposTool(githubProvider(fakeOAuthServer()));
+    return setup([{ toolCalls: [{ name: 'list_repos', id: 'call_1', args: {} }] }, 'done'], { tools: [tool], store: memoryStore() });
+  };
+
+  it('sends the sign-in link in a personal chat', async () => {
+    const t = signInSetup();
+    await t.send(activity({ text: 'list my repos' }));
+    expect(t.calls[0].body.text).toMatch(/Sign in to GitHub to continue: https:\/\/github\.example\.com\//);
+  });
+
+  it.each(['channel', 'groupChat'] as const)('never posts the sign-in link in a %s: it asks for a private chat', async (conversationType) => {
+    const t = signInSetup();
+    await t.send(activity({ conversation: { ...CHANNEL, conversationType }, text: '<at>Lousho</at> list my repos', entities: [mention()] }));
+    expect(t.calls).toHaveLength(1);
+    expect(t.calls[0].body.text).toMatch(/private chat/);
+    expect(JSON.stringify(t.calls.map((c) => c.body))).not.toContain('github.example.com');
   });
 });
