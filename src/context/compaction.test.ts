@@ -36,7 +36,7 @@ function transcript(rounds: number, firstUser = 'start'): Message[] {
   return messages;
 }
 
-const isMarker = (m: Message) => /^\[pruned: search result, \d+ chars\]$/.test(textOf(m));
+const isMarker = (m: Message) => /^\[pruned: search\(\{\}\) result, \d+ chars; already read\]$/.test(textOf(m));
 
 /** Every assistant tool call is followed by a tool message answering it. */
 function expectValidTranscript(messages: Message[]): void {
@@ -66,7 +66,7 @@ describe('pruneToolResultsStrategy / compactMessages', () => {
     expect(older.length).toBeGreaterThan(0);
     expect(older.every(isMarker)).toBe(true);
     expect(result.prunedToolCallIds).toEqual(older.map((m) => m.toolCallId));
-    expect(result.messages[3].content).toBe(`[pruned: search result, ${original[3].content.length} chars]`);
+    expect(result.messages[3].content).toBe(`[pruned: search({}) result, ${original[3].content.length} chars; already read]`);
 
     expect(result.tokensBefore).toBe(estimateTokens(original));
     expect(result.tokensAfter).toBe(estimateTokens(result.messages));
@@ -138,7 +138,7 @@ describe('compaction with multimodal content (LOU-V11)', () => {
     const result = await compactMessages(original, { protectedTokens: 1_000, strategy: pruneToolResultsStrategy() });
 
     expect(result.messages[1]).toBe(original[1]);
-    expect(result.messages[3].content).toBe('[pruned: search result, 4000 chars]');
+    expect(result.messages[3].content).toBe('[pruned: search({}) result, 4000 chars; already read]');
   });
 });
 
@@ -255,7 +255,7 @@ describe('compaction in a run', () => {
     const pruned = compactions.flatMap((c) => c.prunedToolCallIds);
     expect(new Set(pruned).size).toBe(pruned.length);
     expect(pruned).toEqual(['call_1', 'call_2']); // call_3 and call_4 fit under the threshold
-    const markers = result.messages.filter((m) => m.role === 'tool' && textOf(m).startsWith('[pruned: fetch_page result'));
+    const markers = result.messages.filter((m) => m.role === 'tool' && textOf(m).startsWith('[pruned: fetch_page('));
     expect(markers.map((m) => m.toolCallId)).toEqual(pruned);
     expectValidTranscript(result.messages);
   });

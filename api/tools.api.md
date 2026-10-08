@@ -40,7 +40,7 @@ type AgentCompaction = boolean | AgentCompactionOptions;
 // Warning: (ae-forgotten-export) The symbol "CompactionHookOptions" needs to be exported by the entry point index.d.ts
 //
 // @public
-interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens' | 'reserveOutputTokens'> {
+interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens' | 'reserveOutputTokens' | 'onCompaction'> {
     // Warning: (ae-forgotten-export) The symbol "LLMProvider" needs to be exported by the entry point index.d.ts
     summarizer?: LLMProvider | string;
 }
@@ -533,12 +533,12 @@ type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length
 
 // @public
 interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
+    appliedStrategy?: string;
     // (undocumented)
     error?: {
         message: string;
     };
     prunedToolCallIds: string[];
-    // (undocumented)
     strategy: string;
     summary?: boolean;
     // (undocumented)
@@ -558,6 +558,7 @@ interface CompactionHookOptions extends Omit<CompactMessagesOptions, 'model'> {
 
 // @public
 interface CompactionInfo {
+    appliedStrategy?: string;
     error?: Error;
     // (undocumented)
     prunedToolCallIds: string[];
@@ -574,6 +575,9 @@ interface CompactionInput {
     contextWindow: number;
     // Warning: (ae-forgotten-export) The symbol "CompactionTokenCounter" needs to be exported by the entry point index.d.ts
     estimateTokens: CompactionTokenCounter;
+    // Warning: (ae-forgotten-export) The symbol "GenerateOptions" needs to be exported by the entry point index.d.ts
+    // Warning: (ae-forgotten-export) The symbol "GenerateResult" needs to be exported by the entry point index.d.ts
+    generate?: (provider: LLMProvider, request: GenerateOptions) => Promise<GenerateResult>;
     messages: Message[];
     protectedTokens: number;
     signal?: AbortSignal;
@@ -863,8 +867,6 @@ const ERROR_CODES: {
 // @public
 type ErrorCode = keyof typeof ERROR_CODES;
 
-// Warning: (ae-forgotten-export) The symbol "GenerateResult" needs to be exported by the entry point index.d.ts
-//
 // @public
 type ExecutionFinishReason = GenerateResult['finishReason'] | 'awaiting-approval' | 'aborted' | 'max-steps' | 'output-invalid' | 'budget-exceeded' | 'guardrail' | (string & {});
 
@@ -1344,7 +1346,6 @@ export function listRemoteTools(client: McpClientLike): Promise<RawMcpTool[]>;
 // @public
 interface LLMProvider {
     readonly defaultModel?: string;
-    // Warning: (ae-forgotten-export) The symbol "GenerateOptions" needs to be exported by the entry point index.d.ts
     generate(options: GenerateOptions): Promise<GenerateResult>;
     getModels(): Promise<string[]>;
     readonly name: string;
@@ -3085,11 +3086,11 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-Ca_vf8pu.d.ts:754:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-Ca_vf8pu.d.ts:771:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-Ca_vf8pu.d.ts:1121:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-Ca_vf8pu.d.ts:3091:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
-// dist/createAgent-Ca_vf8pu.d.ts:3092:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
+// dist/createAgent-C91cXsHp.d.ts:762:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-C91cXsHp.d.ts:779:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-C91cXsHp.d.ts:1129:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-C91cXsHp.d.ts:3114:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
+// dist/createAgent-C91cXsHp.d.ts:3115:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
 // dist/index-DmsA2WFr.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
 // dist/index-DmsA2WFr.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 

@@ -39,7 +39,7 @@ type AgentCompaction = boolean | AgentCompactionOptions;
 // Warning: (ae-forgotten-export) The symbol "CompactionHookOptions" needs to be exported by the entry point worker.d.ts
 //
 // @public
-interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens' | 'reserveOutputTokens'> {
+interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens' | 'reserveOutputTokens' | 'onCompaction'> {
     summarizer?: LLMProvider | string;
 }
 
@@ -948,12 +948,12 @@ type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length
 
 // @public
 interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
+    appliedStrategy?: string;
     // (undocumented)
     error?: {
         message: string;
     };
     prunedToolCallIds: string[];
-    // (undocumented)
     strategy: string;
     summary?: boolean;
     // (undocumented)
@@ -973,6 +973,7 @@ interface CompactionHookOptions extends Omit<CompactMessagesOptions, 'model'> {
 
 // @public
 interface CompactionInfo {
+    appliedStrategy?: string;
     error?: Error;
     // (undocumented)
     prunedToolCallIds: string[];
@@ -989,6 +990,7 @@ interface CompactionInput {
     contextWindow: number;
     // Warning: (ae-forgotten-export) The symbol "CompactionTokenCounter" needs to be exported by the entry point worker.d.ts
     estimateTokens: CompactionTokenCounter;
+    generate?: (provider: LLMProvider, request: GenerateOptions) => Promise<GenerateResult>;
     messages: Message[];
     protectedTokens: number;
     signal?: AbortSignal;
@@ -1686,6 +1688,7 @@ interface FromAiSdkOptions {
 interface GenerateHookContext extends HookContext {
     // Warning: (ae-forgotten-export) The symbol "HookEventPayload" needs to be exported by the entry point worker.d.ts
     emit?: (event: HookEventPayload) => void;
+    generate?: (provider: LLMProvider, request: GenerateOptions, purpose: string) => Promise<GenerateResult>;
     request: GenerateOptions;
 }
 
@@ -4187,11 +4190,11 @@ interface WithRetryOptions {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-Ca_vf8pu.d.ts:754:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-Ca_vf8pu.d.ts:771:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-Ca_vf8pu.d.ts:1121:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-Ca_vf8pu.d.ts:3091:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-Ca_vf8pu.d.ts:3092:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-C91cXsHp.d.ts:762:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-C91cXsHp.d.ts:779:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-C91cXsHp.d.ts:1129:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-C91cXsHp.d.ts:3114:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-C91cXsHp.d.ts:3115:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
 // dist/index-DmsA2WFr.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
 // dist/index-DmsA2WFr.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point worker.d.ts

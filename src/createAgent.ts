@@ -481,8 +481,8 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    * Keeps long runs under the model's context window (LOU-W3.2): `true`
    * installs `createCompactionHook()` with its defaults (prune old tool
    * results above 90% of the window); an object sets `strategy`,
-   * `thresholdPercent`, `contextWindow` and `protectedTokens`, and
-   * `summarizer` (a `'provider/model'` string or an `LLMProvider`) selects
+   * `thresholdPercent`, `contextWindow`, `protectedTokens`,
+   * `reserveOutputTokens` and `onCompaction`, and `summarizer` (a `'provider/model'` string or an `LLMProvider`) selects
    * `twoPhaseStrategy()` with that model. `stream()` reports each compaction
    * as `compaction.start` / `compaction.done` events. See docs/compaction.md.
    *

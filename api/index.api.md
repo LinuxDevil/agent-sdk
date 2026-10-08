@@ -37,7 +37,7 @@ export interface AgentApprovals {
 export type AgentCompaction = boolean | AgentCompactionOptions;
 
 // @public
-export interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens' | 'reserveOutputTokens'> {
+export interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens' | 'reserveOutputTokens' | 'onCompaction'> {
     summarizer?: LLMProvider | string;
 }
 
@@ -1210,12 +1210,12 @@ export type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context
 
 // @public
 interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
+    appliedStrategy?: string;
     // (undocumented)
     error?: {
         message: string;
     };
     prunedToolCallIds: string[];
-    // (undocumented)
     strategy: string;
     summary?: boolean;
     // (undocumented)
@@ -1235,6 +1235,7 @@ export interface CompactionHookOptions extends Omit<CompactMessagesOptions, 'mod
 
 // @public
 export interface CompactionInfo {
+    appliedStrategy?: string;
     error?: Error;
     // (undocumented)
     prunedToolCallIds: string[];
@@ -1250,6 +1251,7 @@ export interface CompactionInfo {
 export interface CompactionInput {
     contextWindow: number;
     estimateTokens: CompactionTokenCounter;
+    generate?: (provider: LLMProvider, request: GenerateOptions) => Promise<GenerateResult>;
     messages: Message[];
     protectedTokens: number;
     signal?: AbortSignal;
@@ -2593,6 +2595,7 @@ export const GenAiOperation: {
 // @public
 export interface GenerateHookContext extends HookContext {
     emit?: (event: HookEventPayload) => void;
+    generate?: (provider: LLMProvider, request: GenerateOptions, purpose: string) => Promise<GenerateResult>;
     request: GenerateOptions;
 }
 
@@ -5323,6 +5326,7 @@ export const SdkAttr: {
     readonly USAGE_REASONING_TOKENS: "lousho.usage.reasoning_tokens";
     readonly HOSTED_TOOL_CALLS: "lousho.hosted_tool_calls";
     readonly PARENT_TOOL_CALL_ID: "lousho.tool.parent_call_id";
+    readonly CALL_PURPOSE: "lousho.call.purpose";
 };
 
 // @public

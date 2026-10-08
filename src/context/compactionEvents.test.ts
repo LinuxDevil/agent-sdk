@@ -108,7 +108,7 @@ describe('compaction stream events (LOU-W3.2)', () => {
     const { agent, model } = agentWith(SMALL);
     const result = await agent.send('read four pages');
     expect(result.text).toBe('done');
-    expect(result.messages.some((m) => textOf(m).startsWith('[pruned: fetch_page result'))).toBe(true);
+    expect(result.messages.some((m) => textOf(m).startsWith('[pruned: fetch_page('))).toBe(true);
     expect(model.calls).toHaveLength(5);
   });
 
@@ -124,7 +124,7 @@ describe('compaction stream events (LOU-W3.2)', () => {
     expect(started).toMatchObject({ strategy: 'prune-tool-results', contextWindow: 128_000 });
     expect(done.prunedToolCallIds.length).toBeGreaterThan(0);
     expect(done.tokensAfter).toBeLessThan(started.thresholdTokens);
-    const markers = result.messages.filter((m) => m.role === 'tool' && textOf(m).startsWith('[pruned: fetch_page result'));
+    const markers = result.messages.filter((m) => m.role === 'tool' && textOf(m).startsWith('[pruned: fetch_page('));
     expect(markers.map((m) => m.toolCallId)).toEqual(done.prunedToolCallIds);
     expect(model.calls).toHaveLength(5);
   });

@@ -325,7 +325,13 @@ export interface CompactionStartEvent extends AgentEventBase<'compaction.start'>
  * run continues either way.
  */
 export interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
+  /** The strategy that ran: the same as the `compaction.start` before it. */
   strategy: string;
+  /**
+   * The strategy whose result was applied, when it differs from `strategy`:
+   * `'prune-tool-results'` when a summary was rejected and pruning applied instead.
+   */
+  appliedStrategy?: string;
   tokensBefore: number;
   tokensAfter: number;
   /** `toolCallId`s whose results were replaced by a marker. */

@@ -37,7 +37,7 @@ for await (const event of agent.stream('Audit the repository.')) {
 ```
 
 The object takes `strategy`, `thresholdPercent`, `contextWindow`,
-`protectedTokens` and `reserveOutputTokens` (as in the table below) and `summarizer`; combining
+`protectedTokens`, `reserveOutputTokens` and `onCompaction` (as in the table below) and `summarizer`; combining
 `summarizer` with `strategy` is a configuration error (pass
 `twoPhaseStrategy({ model })` as the `strategy` instead). `createAgent({ hooks })`
 takes any other `AgentHook`s, which run before the compaction hook, so
@@ -53,17 +53,22 @@ triggered it (see [Streaming](./stream-events.md#event-schema-version-1)):
 | `type` | Fields |
 | --- | --- |
 | `compaction.start` | `strategy`, `tokensBefore`, `contextWindow`, `thresholdTokens`, `trigger?: 'manual'` |
-| `compaction.done` | `strategy`, `tokensBefore`, `tokensAfter`, `prunedToolCallIds`, `summary?: boolean`, `error?: { message }`, `trigger?: 'manual'` |
+| `compaction.done` | `strategy`, `appliedStrategy?`, `tokensBefore`, `tokensAfter`, `prunedToolCallIds`, `summary?: boolean`, `error?: { message }`, `trigger?: 'manual'` |
 
 Every `compaction.start` is followed by exactly one `compaction.done`. When the
 strategy could not shrink anything, `tokensAfter` equals `tokensBefore`; when it
 failed (or the summarizer failed and the hook fell back to pruning), `error` is
 set and the run continues. A summary that does not get the conversation under
 the threshold - or that makes it larger - is rejected the same way: `error` is
-set, the run keeps the pruned result instead, and the hook only prunes that
-transcript for the rest of the run, so a summarizer that cannot help is never
-called again step after step. `summary` is `true` when old turns were replaced by
-a summary (the text itself is not sent; use `onCompaction` for it). A
+set, the run keeps the pruned result instead, and `appliedStrategy` is
+`'prune-tool-results'`. The hook then only prunes that transcript until it has
+twice as many messages as at the rejection, and then lets the summarizer try
+again, so a summarizer that cannot help costs a few calls per run, not one per
+step, and one that was rejected for having too little to fold gets another
+chance. `strategy` is the strategy that ran, the same on `compaction.start` and
+`compaction.done` (`'prune-tool-results'` while summaries are paused).
+`summary` is `true` when old turns were replaced by a summary (the text itself
+is not sent; use `onCompaction`, which the object form also takes). A
 `send()` without a listener emits no events. Hooks add their own events with
 `ctx.emit?.(...)` on the `preGenerate` context, which exists when the run has
 listeners (`createAgent({ onEvent })`, `onAgentEvent`) or is streamed.
@@ -114,11 +119,18 @@ strategy name.
 | `reserveOutputTokens` | none | Tokens kept free for the reply: the threshold becomes at most `contextWindow - reserveOutputTokens`. It never raises the `thresholdPercent` threshold. |
 | `protectedTokens` | `40_000` | The newest messages that fit in this many tokens are never changed. |
 | `strategy` | `pruneToolResultsStrategy()` | How to compact (see below). `twoPhaseStrategy()` is recommended; it needs a summarizer model, so it is not the default. |
-| `onCompaction` | none | Called after each compaction that changed the conversation or reported an `error`. |
+| `onCompaction` | none | Called after each compaction that changed the conversation or reported an `error`, with the token counts, the pruned `toolCallId`s, `strategy`, `appliedStrategy`, the summary text and the `error`. |
 
 Compaction never fails a run. If the strategy throws, or the summarizer call
 fails, the run continues (with the pruned conversation, or unchanged) and
 `onCompaction` receives the `error`.
+
+Inside a run, the summarizer's model call is part of the run: its tokens are in
+`result.usage` (under the summarizer's model in `byModel`, and in
+`modelCalls`), it gets a `chat` span with `lousho.call.purpose: 'compaction'`
+under the run's span, and it counts toward the run's `limits` budgets.
+(`session.compact()` and `compactMessages()` run outside a run, so their
+summary calls are not counted anywhere.)
 
 The hook rewrites the run's transcript itself, not a copy: the request's
 `messages` array is the run's message list, and the hook changes it in place.
@@ -188,8 +200,12 @@ const result = await AgentExecutor.execute({ agent, input, provider, toolRegistr
 ### Pruning tool results
 
 `pruneToolResultsStrategy()` replaces the `content` of each tool result older
-than the protected tail with a marker such as
-`[pruned: search result, 18234 chars]`. It never changes:
+than the protected tail with a short stub that names the call, such as
+`[pruned: search({"query":"deploy"}) result, 18234 chars; already read]`
+(arguments longer than 120 characters are cut), so the model knows what it
+already fetched and does not call the same tool again just to see the result.
+Markers in the older `[pruned: search result, 18234 chars]` form are
+recognized and left alone. It never changes:
 
 - system messages, user messages (the first one included) or assistant turns,
   so every tool call keeps its result message and the transcript stays valid

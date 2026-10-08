@@ -10,7 +10,7 @@ import { createCompactionHook, twoPhaseStrategy, type CompactMessagesOptions, ty
 
 /** The object form of `createAgent({ compaction })`. */
 export interface AgentCompactionOptions
-  extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens' | 'reserveOutputTokens'> {
+  extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens' | 'reserveOutputTokens' | 'onCompaction'> {
   /**
    * A model that summarizes old turns: a `"provider/model"` spec or an
    * `LLMProvider`. Selects `twoPhaseStrategy()` with it (prune first, then

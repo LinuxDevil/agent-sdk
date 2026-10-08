@@ -22,7 +22,7 @@ import type { OAuthTokenStore } from '../oauth/types';
 import { signInRequest } from '../oauth/signIn';
 import { forkSession } from './fork';
 import type { CallUsage, RunUsage, StepUsage } from '../models/usage';
-import { mergeDelegatedUsage } from './runUsage';
+import { mergeDelegatedUsage, recordStepUsage } from './runUsage';
 import { TraceExporter, withSpan } from './tracing';
 import {
   agentRunSpanInit,
@@ -63,6 +63,7 @@ import {
   prepareGenerateRequest,
   providerErrorMessage,
   shouldSurfaceToModel,
+  sideGenerator,
 } from './generateStep';
 import {
   AgentRunState,
@@ -1119,7 +1120,9 @@ export class AgentExecutor {
     const steerSignal = options.inputQueue?.startCall();
     const callSignal = inputCheck ? (steerSignal ? AbortSignal.any([steerSignal, inputCheck.signal]) : inputCheck.signal) : steerSignal;
     try {
-      const generateRequest = await prepareGenerateRequest(options, state.messages, tools, callSignal);
+      // Audit C4: a hook's side calls (the compaction summarizer) count in the run's usage and budgets.
+      const sideGenerate = sideGenerator(options, agentSpanId, (measured) => recordStepUsage(state.usage, measured));
+      const generateRequest = await prepareGenerateRequest(options, state.messages, tools, callSignal, sideGenerate);
       callSignal?.throwIfAborted();
       const generated = await generateInSpan(options, generateRequest, state.messages, agentSpanId, callSignal, inputCheck);
       callSignal?.throwIfAborted();
