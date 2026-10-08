@@ -240,8 +240,11 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
   on rate limits, timeouts, network errors and 5xx responses, using the same
   classification as `compactProviderError()`. Auth failures, invalid requests
   and context-length errors are not retried; neither is a cancellation. A
-  provider's `retryAfterMs` hint (a `Retry-After` header) replaces the backoff
-  delay. Pass `retryOn(error, attempt)` to change the rule, `timeoutMs` for a
+  provider's `retryAfterMs` hint (`retry-after-ms` or `Retry-After`, on a 429 or
+  a 503) replaces the backoff delay, unless it is longer than `backoff.maxMs`
+  (default 30 s): then the call fails at once with a
+  `CompactedLLMProviderError` whose `compacted.retryAfterMs` holds the hint, so
+  your code decides whether to wait. Pass `retryOn(error, attempt)` to change the rule, `timeoutMs` for a
   per-attempt time limit, and `signal` to stop retrying.
 - A `stream()` call is retried when it rejects, and when its stream fails
   before any output: reasoning chunks and empty text deltas don't count, so a

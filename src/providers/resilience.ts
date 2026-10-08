@@ -27,7 +27,7 @@ import {
 export interface BackoffOptions {
   /** Delay before the first retry, in ms. Default 500. */
   initialMs?: number;
-  /** Upper bound for the computed delay, in ms. Default 30_000. */
+  /** Upper bound for the computed delay, in ms. Default 30_000. A server's `Retry-After` above it is not waited out: the call fails at once with `retryAfterMs` set. */
   maxMs?: number;
   /** Multiplier applied per retry. Default 2. */
   factor?: number;
@@ -71,12 +71,24 @@ export function isRetryableProviderError(error: unknown): boolean {
   return !isAbortError(error) && classify(error).retryable;
 }
 
+/**
+ * The wait before retry `attempt`. The server's hint (`retryAfterMs`) is the
+ * delay when it fits under `backoff.maxMs`; a longer one is not waited out
+ * (a `Retry-After: 3600` would stall the run for an hour): the failure is
+ * thrown at once, carrying the hint as `compacted.retryAfterMs`.
+ */
 function backoffDelay(error: unknown, attempt: number, backoff: BackoffOptions = {}): number {
-  const retryAfterMs = classify(error).retryAfterMs;
+  const { initialMs = 500, maxMs = 30_000, factor = 2, jitter = true } = backoff;
+  const compacted = classify(error);
+  const retryAfterMs = compacted.retryAfterMs;
   if (retryAfterMs !== undefined) {
+    if (retryAfterMs > maxMs) {
+      throw error instanceof CompactedLLMProviderError
+        ? error
+        : new CompactedLLMProviderError(compacted, error instanceof Error ? error : undefined);
+    }
     return retryAfterMs;
   }
-  const { initialMs = 500, maxMs = 30_000, factor = 2, jitter = true } = backoff;
   const delay = Math.min(initialMs * factor ** (attempt - 1), maxMs);
   return Math.round(jitter ? delay * (0.5 + Math.random() / 2) : delay);
 }
