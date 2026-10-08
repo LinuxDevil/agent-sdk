@@ -11,6 +11,7 @@ import type { AgentEvent, AgentEventError } from '../execution/agentEvents';
 import type { AgentSession } from '../session/AgentSession';
 import { parseEventStream } from './parseEventStream';
 import { SDKError } from '../utils/sdkError';
+import { newId } from '../utils/id';
 import type { AgentUIAction, AgentUIState, ApprovalOutcome } from './reducer';
 
 /** Runs a `createAgent()` agent in this process; with `sessionId`, in one `agent.session()` that keeps the conversation. */
@@ -19,9 +20,14 @@ export interface LocalAgentSource {
   sessionId?: string;
 }
 
-/** An HTTP endpoint that takes `POST { input }` and answers with the run's events (SSE or NDJSON). */
+/**
+ * An HTTP endpoint that takes `POST { input, sessionId }` and answers with the run's events (SSE or NDJSON).
+ * The runner sends one `sessionId` per chat (its own, or yours) so the server keeps the conversation.
+ */
 export interface RemoteAgentSource {
   url: string;
+  /** Resume this server-side session instead of the generated chat id (Eve CORE-F1). */
+  sessionId?: string;
   headers?: Record<string, string>;
   fetch?: typeof fetch;
 }
@@ -90,6 +96,8 @@ async function relayContinuation(response: Response, emit: Emit): Promise<void> 
 export function createAgentRunner(host: AgentRunnerHost): AgentCommands & { reset(): void } {
   let controller: AbortController | null = null;
   let cached: CachedSession | null = null;
+  /** Eve CORE-F1: the remote chat's session id; `reset()` starts a new one. */
+  let chatId = newId();
 
   /** The agent, or its session `sessionId` (created once per agent and id, so it keeps the conversation). */
   function streamTarget({ agent, sessionId: id }: LocalAgentSource) {
@@ -122,7 +130,7 @@ export function createAgentRunner(host: AgentRunnerHost): AgentCommands & { rese
       if ('agent' in source) {
         events = streamTarget(source).stream(input, { signal });
       } else {
-        events = parseEventStream(await post(source, source.url, { input }, signal));
+        events = parseEventStream(await post(source, source.url, { input, sessionId: source.sessionId ?? chatId }, signal));
       }
       for await (const event of events) emit(event);
     });
@@ -149,6 +157,7 @@ export function createAgentRunner(host: AgentRunnerHost): AgentCommands & { rese
     controller?.abort();
     controller = null;
     cached = null;
+    chatId = newId();
     host.dispatch({ type: 'ui.reset' });
   };
 

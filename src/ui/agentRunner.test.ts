@@ -69,3 +69,39 @@ describe('createAgentRunner approvals over the session API (LOU-D32.2)', () => {
     expect(h.state().messages[1].text).toBe('Paid.');
   });
 });
+
+describe('remote mode session id (Eve CORE-F1)', () => {
+  function remote(source: { sessionId?: string } = {}) {
+    const bodies: Array<{ input: string; sessionId?: string }> = [];
+    const fetchMock = (async (_url: string | URL | Request, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response('', { headers: { 'Content-Type': 'text/event-stream' } });
+    }) as typeof fetch;
+    let state: AgentUIState = initialAgentUIState;
+    const runner = createAgentRunner({
+      source: () => ({ url: '/send', fetch: fetchMock, ...source }),
+      options: () => ({}),
+      state: () => state,
+      dispatch: (action) => (state = reduceAgentEvents(state, action)),
+    });
+    return { runner, bodies };
+  }
+
+  it('sends one generated sessionId for the whole chat and a new one after reset()', async () => {
+    const { runner, bodies } = remote();
+    await runner.send('a');
+    await runner.send('b');
+    expect(bodies[0].sessionId).toBeTruthy();
+    expect(bodies[1].sessionId).toBe(bodies[0].sessionId);
+    runner.reset();
+    await runner.send('c');
+    expect(bodies[2].sessionId).toBeTruthy();
+    expect(bodies[2].sessionId).not.toBe(bodies[0].sessionId);
+  });
+
+  it('sends the caller-provided sessionId to resume a session', async () => {
+    const { runner, bodies } = remote({ sessionId: 'stored-1' });
+    await runner.send('a');
+    expect(bodies[0]).toEqual({ input: 'a', sessionId: 'stored-1' });
+  });
+});

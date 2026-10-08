@@ -54,7 +54,7 @@ snippets here):
   store itself with the React hook's signatures; they do not need a
   subscriber.
 - **`reset()`** aborts the run in flight, forgets the in-process session
-  (`{ agent, sessionId }` starts a new conversation) and clears the state.
+  (`{ agent, sessionId }` starts a new conversation; a remote `{ url }` source gets a new generated chat id) and clears the state.
 - **The source and options are plain values**, read when a turn starts. To use
   another agent or `url`, create another store.
 - **Cleanup is unsubscribing.** `stop()` aborts the request in flight, and so
