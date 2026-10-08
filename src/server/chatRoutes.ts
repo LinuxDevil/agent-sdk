@@ -75,7 +75,7 @@ export function handleChatRequest(req: http.IncomingMessage, res: http.ServerRes
 /** Body-size cap for raw-body routes (channels, LOU-P7), matching the Fetch routes' 1MB limit. */
 const MAX_BODY_BYTES = 1024 * 1024; // 1MB
 
-class PayloadTooLargeError extends Error {}
+export class PayloadTooLargeError extends Error {}
 
 /**
  * The request body's exact bytes (signatures are checked over these), at

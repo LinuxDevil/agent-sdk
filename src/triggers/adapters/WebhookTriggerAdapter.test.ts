@@ -84,14 +84,25 @@ describe('WebhookTriggerAdapter', () => {
     expect(response.status).toBe(404);
   });
 
-  it('responds 500 and surfaces the error message when onEvent rejects', async () => {
+  it('responds 500 without echoing the internal error message when onEvent rejects', async () => {
     const adapter = new WebhookTriggerAdapter({ port: 0 });
     handle = adapter.listen(noopAgent, vi.fn().mockRejectedValue(new Error('boom')));
     const port = await waitForPort(handle);
 
     const response = await postJson(port, '/', { input: 'ping' });
     expect(response.status).toBe(500);
-    expect(response.body).toEqual({ error: 'boom' });
+    expect(response.body).toEqual({ error: 'Internal error' });
+  });
+
+  it('responds 413 for a body over 1 MB without running the agent (Eve DUR-F18)', async () => {
+    const adapter = new WebhookTriggerAdapter({ port: 0 });
+    const onEvent = vi.fn().mockResolvedValue(fakeResult('x'));
+    handle = adapter.listen(noopAgent, onEvent);
+    const port = await waitForPort(handle);
+
+    const response = await postJson(port, '/', { input: 'a'.repeat(2 * 1024 * 1024) });
+    expect(response.status).toBe(413);
+    expect(onEvent).not.toHaveBeenCalled();
   });
 
   it('falls back to the raw request body as input when it is not JSON with an "input" field', async () => {
