@@ -84,7 +84,7 @@ describe('examples/phase-pipeline', () => {
   it('builds a valid flow definition', () => {
     const flow = buildPhaseFlow(gate(['PASS: ok']));
     expect(flow.code).toBe('phase-pipeline');
-    expect(flow.inputs[0].name).toBe('task');
+    expect(flow.inputs?.[0]?.name).toBe('task');
   });
 
   it('scriptedPhases() supplies one turn per phase call', () => {

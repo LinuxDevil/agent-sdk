@@ -24,6 +24,8 @@ jobs:
       - run: npx tsc --noEmit
       # The test files are type-checked too (tsconfig.tests.json), so they cannot drift from the API.
       - run: npm run typecheck:tests
+      # The examples are type-checked too (tsconfig.examples.json), so they cannot drift from the API.
+      - run: npm run typecheck:examples
       - run: npm run lint
       # Build the root SDK's dist *before* running tests:
       # packages/create-lousho-agent/src/template.e2e.test.ts `npm pack`s the

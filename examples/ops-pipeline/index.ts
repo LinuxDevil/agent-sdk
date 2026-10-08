@@ -49,6 +49,7 @@ import { PatchCheck } from '../../src/execution/patchChecks';
 import { createDemoProvider } from './demoProvider';
 import { createMockGithubTool } from './mocks/mockGithubTool';
 import { createMockSlackTool } from './mocks/mockSlackTool';
+import { textOf } from '../../src/providers/content';
 
 const DELEGATE_TOOL_NAME = 'delegate_to_fixer';
 const DEFAULT_CHANNEL = '#incidents';
@@ -65,7 +66,7 @@ function extractDelegatedPatch(result: ExecutionResult, toolName: string): strin
     const message = result.messages[i];
     if (message.role === 'tool' && message.toolName === toolName) {
       try {
-        const parsed = JSON.parse(message.content);
+        const parsed = JSON.parse(textOf(message));
         if (typeof parsed?.patch === 'string') {
           return parsed.patch;
         }
