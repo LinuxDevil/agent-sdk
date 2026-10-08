@@ -520,7 +520,13 @@ export interface CodeInterpreterOptions {
 }
 
 // @public
-export type CommandPattern = string | RegExp;
+export type CommandPattern = string | RegExp | CommandRule;
+
+// @public
+export interface CommandRule {
+    args?: (args: string) => boolean;
+    command: string;
+}
 
 // @public
 type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length-exceeded' | 'auth-failure' | 'unknown';
@@ -1638,6 +1644,7 @@ export class NodeWorkspace implements Workspace {
         recursive?: boolean;
     }): Promise<void>;
     readonly root: string;
+    readonly shell: string;
     // (undocumented)
     stat(path: string): Promise<WorkspaceStat | undefined>;
     // (undocumented)
@@ -2213,6 +2220,7 @@ export class SandboxShell implements ShellProvider {
     constructor(sandbox: SandboxAdapter, options?: SandboxShellOptions);
     // (undocumented)
     exec(command: string, options?: ShellExecOptions): Promise<ShellExecResult>;
+    get shell(): string;
 }
 
 // @public
@@ -2454,6 +2462,7 @@ export interface ShellExecResult {
 export interface ShellProvider {
     // (undocumented)
     exec(command: string, options?: ShellExecOptions): Promise<ShellExecResult>;
+    readonly shell?: string;
 }
 
 // @public

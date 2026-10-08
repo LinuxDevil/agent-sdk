@@ -11,9 +11,34 @@ import { WorkspaceError } from './paths';
  *
  * - A string matches a command that is exactly it or starts with it followed
  *   by whitespace: `'git status'` matches `git status -s` but not `git statusx`.
+ *   It allows the command with ANY arguments, so it does not protect against
+ *   flags that read or write files (`node --test --test-reporter-destination=../x`).
+ * - A {@link CommandRule} pins the arguments: `{ command: 'npm test' }` matches
+ *   only `npm test`; add `args` to validate what follows.
  * - A RegExp is tested against the whole command line; anchor it (`/^npm (test|run lint)$/`).
  */
-export type CommandPattern = string | RegExp;
+export type CommandPattern = string | RegExp | CommandRule;
+
+/**
+ * An allow/deny pattern that controls the arguments of a command.
+ *
+ * Without `args` it is an exact match: `{ command: 'npm test' }` matches
+ * `npm test` and nothing else. With `args`, the command must start with
+ * `command` and `args` decides about the rest (trimmed; `''` when there is
+ * none). Like a string pattern, it never matches a command containing shell
+ * operators.
+ *
+ * @example
+ * ```ts
+ * const nodeTest = { command: 'node --test', args: (rest: string) => /^([\w./-]+\.test\.js\s*)*$/.test(rest) };
+ * ```
+ */
+export interface CommandRule {
+  /** The program and any fixed leading arguments, e.g. `'node --test'`. */
+  command: string;
+  /** Validates the arguments after `command`. Omit it to allow no arguments at all. */
+  args?: (args: string) => boolean;
+}
 
 /** Options for {@link createShellTool}. */
 export interface ShellToolOptions {
@@ -29,9 +54,12 @@ export interface ShellToolOptions {
   /**
    * Only commands matching one of these patterns may run; anything else is
    * refused as a tool error before approval is asked. A command matched only
-   * by a string pattern must not contain shell operators
-   * (`;` `&` `|` `` ` `` `$(` `<` `>` or a newline), so `git status; rm -rf ~`
-   * does not pass as `git status`.
+   * by a string pattern or {@link CommandRule} must not contain shell operators
+   * (`;` `&` `|` `` ` `` `$(` `<` `>` or a newline; also `%` and `^` under
+   * cmd.exe), so `git status; rm -rf ~` does not pass as `git status`.
+   *
+   * A string pattern allows the command with any arguments. Use a
+   * {@link CommandRule} or an anchored RegExp to restrict them.
    */
   allow?: readonly CommandPattern[];
   /**
@@ -54,12 +82,37 @@ export interface ShellToolOptions {
 }
 
 const SHELL_OPERATORS = /[;&|`<>\n\r]|\$\(/;
+/** cmd.exe also expands `%VAR%` and treats `^` as an escape character. */
+const CMD_OPERATORS = /[;&|`<>\n\r%^]|\$\(/;
 const COMMAND_SEPARATORS = /[;&|`()\n\r]|\$\(/;
 
-function matchesPrefix(command: string, pattern: string): boolean {
+/** The shell a provider runs, when it says so (`NodeWorkspace`, `SandboxShell`). */
+function providerShell(shell: ShellProvider): string | undefined {
+  return typeof shell.shell === 'string' ? shell.shell : undefined;
+}
+
+/** True for cmd.exe. A provider that does not name its shell is assumed to use cmd.exe on Windows. */
+function isCmdShell(shell: string | undefined): boolean {
+  if (shell === undefined) return process.platform === 'win32';
+  return /(^|[\\/])cmd(\.exe)?$/i.test(shell.trim());
+}
+
+/** The arguments after `pattern` when `command` is it or starts with it plus whitespace. */
+function argsAfter(command: string, pattern: string): string | undefined {
   const c = command.trim();
   const p = pattern.trim();
-  return c === p || c.startsWith(`${p} `) || c.startsWith(`${p}\t`);
+  if (c === p) return '';
+  return c.startsWith(`${p} `) || c.startsWith(`${p}\t`) ? c.slice(p.length).trim() : undefined;
+}
+
+function matchesPrefix(command: string, pattern: string): boolean {
+  return argsAfter(command, pattern) !== undefined;
+}
+
+function matchesRule(command: string, rule: CommandRule): boolean {
+  const args = argsAfter(command, rule.command);
+  if (args === undefined) return false;
+  return rule.args ? rule.args(args) : args === '';
 }
 
 function testRegex(pattern: RegExp, command: string): boolean {
@@ -67,32 +120,52 @@ function testRegex(pattern: RegExp, command: string): boolean {
   return pattern.test(command);
 }
 
-function deniedBy(command: string, deny: readonly CommandPattern[]): CommandPattern | undefined {
-  const parts = command.split(COMMAND_SEPARATORS);
-  return deny.find((p) =>
-    typeof p === 'string' ? parts.some((part) => matchesPrefix(part, p)) : testRegex(p, command)
-  );
+function patternText(pattern: CommandPattern): string {
+  if (typeof pattern === 'string' || pattern instanceof RegExp) return String(pattern);
+  return pattern.args ? `${pattern.command} <checked arguments>` : `${pattern.command} (exactly)`;
 }
 
-function isAllowed(command: string, allow: readonly CommandPattern[]): boolean {
-  const hasOperators = SHELL_OPERATORS.test(command);
-  return allow.some((p) => (typeof p === 'string' ? !hasOperators && matchesPrefix(command, p) : testRegex(p, command)));
+function deniedBy(command: string, deny: readonly CommandPattern[]): CommandPattern | undefined {
+  const parts = command.split(COMMAND_SEPARATORS);
+  return deny.find((p) => {
+    if (p instanceof RegExp) return testRegex(p, command);
+    return parts.some((part) => (typeof p === 'string' ? matchesPrefix(part, p) : matchesRule(part, p)));
+  });
+}
+
+function isAllowed(command: string, allow: readonly CommandPattern[], operators: RegExp): boolean {
+  const hasOperators = operators.test(command);
+  return allow.some((p) => {
+    if (p instanceof RegExp) return testRegex(p, command);
+    if (hasOperators) return false;
+    return typeof p === 'string' ? matchesPrefix(command, p) : matchesRule(command, p);
+  });
 }
 
 /** Why `command` is refused by the allow/deny lists, or undefined when it may run. */
-function policyViolation(command: string, options: ShellToolOptions): string | undefined {
+function policyViolation(command: string, options: ShellToolOptions, cmd: boolean): string | undefined {
   const denied = options.deny && deniedBy(command, options.deny);
   if (denied !== undefined) {
-    return `Command refused: it matches the deny pattern ${String(denied)}. Use a different command.`;
+    return `Command refused: it matches the deny pattern ${patternText(denied)}. Use a different command.`;
   }
-  if (options.allow && !isAllowed(command, options.allow)) {
-    const allowed = options.allow.map(String).join(', ');
-    const operators = SHELL_OPERATORS.test(command)
-      ? ' Chaining, pipes, substitution and redirection (; & | ` $( < >) are not allowed with these patterns.'
+  const operators = cmd ? CMD_OPERATORS : SHELL_OPERATORS;
+  if (options.allow && !isAllowed(command, options.allow, operators)) {
+    const allowed = options.allow.map(patternText).join(', ');
+    const hint = operators.test(command)
+      ? ` Chaining, pipes, substitution and redirection (; & | \` $( < >${cmd ? ' % ^' : ''}) are not allowed with these patterns.`
       : '';
-    return `Command refused: it is not on the allow list (${allowed}).${operators}`;
+    return `Command refused: it is not on the allow list (${allowed}).${hint}`;
   }
   return undefined;
+}
+
+/** One sentence telling the model which shell syntax to use. */
+function shellHint(shell: string | undefined): string {
+  if (shell === undefined) return '';
+  if (isCmdShell(shell)) {
+    return ' Commands run in Windows cmd.exe: quote with double quotes (single quotes are passed through literally), variables are %NAME%, and $HOME and ~ do not expand.';
+  }
+  return ` Commands run in a POSIX shell (${shell}): use sh syntax and quoting.`;
 }
 
 /** Keeps the head and tail of `text`, marking the cut. */
@@ -156,21 +229,24 @@ export function createShellTool(shell: ShellProvider, options: ShellToolOptions 
   const maxTimeoutMs = options.maxTimeoutMs ?? 600_000;
   const maxOutputChars = options.maxOutputChars ?? 30_000;
   const approval = options.needsApproval ?? true;
+  const shellName = providerShell(shell);
+  const cmd = isCmdShell(shellName);
   return defineTool({
     name: options.name ?? 'shell',
     description:
       'Run a shell command in the workspace directory and return its exit code, stdout and stderr. ' +
-      `Commands are killed after timeout_ms (default ${defaultTimeoutMs}ms, max ${maxTimeoutMs}ms). Long output is cut in the middle.`,
+      `Commands are killed after timeout_ms (default ${defaultTimeoutMs}ms, max ${maxTimeoutMs}ms). Long output is cut in the middle.` +
+      shellHint(shellName),
     input: z.object({
       command: z.string().min(1).describe('The command line to run, e.g. "npm test".'),
       timeout_ms: z.number().int().min(1).optional().describe(`Timeout in milliseconds (max ${maxTimeoutMs}).`),
     }),
     needsApproval: async ({ command }) => {
-      if (policyViolation(command, options)) return false; // refused in execute; never ask
+      if (policyViolation(command, options, cmd)) return false; // refused in execute; never ask
       return typeof approval === 'function' ? approval(command) : approval;
     },
     async execute({ command, timeout_ms }, ctx) {
-      const violation = policyViolation(command, options);
+      const violation = policyViolation(command, options, cmd);
       if (violation) throw new WorkspaceError(violation);
       const timeoutMs = Math.min(timeout_ms ?? defaultTimeoutMs, maxTimeoutMs);
       const result = await shell.exec(command, {
