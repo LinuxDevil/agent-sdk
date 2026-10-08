@@ -4248,13 +4248,15 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
     protected readonly mapsHostedTools = true;
     // (undocumented)
     readonly name = "openai";
-    supportsHostedTool(_type: HostedToolType | 'custom'): boolean;
+    protected reasoningOptions(modelId: string, options: GenerateOptions): Record<string, unknown> | undefined;
+    supportsHostedTool(type: HostedToolType | 'custom'): boolean;
     supportsStreaming(_model: string): boolean;
     supportsTools(model: string): boolean;
 }
 
 // @public
 export interface OpenAIProviderConfig extends AiSdkProviderConfig {
+    api?: 'responses' | 'chat';
     // (undocumented)
     apiKey: string;
     // (undocumented)

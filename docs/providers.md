@@ -301,6 +301,75 @@ private catalog) ahead of the built-in list. `pi` is Node-only: the
 `cloudflare-worker` target refuses `pi/...` specs and its bundle redirects
 the package to a coded shim.
 
+## Local and OpenAI-compatible servers
+
+LM Studio, Ollama's `/v1`, vLLM, llama.cpp's `llama-server` and hosted
+OpenAI-compatible APIs (Groq, DeepSeek, Together, ...) all speak the OpenAI
+wire format. Point `OpenAIProvider` at the server's `/v1` URL and pick the API
+it implements with `api`:
+
+```ts no-run
+import { createAgent, OpenAIProvider } from '@lousho/build-ai-agent';
+
+const agent = createAgent({
+  provider: new OpenAIProvider({
+    name: 'openai',
+    baseURL: 'http://localhost:1234/v1', // LM Studio
+    apiKey: 'any', // local servers ignore the key, but one is required
+    api: 'chat', // POST /v1/chat/completions
+    defaultModel: 'qwen3-8b',
+  }),
+  compaction: { contextWindow: 8_192 }, // the window the model is loaded with
+  instructions: 'You are a helpful assistant.',
+});
+```
+
+| Server | Base URL | API |
+| ------ | -------- | --- |
+| LM Studio | `http://localhost:1234/v1` | `'chat'` or `'responses'` |
+| Ollama | `http://localhost:11434/v1` | `'chat'` (or use the native `ollama/<model>` provider) |
+| vLLM (`vllm serve`) | `http://localhost:8000/v1` | `'chat'` |
+| llama.cpp (`llama-server`) | `http://localhost:8080/v1` | `'chat'` |
+
+- `api` defaults to `'responses'` (`POST /v1/responses`, what api.openai.com
+  serves). Most compatible servers implement only Chat Completions, and then a
+  call fails with a 404, so set `api: 'chat'`. With `'chat'` the built-in hosted
+  tools (`webSearch()`, `codeInterpreter()`, `fileSearch()`) are refused, since
+  they are Responses API tools; `hostedTool()` still passes through, and
+  `reasoning` sends only the effort (no `summary`).
+- The key is a dummy: the provider needs a non-empty `apiKey`, and local servers
+  ignore it.
+- Structured output: LM Studio's `/v1/responses` does not enforce the JSON
+  schema, so the model follows it from the prompt alone. Use `api: 'chat'`, which
+  sends the schema as `response_format`.
+- Set the context window. The model registry does not know local models, so
+  compaction assumes `128_000` tokens and warns once. Pass
+  `compaction: { contextWindow }`, or call
+  `registerModel({ id, provider: 'openai', contextWindow })` once (see
+  [Local and unknown models](./compaction.md#local-and-unknown-models)).
+
+**The `openai/<model>` string with `OPENAI_BASE_URL`.** `@ai-sdk/openai` reads
+`OPENAI_BASE_URL`, so `createAgent({ model: 'openai/qwen3-8b' })` with
+`OPENAI_BASE_URL=http://localhost:1234/v1` and a dummy `OPENAI_API_KEY=any`
+calls the local server without code changes. That route always uses the
+Responses API, so it works only with servers that implement `/v1/responses`
+(LM Studio does); for the others construct `OpenAIProvider` with `api: 'chat'`.
+
+**Any AI SDK model.** `fromAiSdk()` wraps a Chat Completions model built with
+`@ai-sdk/openai` directly (or `@ai-sdk/openai-compatible`, if you use it):
+
+```ts no-run
+import { createOpenAI } from '@ai-sdk/openai';
+import { createAgent, fromAiSdk } from '@lousho/build-ai-agent';
+
+const local = createOpenAI({ baseURL: 'http://localhost:8080/v1', apiKey: 'any' });
+const agent = createAgent({ provider: fromAiSdk(local.chat('qwen3-8b')), instructions: 'You are a helpful assistant.' });
+```
+
+`npx lousho doctor` shows `OPENAI_BASE_URL` when it is set, and
+`npx lousho doctor --ping` calls `GET <base>/models` on each configured
+provider to check that the server answers.
+
 ## Vercel AI SDK versions
 
 Every built-in provider except `pi` is an adapter over the Vercel AI SDK

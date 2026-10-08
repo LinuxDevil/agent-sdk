@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { runDoctor } from './doctorCore';
 import { renderJson, renderReport } from './doctorRender';
 import type { DoctorCheck, DoctorEnvironment } from './doctorTypes';
@@ -410,6 +410,56 @@ describe('ollama check', () => {
     expect(result.status).toBe('warn');
     expect(result.fix).toContain('ollama serve');
     expect(urls[0]).toBe('http://localhost:11434/api/tags');
+  });
+});
+
+describe('OpenAI base URL and --ping (audit C5)', () => {
+  it('shows OPENAI_BASE_URL when set, without credentials or query', async () => {
+    const env = makeEnv({ env: { OPENAI_API_KEY: SECRET, OPENAI_BASE_URL: `http://user:${SECRET}@localhost:1234/v1/?key=${SECRET}` } });
+    const result = await check(env, 'env.openai-base-url');
+    expect(result).toMatchObject({ status: 'ok', finding: 'http://localhost:1234/v1' });
+    expect(JSON.stringify(await runDoctor(env, { ping: true }))).not.toContain(SECRET);
+  });
+
+  it('has no base URL line when OPENAI_BASE_URL is not set, and pings nothing without --ping', async () => {
+    const fetch = vi.fn(async () => ({ ok: true, status: 200 }));
+    const report = await runDoctor(makeEnv({ env: { OPENAI_API_KEY: SECRET }, fetch }));
+    expect(report.checks.map((c) => c.id)).not.toContain('env.openai-base-url');
+    expect(report.checks.some((c) => c.id.startsWith('ping'))).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('--ping GETs <base>/models for each configured provider, with its key and a timeout', async () => {
+    const fetch = vi.fn(async (_url: string, _init: { signal: AbortSignal; headers?: Record<string, string> }) => ({ ok: true, status: 200 }));
+    const env = makeEnv({ env: { OPENAI_API_KEY: 'any', OPENAI_BASE_URL: 'http://localhost:1234/v1/', ANTHROPIC_API_KEY: SECRET }, fetch });
+    const report = await runDoctor(env, { ping: true });
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual(['http://localhost:1234/v1/models', 'https://api.anthropic.com/v1/models']);
+    expect(fetch.mock.calls[0][1].headers).toEqual({ Authorization: 'Bearer any' });
+    expect(fetch.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+    expect(fetch.mock.calls[1][1].headers).toMatchObject({ 'x-api-key': SECRET });
+    expect(report.checks.find((c) => c.id === 'ping.openai')).toMatchObject({
+      status: 'ok',
+      title: 'openai endpoint (GET http://localhost:1234/v1/models)',
+      finding: 'reachable (HTTP 200)',
+    });
+  });
+
+  it('--ping warns on an unreachable server and on a rejected key', async () => {
+    const down = makeEnv({ env: { OPENAI_BASE_URL: 'http://localhost:1/v1' }, fetch: async () => Promise.reject(new Error('fetch failed')) });
+    expect(await runDoctor(down, { ping: true }).then((r) => r.checks.find((c) => c.id === 'ping.openai'))).toMatchObject({
+      status: 'warn',
+      finding: 'unreachable (fetch failed)',
+      fix: expect.stringContaining('OPENAI_BASE_URL'),
+    });
+    const rejected = makeEnv({ env: { OPENROUTER_API_KEY: SECRET }, fetch: async () => ({ ok: false, status: 401 }) });
+    const result = await runDoctor(rejected, { ping: true }).then((r) => r.checks.find((c) => c.id === 'ping.openrouter'));
+    expect(result).toMatchObject({ status: 'warn', fix: 'Check OPENROUTER_API_KEY.' });
+    expect(result?.finding).toContain('key was rejected');
+  });
+
+  it('--ping with no provider configured says so', async () => {
+    const report = await runDoctor(makeEnv(), { ping: true });
+    expect(report.checks.find((c) => c.id === 'ping')).toMatchObject({ status: 'ok', finding: expect.stringContaining('nothing to ping') });
   });
 });
 

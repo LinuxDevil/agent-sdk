@@ -32,6 +32,7 @@ describe('parseDoctorArgs', () => {
   it('reads the spec path and --json', () => {
     expect(parseDoctorArgs(['agent.yaml', '--json'])).toEqual({ specPath: 'agent.yaml', json: true });
     expect(parseDoctorArgs([])).toEqual({ specPath: undefined, json: false });
+    expect(parseDoctorArgs(['--ping'])).toMatchObject({ ping: true });
   });
 });
 
