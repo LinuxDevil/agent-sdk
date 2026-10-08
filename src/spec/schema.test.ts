@@ -19,6 +19,14 @@ describe('AgentSpec.mcpServers (LOU-D20)', () => {
     expect(agentSpecSchema.parse({ ...base, mcpServers }).mcpServers).toEqual(mcpServers);
   });
 
+  it("accepts a per-server 'timeoutMs' and rejects a non-positive one (audit D4)", () => {
+    const mcpServers: AgentSpec['mcpServers'] = { fs: { command: 'npx', timeoutMs: 5000 }, docs: { url: 'https://example.com/mcp', timeoutMs: 100 } };
+    expect(agentSpecSchema.parse({ ...base, mcpServers }).mcpServers).toEqual(mcpServers);
+    expect(issues({ fs: { command: 'npx', timeoutMs: 0 } })).toEqual([
+      "mcpServers.fs.timeoutMs: AgentSpec validation failed: 'timeoutMs' must be a positive number of milliseconds",
+    ]);
+  });
+
   it("accepts a per-server 'approval' mode (or a predicate in code) on both shapes (LOU-Z5)", () => {
     const predicate = () => true;
     const mcpServers: AgentSpec['mcpServers'] = {

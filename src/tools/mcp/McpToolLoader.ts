@@ -102,6 +102,12 @@ export interface LoadMcpToolsOptions {
   approval?: McpApproval;
   /** N2: mark every tool `deferLoading`, so an agent offers them through `tool_search` (docs/tool-search.md). */
   deferLoading?: boolean;
+  /**
+   * How long one tool call may take, in milliseconds, before it fails with a
+   * timeout error. Default: the MCP SDK's 60 seconds. The run's abort signal
+   * also cancels a call in flight.
+   */
+  timeoutMs?: number;
 }
 
 /**
@@ -134,7 +140,7 @@ export async function loadMcpTools(
   connectionName: string,
   options: LoadMcpToolsOptions = {}
 ): Promise<Record<string, NamedToolDescriptor>> {
-  const { logger = noopLogger, onSkip, approval = 'annotations', deferLoading } = options;
+  const { logger = noopLogger, onSkip, approval = 'annotations', deferLoading, timeoutMs } = options;
   const rawTools = await listRemoteTools(client);
   const descriptors: Record<string, NamedToolDescriptor> = {};
 
@@ -143,7 +149,7 @@ export async function loadMcpTools(
       // LOU-R12: the descriptor carries its `<server>__<tool>` name, so
       // `Object.values(tools)` also works in a `tools` array.
       const name = `${connectionName}__${rawTool.name}`;
-      const descriptor: NamedToolDescriptor = { ...buildDescriptor(client, rawTool, approval, connectionName), name };
+      const descriptor: NamedToolDescriptor = { ...buildDescriptor(client, rawTool, approval, connectionName, timeoutMs), name };
       descriptors[name] = deferLoading ? { ...descriptor, deferLoading: true } : descriptor;
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
@@ -159,14 +165,28 @@ export async function loadMcpTools(
   return descriptors;
 }
 
-function buildDescriptor(client: McpClientLike, rawTool: RawMcpTool, approval: McpApproval, server: string): ToolDescriptor {
+/** The MCP SDK's `RequestOptions` of one call: the run's signal and the server's timeout, when set. */
+function callOptions(signal: AbortSignal | undefined, timeoutMs: number | undefined): { signal?: AbortSignal; timeout?: number } {
+  return { ...(signal && { signal }), ...(timeoutMs !== undefined && { timeout: timeoutMs }) };
+}
+
+function buildDescriptor(
+  client: McpClientLike,
+  rawTool: RawMcpTool,
+  approval: McpApproval,
+  server: string,
+  timeoutMs: number | undefined
+): ToolDescriptor {
   return toolDescriptorFromSchema({
     displayName: rawTool.annotations?.title || rawTool.description || rawTool.name,
     description: rawTool.description || '',
     inputSchema: jsonSchemaToZod(rawTool.inputSchema),
     needsApproval: needsApproval(approval, rawTool.name, rawTool.annotations),
     metadata: { mcp: { annotations: rawTool.annotations, server } },
-    execute: async (args) =>
-      handleCallToolResult(await client.callTool({ name: rawTool.name, arguments: args }), rawTool.name),
+    execute: async (args, ctx) =>
+      handleCallToolResult(
+        await client.callTool({ name: rawTool.name, arguments: args }, undefined, callOptions(ctx?.abortSignal, timeoutMs)),
+        rawTool.name
+      ),
   });
 }

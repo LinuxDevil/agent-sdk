@@ -30,7 +30,7 @@ describe('loadMcpTools', () => {
     const descriptors = await loadMcpTools(client, 'myconn');
     const result = await descriptors['myconn__add'].tool.execute!({ a: 2, b: 3 }, {} as ToolExecutionOptions);
 
-    expect(callToolSpy).toHaveBeenCalledWith({ name: 'add', arguments: { a: 2, b: 3 } });
+    expect(callToolSpy).toHaveBeenCalledWith({ name: 'add', arguments: { a: 2, b: 3 } }, undefined, {});
     expect(result).toMatchObject({ content: [{ type: 'text', text: '5' }] });
   });
 
@@ -156,5 +156,36 @@ describe('loadMcpTools approval (LOU-Z5)', () => {
     expect(loaded.s__titled.displayName).toBe('Nice Title');
     expect(loaded.s__plain.metadata?.mcp?.annotations).toBeUndefined();
     expect(loaded.s__read_only.displayName).toBe('read_only');
+  });
+});
+
+describe('loadMcpTools call options (audit D4)', () => {
+  /** A connected client whose `slow` tool never answers on its own. */
+  async function hangingClient(): Promise<Client> {
+    const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
+    const { InMemoryTransport } = await import('@modelcontextprotocol/sdk/inMemory.js');
+    const { Client: McpClient } = await import('@modelcontextprotocol/sdk/client/index.js');
+    const server = new McpServer({ name: 'slow', version: '1.0.0' });
+    server.registerTool('slow', { description: 'Never answers' }, () => new Promise<never>(() => {}));
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const client = new McpClient({ name: 'test', version: '1.0.0' });
+    await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
+    return client;
+  }
+
+  it("forwards the run's abort signal to callTool, so an abort ends the call at once", async () => {
+    const tools = await loadMcpTools(await hangingClient(), 's');
+    const controller = new AbortController();
+    const started = Date.now();
+    setTimeout(() => controller.abort(new Error('run aborted')), 30);
+    await expect(tools.s__slow.execute!({}, { toolCallId: 'c1', messages: [], abortSignal: controller.signal } as never)).rejects.toThrow(
+      /run aborted/
+    );
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  it('timeoutMs bounds each call', async () => {
+    const tools = await loadMcpTools(await hangingClient(), 's', { timeoutMs: 50 });
+    await expect(tools.s__slow.execute!({}, { toolCallId: 'c1', messages: [] } as never)).rejects.toThrow(/timed out/i);
   });
 });

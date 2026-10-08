@@ -9,6 +9,7 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import type { RequestOptions } from '@modelcontextprotocol/sdk/shared/protocol.js';
 import type { McpServerSpec } from '../../spec/schema';
 import type { NamedToolDescriptor } from '../../types';
 import type { OAuthTokenStore } from '../../oauth/types';
@@ -101,8 +102,12 @@ class ServerConnection {
 
   /** What the tool descriptors call through: the current client, reconnected if needed. */
   readonly handle: McpClientLike = {
-    listTools: (params) => this.use().then((client) => client.listTools(params).catch((error: unknown) => this.failed(error))),
-    callTool: (params) => this.use().then((client) => client.callTool(params).catch((error: unknown) => this.failed(error))),
+    listTools: (params, options) =>
+      this.use().then((client) => client.listTools(params, options as RequestOptions).catch((error: unknown) => this.failed(error))),
+    callTool: (params, resultSchema, options) =>
+      this.use().then((client) =>
+        client.callTool(params, resultSchema as never, options as RequestOptions).catch((error: unknown) => this.failed(error))
+      ),
   };
 
   /**
@@ -186,6 +191,7 @@ export async function connectMcp(
       loadMcpTools(connection.handle, connection.name, {
         logger,
         approval: servers[connection.name].approval,
+        timeoutMs: servers[connection.name].timeoutMs,
         // N2: a server with `deferLoading` has all its tools withheld until `tool_search` finds them.
         ...(servers[connection.name].deferLoading && { deferLoading: true }),
       })

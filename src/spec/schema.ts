@@ -67,6 +67,8 @@ export interface McpStdioServerSpec {
   approval?: McpApproval;
   /** N2: withhold this server's tools from the model until `tool_search` finds them (docs/tool-search.md). */
   deferLoading?: boolean;
+  /** How long one tool call may take, in milliseconds. Default: the MCP SDK's 60 seconds. */
+  timeoutMs?: number;
 }
 
 /**
@@ -95,6 +97,8 @@ export interface McpHttpServerSpec {
   approval?: McpApproval;
   /** N2: withhold this server's tools from the model until `tool_search` finds them (docs/tool-search.md). */
   deferLoading?: boolean;
+  /** How long one tool call may take, in milliseconds. Default: the MCP SDK's 60 seconds. */
+  timeoutMs?: number;
   /** Sign in to this server with OAuth (N9c); see {@link McpOAuthOptions}. */
   oauth?: McpOAuthOptions;
 }
@@ -203,6 +207,12 @@ const mcpOAuthSchema = z
     message: `${MCP_PREFIX} 'oauth.clientSecret' needs 'oauth.clientId' (a pre-registered client)`,
   });
 
+const mcpMilliseconds = (field: string) =>
+  z
+    .number(typeErrors({ invalid: `${MCP_PREFIX} '${field}' must be a number of milliseconds` }))
+    .positive(`${MCP_PREFIX} '${field}' must be a positive number of milliseconds`)
+    .finite(`${MCP_PREFIX} '${field}' must be a positive number of milliseconds`);
+
 /** What is wrong with a loosely-parsed `mcpServers` entry, if anything. */
 function mcpServerProblem(server: Record<string, unknown>): string | undefined {
   const stdio = server.command !== undefined;
@@ -240,6 +250,7 @@ const mcpServerSchema = z
       approval: mcpApprovalSchema.optional(),
       oauth: mcpOAuthSchema.optional(),
       deferLoading: z.boolean(typeErrors({ invalid: `${MCP_PREFIX} 'deferLoading' must be true or false` })).optional(),
+      timeoutMs: mcpMilliseconds('timeoutMs').optional(),
     },
     typeErrors({ invalid: `${MCP_PREFIX} each mcpServers entry must be an object with 'command' or 'url'` })
   )

@@ -3392,6 +3392,7 @@ export interface LoadMcpToolsOptions {
     deferLoading?: boolean;
     logger?: Logger;
     onSkip?: (skipped: SkippedMcpTool) => void;
+    timeoutMs?: number;
 }
 
 // @public
@@ -3624,6 +3625,7 @@ export interface McpHttpServerSpec {
     // (undocumented)
     headers?: Record<string, string>;
     oauth?: McpOAuthOptions;
+    timeoutMs?: number;
     // (undocumented)
     url: string;
 }
@@ -3670,6 +3672,7 @@ export interface McpStdioServerSpec {
     deferLoading?: boolean;
     // (undocumented)
     env?: Record<string, string>;
+    timeoutMs?: number;
 }
 
 // @public

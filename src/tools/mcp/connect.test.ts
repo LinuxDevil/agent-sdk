@@ -81,6 +81,11 @@ describe('connectMcp (LOU-Z4)', () => {
     expect(mcp.tools.auto__echo.metadata).toEqual({ mcp: { annotations: { title: 'Echo', readOnlyHint: true }, server: 'auto' } });
   });
 
+  it('timeoutMs on the server entry bounds each tool call (audit D4)', async () => {
+    const mcp = await connect({ slow: { ...stdio(), env: { FIXTURE_DELAY_MS: '5000' }, timeoutMs: 100 } });
+    await expect(callEcho(mcp, 'slow__echo', 'x')).rejects.toThrow(/timed out/i);
+  });
+
   it('N2: a server with deferLoading marks every one of its tools deferLoading; others are not', async () => {
     const mcp = await connect({ deferred: { ...stdio(), deferLoading: true }, plain: stdio() });
     expect([mcp.tools.deferred__echo.deferLoading, mcp.tools.deferred__wipe.deferLoading]).toEqual([true, true]);
