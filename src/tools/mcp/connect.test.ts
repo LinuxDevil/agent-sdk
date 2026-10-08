@@ -78,12 +78,17 @@ describe('connectMcp (LOU-Z4)', () => {
     const asks = (name: string) => mcp.tools[name].needsApproval;
     expect([asks('strict__echo'), asks('loose__wipe'), asks('auto__echo'), asks('auto__wipe')]).toEqual([true, false, false, true]);
     expect(mcp.tools.auto__echo.displayName).toBe('Echo');
-    expect(mcp.tools.auto__echo.metadata).toEqual({ mcp: { annotations: { title: 'Echo', readOnlyHint: true }, server: 'auto' } });
+    expect(mcp.tools.auto__echo.metadata).toEqual({ mcp: { annotations: { title: 'Echo', readOnlyHint: true }, server: 'auto', tool: 'echo' } });
   });
 
   it('timeoutMs on the server entry bounds each tool call (audit D4)', async () => {
     const mcp = await connect({ slow: { ...stdio(), env: { FIXTURE_DELAY_MS: '5000' }, timeoutMs: 100 } });
     await expect(callEcho(mcp, 'slow__echo', 'x')).rejects.toThrow(/timed out/i);
+  });
+
+  it('tools.include / tools.exclude on the server entry filter its tools (audit D4)', async () => {
+    const mcp = await connect({ ro: { ...stdio(), tools: { exclude: ['wipe'] } }, only: { ...stdio(), tools: { include: ['wipe'] } } });
+    expect(Object.keys(mcp.tools)).toEqual(['ro__echo', 'only__wipe']);
   });
 
   it('N2: a server with deferLoading marks every one of its tools deferLoading; others are not', async () => {
@@ -179,6 +184,20 @@ describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
     const result = await agent.send('clean up');
     expect(result.finishReason).toBe('stop');
     expect(JSON.stringify(result.messages)).toContain('wiped /tmp/x');
+  });
+
+  it('an approval function sees the call arguments (audit D4)', async () => {
+    const wipe = (path: string, id: string) => ({ toolCalls: [{ name: 'files__wipe', args: { path }, id }] });
+    const agent = createAgent({
+      provider: mockModel([wipe('/tmp/x', 'call_tmp'), wipe('/data', 'call_data'), 'done']),
+      mcpServers: { files: { ...stdio(), approval: ({ args }) => !String(args?.path).startsWith('/tmp/') } },
+    });
+    closers.push(() => agent.close());
+    const paused = await agent.send('clean up');
+    expect(paused.finishReason).toBe('awaiting-approval');
+    expect(JSON.stringify(paused.messages)).toContain('wiped /tmp/x');
+    const [pending] = await agent.approvals.list();
+    expect(pending).toMatchObject({ toolName: 'files__wipe', args: { path: '/data' } });
   });
 
   it("N2: a deferLoading server's tools are withheld until tool_search finds them; the prompt names the server", async () => {

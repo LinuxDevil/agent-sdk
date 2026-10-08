@@ -192,6 +192,7 @@ export async function connectMcp(
         logger,
         approval: servers[connection.name].approval,
         timeoutMs: servers[connection.name].timeoutMs,
+        tools: servers[connection.name].tools,
         // N2: a server with `deferLoading` has all its tools withheld until `tool_search` finds them.
         ...(servers[connection.name].deferLoading && { deferLoading: true }),
       })
@@ -201,7 +202,17 @@ export async function connectMcp(
   const tools: Record<string, NamedToolDescriptor> = {};
   for (const [index, result] of loaded.entries()) {
     if (result.status === 'fulfilled') {
-      Object.assign(tools, result.value);
+      for (const [key, tool] of Object.entries(result.value)) {
+        // Two server names can sanitize to the same prefix (`a.b` and `a_b`); the first server keeps the name.
+        if (Object.hasOwn(tools, key)) {
+          logger.warn(`connectMcp: MCP server '${connections[index].name}': skipping tool '${key}', the name is taken by another server`, {
+            server: connections[index].name,
+            tool: key,
+          });
+          continue;
+        }
+        tools[key] = tool;
+      }
       continue;
     }
     const { name } = connections[index];

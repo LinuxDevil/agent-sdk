@@ -796,6 +796,7 @@ const ERROR_CODES: {
     readonly LOUSHO_SPEC_UNKNOWN_FIELD: "Rename the field to the suggested spec field, or remove it.";
     readonly LOUSHO_SPEC_UNSUPPORTED_FORMAT: "Save the spec as .yaml, .yml or .json.";
     readonly LOUSHO_SCHEDULE_INVALID: "Fix the cron expression named in the message, and give the schedule exactly one of `prompt` or `run`.";
+    readonly LOUSHO_SCHEDULE_RUN_INCOMPLETE: "Resolve the pending approval named in the message, or change the prompt, tools or limits so an unattended turn can finish.";
     readonly LOUSHO_CHANNEL_INVALID: "Default-export a channel from defineChannel(), httpChannel(), webhookChannel() or slackChannel() in each channels/ file.";
     readonly LOUSHO_MEMORY_INVALID: "Default-export a memory slot from defineMemory() (or an object with a scope and a provider) in each memory/ file.";
     readonly LOUSHO_REGISTRY_UNREACHABLE: "Check the --registry url or path (http(s) or a local file) and that you are online; the message names what failed.";
@@ -1366,6 +1367,7 @@ export interface LoadMcpToolsOptions {
     logger?: Logger;
     onSkip?: (skipped: SkippedMcpTool) => void;
     timeoutMs?: number;
+    tools?: McpToolFilter;
 }
 
 // @public
@@ -1392,6 +1394,7 @@ export function makeHttpRequestViaSandbox(args: HttpRequestArgs, sandbox: Sandbo
 export type McpApproval = 'annotations' | 'always' | 'never' | ((tool: {
     name: string;
     annotations: McpToolAnnotations;
+    args?: Record<string, unknown>;
 }) => boolean);
 
 // @public
@@ -1454,6 +1457,7 @@ interface McpHttpServerSpec {
     // Warning: (ae-forgotten-export) The symbol "McpOAuthOptions" needs to be exported by the entry point index.d.ts
     oauth?: McpOAuthOptions;
     timeoutMs?: number;
+    tools?: McpToolFilter;
     // (undocumented)
     url: string;
 }
@@ -1501,6 +1505,7 @@ interface McpStdioServerSpec {
     // (undocumented)
     env?: Record<string, string>;
     timeoutMs?: number;
+    tools?: McpToolFilter;
 }
 
 // @public
@@ -1528,6 +1533,12 @@ interface McpToolAnnotations {
 export class McpToolError extends Error {
     constructor(message: string);
     readonly toolErrorKind: "mcp";
+}
+
+// @public
+export interface McpToolFilter {
+    exclude?: readonly string[];
+    include?: readonly string[];
 }
 
 // @public
@@ -2846,6 +2857,7 @@ interface ToolMetadata {
     mcp?: {
         annotations?: McpToolAnnotations;
         server?: string;
+        tool?: string;
     };
 }
 
@@ -3073,13 +3085,13 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-BdZjn_dW.d.ts:754:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BdZjn_dW.d.ts:771:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BdZjn_dW.d.ts:1121:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BdZjn_dW.d.ts:3091:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BdZjn_dW.d.ts:3092:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
-// dist/index-CDCdpMkc.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-CDCdpMkc.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/createAgent-Ca_vf8pu.d.ts:754:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-Ca_vf8pu.d.ts:771:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-Ca_vf8pu.d.ts:1121:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-Ca_vf8pu.d.ts:3091:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
+// dist/createAgent-Ca_vf8pu.d.ts:3092:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
+// dist/index-DmsA2WFr.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-DmsA2WFr.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

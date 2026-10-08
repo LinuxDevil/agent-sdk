@@ -138,21 +138,23 @@ describe('loadMcpTools approval (LOU-Z5)', () => {
     expect(Object.values(await asks('never')).every((v) => v === false)).toBe(true);
   });
 
-  it('a function gets the bare name and the annotations ({} when absent)', async () => {
+  it('a function gets the bare name, the annotations ({} when absent) and the args, per call', async () => {
     const seen: unknown[] = [];
     const result = await asks((tool) => {
       seen.push(tool);
       return tool.name.startsWith('destr');
     });
-    expect(result.destructive).toBe(true);
-    expect(result.plain).toBe(false);
-    expect(seen).toContainEqual({ name: 'plain', annotations: {} });
-    expect(seen).toContainEqual({ name: 'read_only', annotations: { readOnlyHint: true } });
+    const decide = (name: string) => (result[name] as (args: unknown) => boolean)({ x: 1 });
+    expect(decide('destructive')).toBe(true);
+    expect(decide('plain')).toBe(false);
+    decide('read_only');
+    expect(seen).toContainEqual({ name: 'plain', annotations: {}, args: { x: 1 } });
+    expect(seen).toContainEqual({ name: 'read_only', annotations: { readOnlyHint: true }, args: { x: 1 } });
   });
 
   it('keeps the raw annotations in metadata.mcp and uses the title as displayName', async () => {
     const loaded = await loadMcpTools(client, 's');
-    expect(loaded.s__titled.metadata).toEqual({ mcp: { annotations: { title: 'Nice Title', readOnlyHint: true }, server: 's' } });
+    expect(loaded.s__titled.metadata).toEqual({ mcp: { annotations: { title: 'Nice Title', readOnlyHint: true }, server: 's', tool: 'titled' } });
     expect(loaded.s__titled.displayName).toBe('Nice Title');
     expect(loaded.s__plain.metadata?.mcp?.annotations).toBeUndefined();
     expect(loaded.s__read_only.displayName).toBe('read_only');
@@ -187,5 +189,81 @@ describe('loadMcpTools call options (audit D4)', () => {
   it('timeoutMs bounds each call', async () => {
     const tools = await loadMcpTools(await hangingClient(), 's', { timeoutMs: 50 });
     await expect(tools.s__slow.execute!({}, { toolCallId: 'c1', messages: [] } as never)).rejects.toThrow(/timed out/i);
+  });
+});
+
+describe('loadMcpTools tool names (audit D4)', () => {
+  const schema = { type: 'object', properties: {} };
+  const named = (...names: string[]) => {
+    const callTool = vi.fn(async (params: { name: string }) => ({ content: [{ type: 'text', text: `ran ${params.name}` }] }));
+    return { client: { listTools: async () => ({ tools: names.map((name) => ({ name, inputSchema: schema })) }), callTool } as unknown as Client, callTool };
+  };
+  const valid = /^[a-zA-Z0-9_-]{1,64}$/;
+
+  it('sanitizes names to the provider-safe charset and length, and calls the server with the original name', async () => {
+    const long = 'x'.repeat(70);
+    const { client, callTool } = named('vps.list', 'get metrics', 'ns/tool', long, 'execute');
+    const tools = await loadMcpTools(client, 'hostinger.vps');
+    const keys = Object.keys(tools);
+    expect(keys.slice(0, 3)).toEqual(['hostinger_vps__vps_list', 'hostinger_vps__get_metrics', 'hostinger_vps__ns_tool']);
+    expect(keys.every((key) => valid.test(key))).toBe(true);
+    expect(keys.every((key) => tools[key].name === key)).toBe(true);
+    expect(tools.hostinger_vps__vps_list.metadata?.mcp).toMatchObject({ server: 'hostinger.vps', tool: 'vps.list' });
+    const longKey = keys[3];
+    expect(longKey).toHaveLength(64);
+    await tools[longKey].execute!({}, { toolCallId: 'c1', messages: [] } as never);
+    expect(callTool).toHaveBeenLastCalledWith({ name: long, arguments: {} }, undefined, {});
+  });
+
+  it('keeps names that are already valid unchanged', async () => {
+    const tools = await loadMcpTools(named('search', 'multi-execute').client, 'srv');
+    expect(Object.keys(tools)).toEqual(['srv__search', 'srv__multi-execute']);
+  });
+
+  it('gives names that collide after sanitizing distinct keys', async () => {
+    const { client, callTool } = named('a.b', 'a/b', 'a_b');
+    const tools = await loadMcpTools(client, 'srv');
+    const keys = Object.keys(tools);
+    expect(new Set(keys).size).toBe(3);
+    expect(keys.every((key) => valid.test(key))).toBe(true);
+    for (const key of keys) await tools[key].execute!({}, { toolCallId: 'c', messages: [] } as never);
+    expect(callTool.mock.calls.map(([params]) => params.name).sort()).toEqual(['a.b', 'a/b', 'a_b']);
+  });
+});
+
+describe('loadMcpTools include / exclude (audit D4)', () => {
+  const schema = { type: 'object', properties: {} };
+  const client = {
+    listTools: async () => ({ tools: ['search', 'execute', 'multi-execute'].map((name) => ({ name, inputSchema: schema })) }),
+  } as unknown as Client;
+
+  it('include keeps only the listed tools; exclude drops the listed ones', async () => {
+    expect(Object.keys(await loadMcpTools(client, 's', { tools: { include: ['search', 'execute'] } }))).toEqual(['s__search', 's__execute']);
+    expect(Object.keys(await loadMcpTools(client, 's', { tools: { exclude: ['multi-execute'] } }))).toEqual(['s__search', 's__execute']);
+    expect(Object.keys(await loadMcpTools(client, 's', { tools: { include: ['search', 'execute'], exclude: ['execute'] } }))).toEqual(['s__search']);
+  });
+
+  it('warns about an include name the server does not have', async () => {
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    await loadMcpTools(client, 's', { logger, tools: { include: ['search', 'serch'] } });
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("'serch'"), expect.objectContaining({ server: 's', tool: 'serch' }));
+  });
+});
+
+describe('loadMcpTools approval predicate sees the arguments (audit D4)', () => {
+  const client = {
+    listTools: async () => ({
+      tools: [{ name: 'execute', inputSchema: { type: 'object', properties: { operation: { type: 'string' } } }, annotations: { readOnlyHint: true } }],
+    }),
+  } as unknown as Client;
+
+  it('passes each call\'s arguments to an approval function', async () => {
+    const approval = vi.fn((tool: { name: string; args?: Record<string, unknown> }) => !String(tool.args?.operation).startsWith('GET'));
+    const tools = await loadMcpTools(client, 's', { approval });
+    const check = tools.s__execute.needsApproval as (args: unknown, ctx: unknown) => unknown;
+    expect(typeof check).toBe('function');
+    expect(await check({ operation: 'GET /vms' }, {})).toBe(false);
+    expect(await check({ operation: 'POST /vms/1/restart' }, {})).toBe(true);
+    expect(approval).toHaveBeenLastCalledWith({ name: 'execute', annotations: { readOnlyHint: true }, args: { operation: 'POST /vms/1/restart' } });
   });
 });

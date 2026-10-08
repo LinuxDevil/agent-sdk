@@ -3408,6 +3408,7 @@ export interface LoadMcpToolsOptions {
     logger?: Logger;
     onSkip?: (skipped: SkippedMcpTool) => void;
     timeoutMs?: number;
+    tools?: McpToolFilter;
 }
 
 // @public
@@ -3580,6 +3581,7 @@ type MaybePromise<T> = T | Promise<T>;
 export type McpApproval = 'annotations' | 'always' | 'never' | ((tool: {
     name: string;
     annotations: McpToolAnnotations;
+    args?: Record<string, unknown>;
 }) => boolean);
 
 // @public
@@ -3641,6 +3643,7 @@ export interface McpHttpServerSpec {
     headers?: Record<string, string>;
     oauth?: McpOAuthOptions;
     timeoutMs?: number;
+    tools?: McpToolFilter;
     // (undocumented)
     url: string;
 }
@@ -3688,6 +3691,7 @@ export interface McpStdioServerSpec {
     // (undocumented)
     env?: Record<string, string>;
     timeoutMs?: number;
+    tools?: McpToolFilter;
 }
 
 // @public
@@ -3715,6 +3719,12 @@ export interface McpToolAnnotations {
 export class McpToolError extends Error {
     constructor(message: string);
     readonly toolErrorKind: "mcp";
+}
+
+// @public
+export interface McpToolFilter {
+    exclude?: readonly string[];
+    include?: readonly string[];
 }
 
 // @public
@@ -6529,6 +6539,7 @@ export interface ToolMetadata {
     mcp?: {
         annotations?: McpToolAnnotations;
         server?: string;
+        tool?: string;
     };
 }
 
@@ -6998,8 +7009,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-LV-9grnL.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-LV-9grnL.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-DmsA2WFr.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-DmsA2WFr.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
