@@ -176,7 +176,11 @@ const agent = createAgent({ provider, tools: [listRepos], store: memoryStore() }
   (`credentialOwner: 'user'`, the default) or the app's own
   (`credentialOwner: 'app'`) from `store.tokens`. A token that expires within
   60 seconds and has a refresh token is refreshed at `tokenUrl` first and
-  saved; a refresh the server refuses deletes it.
+  saved. Concurrent calls in one process that need the same refresh share one
+  request, so a provider that rotates refresh tokens (single use) is not sent
+  the same one twice. A refresh the server refuses deletes the token, unless
+  the store meanwhile holds a different one (another process refreshed it);
+  that one is used instead.
 - Without a usable token the run **pauses**, exactly like an
   [approval](approvals.md): `finishReason: 'awaiting-approval'`, a pending
   approval with `kind: 'sign-in'`, durable in the agent's stores. Once the user

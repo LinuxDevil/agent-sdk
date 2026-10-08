@@ -230,6 +230,49 @@ describe('stored tokens: refresh and requireAuth (N9b)', () => {
     expect(executions).toEqual([]);
   });
 
+  it('concurrent refreshes with a rotating refresh token share one request and keep the new token (Eve TOOLS-F16)', async () => {
+    let live = 'ghr_SECRET_R0';
+    let issued = 0;
+    const requests: string[] = [];
+    const rotating = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const presented = new URLSearchParams(String(init?.body ?? '')).get('refresh_token');
+      requests.push(String(presented));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      if (presented !== live) return new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 });
+      issued++;
+      live = `ghr_SECRET_R${issued}`;
+      return new Response(JSON.stringify({ access_token: `gho_SECRET_A${issued}`, refresh_token: live, expires_in: 3600 }), { status: 200 });
+    }) as typeof fetch;
+    const github = githubProvider(fakeOAuthServer(), { fetch: rotating });
+    const { tool, executions } = listReposTool(github);
+    const store = memoryStore();
+    await store.tokens.set('github', ALICE_OWNER, { accessToken: 'gho_SECRET_A0', refreshToken: 'ghr_SECRET_R0', expiresAt: Date.now() + 10_000 });
+    const agent = () => createAgent({ provider: script(), tools: [tool], store });
+
+    const results = await Promise.all([agent().send('a', { principal: ALICE, sessionId: 's1' }), agent().send('b', { principal: ALICE, sessionId: 's2' })]);
+    expect(results.map((r) => r.finishReason)).toEqual(['stop', 'stop']);
+    expect(requests).toEqual(['ghr_SECRET_R0']);
+    expect(executions).toEqual(['gho_SECRET_A1', 'gho_SECRET_A1']);
+    expect(await store.tokens.get('github', ALICE_OWNER)).toMatchObject({ accessToken: 'gho_SECRET_A1', refreshToken: 'ghr_SECRET_R1' });
+  });
+
+  it('a refresh refused because another process already rotated the token uses the stored new token (Eve TOOLS-F16)', async () => {
+    const store = memoryStore();
+    const server = fakeOAuthServer();
+    // Another process refreshes first: the server refuses our refresh token, and the store already holds the new one.
+    const refused = (async () => {
+      await store.tokens.set('github', ALICE_OWNER, { accessToken: 'gho_SECRET_other', refreshToken: 'ghr_SECRET_other', expiresAt: Date.now() + 3_600_000 });
+      return new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 });
+    }) as typeof fetch;
+    const github = githubProvider(server, { fetch: refused });
+    const { tool, executions } = listReposTool(github);
+    await store.tokens.set('github', ALICE_OWNER, { accessToken: 'gho_SECRET_old', refreshToken: 'ghr_SECRET_old', expiresAt: Date.now() + 10_000 });
+    const result = await createAgent({ provider: script(), tools: [tool], store }).send('List my repositories.', { principal: ALICE });
+    expect(result.finishReason).toBe('stop');
+    expect(executions).toEqual(['gho_SECRET_other']);
+    expect(await store.tokens.get('github', ALICE_OWNER)).toMatchObject({ accessToken: 'gho_SECRET_other' });
+  });
+
   it('uses a fresh token as is, and an expired one without a refresh token means sign-in', async () => {
     const { server, store, agent, executions } = setup();
     await store.tokens.set('github', ALICE_OWNER, { accessToken: 'gho_SECRET_fresh', expiresAt: Date.now() + 3_600_000 });

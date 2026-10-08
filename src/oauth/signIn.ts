@@ -133,19 +133,51 @@ export async function getToken(provider: OAuthProvider, access: TokenAccess): Pr
   const { tokens } = access;
   if (!tokens) throw storeMissing();
   const owner = tokenOwnerFor(provider, access.principal);
-  const stored = await tokens.get(provider.name, owner);
-  const state = stored ? usable(stored, Date.now()) : 'expired';
-  if (stored && state === 'fresh') return handOut(stored, access);
-  if (stored && state === 'refresh') {
-    const refreshed = await refreshToken(provider, stored).catch(() => undefined);
+  let stored = await tokens.get(provider.name, owner);
+  // Eve TOOLS-F16: a failed refresh is retried once when another caller replaced the token meanwhile.
+  for (let attempt = 0; stored && attempt < 2; attempt++) {
+    const state = usable(stored, Date.now());
+    if (state === 'fresh') return handOut(stored, access);
+    if (state === 'expired') break;
+    const refreshed = await refreshOnce(provider, stored);
     if (refreshed) {
       await tokens.set(provider.name, owner, refreshed);
       return handOut(refreshed, access);
     }
-    await tokens.delete(provider.name, owner);
+    // Rotating refresh tokens are single use: the failure may only mean a concurrent refresh (in
+    // another process) won. Delete the token only when it is still the one that failed.
+    const current = await tokens.get(provider.name, owner);
+    if (!current || sameToken(current, stored)) {
+      if (current) await tokens.delete(provider.name, owner);
+      break;
+    }
+    stored = current;
   }
   if (owner.owner === 'app') throw appSignInRequired(provider);
   throw new SignInRequired(provider, owner);
+}
+
+function sameToken(a: OAuthToken, b: OAuthToken): boolean {
+  return a.accessToken === b.accessToken && a.refreshToken === b.refreshToken;
+}
+
+/**
+ * Eve TOOLS-F16: refreshes in flight, by provider and refresh token. Callers
+ * that present the same refresh token at once share one request (a rotating
+ * refresh token is single use, so a second request would be refused).
+ */
+const refreshesInFlight = new Map<string, Promise<OAuthToken | undefined>>();
+
+/** One refresh of `stored` per process at a time. `undefined` when it failed. */
+function refreshOnce(provider: OAuthProvider, stored: OAuthToken): Promise<OAuthToken | undefined> {
+  const key = `${provider.name}\u0000${provider.tokenUrl}\u0000${stored.refreshToken ?? ''}`;
+  const pending = refreshesInFlight.get(key);
+  if (pending) return pending;
+  const flight = refreshToken(provider, stored)
+    .catch(() => undefined)
+    .finally(() => refreshesInFlight.delete(key));
+  refreshesInFlight.set(key, flight);
+  return flight;
 }
 
 /**
