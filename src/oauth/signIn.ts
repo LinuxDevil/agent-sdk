@@ -58,9 +58,16 @@ export class SignInPendingError extends SDKError {
   }
 }
 
-/** The user credential a sign-in pause of a run acting for `principal` waits on. */
+/**
+ * The user credential a sign-in pause of a run acting for `principal` waits on.
+ * A principal without an `issuer` is namespaced by its authenticator
+ * (`authenticator:<name>`), so the same id from two authenticators (a Slack user
+ * and a GitHub login) never shares a token.
+ */
 export function signInOwner(principal: Readonly<Principal> | undefined): TokenOwner | undefined {
-  return principal ? { owner: 'user', principalId: principal.id, ...(principal.issuer !== undefined && { issuer: principal.issuer }) } : undefined;
+  if (!principal) return undefined;
+  const issuer = principal.issuer ?? (principal.authenticator ? `authenticator:${principal.authenticator}` : undefined);
+  return { owner: 'user', principalId: principal.id, ...(issuer !== undefined && { issuer }) };
 }
 
 /** What `getToken()` / `requireAuth()` need from the run. */
@@ -285,7 +292,8 @@ function stateInvalid(why: string): SDKError {
 
 function isOtherUser(owner: TokenOwner, principal: Principal | undefined): boolean {
   if (!principal || owner.owner !== 'user') return false;
-  return principal.id !== owner.principalId || (principal.issuer ?? undefined) !== (owner.issuer ?? undefined);
+  const mine = signInOwner(principal);
+  return mine?.owner !== 'user' || mine.principalId !== owner.principalId || mine.issuer !== owner.issuer;
 }
 
 /**
