@@ -5,7 +5,7 @@
  * decides a pause a channel turn stopped on. No `node:*` import, so a Worker
  * host can drive the same code (src/channels/fetchChannels.ts).
  */
-import type { SimpleAgent } from '../createAgent';
+import { createAgentConfigOf, type SimpleAgent } from '../createAgent';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import type { AgentEvent } from '../execution/agentEvents';
 import { MemorySessionStore, type SessionStore } from '../session/sessionStore';
@@ -31,7 +31,9 @@ import { SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 export interface ChannelCoreOptions {
   /**
    * Where the channels' transcripts are kept (e.g. the `SqliteStore` the agent
-   * uses). Defaults to an in-memory store owned by this handler.
+   * uses). Defaults to the agent's `store` when it keeps sessions, so channel
+   * turns, approval continuations and `agent.resume()` share one transcript
+   * (Eve EVE-0); else to an in-memory store owned by this handler.
    */
   store?: SessionStore | SessionStores;
   /** Fallback for a channel without its own `onError`: failures after the request was acknowledged. Default: `console.error`. */
@@ -90,6 +92,18 @@ function approverPrincipal(channel: Channel, approver: ChannelUser | undefined, 
 }
 
 /**
+ * Eve EVE-0: the `store` of an agent built by `createAgent()` when it keeps
+ * session transcripts. A channel's private in-memory transcript next to the
+ * agent's durable checkpoints let the two views diverge: `agent.resume(id)`
+ * looked for the checkpoint at the durable transcript's length and missed a
+ * channel turn's pause.
+ */
+function agentSessionStores(agent: Pick<SimpleAgent, 'session' | 'approvals'>): SessionStores | undefined {
+  const store = createAgentConfigOf(agent as SimpleAgent)?.store;
+  return store?.sessions ? { sessions: store.sessions, checkpoints: store.checkpoints } : undefined;
+}
+
+/**
  * The channel logic of `mountChannels()`: `handle` serves one inbound request
  * of `channel` (a turn, or a decision when `approvalId` is set); the host
  * supplies the `respond` its transport answers through. `resolveApproval`
@@ -98,7 +112,7 @@ function approverPrincipal(channel: Channel, approver: ChannelUser | undefined, 
 export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, channels: readonly Channel[], options: ChannelCoreOptions = {}): ChannelCore {
   const names = new Set(channels.map((channel) => channel.name));
   if (names.size !== channels.length) throw new SDKError('channelCore: channel names must be unique', 'LOUSHO_CHANNEL_INVALID');
-  const store = options.store ?? new MemorySessionStore();
+  const store = options.store ?? agentSessionStores(agent) ?? new MemorySessionStore();
   const paused = new Map<string, PausedTurn>();
   const tails = new Map<string, Promise<unknown>>();
   /** Question ids `pendingQuestion` handed out whose answer has not been processed yet. */

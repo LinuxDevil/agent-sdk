@@ -30,7 +30,7 @@ import { SDKError } from '../execution/errors';
 export interface MountChannelsOptions {
   /**
    * Where the channels' transcripts are kept (e.g. the `SqliteStore` the agent
-   * uses). Defaults to an in-memory store owned by this handler.
+   * uses). Defaults to the agent's `store` when it keeps sessions, else an in-memory store owned by this handler.
    */
   store?: SessionStore | SessionStores;
   /** Path prefix of the routes. Default `/channels`. */

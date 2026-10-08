@@ -118,8 +118,11 @@ Return a valid id from `sessionId()` to use it unchanged.
 
 Transcripts are kept in `mountChannels(agent, channels, { store })`: a
 `SessionStore` or `{ sessions, checkpoints }` such as a `SqliteStore` (pass the
-one you gave `createAgent({ store })`). Without `store`, the handler keeps them
-in memory.
+one you gave `createAgent({ store })`). Without `store`, the handler uses the
+agent's `createAgent({ store })` when it keeps sessions, so channel turns,
+approval continuations, `agent.session({ id })` and `agent.resume(id)` all see
+one transcript (this also covers `createDeployedServer` and `LOUSHO_STORE`);
+an agent without a session store keeps them in memory.
 
 ## Approvals and questions
 
@@ -289,7 +292,7 @@ http.createServer((req, res) => {
 }).listen(3000);
 ```
 
-Which threads are active comes from the `store` you pass `mountChannels()`.
+Which threads are active comes from the channels' session store (the `store` you pass `mountChannels()`, else the agent's).
 Pending approvals are resolved from the click itself. A pending `ask_question`
 survives a restart when the session, its checkpoints and the approvals are in
 durable stores (for example `mountChannels(agent, channels, { store: sqlite })`
