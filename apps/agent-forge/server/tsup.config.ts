@@ -22,7 +22,7 @@ import { defineConfig } from 'tsup';
  * the entire SDK's compiled output a second time inside
  * `apps/agent-forge/dist-server`.
  *
- * Everything else this server actually needs at runtime (express, cors, ws)
+ * Everything else this server actually needs at runtime (express, ws)
  * is NOT something a consumer of the *root* package is expected to have
  * installed either (they're `apps/agent-forge`'s own dependencies, and
  * `apps/agent-forge/node_modules` does not ship in the published package -
@@ -62,5 +62,5 @@ export default defineConfig({
   treeshake: true,
   minify: false,
   external: ['@lousho/build-ai-agent', 'yaml'],
-  noExternal: ['express', 'cors', 'ws'],
+  noExternal: ['express', 'ws'],
 });
