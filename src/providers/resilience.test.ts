@@ -229,6 +229,33 @@ describe('withRetry', () => {
     expect(calls).toHaveLength(2);
   });
 
+  it('throws at once, with retryAfterMs set, when the hint exceeds backoff.maxMs (Eve PROV-F5)', async () => {
+    const { provider, calls } = flaky([apiError(429, { 'retry-after': '3600' })]);
+    const onRetry = vi.fn();
+
+    const failure = await withRetry(provider, { ...fast, onRetry }).generate(request).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(CompactedLLMProviderError);
+    expect((failure as CompactedLLMProviderError).compacted.retryAfterMs).toBe(3_600_000);
+    expect(onRetry).not.toHaveBeenCalled();
+    expect(calls).toHaveLength(1);
+  });
+
+  it('waits a hint that fits under a custom backoff.maxMs, and refuses one above it', async () => {
+    const { provider, calls } = flaky([apiError(429, { 'retry-after': '5' })]);
+    await expect(withRetry(provider, { backoff: { initialMs: 1, maxMs: 2_000 } }).generate(request)).rejects.toMatchObject({
+      compacted: { retryAfterMs: 5_000 },
+    });
+    expect(calls).toHaveLength(1);
+  });
+
+  it('reads retry-after-ms, and honors Retry-After on a 503 (Eve PROV-F5)', async () => {
+    expect(compactProviderError(apiError(503, { 'retry-after-ms': '2000', 'retry-after': '9' })).retryAfterMs).toBe(2_000);
+    expect(compactProviderError(apiError(503, { 'Retry-After': '2' })).retryAfterMs).toBe(2_000);
+    expect(compactProviderError(apiError(429, { 'Retry-After-Ms': '250' })).retryAfterMs).toBe(250);
+    expect(compactProviderError(apiError(500, { 'retry-after': '2' })).retryAfterMs).toBeUndefined();
+  });
+
   it('stops retrying when the signal aborts during the backoff wait', async () => {
     const { provider, calls } = flaky([apiError(503), apiError(503)]);
     const controller = new AbortController();

@@ -329,11 +329,22 @@ const RATE_LIMIT_PATTERN = /rate.?limit|too many requests/i;
 const AUTH_PATTERN =
   /unauthorized|invalid api key|incorrect api key|authentication|api key.*(missing|invalid|not found)|\bforbidden\b/i;
 
-/** Best-effort extraction of a `Retry-After`-style header value (seconds or
- * an HTTP-date) from an APICallError's response headers, converted to ms. */
+/** A response header by name, whatever its case. */
+function headerValue(headers: Record<string, string> | undefined, name: string): string | undefined {
+  if (!headers) return undefined;
+  const key = Object.keys(headers).find((candidate) => candidate.toLowerCase() === name);
+  return key === undefined ? undefined : headers[key];
+}
+
+/** Best-effort extraction of the server's wait hint, in ms, from an
+ * APICallError's response headers: `retry-after-ms` (OpenAI, Azure) first,
+ * then `Retry-After` (seconds or an HTTP-date). */
 function extractRetryAfterMs(err: APICallError): number | undefined {
-  const header =
-    err.responseHeaders?.['retry-after'] ?? err.responseHeaders?.['Retry-After'];
+  const ms = Number(headerValue(err.responseHeaders, 'retry-after-ms'));
+  if (headerValue(err.responseHeaders, 'retry-after-ms') && Number.isFinite(ms) && ms >= 0) {
+    return ms;
+  }
+  const header = headerValue(err.responseHeaders, 'retry-after');
   if (!header) {
     return undefined;
   }
@@ -551,7 +562,7 @@ export function compactProviderError(
       retryable,
       providerName,
       statusCode: cause.statusCode,
-      retryAfterMs: category === 'rate-limit' ? extractRetryAfterMs(cause) : undefined,
+      retryAfterMs: category === 'rate-limit' || cause.statusCode === 503 ? extractRetryAfterMs(cause) : undefined,
     };
   }
 

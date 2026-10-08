@@ -211,8 +211,9 @@ transient failures, use `withRetry()` / `fallbackModels`
 
 **Means:** a `RateLimitError`: the provider throttled the caller.
 
-**Fix:** retry after `error.retryAfter` seconds (`withRetry()` does this), or
-send fewer requests.
+**Fix:** retry after `error.retryAfter` seconds (`withRetry()` does this, up to
+`backoff.maxMs`; a longer `Retry-After` fails at once with
+`compacted.retryAfterMs` set), or send fewer requests.
 
 **Example:** a 429 response.
 
