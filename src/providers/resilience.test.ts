@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { APICallError } from 'ai';
 import type { GenerateOptions, LLMProvider, StreamChunk } from './llm';
 import { MockLLMProvider } from './mock';
+import { retriesOwned } from './providerEvents';
 import { isRetryableProviderError, resilientProvider, withFallback, withRetry } from './resilience';
 import { CompactedLLMProviderError, compactProviderError } from '../execution/errors';
 import { createAgent } from '../createAgent';
@@ -90,6 +91,40 @@ function flakyStream(failures: unknown[], name = 'flaky', reply = `${name} ok`) 
     supportsTools: () => true,
     supportsStreaming: () => true,
     getModels: async () => [`${name}-model`],
+  };
+  return { provider, calls };
+}
+
+/**
+ * A provider whose n-th stream() yields the n-th script: chunks in order, and
+ * a thrown error where the script has an Error. Its `text` is `attempt <n>`.
+ */
+function scriptedStream(scripts: Array<Array<StreamChunk | Error>>) {
+  const calls: GenerateOptions[] = [];
+  const provider: LLMProvider = {
+    name: 'scripted',
+    generate: async () => ({ text: '', finishReason: 'stop' }),
+    stream: async (call) => {
+      calls.push(call);
+      const script = scripts[calls.length - 1] ?? [];
+      const failure = script.find((step): step is Error => step instanceof Error);
+      return {
+        fullStream: (async function* (): AsyncGenerator<StreamChunk> {
+          for (const step of script) {
+            if (step instanceof Error) throw step;
+            yield step;
+          }
+        })(),
+        textStream: (async function* (): AsyncGenerator<string> {})(),
+        text: failure ? Promise.reject(failure) : Promise.resolve(`attempt ${calls.length}`),
+        usage: Promise.resolve(undefined),
+        finishReason: Promise.resolve('stop'),
+        toolCalls: Promise.resolve([]),
+      };
+    },
+    supportsTools: () => true,
+    supportsStreaming: () => true,
+    getModels: async () => [],
   };
   return { provider, calls };
 }
@@ -296,6 +331,69 @@ describe('withRetry', () => {
     const stream = await withRetry(provider, { ...fast, maxRetries: 3 }).stream(request);
     await expect(collect(stream.fullStream)).rejects.toBe(boom);
     expect(calls).toHaveLength(1);
+  });
+
+  it('retries a stream that fails after only an empty reasoning-end (C2: LM Studio)', async () => {
+    const { provider, calls } = scriptedStream([
+      [{ type: 'reasoning-end' }, { type: 'error', error: apiError(500) }],
+      [{ type: 'text-delta', textDelta: 'ok' }, { type: 'finish', finishReason: 'stop' }],
+    ]);
+    const onRetry = vi.fn();
+
+    const stream = await withRetry(provider, { ...fast, onRetry }).stream(request);
+    const chunks = await collect(stream.fullStream);
+
+    expect(calls).toHaveLength(2);
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(textOf(chunks)).toBe('ok');
+    await expect(stream.text).resolves.toBe('attempt 2');
+  });
+
+  it('retries a stream that throws after reasoning deltas, passing both attempts on in order (C2)', async () => {
+    const { provider, calls } = scriptedStream([
+      [{ type: 'reasoning-delta', textDelta: 'hmm' }, { type: 'text-delta', textDelta: '' }, apiError(503)],
+      [{ type: 'reasoning-delta', textDelta: 'again' }, { type: 'text-delta', textDelta: 'ok' }],
+    ]);
+
+    const stream = await withRetry(provider, fast).stream(request);
+    const chunks = await collect(stream.fullStream);
+
+    expect(calls).toHaveLength(2);
+    expect(chunks.map((chunk) => `${chunk.type}:${chunk.textDelta ?? ''}`)).toEqual([
+      'reasoning-delta:hmm',
+      'text-delta:',
+      'reasoning-delta:again',
+      'text-delta:ok',
+    ]);
+  });
+
+  it('passes on a non-retryable error chunk that follows reasoning (C2)', async () => {
+    const { provider, calls } = scriptedStream([[{ type: 'reasoning-delta', textDelta: 'hmm' }, { type: 'error', error: apiError(400) }]]);
+
+    const stream = await withRetry(provider, fast).stream(request);
+    const chunks = await collect(stream.fullStream);
+
+    expect(calls).toHaveLength(1);
+    expect(chunks.map((chunk) => chunk.type)).toEqual(['reasoning-delta', 'error']);
+  });
+
+  it('shares maxRetries between establishing a stream and failing mid-reasoning (C2)', async () => {
+    const last = apiError(502);
+    const { provider, calls } = scriptedStream([
+      [{ type: 'reasoning-end' }, apiError(503)],
+      [{ type: 'reasoning-end' }, last],
+    ]);
+
+    const stream = await withRetry(provider, { ...fast, maxRetries: 1 }).stream(request);
+    await expect(collect(stream.fullStream)).rejects.toBe(last);
+    expect(calls).toHaveLength(2);
+  });
+
+  it('marks the calls it retries, so the ai SDK retries are off (C2)', async () => {
+    const { provider, calls } = flaky([apiError(503)]);
+    await withRetry(provider, fast).generate(request);
+    expect(calls.map(retriesOwned)).toEqual([true, true]);
+    expect(retriesOwned(request)).toBe(false);
   });
 
   it('delegates name, defaultModel and capabilities to the wrapped provider', async () => {

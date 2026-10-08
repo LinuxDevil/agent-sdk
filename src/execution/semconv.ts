@@ -114,6 +114,10 @@ export const SdkAttr = {
   PARENT_TOOL_CALL_ID: 'lousho.tool.parent_call_id',
   /** Audit C4: on a `chat` span of a side call a hook made for the run (e.g. `'compaction'` for the summarizer). */
   CALL_PURPOSE: 'lousho.call.purpose',
+  /** C2: on a `chat` span, how many times `withRetry()` retried the call. Absent when it was not retried. */
+  RETRY_COUNT: 'lousho.retry.count',
+  /** C2: on a `chat` span, each retried failure's error category and HTTP status, e.g. `['timeout', 'unknown 500']`. */
+  RETRY_ERRORS: 'lousho.retry.errors',
 } as const;
 
 /**

@@ -27,6 +27,7 @@ vi.mock('ai', async () => {
 import { z as z4 } from 'zod/v4';
 import { OpenAIProvider } from './OpenAIProvider';
 import { OpenRouterProvider } from './OpenRouterProvider';
+import { withRetry } from './resilience';
 import { installedAiMajor, itOnAiV4 } from './aiMajor.testkit';
 import { mockToolCall, mockUsage, toolCallPart, toolResultPart } from './aiShapes.testkit';
 
@@ -82,6 +83,19 @@ describe('AiSdkProvider', () => {
     await new OpenAIProvider({ apiKey: 'k', maxRetries: 0 }).stream(call);
 
     expect(generateTextMock.mock.calls.map(([settings]) => settings.maxRetries)).toEqual([2, 0]);
+    expect(streamTextMock.mock.calls[0][0].maxRetries).toBe(0);
+  });
+
+  it('C2: a call withRetry() retries goes out with the ai SDK retries off, whatever config.maxRetries says', async () => {
+    generateTextMock.mockResolvedValue(textResult('stop'));
+    streamTextMock.mockResolvedValue({ textStream: (async function* () {})(), text: '', usage, finishReason: 'stop', toolCalls: [] });
+    const provider = withRetry(new OpenAIProvider({ apiKey: 'k', maxRetries: 5 }));
+
+    await provider.generate({ model: '', messages: [] });
+    const stream = await provider.stream({ model: '', messages: [] });
+    for await (const _chunk of stream.fullStream);
+
+    expect(generateTextMock.mock.calls[0][0].maxRetries).toBe(0);
     expect(streamTextMock.mock.calls[0][0].maxRetries).toBe(0);
   });
 

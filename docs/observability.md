@@ -132,6 +132,8 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` | Token usage |
 | `lousho.cost_usd` | Estimated USD of this step, when the built-in price table (or `registerModel`) knows the model; absent otherwise |
 | `lousho.usage.estimated` | `true` when the provider reported no usage and the tokens were estimated |
+| `lousho.retry.count` | How many times `withRetry()` (the agent's `retry`) retried this call; absent when it was not retried |
+| `lousho.retry.errors` | Each retried failure's error category and HTTP status, e.g. `["timeout", "unknown 500"]` |
 
 ### Tool call: `execute_tool {tool}`
 

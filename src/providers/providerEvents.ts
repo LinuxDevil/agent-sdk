@@ -32,12 +32,39 @@ export interface ProviderEventListener {
 
 const PROVIDER_EVENTS: unique symbol = Symbol('lousho.providerEvents');
 
-type ListenedCall = GenerateOptions & { [PROVIDER_EVENTS]?: ProviderEventListener };
+const RETRIES_OWNED: unique symbol = Symbol('lousho.retriesOwned');
 
-/** `call` with `listener` attached; the wrappers keep it when they copy the call. */
+type ListenedCall = GenerateOptions & { [PROVIDER_EVENTS]?: ProviderEventListener; [RETRIES_OWNED]?: true };
+
+/**
+ * `call` with `listener` attached; the wrappers keep it when they copy the
+ * call. A listener already attached still hears every report, after `listener`.
+ */
 export function withProviderEvents(call: GenerateOptions, listener: ProviderEventListener): GenerateOptions {
-  const listened: ListenedCall = { ...call, [PROVIDER_EVENTS]: listener };
+  const previous = providerEventsOf(call);
+  const chained: ProviderEventListener = previous
+    ? {
+        retry: (report) => (listener.retry(report), previous.retry(report)),
+        fallback: (report) => (listener.fallback(report), previous.fallback(report)),
+      }
+    : listener;
+  const listened: ListenedCall = { ...call, [PROVIDER_EVENTS]: chained };
   return listened;
+}
+
+/**
+ * C2: `call` marked as retried by `withRetry()`, so an 'ai'-SDK-backed
+ * provider sends it with the 'ai' SDK's own retries off (`maxRetries: 0`):
+ * one retry layer, never one multiplied by the other.
+ */
+export function withRetriesOwned(call: GenerateOptions): GenerateOptions {
+  const owned: ListenedCall = { ...call, [RETRIES_OWNED]: true };
+  return owned;
+}
+
+/** Whether `withRetry()` retries `call` (see `withRetriesOwned()`). */
+export function retriesOwned(call: GenerateOptions): boolean {
+  return (call as ListenedCall)[RETRIES_OWNED] === true;
 }
 
 /** The listener attached to `call`, if any. */

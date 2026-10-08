@@ -14,7 +14,7 @@
 
 import type { GenerateOptions, LLMProvider, LLMProviderConfig, ServedBy, StreamChunk, StreamResult } from './llm';
 import { abortableDelay } from './abortableDelay';
-import { providerEventsOf } from './providerEvents';
+import { providerEventsOf, withRetriesOwned } from './providerEvents';
 import {
   CompactedLLMProviderError,
   ConfigurationError,
@@ -86,20 +86,27 @@ function combineSignals(...signals: Array<AbortSignal | undefined>): AbortSignal
   return present.length > 1 ? AbortSignal.any(present) : present[0];
 }
 
-async function callWithRetry<T>(
-  provider: LLMProvider,
-  call: GenerateOptions,
-  attempt: (call: GenerateOptions) => Promise<T>,
-  options: WithRetryOptions
-): Promise<T> {
+/** One call's retry state: the attempts' call options, and the decision after each failure. */
+interface Retrier {
+  /** The options for the next attempt: the call with its own timeout, marked as retried here. */
+  attemptCall(): GenerateOptions;
+  /** Rethrows `error` when it is not retried; otherwise reports the retry and waits out its backoff. */
+  afterFailure(error: unknown): Promise<void>;
+}
+
+function retrierFor(provider: LLMProvider, call: GenerateOptions, options: WithRetryOptions): Retrier {
   const { maxRetries = 2, retryOn = isRetryableProviderError, onRetry, timeoutMs } = options;
   const signal = combineSignals(options.signal, call.signal);
-  for (let n = 1; ; n++) {
-    signal?.throwIfAborted();
-    const timeout = timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs);
-    try {
-      return await attempt({ ...call, signal: combineSignals(signal, timeout) });
-    } catch (error) {
+  let failures = 0;
+  return {
+    attemptCall() {
+      signal?.throwIfAborted();
+      const timeout = timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs);
+      // C2: the 'ai' SDK's own retries are off for a call retried here.
+      return withRetriesOwned({ ...call, signal: combineSignals(signal, timeout) });
+    },
+    async afterFailure(error) {
+      const n = ++failures;
       if (n > maxRetries || signal?.aborted || isAbortError(error) || !retryOn(error, n)) {
         throw error;
       }
@@ -107,6 +114,16 @@ async function callWithRetry<T>(
       onRetry?.({ attempt: n, error, delayMs });
       providerEventsOf(call)?.retry({ attempt: n, maxRetries, delayMs, error, provider: provider.name });
       await abortableDelay(delayMs, signal);
+    },
+  };
+}
+
+async function callWithRetry<T>(retrier: Retrier, attempt: (call: GenerateOptions) => Promise<T>): Promise<T> {
+  for (;;) {
+    try {
+      return await attempt(retrier.attemptCall());
+    } catch (error) {
+      await retrier.afterFailure(error);
     }
   }
 }
@@ -131,9 +148,9 @@ function silence(streamed: StreamResult): void {
  * What a `stream()` attempt is: the `stream()` call plus pulling the stream's
  * first chunk. Streaming providers resolve `stream()` before the request
  * finishes and report its failure inside the returned stream, so both count
- * as the attempt's failure a retry or fallback answers. Once the first chunk
- * is out the attempt is committed: a later failure propagates unchanged,
- * since part of the stream may already have been consumed.
+ * as the attempt's failure a retry or fallback answers. For `withFallback()`
+ * the attempt is committed once the first chunk is out: a later failure
+ * propagates unchanged. `withRetry()` goes further (see `streamWithRetry()`).
  */
 async function openStream(provider: LLMProvider, call: GenerateOptions): Promise<OpenedStream> {
   const streamed = await provider.stream(call);
@@ -164,12 +181,105 @@ function streamResultOf({ streamed, iterator, first, servedBy }: OpenedStream): 
 }
 
 /**
+ * C2: whether a chunk commits a stream attempt - it is output the consumer
+ * acts on (text, a tool call or result, the finish). Reasoning chunks and an
+ * empty text delta do not: a local runtime (LM Studio) sends an empty
+ * `reasoning-end` before reporting a 500 as an error event.
+ */
+function commits(chunk: StreamChunk): boolean {
+  if (chunk.type === 'text-delta') return Boolean(chunk.textDelta);
+  return chunk.type !== 'reasoning-delta' && chunk.type !== 'reasoning-end' && chunk.type !== 'error';
+}
+
+/**
+ * `withRetry()`'s `stream()`: an attempt is retried when establishing it
+ * fails (see `openStream()`), and also when its stream fails after
+ * uncommitted chunks only (reasoning, empty deltas; see `commits()`). Those
+ * chunks were passed on as they came, so after a retry the consumer sees the
+ * next attempt's chunks from the start, after the `provider.retry` event.
+ * The result's `text`, `usage`, `finishReason`, `toolCalls` and
+ * `textStream` are the latest attempt's.
+ */
+async function streamWithRetry(provider: LLMProvider, call: GenerateOptions, options: WithRetryOptions): Promise<StreamResult> {
+  const retrier = retrierFor(provider, call, options);
+  const open = async () => {
+    const opened = await callWithRetry(retrier, (attempt) => openStream(provider, attempt));
+    silence(opened.streamed);
+    return opened;
+  };
+  let current = await open();
+  let servedBy: ServedBy | undefined;
+  /** Whether an `error` chunk's failure is retried; one that is not is passed on as the chunk. */
+  const retried = (error: Error | undefined) =>
+    retrier.afterFailure(error ?? new Error('The model stream reported an error without details')).then(
+      () => true,
+      (failure: unknown) => {
+        if (isAbortError(failure)) throw failure;
+        return false;
+      }
+    );
+  const fullStream = (async function* (): AsyncGenerator<StreamChunk> {
+    let committed = false;
+    let next = current.first;
+    while (!next.done) {
+      const chunk = next.value;
+      if (chunk.type === 'error' && !committed && (await retried(chunk.error))) {
+        current = await open();
+        next = current.first;
+        continue;
+      }
+      committed ||= commits(chunk);
+      yield chunk;
+      try {
+        next = await current.iterator.next();
+      } catch (error) {
+        if (committed) throw error;
+        await retrier.afterFailure(error);
+        current = await open();
+        next = current.first;
+      }
+    }
+  })();
+  return {
+    fullStream,
+    get textStream() {
+      return current.streamed.textStream;
+    },
+    get text() {
+      return current.streamed.text;
+    },
+    get usage() {
+      return current.streamed.usage;
+    },
+    get finishReason() {
+      return current.streamed.finishReason;
+    },
+    get toolCalls() {
+      return current.streamed.toolCalls;
+    },
+    get servedBy() {
+      return servedBy ?? current.servedBy;
+    },
+    set servedBy(value) {
+      servedBy = value;
+    },
+  };
+}
+
+/**
  * Retry a provider's `generate()` and `stream()` on transient failures, with
  * exponential backoff that honors a provider's `retryAfterMs` hint. A
  * `stream()` call is retried when establishing it fails - `stream()`
  * rejecting, or the stream failing (or reporting an `error` chunk) before it
- * yields its first chunk; an error after the first chunk is not retried,
- * since part of the stream may already have been consumed.
+ * yields its first chunk - and when its stream fails before any output:
+ * reasoning chunks and empty text deltas do not count. Reasoning already
+ * passed on is followed by the next attempt's from the start. A failure after
+ * text, a tool call or the finish is not retried, since that output may
+ * already have been acted on.
+ *
+ * The wrapper is the only retry layer: the built-in providers send its calls
+ * with the `ai` SDK's own retries off (`maxRetries: 0`), whatever their
+ * config's `maxRetries`.
  *
  * @example
  * ```ts
@@ -184,8 +294,8 @@ export function withRetry(provider: LLMProvider, options: WithRetryOptions = {})
     get defaultModel() {
       return provider.defaultModel;
     },
-    generate: (call) => callWithRetry(provider, call, (attempt) => provider.generate(attempt), options),
-    stream: (call) => callWithRetry(provider, call, (attempt) => openStream(provider, attempt), options).then(streamResultOf),
+    generate: (call) => callWithRetry(retrierFor(provider, call, options), (attempt) => provider.generate(attempt)),
+    stream: (call) => streamWithRetry(provider, call, options),
     supportsTools: (model) => provider.supportsTools(model),
     supportsStreaming: (model) => provider.supportsStreaming(model),
     getModels: () => provider.getModels(),
@@ -196,9 +306,8 @@ export function withRetry(provider: LLMProvider, options: WithRetryOptions = {})
 
 /**
  * `withRetry()` configured from a provider config's `maxRetries` and
- * `timeout` (ms per attempt). The built-in providers also pass
- * `maxRetries` to the `ai` SDK's own retries (LOU-V7.2), so build the
- * wrapped provider with `maxRetries: 0` to retry in one place.
+ * `timeout` (ms per attempt). The wrapped provider's calls go out with the
+ * `ai` SDK's own retries off (C2), so retries happen in one place.
  */
 export function resilientProvider(
   provider: LLMProvider,

@@ -30,6 +30,7 @@ import type {
   ReasoningBlock,
 } from './llm';
 import { reasoningProviderOptions } from './reasoning';
+import { retriesOwned } from './providerEvents';
 import { hostedToolUnsupported, type HostedTool, type HostedToolType } from '../tools/hosted';
 import { textOf } from './content';
 import { SDKError } from '../utils/sdkError';
@@ -57,6 +58,12 @@ export interface AiSdkProviderConfig extends LLMProviderConfig {
   defaultModel?: string;
   /** A file part this provider cannot send: reject the call (`'error'`, the default) or send a text note. */
   unsupportedFiles?: UnsupportedFiles;
+  /**
+   * The `fetch` the provider's HTTP requests go through (C2), e.g. one with
+   * longer undici timeouts for a slow local model: Node's default `fetch`
+   * gives up on a response whose headers take over 300 s. Default: `globalThis.fetch`.
+   */
+  fetch?: typeof globalThis.fetch;
 }
 
 /** `JSON.parse(text)`, or `fallback` when `text` is not a JSON string. */
@@ -369,9 +376,9 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
       seed: options.seed,
       tools: convertTools(this.ai, options.tools),
       maxSteps: 1, // Single step - tool execution happens in AgentExecutor
-      // The 'ai' SDK's own retries (its default is 2). createAgent() resolves
-      // providers with 0 and retries in its withRetry() wrapper instead.
-      maxRetries: this.config.maxRetries ?? 2,
+      // The 'ai' SDK's own retries (its default is 2), off for a call that
+      // withRetry() retries (C2): one retry layer, never one multiplied by the other.
+      maxRetries: retriesOwned(options) ? 0 : (this.config.maxRetries ?? 2),
       abortSignal: options.signal,
       experimental_output: toOutput(options.responseFormat),
       providerOptions: this.reasoningOptions(modelId, options),

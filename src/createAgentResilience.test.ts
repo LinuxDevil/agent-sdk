@@ -9,6 +9,7 @@ import { createAgent } from './createAgent';
 import { LLMProviderRegistry, type LLMProvider, type LLMProviderConfig, type StreamChunk } from './providers/llm';
 import { mockModel, type MockModel } from './testing';
 import type { AgentEvent, AgentRun } from './execution';
+import type { Span, TraceExporter } from './execution/tracing';
 
 const ENV_VARS = ['LOUSHO_MODEL', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'OLLAMA_BASE_URL'];
 
@@ -170,6 +171,63 @@ describe('createAgent retry and fallbackModels (LOU-V7.2)', () => {
     ]);
     expect(events.find((e) => e.type === 'provider.retry')).not.toHaveProperty('error.category'); // a 5xx is 'unknown'
     expect(fallback.lastCall?.model).toBeUndefined(); // the fallback runs on its own default model
+  });
+
+  it('C2: a streamed step that fails after reasoning only is retried; the failed reasoning is closed, not kept', async () => {
+    const scripts: Array<Array<StreamChunk | Error>> = [
+      [{ type: 'reasoning-delta', textDelta: 'first try' }, apiError(500)],
+      [{ type: 'reasoning-delta', textDelta: 'second try' }, { type: 'text-delta', textDelta: 'done' }, { type: 'finish', finishReason: 'stop' }],
+    ];
+    let calls = 0;
+    const provider: LLMProvider = {
+      name: 'lmstudio',
+      generate: async () => ({ text: '', finishReason: 'stop' }),
+      stream: async () => {
+        const script = scripts[calls++];
+        return {
+          fullStream: (async function* (): AsyncGenerator<StreamChunk> {
+            for (const step of script) {
+              if (step instanceof Error) throw step;
+              yield step;
+            }
+          })(),
+          textStream: (async function* (): AsyncGenerator<string> {})(),
+          text: Promise.resolve(''),
+          usage: Promise.resolve(undefined),
+          finishReason: Promise.resolve('stop'),
+          toolCalls: Promise.resolve([]),
+        };
+      },
+      supportsTools: () => true,
+      supportsStreaming: () => true,
+      getModels: async () => [],
+    };
+    const ended: Span[] = [];
+    const exporter: TraceExporter = { onSpanStart: () => {}, onSpanEnd: (span) => ended.push({ ...span }) };
+
+    const run = createAgent({ provider, instructions: 'x', retry: fast, exporter }).stream('hi');
+    const events = await collect(run);
+    const result = await run.result;
+
+    expect(calls).toBe(2);
+    expect(result.text).toBe('done');
+    expect(result.reasoning).toBe('second try');
+    expect(
+      events
+        .filter((e) => e.type.startsWith('reasoning.') || e.type === 'provider.retry' || e.type === 'text.delta')
+        .map((e) => ('text' in e ? `${e.type}:${e.text}` : e.type))
+    ).toEqual([
+      'reasoning.start',
+      'reasoning.delta:first try',
+      'reasoning.done:first try',
+      'provider.retry',
+      'reasoning.start',
+      'reasoning.delta:second try',
+      'reasoning.done:second try',
+      'text.delta:done',
+    ]);
+    const chat = ended.find((span) => span.attributes['gen_ai.operation.name'] === 'chat');
+    expect(chat?.attributes).toMatchObject({ 'lousho.retry.count': 1, 'lousho.retry.errors': ['unknown 500'] });
   });
 
   it('fallbackModels also work with a provider instance', async () => {

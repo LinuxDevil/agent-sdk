@@ -73,6 +73,7 @@ export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
       apiKey: this.config.apiKey,
       baseURL: this.config.baseURL,
       headers: this.config.headers,
+      ...(this.config.fetch && { fetch: this.config.fetch }),
     });
   });
 

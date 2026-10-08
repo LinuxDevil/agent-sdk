@@ -68,6 +68,7 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
       organization: this.config.organization,
       baseURL: this.config.baseURL,
       headers: this.config.headers,
+      ...(this.config.fetch && { fetch: this.config.fetch }),
     });
   });
 

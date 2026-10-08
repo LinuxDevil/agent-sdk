@@ -430,8 +430,13 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    * backoff. Defaults to `{ maxRetries: 2 }` for every model given as a
    * `provider/model` string (resolved with the `ai` SDK's own retries off, so
    * this is the only retry layer); `false` turns retries off. A `provider`
-   * instance you pass is wrapped only when you set `retry`. `stream()`
-   * reports each retry as a `provider.retry` event.
+   * instance you pass is wrapped only when you set `retry`: then the wrapper
+   * is the only retry layer too (a built-in provider's calls go out with the
+   * `ai` SDK's own retries off), and `false` sends each call once. Left
+   * unset, a built-in provider instance keeps the `ai` SDK's own retries
+   * (its config's `maxRetries`, default 2). A streamed step is also retried
+   * when it fails before any text or tool call (reasoning chunks don't count).
+   * `stream()` reports each retry as a `provider.retry` event.
    *
    * @example
    * ```ts
@@ -1373,7 +1378,8 @@ function resolveModelSource(config: CreateAgentConfig, model: string | undefined
   };
   let primary: LLMProvider;
   if (config.provider) {
-    primary = retry ? withRetry(config.provider, retry) : config.provider;
+    // C2: `false` sends each call once - a 0-retry withRetry() turns the 'ai' SDK's own retries off too.
+    primary = retry === undefined ? config.provider : withRetry(config.provider, retry || { maxRetries: 0 });
   } else {
     primary = resolve(model ?? modelFromEnv('createAgent'));
   }

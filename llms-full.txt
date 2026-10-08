@@ -5688,8 +5688,12 @@ for await (const event of agent.stream('Hello!')) {
   `fallbackModels` entry. createAgent builds those providers with the `ai`
   SDK's own retries off (`maxRetries: 0`), so retries happen in one place and
   the default `{ maxRetries: 2 }` makes as many calls as before.
-- A `provider` instance you pass keeps its own retry behaviour; it is wrapped
-  in `withRetry()` only when you set `retry`. `fallbackModels` work with it too.
+- A `provider` instance you pass keeps its own retry behaviour (for a built-in
+  provider, the `ai` SDK's `maxRetries`, default 2) unless you set `retry`.
+  With `retry` set, the instance is wrapped in `withRetry()` and that is the
+  only retry layer: a built-in provider's calls go out with the `ai` SDK's own
+  retries off, so `{ maxRetries: 2 }` makes at most 3 requests, and
+  `retry: false` sends each call once. `fallbackModels` work with it too.
 - `fallbackModels` are `provider/model` strings, resolved like `model` when the
   agent is created. The agent runs `withFallback([withRetry(primary), withRetry(fallback1), ...])`:
   every call starts with the primary model.
@@ -5728,8 +5732,17 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
   provider's `retryAfterMs` hint (a `Retry-After` header) replaces the backoff
   delay. Pass `retryOn(error, attempt)` to change the rule, `timeoutMs` for a
   per-attempt time limit, and `signal` to stop retrying.
-- A `stream()` call is retried only when it rejects. An error inside a stream
-  that was already returned is not retried.
+- A `stream()` call is retried when it rejects, and when its stream fails
+  before any output: reasoning chunks and empty text deltas don't count, so a
+  local runtime that sends an empty `reasoning-end` and then a 500 (LM Studio)
+  is retried. A failure after text, a tool call or the finish is not retried.
+  An agent streams its model calls whenever it has an event listener, so this
+  is what keeps `agent.stream()` as resilient as `send()`.
+- Reasoning streamed before such a failure was already reported. In an agent
+  run the failed attempt's reasoning ends with its `reasoning.done`, then
+  comes the `provider.retry` event, then the retried attempt's reasoning
+  starts again with `reasoning.start`. The step's (and the run's) `reasoning`
+  is the successful attempt's only.
 - `withFallback` tries each provider in order and rethrows the last error
   when all fail. By default it falls back on any error except a cancellation
   (`fallbackOn` changes that). Each fallback runs on its own `defaultModel`.
@@ -5740,11 +5753,11 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
   model in `usage.byModel`.
 - `resilientProvider(provider, { maxRetries, timeout })` applies the
   `LLMProviderConfig` fields of the same names.
-- The built-in providers pass their config's `maxRetries` (default 2) to the
-  `ai` SDK's own internal retries, which run inside each `withRetry` attempt.
-  Build a provider you wrap with `maxRetries: 0`
-  (`new OpenAIProvider({ apiKey, maxRetries: 0 })`) to retry in one place.
-  `createAgent()` does this for the models it resolves.
+- `withRetry` is the only retry layer: the built-in providers send its calls
+  with the `ai` SDK's own retries off, whatever their config's `maxRetries`.
+  That `maxRetries` (default 2) applies only to a provider used unwrapped.
+- Each retry is recorded on the call's `chat` span as `lousho.retry.count` and
+  `lousho.retry.errors` (see [Observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md)).
 
 ## `createAgent()` options
 
@@ -11131,6 +11144,8 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` | Token usage |
 | `lousho.cost_usd` | Estimated USD of this step, when the built-in price table (or `registerModel`) knows the model; absent otherwise |
 | `lousho.usage.estimated` | `true` when the provider reported no usage and the tokens were estimated |
+| `lousho.retry.count` | How many times `withRetry()` (the agent's `retry`) retried this call; absent when it was not retried |
+| `lousho.retry.errors` | Each retried failure's error category and HTTP status, e.g. `["timeout", "unknown 500"]` |
 
 ### Tool call: `execute_tool {tool}`
 
@@ -11967,7 +11982,9 @@ const agent = createAgent({
 
 The `model` string and each fallback are resolved with the `ai` SDK's own
 retries off, so `retry` is the only retry layer. A `provider` instance is
-wrapped only when you set `retry`. `agent.stream()` reports `provider.retry`
+wrapped only when you set `retry`, and then its own `ai` SDK retries are off
+too (`retry: false` sends each call once). A streamed step that fails before
+any text or tool call (after reasoning only) is retried as well. `agent.stream()` reports `provider.retry`
 and `provider.fallback` events. Details in
 [Provider retries and fallback](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#provider-retries-and-fallback).
 
@@ -12103,6 +12120,34 @@ then wrap its model with `fromAiSdk()` (below). Otherwise implement the
 `supportsStreaming()`, `getModels()`, optionally `defaultModel`) and pass the
 instance as `provider`, or register a factory with
 `LLMProviderRegistry.register(name, factory)`.
+
+### Slow local models: a custom `fetch`
+
+`OpenAIProvider`, `AnthropicProvider`, `OpenRouterProvider` and
+`OllamaProvider` take a `fetch` option that their model calls go through.
+Node's built-in `fetch` gives up on a response whose headers take over 300
+seconds (`Headers Timeout Error`), which a large local model can hit on a
+long non-streamed generation. The SDK classifies that failure as a retryable
+`timeout`, but every retry starts the generation over, so raise the limit
+instead. Install `undici` and pass its `Agent` as the dispatcher:
+
+```ts
+import { Agent } from 'undici';
+import { createAgent, OpenAIProvider } from '@lousho/build-ai-agent';
+
+// Wait up to 15 minutes for the response headers and between body chunks.
+const dispatcher = new Agent({ headersTimeout: 15 * 60_000, bodyTimeout: 15 * 60_000 });
+
+const agent = createAgent({
+  provider: new OpenAIProvider({
+    apiKey: 'lm-studio',
+    baseURL: 'http://localhost:1234/v1',
+    defaultModel: 'qwen3-32b',
+    fetch: (input, init) => fetch(input, { ...init, dispatcher } as RequestInit),
+  }),
+  retry: { maxRetries: 2 },
+});
+```
 
 ### Any AI SDK model: fromAiSdk()
 
@@ -13936,7 +13981,7 @@ The event types and their extra fields:
 | `text.done`          | `text: string` | The step's complete text: the concatenation of its `text.delta` events. Only for steps with text. |
 | `reasoning.start`    | (none) | The model starts reasoning in this step. Only with the [`reasoning` option](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md) (or a model that always reasons). Its `reasoning.delta`s and `reasoning.done` follow, before the step's first `text.delta` or `tool.start`. |
 | `reasoning.delta`    | `text: string` | A chunk of reasoning text (or of its summary). Never part of `text.delta` / `run.done`'s `text`. |
-| `reasoning.done`     | `text: string`, `tokens?: number` | The reasoning ended: `text` is all of it; `tokens` when the provider reported reasoning tokens by then. |
+| `reasoning.done`     | `text: string`, `tokens?: number` | The reasoning ended: `text` is all of it; `tokens` when the provider reported reasoning tokens by then. When the model call fails after reasoning only and is retried, the failed attempt's reasoning ends here, before the `provider.retry` event; the retry's reasoning starts again with `reasoning.start`. |
 | `tool.start`         | `toolCallId: string`, `toolName: string`, `args: Record<string, unknown>`, `executedBy?: 'provider'`, `parentToolCallId?: string` | A tool call starts. `args` are the model's arguments parsed from JSON (`{}` when they are not valid JSON). A call a [code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md) script made carries `parentToolCallId`, the `run_code` call's id (also on its `tool.partial`, `tool.done` and `tool.error`). A [hosted tool](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hosted-tools.md) the provider ran inside the model call carries `executedBy: 'provider'`; it passed no permission rule, guardrail, approval or hook. Exactly one per tool call across a pause: a call that paused for approval (or sign-in) and then ran reports `tool.resume` on the continued run, not a second `tool.start`. |
 | `tool.resume`        | `toolCallId`, `toolName`, `args: Record<string, unknown>` | The decided call of [an approval continuation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#streaming-after-an-approval) runs. Its `tool.start` was emitted by the run that paused; handle it like `tool.start` when you track calls. |
 | `tool.partial`       | `toolCallId`, `toolName`, `output: unknown`, `index: number` | A snapshot of a running tool's output: a tool whose `execute` is an `async function*` reports one per `yield` (see [Streaming partial results](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#streaming-partial-results)). Each snapshot is complete and replaces the previous one; `index` counts the call's snapshots from 0. The last one is also the call's `tool.done` `result`. `output` is JSON-encoded like `result`. Snapshots never reach the model, the transcript, checkpoints or traces. A sub-agent's carries `subagent`. |
