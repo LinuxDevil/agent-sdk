@@ -51,7 +51,7 @@ type AgentCompaction = boolean | AgentCompactionOptions;
 // Warning: (ae-forgotten-export) The symbol "CompactionHookOptions" needs to be exported by the entry point index.d.ts
 //
 // @public
-interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens'> {
+interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens' | 'reserveOutputTokens'> {
     // Warning: (ae-forgotten-export) The symbol "LLMProvider" needs to be exported by the entry point index.d.ts
     summarizer?: LLMProvider | string;
 }
@@ -563,6 +563,7 @@ interface CompactMessagesOptions {
     contextWindow?: number;
     model?: string;
     protectedTokens?: number;
+    reserveOutputTokens?: number;
     // Warning: (ae-forgotten-export) The symbol "CompactionStrategy" needs to be exported by the entry point index.d.ts
     strategy?: CompactionStrategy;
     thresholdPercent?: number;
@@ -1863,11 +1864,11 @@ export function useTodos(agent: {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-DElKbGoN.d.ts:751:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-DElKbGoN.d.ts:768:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-DElKbGoN.d.ts:1118:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-DElKbGoN.d.ts:3076:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
-// dist/createAgent-DElKbGoN.d.ts:3077:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
+// dist/createAgent-4YKJOAVw.d.ts:751:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-4YKJOAVw.d.ts:768:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-4YKJOAVw.d.ts:1118:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-4YKJOAVw.d.ts:3088:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
+// dist/createAgent-4YKJOAVw.d.ts:3089:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
 // dist/index-teGCK4tt.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
 // dist/index-teGCK4tt.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/index-teGCK4tt.d.ts:1427:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts

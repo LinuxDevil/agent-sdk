@@ -37,7 +37,7 @@ export interface AgentApprovals {
 export type AgentCompaction = boolean | AgentCompactionOptions;
 
 // @public
-export interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens'> {
+export interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens' | 'reserveOutputTokens'> {
     summarizer?: LLMProvider | string;
 }
 
@@ -1295,6 +1295,7 @@ export interface CompactMessagesOptions {
     contextWindow?: number;
     model?: string;
     protectedTokens?: number;
+    reserveOutputTokens?: number;
     strategy?: CompactionStrategy;
     thresholdPercent?: number;
 }
