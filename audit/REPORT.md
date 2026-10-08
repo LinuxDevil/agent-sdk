@@ -80,3 +80,25 @@ Real-world audit: six consumer harnesses built against the **packed alpha.18 tar
 - **Workspace confinement**: symlink/realpath battery clean on Windows
 - **Structured output**: `output` schema enforced + validated on OpenRouter (with the B3 caveat on strict providers)
 - **`toolSearch`/skills progressive loading**, **streaming events** (text.delta reassembly === text.done), **OTel JSONL traces**, **cron schedules** fire/re-arm correctly
+
+## Live revalidation — alpha.19 tarball (post-fix sweep)
+
+All harnesses re-run against a freshly packed `1.0.0-alpha.19` built from `main` after PRs #433, #439–#443 merged.
+
+| Harness | Result | Notes |
+|---|---|---|
+| `incident-responder` (OpenRouter) | **20/20 PASS** | `resume()` on an awaiting-approval session checkpoint correctly throws `SessionAwaitingApprovalError`; `approvals.get(<bad id>)` returns `undefined` (E4 verified live); durable pause → HTTP approval → resume → handoff → report all pass |
+| `repo-maintainer` (OpenRouter) | **19/19 PASS** | webhook signature checks, PR review flow, approval gate + resolution |
+| `coding-agent` (OpenRouter) | **all PASS** | plan-mode denies (incl. allow-matched), in-process + cross-process approval resume, transcript survives "restart", natural + manual compaction, workspace checkpoints |
+| `companion` (OpenRouter, `--fresh`) | **13/13 PASS** | facts stored under namespaced `user_facts#<scope>` keys; injection block present; slot separation; scope isolation; dynamics evolve; cross-restart recall |
+| `research-analyst` (OpenRouter) | **all PASS** | 2-wave fan-out, clean-context isolation, structured report, exact cost accounting, OTel traces, llmJudge |
+| `hostinger-monitor` (OpenRouter + live HTTP) | **all PASS** | two ticks across simulated restart, incident dedupe, durable incident log |
+| `support-desk` (LM Studio qwen3.5-9b) | scenarios all exercised | cross-process approval resume, `LOUSHO_APPROVAL_FORBIDDEN` for wrong principal, namespaced per-customer memory isolation, SSE event validity, disconnect keeps committed turn (B4 live). Self-approval by the requester returns 200 — upstream `callerOwnsApproval` default; `authorizeApproval` is the opt-in for stricter policy |
+| `log-incident` (LM Studio 8K window) | run reached `max-steps` | model-capacity outcome, not an SDK defect; compaction two-phase→prune fallback, `appliedStrategy`, `prunedToolCallIds`, summarizer error passthrough, and the `agent.resume` retry loop all exercised live |
+| `invoice-extract` (LM Studio) | partial | successful docs extract + validate + route correctly (`auto` vs `awaiting-approval`, `tax_math` flags); remaining docs hit the harness's own 240s per-doc timeout on the shared 9B model — timeout machinery itself works (`aborted` via per-request `AbortSignal`) |
+| `docs-qa` (LM Studio) | ran | a weak-model reply that echoed the JSON Schema was correctly rejected as `output-invalid` ("the reply is the JSON Schema, not data") — the schema-echo guard fires as designed |
+
+**Harness fixes made during revalidation** (harness bugs, not SDK bugs):
+
+- `companion/index.ts`: memory dumps listed the raw scope key while items live under `memoryKey(slot)` (`<slot>#<scope>`); switched to `memoryKey()` so store/separation/isolation checks read real buckets.
+- `incident-responder/index.ts`: the resume-refusal check now logs the actual thrown error (or resolved value) for diagnosis instead of a bare `unexpected`.

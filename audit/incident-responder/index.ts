@@ -200,10 +200,20 @@ async function main(): Promise<void> {
     );
 
     let resumeRefused = false;
+    let resumeError: unknown;
+    let resumeReturned: unknown = 'not-called';
     try {
-      await commander.resume('inc-7001');
+      resumeReturned = await commander.resume('inc-7001');
     } catch (error) {
+      resumeError = error;
       resumeRefused = error instanceof SessionAwaitingApprovalError;
+    }
+    if (!resumeRefused) {
+      const detail =
+        resumeError instanceof Error
+          ? `${resumeError.constructor.name}: ${resumeError.message}\n${(resumeError.stack ?? '').split('\n').slice(1, 8).join('\n')}`
+          : `resolved with ${resumeReturned === null ? 'null' : JSON.stringify(resumeReturned)?.slice(0, 300)}`;
+      console.log('resume diagnostic:', detail);
     }
     report('durable store: session checkpoint marked awaiting-approval (resume refuses)', resumeRefused, `session inc-7001.resume() -> ${resumeRefused ? 'SessionAwaitingApprovalError' : 'unexpected'}`);
 
