@@ -8,7 +8,7 @@
 import { sendSyntheticError, exampleErrorSignal } from './mockGrafanaSender';
 
 async function main() {
-  const port = Number(process.argv[2]) || 8787;
+  const port = Number(process.argv[2] || process.env.MONITOR_PORT) || 8787;
   const url = `http://127.0.0.1:${port}/webhook`;
   const signal = exampleErrorSignal();
 

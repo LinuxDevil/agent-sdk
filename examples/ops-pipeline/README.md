@@ -30,13 +30,12 @@ it needs **zero external network access** and zero API keys.
    npm install
    ```
 
-2. Copy the example env file (only needed if you want to point this at
-   REAL Slack/GitHub/LLM providers instead of the mocks - the demo works
-   with none of this set):
-
-   ```
-   cp examples/ops-pipeline/.env.example .env
-   ```
+2. (Optional) Configure ports or real credentials. The demo needs no
+   configuration: it listens on `MONITOR_PORT` (default 8787) and
+   `SLACK_PORT` (default 8788). Environment variables are read from the
+   process only, so export them in your shell. Do not copy
+   `examples/ops-pipeline/.env.example` over the repo root `.env`; it only
+   lists the variables this example reads.
 
 3. Start the demo pipeline:
 
@@ -70,7 +69,7 @@ it needs **zero external network access** and zero API keys.
    ```
 
    This resumes the paused run, runs the fixer agent, and - if the
-   patch check passes - creates a (mock) GitHub pull request.
+   patch check passes - creates a (mock) GitHub pull request, logged as `[mock github] created PR #1 ...`.
 
 ## Files
 

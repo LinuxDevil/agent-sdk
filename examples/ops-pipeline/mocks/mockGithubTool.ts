@@ -19,7 +19,7 @@ export interface MockGithubTool {
   createdPullRequests: MockCreatedPullRequest[];
 }
 
-export function createMockGithubTool(): MockGithubTool {
+export function createMockGithubTool(options: { log?: (message: string) => void } = {}): MockGithubTool {
   const createdPullRequests: MockCreatedPullRequest[] = [];
   let nextNumber = 1;
 
@@ -31,10 +31,12 @@ export function createMockGithubTool(): MockGithubTool {
       execute: async (args: MockCreatedPullRequest) => {
         createdPullRequests.push(args);
         const number = nextNumber++;
+        const url = `https://github.com/mock-org/mock-repo/pull/${number}`;
+        options.log?.(`[mock github] created PR #${number} "${args.title}" (${args.head}) -> ${url}`);
         return JSON.stringify(
           {
             number,
-            url: `https://github.com/mock-org/mock-repo/pull/${number}`,
+            url,
             state: 'open',
           },
           null,
