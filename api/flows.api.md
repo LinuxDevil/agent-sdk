@@ -385,6 +385,7 @@ export interface FlowExecutionContext {
     sandbox?: SandboxAdapter;
     // (undocumented)
     session?: unknown;
+    signal?: AbortSignal;
     // Warning: (ae-forgotten-export) The symbol "ToolRegistry" needs to be exported by the entry point index.d.ts
     //
     // (undocumented)
@@ -1410,7 +1411,7 @@ export function validateFlowInput(input: Record<string, unknown>, variables: Flo
 
 // Warnings were encountered during analysis:
 //
-// dist/flows/index.d.ts:180:9 - (ae-forgotten-export) The symbol "ProviderUsage" needs to be exported by the entry point index.d.ts
+// dist/flows/index.d.ts:192:9 - (ae-forgotten-export) The symbol "ProviderUsage" needs to be exported by the entry point index.d.ts
 // dist/index-B41xZFIC.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
 // dist/index-B41xZFIC.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/index-B41xZFIC.d.ts:1906:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts

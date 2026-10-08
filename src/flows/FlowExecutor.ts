@@ -109,6 +109,18 @@ export interface FlowExecutionContext {
   permissionMode?: PermissionOptions['permissionMode'];
   /** A8: called with an audit entry for each `toolCall` step's permission decision. */
   onPermissionDecision?: PermissionOptions['onPermissionDecision'];
+  /**
+   * A8: cancels the run. It is checked before every step, so once it is
+   * aborted no further step starts and the flow fails with the signal's
+   * `reason`; the step running then gets it too (`llmCall` as the request's
+   * `signal`, `toolCall` as the tool's `ctx.abortSignal`).
+   *
+   * @example
+   * ```ts
+   * await FlowExecutor.execute(flow, { agent, provider, variables, signal: AbortSignal.timeout(30_000) });
+   * ```
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -216,6 +228,16 @@ type NodeHandler<N extends ExecutableNode = ExecutableNode> = (
 
 /** One handler per node type, each typed with its own node shape. */
 type NodeHandlers = { [T in ExecutableNode['type']]: NodeHandler<Extract<ExecutableNode, { type: T }>> };
+
+/** A8: the number of step ids handed out so far in each run, keyed by the run's event list. */
+const stepCounts = new WeakMap<FlowExecutionEvent[], number>();
+
+/** A8: a run-unique id for a node without one (`step-1`, `step-2`, ... in start order). */
+function nextStepId(events: FlowExecutionEvent[]): string {
+  const count = (stepCounts.get(events) ?? 0) + 1;
+  stepCounts.set(events, count);
+  return `step-${count}`;
+}
 
 /**
  * Flow Executor
@@ -416,9 +438,12 @@ export class FlowExecutor {
     onEvent?: (event: FlowExecutionEvent) => void
   ): Promise<unknown> {
     this.assertWithinDepthLimit(context);
+    // A8: an aborted run starts no further step.
+    context.signal?.throwIfAborted();
 
-    // Editor-side shapes have no `id`; the executor-side ones may.
-    const stepId = (node as { id?: string }).id || `step-${Date.now()}`;
+    // Editor-side shapes have no `id`; the executor-side ones may. A8: a
+    // missing id is unique within the run (it was `step-${Date.now()}`, which collided).
+    const stepId = (node as { id?: string }).id || nextStepId(events);
 
     return withSpan(
       context.exporter,
@@ -727,7 +752,7 @@ export class FlowExecutor {
     });
 
     // Call LLM, in a `chat {model}` span under this node's span
-    const request = { model, messages, temperature: node.temperature, maxTokens: node.maxTokens };
+    const request = { model, messages, temperature: node.temperature, maxTokens: node.maxTokens, signal: context.signal };
     const captureContent = resolveCaptureContent(context.captureContent);
     const init = llmSpanInit(context.provider, request, {
       redactContent: context.redactContent,
@@ -793,7 +818,8 @@ export class FlowExecutor {
     toolDesc: NonNullable<ReturnType<ToolRegistry['get']>>,
     args: Record<string, unknown>,
     sandbox: SandboxAdapter,
-    context: FlowExecutionContext
+    context: FlowExecutionContext,
+    toolCallId: string
   ): Promise<unknown> {
     const init = toolSpanInit(
       { name: toolName },
@@ -805,7 +831,8 @@ export class FlowExecutor {
       init.attributes,
       async (toolSpan) => {
         const start = Date.now();
-        const result = await executeToolWithSandboxGuard(toolName, toolDesc, args, sandbox);
+        // A8: the tool gets the run's signal as `ctx.abortSignal`, and the gate's call id.
+        const result = await executeToolWithSandboxGuard(toolName, toolDesc, args, sandbox, context.signal, { toolCallId });
         recordToolOutcome(
           toolSpan,
           { args, result, latencyMs: Date.now() - start },
@@ -855,7 +882,7 @@ export class FlowExecutor {
     // (LOU-F fix), so this entry point can't silently bypass the sandbox
     // seam the way it previously did.
     const sandbox = context.sandbox ?? NoopSandbox;
-    const result = await this.executeToolInSpan(toolName, toolDesc, args, sandbox, context);
+    const result = await this.executeToolInSpan(toolName, toolDesc, args, sandbox, context, toolCallId);
 
     // Emit tool result event
     emitEvent(events, onEvent, {

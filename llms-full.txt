@@ -8417,6 +8417,30 @@ A flow's declared inputs are checked before the first step runs. A missing
 `required` input, or a value of the wrong type, fails the flow with
 `LOUSHO_VALIDATION_FAILED`.
 
+## Cancelling a flow
+
+Pass `signal` in the context to cancel a run. It is checked before every step:
+once it is aborted, no further step starts and the flow fails with the signal's
+`reason`. The step that is running gets the signal too: an `llmCall` passes it
+to the model request, and a `toolCall` hands it to the tool as `ctx.abortSignal`.
+
+```ts
+import { FlowExecutor, type AgentFlow } from '@lousho/build-ai-agent/flows';
+
+declare const flow: AgentFlow;
+
+const result = await FlowExecutor.execute(flow, {
+  agent,
+  provider,
+  variables: {},
+  signal: AbortSignal.timeout(30_000),
+});
+```
+
+A step without an `id` gets one that is unique within the run (`step-1`,
+`step-2`, ... in the order the steps start), so `step-start` and
+`step-complete` events can be paired by `stepId`.
+
 ## Flows, sub-agents or skills?
 
 Use a flow when the pipeline is known in advance; use
