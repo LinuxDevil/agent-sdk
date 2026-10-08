@@ -17202,7 +17202,7 @@ has `timedOut: true` or `aborted: true` and a `note` saying why.
 | Option             | Default   | Meaning |
 | ------------------ | --------- | ------- |
 | `needsApproval`    | `true`    | `true`, `false`, or a predicate over the command string. |
-| `allow`            | none      | When set, only matching commands may run. A string allows the command with any arguments; see the rules below. |
+| `allow`            | none      | When set, only matching commands may run. A string allows the command with arguments that stay in the workspace and need no `$`/`{}` expansion; see the rules below. |
 | `deny`             | none      | Matching commands are refused. |
 | `defaultTimeoutMs` | 120,000   | Timeout when the model does not pass `timeout_ms`. |
 | `maxTimeoutMs`     | 600,000   | A larger `timeout_ms` is lowered to this value. |
@@ -17379,10 +17379,19 @@ refused command is never offered for approval:
 
 - A string pattern matches a command that is exactly the pattern, or starts
   with it followed by a space (`'git status'` matches `git status -s`).
-  **A string pattern allows the command with any arguments.** It is not a
-  security boundary for what those arguments do: `allow: ['node --test']`
-  also allows `node --test --test-reporter-destination=../x`, which writes
-  outside the workspace.
+  A string pattern allows the command with ordinary arguments, but not with a
+  path that leaves the working directory: a `..` segment, `~` or an absolute
+  path, anywhere in the command including a `--flag=value`. This holds when
+  the path is quoted (`cat "../x"`, `cat '..'/x`, `type "c:\windows\win.ini"`),
+  escaped under sh (`cat .\./x`) or a glob that can expand to `..`
+  (`cat .?/x`). A command with `$`, `{` or `}` is refused too, since the
+  shell expands it to text the check cannot see (`cat $HOME/.gitconfig`,
+  `cat ${IFS}../x`, `cat {..,x}/secret.txt`). So `allow: ['node --test']`
+  does not allow `node --test --test-reporter-destination=../x`. To allow
+  arguments like these, use a `CommandRule` or an anchored RegExp. A string
+  pattern is still not a full security boundary for what a program does with
+  its arguments (a config file it reads, a script it runs), so prefer a
+  `CommandRule` that pins them.
 - A `CommandRule` object pins the arguments. `{ command: 'npm test' }`
   matches `npm test` and nothing else. `{ command: 'node --test', args }`
   matches when the command starts with `node --test` and `args(rest)`
