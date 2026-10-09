@@ -12,6 +12,8 @@ import { Span, TraceExporter } from './tracing';
 import { ToolRegistry, defineTool } from '../tools';
 import { AgentBuilder } from '../core';
 import { mockModel } from '../testing';
+import { createAgent } from '../createAgent';
+import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-node';
 
 interface FakeOtelSpanState {
   name: string;
@@ -155,6 +157,24 @@ describe('createOtelTraceExporter', () => {
     expect(childParentContext).not.toBe(rootParentContext);
   });
 
+  it('parents a span under an already-ended parent until the root ends (Eve MA-F3)', () => {
+    const exporter = createOtelTraceExporter({ tracer: fake.tracer, metrics: false });
+    exporter.onSpanStart(makeSpan({ id: 'root' }));
+    exporter.onSpanStart(makeSpan({ id: 'task', parentId: 'root' }));
+    exporter.onSpanEnd(makeSpan({ id: 'task', parentId: 'root', endTime: 1500 }));
+
+    // A queued background sub-agent starts after its `task` tool span ended.
+    exporter.onSpanStart(makeSpan({ id: 'queued', parentId: 'task' }));
+    const taskSpan = fake.startedSpans[1].span;
+    expect(otelApi.trace.getSpan(fake.startedSpans[2].parentContext as Context)).toBe(taskSpan);
+
+    // Once the root ends, the tree's contexts are released.
+    exporter.onSpanEnd(makeSpan({ id: 'queued', parentId: 'task', endTime: 1600 }));
+    exporter.onSpanEnd(makeSpan({ id: 'root', endTime: 1700 }));
+    exporter.onSpanStart(makeSpan({ id: 'late', parentId: 'task' }));
+    expect(otelApi.trace.getSpan(fake.startedSpans[3].parentContext as Context)).toBeUndefined();
+  });
+
   it('defaults to a tracer resolved via trace.getTracer when no tracer option is passed', async () => {
     const otelApi = await import('@opentelemetry/api');
     const getTracerSpy = vi.spyOn(otelApi.trace, 'getTracer');
@@ -163,6 +183,37 @@ describe('createOtelTraceExporter', () => {
 
     expect(getTracerSpy).toHaveBeenCalledWith('my-agent', '1.2.3');
     getTracerSpy.mockRestore();
+  });
+});
+
+describe('createOtelTraceExporter with queued background sub-agents (Eve MA-F3)', () => {
+  it('keeps a queued background sub-agent in the lead trace', async () => {
+    const call = (n: number) => ({
+      name: 'task',
+      args: { agent: 'worker', prompt: `job ${n}`, description: `job ${n}`, background: true },
+    });
+    const worker = createAgent({
+      name: 'worker',
+      provider: mockModel([{ text: 'a', delayMs: 20 }, { text: 'b', delayMs: 20 }]),
+      instructions: 'w',
+      description: 'Worker',
+    });
+    const memory = new InMemorySpanExporter();
+    const provider = new BasicTracerProvider({ spanProcessors: [new SimpleSpanProcessor(memory)] });
+    const lead = createAgent({
+      name: 'lead',
+      provider: mockModel([{ toolCalls: [call(1), call(2)] }, { text: 'lead done' }]),
+      instructions: 'lead',
+      subagents: { worker },
+      subagentOptions: { maxConcurrent: 1, awaitBackgroundOnFinish: true },
+      exporter: createOtelTraceExporter({ tracer: provider.getTracer('t'), metrics: false }),
+    });
+
+    await lead.send('go');
+
+    const traceIds = new Set(memory.getFinishedSpans().map((span) => span.spanContext().traceId));
+    expect(memory.getFinishedSpans().length).toBeGreaterThan(4);
+    expect(traceIds.size).toBe(1);
   });
 });
 
