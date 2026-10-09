@@ -3272,7 +3272,7 @@ const ItemSchema: z.ZodObject<{
     }>>;
     dependencies: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
-    type: "tool" | "memory" | "skill" | "channel" | "schedule" | "kit";
+    type: "tool" | "schedule" | "memory" | "skill" | "channel" | "kit";
     name: string;
     description: string;
     permissions: {
@@ -3288,7 +3288,7 @@ const ItemSchema: z.ZodObject<{
     }[];
     dependencies?: string[] | undefined;
 }, {
-    type: "tool" | "memory" | "skill" | "channel" | "schedule" | "kit";
+    type: "tool" | "schedule" | "memory" | "skill" | "channel" | "kit";
     name: string;
     description: string;
     files: {
