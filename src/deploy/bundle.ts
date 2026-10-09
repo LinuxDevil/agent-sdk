@@ -311,6 +311,72 @@ export async function loadTsup(): Promise<typeof import('tsup')> {
   }
 }
 
+type TsupBuild = typeof import('tsup').build;
+type TsupOptions = Parameters<TsupBuild>[0];
+
+/** Turns esbuild's messages into one `LOUSHO_DEPLOY_FAILED` error; an unresolved package gets the same install advice `lousho dev` gives. */
+function bundleError(texts: string[], files: string[]): SDKError {
+  const unresolved = texts.map((text) => /Could not resolve "([^"]+)"/.exec(text)?.[1]).find((spec) => spec !== undefined && !/^(?:\.|\/|[A-Za-z]:[\\/])/.test(spec));
+  const detail = texts.slice(0, 5).join('\n  ');
+  const where = files.length > 0 ? ` (in ${[...new Set(files)].slice(0, 3).join(', ')})` : '';
+  if (unresolved === undefined) {
+    return new SDKError(`lousho build: bundling failed${where}:\n  ${detail}`, 'LOUSHO_DEPLOY_FAILED', {
+      hint: 'Fix the error above, or set LOUSHO_BUILD_VERBOSE=1 to see the full build log.',
+    });
+  }
+  const parts = unresolved.split('/');
+  const pkg = unresolved.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
+  return new SDKError(`lousho build: cannot bundle the agent: '${unresolved}' could not be resolved${where}.`, 'LOUSHO_DEPLOY_FAILED', {
+    hint: `Install it in the project that contains the agent directory (npm install ${pkg}), or move the agent directory inside a project that has it installed. Set LOUSHO_BUILD_VERBOSE=1 to see the full build log.`,
+  });
+}
+
+/**
+ * Runs tsup's `build`. tsup reports a bundling failure by printing esbuild's raw log
+ * and a stack to stderr, setting `process.exitCode` and resolving as if it had
+ * worked, which left a half-written `dist/` and a "success" line. This collects
+ * esbuild's errors itself, silences the raw output (unless LOUSHO_BUILD_VERBOSE is
+ * set), removes `<outDir>/dist`, and throws a coded `LOUSHO_DEPLOY_FAILED` instead.
+ */
+export async function buildBundle(build: TsupBuild, options: TsupOptions, outDir: string): Promise<void> {
+  const verbose = Boolean(process.env.LOUSHO_BUILD_VERBOSE);
+  const texts: string[] = [];
+  const files: string[] = [];
+  const collectErrors: Plugin = {
+    name: 'lousho-collect-errors',
+    setup(b) {
+      b.onEnd((result) => {
+        for (const message of result.errors) {
+          texts.push(message.text);
+          if (message.location?.file) files.push(message.location.file);
+        }
+      });
+    },
+  };
+  const previousExitCode = process.exitCode;
+  const consoleError = console.error;
+  if (!verbose) console.error = () => {};
+  let thrown: unknown;
+  try {
+    await build({
+      ...options,
+      esbuildPlugins: [...(options.esbuildPlugins ?? []), collectErrors],
+      esbuildOptions: (esbuild, context) => {
+        options.esbuildOptions?.(esbuild, context);
+        if (!verbose) esbuild.logLevel = 'silent';
+      },
+    });
+  } catch (error) {
+    thrown = error;
+  } finally {
+    console.error = consoleError;
+  }
+  if (texts.length === 0 && thrown === undefined) return;
+  process.exitCode = previousExitCode;
+  fs.rmSync(path.join(outDir, 'dist'), { recursive: true, force: true });
+  throw bundleError(texts.length > 0 ? texts : [thrown instanceof Error ? thrown.message : String(thrown)], files);
+}
+
 export function writeFile(filePath: string, content: string): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content);

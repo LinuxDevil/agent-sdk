@@ -35,7 +35,7 @@ import { specSchedules } from '../../schedules/specSchedules';
 import { resolveSpecTool } from '../../spec/specToAgent';
 import { listProviders, type AiMajor } from '../../providers/providerSpec';
 import { findConfigFile, isCodeConfigFile } from '../../agentDir/readConfig';
-import { RUNTIME_SPECIFIER, bundleExternals, findSdkRoot, loadTsup, sdkRuntimePlugin, writeFile } from '../bundle';
+import { RUNTIME_SPECIFIER, buildBundle, bundleExternals, findSdkRoot, loadTsup, sdkRuntimePlugin, writeFile } from '../bundle';
 import { agentDirEntries, copyAgentDirAssets, isAgentDir, scaffoldedAgentDir, writeAgentDirPointer } from './node-server-dir';
 
 const SPEC_EXTENSIONS = new Set(['.yaml', '.yml', '.json']);
@@ -291,7 +291,7 @@ export const NodeServerAdapter: DeploymentAdapter = {
     const { build } = await loadTsup();
     const source = scaffoldedAgentDir(outDir);
     const entry = { server: path.join(outDir, 'server.ts'), ...(source ? await agentDirEntries(source) : {}) };
-    await build({
+    await buildBundle(build, {
       config: false,
       entry,
       outDir: path.join(outDir, 'dist'),
@@ -314,7 +314,7 @@ export const NodeServerAdapter: DeploymentAdapter = {
       dts: false,
       // Set LOUSHO_BUILD_VERBOSE=1 to see tsup's own build log (and full bundling errors).
       silent: !process.env.LOUSHO_BUILD_VERBOSE,
-    });
+    }, outDir);
     if (source) copyAgentDirAssets(source, outDir);
   },
 

@@ -839,7 +839,7 @@ names the call and the HTTP status or the platform's error.
 
 **Means:** `lousho build` / `lousho dev` / the node-server runtime could not
 bundle or start the agent: a missing `--agent`, an agent path that is not found
-or not an agent directory, a bad `LOUSHO_STORE` value, missing runtime sources, or a tool the
+or not an agent directory, a bundling failure (an import that cannot be resolved; install it, or set `LOUSHO_BUILD_VERBOSE=1` for the full log), a bad `LOUSHO_STORE` value, missing runtime sources, or a tool the
 Cloudflare Worker target does not have.
 
 **Fix:** follow the message. See [Deployment](./deployment.md).
