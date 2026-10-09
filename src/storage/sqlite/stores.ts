@@ -98,7 +98,7 @@ export class SqliteCheckpointStore implements CheckpointStore {
   async save(sessionId: string, checkpoint: Checkpoint): Promise<void> {
     const now = Date.now();
     const payload = JSON.stringify(checkpoint, encodeBytes);
-    this.connection.transaction(() => {
+    await this.connection.transactionAsync(() => {
       this.sql.get(upsert('checkpoints', 'session_id')).run(sessionId, payload, now, now);
       if (this.historyLimit === 0) return;
       this.sql
@@ -119,7 +119,7 @@ export class SqliteCheckpointStore implements CheckpointStore {
   }
 
   async delete(sessionId: string, options: CheckpointDeleteOptions = {}): Promise<void> {
-    this.connection.transaction(() => {
+    await this.connection.transactionAsync(() => {
       this.sql.get('DELETE FROM checkpoints WHERE session_id = ?').run(sessionId);
       if (!options.keepHistory) this.sql.get('DELETE FROM checkpoint_history WHERE session_id = ?').run(sessionId);
     });
@@ -153,7 +153,7 @@ export class SqliteApprovalStore implements ApprovalStore {
   async save(pending: PendingApproval, snapshot: ExecutionSnapshot): Promise<void> {
     const record: ResolvedApproval = { pending, snapshot };
     const now = Date.now();
-    this.connection.transaction(() => {
+    await this.connection.transactionAsync(() => {
       this.sql.get(upsert('approvals', 'id')).run(pending.id, JSON.stringify(record, encodeBytes), now, now);
       // Saving again re-opens an approval that was already resolved.
       this.sql.get('UPDATE approvals SET resolved_at = NULL WHERE id = ?').run(pending.id);
@@ -161,7 +161,7 @@ export class SqliteApprovalStore implements ApprovalStore {
   }
 
   async resolve(id: string): Promise<ResolvedApproval | null> {
-    return this.connection.transaction(() => {
+    return this.connection.transactionAsync(() => {
       const row = this.sql.get('SELECT payload FROM approvals WHERE id = ? AND resolved_at IS NULL').get(id);
       if (row === undefined) return null;
       const now = Date.now();

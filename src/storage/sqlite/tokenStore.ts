@@ -48,7 +48,7 @@ class SqliteTokenBackend implements SealedRecordBackend {
 
   /** Read and delete in one write transaction: of two callers, one gets the row. */
   async takePending(state: string): Promise<string | undefined> {
-    return this.connection.transaction(() => {
+    return this.connection.transactionAsync(() => {
       const row = this.sql.get('SELECT payload FROM oauth_pending WHERE state = ?').get(state);
       if (row === undefined) return undefined;
       this.sql.get('DELETE FROM oauth_pending WHERE state = ?').run(state);
