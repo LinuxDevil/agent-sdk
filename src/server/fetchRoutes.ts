@@ -23,7 +23,7 @@ import { samePrincipal } from '../execution/runPrincipal';
 import type { SimpleAgent } from '../createAgent';
 import { assertSessionId } from '../session/sessionStore';
 import type { AgentSession } from '../session/AgentSession';
-import { SessionAwaitingApprovalError } from '../execution/errors';
+import { SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 import { errorEvents } from '../cli/devEvents';
 import type { AuthFn, Principal } from '../auth/types';
 import { routeAuth } from '../auth/routeAuth';
@@ -525,12 +525,14 @@ export type ServeAuth = string | AuthFn | readonly AuthFn[];
  * answered here), then the `/chat` routes with the accepted principal, then 404.
  */
 export async function serveFetch(request: Request, ctx: ChatRoutesContext, auth?: ServeAuth): Promise<Response> {
+  // Eve CH-F16: an empty token fails closed, as on `createRouteHandler()`, instead of serving every route open.
+  if (auth === '') throw new SDKError('serveFetch(): `auth` is an empty string. Pass the token, an auth list, or undefined for open routes.', 'LOUSHO_AUTH_CONFIG_INVALID');
   if (request.method === 'GET' && new URL(request.url).pathname === '/health') return textResponse(200, 'ok');
   let principal: Principal | undefined;
   if (isOAuthCallback(request)) {
     // N9b: a browser redirect carries no API token; an authenticated one still names who completes the sign-in.
     principal = typeof auth === 'string' ? undefined : await callbackPrincipal(request, auth);
-  } else if (auth !== undefined && auth !== '') {
+  } else if (auth !== undefined) {
     const outcome = await routeAuth(request, typeof auth === 'string' ? apiToken(auth) : auth);
     if (!outcome.ok) return outcome.response;
     principal = outcome.principal;

@@ -12,6 +12,8 @@ import { AuthError, type AuthFn, type Principal } from '../auth/types';
 import { routeAuth } from '../auth/routeAuth';
 import { apiToken } from '../auth/basic';
 import { fromUIMessages, toUIMessageStreamResponse, type UIMessageLike } from './uiMessageStream';
+import { assertSessionId } from '../session/sessionStore';
+import { SDKError } from '../execution/errors';
 
 export { callerOwnsApproval, type ApprovalAccessRequest, type ChatRoutesAccess, type SessionAccessRequest, type SessionAction } from './fetchRoutes';
 
@@ -65,10 +67,11 @@ function singleFunction(fn: (request: Request) => unknown): AuthFn {
   return entry;
 }
 
-/** The `auth` option as an auth list; `undefined` for an open route. */
+/** The `auth` option as an auth list; `undefined` for an open route. Eve CH-F16: an empty token is a configuration error, as on `serveFetch`. */
 function authList(auth: RouteHandlerOptions['auth']): readonly AuthFn[] | undefined {
   if (auth === undefined) return undefined;
-  if (typeof auth === 'string') return auth === '' ? [] : [apiToken(auth)];
+  if (auth === '') throw new SDKError("createRouteHandler(): `auth` is an empty string. Pass the token (e.g. process.env.AGENT_TOKEN), an auth list, or no `auth` for an open route.", 'LOUSHO_AUTH_CONFIG_INVALID');
+  if (typeof auth === 'string') return [apiToken(auth)];
   if (typeof auth === 'function') return [singleFunction(auth)];
   return auth;
 }
@@ -87,6 +90,12 @@ async function uiChat(agent: SimpleAgent, request: Request, principal: Principal
   if (!Array.isArray(body?.messages)) return json(400, { error: "Request body must be JSON with a 'messages' array" });
   const { id } = body;
   if (typeof id !== 'string' || !id) return toUIMessageStreamResponse(publicEvents(ctx, agent.stream(fromUIMessages(body.messages), { principal })));
+  // Eve CH-F11: an invalid id is a 400, as on POST /chat, and `authorizeSession` only sees a valid one.
+  try {
+    assertSessionId(id);
+  } catch (error) {
+    return json(400, { error: (error as Error).message });
+  }
   const forbidden = await sessionForbidden(ctx, principal, id, 'chat');
   if (forbidden) return forbidden;
   const input = fromUIMessages(body.messages, { lastUserOnly: true });

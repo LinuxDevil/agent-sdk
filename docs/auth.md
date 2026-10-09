@@ -145,7 +145,10 @@ const fromDatabase = basic({ users: async (user, password) => user === 'svc' && 
 `apiToken(token, { id })` accepts `Authorization: Bearer <token>` (compared in
 constant time) as the service principal `{ id: id ?? 'api-token', type: 'service', authenticator: 'api-token' }`.
 It is what a token string has always meant: `createRouteHandler({ auth: '<token>' })`
-and `LOUSHO_API_TOKEN` are `apiToken()`.
+and `LOUSHO_API_TOKEN` are `apiToken()`. An empty string (`auth: ''`, e.g. an
+env var that is set but blank) is refused with `LOUSHO_AUTH_CONFIG_INVALID`
+by `createRouteHandler()` when it is created and by `serveFetch()` on every
+request: it neither locks nor opens the routes silently.
 
 `anonymous()` accepts everyone as `{ id: 'anonymous', type: 'user', authenticator: 'anonymous' }`:
 put it last for routes that serve signed-in and anonymous callers, and read
