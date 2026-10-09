@@ -51,12 +51,13 @@ interface SendOptions {
   event?: string;
   signature?: string | null;
   secret?: string;
+  delivery?: string;
 }
 
 /** Posts `payload` to `handler`, signed like GitHub (or with `signature`; `null` omits the header). */
 async function send(handler: ChannelsHandler, payload: unknown, options: SendOptions = {}) {
   const raw = typeof payload === 'string' ? payload : JSON.stringify(payload);
-  const headers: Record<string, string> = { 'x-github-event': options.event ?? 'issue_comment' };
+  const headers: Record<string, string> = { 'x-github-event': options.event ?? 'issue_comment', ...(options.delivery && { 'x-github-delivery': options.delivery }) };
   if (options.signature !== null) headers['x-hub-signature-256'] = options.signature ?? sign(raw, options.secret);
   const req = Object.assign(Readable.from([Buffer.from(raw)]), { method: 'POST', url: '/channels/github', headers });
   const res = { status: 0, json: {} as Record<string, unknown> };
@@ -130,6 +131,18 @@ async function pause(t: ReturnType<typeof setup>, options: CommentOptions = {}) 
 }
 
 describe('githubChannel (N11b)', () => {
+  it('runs a redelivered webhook (same X-GitHub-Delivery) once (Eve CH-F8)', async () => {
+    const t = setup(['Hello', 'Again']);
+    const body = issueComment('@my-agent hi');
+
+    await t.send(body, { delivery: 'd-1' });
+    await t.send(body, { delivery: 'd-1' });
+    expect(t.model.calls).toHaveLength(1);
+    await t.send(issueComment('@my-agent again'), { delivery: 'd-2' });
+    expect(t.model.calls).toHaveLength(2);
+    expect(t.calls.map(text)).toEqual(['Hello', 'Again']);
+  });
+
   it('rejects a missing, malformed or wrong signature with 401 and runs nothing', async () => {
     const t = setup(['never']);
     const body = issueComment('@my-agent hi');

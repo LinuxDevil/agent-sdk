@@ -125,6 +125,18 @@ describe('telegramChannel (N11a)', () => {
     expect(() => telegramChannel({ botToken: TOKEN, secretToken: '' })).toThrow(/secretToken/);
   });
 
+  it('runs a redelivered update (same update_id) once (Eve CH-F8)', async () => {
+    const t = setup(['Hi Sam', 'Second']);
+    const update = message('hi');
+
+    expect((await t.send(update)).status).toBe(200);
+    expect((await t.send(update)).status).toBe(200);
+    expect(t.model.calls).toHaveLength(1);
+    await t.send(message('again'));
+    expect(t.model.calls).toHaveLength(2);
+    expect(t.calls.filter((c) => c.method === 'sendMessage').map((c) => c.body.text)).toEqual(['Hi Sam', 'Second']);
+  });
+
   it('runs the turn with the sender as its principal, which a memory scope sees (N10a)', async () => {
     const scopes: MemoryScopeContext[] = [];
     const notes = defineMemory({ name: 'notes', scope: (ctx) => (scopes.push(ctx), ctx.principal && `telegram:${ctx.principal.id}`), provider: inMemoryMemory() });

@@ -46,12 +46,14 @@ function fakeDiscord() {
 interface SendOptions {
   badSignature?: boolean;
   omitSignature?: boolean;
+  /** Unix seconds; default now. */
+  timestamp?: number;
 }
 
 /** Posts a really signed interaction to `handler`. */
 async function send(handler: ChannelsHandler, log: string[], payload: unknown, options: SendOptions = {}) {
   const body = JSON.stringify(payload);
-  const timestamp = '1700000000';
+  const timestamp = String(options.timestamp ?? Math.floor(Date.now() / 1000));
   const signed = await crypto.subtle.sign('Ed25519', keys.privateKey, new TextEncoder().encode(timestamp + (options.badSignature ? `${body} ` : body)));
   const headers = options.omitSignature ? {} : { 'x-signature-ed25519': hex(signed), 'x-signature-timestamp': timestamp };
   const req = Object.assign(Readable.from([Buffer.from(body)]), { method: 'POST', url: '/channels/discord', headers });
@@ -106,6 +108,16 @@ describe('discordChannel (LOU-P6)', () => {
     expect(t.model.calls).toHaveLength(0);
     expect(() => discordChannel({ publicKey: 'abc', applicationId: APP })).toThrow(/publicKey/);
     expect(() => discordChannel({ publicKey, applicationId: '' })).toThrow(/applicationId/);
+  });
+
+  it('rejects a validly signed request whose timestamp is more than five minutes old or ahead (Eve CH-F13)', async () => {
+    const t = setup(['never']);
+    const now = Math.floor(Date.now() / 1000);
+    expect((await t.send({ type: 1 }, { timestamp: now - 600 })).status).toBe(401);
+    expect((await t.send({ type: 1 }, { timestamp: now + 600 })).status).toBe(401);
+    expect((await t.send(command('hi'), { timestamp: 1700000000 })).status).toBe(401);
+    expect((await t.send({ type: 1 }, { timestamp: now - 60 })).status).toBe(200);
+    expect(t.model.calls).toHaveLength(0);
   });
 
   it('acks with a deferred response, then edits the original; one session per channel, another per thread', async () => {

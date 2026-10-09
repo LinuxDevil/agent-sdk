@@ -4,7 +4,7 @@
  * import and no Telegram library.
  */
 import { ConfigurationError, SDKError } from '../execution/errors';
-import { decodeApprovalRef, encodeApprovalRef, mayApprove, reportChannelError, secretsEqual, type Approvers, splitText, answerPendingQuestion } from './channelSupport';
+import { deliveryLog, decodeApprovalRef, encodeApprovalRef, mayApprove, reportChannelError, secretsEqual, type Approvers, splitText, answerPendingQuestion } from './channelSupport';
 import {
   defineChannel,
   type Channel,
@@ -145,6 +145,8 @@ export function telegramChannel(options: TelegramChannelOptions): Channel<Telegr
   const botUsername = options.botUsername?.replace(/^@/, '');
   const doFetch = options.fetch ?? ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init));
   const questions = new Map<string, string>();
+  /** Eve CH-F8: deliveries this channel already took. */
+  const delivered = deliveryLog();
   const mention = botUsername ? new RegExp(`@${escapeRegExp(botUsername)}(?![A-Za-z0-9_])`, 'gi') : undefined;
   const command = new RegExp(`^${COMMAND}${botUsername ? `(?:@${escapeRegExp(botUsername)})?` : ''}(?![A-Za-z0-9_@])`, 'i');
 
@@ -235,6 +237,8 @@ export function telegramChannel(options: TelegramChannelOptions): Channel<Telegr
     async parse(req, respond: ChannelRespond, ctx) {
       respond(200, { ok: true }); // Telegram retries a webhook that does not answer quickly
       const update = JSON.parse(req.text || '{}') as TelegramUpdate;
+      // Eve CH-F8: a redelivered update (the ack was lost, or came late) is acknowledged, not run again.
+      if (typeof update.update_id === 'number' && delivered(String(update.update_id))) return null;
       if (update.callback_query) return readClick(update.callback_query, ctx);
       return update.message ? readMessage(update.message, update, ctx) : null;
     },
