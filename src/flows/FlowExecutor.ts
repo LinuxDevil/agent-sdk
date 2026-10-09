@@ -36,11 +36,13 @@ import {
   toolSpanInit,
 } from '../execution/genAiSpans';
 import { FLOW_NODE_SPAN_NAME, FlowAttr, GenAiAttr, GenAiOperation } from '../execution/semconv';
-import { SDKError, ValidationError } from '../execution/errors';
+import { ConfigurationError, SDKError, ValidationError } from '../execution/errors';
 import type { PermissionOptions } from '../execution/permissions';
 import type { ApproveToolCall } from '../createAgentApprovals';
 import { gateFlowToolCall } from './flowToolGate';
 import { validateFlowInput } from './inputs';
+import type { CheckpointStore } from '../execution/checkpoint';
+import { FlowRun, addUsage, durableOptions, flowStateOf } from './flowCheckpoint';
 
 /**
  * Flow execution context
@@ -121,7 +123,40 @@ export interface FlowExecutionContext {
    * ```
    */
   signal?: AbortSignal;
+  /**
+   * Eve DUR-F17: makes the run durable, with {@link FlowExecutionContext.runId}.
+   * The run's variables, completed nodes and usage are saved under `runId`
+   * after every node that completes, and when the flow finishes; continue an
+   * interrupted or failed run with `FlowExecutor.resume()`. Any
+   * `CheckpointStore` works (e.g. `memoryStore().checkpoints`). Variables and
+   * node results must be serializable (`structuredClone`).
+   *
+   * @example
+   * ```ts
+   * const checkpointStore = memoryStore().checkpoints;
+   * await FlowExecutor.execute(flow, { agent, provider, variables, checkpointStore, runId: 'order-42' });
+   * // after a crash or a failed step:
+   * await FlowExecutor.resume(flow, { agent, provider, checkpointStore, runId: 'order-42' });
+   * ```
+   */
+  checkpointStore?: CheckpointStore;
+  /** Eve DUR-F17: the durable run's id in `checkpointStore` (see {@link FlowExecutionContext.checkpointStore}). */
+  runId?: string;
 }
+
+/**
+ * The context of `FlowExecutor.resume()`: a durable run's `checkpointStore`
+ * and `runId` are required, and `variables` are restored from the checkpoint
+ * (any given here are ignored).
+ */
+export type FlowResumeContext = Omit<FlowExecutionContext, 'variables' | 'checkpointStore' | 'runId'> & {
+  /** The store the run was started with. */
+  checkpointStore: CheckpointStore;
+  /** The run to continue. */
+  runId: string;
+  /** Ignored: the run continues with its saved variables. */
+  variables?: Record<string, unknown>;
+};
 
 /**
  * Flow execution event types
@@ -199,19 +234,11 @@ export interface FlowExecutionResult {
 
 /** The summed usage of a run's `llm-response` events. */
 function sumUsage(events: FlowExecutionEvent[]): ProviderUsage {
-  const total: ProviderUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+  let total: ProviderUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
   for (const event of events) {
     const usage = event.type === 'llm-response' ? event.data?.usage : undefined;
-    if (!usage) {
-      continue;
-    }
-    total.promptTokens += usage.promptTokens;
-    total.completionTokens += usage.completionTokens;
-    total.totalTokens += usage.totalTokens;
-    for (const key of ['cachedInputTokens', 'cacheWriteTokens', 'reasoningTokens', 'costUsd'] as const) {
-      if (usage[key] !== undefined) {
-        total[key] = (total[key] ?? 0) + usage[key];
-      }
+    if (usage) {
+      total = addUsage(total, usage);
     }
   }
   return total;
@@ -299,6 +326,17 @@ function nextStepId(events: FlowExecutionEvent[]): string {
   return `step-${count}`;
 }
 
+/** DUR-F17: the durable state of each run, keyed by the run's event list. */
+const flowRuns = new WeakMap<FlowExecutionEvent[], FlowRun>();
+
+/** DUR-F17: a node's place in the flow (`0`, `0.1`, ...), carried on its context. */
+const NODE_PATH = Symbol('lousho.flowNodePath');
+type PathedContext = FlowExecutionContext & { [NODE_PATH]?: string };
+
+function nodePath(context: FlowExecutionContext): string {
+  return (context as PathedContext)[NODE_PATH] ?? '0';
+}
+
 /**
  * Flow Executor
  */
@@ -312,6 +350,61 @@ export class FlowExecutor {
     onEvent?: (event: FlowExecutionEvent) => void
   ): Promise<FlowExecutionResult> {
     this.assertRunnableAgent(context.agent);
+    const durable = durableOptions(context, 'execute');
+    if (durable) {
+      const existing = await durable.store.load(durable.runId);
+      if (existing && existing.status !== 'finished') {
+        throw new ConfigurationError(
+          `FlowExecutor.execute: run '${durable.runId}' has an unfinished checkpoint (status '${existing.status ?? 'in-progress'}'). ` +
+            `Continue it with FlowExecutor.resume(flow, { ...context, checkpointStore, runId }), or start a new run with another runId.`,
+          'runId'
+        );
+      }
+    }
+    const variables = { ...context.variables };
+    const run = durable ? new FlowRun(durable.store, durable.runId, flow.code, variables) : undefined;
+    return this.traced(flow, { ...context, variables }, onEvent, run);
+  }
+
+  /**
+   * Eve DUR-F17: continue a durable run started by `execute()` with the same
+   * `checkpointStore` and `runId` - after a crash, or after a step failed.
+   * Nodes that completed are not run again (each returns its saved result,
+   * and a `oneOf` takes the branch it took before); the rest run as usual,
+   * from the saved variables. `result.usage` and `result.steps` include the
+   * earlier attempts'. A finished run is not run again: its saved result is
+   * returned. Rejects with `LOUSHO_CHECKPOINT_NOT_FOUND` when the run has no
+   * checkpoint, and `LOUSHO_CONFIG_INVALID` when it belongs to another flow.
+   *
+   * @example
+   * ```ts
+   * const result = await FlowExecutor.resume(flow, { agent, provider, toolRegistry, checkpointStore, runId: 'order-42' });
+   * ```
+   */
+  static async resume(
+    flow: AgentFlow,
+    context: FlowResumeContext,
+    onEvent?: (event: FlowExecutionEvent) => void
+  ): Promise<FlowExecutionResult> {
+    this.assertRunnableAgent(context.agent);
+    const { store, runId } = durableOptions(context, 'resume')!;
+    const checkpoint = await store.load(runId);
+    const saved = flowStateOf(checkpoint, runId, flow.code);
+    if (checkpoint?.status === 'finished') {
+      return { success: true, output: saved.output, variables: saved.variables, steps: saved.steps, events: [], usage: saved.usage };
+    }
+    const variables = { ...saved.variables };
+    const run = new FlowRun(store, runId, flow.code, variables, saved);
+    return this.traced(flow, { ...context, variables }, onEvent, run);
+  }
+
+  /** Runs the flow in its `invoke_workflow` span. */
+  private static traced(
+    flow: AgentFlow,
+    context: FlowExecutionContext,
+    onEvent: ((event: FlowExecutionEvent) => void) | undefined,
+    run: FlowRun | undefined
+  ): Promise<FlowExecutionResult> {
     return withSpan(
       context.exporter,
       `${GenAiOperation.INVOKE_WORKFLOW} ${flow.name}`,
@@ -321,7 +414,7 @@ export class FlowExecutor {
         [FlowAttr.CODE]: flow.code,
       }),
       async (flowSpan) => {
-        const result = await this.runFlow(flow, { ...context, parentSpanId: flowSpan.id }, onEvent);
+        const result = await this.runFlow(flow, { ...context, parentSpanId: flowSpan.id }, onEvent, run);
         this.recordOutcome(flowSpan, result.error);
         return result;
       },
@@ -359,10 +452,18 @@ export class FlowExecutor {
   private static async runFlow(
     flow: AgentFlow,
     context: FlowExecutionContext,
-    onEvent?: (event: FlowExecutionEvent) => void
+    onEvent: ((event: FlowExecutionEvent) => void) | undefined,
+    run: FlowRun | undefined
   ): Promise<FlowExecutionResult> {
     const events: FlowExecutionEvent[] = [];
-    const variables = { ...context.variables };
+    // execute()/resume() made this run's own copy (the object a durable run's checkpoints save).
+    const variables = context.variables;
+    if (run) {
+      flowRuns.set(events, run);
+      run.progress = () => ({ usage: sumUsage(events), steps: this.countCompletedSteps(events) });
+    }
+    // DUR-F17: the totals include a resumed run's earlier attempts.
+    const totals = () => run?.totals() ?? { usage: sumUsage(events), steps: this.countCompletedSteps(events) };
 
     // Emit flow start event
     emitEvent(events, onEvent, {
@@ -383,7 +484,8 @@ export class FlowExecutor {
         events,
         onEvent
       );
-      const steps = this.countCompletedSteps(events);
+      const { steps, usage } = totals();
+      await run?.save('finished', { output });
 
       // Emit flow complete event
       emitEvent(events, onEvent, {
@@ -399,7 +501,7 @@ export class FlowExecutor {
         variables,
         steps,
         events,
-        usage: sumUsage(events),
+        usage,
       };
     } catch (error) {
       // Emit flow error event
@@ -409,14 +511,15 @@ export class FlowExecutor {
         error: error as Error,
       });
 
+      const { steps, usage } = totals();
       return {
         success: false,
         output: null,
         variables,
-        steps: this.countCompletedSteps(events),
+        steps,
         events,
         error: error as Error,
-        usage: sumUsage(events),
+        usage,
       };
     }
   }
@@ -507,6 +610,13 @@ export class FlowExecutor {
     // missing id is unique within the run (it was `step-${Date.now()}`, which collided).
     const stepId = (node as { id?: string }).id || nextStepId(events);
 
+    // DUR-F17: a node a resumed run already completed is not run again.
+    const run = flowRuns.get(events);
+    const path = nodePath(context);
+    if (run?.isCompleted(path)) {
+      return run.resultOf(path);
+    }
+
     return withSpan(
       context.exporter,
       `${FLOW_NODE_SPAN_NAME} ${node.type}`,
@@ -556,6 +666,9 @@ export class FlowExecutor {
         data: result,
       });
 
+      // DUR-F17: a durable run saves its state after every completed node.
+      await flowRuns.get(events)?.complete(nodePath(context), result);
+
       return result;
     } catch (error) {
       // Emit step error event
@@ -578,6 +691,12 @@ export class FlowExecutor {
     return { ...context, currentDepth: (context.currentDepth || 0) + 1 };
   }
 
+  /** The context of a node's child at `index` (its step, branch, option or iteration). */
+  private static childAt(context: FlowExecutionContext, index: number): FlowExecutionContext {
+    const child: PathedContext = { ...this.childContext(context), [NODE_PATH]: `${nodePath(context)}.${index}` };
+    return child;
+  }
+
 
   /**
    * Execute sequence node
@@ -591,8 +710,8 @@ export class FlowExecutor {
     const steps = node.steps || [];
     let lastResult: unknown = null;
 
-    for (const step of steps) {
-      lastResult = await this.executeNode(step, this.childContext(context), events, onEvent);
+    for (const [index, step] of steps.entries()) {
+      lastResult = await this.executeNode(step, this.childAt(context, index), events, onEvent);
     }
 
     return lastResult;
@@ -623,11 +742,10 @@ export class FlowExecutor {
     parentSignal?.addEventListener('abort', abortFromParent, { once: true });
 
     let failure: { error: unknown } | undefined;
-    const branchContext = { ...this.childContext(context), signal: controller.signal };
     try {
       const settled = await Promise.allSettled(
-        steps.map((step) =>
-          this.executeNode(step, branchContext, events, onEvent).catch((error: unknown) => {
+        steps.map((step, index) =>
+          this.executeNode(step, { ...this.childAt(context, index), signal: controller.signal }, events, onEvent).catch((error: unknown) => {
             if (!failure) {
               failure = { error };
               controller.abort(error);
@@ -687,29 +805,32 @@ export class FlowExecutor {
     events: FlowExecutionEvent[],
     onEvent?: (event: FlowExecutionEvent) => void
   ): Promise<unknown> {
-    const option = this.selectOption(node, context, events, onEvent);
+    const index = this.selectOption(node, context, events, onEvent);
+    const option = node.options?.[index];
 
-    return option ? await this.executeNode(option.step, this.childContext(context), events, onEvent) : null;
+    return option ? await this.executeNode(option.step, this.childAt(context, index), events, onEvent) : null;
   }
 
   /**
-   * First option whose condition holds (or that has none), if any
+   * Index of the first option whose condition holds (or that has none), or -1.
+   * DUR-F17: a durable run remembers the pick, so a resume takes the same branch.
    */
   private static selectOption(
     node: OneOfOptionsNode,
     context: FlowExecutionContext,
     events: FlowExecutionEvent[],
     onEvent?: (event: FlowExecutionEvent) => void
-  ): OneOfOption | undefined {
-    const options = node.options || [];
-
-    for (const option of options) {
-      if (this.optionApplies(option, context, events, onEvent)) {
-        return option;
-      }
+  ): number {
+    const run = flowRuns.get(events);
+    const path = nodePath(context);
+    const saved = run?.choiceOf(path);
+    if (saved !== undefined) {
+      return saved;
     }
-
-    return undefined;
+    const options = node.options || [];
+    const index = options.findIndex((option) => this.optionApplies(option, context, events, onEvent));
+    run?.setChoice(path, index);
+    return index;
   }
 
   /**
@@ -741,7 +862,7 @@ export class FlowExecutor {
 
       // Execute step with the iteration's scope
       if (node.step) {
-        const result = await this.executeNode(node.step, { ...this.childContext(context), variables }, events, onEvent);
+        const result = await this.executeNode(node.step, { ...this.childAt(context, i), variables }, events, onEvent);
         results.push(result);
       }
     }

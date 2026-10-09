@@ -4787,8 +4787,12 @@ cd .lousho/build/cloudflare-worker && npx wrangler deploy
   reports the problem.
 - `subagents/<name>/` directories are embedded recursively, with the same layout rules as the
   parent's. Each needs a `description` in its config (the parent model reads it to decide
-  when to delegate); the parent's tools gain a `delegate_to_<name>` tool that runs the
-  sub-agent's turn. A sub-agent inherits the parent's model unless its config sets its own.
+  when to delegate). Each is a native sub-agent of the parent, as with `loadAgentDir()`: the
+  parent delegates with the `task` tool or its `delegate_to_<name>` alias, and the sub-agent
+  runs inside the parent's run, so the parent's `permissions` rules hold in it, its approvals
+  pause the parent (its own inline `approve` decides them first) and its usage is added to the
+  parent's (see [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md#sub-agents)). A sub-agent inherits the
+  parent's model unless its config sets its own.
 - `schedules/` files become [cron triggers](#scheduled-runs): the build evaluates each file
   to write its cron expression to `wrangler.toml`'s `[triggers] crons` (the same UTC /
   five-field / day-name rules as a spec's triggers), and the generated Worker exports a
@@ -7587,7 +7591,8 @@ paused on an approval (`error.approvalId`), so it cannot take new input yet.
 **Means:** `session.compact()`, `session.clear()` or `session.fork()` was called while a turn of
 that session is running or queued. From `send()` / `stream()`: another writer the in-process
 queue cannot see (another process, or a second store object over the same data) committed a
-turn while this one ran, so this turn was not committed. Tool calls of the turn that ran are
+turn while this one ran, so this turn was not committed (atomically with a store that has
+`saveIf`: memory, file and SQLite; best effort with KV). Tool calls of the turn that ran are
 kept: the turn up to their results is added after the other writer's turn.
 
 **Fix:** await the turn's `send()` (or abort it), then call again. After a `send()` that failed
@@ -8912,6 +8917,53 @@ reported) of every `llmCall` in the run, including a failed one.
 A step without an `id` gets one that is unique within the run (`step-1`,
 `step-2`, ... in the order the steps start), so `step-start` and
 `step-complete` events can be paired by `stepId`.
+
+## Durable runs
+
+Pass a `checkpointStore` and a `runId` to make a run durable. The run's
+variables, the nodes that completed (with their results), the branch each
+`oneOf` took and the usage so far are saved under `runId` after every node
+that completes, and again when the flow finishes. Any `CheckpointStore` works,
+such as `memoryStore().checkpoints` or a SQLite store (see
+[Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)).
+
+After a crash, or when a step failed, continue the run with
+`FlowExecutor.resume(flow, context)`. Pass the same `checkpointStore` and
+`runId`. Completed nodes are not run again: each one returns its saved result,
+and a `oneOf` takes the branch it took before. Everything else runs as usual,
+from the saved variables. `result.usage` and `result.steps` include the
+earlier attempts.
+
+```ts
+import { FlowExecutor, type AgentFlow } from '@lousho/build-ai-agent/flows';
+import { memoryStore } from '@lousho/build-ai-agent';
+
+declare const flow: AgentFlow;
+const checkpointStore = memoryStore().checkpoints;
+
+const first = await FlowExecutor.execute(flow, { agent, provider, toolRegistry, variables: { orderId: 'o-42' }, checkpointStore, runId: 'order-o-42' });
+if (!first.success) {
+  // Fix the cause, then continue where it stopped.
+  const result = await FlowExecutor.resume(flow, { agent, provider, toolRegistry, checkpointStore, runId: 'order-o-42' });
+}
+```
+
+- A node is identified by its place in the flow, not its `id`. Resume a run
+  with the flow that started it. A resume with a flow of another `code` is
+  refused with `LOUSHO_CONFIG_INVALID`. A changed flow with the same `code` is
+  not detected.
+- Resuming a finished run returns its saved result with no events, and runs
+  nothing. `execute()` with the `runId` of a finished run starts a new run.
+  `execute()` with the `runId` of an unfinished run is refused with
+  `LOUSHO_CONFIG_INVALID`; resume it instead, or use a new `runId`.
+- A run with no checkpoint is refused with `LOUSHO_CHECKPOINT_NOT_FOUND`.
+- A node that completed is only skipped once its checkpoint was saved. A node
+  interrupted while running (an `llmCall` or a `toolCall`) runs again, so make
+  side-effecting tools idempotent.
+- Variables and node results must survive `structuredClone`, so no functions
+  and no class instances.
+- The item and index of a `forEach` iteration are not saved. An interrupted
+  iteration runs again with its item. Completed iterations are skipped.
 
 ## Flows, sub-agents or skills?
 
@@ -10492,6 +10544,33 @@ that throws fails the run with the same code. `defineMemory()` rejects a
 A scope function also sees `principal`, the caller a route's auth verified, which
 is safer to key on than `metadata` (the caller can send any metadata): see
 [Route auth and principals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#reading-the-principal-in-the-run).
+
+### Items from before slot-name keys
+
+Up to `1.0.0-alpha.19`, items lived under the bare scope key (`global`,
+`session:s1`, `user:u-42`), shared by every slot with that scope. Those items
+are still in the provider but no slot reads them. `migrateMemoryKeys(slot)`
+copies them to the slot's current key, oldest first. It is safe to run on
+every start: `add()` dedupes on text, so nothing is copied twice. Each copy
+keeps `text` and `metadata` and gets a new `id` and `createdAt`.
+
+```ts
+import { defineMemory, fileMemory, migrateMemoryKeys } from '@lousho/build-ai-agent';
+
+const provider = fileMemory({ dir: './.lousho/memory' });
+const notes = defineMemory({ name: 'notes', scope: 'global', provider });
+const prefs = defineMemory({ name: 'prefs', scope: 'session', provider });
+
+await migrateMemoryKeys(notes); // global: no contexts needed
+await migrateMemoryKeys(prefs, { contexts: ['s1', 's2'].map((sessionId) => ({ sessionId })) });
+```
+
+For a `'session'` slot or a scope function, pass the contexts to migrate
+(`{ sessionId }`, `{ metadata }`, `{ principal }`); a context the slot gives
+no key is skipped. The old items stay unless you pass `removeLegacy: true`.
+Leave them while another slot with the same scope still has to migrate: they
+were shared. The result lists each old key that held items, its new key and
+the count.
 
 ## Configuration options
 
@@ -14294,8 +14373,21 @@ interface SessionStore {
   load(id: string): Promise<Message[] | undefined>;
   save(id: string, messages: readonly Message[]): Promise<void>;
   delete(id: string): Promise<void>;
+  // Optional compare-and-swap: save only if the stored transcript still has this revision.
+  saveIf?(id: string, expectedRevision: string, messages: readonly Message[]): Promise<boolean>;
 }
 ```
+
+Each turn commits through `saveIf` when the store has it, with
+`transcriptRevision(<the transcript the turn started from>)`. Two processes (or
+two store objects over the same data) that finish a turn on one session at the
+same moment then cannot both commit: one wins, the other's `send()` rejects with
+`LOUSHO_SESSION_BUSY`. `MemorySessionStore`, `FileSessionStore` (a
+`<id>.json.lock` file created exclusively; a lock older than `staleLockMs`,
+default 10 s, is taken over) and `SqliteStore.sessions` (one `BEGIN IMMEDIATE`
+transaction) implement it. A store without it, such as `KVStore.sessions` (KV
+has no compare-and-swap), gets a best-effort load, compare and save, which a
+writer in another process can still slip between, losing one turn.
 
 - `MemorySessionStore` (the default, one new store per session) lives as long as
   the process. Share one instance between sessions to look them up by id.
@@ -17607,6 +17699,12 @@ runtime behavior or types your code may rely on, one line each:
   one it was saved with now throws `LOUSHO_CONFIG_INVALID`; checkpoints and
   approval snapshots store the run's principal. See
   [Route auth and principals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md).
+- Memory slots store their items under `<slot name>#<scope key>`
+  (`notes#global`) instead of the bare scope key (`global`), so two slots with
+  the same scope no longer share items. Items written by `1.0.0-alpha.19` or
+  earlier are not read any more; run `migrateMemoryKeys(slot)` once per slot
+  to copy them. See
+  [Memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md#items-from-before-slot-name-keys).
 - The published package is smaller: test-only files no longer ship, and
   source maps no longer embed `sourcesContent` (their `sources` still resolve
   to the shipped `src/`). No API change.
