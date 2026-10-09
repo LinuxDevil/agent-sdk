@@ -232,12 +232,42 @@ class CronExpressionSchedule implements CronSchedule {
     return !(this.flags.hourRestricted && this.isRepeatedHour(t, p));
   }
 
+  /** Day, month, hour and minute fields all match this wall-clock reading (no repeated-hour check: it is a skipped time). */
+  private wallMatches(p: ZonedParts): boolean {
+    return this.months.has(p.month) && this.dayMatches(p) && this.hours.has(p.hour) && this.minutes.has(p.minute);
+  }
+
+  /**
+   * True when `t` is the first instant after a spring-forward gap and a
+   * fixed-hour job's wall time fell inside the gap: like Vixie cron, it runs
+   * once at `t` instead of being skipped for the day (Eve DUR-F20).
+   */
+  private firesAfterGap(t: number, p: ZonedParts): boolean {
+    if (!this.flags.hourRestricted) return false;
+    const before = asUtcMs(zonedParts(this.formatter, new Date(t - MINUTE_MS)));
+    const now = asUtcMs(p);
+    if (now - before <= MINUTE_MS) return false;
+    for (let wall = before + MINUTE_MS; wall < now; wall += MINUTE_MS) {
+      const d = new Date(wall);
+      const skipped = {
+        year: d.getUTCFullYear(),
+        month: d.getUTCMonth() + 1,
+        day: d.getUTCDate(),
+        hour: d.getUTCHours(),
+        minute: d.getUTCMinutes(),
+        weekday: d.getUTCDay(),
+      };
+      if (this.wallMatches(skipped)) return true;
+    }
+    return false;
+  }
+
   public nextRun(after: Date): Date {
     const limit = after.getTime() + MAX_SEARCH_YEARS * 366 * 24 * HOUR_MS;
     let t = Math.floor(after.getTime() / MINUTE_MS) * MINUTE_MS + MINUTE_MS;
     while (t <= limit) {
       const p = zonedParts(this.formatter, new Date(t));
-      if (this.matches(t, p)) return new Date(t);
+      if (this.matches(t, p) || this.firesAfterGap(t, p)) return new Date(t);
       t = this.step(t, p);
     }
     throw new CronExpressionError('Cron expression never matches a real date (for example "0 0 31 2 *"). Check the day-of-month and month fields.');
