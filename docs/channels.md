@@ -153,10 +153,18 @@ through the same channel's `reply` (or `onApproval` again, if it pauses again):
 
 - `handler.resolveApproval({ id, approved, note? })` or
   `handler.resolveApproval({ id, answer })` from your code, e.g. a surface's
-  button callback.
+  button callback. It only decides pauses this process made: after a restart
+  (or on another replica) it throws `LOUSHO_APPROVAL_NOT_FOUND`, because it
+  does not know which conversation to continue. Use the route below with
+  `sessionKey` instead.
 - `POST <basePath>/<name>/approvals/<id>` with `{ approved, note? }` or
   `{ answer }`. The channel's `verify` runs first; an id the channel did not
-  pause on gets 404.
+  pause on gets 404. Add `sessionKey` (the conversation's key, as in its
+  messages) to decide a pause this process forgot: with durable sessions,
+  checkpoints and approvals, the decision is accepted when that
+  conversation's turn waits on exactly this approval (else 404), and the
+  continuation joins its transcript. In process, a `sessionKey` naming another
+  conversation than the one that paused gets 404.
 
 A decision is claimed before `onDecision` runs, so two decisions on one
 approval at once (a double click) decide it once: the second gets
