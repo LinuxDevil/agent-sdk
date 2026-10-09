@@ -1,5 +1,5 @@
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
+import { readdir, readFile, realpath, stat as statFile } from 'node:fs/promises';
+import { isAbsolute, join, relative as relativePath, resolve, sep } from 'node:path';
 import { z } from 'zod';
 import type { AgentConfig } from '../types';
 import { defineTool, type DefinedTool } from '../tools/defineTool';
@@ -52,12 +52,12 @@ function createLoadSkillTool(skills: readonly Skill[]) {
 async function bundledFiles(directory: string, limit: number): Promise<{ files: string[]; more: boolean }> {
   const files: string[] = [];
   const walk = async (dir: string): Promise<void> => {
-    const entries = (await fs.readdir(dir, { withFileTypes: true })).sort((a, b) => (a.name < b.name ? -1 : 1));
+    const entries = (await readdir(dir, { withFileTypes: true })).sort((a, b) => (a.name < b.name ? -1 : 1));
     for (const entry of entries) {
       if (files.length > limit) return;
-      const full = path.join(dir, entry.name);
+      const full = join(dir, entry.name);
       if (entry.isDirectory()) await walk(full);
-      else if (entry.isFile() && full !== path.join(directory, 'SKILL.md')) files.push(path.relative(directory, full).split(path.sep).join('/'));
+      else if (entry.isFile() && full !== join(directory, 'SKILL.md')) files.push(relativePath(directory, full).split(sep).join('/'));
     }
   };
   await walk(directory).catch(() => undefined);
@@ -80,12 +80,12 @@ async function withBundle(skill: Skill, directory: string): Promise<string> {
 
 /** `relative` resolved inside `directory`, or undefined when it points outside (`..`, an absolute path, a symlink out). */
 async function confinedPath(directory: string, relative: string): Promise<string | undefined> {
-  if (path.isAbsolute(relative)) return undefined;
-  const root = await fs.realpath(directory);
-  const candidate = path.resolve(root, relative);
-  const inside = (p: string) => p === root || p.startsWith(root + path.sep);
+  if (isAbsolute(relative)) return undefined;
+  const root = await realpath(directory);
+  const candidate = resolve(root, relative);
+  const inside = (p: string) => p === root || p.startsWith(root + sep);
   if (!inside(candidate)) return undefined;
-  const real = await fs.realpath(candidate).catch(() => undefined);
+  const real = await realpath(candidate).catch(() => undefined);
   return real === undefined || inside(real) ? candidate : undefined;
 }
 
@@ -107,12 +107,12 @@ function createReadSkillFileTool(skills: readonly Skill[]) {
       }
       const file = await confinedPath(skill.directory, relative);
       if (!file) throw toolFailure(`'${relative}' is outside the directory of skill '${name}'. Use a path inside it.`);
-      const stat = await fs.stat(file).catch(() => undefined);
+      const stat = await statFile(file).catch(() => undefined);
       if (!stat?.isFile()) throw toolFailure(`No file '${relative}' in skill '${name}'. Use a path listed by ${LOAD_SKILL_TOOL}.`);
       if (stat.size > MAX_SKILL_FILE_BYTES) {
         throw toolFailure(`'${relative}' is ${stat.size} bytes, over the ${MAX_SKILL_FILE_BYTES} byte limit.`);
       }
-      const buffer = await fs.readFile(file);
+      const buffer = await readFile(file);
       if (buffer.includes(0)) throw toolFailure(`'${relative}' is a binary file; only text files can be read.`);
       return buffer.toString('utf8');
     },
