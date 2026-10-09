@@ -441,7 +441,7 @@ function breakpointKeyFor(node: AgentGraphNode): string | undefined {
 
 function EmptyInspector() {
   return (
-    <aside className="inspector" aria-label="Inspector">
+    <aside className="inspector" id="studio-inspector" aria-label="Inspector">
       <div className="inspector-head">
         <div className="k">Inspector</div>
         <div className="v">No node selected</div>
@@ -476,7 +476,7 @@ function NodeInspector({ selected }: { selected: AgentGraphNode }) {
   const breakpointKey = breakpointKeyFor(selected);
 
   return (
-    <aside className="inspector" aria-label="Inspector">
+    <aside className="inspector" id="studio-inspector" aria-label="Inspector">
       <div className="inspector-head">
         <div className="k">Selected node ({selected.type})</div>
         <div className="v">{selected.label}</div>

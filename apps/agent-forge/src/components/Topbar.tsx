@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAppState } from '../state/AppState';
 import { downloadSpec, importSpecFile } from '../persistence/importExport';
 import { ApprovalCard } from './ApprovalCard';
@@ -98,8 +98,13 @@ function DebugToggle() {
   );
 }
 
-/** Import/Export. Eve DUI-F11: a failed import (bad YAML, a spec that fails validation) is reported through `onImport`'s error surface instead of failing silently. */
-function SpecFileButtons({ onImport }: { onImport: (file: File) => Promise<void> }) {
+/**
+ * Import/Export. Eve DUI-F11: a failed import (bad YAML, a spec that fails
+ * validation) is reported through `onImport`'s error surface instead of
+ * failing silently. The hidden file input stays mounted (Eve DUI-F8: the
+ * narrow layout's overflow menu unmounts its items once closed).
+ */
+function useSpecFiles(onImport: (file: File) => Promise<void>) {
   const { spec, agentId } = useAppState();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -110,22 +115,131 @@ function SpecFileButtons({ onImport }: { onImport: (file: File) => Promise<void>
     await onImport(file);
   }
 
+  const fileInput = (
+    <input
+      ref={fileInputRef}
+      type="file"
+      accept=".yaml,.yml,.json"
+      style={{ display: 'none' }}
+      tabIndex={-1}
+      aria-hidden="true"
+      onChange={handleImportChange}
+    />
+  );
+  return {
+    fileInput,
+    openImport: () => fileInputRef.current?.click(),
+    exportSpec: () => downloadSpec(spec, `${spec.name || agentId}.yaml`),
+  };
+}
+
+export type SidePanel = 'rail' | 'inspector';
+
+/** Eve DUI-F8: opens/closes a slide-over side panel in the narrow layout. */
+function PanelToggle({
+  panel,
+  label,
+  open,
+  onToggle,
+  children,
+}: {
+  panel: SidePanel;
+  label: string;
+  open: boolean;
+  onToggle: (panel: SidePanel) => void;
+  children: React.ReactNode;
+}) {
   return (
-    <>
-      <button className="btn" onClick={() => fileInputRef.current?.click()}>
-        Import
+    <button
+      type="button"
+      className={`btn btn-ghost panel-toggle${open ? ' active' : ''}`}
+      aria-label={label}
+      aria-expanded={open}
+      aria-controls={panel === 'rail' ? 'studio-rail' : 'studio-inspector'}
+      title={label}
+      onClick={() => onToggle(panel)}
+    >
+      {children}
+    </button>
+  );
+}
+
+interface OverflowItem {
+  label: string;
+  onSelect: () => void;
+  checked?: boolean;
+}
+
+/**
+ * Eve DUI-F8: the narrow layout's "More" menu - Debug, Import, Export and
+ * Save, plus the provider pill, which no longer fit next to Run at 375px.
+ */
+function OverflowMenu({ items, children }: { items: OverflowItem[]; children?: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    wrapRef.current?.querySelector<HTMLElement>('[role="menuitem"], [role="menuitemcheckbox"]')?.focus();
+    const onPointerDown = (e: PointerEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [open]);
+
+  function onMenuKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      setOpen(false);
+      buttonRef.current?.focus();
+      return;
+    }
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    const entries = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role^="menuitem"]'));
+    const i = entries.indexOf(document.activeElement as HTMLElement);
+    const next = e.key === 'ArrowDown' ? (i + 1) % entries.length : (i - 1 + entries.length) % entries.length;
+    entries[next]?.focus();
+  }
+
+  return (
+    <div className="overflow-menu" ref={wrapRef}>
+      <button
+        ref={buttonRef}
+        type="button"
+        className="btn btn-ghost panel-toggle"
+        aria-label="More actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="More actions"
+        onClick={() => setOpen((o) => !o)}
+      >
+        &#8943;
       </button>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".yaml,.yml,.json"
-        style={{ display: 'none' }}
-        onChange={handleImportChange}
-      />
-      <button className="btn" onClick={() => downloadSpec(spec, `${spec.name || agentId}.yaml`)}>
-        Export
-      </button>
-    </>
+      {open && (
+        <div className="overflow-menu-list" role="menu" aria-label="More actions" onKeyDown={onMenuKeyDown}>
+          {children}
+          {items.map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
+              aria-checked={item.checked}
+              className="overflow-menu-item"
+              onClick={() => {
+                setOpen(false);
+                item.onSelect();
+              }}
+            >
+              {item.label}
+              {item.checked && <span aria-hidden="true"> &#10003;</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -163,9 +277,79 @@ function useRunActions() {
   return { actionError, handleRun, handleStop, handleSave, handleImport };
 }
 
-export function Topbar() {
+interface TopbarProps {
+  /** Eve DUI-F8: below 860px - side-panel toggles, and Debug/Import/Export/Save move into a "More" menu. */
+  narrow?: boolean;
+  openPanel?: SidePanel;
+  onTogglePanel?: (panel: SidePanel) => void;
+}
+
+function NarrowTopbar({ openPanel, onTogglePanel }: Omit<TopbarProps, 'narrow'>) {
+  const { spec, dirty, runStatus, debugMode, setDebugMode, setDrawerTab } = useAppState();
+  const { actionError, handleRun, handleStop, handleSave, handleImport } = useRunActions();
+  const { fileInput, openImport, exportSpec } = useSpecFiles(handleImport);
+  const toggle = onTogglePanel ?? (() => undefined);
+
+  const status = runStatus?.status ?? 'idle';
+  const isRunning = status === 'running';
+
+  const items: OverflowItem[] = [
+    {
+      label: 'Debug',
+      checked: debugMode,
+      onSelect: () => {
+        setDebugMode(!debugMode);
+        if (!debugMode) setDrawerTab('trace');
+      },
+    },
+    { label: 'Import', onSelect: openImport },
+    { label: 'Export', onSelect: exportSpec },
+    { label: 'Save', onSelect: () => void handleSave() },
+  ];
+
+  return (
+    <header className="topbar topbar-narrow">
+      <PanelToggle panel="rail" label="Agents and nodes" open={openPanel === 'rail'} onToggle={toggle}>
+        &#9776;
+      </PanelToggle>
+      <div className="crumbs">
+        <b>{spec.name}</b>
+        {dirty && <span className="dirty-dot" title="Unsaved changes" />}
+        {/* Eve DUI-F4: the provider pill moved into the menu; keep the MOCK badge in sight. */}
+        {spec.provider.type === 'mock' && <span className="mock-badge">MOCK</span>}
+      </div>
+      <RunNotices runStatus={runStatus} actionError={actionError} />
+      <StatusPill status={status} live />
+      {isRunning ? (
+        <button className="btn btn-danger" onClick={() => void handleStop()}>
+          Stop
+        </button>
+      ) : (
+        <button className="btn btn-success" onClick={() => void handleRun()}>
+          Run
+        </button>
+      )}
+      <OverflowMenu items={items}>
+        <div className="overflow-menu-env" role="none">
+          <EnvSelect />
+        </div>
+      </OverflowMenu>
+      {fileInput}
+      <PanelToggle panel="inspector" label="Inspector" open={openPanel === 'inspector'} onToggle={toggle}>
+        &#9881;
+      </PanelToggle>
+    </header>
+  );
+}
+
+export function Topbar({ narrow = false, openPanel, onTogglePanel }: TopbarProps = {}) {
+  return narrow ? <NarrowTopbar openPanel={openPanel} onTogglePanel={onTogglePanel} /> : <WideTopbar />;
+}
+
+function WideTopbar() {
   const { spec, dirty, runStatus } = useAppState();
   const { actionError, handleRun, handleStop, handleSave, handleImport } = useRunActions();
+  const { fileInput, openImport, exportSpec } = useSpecFiles(handleImport);
 
   const status = runStatus?.status ?? 'idle';
   const isRunning = status === 'running';
@@ -205,7 +389,13 @@ export function Topbar() {
       <button className="btn btn-success" onClick={() => void handleRun()} disabled={isRunning}>
         Run
       </button>
-      <SpecFileButtons onImport={handleImport} />
+      <button className="btn" onClick={openImport}>
+        Import
+      </button>
+      {fileInput}
+      <button className="btn" onClick={exportSpec}>
+        Export
+      </button>
       <button className="btn btn-primary" onClick={() => void handleSave()}>
         Save
       </button>

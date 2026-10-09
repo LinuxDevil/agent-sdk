@@ -37,6 +37,9 @@ This starts one local server and prints its URL (default
 `http://127.0.0.1:4750/?token=<random>`). Open that exact URL in a browser - you'll see the canvas,
 the left rail (your saved agents + a node/hook palette), the Inspector
 (right), and a bottom drawer with Chat/Logs/Trace/Output/Settings tabs.
+Below 860px wide the rail and the Inspector become slide-over panels you
+open from the top bar, and Debug, Import, Export and Save move into its
+**More** (`⋯`) menu.
 
 Useful flags:
 
