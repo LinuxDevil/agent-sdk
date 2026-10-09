@@ -1,6 +1,27 @@
 {
   "$schema": "https://typedoc.org/schema.json",
-  "entryPoints": ["src/index.ts"],
+  "entryPoints": [
+    "src/index.ts",
+    "src/executor/index.ts",
+    "src/tools/index.ts",
+    "src/flows/index.ts",
+    "src/integrations/index.ts",
+    "src/utils/index.ts",
+    "src/tools/mcp/index.ts",
+    "src/types/index.ts",
+    "src/testing/index.ts",
+    "src/execution/otel.ts",
+    "src/execution/hooks.ts",
+    "src/storage/sqlite/index.ts",
+    "src/auth/index.ts",
+    "src/deploy/kv.ts",
+    "src/deploy/worker.ts",
+    "src/traces/index.ts",
+    "src/triggers/index.ts",
+    "src/react/index.ts",
+    "src/vue/index.ts",
+    "src/svelte/index.ts"
+  ],
   "out": "docs/api",
   "excludePrivate": true,
   "excludeInternal": true

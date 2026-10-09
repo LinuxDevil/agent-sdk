@@ -183,6 +183,8 @@
     "test:e2e:studio": "npm run test:e2e:studio --workspace apps/agent-forge",
     "prepublishOnly": "npm run build && npm run build:studio",
     "docs:build": "typedoc",
+    "docs:ratchet": "tsx scripts/typedoc-ratchet.ts",
+    "docs:ratchet:update": "tsx scripts/typedoc-ratchet.ts --update",
     "docs:verify-snippets": "tsx scripts/verify-docs-snippets.ts",
     "api:update": "tsx scripts/api-report.ts",
     "api:check": "tsx scripts/api-report.ts --check",
