@@ -196,16 +196,21 @@ task.
 
 - A paused `send()` resolves (it does not throw) with
   `finishReason: 'awaiting-approval'` and an `approvalId`.
-- `agent.approvals.list()` returns the pending calls this agent paused on in
-  this process, oldest first: `{ id, toolCallId, toolName, args, createdAt }`,
+- `agent.approvals.list()` returns the pending calls, oldest first: the ones
+  this agent paused on in this process and, with an `approvalStore` that
+  implements `list()` (the file, SQLite, KV and in-memory stores do), the ones
+  the store holds from another process or from before a restart. A pause that
+  another process already decided is left out. Each entry is
+  `{ id, toolCallId, toolName, args, createdAt }`,
   plus `subagentPath` when the call belongs to a sub-agent and `expiresAt`
   when the pause has a deadline (see [Approval expiry](#approval-expiry)). An
   entry past `expiresAt` stays listed until it is decided - the run is still
   paused - but deciding it denies the call.
-- `agent.approvals.get(id)` returns one pending call without deciding it:
-  `list()`'s entries first, then - with an `approvalStore` that implements
-  `load()` - a pause saved before a restart, `undefined` when the id is
-  unknown (malformed ids included) or already resolved.
+- `agent.approvals.get(id)` returns one pending call without deciding it.
+  With an `approvalStore` that implements `load()` the store answers first,
+  so a pause saved before a restart is found and a pause another process
+  decided is not; `undefined` when the id is unknown (malformed ids included)
+  or already resolved.
 - `agent.approvals.resolve({ id, approved, note? })` runs the call (approved)
   or gives the model a rejection with your `note` (rejected), continues the
   run, and resolves with the continued run's result, which may pause again.
@@ -229,11 +234,12 @@ const store = new SqliteStore('./.lousho/agent.db');
 const agent = createAgent({ provider, tools: [emailTool], store }); // or approvalStore: store.approvals
 ```
 
-`list()` only knows the pauses made by this agent object; `get(id)` also finds
-a pause the durable store still holds (for example one saved before a
-restart). Keep the `approvalId` (or read the store) to resolve a pause from
-somewhere else. A continued run joins a session only when it is resolved
-through the agent that owns that session object.
+With a durable store, `list()` and `get(id)` read the store, so after a
+restart (or from another process) they show every pause it still holds, and
+stop showing one as soon as any process decides it. A stored pause that no
+session of this process has run yet is listed without its `sessionId`. With a
+custom `ApprovalStore` that has no `list()`, `list()` only knows the pauses
+made by this agent object.
 
 ### Approval expiry
 
@@ -446,6 +452,13 @@ continued run as an `AgentRun` (see
 | `StorageServiceApprovalStore(storage)` | JSON files through a `StorageService`. |
 | `fileStore(dir)` | One JSON file per pause, `<dir>/approvals/<id>.json`, on one machine; an approval can be resolved by only one process (see [Choosing a store](./sessions.md#choosing-a-store)). |
 | `SqliteStore.approvals` | One SQLite file, shared safely by several processes; an approval can be resolved by only one of them. |
+
+An `ApprovalStore` needs `save()` and `resolve()`. `load(id)` (read a pause
+without claiming it) and `list()` (every pause not resolved yet, oldest first)
+are optional; `agent.approvals.get()` and `list()` use them to see pauses other
+processes saved or decided. The built-in stores implement both (`KVStore` lists
+only when its namespace binding has `list`, as a real one does).
+`StorageServiceApprovalStore` implements `load()` only.
 
 ## Elsewhere
 

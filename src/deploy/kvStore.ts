@@ -15,7 +15,7 @@
  * time can overwrite each other's turn. Route a session's requests to one
  * location (a Durable Object) when that matters.
  */
-import type { ApprovalStore, ExecutionSnapshot, PendingApproval, ResolvedApproval } from '../execution/ApprovalGate';
+import { oldestFirst, type ApprovalStore, type ExecutionSnapshot, type PendingApproval, type ResolvedApproval } from '../execution/ApprovalGate';
 import type { Message } from '../providers/llm';
 import { assertSessionId } from '../session/sessionId';
 import type { SessionStore } from '../session/sessionStore';
@@ -118,6 +118,30 @@ class KVApprovalStore implements ApprovalStore {
   async load(id: string): Promise<ResolvedApproval | null> {
     const raw = await this.kv.get(`${this.prefix}${id}`);
     return raw === null ? null : fromKVJson<ResolvedApproval>(raw);
+  }
+
+  /**
+   * Eve TOOLS-F13: every approval under the prefix, oldest first; `[]` when the
+   * binding has no `list`. KV is eventually consistent, so a pause saved or
+   * resolved in the last ~60 seconds elsewhere may be missing or still listed.
+   */
+  async list(): Promise<PendingApproval[]> {
+    if (!this.kv.list) return [];
+    const names = new Set<string>();
+    let cursor: string | undefined;
+    do {
+      const page = await this.kv.list({ prefix: this.prefix, ...(cursor !== undefined && { cursor }) });
+      for (const { name } of page.keys) names.add(name);
+      cursor = page.list_complete ? undefined : page.cursor;
+    } while (cursor !== undefined);
+    const found: PendingApproval[] = [];
+    for (const name of names) {
+      // A `#claim` marker is not a record, and a record with one is being resolved.
+      if (name.endsWith('#claim') || names.has(`${name}#claim`)) continue;
+      const raw = await this.kv.get(name);
+      if (raw !== null) found.push(fromKVJson<ResolvedApproval>(raw).pending);
+    }
+    return oldestFirst(found);
   }
 }
 

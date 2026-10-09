@@ -109,6 +109,7 @@ interface ApprovalSignIn {
 
 // @public
 interface ApprovalStore {
+    list?(): Promise<PendingApproval[]>;
     load?(id: string): Promise<ResolvedApproval | null>;
     // Warning: (ae-forgotten-export) The symbol "ResolvedApproval" needs to be exported by the entry point kv.d.ts
     //

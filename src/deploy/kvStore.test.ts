@@ -29,6 +29,13 @@ function fakeKV() {
       ttls.set(key, options?.expirationTtl);
     },
     delete: async (key) => void data.delete(key),
+    // One key per page, so the cursor loop is exercised.
+    list: async ({ prefix = '', cursor }) => {
+      const keys = [...data.keys()].filter((key) => key.startsWith(prefix)).sort();
+      const at = cursor === undefined ? 0 : Number(cursor);
+      const done = at + 1 >= keys.length;
+      return { keys: keys.slice(at, at + 1).map((name) => ({ name })), list_complete: done, ...(!done && { cursor: String(at + 1) }) };
+    },
   };
   return { kv, data, ttls };
 }

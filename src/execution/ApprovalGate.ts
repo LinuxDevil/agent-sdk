@@ -262,6 +262,23 @@ export interface ApprovalStore {
    * process saved only through it. All built-in stores implement it.
    */
   load?(id: string): Promise<ResolvedApproval | null>;
+  /**
+   * Eve TOOLS-F13: every approval the store holds that is not resolved yet,
+   * oldest first (by `createdAt`) - the pending calls as they were saved,
+   * without their snapshots. Optional: with it, `agent.approvals.list()` also
+   * lists pauses saved by another process or before a restart. The file,
+   * SQLite, KV (when the namespace binding has `list`) and in-memory stores
+   * implement it.
+   */
+  list?(): Promise<PendingApproval[]>;
+}
+
+/** Eve TOOLS-F13: `pending`, oldest first by `createdAt` (ties keep their order). */
+export function oldestFirst(pending: PendingApproval[]): PendingApproval[] {
+  return pending
+    .map((entry, index) => ({ entry, index, at: Date.parse(entry.createdAt) }))
+    .sort((a, b) => (Number.isNaN(a.at) || Number.isNaN(b.at) || a.at === b.at ? a.index - b.index : a.at - b.at))
+    .map(({ entry }) => entry);
 }
 
 /**
