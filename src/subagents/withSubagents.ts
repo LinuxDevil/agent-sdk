@@ -200,8 +200,14 @@ function taskResult(name: string, result: ExecutionResult, maxSteps: number, tas
   }
   const footer = `[sub-agent '${name}': ${result.steps} step(s), finish reason '${result.finishReason}', taskId '${taskId}']`;
   const body = result.object === undefined ? result.text : JSON.stringify(result.object);
-  return body ? `${body}\n\n${footer}` : footer;
+  // Eve MA-F15: say so plainly, or the lead takes a cut-off answer for a whole one.
+  const note = result.finishReason === 'length' ? `\n${TRUNCATED_NOTE}` : '';
+  return body ? `${body}\n\n${footer}${note}` : `${footer}${note}`;
 }
+
+/** Appended to the result of a sub-agent whose answer hit the output token limit (finish reason `'length'`). */
+const TRUNCATED_NOTE =
+  '[The answer was cut off at the output token limit and may be incomplete: ask a narrower question, or continue the task with its taskId.]';
 
 type TaskArgs = { agent: string; prompt: string; description: string; background?: boolean; taskId?: string; mode?: TaskMode };
 type ToolOptions = { abortSignal?: AbortSignal; onDelegatedUsage?: (usage: RunUsage) => void } | undefined;

@@ -224,6 +224,22 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
     expect(toolResult.content).toContain('still working');
   });
 
+  it('tells the lead when a sub-agent answer was cut off at the output token limit (Eve MA-F15)', async () => {
+    const researcher = createAgent({
+      provider: mockModel([{ text: 'The three causes are: first, the', finishReason: 'length' }]),
+      description: 'Researches',
+    });
+    const lead = createAgent({ provider: mockModel([{ toolCalls: [task('researcher', 'go')] }, 'ok']), subagents: { researcher } });
+
+    const [toolResult] = toolMessages((await lead.send('go')).messages);
+    const text = JSON.parse(toolResult.content as string) as string;
+
+    expect(toolResult.isError).toBeFalsy();
+    expect(text).toContain('The three causes are: first, the');
+    expect(text).toContain("finish reason 'length'");
+    expect(text).toMatch(/cut off at the output token limit.*incomplete/);
+  });
+
   it('gives the lead an error result when a sub-agent fails', async () => {
     const researcher = createAgent({ provider: mockModel([{ error: new Error('model is down') }]), description: 'Researches' });
     const lead = createAgent({ provider: mockModel([{ toolCalls: [task('researcher', 'go')] }, 'ok']), subagents: { researcher } });
