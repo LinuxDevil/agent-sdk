@@ -27,7 +27,7 @@ vi.mock('ai', async () => {
 import { z as z4 } from 'zod/v4';
 import { OpenAIProvider } from './OpenAIProvider';
 import { OpenRouterProvider } from './OpenRouterProvider';
-import { withRetry } from './resilience';
+import { isRetryableProviderError, withRetry } from './resilience';
 import { MODEL_SETTING_KEYS } from '../execution/modelSettings';
 import { installedAiMajor, itOnAiV4 } from './aiMajor.testkit';
 import { mockToolCall, mockUsage, toolCallPart, toolResultPart } from './aiShapes.testkit';
@@ -212,8 +212,9 @@ describe('AiSdkProvider', () => {
     ['length', 'length'],
     ['tool-calls', 'tool_calls'],
     ['content-filter', 'content_filter'],
-    ['other', 'error'],
-    ['toString', 'error'],
+    ['other', 'other'],
+    ['unknown', 'other'],
+    ['toString', 'other'],
   ])('maps finish reason %s to %s', async (sdkReason, expected) => {
     generateTextMock.mockResolvedValue(textResult(sdkReason));
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
@@ -222,6 +223,17 @@ describe('AiSdkProvider', () => {
 
     expect(result.finishReason).toBe(expected);
     expect(result.toolCalls).toBeUndefined();
+  });
+
+  it("throws a retryable provider error for finish reason 'error' instead of resolving truncated text (Eve PROV-F8)", async () => {
+    generateTextMock.mockResolvedValue({ ...textResult('error'), text: 'The capital of Fr' });
+    const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
+
+    const failure = await provider.generate({ model: 'gpt-4', messages: [] }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(Error);
+    expect(isRetryableProviderError(failure)).toBe(true);
+    expect((failure as Error).message).toContain("finish reason 'error'");
   });
 
   it('converts tool definitions to named ai SDK tools', async () => {
