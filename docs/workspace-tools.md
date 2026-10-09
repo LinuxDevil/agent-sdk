@@ -84,7 +84,7 @@ const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistr
 | `edit_file`  | `path`, `old_string`, `new_string`, optional `replace_all` | Replaces the exact text. Fails with a message the model can act on when `old_string` is missing (including a hint about CRLF line endings) or appears more than once without `replace_all`. |
 | `list_dir`   | optional `path`                                   | Sorted entries; directories end with `/`. |
 | `glob`       | `pattern`, optional `path`                        | Sorted paths of matching files. `*` stays within one directory, `**` crosses directories, plus `?`, `[abc]` and `{a,b}`. |
-| `grep`       | `pattern` (JavaScript regex), optional `path`, `glob`, `ignore_case` | `path:line: text` for each matching line. An invalid regex is a tool error. Binary files and files over 2 MB are skipped. |
+| `grep`       | `pattern` (JavaScript regex), optional `path`, `glob`, `ignore_case` | `path:line: text` for each matching line. An invalid regex, or one with nested repetition like `(a+)+`, is a tool error. Binary files and files over 2 MB are skipped. |
 
 | Option            | Default                     | Meaning |
 | ----------------- | --------------------------- | ------- |
@@ -343,9 +343,13 @@ Windows.
   check. Such a process already has local access, for example a command the
   shell tool ran without a sandbox. A hard link inside the root to a file
   outside it cannot be detected.
-- **`grep` runs the model's regex in your process.** A pathological pattern
-  can be slow. Lines and files are capped, but the regex engine itself is not
-  time-limited.
+- **`grep` runs the model's regex, so it is fenced in.** A pattern that
+  repeats a group which already repeats (`(a+)+`, `(\w+\s*)*`) is refused as a
+  tool error, since it can take exponential time. Each line is tested on its
+  first 2,000 characters. The matching runs in a worker thread with a 10 s
+  budget per call: a slow pattern is stopped with a tool error, an abort stops
+  it at once, and the event loop stays free meanwhile. Where
+  `node:worker_threads` is unavailable, matching runs inline.
 
 ### Sandboxed shell: `SandboxShell`
 
