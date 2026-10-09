@@ -74,15 +74,33 @@ function definedProps<T extends object>(obj: T): T {
   return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== undefined)) as T;
 }
 
+/**
+ * Eve TOOLS-F8: `part` with its base64 `field` replaced by a short placeholder in
+ * its JSON (what the model gets), so an image is not sent as hundreds of KB of
+ * text. The part itself keeps the data for code that reads it.
+ */
+function withBinaryPlaceholder<T extends McpContentPart>(part: T, field: 'data' | 'blob'): T {
+  const value = (part as Record<string, unknown>)[field];
+  if (typeof value !== 'string' || value === '') return part;
+  const kind = part.type === 'resource' ? 'resource' : part.type;
+  const mimeType = 'mimeType' in part && part.mimeType ? `${part.mimeType}, ` : '';
+  const placeholder = `[${kind}: ${mimeType}${value.length} base64 characters, not sent to the model]`;
+  return Object.defineProperty(part, 'toJSON', {
+    value: () => ({ ...part, [field]: placeholder }),
+    enumerable: false,
+    configurable: true,
+  });
+}
+
 function convertResource(part: Record<string, unknown>): McpContentPart {
   const resource = isRecord(part.resource) ? part.resource : {};
-  return definedProps({
+  return withBinaryPlaceholder(definedProps({
     type: 'resource' as const,
     uri: str(resource.uri) ?? '',
     mimeType: str(resource.mimeType),
     text: str(resource.text),
     blob: str(resource.blob),
-  });
+  }), 'blob');
 }
 
 function convertPart(part: unknown): McpContentPart {
@@ -92,11 +110,7 @@ function convertPart(part: unknown): McpContentPart {
       return { type: 'text', text: str(part.text) ?? '' };
     case 'image':
     case 'audio':
-      return {
-        type: part.type,
-        data: str(part.data) ?? '',
-        mimeType: str(part.mimeType) ?? '',
-      };
+      return withBinaryPlaceholder({ type: part.type, data: str(part.data) ?? '', mimeType: str(part.mimeType) ?? '' }, 'data');
     case 'resource':
       return convertResource(part);
     case 'resource_link':

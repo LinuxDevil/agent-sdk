@@ -78,6 +78,11 @@ and one without `execute` falls back to `tool.execute`, independently.
   them with `toolConcurrency` (`1` for strictly sequential). Results reach the
   transcript in the model's call order. See
   [Parallel tool calls](./runs.md#parallel-tool-calls).
+- **Size cap.** A result whose JSON is longer than `maxToolResultChars`
+  (`createAgent({ maxToolResultChars })`, default `50_000` characters, about
+  12k tokens) reaches the model, and the transcript, as its head and tail with
+  a marker saying how many characters were cut. `Infinity` turns the cap off.
+  `onToolResult`, hooks and `tool.done` events still get the whole result.
 - **Cancellation.** A run's `AbortSignal` reaches each call as
   `ctx.abortSignal`, so long-running work can stop early.
 - **Progress.** An `execute` written as `async function*` streams snapshots

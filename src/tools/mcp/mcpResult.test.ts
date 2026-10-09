@@ -68,18 +68,36 @@ describe('MCP result handling (LOU-Z2)', () => {
         { type: 'hologram', depth: 3 },
       ],
     });
+    // Eve TOOLS-F8: the JSON (what the model gets) carries a placeholder for base64 data; the parts keep it.
     expect(JSON.parse(JSON.stringify(result))).toEqual({
       text: 'here',
       content: [
         { type: 'text', text: 'here' },
-        { type: 'image', data: 'aGk=', mimeType: 'image/png' },
-        { type: 'audio', data: 'YXVk', mimeType: 'audio/wav' },
+        { type: 'image', data: '[image: image/png, 4 base64 characters, not sent to the model]', mimeType: 'image/png' },
+        { type: 'audio', data: '[audio: audio/wav, 4 base64 characters, not sent to the model]', mimeType: 'audio/wav' },
         { type: 'resource', uri: 'file:///a.txt', mimeType: 'text/plain', text: 'hi' },
-        { type: 'resource', uri: 'file:///b.bin', blob: 'AAE=' },
+        { type: 'resource', uri: 'file:///b.bin', blob: '[resource: 4 base64 characters, not sent to the model]' },
         { type: 'resource_link', uri: 'file:///c', name: 'c', description: 'link' },
         { type: 'unknown', raw: { type: 'hologram', depth: 3 } },
       ],
     });
+  });
+
+  it('Eve TOOLS-F8: a 400 KB image reaches the JSON as a short placeholder; code still reads the data', async () => {
+    const data = 'A'.repeat(400_000);
+    const result = (await run({ content: [{ type: 'image', data, mimeType: 'image/png' }] })) as { content: Array<{ data: string }> };
+    expect(result.content[0].data).toBe(data);
+    const json = JSON.stringify(result);
+    expect(json.length).toBeLessThan(200);
+    expect(json).toContain('[image: image/png, 400000 base64 characters, not sent to the model]');
+  });
+
+  it('Eve TOOLS-F8: a tool description over 2,000 characters is cut', async () => {
+    const description = 'd'.repeat(680_000);
+    const client = { listTools: async () => ({ tools: [{ name: 'huge', description, inputSchema: { type: 'object' } }] }) } as unknown as Client;
+    const tools = await loadMcpTools(client, 's');
+    expect((tools.s__huge.tool as { description: string }).description.length).toBeLessThan(2_100);
+    expect((tools.s__huge.tool as { description: string }).description).toContain('[description truncated from 680000 characters]');
   });
 
   it('keeps media next to structuredContent instead of dropping it', async () => {

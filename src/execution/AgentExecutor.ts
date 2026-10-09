@@ -49,6 +49,7 @@ import {
   runToolCall,
 } from './toolCallExecution';
 import { resolveToolCallNames } from './toolNames';
+import { assertMaxToolResultChars } from './toolResult';
 import {
   StartedToolCall,
   ToolBatchResult,
@@ -592,6 +593,14 @@ export interface ExecuteOptions extends PermissionOptions {
    * ```
    */
   toolConcurrency?: ToolConcurrency;
+  /**
+   * Eve TOOLS-F8: the most characters of one tool result the model gets (its
+   * JSON, as the `tool` message content). A longer result keeps its head and
+   * tail with a marker saying how much was cut. Default 50_000 (about 12k
+   * tokens); `Infinity` turns the cap off. `onToolResult`, hooks and
+   * `tool.done` events still get the whole result.
+   */
+  maxToolResultChars?: number;
   /**
    * LOU-V4: a zod schema the final reply must match, as JSON (tools can
    * still be called first). It is validated into `result.object`; an invalid
@@ -1192,7 +1201,7 @@ export class AgentExecutor {
       if (exceeded) {
         state.toolCalls.push(...result.toolCalls);
         state.messages.push(assistantTurn(result));
-        pushAbortedBatchResults(state, result.toolCalls.map((toolCall) => ({ toolCall })), 'the run reached a budget limit');
+        pushAbortedBatchResults(state, result.toolCalls.map((toolCall) => ({ toolCall })), 'the run reached a budget limit', options.maxToolResultChars);
         return this.stopForBudget(options, state, exceeded);
       }
       const paused = await this.runToolCalls(options, state, assistantTurn(result), result.toolCalls, agentSpanId);
@@ -1427,7 +1436,7 @@ export class AgentExecutor {
         },
         onComplete: (toolResult) => runEvents?.toolSettled(toolResult),
         record: (toolCall, outcome) => {
-          pushToolResult(state, toolCall, outcome);
+          pushToolResult(state, toolCall, outcome, options.maxToolResultChars);
           if (outcome.subagent) suspensions.push(outcome.subagent);
         },
         persist: () => saveStepCheckpoint(options, state),
@@ -1506,13 +1515,13 @@ export class AgentExecutor {
     handoffCalls: ToolCall[]
   ): Promise<ExecutionResult> | undefined {
     if (options.signal?.aborted) {
-      pushAbortedBatchResults(state, batch.unrecorded);
+      pushAbortedBatchResults(state, batch.unrecorded, undefined, options.maxToolResultChars);
       cancelHandoffCalls(state, handoffCalls, 'the run was aborted');
       return this.abortRun(options, state);
     }
     // LOU-X4: a tool guardrail blocked a call before it ran; the rest of the batch did not start.
     if (batch.failure?.error instanceof GuardrailError) {
-      pushAbortedBatchResults(state, batch.unrecorded, 'a guardrail stopped the run');
+      pushAbortedBatchResults(state, batch.unrecorded, 'a guardrail stopped the run', options.maxToolResultChars);
       cancelHandoffCalls(state, handoffCalls, 'a guardrail stopped the run');
       return this.stopForGuardrail(options, state, batch.failure.error.guardrail);
     }
@@ -1532,7 +1541,7 @@ export class AgentExecutor {
       return this.pauseForApproval(options, state, toolCall, outcome, [...remaining, ...handoffCalls]);
     }
     // LOU-V10: what is left of a batch a steer stopped was not run.
-    pushAbortedBatchResults(state, batch.unrecorded, 'the user steered the run to new input');
+    pushAbortedBatchResults(state, batch.unrecorded, 'the user steered the run to new input', options.maxToolResultChars);
     if (batch.unrecorded.length > 0) cancelHandoffCalls(state, handoffCalls, 'the user steered the run to new input');
     if (suspension) {
       const record = suspensionRecord(options, state, suspension);
@@ -1675,7 +1684,7 @@ export class AgentExecutor {
       if (call === paused) continue;
       const { outcome } = call;
       if (outcome && !outcome.requiresApproval && !outcome.signIn) {
-        pushToolResult(state, call.toolCall, outcome);
+        pushToolResult(state, call.toolCall, outcome, options.maxToolResultChars);
         if (outcome.subagent) suspensions.push(outcome.subagent);
       } else {
         remaining.push(call.toolCall);
@@ -1935,6 +1944,7 @@ export class AgentExecutor {
     }
     assertToolConcurrency(options.toolConcurrency, caller);
     assertMaxSteps(options.maxSteps, caller);
+    assertMaxToolResultChars(options.maxToolResultChars, caller);
     assertMaxSubagentDepth(options.maxSubagentDepth, caller);
     assertToolSearchOptions(options.toolSearch, caller);
     assertOutputSchema(options.output);

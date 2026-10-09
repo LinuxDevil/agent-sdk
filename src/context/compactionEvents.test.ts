@@ -129,7 +129,7 @@ describe('compaction stream events (LOU-W3.2)', () => {
   });
 
   it('createAgent({ compaction: true }) compacts a long transcript with the defaults', async () => {
-    const { agent, model } = agentWith(true, HUGE);
+    const { agent, model } = agentWith(true, HUGE, { maxToolResultChars: Infinity }); // Eve TOOLS-F8: uncapped, so the results fill the window
     const run = agent.stream('read four pages');
     const events = await collect(run);
     const result = await run.result;

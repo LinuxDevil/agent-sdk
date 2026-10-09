@@ -32,6 +32,7 @@ import { assertHostedToolNames, isHostedTool, type HostedTool } from './tools/ho
 import { withAskQuestion, type ToolEntries } from './tools/built-in/askQuestion';
 import { toolEntries, type ToolsOption } from './tools/toolEntries';
 import { ToolConcurrency, assertToolConcurrency } from './execution/toolBatch';
+import { assertMaxToolResultChars } from './execution/toolResult';
 import type { Skill } from './skills/defineSkill';
 import type { Message, ModelSettings } from './providers/llm';
 import type { ReasoningOption } from './providers/reasoning';
@@ -277,6 +278,17 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    * ```
    */
   toolConcurrency?: ToolConcurrency;
+  /**
+   * Eve TOOLS-F8: the most characters of one tool result the model gets. A
+   * longer result keeps its head and tail with a truncation marker. Default
+   * 50_000 (about 12k tokens); `Infinity` turns the cap off. See docs/tools.md.
+   *
+   * @example
+   * ```ts
+   * const agent = createAgent({ prompt: '...', provider, tools: [dumpLogs], maxToolResultChars: 20_000 });
+   * ```
+   */
+  maxToolResultChars?: number;
   /**
    * LOU-W9.2: what a resume does when this agent differs from the one that
    * paused or crashed the run (another model, tools with other names or
@@ -813,6 +825,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
 ): SimpleAgent<InferSchemaOutput<TOutput>> {
   assertToolConcurrency(config.toolConcurrency, 'createAgent');
   assertMaxSteps(config.maxSteps, 'createAgent');
+  assertMaxToolResultChars(config.maxToolResultChars, 'createAgent');
   assertMaxSubagentDepth(config.maxSubagentDepth, 'createAgent');
   assertSubagents(config.subagents, 'createAgent');
   assertApprovalTtlMs(config.approvalTtlMs);
@@ -850,6 +863,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     limits: config.limits,
     guardrails: config.guardrails,
     toolConcurrency: config.toolConcurrency,
+    // Eve TOOLS-F8: also for resumed runs.
+    maxToolResultChars: config.maxToolResultChars,
     // TTL: the default pause deadline; an `ask` rule's `ttlMs` overrides it.
     approvalTtlMs: config.approvalTtlMs,
     onAgentDrift: config.onAgentDrift,

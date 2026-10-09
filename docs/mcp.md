@@ -62,7 +62,13 @@ A tool result whose content is only text reaches the model as `{ "text": ... }`.
 The result object still has `content` (the parts) for code that reads it, but
 it is not sent to the model a second time. Results with images, audio or
 resources keep every part, and `structuredContent` is used as the result when
-the server sends it.
+the server sends it. Base64 data (an image or audio part's `data`, a resource's
+`blob`) stays on the part for code, but the model gets a placeholder such as
+`[image: image/png, 400000 base64 characters, not sent to the model]`. Like
+every tool result, the rest is capped by `maxToolResultChars` (see
+[Tools](./tools.md#what-happens-when-the-model-calls-a-tool)), and a tool
+description longer than 2,000 characters is cut, since it is sent with every
+request.
 
 The map is the same one a spec file declares; see
 [Configuration](./configuration.md) (the `mcpServers` section) for the YAML form.
