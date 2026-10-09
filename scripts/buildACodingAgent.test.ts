@@ -2,8 +2,8 @@
  * docs/build-a-coding-agent.md: the agent from the page, over a
  * MemoryWorkspace. One test runs it with a scripted model (always offline);
  * the other replays a recording of a real model from
- * docs/__cassettes__/build-a-coding-agent.json. Record it once with
- *   LOUSHO_RECORD=1 OPENROUTER_API_KEY=... npx vitest run docs/buildACodingAgent.test.ts
+ * scripts/__cassettes__/build-a-coding-agent.json. Record it once with
+ *   LOUSHO_RECORD=1 OPENROUTER_API_KEY=... npx vitest run scripts/buildACodingAgent.test.ts
  * and commit the cassette; until it exists the replay test is skipped.
  */
 import { existsSync } from 'node:fs';
@@ -18,7 +18,7 @@ import {
 } from '../src';
 import { mockModel, recordReplay } from '../src/testing';
 
-const CASSETTE = 'docs/__cassettes__/build-a-coding-agent.json';
+const CASSETTE = 'scripts/__cassettes__/build-a-coding-agent.json';
 const DESTRUCTIVE = /\b(rm|mv|chmod|chown|git\s+(push|reset|clean|checkout))\b|>/;
 
 function buildWorkspace(): MemoryWorkspace {
