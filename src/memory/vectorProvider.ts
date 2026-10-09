@@ -7,7 +7,7 @@
  */
 import { SDKError } from '../execution/errors';
 import { newId } from '../utils/id';
-import type { MemoryItem, MemoryProvider } from './defineMemory';
+import { assertScopeKey, type MemoryItem, type MemoryProvider } from './defineMemory';
 import type { EmbeddingProvider } from './embeddings';
 import { keyedQueue } from './keyedQueue';
 
@@ -106,6 +106,7 @@ export function vectorMemory(store: VectorItemStore, options: VectorMemoryOption
   return {
     ranking: 'relevance',
     async list(key, { limit, query } = {}) {
+      assertScopeKey(key, 'list');
       const text = query?.trim();
       if (!text) return (await store.load(key)).reverse().slice(0, limit).map((row) => toItem(row));
       const [target] = await embedAll(embedder, [text]);
@@ -117,8 +118,9 @@ export function vectorMemory(store: VectorItemStore, options: VectorMemoryOption
       scored.sort((a, b) => b.score - a.score || b.order - a.order);
       return scored.slice(0, limit).map(({ row, score }) => toItem(row, score));
     },
-    add: (key, { text, metadata }) =>
-      serial(key, async () => {
+    add: async (key, { text, metadata }) => {
+      assertScopeKey(key, 'add');
+      return serial(key, async () => {
         // Dedupe on text, like itemsProvider: a stored duplicate is returned
         // unchanged (and no embedding call is spent on it).
         const existing = (await store.load(key)).find((row) => row.text === text);
@@ -128,8 +130,12 @@ export function vectorMemory(store: VectorItemStore, options: VectorMemoryOption
         await store.insert(key, row);
         await store.trim(key, maxItems);
         return toItem(row);
-      }),
-    remove: (key, id) => serial(key, () => store.remove(key, id)),
+      });
+    },
+    remove: async (key, id) => {
+      assertScopeKey(key, 'remove');
+      await serial(key, () => store.remove(key, id));
+    },
     async reindex(scopeKey) {
       const keys = scopeKey === undefined ? await store.scopeKeys() : [scopeKey];
       let changed = 0;

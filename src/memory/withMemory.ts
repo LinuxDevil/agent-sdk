@@ -78,6 +78,15 @@ function setBlocks(messages: Message[], names: ReadonlySet<string>, blocks: stri
   else if (blocks.length > 0) messages.unshift({ role: 'system', content });
 }
 
+/** Slots whose recall failure was already logged (one console.warn per slot). */
+const warnedRecall = new WeakSet<MemorySlot>();
+
+function warnRecallFailed(slot: MemorySlot, error: unknown): void {
+  if (warnedRecall.has(slot)) return;
+  warnedRecall.add(slot);
+  console.warn(`[lousho] memory '${slot.name}': recall failed, continuing without it: ${(error as Error)?.message ?? String(error)}`);
+}
+
 /**
  * Recalls into the system prompt on the run's first model call (not a
  * sub-agent's). A handoff replaces the system prompt with the target's, so a
@@ -100,7 +109,15 @@ function recallHook(bound: readonly BoundSlot[]): AgentHook {
       const blocks = await Promise.all(
         recalling.map(async ([slot, key]) => {
           const query = slot.recall.query === 'last-input' && lastInput ? lastInput : undefined;
-          const items = await slot.provider.list(key, { limit: slot.recall.maxItems, query });
+          let items: MemoryItem[];
+          try {
+            items = await slot.provider.list(key, { limit: slot.recall.maxItems, query });
+          } catch (error) {
+            // Eve MEM-F4: recall is an optimization; a corrupt file or a store
+            // outage must not fail every run. The recall_ tool still reports it.
+            warnRecallFailed(slot, error);
+            return '';
+          }
           return items.length > 0 ? block(slot.name, items) : '';
         })
       );

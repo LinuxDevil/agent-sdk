@@ -59,9 +59,42 @@ export type MemoryScope = 'global' | 'session' | ((ctx: MemoryScopeContext) => s
  * `provider.add(memoryKey(notes)!, { text })`.
  */
 export function memoryKey(slot: MemorySlot, ctx: MemoryScopeContext = {}): string | undefined {
-  const scope =
-    slot.scope === 'global' ? 'global' : slot.scope === 'session' ? ctx.sessionId && `session:${ctx.sessionId}` : slot.scope(ctx);
-  return scope ? `${slot.name}#${scope}` : undefined;
+  if (slot.scope === 'global') return `${slot.name}#global`;
+  if (slot.scope === 'session') return ctx.sessionId ? `${slot.name}#session:${ctx.sessionId}` : undefined;
+  let scope: unknown;
+  try {
+    scope = slot.scope(ctx);
+  } catch (error) {
+    throw new SDKError(`memory '${slot.name}': the scope function threw: ${(error as Error)?.message ?? String(error)}`, 'LOUSHO_MEMORY_INVALID', {
+      cause: error,
+    });
+  }
+  if (scope === undefined || scope === null) return undefined;
+  // Eve MEM-F6: a non-string, or a key interpolated from a missing value
+  // (`user:${undefined}`, `user:${{}}`), would pool every caller's memory under one key.
+  if (typeof scope !== 'string' || scope === '' || /\[object |(^|:)(undefined|null)$/.test(scope)) {
+    throw new SDKError(
+      `memory '${slot.name}': the scope function returned ${typeof scope === 'string' ? JSON.stringify(scope) : typeof scope}. ` +
+        "Return a non-empty string key such as `user:${id}`, or undefined for no memory in this run.",
+      'LOUSHO_MEMORY_INVALID'
+    );
+  }
+  return `${slot.name}#${scope}`;
+}
+
+/**
+ * Internal (Eve MEM-F7): throws unless `key` is a non-empty string, so a
+ * forgotten `memoryKey(slot, ctx)` argument never stores items under the key
+ * `undefined` that every such caller would share.
+ */
+export function assertScopeKey(key: unknown, method: string): asserts key is string {
+  if (typeof key !== 'string' || key === '') {
+    throw new SDKError(
+      `MemoryProvider.${method}: the scope key must be a non-empty string, got ${typeof key === 'string' ? '""' : String(key)}. ` +
+        "For a 'session' or function scope, pass the run's context: memoryKey(slot, { sessionId, metadata }).",
+      'LOUSHO_MEMORY_INVALID'
+    );
+  }
 }
 
 /** Options for {@link defineMemory}. */
@@ -119,14 +152,23 @@ export function defineMemory(options: DefineMemoryOptions): MemorySlot {
   if (typeof name !== 'string' || !SLOT_NAME.test(name)) {
     throw new SDKError(`defineMemory: invalid name ${JSON.stringify(name)}. Use 1-55 characters of A-Z, a-z, 0-9, '_' and '-'.`, 'LOUSHO_MEMORY_INVALID');
   }
-  if (typeof provider?.list !== 'function' || typeof provider.add !== 'function') {
-    throw new SDKError(`defineMemory: memory '${name}' needs a provider, e.g. inMemoryMemory() or fileMemory({ dir }).`, 'LOUSHO_MEMORY_INVALID');
+  if (scope !== 'global' && scope !== 'session' && typeof scope !== 'function') {
+    throw new SDKError(
+      `defineMemory: memory '${name}': scope must be 'global', 'session' or a function returning a key, got ${JSON.stringify(scope)}.`,
+      'LOUSHO_MEMORY_INVALID'
+    );
+  }
+  if (typeof provider?.list !== 'function' || typeof provider.add !== 'function' || typeof provider.remove !== 'function') {
+    throw new SDKError(`defineMemory: memory '${name}' needs a provider with list, add and remove, e.g. inMemoryMemory() or fileMemory({ dir }).`, 'LOUSHO_MEMORY_INVALID');
   }
   if (itemSchema !== undefined && !isModelSchema(itemSchema)) {
     throw new SDKError(
       `defineMemory: memory '${name}': itemSchema must be a zod schema (zod 3 or 4) or a Standard Schema.`,
       'LOUSHO_MEMORY_INVALID'
     );
+  }
+  if (recall.query !== undefined && recall.query !== 'last-input' && recall.query !== 'none') {
+    throw new SDKError(`defineMemory: memory '${name}': recall.query must be 'last-input' or 'none', got ${JSON.stringify(recall.query)}.`, 'LOUSHO_MEMORY_INVALID');
   }
   const maxItems = recall.maxItems ?? 10;
   if (!Number.isInteger(maxItems) || maxItems < 1) {
