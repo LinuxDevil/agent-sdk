@@ -448,7 +448,12 @@ interface Principal {
 }
 
 // @public
-export type ProviderInterceptor = (provider: LLMProvider) => LLMProvider;
+export interface ProviderInterceptContext {
+    agent?: string;
+}
+
+// @public
+export type ProviderInterceptor = (provider: LLMProvider, context?: ProviderInterceptContext) => LLMProvider;
 
 // @public
 interface ProviderUsage {

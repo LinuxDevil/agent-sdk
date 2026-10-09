@@ -16,8 +16,14 @@
  */
 import type { LLMProvider } from './llm';
 
+/** What the interceptor is told about the run making the call. */
+export interface ProviderInterceptContext {
+  /** The calling agent's name (a sub-agent's own name, not the lead's). */
+  agent?: string;
+}
+
 /** Returns the provider a model call should go to. */
-export type ProviderInterceptor = (provider: LLMProvider) => LLMProvider;
+export type ProviderInterceptor = (provider: LLMProvider, context?: ProviderInterceptContext) => LLMProvider;
 
 // On globalThis so every bundle of the SDK (the CJS and ESM builds, a vitest worker) shares one slot.
 const SLOT = Symbol.for('lousho.providerInterceptor');
@@ -34,7 +40,7 @@ export function setProviderInterceptor(next: ProviderInterceptor | undefined): P
 }
 
 /** The provider a model call should use: `provider`, or what the installed interceptor makes of it. */
-export function interceptProvider(provider: LLMProvider): LLMProvider {
+export function interceptProvider(provider: LLMProvider, context?: ProviderInterceptContext): LLMProvider {
   const interceptor = slot[SLOT];
-  return interceptor ? interceptor(provider) : provider;
+  return interceptor ? interceptor(provider, context) : provider;
 }

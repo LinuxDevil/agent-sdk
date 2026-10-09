@@ -182,6 +182,14 @@ export interface RunEventSink {
 /** Options key under which a streaming run hands the loop its {@link RunEventSink}. */
 export const RUN_EVENTS: unique symbol = Symbol('lousho.agentRunEvents');
 
+/** Options key under which a sub-agent's run carries the name its parent knows it by (the `task` call's `agent`). */
+export const SUBAGENT_NAME: unique symbol = Symbol('lousho.subagentName');
+
+/** The name a sub-agent's run is known by to its parent, or undefined for a top-level run. */
+export function subagentNameOf(options: object): string | undefined {
+  return (options as { [SUBAGENT_NAME]?: string })[SUBAGENT_NAME];
+}
+
 /** ExecuteOptions as passed through the loop of a streaming run. */
 export type StreamingExecuteOptions = ExecuteOptions & { [RUN_EVENTS]?: RunEventSink };
 

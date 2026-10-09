@@ -299,8 +299,12 @@ npx lousho eval --drift         # re-record and diff each case's trajectory
   `default.json`. Give each case a unique `label` so the names stay stable:
   two cases that would still share a cassette (the same label twice) fail at
   record time instead of overwriting each other. A case whose agent uses more
-  than one provider (a sub-agent on another model) gets `<case>-<hash>.2.json`
-  and so on. The files use the normal cassette format, with API keys redacted;
+  than one provider (a sub-agent on another model) gets one named after the
+  sub-agent, `<case>-<hash>.<agent>.json` (older `.2.json` files are still
+  replayed). Replay matches each call by its request, not its position, so
+  parallel sub-agent tasks replay whatever order the live model answered in; a
+  mismatch stops the run with `LOUSHO_CASSETTE_INVALID` even when it happens
+  inside a sub-agent. The files use the normal cassette format, with API keys redacted;
   review and commit them. Re-recording a case whose exchanges did not change
   leaves its file untouched (`recordedAt` is kept), so only real changes show
   in a diff. Cassettes recorded by an older SDK under the unhashed
