@@ -131,6 +131,8 @@ export function normalizeUsage(raw: ProviderUsage | undefined): Usage | undefine
 }
 
 function formatCost(costUsd: number): string {
+  // Eve CORE-F17: a tiny price keeps two significant digits instead of rounding to `$0.0000`.
+  if (costUsd > 0 && costUsd < 0.0001) return `$${costUsd.toFixed(Math.min(20, 1 - Math.floor(Math.log10(costUsd))))}`;
   return `$${costUsd.toFixed(costUsd >= 1 ? 2 : 4)}`;
 }
 

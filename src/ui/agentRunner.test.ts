@@ -104,4 +104,31 @@ describe('remote mode session id (Eve CORE-F1)', () => {
     await runner.send('a');
     expect(bodies[0]).toEqual({ input: 'a', sessionId: 'stored-1' });
   });
+
+  it('keeps the server { error } message in a failed request (Eve CORE-F17)', async () => {
+    let state: AgentUIState = initialAgentUIState;
+    const fetchMock = (async () => Response.json({ error: 'Invalid API key' }, { status: 401 })) as typeof fetch;
+    const runner = createAgentRunner({
+      source: () => ({ url: '/send', fetch: fetchMock }),
+      options: () => ({}),
+      state: () => state,
+      dispatch: (action) => (state = reduceAgentEvents(state, action)),
+    });
+    await runner.send('hi');
+    expect(state.status).toBe('error');
+    expect(state.error?.message).toBe('POST /send failed with 401: Invalid API key');
+  });
+
+  it('keeps the plain message when the failure body is not JSON', async () => {
+    let state: AgentUIState = initialAgentUIState;
+    const fetchMock = (async () => new Response('Bad gateway', { status: 502 })) as typeof fetch;
+    const runner = createAgentRunner({
+      source: () => ({ url: '/send', fetch: fetchMock }),
+      options: () => ({}),
+      state: () => state,
+      dispatch: (action) => (state = reduceAgentEvents(state, action)),
+    });
+    await runner.send('hi');
+    expect(state.error?.message).toBe('POST /send failed with 502');
+  });
 });
