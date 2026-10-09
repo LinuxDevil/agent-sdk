@@ -30,8 +30,10 @@ function openStore(): { store: SqliteStore; path: string } {
 function lockFor200ms(path: string): void {
   const holder = new (loadDatabaseSync())(path);
   holder.exec('BEGIN IMMEDIATE');
+  let open = true;
   const release = () => {
-    if (!holder.isOpen) return;
+    if (!open) return;
+    open = false;
     holder.exec('COMMIT');
     holder.close();
   };
@@ -52,7 +54,7 @@ describe("SqliteStore writes wait out another connection's lock (Eve E14)", () =
     const pending = makePending('ap-1');
     lockFor200ms(path);
     await store.approvals.save(pending, makeSnapshot(pending));
-    expect(await store.approvals.load('ap-1')).not.toBeNull();
+    expect(await store.approvals.load!('ap-1')).not.toBeNull();
   });
 
   it('approvals.resolve and checkpoints.delete', async () => {

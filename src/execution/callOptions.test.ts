@@ -10,9 +10,10 @@ import { mockModel } from '../testing';
 import { memoryStore } from '../storage/agentStore';
 import { textOf } from '../providers/content';
 import type { Message } from '../providers/llm';
+import type { MockRequest } from '../testing';
 
 const ping = defineTool({ name: 'ping', description: 'Ping', input: z.object({}), execute: async () => 'pong' });
-const systemOf = (messages: Message[]) => messages.filter((message) => message.role === 'system').map((message) => textOf(message));
+const systemOf = (messages: readonly Message[] | MockRequest['messages']) => (messages as readonly Message[]).filter((message) => message.role === 'system').map((message) => textOf(message));
 
 describe('per-call maxSteps (Eve CORE-F13)', () => {
   it("a call's maxSteps replaces the agent's for that run only", async () => {
@@ -23,7 +24,7 @@ describe('per-call maxSteps (Eve CORE-F13)', () => {
     expect(short.finishReason).toBe('max-steps');
     expect(model.calls).toHaveLength(2);
 
-    model.calls.length = 0;
+    model.reset();
     const long = await agent.send('go');
     expect(long.finishReason).toBe('max-steps');
     expect(model.calls).toHaveLength(10);

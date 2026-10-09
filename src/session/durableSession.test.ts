@@ -13,7 +13,7 @@ import { InMemoryApprovalStore } from '../execution/InMemoryApprovalStore';
 import { KVCheckpointStore } from '../deploy/kvCheckpointStore';
 import { SqliteStore } from '../storage/sqlite';
 import { memoryStore } from '../storage/agentStore';
-import { mockModel, type MockTurn } from '../testing';
+import { mockModel, type MockStaticTurn } from '../testing';
 import { MemorySessionStore } from './index';
 import type { AgentRun } from '../execution/agentRun';
 import type { Message } from '../providers/llm';
@@ -54,7 +54,7 @@ function checkpointStore(failSave?: number): KVCheckpointStore & { data: Map<str
   return Object.assign(store, { data });
 }
 
-const calling = (name: string): MockTurn => ({ toolCalls: [{ name, id: `call_${name}` }] });
+const calling = (name: string): MockStaticTurn => ({ toolCalls: [{ name, id: `call_${name}` }] });
 const roles = (messages: readonly { role: string }[]): string[] => messages.map((m) => m.role);
 const users = (messages: readonly Message[]): number => messages.filter((m) => m.role === 'user').length;
 const fullTurn = ['user', 'assistant', 'tool', 'assistant', 'tool', 'assistant'];

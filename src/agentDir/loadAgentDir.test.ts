@@ -115,6 +115,7 @@ const CREATE_AGENT_OPTIONS = {
   captureContent: true, redactContent: true, projectInstructions: true, store: true, approvalStore: true, approve: true,
   approvalTtlMs: true, askQuestion: true, retry: true, fallbackModels: true, output: true, hooks: true, compaction: true,
   memory: true, permissions: true, onPermissionDecision: true, permissionMode: true, onPermissionModeChange: true,
+  maxToolResultChars: true, promptCaching: true, rateLimit: true,
 } satisfies Record<keyof CreateAgentBase, true>;
 
 describe('createAgent() overrides', () => {

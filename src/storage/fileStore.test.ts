@@ -195,7 +195,7 @@ describe('fileStore(dir): case-safe file names (Eve DUR-F7)', () => {
 
     expect(await store.sessions.load('Alice')).toEqual(hi);
     expect((await store.checkpoints.load('Alice'))?.stepIndex).toBe(1);
-    expect(await store.approvals.load('Appr_1')).not.toBeNull();
+    expect(await store.approvals.load!('Appr_1')).not.toBeNull();
 
     await store.sessions.save('Alice', [...hi, { role: 'assistant', content: 'hello' }]);
     await save(store, 'Alice', 2);

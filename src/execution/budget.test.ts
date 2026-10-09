@@ -6,6 +6,7 @@ import type { AgentEvent } from './agentEvents';
 import { ToolRegistry } from '../tools';
 import { defineTool } from '../tools/defineTool';
 import type { AgentConfig } from '../types';
+import type { RunUsage } from '../models/usage';
 import { mockModel, type MockTurn } from '../testing';
 import { createAgent } from '../createAgent';
 import { memoryStore } from '../storage/agentStore';
@@ -207,7 +208,7 @@ describe('unknown cost under maxCostUsd (Eve PROV-F3)', () => {
   it('warns once that the cost limit cannot be enforced', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const budget = startBudget({ maxCostUsd: 1 })!;
-    const usage = { inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: undefined };
+    const usage: RunUsage = { inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: undefined, modelCalls: 1, estimated: false, promptTokens: 1, completionTokens: 1, byModel: {} };
     expect(budget.check(usage, 1)).toBeUndefined();
     budget.check(usage, 2);
     budget.dispose();
