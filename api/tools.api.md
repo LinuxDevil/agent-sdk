@@ -1090,6 +1090,8 @@ interface GenerateOptions {
     model?: string;
     // (undocumented)
     presencePenalty?: number;
+    // Warning: (ae-forgotten-export) The symbol "PromptCachingOption" needs to be exported by the entry point index.d.ts
+    promptCaching?: PromptCachingOption;
     // Warning: (ae-forgotten-export) The symbol "ReasoningOption" needs to be exported by the entry point index.d.ts
     reasoning?: ReasoningOption;
     responseFormat?: {
@@ -2100,6 +2102,9 @@ interface Principal {
     // (undocumented)
     type: 'user' | 'service';
 }
+
+// @public
+type PromptCachingOption = 'auto' | false;
 
 // @public
 interface ProviderFallbackEvent extends AgentEventBase<'provider.fallback'> {
@@ -3184,13 +3189,13 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-vtKX8cd3.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-vtKX8cd3.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-vtKX8cd3.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-vtKX8cd3.d.ts:3333:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
-// dist/createAgent-vtKX8cd3.d.ts:3334:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
-// dist/index-VM5p5BvT.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-VM5p5BvT.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/createAgent-B-kWCGJi.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-B-kWCGJi.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-B-kWCGJi.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-B-kWCGJi.d.ts:3338:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
+// dist/createAgent-B-kWCGJi.d.ts:3339:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
+// dist/index-Dy27pnXR.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-Dy27pnXR.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

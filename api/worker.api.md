@@ -434,6 +434,7 @@ abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLM
     protected readonly acceptsFileParts: boolean;
     // Warning: (ae-forgotten-export) The symbol "AiSdkModule" needs to be exported by the entry point worker.d.ts
     protected readonly ai: AiSdkModule;
+    protected cachesPrompt(_modelId: string, _options: GenerateOptions): boolean;
     // (undocumented)
     protected config: TConfig;
     // Warning: (ae-forgotten-export) The symbol "AiSdkMessage" needs to be exported by the entry point worker.d.ts
@@ -488,6 +489,7 @@ export function always(): true;
 //
 // @public
 export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
+    protected cachesPrompt(modelId: string, options: GenerateOptions): boolean;
     // (undocumented)
     protected createModel(modelId: string): Promise<LanguageModel>;
     // (undocumented)
@@ -1168,6 +1170,8 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
         cwd?: string;
         files?: readonly string[];
     };
+    // Warning: (ae-forgotten-export) The symbol "PromptCachingOption" needs to be exported by the entry point worker.d.ts
+    promptCaching?: PromptCachingOption;
     // Warning: (ae-forgotten-export) The symbol "RateLimitOptions" needs to be exported by the entry point worker.d.ts
     // Warning: (ae-forgotten-export) The symbol "RateLimiter" needs to be exported by the entry point worker.d.ts
     rateLimit?: RateLimitOptions | RateLimiter;
@@ -1777,6 +1781,7 @@ interface GenerateOptions {
     model?: string;
     // (undocumented)
     presencePenalty?: number;
+    promptCaching?: PromptCachingOption;
     reasoning?: ReasoningOption;
     responseFormat?: {
         type: 'json';
@@ -3000,6 +3005,9 @@ interface Principal {
     // (undocumented)
     type: 'user' | 'service';
 }
+
+// @public
+type PromptCachingOption = 'auto' | false;
 
 // Warning: (ae-forgotten-export) The symbol "ScheduleBase" needs to be exported by the entry point worker.d.ts
 //
@@ -4348,13 +4356,13 @@ interface WithRetryOptions {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-vtKX8cd3.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-vtKX8cd3.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-vtKX8cd3.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-vtKX8cd3.d.ts:3333:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-vtKX8cd3.d.ts:3334:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
-// dist/index-VM5p5BvT.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
-// dist/index-VM5p5BvT.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-B-kWCGJi.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-B-kWCGJi.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-B-kWCGJi.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-B-kWCGJi.d.ts:3338:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-B-kWCGJi.d.ts:3339:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
+// dist/index-Dy27pnXR.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
+// dist/index-Dy27pnXR.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point worker.d.ts
 
 // (No @packageDocumentation comment for this package)

@@ -454,6 +454,7 @@ abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLM
     protected readonly acceptsFileParts: boolean;
     // Warning: (ae-forgotten-export) The symbol "AiSdkModule" needs to be exported by the entry point index.d.ts
     protected readonly ai: AiSdkModule;
+    protected cachesPrompt(_modelId: string, _options: GenerateOptions): boolean;
     // (undocumented)
     protected config: TConfig;
     // Warning: (ae-forgotten-export) The symbol "AiSdkMessage" needs to be exported by the entry point index.d.ts
@@ -503,6 +504,7 @@ export function always(): true;
 //
 // @public
 export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
+    protected cachesPrompt(modelId: string, options: GenerateOptions): boolean;
     // (undocumented)
     protected createModel(modelId: string): Promise<LanguageModel>;
     // (undocumented)
@@ -1438,6 +1440,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
         cwd?: string;
         files?: readonly string[];
     };
+    promptCaching?: PromptCachingOption;
     rateLimit?: RateLimitOptions | RateLimiter;
     reasoning?: ReasoningOption;
     redactContent?: boolean;
@@ -2199,6 +2202,7 @@ interface ExecuteOptions extends PermissionOptions {
     output?: StandardSchemaV1 | OutputSpec;
     parentSpanId?: string;
     principal?: Principal;
+    promptCaching?: PromptCachingOption;
     // (undocumented)
     provider: LLMProvider;
     rateLimiter?: RateLimiter;
@@ -2693,6 +2697,7 @@ export interface GenerateOptions {
     model?: string;
     // (undocumented)
     presencePenalty?: number;
+    promptCaching?: PromptCachingOption;
     reasoning?: ReasoningOption;
     responseFormat?: {
         type: 'json';
@@ -4841,6 +4846,9 @@ export interface ProjectInstructions {
     content: string;
     path: string;
 }
+
+// @public
+export type PromptCachingOption = 'auto' | false;
 
 // @public
 export function promptInjectionGuardrail(options?: {
@@ -7267,8 +7275,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-VM5p5BvT.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-VM5p5BvT.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-Dy27pnXR.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-Dy27pnXR.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
