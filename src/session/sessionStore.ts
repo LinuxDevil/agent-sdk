@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import type { Message } from '../providers/llm';
 import { SDKError } from '../execution/errors';
 import { assertSessionId } from './sessionId';
+import { caseSafeName, findLegacyFile, removeLegacyFile } from '../storage/fileNames';
 
 /** How bytes (image and file parts, LOU-V11) are saved in a JSON transcript: `{ "$bytes": "<base64>" }`. */
 const BYTES_KEY = '$bytes';
@@ -81,7 +82,9 @@ export class MemorySessionStore implements SessionStore {
 /**
  * One JSON file per session (`<dir>/<id>.json`), written atomically (temp
  * file + rename) so a crash never leaves a half-written transcript. The
- * directory is created on first save.
+ * directory is created on first save. Each uppercase letter of the id is
+ * written as `^` and the lowercase letter (`Alice` -> `^alice.json`), so ids
+ * that differ only in case get different files on Windows and macOS too.
  *
  * @example
  * ```ts
@@ -98,17 +101,18 @@ export class FileSessionStore implements SessionStore {
 
   private fileFor(id: string): string {
     assertSessionId(id);
-    return join(this.dir, `${id}.json`);
+    return join(this.dir, `${caseSafeName(id)}.json`);
   }
 
   async load(id: string): Promise<Message[] | undefined> {
-    const file = this.fileFor(id);
-    let raw: string;
-    try {
-      raw = await readFile(file, 'utf8');
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-      throw error;
+    let file = this.fileFor(id);
+    let raw = await readText(file);
+    if (raw === undefined) {
+      const legacy = await findLegacyFile(this.dir, caseSafeName(id), id);
+      if (legacy === undefined) return undefined;
+      file = legacy;
+      raw = await readText(file);
+      if (raw === undefined) return undefined;
     }
     const parsed: unknown = JSON.parse(raw, decodeBytes);
     if (!Array.isArray(parsed)) {
@@ -128,9 +132,21 @@ export class FileSessionStore implements SessionStore {
       await rm(temp, { force: true });
       throw error;
     }
+    await removeLegacyFile(this.dir, caseSafeName(id), id);
   }
 
   async delete(id: string): Promise<void> {
     await rm(this.fileFor(id), { force: true });
+    await removeLegacyFile(this.dir, caseSafeName(id), id);
+  }
+}
+
+/** The file's text, or `undefined` when it does not exist. */
+async function readText(file: string): Promise<string | undefined> {
+  try {
+    return await readFile(file, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
   }
 }

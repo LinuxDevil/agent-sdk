@@ -10,6 +10,10 @@
  *   `<dir>/oauth/tokens/<sha256>.json`     an OAuth token or client, encrypted (`{ key, payload }`)
  *   `<dir>/oauth/pending/<state>.json`     a pending sign-in, encrypted (`{ expiresAt, payload }`)
  *
+ * Ids are written case-safe (`Alice` -> `^alice`, see `fileNames.ts`), so ids
+ * that differ only in case never share a file on Windows or macOS; files
+ * written before that encoding are still read.
+ *
  * Every write goes to a temp file and is renamed into place, so a crash never
  * leaves half a file. No lock files: a crashed writer cannot block anyone.
  * Two processes saving one session's checkpoint at the same time can lose one
@@ -35,6 +39,7 @@ import {
 import { ConfigurationError } from '../execution/errors';
 import { decodeBytes, encodeBytes, FileSessionStore } from '../session/sessionStore';
 import type { AgentStore } from './agentStore';
+import { caseSafeName, findLegacyFile, removeLegacyFile } from './fileNames';
 import { SealedTokenStore, type SealedRecordBackend } from '../oauth/sealedTokenStore';
 import type { TokenKeyInput } from '../oauth/tokenCipher';
 
@@ -78,6 +83,14 @@ async function readText(file: string): Promise<string | undefined> {
     if (isMissing(error)) return undefined;
     throw error;
   }
+}
+
+/** Read `<id>.json` in `dir` under its case-safe name, or under its legacy name (the id itself) when only that exists. */
+async function readById(dir: string, id: string): Promise<string | undefined> {
+  const raw = await readText(join(dir, `${caseSafeName(id)}.json`));
+  if (raw !== undefined) return raw;
+  const legacy = await findLegacyFile(dir, caseSafeName(id), id);
+  return legacy === undefined ? undefined : readText(legacy);
 }
 
 /** Write to a unique temp file next to `file` and rename it over `file`; creates the directory when it is missing. */
@@ -137,12 +150,13 @@ class FileCheckpointStore implements CheckpointStore {
 
   private fileFor(dir: string, sessionId: string): string {
     assertId(sessionId, CHECKPOINT_ID_PATTERN, 'session id');
-    return join(dir, `${sessionId}.json`);
+    return join(dir, `${caseSafeName(sessionId)}.json`);
   }
 
   /** The oldest-first ring; a missing or unreadable (half-written) file counts as empty. */
   private async readRing(sessionId: string): Promise<CheckpointHistoryEntry[]> {
-    const raw = await readText(this.fileFor(this.historyDir, sessionId));
+    assertId(sessionId, CHECKPOINT_ID_PATTERN, 'session id');
+    const raw = await readById(this.historyDir, sessionId);
     if (raw === undefined) return [];
     try {
       const parsed: unknown = JSON.parse(raw, decodeBytes);
@@ -155,19 +169,25 @@ class FileCheckpointStore implements CheckpointStore {
   async save(sessionId: string, checkpoint: Checkpoint): Promise<void> {
     const file = this.fileFor(this.checkpointDir, sessionId);
     await writeAtomic(file, checkpoint);
+    await removeLegacyFile(this.checkpointDir, caseSafeName(sessionId), sessionId);
     if (this.historyLimit === 0) return;
     const ring = appendToRing(await this.readRing(sessionId), toHistoryEntry(checkpoint), this.historyLimit);
     await writeAtomic(this.fileFor(this.historyDir, sessionId), ring);
+    await removeLegacyFile(this.historyDir, caseSafeName(sessionId), sessionId);
   }
 
   async load(sessionId: string): Promise<Checkpoint | null> {
-    const raw = await readText(this.fileFor(this.checkpointDir, sessionId));
+    assertId(sessionId, CHECKPOINT_ID_PATTERN, 'session id');
+    const raw = await readById(this.checkpointDir, sessionId);
     return raw === undefined ? null : (JSON.parse(raw, decodeBytes) as Checkpoint);
   }
 
   async delete(sessionId: string, options: CheckpointDeleteOptions = {}): Promise<void> {
     await rm(this.fileFor(this.checkpointDir, sessionId), { force: true });
-    if (!options.keepHistory) await rm(this.fileFor(this.historyDir, sessionId), { force: true });
+    await removeLegacyFile(this.checkpointDir, caseSafeName(sessionId), sessionId);
+    if (options.keepHistory) return;
+    await rm(this.fileFor(this.historyDir, sessionId), { force: true });
+    await removeLegacyFile(this.historyDir, caseSafeName(sessionId), sessionId);
   }
 
   async history(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]> {
@@ -188,7 +208,12 @@ class FileApprovalStore implements ApprovalStore {
 
   private fileFor(id: string): string {
     assertId(id, APPROVAL_ID_PATTERN, 'approval id');
-    return join(this.dir, `${id}.json`);
+    return join(this.dir, `${caseSafeName(id)}.json`);
+  }
+
+  /** The file of `id` written before case-safe names, when there is one. */
+  private legacyFile(id: string): Promise<string | undefined> {
+    return findLegacyFile(this.dir, caseSafeName(id), id);
   }
 
   async save(pending: PendingApproval, snapshot: ExecutionSnapshot): Promise<void> {
@@ -196,10 +221,15 @@ class FileApprovalStore implements ApprovalStore {
     const record: ResolvedApproval = { pending, snapshot };
     await writeAtomic(file, record);
     await rm(`${file}.claim`, { force: true });
+    await removeLegacyFile(this.dir, caseSafeName(pending.id), pending.id);
   }
 
   async resolve(id: string): Promise<ResolvedApproval | null> {
-    const raw = await takeFile(this.fileFor(id));
+    let raw = await takeFile(this.fileFor(id));
+    if (raw === undefined) {
+      const legacy = await this.legacyFile(id);
+      if (legacy !== undefined) raw = await takeFile(legacy);
+    }
     return raw === undefined ? null : (JSON.parse(raw, decodeBytes) as ResolvedApproval);
   }
 
@@ -209,7 +239,8 @@ class FileApprovalStore implements ApprovalStore {
    */
   async load(id: string): Promise<ResolvedApproval | null> {
     if (typeof id !== 'string' || !APPROVAL_ID_PATTERN.test(id)) return null;
-    const file = this.fileFor(id);
+    let file = this.fileFor(id);
+    if ((await readText(file)) === undefined) file = (await this.legacyFile(id)) ?? file;
     const [raw, claim] = await Promise.all([readText(file), readText(`${file}.claim`)]);
     return raw === undefined || claim !== undefined ? null : (JSON.parse(raw, decodeBytes) as ResolvedApproval);
   }

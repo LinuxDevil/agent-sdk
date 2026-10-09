@@ -4,7 +4,7 @@
  * approvals, id validation, a corrupt history file, and two agents on one dir.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -155,6 +155,66 @@ describe('fileStore(dir) (R2)', () => {
     for (const id of ['bogus id!', '../evil', '', undefined as unknown as string]) {
       expect(await store.approvals.load!(id)).toBeNull();
     }
+  });
+});
+
+describe('fileStore(dir): case-safe file names (Eve DUR-F7)', () => {
+  const hi: Message[] = [{ role: 'user', content: 'hi' }];
+
+  it("writes each uppercase letter as '^' and the letter, so an all-lowercase id keeps its old name", async () => {
+    const dir = tempDir();
+    const store = fileStore(dir);
+    await store.sessions.save('Alice', hi);
+    await store.sessions.save('alice', hi);
+    await save(store, 'Alice.turn-0', 1);
+    const pending = makePending('Appr_1');
+    await store.approvals.save(pending, makeSnapshot(pending));
+
+    expect(readdirSync(join(dir, 'sessions')).sort()).toEqual(['^alice.json', 'alice.json']);
+    expect(readdirSync(join(dir, 'checkpoints'))).toEqual(['^alice.turn-0.json']);
+    expect(readdirSync(join(dir, 'checkpoint-history'))).toEqual(['^alice.turn-0.json']);
+    expect(readdirSync(join(dir, 'approvals'))).toEqual(['^appr_1.json']);
+  });
+
+  it('reads a transcript, checkpoint and approval saved under the legacy mixed-case name, and moves it on the next save', async () => {
+    const dir = tempDir();
+    const store = fileStore(dir);
+    // Write files the way the store named them before the fix, then remove the case-safe copies.
+    await store.sessions.save('Alice', hi);
+    await save(store, 'Alice', 1);
+    const pending = makePending('Appr_1');
+    await store.approvals.save(pending, makeSnapshot(pending));
+    for (const [sub, from, to] of [
+      ['sessions', '^alice', 'Alice'],
+      ['checkpoints', '^alice', 'Alice'],
+      ['checkpoint-history', '^alice', 'Alice'],
+      ['approvals', '^appr_1', 'Appr_1'],
+    ]) {
+      renameSync(join(dir, sub, `${from}.json`), join(dir, sub, `${to}.json`));
+    }
+
+    expect(await store.sessions.load('Alice')).toEqual(hi);
+    expect((await store.checkpoints.load('Alice'))?.stepIndex).toBe(1);
+    expect(await store.approvals.load('Appr_1')).not.toBeNull();
+
+    await store.sessions.save('Alice', [...hi, { role: 'assistant', content: 'hello' }]);
+    await save(store, 'Alice', 2);
+    expect(readdirSync(join(dir, 'sessions'))).toEqual(['^alice.json']);
+    expect(readdirSync(join(dir, 'checkpoints'))).toEqual(['^alice.json']);
+    expect(readdirSync(join(dir, 'checkpoint-history'))).toEqual(['^alice.json']);
+    expect((await store.checkpoints.history!('Alice')).map((entry) => entry.step)).toEqual([2, 1]);
+
+    expect((await store.approvals.resolve('Appr_1'))?.pending).toEqual(pending);
+    expect(readdirSync(join(dir, 'approvals'))).toEqual([]);
+  });
+
+  it("does not read a lowercase id's legacy file for a mixed-case id", async () => {
+    const dir = tempDir();
+    const store = fileStore(dir);
+    await store.sessions.save('alice', hi); // 'alice.json': the same name before and after the fix
+    expect(await store.sessions.load('Alice')).toBeUndefined();
+    await store.sessions.delete('Alice');
+    expect(await store.sessions.load('alice')).toEqual(hi);
   });
 });
 

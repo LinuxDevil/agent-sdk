@@ -72,6 +72,17 @@ export function describeSessionStoreContract(name: string, factory: Factory<Sess
       expect(await store.load('b')).toEqual([convo[0]]);
     });
 
+    it('keeps ids that differ only in case apart (Eve DUR-F7)', async () => {
+      const store = await factory();
+      await store.save('Alice', convo);
+      expect(await store.load('alice')).toBeUndefined();
+      await store.save('alice', [convo[0]]);
+      expect(await store.load('Alice')).toEqual(convo);
+      expect(await store.load('alice')).toEqual([convo[0]]);
+      await store.delete('alice');
+      expect(await store.load('Alice')).toEqual(convo);
+    });
+
     it('does not alias the saved array', async () => {
       const store = await factory();
       const messages = structuredClone(convo);
@@ -132,6 +143,15 @@ export function describeCheckpointStoreContract(name: string, factory: Factory<C
       expect((await store.load('b'))?.sessionId).toBe('b');
     });
 
+    it('keeps ids that differ only in case apart (Eve DUR-F7)', async () => {
+      const store = await factory();
+      await store.save('Run-1', makeCheckpoint({ sessionId: 'Run-1' }));
+      expect(await store.load('run-1')).toBeNull();
+      await store.save('run-1', makeCheckpoint({ sessionId: 'run-1' }));
+      expect((await store.load('Run-1'))?.sessionId).toBe('Run-1');
+      expect((await store.load('run-1'))?.sessionId).toBe('run-1');
+    });
+
     it('round-trips fields it does not know about (opaque JSON)', async () => {
       const store = await factory();
       const extended = { ...makeCheckpoint(), futureField: { nested: [1, 'two'] } } as Checkpoint;
@@ -181,6 +201,17 @@ export function describeApprovalStoreContract(name: string, factory: Factory<App
       await store.save(pending, makeSnapshot(pending));
       expect(await store.resolve('a')).toEqual({ pending, snapshot: makeSnapshot(pending) });
       expect(await store.resolve('a')).toBeNull();
+    });
+
+    it('keeps ids that differ only in case apart (Eve DUR-F7)', async () => {
+      const store = await factory();
+      const upper = makePending('Pay-1');
+      await store.save(upper, makeSnapshot(upper));
+      expect(await store.resolve('pay-1')).toBeNull();
+      const lower = makePending('pay-1', { toolName: 'sendEmail' });
+      await store.save(lower, makeSnapshot(lower));
+      expect((await store.resolve('Pay-1'))?.pending).toEqual(upper);
+      expect((await store.resolve('pay-1'))?.pending).toEqual(lower);
     });
 
     it('keeps concurrent saves isolated', async () => {
