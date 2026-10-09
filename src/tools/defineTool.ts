@@ -1,7 +1,7 @@
 import type { ApprovalCheckContext, ApprovalOutcome, McpToolAnnotations, ToolDescriptor, ToolExecutionContext } from '../types';
 import type { SandboxAdapter } from '../security/sandboxCore';
 import { legacyAiTool } from './toolContract';
-import { isModelSchema, type InferSchemaOutput, type StandardSchemaV1 } from '../utils/zodCompat';
+import { isModelSchema, nonObjectRoot, unrepresentableFields, type InferSchemaOutput, type StandardSchemaV1 } from '../utils/zodCompat';
 import { SDKError } from '../execution/errors';
 
 /** Tool names must satisfy the constraint LLM providers impose on function names. */
@@ -131,9 +131,32 @@ function assertValidOptions(opts: { name?: unknown; description?: unknown; input
       `Import { z } from 'zod' (zod 3 or 4) and pass e.g. input: z.object({ query: z.string() })`
     );
   }
+  assertModelCanWrite(name, input);
   if (typeof execute !== 'function') {
     fail(`tool '${name}' needs an 'execute' function`, `Example: execute: async (args) => ({ ok: true })`);
   }
+}
+
+/**
+ * Eve TOOLS-F10: a schema no model can satisfy fails here, not on every call.
+ * Tool arguments are a JSON object, so the root must be one; a `z.date()` or
+ * `z.bigint()` field rejects the ISO string or number a model writes.
+ */
+function assertModelCanWrite(name: string, input: unknown): void {
+  const root = nonObjectRoot(input);
+  if (root !== undefined) {
+    fail(
+      `tool '${name}': 'input' must be a z.object() at the root (got ${root}); providers send tool arguments as a JSON object`,
+      `Wrap it, e.g. input: z.object({ value: z.string() })`
+    );
+  }
+  const { date, bigint } = unrepresentableFields(input);
+  if (date.length === 0 && bigint.length === 0) return;
+  const list = (paths: string[], kind: string): string[] => (paths.length ? [`${paths.map((path) => `'${path}'`).join(', ')} (${kind})`] : []);
+  fail(
+    `tool '${name}': ${[...list(date, 'z.date()'), ...list(bigint, 'z.bigint()')].join(' and ')} cannot be written by a model, which sends JSON strings and numbers, so every call would fail validation`,
+    'Use z.coerce.date() (or z.iso.datetime() for an ISO string) and z.coerce.bigint() (or z.number().int())'
+  );
 }
 
 /**

@@ -75,20 +75,168 @@ export function schemaToJsonSchema(schema: unknown): Record<string, unknown> | u
  * `z.coerce.date()` is not listed: it accepts the string a model writes.
  */
 export function unrepresentableDates(schema: unknown): string[] {
-  if (!isZod4Schema(schema)) return [];
-  const paths: string[] = [];
-  toJSONSchema(schema, {
-    target: 'draft-7',
-    io: 'input',
-    unrepresentable: 'any',
-    override: ({ zodSchema, path }) => {
-      const def = zodSchema._zod.def as { type: string; coerce?: boolean };
-      if (def.type !== 'date' || def.coerce) return;
-      const parts = path.filter((part) => part !== 'properties' && part !== 'anyOf' && part !== 'oneOf' && typeof part !== 'number');
-      paths.push(parts.map(String).join('.').replace(/\.items/g, '[]').replace(/^items/, '[]') || '(root)');
-    },
-  });
-  return paths.sort();
+  return isZod4Schema(schema) ? unrepresentableFields(schema).date : [];
+}
+
+/** The field kinds a model cannot write in JSON: a `Date` and a `bigint`. */
+export interface UnrepresentableFields {
+  date: string[];
+  bigint: string[];
+}
+
+/**
+ * The paths of each non-coercing `z.date()` and `z.bigint()` in a zod 3 or
+ * zod 4 schema (Eve TOOLS-F10): a model writes a string or a number there,
+ * which they reject. Fields under a zod 3 transform or preprocess are not
+ * listed, since it may convert the value first.
+ */
+export function unrepresentableFields(schema: unknown): UnrepresentableFields {
+  const found: UnrepresentableFields = { date: [], bigint: [] };
+  if (isZod4Schema(schema)) {
+    toJSONSchema(schema, {
+      target: 'draft-7',
+      io: 'input',
+      unrepresentable: 'any',
+      override: ({ zodSchema, path }) => {
+        const def = zodSchema._zod.def as { type: string; coerce?: boolean };
+        if ((def.type !== 'date' && def.type !== 'bigint') || def.coerce) return;
+        found[def.type].push(jsonPathLabel(path));
+      },
+    });
+  } else if (isZod3Schema(schema)) {
+    walkZod3(schema as Zod3Node, '', found);
+  }
+  found.date.sort();
+  found.bigint.sort();
+  return found;
+}
+
+/** `items[].due` for a JSON Schema path such as `properties.items.items.properties.due`. */
+function jsonPathLabel(path: ReadonlyArray<string | number>): string {
+  let label = '';
+  for (let i = 0; i < path.length; i++) {
+    const part = path[i];
+    if (part === 'properties' || part === 'additionalProperties') {
+      if (part === 'additionalProperties') label += '[]';
+      else if (i + 1 < path.length) label += (label ? '.' : '') + String(path[++i]);
+    } else if (part === 'items' || part === 'prefixItems') {
+      label += '[]';
+    }
+  }
+  return label || '(root)';
+}
+
+interface Zod3Def {
+  typeName?: string;
+  coerce?: boolean;
+  shape?: () => Record<string, Zod3Node>;
+  type?: Zod3Node;
+  innerType?: Zod3Node;
+  options?: Zod3Node[] | Map<unknown, Zod3Node>;
+  left?: Zod3Node;
+  right?: Zod3Node;
+  items?: Zod3Node[];
+  rest?: Zod3Node | null;
+  valueType?: Zod3Node;
+  schema?: Zod3Node;
+  in?: Zod3Node;
+}
+interface Zod3Node {
+  _def: Zod3Def;
+}
+
+/** Collects zod 3 `z.date()` / `z.bigint()` paths; does not descend into `ZodEffects` (a transform may convert). */
+function walkZod3(node: Zod3Node | null | undefined, path: string, found: UnrepresentableFields, depth = 0): void {
+  const def = node?._def;
+  if (!def || depth > 64) return;
+  const next = (child: Zod3Node | null | undefined, childPath = path): void => walkZod3(child, childPath, found, depth + 1);
+  switch (def.typeName) {
+    case 'ZodDate':
+      if (!def.coerce) found.date.push(path || '(root)');
+      return;
+    case 'ZodBigInt':
+      if (!def.coerce) found.bigint.push(path || '(root)');
+      return;
+    case 'ZodObject':
+      for (const [key, child] of Object.entries(def.shape?.() ?? {})) next(child, path ? `${path}.${key}` : key);
+      return;
+    case 'ZodArray':
+      return next(def.type, `${path}[]`);
+    case 'ZodSet':
+    case 'ZodRecord':
+    case 'ZodMap':
+      return next(def.valueType, `${path}[]`);
+    case 'ZodTuple':
+      for (const item of def.items ?? []) next(item, `${path}[]`);
+      return next(def.rest, `${path}[]`);
+    case 'ZodUnion':
+    case 'ZodDiscriminatedUnion':
+      for (const option of def.options instanceof Map ? def.options.values() : (def.options ?? [])) next(option);
+      return;
+    case 'ZodIntersection':
+      next(def.left);
+      return next(def.right);
+    case 'ZodBranded':
+      return next(def.type);
+    case 'ZodPipeline':
+      return next(def.in);
+    default:
+      // ZodOptional, ZodNullable, ZodDefault, ZodCatch, ZodReadonly
+      return next(def.innerType);
+  }
+}
+
+/** zod 3 root kinds whose JSON Schema is not an object. */
+const ZOD3_NON_OBJECT: Record<string, string> = {
+  ZodString: 'string',
+  ZodNumber: 'number',
+  ZodBigInt: 'bigint',
+  ZodBoolean: 'boolean',
+  ZodDate: 'date',
+  ZodArray: 'array',
+  ZodTuple: 'array',
+  ZodSet: 'array',
+  ZodEnum: 'string',
+  ZodNativeEnum: 'enum',
+  ZodLiteral: 'literal',
+  ZodNull: 'null',
+};
+
+/** The schema a zod 3 wrapper (optional, default, effects, brand, pipeline, ...) wraps, if any. */
+function zod3Inner(def: Zod3Def): Zod3Node | undefined {
+  if (def.innerType) return def.innerType;
+  if (def.typeName === 'ZodEffects') return def.schema;
+  if (def.typeName === 'ZodBranded') return def.type;
+  if (def.typeName === 'ZodPipeline') return def.in;
+  return undefined;
+}
+
+/**
+ * The JSON type of a schema's root when it is plainly not an object
+ * (`'string'`, `'array'`, ...), else `undefined` (an object, a union of
+ * objects, or a root that cannot be told). Tool arguments are a JSON object,
+ * and providers reject a tool whose parameters are not (Eve TOOLS-F10).
+ */
+export function nonObjectRoot(schema: unknown): string | undefined {
+  if (isZod3Schema(schema)) {
+    let def = (schema as Zod3Node)._def;
+    for (let depth = 0; depth < 16; depth++) {
+      const inner = zod3Inner(def);
+      if (!inner?._def) break;
+      def = inner._def;
+    }
+    return ZOD3_NON_OBJECT[def.typeName ?? ''];
+  }
+  let json: Record<string, unknown> | undefined;
+  try {
+    json = schemaToJsonSchema(schema);
+  } catch {
+    return undefined;
+  }
+  const type = json?.type;
+  if (typeof type === 'string' && type !== 'object') return type;
+  if (Array.isArray(type) && !type.includes('object')) return type.join(' | ');
+  return undefined;
 }
 
 /** Whether a schema can be sent to a model: zod 3, zod 4, or a Standard JSON Schema. */

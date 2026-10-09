@@ -110,7 +110,10 @@ describe('zodCompat (LOU-D29)', () => {
     expect(() => defineTool({ name: 's', description: 'd', input: standardString(false), execute: () => 1 })).toThrow(
       /zod schema as 'input'/
     );
-    expect(defineTool({ name: 's', description: 'd', input: standardString(true), execute: (q) => q }).name).toBe('s');
+    // Eve TOOLS-F10: its JSON Schema is a string, which no provider takes as tool parameters.
+    expect(() => defineTool({ name: 's', description: 'd', input: standardString(true), execute: (q) => q })).toThrow(/must be a z\.object\(\).*got string/);
+    const objectSchema = { '~standard': { ...standardString(true)['~standard'], jsonSchema: { input: () => ({ type: 'object', properties: { q: { type: 'string' } } }) } } };
+    expect(defineTool({ name: 's', description: 'd', input: objectSchema as StandardSchemaV1<string>, execute: (q) => q }).name).toBe('s');
   });
 
   it('asks for and validates structured output with a zod 4 schema', async () => {

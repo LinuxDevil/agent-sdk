@@ -47,6 +47,16 @@ With many tools, mark them `deferLoading` so the model finds them with a built-i
 called, and throws an error that says how to fix a bad value. Registering two
 tools with the same name throws an error naming the conflict.
 
+It also refuses (`LOUSHO_CONFIG_INVALID`) an `input` no model can satisfy:
+
+- **The root must be an object.** Providers send tool arguments as a JSON
+  object, so `z.string()` or `z.array(...)` at the root is rejected. Wrap it:
+  `z.object({ value: z.string() })`.
+- **No `z.date()` or `z.bigint()` fields.** A model writes an ISO string or a
+  number there, and those schemas reject both, so every call would fail. Use
+  `z.coerce.date()` (or `z.iso.datetime()` to keep the string) and
+  `z.coerce.bigint()` (or `z.number().int()`).
+
 A defined tool is a regular `ToolDescriptor`: it carries its schema as
 `inputSchema` (the same schema as `input`) and its `execute` function directly.
 The `.tool` field (an `ai` v4 `{ description, parameters, execute }` object) is
