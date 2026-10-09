@@ -1316,6 +1316,7 @@ interface ToolDescriptor {
 interface ToolExecutionContext {
     abortSignal?: AbortSignal;
     approval?: {
+        id?: string;
         note?: string;
         by?: Readonly<Principal>;
     };
@@ -1414,11 +1415,11 @@ export function validateFlowInput(input: Record<string, unknown>, variables: Flo
 // Warnings were encountered during analysis:
 //
 // dist/flows/index.d.ts:192:9 - (ae-forgotten-export) The symbol "ProviderUsage" needs to be exported by the entry point index.d.ts
-// dist/index-DLJj1QCG.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-DLJj1QCG.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-DLJj1QCG.d.ts:1955:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
-// dist/index-DLJj1QCG.d.ts:1998:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
-// dist/index-DLJj1QCG.d.ts:1998:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
+// dist/index-DflclLiQ.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-DflclLiQ.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-DflclLiQ.d.ts:1959:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
+// dist/index-DflclLiQ.d.ts:2002:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
+// dist/index-DflclLiQ.d.ts:2002:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
