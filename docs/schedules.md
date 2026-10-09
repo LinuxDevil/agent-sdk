@@ -83,6 +83,31 @@ const report = defineSchedule({ name: 'report', cron: '0 9 * * *', prompt: 'Run 
 await fireSchedule(agent, report);
 ```
 
+## Prompt schedules and sessions
+
+A prompt schedule's fire is an `agent.send(prompt, { sessionId })` run, not an
+`agent.session({ id })` turn (see
+[Two kinds of conversation id](./sessions.md#two-kinds-of-conversation-id)). Its
+id is `schedule-<name>-<fire time>` (`schedule-<name>` with
+`sharedSession: true`), and its conversation is kept in the agent's
+`store.checkpoints`, as a finished checkpoint, when the agent has one; without
+a checkpoint store the fire runs without an id and keeps nothing.
+`GET /chat/<id>` and `agent.session({ id }).load()` read the session store, so
+they show an empty transcript for a schedule id. Read a fire's report from the
+checkpoint store instead, or continue it with `agent.fork(id)`:
+
+```ts
+import { createAgent, createMockProvider, defineSchedule, fireSchedule, memoryStore } from '@lousho/build-ai-agent';
+
+const store = memoryStore();
+const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider(), store });
+const firedAt = new Date('2026-10-05T09:00:00Z');
+await fireSchedule(agent, defineSchedule({ name: 'weekly-report', cron: '0 9 * * MON', prompt: 'Summarise last week.' }), { firedAt });
+
+const fire = await store.checkpoints.load('schedule-weekly-report-2026-10-05T090000Z');
+console.log(fire?.status, fire?.messages.at(-1)?.content); // 'finished', the report
+```
+
 ## In an agent directory
 
 ```text
@@ -149,10 +174,12 @@ triggers:
 Worker's `scheduled()` runs every trigger whose `cron` equals the invoked one as
 an agent turn inside `ctx.waitUntil()`. Each fire has its own session,
 `schedule-<name>-<fire time>` (for example `schedule-weekly-report-2026-10-05T090000Z`),
-so its run is inspectable in the KV session store when `AGENT_CHECKPOINTS` is
-bound and a daily job does not re-send every earlier report. Set
-`sharedSession: true` on a `defineSchedule()` prompt schedule to keep one
-`schedule-<name>` session instead; its transcript then grows with every fire. The run
+so a daily job does not re-send every earlier report, and its run can be read
+back from the checkpoints in KV when `AGENT_CHECKPOINTS` is bound (see
+[Prompt schedules and sessions](#prompt-schedules-and-sessions); not
+`GET /chat/<id>`). Set `sharedSession: true` on a `defineSchedule()` prompt
+schedule to keep one `schedule-<name>` session instead; its conversation then
+grows with every fire. The run
 happens inside `ctx.waitUntil()`, past the request's lifetime, so give the
 agent a store (`KVStore` on `AGENT_CHECKPOINTS`) — an in-memory one keeps the
 schedule sessions only until the isolate is recycled. A failing

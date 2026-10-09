@@ -157,6 +157,30 @@ Sessions are a thin layer: the session owns the transcript and hands it to the
 executor on each turn. Without a checkpoint store, a turn is saved only when it
 ends, so a crash in the middle of a turn loses it; see the next section.
 
+## Two kinds of conversation id
+
+`agent.session({ id })` and `agent.send(msg, { sessionId })` are different
+conversations. The SDK has two ways to keep a conversation under an id, and they do not share
+storage:
+
+| | `agent.session({ id }).send(msg)` | `agent.send(msg, { sessionId })` |
+| --- | --- | --- |
+| What it is | A session: a transcript, one `send()` per turn | One durable run (see [Durable execution](./durable-execution.md)); calling it again with the same id continues it |
+| Where the conversation lives | `store.sessions` under `id` (each turn checkpointed as `<id>.turn-<n>` while it runs) | `store.checkpoints` under `sessionId` (the checkpoint's `messages`) |
+| Needs | nothing (in memory by default) | `store.checkpoints` (`LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE` without one) |
+| Read it back with | `session.load()`, `GET /chat/:id` | `store.checkpoints.load(sessionId)` (its `messages`), `agent.fork(sessionId)` |
+| Continue it after a crash with | `agent.session({ id }).resume()` | `agent.resume(sessionId)` |
+
+Use one model per id. An id used both ways holds two unrelated conversations:
+a turn sent one way does not see the turns sent the other way, and
+`GET /chat/:id` shows only the session transcript. `agent.resume(id)` looks for
+a `send({ sessionId })` run first and, only when there is none, resumes the
+session's pending turn, so with both present it finishes the run and leaves the
+session turn pending (finish that with `agent.session({ id }).resume()`).
+Prompt schedules run as `send({ sessionId })` runs (see
+[Schedules](./schedules.md#prompt-schedules-and-sessions)), so read a schedule's
+reports from `store.checkpoints`, not `GET /chat/:id`.
+
 ## Durable sessions
 
 Give the agent a `store` with checkpoints and every session turn is
@@ -185,7 +209,8 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   agent's, part by part.
 - `agent.resume(id)` is `agent.session({ id }).resume()`, except that it first
   finishes a run started with `agent.send(message, { sessionId: id })` (see
-  [Durable execution](./durable-execution.md)).
+  [Durable execution](./durable-execution.md) and
+  [the two kinds of id](#two-kinds-of-conversation-id)).
 - Each turn runs with `sessionId: '<session id>.turn-<n>'` (`n` is the length
   of the transcript when the turn started), so a new process finds the
   interrupted turn without any extra bookkeeping. A finished turn joins the
