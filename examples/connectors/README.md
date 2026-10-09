@@ -27,7 +27,7 @@ OAuth is **app-owned**: one operator signs the agent in once per server via `age
 
 ## Write safety
 
-`slack_post_message` carries `destructiveHint`/`readOnlyHint` annotations, and the demo sets `approval: 'never'` only so it runs non-interactively. In production keep the default (`'annotations'`) or an `approval` predicate/permission rules so connector *writes* pause for human approval — see [docs/approvals.md](../../docs/approvals.md).
+`slack_post_message` carries `destructiveHint`/`readOnlyHint` annotations, and the demo sets `approval: 'never'` only so it runs non-interactively. In production keep the default (`'always'`), `'annotations'` for a server you trust, or an `approval` predicate/permission rules so connector *writes* pause for human approval — see [docs/approvals.md](../../docs/approvals.md).
 
 ```bash
 npm run example:connectors            # offline, real MCP stdio round-trip

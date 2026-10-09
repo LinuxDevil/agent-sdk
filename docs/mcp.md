@@ -122,6 +122,12 @@ names that still collide get a `_2`, `_3` suffix. The server is always called
 with the tool's own name, which `descriptor.metadata.mcp.tool` keeps, and a
 renamed tool is logged as a warning. Valid names are unchanged.
 
+An MCP tool may not take the name of another tool of the agent: if a server's
+`<server>__<tool>` equals a local tool's name, the run fails with
+`LOUSHO_CONFIG_INVALID` instead of the MCP tool replacing the local one (and its
+approval gate). Rename the local tool, or leave the MCP tool out with
+`tools: { exclude }`.
+
 `tools: { include, exclude }` on a server entry (or
 `loadMcpTools(client, name, { tools })`) loads only some of its tools, by their
 MCP names: `include` keeps only those listed, then `exclude` drops those listed.
@@ -135,20 +141,28 @@ const mcpServers = {
 
 ### Approval for MCP tools
 
+By default **every MCP tool asks for [approval](./approvals.md)**: the run
+pauses until a human (or your `approve` callback) decides.
+
 MCP servers describe each tool with annotations (`readOnlyHint`,
 `destructiveHint`, `idempotentHint`, `openWorldHint` and a `title`). They are
-hints, but the SDK uses them as the default for [approvals](./approvals.md):
-a tool with `readOnlyHint: true` runs; a tool with `destructiveHint: true`, or
-one that sends no `destructiveHint` (the MCP spec's default is destructive),
-pauses the run until a human approves; `destructiveHint: false` runs. A tool
-without annotations therefore asks. The raw annotations stay on
-`descriptor.metadata.mcp.annotations`, and `title` becomes the `displayName`.
+the server's own word, not a guarantee, so the SDK trusts them only when you opt
+in with `approval: 'annotations'`: a tool with `readOnlyHint: true` then runs
+(and may run in [plan mode](./permission-modes.md)); a tool with
+`destructiveHint: true`, or one that sends no `destructiveHint` (the MCP spec's
+default is destructive), pauses the run until a human approves;
+`destructiveHint: false` runs. The raw annotations stay on
+`descriptor.metadata.mcp.annotations` either way, and `title` becomes the
+`displayName`.
 
 Set `approval` on a server entry (`mcpServers`, `createAgent`, `connectMcp()`) or
 in `loadMcpTools(client, name, { approval })`:
 
-- `'annotations'` (default): as above.
-- `'always'` / `'never'`: ask for every tool / none of them.
+- `'always'` (default): ask for every tool. Plan mode refuses every tool of the
+  server.
+- `'annotations'`: trust the server's hints, as above. Use it only for servers
+  you trust.
+- `'never'`: ask for none of them.
 - A function `({ name, annotations, args }) => boolean` decides per call
   (`name` is the bare tool name; `annotations` is `{}` when the server sent
   none; `args` are the call's arguments). It lets you gate a meta-tool such as
@@ -164,7 +178,10 @@ import { createAgent } from '@lousho/build-ai-agent';
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
   mcpServers: {
+    // The default: every tool asks.
     files: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'] },
+    // A server you trust to label its tools: its read-only tools run.
+    github: { url: 'https://api.githubcopilot.com/mcp/', approval: 'annotations' },
     // Ask before anything except tools whose name starts with `search`.
     docs: { url: 'https://example.com/mcp', approval: ({ name }) => !name.startsWith('search') },
     // A server you trust: never ask.

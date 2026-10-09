@@ -35,11 +35,13 @@ export interface RawMcpTool {
 }
 
 /**
- * Which MCP tools ask for approval (LOU-Z5). `'annotations'` (default) follows the
- * server's hints: `readOnlyHint: true` runs, `destructiveHint` true or absent (the
- * MCP spec's default) asks, `destructiveHint: false` runs. `'always'` / `'never'`
- * ask for every / no tool. A function decides per call from the tool's bare name,
- * its annotations (`{}` when it sent none) and the call's `args`.
+ * Which MCP tools ask for approval (LOU-Z5). `'always'` (default, Eve TOOLS-F11)
+ * asks for every tool: a server's hints are its own word, not a guarantee.
+ * `'annotations'` opts in to trusting them: `readOnlyHint: true` runs (and may run
+ * in plan mode), `destructiveHint` true or absent (the MCP spec's default) asks,
+ * `destructiveHint: false` runs. `'never'` asks for no tool. A function decides per
+ * call from the tool's bare name, its annotations (`{}` when it sent none) and the
+ * call's `args`.
  */
 export type McpApproval =
   | 'annotations'
@@ -133,7 +135,7 @@ export interface LoadMcpToolsOptions {
   logger?: Logger;
   /** Called once per skipped tool, so callers can surface what was left out. */
   onSkip?: (skipped: SkippedMcpTool) => void;
-  /** Which tools ask for approval; see {@link McpApproval}. Default `'annotations'`. */
+  /** Which tools ask for approval; see {@link McpApproval}. Default `'always'`. */
   approval?: McpApproval;
   /** N2: mark every tool `deferLoading`, so an agent offers them through `tool_search` (docs/tool-search.md). */
   deferLoading?: boolean;
@@ -162,8 +164,8 @@ export interface LoadMcpToolsOptions {
  *
  * A tool whose schema cannot be converted is skipped (warned through
  * `options.logger`, reported to `options.onSkip`) and never prevents the
- * server's other tools from loading. Tools ask for approval per `options.approval` (by default from the
- * server's annotations). Results with `isError: true` throw an
+ * server's other tools from loading. Tools ask for approval per `options.approval` (by default
+ * every tool asks; `'annotations'` trusts the server's hints). Results with `isError: true` throw an
  * {@link McpToolError}; other results keep text, structured and media
  * content (see {@link handleCallToolResult}).
  *
@@ -179,7 +181,7 @@ export async function loadMcpTools(
   connectionName: string,
   options: LoadMcpToolsOptions = {}
 ): Promise<Record<string, NamedToolDescriptor>> {
-  const { logger = noopLogger, onSkip, approval = 'annotations', deferLoading, timeoutMs, tools: filter } = options;
+  const { logger = noopLogger, onSkip, approval = 'always', deferLoading, timeoutMs, tools: filter } = options;
   const rawTools = selectTools(await listRemoteTools(client), connectionName, filter, logger);
   const descriptors: Record<string, NamedToolDescriptor> = {};
   const taken = new Set<string>();
@@ -251,7 +253,8 @@ function buildDescriptor(
     description: rawTool.description || '',
     inputSchema: objectRoot(jsonSchemaToZod(rawTool.inputSchema)),
     needsApproval: needsApproval(approval, rawTool.name, rawTool.annotations),
-    metadata: { mcp: { annotations: rawTool.annotations, server, tool: rawTool.name } },
+    // Eve TOOLS-F11: plan mode trusts the server's `readOnlyHint` only when `approval` does.
+    metadata: { mcp: { annotations: rawTool.annotations, server, tool: rawTool.name, ...(approval !== 'annotations' && { annotationsTrusted: false }) } },
     execute: async (args, ctx) =>
       handleCallToolResult(
         await client.callTool({ name: rawTool.name, arguments: args }, undefined, callOptions(ctx?.abortSignal, timeoutMs)),

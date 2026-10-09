@@ -222,9 +222,13 @@ export function hasEnforcedApproval(tool: ToolDescriptor | undefined): boolean {
   return typeof policy === 'function' && enforcedApprovals.has(policy);
 }
 
-/** N4: plan mode lets a tool run when it declares `readOnlyHint: true` or is a built-in marked by {@link allowInPlanMode}. */
+/**
+ * N4: plan mode lets a tool run when it declares `readOnlyHint: true` or is a built-in marked by {@link allowInPlanMode}.
+ * Eve TOOLS-F11: an MCP server's own hint counts only when its `approval` is `'annotations'`.
+ */
 function isReadOnlyTool(tool: ToolDescriptor): boolean {
-  return tool.metadata?.mcp?.annotations?.readOnlyHint === true || planModeTools.has(tool);
+  const mcp = tool.metadata?.mcp;
+  return (mcp?.annotations?.readOnlyHint === true && mcp.annotationsTrusted !== false) || planModeTools.has(tool);
 }
 
 /**
