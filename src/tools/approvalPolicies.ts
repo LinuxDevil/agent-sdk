@@ -29,7 +29,9 @@ export function never(): false {
 /**
  * Asks the first time the tool is called in a session; once a human approves
  * a call, later calls of the tool in that session run without asking. A
- * rejection is not remembered. `per: 'args'` remembers approvals per tool and
+ * rejection is not remembered, nor is an approval given by a
+ * `createAgent({ approve })` callback (Eve TOOLS-F19): the callback is asked
+ * again each time, unless the decision said `remember: 'session'`. `per: 'args'` remembers approvals per tool and
  * arguments instead (the next call with different arguments asks again).
  *
  * @example
@@ -54,14 +56,48 @@ export function once(options: { per?: 'tool' | 'args' } = {}): ApprovalPolicy {
   };
 }
 
-/** The `metadata` recorded on the `tool` message of a call a human approved. */
-export function approvalMarker(args: unknown): Record<string, unknown> {
-  return { approval: { approved: true, args: argsKey(args) } };
+/**
+ * The `metadata` recorded on the `tool` message of an approved call.
+ * Eve TOOLS-F19: `automatic` when an `approve` callback (not a human)
+ * approved it, `remember` when the decision asked to approve identical calls
+ * for the rest of the session.
+ */
+export function approvalMarker(args: unknown, options: { automatic?: boolean; remember?: 'session' } = {}): Record<string, unknown> {
+  return {
+    approval: { approved: true, args: argsKey(args), ...(options.automatic && { automatic: true }), ...(options.remember && { remember: options.remember }) },
+  };
 }
 
+interface ApprovalMark {
+  approved?: unknown;
+  args?: unknown;
+  automatic?: unknown;
+  remember?: unknown;
+}
+
+const markOf = (message: Message): ApprovalMark | undefined => message.metadata?.approval as ApprovalMark | undefined;
+
 function wasApproved(message: Message, key: string | undefined): boolean {
-  const approval = message.metadata?.approval as { approved?: unknown; args?: unknown } | undefined;
-  return approval?.approved === true && (key === undefined || approval.args === key);
+  const approval = markOf(message);
+  // Eve TOOLS-F19: an `approve` callback's yes counts only with `remember`. (Markers written before it have no `automatic`.)
+  if (approval?.approved !== true || (approval.automatic === true && approval.remember === undefined)) return false;
+  return key === undefined || approval.args === key;
+}
+
+/**
+ * Eve TOOLS-F19: whether an earlier call of `toolName` in `messages` was
+ * approved with `remember: 'session'` and the same `args` - the tool's
+ * `needsApproval` then does not ask again.
+ */
+export function rememberedApproval(messages: readonly Message[], toolName: string, args: unknown): boolean {
+  let key: string | undefined;
+  return messages.some((message) => {
+    if (message.role !== 'tool' || message.toolName !== toolName) return false;
+    const approval = markOf(message);
+    if (approval?.approved !== true || approval.remember !== 'session') return false;
+    key ??= argsKey(args);
+    return approval.args === key;
+  });
 }
 
 /** A stable hash of `args`: the same for equal values, whatever their key order. */

@@ -6,7 +6,7 @@
  * each pause at once by resuming the run with the callback's answer.
  */
 
-import { approvalExpired, describeApproval, oldestFirst, type ApprovalDecision, type ApprovalStore, type PendingApproval } from './execution/ApprovalGate';
+import { approvalExpired, describeApproval, markAutomaticDecision, oldestFirst, type ApprovalDecision, type ApprovalStore, type PendingApproval } from './execution/ApprovalGate';
 import type { ExecutionResult } from './execution/AgentExecutor';
 import type { AgentEvent } from './execution/agentEvents';
 import type { AgentRun } from './execution/agentRun';
@@ -319,7 +319,8 @@ export function createAgentApprovals(options: {
       // A 'defer' verdict is not a decision: the approval stays pending and
       // the paused result is surfaced as it is, for the human path to resolve.
       if (verdict === 'defer') return current;
-      const decision = typeof verdict === 'string' ? { id: request.id, approved: true, note: verdict } : { id: request.id, approved: verdict };
+      // Eve TOOLS-F19: the callback's decision, which `once()` does not remember.
+      const decision = markAutomaticDecision(typeof verdict === 'string' ? { id: request.id, approved: true, note: verdict } : { id: request.id, approved: verdict });
       current = await resume(store, decision, signal, checkpointStore, permissionMode, undefined, onAgentEvent);
     }
   }

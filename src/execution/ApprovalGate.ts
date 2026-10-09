@@ -134,6 +134,39 @@ export interface ApprovalDecision {
   id: string;
   approved: boolean;
   note?: string;
+  /**
+   * Eve TOOLS-F19: with `approved: true`, `'session'` approves later calls of
+   * this tool with the same arguments in the same session (the same
+   * transcript) without asking again - "don't ask again for this".
+   */
+  remember?: 'session';
+  /**
+   * Eve TOOLS-F19: with `approved: true`, approve with these arguments instead
+   * of the model's ("approve with edits"). They are validated against the
+   * tool's input schema first: invalid ones throw `LOUSHO_TOOL_ARGS_INVALID`
+   * and leave the approval pending. The model's tool call in the transcript is
+   * rewritten to them, so the model sees what ran. Not for a question, a
+   * sign-in or a handoff; ignored with `approved: false`.
+   */
+  args?: Record<string, unknown>;
+}
+
+/**
+ * Eve TOOLS-F19: decisions made by a non-human `approve` callback
+ * (`createAgent({ approve })`). Their approval is not remembered by `once()`:
+ * only a human's (or a `remember` decision's) is.
+ */
+const automaticDecisions = new WeakSet<ApprovalDecision>();
+
+/** Eve TOOLS-F19: marks `decision` as made by an `approve` callback, not a human. */
+export function markAutomaticDecision<T extends ApprovalDecision>(decision: T): T {
+  automaticDecisions.add(decision);
+  return decision;
+}
+
+/** Eve TOOLS-F19: whether `decision` was made by an `approve` callback (see {@link markAutomaticDecision}). */
+export function isAutomaticDecision(decision: ApprovalDecision): boolean {
+  return automaticDecisions.has(decision);
 }
 
 /**

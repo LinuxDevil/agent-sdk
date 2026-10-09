@@ -8,6 +8,7 @@ import { Message, ToolCall } from '../providers';
 import { AgentConfig, ToolDescriptor, type ApprovalCheckContext, type ApprovalOutcome } from '../types';
 import { ToolRegistry } from '../tools';
 import { getToolExecute } from '../tools/toolContract';
+import { rememberedApproval } from '../tools/approvalPolicies';
 import { SandboxAdapter } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
 import type { ToolRunContext } from './toolRunContext';
@@ -370,7 +371,10 @@ async function checkNeedsApproval(
       messages: ctx.messages,
       ...(ctx.principal && { principal: ctx.principal }),
     };
-    return approvalGate(toolCall, await resolveNeedsApproval(toolDesc, args, check));
+    const outcome = await resolveNeedsApproval(toolDesc, args, check);
+    // Eve TOOLS-F19: a human approved this very call earlier in the session with `remember: 'session'`.
+    if ((outcome === true || outcome === 'ask') && rememberedApproval(ctx.messages, toolCall.function.name, args)) return { requiresApproval: false };
+    return approvalGate(toolCall, outcome);
   } catch (error) {
     return { requiresApproval: false, rejection: thrownToolFailure(toolCall, error) };
   }

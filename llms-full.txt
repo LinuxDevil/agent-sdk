@@ -2507,8 +2507,9 @@ and returns (or resolves to):
 Three helpers cover the common policies: `always()` (the same as `true`),
 `never()` (`false`) and `once()`. `once()` asks the first time the tool is
 called in a session; once a human approves a call, later calls of that tool in
-the same session run without asking. A rejection is not remembered, and a new
-session asks again. `once({ per: 'args' })` remembers approvals per tool and
+the same session run without asking. A rejection is not remembered, nor is a
+yes from a `createAgent({ approve })` callback (that callback is asked again
+for each call), and a new session asks again. `once({ per: 'args' })` remembers approvals per tool and
 arguments instead, so a call with different arguments asks again. The memory
 lives in the transcript (the approved call's `tool` message carries
 `metadata.approval`), so it is saved wherever the session, checkpoint or
@@ -2566,7 +2567,9 @@ task.
 - `agent.approvals.resolve({ id, approved, note? })` runs the call (approved)
   or gives the model a rejection with your `note` (rejected), continues the
   run, and resolves with the continued run's result, which may pause again.
-  It throws when `id` is unknown or already resolved.
+  It throws when `id` is unknown or already resolved. Two more options apply
+  to an approval (see [Don't ask again, approve with edits](#dont-ask-again-approve-with-edits)):
+  `remember: 'session'` and `args`.
 - A run that paused inside `agent.session()` continues in that session: the
   tool call, its result and the final answer join the session's transcript.
 - `agent.stream()` and `session.stream()` end at the pause with an
@@ -2592,6 +2595,31 @@ stop showing one as soon as any process decides it. A stored pause that no
 session of this process has run yet is listed without its `sessionId`. With a
 custom `ApprovalStore` that has no `list()`, `list()` only knows the pauses
 made by this agent object.
+
+### Don't ask again, approve with edits
+
+- `remember: 'session'` approves this call and every later call of the same
+  tool **with the same arguments** in the same session, without pausing (the
+  tool's `needsApproval` is not asked again; a permission rule's `ask` still
+  pauses). Calls with other arguments ask as before. Like `once()`, the memory
+  is the transcript, so it holds after a restart and is gone in a new session.
+- `args` approves with edited arguments ("approve with edits"). They are
+  validated against the tool's input schema; invalid arguments throw
+  `LOUSHO_TOOL_ARGS_INVALID` and leave the approval pending, so you can decide
+  again. The model's tool call in the transcript is rewritten to the edited
+  arguments, so the model sees what ran. `args` applies to a tool call, not
+  to a question, a sign-in or a handoff, and is ignored with
+  `approved: false`.
+
+```ts
+const support = agent.session({ id: 'support-42' });
+const paused = await support.send('Email the report to sam@example.com');
+// Send it to the team list instead, and stop asking for that exact email in this session.
+await agent.approvals.resolve({ id: paused.approvalId!, approved: true, args: { to: 'team@example.com' }, remember: 'session' });
+```
+
+`remember` and `args` are for decisions people make. An `approve` callback
+decides each call it is asked about, and `once()` does not count its yes.
 
 ### Approval expiry
 
