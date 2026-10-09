@@ -32,6 +32,26 @@ export function describeMemoryProviderContract(
       expect((await provider.list('k')).map((i) => i.text)).toEqual(['two', 'one']);
     });
 
+    if (query === 'filter') {
+      it('matches whole words, never fails open, and ranks by hits (Eve MEM-F1)', async () => {
+        const provider = await make();
+        for (const text of ['works in education', 'a user from Oslo', 'the user likes green tea', 'AI researcher', 'has two cats']) {
+          await provider.add('k', { text });
+        }
+        const texts = async (q: string) => (await provider.list('k', { query: q })).map((i) => i.text);
+        // Short-word queries no longer return every item.
+        expect(await texts('AI')).toEqual(['AI researcher']);
+        expect(await texts('my id')).toEqual([]);
+        expect(await texts('?!')).toEqual([]);
+        // No substring false positives; a plural still matches.
+        expect(await texts('cat')).toEqual(['has two cats']);
+        // The item matching more query words comes first.
+        expect(await texts('user tea preference')).toEqual(['the user likes green tea', 'a user from Oslo']);
+        // A blank query is no query: newest first.
+        expect(await texts('   ')).toHaveLength(5);
+      });
+    }
+
     it('keeps scope keys that differ only in case apart (Eve MEM-F3)', async () => {
       const provider = await make();
       await provider.add('notes#user:Alice', { text: 'alice secret' });
