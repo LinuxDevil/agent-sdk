@@ -145,45 +145,58 @@ interface Zod3Node {
   _def: Zod3Def;
 }
 
+/** zod 3 kinds {@link walkZod3} reports (unless coerced). */
+const ZOD3_LEAVES = new Map<string, keyof UnrepresentableFields>([
+  ['ZodDate', 'date'],
+  ['ZodBigInt', 'bigint'],
+]);
+
+/** A zod 3 child schema with its path label. */
+type Zod3Child = readonly [Zod3Node | null | undefined, string];
+
+/** The children of a zod 3 container, each with its path. */
+type Zod3Children = (def: Zod3Def, path: string) => Zod3Child[];
+
+/** The value schema of a set, record or map, as `path[]`. */
+const zod3ValueChild: Zod3Children = (def, path) => [[def.valueType, `${path}[]`]];
+
+/** The options of a union, at the union's own path. */
+const zod3OptionChildren: Zod3Children = (def, path) =>
+  [...(def.options instanceof Map ? def.options.values() : (def.options ?? []))].map((option) => [option, path] as const);
+
+/** Per zod 3 container kind: the children {@link walkZod3} descends into (anything else: its `innerType`). */
+const ZOD3_CHILDREN = new Map<string, Zod3Children>([
+  ['ZodObject', (def, path) => Object.entries(def.shape?.() ?? {}).map(([key, child]) => [child, path ? `${path}.${key}` : key] as const)],
+  ['ZodArray', (def, path) => [[def.type, `${path}[]`]]],
+  ['ZodSet', zod3ValueChild],
+  ['ZodRecord', zod3ValueChild],
+  ['ZodMap', zod3ValueChild],
+  ['ZodTuple', (def, path) => [...(def.items ?? []), def.rest].map((item) => [item, `${path}[]`] as const)],
+  ['ZodUnion', zod3OptionChildren],
+  ['ZodDiscriminatedUnion', zod3OptionChildren],
+  [
+    'ZodIntersection',
+    (def, path) => [
+      [def.left, path],
+      [def.right, path],
+    ],
+  ],
+  ['ZodBranded', (def, path) => [[def.type, path]]],
+  ['ZodPipeline', (def, path) => [[def.in, path]]],
+]);
+
 /** Collects zod 3 `z.date()` / `z.bigint()` paths; does not descend into `ZodEffects` (a transform may convert). */
 function walkZod3(node: Zod3Node | null | undefined, path: string, found: UnrepresentableFields, depth = 0): void {
   const def = node?._def;
   if (!def || depth > 64) return;
-  const next = (child: Zod3Node | null | undefined, childPath = path): void => walkZod3(child, childPath, found, depth + 1);
-  switch (def.typeName) {
-    case 'ZodDate':
-      if (!def.coerce) found.date.push(path || '(root)');
-      return;
-    case 'ZodBigInt':
-      if (!def.coerce) found.bigint.push(path || '(root)');
-      return;
-    case 'ZodObject':
-      for (const [key, child] of Object.entries(def.shape?.() ?? {})) next(child, path ? `${path}.${key}` : key);
-      return;
-    case 'ZodArray':
-      return next(def.type, `${path}[]`);
-    case 'ZodSet':
-    case 'ZodRecord':
-    case 'ZodMap':
-      return next(def.valueType, `${path}[]`);
-    case 'ZodTuple':
-      for (const item of def.items ?? []) next(item, `${path}[]`);
-      return next(def.rest, `${path}[]`);
-    case 'ZodUnion':
-    case 'ZodDiscriminatedUnion':
-      for (const option of def.options instanceof Map ? def.options.values() : (def.options ?? [])) next(option);
-      return;
-    case 'ZodIntersection':
-      next(def.left);
-      return next(def.right);
-    case 'ZodBranded':
-      return next(def.type);
-    case 'ZodPipeline':
-      return next(def.in);
-    default:
-      // ZodOptional, ZodNullable, ZodDefault, ZodCatch, ZodReadonly
-      return next(def.innerType);
+  const leaf = def.typeName === undefined ? undefined : ZOD3_LEAVES.get(def.typeName);
+  if (leaf) {
+    if (!def.coerce) found[leaf].push(path || '(root)');
+    return;
   }
+  const children = def.typeName === undefined ? undefined : ZOD3_CHILDREN.get(def.typeName);
+  // ZodOptional, ZodNullable, ZodDefault, ZodCatch, ZodReadonly (and ZodEffects, which has no innerType).
+  for (const [child, childPath] of children?.(def, path) ?? [[def.innerType, path] as const]) walkZod3(child, childPath, found, depth + 1);
 }
 
 /** zod 3 root kinds whose JSON Schema is not an object. */

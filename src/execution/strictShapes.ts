@@ -115,20 +115,26 @@ function rewriteNode(node: unknown, shapes: StrictShapes, seen: Set<object>): vo
     node.anyOf = Array.isArray(node.anyOf) ? [...node.anyOf, ...node.oneOf] : node.oneOf;
     delete node.oneOf;
   }
-  if (isRecordNode(node)) {
-    const key = isRecord(node.propertyNames) ? { type: 'string', ...node.propertyNames } : { type: 'string' };
-    const value = node.additionalProperties === true ? {} : node.additionalProperties;
-    replaceNode(node, { type: 'array', items: closedObject({ key, value }) });
-    shapes.set(node, 'record');
-    return;
-  }
+  if (isRecordNode(node)) rewriteRecordNode(node, shapes);
+  else rewriteTupleNode(node, shapes);
+}
+
+/** Rewrites a record node into an array of `{ key, value }` objects. */
+function rewriteRecordNode(node: Record<string, unknown>, shapes: StrictShapes): void {
+  const key = isRecord(node.propertyNames) ? { type: 'string', ...node.propertyNames } : { type: 'string' };
+  const value = node.additionalProperties === true ? {} : node.additionalProperties;
+  replaceNode(node, { type: 'array', items: closedObject({ key, value }) });
+  shapes.set(node, 'record');
+}
+
+/** Rewrites a tuple node (if `node` is one) into an object with `_0`..`_n` (and `_rest`). */
+function rewriteTupleNode(node: Record<string, unknown>, shapes: StrictShapes): void {
   const tuple = tupleParts(node);
-  if (tuple) {
-    const properties: Record<string, unknown> = Object.fromEntries(tuple.elements.map((element, index) => [`_${index}`, element]));
-    if (tuple.rest) properties._rest = { type: 'array', items: tuple.rest };
-    replaceNode(node, closedObject(properties));
-    shapes.set(node, 'tuple');
-  }
+  if (!tuple) return;
+  const properties: Record<string, unknown> = Object.fromEntries(tuple.elements.map((element, index) => [`_${index}`, element]));
+  if (tuple.rest) properties._rest = { type: 'array', items: tuple.rest };
+  replaceNode(node, closedObject(properties));
+  shapes.set(node, 'tuple');
 }
 
 /** Members a wrapped root keeps at the root: what `$ref`s point into, and the dialect. */
@@ -230,30 +236,50 @@ function fits(value: unknown, node: unknown, root: unknown, depth = 0): boolean 
  */
 export function decodeStrictValue(value: unknown, node: unknown, root: unknown, shapes: StrictShapes, depth = 0): unknown {
   if (!isRecord(node) || depth > MAX_DECODE_DEPTH) return value;
-  const next = (item: unknown, sub: unknown): unknown => decodeStrictValue(item, sub, root, shapes, depth + 1);
+  const next: DecodeNext = (item, sub) => decodeStrictValue(item, sub, root, shapes, depth + 1);
   if (typeof node.$ref === 'string') return next(value, resolveRef(root, node.$ref));
   const shape = shapes.get(node);
   const properties = isRecord(node.properties) ? node.properties : {};
-  if (shape === 'root') {
-    return isRecord(value) && Object.keys(value).length === 1 && 'result' in value ? next(value.result, properties.result) : value;
-  }
-  if (shape === 'record') {
-    if (!Array.isArray(value) || !value.every((entry) => isRecord(entry) && 'key' in entry)) return value;
-    const valueSchema = isRecord(node.items) && isRecord(node.items.properties) ? node.items.properties.value : undefined;
-    return Object.fromEntries(value.map((entry) => [String(entry.key), next(entry.value, valueSchema)]));
-  }
-  if (shape === 'tuple') {
-    if (!isRecord(value)) return value;
-    const elements = Object.keys(properties)
-      .filter((key) => /^_\d+$/.test(key))
-      .map((key) => next(value[key], properties[key]));
-    const rest = Array.isArray(value._rest) ? value._rest.map((item) => next(item, (properties._rest as Record<string, unknown> | undefined)?.items)) : [];
-    return [...elements, ...rest];
-  }
+  if (shape) return SHAPE_DECODERS[shape](value, node, properties, next);
   if (Array.isArray(node.anyOf)) {
     const branch = node.anyOf.find((item) => fits(value, item, root));
     return branch === undefined ? value : next(value, branch);
   }
+  return decodePlain(value, node, properties, next);
+}
+
+/** Decodes `item` as an instance of the subschema `sub`, one level deeper. */
+type DecodeNext = (item: unknown, sub: unknown) => unknown;
+
+/** Decodes `value` against `node` (with its `properties`), recursing through `next`. */
+type ShapeDecoder = (value: unknown, node: Record<string, unknown>, properties: Record<string, unknown>, next: DecodeNext) => unknown;
+
+/** A wrapped root `{ result }` unwrapped. */
+const decodeRoot: ShapeDecoder = (value, _node, properties, next) =>
+  isRecord(value) && Object.keys(value).length === 1 && 'result' in value ? next(value.result, properties.result) : value;
+
+/** `{ key, value }` entries back to a record. */
+const decodeRecord: ShapeDecoder = (value, node, _properties, next) => {
+  if (!Array.isArray(value) || !value.every((entry) => isRecord(entry) && 'key' in entry)) return value;
+  const valueSchema = isRecord(node.items) && isRecord(node.items.properties) ? node.items.properties.value : undefined;
+  return Object.fromEntries(value.map((entry) => [String(entry.key), next(entry.value, valueSchema)]));
+};
+
+/** An `_0`..`_n` (and `_rest`) object back to a tuple. */
+const decodeTuple: ShapeDecoder = (value, _node, properties, next) => {
+  if (!isRecord(value)) return value;
+  const elements = Object.keys(properties)
+    .filter((key) => /^_\d+$/.test(key))
+    .map((key) => next(value[key], properties[key]));
+  const rest = Array.isArray(value._rest) ? value._rest.map((item) => next(item, (properties._rest as Record<string, unknown> | undefined)?.items)) : [];
+  return [...elements, ...rest];
+};
+
+/** The decoder for each rewritten shape. */
+const SHAPE_DECODERS: Record<StrictShape, ShapeDecoder> = { root: decodeRoot, record: decodeRecord, tuple: decodeTuple };
+
+/** A node that was not rewritten: its array items or object members decoded. */
+const decodePlain: ShapeDecoder = (value, node, properties, next) => {
   if (Array.isArray(value)) return isRecord(node.items) ? value.map((item) => next(item, node.items)) : value;
   if (isRecord(value)) {
     return Object.fromEntries(
@@ -261,4 +287,4 @@ export function decodeStrictValue(value: unknown, node: unknown, root: unknown, 
     );
   }
   return value;
-}
+};

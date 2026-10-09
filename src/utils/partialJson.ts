@@ -49,87 +49,129 @@ function closersOf(stack: Frame[]): string {
     .join('');
 }
 
+/** The scan state of `completePartialJson`: the open frames, the position, and the last place the text can be cut. */
+interface Scan {
+  readonly source: string;
+  readonly stack: Frame[];
+  i: number;
+  cut: number;
+  cutClosers: string;
+  rootDone: boolean;
+}
+
+/** What one scan step decided: keep going, stop at the last cut, give up (not JSON), or a finished text. */
+type Step = 'next' | 'stop' | 'fail' | { done: string };
+
+/** Records `end` as the last place the text can be cut, with the closers for the frames open there. */
+function mark(scan: Scan, end: number): void {
+  scan.cut = end;
+  scan.cutClosers = closersOf(scan.stack);
+}
+
+/** A value ended at `end`: its frame now expects a comma (or the root is done). */
+function valueDone(scan: Scan, end: number): void {
+  const top = scan.stack[scan.stack.length - 1];
+  if (top) top.expect = 'comma';
+  else scan.rootDone = true;
+  mark(scan, end);
+}
+
+/** A string (a key or a value) at `scan.i`. */
+function scanString(scan: Scan, top: Frame | undefined, wantsValue: boolean): Step {
+  const { source, i } = scan;
+  const end = stringEnd(source, i);
+  const isKey = top?.kind === '{' && top.expect === 'key';
+  if (!isKey && !wantsValue) return 'fail';
+  if (end === -1) {
+    if (isKey) return 'stop';
+    // An unfinished string value: keep what arrived, minus a half-written escape.
+    return { done: source.slice(0, unfinishedStringEnd(source, i)) + '"' + closersOf(scan.stack) };
+  }
+  scan.i = end + 1;
+  if (isKey) top.expect = 'colon';
+  else valueDone(scan, scan.i);
+  return 'next';
+}
+
+/** A `:` after an object key. */
+function scanColon(scan: Scan, top: Frame | undefined): Step {
+  if (top?.kind !== '{' || top.expect !== 'colon') return 'fail';
+  top.expect = 'value';
+  scan.i++;
+  return 'next';
+}
+
+/** A `,` after a value in an object or array. */
+function scanComma(scan: Scan, top: Frame | undefined): Step {
+  if (!top || top.expect !== 'comma') return 'fail';
+  top.expect = top.kind === '{' ? 'key' : 'value';
+  scan.i++;
+  return 'next';
+}
+
+/** A `{` or `[` opening a value. */
+function scanOpen(scan: Scan, ch: '{' | '[', wantsValue: boolean): Step {
+  if (!wantsValue) return 'fail';
+  scan.stack.push({ kind: ch, expect: ch === '{' ? 'key' : 'value' });
+  scan.i++;
+  mark(scan, scan.i);
+  return 'next';
+}
+
+/** A `}` or `]` closing the open frame. */
+function scanClose(scan: Scan, ch: string, top: Frame | undefined): Step {
+  if (!top || (ch === '}') !== (top.kind === '{')) return 'fail';
+  scan.stack.pop();
+  scan.i++;
+  valueDone(scan, scan.i);
+  return 'next';
+}
+
+/** A number or literal (`true`, `false`, `null`) at `scan.i`. */
+function scanScalar(scan: Scan, wantsValue: boolean): Step {
+  if (!wantsValue) return 'fail';
+  const { source, i } = scan;
+  let end = i;
+  while (end < source.length && !DELIMITER.test(source[end])) end++;
+  if (SCALAR.test(source.slice(i, end))) {
+    scan.i = end;
+    valueDone(scan, end);
+    return 'next';
+  }
+  // A number or literal still being written ends the usable prefix; anything else is not JSON.
+  return end === source.length ? 'stop' : 'fail';
+}
+
+/** One scan step at `ch`, the (non-blank) character at `scan.i`. */
+function scanToken(scan: Scan, ch: string): Step {
+  const top = scan.stack[scan.stack.length - 1];
+  const wantsValue = !top || top.expect === 'value';
+  if (ch === '"') return scanString(scan, top, wantsValue);
+  if (ch === ':') return scanColon(scan, top);
+  if (ch === ',') return scanComma(scan, top);
+  if (ch === '{' || ch === '[') return scanOpen(scan, ch, wantsValue);
+  if (ch === '}' || ch === ']') return scanClose(scan, ch, top);
+  return scanScalar(scan, wantsValue);
+}
+
 /**
  * `source` (a prefix of a JSON text) completed into JSON text, or undefined
  * when it holds no complete value yet or is not JSON at all.
  */
-export function completePartialJson(source: string): string | undefined {
-  const stack: Frame[] = [];
-  let cut = -1;
-  let cutClosers = '';
-  let rootDone = false;
-  const mark = (end: number) => {
-    cut = end;
-    cutClosers = closersOf(stack);
-  };
-  const valueDone = (end: number) => {
-    const top = stack[stack.length - 1];
-    if (top) top.expect = 'comma';
-    else rootDone = true;
-    mark(end);
-  };
-  let i = 0;
-  while (i < source.length && !rootDone) {
-    const ch = source[i];
+function completePartialJson(source: string): string | undefined {
+  const scan: Scan = { source, stack: [], i: 0, cut: -1, cutClosers: '', rootDone: false };
+  while (scan.i < source.length && !scan.rootDone) {
+    const ch = source[scan.i];
     if (/\s/.test(ch)) {
-      i++;
+      scan.i++;
       continue;
     }
-    const top = stack[stack.length - 1];
-    const wantsValue = !top || top.expect === 'value';
-    if (ch === '"') {
-      const end = stringEnd(source, i);
-      const isKey = top?.kind === '{' && top.expect === 'key';
-      if (!isKey && !wantsValue) return undefined;
-      if (end === -1) {
-        if (isKey) break;
-        // An unfinished string value: keep what arrived, minus a half-written escape.
-        return source.slice(0, unfinishedStringEnd(source, i)) + '"' + closersOf(stack);
-      }
-      i = end + 1;
-      if (isKey) top.expect = 'colon';
-      else valueDone(i);
-      continue;
-    }
-    if (ch === ':') {
-      if (top?.kind !== '{' || top.expect !== 'colon') return undefined;
-      top.expect = 'value';
-      i++;
-      continue;
-    }
-    if (ch === ',') {
-      if (!top || top.expect !== 'comma') return undefined;
-      top.expect = top.kind === '{' ? 'key' : 'value';
-      i++;
-      continue;
-    }
-    if (ch === '{' || ch === '[') {
-      if (!wantsValue) return undefined;
-      stack.push({ kind: ch, expect: ch === '{' ? 'key' : 'value' });
-      i++;
-      mark(i);
-      continue;
-    }
-    if (ch === '}' || ch === ']') {
-      if (!top || (ch === '}') !== (top.kind === '{')) return undefined;
-      stack.pop();
-      i++;
-      valueDone(i);
-      continue;
-    }
-    if (!wantsValue) return undefined;
-    let end = i;
-    while (end < source.length && !DELIMITER.test(source[end])) end++;
-    if (SCALAR.test(source.slice(i, end))) {
-      i = end;
-      valueDone(i);
-      continue;
-    }
-    // A number or literal still being written ends the usable prefix; anything else is not JSON.
-    if (end === source.length) break;
-    return undefined;
+    const step = scanToken(scan, ch);
+    if (step === 'stop') break;
+    if (step === 'fail') return undefined;
+    if (step !== 'next') return step.done;
   }
-  return cut === -1 ? undefined : source.slice(0, cut) + cutClosers;
+  return scan.cut === -1 ? undefined : source.slice(0, scan.cut) + scan.cutClosers;
 }
 
 /**
