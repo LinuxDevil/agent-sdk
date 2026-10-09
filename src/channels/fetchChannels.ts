@@ -19,7 +19,7 @@ import {
   type ChannelRequest,
   type ChannelRespond,
 } from './defineChannel';
-import { reportChannelError } from './channelSupport';
+import { channelFailureBody, reportChannelError } from './channelSupport';
 import { channelCore } from './channelCore';
 import { SDKError } from '../execution/errors';
 
@@ -82,10 +82,11 @@ function jsonResponse(status: number, value: unknown): Response {
   return new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-/** The error status for a failed handler: 413 over the size cap, 400 for bad JSON, else 500. */
-function failureResponse(error: unknown): Response {
+/** The error status for a failed handler: 413 over the size cap, 400 for bad JSON, else 500 (Eve CH-F6: its message reported, not sent). */
+async function failureResponse(error: unknown, report: (error: unknown) => Promise<void>): Promise<Response> {
   const status = error instanceof PayloadTooLargeError ? 413 : error instanceof SyntaxError ? 400 : 500;
-  return jsonResponse(status, { error: (error as Error).message });
+  if (status === 500) await report(error);
+  return jsonResponse(status, channelFailureBody(status, error));
 }
 
 /** The answer a channel's first `respond` call wrote, once `acknowledged` settles. */
@@ -123,7 +124,7 @@ async function settledResponse(
       await report(settled.error);
       return jsonResponse(answer.current.status, answer.current.body);
     }
-    return failureResponse(settled.error);
+    return failureResponse(settled.error, report);
   }
   return jsonResponse(answer.current?.status ?? 200, answer.current?.body ?? { ok: true });
 }
@@ -188,7 +189,7 @@ export function mountFetchChannels(
       };
       turn = core.handle(channel, isApproval ? decodeURIComponent(route[2]) : undefined, req, respond);
     } catch (error) {
-      return failureResponse(error);
+      return failureResponse(error, report);
     }
     return settledResponse(turn, acknowledged, answer, ctx, report);
   };

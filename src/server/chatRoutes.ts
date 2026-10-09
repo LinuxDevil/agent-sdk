@@ -79,8 +79,8 @@ export class PayloadTooLargeError extends Error {}
 
 /**
  * The request body's exact bytes (signatures are checked over these), at
- * most 1MB: a larger body rejects with an error `sendFailure()` answers with
- * 413. Shared with the channel handler (src/channels/mountChannels.ts).
+ * most 1MB: a larger body rejects with a `PayloadTooLargeError` the channel handler answers
+ * with 413. Shared with the channel handler (src/channels/mountChannels.ts).
  */
 export function readRawBody(req: http.IncomingMessage): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
@@ -108,10 +108,4 @@ export function readRawBody(req: http.IncomingMessage): Promise<Uint8Array> {
     });
     req.on('error', reject);
   });
-}
-
-/** Sends the error status for a failed handler: 413 over the size cap, 400 for bad JSON, else 500. */
-export function sendFailure(res: http.ServerResponse, error: unknown): void {
-  const status = error instanceof PayloadTooLargeError ? 413 : error instanceof SyntaxError ? 400 : 500;
-  sendJson(res, status, { error: (error as Error).message });
 }

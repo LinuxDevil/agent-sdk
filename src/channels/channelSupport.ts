@@ -70,6 +70,19 @@ export async function reportChannelError(onError: ChannelErrorHandler | undefine
   }
 }
 
+/** Eve CH-F6: what a client sees of a channel 500, as on the session routes (A1); the detail goes to `onError`. */
+const PUBLIC_ERROR_MESSAGE = 'The request failed. The server log has the details.';
+
+/**
+ * Eve CH-F6: the JSON body of a channel request that failed before the surface was answered:
+ * a 413 or 400 (bad JSON) keeps its message, a 500 only says it failed (and the error's `code`).
+ */
+export function channelFailureBody(status: number, error: unknown): Record<string, unknown> {
+  if (status !== 500) return { error: (error as Error).message };
+  const code = (error as { code?: unknown } | null)?.code;
+  return { error: PUBLIC_ERROR_MESSAGE, ...(typeof code === 'string' && code && { code }) };
+}
+
 /** Splits `text` into chunks of at most `max` characters, preferably at line breaks (empty text becomes `(no reply)`). */
 export function splitText(text: string, max: number): string[] {
   const parts: string[] = [];
