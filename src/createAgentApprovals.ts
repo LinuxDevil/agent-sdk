@@ -11,7 +11,7 @@ import type { ExecutionResult } from './execution/AgentExecutor';
 import type { AgentEvent } from './execution/agentEvents';
 import type { AgentRun } from './execution/agentRun';
 import type { CheckpointStore } from './execution/checkpoint';
-import { SessionAwaitingApprovalError } from './execution/errors';
+import { SDKError, SessionAwaitingApprovalError } from './execution/errors';
 import type { InputQueue } from './execution/inputQueue';
 import { streamSessionTurn } from './session/sessionStream';
 import { AgentSession, type PendingTurn, type SessionOptions, type SessionRunner, type SessionSpawner, type SessionStreamRunner } from './session/AgentSession';
@@ -165,10 +165,32 @@ class ApprovalSession extends AgentSession {
     return turn;
   }
 
+  /**
+   * Eve DUR-F6: a checkpointed session turn paused at `pausedAt`
+   * (`<id>.turn-<n>`) can only be continued while its checkpoint exists - it
+   * holds the turn until it finishes. When it is gone (pruned, deleted) the
+   * resume would run the approved tool and then have nothing to commit to, so
+   * fail first, before the tool runs.
+   */
+  async assertTurnKept(approvalId: string, pausedAt: string | undefined): Promise<void> {
+    const { checkpointStore } = this;
+    if (!checkpointStore || !pausedAt?.startsWith(`${this.id}.turn-`)) return;
+    if (await checkpointStore.load(pausedAt)) return;
+    throw new SDKError(
+      `Approval '${approvalId}' belongs to session '${this.id}', but its paused turn ('${pausedAt}') is no longer stored ` +
+        '(pruned or deleted), so it cannot be continued and the tool was not run.',
+      'LOUSHO_APPROVAL_ORPHANED'
+    );
+  }
+
   resolveWith(
-    next: (checkpointStore?: CheckpointStore, permissionMode?: ResumeMode, onAgentEvent?: (event: AgentEvent) => void) => Promise<ExecutionResult>
+    next: (checkpointStore?: CheckpointStore, permissionMode?: ResumeMode, onAgentEvent?: (event: AgentEvent) => void) => Promise<ExecutionResult>,
+    before?: () => Promise<void>
   ): Promise<ExecutionResult> {
-    return this.continueTurn(() => next(this.checkpointStore, this.currentPermissionMode, this.turnEvents));
+    return this.continueTurn(async () => {
+      await before?.();
+      return next(this.checkpointStore, this.currentPermissionMode, this.turnEvents);
+    });
   }
 
   /** LOU-V14: `resolveWith()`, streamed: `run.done` comes once the session has recorded the turn. */
@@ -180,11 +202,13 @@ class ApprovalSession extends AgentSession {
       permissionMode: ResumeMode,
       onAgentEvent?: (event: AgentEvent) => void
     ) => AgentRun,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    before?: () => Promise<void>
   ): AgentRun {
     return streamSessionTurn(
       (runSignal, started, inputs) =>
-        this.continueTurn(() => {
+        this.continueTurn(async () => {
+          await before?.();
           const run = next(this.checkpointStore, runSignal, inputs, this.currentPermissionMode, this.turnEvents);
           started(run);
           return run.result;
@@ -360,6 +384,12 @@ export function createAgentApprovals(options: {
     return opened instanceof ApprovalSession ? opened : undefined;
   }
 
+  /** Eve DUR-F6: fails with `LOUSHO_APPROVAL_ORPHANED` when the session turn the pause belongs to is gone. */
+  async function turnKept(approvalId: string, session: ApprovalSession): Promise<void> {
+    const record = await options.store.load?.(approvalId);
+    await session.assertTurnKept(approvalId, record?.snapshot.sessionId);
+  }
+
   // N10b: `principal` is the approver of this decision only; the `approve` callback's later decisions have none.
   function resolve(decision: ApprovalDecision, { signal, principal }: ResolveApprovalOptions = {}): Promise<ExecutionResult> {
     let session = sessions.get(decision.id);
@@ -371,7 +401,8 @@ export function createAgentApprovals(options: {
           session,
           await settle(await resume(store, decision, signal, checkpointStore, permissionMode, principal, onAgentEvent), signal, checkpointStore, permissionMode, onAgentEvent)
         );
-      return session ? session.resolveWith(next) : next();
+      const kept = session;
+      return kept ? kept.resolveWith(next, () => turnKept(decision.id, kept)) : next();
     })();
     return resolved.catch((error: unknown) => {
       keepPendingSession(decision.id, session, error);
@@ -391,7 +422,8 @@ export function createAgentApprovals(options: {
           const run = session.streamResolveWith(
             (checkpointStore, innerSignal, _innerInputs, permissionMode, onAgentEvent) =>
               inSessionRun(session, streamResume(store, decision, innerSignal, checkpointStore, inputs, permissionMode, principal, onAgentEvent)),
-            runSignal
+            runSignal,
+            () => turnKept(decision.id, session)
           );
           started(run);
           run.result.catch((error: unknown) => keepPendingSession(decision.id, session, error));
@@ -405,7 +437,8 @@ export function createAgentApprovals(options: {
     const run = bound.streamResolveWith(
       (checkpointStore, runSignal, inputs, permissionMode, onAgentEvent) =>
         inSessionRun(bound, streamResume(store, decision, runSignal, checkpointStore, inputs, permissionMode, principal, onAgentEvent)),
-      signal
+      signal,
+      () => turnKept(decision.id, bound)
     );
     run.result.catch((error: unknown) => keepPendingSession(decision.id, bound, error));
     return run;

@@ -321,7 +321,11 @@ With the executor directly, pass `store.checkpoints` as `checkpointStore` and
   round-trip unchanged.
 - `prune()` removes sessions and checkpoints not updated within `olderThanMs`,
   approvals resolved that long ago and expired pending OAuth sign-ins;
-  unresolved approvals and OAuth tokens are kept.
+  unresolved approvals and OAuth tokens are kept, and so is a turn paused on
+  an unresolved approval (its checkpoint and the session's transcript),
+  however old. Resolving an approval whose paused turn was deleted anyway
+  fails with [`LOUSHO_APPROVAL_ORPHANED`](./errors.md#lousho_approval_orphaned)
+  without running the tool.
 - A file that is not a SQLite database fails with an error naming the path;
   using the store after `close()` throws a clear error.
 
