@@ -72,6 +72,7 @@ import {
   checkResumedAgent,
   ensureFingerprint,
   loadRunState,
+  markRequestOnly,
   pushAbortedBatchResults,
   noteReasoning,
   pushToolResult,
@@ -991,10 +992,12 @@ export class AgentExecutor {
     agentSpanId: string
   ): Promise<ExecutionResult | { object: unknown } | { outputError: OutputError } | undefined> {
     if (state.budget?.check(state.usage, state.steps, true)) return undefined;
-    state.messages.push({
+    const prompt: Message = {
       role: 'user',
       content: 'You are out of steps. Answer now with the final JSON result only - no tools, no commentary.',
-    });
+    };
+    state.messages.push(prompt);
+    markRequestOnly(state, prompt);
     const generatedStep = await this.generateOrSurfaceError({ ...options, hostedTools: undefined }, state, [], agentSpanId);
     if (!generatedStep || generatedStep === 'steered') return undefined;
     if (!('generated' in generatedStep)) return generatedStep;
@@ -1072,7 +1075,14 @@ export class AgentExecutor {
       return { outputError: truncatedOutput(checked) };
     }
     if (canRepair) {
-      state.messages.push(outputRepairMessage(options.output, checked));
+      // Eve CORE-F3: the rejected reply and the repair prompt go to the next model call only.
+      const rejected = state.messages.at(-1);
+      const prompt = outputRepairMessage(options.output, checked);
+      state.messages.push(prompt);
+      markRequestOnly(state, prompt);
+      if (rejected?.role === 'assistant' && !rejected.toolCalls?.length && state.finalText && rejected.content === state.finalText) {
+        markRequestOnly(state, rejected);
+      }
       return 'repair';
     }
     state.finishReason = 'output-invalid';
