@@ -10,5 +10,6 @@ export {
 } from './defineMemory';
 export { inMemoryMemory, type MemoryProviderOptions } from './providers';
 export { fileMemory, type FileMemoryOptions } from './fileMemory';
+export { migrateMemoryKeys, type MigrateMemoryKeysOptions, type MigrateMemoryKeysResult } from './migrateMemoryKeys';
 export { aiSdkEmbedder, type AiSdkEmbedderOptions, type EmbeddingProvider } from './embeddings';
 export { inMemoryVectorMemory, type VectorMemoryOptions, type VectorMemoryProvider } from './vectorProvider';
