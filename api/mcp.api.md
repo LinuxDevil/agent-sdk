@@ -2421,29 +2421,16 @@ interface Usage {
 
 // Warnings were encountered during analysis:
 //
-<<<<<<< HEAD
-// dist/createAgent-BYE3OSWr.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BYE3OSWr.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BYE3OSWr.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BYE3OSWr.d.ts:3352:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BYE3OSWr.d.ts:3353:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
+// dist/createAgent-Bz5M83pn.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-Bz5M83pn.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-Bz5M83pn.d.ts:1255:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-Bz5M83pn.d.ts:3362:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
+// dist/createAgent-Bz5M83pn.d.ts:3363:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
 // dist/index-C5TXhmCn.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
 // dist/index-C5TXhmCn.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/index-C5TXhmCn.d.ts:2052:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
 // dist/index-C5TXhmCn.d.ts:2052:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
 // dist/schema-D27vLUwq.d.ts:69:5 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
-=======
-// dist/createAgent-BR0R10_9.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BR0R10_9.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BR0R10_9.d.ts:1255:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BR0R10_9.d.ts:3362:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BR0R10_9.d.ts:3363:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
-// dist/index-Jx0ez6Fz.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-Jx0ez6Fz.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-Jx0ez6Fz.d.ts:2052:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
-// dist/index-Jx0ez6Fz.d.ts:2052:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
-// dist/schema-BvvCeuEL.d.ts:69:5 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
->>>>>>> 90602354 (chore(api): regenerate reports)
 
 // (No @packageDocumentation comment for this package)
 
