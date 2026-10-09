@@ -5860,7 +5860,7 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `tools`    | An array of `defineTool()` results, or a `Record<string, ToolDescriptor>` keyed by the name the agent uses (see [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md)). |
 | `name`     | Agent name (default `'agent'`).                                    |
 | `description` | What the agent does, in a sentence. Required when it is used as a sub-agent. |
-| `maxSteps` | Passed through to `AgentExecutor.execute()`.                        |
+| `maxSteps` | Passed through to `AgentExecutor.execute()`. A whole number >= 1; anything else throws `LOUSHO_CONFIG_INVALID`. |
 | `modelSettings` | Sampling settings sent on every model call: `{ maxTokens?, temperature?, topP?, frequencyPenalty?, presencePenalty?, stop?, seed?, toolChoice? }`. A `send()` / `stream()` call's own `modelSettings` win key by key. See [Model settings](#model-settings). |
 | `limits`   | Budgets of each run: `{ maxTokens?, maxInputTokens?, maxOutputTokens?, maxCostUsd?, maxDurationMs?, maxSteps?, onExceeded? }`. A tripped limit ends the run with `finishReason: 'budget-exceeded'`. See [Budgets](#budgets). |
 | `toolConcurrency` | How many tool calls of one model turn run at once: a positive integer or `'unbounded'` (default). See [Parallel tool calls](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/runs.md#parallel-tool-calls). |
@@ -5882,7 +5882,7 @@ With neither `model` nor `provider`, `createAgent()` resolves from the
 environment: `LOUSHO_MODEL` (a `'provider/model'` string) if set, otherwise
 the first provider whose variable is set, checked in this order:
 `OPENAI_API_KEY` (`openai/gpt-4o-mini`), `ANTHROPIC_API_KEY`
-(`anthropic/claude-3-5-sonnet-latest`), `OPENROUTER_API_KEY`
+(`anthropic/claude-sonnet-4-5`), `OPENROUTER_API_KEY`
 (`openrouter/openai/gpt-4o-mini`), `OLLAMA_BASE_URL` (`ollama/llama3`). If none
 is set it throws an error listing exactly which options or variables fix it.
 
@@ -5943,7 +5943,7 @@ agent) or on `AgentExecutor.execute()` / `stream()`:
 | `maxOutputTokens` | Completion tokens (`usage.outputTokens`). |
 | `maxCostUsd`      | USD (`usage.costUsd`): the cost the provider reported for each call (OpenRouter's `usage.cost`), else the [price table](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/models-and-cost.md#models-and-the-price-table) estimate. Not checked while a model used has unknown pricing (`costUsd` is `undefined`); a warning is logged once. |
 | `maxDurationMs`   | Wall-clock time of the `execute()` / `stream()` call. |
-| `maxSteps`        | Model steps. An alias of the `maxSteps` option: when both are set the stricter wins (the option's tie reports `'max-steps'`); alone, it replaces the default of 10. |
+| `maxSteps`        | Model steps. An alias of the `maxSteps` option: when both are set the stricter wins (the option's tie reports `'max-steps'`); alone, it replaces the default of 10. With `output` set, running out of it makes the same forced answer call as `maxSteps` ([Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md#out-of-steps)); the run still ends `'budget-exceeded'`, with `object` when the answer validated. |
 
 Limits are checked before every model call (so after every tool batch) and
 after a model call that asks for tools; `maxDurationMs` also aborts an
@@ -11432,12 +11432,15 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | Attribute | Value |
 | --- | --- |
 | `gen_ai.operation.name` | `invoke_agent` |
-| `gen_ai.agent.name` | The agent's `name` |
+| `gen_ai.agent.name` | The agent's `name`. An unnamed sub-agent uses the key the lead knows it by (`subagents: { researcher }` gives `researcher`), and the span is named after it |
 | `gen_ai.agent.id` | The agent's `id`, when set |
 | `gen_ai.provider.name` | The provider's `name` |
 | `gen_ai.conversation.id` | `sessionId`, when set |
 | `lousho.cost_usd` | Cumulative estimated USD of the run (every model call and delegated child run, including a background child that finishes before the run ends); absent when any model used has no known price |
 | `lousho.usage.estimated` | `true` when any of the run's tokens were estimated |
+| `lousho.subagent.name` | On a sub-agent's run: the name the lead knows it by (the `task` tool's `agent`) |
+| `lousho.subagent.depth` | On a sub-agent's run: `1` for a sub-agent of the top-level run, `2` for its sub-agent, and so on |
+| `lousho.task.id` | On a sub-agent's run started by `task`: the task's `taskId` |
 
 ### Model call: `chat {model}` (CLIENT)
 
@@ -12430,7 +12433,9 @@ then wrap its model with `fromAiSdk()` (below). Otherwise implement the
 `LLMProvider` interface (`name`, `generate()`, `stream()`, `supportsTools()`,
 `supportsStreaming()`, `getModels()`, optionally `defaultModel`) and pass the
 instance as `provider`, or register a factory with
-`LLMProviderRegistry.register(name, factory)`.
+`LLMProviderRegistry.register(name, factory)`; a registered name then works in a
+model string (`model: 'name/model-id'`), and the factory receives `defaultModel` and reads its
+own credentials.
 
 ### Slow local models: a custom `fetch`
 
@@ -14995,7 +15000,9 @@ offered ("answer now") and validates that reply the same way. A valid
 answer ends the run `finishReason: 'max-steps'` with `object` set; an
 invalid one ends it `'output-invalid'` with `outputError`. The extra call
 is skipped when another budget limit (tokens, cost, duration) is already
-spent. Like the repair message, the "answer now" prompt is sent to that
+spent. A `limits.maxSteps` that runs out gets the same call; that run
+still ends `'budget-exceeded'` with `result.budget`, plus `object` when the
+answer validated. Like the repair message, the "answer now" prompt is sent to that
 call only and is not kept in `result.messages` or the session transcript.
 
 ## The schema in the prompt
