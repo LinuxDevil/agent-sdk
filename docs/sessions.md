@@ -187,6 +187,13 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   message, so the model sees the finished turn (the resumed turn's events are
   not streamed). Use `pending()` to check first, or `discardPending()` to drop
   the unfinished turn instead.
+- A turn that fails records the error and the attempt count on its checkpoint
+  (`lastError`, `attempts`). When the error will not go away by retrying (a
+  provider 400 such as a context-length overflow, an auth failure), the next
+  `send()` / `stream()` does not replay the turn: it fails with
+  `LOUSHO_SESSION_TURN_FAILED`. Call `discardPending()` to drop the turn, or
+  `resume()` to retry it once the cause is fixed. Other failures (a crash, a
+  5xx, a network error) are still resumed by the next `send()`.
 - A turn that pauses on a `needsApproval` tool stays in its checkpoint, not in
   the transcript, until it finishes. While it waits, `resume()`, `send()` and
   `stream()` throw `SessionAwaitingApprovalError` (with its `approvalId`), and

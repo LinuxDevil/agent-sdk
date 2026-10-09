@@ -404,9 +404,12 @@ interface Checkpoint {
     agentId: string;
     approvalId?: string;
     approvalKind?: ApprovalKind;
+    attempts?: number;
     businessState?: unknown;
     // (undocumented)
     finishReason?: string;
+    // Warning: (ae-forgotten-export) The symbol "CheckpointError" needs to be exported by the entry point index.d.ts
+    lastError?: CheckpointError;
     // (undocumented)
     messages: Message[];
     metadata?: Record<string, unknown>;
@@ -430,6 +433,16 @@ interface Checkpoint {
 // @public
 interface CheckpointDeleteOptions {
     keepHistory?: boolean;
+}
+
+// @public
+interface CheckpointError {
+    at: string;
+    category?: string;
+    code?: string;
+    // (undocumented)
+    message: string;
+    retryable: boolean;
 }
 
 // @public

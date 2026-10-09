@@ -1059,9 +1059,12 @@ export interface Checkpoint {
     agentId: string;
     approvalId?: string;
     approvalKind?: ApprovalKind;
+    attempts?: number;
     businessState?: unknown;
     // (undocumented)
     finishReason?: string;
+    // Warning: (ae-forgotten-export) The symbol "CheckpointError" needs to be exported by the entry point index.d.ts
+    lastError?: CheckpointError;
     // (undocumented)
     messages: Message[];
     metadata?: Record<string, unknown>;
@@ -1082,6 +1085,16 @@ export interface Checkpoint {
 // @public
 export interface CheckpointDeleteOptions {
     keepHistory?: boolean;
+}
+
+// @public
+interface CheckpointError {
+    at: string;
+    category?: string;
+    code?: string;
+    // (undocumented)
+    message: string;
+    retryable: boolean;
 }
 
 // @public
@@ -1957,6 +1970,7 @@ export const ERROR_CODES: {
     readonly LOUSHO_SESSION_ID_INVALID: "Use 1-128 characters from A-Z, a-z, 0-9, '_' and '-', or omit the id.";
     readonly LOUSHO_SESSION_BUSY: "Wait for the running turn to finish (await its send(), or abort it), then call again.";
     readonly LOUSHO_SESSION_TURN_PENDING: "Finish the interrupted turn with session.resume(), or drop it with session.discardPending(), then call again.";
+    readonly LOUSHO_SESSION_TURN_FAILED: "Drop the failed turn with session.discardPending() and send again, or fix the cause and retry it with session.resume().";
     readonly LOUSHO_SESSION_FILE_CORRUPT: "Restore or delete the session file named in the message.";
     readonly LOUSHO_SESSION_STREAM_UNSUPPORTED: "Create the session with agent.session(), which can stream, or call send() instead.";
     readonly LOUSHO_SESSION_STEP_NOT_FOUND: "Pass a fromStep in the range the message lists (see session.history()); 0 keeps nothing.";
@@ -7159,8 +7173,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-B69TilK9.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-B69TilK9.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-DLJj1QCG.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-DLJj1QCG.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
