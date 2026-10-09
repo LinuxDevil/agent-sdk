@@ -84,8 +84,16 @@ await agent.send('Hi again!', { metadata: { userId: 'u-42' } });
 ```
 
 When a run has no scope key (a `'session'` slot in a `send()` without a
-`sessionId`, or a scope function that returns `undefined`), the slot is off
+`sessionId`, or a scope function that returns `undefined` or `null`), the slot is off
 for that run: nothing is recalled and its tools are not offered.
+
+A scope function must return a non-empty string (or `undefined` / `null`).
+Anything else fails the run with `LOUSHO_MEMORY_INVALID` naming the slot,
+because it would otherwise put every caller's items under one shared key: a
+number or an object, an empty string, or a key built from a missing value such
+as `user:undefined`, `user:null` or `user:[object Object]`. A scope function
+that throws fails the run with the same code. `defineMemory()` rejects a
+`scope` that is not `'global'`, `'session'` or a function.
 
 A scope function also sees `principal`, the caller a route's auth verified, which
 is safer to key on than `metadata` (the caller can send any metadata): see
@@ -122,7 +130,19 @@ const relationship = defineMemory({
 ```
 
 A slot with `expose: { remember: false }` is read-only for the model: you
-fill it from code with `provider.add(memoryKey(slot)!, { text })`.
+fill it from code with `provider.add(memoryKey(slot)!, { text })`. For a
+`'session'` or function scope, pass the run's context:
+`memoryKey(slot, { sessionId, metadata })`. Without it `memoryKey()` returns
+`undefined`, and the built-in providers reject a missing or empty scope key
+with `LOUSHO_MEMORY_INVALID` instead of storing items under the key `undefined`.
+
+### When recall fails
+
+Recall at the start of a run does not fail the run. If the provider throws (a
+corrupt memory file, a database or KV outage), the run goes on without that
+slot's `<memory>` block, and a `console.warn` names the slot (once per slot
+per process). A `recall_<name>` call that fails returns the error to the model
+as a tool error.
 
 ## Providers
 

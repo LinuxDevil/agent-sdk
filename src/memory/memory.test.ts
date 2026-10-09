@@ -1,5 +1,5 @@
 import { afterAll, describe, it, expect, vi } from 'vitest';
-import { mkdtemp, readdir, rename, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
@@ -8,7 +8,8 @@ import { defineTool } from '../tools/defineTool';
 import { mockModel, type MockRequest } from '../testing';
 import { memoryStore } from '../storage/agentStore';
 import { describeMemoryProviderContract } from './providerContract';
-import { defineMemory, fileMemory, inMemoryMemory, memoryKey, type MemoryProvider } from './index';
+import { defineMemory, fileMemory, inMemoryMemory, inMemoryVectorMemory, memoryKey, type MemoryProvider } from './index';
+import { hashEmbedder } from '../testing/hashEmbedder';
 
 const systemOf = (call: MockRequest | undefined): string =>
   String(call?.messages.find((m) => m.role === 'system')?.content ?? '');
@@ -41,6 +42,75 @@ describe('defineMemory', () => {
     expect(() => createAgent({ provider: mockModel([]), tools: [taken], memory: [notes] })).toThrow(
       /tool named 'recall_notes' is already registered/
     );
+  });
+});
+
+describe('memory validation (Eve MEM-F6, MEM-F7)', () => {
+  it('rejects an invalid scope, recall.query or provider in defineMemory', () => {
+    const provider = inMemoryMemory();
+    expect(() => defineMemory({ name: 'n', scope: 'user' as never, provider })).toThrow(/scope must be 'global', 'session' or a function/);
+    expect(() => defineMemory({ name: 'n', scope: 'global', provider, recall: { query: 'lastinput' as never } })).toThrow(
+      /recall.query must be 'last-input' or 'none'/
+    );
+    expect(() => defineMemory({ name: 'n', scope: 'global', provider: { list: provider.list, add: provider.add } as never })).toThrow(
+      /needs a provider/
+    );
+  });
+
+  it('memoryKey rejects a scope function that returns a non-string or a key built from a missing value', () => {
+    const slot = (scope: () => unknown) => defineMemory({ name: 'w', scope: scope as never, provider: inMemoryMemory() });
+    for (const bad of [{ bad: true }, 42, '', 'user:[object Object]', 'user:undefined', 'null']) {
+      expect(() => memoryKey(slot(() => bad))).toThrow(expect.objectContaining({ code: 'LOUSHO_MEMORY_INVALID' }));
+    }
+    expect(() =>
+      memoryKey(
+        slot(() => {
+          throw new Error('boom');
+        })
+      )
+    ).toThrow(/memory 'w': the scope function threw: boom/);
+    expect(memoryKey(slot(() => undefined))).toBeUndefined();
+    expect(memoryKey(slot(() => null))).toBeUndefined();
+    expect(memoryKey(slot(() => 'user:u-1'))).toBe('w#user:u-1');
+  });
+
+  it('a send() whose scope function returns an object fails with a coded error instead of pooling memory', async () => {
+    const notes = defineMemory({ name: 'notes', scope: () => ({}) as never, provider: inMemoryMemory() });
+    const agent = createAgent({ provider: mockModel(['hi']), memory: [notes] });
+    await expect(agent.send('hello')).rejects.toMatchObject({ code: 'LOUSHO_MEMORY_INVALID' });
+  });
+
+  it('providers refuse a missing scope key instead of storing under "undefined"', async () => {
+    const providers: MemoryProvider[] = [inMemoryMemory(), inMemoryVectorMemory({ embedder: hashEmbedder() })];
+    for (const provider of providers) {
+      await expect(provider.add(undefined as never, { text: 'x' })).rejects.toMatchObject({ code: 'LOUSHO_MEMORY_INVALID' });
+      await expect(provider.list('' as never)).rejects.toMatchObject({ code: 'LOUSHO_MEMORY_INVALID' });
+      await expect(provider.remove(undefined as never, 'id')).rejects.toMatchObject({ code: 'LOUSHO_MEMORY_INVALID' });
+    }
+  });
+});
+
+describe('memory recall failures (Eve MEM-F4)', () => {
+  it('a corrupt memory file does not fail the run: recall is skipped with a warning', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'mem-corrupt-'));
+    const provider = fileMemory({ dir });
+    await provider.add('notes#global', { text: 'likes tea' });
+    const [file] = await readdir(dir);
+    await writeFile(path.join(dir, file), '{corrupt');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const notes = defineMemory({ name: 'notes', scope: 'global', provider });
+      const model = mockModel(['hi', 'again']);
+      const agent = createAgent({ instructions: 'Be brief.', provider: model, memory: [notes] });
+      await expect(agent.send('hello')).resolves.toMatchObject({ text: 'hi' });
+      await agent.send('again');
+      expect(systemOf(model.calls[0])).toBe('Be brief.');
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toMatch(/memory 'notes': recall failed, continuing without it/);
+    } finally {
+      warn.mockRestore();
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 

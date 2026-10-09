@@ -1,5 +1,5 @@
 import { newId } from '../utils/id';
-import type { MemoryItem, MemoryProvider } from './defineMemory';
+import { assertScopeKey, type MemoryItem, type MemoryProvider } from './defineMemory';
 import { keyedQueue } from './keyedQueue';
 
 /** Options of the built-in memory providers. */
@@ -53,13 +53,18 @@ function select(items: readonly MemoryItem[], { limit, query }: { limit?: number
  */
 export function itemsProvider(store: ItemStore, { maxItems = 1000 }: MemoryProviderOptions = {}): MemoryProvider {
   const serial = keyedQueue();
-  const update = (key: string, change: (items: MemoryItem[]) => MemoryItem[]): Promise<void> =>
-    serial(key, async () => store.save(key, change(await store.load(key))));
+  const update = async (key: string, method: string, change: (items: MemoryItem[]) => MemoryItem[]): Promise<void> => {
+    assertScopeKey(key, method);
+    await serial(key, async () => store.save(key, change(await store.load(key))));
+  };
   return {
-    list: async (key, options) => select(await store.load(key), options),
+    async list(key, options) {
+      assertScopeKey(key, 'list');
+      return select(await store.load(key), options);
+    },
     async add(key, { text, metadata }) {
       let stored: MemoryItem | undefined;
-      await update(key, (items) => {
+      await update(key, 'add', (items) => {
         stored = items.find((item) => item.text === text);
         if (stored) return items;
         stored = { id: newId(), text, createdAt: new Date().toISOString(), ...(metadata && { metadata }) };
@@ -67,7 +72,7 @@ export function itemsProvider(store: ItemStore, { maxItems = 1000 }: MemoryProvi
       });
       return stored!;
     },
-    remove: (key, id) => update(key, (items) => items.filter((item) => item.id !== id)),
+    remove: (key, id) => update(key, 'remove', (items) => items.filter((item) => item.id !== id)),
   };
 }
 
