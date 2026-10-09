@@ -233,7 +233,10 @@ export function summarizeStrategy(options: SummarizeStrategyOptions): Compaction
     name: 'summarize',
     async compact(input) {
       const { messages, estimateTokens: count, signal } = input;
-      const protectedTokens = options.protectedTokens ?? input.protectedTokens;
+      const protectedTokens =
+        options.protectedTokens === undefined
+          ? input.protectedTokens
+          : effectiveProtectedTokens(options.protectedTokens, input.thresholdTokens > 0 ? input.thresholdTokens : input.contextWindow);
       const { kept, folded, summaryAt, tail } = splitForSummary(messages, count, protectedTokens);
       const tokensBefore = count(messages);
       if (folded.length === 0) return { messages, tokensBefore, tokensAfter: tokensBefore, prunedToolCallIds: [] };
@@ -307,14 +310,41 @@ export interface CompactMessagesOptions {
   model?: string;
 }
 
+/** `protectedTokens:threshold` pairs already warned about (one console.warn each per process). */
+const warnedProtected = new Set<string>();
+
+/**
+ * Eve MEM-F5: a protected tail as large as the threshold protects the whole
+ * conversation, so compaction would change nothing however far over the
+ * window it is (the default 40,000 on an 8K local model). The default is
+ * capped at half the threshold; an explicit value at or above the threshold
+ * is capped the same way, with a one-time warning. `limit` is the threshold
+ * (the context window for a manual compaction, whose threshold is 0).
+ */
+function effectiveProtectedTokens(protectedTokens: number | undefined, limit: number): number {
+  const cap = Math.floor(limit / 2);
+  if (protectedTokens === undefined) return Math.min(DEFAULT_PROTECTED_TOKENS, cap);
+  if (protectedTokens < limit) return protectedTokens;
+  const key = `${protectedTokens}:${limit}`;
+  if (!warnedProtected.has(key)) {
+    warnedProtected.add(key);
+    console.warn(
+      `[lousho] compaction: protectedTokens (${protectedTokens}) is not below the compaction threshold (${Math.floor(limit)} tokens), ` +
+        `so nothing could ever be compacted; using ${cap}. Lower protectedTokens for this context window.`
+    );
+  }
+  return cap;
+}
+
 /** The strategy and input {@link compactMessages} runs with (also used by `session.compact()`, LOU-W8). */
 export function prepareCompaction(messages: Message[], options: CompactMessagesOptions, signal?: AbortSignal) {
-  const { model, protectedTokens = DEFAULT_PROTECTED_TOKENS, thresholdPercent = DEFAULT_THRESHOLD_PERCENT, reserveOutputTokens } = options;
+  const { model, thresholdPercent = DEFAULT_THRESHOLD_PERCENT, reserveOutputTokens } = options;
   const strategy = options.strategy ?? pruneToolResultsStrategy();
   const contextWindow = resolveContextWindow(options.contextWindow, model, 'compaction', 'compaction.contextWindow');
   const count: CompactionTokenCounter = (input) => estimateTokens(input, { model });
   const reserved = reserveOutputTokens === undefined ? Infinity : contextWindow - reserveOutputTokens;
   const thresholdTokens = Math.max(0, Math.min(thresholdPercent * contextWindow, reserved));
+  const protectedTokens = effectiveProtectedTokens(options.protectedTokens, thresholdTokens > 0 ? thresholdTokens : contextWindow);
   const input: CompactionInput = { messages, estimateTokens: count, contextWindow, protectedTokens, thresholdTokens, signal };
   return { strategy, input };
 }
@@ -384,6 +414,9 @@ export function createCompactionHook(options: CompactionHookOptions = {}): Agent
   // Per transcript: how many prompt tokens the provider reported for its last
   // call beyond the estimate (framing, hidden prompts, tokenizer differences).
   const underestimate = new WeakMap<Message[], number>();
+  // Eve MEM-F14: transcripts whose last compaction changed nothing. Their next
+  // attempts run quietly: events only when one does change something.
+  const unchanged = new WeakSet<Message[]>();
   return {
     name: 'compaction',
     async preGenerate(ctx: GenerateHookContext) {
@@ -403,7 +436,9 @@ export function createCompactionHook(options: CompactionHookOptions = {}): Agent
       };
       const rejectedAt = rejected.get(messages);
       const active = rejectedAt !== undefined && messages.length < 2 * rejectedAt ? PRUNE_ONLY : strategy;
-      ctx.emit?.({ type: 'compaction.start', strategy: active.name, tokensBefore: tokens, contextWindow, thresholdTokens });
+      const quiet = unchanged.has(messages);
+      const start = () => ctx.emit?.({ type: 'compaction.start', strategy: active.name, tokensBefore: tokens, contextWindow, thresholdTokens });
+      if (!quiet) start();
       let result: CompactionResult;
       try {
         result = await active.compact(input);
@@ -433,6 +468,14 @@ export function createCompactionHook(options: CompactionHookOptions = {}): Agent
       const { prunedToolCallIds, summary, error } = result;
       const tokensBefore = result.tokensBefore + overhead;
       const tokensAfter = result.tokensAfter + overhead;
+      const noop = result.messages === messages && !error;
+      if (noop) {
+        if (quiet) return;
+        unchanged.add(messages);
+      } else {
+        unchanged.delete(messages);
+        if (quiet) start();
+      }
       ctx.emit?.({
         type: 'compaction.done',
         strategy: active.name,
@@ -442,8 +485,9 @@ export function createCompactionHook(options: CompactionHookOptions = {}): Agent
         prunedToolCallIds,
         ...(summary && { summary: true }),
         ...(error && { error: { message: error.message } }),
+        ...(noop && { unchanged: true }),
       });
-      if (result.messages === messages && !error) return;
+      if (noop) return;
       // In place: request.messages is the run's transcript (see the file comment).
       if (result.messages !== messages) messages.splice(0, messages.length, ...result.messages);
       onCompaction?.({ tokensBefore, tokensAfter, prunedToolCallIds, strategy: active.name, ...(appliedStrategy && { appliedStrategy }), summary, error });

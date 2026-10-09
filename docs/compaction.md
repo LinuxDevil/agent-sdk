@@ -53,10 +53,14 @@ triggered it (see [Streaming](./stream-events.md#event-schema-version-1)):
 | `type` | Fields |
 | --- | --- |
 | `compaction.start` | `strategy`, `tokensBefore`, `contextWindow`, `thresholdTokens`, `trigger?: 'manual'` |
-| `compaction.done` | `strategy`, `appliedStrategy?`, `tokensBefore`, `tokensAfter`, `prunedToolCallIds`, `summary?: boolean`, `error?: { message }`, `trigger?: 'manual'` |
+| `compaction.done` | `strategy`, `appliedStrategy?`, `tokensBefore`, `tokensAfter`, `prunedToolCallIds`, `summary?: boolean`, `error?: { message }`, `unchanged?: true`, `trigger?: 'manual'` |
 
 Every `compaction.start` is followed by exactly one `compaction.done`. When the
-strategy could not shrink anything, `tokensAfter` equals `tokensBefore`; when it
+strategy could not shrink anything, `tokensAfter` equals `tokensBefore` and
+`unchanged` is `true`. The hook then compacts that transcript quietly: later
+steps that still change nothing emit no events, and the next attempt that does
+change something emits its `compaction.start` / `compaction.done` pair as usual,
+so a run stuck over the threshold does not report a pair on every step. When it
 failed (or the summarizer failed and the hook fell back to pruning), `error` is
 set and the run continues. A summary that does not get the conversation under
 the threshold - or that makes it larger - is rejected the same way: `error` is
@@ -117,7 +121,7 @@ strategy name.
 | `thresholdPercent` | `0.9` | Compact when the estimated request is above this share of the context window. Must be in (0, 1]. |
 | `contextWindow` | registry, else `128_000` | Context window in tokens. By default it is looked up for `request.model` with `getModelInfo()`; register your own models with `registerModel()`. The `128_000` fallback logs a one-time `console.warn` (see [Local and unknown models](#local-and-unknown-models)). |
 | `reserveOutputTokens` | none | Tokens kept free for the reply: the threshold becomes at most `contextWindow - reserveOutputTokens`. It never raises the `thresholdPercent` threshold. |
-| `protectedTokens` | `40_000` | The newest messages that fit in this many tokens are never changed. |
+| `protectedTokens` | `40_000`, at most half the threshold | The newest messages that fit in this many tokens are never changed. The default is capped at half the threshold (about 3,700 tokens on an 8K window), so a small window still compacts. A value you set at or above the threshold would protect everything; it is capped the same way, with a one-time `console.warn`. |
 | `strategy` | `pruneToolResultsStrategy()` | How to compact (see below). `twoPhaseStrategy()` is recommended; it needs a summarizer model, so it is not the default. |
 | `onCompaction` | none | Called after each compaction that changed the conversation or reported an `error`, with the token counts, the pruned `toolCallId`s, `strategy`, `appliedStrategy`, the summary text and the `error`. |
 
@@ -164,6 +168,11 @@ const agent = createAgent({
 // ...or once for every feature that reads the window (compaction, tool search).
 registerModel({ id: 'qwen3:8b', provider: 'ollama', contextWindow: 8_192 });
 ```
+
+On a small window the default `protectedTokens` (40,000) is capped at half the
+threshold, so the newest ~3,700 tokens of an 8K window stay intact and older
+tool results can still be pruned. Set `protectedTokens` yourself to protect
+more or less; keep it below the threshold.
 
 [Tool search](./tool-search.md) reads the window the same way and warns the same
 way; its own setting is `toolSearch.contextWindow`.

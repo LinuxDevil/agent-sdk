@@ -60,6 +60,22 @@ function agentWith(compaction: CreateAgentConfig['compaction'], size = BIG, extr
   return { agent, model };
 }
 
+describe('compaction events when nothing can be compacted (Eve MEM-F14)', () => {
+  it('reports one unchanged compaction.done per transcript, not a start/done pair on every step', async () => {
+    // Every request is over the threshold, but the transcript is assistant text and tiny results: nothing to prune.
+    const { agent } = wordyAgentWith({ ...SUMMARIZING, strategy: undefined });
+    const run = agent.stream('go');
+    const events = await collect(run);
+    expect((await run.result).text).toBe('done');
+    const starts = ofType(events, 'compaction.start');
+    const dones = ofType(events, 'compaction.done');
+    expect(starts).toHaveLength(1);
+    expect(dones).toHaveLength(1);
+    expect(dones[0]).toMatchObject({ unchanged: true, prunedToolCallIds: [] });
+    expect(dones[0].tokensAfter).toBe(dones[0].tokensBefore);
+  });
+});
+
 describe('compaction stream events (LOU-W3.2)', () => {
   afterEach(() => {
     vi.unstubAllEnvs();

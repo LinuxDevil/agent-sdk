@@ -1246,6 +1246,7 @@ interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
     // (undocumented)
     tokensBefore: number;
     trigger?: 'manual';
+    unchanged?: boolean;
 }
 
 // @public
