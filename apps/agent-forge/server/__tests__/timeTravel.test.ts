@@ -61,7 +61,7 @@ describe('LOU-D45 time-travel routes', () => {
 
   async function finishedRun(runId: string): Promise<void> {
     await request(app).post(`/agents/${runId}/run`).send({ input: 'What is the weather?', spec: SPEC }).expect(202);
-    await settled(runManager, runId, 'stopped');
+    await settled(runManager, runId, 'done');
   }
 
   it('GET /runs/:id/history lists the steps with status, finish reason, tool calls and tokens', async () => {
@@ -87,9 +87,9 @@ describe('LOU-D45 time-travel routes', () => {
       .send({ fromStep: 1, patch: { appendInput: 'And in Celsius?' } })
       .expect(202);
     expect(fork.body).toMatchObject({ runId: 'weather.fork-1', fromStep: 1 });
-    expect(['running', 'stopped']).toContain(fork.body.status.status);
+    expect(['running', 'done']).toContain(fork.body.status.status);
 
-    const done = await settled(runManager, 'weather.fork-1', 'stopped');
+    const done = await settled(runManager, 'weather.fork-1', 'done');
     expect(done.resultText).toBeTruthy();
     expect((await request(app).get('/runs/weather.fork-1/history').expect(200)).body.steps.at(-1).step).toBe(2);
 
@@ -114,7 +114,7 @@ describe('LOU-D45 time-travel routes', () => {
       .post('/runs/gated/fork')
       .send({ fromStep: 1, patch: { toolResult: { toolCallId, result: { done: false, note: 'edited' } } } })
       .expect(202);
-    await settled(runManager, fork.body.runId, 'stopped');
+    await settled(runManager, fork.body.runId, 'done');
     expect(runManager.status('gated').status).toBe('paused'); // the source run is untouched
 
     const comparison = (await request(app).get(`/runs/compare?a=gated&b=${fork.body.runId}`).expect(200)).body as RunComparisonPayload;

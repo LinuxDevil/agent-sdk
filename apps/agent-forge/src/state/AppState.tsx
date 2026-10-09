@@ -59,6 +59,12 @@ interface AppState {
   switchAgent: (id: string) => Promise<void>;
   /** Creates a new agent from a seed template and switches to it. */
   createAgent: (id: string, template: TemplateId) => Promise<void>;
+  /** Eve DUI-F21: renames a saved agent (its spec moves to the new id; run history stays under the old one). */
+  renameAgent: (fromId: string, toId: string) => Promise<void>;
+  /** Eve DUI-F21: deletes a saved agent via `DELETE /agents/:id`. */
+  deleteAgent: (id: string) => Promise<void>;
+  /** Eve DUI-F21: false after the live WebSocket closed (studio server down or restarted), until it reconnects. */
+  connected: boolean;
   /**
    * Live run status for the currently-loaded agent (LOU-N), pushed over
    * `WS /agents/:id/stream` and mirrored here for the Topbar/LeftRail

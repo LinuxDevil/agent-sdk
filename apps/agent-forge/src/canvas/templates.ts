@@ -47,7 +47,8 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
   },
 ];
 
-export function graphFromTemplate(id: TemplateId): AgentGraphSpec {
+/** Eve DUI-F21: `name` (the id typed in "+ New agent") replaces the template's own spec name. */
+export function graphFromTemplate(id: TemplateId, name?: string): AgentGraphSpec {
   const template = AGENT_TEMPLATES.find((t) => t.id === id) ?? AGENT_TEMPLATES[0];
-  return specToGraph(template.spec);
+  return specToGraph(name ? { ...template.spec, name } : template.spec);
 }

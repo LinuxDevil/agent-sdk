@@ -14,6 +14,9 @@ import { appendLog } from './logReducer';
 import { upsertSpan } from './spanReducer';
 import { applyChatState, emptyChatState } from './chatReducer';
 
+/** Eve DUI-F21: how long to wait before re-opening a dropped stream. */
+const RECONNECT_DELAY_MS = 2000;
+
 type StreamHandlers = {
   [K in StreamMessage['type']]?: (payload: Extract<StreamMessage, { type: K }>['payload']) => void;
 };
@@ -71,6 +74,12 @@ export function useAgentStream(agentId: string) {
   const [chatSessions, setChatSessions] = useState<ChatSessionMeta[]>([]);
   const [viewedChatSession, setViewedChatSession] = useState<ChatSessionRecord | undefined>(undefined);
 
+  // Eve DUI-F21: `connected` drops to false when the stream closes on its
+  // own (server stopped or restarted); `attempt` then re-subscribes on a
+  // timer until the socket opens again.
+  const [connected, setConnected] = useState(true);
+  const [attempt, setAttempt] = useState(0);
+
   useEffect(() => {
     setRunStatus(undefined);
     setLogs([]);
@@ -81,7 +90,10 @@ export function useAgentStream(agentId: string) {
     setChatActionError(undefined);
     setChatSessions([]);
     setViewedChatSession(undefined);
+  }, [agentId]);
 
+  useEffect(() => {
+    let retry: ReturnType<typeof setTimeout> | undefined;
     const handlers: StreamHandlers = {
       status: setRunStatus,
       log: (entry) => setLogs((prev) => appendLog(prev, entry)),
@@ -89,7 +101,18 @@ export function useAgentStream(agentId: string) {
       debug: setDebugState,
       chat: (payload) => setChat((prev) => applyChatState(prev, payload)),
     };
-    const unsubscribe = runtimeClient.subscribe(agentId, (message) => dispatchStreamMessage(handlers, message));
+    const unsubscribe = runtimeClient.subscribe(
+      agentId,
+      (message) => dispatchStreamMessage(handlers, message),
+      undefined,
+      {
+        onOpen: () => setConnected(true),
+        onLost: () => {
+          setConnected(false);
+          retry = setTimeout(() => setAttempt((n) => n + 1), RECONNECT_DELAY_MS);
+        },
+      }
+    );
     runtimeClient
       .listChats(agentId)
       .then(setChatSessions)
@@ -107,10 +130,14 @@ export function useAgentStream(agentId: string) {
         // failing silently here.
       });
     runtimeClient.debugState(agentId).then(setDebugState).catch(() => {});
-    return unsubscribe;
-  }, [agentId]);
+    return () => {
+      if (retry) clearTimeout(retry);
+      unsubscribe();
+    };
+  }, [agentId, attempt]);
 
   return {
+    connected,
     runStatus,
     logs,
     setLogs,

@@ -1916,8 +1916,11 @@ exists.
 1. **Create an agent.** In the left rail's "Agents" tab, click **New**,
    give it a name, and pick a starting template - **Blank graph** (a single
    LLM node using the built-in `mock` provider) is the fastest way to try
-   things out without any API keys. Agent Forge creates the agent and opens
-   it on the canvas.
+   things out without any API keys. Agent Forge creates the agent under that
+   name (`.lousho/agents/<name>.yaml`, with `name: <name>` in the spec) and
+   opens it on the canvas. The open agent's card has **Rename** and
+   **Delete**. Rename moves the spec to the new name; earlier chats, traces
+   and checkpoints stay under the old one.
 2. **Look at the graph.** A blank agent is one `llm` node. Drag more nodes
    in from the left rail's palette (**Trigger**, **LLM step**, **Tool
    call**, **Approval gate**, **Response / output**), or click (or press
@@ -1930,7 +1933,11 @@ exists.
    there's nothing to configure - it returns deterministic canned output,
    which is exactly the point for trying the rest of the UI without needing
    a real LLM API key. The status pill in the top bar tracks the run
-   (`running` → `idle`/`error`/`awaiting approval`).
+   (`running` → `done`, `stopped` after you press **Stop**, `error` or
+   `awaiting approval`). Run sends a fixed prompt, which the Chat tab shows
+   as a **Run input** bubble instead of a message from you. If the studio
+   server goes away, a banner says the connection was lost and the studio
+   reconnects when it is back.
 4. **Watch it in the debug console.** Open the bottom drawer's **Logs**
    tab for a live, filterable log feed of the run (trigger/llm/tool/
    sandbox/checkpoint/approval events), or **Trace** for a span waterfall.
@@ -2099,6 +2106,15 @@ secrets), and a **Deploy** section that picks an adapter (`node-server`,
 agent. Other providers still read their environment variables, the same way
 `lousho dev`/`lousho build` do (see [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md)), and
 the `mock` provider needs no credentials.
+
+Stored keys are encrypted with AES-256-GCM in `.lousho/secrets.json`. The
+encryption key is generated on first use and kept next to it in
+`.lousho/secrets.key` (both `0600` on POSIX). This keeps keys out of
+anything that copies the ciphertext alone - a backup, a zip of the project,
+a shared agent YAML - but anyone who can read both files as your user can
+decrypt them. It is not an OS keychain. Keep `.lousho/` out of version
+control and out of shared archives, and prefer environment variables on
+shared machines.
 
 An agent whose provider has no key (no stored key and no environment
 variable) does not run. **Run** and **Chat** fail with
@@ -2520,16 +2536,21 @@ task.
 
 - A paused `send()` resolves (it does not throw) with
   `finishReason: 'awaiting-approval'` and an `approvalId`.
-- `agent.approvals.list()` returns the pending calls this agent paused on in
-  this process, oldest first: `{ id, toolCallId, toolName, args, createdAt }`,
+- `agent.approvals.list()` returns the pending calls, oldest first: the ones
+  this agent paused on in this process and, with an `approvalStore` that
+  implements `list()` (the file, SQLite, KV and in-memory stores do), the ones
+  the store holds from another process or from before a restart. A pause that
+  another process already decided is left out. Each entry is
+  `{ id, toolCallId, toolName, args, createdAt }`,
   plus `subagentPath` when the call belongs to a sub-agent and `expiresAt`
   when the pause has a deadline (see [Approval expiry](#approval-expiry)). An
   entry past `expiresAt` stays listed until it is decided - the run is still
   paused - but deciding it denies the call.
-- `agent.approvals.get(id)` returns one pending call without deciding it:
-  `list()`'s entries first, then - with an `approvalStore` that implements
-  `load()` - a pause saved before a restart, `undefined` when the id is
-  unknown (malformed ids included) or already resolved.
+- `agent.approvals.get(id)` returns one pending call without deciding it.
+  With an `approvalStore` that implements `load()` the store answers first,
+  so a pause saved before a restart is found and a pause another process
+  decided is not; `undefined` when the id is unknown (malformed ids included)
+  or already resolved.
 - `agent.approvals.resolve({ id, approved, note? })` runs the call (approved)
   or gives the model a rejection with your `note` (rejected), continues the
   run, and resolves with the continued run's result, which may pause again.
@@ -2553,11 +2574,12 @@ const store = new SqliteStore('./.lousho/agent.db');
 const agent = createAgent({ provider, tools: [emailTool], store }); // or approvalStore: store.approvals
 ```
 
-`list()` only knows the pauses made by this agent object; `get(id)` also finds
-a pause the durable store still holds (for example one saved before a
-restart). Keep the `approvalId` (or read the store) to resolve a pause from
-somewhere else. A continued run joins a session only when it is resolved
-through the agent that owns that session object.
+With a durable store, `list()` and `get(id)` read the store, so after a
+restart (or from another process) they show every pause it still holds, and
+stop showing one as soon as any process decides it. A stored pause that no
+session of this process has run yet is listed without its `sessionId`. With a
+custom `ApprovalStore` that has no `list()`, `list()` only knows the pauses
+made by this agent object.
 
 ### Approval expiry
 
@@ -2770,6 +2792,13 @@ continued run as an `AgentRun` (see
 | `StorageServiceApprovalStore(storage)` | JSON files through a `StorageService`. |
 | `fileStore(dir)` | One JSON file per pause, `<dir>/approvals/<id>.json`, on one machine; an approval can be resolved by only one process (see [Choosing a store](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
 | `SqliteStore.approvals` | One SQLite file, shared safely by several processes; an approval can be resolved by only one of them. |
+
+An `ApprovalStore` needs `save()` and `resolve()`. `load(id)` (read a pause
+without claiming it) and `list()` (every pause not resolved yet, oldest first)
+are optional; `agent.approvals.get()` and `list()` use them to see pauses other
+processes saved or decided. The built-in stores implement both (`KVStore` lists
+only when its namespace binding has `list`, as a real one does).
+`StorageServiceApprovalStore` implements `load()` only.
 
 ## Elsewhere
 
@@ -8295,9 +8324,9 @@ failed gate, so one run shows all that is wrong.
 | Call | Kind | Passes when |
 | --- | --- | --- |
 | `t.completed()` | gate | the latest run ended with a normal `stop` (not an error, abort, pending approval, or `maxSteps` cut-off) |
-| `t.calledTool(name, { args?, times? })` | gate | the tool was called; `args` is a partial deep match (the call's arguments must contain these keys with equal values); `times` is an exact count of matching calls |
-| `t.notCalledTool(name)` | gate | the tool was never called |
-| `t.toolOrder([a, b])` | gate | the tools were called in this order (other calls may sit in between) |
+| `t.calledTool(name, { args?, times?, subagent? })` | gate | the tool was called; `args` is a partial deep match (the call's arguments must contain these keys with equal values); `times` is an exact count of matching calls; `subagent` counts only that sub-agent's calls |
+| `t.notCalledTool(name, { subagent? })` | gate | the tool was never called, by the lead or any sub-agent |
+| `t.toolOrder([a, b], { subagent? })` | gate | the tools were called in this order (other calls may sit in between) |
 | `t.maxSteps(n)` | gate | the agent took at most `n` model steps |
 | `t.maxTokens(n)` | gate | the agent used at most `n` tokens |
 | `t.maxCostUsd(n)` | gate | the run's reported cost is at most `n` USD. Skipped (counts as passed, marked `skipped`) when the SDK reports no cost |
@@ -8320,6 +8349,51 @@ completed() failed: finishReason was 'max-steps' (the run hit maxSteps while sti
 Other context members: `t.reply` (latest reply text), `t.result` (latest
 `ExecutionResult`), `t.toolCalls` (every call so far, with parsed arguments).
 You can `send()` more than once; steps, tokens and tool calls add up.
+
+### Sub-agents
+
+When the agent delegates with `subagents`, the calls a sub-agent makes are part
+of `t.toolCalls`. Each follows the `task` call that started it and carries a
+`subagentPath` (`['researcher']`, or `['researcher', 'fetcher']` when it
+delegated again); the lead's own calls have none. The assertions search the whole
+tree by default, so `t.notCalledTool('delete_repo')` fails if a sub-agent called
+it. Pass `{ subagent: 'researcher' }` to look at one sub-agent (and the
+sub-agents under it) only:
+
+```ts
+await t.send('Research electric bikes');
+t.calledTool('web_search', { subagent: 'researcher' });
+t.notCalledTool('delete_repo');
+```
+
+The calls come from the run's `tool.start` events, which `t.send()` collects
+through `send(message, { onEvent })`. A remote target (`--url`) streams no
+sub-agent events, so it only shows the lead's calls. The classic form
+(`{ agent, input, provider, score }`) forwards every `AgentExecutor.execute()`
+option, `subagents` and `skills` included, and its `EvalResult.toolCalls`
+includes the sub-agent calls too.
+
+### Repeating a case (pass@k)
+
+A model is not deterministic, so one run says little. `repeat: n` runs every
+case `n` times; the case passes when all `n` runs pass, or when at least
+`passAt: k` of them do:
+
+```ts
+defineEval({
+  name: 'refund flow',
+  agent,
+  repeat: 5,
+  passAt: 4, // pass@4 of 5
+  async test(t) {
+    await t.send('Refund order 42');
+    t.calledTool('issue_refund');
+  },
+});
+```
+
+Each run is its own row in the report (`refund flow [refund flow #1]`, ...) with
+its own cassette. `timeoutMs` covers all runs of a case, so raise it with `repeat`.
 
 ### Datasets
 

@@ -52,6 +52,12 @@ export class RuntimeApiError extends Error {
   }
 }
 
+/** Eve DUI-F21: connection callbacks for `subscribe()` - `onLost` fires when the socket closes without the caller unsubscribing. */
+export interface StreamConnectionHandlers {
+  onOpen?: () => void;
+  onLost?: () => void;
+}
+
 class RuntimeClient {
   private readonly baseUrl: string;
   private readonly token: string | undefined;
@@ -304,10 +310,12 @@ class RuntimeClient {
   subscribe(
     agentId: string,
     onMessage: (message: StreamMessage) => void,
-    onError?: (event: Event) => void
+    onError?: (event: Event) => void,
+    connection?: StreamConnectionHandlers
   ): () => void {
     const query = this.token ? `?${new URLSearchParams({ token: this.token })}` : '';
     const ws = new WebSocket(`${this.wsBaseUrl()}/agents/${encodeURIComponent(agentId)}/stream${query}`);
+    let closedByCaller = false;
     ws.addEventListener('message', (event) => {
       try {
         onMessage(JSON.parse(event.data as string) as StreamMessage);
@@ -316,7 +324,16 @@ class RuntimeClient {
       }
     });
     if (onError) ws.addEventListener('error', onError);
-    return () => ws.close();
+    // Eve DUI-F21: tell the caller when the stream opens, and when it drops
+    // for any reason other than the caller's own unsubscribe.
+    if (connection?.onOpen) ws.addEventListener('open', connection.onOpen);
+    ws.addEventListener('close', () => {
+      if (!closedByCaller) connection?.onLost?.();
+    });
+    return () => {
+      closedByCaller = true;
+      ws.close();
+    };
   }
 }
 

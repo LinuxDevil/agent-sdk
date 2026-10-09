@@ -129,13 +129,13 @@ describe('LOU-N HTTP API', () => {
   it('POST /agents/:id/run starts a run and GET /status reflects it finishing', async () => {
     const run = await request(app).post('/agents/bar/run').send({ spec: SPEC, input: 'hello' });
     expect(run.status).toBe(202);
-    expect(['running', 'stopped']).toContain(run.body.status);
+    expect(['running', 'done']).toContain(run.body.status);
 
-    const final = await waitForStatus(runManager, 'bar', (s) => s.status === 'stopped');
+    const final = await waitForStatus(runManager, 'bar', (s) => s.status === 'done');
     expect(final.resultText).toBeTruthy();
 
     const status = await request(app).get('/agents/bar/status');
-    expect(status.body.status).toBe('stopped');
+    expect(status.body.status).toBe('done');
   });
 
   it('POST /agents/:id/run without input is rejected', async () => {
@@ -213,7 +213,7 @@ describe('LOU-N HTTP API', () => {
     const cont = await request(app).post('/agents/debug-run/debug/continue');
     expect(cont.status).toBe(200);
 
-    await waitForStatus(runManager, 'debug-run', (s) => s.status === 'stopped');
+    await waitForStatus(runManager, 'debug-run', (s) => s.status === 'done');
   });
 });
 

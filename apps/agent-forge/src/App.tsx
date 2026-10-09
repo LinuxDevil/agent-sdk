@@ -1,7 +1,7 @@
 import './components/layout.css';
 import { useEffect, useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
-import { AppStateProvider } from './state/AppState';
+import { AppStateProvider, useAppState } from './state/AppState';
 import { Topbar, type SidePanel } from './components/Topbar';
 import { LeftRail } from './components/LeftRail';
 import { CanvasArea } from './components/CanvasArea';
@@ -33,12 +33,24 @@ function useSidePanels() {
   return { narrow, open, toggle, close: () => setOpen(undefined) };
 }
 
+/** Eve DUI-F21: says so when the live connection to the studio server drops, instead of going quietly stale. */
+function ConnectionBanner() {
+  const { connected } = useAppState();
+  if (connected) return null;
+  return (
+    <div className="connection-banner" role="alert">
+      Lost the connection to the studio server - reconnecting. Is <code>lousho studio</code> still running?
+    </div>
+  );
+}
+
 function Studio() {
   const panels = useSidePanels();
   const shellClass = `shell${panels.open ? ` ${panels.open}-open` : ''}`;
   return (
     <div className="app">
       <h1 className="visually-hidden">Agent Forge</h1>
+      <ConnectionBanner />
       <Topbar narrow={panels.narrow} openPanel={panels.open} onTogglePanel={panels.toggle} />
       <div className={shellClass}>
         <LeftRail />

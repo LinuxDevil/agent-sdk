@@ -1,6 +1,7 @@
 const STATUS_LABEL: Record<string, string> = {
   idle: 'idle',
   running: 'running',
+  done: 'done',
   stopped: 'stopped',
   error: 'error',
   paused: 'awaiting approval',
