@@ -970,7 +970,8 @@ the option: no key source or two of them, an HMAC `secret` shorter than 32
 bytes, an algorithm that does not fit the key (`secret` with `RS256`, a public
 key with `HS256`), no `audience` (and no `allowAnyAudience: true`), a
 `clockToleranceSec` above 300, a key-set or issuer URL that is not https, an
-empty user list or token.
+empty user list or token (also `createRouteHandler({ auth: '' })` and
+`serveFetch(request, ctx, '')`).
 
 **Fix:** change the option the message names. See [Route auth and principals](./auth.md).
 

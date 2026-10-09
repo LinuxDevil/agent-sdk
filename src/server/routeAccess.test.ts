@@ -253,3 +253,11 @@ describe('error redaction (A1, F11)', () => {
     expect(await (await serveFetch(request(), { name: 'server', agent: () => agent })).text()).not.toContain('raise_exception');
   });
 });
+
+describe('an empty auth token (Eve CH-F16)', () => {
+  it('serveFetch fails closed instead of serving the routes open', async () => {
+    const agent = createAgent({ provider: mockModel(['hi']), store: memoryStore() });
+    const request = new Request('http://x/chat', { method: 'POST', body: JSON.stringify({ sessionId: 's', input: 'hi' }) });
+    await expect(serveFetch(request, { name: 'server', agent: () => agent }, '')).rejects.toMatchObject({ code: 'LOUSHO_AUTH_CONFIG_INVALID' });
+  });
+});

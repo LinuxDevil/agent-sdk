@@ -63,6 +63,10 @@ describe('createRouteHandler (LOU-P4)', () => {
     expect(await (await handler(get('/api/agent/health'))).text()).toBe('ok');
   });
 
+  it("refuses an empty-string token at construction instead of locking every route (Eve CH-F16)", () => {
+    expect(() => routes(['ok'], { auth: '' })).toThrow(expect.objectContaining({ code: 'LOUSHO_AUTH_CONFIG_INVALID' }));
+  });
+
   it('asks an authorizer function, sync or async', async () => {
     const seen: string[] = [];
     const { handler } = routes(['ok', 'ok'], {
@@ -312,6 +316,16 @@ describe('createRouteHandler (LOU-P4)', () => {
       expect((await on.handler(post('/api/agent/ui', { messages: [userMessage('hi')] }))).status).toBe(200);
       expect((await on.handler(post('/api/agent/ui', { nope: true }))).status).toBe(400);
       expect((await routes(['ok']).handler(post('/api/agent/ui', { messages: [userMessage('hi')] }))).status).toBe(404);
+    });
+
+    it('answers 400 for an invalid chat id, like POST /chat, before authorizeSession sees it (Eve CH-F11)', async () => {
+      const authorizeSession = vi.fn(() => true);
+      const { handler } = routes(['ok'], { uiMessageStream: true, authorizeSession });
+      const ui = await handler(post('/api/agent/ui', { id: 'bad/id!', messages: [userMessage('hi')] }));
+      const chat = await handler(post('/api/agent/chat', { sessionId: 'bad/id!', input: 'hi' }));
+      expect([ui.status, chat.status]).toEqual([400, 400]);
+      expect((await ui.json()).error).toMatch(/Invalid session id/);
+      expect(authorizeSession).not.toHaveBeenCalled();
     });
   });
 });
