@@ -159,6 +159,7 @@ function AgentNodeImpl({ data, selected }: NodeProps) {
   const { graphNode, onRename, highlighted, hasBreakpoint } = data as unknown as AgentNodeData;
   const meta = NODE_META[graphNode.type];
   const rename = useRenameDraft(graphNode, onRename);
+  const rows = rowsFor(graphNode);
 
   return (
     <div
@@ -169,31 +170,48 @@ function AgentNodeImpl({ data, selected }: NodeProps) {
       {meta.hasIn && <Handle type="target" position={Position.Left} className="rf-port rf-port-in" />}
       {meta.hasOut && <Handle type="source" position={Position.Right} className="rf-port rf-port-out" />}
       <HookBadges graphNode={graphNode} />
-      <div className="rf-node-head" style={{ borderBottom: '1px solid var(--border)' }}>
+      <div className="rf-node-head" style={rows.length > 0 ? { borderBottom: '1px solid var(--border)' } : undefined}>
         <span className="node-swatch" style={{ background: meta.color, width: 16, height: 16, borderRadius: 5 }}>
           {meta.icon}
         </span>
         <NodeTitle label={graphNode.label} rename={rename} />
       </div>
-      <div className="rf-node-body">
-        {rowsFor(graphNode).map((row) => (
-          <div className="node-row" key={row.k}>
-            <span>{row.k}</span>
-            <code>{row.v}</code>
-          </div>
-        ))}
-      </div>
+      {/* Eve DUI-F22: no empty body box under a node with nothing to show (output, router). */}
+      {rows.length > 0 && (
+        <div className="rf-node-body">
+          {rows.map((row) => (
+            <div className="node-row" key={row.k}>
+              <span>{row.k}</span>
+              <code>{row.v}</code>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 const AgentNode = memo(AgentNodeImpl);
 
-export const NODE_TYPES = {
-  trigger: AgentNode,
-  llm: AgentNode,
-  tool: AgentNode,
-  approval: AgentNode,
-  output: AgentNode,
-  router: AgentNode,
-};
+/**
+ * Eve DUI-F22: the React Flow node type for a graph node. Prefixed so none
+ * collides with React Flow's built-in `input`/`output`/`default`/`group`
+ * types - a node typed `output` picked up `.react-flow__node-output`'s
+ * default border, padding and width and was drawn double-boxed. The graph's
+ * own `type` (what is saved) is unchanged.
+ */
+export function flowNodeType(type: AgentGraphNodeType): string {
+  return `agent-${type}`;
+}
+
+const GRAPH_NODE_TYPES: AgentGraphNodeType[] = ['trigger', 'llm', 'tool', 'approval', 'output', 'router'];
+
+export const NODE_TYPES: Record<string, typeof AgentNode> = Object.fromEntries(
+  GRAPH_NODE_TYPES.map((type) => [flowNodeType(type), AgentNode])
+);
+
+/** Eve DUI-F22: the MiniMap draws each node in its type's swatch colour (see `.minimap-node-*` in layout.css). */
+export function miniMapNodeClassName(node: { data: Record<string, unknown> }): string {
+  const graphNode = (node.data as Partial<AgentNodeData>).graphNode;
+  return graphNode ? `minimap-node-${graphNode.type}` : '';
+}

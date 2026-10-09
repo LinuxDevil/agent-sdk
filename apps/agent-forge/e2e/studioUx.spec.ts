@@ -82,3 +82,22 @@ test('a dropped connection to the studio server shows a banner until it reconnec
   dropping = false;
   await expect(page.locator('.connection-banner')).toHaveCount(0, { timeout: 10_000 });
 });
+
+test('the Output node is drawn once and the minimap shows the graph (Eve DUI-F22)', async ({ page }) => {
+  const id = `ux-minimap-${Date.now()}`;
+  await page.goto(`/?token=${TOKEN}`);
+  await createAgent(page, id);
+
+  // React Flow's built-in `output` type used to add its own border/padding box around ours.
+  await expect(page.locator('.react-flow__node-output')).toHaveCount(0);
+  const output = page.locator('.react-flow__node:has([data-node-type="output"])');
+  await expect(output).toHaveCount(1);
+  const wrapper = await output.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { border: s.borderTopWidth, padding: s.paddingTop };
+  });
+  expect(wrapper).toEqual({ border: '0px', padding: '0px' });
+
+  // The minimap draws one node per canvas node.
+  await expect.poll(() => page.locator('.react-flow__minimap-node').count()).toBe(await page.locator('.react-flow__node').count());
+});
