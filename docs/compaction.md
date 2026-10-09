@@ -309,7 +309,8 @@ anything. It rejects with `LOUSHO_SESSION_BUSY` while a turn is running, and
 with `LOUSHO_SESSION_TURN_PENDING` / `LOUSHO_SESSION_AWAITING_APPROVAL` while a
 durable turn is unfinished. Listeners added with `session.on()` get
 `compaction.start` and `compaction.done` with `trigger: 'manual'`.
-`session.clear()` empties the transcript instead and emits `context.cleared`.
+`session.clear()` empties the transcript instead, deletes every turn's
+checkpoint and checkpoint history, and emits `context.cleared`.
 
 ```ts
 import { createAgent, twoPhaseStrategy } from '@lousho/build-ai-agent';

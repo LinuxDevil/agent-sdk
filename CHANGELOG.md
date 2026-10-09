@@ -48,6 +48,7 @@ This section lists what is on `main` and not yet on npm.
 - Structured output: when `maxSteps` runs out while the model is still calling tools, a run with `output` set now makes one last model call with no tools offered ("answer now") and validates its reply - the result carries `object` (still `finishReason: 'max-steps'`) or `outputError` (`'output-invalid'`) instead of neither. The extra call is skipped when another budget limit (tokens, cost, duration) is already spent. See [Structured output](docs/structured-output.md).
 
 ### Fixed
+- `session.clear()` now deletes the checkpoint and checkpoint history of every turn (`<id>.turn-<n>`, including turns from before a compaction), not only the pending one. The history held full copies of the cleared transcript, and `agent.fork('<id>.turn-<n>')` could bring the conversation back. (Eve DUR-F8)
 - Channels: two near-simultaneous decisions on one approval (a double click while `onDecision` runs) decide it once; the loser gets `409 LOUSHO_APPROVAL_CONFLICT` (or nothing, once the surface was acknowledged) instead of a 500 or a false "Sorry, that request failed." reply (Eve CH-F7).
 - `lousho add` warns, before and after writing, when `--dir` is not an agent directory (nothing loads `tools/` or `skills/` there, e.g. a `lousho init` project), and a `kit` install creates a missing `--dir` instead of failing (Eve CLI-F3, F18).
 - `lousho mcp` accepts an agent directory or `agent.ts` module like `dev`/`chat`/`acp` (it crashed with a raw `EISDIR`), and its errors carry the `lousho mcp:` prefix (Eve CLI-F2).
