@@ -980,13 +980,136 @@ button.breakpoint-toggle {
   box-shadow: 0 0 0 3px var(--accent), var(--shadow);
 }
 
+/* ---------- Eve DUI-F8: narrow layout (<= 860px) ----------
+   The rail and the Inspector become slide-over drawers toggled from the top
+   bar (App.tsx's useSidePanels, Topbar.tsx's NarrowTopbar); Debug, Import,
+   Export and Save move into the top bar's "More" menu. Keep the breakpoint in
+   sync with useMediaQuery.ts's NARROW_QUERY. */
+.overflow-menu {
+  position: relative;
+  flex: none;
+}
+.overflow-menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  min-width: 210px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: var(--shadow);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+.overflow-menu-env {
+  padding: 4px 4px 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.overflow-menu-env .env-select {
+  flex-wrap: wrap;
+}
+.overflow-menu-item {
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+.overflow-menu-item:hover,
+.overflow-menu-item:focus-visible {
+  background: var(--surface-2);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.panel-toggle {
+  flex: none;
+  padding: 6px 9px;
+  font-size: 15px;
+  line-height: 1;
+}
+.panel-toggle.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.topbar-narrow {
+  gap: 6px;
+  padding: 0 8px;
+}
+.topbar-narrow .crumbs {
+  flex: 1;
+}
+.topbar-narrow .crumbs b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topbar-narrow .run-error {
+  max-width: 90px;
+}
+/* The Chat tab shows the same approval card inline. */
+.topbar-narrow .approval-card {
+  display: none;
+}
+.shell-scrim {
+  display: none;
+}
+
 @media (max-width: 860px) {
   .shell {
-    grid-template-columns: 0 1fr 0;
+    grid-template-columns: minmax(0, 1fr);
+    overflow: hidden;
+    position: relative;
   }
   .rail,
   .inspector {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 20;
+    width: min(300px, 86vw);
+    box-shadow: var(--shadow);
+    visibility: hidden;
+    transition: transform 0.18s ease, visibility 0s linear 0.18s;
+  }
+  .rail {
+    left: 0;
+    transform: translateX(-100%);
+  }
+  .inspector {
+    right: 0;
+    transform: translateX(100%);
+  }
+  .shell.rail-open .rail,
+  .shell.inspector-open .inspector {
+    transform: none;
+    visibility: visible;
+    transition: transform 0.18s ease;
+  }
+  .shell-scrim {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 15;
+    background: rgba(10, 12, 18, 0.35);
+  }
+  .canvas-wrap .react-flow__minimap {
     display: none;
+  }
+  .drawer-tabs {
+    overflow-x: auto;
+  }
+  .drawer-body {
+    overflow-x: auto;
+  }
+  .chat-msg {
+    max-width: 92%;
   }
 }
 

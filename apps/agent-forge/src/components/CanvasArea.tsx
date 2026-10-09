@@ -234,6 +234,27 @@ function useDropHandlers(graph: AgentGraphSpec, setGraph: SetGraph, flashError: 
   return { onDragOver, onDrop };
 }
 
+/**
+ * Eve DUI-F8: refit the graph when the window is resized (e.g. rotating a
+ * phone, or crossing the narrow-layout breakpoint), so it never sits
+ * off-screen in a pane that changed size. Debounced to the last resize.
+ */
+function useFitViewOnResize() {
+  const { fitView } = useReactFlow();
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    function onResize() {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => void fitView({ padding: 0.2, duration: 150 }), 150);
+    }
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      if (timer) clearTimeout(timer);
+    };
+  }, [fitView]);
+}
+
 /** Toolbar actions (auto layout, fit view, duplicate) plus the Ctrl/Cmd+D shortcut. */
 function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefined) {
   const { fitView } = useReactFlow();
@@ -331,6 +352,7 @@ function CanvasInner() {
   const { onConnect, isValidConnection } = useConnectionHandlers(graph, setGraph, flashError);
   const { onDragOver, onDrop } = useDropHandlers(graph, setGraph, flashError);
   const { handleAutoLayout, handleFitView, handleDuplicate } = useToolbarActions(setGraph, selectedNodeId);
+  useFitViewOnResize();
 
   return (
     <main className="canvas-wrap" aria-label="Agent graph" onDrop={onDrop} onDragOver={onDragOver}>

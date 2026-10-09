@@ -342,7 +342,7 @@ export function LeftRail() {
 
   // Eve DUI-F9: a `nav` landmark with a real WAI-ARIA tablist.
   return (
-    <nav className="rail" aria-label="Agents and node palette">
+    <nav className="rail" id="studio-rail" aria-label="Agents and node palette">
       <div
         className="rail-tabs"
         role="tablist"
