@@ -16,6 +16,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useAppState } from '../state/AppState';
+import { isEditableTarget } from '../canvas/isEditableTarget';
 import { NODE_TYPES, type AgentNodeData } from '../canvas/AgentNode';
 import {
   addHookToNode,
@@ -270,9 +271,11 @@ function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefine
 
   // Ctrl/Cmd+D duplicates the selected node - a discoverable shortcut
   // alongside the toolbar button, matching common canvas-editor conventions.
+  // Eve DUI-F10: not while typing in a field (the Inspector, chat, the hook
+  // editor) - there the keystroke belongs to the field.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && !isEditableTarget(e.target)) {
         e.preventDefault();
         handleDuplicate();
       }
