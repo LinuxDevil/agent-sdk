@@ -23,7 +23,7 @@ function useProviderKeys() {
   }
 
   useEffect(() => {
-    void loadProviders();
+    loadProviders().catch((error) => setProviderError(errorMessage(error)));
   }, []);
 
   function setDraft(provider: string, value: string) {
@@ -71,7 +71,7 @@ function useSettingsProfiles(setDeployAdapter: (adapter: string) => void, deploy
   }
 
   useEffect(() => {
-    void loadSettings();
+    loadSettings().catch((error) => setProfileError(errorMessage(error)));
   }, []);
 
   function selectProfile(profileId: string) {

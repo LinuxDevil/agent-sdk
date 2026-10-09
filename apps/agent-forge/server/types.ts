@@ -14,10 +14,7 @@
  * `.lousho/agents/`. Restrict every accepted id up front (here, and in
  * wsServer.ts's WS upgrade handler, which parses `:id` itself rather than
  * going through Express routing) to a safe, single-path-segment token
- * instead of trying to sanitize/escape it later in each store.
+ * instead of trying to sanitize/escape it later in each store. The rule
+ * lives in ../shared/agentId.ts so the client validates names the same way.
  */
-const AGENT_ID_RE = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,127})$/;
-
-export function isValidAgentId(id: string): boolean {
-  return typeof id === 'string' && AGENT_ID_RE.test(id) && !id.includes('..');
-}
+export { isValidAgentId } from '../shared/agentId';
