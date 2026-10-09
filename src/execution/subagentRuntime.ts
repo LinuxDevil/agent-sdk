@@ -56,6 +56,8 @@ export type InheritedRuntime = Pick<
   | 'metadata'
   // N9b: and reads that caller's OAuth tokens from the same store.
   | 'tokens'
+  // Eve PROV-F14: and shares the lead's model-call budget.
+  | 'rateLimiter'
 >;
 
 /** What the executor knows about the tool call that is running. */

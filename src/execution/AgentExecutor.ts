@@ -10,7 +10,7 @@ import type { BackgroundTaskView } from '../subagents/backgroundTasks';
 import { assertMaxSubagentDepth, withSubagents } from '../subagents/withSubagents';
 import type { StandardSchemaV1 } from '../utils/zodCompat';
 import { newId } from '../utils/id';
-import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult, ToolDefinition, type ReasoningOption, type ModelSettings } from '../providers';
+import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult, ToolDefinition, type ReasoningOption, type ModelSettings, type RateLimiter } from '../providers';
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
@@ -247,6 +247,11 @@ export interface ExecuteOptions extends PermissionOptions {
    * and handoff targets use their own. See docs/configuration.md#model-settings.
    */
   modelSettings?: ModelSettings;
+  /**
+   * Eve PROV-F14: queues every model call of the run, its sub-agents and its
+   * handoff targets under one budget (`createRateLimiter()`; `createAgent({ rateLimit })` sets it).
+   */
+  rateLimiter?: RateLimiter;
   /**
    * LOU-D41: called with every {@link AgentEvent} of the run, synchronously
    * as it happens - the same events, in the same order, as `stream()`

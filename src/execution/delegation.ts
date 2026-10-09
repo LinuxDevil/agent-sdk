@@ -13,7 +13,7 @@
  * `event.subagent`). Its token usage is added to the parent's.
  */
 
-import type { LLMProvider, Message, ReasoningOption, ModelSettings } from '../providers';
+import type { LLMProvider, Message, ReasoningOption, ModelSettings, RateLimiter } from '../providers';
 import type { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools/ToolRegistry';
 import type { Skill } from '../skills/defineSkill';
@@ -57,6 +57,8 @@ export interface SubagentSpec {
   reasoning?: ReasoningOption;
   /** C6: the sub-agent's own sampling settings (not inherited: it may run another model). */
   modelSettings?: ModelSettings;
+  /** Eve PROV-F14: the model-call budget the run's agents share (the lead run's, else this agent's own). */
+  rateLimiter?: RateLimiter;
   /** LOU-V4.2: the sub-agent's own `output` schema (never the lead's); its validated object is the `task` result. */
   output?: StandardSchemaV1 | OutputSpec;
   /** N1a: the sub-agent's own hosted tools (never the lead's). */
@@ -233,6 +235,7 @@ function childOptions(
     guardrails: inheritGuardrails(runtime.guardrails, spec.guardrails),
     reasoning: spec.reasoning,
     modelSettings: spec.modelSettings,
+    rateLimiter: runtime.rateLimiter ?? spec.rateLimiter,
     output: spec.output,
     hostedTools: spec.hostedTools,
     // N2: its own deferred tools and tuning; it never sees what the lead loaded (its transcript is its own).

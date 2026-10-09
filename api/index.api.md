@@ -1434,6 +1434,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
         cwd?: string;
         files?: readonly string[];
     };
+    rateLimit?: RateLimitOptions | RateLimiter;
     reasoning?: ReasoningOption;
     redactContent?: boolean;
     retry?: WithRetryOptions | false;
@@ -1497,6 +1498,9 @@ export function createLintCheck(repoPath: string, options?: CommandCheckOptions)
 
 // @public
 export function createMockProvider(config?: MockProviderConfig): MockLLMProvider;
+
+// @public
+export function createRateLimiter(options?: RateLimitOptions): RateLimiter;
 
 // @public
 export function createRouteHandler(agent: SimpleAgent, options?: RouteHandlerOptions): RouteHandlers;
@@ -2195,6 +2199,7 @@ interface ExecuteOptions extends PermissionOptions {
     principal?: Principal;
     // (undocumented)
     provider: LLMProvider;
+    rateLimiter?: RateLimiter;
     reasoning?: ReasoningOption;
     redactContent?: boolean;
     sandbox?: SandboxAdapter;
@@ -4878,12 +4883,33 @@ interface QueuedInput {
 export function rankToolsByKeywords(query: string, tools: ReadonlyArray<SearchableTool>): string[];
 
 // @public
+export class RateLimiter {
+    constructor(options?: RateLimitOptions);
+    acquire(tokens?: number, signal?: AbortSignal): Promise<RateLimitLease>;
+    get inFlight(): number;
+    get pending(): number;
+}
+
+// @public
 export class RateLimitError extends SDKError {
     constructor(message: string, retryAfter?: number | undefined, limit?: number | undefined);
     // (undocumented)
     readonly limit?: number | undefined;
     // (undocumented)
     readonly retryAfter?: number | undefined;
+}
+
+// @public
+export interface RateLimitLease {
+    adjust(actualTokens?: number): void;
+    release(actualTokens?: number): void;
+}
+
+// @public
+export interface RateLimitOptions {
+    maxConcurrent?: number;
+    requestsPerMinute?: number;
+    tokensPerMinute?: number;
 }
 
 // @public
@@ -6097,6 +6123,7 @@ interface SubagentSpec {
     permissions?: readonly PermissionRule[];
     // (undocumented)
     provider: LLMProvider;
+    rateLimiter?: RateLimiter;
     reasoning?: ReasoningOption;
     // (undocumented)
     skills?: readonly Skill[];
@@ -7062,6 +7089,9 @@ export interface WithFallbackOptions {
     // (undocumented)
     onFallback?: (info: FallbackInfo) => void;
 }
+
+// @public
+export function withRateLimit(provider: LLMProvider, limits: RateLimitOptions | RateLimiter): LLMProvider;
 
 // @public
 export function withRetry(provider: LLMProvider, options?: WithRetryOptions): LLMProvider;

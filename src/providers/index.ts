@@ -15,6 +15,7 @@ export * from './AnthropicProvider';
 export { PiProvider, type PiProviderConfig } from './pi/PiProvider';
 export * from './resolveProvider';
 export * from './resilience';
+export * from './rateLimit';
 export { fromAiSdk, type FromAiSdkOptions } from './fromAiSdk';
 export type { UnsupportedFiles } from './aiSdkProvider';
 export { MissingPeerDependencyError } from './optionalPeer';
