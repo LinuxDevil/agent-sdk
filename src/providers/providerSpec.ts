@@ -148,7 +148,7 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     configField: 'apiKey',
     envRequired: true,
     peers: aiSdkPeer('@ai-sdk/anthropic'),
-    envDefaultModel: 'claude-3-5-sonnet-latest',
+    envDefaultModel: 'claude-sonnet-4-5',
   },
   openrouter: {
     envKey: 'OPENROUTER_API_KEY',
@@ -186,7 +186,7 @@ const PROVIDERS: Record<string, ProviderEntry> = {
 
 const PROVIDER_NAMES = Object.keys(PROVIDERS);
 
-/** Env var that overrides the automatic provider choice, e.g. `LOUSHO_MODEL=anthropic/claude-3-5-sonnet-latest`. */
+/** Env var that overrides the automatic provider choice, e.g. `LOUSHO_MODEL=anthropic/claude-sonnet-4-5`. */
 const MODEL_ENV_VAR = 'LOUSHO_MODEL';
 
 function unknownProviderError(caller: string, providerName: string, spec: string): Error {
@@ -267,6 +267,8 @@ function isModuleNotFound(error: unknown): boolean {
  */
 export interface ProviderResolver {
   create(providerName: string, config: LLMProviderConfig): LLMProvider;
+  /** Whether `providerName` was registered; a spec naming a registered provider that is not built in is created through `create()` (F13). */
+  has?(providerName: string): boolean;
 }
 
 function createProvider(caller: string, providerName: string, entry: ProviderEntry, config: LLMProviderConfig, registry: ProviderResolver): LLMProvider {
@@ -305,7 +307,11 @@ export function resolveProviderSpec(spec: string, caller: string, registry: Prov
   const model = spec.slice(separatorIndex + 1);
 
   const entry = PROVIDERS[providerName];
-  if (!entry) throw unknownProviderError(caller, spec.slice(0, separatorIndex), spec);
+  if (!entry) {
+    // F13: a provider added with LLMProviderRegistry.register() can be named in a model string too; its factory reads its own credentials.
+    if (registry.has?.(providerName)) return registry.create(providerName, { ...extra, defaultModel: model });
+    throw unknownProviderError(caller, spec.slice(0, separatorIndex), spec);
+  }
 
   const envValue = process.env[entry.envKey];
   const provider = () =>

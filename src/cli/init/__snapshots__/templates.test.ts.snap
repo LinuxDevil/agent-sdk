@@ -24,7 +24,7 @@ const tools = [currentTime];
 export function buildAgent(provider?: LLMProvider) {
   return provider
     ? createAgent({ provider, instructions, tools })
-    : createAgent({ model: 'anthropic/claude-3-5-sonnet-latest', instructions, tools });
+    : createAgent({ model: 'anthropic/claude-sonnet-4-5', instructions, tools });
 }
 "
 `;
@@ -69,7 +69,7 @@ const tools = [currentTime, rollDie, wordCount];
 export function buildAgent(provider?: LLMProvider) {
   return provider
     ? createAgent({ provider, instructions, tools })
-    : createAgent({ model: 'anthropic/claude-3-5-sonnet-latest', instructions, tools });
+    : createAgent({ model: 'anthropic/claude-sonnet-4-5', instructions, tools });
 }
 "
 `;

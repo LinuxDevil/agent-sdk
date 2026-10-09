@@ -54,13 +54,13 @@ const cases: ProviderCase[] = [
     type: 'openai',
     build: (defaultModel) => new OpenAIProvider({ apiKey: 'k', defaultModel }),
     configured: 'gpt-4o-mini',
-    builtIn: 'gpt-4',
+    builtIn: 'gpt-4o-mini',
   },
   {
     type: 'anthropic',
     build: (defaultModel) => new AnthropicProvider({ apiKey: 'k', defaultModel }),
     configured: 'claude-sonnet-5',
-    builtIn: 'claude-3-5-sonnet-latest',
+    builtIn: 'claude-sonnet-4-5',
   },
   {
     type: 'ollama',
@@ -72,7 +72,7 @@ const cases: ProviderCase[] = [
     type: 'openrouter',
     build: (defaultModel) => new OpenRouterProvider({ apiKey: 'k', defaultModel }),
     configured: 'anthropic/claude-sonnet-5',
-    builtIn: 'openai/gpt-3.5-turbo',
+    builtIn: 'openai/gpt-4o-mini',
   },
 ];
 

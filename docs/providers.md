@@ -208,7 +208,9 @@ then wrap its model with `fromAiSdk()` (below). Otherwise implement the
 `LLMProvider` interface (`name`, `generate()`, `stream()`, `supportsTools()`,
 `supportsStreaming()`, `getModels()`, optionally `defaultModel`) and pass the
 instance as `provider`, or register a factory with
-`LLMProviderRegistry.register(name, factory)`.
+`LLMProviderRegistry.register(name, factory)`; a registered name then works in a
+model string (`model: 'name/model-id'`), and the factory receives `defaultModel` and reads its
+own credentials.
 
 ### Slow local models: a custom `fetch`
 

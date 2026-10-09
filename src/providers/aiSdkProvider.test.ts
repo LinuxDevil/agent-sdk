@@ -160,7 +160,7 @@ describe('AiSdkProvider', () => {
 
     await provider.generate({ model: '', messages: [] });
 
-    expect(generateTextMock.mock.calls[0][0].model.modelId).toBe('gpt-4');
+    expect(generateTextMock.mock.calls[0][0].model.modelId).toBe('gpt-4o-mini');
   });
 
   it('LOU-V1: forwards GenerateOptions.signal to the ai SDK as abortSignal', async () => {

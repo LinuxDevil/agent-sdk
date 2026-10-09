@@ -310,7 +310,7 @@ With neither `model` nor `provider`, `createAgent()` resolves from the
 environment: `LOUSHO_MODEL` (a `'provider/model'` string) if set, otherwise
 the first provider whose variable is set, checked in this order:
 `OPENAI_API_KEY` (`openai/gpt-4o-mini`), `ANTHROPIC_API_KEY`
-(`anthropic/claude-3-5-sonnet-latest`), `OPENROUTER_API_KEY`
+(`anthropic/claude-sonnet-4-5`), `OPENROUTER_API_KEY`
 (`openrouter/openai/gpt-4o-mini`), `OLLAMA_BASE_URL` (`ollama/llama3`). If none
 is set it throws an error listing exactly which options or variables fix it.
 

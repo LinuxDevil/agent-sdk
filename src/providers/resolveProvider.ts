@@ -2,7 +2,7 @@
  * resolveProvider("provider/model") helper (LOU-F8)
  *
  * Parses a "<provider>/<model>" spec string (e.g. "openai/gpt-4o",
- * "anthropic/claude-3-5-sonnet-latest"), looks up that provider's
+ * "anthropic/claude-sonnet-4-5"), looks up that provider's
  * credential/config env var, and delegates to the real
  * `LLMProviderRegistry.create()` (the same registry OpenAIProvider,
  * AnthropicProvider, OllamaProvider and OpenRouterProvider register
