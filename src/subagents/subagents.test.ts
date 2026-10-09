@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
+import { memoryStore } from '../storage/agentStore';
 import type { Message } from '../providers';
 import type { SubagentCatalog } from './types';
 
@@ -262,7 +263,28 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
     const [toolResult] = toolMessages((await lead.send('go')).messages);
 
     expect(toolResult.isError).toBeFalsy();
-    expect(toolResult.content).toContain('found it');
+    expect(toolResult.content).toContain('found it');
+  });
+
+  it("resolves a dynamic sub-agent's config with the caller's metadata, principal and sessionId (Eve CORE-F7)", async () => {
+    const seen: unknown[] = [];
+    const researcher = createAgent({
+      description: 'Researches',
+      provider: mockModel(['done'], { onExhausted: 'repeat-last' }),
+      instructions: (ctx) => {
+        seen.push({ metadata: ctx.metadata, principal: ctx.principal?.id, sessionId: ctx.sessionId, input: ctx.input });
+        return `You serve ${ctx.principal?.id ?? '??'} on plan ${String(ctx.metadata?.plan ?? '??')}.`;
+      },
+    });
+    const lead = createAgent({ provider: mockModel([{ toolCalls: [task('researcher', 'look into X')] }, 'final']), subagents: { researcher }, store: memoryStore() });
+
+    await lead.send('go', {
+      sessionId: 'lead-session',
+      metadata: { plan: 'pro' },
+      principal: { id: 'acme', type: 'user', authenticator: 'test' },
+    });
+
+    expect(seen).toEqual([{ metadata: { plan: 'pro' }, principal: 'acme', sessionId: 'lead-session', input: 'look into X' }]);
   });
 
   it('gives the lead an error result when a sub-agent fails', async () => {

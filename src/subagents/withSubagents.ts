@@ -12,6 +12,7 @@ import type { ToolRegistry } from '../tools/ToolRegistry';
 import { defineTool, type DefinedTool } from '../tools/defineTool';
 import { withPromptTool } from '../skills/withSkills';
 import type { Message } from '../providers';
+import type { Principal } from '../auth/types';
 import { newId } from '../utils/id';
 import { runSubagent, type SubagentSpec } from '../execution/delegation';
 import { bindToolCallScope, extendAgent, SubagentApprovalPause, subagentBudget, toolCallScopeOf } from '../execution/subagentRuntime';
@@ -42,9 +43,28 @@ const DEFAULT_MAX_STEPS = 10;
 
 /** An agent usable as a sub-agent: its run configuration and description. */
 interface RegisteredSubagent {
-  /** A function for an agent whose config is resolved per run (LOU-V15): called with the task prompt. */
-  spec: SubagentSpec | ((prompt: string) => Promise<SubagentSpec>);
+  /** A function for an agent whose config is resolved per run (LOU-V15): called with the task prompt and the caller. */
+  spec: SubagentSpec | ((prompt: string, caller: SubagentCaller) => Promise<SubagentSpec>);
   description?: string;
+}
+
+/** Eve CORE-F7: what a dynamic sub-agent's config functions see of the run that started it. */
+export interface SubagentCaller {
+  /** The lead run's session (a session turn's `<id>.turn-<n>` counts as `<id>`). */
+  sessionId?: string;
+  metadata?: Record<string, unknown>;
+  principal?: Principal;
+}
+
+/** The caller of the sub-agent a tool call with `toolOptions` starts: the parent run's session, metadata and principal. */
+export function subagentCallerOf(toolOptions: unknown): SubagentCaller {
+  const runtime = toolCallScopeOf(toolOptions)?.runtime;
+  if (!runtime) return {};
+  return {
+    ...(runtime.sessionId !== undefined && { sessionId: runtime.sessionId.replace(/\.turn-\d+$/, '') }),
+    ...(runtime.metadata && { metadata: runtime.metadata }),
+    ...(runtime.principal && { principal: runtime.principal }),
+  };
 }
 
 /** A sub-agent to run: a local one by its spec, or a deployed one (LOU-Y7). */
@@ -234,7 +254,7 @@ async function runTask(registered: RegisteredSubagent['spec'], args: TaskArgs, t
   let spec: SubagentSpec;
   let result: ExecutionResult;
   try {
-    spec = typeof registered === 'function' ? await registered(args.prompt) : registered;
+    spec = typeof registered === 'function' ? await registered(args.prompt, subagentCallerOf(toolOptions)) : registered;
     result = await runSubagent(spec, {
       name: args.agent,
       input: [...task.history, { role: 'user', content: args.prompt }],

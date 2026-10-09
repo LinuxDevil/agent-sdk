@@ -70,7 +70,8 @@ run once when a run starts, before the first model call, and again on every
 session turn. Everything else applies to what they return: `fallbackModels`
 and `retry`, `projectInstructions`, memory, skills, sub-agents, MCP tools,
 permissions, approvals and guardrails. A dynamic agent used as a sub-agent
-resolves with the task prompt as `input`.
+resolves with the task prompt as `input` and the lead run's `sessionId`,
+`metadata` and `principal`.
 
 ```ts
 import { createAgent, defineTool } from '@lousho/build-ai-agent';

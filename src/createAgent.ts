@@ -53,7 +53,7 @@ import { loadProjectInstructions } from './projectInstructions';
 import { basename } from 'node:path';
 import type { Subagents } from './subagents/types';
 import type { SubagentOptions } from './subagents/backgroundTasks';
-import { assertMaxSubagentDepth, assertNoTaskTool, assertSubagents, registerSubagent, subagentsWithOptions } from './subagents/withSubagents';
+import { assertMaxSubagentDepth, assertNoTaskTool, assertSubagents, registerSubagent, subagentsWithOptions, type SubagentCaller } from './subagents/withSubagents';
 import type { SubagentSpec } from './execution/delegation';
 import type { ApprovalDecision, ApprovalStore, ResolvedApproval } from './execution/ApprovalGate';
 import { InMemoryApprovalStore } from './execution/InMemoryApprovalStore';
@@ -1185,9 +1185,13 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     ready: mcp.ready,
     close: mcp.close,
   };
-  // As a sub-agent, a dynamic agent resolves its config with the task prompt as `input`.
+  // As a sub-agent, a dynamic agent resolves its config with the task prompt as `input`, and
+  // (Eve CORE-F7) the lead run's sessionId, metadata and principal.
   // LOU-V4.2: a sub-agent answers with its own `output` object, never the lead's schema.
-  const subagentSpec = async (prompt: string): Promise<SubagentSpec> => ({ ...(await specs.resolve({ input: prompt })), output: config.output });
+  const subagentSpec = async (prompt: string, caller: SubagentCaller): Promise<SubagentSpec> => ({
+    ...(await specs.resolve({ ...caller, input: prompt })),
+    output: config.output,
+  });
   registerSubagent(simpleAgent, { spec: staticSpec ? { ...staticSpec, output: config.output } : subagentSpec, description: config.description });
   // N6: as a handoff target, the agent runs with its own config (its `output` is not used: the run's lead types the result).
   registerHandoffAgent(simpleAgent, {
