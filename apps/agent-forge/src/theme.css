@@ -22,6 +22,10 @@
   --text-faint: light-dark(#5e6376, #8a90a6);
   --accent: light-dark(#4c4ee8, #7678f0);
   --accent-soft: light-dark(#e7e7fc, #23234a);
+  /* Filled accent buttons (Save, primary actions): --on-accent text on --accent-solid is >= 4.5:1 in both schemes.
+     The dark --accent is too light for white text (3.67:1), so the fill is a deeper shade of it. */
+  --accent-solid: light-dark(#4c4ee8, #5d5fe8);
+  --on-accent: light-dark(#ffffff, #ffffff);
   --success: light-dark(#137333, #34d399);
   --success-soft: light-dark(#dcf3e4, #113325);
   --warning: light-dark(#8a5a12, #fbbf24);

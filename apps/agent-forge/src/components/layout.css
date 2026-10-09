@@ -158,9 +158,9 @@
   outline-offset: 1px;
 }
 .btn-primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
+  color: var(--on-accent);
 }
 .btn-success {
   background: var(--success-soft);
