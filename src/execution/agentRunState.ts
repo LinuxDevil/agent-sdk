@@ -115,10 +115,15 @@ function buildMessages(
   skipSystemPromptInjection = false
 ): Message[] {
   // Add system prompt, unless the caller has indicated `input` already
-  // includes one (e.g. resume.ts rebuilding from an ExecutionSnapshot).
+  // includes one (e.g. resume.ts rebuilding from an ExecutionSnapshot), or
+  // `input` already starts with it - a `result.messages` fed back into
+  // `send()` (Eve CORE-F4).
+  const messages = inputMessages(input);
+  const first = messages[0];
+  const hasPrompt = first?.role === 'system' && first.content === agent.prompt;
   const system: Message[] =
-    agent.prompt && !skipSystemPromptInjection ? [{ role: 'system', content: agent.prompt }] : [];
-  return [...system, ...inputMessages(input)];
+    agent.prompt && !skipSystemPromptInjection && !hasPrompt ? [{ role: 'system', content: agent.prompt }] : [];
+  return [...system, ...messages];
 }
 
 type InitialRunState = Pick<
