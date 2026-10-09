@@ -110,7 +110,7 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **CLI**: `init`, `doctor`, `dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `traces`, `build` and `studio`. [CLI](docs/cli.md)
 - **Editors (ACP)**: `lousho acp ./my-agent` serves your agent to Zed and other Agent Client Protocol editors, with tool calls and permission prompts. [ACP](docs/acp.md)
 - **Registry**: `lousho add <name>` copies a tool, skill, channel, schedule, memory slot or **kit** - a whole agent directory - into yours from the default registry (or one you point at with `--registry <url-or-path>`), after showing its permissions. The built-in `coding-kit` and `coding-pi` kits are production-shaped coding harnesses. [Registry](docs/registry.md)
-- **Agent Forge**: `lousho studio` opens a visual canvas, run debugger and chat with approval cards. [Agent Forge](docs/agent-forge.md)
+- **Agent Forge** (the `lousho studio` command): a visual canvas, run debugger and chat with approval cards. [Agent Forge](docs/agent-forge.md)
 
 ## Usage
 
@@ -308,7 +308,7 @@ Most examples run offline with a mock provider; see the
 | `lousho eval [globs]` | Run `*.eval.ts` files; JUnit and JSON reports |
 | `lousho traces [id]` | List saved runs, or print one as a span tree |
 | `lousho build --target=<t> --agent=<spec>` | Build a Node server, Docker image or Cloudflare Worker |
-| `lousho studio` | Launch Agent Forge |
+| `lousho studio` | Launch Agent Forge, the visual studio |
 
 Flags for each command are in [CLI](docs/cli.md).
 

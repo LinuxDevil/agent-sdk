@@ -107,7 +107,7 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **CLI**: `init`, `doctor`, `dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `traces`, `build` and `studio`. [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md)
 - **Editors (ACP)**: `lousho acp ./my-agent` serves your agent to Zed and other Agent Client Protocol editors, with tool calls and permission prompts. [ACP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md)
 - **Registry**: `lousho add <name>` copies a tool, skill, channel, schedule, memory slot or **kit** - a whole agent directory - into yours from the default registry (or one you point at with `--registry <url-or-path>`), after showing its permissions. The built-in `coding-kit` and `coding-pi` kits are production-shaped coding harnesses. [Registry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/registry.md)
-- **Agent Forge**: `lousho studio` opens a visual canvas, run debugger and chat with approval cards. [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md)
+- **Agent Forge** (the `lousho studio` command): a visual canvas, run debugger and chat with approval cards. [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md)
 
 ## Usage
 
@@ -305,7 +305,7 @@ Most examples run offline with a mock provider; see the
 | `lousho eval [globs]` | Run `*.eval.ts` files; JUnit and JSON reports |
 | `lousho traces [id]` | List saved runs, or print one as a span tree |
 | `lousho build --target=<t> --agent=<spec>` | Build a Node server, Docker image or Cloudflare Worker |
-| `lousho studio` | Launch Agent Forge |
+| `lousho studio` | Launch Agent Forge, the visual studio |
 
 Flags for each command are in [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md).
 
@@ -16479,8 +16479,15 @@ tool (approvals, permissions and guardrails apply as usual). `stream()` reports
 The default ranking compares the query's words with each deferred tool's name
 (split on `_`, `-`, `__` and camelCase) and description, case-insensitively.
 A word found in the name counts three times as much as one found in the
-description; ties are ordered by name. The same function is exported as
-`rankToolsByKeywords(query, tools)`.
+description; plurals are folded (`statuses` finds `status`). A related word
+gets partial credit: the same word family (`sending` finds `send`) or a synonym
+from a small built-in table of common tool verbs and nouns (`fetch` / `get` /
+`retrieve`, `delete` / `remove`, `share` / `stock` / `equity`,
+`value` / `price` / `quote`), so `share value` finds `fetch_equity_quote`.
+Exact words still rank above related ones; ties are ordered by name. The same
+function is exported as `rankToolsByKeywords(query, tools)`. It stays
+lexical: for real semantic search, pass your own `search` (for example
+embeddings).
 
 ## `toolSearch` options
 
