@@ -865,7 +865,7 @@ file-based store), and create a new store after closing one.
 
 ### LOUSHO_STORAGE_BUSY
 
-**Means:** a `SqliteStore` write could not get the database's write lock because another connection or process (a second replica, a backup, a long transaction) holds it. The driver waits only briefly (50 ms) so the event loop is not frozen; the original driver error is the `cause`.
+**Means:** a `SqliteStore` write could not get the database's write lock because another connection or process (a second replica, a backup, a long transaction) holds it. The driver waits only briefly (50 ms) so the event loop is not frozen; the stores' transactional writes (checkpoint and approval saves, `resolve()`, `saveIf()`, OAuth sign-in claims, SQLite memory updates) then retry with backoff for about 5 seconds before they give up with this error. `prune()` does not retry. The original driver error is the `cause`.
 
 **Fix:** retry the call. If it keeps happening, find what holds the lock for long.
 
