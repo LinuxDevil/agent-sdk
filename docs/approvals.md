@@ -5,6 +5,8 @@ Flag a tool `needsApproval` and the run pauses before calling it, until a human
 `ApprovalStore`, so the decision can come minutes or days later, from another
 request or another process, and the run then continues where it stopped.
 
+> Snippets on this page leave some names to you: `provider` is any `LLMProvider` (offline: `createMockProvider()`); `agent` is a `createAgent()` result; `input` is the user's text, a `string`; `emailTool` is a tool built with `defineTool()`; `storage` is a `StorageService`; `toolRegistry` is a `ToolRegistry`.
+
 ```ts
 import { createAgent, defineTool } from '@lousho/build-ai-agent';
 import { z } from 'zod';

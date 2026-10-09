@@ -8,6 +8,8 @@ comment), build the TypeDoc site:
 npm run docs:build   # writes docs/api/index.html
 ```
 
+> Snippets on this page leave some names to you: `mcpClient` is a connected MCP `Client`; `provider` is any `LLMProvider` (offline: `createMockProvider()`).
+
 How the pieces fit:
 
 ```text

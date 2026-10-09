@@ -128,7 +128,8 @@ and pins the connection to it, and `http_request` also scopes
 The package entries (`.`, `./hooks`, `./tools`, `./mcp`, ...) are built with code
 splitting: they import shared chunks from `dist/`, so a class or singleton such
 as `HookRegistry`, `SDKError` or `globalToolRegistry` is the same object whichever
-entry you import it from, in ESM and in CJS. An ESM `import` and a CJS `require`
+entry that exports it you import it from, within one module format (`globalToolRegistry`
+is exported by `./executor` and `./tools`, not by the root). An ESM `import` and a CJS `require`
 of the package in one process still load two separate copies (Node's dual-package
 hazard), so a class from one is not `===` the other. `instanceof SDKError` and
 `instanceof HookRegistry` are safe across the two copies (they check a

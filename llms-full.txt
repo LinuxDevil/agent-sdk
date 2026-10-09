@@ -475,7 +475,8 @@ and pins the connection to it, and `http_request` also scopes
 The package entries (`.`, `./hooks`, `./tools`, `./mcp`, ...) are built with code
 splitting: they import shared chunks from `dist/`, so a class or singleton such
 as `HookRegistry`, `SDKError` or `globalToolRegistry` is the same object whichever
-entry you import it from, in ESM and in CJS. An ESM `import` and a CJS `require`
+entry that exports it you import it from, within one module format (`globalToolRegistry`
+is exported by `./executor` and `./tools`, not by the root). An ESM `import` and a CJS `require`
 of the package in one process still load two separate copies (Node's dual-package
 hazard), so a class from one is not `===` the other. `instanceof SDKError` and
 `instanceof HookRegistry` are safe across the two copies (they check a
@@ -952,6 +953,8 @@ comment), build the TypeDoc site:
 ```bash
 npm run docs:build   # writes docs/api/index.html
 ```
+
+> Snippets on this page leave some names to you: `mcpClient` is a connected MCP `Client`; `provider` is any `LLMProvider` (offline: `createMockProvider()`).
 
 How the pieces fit:
 
@@ -2320,6 +2323,8 @@ Flag a tool `needsApproval` and the run pauses before calling it, until a human
 `ApprovalStore`, so the decision can come minutes or days later, from another
 request or another process, and the run then continues where it stopped.
 
+> Snippets on this page leave some names to you: `provider` is any `LLMProvider` (offline: `createMockProvider()`); `agent` is a `createAgent()` result; `input` is the user's text, a `string`; `emailTool` is a tool built with `defineTool()`; `storage` is a `StorageService`; `toolRegistry` is a `ToolRegistry`.
+
 ```ts
 import { createAgent, defineTool } from '@lousho/build-ai-agent';
 import { z } from 'zod';
@@ -3574,8 +3579,8 @@ that passes no `ctx`. Without either, the response waits for the whole turn
 (and a warning is logged once), which misses Slack's and Discord's 3-second
 deadline on a slow turn.
 
-```ts
-// Next.js on Vercel
+```ts no-verify
+// Next.js on Vercel (needs @vercel/functions; `agent` and `slack` come from your app)
 import { waitUntil } from '@vercel/functions';
 const channels = mountFetchChannels(agent, [slack], { waitUntil });
 
@@ -4846,6 +4851,7 @@ Worker reads). `KVStore`'s keys, with an optional `prefix` before each:
 | `sessions/<id>` | The transcript as JSON (image and file bytes as `{ "$bytes": "<base64>" }`, like `FileSessionStore`). |
 | `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, with its history under `checkpoints/<id>#history`; bytes encoded the same way). |
 | `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided; bytes encoded the same way). |
+| `approvals/<id>#claim` | The claim of the request deciding that approval (a random token, expires after 60 seconds; see below). |
 | `oauth/tokens/<key>`, `oauth/pending/<state>` | OAuth tokens and pending sign-ins, encrypted with `tokenKey` (the `LOUSHO_TOKEN_KEY` secret in the generated Worker); see [OAuth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#token-storage). |
 | `memory/<slot>#<scope>` | The items of a `kvMemory()` memory slot (`notes#global`, `prefs#session:<id>` or a custom scope's key) - written by the provider itself, not `KVStore`. |
 
@@ -4859,6 +4865,45 @@ approvals endpoint continues it from KV. The continuation streams as a normal
 resumed run: the decided call's `tool.resume` and `tool.done` (`tool.error` for
 a rejection), then the turn's events, ending with a `run.done` that carries
 the final text.
+
+### Deciding one approval twice
+
+KV has no compare-and-swap, so `KVStore` cannot claim an approval atomically
+the way `fileStore` and `SqliteStore` do. To decide one, a request writes a
+random token under `approvals/<id>#claim` (unless a claim is already there),
+reads it back, and only the request whose token is still there deletes the
+approval and runs the call. A double click, a retried webhook or two reviewers
+deciding at once then run the approved tool once in the common case.
+
+This narrows the race but does not close it: two requests served by different
+edge locations within KV's propagation delay (up to about 60 seconds) can both
+read their own token and both run the call. For a tool with a side effect that
+must happen once (a payment, an email), pass `ctx.approval.id` on as an
+idempotency key. It is the same for every attempt to run one decided call:
+
+```ts
+import { defineTool } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+// `payments` stands in for your payment client.
+declare const payments: {
+  create(payment: { invoice: string; cents: number }, options: { idempotencyKey: string }): Promise<unknown>;
+};
+
+const payout = defineTool({
+  name: 'payout',
+  description: 'Pay a vendor invoice',
+  input: z.object({ invoice: z.string(), cents: z.number() }),
+  needsApproval: true,
+  execute: async ({ invoice, cents }, ctx) =>
+    payments.create({ invoice, cents }, { idempotencyKey: ctx.approval?.id ?? ctx.toolCallId }),
+});
+```
+
+When it has to be exact, keep the approvals in a store with an atomic claim: a
+Durable Object, or D1 through an `ApprovalStore` of your own whose `resolve()`
+deletes and returns the record in one statement. The generated Worker binds
+no Durable Object, so it uses `KVStore`.
 
 The deprecated `POST /chat { "message", "sessionId"? }` keeps its earlier
 behaviour on Workers: with a `sessionId` the run is checkpointed to
@@ -5622,6 +5667,8 @@ Source: docs/configuration.md
 A declarative agent is a YAML (`.yaml`/`.yml`) or JSON (`.json`) file,
 validated with zod by `loadSpec()` (`src/spec/schema.ts`). It is the format
 `lousho dev` serves and `lousho build` deploys.
+
+> Snippets on this page leave some names to you: `provider` is any `LLMProvider` (offline: `createMockProvider()`).
 
 | Field            | Type       | Required | Description                                             |
 | ---------------- | ---------- | -------- | ------------------------------------------------------- |
@@ -10962,6 +11009,9 @@ token, an operator who knows which authenticator the old tokens belong to moves
 them once:
 
 ```ts
+import { fileStore } from '@lousho/build-ai-agent';
+
+const store = fileStore('./.lousho', { tokenKey: process.env.LOUSHO_TOKEN_KEY });
 const legacy = { owner: 'user', principalId: 'U04ABCDEF' } as const;
 const owner = { ...legacy, issuer: 'authenticator:slack' } as const;
 const token = await store.tokens!.get('gdrive', legacy);
@@ -13854,6 +13904,8 @@ Source: docs/sessions.md
 **session** is a multi-turn conversation: it keeps the transcript and passes it
 to the model on every `send()`.
 
+> Snippets on this page leave some names to you: `provider` is any `LLMProvider` (offline: `createMockProvider()`).
+
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
 
@@ -14569,6 +14621,8 @@ plain JSON object, so you can forward it to a browser over Server-Sent Events
 or a WebSocket without converting it. The `vendor/` model prefix chooses the
 provider; with OpenRouter use `openrouter/<vendor>/<model>` (e.g.
 `openrouter/openai/gpt-4o-mini`).
+
+> Snippets on this page leave some names to you: `provider` is any `LLMProvider` (offline: `createMockProvider()`); `agent` is a `createAgent()` result; `input` is the user's text, a `string`; `approvalStore` is an `ApprovalStore`; `toolRegistry` is a `ToolRegistry`.
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
@@ -16428,6 +16482,8 @@ are validated before `execute` runs, and the result drops in anywhere tools are
 accepted (`createAgent({ tools: [...] })`, `ToolRegistry.register(tool)`,
 `AgentBuilder.addTool(tool)`).
 
+> Snippets on this page leave some names to you: `provider` is any `LLMProvider` (offline: `createMockProvider()`).
+
 ```ts
 import { defineTool, createAgent, type ToolInput, type ToolOutput } from '@lousho/build-ai-agent';
 import { z } from 'zod';
@@ -16533,7 +16589,7 @@ node.
 | `ctx.abortSignal` | The run's `AbortSignal`, set when the run has one. |
 | `ctx.sessionId` | The run's session id — `agent.session({ id })`'s id or `send()`'s / `AgentExecutor.execute()`'s `sessionId`; absent when the run has none. |
 | `ctx.principal` | Who the run acts for (route auth's caller, a channel's sender), frozen; absent without one. See [Principals in tools and approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#principals-in-tools-and-approvals). |
-| `ctx.approval` | Set when the call runs because a human approved it: the decision's `note`, and `by`, who decided, when the decision named them. |
+| `ctx.approval` | Set when the call runs because a human approved it: the approval's `id` (an idempotency key for a side effect, see [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md#deciding-one-approval-twice)), the decision's `note`, and `by`, who decided, when the decision named them. |
 
 A `sandboxExecute(args, sandbox)` that ignores the third argument keeps working.
 

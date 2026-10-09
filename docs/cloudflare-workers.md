@@ -257,6 +257,14 @@ must happen once (a payment, an email), pass `ctx.approval.id` on as an
 idempotency key. It is the same for every attempt to run one decided call:
 
 ```ts
+import { defineTool } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+// `payments` stands in for your payment client.
+declare const payments: {
+  create(payment: { invoice: string; cents: number }, options: { idempotencyKey: string }): Promise<unknown>;
+};
+
 const payout = defineTool({
   name: 'payout',
   description: 'Pay a vendor invoice',

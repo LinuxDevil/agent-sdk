@@ -1,7 +1,7 @@
 /**
  * verify-docs-snippets (LOU-I7)
  *
- * Extracts every ```ts / ```typescript fenced code block from the Quick
+ * Extracts every ```ts / ```typescript / ```tsx fenced code block from the Quick
  * Start docs (or the markdown files passed as arguments) and proves each
  * one type-checks AND runs without error against the LOCALLY BUILT package
  * - exactly what a reader copy-pasting it into a fresh project would get.
@@ -18,6 +18,7 @@
  *
  *   --skip-build  reuse the current dist/ instead of running `npm run build`
  *   --keep        keep the temp project (its path is printed) for debugging
+ *   --source-only run stage A (type-check against src/) only; no build, pack or run
  *
  * Two stages (LOU-U5):
  *
@@ -86,6 +87,8 @@ export interface Snippet {
   source: string;
   /** The fence says `no-run`: type-check only, never execute. */
   noRun: boolean;
+  /** `tsx` for a ```tsx fence (type-checked against the source only, never packed or run), else `ts`. */
+  ext: 'ts' | 'tsx';
 }
 
 /** Index of the closing fence at or after `from`, or lines.length when the block is unterminated. */
@@ -99,12 +102,12 @@ export function extractSnippets(markdown: string, file: string): Snippet[] {
   const snippets: Snippet[] = [];
   const lines = markdown.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
-    const open = lines[i].match(/^```(ts|typescript)\b(.*)$/);
+    const open = lines[i].match(/^```(tsx|ts|typescript)\b(.*)$/);
     if (!open) continue;
     const end = findFenceEnd(lines, i + 1);
     if (!open[2].includes('no-verify')) {
       const source = lines.slice(i + 1, end).join('\n') + '\n';
-      snippets.push({ file, line: i + 1, source, noRun: open[2].includes('no-run') });
+      snippets.push({ file, line: i + 1, source, noRun: open[2].includes('no-run'), ext: open[1] === 'tsx' ? 'tsx' : 'ts' });
     }
     i = end;
   }
@@ -306,7 +309,9 @@ function sourcePaths(): Record<string, string[]> {
 
 /** Writes the stage A tsconfig + placeholder preamble and one `snippet-<n>.ts` per snippet; returns the file names. */
 function writeSourceProject(dir: string, snippets: Snippet[]): string[] {
-  fs.writeFileSync(path.join(dir, 'placeholders.d.ts'), `${PLACEHOLDER_DECLARATIONS}\n`);
+  // DOCS_NO_PLACEHOLDERS=1 drops the ambient preamble, to list every name a page leaves undefined.
+  const preamble = process.env.DOCS_NO_PLACEHOLDERS ? 'export {};' : PLACEHOLDER_DECLARATIONS;
+  fs.writeFileSync(path.join(dir, 'placeholders.d.ts'), `${preamble}\n`);
   fs.writeFileSync(
     path.join(dir, 'tsconfig.json'),
     JSON.stringify({
@@ -316,18 +321,19 @@ function writeSourceProject(dir: string, snippets: Snippet[]): string[] {
         baseUrl: '..',
         paths: sourcePaths(),
         noEmit: true,
+        jsx: 'react-jsx',
         declaration: false,
         declarationMap: false,
         sourceMap: false,
         noUnusedLocals: false,
         noUnusedParameters: false,
       },
-      include: ['./*.ts', '../typings/**/*.d.ts'],
+      include: ['./*.ts', './*.tsx', '../typings/**/*.d.ts'],
       exclude: [],
     })
   );
   return snippets.map((snippet, index) => {
-    const name = `snippet-${index + 1}.ts`;
+    const name = `snippet-${index + 1}.${snippet.ext}`;
     fs.writeFileSync(path.join(dir, name), `// ${snippet.file}:${snippet.line}\n${snippet.source}\nexport {};\n`);
     return name;
   });
@@ -392,7 +398,8 @@ function orDefault(explicit: string[], fallback: () => string[]): string[] {
 /** Loads the stage A (all docs) and stage B (runnable docs) snippet sets, honouring explicit file arguments. */
 function loadSnippetSets(docs: string[]): { sourceSnippets: Snippet[]; runnableSnippets: Snippet[] } {
   const sourceSnippets = loadSnippets(orDefault(docs, allDocFiles));
-  const runnableSnippets = loadSnippets(orDefault(docs, () => RUNNABLE_DOCS));
+  // ```tsx blocks are JSX: stage A type-checks them against src/, but they never ship in the packed run.
+  const runnableSnippets = loadSnippets(orDefault(docs, () => RUNNABLE_DOCS)).filter((snippet) => snippet.ext === 'ts');
   if (Math.min(sourceSnippets.length, runnableSnippets.length) === 0) {
     console.error('verify-docs-snippets: no ```ts snippets found');
     process.exit(1);
@@ -406,7 +413,9 @@ function main(): void {
   const { sourceSnippets, runnableSnippets } = loadSnippetSets(docs);
   console.log(`verify-docs-snippets: ${sourceSnippets.length} snippet(s) found (${runnableSnippets.length} runnable)`);
 
-  const packed = verifyPacked(runnableSnippets, args.includes('--skip-build'), args.includes('--keep'));
+  const packed = args.includes('--source-only')
+    ? []
+    : verifyPacked(runnableSnippets, args.includes('--skip-build'), args.includes('--keep'));
   const failures = [...checkAgainstSource(sourceSnippets), ...packed];
   if (failures.length > 0) {
     reportFailures(failures);
