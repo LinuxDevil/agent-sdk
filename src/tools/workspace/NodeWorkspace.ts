@@ -134,6 +134,11 @@ export class NodeWorkspace implements Workspace {
     return fsp.readFile(abs, 'utf8').catch((error) => Promise.reject(toWorkspaceError(error, rel)));
   }
 
+  async readFileBytes(path: string): Promise<Uint8Array> {
+    const { rel, abs } = await this.resolve(path);
+    return fsp.readFile(abs).catch((error) => Promise.reject(toWorkspaceError(error, rel)));
+  }
+
   async writeFile(path: string, content: string): Promise<void> {
     const { rel, abs } = await this.resolve(path);
     if (abs === this.root) throw new WorkspaceError('Cannot write a file at the workspace root path ".".');

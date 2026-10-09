@@ -2524,6 +2524,7 @@ export interface FsProvider {
     mkdir(path: string): Promise<void>;
     readdir(path: string): Promise<WorkspaceDirEntry[]>;
     readFile(path: string): Promise<string>;
+    readFileBytes?(path: string): Promise<Uint8Array>;
     rm(path: string, options?: {
         recursive?: boolean;
     }): Promise<void>;
@@ -4082,6 +4083,8 @@ export class NodeWorkspace implements Workspace {
     readdir(path: string): Promise<WorkspaceDirEntry[]>;
     // (undocumented)
     readFile(path: string): Promise<string>;
+    // (undocumented)
+    readFileBytes(path: string): Promise<Uint8Array>;
     rm(path: string, options?: {
         recursive?: boolean;
     }): Promise<void>;

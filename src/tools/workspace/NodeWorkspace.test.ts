@@ -111,6 +111,30 @@ describe('NodeWorkspace file system (LOU-X6)', () => {
     expect(await exec(tools.glob, { pattern: '**/*.txt' })).toBe('tool/x.txt');
   });
 
+  // Eve TOOLS-F7: decoding as UTF-8 and writing back replaced every non-UTF-8 byte with U+FFFD.
+  it('edit_file refuses a file that is not UTF-8 and leaves its bytes alone', async () => {
+    const latin1 = Buffer.from([0x63, 0x61, 0x66, 0xe9, 0x20, 0x3d, 0x20, 0x31, 0x0a, 0x78, 0x20, 0x3d, 0x20, 0x32, 0x0a]);
+    fs.writeFileSync(path.join(rootDir, 'legacy.ini'), latin1);
+    await expect(exec(tools.edit_file, { path: 'legacy.ini', old_string: 'x = 2', new_string: 'x = 3' })).rejects.toThrow(/not valid UTF-8/);
+    expect(fs.readFileSync(path.join(rootDir, 'legacy.ini'))).toEqual(latin1);
+
+    for (const [name, bytes] of [
+      ['utf16le.txt', Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('x = 2\n', 'utf16le')])],
+      ['utf16be.txt', Buffer.concat([Buffer.from([0xfe, 0xff]), Buffer.from('x = 2\n', 'utf16le').swap16()])],
+    ] as const) {
+      fs.writeFileSync(path.join(rootDir, name), bytes);
+      await expect(exec(tools.edit_file, { path: name, old_string: 'x = 2', new_string: 'x = 3' })).rejects.toThrow(/UTF-16/);
+      expect(fs.readFileSync(path.join(rootDir, name))).toEqual(bytes);
+    }
+  });
+
+  it('edit_file keeps a UTF-8 BOM and non-ASCII text intact', async () => {
+    const original = Buffer.from('﻿café = 1\nx = 2\n', 'utf8');
+    fs.writeFileSync(path.join(rootDir, 'bom.ini'), original);
+    expect(await exec(tools.edit_file, { path: 'bom.ini', old_string: 'x = 2', new_string: 'x = 3' })).toMatch(/replaced 1/);
+    expect(fs.readFileSync(path.join(rootDir, 'bom.ini'))).toEqual(Buffer.from('﻿café = 1\nx = 3\n', 'utf8'));
+  });
+
   describe('confinement', () => {
     const secret = () => path.join(outsideDir, 'secret.txt');
 

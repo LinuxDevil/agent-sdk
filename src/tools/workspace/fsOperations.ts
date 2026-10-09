@@ -89,6 +89,31 @@ function notFoundMessage(path: string, content: string, oldString: string): stri
   );
 }
 
+/**
+ * The text of a file `edit_file` may rewrite (Eve TOOLS-F7). With the
+ * provider's raw bytes, a UTF-16 file (by its BOM) or one a fatal UTF-8
+ * decoder rejects is refused: decoding it as UTF-8 and writing it back would
+ * replace each undecodable byte with U+FFFD, also on lines the edit never
+ * touched. A UTF-8 BOM is kept.
+ */
+async function readEditableText(fs: FsProvider, path: string): Promise<string> {
+  if (!fs.readFileBytes) return fs.readFile(path);
+  const bytes = await fs.readFileBytes(path);
+  if (bytes.length >= 2 && ((bytes[0] === 0xff && bytes[1] === 0xfe) || (bytes[0] === 0xfe && bytes[1] === 0xff))) {
+    throw new WorkspaceError(
+      `${path} is UTF-16 encoded; edit_file only edits UTF-8 files, so it was left unchanged. Convert it to UTF-8 first, or edit it with another tool.`
+    );
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    throw new WorkspaceError(
+      `${path} is not valid UTF-8 (for example a latin1 or Windows-1252 file); edit_file would corrupt its other characters, ` +
+        'so it was left unchanged. Convert it to UTF-8 first, or edit it with another tool.'
+    );
+  }
+}
+
 /** The arguments of `edit_file`. */
 interface EditArgs {
   path: string;
@@ -113,7 +138,7 @@ export async function prepareEdit(fs: FsProvider, args: EditArgs): Promise<Prepa
   if (args.old_string === args.new_string) {
     throw new WorkspaceError('old_string and new_string are identical, so there is nothing to change.');
   }
-  const content = await fs.readFile(path);
+  const content = await readEditableText(fs, path);
   const count = countOccurrences(content, args.old_string);
   if (count === 0) throw new WorkspaceError(notFoundMessage(path, content, args.old_string));
   if (count > 1 && !args.replace_all) {

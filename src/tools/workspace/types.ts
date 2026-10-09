@@ -78,6 +78,12 @@ export interface FsProvider {
   getMode?(path: string): Promise<number | undefined>;
   /** Optional: set a file's permission bits. See {@link FsProvider.getMode}. */
   chmod?(path: string, mode: number): Promise<void>;
+  /**
+   * Optional: a file's raw bytes. With it, `edit_file` refuses a file that is
+   * not UTF-8 (a latin1 or UTF-16 file) instead of writing it back with
+   * U+FFFD in place of every byte it could not decode. `NodeWorkspace` has it.
+   */
+  readFileBytes?(path: string): Promise<Uint8Array>;
 }
 
 /** Options for {@link ShellProvider.exec}. */
