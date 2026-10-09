@@ -174,7 +174,7 @@ describe('cloudflare-worker target: agent directories (M3b, #298)', () => {
       expect((await response.json()) as { sessionId: string; text: string }).toMatchObject({ sessionId: expect.stringMatching(/^api_u1-/), text: 'This is a mock response.' });
     });
 
-    it('runs the schedules/ cron from the scheduled() export, checkpointed as session schedule-<name>', async () => {
+    it('runs the schedules/ cron from the scheduled() export, checkpointed as session schedule-<name>-<fire time>', async () => {
       const kv = new Map<string, string>();
       const binding = {
         get: async (key: string) => kv.get(key) ?? null,
@@ -185,7 +185,8 @@ describe('cloudflare-worker target: agent directories (M3b, #298)', () => {
       await handler.scheduled?.({ cron: '0 9 * * MON' }, { AGENT_CHECKPOINTS: binding }, { waitUntil: (promise) => waited.push(promise) });
       await Promise.all(waited);
       // A prompt schedule runs a turn under session `schedule-<name>`, checkpointed in the KV store.
-      const checkpoint = kv.get('checkpoints/schedule-report');
+      const checkpointKey = [...kv.keys()].find((key) => key.startsWith('checkpoints/schedule-report-'));
+      const checkpoint = checkpointKey === undefined ? undefined : kv.get(checkpointKey);
       expect(JSON.stringify(checkpoint)).toContain('Write the report.');
       // A cron the directory does not schedule runs nothing.
       const keys = [...kv.keys()];

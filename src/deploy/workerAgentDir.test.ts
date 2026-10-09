@@ -309,11 +309,12 @@ describe('the Worker runtime of an agent directory: subagents, channels, memory,
       scheduleModules: [{ file: 'schedules/report.ts', module: { default: defineSchedule({ cron: '0 9 * * MON', prompt: 'Report.' }) } }],
     });
     const waited: Promise<unknown>[] = [];
-    await handleWorkerAgentDirScheduled({ cron: '0 9 * * MON' }, {}, { waitUntil: (p) => waited.push(p) }, agentDir);
+    const scheduledTime = Date.parse('2026-10-05T09:00:00Z');
+    await handleWorkerAgentDirScheduled({ cron: '0 9 * * MON', scheduledTime }, {}, { waitUntil: (p) => waited.push(p) }, agentDir);
     expect(waited).toHaveLength(1);
     await waited[0];
-    // A prompt schedule runs a turn under session `schedule-<name>` in the Worker's store.
-    const checkpoint = await workerStore({}).checkpoints?.load('schedule-report');
+    // A prompt schedule runs a turn under session `schedule-<name>-<fire time>` in the Worker's store.
+    const checkpoint = await workerStore({}).checkpoints?.load('schedule-report-2026-10-05T090000Z');
     expect(JSON.stringify(checkpoint)).toContain('Report.');
     // A cron that matches nothing runs nothing.
     await handleWorkerAgentDirScheduled({ cron: '0 10 * * MON' }, {}, { waitUntil: (p) => waited.push(p) }, agentDir);

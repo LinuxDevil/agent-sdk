@@ -250,7 +250,7 @@ request that reuses the `sessionId` (after a crash or a recycled isolate).
 Cron triggers in the spec (`triggers: [{ type: 'cron', cron: '0 9 * * MON', input: '...' }]`)
 become `[triggers] crons = [...]` in `wrangler.toml`, and the generated Worker
 exports a `scheduled()` handler that runs them as agent turns (session
-`schedule-<name>`, see [Schedules](schedules.md#on-cloudflare-workers)). An agent
+`schedule-<name>-<fire time>`, see [Schedules](schedules.md#on-cloudflare-workers)). An agent
 directory's `schedules/` files work the same way: the build evaluates them for
 the expressions and generates the `scheduled()` export. Cloudflare
 evaluates the expressions in **UTC** with a granularity of one minute; the
@@ -264,7 +264,7 @@ specifier in the generated code is a virtual one that only `lousho build`'s
 bundler resolves; do not import it yourself). It runs the schedules whose
 `cron` equals `controller.cron` inside `ctx.waitUntil()` and never throws; list
 the same expressions under `[triggers] crons` yourself. Give the agent a store
-— without one, a scheduled run's `schedule-<name>` session lives in one
+— without one, a scheduled run's session lives in one
 isolate's memory and is gone when it is recycled:
 
 ```ts

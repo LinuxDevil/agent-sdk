@@ -88,6 +88,23 @@ describe('startSchedules', () => {
     await agent.close();
   });
 
+  it('runs each fire in its own durable session, schedule-<name>-<fire time> (Eve DUR-F10)', async () => {
+    const store = memoryStore();
+    const provider = mockModel(['ok'], { onExhausted: 'repeat-last' });
+    const agent = createAgent({ provider, instructions: 'x', store });
+    const clock = fakeClock();
+    const running = startSchedules(agent, [defineSchedule({ ...every5, name: 'status', prompt: 'Status?' })], clock);
+    await clock.advance(5 * MINUTE);
+    await vi.waitFor(() => expect(provider.calls).toHaveLength(1));
+    await clock.advance(5 * MINUTE);
+    await running.stop();
+    expect(provider.calls).toHaveLength(2);
+    expect(provider.calls[1].messages).toHaveLength(provider.calls[0].messages.length);
+    expect(JSON.stringify(await store.checkpoints?.load('schedule-status-2026-01-01T000500Z'))).toContain('Status?');
+    expect(JSON.stringify(await store.checkpoints?.load('schedule-status-2026-01-01T001000Z'))).toContain('Status?');
+    await agent.close();
+  });
+
   it('calls run with the agent, the fire time and the name', async () => {
     const agent = createAgent({ provider: mockModel(['x']), instructions: 'x' });
     const run = vi.fn(async () => undefined);

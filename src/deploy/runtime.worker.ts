@@ -312,8 +312,8 @@ export type { ScheduledContext, ScheduledController } from '../schedules/schedul
 
 /**
  * The Worker's `scheduled()` handler: runs the spec's `{ type: 'cron' }`
- * triggers whose expression is `controller.cron` as agent turns (session
- * `schedule-<name>`, in the KV store when bound) inside `ctx.waitUntil`. Never
+ * triggers whose expression is `controller.cron` as agent turns (one session
+ * per fire, `schedule-<name>-<fire time>`, in the KV store when bound) inside `ctx.waitUntil`. Never
  * throws: a failure is logged with `console.error` and the schedule name.
  */
 export function handleWorkerScheduled(
@@ -334,7 +334,7 @@ export function handleWorkerScheduled(
 /**
  * {@link handleWorkerScheduled} for an agent directory's `schedules/` (#298):
  * the schedules whose `cron` equals `controller.cron` run as agent turns
- * (session `schedule-<name>`) inside `ctx.waitUntil`. Never throws.
+ * (session `schedule-<name>-<fire time>`) inside `ctx.waitUntil`. Never throws.
  */
 export function handleWorkerAgentDirScheduled(
   controller: ScheduledController,

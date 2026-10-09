@@ -24,6 +24,13 @@ interface ScheduleBase {
 /** Send `prompt` to the agent as a new turn on every fire. */
 export interface PromptScheduleInput extends ScheduleBase {
   prompt: string;
+  /**
+   * `true` runs every fire in one session, `schedule-<name>`, so each fire sees
+   * the earlier ones. The transcript then grows with every fire: use it with
+   * compaction or a short-lived schedule. Default `false`: each fire gets its
+   * own session, `schedule-<name>-<fire time>`.
+   */
+  sharedSession?: boolean;
   run?: never;
 }
 
@@ -31,6 +38,7 @@ export interface PromptScheduleInput extends ScheduleBase {
 export interface RunScheduleInput extends ScheduleBase {
   run: (ctx: ScheduleContext) => Promise<void>;
   prompt?: never;
+  sharedSession?: never;
 }
 
 /** The input of {@link defineSchedule}: `cron` plus exactly one of `prompt` or `run`. */
