@@ -94,7 +94,9 @@ by a hard-coded one.
 bytes as a `Uint8Array`) and `{ type: 'file', data, mimeType, filename? }`.
 `agent.send()`, `agent.stream()`, `session.send()` / `stream()`, `t.send()` in
 evals and the React hook's `send()` all take an `AgentInput`: a string, a list
-of parts (sent as one user message) or a `Message[]` (passed through as it is).
+of parts (sent as one user message) or a `Message[]` (passed through as it is;
+the agent's system prompt is added in front unless the list already starts
+with it, so a `result.messages` can be sent back with a new user message).
 Parts sent through `createAgent()`:
 
 ```ts
