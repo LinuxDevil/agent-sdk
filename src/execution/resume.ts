@@ -14,9 +14,12 @@ import {
   approvalExpired,
   describeApproval,
   ExecutionSnapshot,
+  isAutomaticDecision,
+  markAutomaticDecision,
   PendingApproval,
   ResolvedApproval,
 } from './ApprovalGate';
+import { validateToolArguments } from './toolArgsValidation';
 import { AgentExecutor, ExecuteOptions, ExecutionResult, extendRunOptions } from './AgentExecutor';
 import { observeRun, partialSink, runEventsOf, streamResumed, type AgentRun, type ToolSettled } from './agentRun';
 import { Checkpoint, CheckpointStore, RUN_CONFIG_KEY } from './checkpoint';
@@ -28,7 +31,7 @@ import { HookRegistry, type ToolCallHookContext } from './hooks';
 import { runPreToolHooks, type ToolCallOutcome } from './toolCallExecution';
 import { activeAgentOf, handOff, handoffNamed, handoffToolRegistry, type HandoffMarker, type ResolvedHandoff } from './handoffRun';
 import { markPropagating, toolErrorMessage } from './propagatingToolError';
-import { SDKError } from './errors';
+import { ConfigurationError, SDKError } from './errors';
 import { toolErrorResult, type ToolErrorResult } from './toolErrors';
 import { toolResultContent } from './toolResult';
 import { splitPendingTurn } from './transcript';
@@ -160,9 +163,19 @@ async function resumeObserved(
   observed: ResumeExecuteOptions,
   checkpointStore?: CheckpointStore
 ): Promise<ExecutionResult> {
-  const record = await approvalStore.resolve(decision.id);
-  if (!record) {
+  const claimed = await approvalStore.resolve(decision.id);
+  if (!claimed) {
     throw new SDKError(`No pending approval found for id '${decision.id}' (unknown or already resolved)`, 'LOUSHO_APPROVAL_NOT_FOUND');
+  }
+  // Eve TOOLS-F19: "approve with edits" - invalid arguments leave the approval pending.
+  let record: ResolvedApproval;
+  try {
+    record = await withEditedArgs(claimed, decision, toolRegistry, observed);
+  } catch (error) {
+    await approvalStore.save(claimed.pending, claimed.snapshot);
+    // Inside a sub-agent's resume, the lead's run puts its own pause back too.
+    if (typeof error === 'object' && error !== null) refusedResumes.add(error);
+    throw error;
   }
 
   const { pending, snapshot } = record;
@@ -182,6 +195,8 @@ async function resumeObserved(
     ? { ...decision, approved: false }
     : // N9b: a sign-in pause continues only once the user signed in (else it stays paused), or ends as cancelled.
       await signInDecision(record, decision, approvalStore, executeOptions.tokens);
+  // Eve TOOLS-F19: a copy of an `approve` callback's decision is still the callback's (once() does not remember it).
+  if (decided !== decision && isAutomaticDecision(decision)) markAutomaticDecision(decided);
   const messages: Message[] = [...snapshot.currentMessages];
   const drift = await checkApprovalDrift(record, decided, { approvalStore, toolRegistry, provider, executeOptions });
 
@@ -220,7 +235,7 @@ async function resumeObserved(
         step = await streamedDecision(ctx, pending, drift);
       } catch (error) {
         // M10c: a paused sub-agent refused the resume before anything ran, so this run stays paused too.
-        if (refusedResumes.has(error as object)) await restorePause({ pending, snapshot }, approvalStore, staleCheckpoint, checkpointStore);
+        if (refusedResumes.has(error as object)) await restorePause(claimed, approvalStore, staleCheckpoint, checkpointStore);
         throw error;
       }
       const businessState = executeOptions.businessState !== undefined ? executeOptions.businessState : staleBusinessState;
@@ -323,6 +338,46 @@ export function resumeRequest(request: ResumeRequest): Promise<ExecutionResult> 
 
 /** M10c: drift errors of a resume check, which ran before anything of the paused run did. */
 const refusedResumes = new WeakSet<object>();
+
+/**
+ * Eve TOOLS-F19: `record` with the decision's edited `args` in place of the
+ * model's - validated against the tool's schema, and written into the
+ * transcript's tool call so the model sees what ran. `record` itself when the
+ * decision edits nothing (or rejects). A sub-agent's call passes the edit on
+ * to the sub-agent's own resume. Throws `LOUSHO_TOOL_ARGS_INVALID` for
+ * arguments the schema refuses, `LOUSHO_CONFIG_INVALID` for a pause whose
+ * arguments cannot be edited.
+ */
+async function withEditedArgs(
+  record: ResolvedApproval,
+  decision: ApprovalDecision,
+  toolRegistry: ToolRegistry,
+  executeOptions: ResumeExecuteOptions
+): Promise<ResolvedApproval> {
+  const { pending, snapshot } = record;
+  if (!decision.approved || decision.args === undefined || snapshot.subagent) return record;
+  const kind = describeApproval(pending).kind;
+  if ((kind !== undefined && kind !== 'tool') || handoffNamed(executeOptions, pending.toolName)) {
+    throw new ConfigurationError(`Approval '${decision.id}' is a ${kind ?? 'handoff'}, whose arguments cannot be edited: decide it without 'args'.`, 'args');
+  }
+  if (typeof decision.args !== 'object' || decision.args === null || Array.isArray(decision.args)) {
+    throw new ConfigurationError(`Approval '${decision.id}': 'args' must be an object of the tool's arguments.`, 'args');
+  }
+  const toolDesc = toolRegistry.get(pending.toolName);
+  const args = (toolDesc ? await validateToolArguments(pending.toolName, toolDesc, decision.args) : decision.args) as Record<string, unknown>;
+  const edited: PendingApproval = { ...pending, args };
+  const currentMessages = snapshot.currentMessages.map((message) =>
+    message.role === 'assistant' && message.toolCalls?.some((call) => call.id === pending.toolCallId)
+      ? {
+          ...message,
+          toolCalls: message.toolCalls.map((call) =>
+            call.id === pending.toolCallId ? { ...call, function: { ...call.function, arguments: JSON.stringify(args) } } : call
+          ),
+        }
+      : message
+  );
+  return { pending: edited, snapshot: { ...snapshot, pendingToolCall: edited, currentMessages } };
+}
 
 /**
  * M10c: puts a paused run back as it was (its approval record, and the
@@ -556,8 +611,9 @@ async function decidedToolMessage(
     if (!isSignInRequired(error)) throw error;
     return signInAgain(ctx, pending, error);
   }
-  // LOU-X8: the transcript remembers the approval, for `once()`.
-  return { message: { ...message, metadata: { ...message.metadata, ...approvalMarker(pending.args) } } };
+  // LOU-X8: the transcript remembers the approval, for `once()`; Eve TOOLS-F19: whether a human gave it, and `remember`.
+  const marker = approvalMarker(pending.args, { automatic: isAutomaticDecision(ctx.decision), remember: ctx.decision.remember });
+  return { message: { ...message, metadata: { ...message.metadata, ...marker } } };
 }
 
 /**
