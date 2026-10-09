@@ -7,7 +7,7 @@
 
 import type { Message } from '../providers';
 import type { RunUsage } from '../models/usage';
-import { SDKError } from './errors';
+import { ConfigurationError, SDKError } from './errors';
 
 /** Limits on a run (`createAgent({ limits })`, `ExecuteOptions.limits`) or on a session (`agent.session({ limits })`). */
 export interface RunLimits {
@@ -157,6 +157,15 @@ export function startBudget(limits?: RunLimits, session?: SessionBudget, signal?
     mode: (budget) => (budget.scope === 'run' ? limits : session?.limits)?.onExceeded ?? 'stop',
     dispose: () => clearTimeout(timer),
   };
+}
+
+/** Eve CORE-F5: throws `LOUSHO_CONFIG_INVALID` unless `maxSteps` is unset or a whole number >= 1. */
+export function assertMaxSteps(value: unknown, caller: string): void {
+  if (value === undefined || (typeof value === 'number' && Number.isInteger(value) && value >= 1)) return;
+  throw new ConfigurationError(
+    `${caller}: 'maxSteps' must be a whole number >= 1, got ${typeof value === 'string' ? `'${value}'` : String(value)}.`,
+    'maxSteps'
+  );
 }
 
 /** The run's step limit: `maxSteps`, or 10 - unless `limits.maxSteps` is set alone, which then is the limit. */
