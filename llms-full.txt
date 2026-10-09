@@ -10619,6 +10619,9 @@ For each slot, `createAgent({ memory })`:
    or in later conversations with the same user or key (a scope function).
    Memory tags inside item text are escaped (`&lt;memory`, `&lt;/memory`) so
    an item cannot open or close a block.
+3. With `expose: { forget: true }`, also gives it a **`forget_<name>`** tool
+   (input `{ id }`) to delete an item that is wrong or out of date. See
+   [Correcting memory](#correcting-memory).
 
 ## Memory in code
 
@@ -10736,7 +10739,7 @@ the count.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `name` | `string` | required | 1-55 characters of `A-Za-z0-9_-`; the tools are `remember_<name>` and `recall_<name>`. Unique per agent. |
+| `name` | `string` | required | 1-55 characters of `A-Za-z0-9_-`; the tools are `remember_<name>`, `recall_<name>` and (with `expose.forget`) `forget_<name>`. Unique per agent. |
 | `description` | `string` | none | What the slot holds; added to the tool descriptions. |
 | `scope` | `'global' \| 'session' \| (ctx) => string \| undefined` | required | See [Scopes](#scopes). |
 | `provider` | `MemoryProvider` | required | Where items are stored: `inMemoryMemory()`, `fileMemory({ dir })`, or your own. |
@@ -10745,7 +10748,9 @@ the count.
 | `recall.query` | `'last-input' \| 'none'` | `'none'` | `'last-input'` passes the run's last user message to the provider as `query`, to recall relevant items rather than the newest. |
 | `expose.remember` | `boolean` | `true` | Offer the `remember_<name>` tool. |
 | `expose.recall` | `boolean` | `true` | Offer the `recall_<name>` tool. |
+| `expose.forget` | `boolean` | `false` | Offer the `forget_<name>` tool and show each item's id in the recalled block. See [Correcting memory](#correcting-memory). |
 | `itemSchema` | a zod or Standard Schema | `{ text: string }` | `remember_<name>`'s input. When set, the parsed arguments are the item: `text` is their canonical JSON and `metadata` is the parsed object, so the slot enforces structured state instead of free text. |
+| `itemKey` | `string \| string[]` | none | With `itemSchema`: the field(s) that identify an item. Remembering an item with the same key fields replaces the stored one. See [Correcting memory](#correcting-memory). |
 
 ```ts
 import { z } from 'zod';
@@ -10766,6 +10771,45 @@ fill it from code with `provider.add(memoryKey(slot)!, { text })`. For a
 `memoryKey(slot, { sessionId, metadata })`. Without it `memoryKey()` returns
 `undefined`, and the built-in providers reject a missing or empty scope key
 with `LOUSHO_MEMORY_INVALID` instead of storing items under the key `undefined`.
+
+### Correcting memory
+
+By default memory only grows: remembering a changed fact adds a second item,
+and both are recalled. Two options let a slot replace or drop items.
+
+**`itemKey`** makes structured state upsert. With `itemSchema`, name the
+field (or fields) that identify an item. When `remember_<name>` gets an item
+whose key fields equal a stored item's, it replaces that item instead of
+adding a second version. The item keeps its id, becomes the newest, and
+`remember_<name>` returns `{ remembered: id, replaced: true }`:
+
+```ts
+import { z } from 'zod';
+import { defineMemory, inMemoryMemory } from '@lousho/build-ai-agent';
+
+const settings = defineMemory({
+  name: 'settings',
+  scope: 'global',
+  provider: inMemoryMemory(),
+  itemSchema: z.object({ topic: z.string(), value: z.string() }),
+  itemKey: 'topic',
+});
+// remember_settings({ topic: 'language', value: 'French' }), then
+// remember_settings({ topic: 'language', value: 'English' }) leaves one item: English.
+```
+
+**`expose: { forget: true }`** adds `forget_<name>({ id })`, which deletes an
+item, and each item in the recalled `<memory>` block then shows its id
+(`- The user wants answers in French. (id: 3f…)`), so the model can forget a
+fact that no longer holds and remember the new one. An unknown id returns
+`{ forgotten: null, reason }` and changes nothing. `forget_<name>` carries
+the annotations `readOnlyHint: false, destructiveHint: true`, so it is not
+treated as read-only (for example in plan mode).
+
+Replacing uses the provider's `upsert(scopeKey, { id, text, metadata })`,
+which every built-in provider has. A custom provider without `upsert` gets
+`remove()` then `add()` instead: the item gets a new id, and the two calls are
+not atomic.
 
 ### When recall fails
 
@@ -10856,6 +10900,10 @@ const myProvider: MemoryProvider = {
   },
 };
 ```
+
+`upsert(scopeKey, { id?, text, metadata? })` is optional. Add it to replace
+an item in place (same id, new `createdAt`, newest first) for `itemKey` slots;
+without it a slot replaces by `remove()` then `add()`.
 
 ## Testing memory
 
@@ -14260,6 +14308,31 @@ const report = defineSchedule({ name: 'report', cron: '0 9 * * *', prompt: 'Run 
 await fireSchedule(agent, report);
 ```
 
+## Prompt schedules and sessions
+
+A prompt schedule's fire is an `agent.send(prompt, { sessionId })` run, not an
+`agent.session({ id })` turn (see
+[Two kinds of conversation id](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#two-kinds-of-conversation-id)). Its
+id is `schedule-<name>-<fire time>` (`schedule-<name>` with
+`sharedSession: true`), and its conversation is kept in the agent's
+`store.checkpoints`, as a finished checkpoint, when the agent has one; without
+a checkpoint store the fire runs without an id and keeps nothing.
+`GET /chat/<id>` and `agent.session({ id }).load()` read the session store, so
+they show an empty transcript for a schedule id. Read a fire's report from the
+checkpoint store instead, or continue it with `agent.fork(id)`:
+
+```ts
+import { createAgent, createMockProvider, defineSchedule, fireSchedule, memoryStore } from '@lousho/build-ai-agent';
+
+const store = memoryStore();
+const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider(), store });
+const firedAt = new Date('2026-10-05T09:00:00Z');
+await fireSchedule(agent, defineSchedule({ name: 'weekly-report', cron: '0 9 * * MON', prompt: 'Summarise last week.' }), { firedAt });
+
+const fire = await store.checkpoints.load('schedule-weekly-report-2026-10-05T090000Z');
+console.log(fire?.status, fire?.messages.at(-1)?.content); // 'finished', the report
+```
+
 ## In an agent directory
 
 ```text
@@ -14326,10 +14399,12 @@ triggers:
 Worker's `scheduled()` runs every trigger whose `cron` equals the invoked one as
 an agent turn inside `ctx.waitUntil()`. Each fire has its own session,
 `schedule-<name>-<fire time>` (for example `schedule-weekly-report-2026-10-05T090000Z`),
-so its run is inspectable in the KV session store when `AGENT_CHECKPOINTS` is
-bound and a daily job does not re-send every earlier report. Set
-`sharedSession: true` on a `defineSchedule()` prompt schedule to keep one
-`schedule-<name>` session instead; its transcript then grows with every fire. The run
+so a daily job does not re-send every earlier report, and its run can be read
+back from the checkpoints in KV when `AGENT_CHECKPOINTS` is bound (see
+[Prompt schedules and sessions](#prompt-schedules-and-sessions); not
+`GET /chat/<id>`). Set `sharedSession: true` on a `defineSchedule()` prompt
+schedule to keep one `schedule-<name>` session instead; its conversation then
+grows with every fire. The run
 happens inside `ctx.waitUntil()`, past the request's lifetime, so give the
 agent a store (`KVStore` on `AGENT_CHECKPOINTS`) — an in-memory one keeps the
 schedule sessions only until the isolate is recycled. A failing
@@ -14509,6 +14584,30 @@ Sessions are a thin layer: the session owns the transcript and hands it to the
 executor on each turn. Without a checkpoint store, a turn is saved only when it
 ends, so a crash in the middle of a turn loses it; see the next section.
 
+## Two kinds of conversation id
+
+`agent.session({ id })` and `agent.send(msg, { sessionId })` are different
+conversations. The SDK has two ways to keep a conversation under an id, and they do not share
+storage:
+
+| | `agent.session({ id }).send(msg)` | `agent.send(msg, { sessionId })` |
+| --- | --- | --- |
+| What it is | A session: a transcript, one `send()` per turn | One durable run (see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)); calling it again with the same id continues it |
+| Where the conversation lives | `store.sessions` under `id` (each turn checkpointed as `<id>.turn-<n>` while it runs) | `store.checkpoints` under `sessionId` (the checkpoint's `messages`) |
+| Needs | nothing (in memory by default) | `store.checkpoints` (`LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE` without one) |
+| Read it back with | `session.load()`, `GET /chat/:id` | `store.checkpoints.load(sessionId)` (its `messages`), `agent.fork(sessionId)` |
+| Continue it after a crash with | `agent.session({ id }).resume()` | `agent.resume(sessionId)` |
+
+Use one model per id. An id used both ways holds two unrelated conversations:
+a turn sent one way does not see the turns sent the other way, and
+`GET /chat/:id` shows only the session transcript. `agent.resume(id)` looks for
+a `send({ sessionId })` run first and, only when there is none, resumes the
+session's pending turn, so with both present it finishes the run and leaves the
+session turn pending (finish that with `agent.session({ id }).resume()`).
+Prompt schedules run as `send({ sessionId })` runs (see
+[Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md#prompt-schedules-and-sessions)), so read a schedule's
+reports from `store.checkpoints`, not `GET /chat/:id`.
+
 ## Durable sessions
 
 Give the agent a `store` with checkpoints and every session turn is
@@ -14537,7 +14636,8 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   agent's, part by part.
 - `agent.resume(id)` is `agent.session({ id }).resume()`, except that it first
   finishes a run started with `agent.send(message, { sessionId: id })` (see
-  [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)).
+  [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md) and
+  [the two kinds of id](#two-kinds-of-conversation-id)).
 - Each turn runs with `sessionId: '<session id>.turn-<n>'` (`n` is the length
   of the transcript when the turn started), so a new process finds the
   interrupted turn without any extra bookkeeping. A finished turn joins the
