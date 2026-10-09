@@ -6,6 +6,8 @@ are validated before `execute` runs, and the result drops in anywhere tools are
 accepted (`createAgent({ tools: [...] })`, `ToolRegistry.register(tool)`,
 `AgentBuilder.addTool(tool)`).
 
+> Snippets on this page leave some names to you: `provider` is any `LLMProvider` (offline: `createMockProvider()`).
+
 ```ts
 import { defineTool, createAgent, type ToolInput, type ToolOutput } from '@lousho/build-ai-agent';
 import { z } from 'zod';

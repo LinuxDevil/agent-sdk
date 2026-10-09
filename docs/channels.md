@@ -28,8 +28,8 @@ that passes no `ctx`. Without either, the response waits for the whole turn
 (and a warning is logged once), which misses Slack's and Discord's 3-second
 deadline on a slow turn.
 
-```ts
-// Next.js on Vercel
+```ts no-verify
+// Next.js on Vercel (needs @vercel/functions; `agent` and `slack` come from your app)
 import { waitUntil } from '@vercel/functions';
 const channels = mountFetchChannels(agent, [slack], { waitUntil });
 

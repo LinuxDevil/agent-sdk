@@ -8,6 +8,8 @@ or a WebSocket without converting it. The `vendor/` model prefix chooses the
 provider; with OpenRouter use `openrouter/<vendor>/<model>` (e.g.
 `openrouter/openai/gpt-4o-mini`).
 
+> Snippets on this page leave some names to you: `provider` is any `LLMProvider` (offline: `createMockProvider()`); `agent` is a `createAgent()` result; `input` is the user's text, a `string`; `approvalStore` is an `ApprovalStore`; `toolRegistry` is a `ToolRegistry`.
+
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
 

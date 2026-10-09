@@ -6,6 +6,8 @@ A declarative agent is a YAML (`.yaml`/`.yml`) or JSON (`.json`) file,
 validated with zod by `loadSpec()` (`src/spec/schema.ts`). It is the format
 `lousho dev` serves and `lousho build` deploys.
 
+> Snippets on this page leave some names to you: `provider` is any `LLMProvider` (offline: `createMockProvider()`).
+
 | Field            | Type       | Required | Description                                             |
 | ---------------- | ---------- | -------- | ------------------------------------------------------- |
 | `name`           | `string`   | yes      | Agent name.                                             |

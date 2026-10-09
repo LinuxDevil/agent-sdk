@@ -38,6 +38,9 @@ token, an operator who knows which authenticator the old tokens belong to moves
 them once:
 
 ```ts
+import { fileStore } from '@lousho/build-ai-agent';
+
+const store = fileStore('./.lousho', { tokenKey: process.env.LOUSHO_TOKEN_KEY });
 const legacy = { owner: 'user', principalId: 'U04ABCDEF' } as const;
 const owner = { ...legacy, issuer: 'authenticator:slack' } as const;
 const token = await store.tokens!.get('gdrive', legacy);

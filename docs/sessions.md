@@ -4,6 +4,8 @@
 **session** is a multi-turn conversation: it keeps the transcript and passes it
 to the model on every `send()`.
 
+> Snippets on this page leave some names to you: `provider` is any `LLMProvider` (offline: `createMockProvider()`).
+
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
 
