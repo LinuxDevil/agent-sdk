@@ -21,6 +21,22 @@ same routes with a `Request` in and a `Response` out (and the host's
 `lousho build --target=cloudflare-worker` mounts an agent directory's
 `channels/` under `/channels` with it.
 
+A channel that acknowledges early (Slack, Discord, Telegram, GitHub, Teams)
+gets its answer back at once only when the turn can keep running after the
+response: the handler's `ctx.waitUntil`, or the `waitUntil` option for a host
+that passes no `ctx`. Without either, the response waits for the whole turn
+(and a warning is logged once), which misses Slack's and Discord's 3-second
+deadline on a slow turn.
+
+```ts
+// Next.js on Vercel
+import { waitUntil } from '@vercel/functions';
+const channels = mountFetchChannels(agent, [slack], { waitUntil });
+
+// Bun.serve, Deno.serve or a Node fetch server: the process outlives the response
+const channels = mountFetchChannels(agent, [slack], { waitUntil: (turn) => void turn });
+```
+
 ## Quick start
 
 `httpChannel()` is the reference channel: `{ sessionKey, input }` in, JSON out.

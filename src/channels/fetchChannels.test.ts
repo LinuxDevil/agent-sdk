@@ -107,17 +107,49 @@ describe('mountFetchChannels (#298)', () => {
     await waited[0];
   });
 
-  it('awaits the turn when no waitUntil is given, then returns the early respond', async () => {
+  it('awaits the turn when no waitUntil is given, then returns the early respond, and warns once (Eve CH-F4)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const { channel, replies } = recordingChannel({
       async parse(_req, respond) {
         respond(202, { accepted: true });
         return { sessionKey: 'u', input: 'hi', replyTo: null };
       },
     });
-    const handler = mountFetchChannels(createAgent({ provider: mockModel(['done']) }), [channel]);
+    const handler = mountFetchChannels(createAgent({ provider: mockModel(['done', 'again']) }), [channel]);
     const response = await handler(post('/channels/test', {}));
     expect(await response?.json()).toEqual({ accepted: true });
     expect(replies.map((r) => r.text)).toEqual(['done']);
+    await handler(post('/channels/test', {}));
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toMatch(/waitUntil/);
+    warn.mockRestore();
+  });
+
+  it('returns the early respond at once with the waitUntil option, for hosts that pass no ctx (Eve CH-F4)', async () => {
+    let finish!: () => void;
+    const gate = new Promise<void>((resolve) => (finish = resolve));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { channel, replies } = recordingChannel({
+      async parse(_req, respond) {
+        respond(200, { ok: true });
+        return { sessionKey: 'u', input: 'hi', replyTo: null };
+      },
+      async reply(ctx) {
+        await gate; // a slow turn: the ack must not wait for it
+        replies.push(ctx);
+      },
+    });
+    const waited: Promise<unknown>[] = [];
+    const handler = mountFetchChannels(createAgent({ provider: mockModel(['done']) }), [channel], { waitUntil: (p) => waited.push(p) });
+    const response = await handler(post('/channels/test', {}));
+    expect(response?.status).toBe(200);
+    expect(waited).toHaveLength(1);
+    expect(replies).toHaveLength(0);
+    finish();
+    await waited[0];
+    expect(replies.map((r) => r.text)).toEqual(['done']);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it('answers 400 for a bad JSON body and for an approvals body without a decision', async () => {

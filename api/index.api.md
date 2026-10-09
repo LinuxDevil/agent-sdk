@@ -2292,6 +2292,7 @@ export interface FetchChannelsOptions {
     }): void | Promise<void>;
     onError?: ChannelErrorHandler;
     store?: SessionStore | SessionStores;
+    waitUntil?: (promise: Promise<unknown>) => void;
 }
 
 // @public
