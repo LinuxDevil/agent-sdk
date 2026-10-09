@@ -284,7 +284,7 @@ describe('reduceAgentEvents (LOU-D15)', () => {
     it.each(['max-steps', 'output-invalid', 'budget-exceeded', 'guardrail'])('surfaces a %s ending as an error', (finishReason) => {
       const state = reduce(send, ...events({ type: 'run.done', finishReason, text: 'x', usage }));
       expect(state.status).toBe('error');
-      expect(state.error).toMatchObject({ code: 'LOUSHO_RUN_ENDED' });
+      expect(state.error).toMatchObject({ name: 'RunEndedError' });
       expect(state.finishReason).toBe(finishReason);
       expect(state.messages[1].finishReason).toBe(finishReason);
     });
