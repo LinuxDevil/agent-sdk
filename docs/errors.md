@@ -1,3 +1,7 @@
+---
+description: Every deliberate SDK error is an SDKError with a stable LOUSHO_* code, a hint and a link to its section here; this page lists each code with its cause and fix.
+---
+
 # Errors
 
 Nearly every error the SDK throws on purpose is an `SDKError` (or a subclass

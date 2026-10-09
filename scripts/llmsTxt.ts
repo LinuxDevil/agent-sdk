@@ -28,8 +28,12 @@ export interface LlmsInput {
   examples: ExampleEntry[];
 }
 
-/** Pages listed under `## Optional` in llms.txt (everything else is under `## Docs`). */
-const OPTIONAL_PAGES = new Set(['docs/agent-forge.md', 'docs/deployment.md']);
+/**
+ * Pages listed under `## Optional` in llms.txt (everything else is under `## Docs`):
+ * background reading and the legacy API, which an agent can skip when short on context.
+ * Deployment and Agent Forge are first-class docs, so they are not here.
+ */
+const OPTIONAL_PAGES = new Set(['docs/prompting-techniques.md', 'docs/migrating-to-create-agent.md']);
 /** Pages that always come first in llms-full.txt, in this order. */
 const READING_ORDER = ['docs/installation.md', 'docs/quick-start.md', 'docs/api-overview.md'];
 /** docs/*.md pages that are maintainer notes, not user documentation. */
@@ -119,8 +123,71 @@ export function extractParagraph(markdown: string): string {
 
 /** The first sentence of `text` (or all of it, minus a trailing colon, when it has no full stop). */
 export function firstSentence(text: string): string {
-  const match = /^(.+?[.!?])(?=\s|$)/.exec(text);
-  return (match ? match[1] : text).replace(/:$/, '');
+  return (splitSentences(text)[0] ?? text).replace(/:$/, '');
+}
+
+/**
+ * Splits prose into sentences. A `.`, `!` or `?` ends a sentence only outside inline code and with
+ * every bracket closed, so `{ name, preToolCall?, postToolCall? }` and `(see a.b. Then)` stay whole.
+ */
+export function splitSentences(text: string): string[] {
+  const sentences: string[] = [];
+  let depth = 0;
+  let inCode = false;
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '`') inCode = !inCode;
+    else if (inCode) continue;
+    else if ('([{'.includes(ch)) depth++;
+    else if (')]}'.includes(ch)) depth = Math.max(0, depth - 1);
+    else if ('.!?'.includes(ch) && depth === 0 && (i + 1 === text.length || /\s/.test(text[i + 1]))) {
+      sentences.push(text.slice(start, i + 1).trim());
+      start = i + 1;
+    }
+  }
+  const rest = text.slice(start).trim();
+  if (rest) sentences.push(rest);
+  return sentences;
+}
+
+/** Longest description (in characters) llms.txt takes from a page's opening paragraph. */
+const DESCRIPTION_MAX = 400;
+
+/** Removes internal ticket ids such as `LOU-D12` (and a wrapping pair of parentheses). */
+export function stripTicketIds(text: string): string {
+  return text
+    .replace(/ ?\(LOU-[A-Za-z0-9-]+(?:, [^)]*)?\)/g, '')
+    .replace(/\bLOU-[A-Za-z]+\d*[a-z]?\b:? ?/g, '')
+    .replace(/ {2,}/g, ' ');
+}
+
+/** The `description:` value of a leading `---` frontmatter block, if any. */
+export function frontmatterDescription(markdown: string): string | undefined {
+  const block = /^---\n([\s\S]*?)\n---\n/.exec(markdown)?.[1];
+  const value = block ? /^description:\s*(.+)$/m.exec(block)?.[1] : undefined;
+  return value?.trim().replace(/^(["'])(.*)\1$/, '$2');
+}
+
+/** Drops a leading `---` frontmatter block. */
+export function stripFrontmatter(markdown: string): string {
+  return markdown.replace(/^---\n[\s\S]*?\n---\n/, '');
+}
+
+/**
+ * A page's one-line description for llms.txt: the frontmatter `description`, else the opening
+ * paragraph taken sentence by sentence (never mid-bracket) up to DESCRIPTION_MAX characters.
+ */
+export function describePage(markdown: string): string {
+  const fromFrontmatter = frontmatterDescription(markdown);
+  if (fromFrontmatter) return stripTicketIds(fromFrontmatter);
+  let out = '';
+  for (const sentence of splitSentences(extractParagraph(stripFrontmatter(markdown)))) {
+    const next = out ? `${out} ${sentence}` : sentence;
+    if (out && next.length > DESCRIPTION_MAX) break;
+    out = next;
+  }
+  return stripTicketIds(out.replace(/:$/, ''));
 }
 
 const ABSOLUTE_HREF = /^([a-z][a-z0-9+.-]*:|\/\/|#)/i;
@@ -159,18 +226,19 @@ function pageUrl(baseUrl: string, repoPath: string): string {
   return `${baseUrl}/blob/main/${repoPath}`;
 }
 
-function entryLine(title: string, url: string, description: string): string {
+function entryLine(rawTitle: string, url: string, description: string): string {
+  const title = stripTicketIds(rawTitle).trim();
   return description ? `- [${title}](${url}): ${description}` : `- [${title}](${url})`;
 }
 
 function docEntry(page: DocPage, baseUrl: string): string {
-  const description = firstSentence(extractParagraph(page.markdown));
+  const description = describePage(page.markdown);
   return entryLine(extractTitle(page.markdown), pageUrl(baseUrl, page.path), description);
 }
 
 function exampleEntry(example: ExampleEntry, baseUrl: string): string {
   const readmePath = `${example.dir}/README.md`;
-  const description = firstSentence(extractParagraph(example.readme));
+  const description = describePage(example.readme);
   return entryLine(extractTitle(example.readme), pageUrl(baseUrl, readmePath), description);
 }
 
@@ -190,7 +258,7 @@ export function renderLlmsTxt(input: LlmsInput): string {
   const lines = [
     `# ${input.name}`,
     '',
-    `> ${extractParagraph(input.readme.markdown)}`,
+    `> ${stripTicketIds(extractParagraph(input.readme.markdown))}`,
     '',
     ...section('Docs', primary),
     ...section('Examples', examples),
@@ -200,7 +268,7 @@ export function renderLlmsTxt(input: LlmsInput): string {
 }
 
 function fullSection(page: DocPage, baseUrl: string): string {
-  const body = removeTitle(rewriteLinks(stripNoise(page.markdown), page.path, baseUrl)).trim();
+  const body = removeTitle(rewriteLinks(stripNoise(stripFrontmatter(page.markdown)), page.path, baseUrl)).trim();
   return [`# ${extractTitle(page.markdown)}`, '', `Source: ${page.path}`, '', body].join('\n');
 }
 

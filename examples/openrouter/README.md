@@ -1,6 +1,6 @@
 # openrouter
 
-Runnable snippets showing `OpenRouterProvider` usage (LOU-B6): basic and streaming
+Runnable snippets showing `OpenRouterProvider` usage: basic and streaming
 generation, multi-model comparison, tool calling, `AgentBuilder` configuration,
 model listing, cost-aware model choice, error handling, multi-turn conversation,
 and capability checks.

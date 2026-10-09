@@ -3562,6 +3562,22 @@ same routes with a `Request` in and a `Response` out (and the host's
 `lousho build --target=cloudflare-worker` mounts an agent directory's
 `channels/` under `/channels` with it.
 
+A channel that acknowledges early (Slack, Discord, Telegram, GitHub, Teams)
+gets its answer back at once only when the turn can keep running after the
+response: the handler's `ctx.waitUntil`, or the `waitUntil` option for a host
+that passes no `ctx`. Without either, the response waits for the whole turn
+(and a warning is logged once), which misses Slack's and Discord's 3-second
+deadline on a slow turn.
+
+```ts
+// Next.js on Vercel
+import { waitUntil } from '@vercel/functions';
+const channels = mountFetchChannels(agent, [slack], { waitUntil });
+
+// Bun.serve, Deno.serve or a Node fetch server: the process outlives the response
+const channels = mountFetchChannels(agent, [slack], { waitUntil: (turn) => void turn });
+```
+
 ## Quick start
 
 `httpChannel()` is the reference channel: `{ sessionKey, input }` in, JSON out.
@@ -3678,10 +3694,18 @@ through the same channel's `reply` (or `onApproval` again, if it pauses again):
 
 - `handler.resolveApproval({ id, approved, note? })` or
   `handler.resolveApproval({ id, answer })` from your code, e.g. a surface's
-  button callback.
+  button callback. It only decides pauses this process made: after a restart
+  (or on another replica) it throws `LOUSHO_APPROVAL_NOT_FOUND`, because it
+  does not know which conversation to continue. Use the route below with
+  `sessionKey` instead.
 - `POST <basePath>/<name>/approvals/<id>` with `{ approved, note? }` or
   `{ answer }`. The channel's `verify` runs first; an id the channel did not
-  pause on gets 404.
+  pause on gets 404. Add `sessionKey` (the conversation's key, as in its
+  messages) to decide a pause this process forgot: with durable sessions,
+  checkpoints and approvals, the decision is accepted when that
+  conversation's turn waits on exactly this approval (else 404), and the
+  continuation joins its transcript. In process, a `sessionKey` naming another
+  conversation than the one that paused gets 404.
 
 A decision is claimed before `onDecision` runs, so two decisions on one
 approval at once (a double click) decide it once: the second gets
@@ -3800,9 +3824,11 @@ message to the bot starts a session keyed on the DM channel. Replies are posted 
 - The request is answered right away (`200`, or the `url_verification`
   challenge) and the turn runs after the response, within Slack's 3-second
   limit.
-- Retries (`X-Slack-Retry-Num`), bot messages (including the bot's own) and
-  the `message` copy of a mention are acknowledged and skipped, so a turn
-  never runs twice.
+- A redelivered event (the same `event_id`, e.g. a retry with
+  `X-Slack-Retry-Num`), bot messages (including the bot's own) and the
+  `message` copy of a mention are acknowledged and skipped, so a turn never
+  runs twice. A retry of an event this process never received (its first
+  delivery was lost) runs. Delivery ids are kept in memory for an hour.
 - A tool approval is posted in the thread with **Approve** and **Deny**
   buttons; the click resumes the session and the continuation is posted in the
   thread. The clicked message is replaced with the outcome ("Approved by @user"),
@@ -3865,8 +3891,9 @@ Workers). The expected command is `/ask prompt:<text>`: one string option, and
 the `prompt` option (or the first string option) is the message.
 
 - Every request's `X-Signature-Ed25519` / `X-Signature-Timestamp` is verified
-  over `timestamp + body`; a missing or bad signature answers 401, as Discord
-  requires. `PING` is answered with `PONG`.
+  over `timestamp + body`; a missing or bad signature, or a timestamp more
+  than five minutes from local time (a replayed request), answers 401, as
+  Discord requires. `PING` is answered with `PONG`.
 - A command is acknowledged at once with a deferred response (within Discord's
   3-second limit); the reply then edits the original response
   (`PATCH /webhooks/{applicationId}/{token}/messages/@original`). Text over
@@ -3939,7 +3966,9 @@ library; Web Crypto and `fetch` only, so it also runs on Workers).
   channel has no unauthenticated mode, so always pass `secret_token` to
   `setWebhook`.
 - The update is acknowledged with `200` at once and the turn runs after, so
-  Telegram does not retry the webhook.
+  Telegram does not retry the webhook. An update it redelivers anyway (the
+  same `update_id`) is acknowledged and not run again; ids are kept in memory
+  for an hour.
 - In a private chat every text message (or photo or document caption) is a
   message to the agent. In a group or supergroup only a `/ask` command (or
   `/ask@<botUsername>`), a message containing `@<botUsername>`, or a reply to
@@ -4027,7 +4056,9 @@ so it also runs on Workers.
   unauthenticated mode.
 - The webhook is acknowledged with `200` at once and the turn runs after: GitHub
   waits 10 seconds and does not retry, and a slow reply is posted as a new
-  comment. A `ping` is acknowledged without a turn.
+  comment. A `ping` is acknowledged without a turn. A redelivery (the same
+  `X-GitHub-Delivery`, e.g. "Redeliver" in the app settings) is acknowledged
+  and not run again; ids are kept in memory for an hour.
 - A comment on an issue, on a pull request (the conversation tab) or a review
   comment (on a line of the diff) that contains `@<botName>` as a whole word
   (case-insensitive) starts a turn, with the mention removed from the text. Once
@@ -5260,10 +5291,14 @@ triggered it (see [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/
 | `type` | Fields |
 | --- | --- |
 | `compaction.start` | `strategy`, `tokensBefore`, `contextWindow`, `thresholdTokens`, `trigger?: 'manual'` |
-| `compaction.done` | `strategy`, `appliedStrategy?`, `tokensBefore`, `tokensAfter`, `prunedToolCallIds`, `summary?: boolean`, `error?: { message }`, `trigger?: 'manual'` |
+| `compaction.done` | `strategy`, `appliedStrategy?`, `tokensBefore`, `tokensAfter`, `prunedToolCallIds`, `summary?: boolean`, `error?: { message }`, `unchanged?: true`, `trigger?: 'manual'` |
 
 Every `compaction.start` is followed by exactly one `compaction.done`. When the
-strategy could not shrink anything, `tokensAfter` equals `tokensBefore`; when it
+strategy could not shrink anything, `tokensAfter` equals `tokensBefore` and
+`unchanged` is `true`. The hook then compacts that transcript quietly: later
+steps that still change nothing emit no events, and the next attempt that does
+change something emits its `compaction.start` / `compaction.done` pair as usual,
+so a run stuck over the threshold does not report a pair on every step. When it
 failed (or the summarizer failed and the hook fell back to pruning), `error` is
 set and the run continues. A summary that does not get the conversation under
 the threshold - or that makes it larger - is rejected the same way: `error` is
@@ -5324,7 +5359,7 @@ strategy name.
 | `thresholdPercent` | `0.9` | Compact when the estimated request is above this share of the context window. Must be in (0, 1]. |
 | `contextWindow` | registry, else `128_000` | Context window in tokens. By default it is looked up for `request.model` with `getModelInfo()`; register your own models with `registerModel()`. The `128_000` fallback logs a one-time `console.warn` (see [Local and unknown models](#local-and-unknown-models)). |
 | `reserveOutputTokens` | none | Tokens kept free for the reply: the threshold becomes at most `contextWindow - reserveOutputTokens`. It never raises the `thresholdPercent` threshold. |
-| `protectedTokens` | `40_000` | The newest messages that fit in this many tokens are never changed. |
+| `protectedTokens` | `40_000`, at most half the threshold | The newest messages that fit in this many tokens are never changed. The default is capped at half the threshold (about 3,700 tokens on an 8K window), so a small window still compacts. A value you set at or above the threshold would protect everything; it is capped the same way, with a one-time `console.warn`. |
 | `strategy` | `pruneToolResultsStrategy()` | How to compact (see below). `twoPhaseStrategy()` is recommended; it needs a summarizer model, so it is not the default. |
 | `onCompaction` | none | Called after each compaction that changed the conversation or reported an `error`, with the token counts, the pruned `toolCallId`s, `strategy`, `appliedStrategy`, the summary text and the `error`. |
 
@@ -5371,6 +5406,11 @@ const agent = createAgent({
 // ...or once for every feature that reads the window (compaction, tool search).
 registerModel({ id: 'qwen3:8b', provider: 'ollama', contextWindow: 8_192 });
 ```
+
+On a small window the default `protectedTokens` (40,000) is capped at half the
+threshold, so the newest ~3,700 tokens of an 8K window stay intact and older
+tool results can still be pruned. Set `protectedTokens` yourself to protect
+more or less; keep it below the threshold.
 
 [Tool search](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tool-search.md) reads the window the same way and warns the same
 way; its own setting is `toolSearch.contextWindow`.
@@ -6987,7 +7027,7 @@ Find a code by area:
 | [Providers and peers](#providers-and-peers) | [`LOUSHO_PROVIDER_SPEC_INVALID`](#lousho_provider_spec_invalid), [`LOUSHO_PROVIDER_UNKNOWN`](#lousho_provider_unknown), [`LOUSHO_PROVIDER_MISSING_API_KEY`](#lousho_provider_missing_api_key), [`LOUSHO_PROVIDER_REQUEST_FAILED`](#lousho_provider_request_failed), [`LOUSHO_PROVIDER_RATE_LIMITED`](#lousho_provider_rate_limited), [`LOUSHO_PEER_MISSING`](#lousho_peer_missing), [`LOUSHO_HOSTED_TOOL_UNSUPPORTED`](#lousho_hosted_tool_unsupported), [`LOUSHO_UNSUPPORTED_CONTENT`](#lousho_unsupported_content) | Resolving a model string, a missing API key or peer package, a failed or rate-limited model request, a hosted tool the provider cannot run, a file the provider cannot send. |
 | [Agent spec files](#agent-spec-files) | [`LOUSHO_SPEC_NOT_FOUND`](#lousho_spec_not_found), [`LOUSHO_SPEC_INVALID`](#lousho_spec_invalid), [`LOUSHO_SPEC_UNKNOWN_FIELD`](#lousho_spec_unknown_field), [`LOUSHO_SPEC_UNSUPPORTED_FORMAT`](#lousho_spec_unsupported_format) | Loading an `AgentSpec` file with `loadSpec()` or `specToAgent()`. |
 | [Tools](#tools) | [`LOUSHO_TOOL_NOT_FOUND`](#lousho_tool_not_found), [`LOUSHO_TOOL_NEEDS_CREDENTIALS`](#lousho_tool_needs_credentials), [`LOUSHO_TOOL_EXECUTION_FAILED`](#lousho_tool_execution_failed), [`LOUSHO_TOOL_ARGS_INVALID`](#lousho_tool_args_invalid), [`LOUSHO_MCP_START_FAILED`](#lousho_mcp_start_failed) | A tool the model called is unknown, needs credentials, threw, or got invalid arguments; a stdio MCP server did not start. |
-| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_ORPHANED`](#lousho_approval_orphaned), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
+| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_ORPHANED`](#lousho_approval_orphaned), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_TURN_FAILED`](#lousho_session_turn_failed), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
 | [Schedules](#schedules) | [`LOUSHO_SCHEDULE_INVALID`](#lousho_schedule_invalid), [`LOUSHO_SCHEDULE_RUN_INCOMPLETE`](#lousho_schedule_run_incomplete) | Defining or loading a schedule, or a scheduled turn that did not finish. |
 | [Channels](#channels) | [`LOUSHO_CHANNEL_INVALID`](#lousho_channel_invalid), [`LOUSHO_MEMORY_INVALID`](#lousho_memory_invalid) | Defining a channel or a memory slot. |
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
@@ -7418,6 +7458,16 @@ interrupted turn, whose checkpoint is keyed by the transcript length.
 **Fix:** finish it with `session.resume()` or drop it with
 `session.discardPending()`, then call again.
 
+### LOUSHO_SESSION_TURN_FAILED
+
+**Means:** a durable session's `send()` / `stream()` found the session's
+unfinished turn, whose last attempt failed with a provider error that retrying
+will not fix (a context-length or auth failure, or another 4xx). The turn's
+checkpoint records it as `lastError` and `attempts`; the turn is not replayed.
+
+**Fix:** drop the turn with `session.discardPending()` and send again, or fix
+the cause and retry it with `session.resume()`.
+
 ### LOUSHO_SESSION_STREAM_UNSUPPORTED
 
 **Means:** `stream()` was called on an `AgentSession` built by hand without a
@@ -7718,9 +7768,10 @@ malformed. The message names the file.
 
 ### LOUSHO_SKILL_INVALID
 
-**Means:** a skill is malformed (`defineSkill()`, a `skills/` folder) or
-`withSkills()` was given duplicate names, or a skill name that collides with the
-`load_skill` tool.
+**Means:** a skill is malformed (`defineSkill()`, a `skills/` folder, including
+`loadSkills()` on a file with bad frontmatter) or `withSkills()` was given
+duplicate names, or a skill name that collides with the `load_skill` or
+`read_skill_file` tool.
 
 **Fix:** give each skill a unique name, a description and content; rename a tool called
 `load_skill`. See [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md).
@@ -9119,7 +9170,7 @@ dropped at a handoff, so a target's tools ask again.
 | --- | --- |
 | instructions (system prompt), model and provider | `hooks`, `limits` and the spend so far (one budget) |
 | tools, hosted tools, skills and sub-agents | `maxSteps`, counted across agents |
-| `reasoning` | the abort signal |
+| `reasoning`, `modelSettings` and `toolSearch` (its own deferred tools, searched with its own tuning) | the abort signal and `toolConcurrency` |
 | its own `handoffs` | the approval, checkpoint and token stores |
 | guardrails and permission rules: the lead's first, then the target's own | `onEvent` and `exporter` |
 | | `output`: the result is typed by the lead's schema (a target's own `output` is not used) |
@@ -9875,7 +9926,13 @@ A tool result whose content is only text reaches the model as `{ "text": ... }`.
 The result object still has `content` (the parts) for code that reads it, but
 it is not sent to the model a second time. Results with images, audio or
 resources keep every part, and `structuredContent` is used as the result when
-the server sends it.
+the server sends it. Base64 data (an image or audio part's `data`, a resource's
+`blob`) stays on the part for code, but the model gets a placeholder such as
+`[image: image/png, 400000 base64 characters, not sent to the model]`. Like
+every tool result, the rest is capped by `maxToolResultChars` (see
+[Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#what-happens-when-the-model-calls-a-tool)), and a tool
+description longer than 2,000 characters is cut, since it is sent with every
+request.
 
 The map is the same one a spec file declares; see
 [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md) (the `mcpServers` section) for the YAML form.
@@ -12319,7 +12376,9 @@ by a hard-coded one.
 bytes as a `Uint8Array`) and `{ type: 'file', data, mimeType, filename? }`.
 `agent.send()`, `agent.stream()`, `session.send()` / `stream()`, `t.send()` in
 evals and the React hook's `send()` all take an `AgentInput`: a string, a list
-of parts (sent as one user message) or a `Message[]` (passed through as it is).
+of parts (sent as one user message) or a `Message[]` (passed through as it is;
+the agent's system prompt is added in front unless the list already starts
+with it, so a `result.messages` can be sent back with a new user message).
 Parts sent through `createAgent()`:
 
 ```ts
@@ -13962,6 +14021,13 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   message, so the model sees the finished turn (the resumed turn's events are
   not streamed). Use `pending()` to check first, or `discardPending()` to drop
   the unfinished turn instead.
+- A turn that fails records the error and the attempt count on its checkpoint
+  (`lastError`, `attempts`). When the error will not go away by retrying (a
+  provider 400 such as a context-length overflow, an auth failure), the next
+  `send()` / `stream()` does not replay the turn: it fails with
+  `LOUSHO_SESSION_TURN_FAILED`. Call `discardPending()` to drop the turn, or
+  `resume()` to retry it once the cause is fixed. Other failures (a crash, a
+  5xx, a network error) are still resumed by the next `send()`.
 - A turn that pauses on a `needsApproval` tool stays in its checkpoint, not in
   the transcript, until it finishes. While it waits, `resume()`, `send()` and
   `stream()` throw `SessionAwaitingApprovalError` (with its `approvalId`), and
@@ -13969,6 +14035,13 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   session. After a restart, open the session and call `resume()` (or `send()`)
   once before resolving, so the agent knows which session the approval belongs
   to; give both agents the same durable `store` (or `approvalStore`).
+- A paused turn locks the session id: the session records it under
+  `<id>.paused` in the checkpoint store, so `agent.send(message, { sessionId: id })`,
+  `agent.stream()` with that `sessionId`, and a session object over a different
+  transcript (another store, or one of another length) are refused with
+  `SessionAwaitingApprovalError` (`LOUSHO_SESSION_AWAITING_APPROVAL`) too, and
+  their `pending()` reports the pause. Decide the approval, or drop the turn with
+  `agent.session({ id }).discardPending()`, to take new turns again.
 - An aborted turn is dropped (its checkpoint is deleted), as without a
   checkpoint store, except for the tool calls that ran in it, which join the
   transcript. `clear()` deletes a pending turn too, and the checkpoint
@@ -14277,9 +14350,20 @@ Use the imperative mood and link the PR.
 - `description` is required.
 - `name` is optional and defaults to the folder name (`SKILL.md` layout) or the
   file name without `.md`.
-- Folders without a `SKILL.md` are ignored.
+- Folders without a `SKILL.md` are ignored. So is a loose `.md` file with no
+  frontmatter (a `README.md`): it is skipped with a console warning instead of
+  failing the whole load. A file with frontmatter but no `description` is still
+  an error.
+- A `<name>/SKILL.md` skill records its folder as `skill.directory`. `load_skill`
+  then appends the folder path and lists the files next to `SKILL.md` (up to 50),
+  and a `read_skill_file` tool (input `{ skill, path }`) is registered to read
+  them. The path is relative to the skill's folder and cannot leave it: `..`,
+  absolute paths and symlinks out are refused. Text files up to 256 KB can be
+  read. `defineSkill({ directory })` sets the same field for a skill you build
+  in code. A tool of your own named `read_skill_file` clashes the same way
+  `load_skill` does.
 - Skills come back sorted by name, so prompts are deterministic.
-- Errors name the file and the problem: missing description, invalid YAML,
+- Errors are `LOUSHO_SKILL_INVALID` and name the file and the problem: missing description, invalid YAML,
   invalid name, an unreadable directory, or two skills with the same name
   (both paths are listed).
 
@@ -14342,7 +14426,7 @@ The event types and their extra fields:
 | `provider.retry`     | `attempt: number`, `maxRetries: number`, `delayMs: number`, `error: { message: string, category?: string }`, `provider: string` | A model call failed and is retried after `delayMs` (`createAgent({ retry })` or any `withRetry()` provider). `attempt` is the attempt that failed (1 = first); `category` is `'rate-limit'`, `'timeout'`, ... and absent when unknown (a 5xx, for example). |
 | `provider.fallback`  | `from: string`, `to: string`, `error: { message: string }` | A model call still failed after its retries and the next provider takes over (`createAgent({ fallbackModels })` or any `withFallback()` provider). `from` and `to` are provider names. |
 | `compaction.start`   | `strategy: string`, `tokensBefore: number`, `contextWindow: number`, `thresholdTokens: number`, `trigger?: 'manual'` | The compaction hook (`createAgent({ compaction })`) found the next model request above its threshold and starts compacting it. Exactly one `compaction.done` follows. `trigger: 'manual'` marks a `session.compact()` call (see `context.cleared`). See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md). |
-| `compaction.done`    | `strategy: string`, `appliedStrategy?: string`, `tokensBefore: number`, `tokensAfter: number`, `prunedToolCallIds: string[]`, `summary?: boolean`, `error?: { message: string }`, `trigger?: 'manual'` | A compaction ended. `tokensAfter` equals `tokensBefore` when nothing could be compacted; `summary` is set when old turns were replaced by a summary; `error` is set when the strategy failed or fell back (the run continues); `appliedStrategy` names the strategy whose result was applied when it differs from `strategy` (`'prune-tool-results'` after a rejected summary). `trigger: 'manual'` marks a `session.compact()` call. |
+| `compaction.done`    | `strategy: string`, `appliedStrategy?: string`, `tokensBefore: number`, `tokensAfter: number`, `prunedToolCallIds: string[]`, `summary?: boolean`, `error?: { message: string }`, `unchanged?: true`, `trigger?: 'manual'` | A compaction ended. `tokensAfter` equals `tokensBefore` and `unchanged` is `true` when nothing could be compacted (later no-op attempts on the same transcript emit no events); `summary` is set when old turns were replaced by a summary; `error` is set when the strategy failed or fell back (the run continues); `appliedStrategy` names the strategy whose result was applied when it differs from `strategy` (`'prune-tool-results'` after a rejected summary). `trigger: 'manual'` marks a `session.compact()` call. |
 | `context.cleared`    | `sessionId: string`, `messagesCleared: number` | `session.clear()` emptied a session's transcript. Delivered to `session.on()` listeners, not to a run's stream. `compaction.start` / `compaction.done` from `session.compact()` also reach `session.on()` and carry `trigger: 'manual'`. |
 | `budget.exceeded`    | `limit: string`, `value: number`, `max: number`, `scope: 'run' \| 'session'` | A [`limits` budget](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets) tripped: `limit` is `'maxTokens'`, `'maxInputTokens'`, `'maxOutputTokens'`, `'maxCostUsd'`, `'maxDurationMs'` or `'maxSteps'`, `value` what was spent, `max` the limit. `run.done` (`'budget-exceeded'`) follows; with `onExceeded: 'throw'`, `error` and `run.done` (`'error'`). |
 | `input.queued`       | `id: string`, `text: string` | `run.enqueue()` took an input (`id` is `EnqueueResult.id`, `text` its user text). Can come at any point of the run, also inside a step. See [Queued input](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/queue-and-steer.md#queued-input). |
@@ -14572,7 +14656,7 @@ await agent.send('Weather in Paris?');
 ### Migrating from `onEvent` / `ExecutionEvent`
 
 `ExecuteOptions.onEvent` and its `ExecutionEvent` type were removed in this
-release (they had been deprecated since LOU-D41). Pass `onAgentEvent` to
+release (they were deprecated earlier). Pass `onAgentEvent` to
 `AgentExecutor.execute()` / `stream()` / `resumeAfterApproval()` instead -
 `createAgent({ onEvent })` already takes `AgentEvent`s and is unchanged.
 The table below maps the old event names to the `AgentEvent`s a listener
@@ -15203,7 +15287,9 @@ If the sub-agent does not finish - it throws, runs out of `maxSteps`, or is
 aborted - the lead gets an error result (`isError: true`) that says why, for
 example `Sub-agent 'researcher' used all 10 of its steps (maxSteps) without
 giving a final answer.` An unknown agent name is also an error result listing
-the valid names. Sub-agent token usage is added to the lead's `result.usage`,
+the valid names. An answer cut off at the sub-agent's output token limit
+(finish reason `'length'`) is still returned, with a line after the footer
+saying it may be incomplete. Sub-agent token usage is added to the lead's `result.usage`,
 a [remote sub-agent](#remote-sub-agents)'s too.
 
 Errors at setup time are thrown with a fix: a sub-agent without a
@@ -16395,6 +16481,11 @@ and one without `execute` falls back to `tool.execute`, independently.
   them with `toolConcurrency` (`1` for strictly sequential). Results reach the
   transcript in the model's call order. See
   [Parallel tool calls](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/runs.md#parallel-tool-calls).
+- **Size cap.** A result whose JSON is longer than `maxToolResultChars`
+  (`createAgent({ maxToolResultChars })`, default `50_000` characters, about
+  12k tokens) reaches the model, and the transcript, as its head and tail with
+  a marker saying how many characters were cut. `Infinity` turns the cap off.
+  `onToolResult`, hooks and `tool.done` events still get the whole result.
 - **Cancellation.** A run's `AbortSignal` reaches each call as
   `ctx.abortSignal`, so long-running work can stop early.
 - **Progress.** An `execute` written as `async function*` streams snapshots

@@ -113,7 +113,7 @@ await agent.send('Weather in Paris?');
 ### Migrating from `onEvent` / `ExecutionEvent`
 
 `ExecuteOptions.onEvent` and its `ExecutionEvent` type were removed in this
-release (they had been deprecated since LOU-D41). Pass `onAgentEvent` to
+release (they were deprecated earlier). Pass `onAgentEvent` to
 `AgentExecutor.execute()` / `stream()` / `resumeAfterApproval()` instead -
 `createAgent({ onEvent })` already takes `AgentEvent`s and is unchanged.
 The table below maps the old event names to the `AgentEvent`s a listener

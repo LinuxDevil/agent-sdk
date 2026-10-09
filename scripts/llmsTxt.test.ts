@@ -3,6 +3,7 @@ import {
   absoluteHref,
   extractParagraph,
   extractTitle,
+  describePage,
   firstSentence,
   isUserDoc,
   normalizeNewlines,
@@ -12,7 +13,9 @@ import {
   renderLlmsTxt,
   repoBaseUrl,
   rewriteLinks,
+  splitSentences,
   stripNoise,
+  stripTicketIds,
 } from './llmsTxt';
 import type { LlmsInput } from './llmsTxt';
 
@@ -80,6 +83,36 @@ describe('extractParagraph / firstSentence', () => {
   });
 });
 
+describe('splitSentences / describePage / stripTicketIds', () => {
+  it('does not end a sentence inside brackets, braces or inline code', () => {
+    const text = 'A hook is `{ name, pre? }` that runs (see a.b. Then c) in the loop. Next one.';
+    expect(splitSentences(text)).toEqual([
+      'A hook is `{ name, pre? }` that runs (see a.b. Then c) in the loop.',
+      'Next one.',
+    ]);
+    expect(firstSentence('Object { a?, b? } ends here. More.')).toBe('Object { a?, b? } ends here.');
+  });
+
+  it('uses the frontmatter description when present', () => {
+    expect(describePage('---\ndescription: "Does X. And Y."\n---\n# T\n\nIgnored.\n')).toBe('Does X. And Y.');
+  });
+
+  it('takes whole sentences from the opening paragraph up to the length cap, never mid-sentence', () => {
+    const long = Array.from({ length: 20 }, (_, i) => `Sentence number ${i} is here.`).join(' ');
+    const out = describePage(`# T\n\n${long}\n`);
+    expect(out.length).toBeLessThanOrEqual(400);
+    expect(out.endsWith('here.')).toBe(true);
+    expect(out.startsWith('Sentence number 0 is here. Sentence number 1')).toBe(true);
+  });
+
+  it('strips internal LOU-* ticket ids', () => {
+    expect(stripTicketIds('ops-pipeline (LOU-J8)')).toBe('ops-pipeline');
+    expect(stripTicketIds('usage (LOU-B6): basic')).toBe('usage: basic');
+    expect(stripTicketIds('every LOU-J primitive')).toBe('every primitive');
+    expect(describePage('# T\n\nFixed in LOU-D41 already.\n')).not.toContain('LOU-');
+  });
+});
+
 describe('stripNoise', () => {
   it('removes comments and badge lines but leaves code fences alone', () => {
     const md = 'a\n\n![b](x)\n\n<!-- c -->\n\n```html\n<!-- keep -->\n```\n';
@@ -137,6 +170,7 @@ const INPUT: LlmsInput = {
   readme: { path: 'README.md', markdown: '# Pkg\n\n![b](x)\n\nA tool. More.\n\n[Go](docs/b.md)\n' },
   docs: [
     { path: 'docs/deployment.md', markdown: '# Deployment\n\nShip it. Done.\n' },
+    { path: 'docs/prompting-techniques.md', markdown: '# Prompting\n\nBackground reading.\n' },
     { path: 'docs/b.md', markdown: '# B Page\n\nAbout B. See [A](./a.md).\n' },
     { path: 'docs/installation.md', markdown: '# Installation\n\nInstall it.\n' },
   ],
@@ -153,17 +187,18 @@ describe('renderLlmsTxt', () => {
         '',
         '## Docs',
         '',
-        `- [Pkg](${BASE}/blob/main/README.md): A tool.`,
+        `- [Pkg](${BASE}/blob/main/README.md): A tool. More.`,
         `- [Installation](${BASE}/blob/main/docs/installation.md): Install it.`,
-        `- [B Page](${BASE}/blob/main/docs/b.md): About B.`,
+        `- [B Page](${BASE}/blob/main/docs/b.md): About B. See A.`,
+        `- [Deployment](${BASE}/blob/main/docs/deployment.md): Ship it. Done.`,
         '',
         '## Examples',
         '',
-        `- [z](${BASE}/blob/main/examples/z/README.md): An example.`,
+        `- [z](${BASE}/blob/main/examples/z/README.md): An example. Yes.`,
         '',
         '## Optional',
         '',
-        `- [Deployment](${BASE}/blob/main/docs/deployment.md): Ship it.`,
+        `- [Prompting](${BASE}/blob/main/docs/prompting-techniques.md): Background reading.`,
         '',
       ].join('\n'),
     );
