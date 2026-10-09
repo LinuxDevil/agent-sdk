@@ -1935,7 +1935,6 @@ export const ERROR_CODES: {
     readonly LOUSHO_FLOW_INVALID: "Fix the flow definition the message names (its name, code, inputs and node types).";
     readonly LOUSHO_FLOW_TOOL_DENIED: "Pass an approve callback in the flow context to decide tool calls that need approval, or change the permission rule or needsApproval policy that denied the call.";
     readonly LOUSHO_STORAGE_FAILED: "Read the message: it names the database or file that failed; check the path, permissions and Node version, and the `cause`.";
-    readonly LOUSHO_STORAGE_BUSY: "Another process holds the SQLite write lock; retry the call, or find what keeps the lock (a long transaction, a backup, a second replica).";
     readonly LOUSHO_TRIGGER_INVALID: "Fix the trigger option the message names; the message shows a working example.";
     readonly LOUSHO_DEPLOY_FAILED: "Read the message: it names the missing option, file or unsupported feature; docs/deployment.md covers each target.";
     readonly LOUSHO_EVALS_INVALID: "Call the eval helper the way the message says (inside a vitest file, after t.send(), with a judge configured).";
@@ -4016,6 +4015,12 @@ export interface ModelSettings {
     seed?: number;
     stop?: string[];
     temperature?: number;
+    toolChoice?: 'auto' | 'required' | 'none' | {
+        type: 'function';
+        function: {
+            name: string;
+        };
+    };
     topP?: number;
 }
 
@@ -7114,8 +7119,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-CAF7vF8c.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-CAF7vF8c.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-CTHNxcAc.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-CTHNxcAc.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
