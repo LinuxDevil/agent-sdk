@@ -18,6 +18,13 @@ class RecordingSessionStore extends MemorySessionStore {
     this.ids.add(id);
     await super.save(id, messages);
   }
+
+  // A session commits through saveIf (Eve DUR-F4), which does not go through save().
+  override async saveIf(id: string, expectedRevision: string, messages: readonly Message[]): Promise<boolean> {
+    const saved = await super.saveIf(id, expectedRevision, messages);
+    if (saved) this.ids.add(id);
+    return saved;
+  }
 }
 
 export function durableStores() {

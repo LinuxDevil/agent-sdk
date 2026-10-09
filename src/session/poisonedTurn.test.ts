@@ -10,14 +10,13 @@ import { z } from 'zod';
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { memoryStore } from '../storage/agentStore';
-import { mockModel, type MockTurn } from '../testing';
-import type { GenerateOptions } from '../providers/llm';
+import { mockModel, type MockRequest, type MockStaticTurn } from '../testing';
 
 const dumpLogs = defineTool({ name: 'dump_logs', description: 'dump logs', input: z.object({}), execute: async () => 'HUGE'.repeat(10) });
 
 /** A model whose call after the `dump_logs` result fails with `error`; other turns answer. */
 function poisoning(error: Error) {
-  const turn = (request: GenerateOptions): MockTurn => {
+  const turn = (request: MockRequest): MockStaticTurn => {
     if (request.messages.some((m) => m.role === 'tool' && String(m.content).includes('HUGE'))) return { error };
     const lastUser = [...request.messages].reverse().find((m) => m.role === 'user');
     if (String(lastUser?.content).startsWith('A')) return { toolCalls: [{ name: 'dump_logs', args: {} }] };

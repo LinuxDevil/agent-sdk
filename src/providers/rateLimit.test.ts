@@ -88,7 +88,7 @@ describe('withRateLimit', () => {
   });
 
   it('holds calls back by their estimated tokens per minute', async () => {
-    const mock = fake('t', async () => ({ content: 'a' }) as GenerateResult);
+    const mock = fake('t', async () => ({ text: 'a', finishReason: 'stop' }) as GenerateResult);
     const spy = vi.spyOn(mock, 'generate');
     const limited = withRateLimit(mock, { tokensPerMinute: 1_000 });
     const big = call('x', { maxTokens: 600 });
@@ -106,7 +106,7 @@ describe('withRateLimit', () => {
   });
 
   it('re-books a finished call at its reported usage', async () => {
-    const reply = { content: 'a', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } } as GenerateResult;
+    const reply: GenerateResult = { text: 'a', finishReason: 'stop', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
     const inner = fake('u', async () => reply);
     const spy = vi.spyOn(inner, 'generate');
     const limited = withRateLimit(inner, { tokensPerMinute: 1_000 });
@@ -163,7 +163,7 @@ describe('withRateLimit', () => {
     let end!: () => void;
     const ended = new Promise<void>((resolve) => (end = resolve));
     const inner: LLMProvider = {
-      ...fake('s', async () => ({ content: 'x' }) as GenerateResult),
+      ...fake('s', async () => ({ text: 'x', finishReason: 'stop' }) as GenerateResult),
       stream: async () => ({
         textStream: (async function* () {})(),
         fullStream: (async function* (): AsyncGenerator<StreamChunk> {

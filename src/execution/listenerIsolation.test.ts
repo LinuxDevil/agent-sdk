@@ -5,7 +5,9 @@ import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('onEvent listener isolation (Eve CORE-F2)', () => {
   for (const failOn of ['run.start', 'tool.start', 'tool.done', 'run.done'] as const) {

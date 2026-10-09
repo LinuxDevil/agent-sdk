@@ -175,7 +175,7 @@ describe('createAgent({ store }) defaults and precedence (LOU-D30)', () => {
     ]);
 
     expect(results.map((r) => r.finishReason)).toEqual(['stop', 'stop', 'stop']);
-    const users = (await store.checkpoints.load('chat-42'))!.messages.filter((m) => m.role === 'user').map((m) => m.content);
+    const users = (await store.checkpoints!.load('chat-42'))!.messages.filter((m) => m.role === 'user').map((m) => m.content);
     expect(users[0]).toBe('first');
     expect(users.slice(1).sort()).toEqual(['order pizza', 'order ramen', 'order sushi']);
     store.close?.();

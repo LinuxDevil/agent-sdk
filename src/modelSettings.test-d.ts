@@ -28,7 +28,8 @@ describe('createAgent modelSettings types (C6)', () => {
 describe('composing createAgent configs (log F18)', () => {
   it('spreads a shared CreateAgentBase into createAgent()', () => {
     const shared: CreateAgentBase = { maxSteps: 8, modelSettings: { maxTokens: 512 } };
-    createAgent({ ...shared, model: 'openai/gpt-4o-mini', instructions: 'Be brief.' });
+    // Type-only: never called (a model string needs OPENAI_API_KEY at createAgent()).
+    void (() => createAgent({ ...shared, model: 'openai/gpt-4o-mini', instructions: 'Be brief.' }));
     createAgent({ ...shared, provider, prompt: 'Be brief.' });
   });
 

@@ -3,7 +3,7 @@
  * resume continues once the approval is decided.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { z } from 'zod';
 import type { AgentFlow } from '../types/flow';
 import { FlowExecutor, type FlowExecutionContext, type FlowResumeContext } from './FlowExecutor';
@@ -29,8 +29,8 @@ const flow: AgentFlow = {
 describe('FlowExecutor approval pause (DUR-F17)', () => {
   let provider: MockLLMProvider;
   let store: CheckpointStore;
-  let pay: ReturnType<typeof vi.fn>;
-  let approve: ReturnType<typeof vi.fn>;
+  let pay: Mock<[{ amount: string }], Promise<string>>;
+  let approve: Mock<[], 'defer'>;
   let context: FlowExecutionContext;
   let resumeContext: FlowResumeContext;
 

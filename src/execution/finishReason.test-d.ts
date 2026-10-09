@@ -26,7 +26,10 @@ describe('ExecutionFinishReason', () => {
     // @ts-expect-error - 'max_steps' is not a finish reason ('max-steps' is)
     const typo: ExecutionFinishReason = 'max_steps';
     void typo;
-    // @ts-expect-error - the comparison has no overlap
-    void (result.finishReason === 'max_steps');
+    // Type-only (`result` is declared, not defined): never called.
+    void (() => {
+      // @ts-expect-error - the comparison has no overlap
+      void (result.finishReason === 'max_steps');
+    });
   });
 });

@@ -96,7 +96,7 @@ describe('loadMcpTools', () => {
     const descriptors = await loadMcpTools(client, 'srv');
     const inputSchema = descriptors['srv__pick'].inputSchema;
     expect(inputSchema).toBeInstanceOf(z.ZodObject);
-    expect(inputSchema!.safeParse({ a: 'x', extra: 1 })).toMatchObject({ success: true, data: { a: 'x', extra: 1 } });
+    expect((inputSchema as z.ZodTypeAny).safeParse({ a: 'x', extra: 1 })).toMatchObject({ success: true, data: { a: 'x', extra: 1 } });
   });
 
   it('produces distinctly-named descriptors with zero collision across two connections exposing a tool of the same name', async () => {
