@@ -512,7 +512,7 @@ describe('report, rendering and exit codes', () => {
       [warn] Provider package ollama-ai-provider: not installed (optional)
              fix: npm install ollama-ai-provider@^1.2.0
       [warn] Provider package @earendil-works/pi-ai: not installed (optional)
-             fix: npm install @earendil-works/pi-ai@1.0.3
+             fix: npm install @earendil-works/pi-ai@^1.0.3
       [ ok ] Optional package dockerode: 5.0.1 installed - enables Docker sandboxing (SubprocessSandbox)
       [ ok ] Optional package @modelcontextprotocol/sdk: 1.30.1 installed - enables MCP (serveMcp, \`lousho mcp\` and MCP client connections)
       [ ok ] Optional package prompts: 2.4.2 installed - enables the interactive prompts of \`lousho init\` (pass --yes to skip them)

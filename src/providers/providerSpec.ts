@@ -53,7 +53,7 @@ const OLLAMA_PEERS: Record<AiMajor, PeerPairing> = {
 };
 
 /** pi does not pair with an `ai` major: the same `@earendil-works/pi-ai` range applies on all of them. */
-const PI_PEER: PeerPairing = { name: '@earendil-works/pi-ai', range: '1.0.3', accepts: '1.0.3' };
+const PI_PEER: PeerPairing = { name: '@earendil-works/pi-ai', range: '^1.0.3', accepts: '^1.0.3' };
 const PI_PEERS: Record<AiMajor, PeerPairing> = { 4: PI_PEER, 6: PI_PEER, 7: PI_PEER };
 
 interface ProviderEntry {

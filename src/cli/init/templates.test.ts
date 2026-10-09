@@ -29,7 +29,7 @@ const SCAFFOLD_PAIRINGS: Record<string, Record<string, string>> = {
   anthropic: { ai: '^7.0.0', '@ai-sdk/anthropic': '^4.0.0' },
   openrouter: { ai: '^7.0.0', '@ai-sdk/openai': '^4.0.0' },
   ollama: { ai: '^7.0.0', 'ollama-ai-provider-v2': '^4.0.0' },
-  pi: { ai: '^7.0.0', '@earendil-works/pi-ai': '1.0.3' },
+  pi: { ai: '^7.0.0', '@earendil-works/pi-ai': '^1.0.3' },
 };
 
 const combos = PROVIDER_NAMES.flatMap((provider) => TEMPLATES.map((template) => [provider, template] as const));
