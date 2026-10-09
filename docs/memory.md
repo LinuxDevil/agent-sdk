@@ -137,7 +137,12 @@ fill it from code with `provider.add(memoryKey(slot)!, { text })`.
 
 The first three keep at most `maxItems` items per scope key (default 1000;
 adding one more drops the oldest) and match a `query` by keyword: an item matches when it
-contains one of the query's words of three or more letters, ignoring case.
+shares a whole word with the query, ignoring case and a plural `s` (`cat` finds
+"has two cats" but not "education"). Only the query's words of three or more
+letters count, unless it has none (`"AI"`). Items matching more of the query's
+words come first, then the newest. A query that shares no word with any item
+returns nothing. Keyword matching does not know synonyms: to recall by meaning,
+use a [vector provider](#semantic-recall).
 Every built-in provider dedupes on `text`: adding an item whose text is
 already stored returns the stored item instead of a duplicate (so an agent
 that remembers the same fact twice keeps one copy).

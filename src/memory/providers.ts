@@ -14,11 +14,36 @@ interface ItemStore {
   save(scopeKey: string, items: MemoryItem[]): Promise<void>;
 }
 
-/** The newest `limit` items; with a `query`, only those containing one of its words (3+ letters, any case). */
+/** Lower-cased words of `text`, a trailing plural `s` dropped (`cats` -> `cat`). */
+function wordsOf(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean)
+    .map((w) => (w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w));
+}
+
+/**
+ * The newest `limit` items. With a non-blank `query`, only items sharing a
+ * whole word with it (any case; its words of 3+ letters, or all its words
+ * when it has none that long), the items matching more of its words first,
+ * then newest first (Eve MEM-F1).
+ */
 function select(items: readonly MemoryItem[], { limit, query }: { limit?: number; query?: string } = {}): MemoryItem[] {
-  const words = (query ?? '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3);
-  const matching = words.length === 0 ? items : items.filter((i) => words.some((w) => i.text.toLowerCase().includes(w)));
-  return matching.slice().reverse().slice(0, limit);
+  const newest = items.slice().reverse();
+  const all = [...new Set(wordsOf(query ?? ''))];
+  if (!query?.trim()) return newest.slice(0, limit);
+  const long = all.filter((w) => w.length >= 3);
+  const words = long.length > 0 ? long : all;
+  return newest
+    .map((item) => {
+      const have = new Set(wordsOf(item.text));
+      return { item, hits: words.filter((w) => have.has(w)).length };
+    })
+    .filter(({ hits }) => hits > 0)
+    .sort((a, b) => b.hits - a.hits) // stable: ties stay newest first
+    .slice(0, limit)
+    .map(({ item }) => item);
 }
 
 /**
