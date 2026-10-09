@@ -38,6 +38,7 @@ import type { ReasoningOption } from './providers/reasoning';
 import {
   AgentSession,
   enqueueSessionWork,
+  pausedSessionTurn,
   withDefaultStores,
   type SessionOptions,
   type SessionTurnCall,
@@ -56,7 +57,7 @@ import { InMemoryApprovalStore } from './execution/InMemoryApprovalStore';
 import { resumeRequest, type ResumeRequest } from './execution/resume';
 import { RUN_CONFIG_KEY, type CheckpointStore, type ForkOptions, type ForkResult } from './execution/checkpoint';
 import type { AgentDriftMode } from './execution/agentFingerprint';
-import { ConfigurationError, SDKError } from './execution/errors';
+import { ConfigurationError, SDKError, SessionAwaitingApprovalError } from './execution/errors';
 import { newId } from './utils/id';
 import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from './createAgentApprovals';
 import { createAgentOAuth, type AgentOAuth } from './oauth/agentOAuth';
@@ -1042,6 +1043,11 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
    */
   const serially = <T>(turn: RunTurn, task: () => Promise<T>): Promise<T> =>
     turn.sessionId !== undefined && turn.checkpointStore ? enqueueSessionWork(turn.checkpointStore, turn.sessionId, task) : task();
+  /** Eve EVE-0: a session's turn that waits on an approval locks its id - a `send(msg, { sessionId })` run must not run beside it. */
+  const assertNotPaused = async (sessionId: string | undefined): Promise<void> => {
+    const paused = sessionId !== undefined && checkpoints ? await pausedSessionTurn(checkpoints, sessionId) : null;
+    if (paused) throw new SessionAwaitingApprovalError(paused.sessionId, paused.approvalId, paused.approvalKind);
+  };
   const simpleAgent: SimpleAgent<Typed> = {
     send(message: AgentInput, options: SendOptions = {}): Promise<ExecutionResult<Typed>> {
       const { sessionId, metadata, principal } = options;
@@ -1052,6 +1058,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
         return Promise.reject(error);
       }
       return serially(turn, async () => {
+        await assertNotPaused(sessionId);
         const result = await run(toMessages(message), { sessionId, input: message, metadata, principal }, options.signal, turn);
         // N4: an `approve` callback's decisions continue the run under this call's mode.
         return approvals.settle(result, options.signal, undefined, turn.permissionMode) as Promise<ExecutionResult<Typed>>;
@@ -1064,7 +1071,15 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       const run =
         sessionId === undefined
           ? stream(toMessages(message), ctx, options.signal, turn)
-          : streamPrepared(() => prepare(toMessages(message), ctx, options.signal, turn), options.signal, turn.inputQueue, (task) => serially(turn, task));
+          : streamPrepared(
+              async () => {
+                await assertNotPaused(sessionId);
+                return prepare(toMessages(message), ctx, options.signal, turn);
+              },
+              options.signal,
+              turn.inputQueue,
+              (task) => serially(turn, task)
+            );
       return (options.throwOnError === false ? run : throwingRun(run)) as AgentRun<Typed>;
     },
     session,

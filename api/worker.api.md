@@ -308,6 +308,7 @@ class AgentSession<TObject = unknown> {
     load(): Promise<readonly Message[]>;
     get messages(): readonly Message[];
     on(listener: (event: AgentEvent) => void): () => void;
+    protected pausedTurnFound(_approvalId: string): void;
     // Warning: (ae-forgotten-export) The symbol "PendingTurn" needs to be exported by the entry point worker.d.ts
     pending(): Promise<PendingTurn | null>;
     get permissionMode(): PermissionMode;

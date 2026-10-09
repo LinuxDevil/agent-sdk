@@ -226,6 +226,29 @@ export function withDefaultStores(options: SessionOptions = {}, defaults: Partia
 }
 
 /**
+ * Eve EVE-0: the checkpoint id under which a session records its turn that
+ * waits on an approval - a pointer to that turn's `<id>.turn-<n>` checkpoint,
+ * so the pause is found whatever transcript (length) a caller sees.
+ */
+export function pausedTurnKey(id: string): string {
+  return `${id}.paused`;
+}
+
+/**
+ * Eve EVE-0: the session's turn that waits on an approval, found through its
+ * {@link pausedTurnKey} pointer, or `null`. A pointer whose turn no longer
+ * waits (decided, finished or discarded elsewhere) is deleted.
+ */
+export async function pausedSessionTurn(checkpointStore: CheckpointStore, id: string): Promise<Checkpoint | null> {
+  const pointer = await checkpointStore.load(pausedTurnKey(id));
+  if (!pointer) return null;
+  const turn = await checkpointStore.load(pointer.sessionId);
+  if (turn?.status === 'awaiting-approval') return turn;
+  await checkpointStore.delete(pausedTurnKey(id));
+  return null;
+}
+
+/**
  * Longest prefix of `messages` that a provider accepts: every assistant
  * tool-call turn is followed by a result for each of its calls, and no tool
  * message is orphaned.
@@ -489,6 +512,7 @@ export class AgentSession<TObject = unknown> {
     return this.enqueue(async () => {
       const checkpoint = await this.pendingCheckpoint();
       if (!checkpoint) return null;
+      this.foundPaused(checkpoint);
       const status = checkpoint.status === 'awaiting-approval' ? 'awaiting-approval' : 'in-progress';
       const { approvalId, approvalKind } = checkpoint;
       return { status, approvalId, ...(status === 'awaiting-approval' && approvalKind && { approvalKind }) };
@@ -516,7 +540,12 @@ export class AgentSession<TObject = unknown> {
   /** Drops a pending turn without finishing it; the transcript stays as it was before that turn. */
   discardPending(): Promise<void> {
     return this.enqueue(async () => {
-      if (await this.pendingCheckpoint()) await this.deleteCheckpoint();
+      const pending = await this.pendingCheckpoint();
+      if (!pending) return;
+      await this.deleteCheckpoint();
+      // Eve EVE-0: a paused turn another view of the session started (another transcript length) is dropped too.
+      if (this.checkpointStore && pending.sessionId !== this.turnCheckpoint()?.sessionId) await this.checkpointStore.delete(pending.sessionId);
+      await this.checkpointStore?.delete(pausedTurnKey(this.id));
     });
   }
 
@@ -589,6 +618,7 @@ export class AgentSession<TObject = unknown> {
       const pending = this.checkpointStore ? await this.pendingCheckpoint() : null;
       if (pending?.status === 'awaiting-approval') throw this.awaitingApproval(pending);
       await this.deleteTurnCheckpoints();
+      await this.checkpointStore?.delete(pausedTurnKey(this.id));
       await this.store.delete(this.id);
       const messagesCleared = this.transcript.length;
       this.transcript = [];
@@ -680,8 +710,21 @@ export class AgentSession<TObject = unknown> {
     return this.enqueue(task);
   }
 
-  private awaitingApproval({ approvalId, approvalKind }: Checkpoint): SessionAwaitingApprovalError {
-    return new SessionAwaitingApprovalError(this.turnCheckpoint()?.sessionId ?? this.id, approvalId, approvalKind);
+  /** Reports a paused turn of this transcript (not one another view of the session started) to {@link pausedTurnFound}. */
+  private foundPaused(checkpoint: Checkpoint): void {
+    if (checkpoint.status === 'awaiting-approval' && checkpoint.approvalId && checkpoint.sessionId === this.turnCheckpoint()?.sessionId) {
+      this.pausedTurnFound(checkpoint.approvalId);
+    }
+  }
+
+  /**
+   * Called when `pending()`, `resume()`, `send()` or `stream()` finds this session's turn waiting on approval
+   * `approvalId` (coding-agent F2), so `agent.approvals.resolve()` continues it in this session.
+   */
+  protected pausedTurnFound(_approvalId: string): void {}
+
+  private awaitingApproval({ sessionId, approvalId, approvalKind }: Checkpoint): SessionAwaitingApprovalError {
+    return new SessionAwaitingApprovalError(sessionId || (this.turnCheckpoint()?.sessionId ?? this.id), approvalId, approvalKind);
   }
 
   private async assertNoPendingTurn(): Promise<void> {
@@ -819,14 +862,22 @@ export class AgentSession<TObject = unknown> {
   private async pendingCheckpoint(): Promise<Checkpoint | null> {
     await this.ensureLoaded();
     const turn = this.turnCheckpoint();
-    const checkpoint = turn ? await turn.checkpointStore.load(turn.sessionId) : null;
-    if (checkpoint?.status !== 'finished') return checkpoint;
+    if (!turn) return null;
+    const checkpoint = await turn.checkpointStore.load(turn.sessionId);
+    // Eve EVE-0: a turn waiting on an approval counts whatever transcript it started from.
+    if (!checkpoint) return pausedSessionTurn(turn.checkpointStore, this.id);
+    if (checkpoint.status !== 'finished') return checkpoint;
     await this.commit(checkpoint.messages, runSpent(restoreRunUsage(checkpoint.usage), checkpoint.stepIndex, 0));
     return null;
   }
 
   private async resumePending(signal?: AbortSignal): Promise<ExecutionResult | null> {
-    if (!(await this.pendingCheckpoint())) return null;
+    const pending = await this.pendingCheckpoint();
+    if (!pending) return null;
+    if (pending.status === 'awaiting-approval') {
+      this.foundPaused(pending);
+      throw this.awaitingApproval(pending);
+    }
     return this.record(await this.run([], signal, this.turnOptions()));
   }
 
@@ -843,6 +894,18 @@ export class AgentSession<TObject = unknown> {
     });
   }
 
+  /**
+   * Eve EVE-0: points {@link pausedTurnKey} at this turn's checkpoint while it waits on an approval, so a new turn
+   * under the session's id - `agent.send(msg, { sessionId })`, or a session object over another transcript - is
+   * refused with `SessionAwaitingApprovalError` instead of running beside the paused one.
+   */
+  private async markPaused(): Promise<void> {
+    const turn = this.turnCheckpoint();
+    const checkpoint = turn && (await turn.checkpointStore.load(turn.sessionId));
+    if (!turn || checkpoint?.status !== 'awaiting-approval') return;
+    await turn.checkpointStore.save(pausedTurnKey(this.id), { ...checkpoint, messages: [], toolCalls: [], stepUsage: undefined, businessState: undefined });
+  }
+
   private async record(result: ExecutionResult): Promise<ExecutionResult> {
     if (result.finishReason === 'aborted') {
       // B4: tool calls that ran (a refund, an email) stay in the transcript; the rest of the turn is dropped.
@@ -855,6 +918,7 @@ export class AgentSession<TObject = unknown> {
     if (result.finishReason === 'awaiting-approval') {
       // Its spend is recorded once the turn finishes (the resumed result counts it all).
       if (!this.checkpointStore) await this.commit(result.messages);
+      else await this.markPaused();
     } else {
       await this.commit(result.messages, runSpent(result.usage, result.steps, Date.now() - this.turnStartedAt));
     }

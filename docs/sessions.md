@@ -194,6 +194,13 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   session. After a restart, open the session and call `resume()` (or `send()`)
   once before resolving, so the agent knows which session the approval belongs
   to; give both agents the same durable `store` (or `approvalStore`).
+- A paused turn locks the session id: the session records it under
+  `<id>.paused` in the checkpoint store, so `agent.send(message, { sessionId: id })`,
+  `agent.stream()` with that `sessionId`, and a session object over a different
+  transcript (another store, or one of another length) are refused with
+  `SessionAwaitingApprovalError` (`LOUSHO_SESSION_AWAITING_APPROVAL`) too, and
+  their `pending()` reports the pause. Decide the approval, or drop the turn with
+  `agent.session({ id }).discardPending()`, to take new turns again.
 - An aborted turn is dropped (its checkpoint is deleted), as without a
   checkpoint store, except for the tool calls that ran in it, which join the
   transcript. `clear()` deletes a pending turn too, and the checkpoint
