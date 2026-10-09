@@ -6161,6 +6161,7 @@ export interface SubagentInfo {
 // @public
 export interface SubagentOptions {
     awaitBackgroundOnFinish?: boolean;
+    background?: boolean;
     maxConcurrent?: number;
     sessions?: SessionStore;
 }

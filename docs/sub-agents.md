@@ -56,8 +56,8 @@ With `subagents`, the lead agent gets:
    sub-agent (`- name: description`), plus a sentence saying that a sub-agent
    sees only the prompt it is given.
 2. ONE tool, `task`, with the input
-   `{ agent: <one of the names>, prompt: string, description: string, background?: boolean, taskId?: string, mode?: 'new' | 'resume' | 'fork' }`
-   (`description` is a 3-5 word label used in events and hooks; `taskId` and
+   `{ agent: <one of the names>, prompt: string, description?: string, background?: boolean, taskId?: string, mode?: 'new' | 'resume' | 'fork' }`
+   (`description` is an optional 3-5 word label used in events and hooks; `taskId` and
    `mode` continue an earlier task, see [Continuing a task](#continuing-a-task)).
 3. Three tools for background tasks: `agent_status`, `agent_await` and
    `agent_cancel` (see [Background sub-agents](#background-sub-agents)).
@@ -186,6 +186,12 @@ const lead = createAgent({
 For `AgentExecutor.execute()`, attach the same options to the `subagents`
 value with `withSubagentOptions(subagents, options)`, which returns it. On
 `createAgent()`, `subagentOptions` override options attached that way.
+
+A lead that never needs background tasks can leave them out with
+`subagentOptions: { background: false }`: the lead then gets only the `task`
+tool, without its `background` argument, and the prompt block does not mention
+background tasks. That saves the three tools' schemas and text (several hundred
+tokens) on every lead request.
 
 A background sub-agent inherits from the lead run like a synchronous one
 (hooks, tracing, event listeners, usage roll-up), and `maxSubagentDepth` applies the

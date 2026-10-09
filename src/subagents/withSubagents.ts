@@ -165,11 +165,14 @@ async function resolveSubagent(subagents: Subagents, name: string, names: readon
   return registrationOf(agent, name, 'task');
 }
 
-function subagentsPromptBlock(summaries: readonly SubagentSummary[]): string {
+function subagentsPromptBlock(summaries: readonly SubagentSummary[], background: boolean): string {
+  const backgroundUse = background
+    ? ' With `background: true` a task runs while you keep working: check it with `agent_status`, collect its answer with `agent_await` before you finish, or stop it with `agent_cancel`.'
+    : '';
   return [
     '## Available sub-agents',
     '',
-    `Delegate a self-contained task to one of these with the \`${TASK_TOOL}\` tool. A sub-agent sees only the prompt you give it, not this conversation, so include everything it needs. Several \`${TASK_TOOL}\` calls in one turn run in parallel. With \`background: true\` a task runs while you keep working: check it with \`agent_status\`, collect its answer with \`agent_await\` before you finish, or stop it with \`agent_cancel\`. Every result ends with a taskId: pass it back as \`taskId\` to ask that sub-agent a follow-up with its earlier work in context, or with \`mode: 'fork'\` to branch a copy of that conversation.`,
+    `Delegate a self-contained task to one of these with the \`${TASK_TOOL}\` tool. A sub-agent sees only the prompt you give it, not this conversation, so include everything it needs. Several \`${TASK_TOOL}\` calls in one turn run in parallel.${backgroundUse} Every result ends with a taskId: pass it back as \`taskId\` to ask that sub-agent a follow-up with its earlier work in context, or with \`mode: 'fork'\` to branch a copy of that conversation.`,
     '',
     ...summaries.map((s) => `- ${s.name}: ${s.description.replace(/\s+/g, ' ').trim()}`),
   ].join('\n');
@@ -209,7 +212,7 @@ function taskResult(name: string, result: ExecutionResult, maxSteps: number, tas
 const TRUNCATED_NOTE =
   '[The answer was cut off at the output token limit and may be incomplete: ask a narrower question, or continue the task with its taskId.]';
 
-type TaskArgs = { agent: string; prompt: string; description: string; background?: boolean; taskId?: string; mode?: TaskMode };
+type TaskArgs = { agent: string; prompt: string; description?: string; background?: boolean; taskId?: string; mode?: TaskMode };
 type ToolOptions = { abortSignal?: AbortSignal; onDelegatedUsage?: (usage: RunUsage) => void } | undefined;
 
 /** The child conversation a `task` call runs in (LOU-Y6). */
@@ -356,7 +359,11 @@ function unknownSubagent(names: readonly string[]): (input: unknown) => string {
   return (input) => (input === undefined ? 'Required' : `Unknown sub-agent ${JSON.stringify(input)}. Expected one of: ${valid}`);
 }
 
-function createTaskTool(ctx: TaskContext): DefinedTool {
+function createTaskTool(ctx: TaskContext, background: boolean): DefinedTool {
+  const backgroundArg = z
+    .boolean()
+    .optional()
+    .describe(`true: start the sub-agent and return a taskId at once; collect the answer later with agent_await. ${AWAIT_APPROVAL_HINT}`);
   // N4: usable in plan mode because a local sub-agent inherits the mode (a remote one is refused, see runRemoteTask).
   return allowInPlanMode(defineTool({
     name: TASK_TOOL,
@@ -367,18 +374,17 @@ function createTaskTool(ctx: TaskContext): DefinedTool {
     input: z.object({
       agent: z.enum(ctx.names as [string, ...string[]], anyError(unknownSubagent(ctx.names))).describe('Name of the sub-agent, exactly as listed'),
       prompt: z.string().describe('Complete instructions for the sub-agent, including all context it needs'),
-      description: z.string().describe('A short (3-5 word) label for this task'),
-      background: z
-        .boolean()
-        .optional()
-        .describe(`true: start the sub-agent and return a taskId at once; collect the answer later with agent_await. ${AWAIT_APPROVAL_HINT}`),
+      // Eve MA-F14: optional, so a lead that sends none is not refused.
+      description: z.string().optional().describe('A short (3-5 word) label for this task'),
+      // Eve MA-F14: offered only while background tasks are on (subagentOptions.background).
+      ...(background ? { background: backgroundArg } : {}),
       taskId: z.string().optional().describe('The taskId of an earlier task of the same agent, to continue (or fork) it'),
       mode: z
         .enum(['new', 'resume', 'fork'])
         .optional()
         .describe("'new' (default without taskId): a fresh sub-agent. 'resume' (default with taskId): continue that task. 'fork': a new task starting from a copy of it"),
     }),
-    execute: (args, options) => startTask(ctx, args, options),
+    execute: (args, options) => startTask(ctx, { ...args, background: args.background === true }, options),
   }));
 }
 
@@ -536,9 +542,10 @@ export async function withSubagents(
   const background = new BackgroundTasks(options.maxConcurrent);
   const sessions = TaskSessions.of(options.sessions, run.sessionId);
   const ctx: TaskContext = { subagents, names: summaries.map((s) => s.name), background, sessions, backgroundCalls: new Map() };
-  const extended = withPromptTool(agent, toolRegistry, createTaskTool(ctx), subagentsPromptBlock(summaries));
+  const backgroundOn = options.background !== false;
+  const extended = withPromptTool(agent, toolRegistry, createTaskTool(ctx, backgroundOn), subagentsPromptBlock(summaries, backgroundOn));
   const tools = { ...extended.agent.tools };
-  for (const tool of createBackgroundTools(ctx)) {
+  for (const tool of backgroundOn ? createBackgroundTools(ctx) : []) {
     extended.toolRegistry.register(tool);
     tools[tool.name] = { tool: tool.name };
   }
