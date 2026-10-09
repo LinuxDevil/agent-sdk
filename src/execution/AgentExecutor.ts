@@ -14,7 +14,7 @@ import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult, ToolDe
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
-import { ApprovalStore, describeApproval, ExecutionSnapshot, PendingApproval, SubagentSuspension } from './ApprovalGate';
+import { ApprovalStore, approvalRecords, describeApproval, ExecutionSnapshot, PendingApproval, SubagentSuspension } from './ApprovalGate';
 import { CheckpointStore, ForkOptions, ForkResult } from './checkpoint';
 import type { AgentDriftMode } from './agentFingerprint';
 import type { Principal } from '../auth/types';
@@ -719,7 +719,17 @@ export interface ExecutionResult<TObject = unknown> {
    */
   abortReason?: { name: string; message: string };
   steps: number;
+  /** With `finishReason: 'awaiting-approval'`, the pending approval to decide (the first of `approvalIds`). */
   approvalId?: string;
+  /**
+   * Eve TOOLS-F12: with `finishReason: 'awaiting-approval'`, every approval
+   * the paused step waits on, in call order (`approvalId` is the first). When
+   * one model step has several calls that need approval, the run pauses once
+   * on all of them: decide each (`agent.approvals.resolve()`, in any order,
+   * or `resolveAll()`), and the step's approved calls run once the last one
+   * is decided.
+   */
+  approvalIds?: string[];
   /** LOU-V4: the final reply parsed and validated with `output`; absent unless it was valid. */
   object?: TObject;
   /** LOU-V4: why the final reply did not match `output` (`finishReason: 'output-invalid'`). */
@@ -1521,7 +1531,7 @@ export class AgentExecutor {
     }
     if (gate.approval) {
       // Every other call of the turn already has its result; nothing waits behind the decision.
-      return this.pauseForApproval(options, state, gate.approval.toolCall, gate.approval.outcome, []);
+      return this.pauseForApproval(options, state, [gate.approval], []);
     }
     const honored = gate.honored;
     if (!honored) {
@@ -1580,12 +1590,13 @@ export class AgentExecutor {
     if (signIn) {
       return this.pauseForSignIn(options, state, batch.unrecorded, signIn, suspensions, handoffCalls);
     }
-    const suspension = settleSuspensions(state.messages, suspensions, Boolean(batch.approval));
-    if (batch.approval) {
-      const { toolCall, outcome } = batch.approval;
-      const pausedAt = batch.unrecorded.findIndex((call) => call.toolCall === toolCall);
-      const remaining = batch.unrecorded.slice(pausedAt + 1).map((call) => call.toolCall);
-      return this.pauseForApproval(options, state, toolCall, outcome, [...remaining, ...handoffCalls]);
+    const suspension = settleSuspensions(state.messages, suspensions, false);
+    if (batch.approvals.length > 0) {
+      // Eve TOOLS-F12: the step pauses once, on every call that needs approval. Calls a steer kept from starting run after the decisions;
+      // a sub-agent of the step that paused too pauses the run once they are decided.
+      const waiting = new Set(batch.approvals.map(({ toolCall }) => toolCall));
+      const remaining = batch.unrecorded.filter((call) => !waiting.has(call.toolCall)).map((call) => call.toolCall);
+      return this.pauseForApproval(options, state, batch.approvals, [...remaining, ...handoffCalls], suspension);
     }
     // LOU-V10: what is left of a batch a steer stopped was not run.
     pushAbortedBatchResults(state, batch.unrecorded, 'the user steered the run to new input', options.maxToolResultChars);
@@ -1739,53 +1750,62 @@ export class AgentExecutor {
     }
     // One pause per run: a sub-agent that paused meanwhile is dropped (its result says so).
     settleSuspensions(state.messages, suspensions, true);
-    return this.pauseForApproval(options, state, paused.toolCall, paused.outcome as ToolCallOutcome, remaining);
+    return this.pauseForApproval(options, state, [{ toolCall: paused.toolCall, outcome: paused.outcome as ToolCallOutcome }], remaining);
   }
 
   /**
-   * Persists a pending approval (plus the snapshot resume.ts needs, with
+   * Persists the pending approvals (plus the snapshot resume.ts needs, with
    * the turn's not-yet-run calls - LOU-U7) and ends this execute() call
    * with an 'awaiting-approval' result. The checkpoint is marked
    * 'awaiting-approval' (LOU-U8) so new input cannot bypass the decision.
+   * Eve TOOLS-F12: `calls` are every call of the step that waits on a
+   * decision, in call order; several make one group (`approvalGroup`), each
+   * with its own approval id, and run once all of them are decided.
    */
   private static async pauseForApproval(
     options: ExecuteOptions,
     state: AgentRunState,
-    toolCall: ToolCall,
-    toolResult: ToolCallOutcome,
-    remainingToolCalls: ToolCall[]
+    calls: Array<{ toolCall: ToolCall; outcome: ToolCallOutcome }>,
+    remainingToolCalls: ToolCall[],
+    heldSubagent?: SubagentSuspension
   ): Promise<ExecutionResult> {
     const { agent, approvalStore, sessionId, principal } = options;
     if (!approvalStore) {
       throw new ConfigurationError(
-        `Tool '${toolResult.toolName}' requires approval but no approvalStore was provided to AgentExecutor.execute()`,
+        `Tool '${calls[0].outcome.toolName}' requires approval but no approvalStore was provided to AgentExecutor.execute()`,
         'approvalStore',
         'LOUSHO_APPROVAL_STORE_MISSING'
       );
     }
 
-    const id = newId();
-    // TTL: an `ask` rule's `ttlMs` bounds its own pauses; else the run's default.
-    const ttlMs = toolResult.approvalTtlMs ?? options.approvalTtlMs;
-    const pending: PendingApproval = {
-      id,
-      toolCallId: toolCall.id,
-      toolName: toolCall.function.name,
-      args: toolResult.args || {},
-      agentId: agent.id,
-      createdAt: new Date().toISOString(),
-      ...(typeof ttlMs === 'number' && Number.isFinite(ttlMs) && { expiresAt: new Date(Date.now() + ttlMs).toISOString() }),
-      // N10b: whose call it is, for `approve` and channel `approvers`.
-      ...(principal && { principal }),
-      // N9b: a tool that needs sign-in pauses with the link to open.
-      ...(toolResult.signIn && { kind: 'sign-in' as const, signIn: await signInRequest(toolResult.signIn, options.tokens, { approvalId: id, sessionId }) }),
-    };
+    const pausedAt = Date.now();
+    const group: PendingApproval[] = [];
+    for (const [index, { toolCall, outcome: toolResult }] of calls.entries()) {
+      // A millisecond apart, so a store lists the step's calls in call order (oldest first).
+      const createdAt = new Date(pausedAt + index).toISOString();
+      const id = newId();
+      // TTL: an `ask` rule's `ttlMs` bounds its own pauses; else the run's default.
+      const ttlMs = toolResult.approvalTtlMs ?? options.approvalTtlMs;
+      group.push({
+        id,
+        toolCallId: toolCall.id,
+        toolName: toolCall.function.name,
+        args: toolResult.args || {},
+        agentId: agent.id,
+        createdAt,
+        ...(typeof ttlMs === 'number' && Number.isFinite(ttlMs) && { expiresAt: new Date(Date.now() + ttlMs).toISOString() }),
+        // N10b: whose call it is, for `approve` and channel `approvers`.
+        ...(principal && { principal }),
+        // N9b: a tool that needs sign-in pauses with the link to open.
+        ...(toolResult.signIn && { kind: 'sign-in' as const, signIn: await signInRequest(toolResult.signIn, options.tokens, { approvalId: id, sessionId }) }),
+      });
+    }
     const snapshot: ExecutionSnapshot = {
       // The agent as configured: resume re-applies skills and sub-agents.
       agent: baseAgentOf(agent),
       // Queued input rides at the end; resume moves it behind the results.
       currentMessages: [...state.messages, ...state.queuedInput],
-      pendingToolCall: pending,
+      pendingToolCall: group[0],
       steps: state.steps,
       sessionId,
       ...(options.contextSessionId !== undefined && { contextSessionId: options.contextSessionId }),
@@ -1795,33 +1815,42 @@ export class AgentExecutor {
       ...(principal && { principal }),
       // LOU-R16: and its hooks keep seeing the run's metadata.
       ...(options.metadata !== undefined && { metadata: options.metadata }),
+      ...(group.length > 1 && { approvalGroup: group.map((pending) => ({ pending })) }),
+      ...(heldSubagent && { heldSubagent }),
     };
-    return this.savePause(options, state, { pending, snapshot });
+    return this.savePause(options, state, { pending: group[0], snapshot });
   }
 
   /**
-   * Saves an approval record and ends this execute() call with an
-   * 'awaiting-approval' result. The checkpoint is marked
-   * 'awaiting-approval' (LOU-U8) so new input cannot bypass the decision.
+   * Saves the approval record(s) of a pause (Eve TOOLS-F12: one per call of
+   * its group) and ends this execute() call with an 'awaiting-approval'
+   * result. The checkpoint is marked 'awaiting-approval' (LOU-U8) so new
+   * input cannot bypass the decision.
    */
   private static async savePause(
     options: ExecuteOptions,
     state: AgentRunState,
-    { pending, snapshot }: { pending: PendingApproval; snapshot: ExecutionSnapshot }
+    record: { pending: PendingApproval; snapshot: ExecutionSnapshot }
   ): Promise<ExecutionResult> {
     const { approvalStore } = options;
+    const records = approvalRecords(record);
+    const ids = records.map((entry) => entry.pending.id);
     // Approval first: a crash between the two writes then leaves a
     // resumable 'in-progress' checkpoint, never one naming a lost approval.
     if (approvalStore) {
-      snapshot.agentFingerprint ??= await ensureFingerprint(options, state);
-      await approvalStore.save(pending, snapshot);
+      const fingerprint = record.snapshot.agentFingerprint ?? (await ensureFingerprint(options, state));
+      for (const entry of records) {
+        entry.snapshot.agentFingerprint ??= fingerprint;
+        await approvalStore.save(entry.pending, entry.snapshot);
+      }
     }
-    await saveStepCheckpoint(options, state, 'awaiting-approval', pending.id, describeApproval(pending).kind);
-    runEventsOf(options)?.approvalRequested(pending);
+    await saveStepCheckpoint(options, state, 'awaiting-approval', ids, describeApproval(records[0].pending).kind);
+    for (const entry of records) runEventsOf(options)?.approvalRequested(entry.pending);
 
     return {
       ...toExecutionResult(state, '', 'awaiting-approval'),
-      approvalId: pending.id,
+      approvalId: ids[0],
+      approvalIds: ids,
     };
   }
 

@@ -28,6 +28,8 @@ export interface PendingRun {
   status: 'in-progress' | 'awaiting-approval';
   /** With `status: 'awaiting-approval'`, the pending approval's id (`agent.approvals.get(approvalId)` shows the call). */
   approvalId?: string;
+  /** Eve TOOLS-F12: with `status: 'awaiting-approval'`, when the paused step waits on several calls: every one not decided yet (`approvalId` is the first). */
+  approvalIds?: string[];
   /** `'question'` when the pause is an `ask_question` call. */
   approvalKind?: ApprovalKind;
   /** The checkpoint's `stepIndex`: how far the run got. */
@@ -70,6 +72,7 @@ export async function listPendingRuns(checkpoints: CheckpointStore | undefined):
       checkpointId,
       status,
       ...(checkpoint.approvalId !== undefined && status === 'awaiting-approval' && { approvalId: checkpoint.approvalId }),
+      ...(checkpoint.approvalIds !== undefined && checkpoint.approvalIds.length > 1 && status === 'awaiting-approval' && { approvalIds: checkpoint.approvalIds }),
       ...(checkpoint.approvalKind !== undefined && status === 'awaiting-approval' && { approvalKind: checkpoint.approvalKind }),
       step: checkpoint.stepIndex,
       ...(checkpoint.lastError && { lastError: checkpoint.lastError }),

@@ -349,7 +349,7 @@ describe('parallel tool calls (LOU-V3)', () => {
       };
     }
 
-    it.each([0, 1, 2])('pauses at the approval call in position %i; earlier calls run once', async (position) => {
+    it.each([0, 1, 2])('pauses on the approval call in position %i; the other calls run once (Eve TOOLS-F12)', async (position) => {
       const names = ['t0', 't1', 't2'];
       const runs: Record<string, number> = { t0: 0, t1: 0, t2: 0 };
       const tools = names.map((name, index) =>
@@ -377,12 +377,12 @@ describe('parallel tool calls (LOU-V3)', () => {
       });
 
       expect(paused.finishReason).toBe('awaiting-approval');
-      const before = names.slice(0, position);
-      expect(names.filter((n) => runs[n] === 1)).toEqual(before);
-      expect(toolMessageIds(paused.messages)).toEqual(before.map((n) => `call_${n}`));
+      const others = names.filter((_, index) => index !== position);
+      expect(names.filter((n) => runs[n] === 1)).toEqual(others);
+      expect(toolMessageIds(paused.messages)).toEqual(others.map((n) => `call_${n}`));
       const [snapshot] = approvalStore.snapshots;
       expect(snapshot.pendingToolCall.toolCallId).toBe(`call_${names[position]}`);
-      expect(toolMessageIds(snapshot.currentMessages)).toEqual(before.map((n) => `call_${n}`));
+      expect(toolMessageIds(snapshot.currentMessages)).toEqual(others.map((n) => `call_${n}`));
 
       const resumed = await resumeAfterApproval(
         { id: paused.approvalId!, approved: true },
@@ -392,11 +392,9 @@ describe('parallel tool calls (LOU-V3)', () => {
       );
 
       expect(resumed.finishReason).toBe('stop');
-      // The approved call ran once; calls before it were not re-executed.
-      for (const name of [...before, names[position]]) expect(runs[name]).toBe(1);
-      // LOU-U7: calls after the approval call run on resume, exactly once,
+      // The approved call ran once; the other calls were not re-executed,
       // and every call of the turn ends up with one result, in call order.
-      for (const name of names.slice(position + 1)) expect(runs[name]).toBe(1);
+      for (const name of names) expect(runs[name]).toBe(1);
       expect(toolMessageIds(resumed.messages)).toEqual(names.map((n) => `call_${n}`));
     });
   });

@@ -23,6 +23,7 @@ interface AgentApprovals {
     // Warning: (ae-forgotten-export) The symbol "ResolveApprovalOptions" needs to be exported by the entry point index.d.ts
     // Warning: (ae-forgotten-export) The symbol "ExecutionResult" needs to be exported by the entry point index.d.ts
     resolve(decision: ApprovalDecision, options?: ResolveApprovalOptions): Promise<ExecutionResult>;
+    resolveAll(decisions: readonly ApprovalDecision[], options?: ResolveApprovalOptions): Promise<ExecutionResult>;
     streamAnswer(reply: {
         id: string;
         answer: string;
@@ -366,6 +367,7 @@ interface Checkpoint {
     // (undocumented)
     agentId: string;
     approvalId?: string;
+    approvalIds?: string[];
     approvalKind?: ApprovalKind;
     attempts?: number;
     businessState?: unknown;
@@ -748,8 +750,8 @@ interface ExecutionResult<TObject = unknown> {
         message: string;
     };
     agentName?: string;
-    // (undocumented)
     approvalId?: string;
+    approvalIds?: string[];
     // Warning: (ae-forgotten-export) The symbol "BackgroundTaskView" needs to be exported by the entry point index.d.ts
     backgroundTasks?: BackgroundTaskView[];
     budget?: BudgetExceeded;
@@ -1507,6 +1509,7 @@ interface PendingApproval {
 // @public
 interface PendingRun {
     approvalId?: string;
+    approvalIds?: string[];
     approvalKind?: ApprovalKind;
     checkpointId: string;
     kind: 'session' | 'run';
@@ -1537,6 +1540,7 @@ interface PendingSignIn {
 interface PendingTurn {
     // (undocumented)
     approvalId?: string;
+    approvalIds?: string[];
     approvalKind?: ApprovalKind;
     status: 'in-progress' | 'awaiting-approval';
 }
@@ -2425,16 +2429,16 @@ interface Usage {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-BoMnNQ6I.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BoMnNQ6I.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BoMnNQ6I.d.ts:1255:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BoMnNQ6I.d.ts:3380:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BoMnNQ6I.d.ts:3381:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
-// dist/index-C5TXhmCn.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-C5TXhmCn.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-C5TXhmCn.d.ts:2052:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
-// dist/index-C5TXhmCn.d.ts:2052:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
-// dist/schema-D27vLUwq.d.ts:69:5 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
+// dist/createAgent-CodO77mI.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-CodO77mI.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-CodO77mI.d.ts:1255:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-CodO77mI.d.ts:3396:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
+// dist/createAgent-CodO77mI.d.ts:3397:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
+// dist/index-DF_m0zkK.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-DF_m0zkK.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-DF_m0zkK.d.ts:2095:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
+// dist/index-DF_m0zkK.d.ts:2095:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
+// dist/schema-Bi0Ml2gO.d.ts:69:5 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

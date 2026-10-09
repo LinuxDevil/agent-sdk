@@ -98,7 +98,11 @@ async function runResume(options: {
   const inner = new InMemoryApprovalStore();
   const approvalStore: ApprovalStore = {
     save: async (pending, snapshot) => {
-      if (options.dropRemaining) delete snapshot.remainingToolCalls;
+      if (options.dropRemaining) {
+        // An older SDK's snapshot: the calls after the paused one had not run, and were not recorded as remaining.
+        delete snapshot.remainingToolCalls;
+        snapshot.currentMessages = snapshot.currentMessages.filter((m) => !(m.role === 'tool' && m.toolCallId !== snapshot.pendingToolCall.toolCallId));
+      }
       if (options.legacySnapshot) delete snapshot.agentFingerprint;
       await inner.save(pending, snapshot);
     },

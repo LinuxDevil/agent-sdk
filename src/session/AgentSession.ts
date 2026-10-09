@@ -11,7 +11,7 @@ import { toMessages, type AgentInput } from '../providers/content';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import { startAgentRun, type AgentRun } from '../execution/agentRun';
 import { InputQueue } from '../execution/inputQueue';
-import { getCheckpointHistory, type Checkpoint, type CheckpointError, type CheckpointStore } from '../execution/checkpoint';
+import { getCheckpointHistory, pausedApprovalIds, type Checkpoint, type CheckpointError, type CheckpointStore } from '../execution/checkpoint';
 import type { ApprovalKind } from '../execution/ApprovalGate';
 import { CompactedLLMProviderError, ConfigurationError, SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 import { streamSessionTurn } from './sessionStream';
@@ -96,6 +96,8 @@ export interface PendingTurn {
   /** `'in-progress'`: interrupted, `resume()` continues it. `'awaiting-approval'`: decide `approvalId` first. */
   status: 'in-progress' | 'awaiting-approval';
   approvalId?: string;
+  /** Eve TOOLS-F12: with `'awaiting-approval'`, when the paused step waits on several calls: every one not decided yet (`approvalId` is the first). */
+  approvalIds?: string[];
   /** M10a: `'question'` when the turn waits on an `ask_question` call; absent for a tool approval (or a turn paused before this field existed). */
   approvalKind?: ApprovalKind;
 }
@@ -554,7 +556,8 @@ export class AgentSession<TObject = unknown> {
       this.foundPaused(checkpoint);
       const status = checkpoint.status === 'awaiting-approval' ? 'awaiting-approval' : 'in-progress';
       const { approvalId, approvalKind } = checkpoint;
-      return { status, approvalId, ...(status === 'awaiting-approval' && approvalKind && { approvalKind }) };
+      const approvalIds = status === 'awaiting-approval' ? pausedApprovalIds(checkpoint) : [];
+      return { status, approvalId, ...(approvalIds.length > 1 && { approvalIds }), ...(status === 'awaiting-approval' && approvalKind && { approvalKind }) };
     });
   }
 
@@ -762,7 +765,8 @@ export class AgentSession<TObject = unknown> {
   /** Reports a paused turn of this transcript (not one another view of the session started) to {@link pausedTurnFound}. */
   private foundPaused(checkpoint: Checkpoint): void {
     if (checkpoint.status === 'awaiting-approval' && checkpoint.approvalId && checkpoint.sessionId === this.turnCheckpoint()?.sessionId) {
-      this.pausedTurnFound(checkpoint.approvalId);
+      // Eve TOOLS-F12: every approval of the paused step continues this session.
+      for (const approvalId of pausedApprovalIds(checkpoint)) this.pausedTurnFound(approvalId);
     }
   }
 

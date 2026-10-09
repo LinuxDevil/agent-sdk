@@ -148,7 +148,7 @@ async function resume(h: Harness, paused: ExecutionResult, script: MockTurn[], a
 }
 
 describe('LOU-U7: approval in the middle of a tool batch', () => {
-  it('approved: the paused call and the calls after it each run once, every call has one result in call order', async () => {
+  it('approved: the paused call and the other calls each run once, every call has one result in call order', async () => {
     const runs: Runs = {};
     const h: Harness = {
       tools: [tool('a', runs), tool('b', runs, { needsApproval: true }), tool('c', runs)],
@@ -156,9 +156,10 @@ describe('LOU-U7: approval in the middle of a tool batch', () => {
     };
     const paused = await execute(h, [turnCalling('a', 'b', 'c')]).result;
     expect(paused.finishReason).toBe('awaiting-approval');
-    expect(runs).toEqual({ a: 1, b: 0, c: 0 });
+    // Eve TOOLS-F12: only the call that needs approval waits; the others of the step ran.
+    expect(runs).toEqual({ a: 1, b: 0, c: 1 });
     const [snapshot] = (h.approvals as ReturnType<typeof approvalStore>).snapshots;
-    expect(snapshot.remainingToolCalls?.map((c) => c.id)).toEqual(['call_c']);
+    expect(snapshot.remainingToolCalls).toEqual([]);
 
     const { model, result } = await resume(h, paused, ['all done']);
 
@@ -187,7 +188,7 @@ describe('LOU-U7: approval in the middle of a tool batch', () => {
     expect(c).toMatchObject({ toolCallId: 'call_c', content: '"c done"' });
   });
 
-  it('a remaining call that needs approval pauses again; the chain completes with no call run twice', async () => {
+  it('Eve TOOLS-F12: two calls that need approval pause together; the step runs once both are decided, no call run twice', async () => {
     const runs: Runs = {};
     const approvals = approvalStore();
     const h: Harness = {
@@ -200,14 +201,18 @@ describe('LOU-U7: approval in the middle of a tool batch', () => {
       approvals,
     };
     const first = await execute(h, [turnCalling('a', 'b', 'c', 'd')]).result;
+    expect(first.approvalIds).toHaveLength(2);
+    expect(runs).toEqual({ a: 1, b: 0, c: 0, d: 1 });
+    expect(approvals.snapshots.map((snapshot) => snapshot.pendingToolCall.toolCallId)).toEqual(['call_b', 'call_c']);
+    expect(approvals.snapshots[0].approvalGroup?.map((member) => member.pending.toolCallId)).toEqual(['call_b', 'call_c']);
+    expect(toolIds(approvals.snapshots[0].currentMessages)).toEqual(['call_a', 'call_d']);
 
-    const second = await resume(h, first, []);
+    // Deciding the second call first leaves the run paused on the first.
+    const second = await resume(h, { ...first, approvalId: first.approvalIds![1] }, []);
     expect(second.result.finishReason).toBe('awaiting-approval');
-    expect(second.result.approvalId).not.toBe(first.approvalId);
+    expect(second.result.approvalIds).toEqual([first.approvalIds![0]]);
     expect(second.model.calls).toHaveLength(0);
-    expect(approvals.snapshots[1].pendingToolCall.toolCallId).toBe('call_c');
-    expect(approvals.snapshots[1].remainingToolCalls?.map((c) => c.id)).toEqual(['call_d']);
-    expect(toolIds(approvals.snapshots[1].currentMessages)).toEqual(['call_a', 'call_b']);
+    expect(runs).toEqual({ a: 1, b: 0, c: 0, d: 1 });
 
     const third = await resume(h, second.result, ['finished']);
     expect(third.result.text).toBe('finished');
@@ -239,9 +244,12 @@ describe('LOU-U7: approval in the middle of a tool batch', () => {
       approvals,
     };
     const paused = await execute(h, [turnCalling('a', 'b', 'c')]).result;
+    // An older SDK's record: the calls after the paused one had not run, and were not recorded as remaining.
     const record = JSON.parse(approvals.raw.get(paused.approvalId!)!);
     delete record.snapshot.remainingToolCalls;
+    record.snapshot.currentMessages = record.snapshot.currentMessages.filter((m: Message) => m.toolCallId !== 'call_c');
     approvals.raw.set(paused.approvalId!, JSON.stringify(record));
+    runs.c = 0;
 
     const { result } = await resume(h, paused, ['done']);
 

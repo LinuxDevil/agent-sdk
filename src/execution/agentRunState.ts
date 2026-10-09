@@ -270,9 +270,12 @@ export async function saveStepCheckpoint(
   options: ExecuteOptions,
   state: AgentRunState,
   status: CheckpointStatus = 'in-progress',
-  approvalId?: string,
+  approval?: string | string[],
   approvalKind?: ApprovalKind
 ): Promise<void> {
+  // Eve TOOLS-F12: a step paused on several calls records all their ids.
+  const approvalIds = typeof approval === 'string' ? [approval] : approval;
+  const approvalId = approvalIds?.[0];
   const { agent, sessionId, checkpointStore, inputQueue } = options;
   // LOU-V9: a run that stops here takes no more queued input, and keeps none it did not apply.
   if (status !== 'in-progress') inputQueue?.close();
@@ -293,6 +296,7 @@ export async function saveStepCheckpoint(
     businessState: state.businessState,
     status,
     ...(approvalId !== undefined && { approvalId }),
+    ...(approvalIds !== undefined && approvalIds.length > 1 && { approvalIds }),
     ...(approvalKind !== undefined && { approvalKind }),
     ...(state.fingerprint && { agentFingerprint: state.fingerprint }),
     ...(agent.metadata?.[RUN_CONFIG_KEY] !== undefined && { runConfig: agent.metadata[RUN_CONFIG_KEY] }),

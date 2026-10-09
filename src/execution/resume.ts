@@ -10,14 +10,17 @@ import { approvalMarker } from '../tools/approvalPolicies';
 import type { ToolDescriptor, ToolExecutionContext } from '../types';
 import {
   ApprovalDecision,
+  ApprovalGroupMember,
   ApprovalStore,
   approvalExpired,
   describeApproval,
   ExecutionSnapshot,
+  GroupDecision,
   isAutomaticDecision,
   markAutomaticDecision,
   PendingApproval,
   ResolvedApproval,
+  withGroupDecisions,
 } from './ApprovalGate';
 import { validateToolArguments } from './toolArgsValidation';
 import { AgentExecutor, ExecuteOptions, ExecutionResult, extendRunOptions } from './AgentExecutor';
@@ -34,14 +37,14 @@ import { markPropagating, toolErrorMessage } from './propagatingToolError';
 import { ConfigurationError, SDKError } from './errors';
 import { toolErrorResult, type ToolErrorResult } from './toolErrors';
 import { toolResultContent } from './toolResult';
-import { splitPendingTurn } from './transcript';
+import { insertToolResult, splitPendingTurn } from './transcript';
 import { replaceToolResult, type ToolCallScope } from './subagentRuntime';
 import type { RunUsage } from '../models/usage';
 import { emptyRunUsage, mergeDelegatedUsage, restoreRunUsage } from './runUsage';
 import { planModeRefusal, reportApprovalExpiry } from './permissions';
 import { RUN_CODE_TOOL, codeModeOf, nestedToolCaller, withCodeMode } from './codeMode';
 import { withToolSearch } from './toolSearch';
-import { resumeSubagentCall, type ResumeContext } from './resumeSubagent';
+import { pauseAgain, resumeSubagentCall, type ResumeContext } from './resumeSubagent';
 import type { Principal } from '../auth/types';
 import { readonlyPrincipal } from './runPrincipal';
 import type { OAuthTokenStore } from '../oauth/types';
@@ -167,15 +170,26 @@ async function resumeObserved(
   if (!claimed) {
     throw new SDKError(`No pending approval found for id '${decision.id}' (unknown or already resolved)`, 'LOUSHO_APPROVAL_NOT_FOUND');
   }
-  // Eve TOOLS-F19: "approve with edits" - invalid arguments leave the approval pending.
+  // Eve TOOLS-F12: a call of a step paused on several - the step runs once the last of them is decided.
+  const grouped = (claimed.snapshot.approvalGroup?.length ?? 0) > 1;
   let record: ResolvedApproval;
-  try {
-    record = await withEditedArgs(claimed, decision, toolRegistry, observed);
-  } catch (error) {
-    await approvalStore.save(claimed.pending, claimed.snapshot);
-    // Inside a sub-agent's resume, the lead's run puts its own pause back too.
-    if (typeof error === 'object' && error !== null) refusedResumes.add(error);
-    throw error;
+  if (grouped) {
+    const step = await decideGroupMember(claimed, decision, approvalStore, toolRegistry, observed);
+    if ('paused' in step) {
+      await markGroupPending(claimed.snapshot, step.paused, checkpointStore);
+      return step.paused;
+    }
+    record = step.record;
+  } else {
+    // Eve TOOLS-F19: "approve with edits" - invalid arguments leave the approval pending.
+    try {
+      record = await withEditedArgs(claimed, decision, toolRegistry, observed);
+    } catch (error) {
+      await approvalStore.save(claimed.pending, claimed.snapshot);
+      // Inside a sub-agent's resume, the lead's run puts its own pause back too.
+      if (typeof error === 'object' && error !== null) refusedResumes.add(error);
+      throw error;
+    }
   }
 
   const { pending, snapshot } = record;
@@ -191,14 +205,17 @@ async function resumeObserved(
   // decision says - a stale approve must never run the tool. The denial is
   // what rejectionOf() reports to the model, so a resumed run sees the
   // expiry, and a sign-in pause that lapsed is denied rather than re-armed.
-  const decided = approvalExpired(pending)
-    ? { ...decision, approved: false }
-    : // N9b: a sign-in pause continues only once the user signed in (else it stays paused), or ends as cancelled.
-      await signInDecision(record, decision, approvalStore, executeOptions.tokens);
+  // Eve TOOLS-F12: a group's calls were each checked when they were decided (groupDecision()).
+  const decided = grouped
+    ? decision
+    : approvalExpired(pending)
+      ? { ...decision, approved: false }
+      : // N9b: a sign-in pause continues only once the user signed in (else it stays paused), or ends as cancelled.
+        await signInDecision(record, decision, approvalStore, executeOptions.tokens);
   // Eve TOOLS-F19: a copy of an `approve` callback's decision is still the callback's (once() does not remember it).
   if (decided !== decision && isAutomaticDecision(decision)) markAutomaticDecision(decided);
   const messages: Message[] = [...snapshot.currentMessages];
-  const drift = await checkApprovalDrift(record, decided, { approvalStore, toolRegistry, provider, executeOptions });
+  const drift = await checkApprovalDrift(record, decided, { approvalStore, toolRegistry, provider, executeOptions }, grouped ? claimed : record);
 
   const staleCheckpoint = await clearStaleCheckpoint(snapshot.sessionId, checkpointStore);
   const staleBusinessState = staleCheckpoint?.businessState;
@@ -230,9 +247,10 @@ async function resumeObserved(
     init.attributes,
     async (span) => {
       ctx.runSpanId = span.id;
-      let step: Awaited<ReturnType<typeof decidedToolMessage>>;
+      let step: Awaited<ReturnType<typeof decidedToolMessage>> | { group: true };
       try {
-        step = await streamedDecision(ctx, pending, drift);
+        // Eve TOOLS-F12: a decided group runs all its calls (a sub-agent's group runs inside the sub-agent).
+        step = snapshot.approvalGroup && !snapshot.subagent ? await runDecidedGroup(ctx, snapshot.approvalGroup, drift) : await streamedDecision(ctx, pending, drift);
       } catch (error) {
         // M10c: a paused sub-agent refused the resume before anything ran, so this run stays paused too.
         if (refusedResumes.has(error as object)) await restorePause(claimed, approvalStore, staleCheckpoint, checkpointStore);
@@ -264,7 +282,14 @@ async function resumeObserved(
         );
       }
       // LOU-Y1: a call whose sub-agent paused already has a placeholder result.
-      replaceToolResult(messages, step.message);
+      if ('message' in step) replaceToolResult(messages, step.message);
+      // Eve TOOLS-F12: a sub-agent of the step paused too - the run pauses on it now.
+      const held = snapshot.subagent ? undefined : snapshot.heldSubagent;
+      if (held) {
+        const paused = await pauseAgain(ctx, held);
+        await markAwaitingApproval(snapshot, paused, checkpointStore, businessState);
+        return paused;
+      }
       closeUnlistedToolCalls(messages, snapshot.remainingToolCalls);
       // The span's input is the transcript the continued run starts from, decided call included.
       span.attributes = { ...span.attributes, ...runSpan().attributes };
@@ -366,17 +391,188 @@ async function withEditedArgs(
   const toolDesc = toolRegistry.get(pending.toolName);
   const args = (toolDesc ? await validateToolArguments(pending.toolName, toolDesc, decision.args) : decision.args) as Record<string, unknown>;
   const edited: PendingApproval = { ...pending, args };
-  const currentMessages = snapshot.currentMessages.map((message) =>
-    message.role === 'assistant' && message.toolCalls?.some((call) => call.id === pending.toolCallId)
+  const currentMessages = withCallArgs(snapshot.currentMessages, pending.toolCallId, args);
+  return { pending: edited, snapshot: { ...snapshot, pendingToolCall: edited, currentMessages } };
+}
+
+/** Eve TOOLS-F19: `messages` with the arguments of tool call `toolCallId` replaced by `args` (new message objects, never in place). */
+function withCallArgs(messages: Message[], toolCallId: string, args: Record<string, unknown>): Message[] {
+  return messages.map((message) =>
+    message.role === 'assistant' && message.toolCalls?.some((call) => call.id === toolCallId)
       ? {
           ...message,
-          toolCalls: message.toolCalls.map((call) =>
-            call.id === pending.toolCallId ? { ...call, function: { ...call.function, arguments: JSON.stringify(args) } } : call
-          ),
+          toolCalls: message.toolCalls.map((call) => (call.id === toolCallId ? { ...call, function: { ...call.function, arguments: JSON.stringify(args) } } : call)),
         }
       : message
   );
-  return { pending: edited, snapshot: { ...snapshot, pendingToolCall: edited, currentMessages } };
+}
+
+/**
+ * Eve TOOLS-F12: in-process serialization of the decisions on one group (keyed
+ * by its first call's approval id), so two decisions made at the same time
+ * cannot both find the other's record claimed.
+ */
+const groupLocks = new Map<string, Promise<unknown>>();
+
+function withGroupLock<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const previous = groupLocks.get(key) ?? Promise.resolve();
+  const next = previous.then(work, work);
+  const settled = next.catch(() => undefined);
+  groupLocks.set(key, settled);
+  void settled.then(() => {
+    if (groupLocks.get(key) === settled) groupLocks.delete(key);
+  });
+  return next;
+}
+
+/**
+ * Eve TOOLS-F12: decides one call of a step paused on several. While other
+ * calls of the step are undecided, the decision is written into their
+ * records and the run stays paused (`paused`, listing what is left); the
+ * decision that completes the group returns the `record` to run the whole
+ * step from (every call's decision in its `approvalGroup`). Invalid edited
+ * arguments, an early sign-in approval and a lost race put the claimed
+ * record back and throw.
+ */
+async function decideGroupMember(
+  claimed: ResolvedApproval,
+  decision: ApprovalDecision,
+  approvalStore: ApprovalStore,
+  toolRegistry: ToolRegistry,
+  observed: ResumeExecuteOptions
+): Promise<{ record: ResolvedApproval } | { paused: ExecutionResult }> {
+  const { pending, snapshot } = claimed;
+  const group = snapshot.approvalGroup ?? [];
+  return withGroupLock(group[0]?.pending.id ?? pending.id, async () => {
+    try {
+      // A sub-agent's record already holds the decisions its lead collected.
+      const mine = group.find((member) => member.pending.id === pending.id)?.decision ?? (await groupDecision(claimed, decision, approvalStore, toolRegistry, observed));
+      const decided = new Map<string, GroupDecision>();
+      for (const member of group) if (member.decision) decided.set(member.pending.id, member.decision);
+      decided.set(pending.id, mine);
+      // The calls still waiting take this decision (and any decision another resolver wrote into them).
+      const waiting: ResolvedApproval[] = [];
+      for (const member of group) {
+        if (decided.has(member.pending.id)) continue;
+        const sibling = await approvalStore.resolve(member.pending.id);
+        if (!sibling) {
+          for (const taken of waiting) await approvalStore.save(taken.pending, taken.snapshot);
+          throw new SDKError(
+            `Approval '${member.pending.id}' of the same step as '${pending.id}' is being decided by another request; decide '${pending.id}' again once it is done.`,
+            'LOUSHO_APPROVAL_CONFLICT'
+          );
+        }
+        for (const other of sibling.snapshot.approvalGroup ?? []) if (other.decision && !decided.has(other.pending.id)) decided.set(other.pending.id, other.decision);
+        waiting.push(sibling);
+      }
+      if (waiting.length === 0) return { record: { pending, snapshot: withGroupDecisions(snapshot, decided) } };
+      for (const sibling of waiting) await approvalStore.save(sibling.pending, withGroupDecisions(sibling.snapshot, decided));
+      const ids = waiting.map((sibling) => sibling.pending.id);
+      const paused: ExecutionResult = {
+        text: '',
+        messages: [...snapshot.currentMessages],
+        toolCalls: [],
+        usage: snapshot.usage ? restoreRunUsage(snapshot.usage) : emptyRunUsage(),
+        finishReason: 'awaiting-approval',
+        steps: snapshot.steps,
+        approvalId: ids[0],
+        approvalIds: ids,
+      };
+      return { paused };
+    } catch (error) {
+      await approvalStore.save(pending, snapshot);
+      // Inside a sub-agent's resume, the lead's run puts its own pause back too.
+      if (typeof error === 'object' && error !== null) refusedResumes.add(error);
+      throw error;
+    }
+  });
+}
+
+/**
+ * Eve TOOLS-F12: `decision` as a group keeps it: an expired call is denied
+ * (TTL), a sign-in is approved only once the user signed in, and edited
+ * arguments are validated (a sub-agent's call: by the sub-agent's resume).
+ */
+async function groupDecision(
+  claimed: ResolvedApproval,
+  decision: ApprovalDecision,
+  approvalStore: ApprovalStore,
+  toolRegistry: ToolRegistry,
+  observed: ResumeExecuteOptions
+): Promise<GroupDecision> {
+  const { pending, snapshot } = claimed;
+  const expired = approvalExpired(pending);
+  let approved = decision.approved && !expired;
+  if (approved && pending.kind === 'sign-in') approved = (await signInDecision(claimed, decision, approvalStore, observed.tokens)).approved;
+  let args: Record<string, unknown> | undefined;
+  if (approved && decision.args !== undefined) {
+    args = snapshot.subagent ? decision.args : (await withEditedArgs(claimed, decision, toolRegistry, observed)).pending.args;
+  }
+  return {
+    approved,
+    ...(decision.note !== undefined && { note: decision.note }),
+    ...(decision.remember !== undefined && { remember: decision.remember }),
+    ...(args !== undefined && { args }),
+    ...(isAutomaticDecision(decision) && { automatic: true as const }),
+    ...(expired && { expired: true as const }),
+    ...(observed.approver && { by: observed.approver }),
+  };
+}
+
+/**
+ * Eve TOOLS-F12: the session's 'awaiting-approval' checkpoint names the
+ * approvals of the paused step that are still undecided, so a session,
+ * channel or route sees what is left to decide.
+ */
+async function markGroupPending(snapshot: ExecutionSnapshot, paused: ExecutionResult, checkpointStore: CheckpointStore | undefined): Promise<void> {
+  if (!snapshot.sessionId || !checkpointStore) return;
+  const checkpoint = await checkpointStore.load(snapshot.sessionId);
+  if (checkpoint?.status !== 'awaiting-approval') return;
+  const ids = paused.approvalIds ?? [];
+  const first = snapshot.approvalGroup?.find((member) => member.pending.id === ids[0])?.pending;
+  const next: Checkpoint = { ...checkpoint, approvalId: ids[0] };
+  if (ids.length > 1) next.approvalIds = ids;
+  else delete next.approvalIds;
+  const kind = first && describeApproval(first).kind;
+  if (kind) next.approvalKind = kind;
+  else delete next.approvalKind;
+  await checkpointStore.save(snapshot.sessionId, next);
+}
+
+/**
+ * Eve TOOLS-F12: runs a decided group's calls in call order - each approved
+ * call like a single approved call, each rejected one with its rejection -
+ * and records their results in the transcript. A call that needs sign-in
+ * again pauses the run on it, the group's later calls waiting with it.
+ */
+async function runDecidedGroup(ctx: ResumeContext, group: ApprovalGroupMember[], drift?: AgentDrift): Promise<{ group: true } | { paused: ExecutionResult }> {
+  const sink = runEventsOf(ctx.executeOptions as ExecuteOptions);
+  sink?.runStart(ctx.snapshot.agent);
+  if (drift) sink?.agentDrift(drift);
+  for (const [index, member] of group.entries()) {
+    // A call whose decision was lost is not run.
+    const decided: GroupDecision = member.decision ?? { approved: false, note: 'not decided' };
+    const decision: ApprovalDecision = {
+      id: member.pending.id,
+      approved: decided.approved,
+      ...(decided.note !== undefined && { note: decided.note }),
+      ...(decided.remember !== undefined && { remember: decided.remember }),
+    };
+    if (decided.automatic) markAutomaticDecision(decision);
+    let pending = member.pending;
+    if (decided.approved && decided.args) {
+      pending = { ...pending, args: decided.args };
+      ctx.messages.splice(0, ctx.messages.length, ...withCallArgs(ctx.messages, pending.toolCallId, decided.args));
+    }
+    const step = await streamedCall(
+      { ...ctx, decision, approver: readonlyPrincipal(decided.by), expired: decided.expired === true, laterInGroup: group.slice(index + 1) },
+      pending
+    );
+    if ('paused' in step) return step;
+    if ('handoff' in step) throw new SDKError(`Approval '${pending.id}' is a handoff, which never pauses together with other calls.`, 'LOUSHO_CONFIG_INVALID');
+    insertToolResult(ctx.messages, step.message);
+  }
+  return { group: true };
 }
 
 /**
@@ -422,10 +618,10 @@ async function signInDecision(
 }
 
 /** N9b: the rejection a declined or cancelled call gets: an expired pause, a sign-in, a question, or a tool call. */
-function rejectionOf(pending: PendingApproval): { error: string; kind: 'denied' | 'rejected' } {
+function rejectionOf(pending: PendingApproval, expired: boolean = approvalExpired(pending)): { error: string; kind: 'denied' | 'rejected' } {
   const described = describeApproval(pending);
   // TTL: a pause decided after `expiresAt` denies, whatever kind it was.
-  if (approvalExpired(described)) {
+  if (expired) {
     return { error: `Approval of '${described.toolName}' expired before it was decided`, kind: 'denied' };
   }
   if (described.kind === 'sign-in') return { error: `Sign-in to ${described.signIn?.displayName ?? described.signIn?.provider ?? 'the provider'} was cancelled.`, kind: 'denied' };
@@ -449,9 +645,17 @@ async function signInAgain(ctx: ResumeContext, pending: PendingApproval, signal:
   const signIn = await signInRequest(settled.pause, executeOptions.tokens, { approvalId: id, sessionId: snapshot.sessionId });
   const next: PendingApproval = { ...pending, id, createdAt: new Date().toISOString(), kind: 'sign-in', signIn };
   delete next.question;
-  await ctx.approvalStore.save(next, { ...snapshot, pendingToolCall: next, usage: structuredClone(ctx.usage) });
+  const saved: ExecutionSnapshot = { ...snapshot, pendingToolCall: next, usage: structuredClone(ctx.usage) };
+  // Eve TOOLS-F12: inside a decided group, the calls before this one already ran; the decided ones after it wait with it.
+  const later = ctx.laterInGroup;
+  if (later) {
+    saved.currentMessages = [...ctx.messages];
+    if (later.length > 0) saved.approvalGroup = [{ pending: next }, ...later];
+    else delete saved.approvalGroup;
+  }
+  await ctx.approvalStore.save(next, saved);
   runEventsOf(executeOptions as ExecuteOptions)?.approvalRequested(next);
-  return { paused: { text: '', messages: ctx.messages, toolCalls: [], usage: ctx.usage, finishReason: 'awaiting-approval', steps: snapshot.steps, approvalId: id } };
+  return { paused: { text: '', messages: ctx.messages, toolCalls: [], usage: ctx.usage, finishReason: 'awaiting-approval', steps: snapshot.steps, approvalId: id, approvalIds: [id] } };
 }
 
 /**
@@ -466,20 +670,27 @@ async function signInAgain(ctx: ResumeContext, pending: PendingApproval, signal:
 async function checkApprovalDrift(
   { pending, snapshot }: ResolvedApproval,
   decision: ApprovalDecision,
-  run: { approvalStore: ApprovalStore; toolRegistry: ToolRegistry; provider: LLMProvider; executeOptions: ResumeExecuteOptions }
+  run: { approvalStore: ApprovalStore; toolRegistry: ToolRegistry; provider: LLMProvider; executeOptions: ResumeExecuteOptions },
+  putBack: ResolvedApproval = { pending, snapshot }
 ): Promise<AgentDrift | undefined> {
   const { agentFingerprint: saved } = snapshot;
   if (!saved) return undefined;
   const { toolRegistry, executeOptions } = run;
   const configured = snapshot.agent.tools ?? {};
-  const decided = decision.approved && !snapshot.subagent ? [pending.toolName] : [];
+  // Eve TOOLS-F12: a decided group runs every approved call of it.
+  const group = snapshot.subagent ? undefined : snapshot.approvalGroup;
+  const decided = group
+    ? group.filter((member) => member.decision?.approved).map((member) => member.pending.toolName)
+    : decision.approved && !snapshot.subagent
+      ? [pending.toolName]
+      : [];
   const calls = [...decided, ...(snapshot.remainingToolCalls ?? []).map((call) => call.function.name)];
   const missingTools = [...new Set(calls)].filter((name) => name in configured && !toolRegistry.get(name)?.tool);
   try {
     const current = await fingerprintOf(executeOptions.currentAgent ?? snapshot.agent, toolRegistry, run.provider, executeOptions.hostedTools);
     return checkAgentDrift({ saved, current, mode: executeOptions.onAgentDrift, missingTools });
   } catch (error) {
-    await run.approvalStore.save(pending, snapshot);
+    await run.approvalStore.save(putBack.pending, putBack.snapshot);
     if (typeof error === 'object' && error !== null) refusedResumes.add(error);
     markPropagating(error);
     throw error;
@@ -494,10 +705,16 @@ async function checkApprovalDrift(
 async function streamedDecision(ctx: ResumeContext, pending: PendingApproval, drift?: AgentDrift): ReturnType<typeof decidedToolMessage> {
   const sink = runEventsOf(ctx.executeOptions as ExecuteOptions);
   if (!sink) return decidedToolMessage(ctx, pending);
-  const { agent, subagent } = ctx.snapshot;
-  const call = subagent ?? pending;
-  sink.runStart(agent);
+  sink.runStart(ctx.snapshot.agent);
   if (drift) sink.agentDrift(drift);
+  return streamedCall(ctx, pending);
+}
+
+/** The decided call of {@link streamedDecision}, reported as its `tool.resume` / `tool.done` (`tool.error`). */
+async function streamedCall(ctx: ResumeContext, pending: PendingApproval): ReturnType<typeof decidedToolMessage> {
+  const sink = runEventsOf(ctx.executeOptions as ExecuteOptions);
+  if (!sink) return decidedToolMessage(ctx, pending);
+  const call = ctx.snapshot.subagent ?? pending;
   const toolCall: ToolCall = {
     id: call.toolCallId,
     type: 'function',
@@ -567,9 +784,11 @@ async function decidedToolMessage(
     return resumeSubagentCall(ctx, snapshot.subagent, runApproved);
   }
   if (!ctx.decision.approved) {
-    const { error, kind } = rejectionOf(pending);
+    // Eve TOOLS-F12: a group's call was expired (or not) when it was decided.
+    const expired = ctx.expired ?? approvalExpired(pending);
+    const { error, kind } = rejectionOf(pending, expired);
     // TTL: an expiry denial is audited like a rule's `deny`.
-    if (approvalExpired(pending)) {
+    if (expired) {
       reportApprovalExpiry(executeOptions, {
         toolName: pending.toolName,
         toolCallId: pending.toolCallId,

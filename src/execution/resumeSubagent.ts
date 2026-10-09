@@ -11,7 +11,7 @@
 import type { LLMProvider, Message } from '../providers';
 import type { ToolRegistry } from '../tools';
 import { withSubagents } from '../subagents/withSubagents';
-import type { ApprovalDecision, ApprovalStore, ExecutionSnapshot, PendingApproval, SubagentSuspension } from './ApprovalGate';
+import { approvalRecords, type ApprovalDecision, type ApprovalGroupMember, type ApprovalStore, type ExecutionSnapshot, type PendingApproval, type SubagentSuspension } from './ApprovalGate';
 import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
 import type { RunUsage } from '../models/usage';
 import { mergeDelegatedUsage } from './runUsage';
@@ -45,6 +45,10 @@ export interface ResumeContext {
   approver?: Readonly<Principal>;
   /** #281: the continued run's `invoke_agent` span, the parent of the decided call's `execute_tool` span. */
   runSpanId?: string;
+  /** Eve TOOLS-F12: for a call of a decided group, whether it had expired when it was decided (else `expiresAt` is checked now). */
+  expired?: boolean;
+  /** Eve TOOLS-F12: for a call of a decided group, the group's calls after it (a sign-in pause keeps them with it). */
+  laterInGroup?: ApprovalGroupMember[];
 }
 
 /** Runs an approved tool call of the paused run and returns its `tool` message. */
@@ -87,14 +91,22 @@ export async function resumeSubagentCall(
   }
 }
 
-/** Saves a new approval record for the sub-agent's next pending call. */
-async function pauseAgain(ctx: ResumeContext, suspension: SubagentSuspension): Promise<ExecutionResult> {
+/**
+ * Saves a new approval record for the sub-agent's next pending call (Eve
+ * TOOLS-F12: or for a sub-agent held while its step's other calls were
+ * decided). The turn's calls still to run wait with it.
+ */
+export async function pauseAgain(ctx: ResumeContext, suspension: SubagentSuspension): Promise<ExecutionResult> {
   const { snapshot, messages } = ctx;
   const { usage } = ctx;
   const record = suspensionRecord(snapshot, { messages, steps: snapshot.steps, usage, fingerprint: snapshot.agentFingerprint }, suspension);
-  await ctx.approvalStore.save(record.pending, record.snapshot);
+  if (snapshot.remainingToolCalls?.length) record.snapshot.remainingToolCalls = snapshot.remainingToolCalls;
+  if (snapshot.contextSessionId !== undefined) record.snapshot.contextSessionId = snapshot.contextSessionId;
+  // Eve TOOLS-F12: one record per call of the sub-agent's paused step.
+  const records = approvalRecords(record);
+  for (const entry of records) await ctx.approvalStore.save(entry.pending, entry.snapshot);
   // LOU-V14: a streamed resume reports the new pause like a fresh run does.
-  runEventsOf(ctx.executeOptions as ExecuteOptions)?.approvalRequested(record.pending);
+  for (const entry of records) runEventsOf(ctx.executeOptions as ExecuteOptions)?.approvalRequested(entry.pending);
   return {
     text: '',
     messages,
@@ -103,5 +115,6 @@ async function pauseAgain(ctx: ResumeContext, suspension: SubagentSuspension): P
     finishReason: 'awaiting-approval',
     steps: snapshot.steps,
     approvalId: record.pending.id,
+    approvalIds: records.map((entry) => entry.pending.id),
   };
 }

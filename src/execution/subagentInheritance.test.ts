@@ -535,7 +535,7 @@ describe('durable sessions with sub-agents (LOU-U7/U8 with LOU-Y1)', () => {
     expect(await checkpointStore.load('s-2')).toMatchObject({ status: 'finished' });
   });
 
-  it('runs a task call left after an approval mid-batch, which can pause on its sub-agent in turn', async () => {
+  it('a task call of a step paused on an approval runs at once; its sub-agent pause follows the decision (Eve TOOLS-F12)', async () => {
     const approvals = memoryApprovals();
     const confirmed: string[] = [];
     const confirm = defineTool({
@@ -566,8 +566,10 @@ describe('durable sessions with sub-agents (LOU-U7/U8 with LOU-Y1)', () => {
       ...options,
       approvalStore: approvals.store,
     });
-    expect(approvals.only().snapshot.remainingToolCalls?.map((call) => call.id)).toEqual(['researcher-call']);
-    expect(childModel.calls).toHaveLength(0);
+    expect(approvals.only().snapshot.remainingToolCalls).toEqual([]);
+    expect(approvals.only().snapshot.heldSubagent).toMatchObject({ toolCallId: 'researcher-call', agentName: 'researcher' });
+    expect(childModel.calls).toHaveLength(1);
+    expect(sent).toEqual([]);
 
     const second = await resumeAfterApproval({ id: first.approvalId!, approved: true }, approvals.store, registry, leadModel, options);
 

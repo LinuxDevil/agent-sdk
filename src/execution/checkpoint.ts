@@ -103,8 +103,14 @@ export interface Checkpoint {
    * `'in-progress'` (the only kind that was ever kept).
    */
   status?: CheckpointStatus;
-  /** LOU-U8: with `status: 'awaiting-approval'`, the id of the pending approval. */
+  /** LOU-U8: with `status: 'awaiting-approval'`, the id of the pending approval (the first of `approvalIds`). */
   approvalId?: string;
+  /**
+   * Eve TOOLS-F12: with `status: 'awaiting-approval'`, every approval of the
+   * paused step not decided yet, in call order, when there are several.
+   * Absent for a step paused on one call and on older checkpoints.
+   */
+  approvalIds?: string[];
   /**
    * Eve DUR-F11: why the last attempt at a session's turn failed, written by
    * the session when its run throws. A provider error that retrying cannot fix
@@ -152,6 +158,16 @@ export interface Checkpoint {
    * `checkpointStore` and `runId`): where the flow stands. Opaque to agent runs.
    */
   flow?: FlowCheckpointState;
+}
+
+/**
+ * Eve TOOLS-F12: the approvals a paused checkpoint waits on - `approvalIds`
+ * when the step paused on several calls, else its one `approvalId`; empty
+ * when it waits on none.
+ */
+export function pausedApprovalIds(checkpoint: Pick<Checkpoint, 'approvalId' | 'approvalIds'>): string[] {
+  if (checkpoint.approvalIds && checkpoint.approvalIds.length > 0) return [...checkpoint.approvalIds];
+  return checkpoint.approvalId === undefined ? [] : [checkpoint.approvalId];
 }
 
 /** Eve DUR-F17: a flow run's state in its {@link Checkpoint} (`checkpoint.flow`). */

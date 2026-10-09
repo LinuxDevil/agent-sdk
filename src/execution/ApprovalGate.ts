@@ -176,6 +176,7 @@ export function isAutomaticDecision(decision: ApprovalDecision): boolean {
 export interface ExecutionSnapshot {
   agent: AgentConfig;
   currentMessages: Message[];
+  /** The call this record decides (Eve TOOLS-F12: one of `approvalGroup`, when the step paused on several). */
   pendingToolCall: PendingApproval;
   steps: number;
   /**
@@ -231,6 +232,85 @@ export interface ExecutionSnapshot {
    * for a run without one and on older snapshots.
    */
   metadata?: Record<string, unknown>;
+  /**
+   * Eve TOOLS-F12: set when one model step paused on several calls at once -
+   * every call of the step that waits on a decision, in call order, this
+   * record's own (`pendingToolCall`) among them. Each has its own approval
+   * record (the same snapshot with its own `pendingToolCall`); a decision is
+   * written into the records still pending, and the step's calls run once the
+   * last of them is decided. For a run paused on a sub-agent (`subagent`),
+   * the sub-agent's group, as the lead's reviewers see it. Absent when the
+   * step paused on one call.
+   */
+  approvalGroup?: ApprovalGroupMember[];
+  /**
+   * Eve TOOLS-F12: a sub-agent started by the same step that paused for
+   * approval too. Once the step's own calls are decided (and ran), the run
+   * pauses on it, as a run paused on a sub-agent (`subagent`). Absent when no
+   * sub-agent of the step paused.
+   */
+  heldSubagent?: SubagentSuspension;
+}
+
+/** Eve TOOLS-F12: one call of a step paused on several approvals (see {@link ExecutionSnapshot.approvalGroup}). */
+export interface ApprovalGroupMember {
+  /** The paused call, as its own approval record holds it. */
+  pending: PendingApproval;
+  /** Set once the call is decided; it runs (or gets its rejection) when the whole step is decided. */
+  decision?: GroupDecision;
+}
+
+/** Eve TOOLS-F12: a decision kept with a step's other pending calls until all of them are decided. */
+export interface GroupDecision {
+  /** `ApprovalDecision.approved` (false for an expired call). */
+  approved: boolean;
+  /** `ApprovalDecision.note`. */
+  note?: string;
+  /** `ApprovalDecision.remember`. */
+  remember?: 'session';
+  /** Approve-with-edits arguments, already validated. */
+  args?: Record<string, unknown>;
+  /** Decided by an `approve` callback, not a human (see {@link markAutomaticDecision}). */
+  automatic?: true;
+  /** TTL: the call's `expiresAt` had passed when it was decided, so it is denied as expired. */
+  expired?: true;
+  /** N10b: who decided (`ctx.approval.by`). */
+  by?: Principal;
+}
+
+/**
+ * Eve TOOLS-F12: `snapshot` as the record of group member `id` stores it: its
+ * `pendingToolCall` is that member's call, also in the sub-agent's snapshot
+ * it waits on (ids are shared across the levels of a sub-agent pause).
+ */
+export function snapshotForMember(snapshot: ExecutionSnapshot, id: string): ExecutionSnapshot {
+  const member = snapshot.approvalGroup?.find((entry) => entry.pending.id === id);
+  const subagent = snapshot.subagent && { ...snapshot.subagent, snapshot: snapshotForMember(snapshot.subagent.snapshot, id) };
+  return { ...snapshot, ...(member && { pendingToolCall: member.pending }), ...(subagent && { subagent }) };
+}
+
+/**
+ * Eve TOOLS-F12: `snapshot` with the decisions of `decided` (by id) written
+ * into its group, and into the group of the sub-agent snapshot it waits on.
+ */
+export function withGroupDecisions(snapshot: ExecutionSnapshot, decided: ReadonlyMap<string, GroupDecision>): ExecutionSnapshot {
+  const approvalGroup = snapshot.approvalGroup?.map((member) => {
+    const decision = member.decision ?? decided.get(member.pending.id);
+    return decision ? { ...member, decision } : member;
+  });
+  const subagent = snapshot.subagent && { ...snapshot.subagent, snapshot: withGroupDecisions(snapshot.subagent.snapshot, decided) };
+  return { ...snapshot, ...(approvalGroup && { approvalGroup }), ...(subagent && { subagent }) };
+}
+
+/**
+ * Eve TOOLS-F12: the records a pause saves - one per call of its group (each
+ * with its own `pendingToolCall`), or `record` itself when the step paused on
+ * one call. The group's first call comes first.
+ */
+export function approvalRecords(record: { pending: PendingApproval; snapshot: ExecutionSnapshot }): Array<{ pending: PendingApproval; snapshot: ExecutionSnapshot }> {
+  const group = record.snapshot.approvalGroup;
+  if (!group || group.length < 2) return [record];
+  return group.map(({ pending }) => ({ pending, snapshot: snapshotForMember(record.snapshot, pending.id) }));
 }
 
 /**
