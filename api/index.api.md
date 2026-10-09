@@ -1964,6 +1964,7 @@ export const ERROR_CODES: {
     readonly LOUSHO_AGENT_DRIFT: "Resume with the agent that paused the run (same model, tools and instructions), or set onAgentDrift: 'warn' or 'ignore' to continue anyway.";
     readonly LOUSHO_RESUME_TOOL_MISSING: "Bring the tool named in the message back (same name), or drop the paused run: delete its checkpoint and reject its approval.";
     readonly LOUSHO_RUN_ALREADY_ITERATED: "Iterate an AgentRun once; call stream() again for a new run.";
+    readonly LOUSHO_SANDBOX_PATH_DENIED: "Write under the sandbox's root (SubprocessSandbox({ root })), or pass the root that should contain the path.";
     readonly LOUSHO_SANDBOX_EGRESS_UNSUPPORTED: "Run on Docker Engine 25.0.5+ for Linux on this host (not Docker Desktop, rootless or a remote daemon), or use network: 'none'.";
     readonly LOUSHO_AGENT_EXECUTION_FAILED: "Look at the `cause` for the underlying failure.";
     readonly LOUSHO_FLOW_EXECUTION_FAILED: "Look at the failing `step` and the `cause`.";
@@ -5294,6 +5295,13 @@ export interface SandboxAdapter {
 }
 
 // @public
+export interface SandboxLimits {
+    cpus?: number;
+    memoryBytes?: number;
+    pids?: number;
+}
+
+// @public
 export type SandboxNetwork = 'none' | 'default' | {
     allow: readonly string[];
 };
@@ -6096,6 +6104,7 @@ export class SubprocessSandbox implements SandboxAdapter {
     // (undocumented)
     readonly name = "docker";
     readonly network: SandboxNetwork;
+    readonly root: string;
     run(cmd: string, args: string[], opts?: SandboxRunOptions): Promise<SandboxResult>;
     writeFile(path: string, content: string): Promise<void>;
 }
@@ -6105,8 +6114,11 @@ export interface SubprocessSandboxOptions {
     broker?: CredentialBroker;
     dockerOptions?: DockerConnectionOptions;
     image?: string;
+    limits?: SandboxLimits;
     network?: SandboxNetwork;
     networkName?: string;
+    root?: string;
+    user?: string;
 }
 
 // @public
