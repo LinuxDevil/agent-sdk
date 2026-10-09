@@ -72,6 +72,7 @@ on the server.
 | `usage` | Token usage of the last finished run (from `run.done`), else `null`. |
 | `finishReason` | How the last run ended (`run.done`): `'stop'`, `'max-steps'`, `'output-invalid'`, `'budget-exceeded'`, `'guardrail'`, ...; `null` before the first run ends. The four named after `stop` also set `status: 'error'` and an `error` named `RunEndedError` (unless an `error` event already did), so the chat does not look like it finished normally. |
 | `todos` | The agent's todo list (`{ id, content, status }[]`), set by each `todo.updated` event of the [todo tools](./tools.md#todo-tools); `[]` until the first one. It carries across turns; see [Todos](#todos). |
+| `partialObject` | For an agent with an `output` schema: the reply parsed so far, from the last `object.delta` event (best-effort, not validated), then the validated `object` of `run.done`. `null` until a run's first `object.delta`, and reset by `send()`. |
 | `lastEvent` | The last event received, for anything the projection does not cover. |
 | `send(input)` | Starts a turn. If a turn is still running, it is aborted first. `input` is a string, content parts or a `Message[]` (an `AgentInput`); the user bubble shows the text with an `[image]` / `[file]` marker per other part (remote mode POSTs it as `{ "input": ... }`). |
 | `reset()` | Aborts the run, forgets the in-process session and clears the chat (remote mode starts a new chat id), as `reset()` in the Vue and Svelte bindings. |

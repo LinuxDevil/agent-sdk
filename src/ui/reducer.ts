@@ -97,6 +97,13 @@ export interface AgentUIState {
   finishReason: string | null;
   /** The agent's todo list, from the last top-level `todo.updated`; carries across turns and is cleared by `reset()`. */
   todos: readonly Todo[];
+  /**
+   * Eve CORE-F13: for an agent with an `output` schema, the reply parsed so
+   * far (the last top-level `object.delta`), then the validated object of
+   * `run.done`. Best-effort and not validated while streaming; `null` until
+   * the first `object.delta` of a run (and for agents without `output`).
+   */
+  partialObject: unknown;
   lastEvent: AgentEvent | null;
 }
 
@@ -119,6 +126,7 @@ export const initialAgentUIState: AgentUIState = {
   usage: null,
   finishReason: null,
   todos: [],
+  partialObject: null,
   lastEvent: null,
 };
 
@@ -239,7 +247,7 @@ function reduceAction(state: AgentUIState, event: AgentUIAction): AgentUIState {
     case 'ui.send': {
       const user: UIMessage = { id: `m${state.messages.length}`, role: 'user', text: describeInput(event.input), toolCalls: [] };
       const messages = onAssistant([...state.messages, user], (message) => message);
-      return { ...state, messages, status: 'streaming', error: null, finishReason: null, pendingApproval: null };
+      return { ...state, messages, status: 'streaming', error: null, finishReason: null, pendingApproval: null, partialObject: null };
     }
     case 'ui.decide': {
       const id = state.pendingApproval?.toolCallId ?? '';
@@ -282,6 +290,8 @@ export function reduceAgentEvents(state: AgentUIState, event: AgentEvent | Agent
         ...next,
         messages: onAssistant(state.messages, ({ stepBreak, ...m }) => ({ ...m, text: stepBreak && m.text ? `${m.text}\n\n${event.text}` : m.text + event.text })),
       };
+    case 'object.delta':
+      return { ...next, partialObject: event.object };
     case 'reasoning.delta':
       return { ...next, messages: onAssistant(state.messages, (m) => ({ ...m, reasoning: (m.reasoning ?? '') + event.text })) };
     case 'tool.start':
@@ -311,6 +321,7 @@ export function reduceAgentEvents(state: AgentUIState, event: AgentEvent | Agent
         usage: event.usage ?? state.usage,
         finishReason: event.finishReason,
         error: endingError(event.finishReason, state.error),
+        ...(event.object !== undefined && { partialObject: event.object }),
       };
     default:
       return next;

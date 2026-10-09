@@ -22,6 +22,7 @@ The event types and their extra fields:
 | `run.start`          | `agentName: string`, `agentId?: string` | First event of every run. |
 | `step.start`         | `step: number` | A model step begins: one model call plus the tool calls it asks for. `step` counts from 1 (a run resumed from a checkpoint continues the count). |
 | `text.delta`         | `text: string` | A chunk of model text, as it arrives. |
+| `object.delta`       | `object: unknown` | Only for an agent with an `output` schema: the reply parsed so far, a best-effort partial object (an unfinished string value is cut where the text is; an unfinished key or number is left out). Follows a `text.delta` that changes it. Not validated; the validated object is `run.done`'s `object`. |
 | `text.done`          | `text: string` | The step's complete text: the concatenation of its `text.delta` events. Only for steps with text. |
 | `reasoning.start`    | (none) | The model starts reasoning in this step. Only with the [`reasoning` option](./reasoning.md) (or a model that always reasons). Its `reasoning.delta`s and `reasoning.done` follow, before the step's first `text.delta` or `tool.start`. |
 | `reasoning.delta`    | `text: string` | A chunk of reasoning text (or of its summary). Never part of `text.delta` / `run.done`'s `text`. |

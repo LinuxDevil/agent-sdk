@@ -301,3 +301,25 @@ describe('reduceAgentEvents (LOU-D15)', () => {
     });
   });
 });
+
+describe('partialObject (Eve CORE-F13)', () => {
+  it('follows the top-level object.delta events, ends at run.done object, and resets on the next send', () => {
+    const [start, first, inner, last] = events(
+      { type: 'run.start', agentName: 'a' },
+      { type: 'object.delta', object: { title: 'He' } },
+      { type: 'object.delta', object: { title: 'Hello' } },
+      { type: 'object.delta', object: { title: 'Hello', tags: ['a'] } }
+    );
+    const fromSubagent = { ...inner, subagent: { name: 'sub', toolCallId: 't1', depth: 1 } } as AgentEvent;
+    expect(reduce(send, start, first, fromSubagent).partialObject).toEqual({ title: 'He' });
+    const streaming = reduce(send, start, first, fromSubagent, last);
+    expect(streaming.partialObject).toEqual({ title: 'Hello', tags: ['a'] });
+
+    const [done] = events({ type: 'run.done', finishReason: 'stop', text: '', object: { title: 'Hello', tags: ['a', 'b'] } });
+    const finished = reduceAgentEvents(streaming, done);
+    expect(finished.partialObject).toEqual({ title: 'Hello', tags: ['a', 'b'] });
+
+    expect(reduceAgentEvents(finished, send).partialObject).toBeNull();
+    expect(initialAgentUIState.partialObject).toBeNull();
+  });
+});

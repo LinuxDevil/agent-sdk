@@ -90,6 +90,17 @@ export interface TextDeltaEvent extends AgentEventBase<'text.delta'> {
   text: string;
 }
 
+/**
+ * Eve CORE-F13: for an agent with an `output` schema, the reply parsed so far
+ * - a best-effort partial object (an unfinished string value is cut where the
+ * text is; an unfinished key or number is left out). Emitted after a
+ * `text.delta` that changes it. Not validated against the schema: the
+ * validated object is `run.done`'s `object` (and `result.object`).
+ */
+export interface ObjectDeltaEvent extends AgentEventBase<'object.delta'> {
+  object: unknown;
+}
+
 /** The complete text of the current step (the concatenation of its `text.delta`s). */
 export interface TextDoneEvent extends AgentEventBase<'text.done'> {
   text: string;
@@ -467,6 +478,7 @@ export type AgentEvent =
   | RunStartEvent
   | StepStartEvent
   | TextDeltaEvent
+  | ObjectDeltaEvent
   | TextDoneEvent
   | ReasoningStartEvent
   | ReasoningDeltaEvent
@@ -519,6 +531,7 @@ const EVENT_TYPE_MAP: Record<AgentEventType, true> = {
   'run.start': true,
   'step.start': true,
   'text.delta': true,
+  'object.delta': true,
   'text.done': true,
   'reasoning.start': true,
   'reasoning.delta': true,

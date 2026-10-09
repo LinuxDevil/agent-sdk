@@ -42,6 +42,7 @@ import type { GuardrailTrip } from './ioGuardrails';
 import type { AgentDrift } from './agentFingerprint';
 import { isTodoListResult } from '../tools/built-in/todo';
 import { cappedHostedResult, settleHostedFinish } from './hostedToolCalls';
+import { parsePartialJson } from '../utils/partialJson';
 
 const MODEL_FINISH_REASONS: ReadonlySet<string> = new Set<GenerateResult['finishReason']>([
   'stop',
@@ -543,10 +544,14 @@ class RunEvents {
     onText?: (text: string) => void
   ): Promise<GenerateResult> {
     const report = heldUntil(hold);
+    const objectDelta = request.responseFormat ? partialObjects() : undefined;
     const sink: StepSink = {
       onTextDelta: (text) => {
         onText?.(text);
         report(() => this.emit({ type: 'text.delta', text }, subagent));
+        // Eve CORE-F13: an `output` run's reply as parsed so far, when it changed.
+        const object = objectDelta?.(text);
+        if (object !== undefined) report(() => this.emit({ type: 'object.delta', object: object.value }, subagent));
       },
       onReasoning: (event) => report(() => this.emit(event, subagent)),
       onHostedToolCall: (hosted) => report(() => this.hostedStarted(hosted, subagent)),
@@ -566,6 +571,24 @@ class RunEvents {
     if (generated.text) sink.onTextDelta(generated.text);
     return generated;
   }
+}
+
+/**
+ * Eve CORE-F13: takes a step's text deltas and returns the reply parsed so
+ * far (`{ value }`) when it differs from the last one returned, else undefined.
+ */
+function partialObjects(): (delta: string) => { value: unknown } | undefined {
+  let text = '';
+  let last: string | undefined;
+  return (delta) => {
+    text += delta;
+    const value = parsePartialJson(text);
+    if (value === undefined) return undefined;
+    const encoded = JSON.stringify(value);
+    if (encoded === last) return undefined;
+    last = encoded;
+    return { value };
+  };
 }
 
 /**

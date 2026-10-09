@@ -168,7 +168,7 @@ export interface AgentErrorEvent extends AgentEventBase<'error'> {
 // Warning: (ae-forgotten-export) The symbol "ContextClearedEvent" needs to be exported by the entry point index.d.ts
 //
 // @public
-export type AgentEvent = RunStartEvent | StepStartEvent | TextDeltaEvent | TextDoneEvent | ReasoningStartEvent | ReasoningDeltaEvent | ReasoningDoneEvent | ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | TodoUpdatedEvent | ToolErrorEvent | ApprovalRequestedEvent | PermissionDecisionEvent | StepDoneEvent | AgentErrorEvent | ProviderRetryEvent | ProviderFallbackEvent | CompactionStartEvent | CompactionDoneEvent | ContextClearedEvent | BudgetExceededEvent | InputQueuedEvent | InputSteeredEvent | InputAppliedEvent | GuardrailTrippedEvent | GuardrailRewroteEvent | AgentDriftEvent | HandoffEvent | RunDoneEvent;
+export type AgentEvent = RunStartEvent | StepStartEvent | TextDeltaEvent | ObjectDeltaEvent | TextDoneEvent | ReasoningStartEvent | ReasoningDeltaEvent | ReasoningDoneEvent | ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | TodoUpdatedEvent | ToolErrorEvent | ApprovalRequestedEvent | PermissionDecisionEvent | StepDoneEvent | AgentErrorEvent | ProviderRetryEvent | ProviderFallbackEvent | CompactionStartEvent | CompactionDoneEvent | ContextClearedEvent | BudgetExceededEvent | InputQueuedEvent | InputSteeredEvent | InputAppliedEvent | GuardrailTrippedEvent | GuardrailRewroteEvent | AgentDriftEvent | HandoffEvent | RunDoneEvent;
 
 // @public
 export interface AgentEventBase<TType extends string> {
@@ -4359,6 +4359,12 @@ export interface OAuthTokenStore {
     setClient(provider: string, client: Record<string, unknown>): Promise<void>;
     // (undocumented)
     takePending(state: string): Promise<PendingSignIn | undefined>;
+}
+
+// @public
+export interface ObjectDeltaEvent extends AgentEventBase<'object.delta'> {
+    // (undocumented)
+    object: unknown;
 }
 
 // @public

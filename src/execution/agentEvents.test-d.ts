@@ -146,6 +146,7 @@ describe('AgentEvent types', () => {
       | 'run.start'
       | 'step.start'
       | 'text.delta'
+      | 'object.delta'
       | 'text.done'
       | 'reasoning.start'
       | 'reasoning.delta'
