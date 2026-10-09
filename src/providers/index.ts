@@ -7,6 +7,7 @@ export * from './llm';
 export { textOf, toolResultText } from './content';
 export type { AgentInput } from './content';
 export type { ReasoningEffort, ReasoningOption, ReasoningSettings } from './reasoning';
+export type { PromptCachingOption } from './promptCaching';
 export * from './mock';
 export * from './OpenAIProvider';
 export * from './OllamaProvider';

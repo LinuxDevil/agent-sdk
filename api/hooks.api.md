@@ -282,6 +282,8 @@ interface GenerateOptions {
     model?: string;
     // (undocumented)
     presencePenalty?: number;
+    // Warning: (ae-forgotten-export) The symbol "PromptCachingOption" needs to be exported by the entry point hooks.d.ts
+    promptCaching?: PromptCachingOption;
     // Warning: (ae-forgotten-export) The symbol "ReasoningOption" needs to be exported by the entry point hooks.d.ts
     reasoning?: ReasoningOption;
     responseFormat?: {
@@ -613,6 +615,9 @@ interface Principal {
     // (undocumented)
     type: 'user' | 'service';
 }
+
+// @public
+type PromptCachingOption = 'auto' | false;
 
 // @public
 interface ProviderFallbackEvent extends AgentEventBase<'provider.fallback'> {
@@ -995,12 +1000,12 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-vtKX8cd3.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point hooks.d.ts
-// dist/createAgent-vtKX8cd3.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point hooks.d.ts
-// dist/createAgent-vtKX8cd3.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point hooks.d.ts
-// dist/index-VM5p5BvT.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point hooks.d.ts
-// dist/index-VM5p5BvT.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point hooks.d.ts
-// dist/index-VM5p5BvT.d.ts:1461:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point hooks.d.ts
+// dist/createAgent-B-kWCGJi.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point hooks.d.ts
+// dist/createAgent-B-kWCGJi.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point hooks.d.ts
+// dist/createAgent-B-kWCGJi.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point hooks.d.ts
+// dist/index-Dy27pnXR.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point hooks.d.ts
+// dist/index-Dy27pnXR.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point hooks.d.ts
+// dist/index-Dy27pnXR.d.ts:1474:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point hooks.d.ts
 
 // (No @packageDocumentation comment for this package)
 

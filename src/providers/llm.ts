@@ -1,3 +1,4 @@
+import type { PromptCachingOption } from './promptCaching';
 import { SDKError } from '../execution/errors';
 // LOU-R1: registers the built-in providers lazily on the first create()
 // miss (see ./builtinProviders.ts), so 'openai'/'anthropic'/'openrouter'/
@@ -234,6 +235,13 @@ export interface GenerateOptions {
    * (or with `force: true`); `'none'` sends nothing. See docs/reasoning.md.
    */
   reasoning?: ReasoningOption;
+  /**
+   * Eve PROV-F4: Anthropic prompt caching. `'auto'` (also when unset) makes
+   * the built-in Anthropic and OpenRouter providers mark cache breakpoints
+   * (the system prompt, the last tool, the last user turn) for Claude models;
+   * `false` marks none. Other providers cache on their own or not at all.
+   */
+  promptCaching?: PromptCachingOption;
   /**
    * Cancels the request. Providers must reject promptly (with the signal's
    * `reason`, normally an `AbortError`) once it is aborted. AgentExecutor

@@ -183,8 +183,9 @@ loaded tool into a `LOUSHO_MCP_AUTH_REQUIRED` tool error, as without deferral.
 
 ## Prompt caching
 
-The tool list changes when tools load. Providers that cache the request prefix
-(Anthropic prompt caching, OpenAI's automatic caching) put tool definitions at
-the start of it, so a step that loads tools can miss the cache from that point.
-Loading happens a few times per run at most; if your runs reuse a long cached
+The tool list changes when tools load. OpenAI caches the request prefix
+automatically, and for Claude models the SDK marks Anthropic cache breakpoints
+([`promptCaching: 'auto'`](./models-and-cost.md#prompt-caching)). Both put tool
+definitions at the start of the prefix, so a step that loads tools misses the
+cache from that point and writes a new entry. Loading happens a few times per run at most. If your runs reuse a long cached
 prefix across many calls, compare the cost with `toolSearch: false`.

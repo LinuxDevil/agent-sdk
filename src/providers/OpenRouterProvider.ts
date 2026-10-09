@@ -11,6 +11,7 @@ import { Logger, noopLogger } from '../execution/logger';
 import { SDKError } from '../execution/errors';
 import type { GenerateOptions, GenerateResult, HostedToolCall, ProviderUsage, ReasoningBlock, StreamChunk, StreamResult } from './llm';
 import { openRouterReasoning } from './reasoning';
+import { cachesPrompt, withBodyBreakpoints } from './promptCaching';
 import { mappedHostedOptions, type HostedOptionMapping } from './hostedToolMapping';
 import { hostedToolUnsupported, type HostedTool, type HostedToolType } from '../tools/hosted';
 
@@ -206,6 +207,8 @@ interface RequestChanges {
   merge?: Record<string, unknown>;
   /** N1b: tool entries appended to the body's `tools` array, after the function tools `@ai-sdk/openai` put there. */
   tools?: unknown[];
+  /** Eve PROV-F4: a last change to the whole body (Anthropic `cache_control` breakpoints). */
+  rewrite?: (body: Record<string, unknown>) => Record<string, unknown>;
   /** Called with the parsed response of each successful call (the last one wins). */
   observe?: (settled: Promise<CallObservation | undefined>) => void;
 }
@@ -217,7 +220,8 @@ function withRequestChanges(changes: RequestChanges, send: typeof fetch): typeof
     if (typeof body === 'string') {
       const json = JSON.parse(body) as Record<string, unknown>;
       const tools = changes.tools && [...(Array.isArray(json.tools) ? (json.tools as unknown[]) : []), ...changes.tools];
-      body = JSON.stringify({ ...json, ...changes.merge, ...(tools && { tools }) });
+      const changed = { ...json, ...changes.merge, ...(tools && { tools }) };
+      body = JSON.stringify(changes.rewrite ? changes.rewrite(changed) : changed);
     }
     const response = await send(input, { ...init, body });
     if (changes.observe && response.ok) {
@@ -405,7 +409,11 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
     const reasoning = openRouterReasoning(modelId, options?.reasoning);
     // N1b: OpenRouter's web search is a server tool in the `tools` array, not an AI SDK tool.
     const search = options?.hostedTools?.find((tool) => tool.type === 'web_search');
-    const changes: RequestChanges = { ...(reasoning && { merge: reasoning }) };
+    const changes: RequestChanges = {
+      ...(reasoning && { merge: reasoning }),
+      // Eve PROV-F4: `@ai-sdk/openai` has no field for Anthropic's `cache_control`, so it is added to the body.
+      ...(cachesPrompt(modelId, options?.promptCaching) && { rewrite: withBodyBreakpoints }),
+    };
     if (search) {
       const parameters = mappedHostedOptions('OpenRouter', search, OPENROUTER_SEARCH_PARAMETERS);
       changes.tools = [{ type: 'openrouter:web_search', ...(Object.keys(parameters).length > 0 && { parameters }) }];
@@ -420,7 +428,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
         watch.settled = settled;
       };
     }
-    if (options || changes.merge || changes.tools) return (await this.openRouter(changes)).chat(modelId);
+    if (options || changes.merge || changes.tools || changes.rewrite) return (await this.openRouter(changes)).chat(modelId);
     // `.chat()` is the Chat Completions API, the only one OpenRouter implements. `@ai-sdk/openai`
     // 2+ makes the bare call a Responses API model, so the factory is named on every major.
     return (await this.loadProvider()).chat(modelId);

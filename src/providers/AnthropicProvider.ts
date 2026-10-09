@@ -14,6 +14,8 @@ import { aiMajorOf } from './aiSdkCompat';
 import { lazyValue, loadOptionalPeer } from './optionalPeer';
 import { mappedHostedOptions, type HostedOptionMapping } from './hostedToolMapping';
 import { hostedToolUnsupported, type HostedTool, type HostedToolType } from '../tools/hosted';
+import { cachesPrompt } from './promptCaching';
+import type { GenerateOptions } from './llm';
 
 /** How one helper maps to `anthropic.tools`: the dated factories' name prefix, and each helper option to the factory's argument. */
 interface AnthropicToolMapping {
@@ -84,6 +86,11 @@ export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
 
   protected async createModel(modelId: string): Promise<LanguageModel> {
     return (await this.loadProvider())(modelId);
+  }
+
+  /** Eve PROV-F4: cache breakpoints on Claude models unless the call says `promptCaching: false`. */
+  protected cachesPrompt(modelId: string, options: GenerateOptions): boolean {
+    return cachesPrompt(modelId, options.promptCaching);
   }
 
   /** N1b: web search and code execution, on ai 6 (@ai-sdk/anthropic 3) and ai 7 (@ai-sdk/anthropic 4); `hostedTool()` passes through. */
