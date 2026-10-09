@@ -21,6 +21,9 @@ export interface TaskRecord {
 /** Name of the header message stored before a child's transcript. */
 const HEADER = 'lousho-subagent-task';
 
+/** Name of the record (and the key's taskId) holding the number of the lead session's last taskId. */
+const COUNTER = 'lousho-subagent-task-counter';
+
 async function sha256(text: string): Promise<string> {
   const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -43,7 +46,8 @@ export function taskNotFound(message: string): SDKError {
 
 /** The child conversations of one lead session (or, without a session, of one lead run). */
 export class TaskSessions {
-  private counter = 0;
+  /** The number of the last taskId handed out; read from the store on first use. */
+  private counter: number | undefined;
   /** The last allocate() call, which the next one waits for. */
   private allocating: Promise<unknown> = Promise.resolve();
   private readonly running = new Set<string>();
@@ -73,11 +77,26 @@ export class TaskSessions {
     return taskId;
   }
 
+  /**
+   * Eve MA-F12: the id after the session's last one, reserved in the store at
+   * once, so a task that fails before saving its conversation never hands its
+   * id to a later task, and a long session does not probe every earlier id.
+   */
   private async nextFree(): Promise<string> {
-    for (;;) {
-      const taskId = `task_${++this.counter}`;
-      if (!(await this.store.load(await this.key(taskId)))) return taskId;
-    }
+    if (this.counter === undefined) this.counter = await this.lastAllocated();
+    const taskId = `task_${++this.counter}`;
+    await this.store.save(await this.key(COUNTER), [{ role: 'system', name: COUNTER, content: String(this.counter) }]);
+    return taskId;
+  }
+
+  /** The number of the session's last taskId: its saved counter, or (a session from before it) its last saved task. */
+  private async lastAllocated(): Promise<number> {
+    const [saved] = (await this.store.load(await this.key(COUNTER))) ?? [];
+    const counted = saved?.name === COUNTER ? Number(saved.content) : NaN;
+    if (Number.isSafeInteger(counted) && counted >= 0) return counted;
+    let last = 0;
+    while (await this.store.load(await this.key(`task_${last + 1}`))) last++;
+    return last;
   }
 
   /** The conversation of `taskId`; throws a coded error when it is unknown, another sub-agent's, or still running. */
