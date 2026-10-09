@@ -5,7 +5,7 @@ Scaffold a new [`@lousho/build-ai-agent`](https://www.npmjs.com/package/@lousho/
 ```bash
 npm create lousho-agent my-agent
 cd my-agent
-cp .env.example .env     # put your API key in .env
+# copy .env.example to .env (cp on macOS/Linux, copy on Windows), then put your API key in it
 npm run dev              # chat with your agent in the terminal
 npm test                 # offline tests: no API key needed
 ```
