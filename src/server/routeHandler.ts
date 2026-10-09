@@ -89,7 +89,7 @@ async function uiChat(agent: SimpleAgent, request: Request, principal: Principal
   const body = (await request.json().catch(() => undefined)) as { messages?: UIMessageLike[]; id?: unknown } | undefined;
   if (!Array.isArray(body?.messages)) return json(400, { error: "Request body must be JSON with a 'messages' array" });
   const { id } = body;
-  if (typeof id !== 'string' || !id) return toUIMessageStreamResponse(publicEvents(ctx, agent.stream(fromUIMessages(body.messages), { principal })));
+  if (typeof id !== 'string' || !id) return toUIMessageStreamResponse(publicEvents(ctx, agent.stream(fromUIMessages(body.messages), { principal, throwOnError: false })));
   // Eve CH-F11: an invalid id is a 400, as on POST /chat, and `authorizeSession` only sees a valid one.
   try {
     assertSessionId(id);

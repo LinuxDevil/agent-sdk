@@ -128,7 +128,8 @@ export function createAgentRunner(host: AgentRunnerHost): AgentCommands & { rese
       const source = host.source();
       let events: AsyncIterable<AgentEvent>;
       if ('agent' in source) {
-        events = streamTarget(source).stream(input, { signal });
+        // The failure arrives as `error` / `run.done` events, which the reducer shows.
+        events = source.sessionId === undefined ? source.agent.stream(input, { signal, throwOnError: false }) : streamTarget(source).stream(input, { signal });
       } else {
         events = parseEventStream(await post(source, source.url, { input, sessionId: source.sessionId ?? chatId }, signal));
       }

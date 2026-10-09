@@ -714,3 +714,22 @@ class AgentRunImpl implements AgentRun {
 export function startAgentRun(start: RunStarter, signal?: AbortSignal, inputQueue = new InputQueue()): AgentRun {
   return new AgentRunImpl(start, signal, inputQueue);
 }
+
+/**
+ * Eve CORE-F10: `run` whose iterator also rethrows, after the last event, the
+ * error that failed the run (`run.done { finishReason: 'error' }`): the one
+ * `run.result` rejects with, the same `send()` would throw. An early `break`,
+ * an abort and a pause for approval end it normally.
+ */
+export function throwingRun<TObject>(run: AgentRun<TObject>): AgentRun<TObject> {
+  return {
+    runId: run.runId,
+    result: run.result,
+    enqueue: (input) => run.enqueue(input),
+    steer: (input) => run.steer(input),
+    async *[Symbol.asyncIterator]() {
+      yield* run;
+      await run.result;
+    },
+  };
+}

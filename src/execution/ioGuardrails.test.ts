@@ -205,7 +205,7 @@ describe("onTripped: 'throw' (LOU-X4)", () => {
     expect(error).toBeInstanceOf(GuardrailError);
     expect(error).toMatchObject({ code: 'LOUSHO_GUARDRAIL_TRIPPED', guardrail: { name: 'no-bomb', kind: 'input' } });
 
-    const run = agent.stream('bomb');
+    const run = agent.stream('bomb', { throwOnError: false });
     const types = (await collect(run)).map((e) => e.type);
     expect(types.slice(-3)).toEqual(['guardrail.tripped', 'error', 'run.done']);
     await expect(run.result).rejects.toBeInstanceOf(GuardrailError);

@@ -333,7 +333,7 @@ describe('agent.stream()', () => {
   });
 
   it('reports a provider failure as error then run.done error, and result rejects', async () => {
-    const run = agentWith(mockModel([{ error: new Error('model exploded') }])).stream('hi');
+    const run = agentWith(mockModel([{ error: new Error('model exploded') }])).stream('hi', { throwOnError: false });
     const events = await collect(run);
 
     expect(typesOf(events)).toEqual(['run.start', 'step.start', 'error', 'step.done', 'run.done']);
@@ -342,6 +342,26 @@ describe('agent.stream()', () => {
     expect(only(events, 'run.done')[0]).toStrictEqual(expect.objectContaining({ finishReason: 'error', text: '' }));
     expect(only(events, 'run.done')[0]).not.toHaveProperty('usage');
     await expect(run.result).rejects.toThrow(/model exploded/);
+  });
+
+  it('rethrows the run error from the iterator after run.done, unless throwOnError is false (Eve CORE-F10)', async () => {
+    const events: AgentEvent[] = [];
+    const run = agentWith(mockModel([{ error: new Error('model exploded') }])).stream('hi');
+    await expect(
+      (async () => {
+        for await (const event of run) events.push(event);
+      })()
+    ).rejects.toThrow(/model exploded/);
+    expect(typesOf(events).at(-1)).toBe('run.done');
+    expect(only(events, 'run.done')[0].finishReason).toBe('error');
+    await expect(run.result).rejects.toThrow(/model exploded/);
+  });
+
+  it('does not rethrow for a normal ending or an early break (Eve CORE-F10)', async () => {
+    await expect(collect(agentWith(mockModel(['ok'])).stream('hi'))).resolves.toBeDefined();
+    const run = agentWith(mockModel(['ok'])).stream('hi');
+    for await (const event of run) if (event.type === 'run.start') break;
+    expect((await run.result).finishReason).toBe('aborted');
   });
 
   it('emits an error event for a failure outside any step (and never an unhandled rejection)', async () => {
@@ -377,7 +397,7 @@ describe('agent.stream()', () => {
       finishReason: Promise.reject(new Error('stream broke')),
       toolCalls: Promise.reject(new Error('stream broke')),
     });
-    const run = agentWith(model).stream('hi');
+    const run = agentWith(model).stream('hi', { throwOnError: false });
     const events = await collect(run);
 
     expect(only(events, 'error')[0].error.message).toContain('stream broke');

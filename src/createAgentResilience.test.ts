@@ -293,7 +293,7 @@ describe('createAgent retry and fallbackModels (LOU-V7.2)', () => {
       },
     };
 
-    const run = createAgent({ provider, retry: fast }).stream('hi');
+    const run = createAgent({ provider, retry: fast }).stream('hi', { throwOnError: false });
     const events = await collect(run);
     await expect(run.result).rejects.toMatchObject({ message: 'HTTP 503' });
     expect(events.filter((e) => e.type === 'provider.retry')).toHaveLength(0);

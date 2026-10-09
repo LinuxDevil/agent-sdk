@@ -208,17 +208,20 @@ export function toUIMessageStream(run: AsyncIterable<AgentEvent>): ReadableStrea
   const iterator = run[Symbol.asyncIterator]();
   const state: MapState = { openText: null, textCount: 0, reasoning: '' };
   const pending: LoushoUIMessageChunk[] = [];
+  let finished = false;
   return new ReadableStream<LoushoUIMessageChunk>({
     async pull(controller) {
       try {
         while (pending.length === 0) {
           const next = await iterator.next();
           if (next.done) return controller.close();
+          finished ||= next.value.type === 'run.done';
           pending.push(...chunksFor(next.value, state));
         }
         controller.enqueue(pending.shift() as LoushoUIMessageChunk);
       } catch (error) {
-        controller.enqueue({ type: 'error', errorText: error instanceof Error ? error.message : String(error) });
+        // Eve CORE-F10: a failed run throws after `run.done`; its `error` event already made the chunk.
+        if (!finished) controller.enqueue({ type: 'error', errorText: error instanceof Error ? error.message : String(error) });
         controller.close();
       }
     },

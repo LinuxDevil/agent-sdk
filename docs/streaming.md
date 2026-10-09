@@ -46,6 +46,13 @@ interface AgentRun extends AsyncIterable<AgentEvent> {
   resolves with `finishReason: 'aborted'`; a run paused for approval resolves
   with `finishReason: 'awaiting-approval'` and `approvalId`. Leaving `result`
   unawaited never causes an unhandled rejection.
+- **A failed run throws from the loop.** When the run fails, `for await` yields
+  the `error` and `run.done { finishReason: 'error' }` events, then rethrows the
+  error `run.result` rejects with (the one `send()` would throw), so a `try`
+  around the loop catches it. Pass `{ throwOnError: false }` to `stream()` to end
+  the loop normally and read the failure from the events or `run.result`. An
+  abort, an early `break` and a pause for approval never throw. Session and
+  `approvals.streamResolve()` streams keep ending normally.
 - **Breaking out of the `for await` loop early aborts the run** (through the
   same path as `signal`, see [Cancellation](#cancellation)). `result` then
   resolves with `finishReason: 'aborted'`.
