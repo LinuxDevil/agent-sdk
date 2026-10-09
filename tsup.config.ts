@@ -81,7 +81,8 @@ export default defineConfig([
     esbuildOptions(options) {
       // Ship maps without `sourcesContent` (#191): `src/` is in the published
       // package and the maps' `sources` resolve to it, so embedding the source a
-      // second time only adds ~5 MB to the tarball.
+      // second time only adds ~5 MB to the tarball. `src/` must stay published
+      // regardless: `lousho build` bundles src/deploy/*.worker.ts from it.
       options.sourcesContent = false;
     },
     onSuccess: async () => {
