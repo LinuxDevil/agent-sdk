@@ -146,6 +146,24 @@ describe('AiSdkProvider', () => {
       cachedInputTokens: 1,
     });
 
+    // Eve PROV-F4: Anthropic's cache reads and writes. v4's @ai-sdk/anthropic leaves both out of
+    // `promptTokens` (they are added back); v6/v7 count them in `inputTokens` already.
+    generateTextMock.mockResolvedValue(
+      isV4
+        ? { ...textResult('stop'), providerMetadata: { anthropic: { cacheReadInputTokens: 40, cacheCreationInputTokens: 10 } } }
+        : {
+            ...textResult('stop'),
+            usage: { inputTokens: 51, outputTokens: 2, totalTokens: 53, inputTokenDetails: { noCacheTokens: 1, cacheReadTokens: 40, cacheWriteTokens: 10 } },
+          }
+    );
+    expect((await provider.generate({ model: '', messages: [] })).usage).toEqual({
+      promptTokens: 51,
+      completionTokens: 2,
+      totalTokens: 53,
+      cachedInputTokens: 40,
+      cacheWriteTokens: 10,
+    });
+
     const nan = Number.NaN;
     generateTextMock.mockResolvedValue({
       ...textResult('stop'),

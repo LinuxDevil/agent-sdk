@@ -18,6 +18,17 @@ export interface ModelInfo {
   inputCostPerMTok?: number;
   /** USD per million output tokens. */
   outputCostPerMTok?: number;
+  /**
+   * USD per million input tokens read from the provider's prompt cache
+   * (`usage.cachedInputTokens`). Unset: billed at `inputCostPerMTok`.
+   */
+  cachedInputCostPerMTok?: number;
+  /**
+   * USD per million input tokens written to the prompt cache
+   * (`usage.cacheWriteTokens`; Anthropic's 5-minute writes). Unset: billed at
+   * `inputCostPerMTok` (OpenAI charges nothing extra for writes).
+   */
+  cacheWriteCostPerMTok?: number;
 }
 
 const registry = new Map<string, ModelInfo>();
@@ -102,20 +113,34 @@ export function getModelInfo(model: string): ModelInfo | undefined {
   return slash > 0 ? lookupExactOrPrefix(model.slice(slash + 1)) : undefined;
 }
 
+/** A token count, or 0 for a missing or invalid one. */
+const countOf = (value: number | undefined): number => (typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0);
+
 /**
  * Estimate the USD cost of a request from its token usage. Returns
  * `undefined` (never 0) when the model, or either of its prices, is unknown.
+ * `cachedInputTokens` and `cacheWriteTokens` are parts of `inputTokens` and
+ * are priced at the model's `cachedInputCostPerMTok`/`cacheWriteCostPerMTok`
+ * (Eve PROV-F4), or at the input price when the model has none.
  * Built-in prices are a dated snapshot: register your own with
  * {@link registerModel} for billing-grade numbers.
  *
  * @example
  * estimateCost({ inputTokens: 1_000_000, outputTokens: 0 }, 'gpt-4o'); // 2.5
+ * estimateCost({ inputTokens: 1_000_000, outputTokens: 0, cachedInputTokens: 1_000_000 }, 'gpt-4o'); // 1.25
  */
 export function estimateCost(
-  usage: { inputTokens: number; outputTokens: number },
+  usage: { inputTokens: number; outputTokens: number; cachedInputTokens?: number; cacheWriteTokens?: number },
   model: string
 ): number | undefined {
   const info = getModelInfo(model);
   if (info?.inputCostPerMTok === undefined || info.outputCostPerMTok === undefined) return undefined;
-  return (usage.inputTokens * info.inputCostPerMTok + usage.outputTokens * info.outputCostPerMTok) / 1_000_000;
+  const input = countOf(usage.inputTokens);
+  const cached = Math.min(countOf(usage.cachedInputTokens), input);
+  const written = Math.min(countOf(usage.cacheWriteTokens), input - cached);
+  const inputCost =
+    (input - cached - written) * info.inputCostPerMTok +
+    cached * (info.cachedInputCostPerMTok ?? info.inputCostPerMTok) +
+    written * (info.cacheWriteCostPerMTok ?? info.inputCostPerMTok);
+  return (inputCost + usage.outputTokens * info.outputCostPerMTok) / 1_000_000;
 }

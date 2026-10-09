@@ -3022,6 +3022,7 @@ interface ProviderRetryEvent extends AgentEventBase<'provider.retry'> {
 // @public
 interface ProviderUsage {
     cachedInputTokens?: number;
+    cacheWriteTokens?: number;
     // (undocumented)
     completionTokens: number;
     costUsd?: number;
@@ -3214,6 +3215,7 @@ interface RunUsage {
     // Warning: (ae-forgotten-export) The symbol "ModelUsage" needs to be exported by the entry point worker.d.ts
     byModel: Record<string, ModelUsage>;
     cachedInputTokens?: number;
+    cacheWriteTokens?: number;
     // @deprecated (undocumented)
     completionTokens: number;
     costUsd: number | undefined;
@@ -4271,6 +4273,7 @@ type UnsupportedFiles = 'error' | 'text-note';
 // @public
 interface Usage {
     cachedInputTokens?: number;
+    cacheWriteTokens?: number;
     inputTokens: number;
     outputTokens: number;
     reasoningTokens?: number;
@@ -4303,13 +4306,13 @@ interface WithRetryOptions {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-DfKYNbZe.d.ts:787:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-DfKYNbZe.d.ts:804:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-DfKYNbZe.d.ts:1165:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-DfKYNbZe.d.ts:3246:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-DfKYNbZe.d.ts:3247:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
-// dist/index-DflclLiQ.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
-// dist/index-DflclLiQ.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BWbNkrXD.d.ts:787:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BWbNkrXD.d.ts:804:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BWbNkrXD.d.ts:1165:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BWbNkrXD.d.ts:3246:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BWbNkrXD.d.ts:3247:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
+// dist/index-BmtyMuK3.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
+// dist/index-BmtyMuK3.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point worker.d.ts
 
 // (No @packageDocumentation comment for this package)

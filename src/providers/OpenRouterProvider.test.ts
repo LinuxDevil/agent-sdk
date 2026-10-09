@@ -233,3 +233,16 @@ describe('OpenRouterProvider reported cost (Eve PROV-F3)', () => {
     expect(result.usage).toMatchObject({ promptTokens: 10, completionTokens: 5, costUsd: 0.0123 });
   });
 });
+
+describe('OpenRouterProvider prompt-cache usage (Eve PROV-F4)', () => {
+  it("reads the response's cache reads and writes into usage", async () => {
+    const body = {
+      id: 'x', object: 'chat.completion', created: 0, model: 'm',
+      choices: [{ index: 0, message: { role: 'assistant', content: 'hi' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 5000, completion_tokens: 5, total_tokens: 5005, prompt_tokens_details: { cached_tokens: 4000, cache_write_tokens: 900 } },
+    };
+    const provider = new OpenRouterProvider({ apiKey: 'k', defaultModel: 'anthropic/claude-haiku-4.5', fetch: async () => new Response(JSON.stringify(body), { status: 200 }) });
+    const result = await provider.generate({ messages: [{ role: 'user', content: 'hi' }] });
+    expect(result.usage).toMatchObject({ promptTokens: 5000, cachedInputTokens: 4000, cacheWriteTokens: 900 });
+  });
+});

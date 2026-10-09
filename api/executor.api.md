@@ -1916,6 +1916,7 @@ interface ProviderRetryEvent extends AgentEventBase<'provider.retry'> {
 // @public
 interface ProviderUsage {
     cachedInputTokens?: number;
+    cacheWriteTokens?: number;
     // (undocumented)
     completionTokens: number;
     costUsd?: number;
@@ -2125,6 +2126,7 @@ interface RunUsage {
     // Warning: (ae-forgotten-export) The symbol "ModelUsage" needs to be exported by the entry point index.d.ts
     byModel: Record<string, ModelUsage>;
     cachedInputTokens?: number;
+    cacheWriteTokens?: number;
     // @deprecated (undocumented)
     completionTokens: number;
     costUsd: number | undefined;
@@ -2937,6 +2939,7 @@ interface UIComponentNode {
 // @public
 interface Usage {
     cachedInputTokens?: number;
+    cacheWriteTokens?: number;
     inputTokens: number;
     outputTokens: number;
     reasoningTokens?: number;
@@ -2945,14 +2948,14 @@ interface Usage {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-DfKYNbZe.d.ts:787:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-DfKYNbZe.d.ts:804:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-DfKYNbZe.d.ts:1165:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
-// dist/index-DflclLiQ.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-DflclLiQ.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-DflclLiQ.d.ts:1959:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
-// dist/index-DflclLiQ.d.ts:2002:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
-// dist/index-DflclLiQ.d.ts:2002:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BWbNkrXD.d.ts:787:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BWbNkrXD.d.ts:804:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BWbNkrXD.d.ts:1165:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/index-BmtyMuK3.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-BmtyMuK3.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-BmtyMuK3.d.ts:1965:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
+// dist/index-BmtyMuK3.d.ts:2008:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
+// dist/index-BmtyMuK3.d.ts:2008:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

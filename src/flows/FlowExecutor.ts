@@ -191,7 +191,7 @@ export interface FlowExecutionResult {
   error?: Error;
   /**
    * MA-F11: the model usage of every `llmCall` step of the run, summed (zeros
-   * when no step reported usage). `cachedInputTokens`, `reasoningTokens` and
+   * when no step reported usage). `cachedInputTokens`, `cacheWriteTokens`, `reasoningTokens` and
    * `costUsd` are present only when some call reported them.
    */
   usage: ProviderUsage;
@@ -208,7 +208,7 @@ function sumUsage(events: FlowExecutionEvent[]): ProviderUsage {
     total.promptTokens += usage.promptTokens;
     total.completionTokens += usage.completionTokens;
     total.totalTokens += usage.totalTokens;
-    for (const key of ['cachedInputTokens', 'reasoningTokens', 'costUsd'] as const) {
+    for (const key of ['cachedInputTokens', 'cacheWriteTokens', 'reasoningTokens', 'costUsd'] as const) {
       if (usage[key] !== undefined) {
         total[key] = (total[key] ?? 0) + usage[key];
       }

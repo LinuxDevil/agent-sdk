@@ -70,6 +70,10 @@ interface CallObservation {
   /** Reasoning text fragments and detail end-markers, in arrival order. */
   reasoning: ReasoningPiece[];
   reasoningTokens?: number;
+  /** `usage.prompt_tokens_details.cached_tokens`: input tokens read from the prompt cache (Eve PROV-F4). */
+  cachedInputTokens?: number;
+  /** `usage.prompt_tokens_details.cache_write_tokens`: input tokens written to the prompt cache (Eve PROV-F4). */
+  cacheWriteTokens?: number;
   /** `usage.cost`: the USD OpenRouter billed for the call. */
   costUsd?: number;
 }
@@ -80,6 +84,7 @@ interface ResponseBody {
   usage?: {
     server_tool_use?: { web_search_requests?: unknown };
     completion_tokens_details?: { reasoning_tokens?: unknown };
+    prompt_tokens_details?: { cached_tokens?: unknown; cache_write_tokens?: unknown };
     reasoning_tokens?: unknown;
     cost?: unknown;
   };
@@ -128,6 +133,10 @@ function scanUsage(usage: ResponseBody['usage'], found: CallObservation): void {
   if (typeof requests === 'number') found.requests = Math.max(found.requests ?? 0, requests);
   const reasoningTokens = usage?.completion_tokens_details?.reasoning_tokens ?? usage?.reasoning_tokens;
   if (typeof reasoningTokens === 'number') found.reasoningTokens = reasoningTokens;
+  const cached = usage?.prompt_tokens_details?.cached_tokens;
+  if (typeof cached === 'number' && cached > 0) found.cachedInputTokens = cached;
+  const written = usage?.prompt_tokens_details?.cache_write_tokens;
+  if (typeof written === 'number' && written > 0) found.cacheWriteTokens = written;
   const cost = usage?.cost;
   if (typeof cost === 'number' && Number.isFinite(cost) && cost >= 0) found.costUsd = cost;
 }
@@ -318,17 +327,21 @@ function withErrorMessage(inner: typeof fetch): typeof fetch {
   };
 }
 
+/** The usage fields the response body can fill in when the SDK's usage lacks them. */
+const OBSERVED_USAGE = ['reasoningTokens', 'cachedInputTokens', 'cacheWriteTokens', 'costUsd'] as const;
+
 /**
- * `usage`, with the observed reasoning token count and the cost OpenRouter
- * billed (`usage.cost`) that the SDK's usage lacks (the same instance when
- * nothing is added).
+ * `usage`, with the observed reasoning token count, the prompt-cache reads and
+ * writes (Eve PROV-F4) and the cost OpenRouter billed (`usage.cost`) that the
+ * SDK's usage lacks (the same instance when nothing is added).
  */
 function withObservedUsage(usage: ProviderUsage | undefined, found: CallObservation | undefined): ProviderUsage | undefined {
   if (!usage || !found) return usage;
-  const reasoningTokens = usage.reasoningTokens === undefined ? found.reasoningTokens : undefined;
-  const costUsd = usage.costUsd === undefined ? found.costUsd : undefined;
-  if (reasoningTokens === undefined && costUsd === undefined) return usage;
-  return { ...usage, ...(reasoningTokens !== undefined && { reasoningTokens }), ...(costUsd !== undefined && { costUsd }) };
+  const added: Partial<ProviderUsage> = {};
+  for (const key of OBSERVED_USAGE) {
+    if (usage[key] === undefined && found[key] !== undefined) added[key] = found[key];
+  }
+  return Object.keys(added).length === 0 ? usage : { ...usage, ...added };
 }
 
 /** The hosted call a step's search left, from what its response reported (undefined when it did not search). */

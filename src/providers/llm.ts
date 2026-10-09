@@ -255,8 +255,10 @@ export interface ProviderUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
-  /** Prompt tokens served from the provider's cache, when the provider reports it. */
+  /** Prompt tokens served from the provider's cache (a part of `promptTokens`), when the provider reports it. */
   cachedInputTokens?: number;
+  /** Prompt tokens written to the provider's cache (a part of `promptTokens`), when the provider reports it. */
+  cacheWriteTokens?: number;
   /** Tokens spent on hidden reasoning, when the provider reports it. */
   reasoningTokens?: number;
   /**

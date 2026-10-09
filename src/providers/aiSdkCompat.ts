@@ -169,10 +169,16 @@ function pickCount(metadata: Record<string, unknown> | undefined, keys: string[]
 }
 
 /** `usage` plus the optional cache/reasoning counts that are known. */
-function withDetails(usage: ProviderUsage, cachedInputTokens?: number, reasoningTokens?: number): ProviderUsage {
+function withDetails(
+  usage: ProviderUsage,
+  cachedInputTokens?: number,
+  reasoningTokens?: number,
+  cacheWriteTokens?: number
+): ProviderUsage {
   return {
     ...usage,
     ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
+    ...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
     ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
   };
 }
@@ -181,19 +187,32 @@ function withDetails(usage: ProviderUsage, cachedInputTokens?: number, reasoning
  * An `ai` v4 call's usage, or `undefined` when the backend reported none
  * (v4 yields `NaN` counts then; never zeros). Cache and reasoning tokens are
  * read from `providerMetadata` when the provider package documents them
- * (OpenAI `cachedPromptTokens`/`reasoningTokens`, Anthropic `cacheReadInputTokens`).
+ * (OpenAI `cachedPromptTokens`/`reasoningTokens`, Anthropic
+ * `cacheReadInputTokens`/`cacheCreationInputTokens`). `@ai-sdk/anthropic` 0.x/1.x
+ * leave Anthropic's cache reads and writes out of `promptTokens`; they are
+ * added back, so `promptTokens` counts every input token as on ai 6/7 (Eve PROV-F4).
  */
 function toGenerateUsage(
   usage: Partial<ProviderUsage>,
   metadata: Record<string, unknown> | undefined
 ): ProviderUsage | undefined {
-  const promptTokens = count(usage.promptTokens);
+  const reported = count(usage.promptTokens);
   const completionTokens = count(usage.completionTokens);
-  if (promptTokens === undefined || completionTokens === undefined) return undefined;
+  if (reported === undefined || completionTokens === undefined) return undefined;
+  const anthropic = { anthropic: metadata?.anthropic } as Record<string, unknown>;
+  const anthropicRead = pickCount(anthropic, ['cacheReadInputTokens']);
+  const cacheWriteTokens = pickCount(anthropic, ['cacheCreationInputTokens']);
+  const promptTokens = reported + (anthropicRead ?? 0) + (cacheWriteTokens ?? 0);
+  const added = promptTokens - reported;
   return withDetails(
-    { promptTokens, completionTokens, totalTokens: usage.totalTokens ?? promptTokens + completionTokens },
+    {
+      promptTokens,
+      completionTokens,
+      totalTokens: usage.totalTokens === undefined ? promptTokens + completionTokens : usage.totalTokens + added,
+    },
     pickCount(metadata, ['cachedPromptTokens', 'cacheReadInputTokens']),
-    pickCount(metadata, ['reasoningTokens'])
+    pickCount(metadata, ['reasoningTokens']),
+    cacheWriteTokens
   );
 }
 
@@ -207,7 +226,8 @@ function modernUsage(usage: Record<string, unknown> | undefined): ProviderUsage 
   return withDetails(
     { promptTokens: inputTokens, completionTokens: outputTokens, totalTokens: count(usage.totalTokens) ?? inputTokens + outputTokens },
     count(input?.cacheReadTokens) ?? count(usage.cachedInputTokens),
-    count(output?.reasoningTokens) ?? count(usage.reasoningTokens)
+    count(output?.reasoningTokens) ?? count(usage.reasoningTokens),
+    count(input?.cacheWriteTokens)
   );
 }
 
