@@ -866,6 +866,12 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   const mcp = agentMcp(
     config.mcpServers,
     (tools) => {
+      // Eve TOOLS-F18: after a server's tools/list_changed, drop the tools it no longer offers (or replaced).
+      for (const [name, descriptor] of Object.entries(mcpTools)) {
+        if (tools[name] === descriptor) continue;
+        delete mcpTools[name];
+        if (specs.staticTools) removeMcpTool(specs.staticTools, name, descriptor);
+      }
       Object.assign(mcpTools, tools);
       if (specs.staticTools) addMcpTools(specs.staticTools, tools);
     },
@@ -1177,6 +1183,13 @@ function addMcpTools(target: RunTools, tools: Record<string, ToolDescriptor>): v
     target.toolRegistry?.register(name, descriptor);
     target.toolsConfig[name] = { tool: name };
   }
+}
+
+/** Eve TOOLS-F18: removes an MCP tool a server no longer offers from a run's tools. */
+function removeMcpTool(target: RunTools, name: string, descriptor: ToolDescriptor): void {
+  if (target.toolRegistry?.get(name) !== descriptor) return;
+  target.toolRegistry.unregister(name);
+  delete target.toolsConfig[name];
 }
 
 /** What a paused or interrupted dynamic run is resumed with: its `ctx`, and the model it ran with (never re-resolved). */

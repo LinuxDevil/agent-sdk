@@ -21,7 +21,9 @@ import { assertMcpOAuth, hasMcpOAuth, isMcpAuthError, mcpAuthRequired, mcpFetch,
 
 /**
  * Where one server's connection stands: not open (yet, or after `close()`),
- * open, failed, or (N9c) waiting for an operator's OAuth sign-in.
+ * open, failed (it could not connect, or its connection dropped without a
+ * `close()`, e.g. the stdio process exited; Eve TOOLS-F18), or (N9c) waiting
+ * for an operator's OAuth sign-in.
  */
 export type McpServerStatus = 'idle' | 'connected' | 'failed' | 'needs-auth';
 
@@ -43,6 +45,12 @@ export interface ConnectMcpOptions {
    * required when any server has `oauth` (`LOUSHO_OAUTH_STORE_MISSING`).
    */
   tokens?: OAuthTokenStore;
+  /**
+   * Eve TOOLS-F18: called after a server sent `notifications/tools/list_changed`
+   * and its tools were listed again; `tools` is the updated
+   * {@link McpConnections.tools} record (updated in place).
+   */
+  onToolsChanged?: (tools: Record<string, NamedToolDescriptor>) => void;
 }
 
 /** The connected servers returned by {@link connectMcp}. */
@@ -51,6 +59,8 @@ export interface McpConnections {
    * Every server's tools, keyed `<server>__<tool>` (also the `name` each
    * descriptor carries); pass them to `createAgent({ tools })` as the record
    * they are, inside a `tools` array, or as `Object.values(tools)` (LOU-R12).
+   * A server's `notifications/tools/list_changed` lists its tools again and
+   * updates this record in place (Eve TOOLS-F18).
    */
   readonly tools: Record<string, NamedToolDescriptor>;
   /** Disconnects every server (stops stdio processes). */
@@ -184,11 +194,14 @@ class ServerConnection {
   status: McpServerStatus = 'idle';
   private client: Promise<Client> | undefined;
   private closed = false;
+  /** Eve TOOLS-F18: called when the server says its tool list changed. */
+  onToolsChanged: (() => void) | undefined;
 
   constructor(
     readonly name: string,
     private readonly server: McpServerSpec,
     private readonly lazy: boolean,
+    private readonly logger: Logger,
     private readonly authProvider?: OAuthClientProvider
   ) {}
 
@@ -239,13 +252,18 @@ class ServerConnection {
         throw error;
       }
       const current = this.client;
-      // A dropped connection (e.g. the process exited) counts as closed.
+      // A dropped connection (e.g. the process exited) counts as closed, and as failed (Eve TOOLS-F18).
       client.onclose = () => {
         if (this.client !== current) return;
         this.client = undefined;
         this.closed = true;
-        this.status = 'idle';
+        this.status = 'failed';
+        this.warnClosed(watch);
       };
+      const { ToolListChangedNotificationSchema } = await loadOptionalPeer(PEER, () => import('@modelcontextprotocol/sdk/types.js'));
+      client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
+        this.onToolsChanged?.();
+      });
       this.status = 'connected';
       return client;
     } catch (error) {
@@ -259,6 +277,18 @@ class ServerConnection {
       const reason = error instanceof Error ? error.message : String(error);
       throw new McpStartError(this.name, reason, { ...watch.exit(), stderr: watch.stderr(), cause: error });
     }
+  }
+
+  /** Eve TOOLS-F18: a connection that dropped without `close()` is logged, with the exit code and stderr tail. */
+  private warnClosed(watch: StdioWatch | undefined): void {
+    const { exitCode, signal } = watch?.exit() ?? {};
+    const exit = exitCode !== undefined ? ` (exit code ${exitCode})` : signal ? ` (signal ${signal})` : '';
+    const stderr = watch?.stderr().trim();
+    this.logger.warn(
+      `MCP server '${this.name}': the connection closed unexpectedly${exit}` +
+        `${this.lazy ? '; the next tool call reconnects' : ''}.${stderr ? `\nLast stderr lines:\n${stderr}` : ''}`,
+      { server: this.name, ...(exitCode !== undefined && { exitCode }), ...(signal && { signal }) }
+    );
   }
 
   /** Opens the connection again after `close()`, whatever `lazy` says. */
@@ -292,39 +322,64 @@ export async function connectMcp(
   options: ConnectMcpOptions = {}
 ): Promise<McpConnections> {
   const { lazy = true, onError = 'throw', logger = noopLogger } = options;
-  const connections = Object.entries(servers).map(([name, server]) => new ServerConnection(name, server, lazy, oauthProvider(name, server, options.tokens)));
+  const connections = Object.entries(servers).map(
+    ([name, server]) => new ServerConnection(name, server, lazy, logger, oauthProvider(name, server, options.tokens))
+  );
   const close = async () => {
     await Promise.all(connections.map((connection) => connection.close()));
   };
-  const loaded = await Promise.allSettled(
-    connections.map((connection) =>
-      loadMcpTools(connection.handle, connection.name, {
-        logger,
-        approval: servers[connection.name].approval,
-        timeoutMs: servers[connection.name].timeoutMs,
-        tools: servers[connection.name].tools,
-        // N2: a server with `deferLoading` has all its tools withheld until `tool_search` finds them.
-        ...(servers[connection.name].deferLoading && { deferLoading: true }),
-      })
-    )
-  );
+  const load = (connection: ServerConnection) =>
+    loadMcpTools(connection.handle, connection.name, {
+      logger,
+      approval: servers[connection.name].approval,
+      timeoutMs: servers[connection.name].timeoutMs,
+      tools: servers[connection.name].tools,
+      // N2: a server with `deferLoading` has all its tools withheld until `tool_search` finds them.
+      ...(servers[connection.name].deferLoading && { deferLoading: true }),
+    });
+  const loaded = await Promise.allSettled(connections.map(load));
 
   const tools: Record<string, NamedToolDescriptor> = {};
+  /** The keys of `tools` each server owns, so a re-list replaces only its own. */
+  const owned = new Map<ServerConnection, string[]>();
+  const add = (connection: ServerConnection, serverTools: Record<string, NamedToolDescriptor>) => {
+    const keys: string[] = [];
+    for (const [key, tool] of Object.entries(serverTools)) {
+      // Two server names can sanitize to the same prefix (`a.b` and `a_b`); the first server keeps the name.
+      if (Object.hasOwn(tools, key)) {
+        logger.warn(`connectMcp: MCP server '${connection.name}': skipping tool '${key}', the name is taken by another server`, {
+          server: connection.name,
+          tool: key,
+        });
+        continue;
+      }
+      tools[key] = tool;
+      keys.push(key);
+    }
+    owned.set(connection, keys);
+  };
+  /** Eve TOOLS-F18: after `notifications/tools/list_changed`, list the server's tools again. */
+  const relist = async (connection: ServerConnection) => {
+    try {
+      const fresh = await load(connection);
+      for (const key of owned.get(connection) ?? []) delete tools[key];
+      add(connection, fresh);
+      options.onToolsChanged?.(tools);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      logger.warn(`connectMcp: MCP server '${connection.name}': could not list its changed tools: ${reason}`, {
+        server: connection.name,
+        reason,
+      });
+    }
+  };
   const loadedConnections: ServerConnection[] = [];
   for (const [index, result] of loaded.entries()) {
     if (result.status === 'fulfilled') {
-      loadedConnections.push(connections[index]);
-      for (const [key, tool] of Object.entries(result.value)) {
-        // Two server names can sanitize to the same prefix (`a.b` and `a_b`); the first server keeps the name.
-        if (Object.hasOwn(tools, key)) {
-          logger.warn(`connectMcp: MCP server '${connections[index].name}': skipping tool '${key}', the name is taken by another server`, {
-            server: connections[index].name,
-            tool: key,
-          });
-          continue;
-        }
-        tools[key] = tool;
-      }
+      const connection = connections[index];
+      loadedConnections.push(connection);
+      add(connection, result.value);
+      connection.onToolsChanged = () => void relist(connection);
       continue;
     }
     const { name } = connections[index];
