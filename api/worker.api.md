@@ -1165,6 +1165,9 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
         cwd?: string;
         files?: readonly string[];
     };
+    // Warning: (ae-forgotten-export) The symbol "RateLimitOptions" needs to be exported by the entry point worker.d.ts
+    // Warning: (ae-forgotten-export) The symbol "RateLimiter" needs to be exported by the entry point worker.d.ts
+    rateLimit?: RateLimitOptions | RateLimiter;
     // Warning: (ae-forgotten-export) The symbol "ReasoningOption" needs to be exported by the entry point worker.d.ts
     reasoning?: ReasoningOption;
     redactContent?: boolean;
@@ -3044,6 +3047,28 @@ interface QueuedInput {
 }
 
 // @public
+class RateLimiter {
+    constructor(options?: RateLimitOptions);
+    // Warning: (ae-forgotten-export) The symbol "RateLimitLease" needs to be exported by the entry point worker.d.ts
+    acquire(tokens?: number, signal?: AbortSignal): Promise<RateLimitLease>;
+    get inFlight(): number;
+    get pending(): number;
+}
+
+// @public
+interface RateLimitLease {
+    adjust(actualTokens?: number): void;
+    release(actualTokens?: number): void;
+}
+
+// @public
+interface RateLimitOptions {
+    maxConcurrent?: number;
+    requestsPerMinute?: number;
+    tokensPerMinute?: number;
+}
+
+// @public
 interface ReasoningBlock {
     // (undocumented)
     redactedData?: string;
@@ -4306,11 +4331,11 @@ interface WithRetryOptions {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-BWbNkrXD.d.ts:787:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-BWbNkrXD.d.ts:804:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-BWbNkrXD.d.ts:1165:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-BWbNkrXD.d.ts:3246:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-BWbNkrXD.d.ts:3247:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BgIsKR1f.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BgIsKR1f.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BgIsKR1f.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BgIsKR1f.d.ts:3333:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BgIsKR1f.d.ts:3334:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
 // dist/index-BmtyMuK3.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
 // dist/index-BmtyMuK3.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point worker.d.ts

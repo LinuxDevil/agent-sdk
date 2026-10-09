@@ -895,6 +895,8 @@ export interface ExecuteOptions extends PermissionOptions {
     principal?: Principal;
     // (undocumented)
     provider: LLMProvider;
+    // Warning: (ae-forgotten-export) The symbol "RateLimiter" needs to be exported by the entry point index.d.ts
+    rateLimiter?: RateLimiter;
     // Warning: (ae-forgotten-export) The symbol "ReasoningOption" needs to be exported by the entry point index.d.ts
     reasoning?: ReasoningOption;
     redactContent?: boolean;
@@ -1938,6 +1940,29 @@ interface QueuedInput {
 }
 
 // @public
+class RateLimiter {
+    // Warning: (ae-forgotten-export) The symbol "RateLimitOptions" needs to be exported by the entry point index.d.ts
+    constructor(options?: RateLimitOptions);
+    // Warning: (ae-forgotten-export) The symbol "RateLimitLease" needs to be exported by the entry point index.d.ts
+    acquire(tokens?: number, signal?: AbortSignal): Promise<RateLimitLease>;
+    get inFlight(): number;
+    get pending(): number;
+}
+
+// @public
+interface RateLimitLease {
+    adjust(actualTokens?: number): void;
+    release(actualTokens?: number): void;
+}
+
+// @public
+interface RateLimitOptions {
+    maxConcurrent?: number;
+    requestsPerMinute?: number;
+    tokensPerMinute?: number;
+}
+
+// @public
 interface ReasoningBlock {
     // (undocumented)
     redactedData?: string;
@@ -2573,6 +2598,7 @@ interface SubagentSpec {
     permissions?: readonly PermissionRule[];
     // (undocumented)
     provider: LLMProvider;
+    rateLimiter?: RateLimiter;
     reasoning?: ReasoningOption;
     // (undocumented)
     skills?: readonly Skill[];
@@ -2948,9 +2974,9 @@ interface Usage {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-BWbNkrXD.d.ts:787:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BWbNkrXD.d.ts:804:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BWbNkrXD.d.ts:1165:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BgIsKR1f.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BgIsKR1f.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BgIsKR1f.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
 // dist/index-BmtyMuK3.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
 // dist/index-BmtyMuK3.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/index-BmtyMuK3.d.ts:1965:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
