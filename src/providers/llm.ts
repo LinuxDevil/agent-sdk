@@ -186,6 +186,12 @@ export interface ModelSettings {
   stop?: string[];
   /** Seed for deterministic sampling, on providers that support one. */
   seed?: number;
+  /**
+   * Whether the model must call a tool: `'auto'` (the default), `'required'`
+   * (every step calls one, so the run ends at `maxSteps`), `'none'`, or a
+   * named function. Not sent on a call without tools (the forced answer at `maxSteps`).
+   */
+  toolChoice?: 'auto' | 'required' | 'none' | { type: 'function'; function: { name: string } };
 }
 
 /**

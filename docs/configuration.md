@@ -289,7 +289,7 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `name`     | Agent name (default `'agent'`).                                    |
 | `description` | What the agent does, in a sentence. Required when it is used as a sub-agent. |
 | `maxSteps` | Passed through to `AgentExecutor.execute()`.                        |
-| `modelSettings` | Sampling settings sent on every model call: `{ maxTokens?, temperature?, topP?, frequencyPenalty?, presencePenalty?, stop?, seed? }`. A `send()` / `stream()` call's own `modelSettings` win key by key. See [Model settings](#model-settings). |
+| `modelSettings` | Sampling settings sent on every model call: `{ maxTokens?, temperature?, topP?, frequencyPenalty?, presencePenalty?, stop?, seed?, toolChoice? }`. A `send()` / `stream()` call's own `modelSettings` win key by key. See [Model settings](#model-settings). |
 | `limits`   | Budgets of each run: `{ maxTokens?, maxInputTokens?, maxOutputTokens?, maxCostUsd?, maxDurationMs?, maxSteps?, onExceeded? }`. A tripped limit ends the run with `finishReason: 'budget-exceeded'`. See [Budgets](#budgets). |
 | `toolConcurrency` | How many tool calls of one model turn run at once: a positive integer or `'unbounded'` (default). See [Parallel tool calls](./runs.md#parallel-tool-calls). |
 | `skills`   | Skills from `defineSkill()` / `loadSkills()`; see [Skills](./skills.md). |
@@ -338,7 +338,7 @@ await agent.send('Summarize the log in one line.', { modelSettings: { maxTokens:
 ```
 
 The keys are `maxTokens`, `temperature`, `topP`, `frequencyPenalty`,
-`presencePenalty`, `stop` and `seed`. A key you leave out is not sent at all,
+`presencePenalty`, `stop`, `seed` and `toolChoice` (`'auto'`, `'required'`, `'none'` or `{ type: 'function', function: { name } }`; not sent on a call without tools). A key you leave out is not sent at all,
 so the provider's own default applies, and so does a value that a wrapping
 provider adds to the request. Sub-agents and handoff targets use their own
 `modelSettings`, not the lead's. An agent directory can set the same object as

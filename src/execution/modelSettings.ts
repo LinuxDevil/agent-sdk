@@ -14,6 +14,7 @@ export const MODEL_SETTING_KEYS = [
   'presencePenalty',
   'stop',
   'seed',
+  'toolChoice',
 ] as const satisfies readonly (keyof ModelSettings)[];
 
 /** The settings of `layers` merged, later ones winning key by key; a key that is undefined in every layer is left out. */

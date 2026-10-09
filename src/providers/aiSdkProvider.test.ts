@@ -28,6 +28,7 @@ import { z as z4 } from 'zod/v4';
 import { OpenAIProvider } from './OpenAIProvider';
 import { OpenRouterProvider } from './OpenRouterProvider';
 import { withRetry } from './resilience';
+import { MODEL_SETTING_KEYS } from '../execution/modelSettings';
 import { installedAiMajor, itOnAiV4 } from './aiMajor.testkit';
 import { mockToolCall, mockUsage, toolCallPart, toolResultPart } from './aiShapes.testkit';
 
@@ -44,6 +45,38 @@ describe('AiSdkProvider', () => {
   beforeEach(() => {
     generateTextMock.mockReset();
     streamTextMock.mockReset();
+  });
+
+  describe('every modelSettings key reaches the AI SDK call (Eve PROV-F9)', () => {
+    const wireName: Record<string, string> = { maxTokens: isV4 ? 'maxTokens' : 'maxOutputTokens', stop: 'stopSequences' };
+    const values: Record<(typeof MODEL_SETTING_KEYS)[number], unknown> = {
+      temperature: 0.3,
+      maxTokens: 12,
+      topP: 0.8,
+      frequencyPenalty: 0.1,
+      presencePenalty: 0.2,
+      stop: ['END'],
+      seed: 7,
+      toolChoice: 'required',
+    };
+    const tool = { type: 'function' as const, function: { name: 'echo', description: 'Echo', parameters: { type: 'object', properties: {} } } };
+
+    it.each(MODEL_SETTING_KEYS)('%s', async (key) => {
+      generateTextMock.mockResolvedValue(textResult('stop'));
+      const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k', defaultModel: 'gpt-4o' });
+      await provider.generate({ model: '', messages: [{ role: 'user', content: 'hi' }], tools: [tool], [key]: values[key] });
+      expect(generateTextMock.mock.calls[0][0][wireName[key] ?? key]).toEqual(values[key]);
+    });
+
+    it('maps a named function to the SDK shape and drops toolChoice on a call without tools', async () => {
+      generateTextMock.mockResolvedValue(textResult('stop'));
+      const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k', defaultModel: 'gpt-4o' });
+      const toolChoice = { type: 'function' as const, function: { name: 'echo' } };
+      await provider.generate({ model: '', messages: [{ role: 'user', content: 'hi' }], tools: [tool], toolChoice });
+      await provider.generate({ model: '', messages: [{ role: 'user', content: 'hi' }], toolChoice: 'required' });
+      expect(generateTextMock.mock.calls[0][0].toolChoice).toEqual({ type: 'tool', toolName: 'echo' });
+      expect(generateTextMock.mock.calls[1][0].toolChoice).toBeUndefined();
+    });
   });
 
   it('passes call settings through and falls back to the config default model', async () => {
