@@ -434,6 +434,7 @@ abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLM
     protected readonly acceptsFileParts: boolean;
     protected readonly ai: AiSdkModule;
     protected cachesPrompt(_modelId: string, _options: GenerateOptions): boolean;
+    protected clientOptions(): Pick<AiSdkProviderConfig, 'apiKey' | 'baseURL' | 'headers' | 'fetch'>;
     // (undocumented)
     protected config: TConfig;
     // @deprecated
@@ -3893,30 +3894,15 @@ export class MemorySessionStore implements SessionStore {
 }
 
 // @public
-export interface MemorySlot {
-    // (undocumented)
-    readonly description?: string;
-    // (undocumented)
-    readonly expose: {
-        remember: boolean;
-        recall: boolean;
-        forget: boolean;
-    };
+export interface MemorySlot extends Readonly<Pick<DefineMemoryOptions, 'name' | 'description' | 'scope' | 'provider' | 'itemSchema'>> {
+    readonly expose: Required<NonNullable<DefineMemoryOptions['expose']>>;
     readonly itemKey?: readonly string[];
-    // (undocumented)
-    readonly itemSchema?: StandardSchemaV1;
-    // (undocumented)
-    readonly name: string;
-    // (undocumented)
-    readonly provider: MemoryProvider;
     // (undocumented)
     readonly recall: {
         onSessionStart: boolean;
         maxItems: number;
         query: 'last-input' | 'none';
     };
-    // (undocumented)
-    readonly scope: MemoryScope;
 }
 
 // @public

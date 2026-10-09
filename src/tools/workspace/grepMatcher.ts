@@ -3,14 +3,14 @@
  * backtracks catastrophically (`^(a+)+$`) would block the event loop for
  * seconds or forever, and an abort could not stop it. So the pattern is
  * checked for nested unbounded quantifiers, each line is tested on at most
- * {@link MAX_GREP_TEST_CHARS} characters, and the matching runs in a worker
+ * `MAX_GREP_TEST_CHARS` characters, and the matching runs in a worker
  * thread that is terminated on timeout or abort. Where `node:worker_threads`
  * is unavailable it falls back to matching inline.
  */
 import { WorkspaceError } from './paths';
 
 /** Characters of each line the regex is tested against. */
-export const MAX_GREP_TEST_CHARS = 2000;
+const MAX_GREP_TEST_CHARS = 2000;
 /** Default wall-clock budget for one `grep` call's matching. */
 export const GREP_TIMEOUT_MS = 10_000;
 
@@ -19,40 +19,60 @@ export const GREP_TIMEOUT_MS = 10_000;
  * that itself contains one, as in `(a+)+`, `(\w+\s*)*` or `((ab)*c)+`: the
  * classic shape of catastrophic backtracking.
  */
-export function hasNestedQuantifier(pattern: string): boolean {
+function hasNestedQuantifier(pattern: string): boolean {
   /** Per open group: whether it contains an unbounded quantifier. */
   const groups: boolean[] = [];
   /** The atom just before is a group that contains an unbounded quantifier. */
   let afterRiskyGroup = false;
   for (let i = 0; i < pattern.length; i++) {
     const c = pattern[i];
-    if (c === '\\') {
-      i++;
-      afterRiskyGroup = false;
-    } else if (c === '[') {
-      i++;
-      if (pattern[i] === '^') i++;
-      if (pattern[i] === ']') i++;
-      while (i < pattern.length && pattern[i] !== ']') i += pattern[i] === '\\' ? 2 : 1;
-      afterRiskyGroup = false;
-    } else if (c === '(') {
-      groups.push(false);
-      afterRiskyGroup = false;
-    } else if (c === ')') {
-      const risky = groups.pop() ?? false;
-      if (risky && groups.length > 0) groups[groups.length - 1] = true;
-      afterRiskyGroup = risky;
-    } else if (c === '*' || c === '+' || (c === '{' && /^\{\d+,\}/.test(pattern.slice(i)))) {
+    let risky = false;
+    if (c === '\\') i++;
+    else if (c === '[') i = classEnd(pattern, i);
+    else if (c === '(') groups.push(false);
+    else if (c === ')') risky = closeGroup(groups);
+    else if (isUnboundedQuantifier(pattern, i)) {
       if (afterRiskyGroup) return true;
-      if (groups.length > 0) groups[groups.length - 1] = true;
-      if (c === '{') i = pattern.indexOf('}', i);
-      if (pattern[i + 1] === '?' || pattern[i + 1] === '+') i++;
-      afterRiskyGroup = false;
-    } else {
-      afterRiskyGroup = false;
+      markInnermostGroup(groups);
+      i = quantifierEnd(pattern, i);
     }
+    afterRiskyGroup = risky;
   }
   return false;
+}
+
+/** Index of the `]` closing the character class that opens at `start` (or the pattern's length when unclosed). */
+function classEnd(pattern: string, start: number): number {
+  let i = start + 1;
+  if (pattern[i] === '^') i++;
+  if (pattern[i] === ']') i++;
+  while (i < pattern.length && pattern[i] !== ']') i += pattern[i] === '\\' ? 2 : 1;
+  return i;
+}
+
+/** Pops the innermost open group and returns whether it was risky; a risky group makes its parent risky too. */
+function closeGroup(groups: boolean[]): boolean {
+  const risky = groups.pop() ?? false;
+  if (risky) markInnermostGroup(groups);
+  return risky;
+}
+
+/** Marks the innermost open group (if any) as containing an unbounded quantifier. */
+function markInnermostGroup(groups: boolean[]): void {
+  if (groups.length > 0) groups[groups.length - 1] = true;
+}
+
+/** Whether an unbounded quantifier (`*`, `+`, `{n,}`) starts at `pattern[i]`. */
+function isUnboundedQuantifier(pattern: string, i: number): boolean {
+  const c = pattern[i];
+  return c === '*' || c === '+' || (c === '{' && /^\{\d+,\}/.test(pattern.slice(i)));
+}
+
+/** Index of the last character of the quantifier at `i`, including a lazy `?` or possessive `+` suffix. */
+function quantifierEnd(pattern: string, i: number): number {
+  let end = pattern[i] === '{' ? pattern.indexOf('}', i) : i;
+  if (pattern[end + 1] === '?' || pattern[end + 1] === '+') end++;
+  return end;
 }
 
 /** Throws a WorkspaceError for a pattern with nested unbounded quantifiers. */
@@ -77,12 +97,16 @@ function splitForMatch(content: string): string[] {
   return lines;
 }
 
+/** `line` cut to the characters the regex is tested against. */
+function testedPart(line: string): string {
+  return line.length > MAX_GREP_TEST_CHARS ? line.slice(0, MAX_GREP_TEST_CHARS) : line;
+}
+
 function matchInline(regex: RegExp, content: string, max: number): number[] {
   const hits: number[] = [];
   const lines = splitForMatch(content);
   for (let i = 0; i < lines.length && hits.length < max; i++) {
-    const line = lines[i];
-    if (regex.test(line.length > MAX_GREP_TEST_CHARS ? line.slice(0, MAX_GREP_TEST_CHARS) : line)) hits.push(i + 1);
+    if (regex.test(testedPart(lines[i]))) hits.push(i + 1);
   }
   return hits;
 }

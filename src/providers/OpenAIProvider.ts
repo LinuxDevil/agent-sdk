@@ -63,13 +63,7 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
   /** Loads `@ai-sdk/openai` on first use (it is an optional peer). */
   private readonly loadProvider = lazyValue(async () => {
     const { createOpenAI } = await loadOptionalPeer('@ai-sdk/openai', () => import('@ai-sdk/openai'), aiMajorOf(this.ai));
-    return createOpenAI({
-      apiKey: this.config.apiKey,
-      organization: this.config.organization,
-      baseURL: this.config.baseURL,
-      headers: this.config.headers,
-      ...(this.config.fetch && { fetch: this.config.fetch }),
-    });
+    return createOpenAI({ ...this.clientOptions(), organization: this.config.organization });
   });
 
   /** PDF file parts go to the model on ai 6 and 7; older peers have no file parts. */

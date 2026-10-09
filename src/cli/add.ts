@@ -16,7 +16,7 @@ import * as readline from 'node:readline';
 import type { Readable, Writable } from 'node:stream';
 import { SDKError } from '../execution/errors';
 import { checkItem, formatFinding } from './addCheck';
-import { readReceipt, RECEIPT_FILE, writeReceipt } from './addReceipt';
+import { readReceipt, RECEIPT_FILE, writeReceipt, type Receipt } from './addReceipt';
 import { checkTargets, planFiles, writeFiles, type PlannedFile } from './addWrite';
 import { parseCommand, stringValue, usageError, type CommandSpec } from './args';
 import { loadItem, openRegistry, type RegistryIndex, type RegistryItem, type RegistryOptions } from './registry';
@@ -181,38 +181,57 @@ function isAgentDir(dir: string): boolean {
 const NOT_AGENT_DIR_NOTE = (dir: string) =>
   `Warning: ${dir} is not an agent directory (no agent.json, agent.yaml, agent.ts or instructions.md), so nothing loads files from tools/ or skills/ there. A 'lousho init' project wires tools in src/agent.ts: import the installed file there, or pass --dir <agent-dir>.`;
 
-async function install(args: AddArgs, registry: string, item: RegistryItem, io: AddIo): Promise<number> {
+/** The absolute agent directory to install into, and whether the install creates it; throws when it is missing and may not be created. */
+function targetAgentDir(args: AddArgs, item: RegistryItem, io: AddIo): { agentDir: string; creating: boolean } {
   const agentDir = path.resolve(io.cwd ?? process.cwd(), args.dir);
   // A kit is a whole agent directory, so it may be installed into one that does not exist yet.
   const creating = item.type === 'kit' && !fs.existsSync(agentDir);
   if (!creating && (!fs.existsSync(agentDir) || !fs.statSync(agentDir).isDirectory())) {
     throw new SDKError(`lousho add: the agent directory ${agentDir} does not exist.`, 'LOUSHO_CONFIG_INVALID', { hint: 'Create it, or pass --dir <agent-dir>.' });
   }
-  const files = planFiles(item, agentDir);
+  return { agentDir, creating };
+}
+
+/** The plan printed before an install: the manifest, the files, and the not-an-agent-dir and dependency notes. */
+function installPlanLines(args: AddArgs, item: RegistryItem, files: PlannedFile[], agentDir: string, notAgentDir: boolean): string[] {
+  const lines = [...manifestLines(item), ...planLines(files, args.overwrite)];
+  if (notAgentDir) lines.push(NOT_AGENT_DIR_NOTE(agentDir));
+  if (item.dependencies?.length) lines.push('Dependencies (not installed; run this yourself):', `  npm install ${item.dependencies.join(' ')}`);
+  return lines;
+}
+
+/** Asks before writing (noting elevated permissions); resolves `true` when the user agrees. */
+async function confirmInstall(io: AddIo, item: RegistryItem, files: PlannedFile[], agentDir: string): Promise<boolean> {
+  const elevated = elevatedPermissions(item);
+  if (elevated.length > 0) io.stdout.write(`It asks for elevated permissions: ${elevated.join(', ')}.\n`);
+  return confirm(io, `Write ${files.length} file(s) into ${agentDir}? [y/N] `);
+}
+
+/** Creates the agent directory when needed (not on a dry run), checks the files' targets, and resolves with the directory's receipt. */
+async function prepareTarget(args: AddArgs, item: RegistryItem, files: PlannedFile[], agentDir: string, creating: boolean): Promise<Receipt> {
   if (creating) {
     if (!args.dryRun) fs.mkdirSync(agentDir, { recursive: true });
   }
   // A dry run writes nothing, so an existing file is reported, not refused.
   if (!(creating && args.dryRun)) await checkTargets(item, files, agentDir, args.overwrite || args.dryRun);
-  const receipt = creating && args.dryRun ? { v: 1 as const, items: {} } : await readReceipt(agentDir);
+  return creating && args.dryRun ? { v: 1 as const, items: {} } : await readReceipt(agentDir);
+}
+
+async function install(args: AddArgs, registry: string, item: RegistryItem, io: AddIo): Promise<number> {
+  const { agentDir, creating } = targetAgentDir(args, item, io);
+  const files = planFiles(item, agentDir);
+  const receipt = await prepareTarget(args, item, files, agentDir, creating);
   const notAgentDir = item.type !== 'kit' && !isAgentDir(agentDir);
   enforceFlags(args, item, io);
-  const lines = [...manifestLines(item), ...planLines(files, args.overwrite)];
-  if (notAgentDir) lines.push(NOT_AGENT_DIR_NOTE(agentDir));
-  if (item.dependencies?.length) lines.push('Dependencies (not installed; run this yourself):', `  npm install ${item.dependencies.join(' ')}`);
-  io.stdout.write(`${lines.join('\n')}\n`);
+  io.stdout.write(`${installPlanLines(args, item, files, agentDir, notAgentDir).join('\n')}\n`);
   enforceManifest(item, io);
   if (args.dryRun) {
     io.stdout.write('Dry run: nothing was written.\n');
     return 0;
   }
-  if (!args.yes) {
-    const elevated = elevatedPermissions(item);
-    if (elevated.length > 0) io.stdout.write(`It asks for elevated permissions: ${elevated.join(', ')}.\n`);
-    if (!(await confirm(io, `Write ${files.length} file(s) into ${agentDir}? [y/N] `))) {
-      io.stdout.write('Cancelled: nothing was written.\n');
-      return 1;
-    }
+  if (!args.yes && !(await confirmInstall(io, item, files, agentDir))) {
+    io.stdout.write('Cancelled: nothing was written.\n');
+    return 1;
   }
   await writeFiles(files);
   await writeReceipt(agentDir, receipt, item, files, registry);

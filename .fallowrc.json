@@ -50,6 +50,16 @@
       ]
     },
     {
+      "implements": "AgentApi",
+      "members": [
+        "listAgents",
+        "loadAgent",
+        "saveAgent",
+        "deleteAgent",
+        "workspace"
+      ]
+    },
+    {
       "implements": "ApprovalStore",
       "members": [
         "save",
@@ -130,6 +140,28 @@
         "maxCyclomatic": 30,
         "maxCognitive": 32,
         "reason": "These functions gate tool calls, normalize/repair structured output, compact, route chats and run steps - they grew through the audit-merge series (#412-#437) and are heavily covered, but their decision density sits just over the global ceilings. Ceiling exempts complexity only; CRAP still gates. Refactor candidates: see the fallow report."
+      },
+      {
+        "files": [
+          "apps/agent-forge/**"
+        ],
+        "maxCrap": 120,
+        "reason": "Agent Forge (the Studio) is tested by its own workspace suites (npm run test / test:server --workspace apps/agent-forge, jsdom and node), which CI runs but which do not write the root coverage/coverage-final.json fallow reads, so every Studio function is scored at the uncovered estimate. Ceiling exempts only the coverage term; cyclomatic/cognitive still gate."
+      },
+      {
+        "files": [
+          "src/execution/generateStep.ts",
+          "src/flows/flowCheckpoint.ts",
+          "src/memory/vectorProvider.ts",
+          "src/memory/providers.ts",
+          "src/agentDir/subagentDelegation.ts",
+          "src/channels/channelSupport.ts",
+          "src/channels/channelCore.ts",
+          "src/security/sandbox.ts",
+          "src/ui/agentRunner.ts"
+        ],
+        "maxCrap": 100,
+        "reason": "MAIN-HEALTH (after the Eve merges): the flagged functions are constructors and nested arrows that fallow cannot match to Istanbul's function map, so it scores them at the uncovered estimate; coverage-final.json shows their statements executed (all but two in channelSupport's dedupe). Ceiling exempts only the coverage term; cyclomatic/cognitive still gate."
       },
       {
         "files": [

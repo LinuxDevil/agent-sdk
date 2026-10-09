@@ -133,6 +133,7 @@ export class FlowRun {
   }
 
   /** Record a completed node, drop its children's entries, and save. */
+  // fallow-ignore-next-line unused-class-member -- called as `flowRuns.get(events)?.complete(...)` in FlowExecutor
   async complete(path: string, result: unknown): Promise<void> {
     const prefix = `${path}.`;
     for (const map of [this.completed, this.choices]) {

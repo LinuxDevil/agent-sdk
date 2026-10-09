@@ -232,4 +232,13 @@ describe('modelSettings (C6)', () => {
     expect(invalidConfig({ modelSettings: { temperature: '0.2' } }).message).toContain("'modelSettings.temperature' must be a number");
     expect(invalidConfig({ modelSettings: { stop: 'END' } }).message).toContain("'modelSettings.stop' must be an array of strings");
   });
+
+  it('accepts each toolChoice form and rejects anything else', () => {
+    for (const toolChoice of ['auto', 'required', 'none', { type: 'function', function: { name: 'lookup' } }]) {
+      expect(validateConfig(FILE, { modelSettings: { toolChoice } }).modelSettings).toEqual({ toolChoice });
+    }
+    for (const toolChoice of ['always', 1, { type: 'function' }, { type: 'function', function: { name: 7 } }]) {
+      expect(invalidConfig({ modelSettings: { toolChoice } }).message).toContain("'modelSettings.toolChoice' must be");
+    }
+  });
 });

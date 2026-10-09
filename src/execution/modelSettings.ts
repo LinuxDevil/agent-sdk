@@ -71,15 +71,23 @@ export function modelSettingProblem(key: string, value: unknown): string | undef
     return `is not a known setting${meant ? ` (did you mean '${meant}'?)` : ''}. Allowed keys: ${MODEL_SETTING_KEYS.join(', ')}`;
   }
   if (value === undefined) return undefined;
-  if (key === 'toolChoice') {
-    const named = isRecord(value) && value.type === 'function' && isRecord(value.function) && typeof value.function.name === 'string';
-    return value === 'auto' || value === 'required' || value === 'none' || named
-      ? undefined
-      : `must be 'auto', 'required', 'none' or { type: 'function', function: { name } }, got ${describeSetting(value)}`;
-  }
+  if (key === 'toolChoice') return toolChoiceProblem(value);
   if (key === 'stop') {
     return Array.isArray(value) && value.every((stop) => typeof stop === 'string') ? undefined : `must be an array of strings, got ${describeSetting(value)}`;
   }
+  return numericSettingProblem(key, value);
+}
+
+/** What is wrong with `value` as `toolChoice`, or undefined when nothing is. */
+function toolChoiceProblem(value: unknown): string | undefined {
+  const named = isRecord(value) && value.type === 'function' && isRecord(value.function) && typeof value.function.name === 'string';
+  return value === 'auto' || value === 'required' || value === 'none' || named
+    ? undefined
+    : `must be 'auto', 'required', 'none' or { type: 'function', function: { name } }, got ${describeSetting(value)}`;
+}
+
+/** What is wrong with `value` as the numeric setting `key`, or undefined when nothing is. */
+function numericSettingProblem(key: string, value: unknown): string | undefined {
   if (typeof value !== 'number' || !Number.isFinite(value)) return `must be a number, got ${describeSetting(value)}`;
   if (key === 'maxTokens') return Number.isInteger(value) && value >= 1 ? undefined : `must be a whole number >= 1, got ${value}`;
   if (key === 'seed') return Number.isInteger(value) ? undefined : `must be a whole number, got ${value}`;

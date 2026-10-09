@@ -51,7 +51,7 @@ import type { OAuthTokenStore } from '../oauth/types';
 import { isSignInRequired, settleSignInRequired, signInOwner, signInRequest, SignInPendingError, type SignInRequired } from '../oauth/signIn';
 import { newId } from '../utils/id';
 import { agentRunSpanInit, recordToolOutcome, resolveCaptureContent, toolSpanInit, SUBAGENT_SPAN, type SubagentSpanInfo } from './genAiSpans';
-import { withSpan } from './tracing';
+import { withSpan, type Span } from './tracing';
 
 /**
  * Options passed through to the underlying AgentExecutor.execute() call
@@ -172,53 +172,19 @@ async function resumeObserved(
   }
   // Eve TOOLS-F12: a call of a step paused on several - the step runs once the last of them is decided.
   const grouped = (claimed.snapshot.approvalGroup?.length ?? 0) > 1;
-  let record: ResolvedApproval;
-  if (grouped) {
-    const step = await decideGroupMember(claimed, decision, approvalStore, toolRegistry, observed);
-    if ('paused' in step) {
-      await markGroupPending(claimed.snapshot, step.paused, checkpointStore);
-      return step.paused;
-    }
-    record = step.record;
-  } else {
-    // Eve TOOLS-F19: "approve with edits" - invalid arguments leave the approval pending.
-    try {
-      record = await withEditedArgs(claimed, decision, toolRegistry, observed);
-    } catch (error) {
-      await approvalStore.save(claimed.pending, claimed.snapshot);
-      // Inside a sub-agent's resume, the lead's run puts its own pause back too.
-      if (typeof error === 'object' && error !== null) refusedResumes.add(error);
-      throw error;
-    }
-  }
+  const claim = await recordToResume(claimed, decision, approvalStore, toolRegistry, observed, checkpointStore, grouped);
+  if ('paused' in claim) return claim.paused;
+  const { record } = claim;
 
   const { pending, snapshot } = record;
   // N10b: the run goes on as the caller that paused it, whoever resumes it (an old snapshot: no principal).
   const { approver, ...rest } = observed;
-  const executeOptions: ResumeExecuteOptions = {
-    ...rest,
-    principal: readonlyPrincipal(snapshot.principal),
-    // LOU-R16: and its hooks keep seeing the metadata it paused with, unless the resuming call passed its own.
-    ...(rest.metadata === undefined && snapshot.metadata !== undefined && { metadata: snapshot.metadata }),
-  };
-  // TTL: a pause decided after its `expiresAt` is denied, whatever the
-  // decision says - a stale approve must never run the tool. The denial is
-  // what rejectionOf() reports to the model, so a resumed run sees the
-  // expiry, and a sign-in pause that lapsed is denied rather than re-armed.
-  // Eve TOOLS-F12: a group's calls were each checked when they were decided (groupDecision()).
-  const decided = grouped
-    ? decision
-    : approvalExpired(pending)
-      ? { ...decision, approved: false }
-      : // N9b: a sign-in pause continues only once the user signed in (else it stays paused), or ends as cancelled.
-        await signInDecision(record, decision, approvalStore, executeOptions.tokens);
-  // Eve TOOLS-F19: a copy of an `approve` callback's decision is still the callback's (once() does not remember it).
-  if (decided !== decision && isAutomaticDecision(decision)) markAutomaticDecision(decided);
+  const executeOptions = resumedOptions(rest, snapshot);
+  const decided = await effectiveDecision(record, decision, approvalStore, executeOptions, grouped);
   const messages: Message[] = [...snapshot.currentMessages];
   const drift = await checkApprovalDrift(record, decided, { approvalStore, toolRegistry, provider, executeOptions }, grouped ? claimed : record);
 
   const staleCheckpoint = await clearStaleCheckpoint(snapshot.sessionId, checkpointStore);
-  const staleBusinessState = staleCheckpoint?.businessState;
 
   const ctx: ResumeContext = {
     decision: decided,
@@ -241,77 +207,174 @@ async function resumeObserved(
       { redactContent: executeOptions.redactContent, captureContent }
     );
   const init = runSpan();
-  return withSpan(
-    executeOptions.exporter,
-    init.name,
-    init.attributes,
-    async (span) => {
-      ctx.runSpanId = span.id;
-      let step: Awaited<ReturnType<typeof decidedToolMessage>> | { group: true };
-      try {
-        // Eve TOOLS-F12: a decided group runs all its calls (a sub-agent's group runs inside the sub-agent).
-        step = snapshot.approvalGroup && !snapshot.subagent ? await runDecidedGroup(ctx, snapshot.approvalGroup, drift) : await streamedDecision(ctx, pending, drift);
-      } catch (error) {
-        // M10c: a paused sub-agent refused the resume before anything ran, so this run stays paused too.
-        if (refusedResumes.has(error as object)) await restorePause(claimed, approvalStore, staleCheckpoint, checkpointStore);
-        throw error;
-      }
-      const businessState = executeOptions.businessState !== undefined ? executeOptions.businessState : staleBusinessState;
-      if ('paused' in step) {
-        // LOU-U8: the sub-agent paused again, so the session still awaits an approval.
-        await markAwaitingApproval(snapshot, step.paused, checkpointStore, businessState);
-        return step.paused;
-      }
-      // N6: the approved transfer completed its switch - continue the run as the target.
-      if ('handoff' in step) {
-        return keepTurnOnFailure(snapshot, step.handoff.messages, checkpointStore, businessState, ctx.usage, () =>
-          AgentExecutor.execute({
-            ...step.handoff.options,
-            agentSpanId: span.id,
-            input: step.handoff.messages,
-            sessionId: snapshot.sessionId,
-            ...(snapshot.contextSessionId !== undefined && { contextSessionId: snapshot.contextSessionId }),
-            checkpointStore,
-            approvalStore: executeOptions.approvalStore ?? ctx.approvalStore,
-            businessState,
-            // The switched transcript already starts with the target's system prompt.
-            skipSystemPromptInjection: true,
-            initialSteps: snapshot.steps,
-            initialUsage: ctx.usage,
-          })
-        );
-      }
-      // LOU-Y1: a call whose sub-agent paused already has a placeholder result.
-      if ('message' in step) replaceToolResult(messages, step.message);
-      // Eve TOOLS-F12: a sub-agent of the step paused too - the run pauses on it now.
-      const held = snapshot.subagent ? undefined : snapshot.heldSubagent;
-      if (held) {
-        const paused = await pauseAgain(ctx, held);
-        await markAwaitingApproval(snapshot, paused, checkpointStore, businessState);
-        return paused;
-      }
-      closeUnlistedToolCalls(messages, snapshot.remainingToolCalls);
-      // The span's input is the transcript the continued run starts from, decided call included.
-      span.attributes = { ...span.attributes, ...runSpan().attributes };
+  const resumed: ResumedRun = { ctx, claimed, pending, drift, staleCheckpoint, checkpointStore, runSpan };
+  return withSpan(executeOptions.exporter, init.name, init.attributes, (span) => continueInRunSpan(resumed, span), executeOptions.parentSpanId, init.kind);
+}
 
-      // LOU-U7: the turn's remaining calls still have no result here;
-      // AgentExecutor.execute() finds them in the transcript and runs them
-      // through its normal batch path before calling the model again.
-      return keepTurnOnFailure(snapshot, messages, checkpointStore, businessState, ctx.usage, () =>
-        continueResumedRun(snapshot, messages, {
-          provider,
-          toolRegistry,
-          executeOptions,
-          checkpointStore,
-          approvalStore,
-          staleBusinessState,
-          usage: ctx.usage,
-          agentSpanId: span.id,
-        })
-      );
-    },
-    executeOptions.parentSpanId,
-    init.kind
+/**
+ * The record a resume runs from: the claimed one (with any edited arguments)
+ * or, for a group, the record once the last call is decided; `paused` while
+ * other calls of the group are undecided.
+ */
+async function recordToResume(
+  claimed: ResolvedApproval,
+  decision: ApprovalDecision,
+  approvalStore: ApprovalStore,
+  toolRegistry: ToolRegistry,
+  observed: ResumeExecuteOptions,
+  checkpointStore: CheckpointStore | undefined,
+  grouped: boolean
+): Promise<{ record: ResolvedApproval } | { paused: ExecutionResult }> {
+  if (grouped) {
+    const step = await decideGroupMember(claimed, decision, approvalStore, toolRegistry, observed);
+    if ('paused' in step) await markGroupPending(claimed.snapshot, step.paused, checkpointStore);
+    return step;
+  }
+  // Eve TOOLS-F19: "approve with edits" - invalid arguments leave the approval pending.
+  try {
+    return { record: await withEditedArgs(claimed, decision, toolRegistry, observed) };
+  } catch (error) {
+    return putBackRefused(claimed, approvalStore, error);
+  }
+}
+
+/** Puts a claimed record back and rethrows `error`, marking it so a lead's resume puts its own pause back too. */
+async function putBackRefused(claimed: ResolvedApproval, approvalStore: ApprovalStore, error: unknown): Promise<never> {
+  await approvalStore.save(claimed.pending, claimed.snapshot);
+  // Inside a sub-agent's resume, the lead's run puts its own pause back too.
+  if (typeof error === 'object' && error !== null) refusedResumes.add(error);
+  throw error;
+}
+
+/** The resuming call's options (less its `approver`) with the paused run's principal and, unless overridden, metadata. */
+function resumedOptions(rest: Omit<ResumeExecuteOptions, 'approver'>, snapshot: ExecutionSnapshot): ResumeExecuteOptions {
+  return {
+    ...rest,
+    principal: readonlyPrincipal(snapshot.principal),
+    // LOU-R16: and its hooks keep seeing the metadata it paused with, unless the resuming call passed its own.
+    ...(rest.metadata === undefined && snapshot.metadata !== undefined && { metadata: snapshot.metadata }),
+  };
+}
+
+/** The decision the resumed call runs with: TTL and sign-in applied to a single call's `decision`. */
+async function effectiveDecision(
+  record: ResolvedApproval,
+  decision: ApprovalDecision,
+  approvalStore: ApprovalStore,
+  executeOptions: ResumeExecuteOptions,
+  grouped: boolean
+): Promise<ApprovalDecision> {
+  // TTL: a pause decided after its `expiresAt` is denied, whatever the
+  // decision says - a stale approve must never run the tool. The denial is
+  // what rejectionOf() reports to the model, so a resumed run sees the
+  // expiry, and a sign-in pause that lapsed is denied rather than re-armed.
+  // Eve TOOLS-F12: a group's calls were each checked when they were decided (groupDecision()).
+  const decided = grouped
+    ? decision
+    : approvalExpired(record.pending)
+      ? { ...decision, approved: false }
+      : // N9b: a sign-in pause continues only once the user signed in (else it stays paused), or ends as cancelled.
+        await signInDecision(record, decision, approvalStore, executeOptions.tokens);
+  // Eve TOOLS-F19: a copy of an `approve` callback's decision is still the callback's (once() does not remember it).
+  if (decided !== decision && isAutomaticDecision(decision)) markAutomaticDecision(decided);
+  return decided;
+}
+
+/** What {@link continueInRunSpan} needs of a resume whose decision is settled. */
+interface ResumedRun {
+  ctx: ResumeContext;
+  claimed: ResolvedApproval;
+  pending: PendingApproval;
+  drift: AgentDrift | undefined;
+  staleCheckpoint: Checkpoint | null | undefined;
+  checkpointStore: CheckpointStore | undefined;
+  runSpan: () => ReturnType<typeof agentRunSpanInit>;
+}
+
+type DecidedStep = Awaited<ReturnType<typeof decidedToolMessage>> | { group: true };
+
+/** Runs the decided call (or group), then pauses again, hands off or continues the run, inside the run's span. */
+async function continueInRunSpan(resumed: ResumedRun, span: Span): Promise<ExecutionResult> {
+  const { ctx, checkpointStore, runSpan } = resumed;
+  const { snapshot, messages, executeOptions, provider, toolRegistry, approvalStore } = ctx;
+  ctx.runSpanId = span.id;
+  const step = await runDecidedStep(resumed);
+  const staleBusinessState = resumed.staleCheckpoint?.businessState;
+  const businessState = executeOptions.businessState !== undefined ? executeOptions.businessState : staleBusinessState;
+  if ('paused' in step) {
+    // LOU-U8: the sub-agent paused again, so the session still awaits an approval.
+    await markAwaitingApproval(snapshot, step.paused, checkpointStore, businessState);
+    return step.paused;
+  }
+  // N6: the approved transfer completed its switch - continue the run as the target.
+  if ('handoff' in step) return continueHandoff(ctx, step.handoff, span, checkpointStore, businessState);
+  // LOU-Y1: a call whose sub-agent paused already has a placeholder result.
+  if ('message' in step) replaceToolResult(messages, step.message);
+  // Eve TOOLS-F12: a sub-agent of the step paused too - the run pauses on it now.
+  const held = snapshot.subagent ? undefined : snapshot.heldSubagent;
+  if (held) {
+    const paused = await pauseAgain(ctx, held);
+    await markAwaitingApproval(snapshot, paused, checkpointStore, businessState);
+    return paused;
+  }
+  closeUnlistedToolCalls(messages, snapshot.remainingToolCalls);
+  // The span's input is the transcript the continued run starts from, decided call included.
+  span.attributes = { ...span.attributes, ...runSpan().attributes };
+
+  // LOU-U7: the turn's remaining calls still have no result here;
+  // AgentExecutor.execute() finds them in the transcript and runs them
+  // through its normal batch path before calling the model again.
+  return keepTurnOnFailure(snapshot, messages, checkpointStore, businessState, ctx.usage, () =>
+    continueResumedRun(snapshot, messages, {
+      provider,
+      toolRegistry,
+      executeOptions,
+      checkpointStore,
+      approvalStore,
+      staleBusinessState,
+      usage: ctx.usage,
+      agentSpanId: span.id,
+    })
+  );
+}
+
+/** Runs the decided call (or a decided group's calls); a refused sub-agent resume restores this run's pause. */
+async function runDecidedStep({ ctx, claimed, pending, drift, staleCheckpoint, checkpointStore }: ResumedRun): Promise<DecidedStep> {
+  const { snapshot } = ctx;
+  try {
+    // Eve TOOLS-F12: a decided group runs all its calls (a sub-agent's group runs inside the sub-agent).
+    return snapshot.approvalGroup && !snapshot.subagent ? await runDecidedGroup(ctx, snapshot.approvalGroup, drift) : await streamedDecision(ctx, pending, drift);
+  } catch (error) {
+    // M10c: a paused sub-agent refused the resume before anything ran, so this run stays paused too.
+    if (refusedResumes.has(error as object)) await restorePause(claimed, ctx.approvalStore, staleCheckpoint, checkpointStore);
+    throw error;
+  }
+}
+
+/** N6: continues the run as the handoff's target, from the switched transcript. */
+function continueHandoff(
+  ctx: ResumeContext,
+  handoff: HandoffSwitch,
+  span: Span,
+  checkpointStore: CheckpointStore | undefined,
+  businessState: unknown
+): Promise<ExecutionResult> {
+  const { snapshot, executeOptions } = ctx;
+  return keepTurnOnFailure(snapshot, handoff.messages, checkpointStore, businessState, ctx.usage, () =>
+    AgentExecutor.execute({
+      ...handoff.options,
+      agentSpanId: span.id,
+      input: handoff.messages,
+      sessionId: snapshot.sessionId,
+      ...(snapshot.contextSessionId !== undefined && { contextSessionId: snapshot.contextSessionId }),
+      checkpointStore,
+      approvalStore: executeOptions.approvalStore ?? ctx.approvalStore,
+      businessState,
+      // The switched transcript already starts with the target's system prompt.
+      skipSystemPromptInjection: true,
+      initialSteps: snapshot.steps,
+      initialUsage: ctx.usage,
+    })
   );
 }
 
@@ -450,42 +513,62 @@ async function decideGroupMember(
       const decided = new Map<string, GroupDecision>();
       for (const member of group) if (member.decision) decided.set(member.pending.id, member.decision);
       decided.set(pending.id, mine);
-      // The calls still waiting take this decision (and any decision another resolver wrote into them).
-      const waiting: ResolvedApproval[] = [];
-      for (const member of group) {
-        if (decided.has(member.pending.id)) continue;
-        const sibling = await approvalStore.resolve(member.pending.id);
-        if (!sibling) {
-          for (const taken of waiting) await approvalStore.save(taken.pending, taken.snapshot);
-          throw new SDKError(
-            `Approval '${member.pending.id}' of the same step as '${pending.id}' is being decided by another request; decide '${pending.id}' again once it is done.`,
-            'LOUSHO_APPROVAL_CONFLICT'
-          );
-        }
-        for (const other of sibling.snapshot.approvalGroup ?? []) if (other.decision && !decided.has(other.pending.id)) decided.set(other.pending.id, other.decision);
-        waiting.push(sibling);
-      }
+      const waiting = await claimWaitingSiblings(group, decided, approvalStore, pending.id);
       if (waiting.length === 0) return { record: { pending, snapshot: withGroupDecisions(snapshot, decided) } };
       for (const sibling of waiting) await approvalStore.save(sibling.pending, withGroupDecisions(sibling.snapshot, decided));
-      const ids = waiting.map((sibling) => sibling.pending.id);
-      const paused: ExecutionResult = {
-        text: '',
-        messages: [...snapshot.currentMessages],
-        toolCalls: [],
-        usage: snapshot.usage ? restoreRunUsage(snapshot.usage) : emptyRunUsage(),
-        finishReason: 'awaiting-approval',
-        steps: snapshot.steps,
-        approvalId: ids[0],
-        approvalIds: ids,
-      };
-      return { paused };
+      return { paused: groupPaused(snapshot, waiting) };
     } catch (error) {
-      await approvalStore.save(pending, snapshot);
-      // Inside a sub-agent's resume, the lead's run puts its own pause back too.
-      if (typeof error === 'object' && error !== null) refusedResumes.add(error);
-      throw error;
+      return putBackRefused(claimed, approvalStore, error);
     }
   });
+}
+
+/**
+ * Eve TOOLS-F12: claims the group's calls still waiting, which take the
+ * decisions in `decided` (and add to it any decision another resolver wrote
+ * into them). A call being decided elsewhere puts the claimed ones back and throws.
+ */
+async function claimWaitingSiblings(
+  group: ApprovalGroupMember[],
+  decided: Map<string, GroupDecision>,
+  approvalStore: ApprovalStore,
+  pendingId: string
+): Promise<ResolvedApproval[]> {
+  const waiting: ResolvedApproval[] = [];
+  for (const member of group) {
+    if (decided.has(member.pending.id)) continue;
+    const sibling = await approvalStore.resolve(member.pending.id);
+    if (!sibling) {
+      for (const taken of waiting) await approvalStore.save(taken.pending, taken.snapshot);
+      throw new SDKError(
+        `Approval '${member.pending.id}' of the same step as '${pendingId}' is being decided by another request; decide '${pendingId}' again once it is done.`,
+        'LOUSHO_APPROVAL_CONFLICT'
+      );
+    }
+    adoptDecisions(sibling.snapshot, decided);
+    waiting.push(sibling);
+  }
+  return waiting;
+}
+
+/** Adds to `decided` the decisions another resolver wrote into `snapshot`'s group that it does not have yet. */
+function adoptDecisions(snapshot: ExecutionSnapshot, decided: Map<string, GroupDecision>): void {
+  for (const other of snapshot.approvalGroup ?? []) if (other.decision && !decided.has(other.pending.id)) decided.set(other.pending.id, other.decision);
+}
+
+/** Eve TOOLS-F12: the run's result while the `waiting` calls of its step are undecided. */
+function groupPaused(snapshot: ExecutionSnapshot, waiting: ResolvedApproval[]): ExecutionResult {
+  const ids = waiting.map((sibling) => sibling.pending.id);
+  return {
+    text: '',
+    messages: [...snapshot.currentMessages],
+    toolCalls: [],
+    usage: snapshot.usage ? restoreRunUsage(snapshot.usage) : emptyRunUsage(),
+    finishReason: 'awaiting-approval',
+    steps: snapshot.steps,
+    approvalId: ids[0],
+    approvalIds: ids,
+  };
 }
 
 /**

@@ -5,7 +5,7 @@
 import type { FsProvider } from './types';
 import { globToRegExp, walkFiles } from './glob';
 import { normalizeWorkspacePath, WorkspaceError } from './paths';
-import { assertSafePattern, createLineMatcher, GREP_TIMEOUT_MS } from './grepMatcher';
+import { assertSafePattern, createLineMatcher, GREP_TIMEOUT_MS, type LineMatcher } from './grepMatcher';
 
 /** Resolved limits shared by the file system tools. */
 export interface FsLimits {
@@ -244,6 +244,18 @@ async function grepTargets(
   return findFiles(fs, base, args.glob, limits, signal);
 }
 
+/** The `path:line: text` matches in one file, at most `max`; none for a missing, oversized or binary file. */
+async function grepFile(fs: FsProvider, file: string, matcher: LineMatcher, max: number): Promise<string[]> {
+  const stat = await fs.stat(file).catch(() => undefined);
+  if (!stat || stat.size > MAX_GREP_FILE_BYTES) return [];
+  const content = await fs.readFile(file).catch(() => '');
+  if (isBinary(content)) return [];
+  const hits = await matcher.match(content, max);
+  if (hits.length === 0) return [];
+  const lines = splitLines(content);
+  return hits.map((line) => `${file}:${line}: ${clip(lines[line - 1], MAX_GREP_LINE_CHARS)}`);
+}
+
 /** `grep`: regex search over text files, returning `path:line: text`. */
 export async function grepFiles(
   fs: FsProvider,
@@ -261,14 +273,9 @@ export async function grepFiles(
   try {
     for (const file of files) {
       if (signal?.aborted) throw new WorkspaceError('The operation was cancelled.');
-      const stat = await fs.stat(file).catch(() => undefined);
-      if (!stat || stat.size > MAX_GREP_FILE_BYTES) continue;
-      const content = await fs.readFile(file).catch(() => '');
-      if (isBinary(content)) continue;
-      const hits = await matcher.match(content, limits.maxResults - matches.length);
-      if (hits.length === 0) continue;
-      const lines = splitLines(content);
-      for (const line of hits) matches.push(`${file}:${line}: ${clip(lines[line - 1], MAX_GREP_LINE_CHARS)}`);
+      const found = await grepFile(fs, file, matcher, limits.maxResults - matches.length);
+      if (found.length === 0) continue;
+      matches.push(...found);
       if (matches.length >= limits.maxResults) {
         capped = true;
         break;

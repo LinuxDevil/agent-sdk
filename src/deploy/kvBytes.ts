@@ -5,7 +5,6 @@
  */
 import { decodeBytes, encodeBytes } from '../storage/jsonBytes';
 
-export { decodeBytes, encodeBytes };
 
 /** `JSON.stringify(value)` with bytes encoded. */
 export const toKVJson = (value: unknown): string => JSON.stringify(value, encodeBytes);

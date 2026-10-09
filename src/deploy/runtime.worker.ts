@@ -245,7 +245,7 @@ function workerAgentFromResolved(resolved: ResolvedWorkerAgentDir, env: WorkerEn
  * directories hang below it.
  */
 function workerAgentParts(resolved: ResolvedWorkerAgentDir, env: WorkerEnv): { config: CreateAgentConfig; levels: number } {
-  const { name, instructions, model, tools, skills, maxSteps, toolConcurrency, memory, permissionMode, permissions, compaction, limits, modelSettings, approvalTtlMs, hooks } = resolved;
+  const { name, instructions, model, tools, skills, memory } = resolved;
   const source =
     'provider' in model
       ? model
@@ -263,6 +263,17 @@ function workerAgentParts(resolved: ResolvedWorkerAgentDir, env: WorkerEnv): { c
     ...(maxSubagentDepth === undefined ? {} : { maxSubagentDepth }),
     ...(skills.length > 0 ? { skills } : {}),
     ...(memory.length > 0 ? { memory: boundMemory(memory, env) } : {}),
+    ...workerAgentSettings(resolved),
+    ...(approve === undefined ? {} : { approve }),
+  } as CreateAgentConfig;
+  const levels = Math.max(0, ...delegated.map((sub) => sub.depth));
+  return { config, levels };
+}
+
+/** The run settings `resolved` sets (`maxSteps` through `hooks`), leaving out the unset ones. */
+function workerAgentSettings(resolved: ResolvedWorkerAgentDir): Partial<CreateAgentConfig> {
+  const { maxSteps, toolConcurrency, permissionMode, permissions, compaction, limits, modelSettings, approvalTtlMs, hooks } = resolved;
+  return {
     ...(maxSteps === undefined ? {} : { maxSteps }),
     ...(toolConcurrency === undefined ? {} : { toolConcurrency }),
     ...(permissionMode === undefined ? {} : { permissionMode }),
@@ -272,10 +283,7 @@ function workerAgentParts(resolved: ResolvedWorkerAgentDir, env: WorkerEnv): { c
     ...(modelSettings === undefined ? {} : { modelSettings }),
     ...(approvalTtlMs === undefined ? {} : { approvalTtlMs }),
     ...(hooks === undefined ? {} : { hooks }),
-    ...(approve === undefined ? {} : { approve }),
-  } as CreateAgentConfig;
-  const levels = Math.max(0, ...delegated.map((sub) => sub.depth));
-  return { config, levels };
+  } as Partial<CreateAgentConfig>;
 }
 
 /**

@@ -14,6 +14,7 @@
 
 import type { GenerateOptions, LLMProvider, LLMProviderConfig, ServedBy, StreamChunk, StreamResult } from './llm';
 import { abortableDelay } from './abortableDelay';
+import { delegateCapabilities } from './delegateCapabilities';
 import { providerEventsOf, withRetriesOwned } from './providerEvents';
 import {
   CompactedLLMProviderError,
@@ -362,11 +363,7 @@ export function withRetry(provider: LLMProvider, options: WithRetryOptions = {})
     },
     generate: (call) => callWithRetry(retrierFor(provider, call, options), (attempt) => provider.generate(attempt)),
     stream: (call) => streamWithRetry(provider, call, options),
-    supportsTools: (model) => provider.supportsTools(model),
-    supportsStreaming: (model) => provider.supportsStreaming(model),
-    getModels: () => provider.getModels(),
-    // N1a: absent on the wrapped provider means no hosted tools.
-    supportsHostedTool: (type) => provider.supportsHostedTool?.(type) ?? false,
+    ...delegateCapabilities(provider),
   };
 }
 

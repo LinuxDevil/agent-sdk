@@ -17,6 +17,7 @@ import type {
 } from '../providers/llm';
 import { textOf } from '../providers/content';
 import { SDKError } from '../execution/errors';
+import { abortableDelay } from '../providers/abortableDelay';
 
 /** Recursively read-only version of `T` (used for recorded requests). */
 export type DeepReadonly<T> = T extends (...args: never[]) => unknown
@@ -217,21 +218,6 @@ function toStaticTurn(turn: MockStaticTurn): MockTurnObject {
   return typeof turn === 'string' ? { text: turn } : turn;
 }
 
-/** Eve CORE-F15: waits `ms`, rejecting with `signal`'s reason as soon as it aborts. */
-function delay(ms: number, signal: AbortSignal | undefined): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(signal?.reason);
-    };
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort);
-      resolve();
-    }, ms);
-    signal?.addEventListener('abort', onAbort, { once: true });
-  });
-}
-
 function chunkText(text: string): string[] {
   return text.match(/\S+\s*|\s+/g) ?? [];
 }
@@ -341,7 +327,7 @@ class ScriptedMockModel implements MockModel {
     // Eve CORE-F15: a cancelled request rejects with the signal's reason, like a real provider's.
     const signal = turn.ignoreSignal ? undefined : options.signal;
     signal?.throwIfAborted();
-    if (turn.delayMs) await delay(turn.delayMs, signal);
+    if (turn.delayMs) await abortableDelay(turn.delayMs, signal);
     if (turn.error) throw turn.error;
     return { ...this.toResolved(turn), ...(signal && { signal }) };
   }

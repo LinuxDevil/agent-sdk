@@ -53,7 +53,7 @@ function ToolCallCard({ toolCall, result }: { toolCall: NonNullable<ChatMessage[
  * Eve DUI-F21: the user turn a top-bar Run added is shown as "Run input" in
  * a neutral bubble, not as a message the user typed.
  */
-export function Bubble({ message, toolResults }: { message: ChatMessage; toolResults: Map<string, ChatMessage> }) {
+function Bubble({ message, toolResults }: { message: ChatMessage; toolResults: Map<string, ChatMessage> }) {
   const role = message.role === 'user' ? 'user' : 'agent';
   const fromRun = message.source === 'run';
   return (
