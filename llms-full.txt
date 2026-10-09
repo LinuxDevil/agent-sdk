@@ -4822,7 +4822,7 @@ request that reuses the `sessionId` (after a crash or a recycled isolate).
 Cron triggers in the spec (`triggers: [{ type: 'cron', cron: '0 9 * * MON', input: '...' }]`)
 become `[triggers] crons = [...]` in `wrangler.toml`, and the generated Worker
 exports a `scheduled()` handler that runs them as agent turns (session
-`schedule-<name>`, see [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md#on-cloudflare-workers)). An agent
+`schedule-<name>-<fire time>`, see [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md#on-cloudflare-workers)). An agent
 directory's `schedules/` files work the same way: the build evaluates them for
 the expressions and generates the `scheduled()` export. Cloudflare
 evaluates the expressions in **UTC** with a granularity of one minute; the
@@ -4836,7 +4836,7 @@ specifier in the generated code is a virtual one that only `lousho build`'s
 bundler resolves; do not import it yourself). It runs the schedules whose
 `cron` equals `controller.cron` inside `ctx.waitUntil()` and never throws; list
 the same expressions under `[triggers] crons` yourself. Give the agent a store
-— without one, a scheduled run's `schedule-<name>` session lives in one
+— without one, a scheduled run's session lives in one
 isolate's memory and is gone when it is recycled:
 
 ```ts
@@ -10159,8 +10159,16 @@ await agent.send('Hi again!', { metadata: { userId: 'u-42' } });
 ```
 
 When a run has no scope key (a `'session'` slot in a `send()` without a
-`sessionId`, or a scope function that returns `undefined`), the slot is off
+`sessionId`, or a scope function that returns `undefined` or `null`), the slot is off
 for that run: nothing is recalled and its tools are not offered.
+
+A scope function must return a non-empty string (or `undefined` / `null`).
+Anything else fails the run with `LOUSHO_MEMORY_INVALID` naming the slot,
+because it would otherwise put every caller's items under one shared key: a
+number or an object, an empty string, or a key built from a missing value such
+as `user:undefined`, `user:null` or `user:[object Object]`. A scope function
+that throws fails the run with the same code. `defineMemory()` rejects a
+`scope` that is not `'global'`, `'session'` or a function.
 
 A scope function also sees `principal`, the caller a route's auth verified, which
 is safer to key on than `metadata` (the caller can send any metadata): see
@@ -10197,7 +10205,19 @@ const relationship = defineMemory({
 ```
 
 A slot with `expose: { remember: false }` is read-only for the model: you
-fill it from code with `provider.add(memoryKey(slot)!, { text })`.
+fill it from code with `provider.add(memoryKey(slot)!, { text })`. For a
+`'session'` or function scope, pass the run's context:
+`memoryKey(slot, { sessionId, metadata })`. Without it `memoryKey()` returns
+`undefined`, and the built-in providers reject a missing or empty scope key
+with `LOUSHO_MEMORY_INVALID` instead of storing items under the key `undefined`.
+
+### When recall fails
+
+Recall at the start of a run does not fail the run. If the provider throws (a
+corrupt memory file, a database or KV outage), the run goes on without that
+slot's `<memory>` block, and a `console.warn` names the slot (once per slot
+per process). A `recall_<name>` call that fails returns the error to the model
+as a tool error.
 
 ## Providers
 
@@ -10212,7 +10232,12 @@ fill it from code with `provider.add(memoryKey(slot)!, { text })`.
 
 The first three keep at most `maxItems` items per scope key (default 1000;
 adding one more drops the oldest) and match a `query` by keyword: an item matches when it
-contains one of the query's words of three or more letters, ignoring case.
+shares a whole word with the query, ignoring case and a plural `s` (`cat` finds
+"has two cats" but not "education"). Only the query's words of three or more
+letters count, unless it has none (`"AI"`). Items matching more of the query's
+words come first, then the newest. A query that shares no word with any item
+returns nothing. Keyword matching does not know synonyms: to recall by meaning,
+use a [vector provider](#semantic-recall).
 Every built-in provider dedupes on `text`: adding an item whose text is
 already stored returns the stored item instead of a duplicate (so an agent
 that remembers the same fact twice keeps one copy).
@@ -13063,11 +13088,12 @@ that does not reason never gets an unknown-option error:
 | Provider | Model ids |
 | --- | --- |
 | OpenAI | `o1` and later o-series (not `o1-mini` / `o1-preview`), `gpt-5` and later (not the `-chat` models) |
-| Anthropic | `claude-3-7-*`, `claude-sonnet-4*`, `claude-opus-4*`, `claude-haiku-4*` and later |
-| OpenRouter | `*/o1`..., `*/gpt-5`..., Claude 3.7 / 4+, `deepseek-r1`, `gemini-2.5`+, `grok-3`+, `qwen3`, `:thinking` variants |
+| Anthropic | `claude-3-7-*`, `claude-sonnet-4*`, `claude-opus-4*`, `claude-haiku-4*`, `claude-fable-*` and later |
+| OpenRouter | `*/o1`..., `*/gpt-5`..., Claude 3.7 / 4+ (including Fable), `deepseek-r1`, `deepseek-v3.1`+, `gpt-oss`, `gemini-2.5`+, `grok-3`+, `qwen3`, `:thinking` variants |
 | Ollama | `deepseek-r1`, `qwen3`, `gpt-oss`, `magistral` |
 
 For any other model id (a fine-tune, a new family) pass `{ effort, force: true }`.
+When `reasoning` is set and a model is not sent it, a warning is logged once per provider and model.
 
 ## Events and results
 
@@ -13377,7 +13403,7 @@ How a run ends, how to stop one, and how tool calls of one model turn run in par
 ## Finish reasons
 
 `result.finishReason` says why a run ended: the model's own reason for its last
-turn (`'stop'`, `'length'`, `'tool_calls'`, `'content_filter'`, `'error'`),
+turn (`'stop'`, `'length'`, `'tool_calls'`, `'content_filter'`, `'error'`, `'other'`),
 `'awaiting-approval'` (paused on a tool call that needs a human), `'aborted'`
 (cancelled with `signal`), `'max-steps'`, `'output-invalid'` (the reply
 did not match the `output` schema even after the repair step, see
@@ -13578,7 +13604,9 @@ process.once('SIGTERM', () => void running.stop().then(() => agent.close()));
 
 `fireSchedule(agent, schedule, { name?, firedAt?, sessionId? })` fires a schedule
 once, immediately, exactly as a tick would: it calls `run`, or sends `prompt`
-as a turn (in `sessionId` when given, which needs an agent with a store). It
+as a turn (in `sessionId` when given, which needs an agent with a store; by
+default each fire runs in its own session, `schedule-<name>-<fire time>`, when the agent has
+a store, and `schedule-<name>` when the schedule sets `sharedSession: true`). It
 rejects when the run fails, including with `LOUSHO_SCHEDULE_RUN_INCOMPLETE`, so
 it suits an ops "run now" and tests.
 
@@ -13654,12 +13682,15 @@ triggers:
 
 `lousho build` writes the deduplicated expressions to `[triggers] crons` and the
 Worker's `scheduled()` runs every trigger whose `cron` equals the invoked one as
-an agent turn inside `ctx.waitUntil()`. Each trigger has its own session,
-`schedule-<name>`, so its runs are inspectable in the KV session store when
-`AGENT_CHECKPOINTS` is bound (`GET /chat/schedule-weekly-report`). The run
+an agent turn inside `ctx.waitUntil()`. Each fire has its own session,
+`schedule-<name>-<fire time>` (for example `schedule-weekly-report-2026-10-05T090000Z`),
+so its run is inspectable in the KV session store when `AGENT_CHECKPOINTS` is
+bound and a daily job does not re-send every earlier report. Set
+`sharedSession: true` on a `defineSchedule()` prompt schedule to keep one
+`schedule-<name>` session instead; its transcript then grows with every fire. The run
 happens inside `ctx.waitUntil()`, past the request's lifetime, so give the
 agent a store (`KVStore` on `AGENT_CHECKPOINTS`) — an in-memory one keeps the
-`schedule-<name>` sessions only until the isolate is recycled. A failing
+schedule sessions only until the isolate is recycled. A failing
 trigger is logged with `console.error` (name and error code) and never
 stops the others, and `scheduled()` never throws. A turn that ends with a
 `finishReason` other than `'stop'` is logged the same way, as
@@ -14403,6 +14434,13 @@ interface AgentRun extends AsyncIterable<AgentEvent> {
   resolves with `finishReason: 'aborted'`; a run paused for approval resolves
   with `finishReason: 'awaiting-approval'` and `approvalId`. Leaving `result`
   unawaited never causes an unhandled rejection.
+- **A failed run throws from the loop.** When the run fails, `for await` yields
+  the `error` and `run.done { finishReason: 'error' }` events, then rethrows the
+  error `run.result` rejects with (the one `send()` would throw), so a `try`
+  around the loop catches it. Pass `{ throwOnError: false }` to `stream()` to end
+  the loop normally and read the failure from the events or `run.result`. An
+  abort, an early `break` and a pause for approval never throw. Session and
+  `approvals.streamResolve()` streams keep ending normally.
 - **Breaking out of the `for await` loop early aborts the run** (through the
   same path as `signal`, see [Cancellation](#cancellation)). `result` then
   resolves with `finishReason: 'aborted'`.
@@ -17390,7 +17428,7 @@ const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistr
 | ------------ | ------------------------------------------------- | ------- |
 | `read_file`  | `path`, optional `offset` (1-based line), `limit` | Numbered lines (`"    12\tcode"`). When the output is cut, the last line says which lines were shown and the `offset` to continue from. Files over 10 MB are refused. |
 | `write_file` | `path`, `content`                                 | Creates or overwrites the file and creates missing parent directories. |
-| `edit_file`  | `path`, `old_string`, `new_string`, optional `replace_all` | Replaces the exact text. Fails with a message the model can act on when `old_string` is missing (including a hint about CRLF line endings) or appears more than once without `replace_all`. |
+| `edit_file`  | `path`, `old_string`, `new_string`, optional `replace_all` | Replaces the exact text. Fails with a message the model can act on when `old_string` is missing (including a hint about CRLF line endings) or appears more than once without `replace_all`. Refuses a file that is not UTF-8 (latin1, Windows-1252, UTF-16) and leaves it unchanged, when the provider has `readFileBytes` (as `NodeWorkspace` does). A UTF-8 BOM is kept. |
 | `list_dir`   | optional `path`                                   | Sorted entries; directories end with `/`. |
 | `glob`       | `pattern`, optional `path`                        | Sorted paths of matching files. `*` stays within one directory, `**` crosses directories, plus `?`, `[abc]` and `{a,b}`. |
 | `grep`       | `pattern` (JavaScript regex), optional `path`, `glob`, `ignore_case` | `path:line: text` for each matching line. An invalid regex, or one with nested repetition like `(a+)+`, is a tool error. Binary files and files over 2 MB are skipped. |
@@ -17914,7 +17952,10 @@ export const remoteShell: ShellProvider = {
 
 Two optional methods, `getMode(path)` and `chmod(path, mode)`, let
 `WorkspaceCheckpoints` restore a file's permission bits along with its
-content; without them a rewind restores the content only.
+content; without them a rewind restores the content only. A third,
+`readFileBytes(path)`, returns a file's raw bytes: with it `edit_file`
+refuses a file that is not valid UTF-8 (or has a UTF-16 BOM) instead of
+writing U+FFFD over every byte it could not decode.
 
 `ShellProvider.exec` should resolve, not reject, for a non-zero exit code,
 a timeout (`timedOut: true`) or an abort (`aborted: true`). It should reject
