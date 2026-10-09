@@ -7858,7 +7858,10 @@ with no `approve` callback.
 
 **Means:** storage failed: a SQLite database could not be opened (the `cause`
 has the driver's error), was used after `close()`, has a newer schema than this
-SDK knows, or `node:sqlite` is missing; or a file exceeded the storage size limit.
+SDK knows, or `node:sqlite` is missing; or a file exceeded the storage size limit;
+or a `fileStore()` / `FileSessionStore` file could not be read or replaced
+because another handle kept it open (Windows `EPERM` / `EACCES` / `EBUSY`
+for longer than the ~1.3 s the store retries; the `cause` is the last error).
 
 **Fix:** check the path and permissions, use Node >= 22.13 for `SqliteStore` (or a
 file-based store), and create a new store after closing one.
@@ -14201,7 +14204,11 @@ Each one is an `AgentStore` part: pass them together as
 `fileStore(dir)`, `SqliteStore` and `KVStore` are ready-made `AgentStore`s. For
 plain files, `fileStore(dir)` writes one JSON file per session, checkpoint and
 pending approval under `dir`, each written to a temp file and renamed into
-place, with no lock files:
+place, with no lock files. On Windows a rename over, or a read of, a file that
+another writer or reader has open fails for a moment with `EPERM`, `EACCES` or
+`EBUSY`; `fileStore()` and `FileSessionStore` retry it with a short backoff (about
+1.3 s in all) and then fail with `LOUSHO_STORAGE_FAILED`. Concurrent saves to one
+file still end with one of them (the last rename wins):
 
 ```ts
 import { createAgent, fileStore } from '@lousho/build-ai-agent';
