@@ -318,6 +318,7 @@ export class AgentSession<TObject = unknown> {
     load(): Promise<readonly Message[]>;
     get messages(): readonly Message[];
     on(listener: (event: AgentEvent) => void): () => void;
+    protected pausedTurnFound(_approvalId: string): void;
     pending(): Promise<PendingTurn | null>;
     get permissionMode(): PermissionMode;
     resume(options?: {

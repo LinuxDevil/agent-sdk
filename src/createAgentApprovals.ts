@@ -14,7 +14,7 @@ import type { CheckpointStore } from './execution/checkpoint';
 import { SDKError, SessionAwaitingApprovalError } from './execution/errors';
 import type { InputQueue } from './execution/inputQueue';
 import { streamSessionTurn } from './session/sessionStream';
-import { AgentSession, type PendingTurn, type SessionOptions, type SessionRunner, type SessionSpawner, type SessionStreamRunner } from './session/AgentSession';
+import { AgentSession, type SessionOptions, type SessionRunner, type SessionSpawner, type SessionStreamRunner } from './session/AgentSession';
 import type { PermissionOptions } from './execution/permissions';
 import type { Principal } from './auth/types';
 
@@ -159,10 +159,8 @@ class ApprovalSession extends AgentSession {
    * "check pending(), then resolve()" flow then continues in this session
    * instead of falling back to a session-less resume.
    */
-  override async pending(): Promise<PendingTurn | null> {
-    const turn = await super.pending();
-    if (turn?.status === 'awaiting-approval' && turn.approvalId) this.binds?.(turn.approvalId);
-    return turn;
+  protected override pausedTurnFound(approvalId: string): void {
+    this.binds?.(approvalId);
   }
 
   /**
