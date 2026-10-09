@@ -14,7 +14,7 @@ import {
   type PendingApproval,
   type ResolvedApproval,
 } from '../../execution/ApprovalGate';
-import { assertSessionId, decodeBytes, encodeBytes, type SessionStore } from '../../session/sessionStore';
+import { assertSessionId, decodeBytes, encodeBytes, transcriptRevision, type SessionStore } from '../../session/sessionStore';
 import type { Connection } from './connection';
 import type { SqlStatement } from './driver';
 
@@ -45,7 +45,7 @@ const upsert = (table: string, key: string): string =>
 /** `SessionStore` over the `sessions` table. */
 export class SqliteSessionStore implements SessionStore {
   private readonly sql: Statements;
-  constructor(connection: Connection) {
+  constructor(private readonly connection: Connection) {
     this.sql = new Statements(connection);
   }
 
@@ -63,6 +63,19 @@ export class SqliteSessionStore implements SessionStore {
   async delete(id: string): Promise<void> {
     assertSessionId(id);
     this.sql.get('DELETE FROM sessions WHERE id = ?').run(id);
+  }
+
+  /** Eve DUR-F4: the read, compare and write run in one `BEGIN IMMEDIATE` transaction, so another process cannot slip between. */
+  async saveIf(id: string, expectedRevision: string, messages: readonly Message[]): Promise<boolean> {
+    assertSessionId(id);
+    const payload = JSON.stringify(messages, encodeBytes);
+    return this.connection.transactionAsync(() => {
+      const stored = parse<Message[]>(this.sql.get('SELECT payload FROM sessions WHERE id = ?').get(id));
+      if (transcriptRevision(stored) !== expectedRevision) return false;
+      const now = Date.now();
+      this.sql.get(upsert('sessions', 'id')).run(id, payload, now, now);
+      return true;
+    });
   }
 }
 
