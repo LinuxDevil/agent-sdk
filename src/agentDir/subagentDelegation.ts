@@ -13,7 +13,7 @@ import { runSubagent } from '../execution/delegation';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import { subagentBudget, toolCallScopeOf } from '../execution/subagentRuntime';
 import { isPropagatingToolError } from '../execution/propagatingToolError';
-import { subagentSpecOf } from '../subagents/withSubagents';
+import { subagentCallerOf, subagentSpecOf } from '../subagents/withSubagents';
 import { toolFailure } from '../tools/built-in/toolFailure';
 import type { ApproveToolCall } from '../createAgentApprovals';
 
@@ -52,7 +52,7 @@ export function delegateTool(subagent: LoadedSubagent): DefinedTool {
       }
       let result: ExecutionResult;
       try {
-        const spec = typeof registered === 'function' ? await registered(task) : registered;
+        const spec = typeof registered === 'function' ? await registered(task, subagentCallerOf(ctx)) : registered;
         result = await runSubagent(spec, { name: subagent.name, input: [{ role: 'user', content: task }], toolOptions: ctx });
       } catch (error) {
         // A paused child pauses the lead run; on resume this call is re-entered and continues the child.
