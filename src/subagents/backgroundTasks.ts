@@ -24,6 +24,13 @@ export interface SubagentOptions {
    */
   awaitBackgroundOnFinish?: boolean;
   /**
+   * Eve MA-F14: `false` leaves background tasks out: the `task` tool has no
+   * `background` argument and the lead gets no `agent_status`, `agent_await`
+   * or `agent_cancel` tool, which saves their schemas and prompt text on every
+   * lead request. Default `true`.
+   */
+  background?: boolean;
+  /**
    * LOU-Y6: where the child conversations of `task` calls are kept, so the
    * lead can resume or fork them by `taskId` in later runs of its session
    * (also after a restart, with a durable store). Used by lead runs with a

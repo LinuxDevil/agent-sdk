@@ -240,6 +240,31 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
     expect(text).toMatch(/cut off at the output token limit.*incomplete/);
   });
 
+  it('subagentOptions.background: false offers only the task tool, without a background argument (Eve MA-F14)', async () => {
+    const researcher = createAgent({ provider: mockModel(['found']), description: 'Researches' });
+    const leadModel = mockModel([{ toolCalls: [task('researcher', 'go')] }, 'ok']);
+    const lead = createAgent({ provider: leadModel, subagents: { researcher }, subagentOptions: { background: false } });
+
+    const result = await lead.send('go');
+
+    const request = leadModel.calls[0];
+    expect(request.tools?.map((t) => t.function.name)).toEqual(['task']);
+    expect(Object.keys((request.tools?.[0].function.parameters as unknown as { shape: object }).shape)).not.toContain('background');
+    expect(request.messages[0].content).not.toContain('agent_await');
+    expect(result.text).toBe('ok');
+  });
+
+  it('accepts a task call without a description (Eve MA-F14)', async () => {
+    const researcher = createAgent({ provider: mockModel(['found it']), description: 'Researches' });
+    const leadModel = mockModel([{ toolCalls: [{ name: 'task', args: { agent: 'researcher', prompt: 'go' } }] }, 'ok']);
+    const lead = createAgent({ provider: leadModel, subagents: { researcher } });
+
+    const [toolResult] = toolMessages((await lead.send('go')).messages);
+
+    expect(toolResult.isError).toBeFalsy();
+    expect(toolResult.content).toContain('found it');
+  });
+
   it('gives the lead an error result when a sub-agent fails', async () => {
     const researcher = createAgent({ provider: mockModel([{ error: new Error('model is down') }]), description: 'Researches' });
     const lead = createAgent({ provider: mockModel([{ toolCalls: [task('researcher', 'go')] }, 'ok']), subagents: { researcher } });
