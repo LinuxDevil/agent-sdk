@@ -29,6 +29,11 @@ export function caseSafeName(name: string): string {
   return name.replace(UPPERCASE, (letter) => `^${letter.toLowerCase()}`);
 }
 
+/** Eve DUR-F15: the id a case-safe (or legacy) file name stands for: `^alice` -> `Alice`. */
+export function idFromCaseSafeName(name: string): string {
+  return name.replace(/\^([a-z])/g, (_, letter: string) => letter.toUpperCase());
+}
+
 /**
  * The path of `<legacyName>.json` in `dir` when it is a file written before
  * case-safe names: it differs from `<name>.json` and the directory lists exactly

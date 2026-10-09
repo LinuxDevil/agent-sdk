@@ -25,6 +25,7 @@ import type { Checkpoint, CheckpointStore } from '../../execution/checkpoint';
 import type { ApprovalStore, ResolvedApproval } from '../../execution/ApprovalGate';
 import { AgentExecutor } from '../../execution/AgentExecutor';
 import { InMemoryApprovalStore } from '../../execution/InMemoryApprovalStore';
+import { memoryStore } from '../agentStore';
 import { resumeAfterApproval } from '../../execution/resume';
 import { ToolRegistry } from '../../tools';
 import { AgentBuilder } from '../../core';
@@ -90,6 +91,7 @@ describeSessionStoreContract('FileSessionStore', () => new FileSessionStore(temp
 describeSessionStoreContract('SqliteStore.sessions', () => open(':memory:').sessions);
 describeCheckpointStoreContract('in-memory', inMemoryCheckpointStore);
 describeCheckpointStoreContract('SqliteStore.checkpoints', () => open(':memory:').checkpoints);
+describeCheckpointStoreContract('memoryStore().checkpoints', () => memoryStore().checkpoints);
 describeApprovalStoreContract('in-memory', inMemoryApprovalStore);
 describeApprovalStoreContract('InMemoryApprovalStore', () => new InMemoryApprovalStore());
 describeApprovalStoreContract('SqliteStore.approvals', () => open(':memory:').approvals);

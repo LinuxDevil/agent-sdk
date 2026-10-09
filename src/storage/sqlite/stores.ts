@@ -1,10 +1,13 @@
 import type { Message } from '../../providers/llm';
 import {
+  listCheckpoints,
   resolveHistoryLimit,
   type Checkpoint,
   type CheckpointDeleteOptions,
   type CheckpointHistoryEntry,
   type CheckpointHistoryOptions,
+  type CheckpointListEntry,
+  type CheckpointListOptions,
   type CheckpointStore,
 } from '../../execution/checkpoint';
 import {
@@ -136,6 +139,14 @@ export class SqliteCheckpointStore implements CheckpointStore {
       status: String(row.status) as CheckpointHistoryEntry['status'],
       checkpoint: JSON.parse(String(row.payload), decodeBytes) as Checkpoint,
     }));
+  }
+  /** Eve DUR-F15: the latest checkpoint of every id, by id. */
+  async list(options?: CheckpointListOptions): Promise<CheckpointListEntry[]> {
+    const rows = this.sql.get('SELECT session_id, payload FROM checkpoints ORDER BY session_id').all();
+    return listCheckpoints(
+      rows.map((row) => [String(row.session_id), JSON.parse(String(row.payload), decodeBytes) as Checkpoint] as const),
+      options
+    );
   }
 }
 

@@ -61,6 +61,7 @@ export * from './handoffs';
 // Who is calling (N10a): the helpers live in '@lousho/build-ai-agent/auth'; the type rides in SendOptions.
 export type { Principal } from './auth/types';
 export type { AgentApprovals, ApproveToolCall, ResolveApprovalOptions } from './createAgentApprovals';
+export type { PendingRun } from './agentPending';
 // One store for sessions, checkpoints and approvals: createAgent({ store }) (LOU-D30)
 export { memoryStore, type AgentStore, type MemoryStoreOptions } from './storage/agentStore';
 export { fileStore, type FileStoreOptions } from './storage/fileStore';

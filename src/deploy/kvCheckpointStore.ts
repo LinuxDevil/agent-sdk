@@ -57,6 +57,7 @@
  */
 import {
   appendToRing,
+  listCheckpoints,
   newestFirst,
   resolveHistoryLimit,
   toHistoryEntry,
@@ -64,6 +65,8 @@ import {
   type CheckpointDeleteOptions,
   type CheckpointHistoryEntry,
   type CheckpointHistoryOptions,
+  type CheckpointListEntry,
+  type CheckpointListOptions,
   type CheckpointStore,
 } from '../execution/checkpoint';
 import { newId } from '../utils/id';
@@ -201,5 +204,28 @@ export class KVCheckpointStore implements CheckpointStore {
       })
     );
     return entries.filter((entry): entry is CheckpointHistoryEntry => entry !== null);
+  }
+
+  /**
+   * Eve DUR-F15: the latest checkpoint of every id under the prefix, by id;
+   * `[]` when the binding has no `list`. KV is eventually consistent: a
+   * checkpoint written elsewhere in the last ~60 seconds may be missing or stale.
+   */
+  async list(options?: CheckpointListOptions): Promise<CheckpointListEntry[]> {
+    if (!this.kv.list) return [];
+    const ids: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await this.kv.list({ prefix: this.keyPrefix, ...(cursor !== undefined && { cursor }) });
+      // History keys (`<id>#history`, `<id>#history/<entry>`) are not checkpoints.
+      for (const { name } of page.keys) if (!name.includes('#')) ids.push(name.slice(this.keyPrefix.length));
+      cursor = page.list_complete ? undefined : page.cursor;
+    } while (cursor !== undefined);
+    const found: Array<[string, Checkpoint]> = [];
+    for (const id of ids) {
+      const checkpoint = await this.load(id);
+      if (checkpoint) found.push([id, checkpoint]);
+    }
+    return listCheckpoints(found, options);
   }
 }

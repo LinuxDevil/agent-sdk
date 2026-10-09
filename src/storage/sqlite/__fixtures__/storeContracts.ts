@@ -187,6 +187,27 @@ export function describeCheckpointStoreContract(name: string, factory: Factory<C
       expect(await store.load('run-1')).toEqual(extended);
     });
 
+    it('list() returns the latest checkpoint of every id by id, filtered by status (Eve DUR-F15)', async () => {
+      const store = await factory();
+      if (!store.list) return; // optional
+      expect(await store.list()).toEqual([]);
+      await store.save('b.turn-2', makeCheckpoint({ sessionId: 'b.turn-2', status: 'awaiting-approval', approvalId: 'ap-1' }));
+      await store.save('a', makeCheckpoint({ sessionId: 'a', stepIndex: 1 }));
+      await store.save('a', makeCheckpoint({ sessionId: 'a', stepIndex: 4 })); // the latest wins, history is not listed
+      await store.save('Done', makeCheckpoint({ sessionId: 'Done', status: 'finished' }));
+      const all = await store.list();
+      expect(all.map((entry) => [entry.sessionId, entry.status, entry.checkpoint.stepIndex])).toEqual([
+        ['Done', 'finished', 2],
+        ['a', 'in-progress', 4],
+        ['b.turn-2', 'awaiting-approval', 2],
+      ]);
+      const open = await store.list({ status: ['in-progress', 'awaiting-approval'] });
+      expect(open.map((entry) => entry.sessionId)).toEqual(['a', 'b.turn-2']);
+      expect((await store.list({ status: 'awaiting-approval' }))[0]?.checkpoint.approvalId).toBe('ap-1');
+      await store.delete('a');
+      expect((await store.list({ status: 'in-progress' })).map((entry) => entry.sessionId)).toEqual([]);
+    });
+
     it('round-trips image and file bytes as Uint8Array (Eve DUR-F5)', async () => {
       const store = await factory();
       await store.save('run-1', makeCheckpoint({ messages: convoWithBytes }));

@@ -6,6 +6,7 @@
 
 import {
   appendToRing,
+  listCheckpoints,
   newestFirst,
   resolveHistoryLimit,
   toHistoryEntry,
@@ -13,6 +14,8 @@ import {
   type CheckpointDeleteOptions,
   type CheckpointHistoryEntry,
   type CheckpointHistoryOptions,
+  type CheckpointListEntry,
+  type CheckpointListOptions,
   type CheckpointStore,
 } from '../execution/checkpoint';
 import type { ApprovalStore } from '../execution/ApprovalGate';
@@ -76,6 +79,11 @@ class MemoryCheckpointStore implements CheckpointStore {
 
   async history(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]> {
     return structuredClone(newestFirst(this.rings.get(sessionId) ?? [], options));
+  }
+
+  /** Eve DUR-F15: the latest checkpoint of every id, by id. */
+  async list(options?: CheckpointListOptions): Promise<CheckpointListEntry[]> {
+    return structuredClone(listCheckpoints(this.checkpoints, options));
   }
 }
 

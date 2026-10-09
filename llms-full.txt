@@ -6751,6 +6751,57 @@ if (paused.finishReason === 'awaiting-approval') {
 The resumed run uses the same `approvalStore` for any later approval unless
 you pass a different one in the options.
 
+## Recovering after a crash
+
+A run that was interrupted (the process crashed or was killed mid-turn) or
+that is paused on an approval stays in `store.checkpoints` until someone
+finishes it. `agent.pending()` lists those runs across every session and
+`send(msg, { sessionId })` id, so a restarted process can find them:
+
+```ts
+import { createAgent, fileStore } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ provider, tools, store: fileStore('./.lousho') });
+
+// At startup, before taking traffic:
+for (const run of await agent.pending()) {
+  if (run.status === 'in-progress') {
+    // Finishes the turn without re-running recorded steps (tools that were mid-call run again: make them idempotent).
+    await agent.resume(run.sessionId);
+  } else {
+    // 'awaiting-approval': hand run.approvalId to a human, or decide it here.
+    console.log(`session ${run.sessionId} waits on approval ${run.approvalId}`);
+  }
+}
+```
+
+Each entry is `{ sessionId, kind, checkpointId, status, approvalId?,
+approvalKind?, step, lastError? }`:
+
+- `sessionId` is what `agent.resume()` takes: the `agent.session()` id for a
+  session turn (`kind: 'session'`, checkpointed as `<id>.turn-<n>`), or the
+  `send(msg, { sessionId })` id (`kind: 'run'`, also forks).
+- `status` is `'in-progress'` (interrupted) or `'awaiting-approval'` (decide
+  `approvalId` with `agent.approvals.resolve()`; `agent.approvals.list()`
+  shows the call).
+- `lastError` is set when the last attempt at a session turn failed. With
+  `retryable: false` (a 400 from the provider, for example) the same turn
+  will fail again: fix the cause before `agent.resume()`, or drop the turn
+  with `agent.session({ id }).discardPending()`.
+
+A run that is still running in some process is listed as `'in-progress'`
+too, so run the recovery loop before the process accepts new requests, and in
+one process at a time.
+
+`agent.pending()` needs a checkpoint store with `list()`: the file, SQLite,
+in-memory and KV stores have one (`KVStore` lists only when its namespace
+binding has `list`, as a real one does). On a custom `CheckpointStore`,
+`list({ status? })` returns `{ sessionId, status, checkpoint }` for the
+latest checkpoint of every id; `listCheckpoints(entries, options)` does the
+filtering and ordering for you. Without it `agent.pending()` throws
+`LOUSHO_CONFIG_INVALID`; without a checkpoint store at all, it throws
+`LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE`.
+
 ## Guarantees
 
 - **Every tool call gets exactly one result, in call order**, after any

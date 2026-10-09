@@ -62,6 +62,7 @@ import { RUN_CONFIG_KEY, type CheckpointStore, type ForkOptions, type ForkResult
 import type { AgentDriftMode } from './execution/agentFingerprint';
 import { ConfigurationError, SDKError, SessionAwaitingApprovalError } from './execution/errors';
 import { newId } from './utils/id';
+import { listPendingRuns, type PendingRun } from './agentPending';
 import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from './createAgentApprovals';
 import { createAgentOAuth, type AgentOAuth } from './oauth/agentOAuth';
 import type { OAuthTokenStore } from './oauth/types';
@@ -827,6 +828,25 @@ export interface SimpleAgent<TObject = unknown> {
    */
   fork: (sessionId: string, options: Omit<ForkOptions, 'sessionId' | 'checkpointStore'>) => Promise<ForkResult>;
   /**
+   * Eve DUR-F15: the runs left unfinished in the agent's `store.checkpoints`,
+   * across all sessions and processes: interrupted turns and runs
+   * (`status: 'in-progress'`, finish them with `agent.resume(sessionId)`) and
+   * ones paused on an approval (`'awaiting-approval'`, decide `approvalId`
+   * with `agent.approvals.resolve()`). Call it at startup to recover after a
+   * crash (docs/durable-execution.md, "Recovering after a crash"). A run still
+   * running in some process is listed as `'in-progress'` too. Throws
+   * `LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE` without a checkpoint store, and
+   * `LOUSHO_CONFIG_INVALID` when the store has no `list()`.
+   *
+   * @example
+   * ```ts
+   * for (const run of await agent.pending()) {
+   *   if (run.status === 'in-progress') await agent.resume(run.sessionId);
+   * }
+   * ```
+   */
+  pending: () => Promise<PendingRun[]>;
+  /**
    * Tool calls this agent is paused on, waiting for approval (LOU-D21). A
    * paused `send()` resolves with `finishReason: 'awaiting-approval'` and an
    * `approvalId`; `resolve()` runs or rejects the call and continues the run
@@ -1180,6 +1200,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     },
     // durable() throws LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE without `store.checkpoints`.
     fork: async (sessionId, options) => AgentExecutor.fork({ ...options, ...(durable(sessionId) as SessionTurnCheckpoint) }),
+    pending: () => listPendingRuns(checkpoints),
     approvals: approvals.approvals,
     oauth: createAgentOAuth(tokens, approvals.store, mcp.oauth),
     ready: mcp.ready,
