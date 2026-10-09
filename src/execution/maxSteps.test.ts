@@ -147,3 +147,49 @@ describe("finishReason 'max-steps'", () => {
     expect(resumed.steps).toBe(2);
   });
 });
+
+describe('limits.maxSteps and maxSteps validation (Eve CORE-F5)', () => {
+  const answer = z.object({ answer: z.string() });
+  const script = () =>
+    mockModel([(req) => (req.tools?.length ? { toolCalls: [{ name: 'ping' }] } : '{"answer":"from gathered data"}')], {
+      onExhausted: 'repeat-last',
+    });
+
+  it('limits.maxSteps exhaustion with output makes the forced answer call and keeps result.budget', async () => {
+    const model = script();
+    const result = await createAgent({ provider: model, tools: [ping], output: answer, limits: { maxSteps: 1 } }).send('go');
+
+    expect(result.object).toEqual({ answer: 'from gathered data' });
+    expect(result.finishReason).toBe('budget-exceeded');
+    expect(result.budget).toMatchObject({ limit: 'maxSteps', max: 1 });
+    expect(model.calls).toHaveLength(2);
+    expect(model.calls[1].tools).toBeUndefined();
+  });
+
+  it('limits.maxSteps tighter than maxSteps gets the forced answer too', async () => {
+    const model = script();
+    const result = await createAgent({ provider: model, tools: [ping], output: answer, maxSteps: 5, limits: { maxSteps: 1 } }).send('go');
+
+    expect(result.object).toEqual({ answer: 'from gathered data' });
+    expect(model.calls).toHaveLength(2);
+  });
+
+  it('limits.maxSteps without output still ends budget-exceeded with no extra call', async () => {
+    const model = script();
+    const result = await createAgent({ provider: model, tools: [ping], limits: { maxSteps: 1 } }).send('go');
+
+    expect(result.finishReason).toBe('budget-exceeded');
+    expect(model.calls).toHaveLength(1);
+  });
+
+  it.each([0, -1, 1.5, Number.NaN, Infinity, '3'])('createAgent rejects maxSteps %s with LOUSHO_CONFIG_INVALID', (bad) => {
+    expect(() => createAgent({ provider: mockModel(['hi']), maxSteps: bad as number })).toThrow(
+      expect.objectContaining({ code: 'LOUSHO_CONFIG_INVALID', message: expect.stringMatching(/'maxSteps' must be a whole number >= 1/) })
+    );
+  });
+
+  it('AgentExecutor.execute rejects an invalid maxSteps', async () => {
+    const { agent, provider } = options([], ['hi']);
+    await expect(AgentExecutor.execute({ agent, provider, input: 'x', maxSteps: 0 })).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_INVALID' });
+  });
+});

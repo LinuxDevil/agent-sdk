@@ -95,6 +95,7 @@ import {
   RunLimits,
   SessionBudget,
   budgetOfAbort,
+  assertMaxSteps,
   maxStepsOf,
   startBudget,
 } from './budget';
@@ -921,7 +922,7 @@ export class AgentExecutor {
     // Execution loop with tool calling. LOU-V1: the signal is checked
     // before every model call (here) and every tool call (runToolCalls()).
     while (state.steps < maxSteps) {
-      const stopped = this.stopBeforeStep(options, state);
+      const stopped = this.stopBeforeStep(options, state, agentSpanId);
       if (stopped) {
         return stopped;
       }
@@ -1048,10 +1049,33 @@ export class AgentExecutor {
   }
 
   /** The run's end when it must stop before the next model call: aborted (LOU-V1) or over budget (LOU-V6). */
-  private static stopBeforeStep(options: ExecuteOptions, state: AgentRunState): Promise<ExecutionResult> | undefined {
+  private static stopBeforeStep(options: ExecuteOptions, state: AgentRunState, agentSpanId: string): Promise<ExecutionResult> | undefined {
     if (options.signal?.aborted) return this.abortRun(options, state);
     const exceeded = state.budget?.check(state.usage, state.steps);
+    if (exceeded?.limit === 'maxSteps' && options.output && state.budget?.mode(exceeded) !== 'throw') {
+      return this.stepLimitAnswer(options, state, exceeded, agentSpanId);
+    }
     return exceeded && this.stopForBudget(options, state, exceeded);
+  }
+
+  /**
+   * Eve CORE-F5: a `limits.maxSteps` that runs out with an `output` schema
+   * still unanswered gets the same forced answer as `maxSteps`
+   * ({@link forcedAnswer}). The run still ends 'budget-exceeded' with
+   * `result.budget` - with `object` when the answer validated, or
+   * 'output-invalid' with `outputError` when it did not.
+   */
+  private static async stepLimitAnswer(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    budget: BudgetExceeded,
+    agentSpanId: string
+  ): Promise<ExecutionResult> {
+    runEventsOf(options)?.budgetExceeded(budget);
+    const output = await this.forcedAnswer(options, state, agentSpanId);
+    if (output && 'finishReason' in output) return output;
+    if (state.finishReason !== 'output-invalid') state.finishReason = 'budget-exceeded';
+    return { ...(await this.finishRun(options, state, output)), budget };
   }
 
   /**
@@ -1910,6 +1934,7 @@ export class AgentExecutor {
       );
     }
     assertToolConcurrency(options.toolConcurrency, caller);
+    assertMaxSteps(options.maxSteps, caller);
     assertMaxSubagentDepth(options.maxSubagentDepth, caller);
     assertToolSearchOptions(options.toolSearch, caller);
     assertOutputSchema(options.output);

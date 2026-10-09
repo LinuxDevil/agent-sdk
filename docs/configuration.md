@@ -288,7 +288,7 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `tools`    | An array of `defineTool()` results, or a `Record<string, ToolDescriptor>` keyed by the name the agent uses (see [Tools](./tools.md)). |
 | `name`     | Agent name (default `'agent'`).                                    |
 | `description` | What the agent does, in a sentence. Required when it is used as a sub-agent. |
-| `maxSteps` | Passed through to `AgentExecutor.execute()`.                        |
+| `maxSteps` | Passed through to `AgentExecutor.execute()`. A whole number >= 1; anything else throws `LOUSHO_CONFIG_INVALID`. |
 | `modelSettings` | Sampling settings sent on every model call: `{ maxTokens?, temperature?, topP?, frequencyPenalty?, presencePenalty?, stop?, seed?, toolChoice? }`. A `send()` / `stream()` call's own `modelSettings` win key by key. See [Model settings](#model-settings). |
 | `limits`   | Budgets of each run: `{ maxTokens?, maxInputTokens?, maxOutputTokens?, maxCostUsd?, maxDurationMs?, maxSteps?, onExceeded? }`. A tripped limit ends the run with `finishReason: 'budget-exceeded'`. See [Budgets](#budgets). |
 | `toolConcurrency` | How many tool calls of one model turn run at once: a positive integer or `'unbounded'` (default). See [Parallel tool calls](./runs.md#parallel-tool-calls). |
@@ -371,7 +371,7 @@ agent) or on `AgentExecutor.execute()` / `stream()`:
 | `maxOutputTokens` | Completion tokens (`usage.outputTokens`). |
 | `maxCostUsd`      | USD (`usage.costUsd`): the cost the provider reported for each call (OpenRouter's `usage.cost`), else the [price table](./models-and-cost.md#models-and-the-price-table) estimate. Not checked while a model used has unknown pricing (`costUsd` is `undefined`); a warning is logged once. |
 | `maxDurationMs`   | Wall-clock time of the `execute()` / `stream()` call. |
-| `maxSteps`        | Model steps. An alias of the `maxSteps` option: when both are set the stricter wins (the option's tie reports `'max-steps'`); alone, it replaces the default of 10. |
+| `maxSteps`        | Model steps. An alias of the `maxSteps` option: when both are set the stricter wins (the option's tie reports `'max-steps'`); alone, it replaces the default of 10. With `output` set, running out of it makes the same forced answer call as `maxSteps` ([Structured output](./structured-output.md#out-of-steps)); the run still ends `'budget-exceeded'`, with `object` when the answer validated. |
 
 Limits are checked before every model call (so after every tool batch) and
 after a model call that asks for tools; `maxDurationMs` also aborts an

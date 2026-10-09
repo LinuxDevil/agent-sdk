@@ -73,7 +73,7 @@ import { toMessages, type AgentInput } from './providers/content';
 import { compactionHookFor, type AgentCompaction } from './context/agentCompaction';
 import type { MemorySlot } from './memory/defineMemory';
 import { agentMemory } from './memory/withMemory';
-import type { RunLimits } from './execution/budget';
+import { assertMaxSteps, type RunLimits } from './execution/budget';
 import type { AgentGuardrails } from './execution/ioGuardrails';
 import type { Principal } from './auth/types';
 import type { Handoff } from './handoffs';
@@ -811,6 +811,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   config: CreateAgentConfig<TOutput> = {}
 ): SimpleAgent<InferSchemaOutput<TOutput>> {
   assertToolConcurrency(config.toolConcurrency, 'createAgent');
+  assertMaxSteps(config.maxSteps, 'createAgent');
   assertMaxSubagentDepth(config.maxSubagentDepth, 'createAgent');
   assertSubagents(config.subagents, 'createAgent');
   assertApprovalTtlMs(config.approvalTtlMs);

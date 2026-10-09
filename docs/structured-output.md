@@ -156,7 +156,9 @@ offered ("answer now") and validates that reply the same way. A valid
 answer ends the run `finishReason: 'max-steps'` with `object` set; an
 invalid one ends it `'output-invalid'` with `outputError`. The extra call
 is skipped when another budget limit (tokens, cost, duration) is already
-spent. Like the repair message, the "answer now" prompt is sent to that
+spent. A `limits.maxSteps` that runs out gets the same call; that run
+still ends `'budget-exceeded'` with `result.budget`, plus `object` when the
+answer validated. Like the repair message, the "answer now" prompt is sent to that
 call only and is not kept in `result.messages` or the session transcript.
 
 ## The schema in the prompt
