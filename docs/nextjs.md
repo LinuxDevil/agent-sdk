@@ -66,18 +66,38 @@ the agent one that outlives a serverless invocation when you use sessions.
 A session id is bound to the first authenticated caller that uses it - a
 different principal gets 403 (see [Route auth and principals](./auth.md) for
 the default, its in-memory limit, and `ownsSession` to override it; deriving
-the id from the caller, `u-${userId}`, keeps it obvious). Approvals are
-decided by `approvers`: by default the user a gated call runs for cannot
-approve it themselves, so a single-user app that prompts its own user should
-set `approvers: (caller) => caller !== undefined` (or finer).
+the id from the caller, `u-${userId}`, keeps it obvious).
 
 For an app with more than one user, also pass `authorizeSession`, so a user
-cannot read or continue another user's session. If an approval must come from
-someone other than the user (a supervisor approving a refund), pass
-`authorizeApproval` too: by default the user the run acts for may approve their
-own call. An error reaches the client as its `name` and `code` with a generic
-message; `exposeErrors: true` sends the raw text. See
-[Who may decide an approval](./auth.md#who-may-decide-an-approval).
+cannot read or continue another user's session.
+
+**Who may approve a call.** `createRouteHandler` has no `approvers` option; approvals are decided by
+`authorizeApproval({ principal, sessionId, approval })`. By default
+(`callerOwnsApproval`) the user a gated call runs for may approve it, and
+cannot decide another user's call, so a single-user app that prompts its own
+user needs nothing. That also means a user can approve their own refund. If an
+approval must come from someone else, pass `authorizeApproval`. This is a
+two-person rule: a supervisor decides, and never on a call that runs for
+themselves:
+
+```ts
+import { createAgent, createRouteHandler, memoryStore } from '@lousho/build-ai-agent';
+import { jwt } from '@lousho/build-ai-agent/auth';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', store: memoryStore() });
+
+export const { GET, POST } = createRouteHandler(agent, {
+  auth: jwt({ secret: process.env.JWT_SECRET!, issuer: 'https://auth.example.com', audience: 'agent-api' }),
+  authorizeApproval: ({ principal, approval }) =>
+    principal?.claims?.role === 'supervisor' &&
+    !(principal.id === approval.principal?.id && principal.issuer === approval.principal?.issuer),
+});
+```
+
+An error reaches the client as its `name` and `code` with a generic message;
+`exposeErrors: true` sends the raw text. See
+[Who may decide an approval](./auth.md#who-may-decide-an-approval) for the
+`403` it answers with and the supervisor-in-any-session variant.
 
 If the client goes away while a session turn streams (a closed tab, a dropped
 connection), the turn still runs to its end on the server and is saved to the
