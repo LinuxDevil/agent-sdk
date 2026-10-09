@@ -219,6 +219,7 @@ class Connection {
     // (undocumented)
     readonly path: string;
     transaction<T>(work: () => T): T;
+    transactionAsync<T>(work: () => T): Promise<T>;
 }
 
 // Warning: (ae-forgotten-export) The symbol "TextContentPart" needs to be exported by the entry point index.d.ts
