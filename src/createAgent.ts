@@ -20,7 +20,7 @@ import { AgentExecutor, ExecuteOptions, ExecutionResult } from './execution/Agen
 import { streamResumed, throwingRun, type AgentRun } from './execution/agentRun';
 import type { AgentEvent } from './execution/agentEvents';
 import type { TraceExporter } from './execution/tracing';
-import { mergeModelSettings } from './execution/modelSettings';
+import { assertModelSettings, mergeModelSettings } from './execution/modelSettings';
 import { DEFAULT_AGENT_NAME } from './execution/genAiSpans';
 import { LLMProvider, LLMProviderRegistry } from './providers/llm';
 import { ToolRegistry } from './tools/ToolRegistry';
@@ -851,6 +851,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
 ): SimpleAgent<InferSchemaOutput<TOutput>> {
   assertToolConcurrency(config.toolConcurrency, 'createAgent');
   assertMaxSteps(config.maxSteps, 'createAgent');
+  assertModelSettings(config.modelSettings, 'createAgent');
   assertMaxToolResultChars(config.maxToolResultChars, 'createAgent');
   assertMaxSubagentDepth(config.maxSubagentDepth, 'createAgent');
   assertSubagents(config.subagents, 'createAgent');
@@ -991,6 +992,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   };
   const callTurn = ({ sessionId, reasoning, modelSettings, permissionMode, approvalTtlMs, parentSpanId, onEvent }: SendOptions): RunTurn => {
     if (permissionMode !== undefined) assertPermissionMode(permissionMode, 'send');
+    assertModelSettings(modelSettings, 'send');
     return {
       ...durable(sessionId),
       ...(reasoning !== undefined && { reasoning }),

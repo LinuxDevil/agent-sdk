@@ -4,7 +4,7 @@
  * runtime (src/deploy/workerAgentDir.ts) on a config bundled at build time.
  */
 import type { LLMProvider, ModelSettings } from '../providers/llm';
-import { MODEL_SETTING_KEYS } from '../execution/modelSettings';
+import { MODEL_SETTING_KEYS, modelSettingProblem } from '../execution/modelSettings';
 import { assertToolConcurrency, type ToolConcurrency } from '../execution/toolBatch';
 import { closest } from './closest';
 import { SDKError } from '../execution/errors';
@@ -410,6 +410,10 @@ function assertModelSettings(file: string, value: unknown): void {
       if (!(Array.isArray(entry) && entry.every((stop) => typeof stop === 'string'))) fail(file, `'modelSettings.stop' must be an array of strings, got ${describeValue(entry)}.`);
     } else if (!(typeof entry === 'number' && Number.isFinite(entry))) {
       fail(file, `'modelSettings.${key}' must be a number, got ${describeValue(entry)}.`);
+    } else {
+      // Eve CORE-F13: the same ranges createAgent checks (temperature 0..2, maxTokens >= 1, ...).
+      const problem = modelSettingProblem(key, entry);
+      if (problem) fail(file, `'modelSettings.${key}' ${problem}.`);
     }
   }
 }

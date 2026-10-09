@@ -97,3 +97,51 @@ describe('AgentExecutor modelSettings (C6)', () => {
     expect(sentSettings(model.calls[0])).toEqual(['maxTokens', 'topP']);
   });
 });
+
+describe('modelSettings validation (Eve CORE-F13)', () => {
+  const invalid = (error: unknown) => error as { code?: string; field?: string; message: string };
+
+  it.each([
+    [{ temperature: 5 }, 'modelSettings.temperature', 'from 0 to 2'],
+    [{ temperature: -0.1 }, 'modelSettings.temperature', 'from 0 to 2'],
+    [{ topP: 7 }, 'modelSettings.topP', 'from 0 to 1'],
+    [{ maxTokens: -1 }, 'modelSettings.maxTokens', 'whole number >= 1'],
+    [{ maxTokens: 1.5 }, 'modelSettings.maxTokens', 'whole number >= 1'],
+    [{ frequencyPenalty: 3 }, 'modelSettings.frequencyPenalty', 'from -2 to 2'],
+    [{ presencePenalty: Number.NaN }, 'modelSettings.presencePenalty', 'must be a number'],
+    [{ seed: 0.5 }, 'modelSettings.seed', 'whole number'],
+    [{ stop: 'END' }, 'modelSettings.stop', 'array of strings'],
+    [{ toolChoice: 'always' }, 'modelSettings.toolChoice', "'auto', 'required', 'none'"],
+    [{ maxOutputTokens: 10 }, 'modelSettings.maxOutputTokens', "did you mean 'maxTokens'?"],
+  ])('createAgent rejects %j with LOUSHO_CONFIG_INVALID naming the key', (modelSettings, field, text) => {
+    let thrown: unknown;
+    try {
+      createAgent({ provider: mockModel(['x']), modelSettings: modelSettings as never });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(invalid(thrown).code).toBe('LOUSHO_CONFIG_INVALID');
+    expect(invalid(thrown).field).toBe(field);
+    expect(invalid(thrown).message).toContain(`createAgent: '${field}'`);
+    expect(invalid(thrown).message).toContain(text);
+  });
+
+  it('accepts the range ends and undefined keys', () => {
+    expect(() =>
+      createAgent({
+        provider: mockModel(['x']),
+        modelSettings: { temperature: 2, topP: 0, maxTokens: 1, frequencyPenalty: -2, presencePenalty: 2, seed: -3, stop: [], toolChoice: { type: 'function', function: { name: 't' } } },
+      })
+    ).not.toThrow();
+    expect(() => createAgent({ provider: mockModel(['x']), modelSettings: { temperature: undefined } })).not.toThrow();
+  });
+
+  it('send() and stream() reject a bad per-call setting before any model call', async () => {
+    const model = mockModel(['x'], { onExhausted: 'repeat-last' });
+    const agent = createAgent({ provider: model });
+
+    await expect(agent.send('hi', { modelSettings: { temperature: 5 } })).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_INVALID', field: 'modelSettings.temperature' });
+    expect(() => agent.stream('hi', { modelSettings: { maxTokens: 0 } })).toThrow(/send: 'modelSettings.maxTokens' must be a whole number >= 1, got 0/);
+    expect(model.calls).toHaveLength(0);
+  });
+});
