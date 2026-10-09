@@ -348,6 +348,20 @@ function withObservedUsage(usage: ProviderUsage | undefined, found: CallObservat
   return Object.keys(added).length === 0 ? usage : { ...usage, ...added };
 }
 
+/**
+ * A watched call: what its response left, once read, and which of the
+ * reported extras it asked for. Every call is watched for its cost (PROV-F3),
+ * but the search's hosted call and the reasoning are reported only for a call
+ * that requested them, so a plain call's result and stream stay unchanged.
+ */
+interface CallWatch {
+  settled?: Promise<CallObservation | undefined>;
+  /** The call sent `webSearch()` (N1b). */
+  search: boolean;
+  /** The call sent OpenRouter's `reasoning` field (LOU-R8). */
+  reasoning: boolean;
+}
+
 /** The hosted call a step's search left, from what its response reported (undefined when it did not search). */
 function searchCallOf(found: CallObservation | undefined): HostedToolCall | undefined {
   if (!found || ((found.requests ?? 0) === 0 && found.sources.length === 0)) return undefined;
@@ -390,7 +404,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
   }
 
   /** What each call (by its options object) left in OpenRouter's response: the web search (N1b) and the reasoning (LOU-R8). */
-  private readonly observed = new WeakMap<GenerateOptions, { settled?: Promise<CallObservation | undefined> }>();
+  private readonly observed = new WeakMap<GenerateOptions, CallWatch>();
 
   private readonly loadProvider = lazyValue(() => this.openRouter());
 
@@ -422,7 +436,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
       // The response is watched for what `@ai-sdk/openai` drops: the reasoning
       // fields (LOU-R8), the server-side search's traces (N1b) and the cost
       // OpenRouter billed (PROV-F3).
-      const watch: { settled?: Promise<CallObservation | undefined> } = {};
+      const watch: CallWatch = { search: search !== undefined, reasoning: reasoning !== undefined };
       this.observed.set(options, watch);
       changes.observe = (settled) => {
         watch.settled = settled;
@@ -461,8 +475,9 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
     const result = await super.generate(options);
     const found = await this.observation(options);
     if (!found) return result;
-    const call = searchCallOf(found);
-    const reasoning = reasoningBlocks(found);
+    const watch = this.observed.get(options);
+    const call = watch?.search ? searchCallOf(found) : undefined;
+    const reasoning = watch?.reasoning ? reasoningBlocks(found) : [];
     const usage = withObservedUsage(result.usage, found);
     return {
       ...result,
@@ -494,8 +509,10 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
    */
   private async *withObservation(chunks: AsyncIterable<StreamChunk>, options: GenerateOptions): AsyncGenerator<StreamChunk> {
     let flushed = false;
+    const watch = this.observed.get(options);
     // A newer `@ai-sdk/openai` may report reasoning itself; the observed chunks only fill what it dropped.
-    let sdkReasoning = false;
+    // A call that did not ask for reasoning gets none added.
+    let sdkReasoning = !watch?.reasoning;
     for await (const chunk of chunks) {
       if (chunk.type === 'reasoning-delta' || chunk.type === 'reasoning-end') sdkReasoning = true;
       if (chunk.type !== 'finish' || flushed) {
@@ -505,7 +522,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
       flushed = true;
       const found = await this.observation(options);
       if (!sdkReasoning) yield* reasoningChunks(found);
-      const call = searchCallOf(found);
+      const call = watch?.search ? searchCallOf(found) : undefined;
       if (call) {
         yield { type: 'hosted-tool-call', hostedToolCall: { id: call.id, name: call.name, args: call.args } };
         yield { type: 'hosted-tool-result', hostedToolCall: call };
