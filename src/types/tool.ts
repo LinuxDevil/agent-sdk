@@ -70,9 +70,12 @@ export interface ToolExecutionContext {
    * `ask_question` tool it is the user's answer (LOU-X9). N10b: `by` is who
    * decided, when the decision came with a principal (`resolve(decision, {
    * principal })`, the approvals route, a channel button); it is never the
-   * run's `principal`.
+   * run's `principal`. Eve DUR-F9: `id` is the approval's id - the same for
+   * every attempt to run this decided call - so a tool with a side effect
+   * (a payment, an email) can pass it on as an idempotency key, in case a
+   * store without an atomic claim (Workers KV) lets one approval resolve twice.
    */
-  approval?: { note?: string; by?: Readonly<Principal> };
+  approval?: { id?: string; note?: string; by?: Readonly<Principal> };
   /**
    * N9b: an OAuth token for `provider` (docs/oauth.md): the run principal's
    * own (`credentialOwner: 'user'`) or the app's. A token that expires within

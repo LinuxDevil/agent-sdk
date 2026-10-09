@@ -550,7 +550,7 @@ async function decidedToolMessage(
     message = await runApprovedInSpan(ctx, pending, scope, async () => {
       // N14: an approved `run_code` call runs its script, whose calls pass this run's gate (and are traced under its span).
       const registry = toolName === RUN_CODE_TOOL ? await approvedCodeMode(ctx, scope) : ctx.toolRegistry;
-      return runApproved(pending, registry, scope, { note: ctx.decision.note, ...(ctx.approver && { by: ctx.approver }) });
+      return runApproved(pending, registry, scope, { id: pending.id, note: ctx.decision.note, ...(ctx.approver && { by: ctx.approver }) });
     });
   } catch (error) {
     if (!isSignInRequired(error)) throw error;

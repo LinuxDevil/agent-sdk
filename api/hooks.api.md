@@ -217,6 +217,7 @@ interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
     // (undocumented)
     tokensBefore: number;
     trigger?: 'manual';
+    unchanged?: boolean;
 }
 
 // @public
@@ -993,12 +994,12 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-DPqTBd5v.d.ts:787:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point hooks.d.ts
-// dist/createAgent-DPqTBd5v.d.ts:804:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point hooks.d.ts
-// dist/createAgent-DPqTBd5v.d.ts:1165:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point hooks.d.ts
-// dist/index-B69TilK9.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point hooks.d.ts
-// dist/index-B69TilK9.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point hooks.d.ts
-// dist/index-B69TilK9.d.ts:1451:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point hooks.d.ts
+// dist/createAgent-DfKYNbZe.d.ts:787:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point hooks.d.ts
+// dist/createAgent-DfKYNbZe.d.ts:804:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point hooks.d.ts
+// dist/createAgent-DfKYNbZe.d.ts:1165:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point hooks.d.ts
+// dist/index-DflclLiQ.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point hooks.d.ts
+// dist/index-DflclLiQ.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point hooks.d.ts
+// dist/index-DflclLiQ.d.ts:1452:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point hooks.d.ts
 
 // (No @packageDocumentation comment for this package)
 

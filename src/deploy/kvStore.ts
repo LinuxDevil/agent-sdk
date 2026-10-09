@@ -25,6 +25,7 @@ import type { TokenKeyInput } from '../oauth/tokenCipher';
 import { kvTokenStore } from './kvTokenStore';
 import { DEFAULT_KV_KEY_PREFIX, KVCheckpointStore, type KVBinding } from './kvCheckpointStore';
 import { fromKVJson, toKVJson } from './kvBytes';
+import { newId } from '../utils/id';
 
 /** Options of {@link KVStore}. */
 export interface KVStoreOptions {
@@ -71,7 +72,20 @@ class KVSessionStore implements SessionStore {
   }
 }
 
-/** Resolving reads the record and then deletes it: two requests deciding one approval at once can both get it. */
+/** Seconds a resolve's claim marker lives (KV's minimum TTL): a request that dies mid-resolve frees the approval again after it. */
+const CLAIM_TTL_SECONDS = 60;
+
+/**
+ * Eve DUR-F9: KV has no compare-and-swap, so resolving claims the approval
+ * first: it writes a random token under `<id>#claim` (unless a claim is
+ * already there), reads it back, and only the request whose token survived
+ * deletes the record and runs the call. That turns two concurrent decisions
+ * (a double click, a retried webhook, two reviewers) into one in the common
+ * case; it is not atomic - two requests at different edge locations within
+ * KV's propagation delay can still both win - so the approved tool also gets
+ * the approval id as `ctx.approval.id`, an idempotency key for its side
+ * effect (docs/cloudflare-workers.md).
+ */
 class KVApprovalStore implements ApprovalStore {
   constructor(
     private readonly kv: KVBinding,
@@ -79,14 +93,24 @@ class KVApprovalStore implements ApprovalStore {
     private readonly ttl?: number
   ) {}
 
+  private claimKey(id: string): string {
+    return `${this.prefix}${id}#claim`;
+  }
+
   async save(pending: PendingApproval, snapshot: ExecutionSnapshot): Promise<void> {
     const record: ResolvedApproval = { pending, snapshot };
     await this.kv.put(`${this.prefix}${pending.id}`, toKVJson(record), putOptions(this.ttl));
+    // A pause saved again (a refused resume, a sign-in) is decidable again.
+    await this.kv.delete(this.claimKey(pending.id));
   }
 
   async resolve(id: string): Promise<ResolvedApproval | null> {
     const raw = await this.kv.get(`${this.prefix}${id}`);
     if (raw === null) return null;
+    if ((await this.kv.get(this.claimKey(id))) !== null) return null;
+    const token = newId('claim');
+    await this.kv.put(this.claimKey(id), token, { expirationTtl: CLAIM_TTL_SECONDS });
+    if ((await this.kv.get(this.claimKey(id))) !== token) return null;
     await this.kv.delete(`${this.prefix}${id}`);
     return fromKVJson<ResolvedApproval>(raw);
   }
