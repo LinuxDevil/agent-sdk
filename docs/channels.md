@@ -139,6 +139,12 @@ through the same channel's `reply` (or `onApproval` again, if it pauses again):
   `{ answer }`. The channel's `verify` runs first; an id the channel did not
   pause on gets 404.
 
+A decision is claimed before `onDecision` runs, so two decisions on one
+approval at once (a double click) decide it once: the second gets
+`409 { code: 'LOUSHO_APPROVAL_CONFLICT' }` while its request is open, and is
+dropped silently once the surface was acknowledged. `resolveApproval()`
+throws `LOUSHO_APPROVAL_CONFLICT` for an approval another request is deciding.
+
 ```ts
 import { createAgent, defineChannel, mountChannels } from '@lousho/build-ai-agent';
 

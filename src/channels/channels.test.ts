@@ -373,9 +373,50 @@ describe('defineChannel / mountChannels (LOU-P7)', () => {
       const second = mount(['Email sent.', 'never'], stores, first.execute);
       const statuses = await Promise.all([1, 2].map(async () => (await post(second.handler, '/channels/test', { user: 'ali', click: ali })).status));
 
-      expect(statuses.sort()).toEqual([200, 404]);
+      expect(statuses.sort()).toEqual([200, 409]);
       expect(first.execute).toHaveBeenCalledTimes(1);
       expect(second.replies.map((r) => r.text)).toEqual(['Email sent.']);
+    });
+
+    it('in process: a second click while onDecision is still running is a 409, not a failure (Eve F7)', async () => {
+      const t = mount([callEmail, 'Email sent.', 'never'], durableStores());
+      t.onDecision.mockImplementation(() => new Promise<void>((resolve) => setTimeout(resolve, 30)));
+      const ali = await pauseOn(t, 'ali');
+
+      const [a, b] = await Promise.all([1, 2].map(() => post(t.handler, '/channels/test', { user: 'ali', click: ali })));
+
+      expect([a.status, b.status].sort()).toEqual([200, 409]);
+      expect([a, b].find((r) => r.status === 409)?.json).toMatchObject({ code: 'LOUSHO_APPROVAL_CONFLICT' });
+      expect(t.execute).toHaveBeenCalledTimes(1);
+      expect(t.onDecision).toHaveBeenCalledTimes(1);
+      expect(t.replies.map((r) => r.text)).toEqual([expect.any(String), 'Email sent.']);
+    });
+
+    it('a click that acknowledged the surface first and lost the race is a no-op, not a "request failed" reply (Eve F7)', async () => {
+      const stores = durableStores();
+      const { tool, execute } = emailTool();
+      const agent = createAgent({ provider: mockModel([callEmail, 'Email sent.', 'never']), tools: [tool], approvalStore: stores.approvalStore });
+      const onError = vi.fn();
+      const { channel, replies } = recordingChannel({
+        onError,
+        async parse(req, respond) {
+          respond(200, { ok: true }); // a surface that acks before the decision runs (Slack, Discord)
+          const body = JSON.parse(req.text) as { user: string; text?: string; click?: string };
+          const inbound = { sessionKey: body.user, input: body.text ?? '', replyTo: `dm:${body.user}` };
+          return body.click ? { decision: { id: body.click, approved: true }, inbound, approver: { id: body.user } } : inbound;
+        },
+      });
+      const onDecision = () => new Promise<void>((resolve) => setTimeout(resolve, 30));
+      const handler = mountChannels(agent, [channel], { store: stores.store, onDecision });
+      await post(handler, '/channels/test', { user: 'ali', text: 'Email Sam' });
+      const [{ id }] = await agent.approvals.list();
+
+      await Promise.all([1, 2].map(() => post(handler, '/channels/test', { user: 'ali', click: id })));
+
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(onError).not.toHaveBeenCalled();
+      expect(replies.map((r) => r.text)).not.toContain('Sorry, that request failed.');
+      expect(replies.at(-1)?.text).toBe('Email sent.');
     });
 
     it('after a restart: a button decision is not an answer: a click on a pending question is refused', async () => {
