@@ -62,6 +62,7 @@ import {
   compactGenerateError,
   GeneratedStep,
   generateInSpan,
+  measureAbortedCall,
   prepareGenerateRequest,
   providerErrorMessage,
   shouldSurfaceToModel,
@@ -1274,18 +1275,26 @@ export class AgentExecutor {
     state.inputCheck = undefined;
     const steerSignal = options.inputQueue?.startCall();
     const callSignal = inputCheck ? (steerSignal ? AbortSignal.any([steerSignal, inputCheck.signal]) : inputCheck.signal) : steerSignal;
+    const partial = { text: '' };
+    let called = false;
     try {
       // Audit C4: a hook's side calls (the compaction summarizer) count in the run's usage and budgets.
       const sideGenerate = sideGenerator(options, agentSpanId, (measured) => recordStepUsage(state.usage, measured));
       const generateRequest = await prepareGenerateRequest(options, state.messages, tools, callSignal, sideGenerate);
       callSignal?.throwIfAborted();
-      const generated = await generateInSpan(options, generateRequest, state.messages, agentSpanId, callSignal, inputCheck);
+      called = true;
+      const generated = await generateInSpan(options, generateRequest, state.messages, agentSpanId, callSignal, inputCheck, partial);
       callSignal?.throwIfAborted();
       return generated;
     } catch (generateError) {
       // N5b: whatever else happened, a blocked input wins; nothing goes on before the checks settled.
       const blocked = await this.settleInputCheck(options, state, inputCheck);
       if (blocked) return blocked;
+      // Eve CORE-F11: a call the run's signal stopped still costs its tokens, and keeps what it streamed.
+      if (called && options.signal?.aborted) {
+        recordStep(state, measureAbortedCall(options, state.messages, partial.text));
+        if (partial.text) state.interruptedText = partial.text;
+      }
       return this.foldOrThrowGenerateError(options, state, steerSignal, generateError);
     } finally {
       options.inputQueue?.endPhase();
@@ -1801,6 +1810,10 @@ export class AgentExecutor {
     state.finishReason = 'aborted';
     options.inputQueue?.close();
     await saveStepCheckpoint(options, state);
+    if (state.interruptedText) {
+      state.messages.push({ role: 'assistant', content: state.interruptedText, metadata: { interrupted: true } });
+      state.interruptedText = undefined;
+    }
 
     return toExecutionResult(state, state.finalText, 'aborted');
   }

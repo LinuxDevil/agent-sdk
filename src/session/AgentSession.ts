@@ -328,6 +328,22 @@ function completedToolPrefix(messages: readonly Message[], previous: readonly Me
 }
 
 /**
+ * What an aborted turn leaves in the transcript (Eve CORE-F11): the user's input, the turn up to the last tool call
+ * that ran (B4: a refund, an email), and the reply the model had streamed when it was stopped (an assistant message
+ * marked `metadata.interrupted`). Calls that never ran and an assistant tool-call turn none of whose calls ran are
+ * dropped, and so is a turn stopped before it called the model. `undefined` when the turn added nothing.
+ */
+function abortedTurn(result: ExecutionResult, transcript: readonly Message[], input: readonly Message[]): Message[] | undefined {
+  const { messages } = result;
+  const all = messages[0]?.role === 'system' ? messages.slice(1) : messages;
+  // A turn stopped before its first model call (an already-aborted signal) is dropped whole.
+  const kept = completedToolPrefix(all, transcript) ?? (result.usage.modelCalls > 0 ? [...transcript, ...input] : [...transcript]);
+  const last = all.at(-1);
+  if (last?.role === 'assistant' && last.metadata?.interrupted === true && all.length > kept.length) kept.push(last);
+  return kept.length > transcript.length ? kept : undefined;
+}
+
+/**
  * A conversation that remembers earlier turns. Create one with
  * `agent.session()`.
  *
@@ -462,10 +478,11 @@ export class AgentSession<TObject = unknown> {
    * after the other writer's turn. Every call reads the transcript from the
    * store again, so a turn another session object committed is never lost.
    *
-   * A call that throws or is aborted leaves the transcript as it was before
-   * the call (an aborted call resolves with `finishReason: 'aborted'`),
-   * except that an aborted call keeps the results of tool calls that already
-   * ran (B4), so a side effect is never missing from the transcript.
+   * A call that throws leaves the transcript as it was before the call. An
+   * aborted call resolves with `finishReason: 'aborted'` and keeps the user's
+   * message (once the model was called), the results of tool calls that
+   * already ran (B4) and the reply streamed so far, marked
+   * `metadata.interrupted` (Eve CORE-F11).
    * In a checkpointed session, a pending turn is resumed first (see `resume()`).
    *
    * @example
@@ -514,9 +531,10 @@ export class AgentSession<TObject = unknown> {
           async () => {
             await this.beforeTurn(signal);
             const call = { input, metadata: options.metadata, principal: options.principal };
-            const run = streamRun([...this.transcript, ...toMessages(input)], signal, this.turnOptions(inputs), call);
+            const messages = toMessages(input);
+            const run = streamRun([...this.transcript, ...messages], signal, this.turnOptions(inputs), call);
             started(run);
-            return this.record(await this.attempt(() => run.result));
+            return this.record(await this.attempt(() => run.result), messages);
           },
           inputs,
           (joined) => started(startAgentRun(() => joined))
@@ -804,7 +822,8 @@ export class AgentSession<TObject = unknown> {
 
   private async turn(call: SessionTurnCall, inputs: InputQueue, signal?: AbortSignal): Promise<ExecutionResult> {
     await this.beforeTurn(signal);
-    return this.record(await this.attempt(() => this.run([...this.transcript, ...toMessages(call.input)], signal, this.turnOptions(inputs), call)));
+    const input = toMessages(call.input);
+    return this.record(await this.attempt(() => this.run([...this.transcript, ...input], signal, this.turnOptions(inputs), call)), input);
   }
 
   /**
@@ -968,11 +987,11 @@ export class AgentSession<TObject = unknown> {
     await turn.checkpointStore.save(pausedTurnKey(this.id), { ...checkpoint, messages: [], toolCalls: [], stepUsage: undefined, businessState: undefined });
   }
 
-  private async record(result: ExecutionResult): Promise<ExecutionResult> {
+  /** `input`: the turn's new user message(s), kept when the turn is aborted (Eve CORE-F11). */
+  private async record(result: ExecutionResult, input: readonly Message[] = []): Promise<ExecutionResult> {
     if (result.finishReason === 'aborted') {
-      // B4: tool calls that ran (a refund, an email) stay in the transcript; the rest of the turn is dropped.
-      const ran = completedToolPrefix(result.messages, this.transcript);
-      if (ran) await this.commit(ran, runSpent(result.usage, result.steps, Date.now() - this.turnStartedAt));
+      const kept = abortedTurn(result, this.transcript, input);
+      if (kept) await this.commit(kept, runSpent(result.usage, result.steps, Date.now() - this.turnStartedAt));
       await this.deleteCheckpoint();
       return result;
     }

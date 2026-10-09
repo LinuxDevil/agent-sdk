@@ -65,6 +65,11 @@ export interface AgentRunState {
    * back behind the results on load.
    */
   queuedInput: Message[];
+  /**
+   * Eve CORE-F11: the reply a model call had streamed when the run's signal aborted it. The aborted result ends with
+   * it as an assistant message marked `metadata.interrupted` (after the abort's checkpoint, so a resume never sees it).
+   */
+  interruptedText?: string;
   /** LOU-V6: the run's `limits`, when it has any. */
   budget?: RunBudget;
   /** LOU-V9: the checkpoint writes so far - each starts after the one before, so the newest state lands last. */
