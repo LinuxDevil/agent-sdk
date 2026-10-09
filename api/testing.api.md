@@ -371,6 +371,7 @@ export interface MockTurnObject {
     error?: Error;
     finishReason?: GenerateResult['finishReason'];
     hostedToolCalls?: readonly MockHostedToolCall[];
+    ignoreSignal?: boolean;
     text?: string;
     toolCalls?: readonly MockToolCall[];
     usage?: {

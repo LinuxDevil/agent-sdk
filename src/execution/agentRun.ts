@@ -543,7 +543,11 @@ class RunEvents {
     hold?: Promise<boolean>,
     onText?: (text: string) => void
   ): Promise<GenerateResult> {
-    const report = heldUntil(hold);
+    const held = heldUntil(hold);
+    // Eve CORE-F15: a provider that ignores an abort may stream on after the run stopped waiting; that output is not reported.
+    const report = (event: () => void) => {
+      if (!request.signal?.aborted) held(event);
+    };
     const objectDelta = request.responseFormat ? partialObjects() : undefined;
     const sink: StepSink = {
       onTextDelta: (text) => {

@@ -68,6 +68,15 @@ How it behaves:
   it is not retried by the provider retry and fallback wrappers and is not
   compacted into a provider error.
 - The run's events end with `run.done` with `finishReason: 'aborted'`.
+- The run does not wait for a provider that ignores the signal: the model
+  call is abandoned at the abort (its late reply, and anything it streams
+  afterwards, is dropped) and the run ends `'aborted'`. A tool that ignores
+  its `abortSignal` is waited for; the run then ends `'aborted'` without
+  another model call.
+- `result.abortReason` says why: the signal's reason as `{ name, message }`,
+  `name` being `'TimeoutError'` for `AbortSignal.timeout()`, `'AbortError'`
+  for `controller.abort()` (with the text of a string reason, e.g.
+  `controller.abort('user left')`), or an Error reason's own name.
 - With `sessionId` + `checkpointStore`, the state is checkpointed. Calling
   `execute()` again with the same `sessionId` resumes where the run stopped;
   new `input` is appended as the next user message (see

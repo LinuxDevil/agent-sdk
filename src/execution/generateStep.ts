@@ -241,6 +241,12 @@ function abortable<T>(call: Promise<T>, signal: AbortSignal | undefined): Promis
   });
 }
 
+/** The signal that aborts when either does (`undefined` when neither is set). */
+function anySignal(a: AbortSignal | undefined, b: AbortSignal | undefined): AbortSignal | undefined {
+  if (!a || !b || a === b) return a ?? b;
+  return AbortSignal.any([a, b]);
+}
+
 /** C2: `request` with each `withRetry()` retry of it recorded on its `chat` span (count, and category and status per failure). */
 function recordingRetries(request: GenerateOptions, span: Span): GenerateOptions {
   const errors: string[] = [];
@@ -300,7 +306,8 @@ export function generateInSpan(
       const generated = settleHostedFinish(
         await abortable(
           runEvents ? runEvents.generate(provider, request, onOutput, hold, partial && ((text) => (partial.text += text))) : provider.generate(request),
-          callSignal
+          // Eve CORE-F15: the run's signal too, so a provider that ignores it does not hold an aborted run.
+          anySignal(callSignal, options.signal)
         )
       );
       const llmLatencyMs = Date.now() - llmStart;
