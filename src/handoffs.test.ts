@@ -766,3 +766,28 @@ describe('handoffs (N6): memory stays on after a handoff (audit A7)', () => {
     expect(warnings[0]).toMatch(/handoff target 'billing'/);
   });
 });
+
+describe('handoffs (N6): the target\'s own tool search (Eve MA-F6)', () => {
+  const lookup = defineTool({ name: 'lookup_invoice', description: 'Look up an invoice', input: z.object({ id: z.string() }), deferLoading: true, execute: async () => 'inv' });
+  const toolNames = (model: MockModel) => (model.calls[0]?.tools ?? []).map((tool) => tool.function.name);
+
+  it.each([
+    ['the lead does not set toolSearch', {}],
+    ['the lead turns it off', { toolSearch: false as const }],
+  ])('applies the target\'s toolSearch when %s', async (_label, leadOptions) => {
+    const billingModel = mockModel(['billing answer']);
+    const billing = createAgent({ name: 'billing', description: 'Billing desk', provider: billingModel, tools: [lookup], toolSearch: { thresholdPercent: 0 } });
+    const triage = createAgent({
+      name: 'triage',
+      provider: mockModel([{ toolCalls: [{ name: 'transfer_to_billing', args: {} }] }]),
+      handoffs: [billing],
+      ...leadOptions,
+    });
+
+    const result = await triage.send('charged twice');
+
+    expect(result.agentName).toBe('billing');
+    expect(toolNames(billingModel)).toContain('tool_search');
+    expect(toolNames(billingModel)).not.toContain('lookup_invoice');
+  });
+});

@@ -139,7 +139,7 @@ dropped at a handoff, so a target's tools ask again.
 | --- | --- |
 | instructions (system prompt), model and provider | `hooks`, `limits` and the spend so far (one budget) |
 | tools, hosted tools, skills and sub-agents | `maxSteps`, counted across agents |
-| `reasoning` | the abort signal |
+| `reasoning`, `modelSettings` and `toolSearch` (its own deferred tools, searched with its own tuning) | the abort signal and `toolConcurrency` |
 | its own `handoffs` | the approval, checkpoint and token stores |
 | guardrails and permission rules: the lead's first, then the target's own | `onEvent` and `exporter` |
 | | `output`: the result is typed by the lead's schema (a target's own `output` is not used) |
