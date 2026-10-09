@@ -77,7 +77,7 @@ describe('P1/P3 chat transport (RunManager)', () => {
     expect(chatEvents[0].messages).toHaveLength(1);
     expect(chatEvents[0].messages[0]).toMatchObject({ role: 'user', content: 'hello there' });
 
-    await waitForStatus(runManager, 'agent-chat-1', (s) => s.status === 'stopped');
+    await waitForStatus(runManager, 'agent-chat-1', (s) => s.status === 'done');
 
     const finalState = runManager.chatState('agent-chat-1');
     // system + user + assistant, straight from AgentExecutor's real message array.
@@ -91,14 +91,28 @@ describe('P1/P3 chat transport (RunManager)', () => {
     expect(finalUserMsg!.id).toBe(optimisticUserId);
   });
 
+  it('ends a finished run as done, tags the Run input, and keeps typed messages untagged (Eve DUI-F21)', async () => {
+    await runManager.run('agent-run-input', 'Run the agent.', SPEC);
+    const finished = await waitForStatus(runManager, 'agent-run-input', (s) => s.status !== 'running');
+    expect(finished.status).toBe('done');
+    const runTurn = runManager.chatState('agent-run-input').messages.find((m) => m.role === 'user');
+    expect(runTurn).toMatchObject({ content: 'Run the agent.', source: 'run' });
+
+    await runManager.sendMessage('agent-run-input', 'and now a typed question', SPEC);
+    await waitForStatus(runManager, 'agent-run-input', (s) => s.status === 'done');
+    const users = runManager.chatState('agent-run-input').messages.filter((m) => m.role === 'user');
+    expect(users.find((m) => m.content === 'Run the agent.')?.source).toBe('run');
+    expect(users.find((m) => m.content === 'and now a typed question')?.source).toBeUndefined();
+  });
+
   it('continues the same conversation across two sendMessage() calls instead of starting fresh', async () => {
     await runManager.sendMessage('agent-chat-2', 'please use current-date', SPEC);
-    await waitForStatus(runManager, 'agent-chat-2', (s) => s.status === 'stopped');
+    await waitForStatus(runManager, 'agent-chat-2', (s) => s.status === 'done');
     const afterFirst = runManager.chatState('agent-chat-2').messages;
     expect(afterFirst.length).toBeGreaterThanOrEqual(3); // user + tool-call assistant + tool result (+ maybe final assistant)
 
     await runManager.sendMessage('agent-chat-2', 'thanks', SPEC);
-    await waitForStatus(runManager, 'agent-chat-2', (s) => s.status === 'stopped');
+    await waitForStatus(runManager, 'agent-chat-2', (s) => s.status === 'done');
     const afterSecond = runManager.chatState('agent-chat-2').messages;
 
     expect(afterSecond.length).toBeGreaterThan(afterFirst.length);
@@ -112,7 +126,7 @@ describe('P1/P3 chat transport (RunManager)', () => {
   it('rejects sendMessage() while a run is already in flight', async () => {
     await runManager.sendMessage('agent-chat-3', 'please use current-date', SPEC);
     await expect(runManager.sendMessage('agent-chat-3', 'again', SPEC)).rejects.toBeInstanceOf(AlreadyRunningError);
-    await waitForStatus(runManager, 'agent-chat-3', (s) => s.status === 'stopped');
+    await waitForStatus(runManager, 'agent-chat-3', (s) => s.status === 'done');
   });
 
   it('rejects sendMessage() while paused awaiting an approval decision', async () => {
@@ -140,7 +154,7 @@ describe('P1/P3 chat transport (RunManager)', () => {
 
   it('newChat() archives the current transcript under its own session id and starts an empty one', async () => {
     await runManager.sendMessage('agent-chat-5', 'first conversation', SPEC);
-    await waitForStatus(runManager, 'agent-chat-5', (s) => s.status === 'stopped');
+    await waitForStatus(runManager, 'agent-chat-5', (s) => s.status === 'done');
     const firstSessionId = runManager.chatState('agent-chat-5').sessionId;
 
     const fresh = runManager.newChat('agent-chat-5');
@@ -148,7 +162,7 @@ describe('P1/P3 chat transport (RunManager)', () => {
     expect(fresh.sessionId).not.toBe(firstSessionId);
 
     await runManager.sendMessage('agent-chat-5', 'second conversation', SPEC);
-    await waitForStatus(runManager, 'agent-chat-5', (s) => s.status === 'stopped');
+    await waitForStatus(runManager, 'agent-chat-5', (s) => s.status === 'done');
 
     const sessions = runManager.listChats('agent-chat-5');
     expect(sessions.map((s) => s.sessionId).sort()).toEqual([firstSessionId, fresh.sessionId].sort());
@@ -160,7 +174,7 @@ describe('P1/P3 chat transport (RunManager)', () => {
 
   it('persists chat history to disk and rehydrates it for a fresh RunManager instance (server-restart survival)', async () => {
     await runManager.sendMessage('agent-chat-6', 'remember this', SPEC);
-    await waitForStatus(runManager, 'agent-chat-6', (s) => s.status === 'stopped');
+    await waitForStatus(runManager, 'agent-chat-6', (s) => s.status === 'done');
 
     const restarted = new RunManager({
       baseDir,
@@ -205,7 +219,7 @@ describe('P1/P3 chat transport (HTTP routes)', () => {
     const post = await request(app).post('/agents/foo/message').send({ message: 'hi there', spec: SPEC });
     expect(post.status).toBe(202);
 
-    await waitForStatus(runManager, 'foo', (s) => s.status === 'stopped');
+    await waitForStatus(runManager, 'foo', (s) => s.status === 'done');
 
     const get = await request(app).get('/agents/foo/chat');
     expect(get.status).toBe(200);
@@ -223,7 +237,7 @@ describe('P1/P3 chat transport (HTTP routes)', () => {
 
   it('POST /agents/:id/chat/new then GET /agents/:id/chats lists both sessions', async () => {
     await request(app).post('/agents/foo/message').send({ message: 'first session', spec: SPEC });
-    await waitForStatus(runManager, 'foo', (s) => s.status === 'stopped');
+    await waitForStatus(runManager, 'foo', (s) => s.status === 'done');
 
     const newChat = await request(app).post('/agents/foo/chat/new');
     expect(newChat.status).toBe(200);

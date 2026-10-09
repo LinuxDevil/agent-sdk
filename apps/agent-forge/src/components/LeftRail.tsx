@@ -59,8 +59,9 @@ function UnsavedAgentCard() {
     <div className="agent-card selected">
       <div className="agent-card-top">
         <span className="agent-name">{spec.name}</span>
-        <span className="status-pill status-running">
-          <span className="dot" style={{ background: 'var(--success)' }} />
+        {/* Eve DUI-F21: "unsaved" is a warning, not a green "all good". */}
+        <span className="status-pill status-unsaved">
+          <span className="dot" aria-hidden="true" />
           unsaved
         </span>
       </div>
@@ -82,29 +83,138 @@ function toolCountOf(entry: AgentEntry): number {
   return entry.spec.tools?.length ?? 0;
 }
 
+/** Eve DUI-F21: inline rename of a saved agent, validated against the server's id rule. */
+function RenameAgentForm({ entry, onDone }: { entry: AgentEntry; onDone: () => void }) {
+  const { renameAgent } = useAppState();
+  const [name, setName] = useState(entry.id);
+  const [error, setError] = useState<string | undefined>(undefined);
+  const trimmed = name.trim();
+  const problem = trimmed ? agentIdProblem(trimmed) : 'Enter a name';
+  const inputId = `rename-${entry.id}`;
+
+  async function commit() {
+    if (problem) return;
+    try {
+      await renameAgent(entry.id, trimmed);
+      onDone();
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }
+
+  return (
+    <div className="field agent-rename" style={{ margin: '6px 0 0' }}>
+      <label htmlFor={inputId} className="visually-hidden">
+        New name for {entry.id}
+      </label>
+      <input
+        id={inputId}
+        className="input"
+        value={name}
+        autoFocus
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') void commit();
+          if (e.key === 'Escape') onDone();
+        }}
+        aria-invalid={problem || error ? true : undefined}
+        aria-describedby={problem || error ? `${inputId}-error` : undefined}
+      />
+      {(problem || error) && trimmed !== entry.id && (
+        <div id={`${inputId}-error`} className="hint field-error" role="alert">
+          {error ?? problem}
+        </div>
+      )}
+      <div className="agent-card-actions">
+        <button type="button" className="btn btn-primary" disabled={!!problem} onClick={() => void commit()}>
+          Rename
+        </button>
+        <button type="button" className="btn btn-ghost" onClick={onDone}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Eve DUI-F21: Rename/Delete for the open agent (`DELETE /agents/:id`). Not while it runs. */
+function AgentCardActions({ entry, busy, onRename }: { entry: AgentEntry; busy: boolean; onRename: () => void }) {
+  const { deleteAgent } = useAppState();
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  async function handleDelete() {
+    if (!window.confirm(`Delete agent '${entry.id}'? This removes .lousho/agents/${entry.id}.yaml.`)) return;
+    try {
+      await deleteAgent(entry.id);
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }
+
+  return (
+    <>
+      <div className="agent-card-actions">
+        <button
+          type="button"
+          className="btn btn-ghost"
+          disabled={busy}
+          onClick={onRename}
+          aria-label={`Rename ${entry.id}`}
+        >
+          Rename
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost btn-danger-text"
+          disabled={busy}
+          onClick={() => void handleDelete()}
+          aria-label={`Delete ${entry.id}`}
+        >
+          Delete
+        </button>
+      </div>
+      {error && (
+        <div className="hint field-error" role="alert">
+          {error}
+        </div>
+      )}
+    </>
+  );
+}
+
 function AgentCard({ entry }: { entry: AgentEntry }) {
   const { agentId, switchAgent, agentStatuses } = useAppState();
+  const [renaming, setRenaming] = useState(false);
   // LOU-N: real run status pushed over WS (see AppState's
   // agentStatuses), replacing LOU-L/M's "active"/"idle"
   // placeholder derived only from which agent is loaded in the
   // canvas. An agent can be 'running' in the background even
   // while a different agent is selected in the canvas.
   const status = agentStatusOf(agentStatuses, entry.id);
+  const selected = entry.id === agentId;
+  const busy = status === 'running' || status === 'paused';
   return (
-    <div
-      className={`agent-card${entry.id === agentId ? ' selected' : ''}`}
-      role="button"
-      tabIndex={0}
-      onClick={() => void switchAgent(entry.id)}
-      onKeyDown={(e) => e.key === 'Enter' && void switchAgent(entry.id)}
-    >
-      <div className="agent-card-top">
-        <span className="agent-name">{entry.id}</span>
-        <StatusPill status={status} />
-      </div>
-      <div className="agent-meta">
-        {entry.spec.provider.model} &middot; {toolCountOf(entry)} tools
-      </div>
+    <div className={`agent-card${selected ? ' selected' : ''}`}>
+      <button
+        type="button"
+        className="agent-card-main"
+        aria-current={selected ? 'true' : undefined}
+        onClick={() => void switchAgent(entry.id)}
+      >
+        <span className="agent-card-top">
+          <span className="agent-name">{entry.id}</span>
+          <StatusPill status={status} />
+        </span>
+        <span className="agent-meta">
+          {entry.spec.provider.model} &middot; {toolCountOf(entry)} tools
+        </span>
+      </button>
+      {selected &&
+        (renaming ? (
+          <RenameAgentForm entry={entry} onDone={() => setRenaming(false)} />
+        ) : (
+          <AgentCardActions entry={entry} busy={busy} onRename={() => setRenaming(true)} />
+        ))}
     </div>
   );
 }

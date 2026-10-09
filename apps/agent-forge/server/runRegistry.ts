@@ -34,7 +34,7 @@ import { withAbortSignal, RunAbortedError } from './abortableProvider';
 import { FileApprovalStore } from './approvalStore';
 import { DebugSession, type BreakpointKey } from './debugController';
 import { FileChatStore, previewFor } from './chatStore';
-import { reconcileChatMessages } from './chatReconcile';
+import { markRunInput, reconcileChatMessages } from './chatReconcile';
 import { toLogEntries, toFlowLogEntries } from './logEntries';
 import type { SecretsStore } from './secretsStore';
 import type { SettingsStore } from './settingsStore';
@@ -81,6 +81,12 @@ interface RunEntry {
   provider?: string;
   /** O3: live step-through debug session for this agent's in-flight run, if any. */
   debugSession?: DebugSession;
+  /**
+   * Eve DUI-F21: the `input` of the latest `run()` (the top bar's Run), so
+   * the user turn it adds is tagged `source: 'run'` in the transcript
+   * instead of passing for something the user typed in Chat.
+   */
+  runInput?: string;
   /**
    * P1/P3: the chat transcript for this agent's CURRENT chat session -
    * reconciled from the real `ExecutionResult.messages` on every run
@@ -392,7 +398,7 @@ export class RunManager extends EventEmitter {
     if (existing && existing.status === 'running') {
       throw new AlreadyRunningError(`Agent '${agentId}' is already running`);
     }
-    await this.launch(agentId, input, spec);
+    await this.launch(agentId, input, spec, { runInput: input });
   }
 
   /**
@@ -486,7 +492,7 @@ export class RunManager extends EventEmitter {
     agentId: string,
     input: string | Message[],
     spec?: AgentSpec,
-    options: { skipSystemPromptInjection?: boolean } = {}
+    options: { skipSystemPromptInjection?: boolean; runInput?: string } = {}
   ): Promise<void> {
     const existing = this.entries.get(agentId);
     const resolvedSpec = await this.resolveLaunchSpec(agentId, spec, existing);
@@ -519,6 +525,7 @@ export class RunManager extends EventEmitter {
         reason: undefined,
         pendingApproval: undefined,
         resultText: undefined,
+        runInput: options.runInput,
         lastSpec: resolvedSpec,
         provider: `${provider.name}/${resolvedSpec.provider.model}`,
         debugSession,
@@ -646,10 +653,10 @@ export class RunManager extends EventEmitter {
     // the assistant's tool-call message was added).
     const settledAt = new Date().toISOString();
     const entryBefore = this.entries.get(agentId);
-    const reconciledMessages = reconcileChatMessages(
+    const reconciledMessages = markRunInput(
+      reconcileChatMessages(entryBefore?.messages ?? [], authoritativeMessages(result), settledAt),
       entryBefore?.messages ?? [],
-      authoritativeMessages(result),
-      settledAt
+      entryBefore?.runInput
     );
 
     // O4: the full ExecutionResult (messages/toolCalls/usage/steps, not
@@ -675,7 +682,7 @@ export class RunManager extends EventEmitter {
       return;
     }
     const next = this.setEntry(agentId, {
-      status: 'stopped',
+      status: 'done',
       resultText: result.text,
       result,
       controller: undefined,

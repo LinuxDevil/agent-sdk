@@ -162,7 +162,8 @@ export function useAgentDocument(store: AgentStore) {
       // Eve DUI-F3: never persist an id the server would reject.
       const problem = agentIdProblem(id);
       if (problem) throw new Error(`Invalid agent name '${id}': ${problem}`);
-      const nextGraph = graphFromTemplate(template);
+      // Eve DUI-F21: the agent is named what the user typed, not the template's name.
+      const nextGraph = graphFromTemplate(template, id);
       const nextSpec = graphToSpec(nextGraph);
       await store.save(id, nextSpec);
       setAgentId(id);
@@ -175,7 +176,59 @@ export function useAgentDocument(store: AgentStore) {
     [store, refreshAgents]
   );
 
+  /**
+   * Eve DUI-F21: renames a saved agent - saves its spec (renamed) under the
+   * new id, then deletes the old file. Chats, traces and checkpoints stay
+   * under the old id in `.lousho/agents/`.
+   */
+  const renameAgent = useCallback(
+    async (fromId: string, toId: string) => {
+      const problem = agentIdProblem(toId);
+      if (problem) throw new Error(`Invalid agent name '${toId}': ${problem}`);
+      if (toId === fromId) return;
+      if (agents.some((entry) => entry.id === toId)) throw new Error(`An agent named '${toId}' already exists`);
+      const current = fromId === agentId ? spec : await store.load(fromId);
+      if (!current) throw new Error(`Agent '${fromId}' not found`);
+      const renamed: AgentSpec = { ...current, name: toId };
+      await store.save(toId, renamed);
+      await store.remove(fromId);
+      if (fromId === agentId) {
+        const nextGraph = specToGraph(renamed);
+        setAgentId(toId);
+        setGraphState(nextGraph);
+        lastValidSpec.current = renamed;
+        setDirty(false);
+      }
+      await refreshAgents();
+    },
+    [store, agents, agentId, spec, refreshAgents]
+  );
+
+  /** Eve DUI-F21: deletes a saved agent (`DELETE /agents/:id`); deleting the open one opens the next, or a fresh default. */
+  const deleteAgent = useCallback(
+    async (id: string) => {
+      await store.remove(id);
+      const remaining = agents.filter((entry) => entry.id !== id);
+      setAgents(remaining);
+      if (id === agentId) {
+        const nextId = remaining[0]?.id;
+        const loaded = nextId ? await store.load(nextId).catch(() => undefined) : undefined;
+        const nextSpec = loaded ?? DEFAULT_SPEC;
+        const nextGraph = specToGraph(nextSpec);
+        setAgentId(loaded && nextId ? nextId : DEFAULT_SPEC.name);
+        setGraphState(nextGraph);
+        lastValidSpec.current = nextSpec;
+        setSelectedNodeId(firstLlmNodeId(nextGraph));
+        setDirty(false);
+      }
+      await refreshAgents();
+    },
+    [store, agents, agentId, refreshAgents]
+  );
+
   return {
+    renameAgent,
+    deleteAgent,
     agentId,
     graph,
     setGraph,

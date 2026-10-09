@@ -109,8 +109,11 @@ exists.
 1. **Create an agent.** In the left rail's "Agents" tab, click **New**,
    give it a name, and pick a starting template - **Blank graph** (a single
    LLM node using the built-in `mock` provider) is the fastest way to try
-   things out without any API keys. Agent Forge creates the agent and opens
-   it on the canvas.
+   things out without any API keys. Agent Forge creates the agent under that
+   name (`.lousho/agents/<name>.yaml`, with `name: <name>` in the spec) and
+   opens it on the canvas. The open agent's card has **Rename** and
+   **Delete**. Rename moves the spec to the new name; earlier chats, traces
+   and checkpoints stay under the old one.
 2. **Look at the graph.** A blank agent is one `llm` node. Drag more nodes
    in from the left rail's palette (**Trigger**, **LLM step**, **Tool
    call**, **Approval gate**, **Response / output**), or click (or press
@@ -123,7 +126,11 @@ exists.
    there's nothing to configure - it returns deterministic canned output,
    which is exactly the point for trying the rest of the UI without needing
    a real LLM API key. The status pill in the top bar tracks the run
-   (`running` → `idle`/`error`/`awaiting approval`).
+   (`running` → `done`, `stopped` after you press **Stop**, `error` or
+   `awaiting approval`). Run sends a fixed prompt, which the Chat tab shows
+   as a **Run input** bubble instead of a message from you. If the studio
+   server goes away, a banner says the connection was lost and the studio
+   reconnects when it is back.
 4. **Watch it in the debug console.** Open the bottom drawer's **Logs**
    tab for a live, filterable log feed of the run (trigger/llm/tool/
    sandbox/checkpoint/approval events), or **Trace** for a span waterfall.
@@ -292,6 +299,15 @@ secrets), and a **Deploy** section that picks an adapter (`node-server`,
 agent. Other providers still read their environment variables, the same way
 `lousho dev`/`lousho build` do (see [Configuration](./configuration.md)), and
 the `mock` provider needs no credentials.
+
+Stored keys are encrypted with AES-256-GCM in `.lousho/secrets.json`. The
+encryption key is generated on first use and kept next to it in
+`.lousho/secrets.key` (both `0600` on POSIX). This keeps keys out of
+anything that copies the ciphertext alone - a backup, a zip of the project,
+a shared agent YAML - but anyone who can read both files as your user can
+decrypt them. It is not an OS keychain. Keep `.lousho/` out of version
+control and out of shared archives, and prefer environment variables on
+shared machines.
 
 An agent whose provider has no key (no stored key and no environment
 variable) does not run. **Run** and **Chat** fail with

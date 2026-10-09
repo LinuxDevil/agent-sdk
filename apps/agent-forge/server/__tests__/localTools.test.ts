@@ -77,7 +77,7 @@ describe("buildAgentFromSpec's local 'demo-approval' tool", () => {
     expect(paused.pendingApproval?.toolName).toBe('demo-approval');
 
     await runManager.approve(agentId, paused.pendingApproval.approvalId, true);
-    const final = await waitForStatus(runManager, agentId, (s) => s.status === 'stopped');
-    expect(final.status).toBe('stopped');
+    const final = await waitForStatus(runManager, agentId, (s) => s.status === 'done');
+    expect(final.status).toBe('done');
   });
 });

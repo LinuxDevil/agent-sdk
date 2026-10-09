@@ -69,14 +69,14 @@ describe('RunManager', () => {
 
   it('runs an agent to completion and reports the result text', async () => {
     await runManager.run('agent-1', 'please use current-date', SPEC);
-    const final = await waitForStatus(runManager, 'agent-1', (s) => s.status === 'stopped');
+    const final = await waitForStatus(runManager, 'agent-1', (s) => s.status === 'done');
     expect(final.resultText).toBe('This is a mock response.');
   });
 
   it('rejects a second run() call while one is already in flight', async () => {
     await runManager.run('agent-2', 'please use current-date', SPEC);
     await expect(runManager.run('agent-2', 'again', SPEC)).rejects.toThrow(/already running/i);
-    await waitForStatus(runManager, 'agent-2', (s) => s.status === 'stopped');
+    await waitForStatus(runManager, 'agent-2', (s) => s.status === 'done');
   });
 
   it('throws when running an agent id with no spec available', async () => {
@@ -113,7 +113,7 @@ describe('RunManager', () => {
     // rehydrates from it; LOU-U8 appends the new `input` after the resumed
     // turn) rather than starting a brand new conversation from scratch.
     await runManager.run(agentId, 'a follow-up appended on resume', SPEC);
-    const resumed = await waitForStatus(runManager, agentId, (s) => s.status === 'stopped');
+    const resumed = await waitForStatus(runManager, agentId, (s) => s.status === 'done');
     expect(resumed.resultText).toBe('This is a mock response.');
 
     // And the checkpoint is kept, marked finished, once that resumed run
@@ -143,7 +143,7 @@ describe('RunManager', () => {
 
       // A tool call, then the final reply: two model steps, each streamed by the mock provider.
       await runManager.run('agent-ws', 'please use current-date', SPEC);
-      const final = await waitForStatus(runManager, 'agent-ws', (s) => s.status === 'stopped');
+      const final = await waitForStatus(runManager, 'agent-ws', (s) => s.status === 'done');
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(final.resultText).toBe('This is a mock response.');
@@ -174,7 +174,7 @@ describe('RunManager', () => {
     });
 
     await runManager.run('agent-logs', 'please use current-date', SPEC);
-    await waitForStatus(runManager, 'agent-logs', (s) => s.status === 'stopped');
+    await waitForStatus(runManager, 'agent-logs', (s) => s.status === 'done');
 
     expect(logs.length).toBeGreaterThan(0);
     expect(logs.every((l) => typeof l.id === 'string' && typeof l.timestamp === 'string')).toBe(true);
@@ -189,7 +189,7 @@ describe('RunManager', () => {
     });
 
     await runManager.run('agent-spans', 'please use current-date', SPEC);
-    await waitForStatus(runManager, 'agent-spans', (s) => s.status === 'stopped');
+    await waitForStatus(runManager, 'agent-spans', (s) => s.status === 'done');
 
     const runSpans = spans.filter((s) => s.attributes['gen_ai.operation.name'] === 'invoke_agent');
     expect(runSpans).toHaveLength(2); // start + end
@@ -225,7 +225,7 @@ describe('RunManager', () => {
 
     runManager.setBreakpoints('agent-debug', ['llm:before']);
     await runManager.run('agent-debug', 'please use current-date', SPEC);
-    await waitForStatus(runManager, 'agent-debug', (s) => s.status === 'stopped');
+    await waitForStatus(runManager, 'agent-debug', (s) => s.status === 'done');
 
     expect(pauseCount).toBeGreaterThanOrEqual(1);
     expect(runManager.debugState('agent-debug').paused).toBe(false);
@@ -285,7 +285,7 @@ describe('RunManager', () => {
       expect((spec.policy as { flow?: unknown })?.flow).toBeDefined();
 
       await runManager.run('branch-agent', 'unused for a flow run', spec);
-      const final = await waitForStatus(runManager, 'branch-agent', (s) => s.status === 'stopped');
+      const final = await waitForStatus(runManager, 'branch-agent', (s) => s.status === 'done');
 
       // The router's conditioned branch matched (see the condition above),
       // so the tool step ran (current-date returns an ISO timestamp string)
@@ -302,7 +302,7 @@ describe('RunManager', () => {
       // pre-LOU-T3 code path with the exact original result text.
       expect((SPEC.policy as { flow?: unknown } | undefined)?.flow).toBeUndefined();
       await runManager.run('flat-agent', 'please use current-date', SPEC);
-      const final = await waitForStatus(runManager, 'flat-agent', (s) => s.status === 'stopped');
+      const final = await waitForStatus(runManager, 'flat-agent', (s) => s.status === 'done');
       expect(final.resultText).toBe('This is a mock response.');
     });
   });

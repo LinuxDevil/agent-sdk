@@ -15,8 +15,10 @@ import type { CheckpointStatus, TrajectoryComparison, TrajectoryStep } from '@lo
 /**
  * Status pill states the app's agent list / topbar render (LOU-L/M's
  * mockup: running/stopped/error/paused).
+ * Eve DUI-F21: `done` is a run that finished on its own; `stopped` is one the
+ * user stopped (`POST /agents/:id/stop`).
  */
-export type RunStatus = 'idle' | 'running' | 'stopped' | 'error' | 'paused';
+export type RunStatus = 'idle' | 'running' | 'done' | 'stopped' | 'error' | 'paused';
 
 /**
  * A tool call an in-progress run is paused on, awaiting a human decision
@@ -160,6 +162,8 @@ export interface ChatMessage {
   toolName?: string;
   toolCalls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
   timestamp: string;
+  /** Eve DUI-F21: `'run'` marks the user turn a top-bar Run added (shown as "Run input", not as a typed message). */
+  source?: 'run';
 }
 
 /** P1: the live chat transcript for one agent's current session, pushed over WS and returned by `GET /agents/:id/chat`. */

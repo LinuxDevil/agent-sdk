@@ -23,11 +23,11 @@ const SPEC: AgentSpec = {
 };
 
 function stopped(runManager: RunManager, agentId: string): Promise<AgentRunStatusPayload> {
-  if (runManager.status(agentId).status === 'stopped') return Promise.resolve(runManager.status(agentId));
+  if (runManager.status(agentId).status === 'done') return Promise.resolve(runManager.status(agentId));
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`Timed out waiting for ${agentId}`)), 3000);
     const onStatus = (payload: AgentRunStatusPayload) => {
-      if (payload.agentId !== agentId || payload.status !== 'stopped') return;
+      if (payload.agentId !== agentId || payload.status !== 'done') return;
       clearTimeout(timer);
       runManager.off('status', onStatus);
       resolve(payload);

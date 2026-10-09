@@ -72,9 +72,25 @@ export function reconcileChatMessages(
   const leading: ChatMessage[] = next.slice(0, offset).map((m) => toChatMessage(m, randomUUID(), settledAt));
   const matchedPart: ChatMessage[] = prev
     .slice(0, matched)
-    .map((old, idx) => toChatMessage(next[offset + idx], old.id, old.timestamp));
+    .map((old, idx) => ({
+      ...toChatMessage(next[offset + idx], old.id, old.timestamp),
+      ...(old.source && { source: old.source }),
+    }));
   const trailing: ChatMessage[] = next
     .slice(offset + matched)
     .map((m) => toChatMessage(m, randomUUID(), settledAt));
   return [...leading, ...matchedPart, ...trailing];
+}
+
+/**
+ * Eve DUI-F21: tags the user turn a top-bar Run added (its `input`, new in
+ * this settle - not in `prev`) as `source: 'run'`, so the Chat tab labels it
+ * "Run input" instead of showing it as something the user typed.
+ */
+export function markRunInput(messages: ChatMessage[], prev: ChatMessage[], runInput: string | undefined): ChatMessage[] {
+  if (runInput === undefined) return messages;
+  const known = new Set(prev.map((m) => m.id));
+  return messages.map((m) =>
+    m.role === 'user' && m.content === runInput && !known.has(m.id) ? { ...m, source: 'run' as const } : m
+  );
 }
