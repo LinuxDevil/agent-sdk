@@ -22,7 +22,14 @@ export interface MigrateMemoryKeysResult {
   /** Items copied, over all keys. */
   moved: number;
   /** Each old key that held items, the key they were copied to, and how many. */
-  keys: Array<{ from: string; to: string; moved: number }>;
+  keys: Array<{
+    /** The old key. */
+    from: string;
+    /** The key its items were copied to. */
+    to: string;
+    /** How many items were copied. */
+    moved: number;
+  }>;
 }
 
 /**

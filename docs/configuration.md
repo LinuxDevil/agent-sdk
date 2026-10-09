@@ -288,7 +288,7 @@ flow waves and eval suites cannot burst unbounded model calls. Every limit is
 optional:
 
 ```ts
-import { withRateLimit, createRateLimiter } from '@lousho/build-ai-agent';
+import { withRateLimit, resolveProvider } from '@lousho/build-ai-agent';
 
 const provider = withRateLimit(resolveProvider('openai/gpt-4o-mini'), {
   requestsPerMinute: 60, // calls started per rolling minute
@@ -318,6 +318,9 @@ its own provider is queued too). Give several agents the same
 `createRateLimiter()` to share it across them.
 
 ```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+const researcher = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You research.', description: 'Finds sources' });
 createAgent({ model: 'openai/gpt-4o-mini', subagents: { researcher }, rateLimit: { maxConcurrent: 2 } });
 ```
 
@@ -406,6 +409,9 @@ Besides `modelSettings`, a `send()` or `stream()` call can set its own
 instructions for that run:
 
 ```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You triage support tickets.' });
 await agent.send('Summarize the ticket.', { maxSteps: 2, instructions: 'Answer in French.' });
 ```
 

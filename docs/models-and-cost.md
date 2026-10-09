@@ -80,8 +80,10 @@ Anthropic caches a request prefix only up to a `cache_control` breakpoint that t
 - the last user turn. With the `anthropic` provider, a trailing tool-result turn is marked too, so each step of a tool loop reads the conversation so far from the cache.
 
 ```ts
+import { readFileSync } from 'node:fs';
 import { createAgent } from '@lousho/build-ai-agent';
 
+const longPolicy = readFileSync('./policy.md', 'utf8'); // a long, stable system prompt
 const agent = createAgent({ model: 'openrouter/anthropic/claude-haiku-4.5', instructions: longPolicy }); // promptCaching: 'auto'
 const first = await agent.send('Where is order 1042?'); // writes the prefix: usage.cacheWriteTokens
 const second = await agent.send('And order 1043?'); // reads it: usage.cachedInputTokens, ~10% of the input price

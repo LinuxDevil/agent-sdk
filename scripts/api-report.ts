@@ -91,7 +91,10 @@ function configObjectFor(entry: EntryPoint, tempDir: string): IConfigFile {
     messages: {
       extractorMessageReporting: {
         'ae-missing-release-tag': { logLevel: ExtractorLogLevel.None },
-        'ae-forgotten-export': { logLevel: ExtractorLogLevel.Warning, addToApiReportFile: true },
+        // Not written into the report: each warning names a hashed dist chunk and a line in it
+        // (`dist/createAgent-<hash>.d.ts:867:9`), which change with any edit anywhere, so every report went
+        // stale on unrelated changes. `includeForgottenExports` still puts the symbols themselves in the report.
+        'ae-forgotten-export': { logLevel: ExtractorLogLevel.None, addToApiReportFile: false },
       },
     },
   };

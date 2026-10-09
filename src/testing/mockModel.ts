@@ -96,7 +96,16 @@ export interface MockTurnObject {
    * Token usage to report. When omitted the model reports no usage at all, like a
    * backend that omits token counts (the executor then estimates and flags it).
    */
-  usage?: { inputTokens: number; outputTokens: number; cachedInputTokens?: number; cacheWriteTokens?: number };
+  usage?: {
+    /** Prompt tokens. */
+    inputTokens: number;
+    /** Completion tokens. */
+    outputTokens: number;
+    /** Prompt tokens read from the provider's cache (a part of `inputTokens`). */
+    cachedInputTokens?: number;
+    /** Prompt tokens written to the provider's cache (a part of `inputTokens`). */
+    cacheWriteTokens?: number;
+  };
   /** Finish reason to report. Defaults to `'tool_calls'` when there are tool calls, else `'stop'`. */
   finishReason?: GenerateResult['finishReason'];
   /**
