@@ -93,22 +93,38 @@ export interface UnrepresentableFields {
 export function unrepresentableFields(schema: unknown): UnrepresentableFields {
   const found: UnrepresentableFields = { date: [], bigint: [] };
   if (isZod4Schema(schema)) {
-    toJSONSchema(schema, {
-      target: 'draft-7',
-      io: 'input',
-      unrepresentable: 'any',
-      override: ({ zodSchema, path }) => {
-        const def = zodSchema._zod.def as { type: string; coerce?: boolean };
-        if ((def.type !== 'date' && def.type !== 'bigint') || def.coerce) return;
-        found[def.type].push(jsonPathLabel(path));
-      },
-    });
+    walkZod4(schema, found);
   } else if (isZod3Schema(schema)) {
     walkZod3(schema as Zod3Node, '', found);
   }
   found.date.sort();
   found.bigint.sort();
   return found;
+}
+
+/**
+ * The non-coercing dates and bigints of a zod 4 schema, as visited by its
+ * input JSON Schema. A field under a `z.preprocess()` (a pipe whose input is a
+ * transform) is skipped, as in zod 3: the preprocess may convert the value
+ * first. zod 4.1+ renders such a pipe's output schema, so its date is visited.
+ */
+function walkZod4(schema: $ZodType, found: UnrepresentableFields): void {
+  const fields: Array<{ kind: 'date' | 'bigint'; path: ReadonlyArray<string | number> }> = [];
+  const preprocessed: Array<ReadonlyArray<string | number>> = [];
+  toJSONSchema(schema, {
+    target: 'draft-7',
+    io: 'input',
+    unrepresentable: 'any',
+    override: ({ zodSchema, path }) => {
+      const def = zodSchema._zod.def as { type: string; coerce?: boolean; in?: $ZodType };
+      if (def.type === 'pipe' && def.in?._zod.def.type === 'transform') preprocessed.push([...path]);
+      else if ((def.type === 'date' || def.type === 'bigint') && !def.coerce) fields.push({ kind: def.type, path: [...path] });
+    },
+  });
+  const under = (path: ReadonlyArray<string | number>, prefix: ReadonlyArray<string | number>) => prefix.every((part, i) => path[i] === part);
+  for (const { kind, path } of fields) {
+    if (!preprocessed.some((prefix) => under(path, prefix))) found[kind].push(jsonPathLabel(path));
+  }
 }
 
 /** `items[].due` for a JSON Schema path such as `properties.items.items.properties.due`. */
