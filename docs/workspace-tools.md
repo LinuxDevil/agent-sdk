@@ -81,7 +81,7 @@ const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistr
 | ------------ | ------------------------------------------------- | ------- |
 | `read_file`  | `path`, optional `offset` (1-based line), `limit` | Numbered lines (`"    12\tcode"`). When the output is cut, the last line says which lines were shown and the `offset` to continue from. Files over 10 MB are refused. |
 | `write_file` | `path`, `content`                                 | Creates or overwrites the file and creates missing parent directories. |
-| `edit_file`  | `path`, `old_string`, `new_string`, optional `replace_all` | Replaces the exact text. Fails with a message the model can act on when `old_string` is missing (including a hint about CRLF line endings) or appears more than once without `replace_all`. |
+| `edit_file`  | `path`, `old_string`, `new_string`, optional `replace_all` | Replaces the exact text. Fails with a message the model can act on when `old_string` is missing (including a hint about CRLF line endings) or appears more than once without `replace_all`. Refuses a file that is not UTF-8 (latin1, Windows-1252, UTF-16) and leaves it unchanged, when the provider has `readFileBytes` (as `NodeWorkspace` does). A UTF-8 BOM is kept. |
 | `list_dir`   | optional `path`                                   | Sorted entries; directories end with `/`. |
 | `glob`       | `pattern`, optional `path`                        | Sorted paths of matching files. `*` stays within one directory, `**` crosses directories, plus `?`, `[abc]` and `{a,b}`. |
 | `grep`       | `pattern` (JavaScript regex), optional `path`, `glob`, `ignore_case` | `path:line: text` for each matching line. An invalid regex, or one with nested repetition like `(a+)+`, is a tool error. Binary files and files over 2 MB are skipped. |
@@ -605,7 +605,10 @@ export const remoteShell: ShellProvider = {
 
 Two optional methods, `getMode(path)` and `chmod(path, mode)`, let
 `WorkspaceCheckpoints` restore a file's permission bits along with its
-content; without them a rewind restores the content only.
+content; without them a rewind restores the content only. A third,
+`readFileBytes(path)`, returns a file's raw bytes: with it `edit_file`
+refuses a file that is not valid UTF-8 (or has a UTF-16 BOM) instead of
+writing U+FFFD over every byte it could not decode.
 
 `ShellProvider.exec` should resolve, not reject, for a non-zero exit code,
 a timeout (`timedOut: true`) or an abort (`aborted: true`). It should reject
