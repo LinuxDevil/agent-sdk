@@ -194,3 +194,51 @@ describe('resumable sub-agent tasks (LOU-Y6)', () => {
     expect(childTurns(childModel)[3].slice(-3)).toEqual(['tool: "sent!"', 'assistant: sent it', 'user: What happened?']);
   });
 });
+
+describe('taskId allocation (Eve MA-F12)', () => {
+  it("never hands a failed task's id to a later task", async () => {
+    const store = memoryStore();
+    const child = researcher([{ error: Object.assign(new Error('400 bad'), { status: 400 }) }, 'second answer']);
+    const leadModel = mockModel([task({ prompt: 'A' }), 'turn 1 done', task({ prompt: 'B' }), 'turn 2 done']);
+    const lead = createAgent({ provider: leadModel, store, subagents: { researcher: child.agent } });
+    const session = lead.session({ id: 'failing' });
+
+    const first = await session.send('one');
+    const second = await session.send('two');
+
+    expect(taskResults(first.messages)[0]).toContain('failed');
+    expect(taskResults(second.messages).at(-1)).toContain("taskId 'task_2'");
+  });
+
+  it('allocates an id with a constant number of store reads however many tasks the session ran', async () => {
+    const store = memoryStore();
+    const sessions = store.sessions!;
+    let taskReads = 0;
+    const counted = {
+      ...store,
+      sessions: {
+        load: (id: string) => {
+          if (id.startsWith('subagent-task-')) taskReads++;
+          return sessions.load(id);
+        },
+        save: sessions.save.bind(sessions),
+        delete: sessions.delete.bind(sessions),
+      },
+    };
+    const turns = Array.from({ length: 20 }, (_, i) => (i % 2 === 0 ? task({ prompt: 'p' }) : 'done'));
+    const child = researcher(Array.from({ length: 10 }, () => 'ok'));
+    const lead = createAgent({ provider: mockModel(turns), store: counted, subagents: { researcher: child.agent } });
+    const session = lead.session({ id: 'long-lived' });
+
+    const reads: number[] = [];
+    let last: readonly Message[] = [];
+    for (let turn = 0; turn < 10; turn++) {
+      const before = taskReads;
+      last = (await session.send(`turn ${turn}`)).messages;
+      reads.push(taskReads - before);
+    }
+
+    expect(taskResults(last).at(-1)).toContain("taskId 'task_10'");
+    expect(reads.at(-1)).toBe(reads[1]);
+  });
+});
