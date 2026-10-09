@@ -184,6 +184,7 @@ export interface CheckpointHistoryEntry {
   savedAt: string;
   /** `checkpoint.status`, `'in-progress'` when the checkpoint has none. */
   status: CheckpointStatus;
+  /** The checkpoint as it was saved. */
   checkpoint: Checkpoint;
 }
 
@@ -251,11 +252,53 @@ export const DEFAULT_CHECKPOINT_HISTORY_LIMIT = 50;
  * from a store that may not have it.
  */
 export interface CheckpointStore {
+  /** Saves `checkpoint` as the latest of `sessionId` (and appends it to the history, when the store keeps one). */
   save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
+  /** The latest checkpoint of `sessionId`, or `null` when there is none. */
   load(sessionId: string): Promise<Checkpoint | null>;
+  /** Deletes the checkpoint of `sessionId` (and its history unless `keepHistory`); a missing id is not an error. */
   delete(sessionId: string, options?: CheckpointDeleteOptions): Promise<void>;
   /** Saved checkpoints of the session, newest first; `[]` when there are none. */
   history?(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]>;
+  /**
+   * Eve DUR-F15: the latest checkpoint of every id the store holds, ordered by
+   * id, optionally only those with a given `status` - e.g.
+   * `list({ status: ['in-progress', 'awaiting-approval'] })` finds the runs a
+   * crash interrupted. Optional; the file, SQLite, KV (when the namespace
+   * binding has `list`) and in-memory stores implement it. `agent.pending()`
+   * is built on it.
+   */
+  list?(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
+}
+
+/** Options for {@link CheckpointStore.list} (Eve DUR-F15). */
+export interface CheckpointListOptions {
+  /** Only checkpoints with this status, or one of these (a checkpoint without one counts as `'in-progress'`). Default: all. */
+  status?: CheckpointStatus | readonly CheckpointStatus[];
+}
+
+/** One checkpoint listed by {@link CheckpointStore.list} (Eve DUR-F15). */
+export interface CheckpointListEntry {
+  /** The id it is saved under: `save(sessionId, checkpoint)`'s `sessionId`. */
+  sessionId: string;
+  /** `checkpoint.status`, `'in-progress'` when the checkpoint has none. */
+  status: CheckpointStatus;
+  /** The latest checkpoint saved under `sessionId`. */
+  checkpoint: Checkpoint;
+}
+
+/**
+ * Eve DUR-F15: the entries of `checkpoints` (`[id, checkpoint]` pairs) that
+ * `options` selects, ordered by id - the shared body of the stores' `list()`.
+ */
+export function listCheckpoints(checkpoints: Iterable<readonly [string, Checkpoint]>, options: CheckpointListOptions = {}): CheckpointListEntry[] {
+  const wanted = options.status === undefined ? undefined : new Set<CheckpointStatus>(typeof options.status === 'string' ? [options.status] : options.status);
+  const entries: CheckpointListEntry[] = [];
+  for (const [sessionId, checkpoint] of checkpoints) {
+    const status = checkpoint.status ?? 'in-progress';
+    if (!wanted || wanted.has(status)) entries.push({ sessionId, status, checkpoint });
+  }
+  return entries.sort((a, b) => (a.sessionId < b.sessionId ? -1 : a.sessionId > b.sessionId ? 1 : 0));
 }
 
 /**

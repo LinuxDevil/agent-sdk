@@ -28,6 +28,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { oldestFirst, type ApprovalStore, type ExecutionSnapshot, type PendingApproval, type ResolvedApproval } from '../execution/ApprovalGate';
 import {
   appendToRing,
+  listCheckpoints,
   newestFirst,
   resolveHistoryLimit,
   toHistoryEntry,
@@ -35,12 +36,14 @@ import {
   type CheckpointDeleteOptions,
   type CheckpointHistoryEntry,
   type CheckpointHistoryOptions,
+  type CheckpointListEntry,
+  type CheckpointListOptions,
   type CheckpointStore,
 } from '../execution/checkpoint';
 import { ConfigurationError } from '../execution/errors';
 import { decodeBytes, encodeBytes, FileSessionStore } from '../session/sessionStore';
 import type { AgentStore } from './agentStore';
-import { caseSafeName, findLegacyFile, removeLegacyFile } from './fileNames';
+import { caseSafeName, findLegacyFile, idFromCaseSafeName, removeLegacyFile } from './fileNames';
 import { SealedTokenStore, type SealedRecordBackend } from '../oauth/sealedTokenStore';
 import type { TokenKeyInput } from '../oauth/tokenCipher';
 
@@ -193,6 +196,28 @@ class FileCheckpointStore implements CheckpointStore {
 
   async history(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]> {
     return newestFirst(await this.readRing(sessionId), options);
+  }
+
+  /** Eve DUR-F15: the latest checkpoint of every id in the directory, by id; a half-written file is skipped. */
+  async list(options?: CheckpointListOptions): Promise<CheckpointListEntry[]> {
+    const files = new Map<string, string>();
+    for (const name of await jsonFiles(this.checkpointDir)) {
+      const id = idFromCaseSafeName(name);
+      if (!CHECKPOINT_ID_PATTERN.test(id)) continue;
+      // A legacy file (named by the id itself) counts only when its case-safe file is missing.
+      if (name === caseSafeName(id) || !files.has(id)) files.set(id, name);
+    }
+    const found: Array<[string, Checkpoint]> = [];
+    for (const [id, name] of files) {
+      const raw = await readText(join(this.checkpointDir, `${name}.json`));
+      if (raw === undefined) continue;
+      try {
+        found.push([id, JSON.parse(raw, decodeBytes) as Checkpoint]);
+      } catch {
+        // half-written
+      }
+    }
+    return listCheckpoints(found, options);
   }
 }
 

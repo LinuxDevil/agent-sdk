@@ -192,8 +192,6 @@ interface CheckpointError {
 // @public
 interface CheckpointHistoryEntry {
     // Warning: (ae-forgotten-export) The symbol "Checkpoint" needs to be exported by the entry point kv.d.ts
-    //
-    // (undocumented)
     checkpoint: Checkpoint;
     savedAt: string;
     status: CheckpointStatus;
@@ -206,20 +204,31 @@ interface CheckpointHistoryOptions {
 }
 
 // @public
+interface CheckpointListEntry {
+    checkpoint: Checkpoint;
+    sessionId: string;
+    status: CheckpointStatus;
+}
+
+// @public
+interface CheckpointListOptions {
+    status?: CheckpointStatus | readonly CheckpointStatus[];
+}
+
+// @public
 type CheckpointStatus = 'in-progress' | 'awaiting-approval' | 'finished';
 
 // @public
 interface CheckpointStore {
     // Warning: (ae-forgotten-export) The symbol "CheckpointDeleteOptions" needs to be exported by the entry point kv.d.ts
-    //
-    // (undocumented)
     delete(sessionId: string, options?: CheckpointDeleteOptions): Promise<void>;
     // Warning: (ae-forgotten-export) The symbol "CheckpointHistoryOptions" needs to be exported by the entry point kv.d.ts
     // Warning: (ae-forgotten-export) The symbol "CheckpointHistoryEntry" needs to be exported by the entry point kv.d.ts
     history?(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]>;
-    // (undocumented)
+    // Warning: (ae-forgotten-export) The symbol "CheckpointListOptions" needs to be exported by the entry point kv.d.ts
+    // Warning: (ae-forgotten-export) The symbol "CheckpointListEntry" needs to be exported by the entry point kv.d.ts
+    list?(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
     load(sessionId: string): Promise<Checkpoint | null>;
-    // (undocumented)
     save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
 }
 
@@ -461,6 +470,7 @@ export class KVCheckpointStore implements CheckpointStore {
     // (undocumented)
     delete(sessionId: string, options?: CheckpointDeleteOptions): Promise<void>;
     history(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]>;
+    list(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
     // (undocumented)
     load(sessionId: string): Promise<Checkpoint | null>;
     // (undocumented)

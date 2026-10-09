@@ -1105,7 +1105,6 @@ interface CheckpointError {
 
 // @public
 export interface CheckpointHistoryEntry {
-    // (undocumented)
     checkpoint: Checkpoint;
     savedAt: string;
     status: CheckpointStatus;
@@ -1118,16 +1117,26 @@ export interface CheckpointHistoryOptions {
 }
 
 // @public
+export interface CheckpointListEntry {
+    checkpoint: Checkpoint;
+    sessionId: string;
+    status: CheckpointStatus;
+}
+
+// @public
+export interface CheckpointListOptions {
+    status?: CheckpointStatus | readonly CheckpointStatus[];
+}
+
+// @public
 export type CheckpointStatus = 'in-progress' | 'awaiting-approval' | 'finished';
 
 // @public
 export interface CheckpointStore {
-    // (undocumented)
     delete(sessionId: string, options?: CheckpointDeleteOptions): Promise<void>;
     history?(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]>;
-    // (undocumented)
+    list?(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
     load(sessionId: string): Promise<Checkpoint | null>;
-    // (undocumented)
     save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
 }
 
@@ -3375,6 +3384,9 @@ export const LegacyAttr: {
 // @public
 export function listAdapters(): string[];
 
+// @public
+export function listCheckpoints(checkpoints: Iterable<readonly [string, Checkpoint]>, options?: CheckpointListOptions): CheckpointListEntry[];
+
 // @public (undocumented)
 const listDirInput: z.ZodObject<{
     path: z.ZodOptional<z.ZodString>;
@@ -4573,6 +4585,18 @@ export interface PendingApproval {
     toolCallId: string;
     // (undocumented)
     toolName: string;
+}
+
+// @public
+export interface PendingRun {
+    approvalId?: string;
+    approvalKind?: ApprovalKind;
+    checkpointId: string;
+    kind: 'session' | 'run';
+    lastError?: CheckpointError;
+    sessionId: string;
+    status: 'in-progress' | 'awaiting-approval';
+    step: number;
 }
 
 // @public
@@ -5886,6 +5910,7 @@ export interface SimpleAgent<TObject = unknown> {
     close: () => Promise<void>;
     fork: (sessionId: string, options: Omit<ForkOptions, 'sessionId' | 'checkpointStore'>) => Promise<ForkResult>;
     oauth: AgentOAuth;
+    pending: () => Promise<PendingRun[]>;
     ready: () => Promise<void>;
     resume: (sessionId: string, options?: {
         signal?: AbortSignal;
