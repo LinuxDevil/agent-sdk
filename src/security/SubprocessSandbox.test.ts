@@ -1,5 +1,8 @@
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import type Docker from 'dockerode';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as nodePath from 'node:path';
 import { SubprocessSandbox, SandboxAdapter } from './sandbox';
 import { dockerAvailable } from './docker.testkit';
 
@@ -53,7 +56,27 @@ describe('SubprocessSandbox', () => {
       const { created, Sandbox } = await withFakeDocker();
       await new Sandbox().run('sh', ['-c', 'ls'], { cwd: '/work' });
       expect(created[0]).toMatchObject({ Cmd: ['sh', '-c', 'ls'], WorkingDir: '/work' });
-      expect(created[0].HostConfig).toEqual({ NetworkMode: 'none', AutoRemove: true, Binds: ['/work:/work'] });
+      expect(created[0].HostConfig).toMatchObject({ NetworkMode: 'none', AutoRemove: true, Binds: ['/work:/work'] });
+    });
+
+    // Eve TOOLS-F17: the container ran as root with every capability and no limits.
+    it('runs as a non-root user with no capabilities, no-new-privileges and resource limits by default', async () => {
+      const { created, Sandbox } = await withFakeDocker();
+      await new Sandbox().run('ls', []);
+      expect(created[0].User).toBe('1000:1000');
+      expect(created[0].HostConfig).toEqual({
+        NetworkMode: 'none',
+        AutoRemove: true,
+        Binds: undefined,
+        CapDrop: ['ALL'],
+        SecurityOpt: ['no-new-privileges'],
+        PidsLimit: 256,
+        Memory: 512 * 1024 * 1024,
+        NanoCpus: 1_000_000_000,
+      });
+      await new Sandbox({ user: 'root', limits: { memoryBytes: 1024 ** 3, pids: 64, cpus: 2 } }).run('ls', []);
+      expect(created[1].User).toBe('root');
+      expect(created[1].HostConfig).toMatchObject({ PidsLimit: 64, Memory: 1024 ** 3, NanoCpus: 2_000_000_000, CapDrop: ['ALL'] });
     });
 
     it('waits for the exit before starting: an auto-removed container that exits at once is gone by a later wait (#326)', async () => {
@@ -111,6 +134,47 @@ describe('SubprocessSandbox', () => {
         delete process.env.FAKE_SECRET_FOR_TEST;
         delete process.env.FAKE_ALLOWED_FOR_TEST;
       }
+    });
+  });
+
+  // Eve TOOLS-F17: writeFile wrote to any host path.
+  describe('writeFile confinement', () => {
+    const tmp = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'lousho-sbx-'));
+    const root = nodePath.join(tmp, 'root');
+    fs.mkdirSync(nodePath.join(root, 'sub'), { recursive: true });
+
+    it('writes inside its root, relative paths resolving against it', async () => {
+      const sandbox = new SubprocessSandbox({ root });
+      await sandbox.writeFile('sub/a.txt', 'one');
+      await sandbox.writeFile(nodePath.join(root, 'b.txt'), 'two');
+      expect(fs.readFileSync(nodePath.join(root, 'sub', 'a.txt'), 'utf8')).toBe('one');
+      expect(fs.readFileSync(nodePath.join(root, 'b.txt'), 'utf8')).toBe('two');
+    });
+
+    it('refuses a path outside its root with LOUSHO_SANDBOX_PATH_DENIED', async () => {
+      const sandbox = new SubprocessSandbox({ root });
+      for (const target of ['../escape.txt', nodePath.join(tmp, 'escape.txt'), nodePath.join(os.tmpdir(), '..', 'lousho-escape-proof.txt'), '.']) {
+        await expect(sandbox.writeFile(target, 'x'), target).rejects.toMatchObject({ code: 'LOUSHO_SANDBOX_PATH_DENIED' });
+      }
+      expect(fs.existsSync(nodePath.join(tmp, 'escape.txt'))).toBe(false);
+    });
+
+    it('refuses a path that escapes through a symlinked directory', async (ctx) => {
+      const outside = nodePath.join(tmp, 'outside');
+      fs.mkdirSync(outside, { recursive: true });
+      try {
+        fs.symlinkSync(outside, nodePath.join(root, 'link'), 'junction');
+      } catch {
+        ctx.skip();
+      }
+      await expect(new SubprocessSandbox({ root }).writeFile('link/x.txt', 'x')).rejects.toMatchObject({ code: 'LOUSHO_SANDBOX_PATH_DENIED' });
+      expect(fs.existsSync(nodePath.join(outside, 'x.txt'))).toBe(false);
+    });
+
+    it('defaults its root to the working directory', async () => {
+      await expect(new SubprocessSandbox().writeFile(nodePath.join(tmp, 'escape.txt'), 'x')).rejects.toMatchObject({
+        code: 'LOUSHO_SANDBOX_PATH_DENIED',
+      });
     });
   });
 

@@ -71,7 +71,7 @@ Find a code by area:
 | [Schedules](#schedules) | [`LOUSHO_SCHEDULE_INVALID`](#lousho_schedule_invalid), [`LOUSHO_SCHEDULE_RUN_INCOMPLETE`](#lousho_schedule_run_incomplete) | Defining or loading a schedule, or a scheduled turn that did not finish. |
 | [Channels](#channels) | [`LOUSHO_CHANNEL_INVALID`](#lousho_channel_invalid), [`LOUSHO_MEMORY_INVALID`](#lousho_memory_invalid) | Defining a channel or a memory slot. |
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
-| [Sandbox](#sandbox) | [`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`](#lousho_sandbox_egress_unsupported) | Asking a sandbox for something it cannot do on the current platform. |
+| [Sandbox](#sandbox) | [`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`](#lousho_sandbox_egress_unsupported), [`LOUSHO_SANDBOX_PATH_DENIED`](#lousho_sandbox_path_denied) | Asking a sandbox for something it cannot do on the current platform, or to write outside its root. |
 | [Agent directories, skills and flows](#agent-directories-skills-and-flows) | [`LOUSHO_AGENT_DIR_INVALID`](#lousho_agent_dir_invalid), [`LOUSHO_SKILL_INVALID`](#lousho_skill_invalid), [`LOUSHO_FLOW_INVALID`](#lousho_flow_invalid), [`LOUSHO_FLOW_TOOL_DENIED`](#lousho_flow_tool_denied) | Loading an agent directory, a skill, or a flow definition, and gating a flow's tool calls. |
 | [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_STORAGE_BUSY`](#lousho_storage_busy), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed) | A storage backend, a trigger, a channel request or `lousho build`. |
 | [Tests and evals](#tests-and-evals) | [`LOUSHO_EVALS_INVALID`](#lousho_evals_invalid), [`LOUSHO_TEST_FAILED`](#lousho_test_failed), [`LOUSHO_CASSETTE_INVALID`](#lousho_cassette_invalid) | `defineEval()`, `mockModel` and cassettes. |
@@ -756,6 +756,18 @@ than 25.0.5, which forwards DNS from internal networks.
 `network: 'none'`. See [Workspace tools](./workspace-tools.md#sandboxed-shell-sandboxshell).
 
 **Example:** `new SubprocessSandbox({ network: { allow: ['api.github.com'] }, broker })` with Docker Desktop.
+
+### LOUSHO_SANDBOX_PATH_DENIED
+
+**Means:** `SubprocessSandbox.writeFile()` was given a path outside the sandbox's
+`root` (by `..`, an absolute path elsewhere, or a symlink that leads out), or the
+root itself. Nothing was written.
+
+**Fix:** write under the root, or construct the sandbox with the `root` that should
+contain the file (`new SubprocessSandbox({ root })`; the default is the working
+directory at construction). See [Guardrails](./guardrails.md#sandboxed-tools).
+
+**Example:** `sandbox.writeFile('/etc/profile.d/x.sh', ...)` with the default root.
 
 ## Agent directories, skills and flows
 

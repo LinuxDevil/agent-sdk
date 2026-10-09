@@ -26,7 +26,8 @@
 
 
 import { randomBytes, type KeyObject } from 'node:crypto';
-import { writeFile as fsWriteFile } from 'node:fs/promises';
+import { realpath, writeFile as fsWriteFile } from 'node:fs/promises';
+import * as nodePath from 'node:path';
 import { PassThrough } from 'node:stream';
 import type Docker from 'dockerode';
 import { lazyValue, loadOptionalPeer } from '../providers/optionalPeer';
@@ -87,16 +88,37 @@ function networkMode(network: SandboxNetwork, egress: Egress | undefined): strin
   return network === 'default' ? 'default' : 'none';
 }
 
+/** Per-container resource limits of a {@link SubprocessSandbox} (Eve TOOLS-F17). */
+export interface SandboxLimits {
+  /** Memory cap in bytes (Docker `Memory`). Default 512 MiB. */
+  memoryBytes?: number;
+  /** Most processes the container may run (Docker `PidsLimit`). Default 256. */
+  pids?: number;
+  /** CPUs the container may use (Docker `NanoCpus` / 1e9). Default 1. */
+  cpus?: number;
+}
+
+/** The hardening every container gets: its user and resource limits. */
+interface Hardening {
+  user: string;
+  limits: Required<SandboxLimits>;
+}
+
+const DEFAULT_LIMITS: Required<SandboxLimits> = { memoryBytes: 512 * 1024 * 1024, pids: 256, cpus: 1 };
+
 /**
  * Container config for one `run()` call: auto-removed, bind-mounting only
  * `opts.cwd` (when given), with only `opts.env` (never the host env) and no
  * network unless the policy is `'default'` or there is an `egress` network,
- * whose proxy variables are then added to the env.
+ * whose proxy variables are then added to the env. It runs as `hardening.user`
+ * with every capability dropped, `no-new-privileges` and the memory, process
+ * and CPU limits (Eve TOOLS-F17).
  */
 function buildContainerOptions(
   image: string,
   network: SandboxNetwork,
   egress: Egress | undefined,
+  hardening: Hardening,
   cmd: string,
   args: string[],
   opts: SandboxRunOptions
@@ -106,6 +128,7 @@ function buildContainerOptions(
   return {
     Image: image,
     Cmd: [cmd, ...args],
+    User: hardening.user,
     WorkingDir: opts.cwd,
     Env: env ? Object.entries(env).map(([k, v]) => `${k}=${v}`) : undefined,
     NetworkingConfig: egress ? { EndpointsConfig: { [egress.network]: {} } } : undefined,
@@ -117,6 +140,11 @@ function buildContainerOptions(
       NetworkMode: networkMode(network, egress),
       AutoRemove: true,
       Binds: binds,
+      CapDrop: ['ALL'],
+      SecurityOpt: ['no-new-privileges'],
+      PidsLimit: hardening.limits.pids,
+      Memory: hardening.limits.memoryBytes,
+      NanoCpus: Math.round(hardening.limits.cpus * 1e9),
     },
   };
 }
@@ -246,6 +274,21 @@ export interface SubprocessSandboxOptions {
   broker?: CredentialBroker;
   /** Internal network to create, or reuse when it exists. Defaults to a fresh `lousho-egress-<random>` name. */
   networkName?: string;
+  /**
+   * The host directory `writeFile()` may write under (Eve TOOLS-F17).
+   * Relative paths resolve against it; a path outside it, also through a
+   * symlink, is refused with `LOUSHO_SANDBOX_PATH_DENIED`. Defaults to
+   * `process.cwd()` when the sandbox is constructed.
+   */
+  root?: string;
+  /**
+   * The user commands run as (Docker `User`). Defaults to `'1000:1000'`, a
+   * non-root user; on a Linux host it must be able to write the bind-mounted
+   * `cwd`. Pass `'root'` to run as root.
+   */
+  user?: string;
+  /** Per-container limits. Defaults: 512 MiB of memory, 256 processes, 1 CPU. */
+  limits?: SandboxLimits;
 }
 
 /**
@@ -269,6 +312,9 @@ export class SubprocessSandbox implements SandboxAdapter {
   private readonly networkName: string;
   /** The internal network and broker listener, set up on the first `run()` (LOU-X12.2). */
   private egress?: Promise<Egress>;
+  /** The directory `writeFile()` is confined to. */
+  readonly root: string;
+  private readonly hardening: Hardening;
 
   constructor(options: SubprocessSandboxOptions = {}) {
     this.network = validateNetwork(options.network);
@@ -279,6 +325,8 @@ export class SubprocessSandbox implements SandboxAdapter {
       return new DockerClient(options.dockerOptions as Docker.DockerOptions | undefined);
     });
     this.image = options.image ?? 'node:20-alpine';
+    this.root = nodePath.resolve(options.root ?? process.cwd());
+    this.hardening = { user: options.user ?? '1000:1000', limits: validateLimits(options.limits) };
   }
 
   /**
@@ -328,7 +376,7 @@ export class SubprocessSandbox implements SandboxAdapter {
     const docker = await this.getDocker();
     const egress = await this.startEgress(docker);
     opts.signal?.throwIfAborted();
-    const container = await this.createContainer(docker, buildContainerOptions(this.image, this.network, egress, cmd, args, opts));
+    const container = await this.createContainer(docker, buildContainerOptions(this.image, this.network, egress, this.hardening, cmd, args, opts));
 
     const output = captureOutput();
     const attachStream = await container.attach({ stream: true, stdout: true, stderr: true });
@@ -376,15 +424,57 @@ export class SubprocessSandbox implements SandboxAdapter {
   }
 
   /**
-   * Writes `content` to `path` on the host. SubprocessSandbox has no
-   * persistent container of its own to write into (each `run()` call gets
-   * a brand-new, auto-removed container) - a file written here becomes
-   * visible inside a subsequent `run()` call only if that call's `opts.cwd`
-   * bind-mounts the directory `path` lives in, mirroring how a real
-   * "write files into the working directory, then run a command against
-   * it" workflow would work.
+   * Writes `content` to `path` on the host, inside {@link SubprocessSandbox.root}.
+   * SubprocessSandbox has no persistent container of its own to write into
+   * (each `run()` call gets a brand-new, auto-removed container) - a file
+   * written here becomes visible inside a subsequent `run()` call only if
+   * that call's `opts.cwd` bind-mounts the directory `path` lives in.
+   * A path outside the root (`..`, an absolute path elsewhere, or a symlink
+   * leading out) rejects with `LOUSHO_SANDBOX_PATH_DENIED` (Eve TOOLS-F17).
    */
   async writeFile(path: string, content: string): Promise<void> {
-    await fsWriteFile(path, content, 'utf-8');
+    await fsWriteFile(await this.confine(path), content, 'utf-8');
   }
+
+  /** `path` resolved against the root, with symlinks followed, or a LOUSHO_SANDBOX_PATH_DENIED rejection when it leaves the root. */
+  private async confine(path: string): Promise<string> {
+    const root = await realpath(this.root).catch(() => this.root);
+    const target = await realTarget(nodePath.resolve(this.root, path));
+    const relative = nodePath.relative(root, target);
+    if (relative === '' || relative === '..' || relative.startsWith(`..${nodePath.sep}`) || nodePath.isAbsolute(relative)) {
+      throw new SDKError(
+        `SubprocessSandbox.writeFile: '${path}' is outside the sandbox root '${this.root}'; write under the root, or pass a different \`root\`.`,
+        'LOUSHO_SANDBOX_PATH_DENIED'
+      );
+    }
+    return target;
+  }
+}
+
+/** `abs` with its longest existing prefix replaced by that prefix's real path, so a symlinked directory cannot lead out. */
+async function realTarget(abs: string): Promise<string> {
+  const missing: string[] = [];
+  let existing = abs;
+  for (;;) {
+    try {
+      return nodePath.join(await realpath(existing), ...missing.reverse());
+    } catch {
+      const parent = nodePath.dirname(existing);
+      if (parent === existing) return abs;
+      missing.push(nodePath.basename(existing));
+      existing = parent;
+    }
+  }
+}
+
+/** Validates the resource limits, filling in the defaults. */
+function validateLimits(limits: SandboxLimits = {}): Required<SandboxLimits> {
+  const set = Object.fromEntries(Object.entries(limits).filter(([, value]) => value !== undefined));
+  const merged = { ...DEFAULT_LIMITS, ...set } as Required<SandboxLimits>;
+  for (const [key, value] of Object.entries(merged)) {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+      throw new SDKError(`SubprocessSandbox: limits.${key} must be a positive number; got ${JSON.stringify(value)}.`, 'LOUSHO_CONFIG_INVALID');
+    }
+  }
+  return merged;
 }

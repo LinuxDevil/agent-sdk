@@ -236,7 +236,13 @@ await AgentExecutor.execute({ agent, input, provider, toolRegistry, sandbox: new
   `cwd` you pass. It needs a running Docker daemon and the optional peer
   `dockerode` (`npm install dockerode@^5.0.1`; loaded on first use). When the
   run is cancelled (`run.abort()`, `signal`) or the command times out, the
-  container is killed and removed.
+  container is killed and removed. Each container runs as a non-root user
+  (`user`, default `'1000:1000'`; on a Linux host it must be able to write the
+  mounted `cwd`), with every Linux capability dropped, `no-new-privileges`, and
+  `limits` of 512 MiB memory, 256 processes and 1 CPU by default.
+  `writeFile(path)` writes on the host only under `root` (default: the working
+  directory); a path outside it, also through a symlink, is refused with
+  `LOUSHO_SANDBOX_PATH_DENIED`.
 - Implement `SandboxAdapter` (`name`, `run(cmd, args, opts)`, `writeFile(path, content)`)
   for another backend.
 
