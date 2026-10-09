@@ -418,9 +418,12 @@ console.log(fork.id, reply.text); // 'trip-fork-1', 'Porto has a direct flight a
   has when it forks), so streaming, approvals and checkpointed turns work as on any
   `agent.session()`, and `agent.session({ id: fork.id, store })` continues it
   later, in another process too. Its id is `id` when you pass one, else
-  `<id>-fork-<n>` for the first `n` from 1 that has no transcript. An `id` that
+  `<id>-fork-<n>` for the first `n` from 1 that has no transcript (for an id
+  too long for that suffix, `<start of id>-<8 hex of its hash>-fork-<n>`, still
+  within 128 characters). An `id` that
   already has a transcript (or the session's own id) is refused with
   [`LOUSHO_SESSION_EXISTS`](./errors.md#lousho_session_exists).
+- The fork's `messages` hold its transcript as soon as `fork()` resolves.
 - The original session's transcript and checkpoints are not changed.
 - Budgets: the spend recorded for `limits` stays on the kept messages, so a
   fork's `limits` start from what the session had spent at the end of the last

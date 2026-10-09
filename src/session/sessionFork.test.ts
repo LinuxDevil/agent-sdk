@@ -188,6 +188,30 @@ describe('session.fork()', () => {
     expect((await session.fork({ fromStep: 2 })).id).toBe('chat-fork-2');
   });
 
+  it('forks a session whose id is too long for <id>-fork-<n> under a valid, distinct id (Eve DUR-F19)', async () => {
+    const agent = createAgent({ provider: mockModel(['hi'], { onExhausted: 'repeat-last' }), store: memoryStore() });
+    for (const length of [122, 128]) {
+      const id = 'u'.repeat(length);
+      const session = agent.session({ id });
+      await session.send('hello');
+      const first = await session.fork({ fromStep: 1 });
+      const second = await session.fork({ fromStep: 1 });
+      for (const fork of [first, second]) {
+        expect(fork.id.length).toBeLessThanOrEqual(128);
+        expect(fork.id).toMatch(/^u+-[0-9a-f]{8}-fork-\d+$/);
+      }
+      expect(second.id).not.toBe(first.id);
+      expect((await second.send('again')).text).toBe('hi');
+    }
+  });
+
+  it('returns a fork whose messages are its transcript without load() (Eve DUI-F23)', async () => {
+    const { session } = await twoTurns();
+    const fork = await session.fork({ fromStep: 1 });
+    expect(fork.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'tool']);
+    expect(fork.messages).toEqual(await fork.load());
+  });
+
   it('replaces a tool result with patch.toolResult and leaves the original alone', async () => {
     const { model, session } = await twoTurns(['patched']);
     const fork = await session.fork({ fromStep: 1, patch: { toolResult: { toolCallId: 'c1', result: { temp: 3 } } } });

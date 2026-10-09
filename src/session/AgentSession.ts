@@ -5,7 +5,7 @@
  * durable-execution session, so a turn interrupted mid-way can be resumed.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { Message } from '../providers/llm';
 import { toMessages, type AgentInput } from '../providers/content';
 import type { ExecutionResult } from '../execution/AgentExecutor';
@@ -705,14 +705,24 @@ export class AgentSession<TObject = unknown> {
       }
       await this.store.save(id, messages);
       // This session's own stores (without `store`, each session has its own new MemorySessionStore) and current permission mode (N4).
-      return spawn({ ...this.options, id, store: this.store, checkpointStore: this.checkpointStore, permissionMode: this.mode }) as AgentSession<TObject>;
+      const fork = spawn({ ...this.options, id, store: this.store, checkpointStore: this.checkpointStore, permissionMode: this.mode }) as AgentSession<TObject>;
+      // Eve DUI-F23: the fork's `messages` are its transcript at once, without a `load()`.
+      fork.transcript = structuredClone(messages);
+      return fork;
     });
   }
 
-  /** `<id>-fork-<n>` for the first `n` (from 1) that is not taken. */
+  /**
+   * `<id>-fork-<n>` for the first `n` (from 1) that is not taken. Eve DUR-F19: when that is longer than a session id
+   * may be (128 characters), `<id prefix>-<8 hex of the id's hash>-fork-<n>` instead, so a long id can be forked too.
+   */
   private async nextForkId(length: number): Promise<string> {
     for (let n = 1; ; n++) {
-      const id = `${this.id}-fork-${n}`;
+      const suffix = `-fork-${n}`;
+      const id =
+        this.id.length + suffix.length <= 128
+          ? `${this.id}${suffix}`
+          : `${this.id.slice(0, 128 - suffix.length - 9)}-${createHash('sha256').update(this.id).digest('hex').slice(0, 8)}${suffix}`;
       if (!(await this.isTaken(id, length))) return id;
     }
   }
