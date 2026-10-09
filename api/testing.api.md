@@ -4,8 +4,6 @@
 
 ```ts
 
-// Warning: (ae-forgotten-export) The symbol "SDKError" needs to be exported by the entry point index.d.ts
-//
 // @public
 export class CassetteMismatchError extends SDKError {
     constructor(message: string,
@@ -15,10 +13,6 @@ export class CassetteMismatchError extends SDKError {
     readonly cassette: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "TextContentPart" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ImageContentPart" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "FileContentPart" needs to be exported by the entry point index.d.ts
-//
 // @public
 type ContentPart = TextContentPart | ImageContentPart | FileContentPart;
 
@@ -148,8 +142,6 @@ const ERROR_CODES: {
     readonly LOUSHO_MCP_AUTH_REQUIRED: "Sign the app in to the MCP server once: open the URL from agent.oauth.mcpSignInUrl('<server>') and let the callback store the token.";
 };
 
-// Warning: (ae-forgotten-export) The symbol "ERROR_CODES" needs to be exported by the entry point index.d.ts
-//
 // @public
 type ErrorCode = keyof typeof ERROR_CODES;
 
@@ -169,20 +161,15 @@ interface FileContentPart {
 interface GenerateOptions {
     // (undocumented)
     frequencyPenalty?: number;
-    // Warning: (ae-forgotten-export) The symbol "HostedTool" needs to be exported by the entry point index.d.ts
     hostedTools?: readonly HostedTool[];
     // (undocumented)
     maxTokens?: number;
-    // Warning: (ae-forgotten-export) The symbol "Message" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     messages: Message[];
     model?: string;
     // (undocumented)
     presencePenalty?: number;
-    // Warning: (ae-forgotten-export) The symbol "PromptCachingOption" needs to be exported by the entry point index.d.ts
     promptCaching?: PromptCachingOption;
-    // Warning: (ae-forgotten-export) The symbol "ReasoningOption" needs to be exported by the entry point index.d.ts
     reasoning?: ReasoningOption;
     responseFormat?: {
         type: 'json';
@@ -202,8 +189,6 @@ interface GenerateOptions {
             name: string;
         };
     };
-    // Warning: (ae-forgotten-export) The symbol "ToolDefinition" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     tools?: ToolDefinition[];
     // (undocumented)
@@ -214,24 +199,17 @@ interface GenerateOptions {
 interface GenerateResult {
     // (undocumented)
     finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'error' | 'other';
-    // Warning: (ae-forgotten-export) The symbol "HostedToolCall" needs to be exported by the entry point index.d.ts
     hostedToolCalls?: HostedToolCall[];
     // (undocumented)
     rawResponse?: unknown;
-    // Warning: (ae-forgotten-export) The symbol "ReasoningBlock" needs to be exported by the entry point index.d.ts
     reasoning?: ReasoningBlock[];
-    // Warning: (ae-forgotten-export) The symbol "ServedBy" needs to be exported by the entry point index.d.ts
     servedBy?: ServedBy;
     // (undocumented)
     text: string;
-    // Warning: (ae-forgotten-export) The symbol "ToolCall" needs to be exported by the entry point index.d.ts
     toolCalls?: ToolCall[];
-    // Warning: (ae-forgotten-export) The symbol "ProviderUsage" needs to be exported by the entry point index.d.ts
     usage?: ProviderUsage;
 }
 
-// Warning: (ae-forgotten-export) The symbol "EmbeddingProvider" needs to be exported by the entry point index.d.ts
-//
 // @public
 export function hashEmbedder(input?: HashEmbedderOptions): EmbeddingProvider;
 
@@ -248,8 +226,6 @@ interface HostedTool {
     readonly name: string;
     // (undocumented)
     readonly options: Record<string, unknown>;
-    // Warning: (ae-forgotten-export) The symbol "HostedToolType" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     readonly type: HostedToolType | 'custom';
 }
@@ -284,12 +260,9 @@ interface ImageContentPart {
 // @public
 interface LLMProvider {
     readonly defaultModel?: string;
-    // Warning: (ae-forgotten-export) The symbol "GenerateOptions" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "GenerateResult" needs to be exported by the entry point index.d.ts
     generate(options: GenerateOptions): Promise<GenerateResult>;
     getModels(): Promise<string[]>;
     readonly name: string;
-    // Warning: (ae-forgotten-export) The symbol "StreamResult" needs to be exported by the entry point index.d.ts
     stream(options: GenerateOptions): Promise<StreamResult>;
     supportsHostedTool?(type: HostedToolType | 'custom'): boolean;
     supportsStreaming(model: string): boolean;
@@ -298,15 +271,12 @@ interface LLMProvider {
 
 // @public
 interface Message {
-    // Warning: (ae-forgotten-export) The symbol "ContentPart" needs to be exported by the entry point index.d.ts
     content: string | ContentPart[];
     isError?: boolean;
     metadata?: Record<string, unknown>;
     // (undocumented)
     name?: string;
     reasoning?: ReasoningBlock[];
-    // Warning: (ae-forgotten-export) The symbol "MessageRole" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     role: MessageRole;
     toolCallId?: string;
@@ -330,8 +300,6 @@ export interface MockHostedToolCall {
     }>;
 }
 
-// Warning: (ae-forgotten-export) The symbol "LLMProvider" needs to be exported by the entry point index.d.ts
-//
 // @public
 export interface MockModel extends LLMProvider {
     assertExhausted(): void;
@@ -395,16 +363,10 @@ interface ModelUsage {
 // @public
 type OAuthClientAuth = 'client_secret_post' | 'client_secret_basic';
 
-// Warning: (ae-forgotten-export) The symbol "OAuthProviderOptions" needs to be exported by the entry point index.d.ts
-//
 // @public
 interface OAuthProvider extends Readonly<Omit<OAuthProviderOptions, 'displayName' | 'credentialOwner' | 'clientAuth' | 'scopes'>> {
-    // Warning: (ae-forgotten-export) The symbol "OAuthClientAuth" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     readonly clientAuth: OAuthClientAuth;
-    // Warning: (ae-forgotten-export) The symbol "CredentialOwner" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     readonly credentialOwner: CredentialOwner;
     // (undocumented)
@@ -493,9 +455,6 @@ interface ReasoningBlock {
 // @public
 type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
 
-// Warning: (ae-forgotten-export) The symbol "ReasoningEffort" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ReasoningSettings" needs to be exported by the entry point index.d.ts
-//
 // @public
 type ReasoningOption = ReasoningEffort | ReasoningSettings;
 
@@ -535,14 +494,12 @@ export type RecordReplaySource = LLMProvider | (() => LLMProvider) | undefined;
 
 // @public
 interface RunUsage {
-    // Warning: (ae-forgotten-export) The symbol "ModelUsage" needs to be exported by the entry point index.d.ts
     byModel: Record<string, ModelUsage>;
     cachedInputTokens?: number;
     cacheWriteTokens?: number;
     // @deprecated (undocumented)
     completionTokens: number;
     costUsd: number | undefined;
-    // Warning: (ae-forgotten-export) The symbol "DelegatedUsage" needs to be exported by the entry point index.d.ts
     delegated?: DelegatedUsage;
     estimated: boolean;
     hostedToolCalls?: Partial<Record<string, number>>;
@@ -576,8 +533,6 @@ class SDKError extends Error {
     // (undocumented)
     get [SDK_ERROR_BRAND](): true;
     static [Symbol.hasInstance](value: unknown): boolean;
-    // Warning: (ae-forgotten-export) The symbol "ErrorCode" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "SDKErrorOptions" needs to be exported by the entry point index.d.ts
     constructor(message: string, code?: ErrorCode | (string & {}), options?: SDKErrorOptions);
     // (undocumented)
     readonly code: string;
@@ -648,8 +603,6 @@ interface StreamChunk {
         toolCallId: string;
         result: unknown;
     };
-    // Warning: (ae-forgotten-export) The symbol "StreamChunkType" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     type: StreamChunkType;
     usage?: ProviderUsage;
@@ -662,8 +615,6 @@ type StreamChunkType = 'text-delta' | 'reasoning-delta' | 'reasoning-end' | 'too
 interface StreamResult {
     // (undocumented)
     finishReason: Promise<string>;
-    // Warning: (ae-forgotten-export) The symbol "StreamChunk" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     fullStream: AsyncIterable<StreamChunk>;
     servedBy?: ServedBy;
@@ -676,8 +627,6 @@ interface StreamResult {
     usage: Promise<ProviderUsage | undefined>;
 }
 
-// Warning: (ae-forgotten-export) The symbol "ToolExecutionContext" needs to be exported by the entry point index.d.ts
-//
 // @public
 export function testToolContext(overrides?: Partial<ToolExecutionContext>): ToolExecutionContext;
 
@@ -722,24 +671,14 @@ interface ToolExecutionContext {
         note?: string;
         by?: Readonly<Principal>;
     };
-    // Warning: (ae-forgotten-export) The symbol "OAuthProvider" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "OAuthToken" needs to be exported by the entry point index.d.ts
     getToken(provider: OAuthProvider): Promise<OAuthToken>;
     messages: readonly Message[];
-    // Warning: (ae-forgotten-export) The symbol "RunUsage" needs to be exported by the entry point index.d.ts
     onDelegatedUsage?: (usage: RunUsage) => void;
-    // Warning: (ae-forgotten-export) The symbol "Principal" needs to be exported by the entry point index.d.ts
     principal?: Readonly<Principal>;
     requireAuth(provider: OAuthProvider): never;
     sessionId?: string;
     toolCallId: string;
 }
-
-// Warnings were encountered during analysis:
-//
-// dist/index-DF_m0zkK.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-DF_m0zkK.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-DF_m0zkK.d.ts:1532:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

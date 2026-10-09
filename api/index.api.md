@@ -48,8 +48,6 @@ export interface AgentConfig {
     events?: unknown[];
     // (undocumented)
     expectedResult?: unknown;
-    // Warning: (ae-forgotten-export) The symbol "AgentFlow" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     flows?: AgentFlow[];
     // (undocumented)
@@ -163,11 +161,6 @@ export interface AgentErrorEvent extends AgentEventBase<'error'> {
     error: AgentEventError;
 }
 
-// Warning: (ae-forgotten-export) The symbol "ToolResumeEvent" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "CompactionStartEvent" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "CompactionDoneEvent" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ContextClearedEvent" needs to be exported by the entry point index.d.ts
-//
 // @public
 export type AgentEvent = RunStartEvent | StepStartEvent | TextDeltaEvent | ObjectDeltaEvent | TextDoneEvent | ReasoningStartEvent | ReasoningDeltaEvent | ReasoningDoneEvent | ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | TodoUpdatedEvent | ToolErrorEvent | ApprovalRequestedEvent | PermissionDecisionEvent | StepDoneEvent | AgentErrorEvent | ProviderRetryEvent | ProviderFallbackEvent | CompactionStartEvent | CompactionDoneEvent | ContextClearedEvent | BudgetExceededEvent | InputQueuedEvent | InputSteeredEvent | InputAppliedEvent | GuardrailTrippedEvent | GuardrailRewroteEvent | AgentDriftEvent | HandoffEvent | RunDoneEvent;
 
@@ -242,19 +235,14 @@ export interface AgentFingerprint {
 
 // @public
 interface AgentFlow {
-    // Warning: (ae-forgotten-export) The symbol "FlowAgentDefinition" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     agents?: FlowAgentDefinition[];
     code: string;
     // (undocumented)
     description?: string;
-    // Warning: (ae-forgotten-export) The symbol "EditorStep" needs to be exported by the entry point index.d.ts
     flow?: EditorStep;
     // (undocumented)
     id?: string;
-    // Warning: (ae-forgotten-export) The symbol "FlowInputVariable" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     inputs?: FlowInputVariable[];
     // (undocumented)
@@ -275,7 +263,6 @@ export interface AgentHook {
     postGenerate?(ctx: GenerateHookContext, result: GenerateResult): void | Promise<void>;
     postToolCall?(ctx: ToolCallHookContext, result: ToolCallHookResult): MaybePromise<PostToolCallOutcome | void>;
     preGenerate?(ctx: GenerateHookContext): void | Promise<void>;
-    // Warning: (ae-forgotten-export) The symbol "MaybePromise" needs to be exported by the entry point index.d.ts
     preToolCall?(ctx: ToolCallHookContext): MaybePromise<PreToolCallOutcome | void>;
 }
 
@@ -302,8 +289,6 @@ export class AgentSession<TObject = unknown> {
     constructor(run: SessionRunner, options?: SessionOptions, streamRun?: SessionStreamRunner, spawn?: SessionSpawner);
     protected readonly checkpointStore: CheckpointStore | undefined;
     clear(): Promise<void>;
-    // Warning: (ae-forgotten-export) The symbol "SessionCompactOptions" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "SessionCompactResult" needs to be exported by the entry point index.d.ts
     compact(options?: SessionCompactOptions): Promise<SessionCompactResult>;
     protected continueTurn(next: () => Promise<ExecutionResult>): Promise<ExecutionResult>;
     protected readonly currentPermissionMode: () => PermissionMode;
@@ -322,7 +307,6 @@ export class AgentSession<TObject = unknown> {
     resume(options?: {
         signal?: AbortSignal;
     }): Promise<ExecutionResult | null>;
-    // Warning: (ae-forgotten-export) The symbol "SessionSendOptions" needs to be exported by the entry point index.d.ts
     send(input: AgentInput, options?: SessionSendOptions): Promise<ExecutionResult<TObject>>;
     setPermissionMode(mode: PermissionMode): void;
     stream(input: AgentInput, options?: SessionSendOptions): AgentRun<TObject>;
@@ -444,19 +428,14 @@ interface AiSdkModule {
     streamText(options: never): unknown;
 }
 
-// Warning: (ae-forgotten-export) The symbol "AiSdkProviderConfig" needs to be exported by the entry point index.d.ts
-//
 // @public
 abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLMProvider {
     constructor(config: TConfig);
     protected readonly acceptsFileParts: boolean;
-    // Warning: (ae-forgotten-export) The symbol "AiSdkModule" needs to be exported by the entry point index.d.ts
     protected readonly ai: AiSdkModule;
     protected cachesPrompt(_modelId: string, _options: GenerateOptions): boolean;
     // (undocumented)
     protected config: TConfig;
-    // Warning: (ae-forgotten-export) The symbol "AiSdkMessage" needs to be exported by the entry point index.d.ts
-    //
     // @deprecated
     protected convertMessages(messages: Message[]): AiSdkMessage[];
     protected abstract createModel(modelId: string, options?: GenerateOptions): LanguageModel | Promise<LanguageModel>;
@@ -498,8 +477,6 @@ export function allow(tools: PermissionToolMatcher): PermissionRule;
 // @public
 export function always(): true;
 
-// Warning: (ae-forgotten-export) The symbol "AiSdkProvider" needs to be exported by the entry point index.d.ts
-//
 // @public
 export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
     protected cachesPrompt(modelId: string, options: GenerateOptions): boolean;
@@ -648,8 +625,6 @@ interface ApproverRequest {
     toolName: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "ApproverRequest" needs to be exported by the entry point index.d.ts
-//
 // @public
 type Approvers = readonly string[] | ((user: ChannelUser, request: ApproverRequest) => boolean | Promise<boolean>);
 
@@ -664,8 +639,6 @@ export function ask(tools: PermissionToolMatcher, options?: {
 // @public
 export const ASK_QUESTION_TOOL_NAME = "ask_question";
 
-// Warning: (ae-forgotten-export) The symbol "askQuestionInput" needs to be exported by the entry point index.d.ts
-//
 // @public
 export type AskQuestionInput = z.output<typeof askQuestionInput>;
 
@@ -730,8 +703,6 @@ interface AuthChallenge {
     scheme: 'Bearer' | 'Basic';
 }
 
-// Warning: (ae-forgotten-export) The symbol "AuthResult" needs to be exported by the entry point index.d.ts
-//
 // @public
 type AuthFn = ((request: Request) => AuthResult | Promise<AuthResult>) & {
     challenges?: readonly AuthChallenge[];
@@ -1075,9 +1046,7 @@ export interface Checkpoint {
     businessState?: unknown;
     // (undocumented)
     finishReason?: string;
-    // Warning: (ae-forgotten-export) The symbol "FlowCheckpointState" needs to be exported by the entry point index.d.ts
     flow?: FlowCheckpointState;
-    // Warning: (ae-forgotten-export) The symbol "CheckpointError" needs to be exported by the entry point index.d.ts
     lastError?: CheckpointError;
     // (undocumented)
     messages: Message[];
@@ -1092,7 +1061,6 @@ export interface Checkpoint {
     stepUsage?: StepUsage[];
     // (undocumented)
     toolCalls: unknown[];
-    // Warning: (ae-forgotten-export) The symbol "CheckpointUsage" needs to be exported by the entry point index.d.ts
     usage: CheckpointUsage;
 }
 
@@ -1467,7 +1435,6 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
     subagentOptions?: SubagentOptions;
     subagents?: Subagents;
     toolConcurrency?: ToolConcurrency;
-    // Warning: (ae-forgotten-export) The symbol "AgentToolsOption" needs to be exported by the entry point index.d.ts
     tools?: PerRun<AgentToolsOption>;
     toolSearch?: false | ToolSearchOptions;
 }
@@ -1538,8 +1505,6 @@ export function createTestRunCheck(repoPath: string, options?: CommandCheckOptio
 // @public
 export function createTodoTools(options?: TodoToolsOptions): TodoTools;
 
-// Warning: (ae-forgotten-export) The symbol "webFetchInput" needs to be exported by the entry point index.d.ts
-//
 // @public
 export function createWebFetchTool(options?: WebFetchToolOptions): DefinedTool<typeof webFetchInput, WebFetchResult>;
 
@@ -1780,7 +1745,6 @@ export function discordChannel(options: DiscordChannelOptions): Channel<DiscordI
 // @public
 export interface DiscordChannelOptions {
     applicationId: string;
-    // Warning: (ae-forgotten-export) The symbol "Approvers" needs to be exported by the entry point index.d.ts
     approvers?: Approvers;
     botToken?: string;
     fetch?: typeof fetch;
@@ -1891,24 +1855,9 @@ const editFileInput: z.ZodObject<{
     replace_all?: boolean | undefined;
 }>;
 
-// Warning: (ae-forgotten-export) The symbol "StepNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "SequenceNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ParallelNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "OneOfNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ForEachNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "EvaluatorNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "BestOfAllNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "UIComponentNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ConditionNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "LoopNode" needs to be exported by the entry point index.d.ts
-//
 // @public
 type EditorShapeStep = StepNode | SequenceNode | ParallelNode | OneOfNode | ForEachNode | EvaluatorNode | BestOfAllNode | ToolNode | UIComponentNode | ConditionNode | LoopNode;
 
-// Warning: (ae-forgotten-export) The symbol "EditorShapeStep" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "RuntimeStep" needs to be exported by the entry point index.d.ts
-//
 // @public
 type EditorStep = EditorShapeStep | RuntimeStep;
 
@@ -1923,8 +1872,6 @@ export interface EmbeddingProvider {
 // @public
 export function emptyRunUsage(): RunUsage;
 
-// Warning: (ae-forgotten-export) The symbol "NodeRunOptions" needs to be exported by the entry point index.d.ts
-//
 // @public
 interface EndNode extends NodeRunOptions {
     // (undocumented)
@@ -2076,8 +2023,6 @@ export interface EstimateTokensOptions {
     model?: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "ExecuteOptions" needs to be exported by the entry point index.d.ts
-//
 // @public
 export interface EvalConfig extends Partial<Omit<ExecuteOptions, 'agent' | 'input' | 'provider' | 'onAgentEvent'>> {
     agent: ExecuteOptions['agent'];
@@ -2178,7 +2123,6 @@ interface ExecuteOptions extends PermissionOptions {
     // @internal
     agentSpanId?: string;
     appendInstructions?: string;
-    // (undocumented)
     approvalStore?: ApprovalStore;
     approvalTtlMs?: number;
     businessState?: unknown;
@@ -2197,7 +2141,6 @@ interface ExecuteOptions extends PermissionOptions {
     inputQueue?: InputQueue;
     limits?: RunLimits;
     maxHandoffs?: number;
-    // (undocumented)
     maxSteps?: number;
     maxSubagentDepth?: number;
     maxTokens?: number;
@@ -2242,9 +2185,6 @@ interface ExecuteOptions extends PermissionOptions {
     temperature?: number;
     tokens?: OAuthTokenStore;
     toolConcurrency?: ToolConcurrency;
-    // Warning: (ae-forgotten-export) The symbol "ToolRegistry" needs to be exported by the entry point index.d.ts
-    //
-    // (undocumented)
     toolRegistry?: ToolRegistry;
     toolSearch?: false | ToolSearchOptions;
 }
@@ -2450,8 +2390,6 @@ interface FlowAgentDefinition {
     name: string;
     // (undocumented)
     system: string;
-    // Warning: (ae-forgotten-export) The symbol "FlowToolSetting" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     tools: FlowToolSetting[];
 }
@@ -2471,7 +2409,6 @@ interface FlowCheckpointState {
     completedNodeIds: string[];
     nodeResults: Record<string, unknown>;
     output?: unknown;
-    // Warning: (ae-forgotten-export) The symbol "FlowPendingApproval" needs to be exported by the entry point index.d.ts
     pendingApproval?: FlowPendingApproval;
     steps: number;
     usage: ProviderUsage;
@@ -2500,8 +2437,6 @@ interface FlowInputVariable {
     name: string;
     // (undocumented)
     required: boolean;
-    // Warning: (ae-forgotten-export) The symbol "FlowInputType" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     type: FlowInputType;
 }
@@ -2630,28 +2565,16 @@ export type FsToolApprovals = {
 
 // @public
 export interface FsToolArgs {
-    // Warning: (ae-forgotten-export) The symbol "editFileInput" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     edit_file: z.output<typeof editFileInput>;
-    // Warning: (ae-forgotten-export) The symbol "globInput" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     glob: z.output<typeof globInput>;
-    // Warning: (ae-forgotten-export) The symbol "grepInput" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     grep: z.output<typeof grepInput>;
-    // Warning: (ae-forgotten-export) The symbol "listDirInput" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     list_dir: z.output<typeof listDirInput>;
-    // Warning: (ae-forgotten-export) The symbol "readFileInput" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     read_file: z.output<typeof readFileInput>;
-    // Warning: (ae-forgotten-export) The symbol "writeFileInput" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     write_file: z.output<typeof writeFileInput>;
 }
@@ -3009,8 +2932,6 @@ export interface HandoffOptions {
     toolName?: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "SubagentSpec" needs to be exported by the entry point index.d.ts
-//
 // @public
 export interface HandoffTarget extends SubagentSpec {
     handoffs?: readonly ResolvedHandoff[];
@@ -3041,8 +2962,6 @@ export interface HookContext {
     subagent?: SubagentInfo;
 }
 
-// Warning: (ae-forgotten-export) The symbol "AgentEventPayload" needs to be exported by the entry point index.d.ts
-//
 // @public
 export type HookEventPayload = Extract<AgentEventPayload, {
     type: 'compaction.start' | 'compaction.done';
@@ -3120,8 +3039,6 @@ interface HttpRequestArgs {
     body?: string;
     // (undocumented)
     headers?: Record<string, string>;
-    // Warning: (ae-forgotten-export) The symbol "HttpMethod" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     method: HttpMethod;
     // (undocumented)
@@ -3193,8 +3110,6 @@ export class InputQueue {
     closeAfter(run: Promise<unknown>): void;
     // @internal
     endPhase(): void;
-    // Warning: (ae-forgotten-export) The symbol "QueuedInput" needs to be exported by the entry point index.d.ts
-    //
     // @internal
     listen(listener: (input: QueuedInput) => void): void;
     // @internal
@@ -3697,8 +3612,6 @@ export type LoushoUIMessageChunk = {
     messageMetadata: LoushoFinishMetadata;
 };
 
-// Warning: (ae-forgotten-export) The symbol "HttpRequestArgs" needs to be exported by the entry point index.d.ts
-//
 // @public
 export function makeHttpRequest(args: HttpRequestArgs): Promise<string>;
 
@@ -4224,9 +4137,8 @@ interface NodeRetry {
     maxAttempts: number;
 }
 
-// @public (undocumented)
+// @public
 interface NodeRunOptions {
-    // Warning: (ae-forgotten-export) The symbol "NodeRetry" needs to be exported by the entry point index.d.ts
     retry?: NodeRetry;
     timeoutMs?: number;
 }
@@ -4388,7 +4300,6 @@ export interface OAuthTokenStore {
 
 // @public
 export interface ObjectDeltaEvent extends AgentEventBase<'object.delta'> {
-    // (undocumented)
     object: unknown;
 }
 
@@ -4442,8 +4353,6 @@ interface OneOfOption {
 interface OneOfOptionsNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
-    // Warning: (ae-forgotten-export) The symbol "OneOfOption" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     options: OneOfOption[];
     // (undocumented)
@@ -4587,7 +4496,7 @@ export interface OutputSpec<TSchema extends StandardSchemaV1 = StandardSchemaV1>
     schema: TSchema;
 }
 
-// @public (undocumented)
+// @public
 interface ParallelNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
@@ -4853,8 +4762,6 @@ export class PiProvider implements LLMProvider {
 
 // @public
 export interface PiProviderConfig extends LLMProviderConfig {
-    // Warning: (ae-forgotten-export) The symbol "PiModel" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     models?: readonly PiModel[];
 }
@@ -4948,8 +4855,6 @@ export function promptInjectionGuardrail(options?: {
     runInParallel?: boolean;
 }): IoGuardrail;
 
-// Warning: (ae-forgotten-export) The symbol "ScheduleBase" needs to be exported by the entry point index.d.ts
-//
 // @public
 export interface PromptScheduleInput extends ScheduleBase {
     // (undocumented)
@@ -5021,8 +4926,6 @@ interface QueuedInput {
     text: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "SearchableTool" needs to be exported by the entry point index.d.ts
-//
 // @public
 export function rankToolsByKeywords(query: string, tools: ReadonlyArray<SearchableTool>): string[];
 
@@ -5140,8 +5043,6 @@ interface ReceiptEntry {
     permissions: RegistryItem['permissions'];
     // (undocumented)
     registry: string;
-    // Warning: (ae-forgotten-export) The symbol "RegistryItem" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     type: RegistryItem['type'];
 }
@@ -5171,8 +5072,6 @@ export function registerAdapter(name: string, adapter: DeploymentAdapter): void;
 // @public
 export function registerModel(info: ModelInfo): void;
 
-// Warning: (ae-forgotten-export) The symbol "ItemSchema" needs to be exported by the entry point index.d.ts
-//
 // @public (undocumented)
 type RegistryItem = z.infer<typeof ItemSchema>;
 
@@ -5185,8 +5084,6 @@ export interface RegistryItemStatus {
     name: string;
     permissions: ReceiptEntry['permissions'];
     status: Attestation;
-    // Warning: (ae-forgotten-export) The symbol "ReceiptEntry" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     type: ReceiptEntry['type'];
 }
@@ -5278,7 +5175,6 @@ export interface ResolveApprovalOptions {
 
 // @public
 export interface ResolvedAgentDir {
-    // Warning: (ae-forgotten-export) The symbol "AuthFn" needs to be exported by the entry point index.d.ts
     auth?: AuthFn | readonly AuthFn[];
     channels: Channel[];
     config: CreateAgentConfig;
@@ -5440,16 +5336,6 @@ export interface RunStartEvent extends AgentEventBase<'run.start'> {
     agentName: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "OneOfOptionsNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ForEachItemsNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ExpressionEvaluatorNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "LLMCallNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolCallNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "SetVariableNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ReturnNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "EndNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ThrowNode" needs to be exported by the entry point index.d.ts
-//
 // @public
 type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
 
@@ -5703,7 +5589,7 @@ export interface SendOptions {
     throwOnError?: boolean;
 }
 
-// @public (undocumented)
+// @public
 interface SequenceNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
@@ -6093,8 +5979,6 @@ export interface SpecObjectSchema<T> extends SpecSchema<T> {
     readonly shape: Readonly<Record<string, unknown>>;
 }
 
-// Warning: (ae-forgotten-export) The symbol "SafeParser" needs to be exported by the entry point index.d.ts
-//
 // @public
 export interface SpecSchema<T> extends SafeParser<T> {
     // (undocumented)
@@ -6237,8 +6121,6 @@ export class SubagentApprovalPause extends PropagatingToolError {
 export interface SubagentCatalog {
     // (undocumented)
     list(): readonly SubagentSummary[] | Promise<readonly SubagentSummary[]>;
-    // Warning: (ae-forgotten-export) The symbol "LocalOrRemoteSubagent" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     resolve(name: string): LocalOrRemoteSubagent | undefined | Promise<LocalOrRemoteSubagent | undefined>;
 }
@@ -6531,8 +6413,6 @@ export interface TextDoneEvent extends AgentEventBase<'text.done'> {
     text: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "TextSource" needs to be exported by the entry point index.d.ts
-//
 // @public
 export function textOf(message: TextSource | TextSource['content']): string;
 
@@ -6585,8 +6465,6 @@ export interface TodoListResult {
     todos: Todo[];
 }
 
-// Warning: (ae-forgotten-export) The symbol "buildReadTool" needs to be exported by the entry point index.d.ts
-//
 // @public (undocumented)
 type TodoReadTool = ReturnType<typeof buildReadTool>;
 
@@ -6608,8 +6486,6 @@ export interface TodoTools {
     todoRead: TodoReadTool;
     // (undocumented)
     todoWrite: TodoWriteTool;
-    // Warning: (ae-forgotten-export) The symbol "TodoWriteTool" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "TodoReadTool" needs to be exported by the entry point index.d.ts
     tools: [TodoWriteTool, TodoReadTool];
 }
 
@@ -6628,8 +6504,6 @@ export interface TodoUpdatedEvent extends AgentEventBase<'todo.updated'> {
     toolCallId: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "buildWriteTool" needs to be exported by the entry point index.d.ts
-//
 // @public (undocumented)
 type TodoWriteTool = ReturnType<typeof buildWriteTool>;
 
@@ -6778,8 +6652,6 @@ export interface ToolDescriptor {
     execute?(args: unknown, ctx: ToolExecutionContext): unknown;
     inputSchema?: StandardSchemaV1;
     metadata?: ToolMetadata;
-    // Warning: (ae-forgotten-export) The symbol "ApprovalPredicate" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     needsApproval?: boolean | ApprovalPredicate;
     requiresSandbox?: boolean;
@@ -7169,8 +7041,6 @@ export interface WebFetchToolOptions {
     maxChars?: number;
     maxRedirects?: number;
     timeoutMs?: number;
-    // Warning: (ae-forgotten-export) The symbol "WebFetchTransport" needs to be exported by the entry point index.d.ts
-    //
     // @internal
     transport?: WebFetchTransport;
     userAgent?: string;
@@ -7184,10 +7054,6 @@ type WebFetchTransport = (url: string, init: {
     signal: AbortSignal;
 }) => Promise<Response>;
 
-// Warning: (ae-forgotten-export) The symbol "HmacWebhookAuth" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "BearerWebhookAuth" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "CustomWebhookAuth" needs to be exported by the entry point index.d.ts
-//
 // @public
 type WebhookAuth = HmacWebhookAuth | BearerWebhookAuth | CustomWebhookAuth;
 
@@ -7204,7 +7070,6 @@ export function webhookChannel(options?: WebhookChannelOptions): WebhookChannel;
 
 // @public
 export interface WebhookChannelOptions {
-    // Warning: (ae-forgotten-export) The symbol "WebhookAuth" needs to be exported by the entry point index.d.ts
     auth?: WebhookAuth;
     name?: string;
     principal?: (body: unknown, req: ChannelRequest) => Principal | undefined;
@@ -7367,12 +7232,6 @@ const writeFileInput: z.ZodObject<{
     path: string;
     content: string;
 }>;
-
-// Warnings were encountered during analysis:
-//
-// dist/index-DF_m0zkK.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-DF_m0zkK.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

@@ -162,6 +162,7 @@ export interface ExecuteOptions extends PermissionOptions {
   agent: AgentConfig;
   input: string | Message[];
   provider: LLMProvider;
+  /** The tools the run may call. Omitted: the run has no tools. */
   toolRegistry?: ToolRegistry;
   /**
    * N1a: tools the provider runs itself (`webSearch()`, `codeInterpreter()`,
@@ -216,6 +217,7 @@ export interface ExecuteOptions extends PermissionOptions {
    * continues in that span instead of opening its own, and its owner ends it.
    */
   agentSpanId?: string;
+  /** The most model calls the run makes before it ends with `finishReason: 'max-steps'`. */
   maxSteps?: number;
   /**
    * Eve CORE-F13: text appended to the system prompt of every model call of
@@ -289,6 +291,7 @@ export interface ExecuteOptions extends PermissionOptions {
    * ```
    */
   streamModelCalls?: boolean;
+  /** Where a run paused on a tool approval is stored, so it can be resumed later. */
   approvalStore?: ApprovalStore;
   /**
    * TTL: how long a pause for approval (`needsApproval`, an `ask` permission
@@ -717,7 +720,12 @@ export interface ExecutionResult<TObject = unknown> {
    * if (result.abortReason?.name === 'TimeoutError') console.log('timed out');
    * ```
    */
-  abortReason?: { name: string; message: string };
+  abortReason?: {
+    /** The abort reason's error name (`'AbortError'`, `'TimeoutError'`, or a custom error's). */
+    name: string;
+    /** The abort reason's message. */
+    message: string;
+  };
   steps: number;
   /** With `finishReason: 'awaiting-approval'`, the pending approval to decide (the first of `approvalIds`). */
   approvalId?: string;

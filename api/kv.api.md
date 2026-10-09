@@ -10,8 +10,6 @@ interface AgentConfig {
     events?: unknown[];
     // (undocumented)
     expectedResult?: unknown;
-    // Warning: (ae-forgotten-export) The symbol "AgentFlow" needs to be exported by the entry point kv.d.ts
-    //
     // (undocumented)
     flows?: AgentFlow[];
     // (undocumented)
@@ -24,12 +22,8 @@ interface AgentConfig {
     name: string;
     // (undocumented)
     prompt?: string;
-    // Warning: (ae-forgotten-export) The symbol "AgentSettings" needs to be exported by the entry point kv.d.ts
-    //
     // (undocumented)
     settings?: AgentSettings;
-    // Warning: (ae-forgotten-export) The symbol "ToolConfiguration" needs to be exported by the entry point kv.d.ts
-    //
     // (undocumented)
     tools?: Record<string, ToolConfiguration>;
 }
@@ -46,19 +40,14 @@ interface AgentFingerprint {
 
 // @public
 interface AgentFlow {
-    // Warning: (ae-forgotten-export) The symbol "FlowAgentDefinition" needs to be exported by the entry point kv.d.ts
-    //
     // (undocumented)
     agents?: FlowAgentDefinition[];
     code: string;
     // (undocumented)
     description?: string;
-    // Warning: (ae-forgotten-export) The symbol "EditorStep" needs to be exported by the entry point kv.d.ts
     flow?: EditorStep;
     // (undocumented)
     id?: string;
-    // Warning: (ae-forgotten-export) The symbol "FlowInputVariable" needs to be exported by the entry point kv.d.ts
-    //
     // (undocumented)
     inputs?: FlowInputVariable[];
     // (undocumented)
@@ -75,21 +64,15 @@ interface AgentSettings {
 
 // @public
 interface AgentStore {
-    // Warning: (ae-forgotten-export) The symbol "ApprovalStore" needs to be exported by the entry point kv.d.ts
     approvals?: ApprovalStore;
-    // Warning: (ae-forgotten-export) The symbol "CheckpointStore" needs to be exported by the entry point kv.d.ts
     checkpoints?: CheckpointStore;
-    // Warning: (ae-forgotten-export) The symbol "SessionStore" needs to be exported by the entry point kv.d.ts
     sessions?: SessionStore;
-    // Warning: (ae-forgotten-export) The symbol "OAuthTokenStore" needs to be exported by the entry point kv.d.ts
     tokens?: OAuthTokenStore;
 }
 
 // @public
 interface ApprovalGroupMember {
-    // Warning: (ae-forgotten-export) The symbol "GroupDecision" needs to be exported by the entry point kv.d.ts
     decision?: GroupDecision;
-    // Warning: (ae-forgotten-export) The symbol "PendingApproval" needs to be exported by the entry point kv.d.ts
     pending: PendingApproval;
 }
 
@@ -116,12 +99,8 @@ interface ApprovalSignIn {
 interface ApprovalStore {
     list?(): Promise<PendingApproval[]>;
     load?(id: string): Promise<ResolvedApproval | null>;
-    // Warning: (ae-forgotten-export) The symbol "ResolvedApproval" needs to be exported by the entry point kv.d.ts
-    //
     // (undocumented)
     resolve(id: string): Promise<ResolvedApproval | null>;
-    // Warning: (ae-forgotten-export) The symbol "ExecutionSnapshot" needs to be exported by the entry point kv.d.ts
-    //
     // (undocumented)
     save(pending: PendingApproval, snapshot: ExecutionSnapshot): Promise<void>;
 }
@@ -138,41 +117,31 @@ interface BestOfAllNode {
 
 // @public
 interface Checkpoint {
-    // Warning: (ae-forgotten-export) The symbol "AgentFingerprint" needs to be exported by the entry point kv.d.ts
     agentFingerprint?: AgentFingerprint;
     // (undocumented)
     agentId: string;
     approvalId?: string;
     approvalIds?: string[];
-    // Warning: (ae-forgotten-export) The symbol "ApprovalKind" needs to be exported by the entry point kv.d.ts
     approvalKind?: ApprovalKind;
     attempts?: number;
     businessState?: unknown;
     // (undocumented)
     finishReason?: string;
-    // Warning: (ae-forgotten-export) The symbol "FlowCheckpointState" needs to be exported by the entry point kv.d.ts
     flow?: FlowCheckpointState;
-    // Warning: (ae-forgotten-export) The symbol "CheckpointError" needs to be exported by the entry point kv.d.ts
     lastError?: CheckpointError;
-    // Warning: (ae-forgotten-export) The symbol "Message" needs to be exported by the entry point kv.d.ts
-    //
     // (undocumented)
     messages: Message[];
     metadata?: Record<string, unknown>;
-    // Warning: (ae-forgotten-export) The symbol "Principal" needs to be exported by the entry point kv.d.ts
     principal?: Principal;
     runConfig?: unknown;
     // (undocumented)
     sessionId: string;
-    // Warning: (ae-forgotten-export) The symbol "CheckpointStatus" needs to be exported by the entry point kv.d.ts
     status?: CheckpointStatus;
     // (undocumented)
     stepIndex: number;
-    // Warning: (ae-forgotten-export) The symbol "StepUsage" needs to be exported by the entry point kv.d.ts
     stepUsage?: StepUsage[];
     // (undocumented)
     toolCalls: unknown[];
-    // Warning: (ae-forgotten-export) The symbol "CheckpointUsage" needs to be exported by the entry point kv.d.ts
     usage: CheckpointUsage;
 }
 
@@ -196,7 +165,6 @@ interface CheckpointError {
 
 // @public
 interface CheckpointHistoryEntry {
-    // Warning: (ae-forgotten-export) The symbol "Checkpoint" needs to be exported by the entry point kv.d.ts
     checkpoint: Checkpoint;
     savedAt: string;
     status: CheckpointStatus;
@@ -225,20 +193,13 @@ type CheckpointStatus = 'in-progress' | 'awaiting-approval' | 'finished';
 
 // @public
 interface CheckpointStore {
-    // Warning: (ae-forgotten-export) The symbol "CheckpointDeleteOptions" needs to be exported by the entry point kv.d.ts
     delete(sessionId: string, options?: CheckpointDeleteOptions): Promise<void>;
-    // Warning: (ae-forgotten-export) The symbol "CheckpointHistoryOptions" needs to be exported by the entry point kv.d.ts
-    // Warning: (ae-forgotten-export) The symbol "CheckpointHistoryEntry" needs to be exported by the entry point kv.d.ts
     history?(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]>;
-    // Warning: (ae-forgotten-export) The symbol "CheckpointListOptions" needs to be exported by the entry point kv.d.ts
-    // Warning: (ae-forgotten-export) The symbol "CheckpointListEntry" needs to be exported by the entry point kv.d.ts
     list?(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
     load(sessionId: string): Promise<Checkpoint | null>;
     save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
 }
 
-// Warning: (ae-forgotten-export) The symbol "RunUsage" needs to be exported by the entry point kv.d.ts
-//
 // @public
 type CheckpointUsage = Pick<RunUsage, 'promptTokens' | 'completionTokens' | 'totalTokens'> & Partial<RunUsage>;
 
@@ -254,10 +215,6 @@ interface ConditionNode {
     type: 'condition';
 }
 
-// Warning: (ae-forgotten-export) The symbol "TextContentPart" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "ImageContentPart" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "FileContentPart" needs to be exported by the entry point kv.d.ts
-//
 // @public
 type ContentPart = TextContentPart | ImageContentPart | FileContentPart;
 
@@ -277,29 +234,12 @@ interface DelegatedUsage {
     totalTokens: number;
 }
 
-// Warning: (ae-forgotten-export) The symbol "StepNode" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "SequenceNode" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "ParallelNode" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "OneOfNode" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "ForEachNode" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "EvaluatorNode" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "BestOfAllNode" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolNode" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "UIComponentNode" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "ConditionNode" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "LoopNode" needs to be exported by the entry point kv.d.ts
-//
 // @public
 type EditorShapeStep = StepNode | SequenceNode | ParallelNode | OneOfNode | ForEachNode | EvaluatorNode | BestOfAllNode | ToolNode | UIComponentNode | ConditionNode | LoopNode;
 
-// Warning: (ae-forgotten-export) The symbol "EditorShapeStep" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "RuntimeStep" needs to be exported by the entry point kv.d.ts
-//
 // @public
 type EditorStep = EditorShapeStep | RuntimeStep;
 
-// Warning: (ae-forgotten-export) The symbol "NodeRunOptions" needs to be exported by the entry point kv.d.ts
-//
 // @public
 interface EndNode extends NodeRunOptions {
     // (undocumented)
@@ -324,12 +264,9 @@ interface EvaluatorNode {
 
 // @public
 interface ExecutionSnapshot {
-    // Warning: (ae-forgotten-export) The symbol "AgentConfig" needs to be exported by the entry point kv.d.ts
-    //
     // (undocumented)
     agent: AgentConfig;
     agentFingerprint?: AgentFingerprint;
-    // Warning: (ae-forgotten-export) The symbol "ApprovalGroupMember" needs to be exported by the entry point kv.d.ts
     approvalGroup?: ApprovalGroupMember[];
     contextSessionId?: string;
     // (undocumented)
@@ -338,12 +275,10 @@ interface ExecutionSnapshot {
     metadata?: Record<string, unknown>;
     pendingToolCall: PendingApproval;
     principal?: Principal;
-    // Warning: (ae-forgotten-export) The symbol "ToolCall" needs to be exported by the entry point kv.d.ts
     remainingToolCalls?: ToolCall[];
     sessionId?: string;
     // (undocumented)
     steps: number;
-    // Warning: (ae-forgotten-export) The symbol "SubagentSuspension" needs to be exported by the entry point kv.d.ts
     subagent?: SubagentSuspension;
     usage?: RunUsage;
 }
@@ -380,8 +315,6 @@ interface FlowAgentDefinition {
     name: string;
     // (undocumented)
     system: string;
-    // Warning: (ae-forgotten-export) The symbol "FlowToolSetting" needs to be exported by the entry point kv.d.ts
-    //
     // (undocumented)
     tools: FlowToolSetting[];
 }
@@ -393,10 +326,8 @@ interface FlowCheckpointState {
     completedNodeIds: string[];
     nodeResults: Record<string, unknown>;
     output?: unknown;
-    // Warning: (ae-forgotten-export) The symbol "FlowPendingApproval" needs to be exported by the entry point kv.d.ts
     pendingApproval?: FlowPendingApproval;
     steps: number;
-    // Warning: (ae-forgotten-export) The symbol "ProviderUsage" needs to be exported by the entry point kv.d.ts
     usage: ProviderUsage;
     variables: Record<string, unknown>;
 }
@@ -412,8 +343,6 @@ interface FlowInputVariable {
     name: string;
     // (undocumented)
     required: boolean;
-    // Warning: (ae-forgotten-export) The symbol "FlowInputType" needs to be exported by the entry point kv.d.ts
-    //
     // (undocumented)
     type: FlowInputType;
 }
@@ -527,13 +456,9 @@ export interface KVListResult {
     list_complete: boolean;
 }
 
-// Warning: (ae-forgotten-export) The symbol "MemoryProvider" needs to be exported by the entry point kv.d.ts
-//
 // @public
 export function kvMemory(input?: KVMemoryOptions): MemoryProvider;
 
-// Warning: (ae-forgotten-export) The symbol "MemoryProviderOptions" needs to be exported by the entry point kv.d.ts
-//
 // @public
 export interface KVMemoryOptions extends MemoryProviderOptions {
     binding?: string;
@@ -545,8 +470,6 @@ export interface KVPutOptions {
     expirationTtl?: number;
 }
 
-// Warning: (ae-forgotten-export) The symbol "AgentStore" needs to be exported by the entry point kv.d.ts
-//
 // @public
 export class KVStore implements Required<AgentStore> {
     constructor(kv: KVBinding, input?: KVStoreOptions);
@@ -563,7 +486,6 @@ export class KVStore implements Required<AgentStore> {
 export interface KVStoreOptions {
     historyLimit?: number;
     prefix?: string;
-    // Warning: (ae-forgotten-export) The symbol "TokenKeyInput" needs to be exported by the entry point kv.d.ts
     tokenKey?: TokenKeyInput;
     ttl?: {
         sessions?: number;
@@ -617,8 +539,6 @@ interface MemoryProvider {
         text: string;
         metadata?: Record<string, unknown>;
     }): Promise<MemoryItem>;
-    // Warning: (ae-forgotten-export) The symbol "MemoryItem" needs to be exported by the entry point kv.d.ts
-    //
     // (undocumented)
     list(scopeKey: string, options?: {
         limit?: number;
@@ -641,16 +561,12 @@ interface MemoryProviderOptions {
 
 // @public
 interface Message {
-    // Warning: (ae-forgotten-export) The symbol "ContentPart" needs to be exported by the entry point kv.d.ts
     content: string | ContentPart[];
     isError?: boolean;
     metadata?: Record<string, unknown>;
     // (undocumented)
     name?: string;
-    // Warning: (ae-forgotten-export) The symbol "ReasoningBlock" needs to be exported by the entry point kv.d.ts
     reasoning?: ReasoningBlock[];
-    // Warning: (ae-forgotten-export) The symbol "MessageRole" needs to be exported by the entry point kv.d.ts
-    //
     // (undocumented)
     role: MessageRole;
     toolCallId?: string;
@@ -677,9 +593,8 @@ interface NodeRetry {
     maxAttempts: number;
 }
 
-// @public (undocumented)
+// @public
 interface NodeRunOptions {
-    // Warning: (ae-forgotten-export) The symbol "NodeRetry" needs to be exported by the entry point kv.d.ts
     retry?: NodeRetry;
     timeoutMs?: number;
 }
@@ -701,8 +616,6 @@ interface OAuthTokenInfo {
     // (undocumented)
     expiresAt?: number;
     hasRefreshToken: boolean;
-    // Warning: (ae-forgotten-export) The symbol "TokenOwner" needs to be exported by the entry point kv.d.ts
-    //
     // (undocumented)
     owner: TokenOwner;
     // (undocumented)
@@ -726,15 +639,10 @@ interface OAuthTokenListOptions {
 interface OAuthTokenStore {
     // (undocumented)
     delete(provider: string, owner: TokenOwner): Promise<void>;
-    // Warning: (ae-forgotten-export) The symbol "OAuthToken" needs to be exported by the entry point kv.d.ts
-    //
     // (undocumented)
     get(provider: string, owner: TokenOwner): Promise<OAuthToken | undefined>;
     getClient(provider: string): Promise<Record<string, unknown> | undefined>;
-    // Warning: (ae-forgotten-export) The symbol "OAuthTokenListOptions" needs to be exported by the entry point kv.d.ts
-    // Warning: (ae-forgotten-export) The symbol "OAuthTokenInfo" needs to be exported by the entry point kv.d.ts
     list(options?: OAuthTokenListOptions): Promise<OAuthTokenInfo[]>;
-    // Warning: (ae-forgotten-export) The symbol "PendingSignIn" needs to be exported by the entry point kv.d.ts
     putPending(state: string, value: PendingSignIn, ttlMs: number): Promise<void>;
     // (undocumented)
     set(provider: string, owner: TokenOwner, token: OAuthToken): Promise<void>;
@@ -766,15 +674,13 @@ interface OneOfOption {
 interface OneOfOptionsNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
-    // Warning: (ae-forgotten-export) The symbol "OneOfOption" needs to be exported by the entry point kv.d.ts
-    //
     // (undocumented)
     options: OneOfOption[];
     // (undocumented)
     type: 'oneOf';
 }
 
-// @public (undocumented)
+// @public
 interface ParallelNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
@@ -803,10 +709,8 @@ interface PendingApproval {
     id: string;
     kind?: ApprovalKind;
     principal?: Principal;
-    // Warning: (ae-forgotten-export) The symbol "ApprovalQuestion" needs to be exported by the entry point kv.d.ts
     question?: ApprovalQuestion;
     sessionId?: string;
-    // Warning: (ae-forgotten-export) The symbol "ApprovalSignIn" needs to be exported by the entry point kv.d.ts
     signIn?: ApprovalSignIn;
     subagentPath?: string[];
     // (undocumented)
@@ -884,29 +788,17 @@ interface ReturnNode extends NodeRunOptions {
     value?: unknown;
 }
 
-// Warning: (ae-forgotten-export) The symbol "OneOfOptionsNode" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "ForEachItemsNode" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "ExpressionEvaluatorNode" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "LLMCallNode" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolCallNode" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "SetVariableNode" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "ReturnNode" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "EndNode" needs to be exported by the entry point kv.d.ts
-// Warning: (ae-forgotten-export) The symbol "ThrowNode" needs to be exported by the entry point kv.d.ts
-//
 // @public
 type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
 
 // @public
 interface RunUsage {
-    // Warning: (ae-forgotten-export) The symbol "ModelUsage" needs to be exported by the entry point kv.d.ts
     byModel: Record<string, ModelUsage>;
     cachedInputTokens?: number;
     cacheWriteTokens?: number;
     // @deprecated (undocumented)
     completionTokens: number;
     costUsd: number | undefined;
-    // Warning: (ae-forgotten-export) The symbol "DelegatedUsage" needs to be exported by the entry point kv.d.ts
     delegated?: DelegatedUsage;
     estimated: boolean;
     hostedToolCalls?: Partial<Record<string, number>>;
@@ -922,7 +814,7 @@ interface RunUsage {
     totalTokens: number;
 }
 
-// @public (undocumented)
+// @public
 interface SequenceNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
@@ -966,8 +858,6 @@ interface StepUsage {
     estimated: boolean;
     model: string;
     step: number;
-    // Warning: (ae-forgotten-export) The symbol "Usage" needs to be exported by the entry point kv.d.ts
-    //
     // (undocumented)
     usage: Usage;
 }
@@ -977,7 +867,6 @@ interface SubagentSuspension {
     agentName: string;
     // (undocumented)
     args: Record<string, unknown>;
-    // Warning: (ae-forgotten-export) The symbol "SuspendedBackgroundTasks" needs to be exported by the entry point kv.d.ts
     background?: SuspendedBackgroundTasks;
     snapshot: ExecutionSnapshot;
     toolCallId: string;
@@ -988,7 +877,6 @@ interface SubagentSuspension {
 // @public
 interface SuspendedBackgroundTasks {
     task: Record<string, unknown>;
-    // Warning: (ae-forgotten-export) The symbol "PausedBackgroundTask" needs to be exported by the entry point kv.d.ts
     waiting: PausedBackgroundTask[];
 }
 

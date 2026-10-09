@@ -127,7 +127,14 @@ export interface DefineMemoryOptions {
    * deletes an item, and shows each item's id in the recalled `<memory>`
    * block, so the model can drop a fact that is wrong or out of date.
    */
-  expose?: { remember?: boolean; recall?: boolean; forget?: boolean };
+  expose?: {
+    /** Add `remember_<name>` (default `true`). */
+    remember?: boolean;
+    /** Add `recall_<name>` (default `true`). */
+    recall?: boolean;
+    /** Add `forget_<name>` and show item ids in the recalled block (default `false`). */
+    forget?: boolean;
+  };
   /**
    * Schema of `remember_<name>`'s input (zod 3 or 4, or a Standard Schema).
    * Default: `{ text: string }` — the item's text is that string. When set,
@@ -153,7 +160,14 @@ export interface MemorySlot {
   readonly scope: MemoryScope;
   readonly provider: MemoryProvider;
   readonly recall: { onSessionStart: boolean; maxItems: number; query: 'last-input' | 'none' };
-  readonly expose: { remember: boolean; recall: boolean; forget: boolean };
+  readonly expose: {
+    /** The model gets `remember_<name>`. */
+    remember: boolean;
+    /** The model gets `recall_<name>`. */
+    recall: boolean;
+    /** The model gets `forget_<name>`. */
+    forget: boolean;
+  };
   readonly itemSchema?: StandardSchemaV1;
   /** The fields that identify an item of an `itemSchema` slot (see {@link DefineMemoryOptions.itemKey}). */
   readonly itemKey?: readonly string[];

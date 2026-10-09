@@ -168,6 +168,14 @@ export interface StepNode {
   input: string;
 }
 
+/** Eve DUR-F17: a node's `retry` setting (see {@link NodeRunOptions.retry}). */
+export interface NodeRetry {
+  /** Attempts in all, including the first (an integer >= 1). */
+  maxAttempts: number;
+  /** The wait before the first retry, doubled for each one after (default 0). */
+  backoffMs?: number;
+}
+
 /**
  * Eve DUR-F17: how `FlowExecutor` runs a node - retries and a time limit. Any
  * executor-side node (and `sequence` / `parallel`) takes them.
@@ -177,14 +185,6 @@ export interface StepNode {
  * const step: EditorStep = { type: 'toolCall', tool: 'fetch_invoice', retry: { maxAttempts: 3, backoffMs: 500 }, timeoutMs: 10_000 };
  * ```
  */
-/** Eve DUR-F17: a node's `retry` setting (see {@link NodeRunOptions.retry}). */
-export interface NodeRetry {
-  /** Attempts in all, including the first (an integer >= 1). */
-  maxAttempts: number;
-  /** The wait before the first retry, doubled for each one after (default 0). */
-  backoffMs?: number;
-}
-
 export interface NodeRunOptions {
   /**
    * Run the node again when it fails, up to `maxAttempts` times in all (an
@@ -200,11 +200,13 @@ export interface NodeRunOptions {
   timeoutMs?: number;
 }
 
+/** Runs `steps` one after another. */
 export interface SequenceNode extends NodeRunOptions {
   type: 'sequence';
   steps: EditorStep[];
 }
 
+/** Runs `steps` at the same time. */
 export interface ParallelNode extends NodeRunOptions {
   type: 'parallel';
   steps: EditorStep[];

@@ -105,9 +105,20 @@ it. Pass `{ subagent: 'researcher' }` to look at one sub-agent (and the
 sub-agents under it) only:
 
 ```ts
-await t.send('Research electric bikes');
-t.calledTool('web_search', { subagent: 'researcher' });
-t.notCalledTool('delete_repo');
+import { createAgent, defineEval } from '@lousho/build-ai-agent';
+
+const researcher = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You research.', description: 'Finds sources' });
+const agent = createAgent({ model: 'openai/gpt-4o-mini', subagents: { researcher } });
+
+defineEval({
+  name: 'research delegates the search',
+  agent,
+  async test(t) {
+    await t.send('Research electric bikes');
+    t.calledTool('web_search', { subagent: 'researcher' });
+    t.notCalledTool('delete_repo');
+  },
+});
 ```
 
 The calls come from the run's `tool.start` events, which `t.send()` collects
@@ -124,6 +135,10 @@ case `n` times; the case passes when all `n` runs pass, or when at least
 `passAt: k` of them do:
 
 ```ts
+import { createAgent, defineEval } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You handle refunds.' });
+
 defineEval({
   name: 'refund flow',
   agent,

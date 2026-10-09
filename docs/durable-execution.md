@@ -149,7 +149,7 @@ finishes it. `agent.pending()` lists those runs across every session and
 ```ts
 import { createAgent, fileStore } from '@lousho/build-ai-agent';
 
-const agent = createAgent({ provider, tools, store: fileStore('./.lousho') });
+const agent = createAgent({ provider, store: fileStore('./.lousho') });
 
 // At startup, before taking traffic:
 for (const run of await agent.pending()) {

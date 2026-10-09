@@ -12,8 +12,6 @@ export interface AgentConfig {
     events?: unknown[];
     // (undocumented)
     expectedResult?: unknown;
-    // Warning: (ae-forgotten-export) The symbol "AgentFlow" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     flows?: AgentFlow[];
     // (undocumented)
@@ -34,19 +32,14 @@ export interface AgentConfig {
 
 // @public
 interface AgentFlow {
-    // Warning: (ae-forgotten-export) The symbol "FlowAgentDefinition" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     agents?: FlowAgentDefinition[];
     code: string;
     // (undocumented)
     description?: string;
-    // Warning: (ae-forgotten-export) The symbol "EditorStep" needs to be exported by the entry point index.d.ts
     flow?: EditorStep;
     // (undocumented)
     id?: string;
-    // Warning: (ae-forgotten-export) The symbol "FlowInputVariable" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     inputs?: FlowInputVariable[];
     // (undocumented)
@@ -63,9 +56,7 @@ export interface AgentSettings {
 
 // @public
 export interface ApprovalCheckContext {
-    // Warning: (ae-forgotten-export) The symbol "Message" needs to be exported by the entry point index.d.ts
     messages: readonly Message[];
-    // Warning: (ae-forgotten-export) The symbol "Principal" needs to be exported by the entry point index.d.ts
     principal?: Readonly<Principal>;
     // (undocumented)
     sessionId?: string;
@@ -107,10 +98,6 @@ interface ConditionNode {
     type: 'condition';
 }
 
-// Warning: (ae-forgotten-export) The symbol "TextContentPart" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ImageContentPart" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "FileContentPart" needs to be exported by the entry point index.d.ts
-//
 // @public
 type ContentPart = TextContentPart | ImageContentPart | FileContentPart;
 
@@ -133,29 +120,12 @@ interface DelegatedUsage {
     totalTokens: number;
 }
 
-// Warning: (ae-forgotten-export) The symbol "StepNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "SequenceNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ParallelNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "OneOfNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ForEachNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "EvaluatorNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "BestOfAllNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "UIComponentNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ConditionNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "LoopNode" needs to be exported by the entry point index.d.ts
-//
 // @public
 type EditorShapeStep = StepNode | SequenceNode | ParallelNode | OneOfNode | ForEachNode | EvaluatorNode | BestOfAllNode | ToolNode | UIComponentNode | ConditionNode | LoopNode;
 
-// Warning: (ae-forgotten-export) The symbol "EditorShapeStep" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "RuntimeStep" needs to be exported by the entry point index.d.ts
-//
 // @public
 type EditorStep = EditorShapeStep | RuntimeStep;
 
-// Warning: (ae-forgotten-export) The symbol "NodeRunOptions" needs to be exported by the entry point index.d.ts
-//
 // @public
 interface EndNode extends NodeRunOptions {
     // (undocumented)
@@ -210,8 +180,6 @@ interface FlowAgentDefinition {
     name: string;
     // (undocumented)
     system: string;
-    // Warning: (ae-forgotten-export) The symbol "FlowToolSetting" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     tools: FlowToolSetting[];
 }
@@ -227,8 +195,6 @@ interface FlowInputVariable {
     name: string;
     // (undocumented)
     required: boolean;
-    // Warning: (ae-forgotten-export) The symbol "FlowInputType" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     type: FlowInputType;
 }
@@ -331,20 +297,15 @@ export interface McpToolAnnotations {
 
 // @public
 interface Message {
-    // Warning: (ae-forgotten-export) The symbol "ContentPart" needs to be exported by the entry point index.d.ts
     content: string | ContentPart[];
     isError?: boolean;
     metadata?: Record<string, unknown>;
     // (undocumented)
     name?: string;
-    // Warning: (ae-forgotten-export) The symbol "ReasoningBlock" needs to be exported by the entry point index.d.ts
     reasoning?: ReasoningBlock[];
-    // Warning: (ae-forgotten-export) The symbol "MessageRole" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     role: MessageRole;
     toolCallId?: string;
-    // Warning: (ae-forgotten-export) The symbol "ToolCall" needs to be exported by the entry point index.d.ts
     toolCalls?: ToolCall[];
     toolName?: string;
 }
@@ -373,9 +334,8 @@ interface NodeRetry {
     maxAttempts: number;
 }
 
-// @public (undocumented)
+// @public
 interface NodeRunOptions {
-    // Warning: (ae-forgotten-export) The symbol "NodeRetry" needs to be exported by the entry point index.d.ts
     retry?: NodeRetry;
     timeoutMs?: number;
 }
@@ -383,16 +343,10 @@ interface NodeRunOptions {
 // @public
 type OAuthClientAuth = 'client_secret_post' | 'client_secret_basic';
 
-// Warning: (ae-forgotten-export) The symbol "OAuthProviderOptions" needs to be exported by the entry point index.d.ts
-//
 // @public
 interface OAuthProvider extends Readonly<Omit<OAuthProviderOptions, 'displayName' | 'credentialOwner' | 'clientAuth' | 'scopes'>> {
-    // Warning: (ae-forgotten-export) The symbol "OAuthClientAuth" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     readonly clientAuth: OAuthClientAuth;
-    // Warning: (ae-forgotten-export) The symbol "CredentialOwner" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     readonly credentialOwner: CredentialOwner;
     // (undocumented)
@@ -455,15 +409,13 @@ interface OneOfOption {
 interface OneOfOptionsNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
-    // Warning: (ae-forgotten-export) The symbol "OneOfOption" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     options: OneOfOption[];
     // (undocumented)
     type: 'oneOf';
 }
 
-// @public (undocumented)
+// @public
 interface ParallelNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
@@ -501,29 +453,17 @@ interface ReturnNode extends NodeRunOptions {
     value?: unknown;
 }
 
-// Warning: (ae-forgotten-export) The symbol "OneOfOptionsNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ForEachItemsNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ExpressionEvaluatorNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "LLMCallNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolCallNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "SetVariableNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ReturnNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "EndNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ThrowNode" needs to be exported by the entry point index.d.ts
-//
 // @public
 type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
 
 // @public
 interface RunUsage {
-    // Warning: (ae-forgotten-export) The symbol "ModelUsage" needs to be exported by the entry point index.d.ts
     byModel: Record<string, ModelUsage>;
     cachedInputTokens?: number;
     cacheWriteTokens?: number;
     // @deprecated (undocumented)
     completionTokens: number;
     costUsd: number | undefined;
-    // Warning: (ae-forgotten-export) The symbol "DelegatedUsage" needs to be exported by the entry point index.d.ts
     delegated?: DelegatedUsage;
     estimated: boolean;
     hostedToolCalls?: Partial<Record<string, number>>;
@@ -542,8 +482,6 @@ interface RunUsage {
 // @public
 interface SandboxAdapter {
     readonly name: string;
-    // Warning: (ae-forgotten-export) The symbol "SandboxRunOptions" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "SandboxResult" needs to be exported by the entry point index.d.ts
     run(cmd: string, args: string[], opts?: SandboxRunOptions): Promise<SandboxResult>;
     writeFile(path: string, content: string): Promise<void>;
 }
@@ -577,7 +515,7 @@ interface SchemaIssue {
     }>;
 }
 
-// @public (undocumented)
+// @public
 interface SequenceNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
@@ -687,15 +625,11 @@ export interface ToolDescriptor {
     // (undocumented)
     displayName: string;
     execute?(args: unknown, ctx: ToolExecutionContext): unknown;
-    // Warning: (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
     inputSchema?: StandardSchemaV1;
     metadata?: ToolMetadata;
-    // Warning: (ae-forgotten-export) The symbol "ApprovalPredicate" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     needsApproval?: boolean | ApprovalPredicate;
     requiresSandbox?: boolean;
-    // Warning: (ae-forgotten-export) The symbol "SandboxAdapter" needs to be exported by the entry point index.d.ts
     sandboxExecute?: (args: unknown, sandbox: SandboxAdapter, ctx?: ToolExecutionContext) => Promise<unknown>;
     tool: Tool;
     transient?: boolean;
@@ -709,11 +643,8 @@ export interface ToolExecutionContext {
         note?: string;
         by?: Readonly<Principal>;
     };
-    // Warning: (ae-forgotten-export) The symbol "OAuthProvider" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "OAuthToken" needs to be exported by the entry point index.d.ts
     getToken(provider: OAuthProvider): Promise<OAuthToken>;
     messages: readonly Message[];
-    // Warning: (ae-forgotten-export) The symbol "RunUsage" needs to be exported by the entry point index.d.ts
     onDelegatedUsage?: (usage: RunUsage) => void;
     principal?: Readonly<Principal>;
     requireAuth(provider: OAuthProvider): never;
@@ -774,11 +705,6 @@ interface UIComponentNode {
     // (undocumented)
     type: 'uiComponent';
 }
-
-// Warnings were encountered during analysis:
-//
-// dist/index-DF_m0zkK.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-DF_m0zkK.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

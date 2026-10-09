@@ -10,8 +10,6 @@ interface AgentConfig {
     events?: unknown[];
     // (undocumented)
     expectedResult?: unknown;
-    // Warning: (ae-forgotten-export) The symbol "AgentFlow" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     flows?: AgentFlow[];
     // (undocumented)
@@ -24,12 +22,8 @@ interface AgentConfig {
     name: string;
     // (undocumented)
     prompt?: string;
-    // Warning: (ae-forgotten-export) The symbol "AgentSettings" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     settings?: AgentSettings;
-    // Warning: (ae-forgotten-export) The symbol "ToolConfiguration" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     tools?: Record<string, ToolConfiguration>;
 }
@@ -46,19 +40,14 @@ interface AgentFingerprint {
 
 // @public
 interface AgentFlow {
-    // Warning: (ae-forgotten-export) The symbol "FlowAgentDefinition" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     agents?: FlowAgentDefinition[];
     code: string;
     // (undocumented)
     description?: string;
-    // Warning: (ae-forgotten-export) The symbol "EditorStep" needs to be exported by the entry point index.d.ts
     flow?: EditorStep;
     // (undocumented)
     id?: string;
-    // Warning: (ae-forgotten-export) The symbol "FlowInputVariable" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     inputs?: FlowInputVariable[];
     // (undocumented)
@@ -75,9 +64,7 @@ interface AgentSettings {
 
 // @public
 interface ApprovalGroupMember {
-    // Warning: (ae-forgotten-export) The symbol "GroupDecision" needs to be exported by the entry point index.d.ts
     decision?: GroupDecision;
-    // Warning: (ae-forgotten-export) The symbol "PendingApproval" needs to be exported by the entry point index.d.ts
     pending: PendingApproval;
 }
 
@@ -104,12 +91,8 @@ interface ApprovalSignIn {
 interface ApprovalStore {
     list?(): Promise<PendingApproval[]>;
     load?(id: string): Promise<ResolvedApproval | null>;
-    // Warning: (ae-forgotten-export) The symbol "ResolvedApproval" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     resolve(id: string): Promise<ResolvedApproval | null>;
-    // Warning: (ae-forgotten-export) The symbol "ExecutionSnapshot" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     save(pending: PendingApproval, snapshot: ExecutionSnapshot): Promise<void>;
 }
@@ -126,41 +109,31 @@ interface BestOfAllNode {
 
 // @public
 interface Checkpoint {
-    // Warning: (ae-forgotten-export) The symbol "AgentFingerprint" needs to be exported by the entry point index.d.ts
     agentFingerprint?: AgentFingerprint;
     // (undocumented)
     agentId: string;
     approvalId?: string;
     approvalIds?: string[];
-    // Warning: (ae-forgotten-export) The symbol "ApprovalKind" needs to be exported by the entry point index.d.ts
     approvalKind?: ApprovalKind;
     attempts?: number;
     businessState?: unknown;
     // (undocumented)
     finishReason?: string;
-    // Warning: (ae-forgotten-export) The symbol "FlowCheckpointState" needs to be exported by the entry point index.d.ts
     flow?: FlowCheckpointState;
-    // Warning: (ae-forgotten-export) The symbol "CheckpointError" needs to be exported by the entry point index.d.ts
     lastError?: CheckpointError;
-    // Warning: (ae-forgotten-export) The symbol "Message" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     messages: Message[];
     metadata?: Record<string, unknown>;
-    // Warning: (ae-forgotten-export) The symbol "Principal" needs to be exported by the entry point index.d.ts
     principal?: Principal;
     runConfig?: unknown;
     // (undocumented)
     sessionId: string;
-    // Warning: (ae-forgotten-export) The symbol "CheckpointStatus" needs to be exported by the entry point index.d.ts
     status?: CheckpointStatus;
     // (undocumented)
     stepIndex: number;
-    // Warning: (ae-forgotten-export) The symbol "StepUsage" needs to be exported by the entry point index.d.ts
     stepUsage?: StepUsage[];
     // (undocumented)
     toolCalls: unknown[];
-    // Warning: (ae-forgotten-export) The symbol "CheckpointUsage" needs to be exported by the entry point index.d.ts
     usage: CheckpointUsage;
 }
 
@@ -181,7 +154,6 @@ interface CheckpointError {
 
 // @public
 interface CheckpointHistoryEntry {
-    // Warning: (ae-forgotten-export) The symbol "Checkpoint" needs to be exported by the entry point index.d.ts
     checkpoint: Checkpoint;
     savedAt: string;
     status: CheckpointStatus;
@@ -210,20 +182,13 @@ type CheckpointStatus = 'in-progress' | 'awaiting-approval' | 'finished';
 
 // @public
 interface CheckpointStore {
-    // Warning: (ae-forgotten-export) The symbol "CheckpointDeleteOptions" needs to be exported by the entry point index.d.ts
     delete(sessionId: string, options?: CheckpointDeleteOptions): Promise<void>;
-    // Warning: (ae-forgotten-export) The symbol "CheckpointHistoryOptions" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "CheckpointHistoryEntry" needs to be exported by the entry point index.d.ts
     history?(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]>;
-    // Warning: (ae-forgotten-export) The symbol "CheckpointListOptions" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "CheckpointListEntry" needs to be exported by the entry point index.d.ts
     list?(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
     load(sessionId: string): Promise<Checkpoint | null>;
     save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
 }
 
-// Warning: (ae-forgotten-export) The symbol "RunUsage" needs to be exported by the entry point index.d.ts
-//
 // @public
 type CheckpointUsage = Pick<RunUsage, 'promptTokens' | 'completionTokens' | 'totalTokens'> & Partial<RunUsage>;
 
@@ -243,7 +208,6 @@ interface ConditionNode {
 class Connection {
     // (undocumented)
     close(): void;
-    // Warning: (ae-forgotten-export) The symbol "SqlDatabase" needs to be exported by the entry point index.d.ts
     get db(): SqlDatabase;
     static open(path: string): Connection;
     // (undocumented)
@@ -252,10 +216,6 @@ class Connection {
     transactionAsync<T>(work: () => T): Promise<T>;
 }
 
-// Warning: (ae-forgotten-export) The symbol "TextContentPart" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ImageContentPart" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "FileContentPart" needs to be exported by the entry point index.d.ts
-//
 // @public
 type ContentPart = TextContentPart | ImageContentPart | FileContentPart;
 
@@ -275,24 +235,9 @@ interface DelegatedUsage {
     totalTokens: number;
 }
 
-// Warning: (ae-forgotten-export) The symbol "StepNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "SequenceNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ParallelNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "OneOfNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ForEachNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "EvaluatorNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "BestOfAllNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "UIComponentNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ConditionNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "LoopNode" needs to be exported by the entry point index.d.ts
-//
 // @public
 type EditorShapeStep = StepNode | SequenceNode | ParallelNode | OneOfNode | ForEachNode | EvaluatorNode | BestOfAllNode | ToolNode | UIComponentNode | ConditionNode | LoopNode;
 
-// Warning: (ae-forgotten-export) The symbol "EditorShapeStep" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "RuntimeStep" needs to be exported by the entry point index.d.ts
-//
 // @public
 type EditorStep = EditorShapeStep | RuntimeStep;
 
@@ -304,8 +249,6 @@ interface EmbeddingProvider {
     readonly id: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "NodeRunOptions" needs to be exported by the entry point index.d.ts
-//
 // @public
 interface EndNode extends NodeRunOptions {
     // (undocumented)
@@ -330,12 +273,9 @@ interface EvaluatorNode {
 
 // @public
 interface ExecutionSnapshot {
-    // Warning: (ae-forgotten-export) The symbol "AgentConfig" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     agent: AgentConfig;
     agentFingerprint?: AgentFingerprint;
-    // Warning: (ae-forgotten-export) The symbol "ApprovalGroupMember" needs to be exported by the entry point index.d.ts
     approvalGroup?: ApprovalGroupMember[];
     contextSessionId?: string;
     // (undocumented)
@@ -344,12 +284,10 @@ interface ExecutionSnapshot {
     metadata?: Record<string, unknown>;
     pendingToolCall: PendingApproval;
     principal?: Principal;
-    // Warning: (ae-forgotten-export) The symbol "ToolCall" needs to be exported by the entry point index.d.ts
     remainingToolCalls?: ToolCall[];
     sessionId?: string;
     // (undocumented)
     steps: number;
-    // Warning: (ae-forgotten-export) The symbol "SubagentSuspension" needs to be exported by the entry point index.d.ts
     subagent?: SubagentSuspension;
     usage?: RunUsage;
 }
@@ -386,8 +324,6 @@ interface FlowAgentDefinition {
     name: string;
     // (undocumented)
     system: string;
-    // Warning: (ae-forgotten-export) The symbol "FlowToolSetting" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     tools: FlowToolSetting[];
 }
@@ -399,10 +335,8 @@ interface FlowCheckpointState {
     completedNodeIds: string[];
     nodeResults: Record<string, unknown>;
     output?: unknown;
-    // Warning: (ae-forgotten-export) The symbol "FlowPendingApproval" needs to be exported by the entry point index.d.ts
     pendingApproval?: FlowPendingApproval;
     steps: number;
-    // Warning: (ae-forgotten-export) The symbol "ProviderUsage" needs to be exported by the entry point index.d.ts
     usage: ProviderUsage;
     variables: Record<string, unknown>;
 }
@@ -418,8 +352,6 @@ interface FlowInputVariable {
     name: string;
     // (undocumented)
     required: boolean;
-    // Warning: (ae-forgotten-export) The symbol "FlowInputType" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     type: FlowInputType;
 }
@@ -530,8 +462,6 @@ interface MemoryProvider {
         text: string;
         metadata?: Record<string, unknown>;
     }): Promise<MemoryItem>;
-    // Warning: (ae-forgotten-export) The symbol "MemoryItem" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     list(scopeKey: string, options?: {
         limit?: number;
@@ -554,16 +484,12 @@ interface MemoryProviderOptions {
 
 // @public
 interface Message {
-    // Warning: (ae-forgotten-export) The symbol "ContentPart" needs to be exported by the entry point index.d.ts
     content: string | ContentPart[];
     isError?: boolean;
     metadata?: Record<string, unknown>;
     // (undocumented)
     name?: string;
-    // Warning: (ae-forgotten-export) The symbol "ReasoningBlock" needs to be exported by the entry point index.d.ts
     reasoning?: ReasoningBlock[];
-    // Warning: (ae-forgotten-export) The symbol "MessageRole" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     role: MessageRole;
     toolCallId?: string;
@@ -590,9 +516,8 @@ interface NodeRetry {
     maxAttempts: number;
 }
 
-// @public (undocumented)
+// @public
 interface NodeRunOptions {
-    // Warning: (ae-forgotten-export) The symbol "NodeRetry" needs to be exported by the entry point index.d.ts
     retry?: NodeRetry;
     timeoutMs?: number;
 }
@@ -614,8 +539,6 @@ interface OAuthTokenInfo {
     // (undocumented)
     expiresAt?: number;
     hasRefreshToken: boolean;
-    // Warning: (ae-forgotten-export) The symbol "TokenOwner" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     owner: TokenOwner;
     // (undocumented)
@@ -639,15 +562,10 @@ interface OAuthTokenListOptions {
 interface OAuthTokenStore {
     // (undocumented)
     delete(provider: string, owner: TokenOwner): Promise<void>;
-    // Warning: (ae-forgotten-export) The symbol "OAuthToken" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     get(provider: string, owner: TokenOwner): Promise<OAuthToken | undefined>;
     getClient(provider: string): Promise<Record<string, unknown> | undefined>;
-    // Warning: (ae-forgotten-export) The symbol "OAuthTokenListOptions" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "OAuthTokenInfo" needs to be exported by the entry point index.d.ts
     list(options?: OAuthTokenListOptions): Promise<OAuthTokenInfo[]>;
-    // Warning: (ae-forgotten-export) The symbol "PendingSignIn" needs to be exported by the entry point index.d.ts
     putPending(state: string, value: PendingSignIn, ttlMs: number): Promise<void>;
     // (undocumented)
     set(provider: string, owner: TokenOwner, token: OAuthToken): Promise<void>;
@@ -679,15 +597,13 @@ interface OneOfOption {
 interface OneOfOptionsNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
-    // Warning: (ae-forgotten-export) The symbol "OneOfOption" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     options: OneOfOption[];
     // (undocumented)
     type: 'oneOf';
 }
 
-// @public (undocumented)
+// @public
 interface ParallelNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
@@ -716,10 +632,8 @@ interface PendingApproval {
     id: string;
     kind?: ApprovalKind;
     principal?: Principal;
-    // Warning: (ae-forgotten-export) The symbol "ApprovalQuestion" needs to be exported by the entry point index.d.ts
     question?: ApprovalQuestion;
     sessionId?: string;
-    // Warning: (ae-forgotten-export) The symbol "ApprovalSignIn" needs to be exported by the entry point index.d.ts
     signIn?: ApprovalSignIn;
     subagentPath?: string[];
     // (undocumented)
@@ -813,29 +727,17 @@ interface ReturnNode extends NodeRunOptions {
     value?: unknown;
 }
 
-// Warning: (ae-forgotten-export) The symbol "OneOfOptionsNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ForEachItemsNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ExpressionEvaluatorNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "LLMCallNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolCallNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "SetVariableNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ReturnNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "EndNode" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ThrowNode" needs to be exported by the entry point index.d.ts
-//
 // @public
 type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
 
 // @public
 interface RunUsage {
-    // Warning: (ae-forgotten-export) The symbol "ModelUsage" needs to be exported by the entry point index.d.ts
     byModel: Record<string, ModelUsage>;
     cachedInputTokens?: number;
     cacheWriteTokens?: number;
     // @deprecated (undocumented)
     completionTokens: number;
     costUsd: number | undefined;
-    // Warning: (ae-forgotten-export) The symbol "DelegatedUsage" needs to be exported by the entry point index.d.ts
     delegated?: DelegatedUsage;
     estimated: boolean;
     hostedToolCalls?: Partial<Record<string, number>>;
@@ -851,7 +753,7 @@ interface RunUsage {
     totalTokens: number;
 }
 
-// @public (undocumented)
+// @public
 interface SequenceNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
@@ -885,48 +787,33 @@ interface SqlDatabase {
     close(): void;
     // (undocumented)
     exec(sql: string): void;
-    // Warning: (ae-forgotten-export) The symbol "SqlStatement" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     prepare(sql: string): SqlStatement;
 }
 
-// Warning: (ae-forgotten-export) The symbol "MemoryProviderOptions" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "MemoryProvider" needs to be exported by the entry point index.d.ts
-//
 // @public
 export function sqliteMemory(store: SqliteStore, options?: MemoryProviderOptions): MemoryProvider;
 
 // @public
 export class SqliteStore {
     constructor(path: string, options?: SqliteStoreOptions);
-    // Warning: (ae-forgotten-export) The symbol "ApprovalStore" needs to be exported by the entry point index.d.ts
     readonly approvals: ApprovalStore;
-    // Warning: (ae-forgotten-export) The symbol "CheckpointStore" needs to be exported by the entry point index.d.ts
     readonly checkpoints: CheckpointStore;
     close(): void;
-    // Warning: (ae-forgotten-export) The symbol "Connection" needs to be exported by the entry point index.d.ts
-    //
     // @internal
     readonly connection: Connection;
     get path(): string;
     prune(input: PruneOptions): PruneResult;
-    // Warning: (ae-forgotten-export) The symbol "SessionStore" needs to be exported by the entry point index.d.ts
     readonly sessions: SessionStore;
-    // Warning: (ae-forgotten-export) The symbol "OAuthTokenStore" needs to be exported by the entry point index.d.ts
     readonly tokens: OAuthTokenStore;
 }
 
 // @public
 export interface SqliteStoreOptions {
     historyLimit?: number;
-    // Warning: (ae-forgotten-export) The symbol "TokenKeyInput" needs to be exported by the entry point index.d.ts
     tokenKey?: TokenKeyInput;
 }
 
-// Warning: (ae-forgotten-export) The symbol "VectorMemoryOptions" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "VectorMemoryProvider" needs to be exported by the entry point index.d.ts
-//
 // @public
 export function sqliteVectorMemory(store: SqliteStore, options: VectorMemoryOptions): VectorMemoryProvider;
 
@@ -937,12 +824,8 @@ type SqlRow = Record<string, unknown>;
 interface SqlStatement {
     // (undocumented)
     all(...params: SqlValue[]): SqlRow[];
-    // Warning: (ae-forgotten-export) The symbol "SqlRow" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     get(...params: SqlValue[]): SqlRow | undefined;
-    // Warning: (ae-forgotten-export) The symbol "SqlValue" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     run(...params: SqlValue[]): {
         changes: number | bigint;
@@ -968,8 +851,6 @@ interface StepUsage {
     estimated: boolean;
     model: string;
     step: number;
-    // Warning: (ae-forgotten-export) The symbol "Usage" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     usage: Usage;
 }
@@ -979,7 +860,6 @@ interface SubagentSuspension {
     agentName: string;
     // (undocumented)
     args: Record<string, unknown>;
-    // Warning: (ae-forgotten-export) The symbol "SuspendedBackgroundTasks" needs to be exported by the entry point index.d.ts
     background?: SuspendedBackgroundTasks;
     snapshot: ExecutionSnapshot;
     toolCallId: string;
@@ -990,7 +870,6 @@ interface SubagentSuspension {
 // @public
 interface SuspendedBackgroundTasks {
     task: Record<string, unknown>;
-    // Warning: (ae-forgotten-export) The symbol "PausedBackgroundTask" needs to be exported by the entry point index.d.ts
     waiting: PausedBackgroundTask[];
 }
 
@@ -1090,8 +969,6 @@ interface Usage {
 
 // @public
 interface VectorMemoryOptions {
-    // Warning: (ae-forgotten-export) The symbol "EmbeddingProvider" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     embedder: EmbeddingProvider;
     maxItems?: number;

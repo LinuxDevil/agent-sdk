@@ -75,7 +75,14 @@ export interface ToolExecutionContext {
    * (a payment, an email) can pass it on as an idempotency key, in case a
    * store without an atomic claim (Workers KV) lets one approval resolve twice.
    */
-  approval?: { id?: string; note?: string; by?: Readonly<Principal> };
+  approval?: {
+    /** The approval's id, the same for every attempt to run this decided call. */
+    id?: string;
+    /** The decision's note (for `ask_question`, the user's answer). */
+    note?: string;
+    /** Who decided, when the decision came with a principal. */
+    by?: Readonly<Principal>;
+  };
   /**
    * N9b: an OAuth token for `provider` (docs/oauth.md): the run principal's
    * own (`credentialOwner: 'user'`) or the app's. A token that expires within

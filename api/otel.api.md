@@ -7,8 +7,6 @@
 import { Meter } from '@opentelemetry/api';
 import { Tracer } from '@opentelemetry/api';
 
-// Warning: (ae-forgotten-export) The symbol "TraceExporter" needs to be exported by the entry point otel.d.ts
-//
 // @public
 export function createOtelTraceExporter(options?: OtelTraceExporterOptions): TraceExporter;
 
@@ -28,7 +26,6 @@ interface Span {
     // (undocumented)
     endTime?: number;
     id: string;
-    // Warning: (ae-forgotten-export) The symbol "SpanKind" needs to be exported by the entry point otel.d.ts
     kind?: SpanKind;
     // (undocumented)
     name: string;
@@ -36,7 +33,6 @@ interface Span {
     parentId?: string;
     // (undocumented)
     startTime: number;
-    // Warning: (ae-forgotten-export) The symbol "SpanStatus" needs to be exported by the entry point otel.d.ts
     status?: SpanStatus;
 }
 
@@ -55,8 +51,6 @@ interface SpanStatus {
 interface TraceExporter {
     // (undocumented)
     onSpanEnd(span: Span): void;
-    // Warning: (ae-forgotten-export) The symbol "Span" needs to be exported by the entry point otel.d.ts
-    //
     // (undocumented)
     onSpanStart(span: Span): void;
 }
