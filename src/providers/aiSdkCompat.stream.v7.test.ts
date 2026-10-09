@@ -352,7 +352,7 @@ describe('agent.stream() on both ai majors (LOU-D27)', () => {
   const failure = new Error('model overloaded');
 
   async function expectFailedRun(provider: LLMProvider): Promise<void> {
-    const run = createAgent({ provider }).stream('hi');
+    const run = createAgent({ provider }).stream('hi', { throwOnError: false });
     const events = await collect(run);
 
     expect(events.filter((e) => e.type !== 'text.delta').map((e) => e.type)).toEqual(['run.start', 'step.start', 'error', 'step.done', 'run.done']);

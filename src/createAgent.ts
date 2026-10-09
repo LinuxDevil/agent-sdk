@@ -17,7 +17,7 @@
 
 import { AgentBuilder } from './core/AgentBuilder';
 import { AgentExecutor, ExecuteOptions, ExecutionResult } from './execution/AgentExecutor';
-import { streamResumed, type AgentRun } from './execution/agentRun';
+import { streamResumed, throwingRun, type AgentRun } from './execution/agentRun';
 import type { AgentEvent } from './execution/agentEvents';
 import type { TraceExporter } from './execution/tracing';
 import { mergeModelSettings } from './execution/modelSettings';
@@ -675,6 +675,14 @@ export interface SendOptions {
    * ```
    */
   parentSpanId?: string;
+  /**
+   * Eve CORE-F10, `stream()` only: when the run fails, the `for await` loop
+   * rethrows the error (the one `run.result` rejects with and `send()` would
+   * throw) after it has yielded the `error` and `run.done { finishReason: 'error' }`
+   * events. `false` ends the loop normally and leaves the error to the events
+   * and `run.result`. Default `true`. See docs/streaming.md.
+   */
+  throwOnError?: boolean;
 }
 
 /** How a run is checkpointed, plus (LOU-V13, C6, N4, TTL) a `send()` / `stream()` call's own `reasoning`, `modelSettings`, `permissionMode`, `approvalTtlMs`, `parentSpanId`. */
@@ -1043,8 +1051,11 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       const { sessionId, metadata, principal } = options;
       const turn = callTurn(options);
       const ctx = { sessionId, input: message, metadata, principal };
-      if (sessionId === undefined) return stream(toMessages(message), ctx, options.signal, turn) as AgentRun<Typed>;
-      return streamPrepared(() => prepare(toMessages(message), ctx, options.signal, turn), options.signal, turn.inputQueue, (task) => serially(turn, task)) as AgentRun<Typed>;
+      const run =
+        sessionId === undefined
+          ? stream(toMessages(message), ctx, options.signal, turn)
+          : streamPrepared(() => prepare(toMessages(message), ctx, options.signal, turn), options.signal, turn.inputQueue, (task) => serially(turn, task));
+      return (options.throwOnError === false ? run : throwingRun(run)) as AgentRun<Typed>;
     },
     session,
     async resume(sessionId: string, { signal } = {}): Promise<ExecutionResult<Typed> | null> {

@@ -5480,6 +5480,7 @@ export interface SendOptions {
     reasoning?: ReasoningOption;
     sessionId?: string;
     signal?: AbortSignal;
+    throwOnError?: boolean;
 }
 
 // @public (undocumented)
