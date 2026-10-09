@@ -266,7 +266,7 @@ export async function takeHandoffCalls(options: ExecuteOptions, state: AgentRunS
       gate.approval = { toolCall, outcome };
       continue;
     }
-    insertToolResult(state.messages, toolOutcomeMessage(toolCall, outcome));
+    insertToolResult(state.messages, toolOutcomeMessage(toolCall, outcome, options.maxToolResultChars));
     sink?.toolSettled({ toolCallId: toolCall.id, toolName, result: outcome.result, error: outcome.error });
   }
   return gate;

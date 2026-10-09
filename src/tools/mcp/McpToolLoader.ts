@@ -261,6 +261,15 @@ function objectRoot(schema: ZodTypeAny): ZodTypeAny {
   return schema instanceof z.ZodObject ? schema : z.object({}).passthrough();
 }
 
+/** Eve TOOLS-F8: the most characters of a server's tool description sent to the model (on every request). */
+const MAX_DESCRIPTION_CHARS = 2_000;
+
+/** `description` cut to {@link MAX_DESCRIPTION_CHARS}, with a marker when it was longer. */
+function cappedDescription(description: string): string {
+  if (description.length <= MAX_DESCRIPTION_CHARS) return description;
+  return `${description.slice(0, MAX_DESCRIPTION_CHARS)}... [description truncated from ${description.length} characters]`;
+}
+
 function buildDescriptor(
   client: McpClientLike,
   rawTool: RawMcpTool,
@@ -268,9 +277,10 @@ function buildDescriptor(
   server: string,
   timeoutMs: number | undefined
 ): ToolDescriptor {
+  const description = cappedDescription(rawTool.description || '');
   return toolDescriptorFromSchema({
-    displayName: rawTool.annotations?.title || rawTool.description || rawTool.name,
-    description: rawTool.description || '',
+    displayName: rawTool.annotations?.title || description || rawTool.name,
+    description,
     inputSchema: objectRoot(jsonSchemaToZod(rawTool.inputSchema)),
     needsApproval: needsApproval(approval, rawTool.name, rawTool.annotations),
     // Eve TOOLS-F11: plan mode trusts the server's `readOnlyHint` only when `approval` does.

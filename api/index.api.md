@@ -1408,6 +1408,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
     maxHandoffs?: number;
     maxSteps?: number;
     maxSubagentDepth?: number;
+    maxToolResultChars?: number;
     mcpServers?: Record<string, McpServerSpec>;
     memory?: readonly MemorySlot[];
     modelSettings?: ModelSettings;
@@ -2154,6 +2155,7 @@ interface ExecuteOptions extends PermissionOptions {
     maxSteps?: number;
     maxSubagentDepth?: number;
     maxTokens?: number;
+    maxToolResultChars?: number;
     metadata?: Record<string, unknown>;
     modelSettings?: ModelSettings;
     onAgentDrift?: AgentDriftMode;

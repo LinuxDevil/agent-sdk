@@ -616,7 +616,7 @@ async function resumeHandoffCall(
     const payload = { result: settled.errorResult ?? settled.result, error: settled.toolError };
     const replacedBy = hooks ? await hooks.runPostToolCall(hookCtx, payload) : undefined;
     const shown = replacedBy !== undefined ? payload.result : (settled.errorResult ?? settled.result);
-    return { message: toolResultMessage(pending, shown, settled.errorResult !== undefined, replacedBy ?? settled.replacedByHook) };
+    return { message: toolResultMessage(pending, shown, settled.errorResult !== undefined, replacedBy ?? settled.replacedByHook, executeOptions.maxToolResultChars) };
   }
   const options: ExecuteOptions = {
     ...executeOptions,
@@ -891,10 +891,10 @@ function closeUnlistedToolCalls(messages: Message[], remaining: ToolCall[] | und
 }
 
 /** The `tool` message carrying a resumed tool call's result (or rejection). */
-function toolResultMessage(pending: PendingApproval, payload: unknown, isError = false, replacedByHook?: string): Message {
+function toolResultMessage(pending: PendingApproval, payload: unknown, isError = false, replacedByHook?: string, maxChars?: number): Message {
   return {
     role: 'tool',
-    content: toolResultContent(payload),
+    content: toolResultContent(payload, maxChars),
     name: pending.toolName,
     toolCallId: pending.toolCallId,
     toolName: pending.toolName,
@@ -966,7 +966,7 @@ async function runApprovedToolCall(
   const payload = { result, error: toolError };
   const replacedBy = hooks ? await hooks.runPostToolCall(hookCtx, payload) : undefined;
   const shown = replacedBy !== undefined ? payload.result : (errorResult ?? result);
-  return toolResultMessage(pending, shown, errorResult !== undefined, replacedBy ?? settled.replacedByHook);
+  return toolResultMessage(pending, shown, errorResult !== undefined, replacedBy ?? settled.replacedByHook, executeOptions.maxToolResultChars);
 }
 
 /** A call a pre-tool hook settled (LOU-X3), in executeApprovedTool()'s shape. */

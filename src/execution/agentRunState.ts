@@ -312,12 +312,13 @@ export async function saveStepCheckpoint(
 export function pushToolResult(
   state: AgentRunState,
   toolCall: ToolCall,
-  outcome: ToolCallOutcome
+  outcome: ToolCallOutcome,
+  maxToolResultChars?: number
 ): void {
   // The message shape (the `{error}` payload, isError, LOU-X3's
   // replacedByHook record) is toolOutcomeMessage()'s, shared with the
   // handoff settle path in handoffRun.ts.
-  insertToolResult(state.messages, toolOutcomeMessage(toolCall, outcome));
+  insertToolResult(state.messages, toolOutcomeMessage(toolCall, outcome, maxToolResultChars));
 }
 
 /**
@@ -352,11 +353,12 @@ function pushCancelledToolResult(state: AgentRunState, toolCall: ToolCall, reaso
 export function pushAbortedBatchResults(
   state: AgentRunState,
   calls: UnrecordedToolCall[],
-  reason = 'the run was aborted'
+  reason = 'the run was aborted',
+  maxToolResultChars?: number
 ): void {
   for (const { toolCall, outcome } of calls) {
     if (outcome && !outcome.requiresApproval && !outcome.signIn) {
-      pushToolResult(state, toolCall, outcome);
+      pushToolResult(state, toolCall, outcome, maxToolResultChars);
     } else {
       pushCancelledToolResult(state, toolCall, reason);
     }
