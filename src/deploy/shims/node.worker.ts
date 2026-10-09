@@ -15,6 +15,7 @@ function unavailable(): never {
 }
 
 export const randomUUID = (): string => globalThis.crypto.randomUUID();
+export const createHash = unavailable;
 
 // node:fs, node:fs/promises, node:os, node:path
 export const existsSync = unavailable;
@@ -30,11 +31,16 @@ export const mkdir = unavailable;
 export const rename = unavailable;
 export const rm = unavailable;
 export const readdir = unavailable;
+export const realpath = unavailable;
+export const stat = unavailable;
 export const tmpdir = unavailable;
 export const join = unavailable;
 export const resolve = unavailable;
 export const dirname = unavailable;
 export const basename = unavailable;
+export const relative = unavailable;
+export const isAbsolute = unavailable;
+export const sep = '/';
 
 // node:child_process and node:util: `promisify(execFile)` runs at load time.
 export const execFile = unavailable;
