@@ -12,7 +12,7 @@ import { HookRegistry, type AgentHook } from '../execution/hooks';
 import type { Message } from '../providers/llm';
 import type { AgentConfig } from '../types';
 import { textOf } from '../providers/content';
-import { memoryKey, type MemoryItem, type MemoryScopeContext, type MemorySlot } from './defineMemory';
+import { memoryKey, type MemoryItem, type MemoryProvider, type MemoryScopeContext, type MemorySlot } from './defineMemory';
 import { SDKError } from '../execution/errors';
 
 /** A slot bound to a run's provider key (`<slot name>#<scope key>`). */
@@ -26,7 +26,28 @@ function stableStringify(value: unknown): string {
 }
 
 function toolNames({ name, expose }: MemorySlot): string[] {
-  return [...(expose.remember ? [`remember_${name}`] : []), ...(expose.recall ? [`recall_${name}`] : [])];
+  return [...(expose.remember ? [`remember_${name}`] : []), ...(expose.recall ? [`recall_${name}`] : []), ...(expose.forget ? [`forget_${name}`] : [])];
+}
+
+/** Most items a slot reads to find the item an `itemKey` names (the built-in providers keep at most 1000-5000 per key). */
+const ALL_ITEMS = 100_000;
+
+/**
+ * Eve MEM-F2: stores `item` in place of `id` - with `provider.upsert`, or by
+ * `remove` then `add` for a provider without it.
+ */
+async function replaceItem(provider: MemoryProvider, key: string, id: string, item: { text: string; metadata?: Record<string, unknown> }): Promise<MemoryItem> {
+  if (provider.upsert) return provider.upsert(key, { id, ...item });
+  await provider.remove(key, id);
+  return provider.add(key, item);
+}
+
+/** The stored items of an `itemKey` slot with the same key fields as `args`. */
+async function sameKey(slot: MemorySlot, key: string, args: Record<string, unknown>): Promise<MemoryItem[]> {
+  const fields = slot.itemKey!;
+  const wanted = stableStringify(fields.map((field) => args[field] ?? null));
+  const items = await slot.provider.list(key, { limit: ALL_ITEMS });
+  return items.filter((item) => item.metadata && stableStringify(fields.map((field) => item.metadata![field] ?? null)) === wanted);
 }
 
 /** Most items one `recall_<name>` call returns, whatever `limit` the model asks for (Eve MEM-F11). */
@@ -54,9 +75,11 @@ function recalledItem(slot: MemorySlot, { id, text, createdAt, metadata }: Memor
 
 function memoryTools([slot, key]: BoundSlot): DefinedTool[] {
   const about = slot.description ? ` It holds: ${slot.description}` : '';
+  const replaces = slot.itemKey ? ` An item with the same ${slot.itemKey.join(', ')} replaces the stored one.` : '';
+  const correct = slot.expose.forget ? ` To correct a stored fact, forget_${slot.name} the old item.` : '';
   const remember = defineTool({
     name: `remember_${slot.name}`,
-    description: `Save a fact to the "${slot.name}" memory so it is ${persistence(slot)}.${about}`,
+    description: `Save a fact to the "${slot.name}" memory so it is ${persistence(slot)}.${replaces}${correct}${about}`,
     input: slot.itemSchema ?? z.object({ text: z.string().min(1).describe('The fact, written so it makes sense on its own') }),
     execute: async (args) => {
       // With an itemSchema the parsed arguments are the item: canonical JSON
@@ -64,6 +87,14 @@ function memoryTools([slot, key]: BoundSlot): DefinedTool[] {
       const item = slot.itemSchema
         ? { text: stableStringify(args), metadata: args as Record<string, unknown> }
         : { text: (args as { text: string }).text };
+      if (slot.itemKey) {
+        // Eve MEM-F2: structured state upserts on its key fields.
+        const [old, ...stale] = await sameKey(slot, key, args as Record<string, unknown>);
+        if (old) {
+          for (const extra of stale) await slot.provider.remove(key, extra.id);
+          return { remembered: (await replaceItem(slot.provider, key, old.id, item)).id, replaced: true };
+        }
+      }
       return { remembered: (await slot.provider.add(key, item)).id };
     },
   });
@@ -80,21 +111,36 @@ function memoryTools([slot, key]: BoundSlot): DefinedTool[] {
       items: (await slot.provider.list(key, { query, limit: Math.min(limit, MAX_RECALL_LIMIT) })).map((item) => recalledItem(slot, item)),
     }),
   });
+  const forget = defineTool({
+    name: `forget_${slot.name}`,
+    annotations: { readOnlyHint: false, destructiveHint: true },
+    description: `Delete an item from the "${slot.name}" memory by its id (from recall_${slot.name} or the memory block), when it is wrong or out of date.${about}`,
+    input: z.object({ id: z.string().min(1).describe('The id of the item to delete') }),
+    execute: async ({ id }) => {
+      const stored = (await slot.provider.list(key, { limit: ALL_ITEMS })).some((item) => item.id === id);
+      if (!stored) return { forgotten: null, reason: 'No item with this id.' };
+      await slot.provider.remove(key, id);
+      return { forgotten: id };
+    },
+  });
   // Bound to this run's scope key, so they exist in this run's registry only
   // (a resumed run has none - see the memory.test.ts approval-resume case);
   // `transient` keeps them out of the agent fingerprint, or every resume
   // would report their loss as agent drift.
-  for (const tool of [remember, recall]) tool.transient = true;
-  return [...(slot.expose.remember ? [remember] : []), ...(slot.expose.recall ? [recall] : [])];
+  for (const tool of [remember, recall, forget]) tool.transient = true;
+  return [...(slot.expose.remember ? [remember] : []), ...(slot.expose.recall ? [recall] : []), ...(slot.expose.forget ? [forget] : [])];
 }
 
 const BLOCK = /\n*<memory name="([^"]*)">[\s\S]*?<\/memory>/g;
 
-function block(name: string, items: readonly MemoryItem[]): string {
+function block(slot: MemorySlot, items: readonly MemoryItem[]): string {
   // Eve MEM-F16: an opening or closing memory tag inside an item would break
   // the block (and the replacement of blocks in a resumed transcript).
-  const lines = items.map((item) => `- ${item.text.replace(/<(\/?memory)/gi, '&lt;$1').replace(/\s+/g, ' ').trim()}`);
-  return [`<memory name="${name}">`, ...lines, '</memory>'].join('\n');
+  // Eve MEM-F2: with forget_<name>, each item shows its id, to forget it by.
+  const lines = items.map(
+    (item) => `- ${item.text.replace(/<(\/?memory)/gi, '&lt;$1').replace(/\s+/g, ' ').trim()}${slot.expose.forget ? ` (id: ${item.id})` : ''}`
+  );
+  return [`<memory name="${slot.name}">`, ...lines, '</memory>'].join('\n');
 }
 
 /** Puts `blocks` at the end of the system message, replacing earlier blocks of the same slots (from a resumed run). */
@@ -146,7 +192,7 @@ function recallHook(bound: readonly BoundSlot[]): AgentHook {
             warnRecallFailed(slot, error);
             return '';
           }
-          return items.length > 0 ? block(slot.name, items) : '';
+          return items.length > 0 ? block(slot, items) : '';
         })
       );
       recalled = { names: new Set(recalling.map(([slot]) => slot.name)), blocks: blocks.filter(Boolean) };

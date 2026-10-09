@@ -1277,7 +1277,9 @@ interface DefineMemoryOptions {
     expose?: {
         remember?: boolean;
         recall?: boolean;
+        forget?: boolean;
     };
+    itemKey?: string | readonly string[];
     itemSchema?: StandardSchemaV1;
     name: string;
     // Warning: (ae-forgotten-export) The symbol "MemoryProvider" needs to be exported by the entry point worker.d.ts
@@ -2433,6 +2435,11 @@ interface MemoryProvider {
     readonly ranking?: 'newest' | 'relevance';
     // (undocumented)
     remove(scopeKey: string, id: string): Promise<void>;
+    upsert?(scopeKey: string, item: {
+        id?: string;
+        text: string;
+        metadata?: Record<string, unknown>;
+    }): Promise<MemoryItem>;
 }
 
 // @public
@@ -2462,7 +2469,9 @@ interface MemorySlot {
     readonly expose: {
         remember: boolean;
         recall: boolean;
+        forget: boolean;
     };
+    readonly itemKey?: readonly string[];
     // (undocumented)
     readonly itemSchema?: StandardSchemaV1;
     // (undocumented)
@@ -4394,11 +4403,11 @@ interface WithRetryOptions {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-SvLqII_G.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-SvLqII_G.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-SvLqII_G.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-SvLqII_G.d.ts:3352:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-SvLqII_G.d.ts:3353:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-NtTIA2V_.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-NtTIA2V_.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-NtTIA2V_.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-NtTIA2V_.d.ts:3352:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-NtTIA2V_.d.ts:3353:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
 // dist/index-Cv7ybp2f.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
 // dist/index-Cv7ybp2f.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point worker.d.ts

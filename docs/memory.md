@@ -26,6 +26,9 @@ For each slot, `createAgent({ memory })`:
    or in later conversations with the same user or key (a scope function).
    Memory tags inside item text are escaped (`&lt;memory`, `&lt;/memory`) so
    an item cannot open or close a block.
+3. With `expose: { forget: true }`, also gives it a **`forget_<name>`** tool
+   (input `{ id }`) to delete an item that is wrong or out of date. See
+   [Correcting memory](#correcting-memory).
 
 ## Memory in code
 
@@ -143,7 +146,7 @@ the count.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `name` | `string` | required | 1-55 characters of `A-Za-z0-9_-`; the tools are `remember_<name>` and `recall_<name>`. Unique per agent. |
+| `name` | `string` | required | 1-55 characters of `A-Za-z0-9_-`; the tools are `remember_<name>`, `recall_<name>` and (with `expose.forget`) `forget_<name>`. Unique per agent. |
 | `description` | `string` | none | What the slot holds; added to the tool descriptions. |
 | `scope` | `'global' \| 'session' \| (ctx) => string \| undefined` | required | See [Scopes](#scopes). |
 | `provider` | `MemoryProvider` | required | Where items are stored: `inMemoryMemory()`, `fileMemory({ dir })`, or your own. |
@@ -152,7 +155,9 @@ the count.
 | `recall.query` | `'last-input' \| 'none'` | `'none'` | `'last-input'` passes the run's last user message to the provider as `query`, to recall relevant items rather than the newest. |
 | `expose.remember` | `boolean` | `true` | Offer the `remember_<name>` tool. |
 | `expose.recall` | `boolean` | `true` | Offer the `recall_<name>` tool. |
+| `expose.forget` | `boolean` | `false` | Offer the `forget_<name>` tool and show each item's id in the recalled block. See [Correcting memory](#correcting-memory). |
 | `itemSchema` | a zod or Standard Schema | `{ text: string }` | `remember_<name>`'s input. When set, the parsed arguments are the item: `text` is their canonical JSON and `metadata` is the parsed object, so the slot enforces structured state instead of free text. |
+| `itemKey` | `string \| string[]` | none | With `itemSchema`: the field(s) that identify an item. Remembering an item with the same key fields replaces the stored one. See [Correcting memory](#correcting-memory). |
 
 ```ts
 import { z } from 'zod';
@@ -173,6 +178,45 @@ fill it from code with `provider.add(memoryKey(slot)!, { text })`. For a
 `memoryKey(slot, { sessionId, metadata })`. Without it `memoryKey()` returns
 `undefined`, and the built-in providers reject a missing or empty scope key
 with `LOUSHO_MEMORY_INVALID` instead of storing items under the key `undefined`.
+
+### Correcting memory
+
+By default memory only grows: remembering a changed fact adds a second item,
+and both are recalled. Two options let a slot replace or drop items.
+
+**`itemKey`** makes structured state upsert. With `itemSchema`, name the
+field (or fields) that identify an item. When `remember_<name>` gets an item
+whose key fields equal a stored item's, it replaces that item instead of
+adding a second version. The item keeps its id, becomes the newest, and
+`remember_<name>` returns `{ remembered: id, replaced: true }`:
+
+```ts
+import { z } from 'zod';
+import { defineMemory, inMemoryMemory } from '@lousho/build-ai-agent';
+
+const settings = defineMemory({
+  name: 'settings',
+  scope: 'global',
+  provider: inMemoryMemory(),
+  itemSchema: z.object({ topic: z.string(), value: z.string() }),
+  itemKey: 'topic',
+});
+// remember_settings({ topic: 'language', value: 'French' }), then
+// remember_settings({ topic: 'language', value: 'English' }) leaves one item: English.
+```
+
+**`expose: { forget: true }`** adds `forget_<name>({ id })`, which deletes an
+item, and each item in the recalled `<memory>` block then shows its id
+(`- The user wants answers in French. (id: 3f…)`), so the model can forget a
+fact that no longer holds and remember the new one. An unknown id returns
+`{ forgotten: null, reason }` and changes nothing. `forget_<name>` carries
+the annotations `readOnlyHint: false, destructiveHint: true`, so it is not
+treated as read-only (for example in plan mode).
+
+Replacing uses the provider's `upsert(scopeKey, { id, text, metadata })`,
+which every built-in provider has. A custom provider without `upsert` gets
+`remove()` then `add()` instead: the item gets a new id, and the two calls are
+not atomic.
 
 ### When recall fails
 
@@ -263,6 +307,10 @@ const myProvider: MemoryProvider = {
   },
 };
 ```
+
+`upsert(scopeKey, { id?, text, metadata? })` is optional. Add it to replace
+an item in place (same id, new `createdAt`, newest first) for `itemKey` slots;
+without it a slot replaces by `remove()` then `add()`.
 
 ## Testing memory
 

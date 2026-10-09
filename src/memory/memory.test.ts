@@ -26,7 +26,7 @@ describe('defineMemory', () => {
   it('applies defaults and validates', () => {
     const slot = defineMemory({ name: 'notes', scope: 'global', provider: inMemoryMemory() });
     expect(slot.recall).toEqual({ onSessionStart: true, maxItems: 10, query: 'none' });
-    expect(slot.expose).toEqual({ remember: true, recall: true });
+    expect(slot.expose).toEqual({ remember: true, recall: true, forget: false });
     expect(Object.isFrozen(slot)).toBe(true);
     expect(() => defineMemory({ name: 'my notes', scope: 'global', provider: inMemoryMemory() })).toThrow(/invalid name/);
     expect(() => defineMemory({ name: 'n', scope: 'global', provider: undefined as never })).toThrow(/needs a provider/);

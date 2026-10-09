@@ -103,6 +103,19 @@ export function vectorMemory(store: VectorItemStore, options: VectorMemoryOption
     return stale.length;
   }
 
+  /** Adds a row for `text` unless one is stored (then returns that one); call inside `serial(key)`. */
+  async function addRow(key: string, text: string, metadata: Record<string, unknown> | undefined): Promise<MemoryItem> {
+    // Dedupe on text, like itemsProvider: a stored duplicate is returned
+    // unchanged (and no embedding call is spent on it).
+    const existing = (await store.load(key)).find((row) => row.text === text);
+    if (existing) return toItem(existing);
+    const [vector] = await embedAll(embedder, [text]);
+    const row: VectorRow = { id: newId(), text, createdAt: new Date().toISOString(), embedder: embedder.id, vector, ...(metadata && { metadata }) };
+    await store.insert(key, row);
+    await store.trim(key, maxItems);
+    return toItem(row);
+  }
+
   return {
     ranking: 'relevance',
     async list(key, { limit, query } = {}) {
@@ -120,15 +133,21 @@ export function vectorMemory(store: VectorItemStore, options: VectorMemoryOption
     },
     add: async (key, { text, metadata }) => {
       assertScopeKey(key, 'add');
+      return serial(key, () => addRow(key, text, metadata));
+    },
+    // Eve MEM-F2: replace a row by id (re-embedding only a changed text); the
+    // row is written again with a new createdAt, so it lists as the newest.
+    upsert: async (key, { id, text, metadata }) => {
+      assertScopeKey(key, 'upsert');
       return serial(key, async () => {
-        // Dedupe on text, like itemsProvider: a stored duplicate is returned
-        // unchanged (and no embedding call is spent on it).
-        const existing = (await store.load(key)).find((row) => row.text === text);
-        if (existing) return toItem(existing);
-        const [vector] = await embedAll(embedder, [text]);
-        const row: VectorRow = { id: newId(), text, createdAt: new Date().toISOString(), embedder: embedder.id, vector, ...(metadata && { metadata }) };
+        const rows = await store.load(key);
+        const old = id === undefined ? undefined : rows.find((row) => row.id === id);
+        if (!old) return addRow(key, text, metadata);
+        const vector = old.text === text && old.embedder === embedder.id ? old.vector : (await embedAll(embedder, [text]))[0];
+        for (const row of rows) if (row.text === text && row.id !== old.id) await store.remove(key, row.id);
+        await store.remove(key, old.id);
+        const row: VectorRow = { id: old.id, text, createdAt: new Date().toISOString(), embedder: embedder.id, vector, ...(metadata && { metadata }) };
         await store.insert(key, row);
-        await store.trim(key, maxItems);
         return toItem(row);
       });
     },
