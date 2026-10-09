@@ -78,6 +78,7 @@ describe('structured output (LOU-V4)', () => {
     expect(result.object).toBeUndefined();
     expect(result.text).toBe('{"city":"Paris"}');
     expect(result.outputError).toEqual({
+      kind: 'invalid',
       message: 'The reply does not match the output schema: 1 issue (tempC: Required)',
       issues: [{ path: 'tempC', message: 'Required' }],
     });
@@ -457,6 +458,7 @@ describe('structured output near misses and repair (audit log F8, docs-qa F9, in
 
     expect(result.finishReason).toBe('output-invalid');
     expect(result.outputError).toEqual({
+      kind: 'invalid',
       message: 'The reply is the JSON Schema, not data: 1 issue ((root): This is the output JSON Schema itself, not an answer that follows it)',
       issues: [{ path: '(root)', message: 'This is the output JSON Schema itself, not an answer that follows it' }],
     });
@@ -603,5 +605,44 @@ describe('structured output near misses and repair (audit log F8, docs-qa F9, in
 
   it('audit invoice F12: a wrapped schema is checked at config time ({ schema } rejects z.date())', () => {
     expect(() => createAgent({ provider: mockModel([]), output: { schema: z4.object({ d: z4.date() }) } })).toThrow(/'d' is a z\.date\(\)/);
+  });
+});
+
+describe('structured output cut off by maxTokens (Eve CORE-F12)', () => {
+  it("skips the repair after a 'length' reply and reports outputError.kind 'truncated'", async () => {
+    const model = mockModel([{ text: '{"city":"Par', finishReason: 'length' }, '{"city":"Paris","tempC":21}']);
+    const agent = createAgent({ provider: model, output: weather, modelSettings: { maxTokens: 5 } });
+
+    const result = await agent.send('Weather in Paris?');
+
+    expect(model.calls).toHaveLength(1);
+    expect(result.finishReason).toBe('output-invalid');
+    expect(result.object).toBeUndefined();
+    expect(result.outputError?.kind).toBe('truncated');
+    expect(result.outputError?.message).toMatch(/cut off at the maxTokens limit/);
+    expect(result.outputError?.message).toMatch(/raise modelSettings\.maxTokens/i);
+  });
+
+  it("a 'length' reply that still validates is kept", async () => {
+    const model = mockModel([{ text: '{"city":"Paris","tempC":21}', finishReason: 'length' }]);
+    const result = await createAgent({ provider: model, output: weather }).send('go');
+
+    expect(result.object).toEqual({ city: 'Paris', tempC: 21 });
+    expect(result.outputError).toBeUndefined();
+  });
+
+  it("an ordinary invalid reply reports kind 'invalid'", async () => {
+    const result = await createAgent({ provider: mockModel(['nope']), output: weather, maxSteps: 1 }).send('go');
+
+    expect(result.outputError?.kind).toBe('invalid');
+  });
+
+  it("the forced answer at maxSteps cut off by 'length' reports kind 'truncated'", async () => {
+    const ping = defineTool({ name: 'ping', description: 'p', input: z.object({}), execute: async () => 'pong' });
+    const model = mockModel([{ toolCalls: [{ name: 'ping' }] }, { text: '{"city":', finishReason: 'length' }]);
+    const result = await createAgent({ provider: model, tools: [ping], output: weather, maxSteps: 1 }).send('go');
+
+    expect(result.finishReason).toBe('output-invalid');
+    expect(result.outputError?.kind).toBe('truncated');
   });
 });

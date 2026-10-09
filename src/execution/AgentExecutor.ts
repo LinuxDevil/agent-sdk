@@ -82,7 +82,7 @@ import {
 import { AgentRun, RUN_EVENTS, StreamingExecuteOptions, observeRun, partialSink, runEventsOf, startAgentRun } from './agentRun';
 import type { AgentEvent } from './agentEvents';
 import { withSteerSignal, type InputQueue } from './inputQueue';
-import { assertOutputSchema, OutputError, outputInstruction, outputRepairMessage, validateOutput, type OutputSpec } from './structuredOutput';
+import { assertOutputSchema, OutputError, outputInstruction, outputRepairMessage, truncatedOutput, validateOutput, type OutputSpec } from './structuredOutput';
 import { PLAN_MODE_INSTRUCTION, permissionModeOf, type PermissionOptions } from './permissions';
 import { assertToolSearchOptions, withToolSearch, type ToolSearchOptions } from './toolSearch';
 import { withDeferral } from './toolDeferral';
@@ -929,7 +929,7 @@ export class AgentExecutor {
         continue;
       }
       if (outcome === 'stop') {
-        const output = await this.checkOutput(options, state, !repaired && state.steps < maxSteps);
+        const output = await this.checkOutput(options, state, !repaired && state.steps < maxSteps, state.finishReason === 'length');
         if (output === 'repair') {
           repaired = true;
           continue;
@@ -1001,7 +1001,7 @@ export class AgentExecutor {
       runEventsOf(options)?.textDone(text, stepUsage);
       state.messages.push(withHostedCalls({ role: 'assistant', content: text }, generated.hostedToolCalls));
     }
-    const checked = await this.checkOutput(options, state, false);
+    const checked = await this.checkOutput(options, state, false, generated.finishReason === 'length');
     return checked === 'repair' ? undefined : checked;
   }
 
@@ -1047,16 +1047,23 @@ export class AgentExecutor {
   /**
    * LOU-V4: with `output`, parses and validates the final reply. When it is
    * invalid and `canRepair`, queues the issues for one more step ('repair');
-   * otherwise ends the run as 'output-invalid'.
+   * otherwise ends the run as 'output-invalid'. A reply cut off at the
+   * `maxTokens` limit (`truncated`) gets no repair - it would be cut off the
+   * same way - and reports `outputError.kind: 'truncated'` (Eve CORE-F12).
    */
   private static async checkOutput(
     options: ExecuteOptions,
     state: AgentRunState,
-    canRepair: boolean
+    canRepair: boolean,
+    truncated: boolean
   ): Promise<'repair' | { object: unknown } | { outputError: OutputError } | undefined> {
     if (!options.output) return undefined;
     const checked = await validateOutput(options.output, state.finalText);
     if ('object' in checked) return checked;
+    if (truncated) {
+      state.finishReason = 'output-invalid';
+      return { outputError: truncatedOutput(checked) };
+    }
     if (canRepair) {
       state.messages.push(outputRepairMessage(options.output, checked));
       return 'repair';

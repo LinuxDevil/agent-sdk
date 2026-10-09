@@ -136,9 +136,14 @@ console.log(object?.note); // typed: string | undefined
    the JSON Schema itself (some local models echo it), the message says so
    and shows an example object of the right shape instead. The repair step
    counts against `maxSteps`, and there is none when the budget is spent.
+   There is none either when the reply was cut off at the `maxTokens`
+   limit (the model's `finishReason` was `'length'`): a repair would be cut
+   off the same way, so the run ends at once with `outputError.kind:
+   'truncated'` and a message that says to raise `modelSettings.maxTokens`.
 5. Still invalid, the run resolves (it does not reject) with
    `finishReason: 'output-invalid'`, no `object`, and `outputError`:
-   `{ message, issues: [{ path, message }] }`.
+   `{ kind, message, issues: [{ path, message }] }`, where `kind` is
+   `'invalid'` or `'truncated'`.
 
 ## Out of steps
 

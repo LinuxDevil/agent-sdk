@@ -1906,6 +1906,7 @@ export interface OpenApiToolsOptions {
 interface OutputError {
     // Warning: (ae-forgotten-export) The symbol "ToolArgumentIssue" needs to be exported by the entry point index.d.ts
     issues: ToolArgumentIssue[];
+    kind: 'invalid' | 'truncated';
     message: string;
 }
 
@@ -2350,6 +2351,7 @@ interface SendOptions {
     reasoning?: ReasoningOption;
     sessionId?: string;
     signal?: AbortSignal;
+    throwOnError?: boolean;
 }
 
 // @public
@@ -3140,11 +3142,11 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-9ailPkqP.d.ts:778:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-9ailPkqP.d.ts:795:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-9ailPkqP.d.ts:1156:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-9ailPkqP.d.ts:3198:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
-// dist/createAgent-9ailPkqP.d.ts:3199:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
+// dist/createAgent-DqGSOSUW.d.ts:778:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-DqGSOSUW.d.ts:795:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-DqGSOSUW.d.ts:1156:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-DqGSOSUW.d.ts:3207:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
+// dist/createAgent-DqGSOSUW.d.ts:3208:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
 // dist/index-CS8qGkxd.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
 // dist/index-CS8qGkxd.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 
