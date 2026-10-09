@@ -172,6 +172,12 @@ runtime behavior or types your code may rely on, one line each:
   one it was saved with now throws `LOUSHO_CONFIG_INVALID`; checkpoints and
   approval snapshots store the run's principal. See
   [Route auth and principals](./auth.md).
+- Memory slots store their items under `<slot name>#<scope key>`
+  (`notes#global`) instead of the bare scope key (`global`), so two slots with
+  the same scope no longer share items. Items written by `1.0.0-alpha.19` or
+  earlier are not read any more; run `migrateMemoryKeys(slot)` once per slot
+  to copy them. See
+  [Memory](./memory.md#items-from-before-slot-name-keys).
 - The published package is smaller: test-only files no longer ship, and
   source maps no longer embed `sourcesContent` (their `sources` still resolve
   to the shipped `src/`). No API change.

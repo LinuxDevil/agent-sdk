@@ -3990,6 +3990,25 @@ export interface Message {
 export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 
 // @public
+export function migrateMemoryKeys(slot: MemorySlot, input?: MigrateMemoryKeysOptions): Promise<MigrateMemoryKeysResult>;
+
+// @public
+export interface MigrateMemoryKeysOptions {
+    contexts?: ReadonlyArray<MemoryScopeContext>;
+    removeLegacy?: boolean;
+}
+
+// @public
+export interface MigrateMemoryKeysResult {
+    keys: Array<{
+        from: string;
+        to: string;
+        moved: number;
+    }>;
+    moved: number;
+}
+
+// @public
 export class MissingPeerDependencyError extends SDKError {
     constructor(
     packageName: string,

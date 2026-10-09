@@ -110,6 +110,33 @@ A scope function also sees `principal`, the caller a route's auth verified, whic
 is safer to key on than `metadata` (the caller can send any metadata): see
 [Route auth and principals](./auth.md#reading-the-principal-in-the-run).
 
+### Items from before slot-name keys
+
+Up to `1.0.0-alpha.19`, items lived under the bare scope key (`global`,
+`session:s1`, `user:u-42`), shared by every slot with that scope. Those items
+are still in the provider but no slot reads them. `migrateMemoryKeys(slot)`
+copies them to the slot's current key, oldest first. It is safe to run on
+every start: `add()` dedupes on text, so nothing is copied twice. Each copy
+keeps `text` and `metadata` and gets a new `id` and `createdAt`.
+
+```ts
+import { defineMemory, fileMemory, migrateMemoryKeys } from '@lousho/build-ai-agent';
+
+const provider = fileMemory({ dir: './.lousho/memory' });
+const notes = defineMemory({ name: 'notes', scope: 'global', provider });
+const prefs = defineMemory({ name: 'prefs', scope: 'session', provider });
+
+await migrateMemoryKeys(notes); // global: no contexts needed
+await migrateMemoryKeys(prefs, { contexts: ['s1', 's2'].map((sessionId) => ({ sessionId })) });
+```
+
+For a `'session'` slot or a scope function, pass the contexts to migrate
+(`{ sessionId }`, `{ metadata }`, `{ principal }`); a context the slot gives
+no key is skipped. The old items stay unless you pass `removeLegacy: true`.
+Leave them while another slot with the same scope still has to migrate: they
+were shared. The result lists each old key that held items, its new key and
+the count.
+
 ## Configuration options
 
 `defineMemory(options)` returns a `MemorySlot`:
