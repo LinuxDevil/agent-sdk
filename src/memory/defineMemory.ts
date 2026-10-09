@@ -28,6 +28,15 @@ export interface MemoryProvider {
    */
   add(scopeKey: string, item: { text: string; metadata?: Record<string, unknown> }): Promise<MemoryItem>;
   remove(scopeKey: string, id: string): Promise<void>;
+  /**
+   * Eve MEM-F2: replaces the stored item `id` with `text` and `metadata` - same
+   * id, a new `createdAt`, so it lists as the newest - and returns it. Another
+   * item with the same `text` is removed. Without `id`, or with an id that is
+   * not stored, it adds the item like `add()`. Optional: without it, a slot
+   * replaces an item by `remove()` then `add()` (a new id, and not atomic).
+   * All built-in providers have it.
+   */
+  upsert?(scopeKey: string, item: { id?: string; text: string; metadata?: Record<string, unknown> }): Promise<MemoryItem>;
 }
 
 /** What a scope function gets: the run's session id, `send()` metadata and (N10a) the verified caller. */
@@ -112,8 +121,13 @@ export interface DefineMemoryOptions {
    * message to the provider as `query` (default `'none'`).
    */
   recall?: { onSessionStart?: boolean; maxItems?: number; query?: 'last-input' | 'none' };
-  /** Which tools the model gets. Both default to `true`. */
-  expose?: { remember?: boolean; recall?: boolean };
+  /**
+   * Which tools the model gets. `remember` and `recall` default to `true`.
+   * `forget` (default `false`, Eve MEM-F2) adds `forget_<name>({ id })`, which
+   * deletes an item, and shows each item's id in the recalled `<memory>`
+   * block, so the model can drop a fact that is wrong or out of date.
+   */
+  expose?: { remember?: boolean; recall?: boolean; forget?: boolean };
   /**
    * Schema of `remember_<name>`'s input (zod 3 or 4, or a Standard Schema).
    * Default: `{ text: string }` — the item's text is that string. When set,
@@ -123,6 +137,13 @@ export interface DefineMemoryOptions {
    * the same JSON text.
    */
   itemSchema?: StandardSchemaV1;
+  /**
+   * Eve MEM-F2: with `itemSchema`, the field (or fields) that identify an
+   * item. Remembering an item whose key fields equal a stored item's replaces
+   * that item (same id, now the newest) instead of adding a second version:
+   * `itemKey: 'topic'` keeps one `{ topic: 'language', value }` item.
+   */
+  itemKey?: string | readonly string[];
 }
 
 /** A memory slot made by {@link defineMemory}, defaults applied. Pass it to `createAgent({ memory })`. */
@@ -132,8 +153,10 @@ export interface MemorySlot {
   readonly scope: MemoryScope;
   readonly provider: MemoryProvider;
   readonly recall: { onSessionStart: boolean; maxItems: number; query: 'last-input' | 'none' };
-  readonly expose: { remember: boolean; recall: boolean };
+  readonly expose: { remember: boolean; recall: boolean; forget: boolean };
   readonly itemSchema?: StandardSchemaV1;
+  /** The fields that identify an item of an `itemSchema` slot (see {@link DefineMemoryOptions.itemKey}). */
+  readonly itemKey?: readonly string[];
 }
 
 const SLOT_NAME = /^[a-zA-Z0-9_-]{1,55}$/;
@@ -148,7 +171,7 @@ const SLOT_NAME = /^[a-zA-Z0-9_-]{1,55}$/;
  * ```
  */
 export function defineMemory(options: DefineMemoryOptions): MemorySlot {
-  const { name, description, scope, provider, recall = {}, expose = {}, itemSchema } = options;
+  const { name, description, scope, provider, recall = {}, expose = {}, itemSchema, itemKey } = options;
   if (typeof name !== 'string' || !SLOT_NAME.test(name)) {
     throw new SDKError(`defineMemory: invalid name ${JSON.stringify(name)}. Use 1-55 characters of A-Z, a-z, 0-9, '_' and '-'.`, 'LOUSHO_MEMORY_INVALID');
   }
@@ -167,6 +190,15 @@ export function defineMemory(options: DefineMemoryOptions): MemorySlot {
       'LOUSHO_MEMORY_INVALID'
     );
   }
+  const keyFields = itemKey === undefined ? undefined : typeof itemKey === 'string' ? [itemKey] : itemKey;
+  if (keyFields !== undefined) {
+    if (itemSchema === undefined) {
+      throw new SDKError(`defineMemory: memory '${name}': itemKey needs an itemSchema (the fields it names are fields of the schema).`, 'LOUSHO_MEMORY_INVALID');
+    }
+    if (!Array.isArray(keyFields) || keyFields.length === 0 || !keyFields.every((field) => typeof field === 'string' && field !== '')) {
+      throw new SDKError(`defineMemory: memory '${name}': itemKey must be a field name or a non-empty array of field names, got ${JSON.stringify(itemKey)}.`, 'LOUSHO_MEMORY_INVALID');
+    }
+  }
   if (recall.query !== undefined && recall.query !== 'last-input' && recall.query !== 'none') {
     throw new SDKError(`defineMemory: memory '${name}': recall.query must be 'last-input' or 'none', got ${JSON.stringify(recall.query)}.`, 'LOUSHO_MEMORY_INVALID');
   }
@@ -180,7 +212,8 @@ export function defineMemory(options: DefineMemoryOptions): MemorySlot {
     scope,
     provider,
     recall: { onSessionStart: recall.onSessionStart ?? true, maxItems, query: recall.query ?? 'none' },
-    expose: { remember: expose.remember ?? true, recall: expose.recall ?? true },
+    expose: { remember: expose.remember ?? true, recall: expose.recall ?? true, forget: expose.forget ?? false },
     ...(itemSchema !== undefined && { itemSchema }),
+    ...(keyFields !== undefined && { itemKey: Object.freeze([...keyFields]) }),
   });
 }

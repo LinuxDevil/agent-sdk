@@ -70,6 +70,28 @@ export function describeMemoryProviderContract(
       expect(await provider.list('k')).toEqual([first]);
     });
 
+    it('upsert replaces an item by id, newest first, or adds one (Eve MEM-F2)', async () => {
+      const provider = await make();
+      expect(typeof provider.upsert).toBe('function');
+      const a = await provider.add('k', { text: 'lives in Oslo' });
+      const b = await provider.add('k', { text: 'likes tea' });
+      const moved = await provider.upsert!('k', { id: a.id, text: 'lives in Bergen', metadata: { city: 'Bergen' } });
+      expect(moved).toMatchObject({ id: a.id, text: 'lives in Bergen', metadata: { city: 'Bergen' } });
+      expect((await provider.list('k')).map((i) => [i.id, i.text])).toEqual([
+        [a.id, 'lives in Bergen'],
+        [b.id, 'likes tea'],
+      ]);
+      // An unknown id adds the item, under a new id.
+      const added = await provider.upsert!('k', { id: 'no-such-id', text: 'has a cat' });
+      expect(added.id).not.toBe('no-such-id');
+      // Text that another item already has: that item goes, no duplicate stays.
+      await provider.upsert!('k', { id: a.id, text: 'likes tea' });
+      expect((await provider.list('k')).map((i) => [i.id, i.text])).toEqual([
+        [a.id, 'likes tea'],
+        [added.id, 'has a cat'],
+      ]);
+    });
+
     it('round-trips metadata and keeps scope keys apart', async () => {
       const provider = await make();
       expect(await provider.list('session:a')).toEqual([]);

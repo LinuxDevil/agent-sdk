@@ -512,6 +512,11 @@ interface MemoryProvider {
     readonly ranking?: 'newest' | 'relevance';
     // (undocumented)
     remove(scopeKey: string, id: string): Promise<void>;
+    upsert?(scopeKey: string, item: {
+        id?: string;
+        text: string;
+        metadata?: Record<string, unknown>;
+    }): Promise<MemoryItem>;
 }
 
 // @public

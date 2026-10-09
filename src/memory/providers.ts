@@ -56,8 +56,9 @@ function select(items: readonly MemoryItem[], { limit, query }: { limit?: number
 /**
  * A `MemoryProvider` over `store`. Changes to one key are made one at a time,
  * so concurrent adds keep every item - within this provider instance, or
- * across instances and processes when `store` has an atomic `update`. `add` dedupes on `text`: adding an item
- * whose text is already stored returns the stored one unchanged.
+ * across instances and processes when `store` has an atomic `update`. `add`
+ * dedupes on `text`: adding an item whose text is already stored returns the
+ * stored one unchanged. `upsert` replaces an item by id (Eve MEM-F2).
  */
 export function itemsProvider(store: ItemStore, { maxItems = 1000 }: MemoryProviderOptions = {}): MemoryProvider {
   const serial = keyedQueue();
@@ -77,6 +78,19 @@ export function itemsProvider(store: ItemStore, { maxItems = 1000 }: MemoryProvi
         if (stored) return items;
         stored = { id: newId(), text, createdAt: new Date().toISOString(), ...(metadata && { metadata }) };
         return [...items, stored].slice(-maxItems);
+      });
+      return stored!;
+    },
+    async upsert(key, { id, text, metadata }) {
+      let stored: MemoryItem | undefined;
+      await update(key, 'upsert', (items) => {
+        const old = id === undefined ? undefined : items.find((item) => item.id === id);
+        if (!old) {
+          stored = items.find((item) => item.text === text);
+          if (stored) return items;
+        }
+        stored = { id: old?.id ?? newId(), text, createdAt: new Date().toISOString(), ...(metadata && { metadata }) };
+        return [...items.filter((item) => item.id !== stored!.id && item.text !== text), stored].slice(-maxItems);
       });
       return stored!;
     },

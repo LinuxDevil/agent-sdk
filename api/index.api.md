@@ -1668,7 +1668,9 @@ export interface DefineMemoryOptions {
     expose?: {
         remember?: boolean;
         recall?: boolean;
+        forget?: boolean;
     };
+    itemKey?: string | readonly string[];
     itemSchema?: StandardSchemaV1;
     name: string;
     // (undocumented)
@@ -3907,6 +3909,11 @@ export interface MemoryProvider {
     readonly ranking?: 'newest' | 'relevance';
     // (undocumented)
     remove(scopeKey: string, id: string): Promise<void>;
+    upsert?(scopeKey: string, item: {
+        id?: string;
+        text: string;
+        metadata?: Record<string, unknown>;
+    }): Promise<MemoryItem>;
 }
 
 // @public
@@ -3946,7 +3953,9 @@ export interface MemorySlot {
     readonly expose: {
         remember: boolean;
         recall: boolean;
+        forget: boolean;
     };
+    readonly itemKey?: readonly string[];
     // (undocumented)
     readonly itemSchema?: StandardSchemaV1;
     // (undocumented)
