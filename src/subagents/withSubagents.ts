@@ -231,6 +231,7 @@ async function runTask(registered: RegisteredSubagent['spec'], args: TaskArgs, t
       input: [...task.history, { role: 'user', content: args.prompt }],
       toolOptions,
       description: args.description,
+      taskId: task.taskId,
     });
   } catch (error) {
     // A paused child: on resume this call is re-entered with the taskId it saves under.

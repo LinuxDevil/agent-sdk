@@ -44,7 +44,7 @@ import { readonlyPrincipal } from './runPrincipal';
 import type { OAuthTokenStore } from '../oauth/types';
 import { isSignInRequired, settleSignInRequired, signInOwner, signInRequest, SignInPendingError, type SignInRequired } from '../oauth/signIn';
 import { newId } from '../utils/id';
-import { agentRunSpanInit, recordToolOutcome, resolveCaptureContent, toolSpanInit } from './genAiSpans';
+import { agentRunSpanInit, recordToolOutcome, resolveCaptureContent, toolSpanInit, SUBAGENT_SPAN, type SubagentSpanInfo } from './genAiSpans';
 import { withSpan } from './tracing';
 
 /**
@@ -205,7 +205,7 @@ async function resumeObserved(
   const captureContent = resolveCaptureContent(executeOptions.captureContent);
   const runSpan = (): ReturnType<typeof agentRunSpanInit> =>
     agentRunSpanInit(
-      { agent: snapshot.agent, provider, sessionId: snapshot.sessionId, input: messages },
+      { agent: snapshot.agent, provider, sessionId: snapshot.sessionId, input: messages, [SUBAGENT_SPAN]: (executeOptions as { [SUBAGENT_SPAN]?: SubagentSpanInfo })[SUBAGENT_SPAN] },
       { redactContent: executeOptions.redactContent, captureContent }
     );
   const init = runSpan();

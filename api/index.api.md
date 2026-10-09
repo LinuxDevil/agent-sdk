@@ -5434,6 +5434,9 @@ export const SdkAttr: {
     readonly CALL_PURPOSE: "lousho.call.purpose";
     readonly RETRY_COUNT: "lousho.retry.count";
     readonly RETRY_ERRORS: "lousho.retry.errors";
+    readonly SUBAGENT_NAME: "lousho.subagent.name";
+    readonly SUBAGENT_DEPTH: "lousho.subagent.depth";
+    readonly TASK_ID: "lousho.task.id";
 };
 
 // @public

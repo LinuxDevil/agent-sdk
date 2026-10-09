@@ -35,6 +35,7 @@ import { SDKError } from './errors';
 import { runUsageOfError } from './runUsage';
 import type { HostedTool } from '../tools/hosted';
 import type { ToolSearchOptions } from './toolSearch';
+import { SUBAGENT_SPAN, type SubagentSpanInfo } from './genAiSpans';
 
 /** Everything needed to run an agent as a child: its own configuration. */
 export interface SubagentSpec {
@@ -78,6 +79,8 @@ export interface SubagentRequest {
   toolOptions?: { abortSignal?: AbortSignal } & ToolRunContext;
   /** Short label of the task, for events and hooks. */
   description?: string;
+  /** The `task` call's taskId, recorded on the child's `invoke_agent` span (Eve MA-F10). */
+  taskId?: string;
 }
 
 /**
@@ -99,6 +102,7 @@ export async function runSubagent(
     ...childOptions(spec, scope, info, capture.store, request.toolOptions?.abortSignal),
     // Eval cassettes key a sub-agent's recording by this name.
     [SUBAGENT_NAME]: request.name,
+    [SUBAGENT_SPAN]: subagentSpanInfo(scope, request),
   };
   const run = scope?.execute ?? execute;
   if (!run) {
@@ -140,6 +144,12 @@ export async function runSubagent(
     throw new SubagentApprovalPause(request.name, paused);
   }
   return result;
+}
+
+/** Eve MA-F10: who the child is, for its `invoke_agent` span: one level deeper than the run that started it. */
+function subagentSpanInfo(scope: ToolCallScope | undefined, request: SubagentRequest): SubagentSpanInfo {
+  const parent = (scope?.runtime as { [SUBAGENT_SPAN]?: SubagentSpanInfo } | undefined)?.[SUBAGENT_SPAN];
+  return { name: request.name, depth: (parent?.depth ?? 0) + 1, ...(request.taskId && { taskId: request.taskId }) };
 }
 
 function subagentInfo(scope: ToolCallScope | undefined, request: SubagentRequest): SubagentInfo {

@@ -21,6 +21,7 @@ import { streamResumed, throwingRun, type AgentRun } from './execution/agentRun'
 import type { AgentEvent } from './execution/agentEvents';
 import type { TraceExporter } from './execution/tracing';
 import { mergeModelSettings } from './execution/modelSettings';
+import { DEFAULT_AGENT_NAME } from './execution/genAiSpans';
 import { LLMProvider, LLMProviderRegistry } from './providers/llm';
 import { ToolRegistry } from './tools/ToolRegistry';
 import { ToolDescriptor } from './types';
@@ -1238,7 +1239,7 @@ function agentSpecs(config: CreateAgentConfig, toolsFor: (tools: AgentToolsOptio
   const specOf = (prompt: string | undefined, model: string | undefined, runProvider: LLMProvider, tools: RunTools): SubagentSpec => {
     const builder = AgentBuilder.create()
       .setId(agentId)
-      .setName(config.name || 'agent')
+      .setName(config.name || DEFAULT_AGENT_NAME)
       .setPrompt((prompt ?? DEFAULT_INSTRUCTIONS) + projectBlock)
       .setTools(tools.toolsConfig);
     // With an explicit provider, `model` is a per-agent model setting.

@@ -127,20 +127,40 @@ function agentInputMessages(input: unknown, text: string): unknown[] {
   return [{ role: 'user', parts: [textPart(text)] }];
 }
 
+/** The name `createAgent()` gives an agent without a `name`. */
+export const DEFAULT_AGENT_NAME = 'agent';
+
+/** Eve MA-F10: the execute option a sub-agent run carries, so its `invoke_agent` span says which sub-agent it is. */
+export const SUBAGENT_SPAN = Symbol('lousho.subagentSpan');
+
+/** What a sub-agent's `invoke_agent` span records about it. */
+export interface SubagentSpanInfo {
+  /** The name the lead knows it by (the `task` tool's `agent`). */
+  name: string;
+  depth: number;
+  taskId?: string;
+}
+
 /** `invoke_agent {name}` span for one agent run. */
 export function agentRunSpanInit(
-  options: { agent: AgentConfig; provider?: LLMProvider; sessionId?: string; input: unknown },
+  options: { agent: AgentConfig; provider?: LLMProvider; sessionId?: string; input: unknown; [SUBAGENT_SPAN]?: SubagentSpanInfo },
   content: ContentOptions & { captureContent: boolean }
 ): SpanInit {
   const { agent, provider, sessionId, input } = options;
+  const subagent = options[SUBAGENT_SPAN];
   const text = typeof input === 'string' ? input : JSON.stringify(input);
   const inputMessages = agentInputMessages(input, text);
+  // An unnamed sub-agent is called by the key the lead knows it by.
+  const name = subagent && agent.name === DEFAULT_AGENT_NAME ? subagent.name : agent.name;
   return {
-    name: `${GenAiOperation.INVOKE_AGENT} ${agent.name}`,
+    name: `${GenAiOperation.INVOKE_AGENT} ${name}`,
     kind: 'internal',
     attributes: defined({
       [GenAiAttr.OPERATION_NAME]: GenAiOperation.INVOKE_AGENT,
-      [GenAiAttr.AGENT_NAME]: agent.name,
+      [GenAiAttr.AGENT_NAME]: name,
+      [SdkAttr.SUBAGENT_NAME]: subagent?.name,
+      [SdkAttr.SUBAGENT_DEPTH]: subagent?.depth,
+      [SdkAttr.TASK_ID]: subagent?.taskId,
       [GenAiAttr.AGENT_ID]: agent.id,
       [GenAiAttr.PROVIDER_NAME]: provider?.name,
       [GenAiAttr.CONVERSATION_ID]: sessionId,

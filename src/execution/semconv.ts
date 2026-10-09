@@ -118,6 +118,12 @@ export const SdkAttr = {
   RETRY_COUNT: 'lousho.retry.count',
   /** C2: on a `chat` span, each retried failure's error category and HTTP status, e.g. `['timeout', 'unknown 500']`. */
   RETRY_ERRORS: 'lousho.retry.errors',
+  /** Eve MA-F10: on a sub-agent's `invoke_agent` span, the name the lead knows it by (the `task` tool's `agent`). */
+  SUBAGENT_NAME: 'lousho.subagent.name',
+  /** Eve MA-F10: on a sub-agent's `invoke_agent` span, 1 for a sub-agent of the top-level run, 2 for its sub-agent, and so on. */
+  SUBAGENT_DEPTH: 'lousho.subagent.depth',
+  /** Eve MA-F10: on a sub-agent's `invoke_agent` span, the `task` call's taskId. */
+  TASK_ID: 'lousho.task.id',
 } as const;
 
 /**

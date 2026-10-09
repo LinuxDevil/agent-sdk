@@ -112,12 +112,15 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | Attribute | Value |
 | --- | --- |
 | `gen_ai.operation.name` | `invoke_agent` |
-| `gen_ai.agent.name` | The agent's `name` |
+| `gen_ai.agent.name` | The agent's `name`. An unnamed sub-agent uses the key the lead knows it by (`subagents: { researcher }` gives `researcher`), and the span is named after it |
 | `gen_ai.agent.id` | The agent's `id`, when set |
 | `gen_ai.provider.name` | The provider's `name` |
 | `gen_ai.conversation.id` | `sessionId`, when set |
 | `lousho.cost_usd` | Cumulative estimated USD of the run (every model call and delegated child run, including a background child that finishes before the run ends); absent when any model used has no known price |
 | `lousho.usage.estimated` | `true` when any of the run's tokens were estimated |
+| `lousho.subagent.name` | On a sub-agent's run: the name the lead knows it by (the `task` tool's `agent`) |
+| `lousho.subagent.depth` | On a sub-agent's run: `1` for a sub-agent of the top-level run, `2` for its sub-agent, and so on |
+| `lousho.task.id` | On a sub-agent's run started by `task`: the task's `taskId` |
 
 ### Model call: `chat {model}` (CLIENT)
 
