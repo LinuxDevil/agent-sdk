@@ -1388,10 +1388,12 @@ provider's content filter stopped the model, and `cancelled` after
 `session/cancel`.
 
 **Errors.** An unknown method answers JSON-RPC error `-32601`, a line that is
-not JSON `-32700`, an unknown `sessionId` or an empty prompt `-32602`, and a
+not JSON `-32700`, a line that is JSON but not a request object (`null`, an
+array, a string, a number, or a non-string `method`) `-32600`, an unknown `sessionId` or an empty prompt `-32602`, and a
 second prompt while one runs in the same session `-32600`. A run that fails
 answers `-32603` with the error's message, and its SDK error code (for
-example `LOUSHO_PROVIDER_RATE_LIMITED`) in `error.data.code`.
+example `LOUSHO_PROVIDER_RATE_LIMITED`) in `error.data.code`. A `null` or
+non-object `params` reads as `{}`. A malformed line never stops the server.
 
 ## Not supported
 
@@ -1591,15 +1593,37 @@ export default defineTool({
 ### Sub-agents
 
 Every directory in `subagents/` is itself an agent directory (and can have its
-own `subagents/`). It must have a `description` in its config. The parent gets a
-`delegate_to_<name>` tool that runs the sub-agent with the task text and returns
-its final answer. A sub-agent uses its own `model` if it sets one, otherwise it
-inherits the parent's; a `provider` override passed to `loadAgentDir()` reaches
-all of them.
+own `subagents/`). It must have a `description` in its config. Each one is a
+native sub-agent of the parent: it lands in the parent's `subagents` map, so
+the parent's model delegates to it with the `task` tool (see
+[Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md)). The parent also gets a `delegate_to_<name>` tool,
+kept as a backward-compatible alias: it takes the task text and returns the
+sub-agent's final answer, and it runs through the same runtime as `task`.
+A sub-agent uses its own `model` if it sets one, otherwise it inherits the
+parent's; a `provider` override passed to `loadAgentDir()` reaches all of them.
+
+Either way the sub-agent runs inside the parent's run, like any `createAgent()`
+sub-agent:
+
+- the parent's `permissions` rules come first in the sub-agent, so a
+  `deny('write_file')` on the parent holds for the whole tree;
+- a sub-agent call that needs approval pauses the parent run
+  (`finishReason: 'awaiting-approval'`, the pending approval's `subagentPath`
+  names the sub-agent) and `agent.approvals.resolve()` continues it. The
+  sub-agent directory's own `approve` decides its calls first; without one, an
+  `approve` passed to `loadAgentDir()` in code does, and otherwise the call
+  waits for a human. The parent directory's own `approve` file does not decide
+  its sub-agents' calls;
+- its token usage is added to the parent's (`result.usage.delegated`), its
+  events reach the parent's listeners tagged with `event.subagent`, and its
+  spans nest under the parent's trace.
+
+Nested `subagents/` directories raise the parent's `maxSubagentDepth` to the
+depth of the tree (unless you pass one), so every level can delegate.
 
 A sub-agent directory whose config sets `"engine": "pi"` becomes a Pi
 coding-agent sub-agent instead: it lands in the parent's `subagents` map (the
-`task` tool) rather than getting a `delegate_to_<name>` tool, and its sessions
+`task` tool) without a `delegate_to_<name>` alias, and its sessions
 run in the parent's directory - the workspace the parent's file tools and the
 Pi session share. `model` takes the usual `pi/<provider>/<model>` id, and
 `permissions` rules gate the Pi session's own tool calls (`read`, `bash`,
@@ -1681,7 +1705,7 @@ console.log(manifest.memory); // names found in memory/
 | `agent.*` keys | the options in the table above |
 | `tools/` | `tools: [...]` |
 | `skills/` | `skills: await loadSkills('./skills')` |
-| `subagents/<name>/` | one `delegate_to_<name>` entry in `tools` |
+| `subagents/<name>/` | one `subagents` entry (the `task` tool), plus a `delegate_to_<name>` alias in `tools` |
 
 `resolveAgentDir()` returns the assembled options and a manifest, which is
 handy for tests and tooling:
@@ -4322,7 +4346,7 @@ lousho acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]
 lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allow <list>] [--overwrite] [--dry-run]    (or --list)
 lousho build <agent-dir|spec> --target=<name> [--out=<dir>]    (or --agent=<path>)
 lousho studio [--port N] [--host H] [--prod|--dev]
-lousho mcp <agent.yaml|json> [--http --port N --host H]
+lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]
 lousho doctor [agent.yaml|json] [--json] [--ping]
 lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
@@ -7049,7 +7073,8 @@ or pass your own `provider` instance.
 
 **Means:** a model call failed (`LLMProviderError`, and
 `CompactedLLMProviderError`, whose `compacted.category` says why:
-`rate-limit`, `timeout`, `context-length-exceeded`, `auth-failure`, `unknown`).
+`rate-limit`, `timeout`, `context-length-exceeded`, `quota-exceeded`, `auth-failure`,
+`unknown`).
 A context overflow is `context-length-exceeded` (not retryable) whatever the
 status, including llama.cpp / LM Studio's "exceeds the available context size"
 and "Context size has been exceeded", and whether it arrives from the request
@@ -7058,7 +7083,9 @@ e.g. `connection refused (ECONNREFUSED) at http://localhost:1234/v1/responses -
 is the server running?`. When the provider's error body could not be parsed
 (the message is only `Bad Request`), a short snippet of the body is appended.
 
-**Fix:** for `auth-failure`, fix the API key; for `context-length-exceeded`,
+**Fix:** for `quota-exceeded` (OpenAI's `insufficient_quota` 429, a 402 such as
+OpenRouter's "Insufficient credits"; not retryable, retrying cannot add credit),
+top up the account or fall back to another provider; for `auth-failure`, fix the API key; for `context-length-exceeded`,
 shorten the conversation (see [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md)); for
 transient failures, use `withRetry()` / `fallbackModels`
 (see [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md)).
@@ -7323,9 +7350,13 @@ paused on an approval (`error.approvalId`), so it cannot take new input yet.
 ### LOUSHO_SESSION_BUSY
 
 **Means:** `session.compact()`, `session.clear()` or `session.fork()` was called while a turn of
-that session is running or queued.
+that session is running or queued. From `send()` / `stream()`: another writer the in-process
+queue cannot see (another process, or a second store object over the same data) committed a
+turn while this one ran, so this turn was not committed. Tool calls of the turn that ran are
+kept: the turn up to their results is added after the other writer's turn.
 
-**Fix:** await the turn's `send()` (or abort it), then call again.
+**Fix:** await the turn's `send()` (or abort it), then call again. After a `send()` that failed
+this way, send again: the session reads the current transcript at the start of every call.
 
 ### LOUSHO_SESSION_TURN_PENDING
 
@@ -8127,12 +8158,15 @@ defineEval({
 ```
 
 `judge.model` is optional: without it the judge runs on its provider's own
-model. The judge is asked for a bare number, but its reply is read leniently:
-the number after a `score` label (`Score: 0.9`), else the first number in the
-reply (`**0.9**`), scaled into 0 to 1 when it is written as `8/10`,
-`8 out of 10`, `85%` or a bare whole number from 2 to 100 (`8` reads as 8/10,
-`85` as 85/100). A reply with no number scores 0. `parseJudgeScore(text)`
-exposes the same parsing.
+model. The judge sees the rubric, the user's request and the agent's reply, runs
+at temperature 0 unless you set `temperature`, and is asked to end with a
+`SCORE: <0..1>` line. Its reply is read by the last `score`-labelled number
+(`SCORE: 0.9`, `**Score:** 8/10`, `{"score": 0.8}`), so a number in its
+reasoning ("1 of 5 criteria") is ignored. Without a label the whole reply must
+be one number (`0.9`, `**0.9**`). A number is scaled into 0 to 1 when it is
+written as `8/10`, `8 out of 10`, `85%` or a bare whole number from 2 to 100
+(`8` reads as 8/10, `85` as 85/100). A reply with no labelled or bare number
+scores 0. `parseJudgeScore(text)` exposes the same parsing.
 
 Files named `*.judge.eval.ts` are never picked up by a normal run (and
 `npm test`); only `lousho eval --judge` (or `npm run test:evals:judge` in this
@@ -9927,7 +9961,14 @@ await server.close();
 - **stdio.** Nothing but the MCP protocol is written to stdout; warnings go to stderr.
 - **HTTP.** Binds `127.0.0.1` by default. Add `auth: { type: 'bearer', token }`
   to require an `Authorization: Bearer` header; binding a non-loopback host
-  without `auth` logs a warning.
+  without `auth` logs a warning. To block DNS rebinding (a web page re-pointing
+  its own domain at your machine), a loopback bind answers `403` unless the
+  `Host` header is `localhost`, `127.x.x.x` or `[::1]`, and any request whose
+  `Origin` header is not same-origin with `Host` gets `403`. Set
+  `allowedHosts: ['mcp.internal']` to accept other names (it replaces the
+  loopback default; on a non-loopback bind there is no Host check unless you
+  set it) and `allowedOrigins: ['https://app.example']` to accept browser
+  requests from another origin. `['*']` turns either check off.
 
 ### Annotations
 
@@ -13069,7 +13110,7 @@ lousho add --list --registry none       # fails: the registry is disabled
 | Flag | Meaning |
 | ---- | ------- |
 | `--registry <url-or-path>` | The index: an `http(s)` URL or a local path (`LOUSHO_REGISTRY` when absent, else the default registry). `none` disables the registry. |
-| `--dir <agent-dir>` | The agent directory to write into (default: the current directory; it must exist). |
+| `--dir <agent-dir>` | The agent directory to write into (default: the current directory). It must exist, except for a `kit`, which creates it. For any other item, a directory without `agent.*` or `instructions.md` gets a warning: only an agent directory loads `tools/` and `skills/` (a `lousho init` project imports tools in `src/agent.ts` instead). |
 | `--yes`, `-y` | Do not ask for confirmation. Required when stdin is not a terminal. Does not grant elevated permissions on its own (see `--allow`). Both flags are checked before anything is printed: a non-interactive run without them fails with one line naming the exact flags the item needs, e.g. `pass --yes --allow exec,fs-write`. |
 | `--allow <list>` | With `--yes`, the elevated permissions you grant, comma-separated: `exec`, `fs-write`, `network`, `env`. An item that asks for one you did not name is refused. |
 | `--overwrite` | Replace files that already exist (without it an existing file is `LOUSHO_REGISTRY_FILE_EXISTS`). |
@@ -13608,7 +13649,7 @@ console.log(session.id, session.messages.length);
 | `send(input, { signal })` | Sends a user message with the whole conversation so far and resolves with the usual `ExecutionResult`. |
 | `stream(input, { signal })` | Like `send()`, but returns an `AgentRun` that streams the turn as typed events - see [Streaming a session turn](#streaming-a-session-turn). |
 | `messages` | A read-only snapshot of the transcript (user, assistant and tool messages; no system prompt). Editing the snapshot does not change the session. |
-| `load()` | Reads the saved transcript from the store. `send()` does this for you; call it to show history before the first `send()` of a resumed session. |
+| `load()` | Reads the saved transcript from the store. `send()` does this for you; call it to show history before the first `send()` of a resumed session. Every call (`load()`, `send()`, `history()`, ...) reads the store again, so turns another session object committed for the same id are seen. |
 | `compact(options?)` | Compacts the transcript now - see [Compacting a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md#compacting-a-session). |
 | `clear()` | Empties the transcript and saves it empty (the store holds no messages for the id). Keeps the session id, store and options; deletes an interrupted turn's checkpoint; memory slots are cross-session and untouched. Emits `context.cleared` to `on()` listeners. Rejects with `LOUSHO_SESSION_BUSY` while a turn is running, and with `LOUSHO_SESSION_AWAITING_APPROVAL` while a durable turn waits on an approval. |
 | `on(listener)` | Listens for the session's events: every turn's events as they happen (`send()` and `stream()` turns, and a paused turn continued by `agent.approvals.resolve()`), plus `compact()` / `clear()` events (`compaction.start`, `compaction.done`, `context.cleared`); returns a function that removes the listener. A turn's events are the `AgentEvent`s its `stream()` yields. |
@@ -15376,7 +15417,7 @@ inherits:
 | Event listeners (`onAgentEvent`, `createAgent({ onEvent })`) and `stream()` | Yes | The sub-agent's events are forwarded with a `subagent` field. |
 | `toolConcurrency` | Yes, unless the sub-agent sets its own | |
 | `sandbox` | Yes | |
-| Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`); a remote sub-agent's under `byModel['remote:<name>']`. |
+| Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`) and counted against its `limits`, also when the sub-agent fails after spending tokens; a remote sub-agent's under `byModel['remote:<name>']`. |
 | `maxSubagentDepth` | The remaining budget | See [Depth](#depth). |
 | `permissionMode` | Yes, unless the lead's is `'default'` | The sub-agent runs under the lead's [permission mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md#sub-agents), read at each of its tool calls; while the lead's is `'default'`, under its own (a sub-agent whose own mode is `'plan'` always stays in plan mode). A remote sub-agent does not inherit it: plan mode refuses a `task` call to one. |
 | `principal` | Yes | Who the lead's run acts for (route auth's caller, a channel's sender); a remote sub-agent is not told. |
