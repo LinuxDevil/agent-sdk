@@ -74,6 +74,24 @@ function hostnameOf(hostHeader: string): string | undefined {
   }
 }
 
+/** Whether the request's lowercased `Host` header is acceptable for a listener bound to `boundHost`. */
+function hostAllowed(hostHeader: string, boundHost: string, allowedHosts: string[] | undefined): boolean {
+  if (allowedHosts?.includes('*')) return true;
+  const hostname = hostnameOf(hostHeader);
+  return allowedHosts
+    ? hostname !== undefined && (allowedHosts.includes(hostname) || allowedHosts.includes(hostHeader))
+    : !isLoopbackHost(boundHost) || (hostname !== undefined && isLoopbackHost(hostname));
+}
+
+/** The lowercased `host` of an `Origin` header value, or `undefined` when it does not parse. */
+function originHostOf(origin: string): string | undefined {
+  try {
+    return new URL(origin).host.toLowerCase();
+  } catch {
+    return undefined;
+  }
+}
+
 /** Why the request's `Host` / `Origin` is refused (DNS rebinding, Eve TOOLS-F5), else `undefined`. */
 function rebindingRefusal(
   req: http.IncomingMessage,
@@ -81,23 +99,14 @@ function rebindingRefusal(
   options: Pick<McpHttpTransportOptions, 'allowedHosts' | 'allowedOrigins'>
 ): string | undefined {
   const hostHeader = (req.headers.host ?? '').toLowerCase();
-  const hostname = hostnameOf(hostHeader);
   const allowedHosts = options.allowedHosts?.map((entry) => entry.toLowerCase());
-  if (!allowedHosts?.includes('*')) {
-    const hostAllowed = allowedHosts
-      ? hostname !== undefined && (allowedHosts.includes(hostname) || allowedHosts.includes(hostHeader))
-      : !isLoopbackHost(boundHost) || (hostname !== undefined && isLoopbackHost(hostname));
-    if (!hostAllowed) return `Forbidden: Host "${hostHeader}" is not allowed. Add it to transport.allowedHosts.`;
+  if (!hostAllowed(hostHeader, boundHost, allowedHosts)) {
+    return `Forbidden: Host "${hostHeader}" is not allowed. Add it to transport.allowedHosts.`;
   }
   const origin = req.headers.origin;
   if (origin === undefined || options.allowedOrigins?.includes('*')) return undefined;
   if (options.allowedOrigins?.includes(origin)) return undefined;
-  let originHost: string | undefined;
-  try {
-    originHost = new URL(origin).host.toLowerCase();
-  } catch {
-    originHost = undefined;
-  }
+  const originHost = originHostOf(origin);
   if (originHost !== undefined && originHost === hostHeader) return undefined;
   return `Forbidden: Origin "${origin}" is not allowed. Add it to transport.allowedOrigins.`;
 }

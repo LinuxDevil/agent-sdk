@@ -151,17 +151,27 @@ export async function getToken(provider: OAuthProvider, access: TokenAccess): Pr
       await tokens.set(provider.name, owner, refreshed);
       return handOut(refreshed, access);
     }
-    // Rotating refresh tokens are single use: the failure may only mean a concurrent refresh (in
-    // another process) won. Delete the token only when it is still the one that failed.
-    const current = await tokens.get(provider.name, owner);
-    if (!current || sameToken(current, stored)) {
-      if (current) await tokens.delete(provider.name, owner);
-      break;
-    }
-    stored = current;
+    stored = await tokenAfterFailedRefresh(tokens, provider, owner, stored);
   }
   if (owner.owner === 'app') throw appSignInRequired(provider);
   throw new SignInRequired(provider, owner);
+}
+
+/** The token to retry after refreshing `failed` failed: a replacement another caller stored meanwhile, else `undefined`. */
+async function tokenAfterFailedRefresh(
+  tokens: OAuthTokenStore,
+  provider: OAuthProvider,
+  owner: TokenOwner,
+  failed: OAuthToken
+): Promise<OAuthToken | undefined> {
+  // Rotating refresh tokens are single use: the failure may only mean a concurrent refresh (in
+  // another process) won. Delete the token only when it is still the one that failed.
+  const current = await tokens.get(provider.name, owner);
+  if (!current || sameToken(current, failed)) {
+    if (current) await tokens.delete(provider.name, owner);
+    return undefined;
+  }
+  return current;
 }
 
 function sameToken(a: OAuthToken, b: OAuthToken): boolean {
@@ -483,13 +493,16 @@ function scrubText(text: string, secrets: readonly string[]): string {
   return secrets.reduce((out, secret) => out.split(secret).join(REDACTED), text);
 }
 
+/** `text` with the secrets replaced, recording on `hit` whether there were any. */
+function scrubString(text: string, secrets: readonly string[], hit: { found: boolean }): string {
+  if (!hasSecret(text, secrets)) return text;
+  hit.found = true;
+  return scrubText(text, secrets);
+}
+
 /** For a value `JSON.stringify` cannot serialize (a cycle, a BigInt): strings and keys of arrays and objects. */
 function scrubWalk(value: unknown, secrets: readonly string[], seen: WeakMap<object, unknown>, hit: { found: boolean }): unknown {
-  if (typeof value === 'string') {
-    if (!hasSecret(value, secrets)) return value;
-    hit.found = true;
-    return scrubText(value, secrets);
-  }
+  if (typeof value === 'string') return scrubString(value, secrets, hit);
   if (typeof value !== 'object' || value === null) return value;
   if (seen.has(value)) return seen.get(value);
   if (Array.isArray(value)) {
