@@ -70,6 +70,31 @@ export async function reportChannelError(onError: ChannelErrorHandler | undefine
   }
 }
 
+/**
+ * Eve CH-F8: remembers the delivery ids (Telegram `update_id`, GitHub `X-GitHub-Delivery`,
+ * Slack `event_id`) of the last `ttlMs` (default 1 hour), at most `max` of them (default 10 000),
+ * so a surface's redelivery of a webhook this process already took does not run its turn twice.
+ * The returned function answers whether `id` was seen before, and records it. In memory: it covers
+ * the redelivery window of one process, not a restart or a second replica.
+ */
+export function deliveryLog(options: { ttlMs?: number; max?: number } = {}): (id: string | undefined) => boolean {
+  const ttlMs = options.ttlMs ?? 60 * 60 * 1000;
+  const max = options.max ?? 10_000;
+  const seen = new Map<string, number>(); // id -> expiry; insertion order is expiry order
+  return (id) => {
+    if (id === undefined || id === '') return false;
+    const now = Date.now();
+    for (const [key, expires] of seen) {
+      if (expires > now) break;
+      seen.delete(key);
+    }
+    if (seen.has(id)) return true;
+    seen.set(id, now + ttlMs);
+    if (seen.size > max) seen.delete(seen.keys().next().value as string);
+    return false;
+  };
+}
+
 /** Eve CH-F6: what a client sees of a channel 500, as on the session routes (A1); the detail goes to `onError`. */
 const PUBLIC_ERROR_MESSAGE = 'The request failed. The server log has the details.';
 

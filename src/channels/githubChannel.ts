@@ -8,7 +8,7 @@
  * A comment is text written by anyone who can comment: it is untrusted input.
  */
 import { ConfigurationError, SDKError } from '../execution/errors';
-import { mayApprove, reportChannelError, type Approvers, splitText } from './channelSupport';
+import { deliveryLog, mayApprove, reportChannelError, type Approvers, splitText } from './channelSupport';
 import { createInstallationTokens } from './githubAppAuth';
 import {
   defineChannel,
@@ -246,6 +246,8 @@ export function githubChannel(options: GitHubChannelOptions): Channel<GitHubComm
   /** In-memory: the thread each approval prompt was posted in, and the pending `ask_question` of a thread. */
   const prompts = new Map<string, string>();
   const questions = new Map<string, string>();
+  /** Eve CH-F8: deliveries this channel already took. */
+  const delivered = deliveryLog();
   /** Approval ids this channel already passed on as a decision. */
   const decided = new Set<string>();
 
@@ -428,6 +430,9 @@ export function githubChannel(options: GitHubChannelOptions): Channel<GitHubComm
     },
     async parse(req: ChannelRequest, respond: ChannelRespond, ctx: ChannelContext) {
       respond(200, { ok: true }); // GitHub gives a webhook 10 seconds and does not retry
+      // Eve CH-F8: a redelivery ("Redeliver" in the app settings, or a timed-out delivery) keeps its delivery id: run it once.
+      const delivery = req.headers['x-github-delivery'];
+      if (typeof delivery === 'string' && delivered(delivery)) return null;
       const kind = req.headers['x-github-event'];
       if (kind === 'pull_request') {
         const pr = options.pullRequestOpened ? readPullRequestOpened(JSON.parse(req.text || '{}') as Payload) : null;

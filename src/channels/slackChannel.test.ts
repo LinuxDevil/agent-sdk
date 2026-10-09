@@ -155,6 +155,20 @@ describe('slackChannel (LOU-P5)', () => {
     expect(t.userTexts(2)).toEqual(['Who am I?']);
   });
 
+  it('runs a retry whose event it never saw, and skips a redelivered event_id (Eve CH-F8)', async () => {
+    const t = setup(['First', 'Lost one']);
+
+    await t.send({ ...event('hi'), event_id: 'Ev1' });
+    await t.send({ ...event('hi'), event_id: 'Ev1' }, { headers: { 'x-slack-retry-num': '1' } });
+    await t.send({ ...event('hi'), event_id: 'Ev1' });
+    expect(t.model.calls).toHaveLength(1);
+
+    // the first delivery of Ev2 never reached this process (a load balancer timed out): the retry is the only copy
+    await t.send({ ...event('lost', { ts: '200.1' }), event_id: 'Ev2' }, { headers: { 'x-slack-retry-num': '1' } });
+    expect(t.model.calls).toHaveLength(2);
+    expect(t.posts.map((p) => p.text)).toEqual(['First', 'Lost one']);
+  });
+
   it('skips retries, bot messages, mention echoes and threads it was never mentioned in', async () => {
     const t = setup(['Once']);
 

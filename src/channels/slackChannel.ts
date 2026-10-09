@@ -5,7 +5,7 @@
  */
 import { ConfigurationError } from '../execution/errors';
 import { checkSlackSignatureWeb } from '../triggers/slackSignature';
-import { decodeApprovalRef, encodeApprovalRef, mayApprove, reportChannelError, type Approvers } from './channelSupport';
+import { deliveryLog, decodeApprovalRef, encodeApprovalRef, mayApprove, reportChannelError, type Approvers } from './channelSupport';
 import {
   defineChannel,
   type Channel,
@@ -63,6 +63,8 @@ interface SlackEnvelope {
   type?: string;
   challenge?: string;
   team_id?: string;
+  /** Eve CH-F8: the same on every delivery (and retry) of one event. */
+  event_id?: string;
   event?: SlackChannelEvent;
   authorizations?: Array<{ user_id?: string }>;
 }
@@ -141,6 +143,8 @@ export function slackChannel(options: SlackChannelOptions): Channel<SlackChannel
   const name = options.name ?? 'slack';
   const doFetch = options.fetch ?? ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init));
   const questions = new Map<string, string>();
+  /** Eve CH-F8: deliveries this channel already took. */
+  const delivered = deliveryLog();
 
   async function post(thread: unknown, message: Record<string, unknown>): Promise<void> {
     const res = await doFetch('https://slack.com/api/chat.postMessage', {
@@ -219,13 +223,16 @@ export function slackChannel(options: SlackChannelOptions): Channel<SlackChannel
       return { ok: reason === undefined, reason };
     },
     async parse(req, respond, ctx) {
-      if (header(req, 'x-slack-retry-num') !== undefined) return null;
+      const retried = header(req, 'x-slack-retry-num') !== undefined;
       if (header(req, 'content-type')?.startsWith('application/x-www-form-urlencoded')) {
+        if (retried) return null;
         respond(200, { ok: true });
         return readClick(req.text, ctx);
       }
       const envelope = JSON.parse(req.text || '{}') as SlackEnvelope;
       respond(200, envelope.type === 'url_verification' ? { challenge: envelope.challenge } : { ok: true });
+      // Eve CH-F8: a retry runs unless this process already took that event (its first delivery may never have arrived).
+      if (envelope.event_id !== undefined ? delivered(envelope.event_id) : retried) return null;
       return toInbound(envelope, ctx);
     },
     reply: ({ inbound, text }) => post(inbound.replyTo, { text }),

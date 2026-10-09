@@ -5,6 +5,7 @@
  */
 import { ConfigurationError } from '../execution/errors';
 import { decodeApprovalRef, encodeApprovalRef, mayApprove, type Approvers, splitText } from './channelSupport';
+import { isFresh } from '../triggers/slackSignature';
 import {
   defineChannel,
   type Channel,
@@ -78,10 +79,15 @@ function fromHex(hex: string): Uint8Array<ArrayBuffer> | undefined {
   return /^([0-9a-f]{2})+$/i.test(hex) ? new Uint8Array(hex.match(/../g)!.map((byte) => parseInt(byte, 16))) : undefined;
 }
 
+/** Eve CH-F13: how far a request's `X-Signature-Timestamp` may be from local time. */
+const TIMESTAMP_TOLERANCE_SECONDS = 300;
+
 /** A short reason when `signature` is not Ed25519 over `timestamp + rawBody` by `key`, else undefined. */
 async function checkSignature(key: Promise<CryptoKey>, timestamp: string | undefined, signature: string | undefined, rawBody: Uint8Array): Promise<string | undefined> {
   const bytes = signature === undefined ? undefined : fromHex(signature);
   if (timestamp === undefined || !bytes) return 'missing or malformed signature headers';
+  // Eve CH-F13: a captured, validly signed request is refused once it is older (or newer) than five minutes, as on Slack.
+  if (!/^\d+$/.test(timestamp) || !isFresh(timestamp, TIMESTAMP_TOLERANCE_SECONDS, Date.now())) return 'stale or invalid timestamp';
   const prefix = new TextEncoder().encode(timestamp);
   const data = new Uint8Array(prefix.length + rawBody.length);
   data.set(prefix);

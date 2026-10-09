@@ -275,9 +275,11 @@ message to the bot starts a session keyed on the DM channel. Replies are posted 
 - The request is answered right away (`200`, or the `url_verification`
   challenge) and the turn runs after the response, within Slack's 3-second
   limit.
-- Retries (`X-Slack-Retry-Num`), bot messages (including the bot's own) and
-  the `message` copy of a mention are acknowledged and skipped, so a turn
-  never runs twice.
+- A redelivered event (the same `event_id`, e.g. a retry with
+  `X-Slack-Retry-Num`), bot messages (including the bot's own) and the
+  `message` copy of a mention are acknowledged and skipped, so a turn never
+  runs twice. A retry of an event this process never received (its first
+  delivery was lost) runs. Delivery ids are kept in memory for an hour.
 - A tool approval is posted in the thread with **Approve** and **Deny**
   buttons; the click resumes the session and the continuation is posted in the
   thread. The clicked message is replaced with the outcome ("Approved by @user"),
@@ -340,8 +342,9 @@ Workers). The expected command is `/ask prompt:<text>`: one string option, and
 the `prompt` option (or the first string option) is the message.
 
 - Every request's `X-Signature-Ed25519` / `X-Signature-Timestamp` is verified
-  over `timestamp + body`; a missing or bad signature answers 401, as Discord
-  requires. `PING` is answered with `PONG`.
+  over `timestamp + body`; a missing or bad signature, or a timestamp more
+  than five minutes from local time (a replayed request), answers 401, as
+  Discord requires. `PING` is answered with `PONG`.
 - A command is acknowledged at once with a deferred response (within Discord's
   3-second limit); the reply then edits the original response
   (`PATCH /webhooks/{applicationId}/{token}/messages/@original`). Text over
@@ -414,7 +417,9 @@ library; Web Crypto and `fetch` only, so it also runs on Workers).
   channel has no unauthenticated mode, so always pass `secret_token` to
   `setWebhook`.
 - The update is acknowledged with `200` at once and the turn runs after, so
-  Telegram does not retry the webhook.
+  Telegram does not retry the webhook. An update it redelivers anyway (the
+  same `update_id`) is acknowledged and not run again; ids are kept in memory
+  for an hour.
 - In a private chat every text message (or photo or document caption) is a
   message to the agent. In a group or supergroup only a `/ask` command (or
   `/ask@<botUsername>`), a message containing `@<botUsername>`, or a reply to
@@ -502,7 +507,9 @@ so it also runs on Workers.
   unauthenticated mode.
 - The webhook is acknowledged with `200` at once and the turn runs after: GitHub
   waits 10 seconds and does not retry, and a slow reply is posted as a new
-  comment. A `ping` is acknowledged without a turn.
+  comment. A `ping` is acknowledged without a turn. A redelivery (the same
+  `X-GitHub-Delivery`, e.g. "Redeliver" in the app settings) is acknowledged
+  and not run again; ids are kept in memory for an hour.
 - A comment on an issue, on a pull request (the conversation tab) or a review
   comment (on a line of the diff) that contains `@<botName>` as a whole word
   (case-insensitive) starts a turn, with the mention removed from the text. Once
