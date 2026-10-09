@@ -70,6 +70,17 @@ describe('useLoushoAgent in process (LOU-D15)', () => {
     expect(model.calls[0].messages.filter((m) => m.role === 'user')).toEqual([{ role: 'user', content: parts }]);
   });
 
+  it('reset() clears the chat (Eve CORE-F17)', async () => {
+    mount({ agent: createAgent({ provider: mockModel(['Hello']) }) });
+    await act(() => hook.send('hi'));
+    expect(hook.messages).toHaveLength(2);
+
+    act(() => hook.reset());
+
+    expect(hook.messages).toEqual([]);
+    expect(hook.status).toBe('idle');
+  });
+
   it('send() streams the reply into messages and ends idle with usage', async () => {
     const agent = createAgent({ provider: mockModel([{ text: 'Hello there!', usage: { inputTokens: 5, outputTokens: 3 } }]) });
     mount({ agent });

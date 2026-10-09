@@ -70,12 +70,23 @@ function toEventError(error: unknown): AgentEventError {
   return error instanceof Error ? { name: error.name, message: error.message } : { name: 'Error', message: String(error) };
 }
 
+/** Eve CORE-F17: the `{ error }` message of a JSON error response (what `createRouteHandler` sends), else `undefined`. */
+async function serverMessage(response: Response): Promise<string | undefined> {
+  try {
+    const body = (await response.json()) as { error?: unknown };
+    return typeof body.error === 'string' && body.error ? body.error : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function post(source: RemoteAgentSource, url: string, body: unknown, signal: AbortSignal): Promise<Response> {
   const headers = { 'Content-Type': 'application/json', ...source.headers };
   const response = await (source.fetch ?? fetch)(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
   if (!response.ok) {
     // The message stays as it was (the UI shows it); the code says what kind of failure it is.
-    throw new SDKError(`POST ${url} failed with ${response.status}`, 'LOUSHO_REMOTE_REQUEST_FAILED', { appendHelp: false });
+    const detail = await serverMessage(response);
+    throw new SDKError(`POST ${url} failed with ${response.status}${detail ? `: ${detail}` : ''}`, 'LOUSHO_REMOTE_REQUEST_FAILED', { appendHelp: false });
   }
   return response;
 }

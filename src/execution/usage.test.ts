@@ -69,6 +69,13 @@ describe('run usage (LOU-V5)', () => {
     expect(formatUsage(result.usage)).toBe('2,500 in / 500 out tokens · $0.0007 (2 model calls)');
   });
 
+  it('formatUsage keeps significant digits for a tiny cost (Eve CORE-F17)', () => {
+    const base = { inputTokens: 10, outputTokens: 5, modelCalls: 1, estimated: false };
+    expect(formatUsage({ ...base, costUsd: 0.000042 })).toBe('10 in / 5 out tokens · $0.000042 (1 model call)');
+    expect(formatUsage({ ...base, costUsd: 0.0042 })).toBe('10 in / 5 out tokens · $0.0042 (1 model call)');
+    expect(formatUsage({ ...base, costUsd: 0 })).toBe('10 in / 5 out tokens · $0.0000 (1 model call)');
+  });
+
   it('leaves costUsd undefined (not a partial sum) when any model has unknown pricing', async () => {
     const provider = mockModel(
       [

@@ -74,6 +74,7 @@ on the server.
 | `todos` | The agent's todo list (`{ id, content, status }[]`), set by each `todo.updated` event of the [todo tools](./tools.md#todo-tools); `[]` until the first one. It carries across turns; see [Todos](#todos). |
 | `lastEvent` | The last event received, for anything the projection does not cover. |
 | `send(input)` | Starts a turn. If a turn is still running, it is aborted first. `input` is a string, content parts or a `Message[]` (an `AgentInput`); the user bubble shows the text with an `[image]` / `[file]` marker per other part (remote mode POSTs it as `{ "input": ... }`). |
+| `reset()` | Aborts the run, forgets the in-process session and clears the chat (remote mode starts a new chat id), as `reset()` in the Vue and Svelte bindings. |
 | `stop()` | Aborts the turn in flight through its `AbortSignal`; `status` goes back to `'idle'`. |
 | `approve(note?)`, `reject(note?)` | Decide `pendingApproval` (see below). |
 | `answer(text)` | Answers a question (`pendingApproval.kind === 'question'`); the same as `approve(text)`. `reject()` declines it. |

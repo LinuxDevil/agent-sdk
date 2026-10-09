@@ -18,7 +18,10 @@ import {
 export type { LocalAgentSource, LoushoAgentSource, RemoteAgentSource } from '../ui';
 export type UseLoushoAgentOptions = LoushoAgentOptions;
 
-export interface UseLoushoAgentResult extends AgentUIState, AgentCommands {}
+export interface UseLoushoAgentResult extends AgentUIState, AgentCommands {
+  /** Eve CORE-F17: aborts the run, forgets the in-process session and clears the chat (as in the Vue and Svelte bindings). */
+  reset(): void;
+}
 
 /**
  * Chat UI state for an agent: `messages` stream in as the run's events
@@ -46,6 +49,6 @@ export function useLoushoAgent(source: LoushoAgentSource, options: UseLoushoAgen
 
   useEffect(() => runner.stop, [runner]);
 
-  const { send, stop, approve, reject, answer } = runner;
-  return { ...state, send, stop, approve, reject, answer };
+  const { send, stop, reset, approve, reject, answer } = runner;
+  return { ...state, send, stop, reset, approve, reject, answer };
 }
