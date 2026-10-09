@@ -61,14 +61,13 @@ import { dayNameTool } from '../tools/built-in/dayName';
 import { createWorkerHttpTool, HTTP_ALLOW_BINDING, parseHostAllowList } from '../tools/built-in/workerHttp';
 import { ToolDescriptor } from '../types';
 import { AgentSpec } from '../spec/schema';
-import { z } from 'zod';
-import { createAgent, SimpleAgent } from '../createAgent';
+import { createAgent, SimpleAgent, type CreateAgentConfig } from '../createAgent';
 import { memoryStore, AgentStore } from '../storage/agentStore';
 import { serveFetch, type ChatRoutesContext } from '../server/fetchRoutes';
 import { mountFetchChannels } from '../channels/fetchChannels';
 import { continueChannelSignIn } from '../channels/channelCore';
 import type { OAuthCompleteResult } from '../oauth/signIn';
-import { defineTool, type DefinedTool } from '../tools/defineTool';
+import { delegateTool, routeSubagentApprovals, subagentTreeDepth, type LoadedSubagent } from '../agentDir/subagentDelegation';
 import type { MemorySlot } from '../memory/defineMemory';
 import { bindWorkerMemoryProvider } from './workerMemory';
 import {
@@ -86,7 +85,6 @@ import { SDKError } from '../execution/errors';
 import {
   resolveWorkerAgentDir,
   type ResolvedWorkerAgentDir,
-  type ResolvedWorkerSubagent,
   type WorkerAgentDir,
 } from './workerAgentDir';
 
@@ -217,17 +215,17 @@ export function prepareWorkerAgentDir(dir: WorkerAgentDir): ResolvedWorkerAgentD
 }
 
 /**
- * The `delegate_to_<name>` tool a parent agent calls to hand a task to the
- * sub-agent `sub` resolves to (the delegate tool `resolveAgentDir()` wires
- * `subagents/` up with, rebuilt here because that module needs `node:path`).
+ * Eve E14 (MA-F5 on Workers): the `subagents/` entries of `resolved` as
+ * native sub-agents, the way `loadAgentDir()` loads them: each is a
+ * `createAgent()` agent with its description, run by the lead's `task` tool
+ * and its `delegate_to_<name>` alias through `runSubagent()`, so the lead's
+ * deny rules, approvals, hooks and usage cover it.
  */
-function workerDelegateTool(sub: ResolvedWorkerSubagent, env: WorkerEnv): DefinedTool {
-  const agent = workerAgentFromResolved(sub.dir, env);
-  return defineTool({
-    name: `delegate_to_${sub.name}`,
-    description: `Delegate a task to the '${sub.name}' agent. ${sub.description}`,
-    input: z.object({ task: z.string().describe('The complete task for the agent, with all needed context') }),
-    execute: async ({ task }, ctx) => (await agent.send(task, { signal: ctx.abortSignal })).text,
+function workerSubagents(resolved: ResolvedWorkerAgentDir, env: WorkerEnv): LoadedSubagent[] {
+  return resolved.subagents.map((sub) => {
+    const child = workerAgentParts(sub.dir, env);
+    const agent = createAgent({ ...child.config, description: sub.description });
+    return { name: sub.name, description: sub.description, agent, depth: 1 + child.levels, ...(child.config.approve === undefined ? {} : { approve: child.config.approve }) };
   });
 }
 
@@ -238,17 +236,31 @@ function boundMemory(slots: readonly MemorySlot[], env: WorkerEnv): MemorySlot[]
 
 /** The `createAgent()` agent `resolved` describes, over the Worker's store and `env` bindings (sub-agents included). */
 function workerAgentFromResolved(resolved: ResolvedWorkerAgentDir, env: WorkerEnv): SimpleAgent {
-  const { name, instructions, model, tools, skills, maxSteps, toolConcurrency, memory, subagents, permissionMode, permissions, compaction, limits, modelSettings, approvalTtlMs, hooks, approve } = resolved;
+  return createAgent({ ...workerAgentParts(resolved, env).config, store: workerStore(env) });
+}
+
+/**
+ * The `createAgent()` options of `resolved` (no store: only the lead keeps
+ * one, as with `loadAgentDir()`), and how many levels of sub-agent
+ * directories hang below it.
+ */
+function workerAgentParts(resolved: ResolvedWorkerAgentDir, env: WorkerEnv): { config: CreateAgentConfig; levels: number } {
+  const { name, instructions, model, tools, skills, maxSteps, toolConcurrency, memory, permissionMode, permissions, compaction, limits, modelSettings, approvalTtlMs, hooks } = resolved;
   const source =
     'provider' in model
       ? model
       : { provider: workerResolvers(env).resolveProvider(model.providerType, model.model) };
-  const allTools = [...tools, ...subagents.map((sub) => workerDelegateTool(sub, env))];
-  return createAgent({
+  const delegated = workerSubagents(resolved, env);
+  const allTools = [...tools, ...delegated.map(delegateTool)];
+  const approve = routeSubagentApprovals(resolved.approve, delegated, undefined);
+  const maxSubagentDepth = subagentTreeDepth(delegated.map((sub) => sub.depth));
+  const config = {
     name,
     instructions,
     ...source,
     ...(allTools.length > 0 ? { tools: allTools } : {}),
+    ...(delegated.length > 0 ? { subagents: Object.fromEntries(delegated.map((sub) => [sub.name, sub.agent])) } : {}),
+    ...(maxSubagentDepth === undefined ? {} : { maxSubagentDepth }),
     ...(skills.length > 0 ? { skills } : {}),
     ...(memory.length > 0 ? { memory: boundMemory(memory, env) } : {}),
     ...(maxSteps === undefined ? {} : { maxSteps }),
@@ -261,14 +273,15 @@ function workerAgentFromResolved(resolved: ResolvedWorkerAgentDir, env: WorkerEn
     ...(approvalTtlMs === undefined ? {} : { approvalTtlMs }),
     ...(hooks === undefined ? {} : { hooks }),
     ...(approve === undefined ? {} : { approve }),
-    store: workerStore(env),
-  });
+  } as CreateAgentConfig;
+  const levels = Math.max(0, ...delegated.map((sub) => sub.depth));
+  return { config, levels };
 }
 
 /**
  * The agent of a bundled agent directory over the Worker's store: its tools,
- * skills, memory slots and settings, a `delegate_to_<name>` tool per
- * `subagents/` entry (sub-agents inherit the parent's model unless they set
+ * skills, memory slots and settings, a native sub-agent (the `task` tool and
+ * a `delegate_to_<name>` alias) per `subagents/` entry (sub-agents inherit the parent's model unless they set
  * their own, as `resolveAgentDir()` does), and a `provider/model` config
  * resolved with the API key binding of that provider (e.g. `OPENAI_API_KEY`).
  */
