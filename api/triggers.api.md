@@ -133,6 +133,10 @@ type ExecutionFinishReason = GenerateResult['finishReason'] | 'awaiting-approval
 
 // @public
 interface ExecutionResult<TObject = unknown> {
+    abortReason?: {
+        name: string;
+        message: string;
+    };
     agentName?: string;
     // (undocumented)
     approvalId?: string;

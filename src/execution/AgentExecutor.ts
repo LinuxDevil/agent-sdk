@@ -720,7 +720,12 @@ export interface ExecutionResult<TObject = unknown> {
    * if (result.abortReason?.name === 'TimeoutError') console.log('timed out');
    * ```
    */
-  abortReason?: { name: string; message: string };
+  abortReason?: {
+    /** The abort reason's error name (`'AbortError'`, `'TimeoutError'`, or a custom error's). */
+    name: string;
+    /** The abort reason's message. */
+    message: string;
+  };
   steps: number;
   /** With `finishReason: 'awaiting-approval'`, the pending approval to decide (the first of `approvalIds`). */
   approvalId?: string;

@@ -755,6 +755,10 @@ export type ExecutionFinishReason = GenerateResult['finishReason'] | 'awaiting-a
 
 // @public
 export interface ExecutionResult<TObject = unknown> {
+    abortReason?: {
+        name: string;
+        message: string;
+    };
     agentName?: string;
     // (undocumented)
     approvalId?: string;
