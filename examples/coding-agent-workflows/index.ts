@@ -209,6 +209,7 @@ export async function runCodingAgent(options: CodingAgentOptions & { request: st
       decision,
       effectiveRoute,
       flow: {
+        status: 'completed',
         success: true,
         output: answer.text,
         variables: {},
