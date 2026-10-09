@@ -4417,6 +4417,7 @@ export const OPERATION_DURATION_BUCKETS: number[];
 // @public
 export interface OutputError {
     issues: ToolArgumentIssue[];
+    kind: 'invalid' | 'truncated';
     message: string;
 }
 

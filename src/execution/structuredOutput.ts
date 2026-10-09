@@ -13,6 +13,13 @@ import { decodeStrictValue, resolveRef, rewriteStrictShapes, type StrictShapes }
 
 /** Why a run's final reply is not a valid `output` object (`finishReason: 'output-invalid'`). */
 export interface OutputError {
+  /**
+   * `'truncated'` when the reply was cut off at the `maxTokens` limit (its
+   * `finishReason` was `'length'`) before the JSON was complete: no repair
+   * call is made, since it would be cut off the same way - raise
+   * `modelSettings.maxTokens` (Eve CORE-F12). `'invalid'` otherwise.
+   */
+  kind: 'invalid' | 'truncated';
   /** Model-readable summary, e.g. `The reply does not match the output schema: 1 issue (city: Required)`. */
   message: string;
   /** Each problem with its path (`(root)` for the whole reply). */
@@ -399,10 +406,10 @@ async function validateValue(schema: StandardSchemaV1, value: unknown): Promise<
   if (result.success) return { object: result.data };
   if (isSchemaEcho(value, strict)) {
     const issues = [{ path: '(root)', message: 'This is the output JSON Schema itself, not an answer that follows it' }];
-    return { outputError: { message: `The reply is the JSON Schema, not data: ${formatIssues(issues)}`, issues }, schemaEcho: true };
+    return { outputError: { kind: 'invalid', message: `The reply is the JSON Schema, not data: ${formatIssues(issues)}`, issues }, schemaEcho: true };
   }
   const message = `The reply does not match the output schema: ${formatIssues(result.issues)}`;
-  return { outputError: { message, issues: result.issues } };
+  return { outputError: { kind: 'invalid', message, issues: result.issues } };
 }
 
 /**
@@ -430,7 +437,22 @@ export async function validateOutput(
     reason = (error as Error).message;
   }
   const issues = [{ path: '(root)', message: `Not valid JSON: ${reason}` }];
-  return { outputError: { message: `The reply is not a JSON object: ${formatIssues(issues)}`, issues } };
+  return { outputError: { kind: 'invalid', message: `The reply is not a JSON object: ${formatIssues(issues)}`, issues } };
+}
+
+/**
+ * Eve CORE-F12: `failure` of a reply the model ended with `finishReason:
+ * 'length'` - cut off at the `maxTokens` limit, so a repair call would be
+ * cut off the same way. Kind `'truncated'`, with the hint to raise the limit.
+ */
+export function truncatedOutput(failure: OutputFailure): OutputError {
+  return {
+    kind: 'truncated',
+    message:
+      `The reply was cut off at the maxTokens limit (finishReason 'length') before the JSON was complete: ` +
+      `${failure.outputError.message}. Raise modelSettings.maxTokens.`,
+    issues: failure.outputError.issues,
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

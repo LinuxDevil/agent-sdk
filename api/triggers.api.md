@@ -350,6 +350,7 @@ type ModerationCategory = 'hate' | 'harassment' | 'self-harm' | 'sexual' | 'sexu
 interface OutputError {
     // Warning: (ae-forgotten-export) The symbol "ToolArgumentIssue" needs to be exported by the entry point index.d.ts
     issues: ToolArgumentIssue[];
+    kind: 'invalid' | 'truncated';
     message: string;
 }
 
@@ -600,8 +601,8 @@ export interface WebhookTriggerHandle extends TriggerHandle {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-9ailPkqP.d.ts:778:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-9ailPkqP.d.ts:795:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-DqGSOSUW.d.ts:778:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-DqGSOSUW.d.ts:795:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
