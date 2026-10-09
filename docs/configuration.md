@@ -245,7 +245,11 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
   (default 30 s): then the call fails at once with a
   `CompactedLLMProviderError` whose `compacted.retryAfterMs` holds the hint, so
   your code decides whether to wait. Pass `retryOn(error, attempt)` to change the rule, `timeoutMs` for a
-  per-attempt time limit, and `signal` to stop retrying.
+  per-attempt time limit, and `signal` to stop retrying. For `stream()`,
+  `timeoutMs` only bounds the wait for the first chunk: a stream that has
+  started is never cut off by it. `idleTimeoutMs` (stream only) fails a stream
+  that goes quiet for longer than that between chunks, with a `TimeoutError`
+  (retried only while no text or tool call was out).
 - A `stream()` call is retried when it rejects, and when its stream fails
   before any output: reasoning chunks and empty text deltas don't count, so a
   local runtime that sends an empty `reasoning-end` and then a 500 (LM Studio)

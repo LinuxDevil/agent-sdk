@@ -129,6 +129,45 @@ function scriptedStream(scripts: Array<Array<StreamChunk | Error>>) {
   return { provider, calls };
 }
 
+/**
+ * A provider whose stream() emits `gaps.length` text chunks, waiting `gaps[i]`
+ * ms before chunk i, and ends the way a real fetch stream does on an abort:
+ * by throwing the signal's reason.
+ */
+function pacedStream(gaps: number[]) {
+  const calls: GenerateOptions[] = [];
+  const provider: LLMProvider = {
+    name: 'paced',
+    generate: async () => ({ text: '', finishReason: 'stop' }),
+    stream: async (call) => {
+      calls.push(call);
+      const wait = (ms: number) =>
+        new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(resolve, ms);
+          call.signal?.addEventListener('abort', () => (clearTimeout(timer), reject(call.signal?.reason)), { once: true });
+        });
+      return {
+        fullStream: (async function* (): AsyncGenerator<StreamChunk> {
+          for (const [index, gap] of gaps.entries()) {
+            await wait(gap);
+            yield { type: 'text-delta', textDelta: `w${index} ` };
+          }
+          yield { type: 'finish', finishReason: 'stop' };
+        })(),
+        textStream: (async function* (): AsyncGenerator<string> {})(),
+        text: Promise.resolve(''),
+        usage: Promise.resolve(undefined),
+        finishReason: Promise.resolve('stop'),
+        toolCalls: Promise.resolve([]),
+      };
+    },
+    supportsTools: () => true,
+    supportsStreaming: () => true,
+    getModels: async () => [],
+  };
+  return { provider, calls };
+}
+
 async function collect(stream: AsyncIterable<StreamChunk>): Promise<StreamChunk[]> {
   const chunks: StreamChunk[] = [];
   for await (const chunk of stream) chunks.push(chunk);
@@ -433,6 +472,53 @@ describe('withRetry', () => {
     expect(wrapped.supportsStreaming('x')).toBe(true);
     await expect(wrapped.getModels()).resolves.toEqual(['flaky-model']);
   });
+
+  describe('stream timeouts (Eve PROV-F7)', () => {
+    it('timeoutMs bounds only the wait for the first chunk: a healthy stream outlives it', async () => {
+      const { provider, calls } = pacedStream([10, 40, 40, 40, 40]);
+
+      const chunks = await collect((await withRetry(provider, { timeoutMs: 80, maxRetries: 0 }).stream(request)).fullStream);
+
+      expect(textOf(chunks)).toBe('w0 w1 w2 w3 w4 ');
+      expect(calls).toHaveLength(1);
+    });
+
+    it('timeoutMs still times out a stream that never produces a first chunk, and retries it', async () => {
+      const { provider, calls } = pacedStream([500]);
+      const onRetry = vi.fn();
+
+      const failure = await withRetry(provider, { ...fast, timeoutMs: 30, maxRetries: 1, onRetry })
+        .stream(request)
+        .then((streamed) => collect(streamed.fullStream))
+        .catch((error: unknown) => error);
+
+      expect(onRetry).toHaveBeenCalledTimes(1);
+      expect(calls).toHaveLength(2);
+      expect(failure).toMatchObject({ name: 'TimeoutError' });
+    });
+
+    it('idleTimeoutMs fails a stream that goes quiet between chunks', async () => {
+      const { provider, calls } = pacedStream([5, 5, 500]);
+
+      const failure = await withRetry(provider, { idleTimeoutMs: 60, maxRetries: 2 })
+        .stream(request)
+        .then((streamed) => collect(streamed.fullStream))
+        .catch((error: unknown) => error);
+
+      expect(failure).toMatchObject({ name: 'TimeoutError' });
+      // Text was already out, so the stream is not replayed.
+      expect(calls).toHaveLength(1);
+    });
+
+    it('idleTimeoutMs lets a steadily streaming response finish', async () => {
+      const { provider } = pacedStream([5, 30, 30, 30]);
+
+      const chunks = await collect((await withRetry(provider, { idleTimeoutMs: 100, maxRetries: 0 }).stream(request)).fullStream);
+
+      expect(textOf(chunks)).toBe('w0 w1 w2 w3 ');
+    });
+  });
+
 });
 
 describe('resilientProvider', () => {

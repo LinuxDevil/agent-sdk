@@ -53,8 +53,18 @@ export interface WithRetryOptions {
   onRetry?: (info: RetryInfo) => void;
   /** Stops retrying (and aborts the in-flight call) once aborted; the call's own `signal` does the same. */
   signal?: AbortSignal;
-  /** Per-attempt time limit in ms (for `stream()` it bounds establishing the stream, up to its first chunk); a timed-out attempt is retryable. */
+  /**
+   * Per-attempt time limit in ms; a timed-out attempt is retryable. For
+   * `stream()` it bounds only establishing the stream, up to its first chunk:
+   * a stream that started is never cut off by it (use `idleTimeoutMs`).
+   */
   timeoutMs?: number;
+  /**
+   * `stream()` only: the longest gap, in ms, between two chunks (and after the
+   * first chunk). A stalled stream fails with a `TimeoutError`; it is retried
+   * only while nothing but reasoning was out, like any stream failure.
+   */
+  idleTimeoutMs?: number;
 }
 
 /** The compacted classification of a provider failure. */
@@ -93,6 +103,11 @@ function backoffDelay(error: unknown, attempt: number, backoff: BackoffOptions =
   return Math.round(jitter ? delay * (0.5 + Math.random() / 2) : delay);
 }
 
+/** The error an `AbortSignal.timeout()` aborts with. */
+function timeoutError(message = 'The operation was aborted due to timeout'): Error {
+  return new DOMException(message, 'TimeoutError');
+}
+
 function combineSignals(...signals: Array<AbortSignal | undefined>): AbortSignal | undefined {
   const present = signals.filter((signal): signal is AbortSignal => signal !== undefined);
   return present.length > 1 ? AbortSignal.any(present) : present[0];
@@ -100,8 +115,8 @@ function combineSignals(...signals: Array<AbortSignal | undefined>): AbortSignal
 
 /** One call's retry state: the attempts' call options, and the decision after each failure. */
 interface Retrier {
-  /** The options for the next attempt: the call with its own timeout, marked as retried here. */
-  attemptCall(): GenerateOptions;
+  /** The options for the next attempt: the call (with its own `timeoutMs` unless `bounded` is false), marked as retried here. */
+  attemptCall(bounded?: boolean): GenerateOptions;
   /** Rethrows `error` when it is not retried; otherwise reports the retry and waits out its backoff. */
   afterFailure(error: unknown): Promise<void>;
 }
@@ -111,9 +126,9 @@ function retrierFor(provider: LLMProvider, call: GenerateOptions, options: WithR
   const signal = combineSignals(options.signal, call.signal);
   let failures = 0;
   return {
-    attemptCall() {
+    attemptCall(bounded = true) {
       signal?.throwIfAborted();
-      const timeout = timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs);
+      const timeout = timeoutMs === undefined || !bounded ? undefined : AbortSignal.timeout(timeoutMs);
       // C2: the 'ai' SDK's own retries are off for a call retried here.
       return withRetriesOwned({ ...call, signal: combineSignals(signal, timeout) });
     },
@@ -130,10 +145,14 @@ function retrierFor(provider: LLMProvider, call: GenerateOptions, options: WithR
   };
 }
 
-async function callWithRetry<T>(retrier: Retrier, attempt: (call: GenerateOptions) => Promise<T>): Promise<T> {
+async function callWithRetry<T>(
+  retrier: Retrier,
+  attempt: (call: GenerateOptions) => Promise<T>,
+  bounded = true
+): Promise<T> {
   for (;;) {
     try {
-      return await attempt(retrier.attemptCall());
+      return await attempt(retrier.attemptCall(bounded));
     } catch (error) {
       await retrier.afterFailure(error);
     }
@@ -147,6 +166,8 @@ interface OpenedStream {
   first: IteratorResult<StreamChunk>;
   /** Who serves the stream: the stream's own `servedBy`, else what `withFallback()` sets. */
   servedBy?: ServedBy;
+  /** Aborts this attempt's request (set by `withRetry()` for `idleTimeoutMs`). */
+  abort?: (reason: unknown) => void;
 }
 
 /** The final values of a discarded stream() attempt, marked read so they cannot reject unhandled. */
@@ -214,10 +235,43 @@ function commits(chunk: StreamChunk): boolean {
  */
 async function streamWithRetry(provider: LLMProvider, call: GenerateOptions, options: WithRetryOptions): Promise<StreamResult> {
   const retrier = retrierFor(provider, call, options);
+  const { timeoutMs, idleTimeoutMs } = options;
+  const firstChunkMs = timeoutMs ?? idleTimeoutMs;
+  // PROV-F7: `timeoutMs` bounds opening the stream up to its first chunk only,
+  // so the attempt's own controller (not a fixed `AbortSignal.timeout`) is
+  // aborted by a timer that is cleared once the first chunk is in.
+  const openBounded = async (attempt: GenerateOptions): Promise<OpenedStream> => {
+    const controller = new AbortController();
+    const timer =
+      firstChunkMs === undefined ? undefined : setTimeout(() => controller.abort(timeoutError()), firstChunkMs);
+    try {
+      const opened = await openStream(provider, { ...attempt, signal: combineSignals(attempt.signal, controller.signal) });
+      return { ...opened, abort: (reason) => controller.abort(reason) };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
   const open = async () => {
-    const opened = await callWithRetry(retrier, (attempt) => openStream(provider, attempt));
+    const opened = await callWithRetry(retrier, openBounded, false);
     silence(opened.streamed);
     return opened;
+  };
+  /** The next chunk, failing with a `TimeoutError` when it takes longer than `idleTimeoutMs`. */
+  const pull = async (opened: OpenedStream): Promise<IteratorResult<StreamChunk>> => {
+    if (idleTimeoutMs === undefined) return opened.iterator.next();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const idle = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        const error = timeoutError(`The stream was idle for ${idleTimeoutMs} ms`);
+        opened.abort?.(error);
+        reject(error);
+      }, idleTimeoutMs);
+    });
+    try {
+      return await Promise.race([opened.iterator.next(), idle]);
+    } finally {
+      clearTimeout(timer);
+    }
   };
   let current = await open();
   let servedBy: ServedBy | undefined;
@@ -243,7 +297,7 @@ async function streamWithRetry(provider: LLMProvider, call: GenerateOptions, opt
       committed ||= commits(chunk);
       yield chunk;
       try {
-        next = await current.iterator.next();
+        next = await pull(current);
       } catch (error) {
         if (committed) throw error;
         await retrier.afterFailure(error);

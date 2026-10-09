@@ -1228,7 +1228,7 @@ export interface CompactedProviderError {
 }
 
 // @public
-export type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length-exceeded' | 'auth-failure' | 'unknown';
+export type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length-exceeded' | 'quota-exceeded' | 'auth-failure' | 'unknown';
 
 // @public
 interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
@@ -7010,6 +7010,7 @@ export function withRetry(provider: LLMProvider, options?: WithRetryOptions): LL
 export interface WithRetryOptions {
     // (undocumented)
     backoff?: BackoffOptions;
+    idleTimeoutMs?: number;
     maxRetries?: number;
     // (undocumented)
     onRetry?: (info: RetryInfo) => void;
@@ -7113,8 +7114,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-cfK6uj2-.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-cfK6uj2-.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-CAF7vF8c.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-CAF7vF8c.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
