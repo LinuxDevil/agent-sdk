@@ -118,6 +118,8 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
   /** Question ids `pendingQuestion` handed out whose answer has not been processed yet. */
   const claimed = new Set<string>();
   const answered = new WeakSet<ChannelRespond>();
+  /** Eve F7: approval ids a decision is in flight for; a second decision on one is a conflict, not a race. */
+  const deciding = new Set<string>();
   const stores = withDefaultStores({ store });
   const sessions = stores.store as SessionStore | undefined;
   /** #279: `store` has checkpoints, so a session tells which pause its turn waits on, also after a restart. */
@@ -247,6 +249,25 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
   }
 
   /**
+   * Eve F7: a decision on an approval another request decided (or is deciding): 409 while the
+   * request is open, like the session routes' `decisionGate`; a no-op once the surface was answered.
+   */
+  function conflict(respond: ChannelRespond): void {
+    if (answered.has(respond)) return;
+    respond(409, { error: 'This approval was decided by another request', code: 'LOUSHO_APPROVAL_CONFLICT' });
+  }
+
+  /** Eve F7: runs `fn` with `id` claimed, so a concurrent decision on it cannot start. */
+  async function claiming(id: string, fn: () => Promise<void>): Promise<void> {
+    deciding.add(id);
+    try {
+      await fn();
+    } finally {
+      deciding.delete(id);
+    }
+  }
+
+  /**
    * Decides the pause `turn` stopped on and delivers the continuation, as the session's next turn.
    * N10b: `approver` is recorded as who decided (`ctx.approval.by`); the run keeps its own principal.
    * `accept` (#279) runs first, in the session's queue: it checks the decision and audits it, or refuses it.
@@ -269,8 +290,11 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
         const result = await decide().catch((error: unknown) => {
           // N9b: approved before the user signed in: the pause stays, and so does this turn's binding to it.
           if (error instanceof Error && error.name === 'SignInPendingError') paused.set(id, turn);
+          // Eve F7: decided meanwhile by another path (the session routes, another replica): a conflict, not a failure.
+          if (respond && error instanceof SDKError && error.code === 'LOUSHO_APPROVAL_NOT_FOUND') return undefined;
           throw error;
         });
+        if (!result) return conflict(respond!);
         await finish(turn, result, undefined, respond);
       });
     return serialized(turn.sessionId, run).finally(() => claimed.delete(id));
@@ -279,7 +303,8 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
   async function resolveApproval(decision: ChannelApprovalDecision, respond?: ChannelRespond): Promise<void> {
     const turn = paused.get(decision.id);
     if (!turn) throw new SDKError(`No pending channel approval '${decision.id}'`, 'LOUSHO_APPROVAL_NOT_FOUND');
-    await continueTurn(turn, decision, respond);
+    if (deciding.has(decision.id)) throw new SDKError(`Channel approval '${decision.id}' is being decided by another request`, 'LOUSHO_APPROVAL_CONFLICT');
+    await claiming(decision.id, () => continueTurn(turn, decision, respond));
   }
 
   async function handle(channel: Channel, approvalId: string | undefined, req: ChannelRequest, respond: ChannelRespond): Promise<void> {
@@ -311,6 +336,12 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
     if (!turn || (known && (known.channel !== channel || known.sessionId !== turn.sessionId))) {
       return respond(404, { error: `No pending approval '${decision.id}' on channel '${channel.name}'` });
     }
+    // Eve F7: claimed before the first await (`onDecision`), so a double click cannot decide twice.
+    if (deciding.has(decision.id)) return conflict(respond);
+    await claiming(decision.id, () => decideClaimed(channel, turn, known, { decision, inbound, approver }, respond));
+  }
+
+  async function decideClaimed(channel: Channel, turn: PausedTurn, known: PausedTurn | undefined, { decision, inbound, approver }: ChannelDecision, respond: ChannelRespond): Promise<void> {
     const audit = async () => {
       if (approver) await options.onDecision?.({ decision, approver, sessionId: turn.sessionId, channel: channel.name });
     };
