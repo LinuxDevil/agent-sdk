@@ -5,7 +5,7 @@ How a run ends, how to stop one, and how tool calls of one model turn run in par
 ## Finish reasons
 
 `result.finishReason` says why a run ended: the model's own reason for its last
-turn (`'stop'`, `'length'`, `'tool_calls'`, `'content_filter'`, `'error'`),
+turn (`'stop'`, `'length'`, `'tool_calls'`, `'content_filter'`, `'error'`, `'other'`),
 `'awaiting-approval'` (paused on a tool call that needs a human), `'aborted'`
 (cancelled with `signal`), `'max-steps'`, `'output-invalid'` (the reply
 did not match the `output` schema even after the repair step, see

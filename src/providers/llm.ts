@@ -273,7 +273,7 @@ export interface ProviderUsage {
  */
 export interface GenerateResult {
   text: string;
-  finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'error';
+  finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'error' | 'other';
   /**
    * Token usage of this call. Leave it `undefined` when the backend reports
    * nothing - never fill in zeros: AgentExecutor then estimates the tokens

@@ -200,7 +200,7 @@ interface FileContentPart {
 // @public
 interface GenerateResult {
     // (undocumented)
-    finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'error';
+    finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'error' | 'other';
     // Warning: (ae-forgotten-export) The symbol "HostedToolCall" needs to be exported by the entry point index.d.ts
     hostedToolCalls?: HostedToolCall[];
     // (undocumented)
@@ -600,8 +600,8 @@ export interface WebhookTriggerHandle extends TriggerHandle {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-cXkteUDt.d.ts:778:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-cXkteUDt.d.ts:795:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-9ailPkqP.d.ts:778:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-9ailPkqP.d.ts:795:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

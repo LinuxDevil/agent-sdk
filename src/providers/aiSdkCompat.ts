@@ -11,7 +11,7 @@
  * The module is a parameter, so tests can pass an aliased `ai` v7.
  */
 
-import type { LanguageModel } from 'ai';
+import { APICallError, type LanguageModel } from 'ai';
 import type {
   GenerateOptions,
   GenerateResult,
@@ -129,9 +129,26 @@ const FINISH_REASONS = new Map<string, GenerateResult['finishReason']>([
   ['content-filter', 'content_filter'],
 ]);
 
-/** Map an 'ai' SDK finish reason to ours; anything unrecognised is 'error'. */
+/** Map an 'ai' SDK finish reason to ours; anything unrecognised ('other', 'unknown', a new one) is 'other'. */
 function mapFinishReason(reason: string): GenerateResult['finishReason'] {
-  return FINISH_REASONS.get(reason) ?? 'error';
+  return FINISH_REASONS.get(reason) ?? 'other';
+}
+
+/**
+ * F8: a step that ends with finish reason 'error' (OpenRouter reports an
+ * upstream failure mid-generation as a 200 with `finish_reason: "error"`) failed,
+ * and what it wrote is cut off. Thrown as a retryable 502 so withRetry() retries
+ * it and a run does not resolve as a success with truncated text.
+ */
+function failedStep(reason: string | undefined): void {
+  if (reason !== 'error') return;
+  throw new APICallError({
+    message: "The provider ended the response with finish reason 'error' (an upstream failure after the response started); the text is incomplete.",
+    url: '',
+    requestBodyValues: {},
+    statusCode: 502,
+    isRetryable: true,
+  });
 }
 
 /** A finite, non-negative count, else `undefined`. */
@@ -388,6 +405,7 @@ export async function compatGenerateText(
   const modern = isModernAi(ai);
   const request = modern ? toModernRequest(ai, settings, options) : v4Settings(settings);
   const result = (await ai.generateText(request as never)) as AiSdkGenerateResult;
+  failedStep(result.finishReason);
   const reasoning = reasoningOf(result, modern);
   const hostedToolCalls = modern ? hostedCallsOf(result.content) : [];
   return {
@@ -466,6 +484,7 @@ function finishChunks(part: AiSdkStreamPart, { modern, inputs }: ChunkState): St
     type: 'tool-call',
     toolCall: { id, type: 'function', function: { name: toolName, arguments: input || '{}' } },
   }));
+  failedStep(part.finishReason);
   const usage = usageOf(modern, modern ? part.totalUsage : part.usage, part.providerMetadata);
   chunks.push({ type: 'finish', finishReason: part.finishReason, ...(usage ? { usage } : {}) });
   return chunks;
