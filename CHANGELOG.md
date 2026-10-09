@@ -50,6 +50,7 @@ This section lists what is on `main` and not yet on npm.
 - Structured output: when `maxSteps` runs out while the model is still calling tools, a run with `output` set now makes one last model call with no tools offered ("answer now") and validates its reply - the result carries `object` (still `finishReason: 'max-steps'`) or `outputError` (`'output-invalid'`) instead of neither. The extra call is skipped when another budget limit (tokens, cost, duration) is already spent. See [Structured output](docs/structured-output.md).
 
 ### Fixed
+- README: the visual tool is named "Agent Forge" and launched with `lousho studio` in one consistent phrasing; the stray `packages/create-loushy-agent` directory the audit found was never tracked (an untracked leftover `dist/` and `node_modules/` in one checkout), so nothing in the repo needed removing (Eve F11).
 - The two test files that sat inside `docs/` (`docs-links.test.ts`, `buildACodingAgent.test.ts`) and the coding-agent cassette now live in `scripts/`, so `docs/` holds only pages (Eve F16).
 - `lousho init` next-steps print `copy` instead of `cp` on Windows, and the README, quick-start and generated-project README no longer give the POSIX-only `cp .env.example .env` as the only way to create `.env` (Eve F15).
 - The optional peers `@earendil-works/pi-ai` and `@earendil-works/pi-coding-agent` are caret ranges (`^1.0.3`, `^1.0.2`), no longer exact pins, so a consumer on a newer 1.x pi build gets no peer-mismatch noise (Eve F17).
