@@ -1065,6 +1065,8 @@ export interface Checkpoint {
     businessState?: unknown;
     // (undocumented)
     finishReason?: string;
+    // Warning: (ae-forgotten-export) The symbol "FlowCheckpointState" needs to be exported by the entry point index.d.ts
+    flow?: FlowCheckpointState;
     // Warning: (ae-forgotten-export) The symbol "CheckpointError" needs to be exported by the entry point index.d.ts
     lastError?: CheckpointError;
     // (undocumented)
@@ -2430,6 +2432,18 @@ export const FlowAttr: {
     readonly NODE_TYPE: "lousho.flow.node.type";
     readonly OUTCOME: "lousho.flow.outcome";
 };
+
+// @public
+interface FlowCheckpointState {
+    choices: Record<string, number>;
+    code: string;
+    completedNodeIds: string[];
+    nodeResults: Record<string, unknown>;
+    output?: unknown;
+    steps: number;
+    usage: ProviderUsage;
+    variables: Record<string, unknown>;
+}
 
 // @public
 export class FlowExecutionError extends SDKError {
@@ -7253,8 +7267,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-f8aV-zBF.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-f8aV-zBF.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-VM5p5BvT.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-VM5p5BvT.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)

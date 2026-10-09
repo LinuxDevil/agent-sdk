@@ -3,7 +3,7 @@
  * Backend-agnostic durable-execution checkpointing for AgentExecutor runs.
  */
 
-import type { Message } from '../providers';
+import type { Message, ProviderUsage } from '../providers';
 import { readJSONAttachmentLocked, type StorageService } from '../storage/StorageService';
 import type { StepUsage } from '../models/usage';
 import type { CheckpointUsage } from './runUsage';
@@ -147,6 +147,31 @@ export interface Checkpoint {
    * checkpoints.
    */
   metadata?: Record<string, unknown>;
+  /**
+   * Eve DUR-F17: present on a flow run's checkpoint (`FlowExecutor` with a
+   * `checkpointStore` and `runId`): where the flow stands. Opaque to agent runs.
+   */
+  flow?: FlowCheckpointState;
+}
+
+/** Eve DUR-F17: a flow run's state in its {@link Checkpoint} (`checkpoint.flow`). */
+export interface FlowCheckpointState {
+  /** The flow's `code`; a resume with another flow is refused. */
+  code: string;
+  /** The flow's variables after the last completed node. */
+  variables: Record<string, unknown>;
+  /** Structural ids (`0`, `0.1`, `0.1.2`, ...) of the nodes that completed, children of a completed node omitted. */
+  completedNodeIds: string[];
+  /** The result of each completed node, by its id in `completedNodeIds`. */
+  nodeResults: Record<string, unknown>;
+  /** The option index each `oneOf` node picked (`-1` for none), so a resume takes the same branch. */
+  choices: Record<string, number>;
+  /** Model usage of the run so far. */
+  usage: ProviderUsage;
+  /** Completed steps so far (`result.steps`). */
+  steps: number;
+  /** With `status: 'finished'`: the flow's output. */
+  output?: unknown;
 }
 
 /**

@@ -121,6 +121,53 @@ A step without an `id` gets one that is unique within the run (`step-1`,
 `step-2`, ... in the order the steps start), so `step-start` and
 `step-complete` events can be paired by `stepId`.
 
+## Durable runs
+
+Pass a `checkpointStore` and a `runId` to make a run durable. The run's
+variables, the nodes that completed (with their results), the branch each
+`oneOf` took and the usage so far are saved under `runId` after every node
+that completes, and again when the flow finishes. Any `CheckpointStore` works,
+such as `memoryStore().checkpoints` or a SQLite store (see
+[Durable execution](./durable-execution.md)).
+
+After a crash, or when a step failed, continue the run with
+`FlowExecutor.resume(flow, context)`. Pass the same `checkpointStore` and
+`runId`. Completed nodes are not run again: each one returns its saved result,
+and a `oneOf` takes the branch it took before. Everything else runs as usual,
+from the saved variables. `result.usage` and `result.steps` include the
+earlier attempts.
+
+```ts
+import { FlowExecutor, type AgentFlow } from '@lousho/build-ai-agent/flows';
+import { memoryStore } from '@lousho/build-ai-agent';
+
+declare const flow: AgentFlow;
+const checkpointStore = memoryStore().checkpoints;
+
+const first = await FlowExecutor.execute(flow, { agent, provider, toolRegistry, variables: { orderId: 'o-42' }, checkpointStore, runId: 'order-o-42' });
+if (!first.success) {
+  // Fix the cause, then continue where it stopped.
+  const result = await FlowExecutor.resume(flow, { agent, provider, toolRegistry, checkpointStore, runId: 'order-o-42' });
+}
+```
+
+- A node is identified by its place in the flow, not its `id`. Resume a run
+  with the flow that started it. A resume with a flow of another `code` is
+  refused with `LOUSHO_CONFIG_INVALID`. A changed flow with the same `code` is
+  not detected.
+- Resuming a finished run returns its saved result with no events, and runs
+  nothing. `execute()` with the `runId` of a finished run starts a new run.
+  `execute()` with the `runId` of an unfinished run is refused with
+  `LOUSHO_CONFIG_INVALID`; resume it instead, or use a new `runId`.
+- A run with no checkpoint is refused with `LOUSHO_CHECKPOINT_NOT_FOUND`.
+- A node that completed is only skipped once its checkpoint was saved. A node
+  interrupted while running (an `llmCall` or a `toolCall`) runs again, so make
+  side-effecting tools idempotent.
+- Variables and node results must survive `structuredClone`, so no functions
+  and no class instances.
+- The item and index of a `forEach` iteration are not saved. An interrupted
+  iteration runs again with its item. Completed iterations are skipped.
+
 ## Flows, sub-agents or skills?
 
 Use a flow when the pipeline is known in advance; use

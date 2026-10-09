@@ -534,6 +534,8 @@ interface Checkpoint {
     businessState?: unknown;
     // (undocumented)
     finishReason?: string;
+    // Warning: (ae-forgotten-export) The symbol "FlowCheckpointState" needs to be exported by the entry point index.d.ts
+    flow?: FlowCheckpointState;
     // Warning: (ae-forgotten-export) The symbol "CheckpointError" needs to be exported by the entry point index.d.ts
     lastError?: CheckpointError;
     // (undocumented)
@@ -1017,6 +1019,19 @@ interface FlowAgentDefinition {
 }
 
 // @public
+interface FlowCheckpointState {
+    choices: Record<string, number>;
+    code: string;
+    completedNodeIds: string[];
+    nodeResults: Record<string, unknown>;
+    output?: unknown;
+    steps: number;
+    // Warning: (ae-forgotten-export) The symbol "ProviderUsage" needs to be exported by the entry point index.d.ts
+    usage: ProviderUsage;
+    variables: Record<string, unknown>;
+}
+
+// @public
 type FlowInputType = 'shortText' | 'url' | 'longText' | 'number' | 'json' | 'fileBase64';
 
 // @public
@@ -1160,7 +1175,6 @@ interface GenerateResult {
     // (undocumented)
     text: string;
     toolCalls?: ToolCall[];
-    // Warning: (ae-forgotten-export) The symbol "ProviderUsage" needs to be exported by the entry point index.d.ts
     usage?: ProviderUsage;
 }
 
@@ -2977,14 +2991,14 @@ interface Usage {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-DrXh14tI.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-DrXh14tI.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-DrXh14tI.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
-// dist/index-f8aV-zBF.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-f8aV-zBF.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-f8aV-zBF.d.ts:1974:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
-// dist/index-f8aV-zBF.d.ts:2017:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
-// dist/index-f8aV-zBF.d.ts:2017:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
+// dist/createAgent-vtKX8cd3.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-vtKX8cd3.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-vtKX8cd3.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/index-VM5p5BvT.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-VM5p5BvT.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-VM5p5BvT.d.ts:1974:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
+// dist/index-VM5p5BvT.d.ts:2017:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
+// dist/index-VM5p5BvT.d.ts:2017:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

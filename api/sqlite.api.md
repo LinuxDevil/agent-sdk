@@ -133,6 +133,8 @@ interface Checkpoint {
     businessState?: unknown;
     // (undocumented)
     finishReason?: string;
+    // Warning: (ae-forgotten-export) The symbol "FlowCheckpointState" needs to be exported by the entry point index.d.ts
+    flow?: FlowCheckpointState;
     // Warning: (ae-forgotten-export) The symbol "CheckpointError" needs to be exported by the entry point index.d.ts
     lastError?: CheckpointError;
     // Warning: (ae-forgotten-export) The symbol "Message" needs to be exported by the entry point index.d.ts
@@ -370,6 +372,19 @@ interface FlowAgentDefinition {
     //
     // (undocumented)
     tools: FlowToolSetting[];
+}
+
+// @public
+interface FlowCheckpointState {
+    choices: Record<string, number>;
+    code: string;
+    completedNodeIds: string[];
+    nodeResults: Record<string, unknown>;
+    output?: unknown;
+    steps: number;
+    // Warning: (ae-forgotten-export) The symbol "ProviderUsage" needs to be exported by the entry point index.d.ts
+    usage: ProviderUsage;
+    variables: Record<string, unknown>;
 }
 
 // @public
@@ -681,6 +696,20 @@ interface Principal {
     issuer?: string;
     // (undocumented)
     type: 'user' | 'service';
+}
+
+// @public
+interface ProviderUsage {
+    cachedInputTokens?: number;
+    cacheWriteTokens?: number;
+    // (undocumented)
+    completionTokens: number;
+    costUsd?: number;
+    // (undocumented)
+    promptTokens: number;
+    reasoningTokens?: number;
+    // (undocumented)
+    totalTokens: number;
 }
 
 // @public
