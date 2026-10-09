@@ -599,7 +599,7 @@ describe('FlowExecutor', () => {
       expect(execute).toHaveBeenCalledTimes(1);
     });
 
-    it("treats 'defer' as a refusal, since a flow cannot pause", async () => {
+    it("treats 'defer' as a refusal in a run that is not durable (it cannot pause)", async () => {
       const execute = registerPay();
 
       const result = await FlowExecutor.execute(payFlow('10.00'), { ...context, approve: () => 'defer' });

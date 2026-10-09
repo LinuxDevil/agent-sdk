@@ -8984,9 +8984,12 @@ its tool runs:
   apply as they do for `createAgent()` (see [Permission policies](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) and [Permission modes](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md)).
 - A call that needs approval (the tool's `needsApproval`, or an `ask` rule) is
   decided by the context's `approve` callback, which has the same shape as
-  `createAgent({ approve })`. A flow cannot pause, so a call is refused with
-  `LOUSHO_FLOW_TOOL_DENIED` when there is no `approve` callback, or when it
-  returns `false` or `'defer'`. The tool is never run unapproved.
+  `createAgent({ approve })`. `true` (or a note) runs the tool. `false` refuses
+  it with `LOUSHO_FLOW_TOOL_DENIED`. When `approve` returns `'defer'`, or there
+  is no `approve` callback, a [durable run](#durable-runs) pauses until a person
+  decides (see [Pausing for approval](#pausing-for-approval)). A run that is
+  not durable refuses the call with `LOUSHO_FLOW_TOOL_DENIED`. The tool is
+  never run unapproved.
 
 ```ts
 import { FlowExecutor, type AgentFlow } from '@lousho/build-ai-agent/flows';
@@ -9122,6 +9125,66 @@ if (!first.success) {
   and no class instances.
 - The item and index of a `forEach` iteration are not saved. An interrupted
   iteration runs again with its item. Completed iterations are skipped.
+
+`result.status` is `'completed'`, `'failed'`, or `'awaiting-approval'` (see
+below).
+
+### Pausing for approval
+
+In a durable run, a `toolCall` that needs approval pauses the flow when
+`approve` returns `'defer'` or there is no `approve` callback. The tool is not
+run. The run is saved with status `'awaiting-approval'`, and `execute()` (or
+`resume()`) returns:
+
+- `status: 'awaiting-approval'` and `success: false`, with no `error`
+- `approvalId`: the id to decide
+- `pendingApproval`: `{ approvalId, nodeId, toolName, args }`, the call waiting
+  for the decision
+
+A pause is not a failure, so it emits no `step-error` or `flow-error` and is
+not retried. If the paused step is in a `parallel` node, its sibling branches
+are cancelled. Steps they completed are kept, and the rest run again on resume.
+
+To continue, pass the decision to `resume()`:
+
+```ts
+import { FlowExecutor, type AgentFlow } from '@lousho/build-ai-agent/flows';
+import { memoryStore } from '@lousho/build-ai-agent';
+
+declare const flow: AgentFlow;
+const checkpointStore = memoryStore().checkpoints;
+
+const paused = await FlowExecutor.execute(flow, {
+  agent, provider, toolRegistry, variables: { amount: '900.00' }, checkpointStore, runId: 'payout-7',
+  approve: ({ args }) => (Number(args.amount) < 100 ? true : 'defer'),
+});
+if (paused.status === 'awaiting-approval') {
+  // later, once a person decided (in another process too):
+  const result = await FlowExecutor.resume(flow, {
+    agent, provider, toolRegistry, checkpointStore, runId: 'payout-7',
+    approval: { approvalId: paused.approvalId!, approved: true },
+  });
+}
+```
+
+What each decision does:
+
+- **Approved:** the paused step runs its tool with the saved arguments, and
+  `approve` is not asked again.
+- **Rejected:** the step fails with `LOUSHO_FLOW_TOOL_DENIED`, like `approve`
+  returning `false`.
+- **Used once:** after one resume, the run no longer waits for that approval.
+  A later resume runs the step again, so it needs a new decision.
+
+These resume calls are refused:
+
+- A resume of a paused run without `approval`: `LOUSHO_SESSION_AWAITING_APPROVAL`.
+- A resume with another `approvalId`, or with an approval for a run that is
+  not paused: `LOUSHO_APPROVAL_NOT_FOUND`.
+
+Flow approvals are not listed in an agent's approval store. Keep the
+`approvalId` (or read `checkpoint.flow.pendingApproval` from the store) to
+decide later.
 
 ## Flows, sub-agents or skills?
 

@@ -43,7 +43,8 @@ import type { ApproveToolCall } from '../createAgentApprovals';
 import { gateFlowToolCall } from './flowToolGate';
 import { validateFlowInput } from './inputs';
 import type { CheckpointStore } from '../execution/checkpoint';
-import { FlowRun, addUsage, durableOptions, flowStateOf } from './flowCheckpoint';
+import { FlowApprovalPause, FlowRun, addUsage, durableOptions, flowStateOf, type FlowApprovalDecision } from './flowCheckpoint';
+import type { FlowPendingApproval } from '../execution/checkpoint';
 
 /**
  * Flow execution context
@@ -96,9 +97,12 @@ export interface FlowExecutionContext {
   /**
    * A8: decides `toolCall` steps that need approval (the tool's
    * `needsApproval`, or an `ask` permission rule), as `createAgent({ approve })`
-   * does: `true` (or a note) runs the tool, anything else fails the step with
-   * `LOUSHO_FLOW_TOOL_DENIED`. A flow cannot pause, so `'defer'` refuses too.
-   * Without it, a call that needs approval is refused, never run.
+   * does: `true` (or a note) runs the tool, `false` fails the step with
+   * `LOUSHO_FLOW_TOOL_DENIED`. `'defer'` - or no `approve` at all - refuses
+   * the call too, except in a durable run (`checkpointStore` and `runId`),
+   * which pauses instead (`result.status: 'awaiting-approval'`) until
+   * `FlowExecutor.resume()` brings the decision (DUR-F17). A call that needs
+   * approval is never run unapproved.
    *
    * @example
    * ```ts
@@ -157,6 +161,13 @@ export type FlowResumeContext = Omit<FlowExecutionContext, 'variables' | 'checkp
   runId: string;
   /** Ignored: the run continues with its saved variables. */
   variables?: Record<string, unknown>;
+  /**
+   * DUR-F17: the decision on the approval a paused run waits for
+   * (`result.approvalId`). Required to resume a run whose status is
+   * `'awaiting-approval'`; approved, the paused `toolCall` runs, rejected, it
+   * fails with `LOUSHO_FLOW_TOOL_DENIED`.
+   */
+  approval?: FlowApprovalDecision;
 };
 
 /**
@@ -190,7 +201,7 @@ export interface FlowExecutionEventDataMap {
   'step-complete': unknown;
   'step-error': undefined;
   /** DUR-F17: attempt `attempt` of `maxAttempts` failed (the event's `error`); the next starts after `delayMs`. */
-  'step-retry': { attempt: number; maxAttempts: number; delayMs: number };
+  'step-retry': FlowStepRetry;
   'variable-set': { variable: string; value: unknown };
   'llm-call': { model: string | undefined; prompt: string };
   'llm-response': { text: string; usage: ProviderUsage | undefined };
@@ -198,6 +209,16 @@ export interface FlowExecutionEventDataMap {
   'tool-result': { tool: string; result: unknown };
   'condition-evaluated': { condition: string; result: boolean };
   'loop-iteration': { item: unknown; index: number };
+}
+
+/** DUR-F17: the `data` of a `step-retry` event. */
+export interface FlowStepRetry {
+  /** The attempt that failed (1 for the first). */
+  attempt: number;
+  /** Attempts in all (`retry.maxAttempts`). */
+  maxAttempts: number;
+  /** The wait before the next attempt starts. */
+  delayMs: number;
 }
 
 /** A flow event of one type; narrow a {@link FlowExecutionEvent} on `type` to get its `data`. */
@@ -222,6 +243,16 @@ export type FlowExecutionEvent = {
  * Flow execution result
  */
 export interface FlowExecutionResult {
+  /**
+   * DUR-F17: `'completed'` (`success: true`), `'failed'` (`error` says why),
+   * or `'awaiting-approval'`: a durable run paused on a `toolCall` that needs
+   * approval. Continue it with `FlowExecutor.resume(flow, { ..., approval: { approvalId, approved } })`.
+   */
+  status: 'completed' | 'failed' | 'awaiting-approval';
+  /** With `status: 'awaiting-approval'`: the id to decide (`pendingApproval.approvalId`). */
+  approvalId?: string;
+  /** With `status: 'awaiting-approval'`: the tool call waiting for the decision. */
+  pendingApproval?: FlowPendingApproval;
   success: boolean;
   output: unknown;
   variables: Record<string, unknown>;
@@ -415,12 +446,43 @@ export class FlowExecutor {
     const { store, runId } = durableOptions(context, 'resume')!;
     const checkpoint = await store.load(runId);
     const saved = flowStateOf(checkpoint, runId, flow.code);
-    if (checkpoint?.status === 'finished') {
-      return { success: true, output: saved.output, variables: saved.variables, steps: saved.steps, events: [], usage: saved.usage };
+    if (checkpoint?.status === 'finished' && !context.approval) {
+      return { status: 'completed', success: true, output: saved.output, variables: saved.variables, steps: saved.steps, events: [], usage: saved.usage };
     }
     const variables = { ...saved.variables };
     const run = new FlowRun(store, runId, flow.code, variables, saved);
+    const pending = checkpoint?.status === 'awaiting-approval' ? saved.pendingApproval : undefined;
+    this.assertApprovalDecision(runId, pending, context.approval);
+    if (pending && context.approval) {
+      run.decide(pending.nodeId, context.approval);
+      // The decision is used once: the run is no longer waiting for it.
+      await run.save('in-progress');
+    }
     return this.traced(flow, { ...context, variables }, onEvent, run);
+  }
+
+  /** A paused run resumes only with a decision on its pending approval; a decision needs one. */
+  private static assertApprovalDecision(
+    runId: string,
+    pending: FlowPendingApproval | undefined,
+    approval: FlowApprovalDecision | undefined
+  ): void {
+    if (pending && !approval) {
+      throw new SDKError(
+        `FlowExecutor.resume: run '${runId}' is paused awaiting approval '${pending.approvalId}' (tool '${pending.toolName}'). ` +
+          `Pass the decision: FlowExecutor.resume(flow, { ...context, approval: { approvalId: '${pending.approvalId}', approved: true } })`,
+        'LOUSHO_SESSION_AWAITING_APPROVAL',
+        { appendHelp: false }
+      );
+    }
+    if (approval && approval.approvalId !== pending?.approvalId) {
+      throw new SDKError(
+        `FlowExecutor.resume: run '${runId}' is not awaiting approval '${approval.approvalId}'` +
+          (pending ? ` (it awaits '${pending.approvalId}').` : ' (it awaits none).'),
+        'LOUSHO_APPROVAL_NOT_FOUND',
+        { appendHelp: false }
+      );
+    }
   }
 
   /** Runs the flow in its `invoke_workflow` span. */
@@ -521,6 +583,7 @@ export class FlowExecutor {
       });
 
       return {
+        status: 'completed',
         success: true,
         output,
         variables,
@@ -529,6 +592,13 @@ export class FlowExecutor {
         usage,
       };
     } catch (error) {
+      if (run && error instanceof FlowApprovalPause) {
+        // DUR-F17: not a failure - the run is saved, waiting for the decision.
+        const { pending } = error;
+        await run.save('awaiting-approval', { pendingApproval: pending });
+        const { steps, usage } = totals();
+        return { status: 'awaiting-approval', approvalId: pending.approvalId, pendingApproval: pending, success: false, output: null, variables, steps, events, usage };
+      }
       // Emit flow error event
       emitEvent(events, onEvent, {
         type: 'flow-error',
@@ -538,6 +608,7 @@ export class FlowExecutor {
 
       const { steps, usage } = totals();
       return {
+        status: 'failed',
         success: false,
         output: null,
         variables,
@@ -652,7 +723,7 @@ export class FlowExecutor {
           this.recordOutcome(nodeSpan);
           return result;
         } catch (error) {
-          this.recordOutcome(nodeSpan, error);
+          this.recordOutcome(nodeSpan, error instanceof FlowApprovalPause ? undefined : error);
           throw error;
         }
       },
@@ -697,6 +768,10 @@ export class FlowExecutor {
 
       return result;
     } catch (error) {
+      if (error instanceof FlowApprovalPause) {
+        // DUR-F17: a step paused for approval did not fail.
+        throw error;
+      }
       // Emit step error event
       emitEvent(events, onEvent, {
         type: 'step-error',
@@ -745,7 +820,7 @@ export class FlowExecutor {
       try {
         return await this.runAttempt(node, stepId, options.timeoutMs, context, events, onEvent);
       } catch (error) {
-        if (attempt >= options.maxAttempts || context.signal?.aborted) {
+        if (attempt >= options.maxAttempts || context.signal?.aborted || error instanceof FlowApprovalPause) {
           throw error;
         }
         const delayMs = options.backoffMs * 2 ** (attempt - 1);
@@ -1189,8 +1264,12 @@ export class FlowExecutor {
     // A8: the same gate as an agent run's tool call - schema validation,
     // permission rules and modes, `needsApproval` (decided by `approve`, or
     // refused) - so a flow step cannot run a tool the agent would not.
-    const toolCallId = `flow-${globalThis.crypto.randomUUID()}`;
-    const args = await gateFlowToolCall(toolName, toolDesc, rawArgs, context, toolCallId);
+    // DUR-F17: a durable run pauses for an undecided approval; a resume brings
+    // the decision, under the approval's id.
+    const run = flowRuns.get(events);
+    const durable = run && { nodeId: nodePath(context), decision: run.decisionFor(nodePath(context)) };
+    const toolCallId = durable?.decision?.approvalId ?? `flow-${globalThis.crypto.randomUUID()}`;
+    const args = await gateFlowToolCall(toolName, toolDesc, rawArgs, context, toolCallId, durable);
 
     // Emit tool call event
     emitEvent(events, onEvent, {
