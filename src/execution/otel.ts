@@ -118,7 +118,10 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
   // OTel context instead of the ambient one.
   const recordMetrics = resolveMetricsRecorder(options);
 
-  const otelSpansById = new Map<string, { span: OtelSpan; ctx: Context }>();
+  // Entries outlive their span: a queued background sub-agent can start after
+  // its `execute_tool task` parent ended, and must still join that trace
+  // (Eve MA-F3). A whole tree's entries are dropped when its root span ends.
+  const otelSpansById = new Map<string, { span: OtelSpan; ctx: Context; rootId: string }>();
 
   return {
     onSpanStart(span: Span) {
@@ -137,7 +140,7 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
       setAttributes(otelSpan, span.attributes);
 
       const ctx = trace.setSpan(parentContext, otelSpan);
-      otelSpansById.set(span.id, { span: otelSpan, ctx });
+      otelSpansById.set(span.id, { span: otelSpan, ctx, rootId: parentEntry ? parentEntry.rootId : span.id });
     },
 
     onSpanEnd(span: Span) {
@@ -151,7 +154,11 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
         entry.span.setStatus({ code: SpanStatusCode.ERROR, message: span.status.message });
       }
       entry.span.end(span.endTime);
-      otelSpansById.delete(span.id);
+      if (entry.rootId === span.id) {
+        for (const [id, other] of otelSpansById) {
+          if (other.rootId === span.id) otelSpansById.delete(id);
+        }
+      }
       recordMetrics(span);
     },
   };
