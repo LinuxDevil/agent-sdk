@@ -316,6 +316,13 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   sessionId?: string;
   /**
+   * Eve DUI-F5: the id tools, `needsApproval`, permission rules and tool-call
+   * hooks see as `ctx.sessionId` when `sessionId` is only where the run is
+   * checkpointed - a session turn's `<id>.turn-<n>` gets the session's `<id>`.
+   * Default: `sessionId`. Kept in an approval's snapshot for the resumed run.
+   */
+  contextSessionId?: string;
+  /**
    * N10b: who the run acts for (docs/auth.md): handed, frozen, to tools
    * (`ctx.principal`), `needsApproval` policies, permission rules, tool-call
    * hooks and in-process sub-agents, and stored with checkpoints and approval
@@ -1543,13 +1550,14 @@ export class AgentExecutor {
       onToolResult,
       sandbox = NoopSandbox,
       hooks,
-      sessionId,
       exporter,
       redactContent,
       signal,
     } = options;
+    // Eve DUI-F5: the call's context gets the session's id, not a session turn's checkpoint key.
+    const sessionId = options.contextSessionId ?? options.sessionId;
 
-    const init = toolSpanInit({ id: toolCall.id, name: toolCall.function.name }, { agent, toolRegistry, sessionId });
+    const init = toolSpanInit({ id: toolCall.id, name: toolCall.function.name }, { agent, toolRegistry, sessionId: options.sessionId });
     return withSpan(
       exporter,
       init.name,
@@ -1690,6 +1698,7 @@ export class AgentExecutor {
       pendingToolCall: pending,
       steps: state.steps,
       sessionId,
+      ...(options.contextSessionId !== undefined && { contextSessionId: options.contextSessionId }),
       remainingToolCalls,
       usage: structuredClone(state.usage),
       // N10b: the resumed run acts for this caller, whoever decides.

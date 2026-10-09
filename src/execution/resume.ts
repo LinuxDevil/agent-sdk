@@ -237,6 +237,7 @@ async function resumeObserved(
             agentSpanId: span.id,
             input: step.handoff.messages,
             sessionId: snapshot.sessionId,
+            ...(snapshot.contextSessionId !== undefined && { contextSessionId: snapshot.contextSessionId }),
             checkpointStore,
             approvalStore: executeOptions.approvalStore ?? ctx.approvalStore,
             businessState,
@@ -517,7 +518,7 @@ async function decidedToolMessage(
       reportApprovalExpiry(executeOptions, {
         toolName: pending.toolName,
         toolCallId: pending.toolCallId,
-        sessionId: snapshot.sessionId,
+        sessionId: contextSessionIdOf(snapshot),
         ...(executeOptions.principal && { principal: executeOptions.principal }),
         args: pending.args,
       });
@@ -530,7 +531,7 @@ async function decidedToolMessage(
   const { toolName, toolCallId, args } = pending;
   const { principal } = executeOptions;
   const toolDesc = ctx.toolRegistry.get(toolName) ?? (handoff ? handoffToolRegistry(executeOptions).get(toolName) : undefined);
-  const planned = planModeRefusal(executeOptions, toolDesc, { toolName, toolCallId, sessionId: ctx.snapshot.sessionId, ...(principal && { principal }), args });
+  const planned = planModeRefusal(executeOptions, toolDesc, { toolName, toolCallId, sessionId: contextSessionIdOf(ctx.snapshot), ...(principal && { principal }), args });
   if (planned) {
     const error = `Tool '${toolName}' was denied by plan mode: ${planned}`;
     return { message: toolResultMessage(pending, toolErrorResult({ toolName, error, kind: 'denied', details: { reason: planned } }), true) };
@@ -586,7 +587,7 @@ function resumedHookCall(
   const hookCtx: ToolCallHookContext = {
     agentId: snapshot.agent.id,
     agentName: snapshot.agent.name,
-    sessionId: snapshot.sessionId,
+    sessionId: contextSessionIdOf(snapshot),
     ...(executeOptions.principal && { principal: executeOptions.principal }),
     metadata: executeOptions.metadata,
     messages,
@@ -624,6 +625,7 @@ async function resumeHandoffCall(
     toolRegistry: ctx.toolRegistry,
     approvalStore: ctx.approvalStore,
     sessionId: snapshot.sessionId,
+    ...(snapshot.contextSessionId !== undefined && { contextSessionId: snapshot.contextSessionId }),
     input: messages,
   };
   const state = { messages, agentName: activeAgentOf(messages) ?? snapshot.agent.name };
@@ -710,7 +712,7 @@ async function approvedCodeMode(ctx: ResumeContext, scope: ToolCallScope): Promi
       onToolResult: executeOptions.onToolResult,
       sandbox: executeOptions.sandbox ?? NoopSandbox,
       hooks: executeOptions.hooks,
-      sessionId: snapshot.sessionId,
+      sessionId: contextSessionIdOf(snapshot),
       principal: executeOptions.principal,
       metadata: executeOptions.metadata,
       messages: ctx.messages,
@@ -951,7 +953,7 @@ async function runApprovedToolCall(
     : { args: hookArgs };
   const settled: SettledCall = verdict.outcome
     ? settledByHook(verdict.outcome)
-    : await executeApprovedTool(pending, toolDesc, verdict.args, executeOptions, { messages, approval, sessionId: snapshot.sessionId }, scope);
+    : await executeApprovedTool(pending, toolDesc, verdict.args, executeOptions, { messages, approval, sessionId: contextSessionIdOf(snapshot) }, scope);
   const { result, toolError, errorResult } = settled;
 
   // Fires (with the settled result/error) regardless of how the tool
@@ -1104,6 +1106,7 @@ function continueResumedRun(
     provider: run.provider,
     toolRegistry: run.toolRegistry,
     sessionId: snapshot.sessionId,
+    ...(snapshot.contextSessionId !== undefined && { contextSessionId: snapshot.contextSessionId }),
     checkpointStore: run.checkpointStore,
     // LOU-U7: a remaining call of the paused turn (or a later one) may need
     // approval too - it pauses into the same store unless told otherwise.
@@ -1140,4 +1143,9 @@ function continueResumedRun(
     // (including a resumed sub-agent's usage, LOU-Y1).
     initialUsage: run.usage,
   });
+}
+
+/** Eve DUI-F5: the session id the paused run's tools see (a session turn's session id, not its checkpoint key). */
+function contextSessionIdOf(snapshot: ExecutionSnapshot): string | undefined {
+  return snapshot.contextSessionId ?? snapshot.sessionId;
 }

@@ -297,6 +297,7 @@ interface ExecutionSnapshot {
     // (undocumented)
     agent: AgentConfig;
     agentFingerprint?: AgentFingerprint;
+    contextSessionId?: string;
     // (undocumented)
     currentMessages: Message[];
     metadata?: Record<string, unknown>;
