@@ -335,6 +335,27 @@ function withErrorMessage(inner: typeof fetch): typeof fetch {
 const OBSERVED_USAGE = ['reasoningTokens', 'cachedInputTokens', 'cacheWriteTokens', 'costUsd'] as const;
 
 /**
+ * What goes out in place of the stream's `finish` chunk: the observed reasoning
+ * chunks (unless the SDK reported reasoning or the call did not ask for it),
+ * the web search's hosted call (when the call asked for one), then `finish`
+ * with the observed usage added.
+ */
+function* finishWithObservation(
+  finish: StreamChunk,
+  found: CallObservation | undefined,
+  watch: CallWatch | undefined,
+  addReasoning: boolean
+): Generator<StreamChunk> {
+  if (addReasoning) yield* reasoningChunks(found);
+  const call = watch?.search ? searchCallOf(found) : undefined;
+  if (call) {
+    yield { type: 'hosted-tool-call', hostedToolCall: { id: call.id, name: call.name, args: call.args } };
+    yield { type: 'hosted-tool-result', hostedToolCall: call };
+  }
+  yield finish.usage ? { ...finish, usage: withObservedUsage(finish.usage, found) } : finish;
+}
+
+/**
  * `usage`, with the observed reasoning token count, the prompt-cache reads and
  * writes (Eve PROV-F4) and the cost OpenRouter billed (`usage.cost`) that the
  * SDK's usage lacks (the same instance when nothing is added).
@@ -520,14 +541,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
         continue;
       }
       flushed = true;
-      const found = await this.observation(options);
-      if (!sdkReasoning) yield* reasoningChunks(found);
-      const call = watch?.search ? searchCallOf(found) : undefined;
-      if (call) {
-        yield { type: 'hosted-tool-call', hostedToolCall: { id: call.id, name: call.name, args: call.args } };
-        yield { type: 'hosted-tool-result', hostedToolCall: call };
-      }
-      yield chunk.usage ? { ...chunk, usage: withObservedUsage(chunk.usage, found) } : chunk;
+      yield* finishWithObservation(chunk, await this.observation(options), watch, !sdkReasoning);
     }
     if (!flushed && !sdkReasoning) yield* reasoningChunks(await this.observation(options));
   }
