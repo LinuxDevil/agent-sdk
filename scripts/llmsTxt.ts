@@ -163,14 +163,14 @@ export function stripTicketIds(text: string): string {
 }
 
 /** The `description:` value of a leading `---` frontmatter block, if any. */
-export function frontmatterDescription(markdown: string): string | undefined {
+function frontmatterDescription(markdown: string): string | undefined {
   const block = /^---\n([\s\S]*?)\n---\n/.exec(markdown)?.[1];
   const value = block ? /^description:\s*(.+)$/m.exec(block)?.[1] : undefined;
   return value?.trim().replace(/^(["'])(.*)\1$/, '$2');
 }
 
 /** Drops a leading `---` frontmatter block. */
-export function stripFrontmatter(markdown: string): string {
+function stripFrontmatter(markdown: string): string {
   return markdown.replace(/^---\n[\s\S]*?\n---\n/, '');
 }
 

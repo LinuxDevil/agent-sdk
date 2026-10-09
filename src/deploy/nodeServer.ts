@@ -85,7 +85,7 @@ function serverAuth(options: DeployedServerOptions): readonly AuthFn[] | undefin
 }
 
 /** Default bound of {@link DeployedServer.shutdown}'s wait for in-flight turns; `LOUSHO_SHUTDOWN_TIMEOUT_MS` overrides it in the generated server. */
-export const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
 /** What {@link createDeployedServer} returns. */
 export interface DeployedServer {

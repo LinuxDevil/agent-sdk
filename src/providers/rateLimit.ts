@@ -10,6 +10,7 @@
 
 import type { GenerateOptions, LLMProvider, ProviderUsage, StreamChunk, StreamResult } from './llm';
 import { estimateTokens } from '../models/estimateTokens';
+import { delegateCapabilities } from './delegateCapabilities';
 import { ConfigurationError } from '../execution/errors';
 
 /** Limits of a {@link RateLimiter}. Each one is optional; an unset limit is not enforced. */
@@ -252,9 +253,6 @@ export function withRateLimit(provider: LLMProvider, limits: RateLimitOptions | 
       })();
       return { ...streamed, fullStream };
     },
-    supportsTools: (model) => provider.supportsTools(model),
-    supportsStreaming: (model) => provider.supportsStreaming(model),
-    getModels: () => provider.getModels(),
-    supportsHostedTool: (type) => provider.supportsHostedTool?.(type) ?? false,
+    ...delegateCapabilities(provider),
   };
 }

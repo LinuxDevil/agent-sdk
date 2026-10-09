@@ -50,6 +50,16 @@
       ]
     },
     {
+      "implements": "AgentApi",
+      "members": [
+        "listAgents",
+        "loadAgent",
+        "saveAgent",
+        "deleteAgent",
+        "workspace"
+      ]
+    },
+    {
       "implements": "ApprovalStore",
       "members": [
         "save",

@@ -42,6 +42,7 @@ import type { PermissionOptions } from '../execution/permissions';
 import type { ApproveToolCall } from '../createAgentApprovals';
 import { gateFlowToolCall } from './flowToolGate';
 import { validateFlowInput } from './inputs';
+import { abortableDelay } from '../providers/abortableDelay';
 import type { CheckpointStore } from '../execution/checkpoint';
 import { FlowApprovalPause, FlowRun, addUsage, durableOptions, flowStateOf, type FlowApprovalDecision } from './flowCheckpoint';
 import type { FlowPendingApproval } from '../execution/checkpoint';
@@ -372,25 +373,23 @@ function nodePath(context: FlowExecutionContext): string {
   return (context as PathedContext)[NODE_PATH] ?? '0';
 }
 
-/** Resolves after `ms`, or rejects with the signal's reason once it aborts. */
-function abortableDelay(ms: number, signal: AbortSignal | undefined): Promise<void> {
-  if (signal?.aborted) {
-    return Promise.reject(signal.reason);
+/** Resolves after `ms` (at once when `ms <= 0`), or rejects with the signal's reason once it aborts. */
+function retryDelay(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  if (ms > 0) {
+    return abortableDelay(ms, signal);
   }
-  if (ms <= 0) {
-    return Promise.resolve();
+  return signal?.aborted ? Promise.reject(signal.reason) : Promise.resolve();
+}
+
+/** A controller aborted when `parent` is (or already); `unlink()` stops following `parent`. */
+function linkedController(parent: AbortSignal | undefined): { controller: AbortController; unlink: () => void } {
+  const controller = new AbortController();
+  const abortFromParent = () => controller.abort(parent?.reason);
+  if (parent?.aborted) {
+    abortFromParent();
   }
-  return new Promise((resolve, reject) => {
-    const onAbort = () => {
-      clearTimeout(timer);
-      reject(signal?.reason);
-    };
-    const timer = setTimeout(() => {
-      signal?.removeEventListener('abort', onAbort);
-      resolve();
-    }, ms);
-    signal?.addEventListener('abort', onAbort, { once: true });
-  });
+  parent?.addEventListener('abort', abortFromParent, { once: true });
+  return { controller, unlink: () => parent?.removeEventListener('abort', abortFromParent) };
 }
 
 /**
@@ -832,7 +831,7 @@ export class FlowExecutor {
           data: { attempt, maxAttempts: options.maxAttempts, delayMs },
           error: error as Error,
         });
-        await abortableDelay(delayMs, context.signal);
+        await retryDelay(delayMs, context.signal);
       }
     }
   }
@@ -849,13 +848,7 @@ export class FlowExecutor {
     if (timeoutMs === undefined) {
       return this.dispatchNode(node, context, events, onEvent);
     }
-    const controller = new AbortController();
-    const parentSignal = context.signal;
-    const abortFromParent = () => controller.abort(parentSignal?.reason);
-    if (parentSignal?.aborted) {
-      abortFromParent();
-    }
-    parentSignal?.addEventListener('abort', abortFromParent, { once: true });
+    const { controller, unlink } = linkedController(context.signal);
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timedOut = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
@@ -869,7 +862,7 @@ export class FlowExecutor {
       return await Promise.race([attempt, timedOut]);
     } finally {
       clearTimeout(timer);
-      parentSignal?.removeEventListener('abort', abortFromParent);
+      unlink();
     }
   }
 
@@ -922,13 +915,7 @@ export class FlowExecutor {
     // and their in-flight model/tool calls get the abort; the node settles only
     // once every branch has, so nothing runs (or emits events) after the flow
     // has reported the failure.
-    const controller = new AbortController();
-    const parentSignal = context.signal;
-    const abortFromParent = () => controller.abort(parentSignal?.reason);
-    if (parentSignal?.aborted) {
-      abortFromParent();
-    }
-    parentSignal?.addEventListener('abort', abortFromParent, { once: true });
+    const { controller, unlink } = linkedController(context.signal);
 
     let failure: { error: unknown } | undefined;
     try {
@@ -948,7 +935,7 @@ export class FlowExecutor {
       }
       return settled.map((outcome) => (outcome as PromiseFulfilledResult<unknown>).value);
     } finally {
-      parentSignal?.removeEventListener('abort', abortFromParent);
+      unlink();
     }
   }
 

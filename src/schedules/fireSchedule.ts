@@ -13,7 +13,7 @@ export function scheduleName(schedule: DefinedSchedule, index: number): string {
  * or `schedule-<name>` when the schedule opted into a `sharedSession`. Always a
  * valid session id (letters, digits, `_`, `-`; at most 128 characters).
  */
-export function scheduleSessionId(name: string, firedAt: Date, shared = false): string {
+function scheduleSessionId(name: string, firedAt: Date, shared = false): string {
   const safe = name.replace(/[^A-Za-z0-9_-]/g, '-');
   if (shared) return `schedule-${safe.slice(0, 119)}`;
   const stamp = firedAt.toISOString().replace(/\.\d+Z$/, 'Z').replace(/:/g, '');

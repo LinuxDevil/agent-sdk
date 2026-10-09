@@ -28,6 +28,7 @@ import type {
 } from '../../shared/wireTypes';
 import { STUDIO_TOKEN_HEADER, loadStudioToken } from './studioToken';
 import type { AgentStoreEntry } from '../persistence/AgentStore';
+import type { AgentApi } from '../persistence/HttpAgentStore';
 
 /** Same-origin default: `lousho studio` prints the API server's own URL, but in dev the Vite server proxies to it (see vite.config.ts). */
 const DEFAULT_BASE_URL = '';
@@ -58,7 +59,7 @@ export interface StreamConnectionHandlers {
   onLost?: () => void;
 }
 
-class RuntimeClient {
+class RuntimeClient implements AgentApi {
   private readonly baseUrl: string;
   private readonly token: string | undefined;
 
@@ -266,11 +267,6 @@ class RuntimeClient {
       method: 'PUT',
       body: JSON.stringify(profile),
     });
-  }
-
-  /** R3: deletes a profile (refuses to delete the last remaining one). */
-  async deleteSettingsProfile(profileId: string): Promise<SettingsFile> {
-    return this.request(`/settings/profiles/${encodeURIComponent(profileId)}`, { method: 'DELETE' });
   }
 
   /** R3: switches the active profile. */

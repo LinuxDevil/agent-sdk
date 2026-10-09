@@ -71,12 +71,7 @@ export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
       () => import('@ai-sdk/anthropic'),
       aiMajorOf(this.ai)
     );
-    return createAnthropic({
-      apiKey: this.config.apiKey,
-      baseURL: this.config.baseURL,
-      headers: this.config.headers,
-      ...(this.config.fetch && { fetch: this.config.fetch }),
-    });
+    return createAnthropic(this.clientOptions());
   });
 
   /** PDF file parts go to the model on ai 6 and 7; older peers have no file parts. */

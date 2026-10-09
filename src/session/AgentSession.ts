@@ -232,7 +232,7 @@ export function withDefaultStores(options: SessionOptions = {}, defaults: Partia
  * waits on an approval - a pointer to that turn's `<id>.turn-<n>` checkpoint,
  * so the pause is found whatever transcript (length) a caller sees.
  */
-export function pausedTurnKey(id: string): string {
+function pausedTurnKey(id: string): string {
   return `${id}.paused`;
 }
 
