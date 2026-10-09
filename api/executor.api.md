@@ -2215,6 +2215,7 @@ interface SendOptions {
     approvalTtlMs?: number;
     metadata?: Record<string, unknown>;
     modelSettings?: ModelSettings;
+    onEvent?: (event: AgentEvent) => void;
     parentSpanId?: string;
     permissionMode?: PermissionMode;
     principal?: Principal;
@@ -2975,9 +2976,9 @@ interface Usage {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-CNRzDzMl.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-CNRzDzMl.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-CNRzDzMl.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-CfiElEsu.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-CfiElEsu.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-CfiElEsu.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
 // dist/index-f8aV-zBF.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
 // dist/index-f8aV-zBF.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/index-f8aV-zBF.d.ts:1974:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts

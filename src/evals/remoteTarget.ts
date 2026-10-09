@@ -6,13 +6,15 @@
  * scorers, the judge and the reporters work unchanged.
  */
 import type { ExecutionResult } from '../execution/AgentExecutor';
+import type { AgentEvent } from '../execution/agentEvents';
 import type { AgentInput } from '../providers/content';
 import { runRemoteTurn, type SessionTurnSummary } from '../server/sessionClient';
 import { newId } from '../utils/id';
 
 /** What an eval case needs from the thing under test: `send()`. A `createAgent()` agent has it, and so does a remote target. */
 export interface EvalTarget {
-  send(input: AgentInput): Promise<ExecutionResult>;
+  /** `options.onEvent` receives the run's events; a target that cannot stream them (a remote one) ignores it. */
+  send(input: AgentInput, options?: { onEvent?: (event: AgentEvent) => void }): Promise<ExecutionResult>;
 }
 
 /** Environment variables `lousho eval --url` / `--token` hand to the vitest worker. */

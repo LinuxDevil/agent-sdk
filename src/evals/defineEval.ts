@@ -16,9 +16,11 @@ import { scoreAssertion, type EvalResult } from './evalResult';
 import { matchesTagFilter, recordEvalResult } from './recorder';
 import { remoteTargetFromEnv } from './remoteTarget';
 import { SDKError } from '../execution/errors';
-import { parseToolCalls } from './toolMatch';
 import {
+  collectNested,
   describeFailure,
+  mergeNested,
+  type NestedCall,
   runTrajectoryCase,
   type AgentSource,
   type EvalJudgeConfig,
@@ -35,7 +37,7 @@ import {
  * / `agent.toolRegistry` shape here, because that is not what execute()
  * actually accepts.
  */
-export interface EvalConfig {
+export interface EvalConfig extends Partial<Omit<ExecuteOptions, 'agent' | 'input' | 'provider' | 'onAgentEvent'>> {
   /** Test name, shown in vitest output. */
   name: string;
   /** Real AgentConfig, forwarded as-is to AgentExecutor.execute(). */
@@ -44,11 +46,7 @@ export interface EvalConfig {
   input: ExecuteOptions['input'];
   /** Real LLMProvider instance, forwarded as-is. */
   provider: ExecuteOptions['provider'];
-  /** Optional ToolRegistry, forwarded as-is. */
-  toolRegistry?: ExecuteOptions['toolRegistry'];
-  maxSteps?: ExecuteOptions['maxSteps'];
-  temperature?: ExecuteOptions['temperature'];
-  maxTokens?: ExecuteOptions['maxTokens'];
+  // Every other ExecuteOptions field (toolRegistry, subagents, skills, hooks, maxSteps, temperature, ...) is forwarded as-is.
   /**
    * Scores the ExecutionResult from AgentExecutor.execute(). May be async
    * (e.g. an llmJudge()-based scorer that itself calls out to a provider).
@@ -62,6 +60,14 @@ export interface EvalConfig {
   tags?: string[];
   /** Per-case time limit in ms (0 = none); overrides `lousho eval --timeout` and the vitest config. */
   timeoutMs?: number;
+}
+
+/** Runs each case of a trajectory eval `repeat` times and passes it when `passAt` of the runs pass. */
+export interface RepeatConfig {
+  /** How many times to run each case (a model is not deterministic). The time limit covers all runs of a case. Default 1. */
+  repeat?: number;
+  /** Passes (pass@k) the case when at least this many of the `repeat` runs pass. Default: all of them. */
+  passAt?: number;
 }
 
 /**
@@ -82,7 +88,7 @@ export interface EvalConfig {
  * });
  * ```
  */
-export interface TrajectoryEvalConfig<C = Record<string, never>> {
+export interface TrajectoryEvalConfig<C = Record<string, never>> extends RepeatConfig {
   /** Eval name, shown in vitest and `lousho eval` output. */
   name: string;
   /**
@@ -192,8 +198,31 @@ async function runCase(ref: CaseRef, file: string | undefined, context: unknown,
 async function runTrajectory(config: TrajectoryEvalConfig<unknown>, c: unknown, ref: CaseRef, file: string | undefined, context: unknown): Promise<void> {
   const agent = remoteTargetFromEnv() ?? config.target ?? config.agent;
   const spec = { ...config, agent: agent ?? missingAgent };
-  const result = await runCase(ref, file, context, () => runTrajectoryCase(spec, c, ref.label, file));
-  if (!result.passed) throw new SDKError(describeFailure(result), 'LOUSHO_TEST_FAILED');
+  const times = repeatTimes(config.repeat);
+  const needed = times === 1 ? 1 : passNeeded(config.passAt, times);
+  const failures: string[] = [];
+  for (let run = 1; run <= times; run++) {
+    // Each repeat is its own report row and cassette.
+    const runRef = times === 1 ? ref : { ...ref, label: `${ref.label ?? config.name} #${run}`, key: `${ref.key ?? config.name}#${run}` };
+    const result = await runCase(runRef, file, context, () => runTrajectoryCase(spec, c, runRef.label, file));
+    if (!result.passed) failures.push(describeFailure(result));
+  }
+  const passed = times - failures.length;
+  if (passed >= needed) return;
+  const summary = times === 1 ? '' : `passed ${passed} of ${times} runs, needed ${needed}.\n`;
+  throw new SDKError(summary + failures.join('\n'),'LOUSHO_TEST_FAILED');
+}
+
+function repeatTimes(repeat: number | undefined): number {
+  if (repeat === undefined) return 1;
+  if (!Number.isInteger(repeat) || repeat < 1) throw new SDKError(`defineEval({ repeat }) must be a whole number of at least 1, got ${repeat}`, 'LOUSHO_EVALS_INVALID', { appendHelp: false });
+  return repeat;
+}
+
+function passNeeded(passAt: number | undefined, times: number): number {
+  if (passAt === undefined) return times;
+  if (!Number.isInteger(passAt) || passAt < 1 || passAt > times) throw new SDKError(`defineEval({ passAt }) must be a whole number from 1 to repeat (${times}), got ${passAt}`, 'LOUSHO_EVALS_INVALID', { appendHelp: false });
+  return passAt;
 }
 
 const missingAgent: AgentSource = () => {
@@ -253,15 +282,8 @@ function defineClassicEval(config: EvalConfig): void {
     const file = currentTestPath(expect);
     const evalResult = await runCase({ name, tags: tags ?? [] }, file, context, async () => {
       const started = Date.now();
-      const result = await AgentExecutor.execute({
-        agent: executeFields.agent,
-        input: executeFields.input,
-        provider: executeFields.provider,
-        toolRegistry: executeFields.toolRegistry,
-        maxSteps: executeFields.maxSteps,
-        temperature: executeFields.temperature,
-        maxTokens: executeFields.maxTokens,
-      });
+      const nested: NestedCall[] = [];
+      const result = await AgentExecutor.execute({ ...executeFields, onAgentEvent: (event) => collectNested(event, nested) });
       const assertion = scoreAssertion(await score(result), threshold);
       return {
         name,
@@ -270,7 +292,7 @@ function defineClassicEval(config: EvalConfig): void {
         assertions: [assertion],
         durationMs: Date.now() - started,
         steps: result.steps,
-        toolCalls: parseToolCalls(result.toolCalls ?? []),
+        toolCalls: mergeNested(result.toolCalls ?? [], nested),
         usage: result.usage,
         file,
       };

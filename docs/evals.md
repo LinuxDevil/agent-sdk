@@ -68,9 +68,9 @@ failed gate, so one run shows all that is wrong.
 | Call | Kind | Passes when |
 | --- | --- | --- |
 | `t.completed()` | gate | the latest run ended with a normal `stop` (not an error, abort, pending approval, or `maxSteps` cut-off) |
-| `t.calledTool(name, { args?, times? })` | gate | the tool was called; `args` is a partial deep match (the call's arguments must contain these keys with equal values); `times` is an exact count of matching calls |
-| `t.notCalledTool(name)` | gate | the tool was never called |
-| `t.toolOrder([a, b])` | gate | the tools were called in this order (other calls may sit in between) |
+| `t.calledTool(name, { args?, times?, subagent? })` | gate | the tool was called; `args` is a partial deep match (the call's arguments must contain these keys with equal values); `times` is an exact count of matching calls; `subagent` counts only that sub-agent's calls |
+| `t.notCalledTool(name, { subagent? })` | gate | the tool was never called, by the lead or any sub-agent |
+| `t.toolOrder([a, b], { subagent? })` | gate | the tools were called in this order (other calls may sit in between) |
 | `t.maxSteps(n)` | gate | the agent took at most `n` model steps |
 | `t.maxTokens(n)` | gate | the agent used at most `n` tokens |
 | `t.maxCostUsd(n)` | gate | the run's reported cost is at most `n` USD. Skipped (counts as passed, marked `skipped`) when the SDK reports no cost |
@@ -93,6 +93,51 @@ completed() failed: finishReason was 'max-steps' (the run hit maxSteps while sti
 Other context members: `t.reply` (latest reply text), `t.result` (latest
 `ExecutionResult`), `t.toolCalls` (every call so far, with parsed arguments).
 You can `send()` more than once; steps, tokens and tool calls add up.
+
+### Sub-agents
+
+When the agent delegates with `subagents`, the calls a sub-agent makes are part
+of `t.toolCalls`. Each follows the `task` call that started it and carries a
+`subagentPath` (`['researcher']`, or `['researcher', 'fetcher']` when it
+delegated again); the lead's own calls have none. The assertions search the whole
+tree by default, so `t.notCalledTool('delete_repo')` fails if a sub-agent called
+it. Pass `{ subagent: 'researcher' }` to look at one sub-agent (and the
+sub-agents under it) only:
+
+```ts
+await t.send('Research electric bikes');
+t.calledTool('web_search', { subagent: 'researcher' });
+t.notCalledTool('delete_repo');
+```
+
+The calls come from the run's `tool.start` events, which `t.send()` collects
+through `send(message, { onEvent })`. A remote target (`--url`) streams no
+sub-agent events, so it only shows the lead's calls. The classic form
+(`{ agent, input, provider, score }`) forwards every `AgentExecutor.execute()`
+option, `subagents` and `skills` included, and its `EvalResult.toolCalls`
+includes the sub-agent calls too.
+
+### Repeating a case (pass@k)
+
+A model is not deterministic, so one run says little. `repeat: n` runs every
+case `n` times; the case passes when all `n` runs pass, or when at least
+`passAt: k` of them do:
+
+```ts
+defineEval({
+  name: 'refund flow',
+  agent,
+  repeat: 5,
+  passAt: 4, // pass@4 of 5
+  async test(t) {
+    await t.send('Refund order 42');
+    t.calledTool('issue_refund');
+  },
+});
+```
+
+Each run is its own row in the report (`refund flow [refund flow #1]`, ...) with
+its own cassette. `timeoutMs` covers all runs of a case, so raise it with `repeat`.
 
 ### Datasets
 

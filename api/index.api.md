@@ -890,6 +890,7 @@ function buildWriteTool(store: TodoStore, onChange: TodoToolsOptions['onChange']
 // @public
 export interface CalledToolOptions {
     args?: Record<string, unknown>;
+    subagent?: string;
     times?: number;
 }
 
@@ -2049,24 +2050,18 @@ export interface EstimateTokensOptions {
     model?: string;
 }
 
+// Warning: (ae-forgotten-export) The symbol "ExecuteOptions" needs to be exported by the entry point index.d.ts
+//
 // @public
-export interface EvalConfig {
-    // Warning: (ae-forgotten-export) The symbol "ExecuteOptions" needs to be exported by the entry point index.d.ts
+export interface EvalConfig extends Partial<Omit<ExecuteOptions, 'agent' | 'input' | 'provider' | 'onAgentEvent'>> {
     agent: ExecuteOptions['agent'];
     input: ExecuteOptions['input'];
-    // (undocumented)
-    maxSteps?: ExecuteOptions['maxSteps'];
-    // (undocumented)
-    maxTokens?: ExecuteOptions['maxTokens'];
     name: string;
     provider: ExecuteOptions['provider'];
     score: (result: ExecutionResult) => number | Promise<number>;
     tags?: string[];
-    // (undocumented)
-    temperature?: ExecuteOptions['temperature'];
     threshold: number;
     timeoutMs?: number;
-    toolRegistry?: ExecuteOptions['toolRegistry'];
 }
 
 // @public
@@ -2103,8 +2098,9 @@ export interface EvalResult {
 
 // @public
 export interface EvalTarget {
-    // (undocumented)
-    send(input: AgentInput): Promise<ExecutionResult>;
+    send(input: AgentInput, options?: {
+        onEvent?: (event: AgentEvent) => void;
+    }): Promise<ExecutionResult>;
 }
 
 // @public
@@ -2116,13 +2112,13 @@ export interface EvalTestContext {
     maxCostUsd(limit: number): void;
     maxSteps(limit: number): void;
     maxTokens(limit: number): void;
-    notCalledTool(name: string): void;
+    notCalledTool(name: string, options?: ToolScopeOptions): void;
     readonly reply: string;
     readonly result: ExecutionResult | undefined;
     send(message: AgentInput): Promise<ExecutionResult>;
     soft<T>(name: string, value: T, check: Check<T>): void;
     readonly toolCalls: readonly EvalToolCall[];
-    toolOrder(names: readonly string[]): void;
+    toolOrder(names: readonly string[], options?: ToolScopeOptions): void;
 }
 
 // @public
@@ -2131,6 +2127,7 @@ export interface EvalToolCall {
     args: unknown;
     // (undocumented)
     name: string;
+    subagentPath?: string[];
 }
 
 // @public (undocumented)
@@ -3275,7 +3272,7 @@ const ItemSchema: z.ZodObject<{
     }>>;
     dependencies: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
-    type: "tool" | "memory" | "skill" | "channel" | "schedule" | "kit";
+    type: "tool" | "schedule" | "memory" | "skill" | "channel" | "kit";
     name: string;
     description: string;
     permissions: {
@@ -3291,7 +3288,7 @@ const ItemSchema: z.ZodObject<{
     }[];
     dependencies?: string[] | undefined;
 }, {
-    type: "tool" | "memory" | "skill" | "channel" | "schedule" | "kit";
+    type: "tool" | "schedule" | "memory" | "skill" | "channel" | "kit";
     name: string;
     description: string;
     files: {
@@ -5121,6 +5118,12 @@ export interface RemoteTargetOptions {
 }
 
 // @public
+export interface RepeatConfig {
+    passAt?: number;
+    repeat?: number;
+}
+
+// @public
 export function resilientProvider(provider: LLMProvider, config: Pick<LLMProviderConfig, 'maxRetries' | 'timeout'>): LLMProvider;
 
 // @public
@@ -5548,6 +5551,7 @@ export interface SendOptions {
     approvalTtlMs?: number;
     metadata?: Record<string, unknown>;
     modelSettings?: ModelSettings;
+    onEvent?: (event: AgentEvent) => void;
     parentSpanId?: string;
     permissionMode?: PermissionMode;
     principal?: Principal;
@@ -6816,6 +6820,11 @@ interface ToolResumeEvent extends AgentEventBase<'tool.resume'> {
 }
 
 // @public
+export interface ToolScopeOptions {
+    subagent?: string;
+}
+
+// @public
 export interface ToolSearchOptions {
     contextWindow?: number;
     maxResults?: number;
@@ -6874,7 +6883,7 @@ export interface TrajectoryComparison {
 }
 
 // @public
-export interface TrajectoryEvalConfig<C = Record<string, never>> {
+export interface TrajectoryEvalConfig<C = Record<string, never>> extends RepeatConfig {
     agent?: AgentSource;
     cases?: readonly C[];
     judge?: EvalJudgeConfig;

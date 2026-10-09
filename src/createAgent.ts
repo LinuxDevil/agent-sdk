@@ -669,6 +669,17 @@ export interface SendOptions {
    * resumed dynamic run gets the principal it started with. See docs/auth.md.
    */
   principal?: Principal;
+  /**
+   * Receives this run's events (the ones `stream()` yields), including a
+   * sub-agent's, tagged with `subagent`. It runs next to the agent's own
+   * `onEvent`. Trajectory evals use it to see sub-agent tool calls.
+   *
+   * @example
+   * ```ts
+   * await agent.send('hi', { onEvent: (event) => console.log(event.type) });
+   * ```
+   */
+  onEvent?: (event: AgentEvent) => void;
   /** This run's reasoning (LOU-V13), instead of the agent's `reasoning`. */
   reasoning?: ReasoningOption;
   /**
@@ -978,7 +989,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     }
     return { sessionId, checkpointStore: checkpoints };
   };
-  const callTurn = ({ sessionId, reasoning, modelSettings, permissionMode, approvalTtlMs, parentSpanId }: SendOptions): RunTurn => {
+  const callTurn = ({ sessionId, reasoning, modelSettings, permissionMode, approvalTtlMs, parentSpanId, onEvent }: SendOptions): RunTurn => {
     if (permissionMode !== undefined) assertPermissionMode(permissionMode, 'send');
     return {
       ...durable(sessionId),
@@ -987,6 +998,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       ...(permissionMode !== undefined && { permissionMode }),
       ...(approvalTtlMs !== undefined && { approvalTtlMs }),
       ...(parentSpanId !== undefined && { parentSpanId }),
+      ...(onEvent !== undefined && { onAgentEvent: onEvent }),
     };
   };
   /** LOU-W6: memory tools and recall bound to the run's scope keys; a handoff target (N6) has the tools already, so it gets the recall only. */

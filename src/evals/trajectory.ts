@@ -9,11 +9,14 @@ import type { SimpleAgent } from '../createAgent';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import type { LLMProvider } from '../providers/llm';
 import type { AgentInput } from '../providers/content';
+import type { AgentEvent } from '../execution/agentEvents';
+import type { SubagentInfo } from '../execution/hooks';
+import type { ToolCall } from '../providers/llm';
 import { llmJudge } from './llmJudge';
 import type { Check } from './checks';
 import type { AssertionKind, AssertionResult, EvalResult, EvalToolCall } from './evalResult';
 import { gateFailures } from './evalResult';
-import { describeCalled, diffArgs, isSubsequence, parseToolCalls } from './toolMatch';
+import { callsFor, describeCalled, diffArgs, isSubsequence, parseToolCalls } from './toolMatch';
 import type { EvalTarget, RemoteExecutionResult } from './remoteTarget';
 import { SDKError } from '../execution/errors';
 
@@ -35,6 +38,14 @@ export interface CalledToolOptions {
   args?: Record<string, unknown>;
   /** Exact number of (matching) calls. Without it, one or more calls pass. */
   times?: number;
+  /** Only count calls made by this sub-agent (or one it delegated to). Without it, the whole agent tree counts. */
+  subagent?: string;
+}
+
+/** Options for {@link EvalTestContext.notCalledTool} and {@link EvalTestContext.toolOrder}. */
+export interface ToolScopeOptions {
+  /** Only look at calls made by this sub-agent (or one it delegated to). Without it, the whole agent tree counts. */
+  subagent?: string;
 }
 
 /**
@@ -58,16 +69,20 @@ export interface EvalTestContext {
   readonly reply: string;
   /** The latest run, or `undefined` before the first `send()`. */
   readonly result: ExecutionResult | undefined;
-  /** Every tool call made so far, in order, with parsed arguments. */
+  /**
+   * Every tool call made so far, in order, with parsed arguments. A call a
+   * sub-agent made follows the `task` call that started it and carries its
+   * `subagentPath`.
+   */
   readonly toolCalls: readonly EvalToolCall[];
   /** Gate: the latest run ended with a normal stop (not error, aborted, awaiting approval or maxSteps). */
   completed(): void;
   /** Gate: the tool was called (optionally with matching `args` / an exact `times`). */
   calledTool(name: string, options?: CalledToolOptions): void;
-  /** Gate: the tool was never called. */
-  notCalledTool(name: string): void;
+  /** Gate: the tool was never called - by the lead or any sub-agent, unless `options.subagent` narrows it. */
+  notCalledTool(name: string, options?: ToolScopeOptions): void;
   /** Gate: these tools were called in this order (other calls may sit in between). */
-  toolOrder(names: readonly string[]): void;
+  toolOrder(names: readonly string[], options?: ToolScopeOptions): void;
   /** Gate: total model steps are at most `limit`. */
   maxSteps(limit: number): void;
   /** Gate: total tokens are at most `limit`. */
@@ -83,6 +98,33 @@ export interface EvalTestContext {
    * and returns a 0..1 score. Throws unless `defineEval({ judge })` is set.
    */
   judge(rubric: string): Promise<number>;
+}
+
+/** A tool call a sub-agent made, and the lead's tool call that started that sub-agent's branch. */
+export interface NestedCall {
+  rootToolCallId: string;
+  call: EvalToolCall;
+}
+
+function subagentChain(info: SubagentInfo): SubagentInfo[] {
+  return info.parent ? [...subagentChain(info.parent), info] : [info];
+}
+
+/** Records the tool calls a sub-agent starts (`tool.start` events tagged with `subagent`). */
+export function collectNested(event: AgentEvent, into: NestedCall[]): void {
+  if (event.type !== 'tool.start' || !event.subagent) return;
+  const chain = subagentChain(event.subagent);
+  into.push({ rootToolCallId: chain[0].toolCallId, call: { name: event.toolName, args: event.args, subagentPath: chain.map((info) => info.name) } });
+}
+
+/** The lead's parsed calls, each followed by the calls the sub-agent it started made. */
+export function mergeNested(raw: readonly ToolCall[], nested: readonly NestedCall[]): EvalToolCall[] {
+  const merged = parseToolCalls(raw).flatMap((call, index) => [
+    call,
+    ...nested.filter((n) => n.rootToolCallId === raw[index].id).map((n) => n.call),
+  ]);
+  const placed = new Set(raw.map((call) => call.id));
+  return [...merged, ...nested.filter((n) => !placed.has(n.rootToolCallId)).map((n) => n.call)];
 }
 
 const NO_JUDGE_MESSAGE =
@@ -137,9 +179,10 @@ class TrajectoryContext implements EvalTestContext {
 
   async send(message: AgentInput): Promise<ExecutionResult> {
     this.agent ??= typeof this.agentSource === 'function' ? await this.agentSource() : this.agentSource;
-    const result = await this.agent.send(message);
+    const nested: NestedCall[] = [];
+    const result = await this.agent.send(message, { onEvent: (event) => collectNested(event, nested) });
     this.results.push(result);
-    this.calls.push(...parseToolCalls(result.toolCalls ?? []));
+    this.calls.push(...mergeNested(result.toolCalls ?? [], nested));
     return result;
   }
 
@@ -159,16 +202,18 @@ class TrajectoryContext implements EvalTestContext {
     this.gate(label, problem === undefined, problem === undefined ? undefined : `${label} failed: ${problem}`);
   }
 
-  notCalledTool(name: string): void {
-    const count = this.calls.filter((call) => call.name === name).length;
-    const label = `notCalledTool('${name}')`;
-    this.gate(label, count === 0, count === 0 ? undefined : `${label} failed: '${name}' was called ${count} time(s); tools called were ${describeCalled(this.calls)}`);
+  notCalledTool(name: string, options: ToolScopeOptions = {}): void {
+    const calls = callsFor(this.calls, options.subagent);
+    const count = calls.filter((call) => call.name === name).length;
+    const label = options.subagent ? `notCalledTool('${name}', { subagent: '${options.subagent}' })` : `notCalledTool('${name}')`;
+    this.gate(label, count === 0, count === 0 ? undefined : `${label} failed: '${name}' was called ${count} time(s); tools called were ${describeCalled(calls)}`);
   }
 
-  toolOrder(names: readonly string[]): void {
-    const passed = isSubsequence(this.calls, names);
-    const label = `toolOrder([${names.join(', ')}])`;
-    this.gate(label, passed, passed ? undefined : `${label} failed: tools called were ${describeCalled(this.calls)}`);
+  toolOrder(names: readonly string[], options: ToolScopeOptions = {}): void {
+    const calls = callsFor(this.calls, options.subagent);
+    const passed = isSubsequence(calls, names);
+    const label = `toolOrder([${names.join(', ')}]${options.subagent ? `, { subagent: '${options.subagent}' }` : ''})`;
+    this.gate(label, passed, passed ? undefined : `${label} failed: tools called were ${describeCalled(calls)}`);
   }
 
   maxSteps(limit: number): void {
@@ -251,8 +296,9 @@ class TrajectoryContext implements EvalTestContext {
   }
 
   private calledToolProblem(name: string, options: CalledToolOptions): string | undefined {
-    const named = this.calls.filter((call) => call.name === name);
-    if (named.length === 0) return `tools called were ${describeCalled(this.calls)}`;
+    const scoped = callsFor(this.calls, options.subagent);
+    const named = scoped.filter((call) => call.name === name);
+    if (named.length === 0) return `tools called were ${describeCalled(scoped)}`;
     const matching = options.args ? named.filter((call) => diffArgs(options.args, call.args).length === 0) : named;
     if (options.args && matching.length === 0) return argMismatch(name, named, options.args);
     if (options.times !== undefined && matching.length !== options.times) {

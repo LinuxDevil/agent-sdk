@@ -39,6 +39,11 @@ export function parseToolCalls(
   });
 }
 
+/** The calls to look at: all of them, or only those made by sub-agent `subagent` or one it delegated to. */
+export function callsFor(calls: readonly EvalToolCall[], subagent?: string): readonly EvalToolCall[] {
+  return subagent === undefined ? calls : calls.filter((call) => call.subagentPath?.includes(subagent));
+}
+
 /** True when `names` appear in `calls` in this order (other calls may interleave). */
 export function isSubsequence(calls: readonly EvalToolCall[], names: readonly string[]): boolean {
   let next = 0;
