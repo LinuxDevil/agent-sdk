@@ -982,6 +982,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       // LOU-R16: the call's metadata reaches every hook context as `ctx.metadata`.
       ...(ctx.metadata !== undefined && { metadata: ctx.metadata }),
       ...turnRest,
+      // Eve DUI-F5: a turn checkpointed under `<id>.turn-<n>` still hands its tools, approval policies and rules the session's id.
+      ...(ctx.sessionId !== undefined && turnRest.sessionId !== undefined && turnRest.sessionId !== ctx.sessionId && { contextSessionId: ctx.sessionId }),
       // C6: the call's settings win key by key over the agent's.
       ...(turnRest.modelSettings && { modelSettings: mergeModelSettings(spec.modelSettings, turnRest.modelSettings) }),
       // LOU-W6: memory tools and recall bound to this run's scope keys.

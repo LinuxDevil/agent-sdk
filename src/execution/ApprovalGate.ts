@@ -156,6 +156,8 @@ export interface ExecutionSnapshot {
    * execution at all.
    */
   sessionId?: string;
+  /** Eve DUI-F5: the paused run's `contextSessionId` (a session turn's session id), what its tools see as `ctx.sessionId`. */
+  contextSessionId?: string;
   /**
    * LOU-U7: the tool calls of the same model turn that come after the
    * paused one and have not run yet, in call order. `resumeAfterApproval()`

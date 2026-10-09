@@ -176,6 +176,8 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   of the transcript when the turn started), so a new process finds the
   interrupted turn without any extra bookkeeping. A finished turn joins the
   transcript, exactly as a plain `send()` does, and its checkpoint is deleted.
+  The turn id is only the checkpoint key: tools, `needsApproval`, permission
+  rules and tool-call hooks still get the session's own id as `ctx.sessionId`.
 - `resume()` continues the turn through the executor's resume path
   (`input: []`): tool calls whose results were recorded do not run again, and
   a recorded model response is not requested again. A tool that was running

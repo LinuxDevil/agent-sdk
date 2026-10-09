@@ -827,6 +827,7 @@ export interface ExecuteOptions extends PermissionOptions {
     businessState?: unknown;
     captureContent?: boolean;
     checkpointStore?: CheckpointStore;
+    contextSessionId?: string;
     // Warning: (ae-forgotten-export) The symbol "TraceExporter" needs to be exported by the entry point index.d.ts
     exporter?: TraceExporter;
     // Warning: (ae-forgotten-export) The symbol "AgentGuardrails" needs to be exported by the entry point index.d.ts
@@ -942,6 +943,7 @@ interface ExecutionSnapshot {
     // (undocumented)
     agent: AgentConfig;
     agentFingerprint?: AgentFingerprint;
+    contextSessionId?: string;
     // (undocumented)
     currentMessages: Message[];
     metadata?: Record<string, unknown>;
