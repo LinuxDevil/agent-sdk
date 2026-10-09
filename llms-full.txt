@@ -3611,8 +3611,11 @@ Return a valid id from `sessionId()` to use it unchanged.
 
 Transcripts are kept in `mountChannels(agent, channels, { store })`: a
 `SessionStore` or `{ sessions, checkpoints }` such as a `SqliteStore` (pass the
-one you gave `createAgent({ store })`). Without `store`, the handler keeps them
-in memory.
+one you gave `createAgent({ store })`). Without `store`, the handler uses the
+agent's `createAgent({ store })` when it keeps sessions, so channel turns,
+approval continuations, `agent.session({ id })` and `agent.resume(id)` all see
+one transcript (this also covers `createDeployedServer` and `LOUSHO_STORE`);
+an agent without a session store keeps them in memory.
 
 ## Approvals and questions
 
@@ -3782,7 +3785,7 @@ http.createServer((req, res) => {
 }).listen(3000);
 ```
 
-Which threads are active comes from the `store` you pass `mountChannels()`.
+Which threads are active comes from the channels' session store (the `store` you pass `mountChannels()`, else the agent's).
 Pending approvals are resolved from the click itself. A pending `ask_question`
 survives a restart when the session, its checkpoints and the approvals are in
 durable stores (for example `mountChannels(agent, channels, { store: sqlite })`
@@ -4321,8 +4324,9 @@ lousho build <agent-dir|spec> --target=<name> [--out=<dir>]    (or --agent=<path
 lousho studio [--port N] [--host H] [--prod|--dev]
 lousho mcp <agent.yaml|json> [--http --port N --host H]
 lousho doctor [agent.yaml|json] [--json] [--ping]
-lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts]
+lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
+lousho --version
 ```
 
 Every command parses its flags the same way (Node's `parseArgs`, strict):
@@ -4747,8 +4751,8 @@ Worker reads). `KVStore`'s keys, with an optional `prefix` before each:
 | Key | Value |
 | --- | ----- |
 | `sessions/<id>` | The transcript as JSON (image and file bytes as `{ "$bytes": "<base64>" }`, like `FileSessionStore`). |
-| `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, with its history under `checkpoints/<id>#history`). |
-| `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided). |
+| `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, with its history under `checkpoints/<id>#history`; bytes encoded the same way). |
+| `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided; bytes encoded the same way). |
 | `oauth/tokens/<key>`, `oauth/pending/<state>` | OAuth tokens and pending sign-ins, encrypted with `tokenKey` (the `LOUSHO_TOKEN_KEY` secret in the generated Worker); see [OAuth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#token-storage). |
 | `memory/<slot>#<scope>` | The items of a `kvMemory()` memory slot (`notes#global`, `prefs#session:<id>` or a custom scope's key) - written by the provider itself, not `KVStore`. |
 
@@ -5750,8 +5754,11 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
   on rate limits, timeouts, network errors and 5xx responses, using the same
   classification as `compactProviderError()`. Auth failures, invalid requests
   and context-length errors are not retried; neither is a cancellation. A
-  provider's `retryAfterMs` hint (a `Retry-After` header) replaces the backoff
-  delay. Pass `retryOn(error, attempt)` to change the rule, `timeoutMs` for a
+  provider's `retryAfterMs` hint (`retry-after-ms` or `Retry-After`, on a 429 or
+  a 503) replaces the backoff delay, unless it is longer than `backoff.maxMs`
+  (default 30 s): then the call fails at once with a
+  `CompactedLLMProviderError` whose `compacted.retryAfterMs` holds the hint, so
+  your code decides whether to wait. Pass `retryOn(error, attempt)` to change the rule, `timeoutMs` for a
   per-attempt time limit, and `signal` to stop retrying.
 - A `stream()` call is retried when it rejects, and when its stream fails
   before any output: reasoning chunks and empty text deltas don't count, so a
@@ -5872,7 +5879,7 @@ agent) or on `AgentExecutor.execute()` / `stream()`:
 | `maxTokens`       | Prompt plus completion tokens of the run (`usage.totalTokens`). |
 | `maxInputTokens`  | Prompt tokens (`usage.inputTokens`). |
 | `maxOutputTokens` | Completion tokens (`usage.outputTokens`). |
-| `maxCostUsd`      | Estimated USD (`usage.costUsd`, from the [price table](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/models-and-cost.md#models-and-the-price-table)). Not checked while a model used has unknown pricing (`costUsd` is `undefined`). |
+| `maxCostUsd`      | USD (`usage.costUsd`): the cost the provider reported for each call (OpenRouter's `usage.cost`), else the [price table](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/models-and-cost.md#models-and-the-price-table) estimate. Not checked while a model used has unknown pricing (`costUsd` is `undefined`); a warning is logged once. |
 | `maxDurationMs`   | Wall-clock time of the `execute()` / `stream()` call. |
 | `maxSteps`        | Model steps. An alias of the `maxSteps` option: when both are set the stricter wins (the option's tie reports `'max-steps'`); alone, it replaces the default of 10. |
 
@@ -6165,7 +6172,7 @@ Failures are `SDKError`s: missing key is `LOUSHO_PROVIDER_MISSING_API_KEY`, a `4
 ## When to use what
 
 - **`decide()`** — a typed answer about one input: routing, filtering, severity, confidence gates. Fast and calibrated, but no prose and no tools.
-- **[Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)** (`createAgent({ output })`) — when you need your own JSON schema: extracted fields, a written explanation, or an object shaped like your domain. Works on any provider.
+- **[Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)** (`createAgent({ output })`) — when you need your own JSON schema: extracted fields, a written explanation, or an object shaped like your domain. Works on any provider, including strict structured-output endpoints (see [Schema limits](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md#schema-limits)).
 - **[Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md)** or [flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md) — when the decision needs tools or multi-step reasoning before it answers.
 
 The [coding-agent-workflows example](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/coding-agent-workflows) shows the same route/confidence/floor pattern built on `output` schemas — swap its triage step for `decide()` when you are on OpenAI and want the dedicated endpoint. [Prompting techniques](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/prompting-techniques.md#typed-decisions-system-one-style) places both forms in the wider typed-decision catalog.
@@ -6833,9 +6840,12 @@ if (original && replayed) {
 
 ## Limits
 
-- A `sessionId` identifies one logical conversation; running two
-  `send()` calls (or two `execute()` calls) on the same id at the same time
-  is not supported.
+- A `sessionId` identifies one logical conversation. Concurrent
+  `agent.send()` / `agent.stream()` calls with the same `sessionId` on one
+  agent store run one after another, in call order, in this process. Two
+  processes (or two store objects over the same data), or two raw
+  `AgentExecutor.execute()` calls, on the same id at the same time are not
+  supported: the last save wins.
 - If you call `resumeAfterApproval()` (the function behind
   `agent.approvals.resolve()`) without the `checkpointStore`, the session
   keeps its `'awaiting-approval'` mark and later `send()` (or `execute()`)
@@ -7059,8 +7069,9 @@ transient failures, use `withRetry()` / `fallbackModels`
 
 **Means:** a `RateLimitError`: the provider throttled the caller.
 
-**Fix:** retry after `error.retryAfter` seconds (`withRetry()` does this), or
-send fewer requests.
+**Fix:** retry after `error.retryAfter` seconds (`withRetry()` does this, up to
+`backoff.maxMs`; a longer `Retry-After` fails at once with
+`compacted.retryAfterMs` set), or send fewer requests.
 
 **Example:** a 429 response.
 
@@ -8465,12 +8476,12 @@ const result = await FlowExecutor.execute(flow, { agent, provider, variables: { 
 | `type` | What it does |
 | ------ | ------------ |
 | `sequence` | Runs its `steps` one after another. |
-| `parallel` | Runs its steps at the same time. |
+| `parallel` | Runs its steps at the same time. If one fails, the others are cancelled (see [Cancelling a flow](#cancelling-a-flow)). |
 | `llmCall` | Calls the model with a `prompt` (with `{{variable}}` placeholders); `outputVariable` stores the reply. |
 | `toolCall` | Calls a tool with `arguments` (placeholders interpolated). |
 | `setVariable` | Sets `variable` to `value`. |
 | `oneOf` | Takes the first branch whose condition matches. |
-| `forEach` | Runs a step for each item of `items`, one after another. |
+| `forEach` | Runs a step for each item of `items`, one after another. The item and index (`itemVariable`, default `item`; `indexVariable`, default `index`) belong to that iteration only, so loops in `parallel` branches never see each other's item; other variables the step sets are written to the flow's variables. |
 | `evaluator` | Evaluates an expression over the flow's variables. |
 | `return`, `end` | Produce the node's `value` as the result. |
 | `throw` | Fails the flow with the node's `message` (`{{variable}}` placeholders interpolated; default `'Flow error'`). |
@@ -8533,6 +8544,17 @@ const result = await FlowExecutor.execute(flow, {
   signal: AbortSignal.timeout(30_000),
 });
 ```
+
+When a branch of a `parallel` step fails, its sibling branches are cancelled
+the same way: they start no further step, and their running `llmCall` or
+`toolCall` gets an aborted signal. The flow returns the first branch's error
+only once every branch has settled, so no tool runs and no event is added to
+`result.events` after the result is returned. A tool that ignores
+`ctx.abortSignal` still runs to the end, and the flow waits for it.
+
+`result.usage` sums the model usage (`promptTokens`, `completionTokens`,
+`totalTokens`, and `cachedInputTokens`, `reasoningTokens`, `costUsd` when
+reported) of every `llmCall` in the run, including a failed one.
 
 A step without an `id` gets one that is unique within the run (`step-1`,
 `step-2`, ... in the order the steps start), so `step-start` and
@@ -10487,7 +10509,7 @@ console.log(formatUsage(result.usage)); // 1,234 in / 567 out tokens · $0.0042 
 ```
 
 - **Reported vs estimated.** Providers report `promptTokens`/`completionTokens`; the built-in providers also pass on `cachedInputTokens`/`reasoningTokens` when the 'ai' SDK's provider metadata carries them (`usage.cachedInputTokens` and `usage.reasoningTokens` only appear then). A backend that reports nothing gives `undefined` usage, never zeros. For that step the executor falls back to `estimateTokens` and sets `usage.estimated` (a leading `~` in `formatUsage`). A custom provider should leave `GenerateResult.usage` unset rather than fill in zeros.
-- **Cost.** `costUsd` is the sum of `estimateCost` per model. It is `undefined`, never a misleading partial sum, as soon as any model used has unknown pricing; `byModel` shows which ones are priced. In `formatUsage` the cost prints with 4 decimals under $1 (2 at $1 or more), so a run under $0.00005 reads `$0.0000`.
+- **Cost.** `costUsd` is the sum of the per-call costs: the cost the provider reported (OpenRouter returns `usage.cost` for every model, priced or not), else `estimateCost` for the model. It is `undefined`, never a misleading partial sum, as soon as any model used has unknown pricing; `byModel` shows which ones are priced. In `formatUsage` the cost prints with 4 decimals under $1 (2 at $1 or more), so a run under $0.00005 reads `$0.0000`.
 - **Hosted tools.** `usage.hostedToolCalls` counts the calls the provider ran for [hosted tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hosted-tools.md) per tool name (e.g. `{ web_search: 2 }`). Their per-call fees are billed by the provider and are not in `costUsd`.
 - **Delegation.** A delegated child's usage is added to the parent's totals and `byModel`, and is also shown on its own as `usage.delegated` (`{ inputTokens, outputTokens, totalTokens, costUsd, modelCalls, estimated, runs }`). A [remote sub-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md#remote-sub-agents)'s usage is what the remote agent reports, filed under `byModel['remote:<name>']` with the remote's own `costUsd`.
 - **Resume.** A run resumed from a checkpoint, or after an approval, continues from the saved totals instead of restarting at zero. Checkpoints written by older versions start from their saved token counts with an unknown cost.
@@ -10674,7 +10696,33 @@ characters from `A-Z`, `a-z`, `0-9`, `_` and `-`) and an owner:
   from another are different owners. With [route auth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md), a request's
   principal maps onto it as `{ owner: 'user', principalId: principal.id,
   issuer: principal.issuer }`; a user credential needs that principal,
-  because without one there is no user to own it.
+  because without one there is no user to own it. A principal without an
+  `issuer` (a Slack, GitHub, Telegram or Discord user, `basic()`, `apiToken()`)
+  gets `issuer: 'authenticator:<name>'`, so the same id from two authenticators
+  (Slack `U04ABCDEF` and a GitHub login `U04ABCDEF`) is two owners and never
+  shares a token.
+
+### Migrating tokens stored before the authenticator namespace
+
+Tokens stored for a principal without an issuer sit under the old key
+(`<provider>|user||<id>`). That key was shared by every authenticator, so the
+SDK does not read it as a fallback: doing so would hand one authenticator's
+token to another. Users whose token is not found sign in again. To keep a
+token, an operator who knows which authenticator the old tokens belong to moves
+them once:
+
+```ts
+const legacy = { owner: 'user', principalId: 'U04ABCDEF' } as const;
+const owner = { ...legacy, issuer: 'authenticator:slack' } as const;
+const token = await store.tokens!.get('gdrive', legacy);
+if (token) {
+  await store.tokens!.set('gdrive', owner, token);
+  await store.tokens!.delete('gdrive', legacy);
+}
+```
+
+A sign-in link issued before the upgrade is refused at its callback; the user
+asks for a fresh one.
 
 `tokenStoreKey(provider, owner)` is the record key of a credential:
 `<provider>|app`, or `<provider>|user|<issuer>|<principalId>` with the issuer
@@ -10828,7 +10876,11 @@ const agent = createAgent({ provider, tools: [listRepos], store: memoryStore() }
   (`credentialOwner: 'user'`, the default) or the app's own
   (`credentialOwner: 'app'`) from `store.tokens`. A token that expires within
   60 seconds and has a refresh token is refreshed at `tokenUrl` first and
-  saved; a refresh the server refuses deletes it.
+  saved. Concurrent calls in one process that need the same refresh share one
+  request, so a provider that rotates refresh tokens (single use) is not sent
+  the same one twice. A refresh the server refuses deletes the token, unless
+  the store meanwhile holds a different one (another process refreshed it);
+  that one is used instead.
 - Without a usable token the run **pauses**, exactly like an
   [approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md): `finishReason: 'awaiting-approval'`, a pending
   approval with `kind: 'sign-in'`, durable in the agent's stores. Once the user
@@ -10901,8 +10953,10 @@ The pause is reported like any approval, with the link to open:
   continue: <url>" without Approve / Deny buttons. Slack sends it with
   `chat.postEphemeral` to the user who started the turn and Discord as an
   ephemeral follow-up, so nobody else in the thread sees the link. Teams and
-  Telegram post it in the conversation (they have no message only one user
-  sees), and GitHub never posts it in a public thread. Behind
+  Telegram have no message only one user sees, so they send the link only in a
+  1:1 chat with the bot; in a group chat or channel they post "please sign in
+  from a private chat with me" instead. GitHub never posts it in a public
+  thread. Behind
   `createDeployedServer()` and `lousho dev`, the callback continues the paused
   channel turn by itself, and the answer is posted where the question was asked.
 - `lousho dev`'s chat page shows the link with "I've signed in" and "Cancel";
@@ -10983,12 +11037,17 @@ approval.
   issuer is another user. An app credential is only signed in by the operator.
 - **Who sees the link.** Whoever opens a sign-in link binds their own account
   to the user who asked. Show it only to that user: the run's own stream, an
-  ephemeral message in a shared channel (Slack, Discord), never a public
-  thread.
+  ephemeral message in a shared channel (Slack, Discord), a 1:1 chat
+  (Telegram, Teams), never a group chat or a public thread.
 - **Never return a token from a tool.** Return the API's answer. As a safety
-  net, a tool result that contains a token `getToken()` handed out during that
-  call has it replaced with `[REDACTED]` before it is recorded, and a warning
-  names the tool. Tokens never enter agent events, transcripts, checkpoints,
+  net, a tool result or a thrown error that contains a token `getToken()`
+  handed out during that call has it replaced with `[REDACTED]` before it is
+  recorded, and a warning names the tool. The result is checked in its JSON
+  form (values, keys, a `URL`, a class instance's fields), the error in its
+  message, stack and `cause` chain, and the token is matched verbatim and
+  base64 or base64url encoded (a `Basic` header). The redaction is a net, not
+  a guarantee: a token that is hashed, split or otherwise transformed is not
+  found. Tokens never enter agent events, transcripts, checkpoints,
   approval records, trace spans or recorded cassettes.
 
 ## MCP servers with OAuth
@@ -11200,7 +11259,7 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `gen_ai.agent.id` | The agent's `id`, when set |
 | `gen_ai.provider.name` | The provider's `name` |
 | `gen_ai.conversation.id` | `sessionId`, when set |
-| `lousho.cost_usd` | Cumulative estimated USD of the run (every model call and delegated child run); absent when any model used has no known price |
+| `lousho.cost_usd` | Cumulative estimated USD of the run (every model call and delegated child run, including a background child that finishes before the run ends); absent when any model used has no known price |
 | `lousho.usage.estimated` | `true` when any of the run's tokens were estimated |
 
 ### Model call: `chat {model}` (CLIENT)
@@ -11347,10 +11406,10 @@ changed (to what the spec requires); update queries that matched on them.
 | `error` (the error message; absent on success) | `error.type` and the span status |
 | `input`, `prompt`, `args`, `result` | `gen_ai.input.messages`, `gen_ai.tool.call.arguments`, `gen_ai.tool.call.result` (opt-in, see above) |
 
-The deprecated content attributes (`input`, `prompt`, `args`, `result`) keep
-their old behavior: they are recorded unless `redactContent: true`. Set
-`redactContent: true` if you want no content on spans unless you opt in with
-`captureContent`.
+The deprecated content attributes (`input`, `prompt`, `args`, `result`) are
+off by default: `redactContent` defaults to `true`. Pass `redactContent: false`
+to record them as before; `captureContent` governs only the `gen_ai.*` content
+attributes.
 
 ## Local traces
 
@@ -11401,8 +11460,9 @@ Options: `--dir D` reads another directory (default `.lousho/traces`),
 `--limit N` lists N runs (default 20), `--json` prints the summaries or the
 spans as JSON. An id prefix that matches several runs lists them and exits 1.
 Colour is off when `NO_COLOR` is set or the output is not a terminal. The
-token counts are the run's `chat` spans, sub-agents' included; the cost is the
-run's rolled-up `lousho.cost_usd`, blank (`-`) when a model's price is unknown.
+token counts and the cost are the sums of the run's `chat` spans, sub-agents'
+included (background ones too); the cost is blank (`-`) when a model's price is
+unknown.
 
 **Files.** One file per run at `<dir>/<YYYY-MM-DD>/<traceId>.jsonl` (the run's
 local start date; the trace id is the id of its `invoke_agent` span), so old
@@ -11419,8 +11479,9 @@ died) is not in the file. If the directory cannot be written, the exporter
 warns once and the run goes on. `listTraces({ dir, limit })` and
 `readTrace(idOrPrefix, { dir })` read the files from code.
 
-The files hold what the spans hold: the deprecated `input`, `prompt`, `args`
-and `result` attributes carry message and tool content (see
+The files hold what the spans hold. By default that is no message or tool
+content: the deprecated `input`, `prompt`, `args` and `result` attributes are
+recorded only with `redactContent: false` (see
 [Deprecated attribute names](#deprecated-attribute-names)), and
 `captureContent: true` adds the `gen_ai.*` content. Keep `.lousho/` out of
 version control; projects made by `lousho init` ignore it.
@@ -11428,9 +11489,9 @@ version control; projects made by `lousho init` ignore it.
 `lousho dev` and `lousho chat` write these files when you pass `--traces`
 (into `.lousho/traces`) or `--traces=<dir>`, for a spec file, an agent
 directory or a module, so a spec-file agent needs no code to be traced. It is
-opt-in on purpose: the files persist prompt and tool content, and
-`captureContent: false` does not remove it (only `redactContent: true` does),
-so nothing is written to disk unless you ask. The spec file format has no
+opt-in on purpose: the files persist span timings, token counts and costs,
+and prompt and tool content only if the agent sets `redactContent: false` or
+`captureContent: true`, so nothing is written to disk unless you ask. The spec file format has no
 traces setting.
 
 ## Backends
@@ -12639,7 +12700,7 @@ The first argument says where the agent runs.
 
 | Source | What the hook does |
 | ------ | ------------------ |
-| `{ url, headers?, fetch? }` | **Remote.** `send(input)` POSTs `{ "input": "..." }` as JSON to `url` and reads the response body as an event stream: SSE (`data: {...}` lines) or newline-delimited JSON, one event per line. The server below writes exactly that. |
+| `{ url, sessionId?, headers?, fetch? }` | **Remote.** `send(input)` POSTs `{ "input": "...", "sessionId": "..." }` as JSON to `url` and reads the response body as an event stream: SSE (`data: {...}` lines) or newline-delimited JSON, one event per line. The server below writes exactly that. The hook generates one `sessionId` per chat and sends it with every turn, so a session-aware server (`createRouteHandler`) keeps the conversation; pass your own `sessionId` to resume a stored session. `reset()` starts a new chat id. |
 | `{ agent }` | **In process.** `send(input)` calls `agent.stream(input)`. Every turn is a new run with no history, like `agent.send()`. |
 | `{ agent, sessionId }` | **In process, multi-turn.** The hook creates `agent.session({ id: sessionId })` once and streams each turn with `session.stream()`, so turns see the conversation so far. |
 
@@ -14264,6 +14325,8 @@ console.log(result.finishReason, result.text);
 
 ## Listening without iterating
 
+A listener that throws does not fail the run (its tools may already have had side effects): the error is logged once per run with `console.warn` and the run continues.
+
 To observe every run without iterating one, give the agent a listener:
 `createAgent({ onEvent })`, or `onAgentEvent` in the `AgentExecutor.execute()`
 / `stream()` / `resumeAfterApproval()` options. It is called synchronously
@@ -14770,11 +14833,23 @@ if (invoice && Math.abs(invoice.subtotal + invoice.tax - invoice.total) > 0.005)
 
 ## Schema limits
 
-- **The root must be an object.** A root-level union of objects
-  (`z.union`, `z.discriminatedUnion`) is sent with `type: 'object'` next to
-  its `anyOf`. A root union with a branch that is not an object throws a
-  `ConfigurationError` from `createAgent()`: wrap it, as in
-  `z.object({ result: z.union([...]) })`.
+Strict structured-output endpoints (OpenAI, Anthropic, and OpenRouter in
+front of them) reject some JSON-Schema shapes with a 400, and Claude answered
+a record with `{}`. The schema sent to the model is rewritten into shapes
+they accept, and the model's reply is turned back into your schema's shape
+before validation, so `result.object` always has the type you wrote. Only
+`result.text` (the raw reply) shows the rewritten form.
+
+| Your schema | Sent to the model as | Reply decoded from |
+| --- | --- | --- |
+| `z.discriminatedUnion` (`oneOf`) | `anyOf` | (unchanged) |
+| A root that is not an object (`z.union`, `z.record`, `z.string()`, ...) | `{ result: <schema> }` | `{"result": ...}` |
+| `z.record(key, value)` | an array of `{ key, value }` objects | `[{"key":"a","value":2}]` → `{ a: 2 }` |
+| `z.tuple([a, b], rest?)` | an object `{ _0, _1, _rest? }` | `{"_0":1,"_1":"x"}` → `[1, 'x']` |
+
+A reply in your schema's own shape (from a model that does not enforce the
+schema) still validates.
+
 - **No `z.date()`.** JSON has no date type, so a zod 4 `z.date()` field could
   never validate. `createAgent()` throws a `ConfigurationError` naming the
   field. Use `z.iso.date()` or `z.iso.datetime()` for an ISO string, or
@@ -15491,7 +15566,7 @@ snippets here):
   store itself with the React hook's signatures; they do not need a
   subscriber.
 - **`reset()`** aborts the run in flight, forgets the in-process session
-  (`{ agent, sessionId }` starts a new conversation) and clears the state.
+  (`{ agent, sessionId }` starts a new conversation; a remote `{ url }` source gets a new generated chat id) and clears the state.
 - **The source and options are plain values**, read when a turn starts. To use
   another agent or `url`, create another store.
 - **Cleanup is unsubscribing.** `stop()` aborts the request in flight, and so
@@ -17074,7 +17149,7 @@ and in the template:
   nothing in a template. The commands (`send`, `stop`, `approve`, `reject`,
   `answer`) are plain functions with the React hook's signatures.
 - **`reset()`** aborts the run in flight, forgets the in-process session
-  (`{ agent, sessionId }` starts a new conversation) and clears the state.
+  (`{ agent, sessionId }` starts a new conversation; a remote `{ url }` source gets a new generated chat id) and clears the state.
 - **The source and options can be refs.** Pass a plain object or a `ref`; it is
   read when a turn starts, so a changed `url` or `agent` applies to the next
   turn.
