@@ -245,7 +245,8 @@ matches if either does. An invalid expression throws a `CronExpressionError`
 naming the field and showing a valid example. `parseCronExpression(expr,
 timezone).nextRun(after)` is exported if you need the next fire time.
 
-Around daylight-saving changes, a time that does not exist (spring forward) is
-skipped for that day, and a time that happens twice (fall back) fires once;
+Around daylight-saving changes, a fixed-hour job whose time does not exist
+(spring forward, e.g. `30 2 * * *`) runs once at the first instant after the
+gap (03:00) instead of being skipped for the day, and a time that happens twice (fall back) fires once;
 an every-hour schedule keeps firing hourly. The timer is re-armed after each
 run from the scheduled time (no drift, no double fire), and `stop()` clears it.

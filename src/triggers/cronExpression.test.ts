@@ -48,8 +48,12 @@ describe('parseCronExpression().nextRun()', () => {
     ['30 1 * * *', '2026-03-07T06:30:00Z', '2026-03-08T06:30:00.000Z', 'America/New_York'],
     ['30 3 * * *', '2026-03-08T06:30:00Z', '2026-03-08T07:30:00.000Z', 'America/New_York'],
     ['0 * * * *', '2026-03-08T06:30:00Z', '2026-03-08T07:00:00.000Z', 'America/New_York'],
-    // a time inside the skipped hour does not exist: skipped that day
-    ['30 2 * * *', '2026-03-07T07:30:00Z', '2026-03-09T06:30:00.000Z', 'America/New_York'],
+    // a time inside the skipped hour does not exist: it runs once at the first instant after the gap (Eve DUR-F20)
+    ['30 2 * * *', '2026-03-07T07:30:00Z', '2026-03-08T07:00:00.000Z', 'America/New_York'],
+    ['30 2 * * *', '2026-03-08T07:00:00Z', '2026-03-09T06:30:00.000Z', 'America/New_York'],
+    ['*/20 2 * * *', '2026-03-08T06:30:00Z', '2026-03-08T07:00:00.000Z', 'America/New_York'],
+    // an every-hour schedule does not double up after the gap
+    ['30 * * * *', '2026-03-08T06:30:00Z', '2026-03-08T07:30:00.000Z', 'America/New_York'],
     // New York fall back (2026-11-01, 02:00 EDT -> 01:00 EST): fixed times fire once...
     ['30 1 * * *', '2026-11-01T04:00:00Z', '2026-11-01T05:30:00.000Z', 'America/New_York'],
     ['30 1 * * *', '2026-11-01T05:30:00Z', '2026-11-02T06:30:00.000Z', 'America/New_York'],
