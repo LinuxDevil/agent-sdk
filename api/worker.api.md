@@ -17,28 +17,18 @@ interface AgentApprovals {
         answer: string;
     }, options?: ResolveApprovalOptions): Promise<ExecutionResult>;
     get(id: string): Promise<PendingApproval | undefined>;
-    // Warning: (ae-forgotten-export) The symbol "PendingApproval" needs to be exported by the entry point worker.d.ts
     list(): Promise<PendingApproval[]>;
-    // Warning: (ae-forgotten-export) The symbol "ApprovalDecision" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "ResolveApprovalOptions" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "ExecutionResult" needs to be exported by the entry point worker.d.ts
     resolve(decision: ApprovalDecision, options?: ResolveApprovalOptions): Promise<ExecutionResult>;
-    resolveAll(decisions: readonly ApprovalDecision[], options?: ResolveApprovalOptions): Promise<ExecutionResult>;
     streamAnswer(reply: {
         id: string;
         answer: string;
     }, options?: ResolveApprovalOptions): AgentRun;
-    // Warning: (ae-forgotten-export) The symbol "AgentRun" needs to be exported by the entry point worker.d.ts
     streamResolve(decision: ApprovalDecision, options?: ResolveApprovalOptions): AgentRun;
 }
 
-// Warning: (ae-forgotten-export) The symbol "AgentCompactionOptions" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type AgentCompaction = boolean | AgentCompactionOptions;
 
-// Warning: (ae-forgotten-export) The symbol "CompactionHookOptions" needs to be exported by the entry point worker.d.ts
-//
 // @public
 interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens' | 'reserveOutputTokens' | 'onCompaction'> {
     summarizer?: LLMProvider | string;
@@ -50,8 +40,6 @@ interface AgentConfig {
     events?: unknown[];
     // (undocumented)
     expectedResult?: unknown;
-    // Warning: (ae-forgotten-export) The symbol "AgentFlow" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     flows?: AgentFlow[];
     // (undocumented)
@@ -64,12 +52,8 @@ interface AgentConfig {
     name: string;
     // (undocumented)
     prompt?: string;
-    // Warning: (ae-forgotten-export) The symbol "AgentSettings" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     settings?: AgentSettings;
-    // Warning: (ae-forgotten-export) The symbol "ToolConfiguration" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     tools?: Record<string, ToolConfiguration>;
 }
@@ -88,9 +72,6 @@ interface AgentDrift {
     toolsRemoved: string[];
 }
 
-// Warning: (ae-forgotten-export) The symbol "AgentEventBase" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "AgentDrift" needs to be exported by the entry point worker.d.ts
-//
 // @public
 interface AgentDriftEvent extends AgentEventBase<'agent.drift'>, AgentDrift {
 }
@@ -100,45 +81,10 @@ type AgentDriftMode = 'warn' | 'error' | 'ignore';
 
 // @public
 interface AgentErrorEvent extends AgentEventBase<'error'> {
-    // Warning: (ae-forgotten-export) The symbol "AgentEventError" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     error: AgentEventError;
 }
 
-// Warning: (ae-forgotten-export) The symbol "RunStartEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "StepStartEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "TextDeltaEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ObjectDeltaEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "TextDoneEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ReasoningStartEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ReasoningDeltaEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ReasoningDoneEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolStartEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolResumeEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolPartialEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolDoneEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "TodoUpdatedEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolErrorEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ApprovalRequestedEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "PermissionDecisionEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "StepDoneEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "AgentErrorEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ProviderRetryEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ProviderFallbackEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "CompactionStartEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "CompactionDoneEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ContextClearedEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "BudgetExceededEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "InputQueuedEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "InputSteeredEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "InputAppliedEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "GuardrailTrippedEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "GuardrailRewroteEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "AgentDriftEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "HandoffEvent" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "RunDoneEvent" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export type AgentEvent = RunStartEvent | StepStartEvent | TextDeltaEvent | ObjectDeltaEvent | TextDoneEvent | ReasoningStartEvent | ReasoningDeltaEvent | ReasoningDoneEvent | ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | TodoUpdatedEvent | ToolErrorEvent | ApprovalRequestedEvent | PermissionDecisionEvent | StepDoneEvent | AgentErrorEvent | ProviderRetryEvent | ProviderFallbackEvent | CompactionStartEvent | CompactionDoneEvent | ContextClearedEvent | BudgetExceededEvent | InputQueuedEvent | InputSteeredEvent | InputAppliedEvent | GuardrailTrippedEvent | GuardrailRewroteEvent | AgentDriftEvent | HandoffEvent | RunDoneEvent;
 
@@ -146,11 +92,9 @@ export type AgentEvent = RunStartEvent | StepStartEvent | TextDeltaEvent | Objec
 interface AgentEventBase<TType extends string> {
     runId: string;
     seq: number;
-    // Warning: (ae-forgotten-export) The symbol "SubagentInfo" needs to be exported by the entry point worker.d.ts
     subagent?: SubagentInfo;
     timestamp: string;
     type: TType;
-    // Warning: (ae-forgotten-export) The symbol "AGENT_EVENT_SCHEMA_VERSION" needs to be exported by the entry point worker.d.ts
     v: typeof AGENT_EVENT_SCHEMA_VERSION;
 }
 
@@ -163,15 +107,11 @@ interface AgentEventError {
     name: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "AgentEventType" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type AgentEventOf<TType extends AgentEventType> = Extract<AgentEvent, {
     type: TType;
 }>;
 
-// Warning: (ae-forgotten-export) The symbol "AgentEventOf" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type AgentEventPayload = {
     [K in AgentEventType]: Omit<AgentEventOf<K>, keyof AgentEventBase<string>> & {
@@ -210,19 +150,14 @@ interface AgentFingerprint {
 
 // @public
 interface AgentFlow {
-    // Warning: (ae-forgotten-export) The symbol "FlowAgentDefinition" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     agents?: FlowAgentDefinition[];
     code: string;
     // (undocumented)
     description?: string;
-    // Warning: (ae-forgotten-export) The symbol "EditorStep" needs to be exported by the entry point worker.d.ts
     flow?: EditorStep;
     // (undocumented)
     id?: string;
-    // Warning: (ae-forgotten-export) The symbol "FlowInputVariable" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     inputs?: FlowInputVariable[];
     // (undocumented)
@@ -231,7 +166,6 @@ interface AgentFlow {
 
 // @public
 interface AgentGuardrails {
-    // Warning: (ae-forgotten-export) The symbol "IoGuardrail" needs to be exported by the entry point worker.d.ts
     input?: readonly IoGuardrail[];
     onTripped?: 'stop' | 'throw';
     output?: readonly IoGuardrail[];
@@ -241,66 +175,41 @@ interface AgentGuardrails {
 // @public
 interface AgentHook {
     name: string;
-    // Warning: (ae-forgotten-export) The symbol "GenerateResult" needs to be exported by the entry point worker.d.ts
     postGenerate?(ctx: GenerateHookContext, result: GenerateResult): void | Promise<void>;
-    // Warning: (ae-forgotten-export) The symbol "ToolCallHookResult" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "PostToolCallOutcome" needs to be exported by the entry point worker.d.ts
     postToolCall?(ctx: ToolCallHookContext, result: ToolCallHookResult): MaybePromise<PostToolCallOutcome | void>;
-    // Warning: (ae-forgotten-export) The symbol "GenerateHookContext" needs to be exported by the entry point worker.d.ts
     preGenerate?(ctx: GenerateHookContext): void | Promise<void>;
-    // Warning: (ae-forgotten-export) The symbol "ToolCallHookContext" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "MaybePromise" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "PreToolCallOutcome" needs to be exported by the entry point worker.d.ts
     preToolCall?(ctx: ToolCallHookContext): MaybePromise<PreToolCallOutcome | void>;
 }
 
-// Warning: (ae-forgotten-export) The symbol "ContentPart" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "Message" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export type AgentInput = string | ContentPart[] | Message[];
 
 // @public
 interface AgentOAuth {
-    // Warning: (ae-forgotten-export) The symbol "OAuthCallbackParams" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "OAuthCompleteResult" needs to be exported by the entry point worker.d.ts
     complete(params: OAuthCallbackParams): Promise<OAuthCompleteResult>;
     mcpSignInUrl(server: string): Promise<string>;
-    // Warning: (ae-forgotten-export) The symbol "OAuthProvider" needs to be exported by the entry point worker.d.ts
     signInUrl(provider: OAuthProvider): Promise<string>;
 }
 
 // @public
 interface AgentRun<TObject = unknown> extends AsyncIterable<AgentEvent> {
-    // Warning: (ae-forgotten-export) The symbol "EnqueueResult" needs to be exported by the entry point worker.d.ts
     enqueue(input: AgentInput): EnqueueResult;
     readonly result: Promise<ExecutionResult<TObject>>;
     readonly runId: string;
-    // Warning: (ae-forgotten-export) The symbol "SteerResult" needs to be exported by the entry point worker.d.ts
     steer(input: AgentInput): SteerResult;
 }
 
 // @public
 class AgentSession<TObject = unknown> {
-    // Warning: (ae-forgotten-export) The symbol "SessionRunner" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "SessionOptions" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "SessionStreamRunner" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "SessionSpawner" needs to be exported by the entry point worker.d.ts
     constructor(run: SessionRunner, options?: SessionOptions, streamRun?: SessionStreamRunner, spawn?: SessionSpawner);
-    // Warning: (ae-forgotten-export) The symbol "CheckpointStore" needs to be exported by the entry point worker.d.ts
     protected readonly checkpointStore: CheckpointStore | undefined;
     clear(): Promise<void>;
-    // Warning: (ae-forgotten-export) The symbol "SessionCompactOptions" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "SessionCompactResult" needs to be exported by the entry point worker.d.ts
     compact(options?: SessionCompactOptions): Promise<SessionCompactResult>;
     protected continueTurn(next: () => Promise<ExecutionResult>): Promise<ExecutionResult>;
-    // Warning: (ae-forgotten-export) The symbol "PermissionMode" needs to be exported by the entry point worker.d.ts
     protected readonly currentPermissionMode: () => PermissionMode;
     discardPending(): Promise<void>;
-    // Warning: (ae-forgotten-export) The symbol "SessionForkOptions" needs to be exported by the entry point worker.d.ts
     fork(options: SessionForkOptions): Promise<AgentSession<TObject>>;
     protected readonly forwardToListeners: (event: AgentEvent) => void;
-    // Warning: (ae-forgotten-export) The symbol "SessionHistoryStep" needs to be exported by the entry point worker.d.ts
     history(): Promise<SessionHistoryStep[]>;
     // (undocumented)
     readonly id: string;
@@ -308,13 +217,11 @@ class AgentSession<TObject = unknown> {
     get messages(): readonly Message[];
     on(listener: (event: AgentEvent) => void): () => void;
     protected pausedTurnFound(_approvalId: string): void;
-    // Warning: (ae-forgotten-export) The symbol "PendingTurn" needs to be exported by the entry point worker.d.ts
     pending(): Promise<PendingTurn | null>;
     get permissionMode(): PermissionMode;
     resume(options?: {
         signal?: AbortSignal;
     }): Promise<ExecutionResult | null>;
-    // Warning: (ae-forgotten-export) The symbol "SessionSendOptions" needs to be exported by the entry point worker.d.ts
     send(input: AgentInput, options?: SessionSendOptions): Promise<ExecutionResult<TObject>>;
     setPermissionMode(mode: PermissionMode): void;
     stream(input: AgentInput, options?: SessionSendOptions): AgentRun<TObject>;
@@ -331,21 +238,16 @@ interface AgentSettings {
 
 // @public (undocumented)
 export interface AgentSpec {
-    // Warning: (ae-forgotten-export) The symbol "McpServerSpec" needs to be exported by the entry point worker.d.ts
     mcpServers?: Record<string, McpServerSpec>;
     // (undocumented)
     name: string;
-    // Warning: (ae-forgotten-export) The symbol "AgentSpecPolicy" needs to be exported by the entry point worker.d.ts
     policy?: AgentSpecPolicy;
     // (undocumented)
     prompt: string;
-    // Warning: (ae-forgotten-export) The symbol "AgentSpecProvider" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     provider: AgentSpecProvider;
     // (undocumented)
     tools?: string[];
-    // Warning: (ae-forgotten-export) The symbol "AgentSpecTrigger" needs to be exported by the entry point worker.d.ts
     triggers?: AgentSpecTrigger[];
 }
 
@@ -365,11 +267,8 @@ type AgentSpecGuardrail = string | {
 interface AgentSpecPolicy {
     [key: string]: unknown;
     askQuestion?: boolean;
-    // Warning: (ae-forgotten-export) The symbol "AgentSpecCompaction" needs to be exported by the entry point worker.d.ts
     compaction?: boolean | AgentSpecCompaction;
-    // Warning: (ae-forgotten-export) The symbol "AgentSpecGuardrail" needs to be exported by the entry point worker.d.ts
     guardrails?: AgentSpecGuardrail[];
-    // Warning: (ae-forgotten-export) The symbol "RunLimits" needs to be exported by the entry point worker.d.ts
     limits?: RunLimits;
     requiresApproval?: boolean | string[];
 }
@@ -392,17 +291,12 @@ interface AgentSpecTrigger {
 
 // @public
 export interface AgentStore {
-    // Warning: (ae-forgotten-export) The symbol "ApprovalStore" needs to be exported by the entry point worker.d.ts
     approvals?: ApprovalStore;
     checkpoints?: CheckpointStore;
-    // Warning: (ae-forgotten-export) The symbol "SessionStore" needs to be exported by the entry point worker.d.ts
     sessions?: SessionStore;
-    // Warning: (ae-forgotten-export) The symbol "OAuthTokenStore" needs to be exported by the entry point worker.d.ts
     tokens?: OAuthTokenStore;
 }
 
-// Warning: (ae-forgotten-export) The symbol "ToolsOption" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type AgentToolsOption = ToolsOption;
 
@@ -425,22 +319,16 @@ interface AiSdkModule {
     streamText(options: never): unknown;
 }
 
-// Warning: (ae-forgotten-export) The symbol "AiSdkProviderConfig" needs to be exported by the entry point worker.d.ts
-//
 // @public
 abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLMProvider {
     constructor(config: TConfig);
     protected readonly acceptsFileParts: boolean;
-    // Warning: (ae-forgotten-export) The symbol "AiSdkModule" needs to be exported by the entry point worker.d.ts
     protected readonly ai: AiSdkModule;
     protected cachesPrompt(_modelId: string, _options: GenerateOptions): boolean;
     // (undocumented)
     protected config: TConfig;
-    // Warning: (ae-forgotten-export) The symbol "AiSdkMessage" needs to be exported by the entry point worker.d.ts
-    //
     // @deprecated
     protected convertMessages(messages: Message[]): AiSdkMessage[];
-    // Warning: (ae-forgotten-export) The symbol "GenerateOptions" needs to be exported by the entry point worker.d.ts
     protected abstract createModel(modelId: string, options?: GenerateOptions): LanguageModel | Promise<LanguageModel>;
     get defaultModel(): string;
     protected abstract readonly fallbackModel: string;
@@ -448,7 +336,6 @@ abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLM
     generate(options: GenerateOptions): Promise<GenerateResult>;
     // (undocumented)
     abstract getModels(): Promise<string[]>;
-    // Warning: (ae-forgotten-export) The symbol "HostedTool" needs to be exported by the entry point worker.d.ts
     protected hostedToolsFor(tools: readonly HostedTool[], _modelId: string): Promise<Record<string, unknown>>;
     protected readonly mapsHostedTools: boolean;
     // (undocumented)
@@ -459,9 +346,7 @@ abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLM
         passed: Record<string, unknown>;
         builtIn: HostedTool[];
     };
-    // Warning: (ae-forgotten-export) The symbol "StreamResult" needs to be exported by the entry point worker.d.ts
     stream(options: GenerateOptions): Promise<StreamResult>;
-    // Warning: (ae-forgotten-export) The symbol "HostedToolType" needs to be exported by the entry point worker.d.ts
     supportsHostedTool(type: HostedToolType | 'custom'): boolean;
     // (undocumented)
     abstract supportsStreaming(model: string): boolean;
@@ -469,23 +354,17 @@ abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLM
     abstract supportsTools(model: string): boolean;
 }
 
-// Warning: (ae-forgotten-export) The symbol "LLMProviderConfig" needs to be exported by the entry point worker.d.ts
-//
 // @public
 interface AiSdkProviderConfig extends LLMProviderConfig {
     // (undocumented)
     defaultModel?: string;
     fetch?: typeof globalThis.fetch;
-    // Warning: (ae-forgotten-export) The symbol "UnsupportedFiles" needs to be exported by the entry point worker.d.ts
     unsupportedFiles?: UnsupportedFiles;
 }
 
 // @public
 export function always(): true;
 
-// Warning: (ae-forgotten-export) The symbol "AiSdkProvider" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "AnthropicProviderConfig" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
     protected cachesPrompt(modelId: string, options: GenerateOptions): boolean;
@@ -519,7 +398,6 @@ interface AnthropicProviderConfig extends AiSdkProviderConfig {
 // @public
 interface ApprovalAccessRequest {
     approval: PendingApproval;
-    // Warning: (ae-forgotten-export) The symbol "Principal" needs to be exported by the entry point worker.d.ts
     principal: Principal | undefined;
     sessionId: string;
 }
@@ -549,13 +427,6 @@ interface ApprovalDecision {
 }
 
 // @public
-interface ApprovalGroupMember {
-    // Warning: (ae-forgotten-export) The symbol "GroupDecision" needs to be exported by the entry point worker.d.ts
-    decision?: GroupDecision;
-    pending: PendingApproval;
-}
-
-// @public
 type ApprovalKind = 'tool' | 'question' | 'sign-in';
 
 // @public
@@ -563,9 +434,6 @@ type ApprovalOutcome = boolean | 'approve' | 'deny' | 'ask' | {
     deny: string;
 };
 
-// Warning: (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type ApprovalPolicy = (args: unknown, ctx: ApprovalCheckContext) => ApprovalOutcome;
 
@@ -589,11 +457,8 @@ interface ApprovalRequestedEvent extends AgentEventBase<'approval.requested'> {
     // (undocumented)
     args: Record<string, unknown>;
     expiresAt?: string;
-    // Warning: (ae-forgotten-export) The symbol "ApprovalKind" needs to be exported by the entry point worker.d.ts
     kind?: ApprovalKind;
-    // Warning: (ae-forgotten-export) The symbol "ApprovalQuestion" needs to be exported by the entry point worker.d.ts
     question?: ApprovalQuestion;
-    // Warning: (ae-forgotten-export) The symbol "ApprovalSignIn" needs to be exported by the entry point worker.d.ts
     signIn?: ApprovalSignIn;
     // (undocumented)
     toolCallId: string;
@@ -613,12 +478,8 @@ interface ApprovalSignIn {
 interface ApprovalStore {
     list?(): Promise<PendingApproval[]>;
     load?(id: string): Promise<ResolvedApproval | null>;
-    // Warning: (ae-forgotten-export) The symbol "ResolvedApproval" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     resolve(id: string): Promise<ResolvedApproval | null>;
-    // Warning: (ae-forgotten-export) The symbol "ExecutionSnapshot" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     save(pending: PendingApproval, snapshot: ExecutionSnapshot): Promise<void>;
 }
@@ -634,9 +495,6 @@ interface ApproverRequest {
     toolName: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "ChannelUser" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ApproverRequest" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type Approvers = readonly string[] | ((user: ChannelUser, request: ApproverRequest) => boolean | Promise<boolean>);
 
@@ -651,8 +509,6 @@ interface AuthChallenge {
     scheme: 'Bearer' | 'Basic';
 }
 
-// Warning: (ae-forgotten-export) The symbol "AuthResult" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type AuthFn = ((request: Request) => AuthResult | Promise<AuthResult>) & {
     challenges?: readonly AuthChallenge[];
@@ -672,8 +528,6 @@ interface BackgroundTaskView {
     elapsedMs: number;
     error?: string;
     result?: string;
-    // Warning: (ae-forgotten-export) The symbol "BackgroundTaskStatus" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     status: BackgroundTaskStatus | 'timeout';
     // (undocumented)
@@ -702,8 +556,6 @@ interface BestOfAllNode {
 
 // @public
 interface BudgetExceeded {
-    // Warning: (ae-forgotten-export) The symbol "BudgetLimit" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     limit: BudgetLimit;
     // (undocumented)
@@ -712,8 +564,6 @@ interface BudgetExceeded {
     value: number;
 }
 
-// Warning: (ae-forgotten-export) The symbol "BudgetExceeded" needs to be exported by the entry point worker.d.ts
-//
 // @public
 interface BudgetExceededEvent extends AgentEventBase<'budget.exceeded'>, BudgetExceeded {
 }
@@ -740,21 +590,12 @@ interface BudgetSpent {
 // @public
 interface Channel<TEvent = unknown> {
     name: string;
-    // Warning: (ae-forgotten-export) The symbol "ChannelApprovalContext" needs to be exported by the entry point worker.d.ts
     onApproval?(ctx: ChannelApprovalContext<TEvent>): Promise<void>;
-    // Warning: (ae-forgotten-export) The symbol "ChannelErrorHandler" needs to be exported by the entry point worker.d.ts
     onError?: ChannelErrorHandler;
-    // Warning: (ae-forgotten-export) The symbol "ChannelRespond" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "ChannelContext" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "ChannelInbound" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "ChannelDecision" needs to be exported by the entry point worker.d.ts
     parse(req: ChannelRequest, respond: ChannelRespond, ctx: ChannelContext): Promise<ChannelInbound<TEvent> | ChannelDecision | null>;
-    // Warning: (ae-forgotten-export) The symbol "ChannelReplyContext" needs to be exported by the entry point worker.d.ts
     reply(ctx: ChannelReplyContext<TEvent>): Promise<void>;
     sessionId?(inbound: ChannelInbound<TEvent>): string;
     stream?: boolean;
-    // Warning: (ae-forgotten-export) The symbol "ChannelRequest" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "ChannelAuthResult" needs to be exported by the entry point worker.d.ts
     verify?(req: ChannelRequest): Promise<boolean | ChannelAuthResult>;
 }
 
@@ -796,8 +637,6 @@ interface ChannelContext {
 interface ChannelDecision {
     // (undocumented)
     approver?: ChannelUser;
-    // Warning: (ae-forgotten-export) The symbol "ChannelApprovalDecision" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     decision: ChannelApprovalDecision;
     // (undocumented)
@@ -814,8 +653,6 @@ interface ChannelErrorContext {
     stage: 'parse' | 'turn' | 'reply' | 'approval';
 }
 
-// Warning: (ae-forgotten-export) The symbol "ChannelErrorContext" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type ChannelErrorHandler = (error: unknown, context: ChannelErrorContext) => void | Promise<void>;
 
@@ -870,43 +707,34 @@ interface ChannelUser {
 
 // @public
 interface ChatRoutesAccess {
-    // Warning: (ae-forgotten-export) The symbol "ApprovalAccessRequest" needs to be exported by the entry point worker.d.ts
     authorizeApproval?: (request: ApprovalAccessRequest) => boolean | Promise<boolean>;
-    // Warning: (ae-forgotten-export) The symbol "SessionAccessRequest" needs to be exported by the entry point worker.d.ts
     authorizeSession?: (request: SessionAccessRequest) => boolean | Promise<boolean>;
     exposeErrors?: boolean;
     onDisconnect?: 'continue' | 'abort';
     waitUntil?: (promise: Promise<unknown>) => void;
 }
 
-// Warning: (ae-forgotten-export) The symbol "ChatRoutesAccess" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export interface ChatRoutesContext extends ChatRoutesAccess {
     afterSignIn?: (result: OAuthCompleteResult) => void;
     agent: () => SimpleAgent;
     durableMessage?: boolean;
     name: string;
-    // Warning: (ae-forgotten-export) The symbol "AgentSession" needs to be exported by the entry point worker.d.ts
     session?: (agent: SimpleAgent, id: string) => AgentSession;
 }
 
 // @public
 interface Checkpoint {
-    // Warning: (ae-forgotten-export) The symbol "AgentFingerprint" needs to be exported by the entry point worker.d.ts
     agentFingerprint?: AgentFingerprint;
     // (undocumented)
     agentId: string;
     approvalId?: string;
-    approvalIds?: string[];
     approvalKind?: ApprovalKind;
     attempts?: number;
     businessState?: unknown;
     // (undocumented)
     finishReason?: string;
-    // Warning: (ae-forgotten-export) The symbol "FlowCheckpointState" needs to be exported by the entry point worker.d.ts
     flow?: FlowCheckpointState;
-    // Warning: (ae-forgotten-export) The symbol "CheckpointError" needs to be exported by the entry point worker.d.ts
     lastError?: CheckpointError;
     // (undocumented)
     messages: Message[];
@@ -915,15 +743,12 @@ interface Checkpoint {
     runConfig?: unknown;
     // (undocumented)
     sessionId: string;
-    // Warning: (ae-forgotten-export) The symbol "CheckpointStatus" needs to be exported by the entry point worker.d.ts
     status?: CheckpointStatus;
     // (undocumented)
     stepIndex: number;
-    // Warning: (ae-forgotten-export) The symbol "StepUsage" needs to be exported by the entry point worker.d.ts
     stepUsage?: StepUsage[];
     // (undocumented)
     toolCalls: unknown[];
-    // Warning: (ae-forgotten-export) The symbol "CheckpointUsage" needs to be exported by the entry point worker.d.ts
     usage: CheckpointUsage;
 }
 
@@ -947,7 +772,6 @@ interface CheckpointError {
 
 // @public
 interface CheckpointHistoryEntry {
-    // Warning: (ae-forgotten-export) The symbol "Checkpoint" needs to be exported by the entry point worker.d.ts
     checkpoint: Checkpoint;
     savedAt: string;
     status: CheckpointStatus;
@@ -976,20 +800,13 @@ type CheckpointStatus = 'in-progress' | 'awaiting-approval' | 'finished';
 
 // @public
 interface CheckpointStore {
-    // Warning: (ae-forgotten-export) The symbol "CheckpointDeleteOptions" needs to be exported by the entry point worker.d.ts
     delete(sessionId: string, options?: CheckpointDeleteOptions): Promise<void>;
-    // Warning: (ae-forgotten-export) The symbol "CheckpointHistoryOptions" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "CheckpointHistoryEntry" needs to be exported by the entry point worker.d.ts
     history?(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]>;
-    // Warning: (ae-forgotten-export) The symbol "CheckpointListOptions" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "CheckpointListEntry" needs to be exported by the entry point worker.d.ts
     list?(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
     load(sessionId: string): Promise<Checkpoint | null>;
     save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
 }
 
-// Warning: (ae-forgotten-export) The symbol "RunUsage" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type CheckpointUsage = Pick<RunUsage, 'promptTokens' | 'completionTokens' | 'totalTokens'> & Partial<RunUsage>;
 
@@ -1024,11 +841,8 @@ interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
     unchanged?: boolean;
 }
 
-// Warning: (ae-forgotten-export) The symbol "CompactMessagesOptions" needs to be exported by the entry point worker.d.ts
-//
 // @public
 interface CompactionHookOptions extends Omit<CompactMessagesOptions, 'model'> {
-    // Warning: (ae-forgotten-export) The symbol "CompactionInfo" needs to be exported by the entry point worker.d.ts
     onCompaction?: (info: CompactionInfo) => void;
 }
 
@@ -1049,7 +863,6 @@ interface CompactionInfo {
 // @public
 interface CompactionInput {
     contextWindow: number;
-    // Warning: (ae-forgotten-export) The symbol "CompactionTokenCounter" needs to be exported by the entry point worker.d.ts
     estimateTokens: CompactionTokenCounter;
     generate?: (provider: LLMProvider, request: GenerateOptions) => Promise<GenerateResult>;
     messages: Message[];
@@ -1081,9 +894,6 @@ interface CompactionStartEvent extends AgentEventBase<'compaction.start'> {
 
 // @public
 interface CompactionStrategy {
-    // Warning: (ae-forgotten-export) The symbol "CompactionInput" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "CompactionResult" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     compact(input: CompactionInput): CompactionResult | Promise<CompactionResult>;
     // (undocumented)
@@ -1099,7 +909,6 @@ interface CompactMessagesOptions {
     model?: string;
     protectedTokens?: number;
     reserveOutputTokens?: number;
-    // Warning: (ae-forgotten-export) The symbol "CompactionStrategy" needs to be exported by the entry point worker.d.ts
     strategy?: CompactionStrategy;
     thresholdPercent?: number;
 }
@@ -1118,17 +927,11 @@ interface ConditionNode {
 
 // @public
 export class ConfigurationError extends SDKError {
-    // Warning: (ae-forgotten-export) The symbol "ErrorCode" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "SDKErrorOptions" needs to be exported by the entry point worker.d.ts
     constructor(message: string, field?: string | undefined, code?: ErrorCode, options?: SDKErrorOptions);
     // (undocumented)
     readonly field?: string | undefined;
 }
 
-// Warning: (ae-forgotten-export) The symbol "TextContentPart" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ImageContentPart" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "FileContentPart" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type ContentPart = TextContentPart | ImageContentPart | FileContentPart;
 
@@ -1139,35 +942,23 @@ interface ContextClearedEvent extends AgentEventBase<'context.cleared'> {
     sessionId: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "InferSchemaOutput" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>(config?: CreateAgentConfig<TOutput>): SimpleAgent<InferSchemaOutput<TOutput>>;
 
-// Warning: (ae-forgotten-export) The symbol "PermissionOptions" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSchemaV1> extends PermissionOptions {
     approvalStore?: ApprovalStore;
     approvalTtlMs?: number;
-    // Warning: (ae-forgotten-export) The symbol "ApproveToolCall" needs to be exported by the entry point worker.d.ts
     approve?: ApproveToolCall;
     askQuestion?: boolean;
     captureContent?: boolean;
-    // Warning: (ae-forgotten-export) The symbol "CodeModeOptions" needs to be exported by the entry point worker.d.ts
     codeMode?: boolean | CodeModeOptions;
-    // Warning: (ae-forgotten-export) The symbol "AgentCompaction" needs to be exported by the entry point worker.d.ts
     compaction?: AgentCompaction;
     description?: string;
-    // Warning: (ae-forgotten-export) The symbol "TraceExporter" needs to be exported by the entry point worker.d.ts
     exporter?: TraceExporter;
     fallbackModels?: readonly string[];
-    // Warning: (ae-forgotten-export) The symbol "AgentGuardrails" needs to be exported by the entry point worker.d.ts
     guardrails?: AgentGuardrails;
-    // Warning: (ae-forgotten-export) The symbol "Handoff" needs to be exported by the entry point worker.d.ts
     handoffs?: ReadonlyArray<SimpleAgent | Handoff>;
-    // Warning: (ae-forgotten-export) The symbol "AgentHook" needs to be exported by the entry point worker.d.ts
     hooks?: readonly AgentHook[];
     limits?: RunLimits;
     maxHandoffs?: number;
@@ -1175,42 +966,27 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
     maxSubagentDepth?: number;
     maxToolResultChars?: number;
     mcpServers?: Record<string, McpServerSpec>;
-    // Warning: (ae-forgotten-export) The symbol "MemorySlot" needs to be exported by the entry point worker.d.ts
     memory?: readonly MemorySlot[];
-    // Warning: (ae-forgotten-export) The symbol "ModelSettings" needs to be exported by the entry point worker.d.ts
     modelSettings?: ModelSettings;
     name?: string;
-    // Warning: (ae-forgotten-export) The symbol "AgentDriftMode" needs to be exported by the entry point worker.d.ts
     onAgentDrift?: AgentDriftMode;
     onEvent?: (event: AgentEvent) => void;
-    // Warning: (ae-forgotten-export) The symbol "OutputSpec" needs to be exported by the entry point worker.d.ts
     output?: TOutput | OutputSpec<TOutput>;
     projectInstructions?: boolean | {
         cwd?: string;
         files?: readonly string[];
     };
-    // Warning: (ae-forgotten-export) The symbol "PromptCachingOption" needs to be exported by the entry point worker.d.ts
     promptCaching?: PromptCachingOption;
-    // Warning: (ae-forgotten-export) The symbol "RateLimitOptions" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "RateLimiter" needs to be exported by the entry point worker.d.ts
     rateLimit?: RateLimitOptions | RateLimiter;
-    // Warning: (ae-forgotten-export) The symbol "ReasoningOption" needs to be exported by the entry point worker.d.ts
     reasoning?: ReasoningOption;
     redactContent?: boolean;
-    // Warning: (ae-forgotten-export) The symbol "WithRetryOptions" needs to be exported by the entry point worker.d.ts
     retry?: WithRetryOptions | false;
-    // Warning: (ae-forgotten-export) The symbol "Skill" needs to be exported by the entry point worker.d.ts
     skills?: readonly Skill[];
     store?: AgentStore;
-    // Warning: (ae-forgotten-export) The symbol "SubagentOptions" needs to be exported by the entry point worker.d.ts
     subagentOptions?: SubagentOptions;
-    // Warning: (ae-forgotten-export) The symbol "Subagents" needs to be exported by the entry point worker.d.ts
     subagents?: Subagents;
-    // Warning: (ae-forgotten-export) The symbol "ToolConcurrency" needs to be exported by the entry point worker.d.ts
     toolConcurrency?: ToolConcurrency;
-    // Warning: (ae-forgotten-export) The symbol "AgentToolsOption" needs to be exported by the entry point worker.d.ts
     tools?: PerRun<AgentToolsOption>;
-    // Warning: (ae-forgotten-export) The symbol "ToolSearchOptions" needs to be exported by the entry point worker.d.ts
     toolSearch?: false | ToolSearchOptions;
 }
 
@@ -1241,16 +1017,12 @@ export type CreateAgentModelSource = {
     provider?: undefined;
 };
 
-// Warning: (ae-forgotten-export) The symbol "MockProviderConfig" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export function createMockProvider(config?: MockProviderConfig): MockLLMProvider;
 
 // @public
 type CredentialOwner = 'app' | 'user';
 
-// Warning: (ae-forgotten-export) The symbol "Channel" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export function defineChannel<TEvent = unknown>(channel: Channel<TEvent>): Channel<TEvent>;
 
@@ -1261,8 +1033,6 @@ export type DefinedSchedule = Readonly<ScheduleInput>;
 interface DefinedTool<S extends StandardSchemaV1 = StandardSchemaV1, O = unknown, X = O> extends ToolDescriptor {
     // (undocumented)
     readonly description: string;
-    // Warning: (ae-forgotten-export) The symbol "ToolExecutionContext" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     execute(args: InferSchemaOutput<S>, ctx: ToolExecutionContext): Promise<X>;
     // (undocumented)
@@ -1276,8 +1046,6 @@ interface DefinedTool<S extends StandardSchemaV1 = StandardSchemaV1, O = unknown
     };
 }
 
-// Warning: (ae-forgotten-export) The symbol "DefineMemoryOptions" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export function defineMemory(options: DefineMemoryOptions): MemorySlot;
 
@@ -1292,8 +1060,6 @@ interface DefineMemoryOptions {
     itemKey?: string | readonly string[];
     itemSchema?: StandardSchemaV1;
     name: string;
-    // Warning: (ae-forgotten-export) The symbol "MemoryProvider" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     provider: MemoryProvider;
     recall?: {
@@ -1301,8 +1067,6 @@ interface DefineMemoryOptions {
         maxItems?: number;
         query?: 'last-input' | 'none';
     };
-    // Warning: (ae-forgotten-export) The symbol "MemoryScope" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     scope: MemoryScope;
 }
@@ -1310,8 +1074,6 @@ interface DefineMemoryOptions {
 // @public
 export function defineSchedule(input: ScheduleInput): DefinedSchedule;
 
-// Warning: (ae-forgotten-export) The symbol "DefineSkillOptions" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export function defineSkill(opts: DefineSkillOptions): Skill;
 
@@ -1323,16 +1085,11 @@ interface DefineSkillOptions {
     name: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "DefineToolOptions" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "DefinedTool" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolResultOf" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export function defineTool<S extends StandardSchemaV1, R>(opts: DefineToolOptions<S, R>): DefinedTool<S, ToolResultOf<R>, Awaited<R>>;
 
 // @public
 interface DefineToolOptions<S extends StandardSchemaV1, R> {
-    // Warning: (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point worker.d.ts
     annotations?: McpToolAnnotations;
     deferLoading?: boolean;
     description: string;
@@ -1343,7 +1100,6 @@ interface DefineToolOptions<S extends StandardSchemaV1, R> {
     name: string;
     needsApproval?: boolean | ((args: InferSchemaOutput<S>, ctx: ApprovalCheckContext) => ApprovalOutcome | Promise<ApprovalOutcome>);
     requiresSandbox?: boolean;
-    // Warning: (ae-forgotten-export) The symbol "SandboxAdapter" needs to be exported by the entry point worker.d.ts
     sandboxExecute?: (args: InferSchemaOutput<S>, sandbox: SandboxAdapter) => Promise<unknown>;
 }
 
@@ -1363,16 +1119,12 @@ interface DelegatedUsage {
     totalTokens: number;
 }
 
-// Warning: (ae-forgotten-export) The symbol "DiscordChannelOptions" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "DiscordInteraction" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export function discordChannel(options: DiscordChannelOptions): Channel<DiscordInteraction>;
 
 // @public
 interface DiscordChannelOptions {
     applicationId: string;
-    // Warning: (ae-forgotten-export) The symbol "Approvers" needs to be exported by the entry point worker.d.ts
     approvers?: Approvers;
     botToken?: string;
     fetch?: typeof fetch;
@@ -1428,29 +1180,12 @@ interface DiscordInteraction {
     };
 }
 
-// Warning: (ae-forgotten-export) The symbol "StepNode" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "SequenceNode" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ParallelNode" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "OneOfNode" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ForEachNode" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "EvaluatorNode" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "BestOfAllNode" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolNode" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "UIComponentNode" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ConditionNode" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "LoopNode" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type EditorShapeStep = StepNode | SequenceNode | ParallelNode | OneOfNode | ForEachNode | EvaluatorNode | BestOfAllNode | ToolNode | UIComponentNode | ConditionNode | LoopNode;
 
-// Warning: (ae-forgotten-export) The symbol "EditorShapeStep" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "RuntimeStep" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type EditorStep = EditorShapeStep | RuntimeStep;
 
-// Warning: (ae-forgotten-export) The symbol "NodeRunOptions" needs to be exported by the entry point worker.d.ts
-//
 // @public
 interface EndNode extends NodeRunOptions {
     // (undocumented)
@@ -1561,8 +1296,6 @@ const ERROR_CODES: {
     readonly LOUSHO_MCP_AUTH_REQUIRED: "Sign the app in to the MCP server once: open the URL from agent.oauth.mcpSignInUrl('<server>') and let the callback store the token.";
 };
 
-// Warning: (ae-forgotten-export) The symbol "ERROR_CODES" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type ErrorCode = keyof typeof ERROR_CODES;
 
@@ -1583,26 +1316,17 @@ type ExecutionFinishReason = GenerateResult['finishReason'] | 'awaiting-approval
 
 // @public
 interface ExecutionResult<TObject = unknown> {
-    abortReason?: {
-        name: string;
-        message: string;
-    };
     agentName?: string;
+    // (undocumented)
     approvalId?: string;
-    approvalIds?: string[];
-    // Warning: (ae-forgotten-export) The symbol "BackgroundTaskView" needs to be exported by the entry point worker.d.ts
     backgroundTasks?: BackgroundTaskView[];
     budget?: BudgetExceeded;
-    // Warning: (ae-forgotten-export) The symbol "ExecutionFinishReason" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     finishReason: ExecutionFinishReason;
-    // Warning: (ae-forgotten-export) The symbol "GuardrailTrip" needs to be exported by the entry point worker.d.ts
     guardrail?: GuardrailTrip;
     // (undocumented)
     messages: Message[];
     object?: TObject;
-    // Warning: (ae-forgotten-export) The symbol "OutputError" needs to be exported by the entry point worker.d.ts
     outputError?: OutputError;
     outputRepaired?: true;
     reasoning?: string;
@@ -1611,8 +1335,6 @@ interface ExecutionResult<TObject = unknown> {
     stepUsage?: StepUsage[];
     // (undocumented)
     text: string;
-    // Warning: (ae-forgotten-export) The symbol "ToolCall" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     toolCalls: ToolCall[];
     usage: RunUsage;
@@ -1620,25 +1342,20 @@ interface ExecutionResult<TObject = unknown> {
 
 // @public
 interface ExecutionSnapshot {
-    // Warning: (ae-forgotten-export) The symbol "AgentConfig" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     agent: AgentConfig;
     agentFingerprint?: AgentFingerprint;
-    // Warning: (ae-forgotten-export) The symbol "ApprovalGroupMember" needs to be exported by the entry point worker.d.ts
-    approvalGroup?: ApprovalGroupMember[];
     contextSessionId?: string;
     // (undocumented)
     currentMessages: Message[];
-    heldSubagent?: SubagentSuspension;
     metadata?: Record<string, unknown>;
+    // (undocumented)
     pendingToolCall: PendingApproval;
     principal?: Principal;
     remainingToolCalls?: ToolCall[];
     sessionId?: string;
     // (undocumented)
     steps: number;
-    // Warning: (ae-forgotten-export) The symbol "SubagentSuspension" needs to be exported by the entry point worker.d.ts
     subagent?: SubagentSuspension;
     usage?: RunUsage;
 }
@@ -1675,8 +1392,6 @@ interface FlowAgentDefinition {
     name: string;
     // (undocumented)
     system: string;
-    // Warning: (ae-forgotten-export) The symbol "FlowToolSetting" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     tools: FlowToolSetting[];
 }
@@ -1688,10 +1403,8 @@ interface FlowCheckpointState {
     completedNodeIds: string[];
     nodeResults: Record<string, unknown>;
     output?: unknown;
-    // Warning: (ae-forgotten-export) The symbol "FlowPendingApproval" needs to be exported by the entry point worker.d.ts
     pendingApproval?: FlowPendingApproval;
     steps: number;
-    // Warning: (ae-forgotten-export) The symbol "ProviderUsage" needs to be exported by the entry point worker.d.ts
     usage: ProviderUsage;
     variables: Record<string, unknown>;
 }
@@ -1707,8 +1420,6 @@ interface FlowInputVariable {
     name: string;
     // (undocumented)
     required: boolean;
-    // Warning: (ae-forgotten-export) The symbol "FlowInputType" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     type: FlowInputType;
 }
@@ -1758,8 +1469,6 @@ interface ForkOptions {
     checkpointStore: CheckpointStore;
     fromStep: number;
     newSessionId?: string;
-    // Warning: (ae-forgotten-export) The symbol "ForkPatch" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     patch?: ForkPatch;
     sessionId: string;
@@ -1784,8 +1493,6 @@ interface ForkResult {
     step: number;
 }
 
-// Warning: (ae-forgotten-export) The symbol "FromAiSdkOptions" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export function fromAiSdk(model: LanguageModel, options?: FromAiSdkOptions): LLMProvider;
 
@@ -1798,11 +1505,8 @@ interface FromAiSdkOptions {
     unsupportedFiles?: UnsupportedFiles;
 }
 
-// Warning: (ae-forgotten-export) The symbol "HookContext" needs to be exported by the entry point worker.d.ts
-//
 // @public
 interface GenerateHookContext extends HookContext {
-    // Warning: (ae-forgotten-export) The symbol "HookEventPayload" needs to be exported by the entry point worker.d.ts
     emit?: (event: HookEventPayload) => void;
     generate?: (provider: LLMProvider, request: GenerateOptions, purpose: string) => Promise<GenerateResult>;
     request: GenerateOptions;
@@ -1840,8 +1544,6 @@ interface GenerateOptions {
             name: string;
         };
     };
-    // Warning: (ae-forgotten-export) The symbol "ToolDefinition" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     tools?: ToolDefinition[];
     // (undocumented)
@@ -1852,13 +1554,10 @@ interface GenerateOptions {
 interface GenerateResult {
     // (undocumented)
     finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'error' | 'other';
-    // Warning: (ae-forgotten-export) The symbol "HostedToolCall" needs to be exported by the entry point worker.d.ts
     hostedToolCalls?: HostedToolCall[];
     // (undocumented)
     rawResponse?: unknown;
-    // Warning: (ae-forgotten-export) The symbol "ReasoningBlock" needs to be exported by the entry point worker.d.ts
     reasoning?: ReasoningBlock[];
-    // Warning: (ae-forgotten-export) The symbol "ServedBy" needs to be exported by the entry point worker.d.ts
     servedBy?: ServedBy;
     // (undocumented)
     text: string;
@@ -1866,9 +1565,6 @@ interface GenerateResult {
     usage?: ProviderUsage;
 }
 
-// Warning: (ae-forgotten-export) The symbol "GitHubChannelOptions" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "GitHubCommentEvent" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export function githubChannel(options: GitHubChannelOptions): Channel<GitHubCommentEvent>;
 
@@ -1887,7 +1583,6 @@ interface GitHubChannelOptions {
     onError?: ChannelErrorHandler;
     pullRequestOpened?: boolean;
     token?: string | (() => string | Promise<string>);
-    // Warning: (ae-forgotten-export) The symbol "GitHubTriggers" needs to be exported by the entry point worker.d.ts
     triggers?: GitHubTriggers;
     webhookSecret: string;
 }
@@ -1912,21 +1607,8 @@ type GitHubCommentEvent = {
     body: string;
 };
 
-// Warning: (ae-forgotten-export) The symbol "GitHubCommenter" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type GitHubTriggers = readonly string[] | ((commenter: GitHubCommenter) => boolean | Promise<boolean>);
-
-// @public
-interface GroupDecision {
-    approved: boolean;
-    args?: Record<string, unknown>;
-    automatic?: true;
-    by?: Principal;
-    expired?: true;
-    note?: string;
-    remember?: 'session';
-}
 
 // @public
 interface GuardrailRewroteEvent extends AgentEventBase<'guardrail.rewrote'>, GuardrailTrip {
@@ -1934,10 +1616,7 @@ interface GuardrailRewroteEvent extends AgentEventBase<'guardrail.rewrote'>, Gua
 
 // @public
 interface GuardrailTrip {
-    // Warning: (ae-forgotten-export) The symbol "GuardrailTripInfo" needs to be exported by the entry point worker.d.ts
     info?: GuardrailTripInfo;
-    // Warning: (ae-forgotten-export) The symbol "IoGuardrailKind" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     kind: IoGuardrailKind;
     // (undocumented)
@@ -1985,8 +1664,6 @@ export function handleScheduled(agent: SimpleAgent, schedules: readonly DefinedS
 interface Handoff {
     // (undocumented)
     readonly kind: 'handoff';
-    // Warning: (ae-forgotten-export) The symbol "HandoffOptions" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     readonly options: HandoffOptions;
     // (undocumented)
@@ -2012,7 +1689,6 @@ interface HandoffInputData {
 interface HandoffOptions {
     description?: string;
     input?: StandardSchemaV1;
-    // Warning: (ae-forgotten-export) The symbol "HandoffInputData" needs to be exported by the entry point worker.d.ts
     inputFilter?: (data: HandoffInputData) => Message[] | Promise<Message[]>;
     isEnabled?: PerRun<boolean>;
     onHandoff?: (data: HandoffInputData & {
@@ -2031,8 +1707,6 @@ interface HookContext {
     subagent?: SubagentInfo;
 }
 
-// Warning: (ae-forgotten-export) The symbol "AgentEventPayload" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type HookEventPayload = Extract<AgentEventPayload, {
     type: 'compaction.start' | 'compaction.done';
@@ -2067,8 +1741,6 @@ interface HostedToolCall {
 // @public
 type HostedToolType = 'web_search' | 'code_interpreter' | 'file_search';
 
-// Warning: (ae-forgotten-export) The symbol "HttpChannelOptions" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export function httpChannel(options?: HttpChannelOptions): Channel;
 
@@ -2091,8 +1763,6 @@ interface ImageContentPart {
 // @public
 type InferSchemaOutput<S extends StandardSchemaV1> = NonNullable<S['~standard']['types']>['output'];
 
-// Warning: (ae-forgotten-export) The symbol "MemoryProviderOptions" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export function inMemoryMemory(options?: MemoryProviderOptions): MemoryProvider;
 
@@ -2114,8 +1784,6 @@ class InputQueue {
     closeAfter(run: Promise<unknown>): void;
     // @internal
     endPhase(): void;
-    // Warning: (ae-forgotten-export) The symbol "QueuedInput" needs to be exported by the entry point worker.d.ts
-    //
     // @internal
     listen(listener: (input: QueuedInput) => void): void;
     // @internal
@@ -2147,9 +1815,6 @@ interface InputSteeredEvent extends AgentEventBase<'input.steered'> {
 
 // @public
 interface IoGuardrail {
-    // Warning: (ae-forgotten-export) The symbol "IoGuardrailContext" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "IoGuardrailResult" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     check(ctx: IoGuardrailContext): IoGuardrailResult | Promise<IoGuardrailResult>;
     // (undocumented)
@@ -2239,8 +1904,6 @@ export interface KVListResult {
     list_complete: boolean;
 }
 
-// Warning: (ae-forgotten-export) The symbol "KVMemoryOptions" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export function kvMemory(input?: KVMemoryOptions): MemoryProvider;
 
@@ -2271,7 +1934,6 @@ export class KVStore implements Required<AgentStore> {
 export interface KVStoreOptions {
     historyLimit?: number;
     prefix?: string;
-    // Warning: (ae-forgotten-export) The symbol "TokenKeyInput" needs to be exported by the entry point worker.d.ts
     tokenKey?: TokenKeyInput;
     ttl?: {
         sessions?: number;
@@ -2334,12 +1996,9 @@ export class LLMProviderRegistry {
     static create(name: string, config: LLMProviderConfig): LLMProvider;
     static getProviderNames(): string[];
     static has(name: string): boolean;
-    // Warning: (ae-forgotten-export) The symbol "ProviderFactory" needs to be exported by the entry point worker.d.ts
     static register(name: string, factory: ProviderFactory): void;
 }
 
-// Warning: (ae-forgotten-export) The symbol "RemoteSubagent" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type LocalOrRemoteSubagent = SimpleAgent | RemoteSubagent;
 
@@ -2379,16 +2038,13 @@ type McpApproval = 'annotations' | 'always' | 'never' | ((tool: {
 
 // @public
 interface McpHttpServerSpec {
-    // Warning: (ae-forgotten-export) The symbol "McpApproval" needs to be exported by the entry point worker.d.ts
     approval?: McpApproval;
     connectTimeoutMs?: number;
     deferLoading?: boolean;
     // (undocumented)
     headers?: Record<string, string>;
-    // Warning: (ae-forgotten-export) The symbol "McpOAuthOptions" needs to be exported by the entry point worker.d.ts
     oauth?: McpOAuthOptions;
     timeoutMs?: number;
-    // Warning: (ae-forgotten-export) The symbol "McpToolFilter" needs to be exported by the entry point worker.d.ts
     tools?: McpToolFilter;
     // (undocumented)
     url: string;
@@ -2404,9 +2060,6 @@ interface McpOAuthOptions {
     scopes?: readonly string[];
 }
 
-// Warning: (ae-forgotten-export) The symbol "McpStdioServerSpec" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "McpHttpServerSpec" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type McpServerSpec = McpStdioServerSpec | McpHttpServerSpec;
 
@@ -2462,8 +2115,6 @@ interface MemoryProvider {
         text: string;
         metadata?: Record<string, unknown>;
     }): Promise<MemoryItem>;
-    // Warning: (ae-forgotten-export) The symbol "MemoryItem" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     list(scopeKey: string, options?: {
         limit?: number;
@@ -2484,8 +2135,6 @@ interface MemoryProviderOptions {
     maxItems?: number;
 }
 
-// Warning: (ae-forgotten-export) The symbol "MemoryScopeContext" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type MemoryScope = 'global' | 'session' | ((ctx: MemoryScopeContext) => string | undefined);
 
@@ -2541,8 +2190,6 @@ interface Message {
     // (undocumented)
     name?: string;
     reasoning?: ReasoningBlock[];
-    // Warning: (ae-forgotten-export) The symbol "MessageRole" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     role: MessageRole;
     toolCallId?: string;
@@ -2626,9 +2273,8 @@ interface NodeRetry {
     maxAttempts: number;
 }
 
-// @public (undocumented)
+// @public
 interface NodeRunOptions {
-    // Warning: (ae-forgotten-export) The symbol "NodeRetry" needs to be exported by the entry point worker.d.ts
     retry?: NodeRetry;
     timeoutMs?: number;
 }
@@ -2657,16 +2303,10 @@ interface OAuthCompleteResult {
     sessionId?: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "OAuthProviderOptions" needs to be exported by the entry point worker.d.ts
-//
 // @public
 interface OAuthProvider extends Readonly<Omit<OAuthProviderOptions, 'displayName' | 'credentialOwner' | 'clientAuth' | 'scopes'>> {
-    // Warning: (ae-forgotten-export) The symbol "OAuthClientAuth" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     readonly clientAuth: OAuthClientAuth;
-    // Warning: (ae-forgotten-export) The symbol "CredentialOwner" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     readonly credentialOwner: CredentialOwner;
     // (undocumented)
@@ -2712,8 +2352,6 @@ interface OAuthTokenInfo {
     // (undocumented)
     expiresAt?: number;
     hasRefreshToken: boolean;
-    // Warning: (ae-forgotten-export) The symbol "TokenOwner" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     owner: TokenOwner;
     // (undocumented)
@@ -2737,15 +2375,10 @@ interface OAuthTokenListOptions {
 interface OAuthTokenStore {
     // (undocumented)
     delete(provider: string, owner: TokenOwner): Promise<void>;
-    // Warning: (ae-forgotten-export) The symbol "OAuthToken" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     get(provider: string, owner: TokenOwner): Promise<OAuthToken | undefined>;
     getClient(provider: string): Promise<Record<string, unknown> | undefined>;
-    // Warning: (ae-forgotten-export) The symbol "OAuthTokenListOptions" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "OAuthTokenInfo" needs to be exported by the entry point worker.d.ts
     list(options?: OAuthTokenListOptions): Promise<OAuthTokenInfo[]>;
-    // Warning: (ae-forgotten-export) The symbol "PendingSignIn" needs to be exported by the entry point worker.d.ts
     putPending(state: string, value: PendingSignIn, ttlMs: number): Promise<void>;
     // (undocumented)
     set(provider: string, owner: TokenOwner, token: OAuthToken): Promise<void>;
@@ -2757,12 +2390,9 @@ interface OAuthTokenStore {
 
 // @public
 interface ObjectDeltaEvent extends AgentEventBase<'object.delta'> {
-    // (undocumented)
     object: unknown;
 }
 
-// Warning: (ae-forgotten-export) The symbol "ApprovalPolicy" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export function once(options?: {
     per?: 'tool' | 'args';
@@ -2790,16 +2420,12 @@ interface OneOfOption {
 interface OneOfOptionsNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
-    // Warning: (ae-forgotten-export) The symbol "OneOfOption" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     options: OneOfOption[];
     // (undocumented)
     type: 'oneOf';
 }
 
-// Warning: (ae-forgotten-export) The symbol "OpenAIProviderConfig" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
     // (undocumented)
@@ -2840,11 +2466,8 @@ interface OpenRouterModel {
     id: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "OpenRouterProviderConfig" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> {
-    // Warning: (ae-forgotten-export) The symbol "Logger" needs to be exported by the entry point worker.d.ts
     constructor(config: OpenRouterProviderConfig, logger?: Logger);
     // (undocumented)
     protected createModel(modelId: string, options?: GenerateOptions): Promise<LanguageModel>;
@@ -2853,7 +2476,6 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
     protected fileMediaTypes(): readonly string[];
     // (undocumented)
     generate(options: GenerateOptions): Promise<GenerateResult>;
-    // Warning: (ae-forgotten-export) The symbol "OpenRouterModel" needs to be exported by the entry point worker.d.ts
     getModelInfo(modelId: string): Promise<OpenRouterModel | null | undefined>;
     getModels(): Promise<string[]>;
     // (undocumented)
@@ -2882,7 +2504,6 @@ interface OpenRouterProviderConfig extends AiSdkProviderConfig {
 
 // @public
 interface OutputError {
-    // Warning: (ae-forgotten-export) The symbol "ToolArgumentIssue" needs to be exported by the entry point worker.d.ts
     issues: ToolArgumentIssue[];
     kind: 'invalid' | 'truncated';
     message: string;
@@ -2894,7 +2515,7 @@ interface OutputSpec<TSchema extends StandardSchemaV1 = StandardSchemaV1> {
     schema: TSchema;
 }
 
-// @public (undocumented)
+// @public
 interface ParallelNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
@@ -2936,7 +2557,6 @@ interface PendingApproval {
 // @public
 interface PendingRun {
     approvalId?: string;
-    approvalIds?: string[];
     approvalKind?: ApprovalKind;
     checkpointId: string;
     kind: 'session' | 'run';
@@ -2967,7 +2587,6 @@ interface PendingSignIn {
 interface PendingTurn {
     // (undocumented)
     approvalId?: string;
-    approvalIds?: string[];
     approvalKind?: ApprovalKind;
     status: 'in-progress' | 'awaiting-approval';
 }
@@ -2992,8 +2611,6 @@ interface PermissionContext {
     toolName: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "PermissionAction" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type PermissionDecision = PermissionAction | 'default';
 
@@ -3001,8 +2618,6 @@ type PermissionDecision = PermissionAction | 'default';
 interface PermissionDecisionEntry {
     args?: Record<string, unknown>;
     at: string;
-    // Warning: (ae-forgotten-export) The symbol "PermissionDecision" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     decision: PermissionDecision;
     hook?: string;
@@ -3018,8 +2633,6 @@ interface PermissionDecisionEntry {
     toolName: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "PermissionDecisionEntry" needs to be exported by the entry point worker.d.ts
-//
 // @public
 interface PermissionDecisionEvent extends AgentEventBase<'permission.decision'>, PermissionDecisionEntry {
 }
@@ -3040,12 +2653,9 @@ interface PermissionModeChange {
 
 // @public
 interface PermissionOptions {
-    // Warning: (ae-forgotten-export) The symbol "PermissionAuditContext" needs to be exported by the entry point worker.d.ts
     onPermissionDecision?: (entry: PermissionDecisionEntry, context: PermissionAuditContext) => void;
-    // Warning: (ae-forgotten-export) The symbol "PermissionModeChange" needs to be exported by the entry point worker.d.ts
     onPermissionModeChange?: (change: PermissionModeChange) => void;
     permissionMode?: PermissionMode | (() => PermissionMode);
-    // Warning: (ae-forgotten-export) The symbol "PermissionRule" needs to be exported by the entry point worker.d.ts
     permissions?: readonly PermissionRule[];
 }
 
@@ -3054,12 +2664,9 @@ interface PermissionRule {
     // (undocumented)
     action: PermissionAction;
     reason?: string;
-    // Warning: (ae-forgotten-export) The symbol "PermissionToolMatcher" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     tool: PermissionToolMatcher;
     ttlMs?: number;
-    // Warning: (ae-forgotten-export) The symbol "PermissionContext" needs to be exported by the entry point worker.d.ts
     when?: (args: Record<string, unknown>, ctx: PermissionContext) => boolean | Promise<boolean>;
 }
 
@@ -3100,8 +2707,6 @@ interface Principal {
 // @public
 type PromptCachingOption = 'auto' | false;
 
-// Warning: (ae-forgotten-export) The symbol "ScheduleBase" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export interface PromptScheduleInput extends ScheduleBase {
     // (undocumented)
@@ -3163,7 +2768,6 @@ interface QueuedInput {
 // @public
 class RateLimiter {
     constructor(options?: RateLimitOptions);
-    // Warning: (ae-forgotten-export) The symbol "RateLimitLease" needs to be exported by the entry point worker.d.ts
     acquire(tokens?: number, signal?: AbortSignal): Promise<RateLimitLease>;
     get inFlight(): number;
     get pending(): number;
@@ -3208,9 +2812,6 @@ interface ReasoningDoneEvent extends AgentEventBase<'reasoning.done'> {
 // @public
 type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
 
-// Warning: (ae-forgotten-export) The symbol "ReasoningEffort" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ReasoningSettings" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type ReasoningOption = ReasoningEffort | ReasoningSettings;
 
@@ -3235,7 +2836,6 @@ interface RemoteRunOptions {
     };
     // (undocumented)
     name?: string;
-    // Warning: (ae-forgotten-export) The symbol "AgentEventUsage" needs to be exported by the entry point worker.d.ts
     onUsage?: (usage: AgentEventUsage) => void;
     // (undocumented)
     pausable?: boolean;
@@ -3253,7 +2853,6 @@ interface RemoteSubagent {
     readonly description: string;
     // (undocumented)
     readonly name?: string;
-    // Warning: (ae-forgotten-export) The symbol "RemoteRunOptions" needs to be exported by the entry point worker.d.ts
     run(prompt: string, options?: RemoteRunOptions): Promise<string>;
 }
 
@@ -3336,29 +2935,17 @@ interface RunStartEvent extends AgentEventBase<'run.start'> {
     agentName: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "OneOfOptionsNode" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ForEachItemsNode" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ExpressionEvaluatorNode" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "LLMCallNode" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolCallNode" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "SetVariableNode" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ReturnNode" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "EndNode" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "ThrowNode" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
 
 // @public
 interface RunUsage {
-    // Warning: (ae-forgotten-export) The symbol "ModelUsage" needs to be exported by the entry point worker.d.ts
     byModel: Record<string, ModelUsage>;
     cachedInputTokens?: number;
     cacheWriteTokens?: number;
     // @deprecated (undocumented)
     completionTokens: number;
     costUsd: number | undefined;
-    // Warning: (ae-forgotten-export) The symbol "DelegatedUsage" needs to be exported by the entry point worker.d.ts
     delegated?: DelegatedUsage;
     estimated: boolean;
     hostedToolCalls?: Partial<Record<string, number>>;
@@ -3377,8 +2964,6 @@ interface RunUsage {
 // @public
 interface SandboxAdapter {
     readonly name: string;
-    // Warning: (ae-forgotten-export) The symbol "SandboxRunOptions" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "SandboxResult" needs to be exported by the entry point worker.d.ts
     run(cmd: string, args: string[], opts?: SandboxRunOptions): Promise<SandboxResult>;
     writeFile(path: string, content: string): Promise<void>;
 }
@@ -3487,7 +3072,7 @@ export interface SendOptions {
     throwOnError?: boolean;
 }
 
-// @public (undocumented)
+// @public
 interface SequenceNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
@@ -3495,8 +3080,6 @@ interface SequenceNode extends NodeRunOptions {
     type: 'sequence';
 }
 
-// Warning: (ae-forgotten-export) The symbol "AuthFn" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export type ServeAuth = string | AuthFn | readonly AuthFn[];
 
@@ -3512,8 +3095,6 @@ export function serveFetch(request: Request, ctx: ChatRoutesContext, auth?: Serv
 
 // @public
 interface SessionAccessRequest {
-    // Warning: (ae-forgotten-export) The symbol "SessionAction" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     action: SessionAction;
     principal: Principal | undefined;
@@ -3528,8 +3109,6 @@ type SessionAction = 'read' | 'chat' | 'approve';
 interface SessionBudget {
     // (undocumented)
     limits: RunLimits;
-    // Warning: (ae-forgotten-export) The symbol "BudgetSpent" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     spent: BudgetSpent;
 }
@@ -3586,14 +3165,10 @@ interface SessionOptions {
     limits?: RunLimits;
     onPermissionModeChange?: PermissionOptions['onPermissionModeChange'];
     permissionMode?: PermissionOptions['permissionMode'];
-    // Warning: (ae-forgotten-export) The symbol "SessionStores" needs to be exported by the entry point worker.d.ts
     store?: SessionStore | SessionStores;
     turnPolicy?: 'queue' | 'steer' | 'wait';
 }
 
-// Warning: (ae-forgotten-export) The symbol "SessionTurnOptions" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "SessionTurnCall" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type SessionRunner = (input: Message[], signal?: AbortSignal, checkpoint?: SessionTurnOptions, call?: SessionTurnCall) => Promise<ExecutionResult>;
 
@@ -3643,8 +3218,6 @@ interface SessionTurnCheckpoint {
     sessionId: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "SessionTurnCheckpoint" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type SessionTurnOptions = Partial<SessionTurnCheckpoint> & {
     sessionBudget?: SessionBudget;
@@ -3667,15 +3240,10 @@ interface SetVariableNode extends NodeRunOptions {
 
 // @public
 export interface SimpleAgent<TObject = unknown> {
-    // Warning: (ae-forgotten-export) The symbol "AgentApprovals" needs to be exported by the entry point worker.d.ts
     approvals: AgentApprovals;
     close: () => Promise<void>;
-    // Warning: (ae-forgotten-export) The symbol "ForkOptions" needs to be exported by the entry point worker.d.ts
-    // Warning: (ae-forgotten-export) The symbol "ForkResult" needs to be exported by the entry point worker.d.ts
     fork: (sessionId: string, options: Omit<ForkOptions, 'sessionId' | 'checkpointStore'>) => Promise<ForkResult>;
-    // Warning: (ae-forgotten-export) The symbol "AgentOAuth" needs to be exported by the entry point worker.d.ts
     oauth: AgentOAuth;
-    // Warning: (ae-forgotten-export) The symbol "PendingRun" needs to be exported by the entry point worker.d.ts
     pending: () => Promise<PendingRun[]>;
     ready: () => Promise<void>;
     resume: (sessionId: string, options?: {
@@ -3697,9 +3265,6 @@ interface Skill {
     readonly name: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "SlackChannelOptions" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "SlackChannelEvent" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export function slackChannel(options: SlackChannelOptions): Channel<SlackChannelEvent>;
 
@@ -3741,7 +3306,6 @@ interface Span {
     // (undocumented)
     endTime?: number;
     id: string;
-    // Warning: (ae-forgotten-export) The symbol "SpanKind" needs to be exported by the entry point worker.d.ts
     kind?: SpanKind;
     // (undocumented)
     name: string;
@@ -3749,7 +3313,6 @@ interface Span {
     parentId?: string;
     // (undocumented)
     startTime: number;
-    // Warning: (ae-forgotten-export) The symbol "SpanStatus" needs to be exported by the entry point worker.d.ts
     status?: SpanStatus;
 }
 
@@ -3824,8 +3387,6 @@ interface StepUsage {
     estimated: boolean;
     model: string;
     step: number;
-    // Warning: (ae-forgotten-export) The symbol "Usage" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     usage: Usage;
 }
@@ -3847,8 +3408,6 @@ interface StreamChunk {
         toolCallId: string;
         result: unknown;
     };
-    // Warning: (ae-forgotten-export) The symbol "StreamChunkType" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     type: StreamChunkType;
     usage?: ProviderUsage;
@@ -3861,8 +3420,6 @@ type StreamChunkType = 'text-delta' | 'reasoning-delta' | 'reasoning-end' | 'too
 interface StreamResult {
     // (undocumented)
     finishReason: Promise<string>;
-    // Warning: (ae-forgotten-export) The symbol "StreamChunk" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     fullStream: AsyncIterable<StreamChunk>;
     servedBy?: ServedBy;
@@ -3877,12 +3434,8 @@ interface StreamResult {
 
 // @public
 interface SubagentCatalog {
-    // Warning: (ae-forgotten-export) The symbol "SubagentSummary" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     list(): readonly SubagentSummary[] | Promise<readonly SubagentSummary[]>;
-    // Warning: (ae-forgotten-export) The symbol "LocalOrRemoteSubagent" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     resolve(name: string): LocalOrRemoteSubagent | undefined | Promise<LocalOrRemoteSubagent | undefined>;
 }
@@ -3904,8 +3457,6 @@ interface SubagentOptions {
     sessions?: SessionStore;
 }
 
-// Warning: (ae-forgotten-export) The symbol "SubagentCatalog" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type Subagents = Readonly<Record<string, LocalOrRemoteSubagent>> | SubagentCatalog;
 
@@ -3920,7 +3471,6 @@ interface SubagentSuspension {
     agentName: string;
     // (undocumented)
     args: Record<string, unknown>;
-    // Warning: (ae-forgotten-export) The symbol "SuspendedBackgroundTasks" needs to be exported by the entry point worker.d.ts
     background?: SuspendedBackgroundTasks;
     snapshot: ExecutionSnapshot;
     toolCallId: string;
@@ -3931,7 +3481,6 @@ interface SubagentSuspension {
 // @public
 interface SuspendedBackgroundTasks {
     task: Record<string, unknown>;
-    // Warning: (ae-forgotten-export) The symbol "PausedBackgroundTask" needs to be exported by the entry point worker.d.ts
     waiting: PausedBackgroundTask[];
 }
 
@@ -3978,9 +3527,6 @@ interface TeamsActivity {
     value?: unknown;
 }
 
-// Warning: (ae-forgotten-export) The symbol "TeamsChannelOptions" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "TeamsActivity" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export function teamsChannel(options: TeamsChannelOptions): Channel<TeamsActivity>;
 
@@ -3999,21 +3545,14 @@ interface TeamsChannelOptions {
 interface TelegramCallbackQuery {
     // (undocumented)
     data?: string;
-    // Warning: (ae-forgotten-export) The symbol "TelegramUser" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     from: TelegramUser;
     // (undocumented)
     id: string;
-    // Warning: (ae-forgotten-export) The symbol "TelegramMessage" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     message?: TelegramMessage;
 }
 
-// Warning: (ae-forgotten-export) The symbol "TelegramChannelOptions" needs to be exported by the entry point worker.d.ts
-// Warning: (ae-forgotten-export) The symbol "TelegramUpdate" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export function telegramChannel(options: TelegramChannelOptions): Channel<TelegramUpdate>;
 
@@ -4056,8 +3595,6 @@ interface TelegramMessage {
 
 // @public
 interface TelegramUpdate {
-    // Warning: (ae-forgotten-export) The symbol "TelegramCallbackQuery" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     callback_query?: TelegramCallbackQuery;
     // (undocumented)
@@ -4098,8 +3635,6 @@ interface TextDoneEvent extends AgentEventBase<'text.done'> {
     text: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "TextSource" needs to be exported by the entry point worker.d.ts
-//
 // @public
 export function textOf(message: TextSource | TextSource['content']): string;
 
@@ -4122,8 +3657,6 @@ interface ThrowNode extends NodeRunOptions {
 interface Todo {
     content: string;
     id: string;
-    // Warning: (ae-forgotten-export) The symbol "TodoStatus" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     status: TodoStatus;
 }
@@ -4134,8 +3667,6 @@ interface TodoListResult {
     counts: Record<TodoStatus, number> & {
         total: number;
     };
-    // Warning: (ae-forgotten-export) The symbol "Todo" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     todos: Todo[];
 }
@@ -4145,8 +3676,6 @@ type TodoStatus = 'pending' | 'in_progress' | 'completed';
 
 // @public
 interface TodoUpdatedEvent extends AgentEventBase<'todo.updated'> {
-    // Warning: (ae-forgotten-export) The symbol "TodoListResult" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     counts: TodoListResult['counts'];
     // (undocumented)
@@ -4172,8 +3701,6 @@ interface ToolArgumentIssue {
     path: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "NamedToolDescriptor" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type ToolArrayEntry = DefinedTool | NamedToolDescriptor | HostedTool | Record<string, ToolDescriptor | HostedTool>;
 
@@ -4255,10 +3782,7 @@ export interface ToolDescriptor {
     displayName: string;
     execute?(args: unknown, ctx: ToolExecutionContext): unknown;
     inputSchema?: StandardSchemaV1;
-    // Warning: (ae-forgotten-export) The symbol "ToolMetadata" needs to be exported by the entry point worker.d.ts
     metadata?: ToolMetadata;
-    // Warning: (ae-forgotten-export) The symbol "ApprovalPredicate" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     needsApproval?: boolean | ApprovalPredicate;
     requiresSandbox?: boolean;
@@ -4376,8 +3900,6 @@ interface ToolSearchOptions {
     thresholdPercent?: number;
 }
 
-// Warning: (ae-forgotten-export) The symbol "ToolArrayEntry" needs to be exported by the entry point worker.d.ts
-//
 // @public
 type ToolsOption = ReadonlyArray<ToolArrayEntry> | Record<string, ToolDescriptor | HostedTool>;
 
@@ -4397,8 +3919,6 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
 interface TraceExporter {
     // (undocumented)
     onSpanEnd(span: Span): void;
-    // Warning: (ae-forgotten-export) The symbol "Span" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     onSpanStart(span: Span): void;
 }
@@ -4435,31 +3955,16 @@ export class ValidationError extends SDKError {
 
 // @public (undocumented)
 interface WithRetryOptions {
-    // Warning: (ae-forgotten-export) The symbol "BackoffOptions" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     backoff?: BackoffOptions;
     idleTimeoutMs?: number;
     maxRetries?: number;
-    // Warning: (ae-forgotten-export) The symbol "RetryInfo" needs to be exported by the entry point worker.d.ts
-    //
     // (undocumented)
     onRetry?: (info: RetryInfo) => void;
     retryOn?: (error: unknown, attempt: number) => boolean;
     signal?: AbortSignal;
     timeoutMs?: number;
 }
-
-// Warnings were encountered during analysis:
-//
-// dist/createAgent-CodO77mI.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CodO77mI.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CodO77mI.d.ts:1255:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CodO77mI.d.ts:3396:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CodO77mI.d.ts:3397:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
-// dist/index-DF_m0zkK.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
-// dist/index-DF_m0zkK.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
-// dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point worker.d.ts
 
 // (No @packageDocumentation comment for this package)
 

@@ -98,6 +98,7 @@ export interface TextDeltaEvent extends AgentEventBase<'text.delta'> {
  * validated object is `run.done`'s `object` (and `result.object`).
  */
 export interface ObjectDeltaEvent extends AgentEventBase<'object.delta'> {
+  /** The partial object parsed from the text so far. */
   object: unknown;
 }
 

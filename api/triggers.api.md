@@ -21,8 +21,6 @@ interface BackgroundTaskView {
     elapsedMs: number;
     error?: string;
     result?: string;
-    // Warning: (ae-forgotten-export) The symbol "BackgroundTaskStatus" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     status: BackgroundTaskStatus | 'timeout';
     // (undocumented)
@@ -40,8 +38,6 @@ export interface BearerWebhookAuth {
 
 // @public
 interface BudgetExceeded {
-    // Warning: (ae-forgotten-export) The symbol "BudgetLimit" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     limit: BudgetLimit;
     // (undocumented)
@@ -50,8 +46,6 @@ interface BudgetExceeded {
     value: number;
 }
 
-// Warning: (ae-forgotten-export) The symbol "RunLimits" needs to be exported by the entry point index.d.ts
-//
 // @public
 type BudgetLimit = Exclude<keyof RunLimits, 'onExceeded'>;
 
@@ -61,10 +55,6 @@ export function checkSlackSignature(input: SlackSignatureInput): string | undefi
 // @public
 export function checkWebhookAuth(auth: WebhookAuth, req: IncomingMessage, rawBody: Buffer, nowMs?: number): Promise<string | undefined>;
 
-// Warning: (ae-forgotten-export) The symbol "TextContentPart" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ImageContentPart" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "FileContentPart" needs to be exported by the entry point index.d.ts
-//
 // @public
 type ContentPart = TextContentPart | ImageContentPart | FileContentPart;
 
@@ -73,8 +63,6 @@ export class CronExpressionError extends Error {
     constructor(message: string);
 }
 
-// Warning: (ae-forgotten-export) The symbol "CronTriggerAdapterBaseOptions" needs to be exported by the entry point index.d.ts
-//
 // @public @deprecated
 export interface CronExpressionOptions extends CronTriggerAdapterBaseOptions {
     cron: string;
@@ -100,8 +88,6 @@ export interface CronSchedule {
 // @public @deprecated
 export class CronTriggerAdapter implements TriggerAdapter {
     constructor(options: CronTriggerAdapterOptions);
-    // Warning: (ae-forgotten-export) The symbol "ExecutionResult" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     listen(agent: RunnableAgent, onEvent: (input: string, context: TriggerContext) => Promise<ExecutionResult>): TriggerHandle;
     // (undocumented)
@@ -142,50 +128,32 @@ interface DelegatedUsage {
     totalTokens: number;
 }
 
-// Warning: (ae-forgotten-export) The symbol "GenerateResult" needs to be exported by the entry point index.d.ts
-//
 // @public
 type ExecutionFinishReason = GenerateResult['finishReason'] | 'awaiting-approval' | 'aborted' | 'max-steps' | 'output-invalid' | 'budget-exceeded' | 'guardrail';
 
 // @public
 interface ExecutionResult<TObject = unknown> {
-    abortReason?: {
-        name: string;
-        message: string;
-    };
     agentName?: string;
+    // (undocumented)
     approvalId?: string;
-    approvalIds?: string[];
-    // Warning: (ae-forgotten-export) The symbol "BackgroundTaskView" needs to be exported by the entry point index.d.ts
     backgroundTasks?: BackgroundTaskView[];
-    // Warning: (ae-forgotten-export) The symbol "BudgetExceeded" needs to be exported by the entry point index.d.ts
     budget?: BudgetExceeded;
-    // Warning: (ae-forgotten-export) The symbol "ExecutionFinishReason" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     finishReason: ExecutionFinishReason;
-    // Warning: (ae-forgotten-export) The symbol "GuardrailTrip" needs to be exported by the entry point index.d.ts
     guardrail?: GuardrailTrip;
-    // Warning: (ae-forgotten-export) The symbol "Message" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     messages: Message[];
     object?: TObject;
-    // Warning: (ae-forgotten-export) The symbol "OutputError" needs to be exported by the entry point index.d.ts
     outputError?: OutputError;
     outputRepaired?: true;
     reasoning?: string;
     // (undocumented)
     steps: number;
-    // Warning: (ae-forgotten-export) The symbol "StepUsage" needs to be exported by the entry point index.d.ts
     stepUsage?: StepUsage[];
     // (undocumented)
     text: string;
-    // Warning: (ae-forgotten-export) The symbol "ToolCall" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     toolCalls: ToolCall[];
-    // Warning: (ae-forgotten-export) The symbol "RunUsage" needs to be exported by the entry point index.d.ts
     usage: RunUsage;
 }
 
@@ -205,18 +173,14 @@ interface FileContentPart {
 interface GenerateResult {
     // (undocumented)
     finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'error' | 'other';
-    // Warning: (ae-forgotten-export) The symbol "HostedToolCall" needs to be exported by the entry point index.d.ts
     hostedToolCalls?: HostedToolCall[];
     // (undocumented)
     rawResponse?: unknown;
-    // Warning: (ae-forgotten-export) The symbol "ReasoningBlock" needs to be exported by the entry point index.d.ts
     reasoning?: ReasoningBlock[];
-    // Warning: (ae-forgotten-export) The symbol "ServedBy" needs to be exported by the entry point index.d.ts
     servedBy?: ServedBy;
     // (undocumented)
     text: string;
     toolCalls?: ToolCall[];
-    // Warning: (ae-forgotten-export) The symbol "ProviderUsage" needs to be exported by the entry point index.d.ts
     usage?: ProviderUsage;
 }
 
@@ -225,10 +189,7 @@ export const globalTriggerRegistry: TriggerRegistry;
 
 // @public
 interface GuardrailTrip {
-    // Warning: (ae-forgotten-export) The symbol "GuardrailTripInfo" needs to be exported by the entry point index.d.ts
     info?: GuardrailTripInfo;
-    // Warning: (ae-forgotten-export) The symbol "IoGuardrailKind" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     kind: IoGuardrailKind;
     // (undocumented)
@@ -318,15 +279,12 @@ interface Logger {
 
 // @public
 interface Message {
-    // Warning: (ae-forgotten-export) The symbol "ContentPart" needs to be exported by the entry point index.d.ts
     content: string | ContentPart[];
     isError?: boolean;
     metadata?: Record<string, unknown>;
     // (undocumented)
     name?: string;
     reasoning?: ReasoningBlock[];
-    // Warning: (ae-forgotten-export) The symbol "MessageRole" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     role: MessageRole;
     toolCallId?: string;
@@ -352,7 +310,6 @@ type ModerationCategory = 'hate' | 'harassment' | 'self-harm' | 'sexual' | 'sexu
 
 // @public
 interface OutputError {
-    // Warning: (ae-forgotten-export) The symbol "ToolArgumentIssue" needs to be exported by the entry point index.d.ts
     issues: ToolArgumentIssue[];
     kind: 'invalid' | 'truncated';
     message: string;
@@ -409,14 +366,12 @@ export interface RunnableAgent {
 
 // @public
 interface RunUsage {
-    // Warning: (ae-forgotten-export) The symbol "ModelUsage" needs to be exported by the entry point index.d.ts
     byModel: Record<string, ModelUsage>;
     cachedInputTokens?: number;
     cacheWriteTokens?: number;
     // @deprecated (undocumented)
     completionTokens: number;
     costUsd: number | undefined;
-    // Warning: (ae-forgotten-export) The symbol "DelegatedUsage" needs to be exported by the entry point index.d.ts
     delegated?: DelegatedUsage;
     estimated: boolean;
     hostedToolCalls?: Partial<Record<string, number>>;
@@ -486,7 +441,6 @@ export class SlackTriggerAdapter implements TriggerAdapter<string> {
 // @public @deprecated
 export interface SlackTriggerAdapterOptions {
     fetchImpl?: typeof fetch;
-    // Warning: (ae-forgotten-export) The symbol "Logger" needs to be exported by the entry point index.d.ts
     logger?: Logger;
     signingSecret?: string;
     webhookUrl?: string;
@@ -498,8 +452,6 @@ interface StepUsage {
     estimated: boolean;
     model: string;
     step: number;
-    // Warning: (ae-forgotten-export) The symbol "Usage" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     usage: Usage;
 }
@@ -584,8 +536,6 @@ type WebhookOnEvent = (input: string, context: TriggerContext) => Promise<Execut
 // @public @deprecated
 export class WebhookTriggerAdapter implements TriggerAdapter<http.ServerResponse> {
     constructor(options?: WebhookTriggerAdapterOptions);
-    // Warning: (ae-forgotten-export) The symbol "WebhookOnEvent" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     listen(agent: RunnableAgent, onEvent: WebhookOnEvent): WebhookTriggerHandle;
     // (undocumented)
@@ -605,11 +555,6 @@ export interface WebhookTriggerAdapterOptions {
 export interface WebhookTriggerHandle extends TriggerHandle {
     readonly port: number;
 }
-
-// Warnings were encountered during analysis:
-//
-// dist/createAgent-CodO77mI.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-CodO77mI.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

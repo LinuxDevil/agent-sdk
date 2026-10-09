@@ -2612,6 +2612,9 @@ made by this agent object.
   `approved: false`.
 
 ```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', tools: [emailTool] });
 const support = agent.session({ id: 'support-42' });
 const paused = await support.send('Email the report to sam@example.com');
 // Send it to the team list instead, and stop asking for that exact email in this session.
@@ -13611,6 +13614,7 @@ on the server.
 | `usage` | Token usage of the last finished run (from `run.done`), else `null`. |
 | `finishReason` | How the last run ended (`run.done`): `'stop'`, `'max-steps'`, `'output-invalid'`, `'budget-exceeded'`, `'guardrail'`, ...; `null` before the first run ends. The four named after `stop` also set `status: 'error'` and an `error` named `RunEndedError` (unless an `error` event already did), so the chat does not look like it finished normally. |
 | `todos` | The agent's todo list (`{ id, content, status }[]`), set by each `todo.updated` event of the [todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#todo-tools); `[]` until the first one. It carries across turns; see [Todos](#todos). |
+| `partialObject` | For an agent with an `output` schema: the reply parsed so far, from the last `object.delta` event (best-effort, not validated), then the validated `object` of `run.done`. `null` until a run's first `object.delta`, and reset by `send()`. |
 | `lastEvent` | The last event received, for anything the projection does not cover. |
 | `send(input)` | Starts a turn. If a turn is still running, it is aborted first. `input` is a string, content parts or a `Message[]` (an `AgentInput`); the user bubble shows the text with an `[image]` / `[file]` marker per other part (remote mode POSTs it as `{ "input": ... }`). |
 | `reset()` | Aborts the run, forgets the in-process session and clears the chat (remote mode starts a new chat id), as `reset()` in the Vue and Svelte bindings. |
@@ -15147,6 +15151,7 @@ The event types and their extra fields:
 | `run.start`          | `agentName: string`, `agentId?: string` | First event of every run. |
 | `step.start`         | `step: number` | A model step begins: one model call plus the tool calls it asks for. `step` counts from 1 (a run resumed from a checkpoint continues the count). |
 | `text.delta`         | `text: string` | A chunk of model text, as it arrives. |
+| `object.delta`       | `object: unknown` | Only for an agent with an `output` schema: the reply parsed so far, a best-effort partial object (an unfinished string value is cut where the text is; an unfinished key or number is left out). Follows a `text.delta` that changes it. Not validated; the validated object is `run.done`'s `object`. |
 | `text.done`          | `text: string` | The step's complete text: the concatenation of its `text.delta` events. Only for steps with text. |
 | `reasoning.start`    | (none) | The model starts reasoning in this step. Only with the [`reasoning` option](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md) (or a model that always reasons). Its `reasoning.delta`s and `reasoning.done` follow, before the step's first `text.delta` or `tool.start`. |
 | `reasoning.delta`    | `text: string` | A chunk of reasoning text (or of its summary). Never part of `text.delta` / `run.done`'s `text`. |
@@ -15912,6 +15917,24 @@ and the final `run.done` event carries `object` (JSON-encoded) when the
 reply was valid. The repair step shows up as one more
 `step.start` / `step.done` pair. See [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md).
 
+While the reply streams, each `text.delta` that changes the parsed reply is
+followed by an `object.delta` event whose `object` is the partial object so
+far: an unfinished string value is cut where the text is, an unfinished key or
+number is left out, and the open objects and arrays are closed. It is not
+validated against the schema (a field may still be missing); use it to render
+progress, and `result.object` for the answer. The UI bindings keep it as
+`partialObject`.
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+const planner = createAgent({ model: 'openai/gpt-4o-mini', output: z.object({ days: z.array(z.string()) }) });
+for await (const event of planner.stream('Plan a 3-day trip to Lisbon.')) {
+  if (event.type === 'object.delta') console.log(event.object); // { days: ['Alfama and the castle', 'Bel'] }, ...
+}
+```
+
 ## Advanced: the executor API
 
 `AgentExecutor.execute()` and `AgentExecutor.stream()` take the same
@@ -16618,8 +16641,8 @@ snippets here):
 ## What differs from React
 
 - **State is the store value.** `$agent` is the React hook's state object:
-  `messages`, `status`, `pendingApproval`, `error`, `usage`, `finishReason`, `todos` and
-  `lastEvent`.
+  `messages`, `status`, `pendingApproval`, `error`, `usage`, `finishReason`, `todos`,
+  `partialObject` and `lastEvent`.
   The commands (`send`, `stop`, `approve`, `reject`, `answer`) sit on the
   store itself with the React hook's signatures; they do not need a
   subscriber.
@@ -18235,7 +18258,7 @@ and in the template:
 ## What differs from React
 
 - **State is refs.** `messages`, `status`, `pendingApproval`, `error`, `usage`, `finishReason`,
-  `todos` and `lastEvent` are read-only `ComputedRef`s: use `.value` in script,
+  `todos`, `partialObject` and `lastEvent` are read-only `ComputedRef`s: use `.value` in script,
   nothing in a template. The commands (`send`, `stop`, `approve`, `reject`,
   `answer`) are plain functions with the React hook's signatures.
 - **`reset()`** aborts the run in flight, forgets the in-process session

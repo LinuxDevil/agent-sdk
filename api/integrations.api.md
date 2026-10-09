@@ -8,9 +8,7 @@ import { Tool } from 'ai';
 
 // @public
 interface ApprovalCheckContext {
-    // Warning: (ae-forgotten-export) The symbol "Message" needs to be exported by the entry point index.d.ts
     messages: readonly Message[];
-    // Warning: (ae-forgotten-export) The symbol "Principal" needs to be exported by the entry point index.d.ts
     principal?: Readonly<Principal>;
     // (undocumented)
     sessionId?: string;
@@ -33,15 +31,9 @@ type ApprovalPredicate = {
 // @public
 export function buildSlackAlertPayload(channel: string, message: string, approvalId: string): SlackAlertPayload;
 
-// Warning: (ae-forgotten-export) The symbol "TextContentPart" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "ImageContentPart" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "FileContentPart" needs to be exported by the entry point index.d.ts
-//
 // @public
 type ContentPart = TextContentPart | ImageContentPart | FileContentPart;
 
-// Warning: (ae-forgotten-export) The symbol "ToolDescriptor" needs to be exported by the entry point index.d.ts
-//
 // @public
 export function createEmailTool(options: EmailToolOptions): ToolDescriptor;
 
@@ -57,15 +49,10 @@ export function createSlackTool(options?: SlackToolOptions): ToolDescriptor;
 // @public
 type CredentialOwner = 'app' | 'user';
 
-// Warning: (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
-//
 // @public
 interface DefinedTool<S extends StandardSchemaV1 = StandardSchemaV1, O = unknown, X = O> extends ToolDescriptor {
     // (undocumented)
     readonly description: string;
-    // Warning: (ae-forgotten-export) The symbol "InferSchemaOutput" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "ToolExecutionContext" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     execute(args: InferSchemaOutput<S>, ctx: ToolExecutionContext): Promise<X>;
     // (undocumented)
@@ -179,12 +166,9 @@ export interface GitHubSearchResult {
     totalCount: number;
 }
 
-// Warning: (ae-forgotten-export) The symbol "ToolRegistry" needs to be exported by the entry point index.d.ts
-//
 // @public (undocumented)
 export class GitHubTools extends ToolRegistry {
     constructor(config: GitHubConfig);
-    // Warning: (ae-forgotten-export) The symbol "DefinedTool" needs to be exported by the entry point index.d.ts
     register(tool: DefinedTool): void;
     // (undocumented)
     register(name: string, descriptor: ToolDescriptor): void;
@@ -198,8 +182,6 @@ interface HostedTool {
     readonly name: string;
     // (undocumented)
     readonly options: Record<string, unknown>;
-    // Warning: (ae-forgotten-export) The symbol "HostedToolType" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     readonly type: HostedToolType | 'custom';
 }
@@ -311,20 +293,15 @@ interface McpToolAnnotations {
 
 // @public
 interface Message {
-    // Warning: (ae-forgotten-export) The symbol "ContentPart" needs to be exported by the entry point index.d.ts
     content: string | ContentPart[];
     isError?: boolean;
     metadata?: Record<string, unknown>;
     // (undocumented)
     name?: string;
-    // Warning: (ae-forgotten-export) The symbol "ReasoningBlock" needs to be exported by the entry point index.d.ts
     reasoning?: ReasoningBlock[];
-    // Warning: (ae-forgotten-export) The symbol "MessageRole" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     role: MessageRole;
     toolCallId?: string;
-    // Warning: (ae-forgotten-export) The symbol "ToolCall" needs to be exported by the entry point index.d.ts
     toolCalls?: ToolCall[];
     toolName?: string;
 }
@@ -350,16 +327,10 @@ type NamedToolDescriptor = ToolDescriptor & {
 // @public
 type OAuthClientAuth = 'client_secret_post' | 'client_secret_basic';
 
-// Warning: (ae-forgotten-export) The symbol "OAuthProviderOptions" needs to be exported by the entry point index.d.ts
-//
 // @public
 interface OAuthProvider extends Readonly<Omit<OAuthProviderOptions, 'displayName' | 'credentialOwner' | 'clientAuth' | 'scopes'>> {
-    // Warning: (ae-forgotten-export) The symbol "OAuthClientAuth" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     readonly clientAuth: OAuthClientAuth;
-    // Warning: (ae-forgotten-export) The symbol "CredentialOwner" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     readonly credentialOwner: CredentialOwner;
     // (undocumented)
@@ -405,8 +376,6 @@ export function postSlackAlert(channel: string, message: string, approvalId: str
     ok: boolean;
 }>;
 
-// Warning: (ae-forgotten-export) The symbol "SandboxAdapter" needs to be exported by the entry point index.d.ts
-//
 // @public
 export function postSlackAlertViaSandbox(channel: string, message: string, approvalId: string, sandbox: SandboxAdapter, options?: SlackToolOptions, signal?: AbortSignal): Promise<{
     ok: boolean;
@@ -434,14 +403,12 @@ interface ReasoningBlock {
 
 // @public
 interface RunUsage {
-    // Warning: (ae-forgotten-export) The symbol "ModelUsage" needs to be exported by the entry point index.d.ts
     byModel: Record<string, ModelUsage>;
     cachedInputTokens?: number;
     cacheWriteTokens?: number;
     // @deprecated (undocumented)
     completionTokens: number;
     costUsd: number | undefined;
-    // Warning: (ae-forgotten-export) The symbol "DelegatedUsage" needs to be exported by the entry point index.d.ts
     delegated?: DelegatedUsage;
     estimated: boolean;
     hostedToolCalls?: Partial<Record<string, number>>;
@@ -460,8 +427,6 @@ interface RunUsage {
 // @public
 interface SandboxAdapter {
     readonly name: string;
-    // Warning: (ae-forgotten-export) The symbol "SandboxRunOptions" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "SandboxResult" needs to be exported by the entry point index.d.ts
     run(cmd: string, args: string[], opts?: SandboxRunOptions): Promise<SandboxResult>;
     writeFile(path: string, content: string): Promise<void>;
 }
@@ -569,9 +534,6 @@ interface TextContentPart {
     type: 'text';
 }
 
-// Warning: (ae-forgotten-export) The symbol "NamedToolDescriptor" needs to be exported by the entry point index.d.ts
-// Warning: (ae-forgotten-export) The symbol "HostedTool" needs to be exported by the entry point index.d.ts
-//
 // @public
 type ToolArrayEntry = DefinedTool | NamedToolDescriptor | HostedTool | Record<string, ToolDescriptor | HostedTool>;
 
@@ -595,10 +557,7 @@ interface ToolDescriptor {
     displayName: string;
     execute?(args: unknown, ctx: ToolExecutionContext): unknown;
     inputSchema?: StandardSchemaV1;
-    // Warning: (ae-forgotten-export) The symbol "ToolMetadata" needs to be exported by the entry point index.d.ts
     metadata?: ToolMetadata;
-    // Warning: (ae-forgotten-export) The symbol "ApprovalPredicate" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     needsApproval?: boolean | ApprovalPredicate;
     requiresSandbox?: boolean;
@@ -615,11 +574,8 @@ interface ToolExecutionContext {
         note?: string;
         by?: Readonly<Principal>;
     };
-    // Warning: (ae-forgotten-export) The symbol "OAuthProvider" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "OAuthToken" needs to be exported by the entry point index.d.ts
     getToken(provider: OAuthProvider): Promise<OAuthToken>;
     messages: readonly Message[];
-    // Warning: (ae-forgotten-export) The symbol "RunUsage" needs to be exported by the entry point index.d.ts
     onDelegatedUsage?: (usage: RunUsage) => void;
     principal?: Readonly<Principal>;
     requireAuth(provider: OAuthProvider): never;
@@ -648,24 +604,13 @@ class ToolRegistry {
     list(): string[];
     register(tool: DefinedTool): void;
     register(name: string, descriptor: ToolDescriptor): void;
-    // Warning: (ae-forgotten-export) The symbol "ToolsOption" needs to be exported by the entry point index.d.ts
     registerMany(tools: ToolsOption): void;
     size(): number;
     unregister(name: string): boolean;
 }
 
-// Warning: (ae-forgotten-export) The symbol "ToolArrayEntry" needs to be exported by the entry point index.d.ts
-//
 // @public
 type ToolsOption = ReadonlyArray<ToolArrayEntry> | Record<string, ToolDescriptor | HostedTool>;
-
-// Warnings were encountered during analysis:
-//
-// dist/index-DF_m0zkK.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-DF_m0zkK.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-DF_m0zkK.d.ts:2052:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
-// dist/index-DF_m0zkK.d.ts:2095:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
-// dist/index-DF_m0zkK.d.ts:2095:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

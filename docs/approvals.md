@@ -306,6 +306,9 @@ decided.
   `approved: false`.
 
 ```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', tools: [emailTool] });
 const support = agent.session({ id: 'support-42' });
 const paused = await support.send('Email the report to sam@example.com');
 // Send it to the team list instead, and stop asking for that exact email in this session.

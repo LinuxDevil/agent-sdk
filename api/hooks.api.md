@@ -21,54 +21,16 @@ interface AgentDrift {
     toolsRemoved: string[];
 }
 
-// Warning: (ae-forgotten-export) The symbol "AgentEventBase" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "AgentDrift" needs to be exported by the entry point hooks.d.ts
-//
 // @public
 interface AgentDriftEvent extends AgentEventBase<'agent.drift'>, AgentDrift {
 }
 
 // @public
 interface AgentErrorEvent extends AgentEventBase<'error'> {
-    // Warning: (ae-forgotten-export) The symbol "AgentEventError" needs to be exported by the entry point hooks.d.ts
-    //
     // (undocumented)
     error: AgentEventError;
 }
 
-// Warning: (ae-forgotten-export) The symbol "RunStartEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "StepStartEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "TextDeltaEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "ObjectDeltaEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "TextDoneEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "ReasoningStartEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "ReasoningDeltaEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "ReasoningDoneEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolStartEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolResumeEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolPartialEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolDoneEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "TodoUpdatedEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "ToolErrorEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "ApprovalRequestedEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "PermissionDecisionEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "StepDoneEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "AgentErrorEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "ProviderRetryEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "ProviderFallbackEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "CompactionStartEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "CompactionDoneEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "ContextClearedEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "BudgetExceededEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "InputQueuedEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "InputSteeredEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "InputAppliedEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "GuardrailTrippedEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "GuardrailRewroteEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "AgentDriftEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "HandoffEvent" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "RunDoneEvent" needs to be exported by the entry point hooks.d.ts
-//
 // @public
 type AgentEvent = RunStartEvent | StepStartEvent | TextDeltaEvent | ObjectDeltaEvent | TextDoneEvent | ReasoningStartEvent | ReasoningDeltaEvent | ReasoningDoneEvent | ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | TodoUpdatedEvent | ToolErrorEvent | ApprovalRequestedEvent | PermissionDecisionEvent | StepDoneEvent | AgentErrorEvent | ProviderRetryEvent | ProviderFallbackEvent | CompactionStartEvent | CompactionDoneEvent | ContextClearedEvent | BudgetExceededEvent | InputQueuedEvent | InputSteeredEvent | InputAppliedEvent | GuardrailTrippedEvent | GuardrailRewroteEvent | AgentDriftEvent | HandoffEvent | RunDoneEvent;
 
@@ -79,7 +41,6 @@ interface AgentEventBase<TType extends string> {
     subagent?: SubagentInfo;
     timestamp: string;
     type: TType;
-    // Warning: (ae-forgotten-export) The symbol "AGENT_EVENT_SCHEMA_VERSION" needs to be exported by the entry point hooks.d.ts
     v: typeof AGENT_EVENT_SCHEMA_VERSION;
 }
 
@@ -92,16 +53,11 @@ interface AgentEventError {
     name: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "AgentEventType" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "AgentEvent" needs to be exported by the entry point hooks.d.ts
-//
 // @public
 type AgentEventOf<TType extends AgentEventType> = Extract<AgentEvent, {
     type: TType;
 }>;
 
-// Warning: (ae-forgotten-export) The symbol "AgentEventOf" needs to be exported by the entry point hooks.d.ts
-//
 // @public
 type AgentEventPayload = {
     [K in AgentEventType]: Omit<AgentEventOf<K>, keyof AgentEventBase<string>> & {
@@ -131,11 +87,9 @@ interface AgentEventUsage {
 // @public
 export interface AgentHook {
     name: string;
-    // Warning: (ae-forgotten-export) The symbol "GenerateResult" needs to be exported by the entry point hooks.d.ts
     postGenerate?(ctx: GenerateHookContext, result: GenerateResult): void | Promise<void>;
     postToolCall?(ctx: ToolCallHookContext, result: ToolCallHookResult): MaybePromise<PostToolCallOutcome | void>;
     preGenerate?(ctx: GenerateHookContext): void | Promise<void>;
-    // Warning: (ae-forgotten-export) The symbol "MaybePromise" needs to be exported by the entry point hooks.d.ts
     preToolCall?(ctx: ToolCallHookContext): MaybePromise<PreToolCallOutcome | void>;
 }
 
@@ -157,11 +111,8 @@ interface ApprovalRequestedEvent extends AgentEventBase<'approval.requested'> {
     // (undocumented)
     args: Record<string, unknown>;
     expiresAt?: string;
-    // Warning: (ae-forgotten-export) The symbol "ApprovalKind" needs to be exported by the entry point hooks.d.ts
     kind?: ApprovalKind;
-    // Warning: (ae-forgotten-export) The symbol "ApprovalQuestion" needs to be exported by the entry point hooks.d.ts
     question?: ApprovalQuestion;
-    // Warning: (ae-forgotten-export) The symbol "ApprovalSignIn" needs to be exported by the entry point hooks.d.ts
     signIn?: ApprovalSignIn;
     // (undocumented)
     toolCallId: string;
@@ -179,8 +130,6 @@ interface ApprovalSignIn {
 
 // @public
 interface BudgetExceeded {
-    // Warning: (ae-forgotten-export) The symbol "BudgetLimit" needs to be exported by the entry point hooks.d.ts
-    //
     // (undocumented)
     limit: BudgetLimit;
     // (undocumented)
@@ -189,14 +138,10 @@ interface BudgetExceeded {
     value: number;
 }
 
-// Warning: (ae-forgotten-export) The symbol "BudgetExceeded" needs to be exported by the entry point hooks.d.ts
-//
 // @public
 interface BudgetExceededEvent extends AgentEventBase<'budget.exceeded'>, BudgetExceeded {
 }
 
-// Warning: (ae-forgotten-export) The symbol "RunLimits" needs to be exported by the entry point hooks.d.ts
-//
 // @public
 type BudgetLimit = Exclude<keyof RunLimits, 'onExceeded'>;
 
@@ -230,10 +175,6 @@ interface CompactionStartEvent extends AgentEventBase<'compaction.start'> {
     trigger?: 'manual';
 }
 
-// Warning: (ae-forgotten-export) The symbol "TextContentPart" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "ImageContentPart" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "FileContentPart" needs to be exported by the entry point hooks.d.ts
-//
 // @public
 type ContentPart = TextContentPart | ImageContentPart | FileContentPart;
 
@@ -262,8 +203,6 @@ interface FileContentPart {
 // @public
 export interface GenerateHookContext extends HookContext {
     emit?: (event: HookEventPayload) => void;
-    // Warning: (ae-forgotten-export) The symbol "LLMProvider" needs to be exported by the entry point hooks.d.ts
-    // Warning: (ae-forgotten-export) The symbol "GenerateOptions" needs to be exported by the entry point hooks.d.ts
     generate?: (provider: LLMProvider, request: GenerateOptions, purpose: string) => Promise<GenerateResult>;
     request: GenerateOptions;
 }
@@ -272,20 +211,15 @@ export interface GenerateHookContext extends HookContext {
 interface GenerateOptions {
     // (undocumented)
     frequencyPenalty?: number;
-    // Warning: (ae-forgotten-export) The symbol "HostedTool" needs to be exported by the entry point hooks.d.ts
     hostedTools?: readonly HostedTool[];
     // (undocumented)
     maxTokens?: number;
-    // Warning: (ae-forgotten-export) The symbol "Message" needs to be exported by the entry point hooks.d.ts
-    //
     // (undocumented)
     messages: Message[];
     model?: string;
     // (undocumented)
     presencePenalty?: number;
-    // Warning: (ae-forgotten-export) The symbol "PromptCachingOption" needs to be exported by the entry point hooks.d.ts
     promptCaching?: PromptCachingOption;
-    // Warning: (ae-forgotten-export) The symbol "ReasoningOption" needs to be exported by the entry point hooks.d.ts
     reasoning?: ReasoningOption;
     responseFormat?: {
         type: 'json';
@@ -305,8 +239,6 @@ interface GenerateOptions {
             name: string;
         };
     };
-    // Warning: (ae-forgotten-export) The symbol "ToolDefinition" needs to be exported by the entry point hooks.d.ts
-    //
     // (undocumented)
     tools?: ToolDefinition[];
     // (undocumented)
@@ -317,34 +249,24 @@ interface GenerateOptions {
 interface GenerateResult {
     // (undocumented)
     finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'error' | 'other';
-    // Warning: (ae-forgotten-export) The symbol "HostedToolCall" needs to be exported by the entry point hooks.d.ts
     hostedToolCalls?: HostedToolCall[];
     // (undocumented)
     rawResponse?: unknown;
-    // Warning: (ae-forgotten-export) The symbol "ReasoningBlock" needs to be exported by the entry point hooks.d.ts
     reasoning?: ReasoningBlock[];
-    // Warning: (ae-forgotten-export) The symbol "ServedBy" needs to be exported by the entry point hooks.d.ts
     servedBy?: ServedBy;
     // (undocumented)
     text: string;
-    // Warning: (ae-forgotten-export) The symbol "ToolCall" needs to be exported by the entry point hooks.d.ts
     toolCalls?: ToolCall[];
-    // Warning: (ae-forgotten-export) The symbol "ProviderUsage" needs to be exported by the entry point hooks.d.ts
     usage?: ProviderUsage;
 }
 
-// Warning: (ae-forgotten-export) The symbol "GuardrailTrip" needs to be exported by the entry point hooks.d.ts
-//
 // @public
 interface GuardrailRewroteEvent extends AgentEventBase<'guardrail.rewrote'>, GuardrailTrip {
 }
 
 // @public
 interface GuardrailTrip {
-    // Warning: (ae-forgotten-export) The symbol "GuardrailTripInfo" needs to be exported by the entry point hooks.d.ts
     info?: GuardrailTripInfo;
-    // Warning: (ae-forgotten-export) The symbol "IoGuardrailKind" needs to be exported by the entry point hooks.d.ts
-    //
     // (undocumented)
     kind: IoGuardrailKind;
     // (undocumented)
@@ -405,8 +327,6 @@ export interface HookContext {
     subagent?: SubagentInfo;
 }
 
-// Warning: (ae-forgotten-export) The symbol "AgentEventPayload" needs to be exported by the entry point hooks.d.ts
-//
 // @public
 export type HookEventPayload = Extract<AgentEventPayload, {
     type: 'compaction.start' | 'compaction.done';
@@ -439,8 +359,6 @@ interface HostedTool {
     readonly name: string;
     // (undocumented)
     readonly options: Record<string, unknown>;
-    // Warning: (ae-forgotten-export) The symbol "HostedToolType" needs to be exported by the entry point hooks.d.ts
-    //
     // (undocumented)
     readonly type: HostedToolType | 'custom';
 }
@@ -504,7 +422,6 @@ interface LLMProvider {
     generate(options: GenerateOptions): Promise<GenerateResult>;
     getModels(): Promise<string[]>;
     readonly name: string;
-    // Warning: (ae-forgotten-export) The symbol "StreamResult" needs to be exported by the entry point hooks.d.ts
     stream(options: GenerateOptions): Promise<StreamResult>;
     supportsHostedTool?(type: HostedToolType | 'custom'): boolean;
     supportsStreaming(model: string): boolean;
@@ -516,15 +433,12 @@ type MaybePromise<T> = T | Promise<T>;
 
 // @public
 interface Message {
-    // Warning: (ae-forgotten-export) The symbol "ContentPart" needs to be exported by the entry point hooks.d.ts
     content: string | ContentPart[];
     isError?: boolean;
     metadata?: Record<string, unknown>;
     // (undocumented)
     name?: string;
     reasoning?: ReasoningBlock[];
-    // Warning: (ae-forgotten-export) The symbol "MessageRole" needs to be exported by the entry point hooks.d.ts
-    //
     // (undocumented)
     role: MessageRole;
     toolCallId?: string;
@@ -540,15 +454,12 @@ type ModerationCategory = 'hate' | 'harassment' | 'self-harm' | 'sexual' | 'sexu
 
 // @public
 interface ObjectDeltaEvent extends AgentEventBase<'object.delta'> {
-    // (undocumented)
     object: unknown;
 }
 
 // @public
 type PermissionAction = 'allow' | 'deny' | 'ask';
 
-// Warning: (ae-forgotten-export) The symbol "PermissionAction" needs to be exported by the entry point hooks.d.ts
-//
 // @public
 type PermissionDecision = PermissionAction | 'default';
 
@@ -556,12 +467,9 @@ type PermissionDecision = PermissionAction | 'default';
 interface PermissionDecisionEntry {
     args?: Record<string, unknown>;
     at: string;
-    // Warning: (ae-forgotten-export) The symbol "PermissionDecision" needs to be exported by the entry point hooks.d.ts
-    //
     // (undocumented)
     decision: PermissionDecision;
     hook?: string;
-    // Warning: (ae-forgotten-export) The symbol "PermissionMode" needs to be exported by the entry point hooks.d.ts
     mode?: PermissionMode;
     reason?: string;
     rule?: {
@@ -574,8 +482,6 @@ interface PermissionDecisionEntry {
     toolName: string;
 }
 
-// Warning: (ae-forgotten-export) The symbol "PermissionDecisionEntry" needs to be exported by the entry point hooks.d.ts
-//
 // @public
 interface PermissionDecisionEvent extends AgentEventBase<'permission.decision'>, PermissionDecisionEntry {
 }
@@ -688,9 +594,6 @@ interface ReasoningDoneEvent extends AgentEventBase<'reasoning.done'> {
 // @public
 type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
 
-// Warning: (ae-forgotten-export) The symbol "ReasoningEffort" needs to be exported by the entry point hooks.d.ts
-// Warning: (ae-forgotten-export) The symbol "ReasoningSettings" needs to be exported by the entry point hooks.d.ts
-//
 // @public
 type ReasoningOption = ReasoningEffort | ReasoningSettings;
 
@@ -707,11 +610,9 @@ type ReasoningStartEvent = AgentEventBase<'reasoning.start'>;
 
 // @public
 interface RunDoneEvent extends AgentEventBase<'run.done'> {
-    // Warning: (ae-forgotten-export) The symbol "ExecutionFinishReason" needs to be exported by the entry point hooks.d.ts
     finishReason: ExecutionFinishReason;
     object?: unknown;
     text: string;
-    // Warning: (ae-forgotten-export) The symbol "AgentEventUsage" needs to be exported by the entry point hooks.d.ts
     usage?: AgentEventUsage;
 }
 
@@ -805,8 +706,6 @@ interface StreamChunk {
         toolCallId: string;
         result: unknown;
     };
-    // Warning: (ae-forgotten-export) The symbol "StreamChunkType" needs to be exported by the entry point hooks.d.ts
-    //
     // (undocumented)
     type: StreamChunkType;
     usage?: ProviderUsage;
@@ -819,8 +718,6 @@ type StreamChunkType = 'text-delta' | 'reasoning-delta' | 'reasoning-end' | 'too
 interface StreamResult {
     // (undocumented)
     finishReason: Promise<string>;
-    // Warning: (ae-forgotten-export) The symbol "StreamChunk" needs to be exported by the entry point hooks.d.ts
-    //
     // (undocumented)
     fullStream: AsyncIterable<StreamChunk>;
     servedBy?: ServedBy;
@@ -866,8 +763,6 @@ interface TextDoneEvent extends AgentEventBase<'text.done'> {
 interface Todo {
     content: string;
     id: string;
-    // Warning: (ae-forgotten-export) The symbol "TodoStatus" needs to be exported by the entry point hooks.d.ts
-    //
     // (undocumented)
     status: TodoStatus;
 }
@@ -878,8 +773,6 @@ interface TodoListResult {
     counts: Record<TodoStatus, number> & {
         total: number;
     };
-    // Warning: (ae-forgotten-export) The symbol "Todo" needs to be exported by the entry point hooks.d.ts
-    //
     // (undocumented)
     todos: Todo[];
 }
@@ -889,8 +782,6 @@ type TodoStatus = 'pending' | 'in_progress' | 'completed';
 
 // @public
 interface TodoUpdatedEvent extends AgentEventBase<'todo.updated'> {
-    // Warning: (ae-forgotten-export) The symbol "TodoListResult" needs to be exported by the entry point hooks.d.ts
-    //
     // (undocumented)
     counts: TodoListResult['counts'];
     // (undocumented)
@@ -914,7 +805,6 @@ interface ToolCall {
 // @public
 export interface ToolCallHookContext extends HookContext {
     args: Record<string, unknown>;
-    // Warning: (ae-forgotten-export) The symbol "Principal" needs to be exported by the entry point hooks.d.ts
     principal?: Readonly<Principal>;
     resumedAfterApproval?: boolean;
     toolCall: ToolCall;
@@ -1004,15 +894,6 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
     // (undocumented)
     toolName: string;
 }
-
-// Warnings were encountered during analysis:
-//
-// dist/createAgent-CodO77mI.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point hooks.d.ts
-// dist/createAgent-CodO77mI.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point hooks.d.ts
-// dist/createAgent-CodO77mI.d.ts:1255:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point hooks.d.ts
-// dist/index-DF_m0zkK.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point hooks.d.ts
-// dist/index-DF_m0zkK.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point hooks.d.ts
-// dist/index-DF_m0zkK.d.ts:1532:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point hooks.d.ts
 
 // (No @packageDocumentation comment for this package)
 
