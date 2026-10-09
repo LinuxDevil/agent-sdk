@@ -97,16 +97,16 @@ function DebugToggle() {
   );
 }
 
-function SpecFileButtons() {
-  const { spec, setSpec, agentId } = useAppState();
+/** Import/Export. Eve DUI-F11: a failed import (bad YAML, a spec that fails validation) is reported through `onImport`'s error surface instead of failing silently. */
+function SpecFileButtons({ onImport }: { onImport: (file: File) => Promise<void> }) {
+  const { spec, agentId } = useAppState();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function handleImportChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    const imported = await importSpecFile(file);
-    setSpec(() => imported);
+    await onImport(file);
   }
 
   return (
@@ -128,9 +128,9 @@ function SpecFileButtons() {
   );
 }
 
-/** Stop/Run/Save actions, surfacing a failed attempt as a message next to the buttons. */
+/** Stop/Run/Save/Import actions, surfacing a failed attempt as a message next to the buttons. */
 function useRunActions() {
-  const { runAgent, stopAgent, save } = useAppState();
+  const { runAgent, stopAgent, save, setSpec } = useAppState();
   const [actionError, setActionError] = useState<string | undefined>(undefined);
 
   async function attempt(action: () => Promise<unknown>) {
@@ -149,13 +149,22 @@ function useRunActions() {
   const handleRun = () => attempt(() => runAgent('Run the agent.'));
   const handleStop = () => attempt(() => stopAgent());
   const handleSave = () => attempt(() => save());
+  const handleImport = (file: File) =>
+    attempt(async () => {
+      try {
+        const imported = await importSpecFile(file);
+        setSpec(() => imported);
+      } catch (error) {
+        throw new Error(`Import of '${file.name}' failed: ${errorMessage(error)}`);
+      }
+    });
 
-  return { actionError, handleRun, handleStop, handleSave };
+  return { actionError, handleRun, handleStop, handleSave, handleImport };
 }
 
 export function Topbar() {
   const { spec, dirty, runStatus } = useAppState();
-  const { actionError, handleRun, handleStop, handleSave } = useRunActions();
+  const { actionError, handleRun, handleStop, handleSave, handleImport } = useRunActions();
 
   const status = runStatus?.status ?? 'idle';
   const isRunning = status === 'running';
@@ -195,7 +204,7 @@ export function Topbar() {
       <button className="btn btn-success" onClick={() => void handleRun()} disabled={isRunning}>
         Run
       </button>
-      <SpecFileButtons />
+      <SpecFileButtons onImport={handleImport} />
       <button className="btn btn-primary" onClick={() => void handleSave()}>
         Save
       </button>
