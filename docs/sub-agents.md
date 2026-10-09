@@ -76,7 +76,9 @@ If the sub-agent does not finish - it throws, runs out of `maxSteps`, or is
 aborted - the lead gets an error result (`isError: true`) that says why, for
 example `Sub-agent 'researcher' used all 10 of its steps (maxSteps) without
 giving a final answer.` An unknown agent name is also an error result listing
-the valid names. Sub-agent token usage is added to the lead's `result.usage`,
+the valid names. An answer cut off at the sub-agent's output token limit
+(finish reason `'length'`) is still returned, with a line after the footer
+saying it may be incomplete. Sub-agent token usage is added to the lead's `result.usage`,
 a [remote sub-agent](#remote-sub-agents)'s too.
 
 Errors at setup time are thrown with a fix: a sub-agent without a
