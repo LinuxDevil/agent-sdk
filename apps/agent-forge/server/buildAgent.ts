@@ -16,7 +16,9 @@
  */
 import { AgentBuilder, ToolRegistry } from '@lousho/build-ai-agent/executor';
 import {
+  ConfigurationError,
   NoopSandbox,
+  SDKError,
   LLMProviderRegistry,
   resolveSpecProvider,
   resolveSpecTool,
@@ -80,16 +82,6 @@ export interface BuiltAgent {
   hooks?: HookRegistry;
   /** The SandboxAdapter both `hooks` and any `requiresSandbox` tool are routed through. */
   sandbox: SandboxAdapter;
-  /**
-   * LOU-R1: true when `spec.provider.type` named a real provider
-   * (openai/anthropic/ollama/openrouter) but no usable credential was found
-   * (no stored key via `secretsStore`, no fallback env var either), so a
-   * `mock` provider was substituted to keep the run usable - mirroring the
-   * zero-config dev experience `src/spec/specToAgent.ts` already gives
-   * `lousho dev`. Callers (runRegistry.ts) surface this as a log line so
-   * it's visible rather than a silent swap.
-   */
-  usedMockProviderFallback: boolean;
 }
 
 const REAL_KEYED_PROVIDER_ENV: Record<string, string> = {
@@ -97,60 +89,69 @@ const REAL_KEYED_PROVIDER_ENV: Record<string, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
 };
 
-/** Real provider types this app doesn't manage a stored key for (no plain-API-key concept, or not yet wired into secretsStore) - env-var-only, with a mock fallback on failure. */
+/** Real provider types this app doesn't manage a stored key for (no plain-API-key concept, or not yet wired into secretsStore) - env-var-only. */
 const REAL_ENV_ONLY_PROVIDERS = new Set(['ollama', 'openrouter']);
+
+/**
+ * Eve DUI-F4: a real provider with no usable credential. The studio used to
+ * swap in the `mock` provider here and only say so in a log line, so a user
+ * with no key got "This is a mock response." and thought the model answered.
+ * The run now fails up front with this actionable error instead; `mock` is
+ * still one click away as the agent's provider.
+ */
+function missingProviderKey(type: string, envVar: string): ConfigurationError {
+  return new ConfigurationError(
+    `No API key for provider '${type}'. Add one in Settings > Provider keys, set ${envVar} in the ` +
+      "environment 'lousho studio' runs in, or switch this agent's provider to 'mock'.",
+    'provider',
+    'LOUSHO_PROVIDER_MISSING_API_KEY'
+  );
+}
 
 /**
  * Resolves `spec.provider` to a real `LLMProvider`, preferring a stored key
  * from `secretsStore` (LOU-R1) over the env-var-only path
- * `resolveSpecProvider()` (the core SDK's `src/spec/specToAgent.ts`) uses,
- * and falling back to `mock` whenever a real provider type has no usable
- * credential at all - so this server never becomes unusable for a user who
- * hasn't configured any API keys yet (the same "mock by default" dev
- * experience LOU-H/LOU-N already establish elsewhere).
+ * `resolveSpecProvider()` (the core SDK's `src/spec/specToAgent.ts`) uses.
+ * A real provider type with no usable credential throws a
+ * `LOUSHO_PROVIDER_MISSING_API_KEY` `ConfigurationError` (Eve DUI-F4) - it
+ * never silently runs `mock` instead.
  */
-function resolveProviderForSpec(
-  type: string,
-  model: string,
-  secretsStore?: SecretsStore
-): { provider: LLMProvider; usedMockProviderFallback: boolean } {
+function resolveProviderForSpec(type: string, model: string, secretsStore?: SecretsStore): LLMProvider {
   const lower = type.toLowerCase();
-  const mockProvider = () => LLMProviderRegistry.create('mock', { defaultModel: model || 'mock-1' });
 
   if (isSecretProvider(lower)) {
     const storedKey = secretsStore?.getKey(lower);
     const key = storedKey || process.env[REAL_KEYED_PROVIDER_ENV[lower]];
-    if (key) {
-      return {
-        provider: LLMProviderRegistry.create(lower, { defaultModel: model, apiKey: key }),
-        usedMockProviderFallback: false,
-      };
-    }
-    return { provider: mockProvider(), usedMockProviderFallback: true };
+    if (!key) throw missingProviderKey(lower, REAL_KEYED_PROVIDER_ENV[lower]);
+    return LLMProviderRegistry.create(lower, { defaultModel: model, apiKey: key });
   }
 
-  // Other real provider types this app doesn't manage a stored key for yet
-  // (ollama/openrouter) - still try the existing env-var-driven path, but
-  // fall back to mock rather than letting a missing/misconfigured env var
-  // (e.g. OllamaProvider with no reachable base URL) take the whole run
-  // down before it even starts.
+  // ollama/openrouter: the env-var-driven SDK path. Its own error (e.g.
+  // OPENROUTER_API_KEY unset) is passed on with a pointer to the fix.
   if (REAL_ENV_ONLY_PROVIDERS.has(lower)) {
     try {
-      return { provider: resolveSpecProvider(type, model), usedMockProviderFallback: false };
-    } catch {
-      return { provider: mockProvider(), usedMockProviderFallback: true };
+      return resolveSpecProvider(type, model);
+    } catch (error) {
+      type Code = ConstructorParameters<typeof ConfigurationError>[2];
+      const code = (error instanceof SDKError ? error.code : 'LOUSHO_CONFIG_INVALID') as Code;
+      throw new ConfigurationError(
+        `Provider '${lower}' is not usable: ${(error as Error).message} ` +
+          "Fix its environment, or switch this agent's provider to 'mock'.",
+        'provider',
+        code
+      );
     }
   }
 
   // 'mock', or any type this app doesn't recognize as a real provider at
   // all (a genuine config error, e.g. a typo'd provider name) - let this
-  // throw exactly like it always has, rather than silently masking a bad
-  // spec as a working mock run.
-  return { provider: resolveSpecProvider(type, model), usedMockProviderFallback: false };
+  // throw exactly like it always has.
+  return resolveSpecProvider(type, model);
 }
 
+
 export interface BuildAgentFromSpecOptions {
-  /** LOU-R1: stored provider keys, checked before falling back to env vars / mock. */
+  /** LOU-R1: stored provider keys, checked before env vars. */
   secretsStore?: SecretsStore;
   /** LOU-R3: configurable sandboxed-hook timeout (settingsStore.ts's `SettingsProfile.hookTimeoutMs`). */
   hookTimeoutMs?: number;
@@ -162,7 +163,7 @@ export function buildAgentFromSpec(
   sandbox: SandboxAdapter = NoopSandbox,
   options: BuildAgentFromSpecOptions = {}
 ): BuiltAgent {
-  const { provider, usedMockProviderFallback } = resolveProviderForSpec(
+  const provider = resolveProviderForSpec(
     spec.provider.type,
     spec.provider.model,
     options.secretsStore
@@ -185,7 +186,7 @@ export function buildAgentFromSpec(
 
   const hooks = compileHooksFromSpecPolicy(spec.policy?.hooks, sandbox, options.hookTimeoutMs);
 
-  return { agent, provider, toolRegistry, hooks, sandbox, usedMockProviderFallback };
+  return { agent, provider, toolRegistry, hooks, sandbox };
 }
 
 /**

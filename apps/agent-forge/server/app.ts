@@ -172,6 +172,8 @@ function registerRunRoutes(app: Express, runManager: RunManager): void {
         respondWithMappedError(res, error, [
           [AlreadyRunningError, 409],
           [AgentNotFoundError, 404],
+          // Eve DUI-F4: e.g. LOUSHO_PROVIDER_MISSING_API_KEY - the run never started.
+          [ConfigurationError, 422],
         ]);
       }
     })
@@ -362,6 +364,7 @@ function registerChatRoutes(app: Express, runManager: RunManager, triggerRegistr
           [AlreadyRunningError, 409],
           [ApprovalPendingError, 409],
           [AgentNotFoundError, 404],
+          [ConfigurationError, 422],
         ]);
       }
     })
