@@ -116,27 +116,22 @@ class RuntimeClient {
 
   /** O3: current breakpoints + pause state for `agentId` (see debugController.ts). */
   async debugState(agentId: string): Promise<DebugStatePayload> {
-    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/debug`);
-    return (await res.json()) as DebugStatePayload;
+    return this.request(`/agents/${encodeURIComponent(agentId)}/debug`, { method: 'GET' });
   }
 
   async setBreakpoints(agentId: string, breakpoints: string[]): Promise<DebugStatePayload> {
-    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/debug/breakpoints`, {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/debug/breakpoints`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ breakpoints }),
     });
-    return (await res.json()) as DebugStatePayload;
   }
 
   async continueRun(agentId: string): Promise<DebugStatePayload> {
-    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/debug/continue`, { method: 'POST' });
-    return (await res.json()) as DebugStatePayload;
+    return this.request(`/agents/${encodeURIComponent(agentId)}/debug/continue`, { method: 'POST' });
   }
 
   async stepRun(agentId: string): Promise<DebugStatePayload> {
-    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/debug/step`, { method: 'POST' });
-    return (await res.json()) as DebugStatePayload;
+    return this.request(`/agents/${encodeURIComponent(agentId)}/debug/step`, { method: 'POST' });
   }
 
   /** P1: sends a chat message - continues the agent's conversation (or starts one), replying over the WS `subscribe()` stream as `{type:'chat'}`. */
@@ -149,30 +144,24 @@ class RuntimeClient {
 
   /** P1: REST snapshot of the current live chat transcript (mirrors the WS stream's initial `{type:'chat'}` push). */
   async getChat(agentId: string): Promise<ChatStatePayload> {
-    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/chat`);
-    return (await res.json()) as ChatStatePayload;
+    return this.request(`/agents/${encodeURIComponent(agentId)}/chat`, { method: 'GET' });
   }
 
   /** P3: archives the current chat session and starts a fresh, empty one. */
   async newChat(agentId: string): Promise<ChatStatePayload> {
-    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/chat/new`, { method: 'POST' });
-    return (await res.json()) as ChatStatePayload;
+    return this.request(`/agents/${encodeURIComponent(agentId)}/chat/new`, { method: 'POST' });
   }
 
   /** P3: metadata for every past (and current) chat session for `agentId`, newest first. */
   async listChats(agentId: string): Promise<ChatSessionMeta[]> {
-    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/chats`);
-    return (await res.json()) as ChatSessionMeta[];
+    return this.request(`/agents/${encodeURIComponent(agentId)}/chats`, { method: 'GET' });
   }
 
   /** P3: a full past chat session's transcript. */
   async loadChatSession(agentId: string, sessionId: string): Promise<ChatSessionRecord> {
-    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/chats/${encodeURIComponent(sessionId)}`);
-    if (!res.ok) {
-      const body = await res.json().catch(() => undefined);
-      throw apiError(body, `Failed to load chat session '${sessionId}'`, res.status);
-    }
-    return (await res.json()) as ChatSessionRecord;
+    return this.request(`/agents/${encodeURIComponent(agentId)}/chats/${encodeURIComponent(sessionId)}`, {
+      method: 'GET',
+    });
   }
 
   /** LOU-D45: the steps of run `runId`'s checkpoint history (a run id is the agent id, or a fork's id). */
@@ -212,75 +201,65 @@ class RuntimeClient {
 
   /** R1: masked status of every managed provider's stored key. */
   async listProviderKeys(): Promise<ProviderKeyStatus[]> {
-    const res = await this.fetch(`/settings/providers`);
-    return (await res.json()) as ProviderKeyStatus[];
+    return this.request('/settings/providers', { method: 'GET' });
   }
 
   /** R1: stores (or replaces) `provider`'s API key. Resolves with the new masked status - never the real key. */
   async setProviderKey(provider: string, apiKey: string): Promise<ProviderKeyStatus> {
-    const res = await this.fetch(`/settings/providers/${encodeURIComponent(provider)}`, {
+    return this.request(`/settings/providers/${encodeURIComponent(provider)}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ apiKey }),
     });
-    const body = await res.json().catch(() => undefined);
-    if (!res.ok) throw apiError(body, `Failed to set key for '${provider}'`, res.status);
-    return body as ProviderKeyStatus;
   }
 
   /** R1: removes `provider`'s stored key, if any. */
   async removeProviderKey(provider: string): Promise<void> {
-    await this.fetch(`/settings/providers/${encodeURIComponent(provider)}`, { method: 'DELETE' });
+    await this.request(`/settings/providers/${encodeURIComponent(provider)}`, { method: 'DELETE' });
   }
 
   /** R3: every settings profile + which one is active. */
   async listSettingsProfiles(): Promise<SettingsFile> {
-    const res = await this.fetch(`/settings/profiles`);
-    return (await res.json()) as SettingsFile;
+    return this.request('/settings/profiles', { method: 'GET' });
   }
 
   /** R3: creates or replaces a profile by id. */
   async saveSettingsProfile(profile: SettingsProfile): Promise<SettingsFile> {
-    const res = await this.fetch(`/settings/profiles/${encodeURIComponent(profile.id)}`, {
+    return this.request(`/settings/profiles/${encodeURIComponent(profile.id)}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(profile),
     });
-    const body = await res.json().catch(() => undefined);
-    if (!res.ok) throw apiError(body, 'Failed to save settings profile', res.status);
-    return body as SettingsFile;
   }
 
   /** R3: deletes a profile (refuses to delete the last remaining one). */
   async deleteSettingsProfile(profileId: string): Promise<SettingsFile> {
-    const res = await this.fetch(`/settings/profiles/${encodeURIComponent(profileId)}`, { method: 'DELETE' });
-    const body = await res.json().catch(() => undefined);
-    if (!res.ok) throw apiError(body, 'Failed to delete settings profile', res.status);
-    return body as SettingsFile;
+    return this.request(`/settings/profiles/${encodeURIComponent(profileId)}`, { method: 'DELETE' });
   }
 
   /** R3: switches the active profile. */
   async activateSettingsProfile(profileId: string): Promise<SettingsFile> {
-    const res = await this.fetch(`/settings/profiles/${encodeURIComponent(profileId)}/activate`, { method: 'POST' });
-    const body = await res.json().catch(() => undefined);
-    if (!res.ok) throw apiError(body, 'Failed to activate settings profile', res.status);
-    return body as SettingsFile;
+    return this.request(`/settings/profiles/${encodeURIComponent(profileId)}/activate`, { method: 'POST' });
   }
 
   /** R2: deploy-target names this app's Settings dropdown offers - see server/deployRunner.ts's DEPLOY_ADAPTERS. */
   async listDeployAdapters(): Promise<string[]> {
-    const res = await this.fetch(`/settings/deploy-adapters`);
-    return (await res.json()) as string[];
+    return this.request('/settings/deploy-adapters', { method: 'GET' });
   }
 
-  /** R2: "Deploy this agent" - shells out to `lousho build --target=<adapter>` against this agent's saved spec. */
+  /**
+   * R2: "Deploy this agent" - shells out to `lousho build --target=<adapter>` against this agent's saved spec.
+   * A failed build answers 422 with the `DeployResult` (its exit code and output), which is returned, not thrown.
+   */
   async deployAgent(agentId: string, adapter: string): Promise<DeployResult> {
     const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/deploy`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ adapter }),
     });
-    return (await res.json()) as DeployResult;
+    const body = (await res.json().catch(() => undefined)) as (DeployResult & { error?: string }) | undefined;
+    if (!res.ok && (res.status !== 422 || typeof body?.exitCode !== 'number')) {
+      throw apiError(body, `Deploy of '${agentId}' failed with ${res.status}`, res.status);
+    }
+    return body as DeployResult;
   }
 
   /**

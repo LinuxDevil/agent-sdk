@@ -4,6 +4,8 @@ import { useAppState } from '../state/AppState';
 import { PALETTE_DRAG_MIME, HOOK_DRAG_MIME } from '../canvas/dnd';
 import { AGENT_TEMPLATES, type TemplateId } from '../canvas/templates';
 import { StatusPill } from './StatusPill';
+import { errorMessage } from './errorMessage';
+import { agentIdProblem } from '../../shared/agentId';
 import type { AgentGraphNodeType, AgentNodeHookPhase } from '../graph/types';
 
 const NODE_PALETTE: { section: string; items: { label: string; color: string; nodeType: AgentGraphNodeType }[] }[] = [
@@ -116,11 +118,22 @@ type NewAgentDraft = ReturnType<typeof useNewAgentDraft>;
 function NewAgentForm({ draft }: { draft: NewAgentDraft }) {
   const { createAgent } = useAppState();
   const { setCreating, newName, setNewName, newTemplate, setNewTemplate } = draft;
+  const [createError, setCreateError] = useState<string | undefined>(undefined);
+  const trimmed = newName.trim();
+  // Eve DUI-F3: the same rule the server enforces on `:id` (shared/agentId.ts) -
+  // an invalid name used to be saved locally, then crash the app on the
+  // server's 400.
+  const nameProblem = trimmed ? agentIdProblem(trimmed) : undefined;
 
   async function handleCreate() {
-    const id = newName.trim();
-    if (!id) return;
-    await createAgent(id, newTemplate);
+    if (!trimmed || nameProblem) return;
+    setCreateError(undefined);
+    try {
+      await createAgent(trimmed, newTemplate);
+    } catch (error) {
+      setCreateError(errorMessage(error));
+      return;
+    }
     setCreating(false);
     setNewName('');
     setNewTemplate('blank');
@@ -135,9 +148,17 @@ function NewAgentForm({ draft }: { draft: NewAgentDraft }) {
           className="input"
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && void handleCreate()}
           placeholder="my-new-agent"
+          aria-invalid={nameProblem ? true : undefined}
+          aria-describedby={nameProblem || createError ? 'new-agent-name-error' : undefined}
           autoFocus
         />
+        {(nameProblem || createError) && (
+          <div id="new-agent-name-error" className="hint field-error" role="alert">
+            {nameProblem ?? createError}
+          </div>
+        )}
       </div>
       <div className="field" style={{ marginBottom: 8 }}>
         <label htmlFor="new-agent-template">Template</label>
@@ -160,7 +181,7 @@ function NewAgentForm({ draft }: { draft: NewAgentDraft }) {
           className="btn btn-primary"
           style={{ flex: 1, justifyContent: 'center' }}
           onClick={() => void handleCreate()}
-          disabled={!newName.trim()}
+          disabled={!trimmed || nameProblem !== undefined}
         >
           Create
         </button>

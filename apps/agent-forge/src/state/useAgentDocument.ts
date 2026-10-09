@@ -5,6 +5,7 @@ import { graphToSpec } from '../graph/graphToSpec';
 import { specToGraph } from '../graph/specToGraph';
 import type { AgentGraphSpec } from '../graph/types';
 import { graphFromTemplate, type TemplateId } from '../canvas/templates';
+import { agentIdProblem } from '../../shared/agentId';
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
@@ -136,6 +137,9 @@ export function useAgentDocument(store: AgentStore) {
 
   const createAgent = useCallback(
     async (id: string, template: TemplateId) => {
+      // Eve DUI-F3: never persist an id the server would reject.
+      const problem = agentIdProblem(id);
+      if (problem) throw new Error(`Invalid agent name '${id}': ${problem}`);
       const nextGraph = graphFromTemplate(template);
       const nextSpec = graphToSpec(nextGraph);
       await store.save(id, nextSpec);

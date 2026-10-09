@@ -5,19 +5,22 @@ import { LeftRail } from './components/LeftRail';
 import { CanvasArea } from './components/CanvasArea';
 import { Inspector } from './components/Inspector';
 import { BottomDrawer } from './components/BottomDrawer';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 export function App() {
   return (
-    <AppStateProvider>
-      <div className="app">
-        <Topbar />
-        <div className="shell">
-          <LeftRail />
-          <CanvasArea />
-          <Inspector />
+    <ErrorBoundary>
+      <AppStateProvider>
+        <div className="app">
+          <Topbar />
+          <div className="shell">
+            <LeftRail />
+            <CanvasArea />
+            <Inspector />
+          </div>
+          <BottomDrawer />
         </div>
-        <BottomDrawer />
-      </div>
-    </AppStateProvider>
+      </AppStateProvider>
+    </ErrorBoundary>
   );
 }

@@ -487,6 +487,9 @@
   color: var(--text-faint);
   margin-top: 4px;
 }
+.field .hint.field-error {
+  color: var(--danger);
+}
 .input,
 .select,
 .textarea {
@@ -1094,3 +1097,25 @@
   .trace-history { width: auto; flex-direction: row; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--border); }
   .trace-item { min-width: 200px; }
 }
+
+/* Eve DUI-F3: top-level error boundary fallback. */
+.error-boundary {
+  max-width: 640px;
+  margin: 64px auto;
+  padding: 24px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.error-boundary h1 { font-size: 18px; margin: 0 0 8px; }
+.error-boundary pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--danger-soft);
+  color: var(--danger);
+  padding: 10px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.error-boundary-actions { display: flex; gap: 8px; margin-top: 12px; }

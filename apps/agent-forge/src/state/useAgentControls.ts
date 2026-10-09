@@ -107,14 +107,22 @@ export function useChatControls({
   const startNewChat = useCallback(async () => {
     setChatActionError(undefined);
     setViewedChatSession(undefined);
-    const next = await runtimeClient.newChat(agentId);
-    setChat({ sessionId: next.sessionId, messages: next.messages });
-    setChatSessions(await runtimeClient.listChats(agentId));
+    try {
+      const next = await runtimeClient.newChat(agentId);
+      setChat({ sessionId: next.sessionId, messages: next.messages });
+      setChatSessions(await runtimeClient.listChats(agentId));
+    } catch (error) {
+      setChatActionError((error as Error).message);
+    }
   }, [agentId]);
 
   const viewChatSession = useCallback(
     async (sessionId: string) => {
-      setViewedChatSession(await runtimeClient.loadChatSession(agentId, sessionId));
+      try {
+        setViewedChatSession(await runtimeClient.loadChatSession(agentId, sessionId));
+      } catch (error) {
+        setChatActionError((error as Error).message);
+      }
     },
     [agentId]
   );
