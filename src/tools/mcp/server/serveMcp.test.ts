@@ -232,7 +232,8 @@ describe('serveMcp options', () => {
     await expect(serveMcp({ agent: {} as SimpleAgent, name: 'a' })).rejects.toThrow(/createAgent/);
     await expect(serveMcp({ agent, name: '' })).rejects.toThrow(/`name` is required/);
     await expect(serveMcp({ agent, name: 'search_docs', tools: [searchDocs] })).rejects.toThrow(/two tools are named/);
-    const notObject = defineTool({ name: 'str', description: 'd', input: z.string(), execute: () => 'x' });
+    // defineTool itself now rejects a non-object root (Eve TOOLS-F10), so swap the schema in afterwards.
+    const notObject = { ...defineTool({ name: 'str', description: 'd', input: z.object({}), execute: () => 'x' }), input: z.string() } as never;
     await expect(serveMcp({ agent, name: 'a', tools: [notObject] })).rejects.toThrow(/z\.object/);
   });
 

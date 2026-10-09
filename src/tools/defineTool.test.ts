@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
+import { z as z4 } from 'zod/v4';
 import { defineTool } from './defineTool';
 import { ToolRegistry } from './ToolRegistry';
 import { createAgent } from '../createAgent';
@@ -61,6 +62,42 @@ describe('defineTool', () => {
       [{ ...base, execute: undefined }, /'execute' function/],
     ])('rejects %#', (opts, message) => {
       expect(() => defineTool(opts as never)).toThrow(message);
+    });
+
+    // Eve TOOLS-F10: schemas no model can satisfy fail at definition, not on every call.
+    it.each([
+      ['zod 3 string root', z.string(), /'input' must be a z\.object\(\).*got string/],
+      ['zod 3 array root', z.array(z.object({ a: z.string() })), /must be a z\.object\(\).*got array/],
+      ['zod 4 string root', z4.string(), /must be a z\.object\(\).*got string/],
+      ['zod 4 number root', z4.number().optional(), /must be a z\.object\(\)/],
+    ])('rejects a non-object root (%s) with LOUSHO_CONFIG_INVALID', (_label, schema, message) => {
+      expect(() => defineTool({ ...base, input: schema } as never)).toThrow(message);
+      expect(() => defineTool({ ...base, input: schema } as never)).toThrow(expect.objectContaining({ code: 'LOUSHO_CONFIG_INVALID' }));
+    });
+
+    it.each([
+      ['zod 3', z.object({ when: z.date(), n: z.bigint(), items: z.array(z.object({ due: z.date().optional() })) }), ["'items[].due'", "'n'", "'when'"]],
+      ['zod 4', z4.object({ when: z4.date(), n: z4.bigint(), items: z4.array(z4.object({ due: z4.date().optional() })) }), ["'items[].due'", "'n'", "'when'"]],
+    ])('rejects %s z.date() / z.bigint() fields and points to z.coerce', (_label, schema, paths) => {
+      let error: unknown;
+      try {
+        defineTool({ ...base, input: schema } as never);
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error).toMatchObject({ code: 'LOUSHO_CONFIG_INVALID' });
+      const message = (error as Error).message;
+      for (const path of paths) expect(message).toContain(path);
+      expect(message).toContain('z.coerce.date()');
+      expect(message).toContain('z.coerce.bigint()');
+    });
+
+    it('accepts z.coerce.date(), z.coerce.bigint(), refined objects and object unions', () => {
+      expect(() => defineTool({ ...base, input: z.object({ when: z.coerce.date(), n: z.coerce.bigint() }) })).not.toThrow();
+      expect(() => defineTool({ ...base, input: z4.object({ when: z4.coerce.date(), n: z4.coerce.bigint() }) })).not.toThrow();
+      expect(() => defineTool({ ...base, input: z.object({ a: z.string() }).refine(() => true) })).not.toThrow();
+      expect(() => defineTool({ ...base, input: z4.object({ a: z4.string() }).refine(() => true) })).not.toThrow();
+      expect(() => defineTool({ ...base, input: z.object({ when: z.preprocess((v) => new Date(String(v)), z.date()) }) })).not.toThrow();
     });
   });
 });
