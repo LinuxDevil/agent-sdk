@@ -86,6 +86,14 @@ interface AgentStore {
 }
 
 // @public
+interface ApprovalGroupMember {
+    // Warning: (ae-forgotten-export) The symbol "GroupDecision" needs to be exported by the entry point kv.d.ts
+    decision?: GroupDecision;
+    // Warning: (ae-forgotten-export) The symbol "PendingApproval" needs to be exported by the entry point kv.d.ts
+    pending: PendingApproval;
+}
+
+// @public
 type ApprovalKind = 'tool' | 'question' | 'sign-in';
 
 // @public
@@ -112,7 +120,6 @@ interface ApprovalStore {
     //
     // (undocumented)
     resolve(id: string): Promise<ResolvedApproval | null>;
-    // Warning: (ae-forgotten-export) The symbol "PendingApproval" needs to be exported by the entry point kv.d.ts
     // Warning: (ae-forgotten-export) The symbol "ExecutionSnapshot" needs to be exported by the entry point kv.d.ts
     //
     // (undocumented)
@@ -136,6 +143,7 @@ interface Checkpoint {
     // (undocumented)
     agentId: string;
     approvalId?: string;
+    approvalIds?: string[];
     // Warning: (ae-forgotten-export) The symbol "ApprovalKind" needs to be exported by the entry point kv.d.ts
     approvalKind?: ApprovalKind;
     attempts?: number;
@@ -321,11 +329,13 @@ interface ExecutionSnapshot {
     // (undocumented)
     agent: AgentConfig;
     agentFingerprint?: AgentFingerprint;
+    // Warning: (ae-forgotten-export) The symbol "ApprovalGroupMember" needs to be exported by the entry point kv.d.ts
+    approvalGroup?: ApprovalGroupMember[];
     contextSessionId?: string;
     // (undocumented)
     currentMessages: Message[];
+    heldSubagent?: SubagentSuspension;
     metadata?: Record<string, unknown>;
-    // (undocumented)
     pendingToolCall: PendingApproval;
     principal?: Principal;
     // Warning: (ae-forgotten-export) The symbol "ToolCall" needs to be exported by the entry point kv.d.ts
@@ -446,6 +456,17 @@ interface ForEachNode {
     item: string;
     // (undocumented)
     type: 'forEach';
+}
+
+// @public
+interface GroupDecision {
+    approved: boolean;
+    args?: Record<string, unknown>;
+    automatic?: true;
+    by?: Principal;
+    expired?: true;
+    note?: string;
+    remember?: 'session';
 }
 
 // @public

@@ -106,13 +106,17 @@ try {
 
 ## Approvals in the middle of a tool batch
 
-When one model turn asks for several tools and one of them needs approval,
-the calls before it run and are recorded, and the run pauses on it. The
-approval snapshot records the calls after it (`remainingToolCalls`).
-`agent.approvals.resolve()` (the `resumeAfterApproval()` export underneath) then:
+When one model turn asks for several tools and some of them need approval,
+the calls that need none run and are recorded, and the run pauses once on
+every call that needs approval (`approvalIds`, one approval record each; see
+[Several calls in one step](./approvals.md#several-calls-in-one-step)).
+Calls a steer kept from starting, and the turn's handoff calls, are recorded
+in the approval snapshot (`remainingToolCalls`). Once the last paused call is
+decided, `agent.approvals.resolve()` (the `resumeAfterApproval()` export
+underneath):
 
-1. records the paused call's result - the tool's result if approved, or a
-   structured `{ error, note }` rejection result if rejected;
+1. records each paused call's result, in call order - the tool's result if
+   approved, or a structured `{ error, note }` rejection result if rejected;
 2. runs the remaining calls through the same batch logic: they can run,
    fail validation, or pause the run again on another approval (a new
    `approvalId`; resolve it the same way, as many times as needed);

@@ -11,7 +11,7 @@ import type { ExecutionResult } from './execution/AgentExecutor';
 import type { AgentEvent } from './execution/agentEvents';
 import type { AgentRun } from './execution/agentRun';
 import type { CheckpointStore } from './execution/checkpoint';
-import { SDKError, SessionAwaitingApprovalError } from './execution/errors';
+import { ConfigurationError, SDKError, SessionAwaitingApprovalError } from './execution/errors';
 import type { InputQueue } from './execution/inputQueue';
 import { streamSessionTurn } from './session/sessionStream';
 import { AgentSession, type SessionOptions, type SessionRunner, type SessionSpawner, type SessionStreamRunner } from './session/AgentSession';
@@ -96,6 +96,24 @@ export interface AgentApprovals {
    * ```
    */
   resolve(decision: ApprovalDecision, options?: ResolveApprovalOptions): Promise<ExecutionResult>;
+  /**
+   * Eve TOOLS-F12: decides several pending approvals in one call, in the
+   * order given - typically every call of a step that paused on several
+   * (`result.approvalIds`). Each decision is `resolve()`'s (`args` to approve
+   * with edits, `remember`); the step's approved calls run once the last of
+   * its calls is decided, and the result is that of the last decision -
+   * still `'awaiting-approval'` (listing what is left in `approvalIds`) when
+   * some call of the step is not decided yet. Throws like `resolve()` on the
+   * first decision that fails; the ones before it stay made.
+   *
+   * @example
+   * ```ts
+   * const result = await agent.approvals.resolveAll(
+   *   paused.approvalIds!.map((id) => ({ id, approved: true }))
+   * );
+   * ```
+   */
+  resolveAll(decisions: readonly ApprovalDecision[], options?: ResolveApprovalOptions): Promise<ExecutionResult>;
   /**
    * Answers a paused `ask_question` call (LOU-X9): the same as
    * `resolve({ id, approved: true, note: answer })`. The model gets
@@ -252,6 +270,8 @@ export function createAgentApprovals(options: {
   let sessionSpawner: SessionSpawner | undefined;
   // A1: the session each pause belongs to, kept until the pause is claimed (unlike `sessions`, which a decision clears first).
   const sessionIds = new Map<string, string>();
+  // Eve TOOLS-F12: the calls the `approve` callback deferred, so deciding another call of their step does not ask it again.
+  const deferred = new Set<string>();
   const bind = (id: string, session: ApprovalSession) => {
     sessions.set(id, session);
     sessionIds.set(id, session.id);
@@ -312,13 +332,19 @@ export function createAgentApprovals(options: {
   ): Promise<ExecutionResult> {
     let current = result;
     for (;;) {
-      const request = current.approvalId ? pending.get(current.approvalId) : undefined;
+      if (!approve || current.finishReason !== 'awaiting-approval') return current;
+      // Eve TOOLS-F12: each call of a step paused on several is asked about, in call order.
+      const ids = current.approvalIds ?? (current.approvalId ? [current.approvalId] : []);
       // N9b: only the user can sign in, so a sign-in pause is never decided by `approve`.
-      if (!approve || current.finishReason !== 'awaiting-approval' || !request || request.kind === 'sign-in') return current;
+      const request = ids.map((id) => pending.get(id)).find((entry) => entry !== undefined && entry.kind !== 'sign-in' && !deferred.has(entry.id));
+      if (!request) return current;
       const verdict = await decide(request);
       // A 'defer' verdict is not a decision: the approval stays pending and
       // the paused result is surfaced as it is, for the human path to resolve.
-      if (verdict === 'defer') return current;
+      if (verdict === 'defer') {
+        deferred.add(request.id);
+        continue;
+      }
       // Eve TOOLS-F19: the callback's decision, which `once()` does not remember.
       const decision = markAutomaticDecision(typeof verdict === 'string' ? { id: request.id, approved: true, note: verdict } : { id: request.id, approved: verdict });
       current = await resume(store, decision, signal, checkpointStore, permissionMode, undefined, onAgentEvent);
@@ -327,7 +353,8 @@ export function createAgentApprovals(options: {
 
   function inSession(session: ApprovalSession | undefined, result: ExecutionResult): ExecutionResult {
     if (session && result.finishReason === 'awaiting-approval' && result.approvalId) {
-      bind(result.approvalId, session);
+      // Eve TOOLS-F12: every call the step waits on continues this session.
+      for (const id of result.approvalIds ?? [result.approvalId]) bind(id, session);
     }
     return result;
   }
@@ -396,6 +423,7 @@ export function createAgentApprovals(options: {
 
   // N10b: `principal` is the approver of this decision only; the `approve` callback's later decisions have none.
   function resolve(decision: ApprovalDecision, { signal, principal }: ResolveApprovalOptions = {}): Promise<ExecutionResult> {
+    deferred.delete(decision.id);
     let session = sessions.get(decision.id);
     sessions.delete(decision.id);
     const resolved = (async () => {
@@ -415,6 +443,7 @@ export function createAgentApprovals(options: {
   }
 
   function streamResolve(decision: ApprovalDecision, { signal, principal }: ResolveApprovalOptions = {}): AgentRun {
+    deferred.delete(decision.id);
     const bound = sessions.get(decision.id);
     sessions.delete(decision.id);
     if (!bound) {
@@ -453,6 +482,7 @@ export function createAgentApprovals(options: {
    * holds - another process (or agent object) resolved it.
    */
   const forget = (id: string) => {
+    deferred.delete(id);
     pending.delete(id);
     sessionIds.delete(id);
     sessions.delete(id);
@@ -498,6 +528,13 @@ export function createAgentApprovals(options: {
       return withSession(pending.get(id) ?? describeApproval(record.pending));
     },
     resolve,
+    // Eve TOOLS-F12: one decision after the other; the last one runs the step.
+    resolveAll: async (decisions, resolveOptions) => {
+      if (decisions.length === 0) throw new ConfigurationError('agent.approvals.resolveAll() needs at least one decision.', 'decisions');
+      let result: ExecutionResult | undefined;
+      for (const decision of decisions) result = await resolve(decision, resolveOptions);
+      return result as ExecutionResult;
+    },
     answer: ({ id, answer }, resolveOptions) => resolve({ id, approved: true, note: answer }, resolveOptions),
     streamResolve,
     streamAnswer: ({ id, answer }, resolveOptions) => streamResolve({ id, approved: true, note: answer }, resolveOptions),

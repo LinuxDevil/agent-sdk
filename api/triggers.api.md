@@ -154,8 +154,8 @@ interface ExecutionResult<TObject = unknown> {
         message: string;
     };
     agentName?: string;
-    // (undocumented)
     approvalId?: string;
+    approvalIds?: string[];
     // Warning: (ae-forgotten-export) The symbol "BackgroundTaskView" needs to be exported by the entry point index.d.ts
     backgroundTasks?: BackgroundTaskView[];
     // Warning: (ae-forgotten-export) The symbol "BudgetExceeded" needs to be exported by the entry point index.d.ts
@@ -608,8 +608,8 @@ export interface WebhookTriggerHandle extends TriggerHandle {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-BoMnNQ6I.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BoMnNQ6I.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-CodO77mI.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-CodO77mI.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

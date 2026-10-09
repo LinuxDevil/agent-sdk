@@ -51,10 +51,10 @@ const sendEmail = defineTool({
 The predicate can also deny a call or approve it only once per session; see
 [Approve, deny or ask](#approve-deny-or-ask).
 
-When the model asks for several tools in one turn, the first call that needs
-approval stops the batch: the calls before it run, the run pauses on it, and
-the calls after it run once it is decided (see
-[Approvals in the middle of a tool batch](./durable-execution.md#approvals-in-the-middle-of-a-tool-batch)).
+When the model asks for several tools in one turn, the calls that need no
+approval run, and the run pauses once on **every** call that needs approval:
+each gets its own approval id, and they run together once all of them are
+decided (see [Several calls in one step](#several-calls-in-one-step)).
 
 MCP tools ask for approval by default (`approval: 'always'`). With
 `approval: 'annotations'` a server's tool annotations decide instead:
@@ -196,7 +196,9 @@ task.
 ## `createAgent()` agents
 
 - A paused `send()` resolves (it does not throw) with
-  `finishReason: 'awaiting-approval'` and an `approvalId`.
+  `finishReason: 'awaiting-approval'`, an `approvalId` and `approvalIds`: every
+  call the step waits on, in call order (`approvalId` is the first; one entry
+  when one call paused).
 - `agent.approvals.list()` returns the pending calls, oldest first: the ones
   this agent paused on in this process and, with an `approvalStore` that
   implements `list()` (the file, SQLite, KV and in-memory stores do), the ones
@@ -221,8 +223,8 @@ task.
 - A run that paused inside `agent.session()` continues in that session: the
   tool call, its result and the final answer join the session's transcript.
 - `agent.stream()` and `session.stream()` end at the pause with an
-  `approval.requested` event and `run.done` (`'awaiting-approval'`); resolve it
-  the same way.
+  `approval.requested` event per paused call and `run.done`
+  (`'awaiting-approval'`); resolve it the same way.
 
 Pauses are kept in a per-agent `InMemoryApprovalStore` unless you pass
 `approvalStore` or a `store` with `approvals`. To decide a pause after a
@@ -243,6 +245,50 @@ stop showing one as soon as any process decides it. A stored pause that no
 session of this process has run yet is listed without its `sessionId`. With a
 custom `ApprovalStore` that has no `list()`, `list()` only knows the pauses
 made by this agent object.
+
+### Several calls in one step
+
+When one model step has several calls that need approval, the run pauses once
+on all of them. `result.approvalIds` lists them in call order, each is its own
+`agent.approvals.list()` entry, and a stream reports one `approval.requested`
+event per call. Decide them in any order:
+
+- Deciding a call while others of the step are still undecided runs nothing:
+  `resolve()` resolves with `finishReason: 'awaiting-approval'` and the ids
+  still to decide in `approvalIds` (and `approvalId`, the first of them).
+- The decision that completes the step runs it: the approved calls run in call
+  order, each rejected one gives the model its rejection, and the run
+  continues. No call runs before the human saw all of them.
+- `agent.approvals.resolveAll([{ id, approved, args?, remember?, note? }, ...])`
+  decides several at once (one after the other, in the order given) and
+  resolves with the last decision's result.
+
+The step's calls that need no approval do not wait: they run when the step
+does, before the pause.
+
+```ts
+const paused = await agent.send('Pay the invoice and archive the thread');
+// paused.approvalIds: ['…pay', '…archive']
+const result = await agent.approvals.resolveAll([
+  { id: paused.approvalIds![0], approved: true, args: { amount: 120 } },
+  { id: paused.approvalIds![1], approved: false, note: 'keep it for now' },
+]);
+```
+
+Each decision is stored with the step's other pending calls, so they can be
+decided from different requests, processes or channels, and after a restart,
+with a durable store. Decide the calls of one step from one process at a
+time: two decisions on the same step racing in two processes can fail with
+`LOUSHO_APPROVAL_CONFLICT` (nothing runs; decide again). A paused session
+reports the ids still to decide in `session.pending()` (`approvalIds`). An
+`approve` callback is asked about each call of the step; a call it defers
+waits for a human while it decides the rest.
+
+A sub-agent whose step pauses on several calls pauses the lead on all of them
+(each listed with `subagentPath`), and they are decided the same way. A
+sub-agent started by a step that also pauses on calls of its own runs with
+the step; when it pauses too, the run pauses on it once the step's calls are
+decided.
 
 ### Don't ask again, approve with edits
 

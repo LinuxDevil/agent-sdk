@@ -71,8 +71,11 @@ export interface UnrecordedToolCall {
 
 /** What happened to a batch, once no call of it is running any more. */
 export interface ToolBatchResult {
-  /** The first call (in call order) that needs approval; nothing after it ran. */
-  approval?: { toolCall: ToolCall; outcome: ToolCallOutcome };
+  /**
+   * Eve TOOLS-F12: every call that needs approval, in call order. They wait
+   * together; the batch's other calls ran (a step pauses once, on all of them).
+   */
+  approvals: Array<{ toolCall: ToolCall; outcome: ToolCallOutcome }>;
   /** The first fatal error, in call order (a `PropagatingToolError`, a throwing hook, ...). */
   failure?: { error: unknown };
   /** The calls, in order, whose results are not in the transcript. */
@@ -111,9 +114,9 @@ export class Limiter {
 
 /**
  * Runs one turn's tool calls. Calls are started in call order, each one
- * only after the previous one passed its gate (so the first call that needs
- * approval is known before anything after it starts) and a concurrency slot
- * is free. Each result is recorded as its call settles; the transcript
+ * only after the previous one passed its gate and a concurrency slot is
+ * free. A call that needs approval does not run; the calls after it still
+ * do (Eve TOOLS-F12: the step then pauses once, on every such call). Each result is recorded as its call settles; the transcript
  * keeps call order. Resolves only once every started call has settled.
  */
 class ToolBatch {
@@ -162,16 +165,13 @@ class ToolBatch {
     return true;
   }
 
-  /** Starts a call and waits for its gate; halts the batch at an approval or a gate error. */
+  /** Starts a call and waits for its gate; halts the batch at a gate error. */
   private async launch(index: number, toolCall: ToolCall): Promise<void> {
     this.slots[index] = { status: 'running' };
     const started = this.callbacks.start(toolCall);
     this.running.push(this.track(index, started.done));
     try {
-      const prepared = await started.gate;
-      if (prepared.requiresApproval) {
-        this.halted = true;
-      }
+      await started.gate;
     } catch {
       // The same error rejects `done`; track() records it.
       this.halted = true;
@@ -208,14 +208,14 @@ class ToolBatch {
   }
 
   private result(): ToolBatchResult {
-    const result: ToolBatchResult = { unrecorded: [] };
+    const result: ToolBatchResult = { approvals: [], unrecorded: [] };
     for (const [index, slot] of this.slots.entries()) {
       const toolCall = this.toolCalls[index];
       if (slot.status === 'failed' && !result.failure) {
         result.failure = { error: slot.error };
       }
       if (slot.status === 'completed' && slot.outcome.requiresApproval) {
-        result.approval = { toolCall, outcome: slot.outcome };
+        result.approvals.push({ toolCall, outcome: slot.outcome });
       }
       if (!this.recorded.has(index)) {
         result.unrecorded.push({ toolCall, ...(slot.status === 'completed' && { outcome: slot.outcome }) });

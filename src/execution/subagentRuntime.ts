@@ -12,6 +12,7 @@
 import type { LLMProvider, Message } from '../providers';
 import type { AgentConfig } from '../types';
 import type { ToolRegistry } from '../tools/ToolRegistry';
+import { snapshotForMember } from './ApprovalGate';
 import type {
   ApprovalDecision,
   ApprovalStore,
@@ -177,8 +178,7 @@ export function toSuspension(
  * own pending call (so a reviewer sees what actually needs approving), with
  * the chain of sub-agent names it runs inside.
  */
-function pendingForSuspension(suspension: SubagentSuspension, principal: Principal | undefined): PendingApproval {
-  const child = leafPending(suspension.snapshot);
+function pendingForSuspension(suspension: SubagentSuspension, principal: Principal | undefined, child: PendingApproval = leafPending(suspension.snapshot)): PendingApproval {
   const pending: PendingApproval = { ...child, subagentPath: [suspension.agentName, ...(child.subagentPath ?? [])] };
   // N10b: the lead's principal (a remote sub-agent's pause has none of its own).
   if (principal) pending.principal = principal;
@@ -190,9 +190,14 @@ function pendingForSuspension(suspension: SubagentSuspension, principal: Princip
 export function suspensionRecord(
   run: { agent: AgentConfig; sessionId?: string; principal?: Principal; metadata?: Record<string, unknown> },
   state: { messages: Message[]; steps: number; usage: RunUsage; queuedInput?: Message[]; fingerprint?: AgentFingerprint },
-  suspension: SubagentSuspension
+  paused: SubagentSuspension
 ): { pending: PendingApproval; snapshot: ExecutionSnapshot } {
+  // Eve TOOLS-F12: a sub-agent step paused on several calls pauses the lead on all of them (same ids), first one first.
+  const childGroup = paused.snapshot.approvalGroup;
+  const grouped = childGroup !== undefined && childGroup.length > 1;
+  const suspension = grouped ? { ...paused, snapshot: snapshotForMember(paused.snapshot, childGroup[0].pending.id) } : paused;
   const pending = pendingForSuspension(suspension, run.principal);
+  const approvalGroup = grouped ? childGroup.map((member) => ({ ...member, pending: pendingForSuspension(suspension, run.principal, member.pending) })) : undefined;
   return {
     pending,
     snapshot: {
@@ -207,24 +212,26 @@ export function suspensionRecord(
       agentFingerprint: state.fingerprint,
       ...(run.principal && { principal: run.principal }),
       ...(run.metadata !== undefined && { metadata: run.metadata }),
+      ...(approvalGroup && { approvalGroup }),
     },
   };
 }
 
 /**
  * Picks the suspended tool call (if any) the run pauses on after a turn: the
- * first in call order - or none when the turn already pauses on a tool that
- * needs approval itself. Only one approval can be pending per run, so the
- * result of every other suspended call is rewritten into an error saying its
- * sub-agent's call was never run (the sub-agent's paused state is dropped).
+ * first in call order - or none when `dropAll` (the run pauses for sign-in).
+ * The result of every other suspended call is rewritten into an error saying
+ * its sub-agent's call was never run (the sub-agent's paused state is
+ * dropped). Eve TOOLS-F12: a turn that pauses on calls needing approval keeps
+ * the first suspension, to pause on once they are decided.
  */
 export function settleSuspensions(
   messages: Message[],
   suspensions: readonly SubagentSuspension[],
-  pausingForTool: boolean
+  dropAll: boolean
 ): SubagentSuspension | undefined {
   const [first, ...rest] = suspensions;
-  for (const dropped of pausingForTool ? suspensions : rest) {
+  for (const dropped of dropAll ? suspensions : rest) {
     replaceToolResult(messages, {
       role: 'tool',
       content: JSON.stringify(
@@ -236,7 +243,7 @@ export function settleSuspensions(
       isError: true,
     });
   }
-  return pausingForTool ? undefined : first;
+  return dropAll ? undefined : first;
 }
 
 /** Replaces the tool result recorded for `message.toolCallId`, or appends `message` when there is none. */

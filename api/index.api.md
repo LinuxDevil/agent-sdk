@@ -26,6 +26,7 @@ export interface AgentApprovals {
     get(id: string): Promise<PendingApproval | undefined>;
     list(): Promise<PendingApproval[]>;
     resolve(decision: ApprovalDecision, options?: ResolveApprovalOptions): Promise<ExecutionResult>;
+    resolveAll(decisions: readonly ApprovalDecision[], options?: ResolveApprovalOptions): Promise<ExecutionResult>;
     streamAnswer(reply: {
         id: string;
         answer: string;
@@ -570,6 +571,12 @@ export interface ApprovalDecision {
 export function approvalExpired(pending: Pick<PendingApproval, 'expiresAt'>, now?: number): boolean;
 
 // @public
+export interface ApprovalGroupMember {
+    decision?: GroupDecision;
+    pending: PendingApproval;
+}
+
+// @public
 export type ApprovalKind = 'tool' | 'question' | 'sign-in';
 
 // @public
@@ -1061,6 +1068,7 @@ export interface Checkpoint {
     // (undocumented)
     agentId: string;
     approvalId?: string;
+    approvalIds?: string[];
     approvalKind?: ApprovalKind;
     attempts?: number;
     businessState?: unknown;
@@ -2250,8 +2258,8 @@ export interface ExecutionResult<TObject = unknown> {
         message: string;
     };
     agentName?: string;
-    // (undocumented)
     approvalId?: string;
+    approvalIds?: string[];
     backgroundTasks?: BackgroundTaskView[];
     budget?: BudgetExceeded;
     // (undocumented)
@@ -2278,11 +2286,12 @@ export interface ExecutionSnapshot {
     // (undocumented)
     agent: AgentConfig;
     agentFingerprint?: AgentFingerprint;
+    approvalGroup?: ApprovalGroupMember[];
     contextSessionId?: string;
     // (undocumented)
     currentMessages: Message[];
+    heldSubagent?: SubagentSuspension;
     metadata?: Record<string, unknown>;
-    // (undocumented)
     pendingToolCall: PendingApproval;
     principal?: Principal;
     remainingToolCalls?: ToolCall[];
@@ -2873,6 +2882,17 @@ const grepInput: z.ZodObject<{
     glob?: string | undefined;
     ignore_case?: boolean | undefined;
 }>;
+
+// @public
+export interface GroupDecision {
+    approved: boolean;
+    args?: Record<string, unknown>;
+    automatic?: true;
+    by?: Principal;
+    expired?: true;
+    note?: string;
+    remember?: 'session';
+}
 
 // @public
 export class GuardrailError extends SDKError {
@@ -4633,6 +4653,7 @@ export interface PendingApproval {
 // @public
 export interface PendingRun {
     approvalId?: string;
+    approvalIds?: string[];
     approvalKind?: ApprovalKind;
     checkpointId: string;
     kind: 'session' | 'run';
@@ -4663,6 +4684,7 @@ export interface PendingSignIn {
 export interface PendingTurn {
     // (undocumented)
     approvalId?: string;
+    approvalIds?: string[];
     approvalKind?: ApprovalKind;
     status: 'in-progress' | 'awaiting-approval';
 }
@@ -7347,8 +7369,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-C5TXhmCn.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-C5TXhmCn.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-DF_m0zkK.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-DF_m0zkK.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
