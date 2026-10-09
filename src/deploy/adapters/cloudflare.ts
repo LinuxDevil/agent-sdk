@@ -31,6 +31,7 @@ import type { DefinedSchedule } from '../../schedules/defineSchedule';
 import { specSchedules } from '../../schedules/specSchedules';
 import {
   WORKER_RUNTIME_SPECIFIER,
+  buildBundle,
   loadTsup,
   sdkRuntimePlugin,
   workerBuiltinImportersPlugin,
@@ -356,7 +357,8 @@ export const CloudflareWorkerAdapter: DeploymentAdapter = {
   async build(outDir: string): Promise<void> {
     const { build } = await loadTsup();
     const builtinImporters = new Map<string, Set<string>>();
-    await build({
+    // Eve E14 (CLI-F7): buildBundle() turns esbuild's raw log into one coded error and removes a half-written dist/.
+    await buildBundle(build, {
       config: false,
       entry: { worker: path.join(outDir, 'worker.ts') },
       outDir: path.join(outDir, 'dist'),
@@ -381,7 +383,7 @@ export const CloudflareWorkerAdapter: DeploymentAdapter = {
       dts: false,
       // Set LOUSHO_BUILD_VERBOSE=1 to see tsup's own build log (and full bundling errors).
       silent: !process.env.LOUSHO_BUILD_VERBOSE,
-    }).catch((error: unknown) => {
+    }, outDir).catch((error: unknown) => {
       throw explainWorkerBuildError(error);
     });
 
