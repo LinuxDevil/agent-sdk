@@ -55,7 +55,7 @@ accepted, and a request outside the base path is a 404).
 | `POST <basePath>` | `{ input, sessionId? }`: the turn streamed as SSE. This is what `useLoushoAgent({ url })` posts; without a `sessionId` each turn is a fresh session |
 | `POST <basePath>/approvals/:id` | `{ approved, note? }` or `{ answer }`: the continuation streamed (`useLoushoAgent`'s `approvalsUrl`) |
 | `POST <basePath>/chat` | `{ sessionId, input }`: the session API of the deployed server |
-| `GET <basePath>/chat/:sessionId` | the session's transcript and pending approvals |
+| `GET <basePath>/chat/:sessionId` | the session's transcript and pending approvals (a turn paused on an approval is in `pending`, not yet in `messages`) |
 | `POST <basePath>/chat/:sessionId/approvals/:id` | decide an approval in a session |
 | `POST <basePath>/ui` | with `uiMessageStream: true`: the AI SDK `useChat` endpoint |
 | `GET <basePath>/oauth/callback` | the OAuth provider's redirect after a sign-in; never behind `auth` (the single-use `state` protects it) |

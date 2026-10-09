@@ -426,7 +426,10 @@ provider packages:
 
 The install hint of a missing provider package and `lousho doctor` name the
 version for the `ai` you have installed, and `lousho doctor` flags a mismatched
-pair (for example `ai` 7 with `@ai-sdk/openai` 1.x). `OllamaProvider` loads
+pair (for example `ai` 7 with `@ai-sdk/openai` 1.x). Only `lousho doctor` and
+`fromAiSdk()` check the pairing: a built-in provider (a `model` string) loads
+whatever major is installed without checking it, so run `lousho doctor` to catch
+a mismatch before the first call. `OllamaProvider` loads
 `ollama-ai-provider` on `ai` 4 and `ollama-ai-provider-v2` on `ai` 6/7; the v2
 package peers on zod 4, which the SDK accepts, so install zod 4
 with it (zod 3 projects use Ollama with `ai` 4). `lousho init` scaffolds `ai@^7.0.0` with `@ai-sdk/*@^4.0.0` for

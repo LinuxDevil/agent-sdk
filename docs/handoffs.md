@@ -158,7 +158,8 @@ instruction is added to every target's system prompt.
 
 Because approvals and memory are run-level, options like `approve`, `approvalStore`,
 `permissionMode`, `approvalTtlMs`, `store` or `memory` on a target agent are never
-consulted after a handoff - `createAgent()` warns once (per target) when a
+consulted after a handoff - the agent warns once (per target), on its first run
+that reaches the handoff graph (not when `createAgent()` is called), when a
 reachable target was created with them; set them on the agent runs start with.
 
 ## Sessions
