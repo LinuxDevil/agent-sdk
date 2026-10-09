@@ -8,6 +8,7 @@
 import { GenerateOptions, GenerateResult, LLMProvider, Message, ToolDefinition } from '../providers';
 import { interceptProvider } from '../providers/interception';
 import { textOf } from '../providers/content';
+import { withRateLimit } from '../providers/rateLimit';
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { getToolInputSchema } from '../tools/toolContract';
@@ -262,7 +263,8 @@ export function generateInSpan(
 ): Promise<GeneratedStep> {
   const { exporter, onLLMResponse, hooks, redactContent } = options;
   // LOU-D46.2: the one place a run's model call is routed, so eval cassettes cover every entry point.
-  const provider = interceptProvider(options.provider, { agent: subagentNameOf(options) ?? options.agent?.name });
+  const limited = options.rateLimiter ? withRateLimit(options.provider, options.rateLimiter) : options.provider;
+  const provider = interceptProvider(limited, { agent: subagentNameOf(options) ?? options.agent?.name });
   const captureContent = resolveCaptureContent(options.captureContent);
   const init = llmSpanInit(provider, generateRequest, { redactContent, captureContent });
 

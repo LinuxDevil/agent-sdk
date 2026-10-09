@@ -27,6 +27,7 @@ import { ToolRegistry } from './tools/ToolRegistry';
 import { ToolDescriptor } from './types';
 import { modelFromEnv, resolveProviderSpec } from './providers/providerSpec';
 import { withFallback, withRetry, type WithRetryOptions } from './providers/resilience';
+import { RateLimiter, type RateLimitOptions } from './providers/rateLimit';
 import { isDefinedTool } from './tools/defineTool';
 import { assertHostedToolNames, isHostedTool, type HostedTool } from './tools/hosted';
 import { withAskQuestion, type ToolEntries } from './tools/built-in/askQuestion';
@@ -475,6 +476,20 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    */
   retry?: WithRetryOptions | false;
   /**
+   * Eve PROV-F14: client-side limits on the agent's model calls: calls queue
+   * (abort-aware) to stay under `requestsPerMinute`, `tokensPerMinute`
+   * (estimated, then the reported usage) and `maxConcurrent`. One budget is
+   * shared by every run of the agent and by the sub-agents and handoff
+   * targets it runs; pass a `createRateLimiter()` to share it across agents.
+   * A call and its retries count as one. See docs/configuration.md#rate-limits.
+   *
+   * @example
+   * ```ts
+   * createAgent({ model: 'openai/gpt-4o-mini', rateLimit: { requestsPerMinute: 60, maxConcurrent: 4 } });
+   * ```
+   */
+  rateLimit?: RateLimitOptions | RateLimiter;
+  /**
    * `provider/model` strings tried in order when the primary model's call
    * still fails after its retries (LOU-V7.2), each resolved like `model` and
    * retried with `retry`. Every call starts with the primary. `stream()`
@@ -871,6 +886,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     reasoning: config.reasoning,
     // C6: also for resumed runs and when this agent is a sub-agent.
     modelSettings: config.modelSettings,
+    // Eve PROV-F14: one budget for the agent's runs, its sub-agents and handoff targets.
+    ...(config.rateLimit && { rateLimiter: config.rateLimit instanceof RateLimiter ? config.rateLimit : new RateLimiter(config.rateLimit) }),
     toolSearch: config.toolSearch,
     // N14: also for resumed runs and when this agent is a sub-agent.
     ...codeModeOption(config.codeMode),
