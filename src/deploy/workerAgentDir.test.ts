@@ -7,6 +7,8 @@ import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { defineTool } from '../tools/defineTool';
 import { createMockProvider } from '../providers/mock';
+import { mockModel } from '../testing';
+import { deny } from '../execution/permissions';
 import { defineSchedule } from '../schedules/defineSchedule';
 import { httpChannel } from '../channels/httpChannel';
 import { defineMemory } from '../memory/defineMemory';
@@ -319,5 +321,94 @@ describe('the Worker runtime of an agent directory: subagents, channels, memory,
     // A cron that matches nothing runs nothing.
     await handleWorkerAgentDirScheduled({ cron: '0 10 * * MON' }, {}, { waitUntil: (p) => waited.push(p) }, agentDir);
     expect(waited).toHaveLength(2); // still resolves and registers its (empty) waitUntil
+  });
+});
+
+describe('the Worker runtime of an agent directory: sub-agents run through the native sub-agent runtime (Eve E14, MA-F5)', () => {
+  const usage = (inputTokens: number, outputTokens: number) => ({ inputTokens, outputTokens });
+
+  /** A lead (agent.ts config: `provider` and `permissions`) whose `coder` sub-agent writes a file and deploys. */
+  function coderDir(provider: ReturnType<typeof mockModel>, writes: string[], leadConfig: Record<string, unknown> = {}): WorkerAgentDir {
+    const writeFile = defineTool({ name: 'write_file', description: 'Writes a file', input: z.object({ path: z.string() }), execute: ({ path }) => (writes.push(path), 'written') });
+    const deploy = defineTool({ name: 'deploy', description: 'Deploys', input: z.object({}), needsApproval: true, execute: () => 'deployed' });
+    return dir({
+      config: undefined,
+      configFile: 'agent.ts',
+      configModule: { default: { provider, ...leadConfig } },
+      toolModules: [],
+      subagents: [
+        {
+          name: 'coder',
+          dir: dir({
+            name: 'coder',
+            instructions: 'You code.',
+            config: { description: 'Writes and deploys code' },
+            toolModules: [
+              { file: 'tools/write_file.ts', module: { default: writeFile } },
+              { file: 'tools/deploy.ts', module: { default: deploy } },
+            ],
+          }),
+        },
+      ],
+    });
+  }
+
+  for (const [label, call] of [
+    ['the delegate_to_<name> alias', { name: 'delegate_to_coder', args: { task: 'write a.txt then deploy' } }],
+    ['the task tool', { name: 'task', args: { agent: 'coder', prompt: 'write a.txt then deploy', description: 'write and deploy' } }],
+  ] as const) {
+    it(`via ${label}: inherits the lead's deny rules, pauses the lead for approval and rolls up usage`, async () => {
+      const provider = mockModel([
+        { toolCalls: [call], usage: usage(10, 1) }, // lead
+        { toolCalls: [{ name: 'write_file', args: { path: 'a.txt' } }], usage: usage(1000, 100) }, // coder
+        { toolCalls: [{ name: 'deploy', args: {} }], usage: usage(1000, 100) }, // coder -> pauses
+        { text: 'coder done', usage: usage(1, 1) }, // coder, after the approval
+        { text: 'lead done', usage: usage(10, 1) }, // lead
+      ]);
+      const writes: string[] = [];
+      const lead = workerAgentFromDir(coderDir(provider, writes, { permissions: [deny('write_file')] }), {});
+
+      const paused = await lead.send('go');
+
+      expect(writes).toEqual([]);
+      expect(paused.finishReason).toBe('awaiting-approval');
+      expect(await lead.approvals.get(paused.approvalId!)).toMatchObject({ toolName: 'deploy', subagentPath: ['coder'] });
+      expect(paused.usage.inputTokens).toBeGreaterThanOrEqual(2010);
+
+      const done = await lead.approvals.resolve({ id: paused.approvalId!, approved: true });
+      expect(done.finishReason).toBe('stop');
+      expect(done.text).toBe('lead done');
+    });
+  }
+
+  it("lets a sub-agent directory's own inline approver decide its calls", async () => {
+    const provider = mockModel([{ toolCalls: [{ name: 'delegate_to_coder', args: { task: 'deploy' } }] }, { toolCalls: [{ name: 'deploy', args: {} }] }, 'coder done', 'lead done']);
+    const agentDir = coderDir(provider, []);
+    agentDir.subagents![0].dir.config = undefined;
+    agentDir.subagents![0].dir.configFile = 'agent.ts';
+    agentDir.subagents![0].dir.configModule = { default: { description: 'Writes and deploys code', approve: () => 'approve' } };
+
+    const result = await workerAgentFromDir(agentDir, {}).send('go');
+
+    expect(result.finishReason).toBe('stop');
+    expect(JSON.stringify(provider.calls[2].messages)).toContain('deployed');
+  });
+
+  it('raises maxSubagentDepth to the depth of nested sub-agent directories', async () => {
+    const provider = mockModel([
+      { toolCalls: [{ name: 'delegate_to_mid', args: { task: 'ask leaf' } }] },
+      { toolCalls: [{ name: 'delegate_to_leaf', args: { task: 'answer' } }] },
+      'leaf answer',
+      'mid answer',
+      'lead answer',
+    ]);
+    const leaf = dir({ name: 'leaf', instructions: 'You are leaf.', config: { description: 'Leaf' }, toolModules: [] });
+    const mid = dir({ name: 'mid', instructions: 'You are mid.', config: { description: 'Middle' }, toolModules: [], subagents: [{ name: 'leaf', dir: leaf }] });
+    const lead = dir({ config: undefined, configFile: 'agent.ts', configModule: { default: { provider } }, toolModules: [], subagents: [{ name: 'mid', dir: mid }] });
+
+    const result = await workerAgentFromDir(lead, {}).send('go');
+
+    expect(result.text).toBe('lead answer');
+    expect(JSON.stringify(provider.calls[3].messages)).toContain('leaf answer');
   });
 });

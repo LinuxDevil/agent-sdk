@@ -114,8 +114,12 @@ cd .lousho/build/cloudflare-worker && npx wrangler deploy
   reports the problem.
 - `subagents/<name>/` directories are embedded recursively, with the same layout rules as the
   parent's. Each needs a `description` in its config (the parent model reads it to decide
-  when to delegate); the parent's tools gain a `delegate_to_<name>` tool that runs the
-  sub-agent's turn. A sub-agent inherits the parent's model unless its config sets its own.
+  when to delegate). Each is a native sub-agent of the parent, as with `loadAgentDir()`: the
+  parent delegates with the `task` tool or its `delegate_to_<name>` alias, and the sub-agent
+  runs inside the parent's run, so the parent's `permissions` rules hold in it, its approvals
+  pause the parent (its own inline `approve` decides them first) and its usage is added to the
+  parent's (see [Sub-agents](./agent-directories.md#sub-agents)). A sub-agent inherits the
+  parent's model unless its config sets its own.
 - `schedules/` files become [cron triggers](#scheduled-runs): the build evaluates each file
   to write its cron expression to `wrangler.toml`'s `[triggers] crons` (the same UTC /
   five-field / day-name rules as a spec's triggers), and the generated Worker exports a
