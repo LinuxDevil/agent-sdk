@@ -470,7 +470,7 @@ interface CheckpointStore {
 type CheckpointUsage = Pick<RunUsage, 'promptTokens' | 'completionTokens' | 'totalTokens'> & Partial<RunUsage>;
 
 // @public
-type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length-exceeded' | 'auth-failure' | 'unknown';
+type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length-exceeded' | 'quota-exceeded' | 'auth-failure' | 'unknown';
 
 // @public
 interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
@@ -1879,14 +1879,14 @@ export function useTodos(agent: Pick<UseLoushoAgentResult, 'todos'>): TodoView;
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-BnXk466I.d.ts:768:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BnXk466I.d.ts:785:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BnXk466I.d.ts:1146:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BnXk466I.d.ts:3186:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BnXk466I.d.ts:3187:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
-// dist/index-cfK6uj2-.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-cfK6uj2-.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-cfK6uj2-.d.ts:1442:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
+// dist/createAgent-DeLyD_05.d.ts:778:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-DeLyD_05.d.ts:795:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-DeLyD_05.d.ts:1156:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-DeLyD_05.d.ts:3196:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
+// dist/createAgent-DeLyD_05.d.ts:3197:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
+// dist/index-CAF7vF8c.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-CAF7vF8c.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-CAF7vF8c.d.ts:1446:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
