@@ -54,6 +54,8 @@ jobs:
       # Compile-time API tests (*.test-d.ts): inference of defineTool, flow types, fs adapter.
       - run: npm run test:types
       - run: npm run docs:llms:check
+      # TypeDoc "not documented" count may only go down (Eve DUI-F18).
+      - run: npm run docs:ratchet
       # registry/dist is generated from registry/; fail if stale (M7b).
       - run: npm run registry:check
       - run: npm run test:coverage
