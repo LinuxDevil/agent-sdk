@@ -52,6 +52,42 @@ describe('createRouteHandler (LOU-P4)', () => {
     expect(continued.at(-1)).toMatchObject({ finishReason: 'stop', text: 'Deployed.' });
   });
 
+  describe('a step paused on several calls (Eve TOOLS-F12)', () => {
+    const release = defineTool({ name: 'release', description: 'Releases', input: z.object({}), needsApproval: true, execute: () => 'released' });
+    const twoCalls = { toolCalls: [{ name: 'deploy', id: 'c1' }, { name: 'release', id: 'c2' }] };
+
+    it('each approval is decided through the route, in any order; the last runs the step', async () => {
+      const { handler } = createRouteHandler(createAgent({ provider: mockModel([twoCalls, 'Both done.']), tools: [deploy, release], store: memoryStore() }));
+      const paused = await frames(await handler(post('/api/agent/chat', { sessionId: 'm1', input: 'ship and release' })));
+      const ids = paused.filter((e) => e.type === 'approval.requested').map((e) => e.approvalId as string);
+      expect(ids).toHaveLength(2);
+
+      const partial = await frames(await handler(post(`/api/agent/chat/m1/approvals/${ids[1]}`, { approved: true })));
+      expect(partial.find((e) => e.type === 'tool.done')).toBeUndefined();
+      expect(partial.at(-1)).toMatchObject({ type: 'run.done', finishReason: 'awaiting-approval' });
+
+      const done = await frames(await handler(post(`/api/agent/chat/m1/approvals/${ids[0]}`, { approved: true })));
+      expect(done.filter((e) => e.type === 'tool.done').map((e) => e.result)).toEqual(['shipped', 'released']);
+      expect(done.at(-1)).toMatchObject({ finishReason: 'stop', text: 'Both done.' });
+    });
+
+    it('after a restart, the session checkpoint lets the route decide any call of the step', async () => {
+      const store = memoryStore();
+      const first = createRouteHandler(createAgent({ provider: mockModel([twoCalls]), tools: [deploy, release], store }));
+      const paused = await frames(await first.handler(post('/api/agent/chat', { sessionId: 'm2', input: 'ship and release' })));
+      const ids = paused.filter((e) => e.type === 'approval.requested').map((e) => e.approvalId as string);
+
+      const second = createRouteHandler(createAgent({ provider: mockModel([]), tools: [deploy, release], store }));
+      expect((await second.handler(post(`/api/agent/chat/m2/approvals/${ids[1]}`, { approved: false }))).status).toBe(200);
+
+      const third = createRouteHandler(createAgent({ provider: mockModel(['Shipped only.']), tools: [deploy, release], store }));
+      const done = await frames(await third.handler(post(`/api/agent/chat/m2/approvals/${ids[0]}`, { approved: true })));
+      expect(done.at(-1)).toMatchObject({ finishReason: 'stop', text: 'Shipped only.' });
+      const saved = await (await third.GET(get('/api/agent/chat/m2'))).json();
+      expect(saved.messages.map((m: { role: string }) => m.role)).toEqual(['user', 'assistant', 'tool', 'tool', 'assistant']);
+    });
+  });
+
   it('checks a bearer token, but leaves /health open', async () => {
     const { handler } = routes(['ok'], { auth: 'sekret' });
     const body = { sessionId: 's3', input: 'hi' };

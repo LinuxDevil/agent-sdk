@@ -16,7 +16,8 @@ export interface HttpChannelOptions {
  * A JSON channel: `POST <basePath>/http` with `{ sessionKey, input }` (input
  * a string or content parts) answers `200 { sessionId, text, finishReason }`.
  * When the turn paused, `approval` is the pending request and `text` its
- * prompt; decide it with `POST <basePath>/http/approvals/<id>`. A body without
+ * prompt; decide it with `POST <basePath>/http/approvals/<id>`. A step paused
+ * on several calls also lists them all in `approvals` (decide each). A body without
  * `sessionKey` and `input` gets a 400.
  *
  * @example
@@ -37,8 +38,9 @@ export function httpChannel(options: HttpChannelOptions = {}): Channel {
       }
       return { sessionKey, input: input as AgentInput, replyTo: null };
     },
-    async reply({ sessionId, text, result, approval, respond }) {
-      respond?.(200, { sessionId, text, finishReason: result?.finishReason, approval });
+    async reply({ sessionId, text, result, approval, approvals, respond }) {
+      // Eve TOOLS-F12: a step paused on several calls lists all of them.
+      respond?.(200, { sessionId, text, finishReason: result?.finishReason, approval, ...(approvals && { approvals }) });
     },
   });
 }

@@ -75,7 +75,7 @@ can mount it next to your own routes.
 | `verify(req)` | Optional. Authenticate the request (a signature, a token). Return `true`/`false` or `{ ok, reason? }`; `false` answers `401 {"error":"Unauthorized"}` before anything is parsed or run. |
 | `parse(req, respond, ctx)` | The message: `{ sessionKey, input, metadata?, principal?, replyTo, event? }`; `{ decision: { id, approved?, note?, answer? } }` to resolve a pause this channel's turn stopped on (a button click); or `null` to acknowledge the request without a turn (a bot's own message, a retry). Call `respond(status, body)` to answer before the turn runs (a surface with a short timeout, a handshake). |
 | `reply(ctx)` | Deliver the reply: `ctx.text`, plus `inbound`, `sessionId`, `result`, `events`, `approval`, and `respond(status, body)` while the request is still open. |
-| `onApproval(ctx)` | Optional. Render a pause (buttons, a form). Default: `reply` with a text prompt in `ctx.text` and the request in `ctx.approval`. |
+| `onApproval(ctx)` | Optional. Render a pause (buttons, a form). Default: `reply` with a text prompt in `ctx.text` and the request in `ctx.approval` (`ctx.approvals`: every pending call, when the step paused on several). |
 | `onError(error, { channel, stage, sessionId? })` | Optional. Receives failures after the request was already acknowledged (a reply that could not be delivered, a failed turn or approval continuation). Default: `mountChannels({ onError })`, else `console.error` with the channel, stage, session id and SDK error code (never a token). A failed turn also tells the user "Sorry, that request failed." in the conversation (best effort). |
 | `stream` | Optional. `true` calls `reply` with `partial: true` and the text so far as the model writes, then once more with the final text. |
 | `sessionId(inbound)` | Optional. The session for a message. Default: `` `${name}:${sessionKey}` ``. |
@@ -165,6 +165,17 @@ through the same channel's `reply` (or `onApproval` again, if it pauses again):
   conversation's turn waits on exactly this approval (else 404), and the
   continuation joins its transcript. In process, a `sessionKey` naming another
   conversation than the one that paused gets 404.
+
+When one model step pauses on several calls (see
+[Several calls in one step](approvals.md#several-calls-in-one-step)),
+`onApproval` is called once per call, in call order: each gets its own
+`approval`, all of them get the step's pending calls in `approvals`, and only
+the first gets `respond` (the http channel answers with `approval` and
+`approvals`). Each call is decided on its own, through either way above, with
+the conversation's `sessionKey` after a restart. A decision that leaves other
+calls of the step undecided runs nothing and is answered through `reply` with
+`Decision recorded. Still waiting on: ...`; the decision on the last one runs
+the step and delivers the continuation.
 
 A decision is claimed before `onDecision` runs, so two decisions on one
 approval at once (a double click) decide it once: the second gets
