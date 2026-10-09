@@ -43,7 +43,7 @@ and in the template:
 
 ## What differs from React
 
-- **State is refs.** `messages`, `status`, `pendingApproval`, `error`, `usage`,
+- **State is refs.** `messages`, `status`, `pendingApproval`, `error`, `usage`, `finishReason`,
   `todos` and `lastEvent` are read-only `ComputedRef`s: use `.value` in script,
   nothing in a template. The commands (`send`, `stop`, `approve`, `reject`,
   `answer`) are plain functions with the React hook's signatures.

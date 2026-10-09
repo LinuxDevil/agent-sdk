@@ -261,6 +261,7 @@ export type AgentUIAction =
 // @public (undocumented)
 export interface AgentUIState {
     error: AgentEventError | null;
+    finishReason: string | null;
     // (undocumented)
     lastEvent: AgentEvent | null;
     // (undocumented)
@@ -1814,11 +1815,15 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
 
 // @public
 export interface UIMessage {
+    finishReason?: string;
     // (undocumented)
     id: string;
+    object?: unknown;
     reasoning?: string;
     // (undocumented)
     role: 'user' | 'assistant';
+    // @internal
+    stepBreak?: boolean;
     // (undocumented)
     text: string;
     toolCalls: UIToolCall[];

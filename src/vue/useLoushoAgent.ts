@@ -61,6 +61,7 @@ export function useLoushoAgent(source: MaybeRef<LoushoAgentSource>, options: May
     pendingApproval: field('pendingApproval'),
     error: field('error'),
     usage: field('usage'),
+    finishReason: field('finishReason'),
     todos: field('todos'),
     lastEvent: field('lastEvent'),
     ...runner,
