@@ -282,8 +282,15 @@ function toContentPart(part: UIMessagePartLike): ContentPart | undefined {
   return { type: 'file', data: part.url, mimeType: part.mediaType ?? 'application/octet-stream', ...(part.filename && { filename: part.filename }) };
 }
 
+/** Eve TOOLS-F9: a client-sent message the run may take: an object with role `user` or `assistant`. */
+function isClientMessage(message: unknown): message is UIMessageLike & { role: 'user' | 'assistant' } {
+  if (typeof message !== 'object' || message === null) return false;
+  const { role } = message as { role?: unknown };
+  return role === 'user' || role === 'assistant';
+}
+
 function toContent(parts: UIMessagePartLike[]): string | ContentPart[] {
-  const content = parts.flatMap((part) => toContentPart(part) ?? []);
+  const content = parts.flatMap((part) => (typeof part === 'object' && part !== null ? (toContentPart(part) ?? []) : []));
   return content.length === 1 && content[0].type === 'text' ? content[0].text : content;
 }
 
@@ -291,14 +298,18 @@ function toContent(parts: UIMessagePartLike[]): string | ContentPart[] {
  * The `UIMessage[]` `useChat` posts as an `AgentInput`: text parts become text,
  * `image/*` file parts images and other file parts files (the part's `url`, a
  * `data:` URL or an `http(s)` URL, is the data); tool, reasoning, data and any
- * other parts are ignored, and messages left empty are dropped. With
+ * other parts are ignored, and messages left empty are dropped. Only `user`
+ * and `assistant` messages are kept (Eve TOOLS-F9): the body comes from the
+ * client, so a `system` (or any other) role it sends is dropped instead of
+ * reaching the model as instructions. With
  * `lastUserOnly` (use it when the run has a `sessionId`, whose transcript
  * already holds the earlier turns) only the last user message is returned, as
  * the new input.
  */
 export function fromUIMessages(messages: readonly UIMessageLike[], options: { lastUserOnly?: boolean } = {}): AgentInput {
-  const converted: Message[] = messages
-    .map((message): Message => ({ role: message.role, content: toContent(message.parts ?? []) }))
+  const converted: Message[] = (Array.isArray(messages) ? messages : [])
+    .filter(isClientMessage)
+    .map((message): Message => ({ role: message.role, content: toContent(Array.isArray(message.parts) ? message.parts : []) }))
     .filter((message) => message.content.length > 0);
   if (!options.lastUserOnly) return converted;
   const last = [...converted].reverse().find((message) => message.role === 'user');

@@ -150,5 +150,10 @@ parts and other file parts to file parts (the part's `url`, a `data:` or
 `http(s)` URL, becomes the data). Tool, reasoning, data, source and unknown
 parts are ignored, and messages that end up empty are dropped.
 
+The messages come from the client, so only `user` and `assistant` messages are
+kept: a `system` message (or any other role, or an entry that is not a message)
+is dropped, so a caller cannot add instructions to the agent's prompt. Set
+instructions on the agent (`createAgent({ instructions })`), not in the request.
+
 A dedicated `@lousho/build-ai-agent/ai-sdk-ui` subpath may follow; for now the
 functions come from the package root.
