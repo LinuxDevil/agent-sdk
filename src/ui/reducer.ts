@@ -41,6 +41,12 @@ export interface UIMessage {
   toolCalls: UIToolCall[];
   /** LOU-V13: the model's reasoning text for this turn (`reasoning.delta`s), when it streamed any. */
   reasoning?: string;
+  /** Eve CORE-F9: the run's `finishReason` (`run.done`), set on the assistant message it ended; absent while it runs. */
+  finishReason?: string;
+  /** Eve CORE-F9: the run's validated typed `output` (`run.done.object`), when the run had one. */
+  object?: unknown;
+  /** @internal Eve CORE-F9: a new step started after this text, so the next `text.delta` opens a new paragraph. */
+  stepBreak?: boolean;
 }
 
 /** `streaming` while a run (or an approval's continuation) is in flight. */
@@ -82,6 +88,13 @@ export interface AgentUIState {
   error: AgentEventError | null;
   /** Token usage of the last finished run (`run.done`). */
   usage: AgentEventUsage | null;
+  /**
+   * Eve CORE-F9: how the last run ended (`run.done`): `'stop'`, or `'max-steps'`,
+   * `'output-invalid'`, `'budget-exceeded'`, `'guardrail'`, `'aborted'`, ...
+   * `null` before the first run ends. The first four also set `status: 'error'`
+   * and `error`, so they are not mistaken for success.
+   */
+  finishReason: string | null;
   /** The agent's todo list, from the last top-level `todo.updated`; carries across turns and is cleared by `reset()`. */
   todos: readonly Todo[];
   lastEvent: AgentEvent | null;
@@ -104,13 +117,28 @@ export const initialAgentUIState: AgentUIState = {
   pendingApproval: null,
   error: null,
   usage: null,
+  finishReason: null,
   todos: [],
   lastEvent: null,
 };
 
+/** Eve CORE-F9: endings that are neither a normal answer nor already an `error` event. */
+const FAILED_ENDINGS: Record<string, string> = {
+  'max-steps': 'The run stopped at its step limit (maxSteps) before finishing.',
+  'output-invalid': 'The final reply did not match the requested output schema.',
+  'budget-exceeded': 'The run stopped because it exceeded its budget (limits).',
+  guardrail: 'The run was stopped by a guardrail.',
+};
+
 function settledStatus(finishReason: string): AgentUIStatus {
   if (finishReason === 'awaiting-approval') return 'awaiting-approval';
-  return finishReason === 'error' ? 'error' : 'idle';
+  return finishReason === 'error' || Object.hasOwn(FAILED_ENDINGS, finishReason) ? 'error' : 'idle';
+}
+
+/** Eve CORE-F9: the error to show for a non-`stop` ending, unless an `error` event already set one. */
+function endingError(finishReason: string, current: AgentEventError | null): AgentEventError | null {
+  if (current || !Object.hasOwn(FAILED_ENDINGS, finishReason)) return current;
+  return { name: 'RunEndedError', message: FAILED_ENDINGS[finishReason], code: 'LOUSHO_RUN_ENDED' };
 }
 
 /** Applies `update` to the last assistant message, appending an empty one first if the last message is not one. */
@@ -175,8 +203,30 @@ function resumed(state: AgentUIState, { text, finishReason, usage, approval }: A
     text: message.text && text ? `${message.text}\n\n${text}` : message.text || text,
     toolCalls: message.toolCalls.map((call) => (call.status === 'running' ? { ...withoutPartial(call), status: 'done' } : call)),
   }));
-  const next = { ...state, messages, status: settledStatus(finishReason), usage: usage ?? state.usage };
+  const next = {
+    ...state,
+    messages,
+    status: settledStatus(finishReason),
+    usage: usage ?? state.usage,
+    finishReason,
+    error: endingError(finishReason, state.error),
+  };
   return approval ? pause(next, approval) : next;
+}
+
+/**
+ * Eve CORE-F9: stamps the run's `finishReason` (and typed `object`) on the
+ * assistant message. A run with an `output` schema shows only its final reply:
+ * the rejected attempts of an earlier step are replaced by `run.done.text`.
+ */
+function finishMessage(messages: UIMessage[], event: Extract<AgentEvent, { type: 'run.done' }>): UIMessage[] {
+  const typed = event.object !== undefined || event.finishReason === 'output-invalid';
+  return onAssistant(messages, ({ stepBreak: _stepBreak, ...m }) => ({
+    ...m,
+    ...(typed && event.text && { text: event.text }),
+    finishReason: event.finishReason,
+    ...(event.object !== undefined && { object: event.object }),
+  }));
 }
 
 function isUIAction(event: AgentEvent | AgentUIAction): event is AgentUIAction {
@@ -189,7 +239,7 @@ function reduceAction(state: AgentUIState, event: AgentUIAction): AgentUIState {
     case 'ui.send': {
       const user: UIMessage = { id: `m${state.messages.length}`, role: 'user', text: describeInput(event.input), toolCalls: [] };
       const messages = onAssistant([...state.messages, user], (message) => message);
-      return { ...state, messages, status: 'streaming', error: null, pendingApproval: null };
+      return { ...state, messages, status: 'streaming', error: null, finishReason: null, pendingApproval: null };
     }
     case 'ui.decide': {
       const id = state.pendingApproval?.toolCallId ?? '';
@@ -224,8 +274,14 @@ export function reduceAgentEvents(state: AgentUIState, event: AgentEvent | Agent
   const next = { ...state, lastEvent: event };
   if (event.subagent && event.type !== 'approval.requested') return next;
   switch (event.type) {
+    case 'step.start':
+      // Eve CORE-F9: a later step's text is a new paragraph, not glued to the earlier one ("weather.It is").
+      return { ...next, messages: onAssistant(state.messages, (m) => (m.text ? { ...m, stepBreak: true } : m)) };
     case 'text.delta':
-      return { ...next, messages: onAssistant(state.messages, (m) => ({ ...m, text: m.text + event.text })) };
+      return {
+        ...next,
+        messages: onAssistant(state.messages, ({ stepBreak, ...m }) => ({ ...m, text: stepBreak && m.text ? `${m.text}\n\n${event.text}` : m.text + event.text })),
+      };
     case 'reasoning.delta':
       return { ...next, messages: onAssistant(state.messages, (m) => ({ ...m, reasoning: (m.reasoning ?? '') + event.text })) };
     case 'tool.start':
@@ -248,7 +304,14 @@ export function reduceAgentEvents(state: AgentUIState, event: AgentEvent | Agent
     case 'error':
       return { ...next, error: event.error };
     case 'run.done':
-      return { ...next, status: settledStatus(event.finishReason), usage: event.usage ?? state.usage };
+      return {
+        ...next,
+        messages: finishMessage(state.messages, event),
+        status: settledStatus(event.finishReason),
+        usage: event.usage ?? state.usage,
+        finishReason: event.finishReason,
+        error: endingError(event.finishReason, state.error),
+      };
     default:
       return next;
   }

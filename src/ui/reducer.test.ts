@@ -232,4 +232,72 @@ describe('reduceAgentEvents (LOU-D15)', () => {
       expect(reduce({ ...event, subagent: { name: 'researcher', depth: 1, toolCallId: 'c1' } }).todos).toEqual([]);
     });
   });
+
+  describe('multi-step text and endings (Eve CORE-F9)', () => {
+    it('starts a new paragraph for each step instead of gluing step texts', () => {
+      const state = reduce(
+        send,
+        ...events(
+          { type: 'step.start', step: 1 },
+          { type: 'text.delta', text: 'Let me check the weather.' },
+          { type: 'tool.start', toolCallId: 'c1', toolName: 'weather', args: {} },
+          { type: 'tool.done', toolCallId: 'c1', toolName: 'weather', result: 1, durationMs: 1 },
+          { type: 'step.start', step: 2 },
+          { type: 'text.delta', text: 'It is ' },
+          { type: 'text.delta', text: '20C.' },
+          { type: 'run.done', finishReason: 'stop', text: 'Let me check the weather.It is 20C.' }
+        )
+      );
+      expect(state.messages[1].text).toBe('Let me check the weather.\n\nIt is 20C.');
+      expect(state.messages[1]).not.toHaveProperty('stepBreak');
+    });
+
+    it('adds no separator for a tool-only step', () => {
+      const state = reduce(
+        send,
+        ...events(
+          { type: 'step.start', step: 1 },
+          { type: 'tool.start', toolCallId: 'c1', toolName: 'weather', args: {} },
+          { type: 'step.start', step: 2 },
+          { type: 'text.delta', text: 'Done.' }
+        )
+      );
+      expect(state.messages[1].text).toBe('Done.');
+    });
+
+    it('records finishReason and the typed object, and shows only the final reply of an output run', () => {
+      const state = reduce(
+        send,
+        ...events(
+          { type: 'step.start', step: 1 },
+          { type: 'text.delta', text: 'not json' },
+          { type: 'step.start', step: 2 },
+          { type: 'text.delta', text: '{"a":"x"}' },
+          { type: 'run.done', finishReason: 'stop', text: '{"a":"x"}', object: { a: 'x' } }
+        )
+      );
+      expect(state.finishReason).toBe('stop');
+      expect(state.status).toBe('idle');
+      expect(state.messages[1]).toMatchObject({ text: '{"a":"x"}', finishReason: 'stop', object: { a: 'x' } });
+    });
+
+    it.each(['max-steps', 'output-invalid', 'budget-exceeded', 'guardrail'])('surfaces a %s ending as an error', (finishReason) => {
+      const state = reduce(send, ...events({ type: 'run.done', finishReason, text: 'x', usage }));
+      expect(state.status).toBe('error');
+      expect(state.error).toMatchObject({ code: 'LOUSHO_RUN_ENDED' });
+      expect(state.finishReason).toBe(finishReason);
+      expect(state.messages[1].finishReason).toBe(finishReason);
+    });
+
+    it('keeps an error event over the synthesized ending error, and clears both on the next send', () => {
+      const failed = reduce(
+        send,
+        ...events({ type: 'error', error: { name: 'E', message: 'boom' } }, { type: 'run.done', finishReason: 'budget-exceeded', text: '' })
+      );
+      expect(failed.error).toEqual({ name: 'E', message: 'boom' });
+      const again = reduceAgentEvents(failed, send);
+      expect(again.error).toBeNull();
+      expect(again.finishReason).toBeNull();
+    });
+  });
 });

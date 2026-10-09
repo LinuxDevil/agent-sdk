@@ -64,12 +64,13 @@ on the server.
 
 | Field | What it is |
 | ----- | ---------- |
-| `messages` | `UIMessage[]`: `{ id, role: 'user' \| 'assistant', text, toolCalls, reasoning? }`. Each `send()` adds a user message and an assistant message that fills in as `text.delta` and tool events arrive; `reasoning` collects the model's `reasoning.delta` text when it streams any. |
+| `messages` | `UIMessage[]`: `{ id, role: 'user' \| 'assistant', text, toolCalls, reasoning?, finishReason?, object? }`. The text of each model step starts a new paragraph (`\n\n`); in a run with an `output` schema it is the final reply, and `object` holds the validated value. Each `send()` adds a user message and an assistant message that fills in as `text.delta` and tool events arrive; `reasoning` collects the model's `reasoning.delta` text when it streams any. |
 | `toolCalls[i]` | `{ id, name, args, status, result?, error?, partial? }`, `status` being `'running'`, `'awaiting-approval'`, `'done'`, `'error'` or `'rejected'`. `partial` is the latest `tool.partial` snapshot of a running [streaming tool](./tools.md#streaming-partial-results), removed when the call settles or pauses. |
 | `status` | `'idle'`, `'streaming'`, `'awaiting-approval'` or `'error'`. |
 | `pendingApproval` | `{ id, toolCallId, toolName, args }` of the tool call the run paused on, else `null`. For an `ask_question` call it also has `kind: 'question'` and `question: { text, options?, allowFreeText? }`; a tool waiting on an OAuth sign-in has `kind: 'sign-in'` and `signIn: { provider, displayName?, url }` (see [What the user sees](./oauth.md#what-the-user-sees)). |
 | `error` | `{ name, message }` of the last `error` event or a failed request, else `null`. |
 | `usage` | Token usage of the last finished run (from `run.done`), else `null`. |
+| `finishReason` | How the last run ended (`run.done`): `'stop'`, `'max-steps'`, `'output-invalid'`, `'budget-exceeded'`, `'guardrail'`, ...; `null` before the first run ends. The four named after `stop` also set `status: 'error'` and an `error` with code `LOUSHO_RUN_ENDED` (unless an `error` event already did), so the chat does not look like it finished normally. |
 | `todos` | The agent's todo list (`{ id, content, status }[]`), set by each `todo.updated` event of the [todo tools](./tools.md#todo-tools); `[]` until the first one. It carries across turns; see [Todos](#todos). |
 | `lastEvent` | The last event received, for anything the projection does not cover. |
 | `send(input)` | Starts a turn. If a turn is still running, it is aborted first. `input` is a string, content parts or a `Message[]` (an `AgentInput`); the user bubble shows the text with an `[image]` / `[file]` marker per other part (remote mode POSTs it as `{ "input": ... }`). |

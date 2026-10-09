@@ -48,7 +48,7 @@ snippets here):
 ## What differs from React
 
 - **State is the store value.** `$agent` is the React hook's state object:
-  `messages`, `status`, `pendingApproval`, `error`, `usage`, `todos` and
+  `messages`, `status`, `pendingApproval`, `error`, `usage`, `finishReason`, `todos` and
   `lastEvent`.
   The commands (`send`, `stop`, `approve`, `reject`, `answer`) sit on the
   store itself with the React hook's signatures; they do not need a
