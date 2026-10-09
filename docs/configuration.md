@@ -398,6 +398,23 @@ with code `LOUSHO_CONFIG_INVALID` whose `field` names the key, e.g.
 `modelSettings.temperature`. A provider with a narrower range (Anthropic's
 `temperature` is 0 to 1) still rejects a value outside it.
 
+### Per-call options
+
+Besides `modelSettings`, a `send()` or `stream()` call can set its own
+`maxSteps` (instead of the agent's; a whole number of at least 1, checked like
+`createAgent`'s) and `instructions`, which are appended to the agent's
+instructions for that run:
+
+```ts
+await agent.send('Summarize the ticket.', { maxSteps: 2, instructions: 'Answer in French.' });
+```
+
+The appended `instructions` go with every model call of the run (a handoff
+target's too) but are not written to the transcript, so a later call with the
+same `sessionId` runs without them unless it passes them again. A run continued
+by `agent.approvals.resolve()` or `agent.resume()` uses the agent's `maxSteps`
+and instructions.
+
 To share options between agents, type them as `CreateAgentBase` and spread
 them into `createAgent()`. Do not use `Partial<CreateAgentConfig>`: that type
 keeps `model` / `provider` and `instructions` / `prompt` mutually exclusive,

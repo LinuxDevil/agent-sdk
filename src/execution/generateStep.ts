@@ -185,7 +185,11 @@ export async function prepareGenerateRequest(
     if (deferral && generateRequest.tools === before) reloadTools(generateRequest, tools, messages, deferral);
   }
 
-  generateRequest.messages = withLeadingSystemOnly(generateRequest.messages);
+  // Eve CORE-F13: a call's `instructions` join the leading system message (the transcript is not changed).
+  const outgoing = options.appendInstructions
+    ? [...generateRequest.messages, { role: 'system' as const, content: options.appendInstructions }]
+    : generateRequest.messages;
+  generateRequest.messages = withLeadingSystemOnly(outgoing);
   return generateRequest;
 }
 

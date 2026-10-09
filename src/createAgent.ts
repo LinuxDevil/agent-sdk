@@ -703,6 +703,30 @@ export interface SendOptions {
    */
   modelSettings?: ModelSettings;
   /**
+   * Eve CORE-F13: this run's step limit, instead of the agent's `maxSteps`
+   * (a whole number >= 1). A run continued by `agent.approvals.resolve()` or
+   * `agent.resume()` uses the agent's again.
+   *
+   * @example
+   * ```ts
+   * await agent.send('Just answer, no research.', { maxSteps: 1 });
+   * ```
+   */
+  maxSteps?: number;
+  /**
+   * Eve CORE-F13: text appended to the agent's instructions for this run
+   * (the agent's own instructions always stay). Sent with each model call of
+   * the run, a handoff target's too, and never stored in the transcript: a
+   * later call with the same `sessionId` does not keep it, and a run
+   * continued by `agent.approvals.resolve()` or `agent.resume()` runs without it.
+   *
+   * @example
+   * ```ts
+   * await agent.send('Summarize the ticket.', { instructions: 'Answer in French.' });
+   * ```
+   */
+  instructions?: string;
+  /**
    * This run's permission mode (N4), instead of the agent's `permissionMode`.
    * A run continued by `agent.approvals.resolve()` uses the agent's again.
    * See docs/permission-modes.md.
@@ -736,7 +760,8 @@ export interface SendOptions {
 }
 
 /** How a run is checkpointed, plus (LOU-V13, C6, N4, TTL) a `send()` / `stream()` call's own `reasoning`, `modelSettings`, `permissionMode`, `approvalTtlMs`, `parentSpanId`. */
-type RunTurn = SessionTurnOptions & Pick<ExecuteOptions, 'reasoning' | 'modelSettings' | 'permissionMode' | 'approvalTtlMs' | 'parentSpanId'>;
+type RunTurn = SessionTurnOptions &
+  Pick<ExecuteOptions, 'reasoning' | 'modelSettings' | 'permissionMode' | 'approvalTtlMs' | 'parentSpanId' | 'maxSteps' | 'appendInstructions'>;
 
 /** `TObject`: the type of `result.object` - `z.output` of the `output` schema. */
 export interface SimpleAgent<TObject = unknown> {
@@ -1001,13 +1026,19 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     }
     return { sessionId, checkpointStore: checkpoints };
   };
-  const callTurn = ({ sessionId, reasoning, modelSettings, permissionMode, approvalTtlMs, parentSpanId, onEvent }: SendOptions): RunTurn => {
+  const callTurn = ({ sessionId, reasoning, modelSettings, maxSteps, instructions, permissionMode, approvalTtlMs, parentSpanId, onEvent }: SendOptions): RunTurn => {
     if (permissionMode !== undefined) assertPermissionMode(permissionMode, 'send');
     assertModelSettings(modelSettings, 'send');
+    assertMaxSteps(maxSteps, 'send');
+    if (instructions !== undefined && typeof instructions !== 'string') {
+      throw new ConfigurationError(`send: 'instructions' must be a string, got ${instructions === null ? 'null' : typeof instructions}.`, 'instructions');
+    }
     return {
       ...durable(sessionId),
       ...(reasoning !== undefined && { reasoning }),
       ...(modelSettings !== undefined && { modelSettings }),
+      ...(maxSteps !== undefined && { maxSteps }),
+      ...(instructions && { appendInstructions: instructions }),
       ...(permissionMode !== undefined && { permissionMode }),
       ...(approvalTtlMs !== undefined && { approvalTtlMs }),
       ...(parentSpanId !== undefined && { parentSpanId }),
