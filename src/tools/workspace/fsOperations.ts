@@ -5,6 +5,7 @@
 import type { FsProvider } from './types';
 import { globToRegExp, walkFiles } from './glob';
 import { normalizeWorkspacePath, WorkspaceError } from './paths';
+import { assertSafePattern, createLineMatcher, GREP_TIMEOUT_MS } from './grepMatcher';
 
 /** Resolved limits shared by the file system tools. */
 export interface FsLimits {
@@ -13,6 +14,8 @@ export interface FsLimits {
   maxResults: number;
   maxFilesScanned: number;
   ignore: ReadonlySet<string>;
+  /** Wall-clock budget for one `grep` call's matching (Eve TOOLS-F6); default 10 s. */
+  grepTimeoutMs?: number;
 }
 
 const MAX_LINE_CHARS = 2000;
@@ -216,17 +219,6 @@ async function grepTargets(
   return findFiles(fs, base, args.glob, limits, signal);
 }
 
-/** Appends `path:line: text` matches from one file; returns false once `max` is reached. */
-function collectMatches(path: string, content: string, regex: RegExp, out: string[], max: number): boolean {
-  const lines = splitLines(content);
-  for (let i = 0; i < lines.length; i++) {
-    if (!regex.test(lines[i])) continue;
-    out.push(`${path}:${i + 1}: ${clip(lines[i], MAX_GREP_LINE_CHARS)}`);
-    if (out.length >= max) return false;
-  }
-  return true;
-}
-
 /** `grep`: regex search over text files, returning `path:line: text`. */
 export async function grepFiles(
   fs: FsProvider,
@@ -235,19 +227,30 @@ export async function grepFiles(
   signal?: AbortSignal
 ): Promise<string> {
   const regex = compileRegex(args.pattern, args.ignore_case);
+  assertSafePattern(args.pattern);
   const { files, truncated } = await grepTargets(fs, args, limits, signal);
   const matches: string[] = [];
   let capped = false;
-  for (const file of files) {
-    if (signal?.aborted) throw new WorkspaceError('The operation was cancelled.');
-    const stat = await fs.stat(file).catch(() => undefined);
-    if (!stat || stat.size > MAX_GREP_FILE_BYTES) continue;
-    const content = await fs.readFile(file).catch(() => '');
-    if (isBinary(content)) continue;
-    if (!collectMatches(file, content, regex, matches, limits.maxResults)) {
-      capped = true;
-      break;
+  // The regex runs off the event loop with a timeout, so a slow pattern cannot freeze the process.
+  const matcher = await createLineMatcher(regex, limits.grepTimeoutMs ?? GREP_TIMEOUT_MS, signal);
+  try {
+    for (const file of files) {
+      if (signal?.aborted) throw new WorkspaceError('The operation was cancelled.');
+      const stat = await fs.stat(file).catch(() => undefined);
+      if (!stat || stat.size > MAX_GREP_FILE_BYTES) continue;
+      const content = await fs.readFile(file).catch(() => '');
+      if (isBinary(content)) continue;
+      const hits = await matcher.match(content, limits.maxResults - matches.length);
+      if (hits.length === 0) continue;
+      const lines = splitLines(content);
+      for (const line of hits) matches.push(`${file}:${line}: ${clip(lines[line - 1], MAX_GREP_LINE_CHARS)}`);
+      if (matches.length >= limits.maxResults) {
+        capped = true;
+        break;
+      }
     }
+  } finally {
+    matcher.close();
   }
   if (matches.length === 0) return `No matches for ${JSON.stringify(args.pattern)}.${scanNote(truncated, limits)}`;
   const more = capped ? `\n[Truncated at ${limits.maxResults} matches; narrow the pattern, path or glob.]` : '';

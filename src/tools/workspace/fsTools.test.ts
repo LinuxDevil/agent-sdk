@@ -6,6 +6,7 @@ import { createFsTools, type FsToolsOptions } from './fsTools';
 import { MemoryWorkspace } from './MemoryWorkspace';
 import { WorkspaceCheckpoints } from './checkpoints';
 import type { FsProvider } from './types';
+import { grepFiles } from './fsOperations';
 
 function toolsByName(fs: FsProvider, options?: FsToolsOptions): Record<string, DefinedTool> {
   return Object.fromEntries(createFsTools(fs, options).map((t) => [t.name, t]));
@@ -229,6 +230,39 @@ describe('createFsTools on MemoryWorkspace (LOU-X6)', () => {
       const controller = new AbortController();
       controller.abort();
       await expect(call(toolsByName(new MemoryWorkspace({ files })).grep, { pattern: 'x' }, controller.signal)).rejects.toThrow(/cancelled/);
+    });
+
+    // Eve TOOLS-F6: a model-written regex must not freeze the process.
+    it('refuses a pattern with nested unbounded quantifiers, and allows the safe look-alikes', async () => {
+      const { grep } = toolsByName(new MemoryWorkspace({ files: { 'data.txt': `${'a'.repeat(28)}!\n` } }));
+      for (const pattern of ['^(a+)+$', '(\\w+\\s*)*', '((ab)*c)+', '(a|b+){2,}']) {
+        await expect(call(grep, { pattern }), pattern).rejects.toThrow(/repeats a group that already repeats/);
+      }
+      for (const pattern of ['(a+)?!', '(ab)+', '[(a+)]+', '\\(a+\\)+', 'a+!', '(a{2})+']) {
+        await expect(call(grep, { pattern }), pattern).resolves.toMatch(/^data\.txt:1:|No matches/);
+      }
+    });
+
+    it('stops a slow pattern at the timeout without blocking the event loop', async () => {
+      const ws = new MemoryWorkspace({ files: { 'spaces.txt': `${' '.repeat(3000)}\n` } });
+      const limits = { maxReadLines: 2000, maxOutputChars: 30_000, maxResults: 100, maxFilesScanned: 10, ignore: new Set<string>(), grepTimeoutMs: 300 };
+      let ticks = 0;
+      const timer = setInterval(() => ticks++, 10);
+      const started = Date.now();
+      // Polynomial (not nested) backtracking: far too slow on 2000 tested characters.
+      await expect(grepFiles(ws, { pattern: '\\s*\\s*\\s*\\s*\\s*!' }, limits)).rejects.toThrow(/grep stopped after/);
+      clearInterval(timer);
+      expect(Date.now() - started).toBeLessThan(5000);
+      expect(ticks).toBeGreaterThan(5);
+    });
+
+    it('an abort stops a running slow pattern at once', async () => {
+      const ws = new MemoryWorkspace({ files: { 'spaces.txt': `${' '.repeat(3000)}\n` } });
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 100);
+      const started = Date.now();
+      await expect(call(toolsByName(ws).grep, { pattern: '\\s*\\s*\\s*\\s*\\s*!' }, controller.signal)).rejects.toThrow(/cancelled/);
+      expect(Date.now() - started).toBeLessThan(3000);
     });
   });
 
