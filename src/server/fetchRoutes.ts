@@ -333,7 +333,8 @@ const runChat: RouteHandler = async (request, ctx, _params, principal) => {
  * session's checkpoint, which names its pending approval.
  */
 async function approvalOf(agent: SimpleAgent, session: AgentSession, id: string): Promise<PendingApproval | undefined> {
-  const live = (await agent.approvals.list()).find((candidate) => candidate.id === id);
+  // A stored pause no session of this process ran yet is listed without a sessionId (Eve TOOLS-F13): check its checkpoint.
+  const live = (await agent.approvals.list()).find((candidate) => candidate.id === id && candidate.sessionId !== undefined);
   if (live) return live.sessionId === session.id ? live : undefined;
   const turn = await session.pending();
   if (turn?.status !== 'awaiting-approval' || turn.approvalId !== id) return undefined;
@@ -347,7 +348,7 @@ async function approvalOf(agent: SimpleAgent, session: AgentSession, id: string)
  * that session.
  */
 async function bindRecovered(agent: SimpleAgent, session: AgentSession, id: string): Promise<void> {
-  if ((await agent.approvals.list()).some((candidate) => candidate.id === id)) return;
+  if ((await agent.approvals.list()).some((candidate) => candidate.id === id && candidate.sessionId !== undefined)) return;
   await session.resume().catch((error) => {
     if (!(error instanceof SessionAwaitingApprovalError)) throw error;
   });

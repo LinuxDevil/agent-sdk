@@ -243,6 +243,18 @@ export function describeApprovalStoreContract(name: string, factory: Factory<App
       expect(await store.load!('a')).toBeNull();
     });
 
+    it('list() returns the unresolved approvals oldest first, without the resolved ones (Eve TOOLS-F13)', async () => {
+      const store = await factory();
+      if (!store.list) return; // optional: a store without it is listed by this process only
+      expect(await store.list()).toEqual([]);
+      const late = makePending('late', { createdAt: '2026-01-03T00:00:00.000Z' });
+      const early = makePending('early', { createdAt: '2026-01-01T00:00:00.000Z' });
+      const gone = makePending('gone', { createdAt: '2026-01-02T00:00:00.000Z' });
+      for (const pending of [late, early, gone]) await store.save(pending, makeSnapshot(pending));
+      await store.resolve('gone');
+      expect(await store.list()).toEqual([early, late]);
+    });
+
     it('round-trips image and file bytes in the snapshot as Uint8Array (Eve DUR-F5)', async () => {
       const store = await factory();
       const pending = makePending('a');

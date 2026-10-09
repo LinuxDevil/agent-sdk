@@ -7,11 +7,12 @@ import {
   type CheckpointHistoryOptions,
   type CheckpointStore,
 } from '../../execution/checkpoint';
-import type {
-  ApprovalStore,
-  ExecutionSnapshot,
-  PendingApproval,
-  ResolvedApproval,
+import {
+  oldestFirst,
+  type ApprovalStore,
+  type ExecutionSnapshot,
+  type PendingApproval,
+  type ResolvedApproval,
 } from '../../execution/ApprovalGate';
 import { assertSessionId, decodeBytes, encodeBytes, type SessionStore } from '../../session/sessionStore';
 import type { Connection } from './connection';
@@ -159,5 +160,11 @@ export class SqliteApprovalStore implements ApprovalStore {
   async load(id: string): Promise<ResolvedApproval | null> {
     const row = this.sql.get('SELECT payload FROM approvals WHERE id = ? AND resolved_at IS NULL').get(id);
     return parse<ResolvedApproval>(row) ?? null;
+  }
+
+  /** Eve TOOLS-F13: every approval not resolved yet, oldest first. */
+  async list(): Promise<PendingApproval[]> {
+    const rows = this.sql.get('SELECT payload FROM approvals WHERE resolved_at IS NULL ORDER BY created_at, id').all();
+    return oldestFirst(rows.flatMap((row) => parse<ResolvedApproval>(row)?.pending ?? []));
   }
 }

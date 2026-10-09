@@ -5,7 +5,7 @@
  * after a restart.
  */
 
-import type { ApprovalStore, ExecutionSnapshot, PendingApproval, ResolvedApproval } from './ApprovalGate';
+import { oldestFirst, type ApprovalStore, type ExecutionSnapshot, type PendingApproval, type ResolvedApproval } from './ApprovalGate';
 
 /**
  * Keeps pending approvals in a Map. Records are copied on save, so later
@@ -34,5 +34,10 @@ export class InMemoryApprovalStore implements ApprovalStore {
   async load(id: string): Promise<ResolvedApproval | null> {
     const record = this.records.get(id);
     return record ? structuredClone(record) : null;
+  }
+
+  /** Eve TOOLS-F13: the pending approvals, oldest first. */
+  async list(): Promise<PendingApproval[]> {
+    return oldestFirst([...this.records.values()].map((record) => structuredClone(record.pending)));
   }
 }

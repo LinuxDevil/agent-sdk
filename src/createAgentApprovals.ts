@@ -6,7 +6,7 @@
  * each pause at once by resuming the run with the callback's answer.
  */
 
-import { approvalExpired, describeApproval, type ApprovalDecision, type ApprovalStore, type PendingApproval } from './execution/ApprovalGate';
+import { approvalExpired, describeApproval, oldestFirst, type ApprovalDecision, type ApprovalStore, type PendingApproval } from './execution/ApprovalGate';
 import type { ExecutionResult } from './execution/AgentExecutor';
 import type { AgentEvent } from './execution/agentEvents';
 import type { AgentRun } from './execution/agentRun';
@@ -63,15 +63,20 @@ export type ApproveToolCall = (request: PendingApproval) => boolean | 'defer' | 
 /** `agent.approvals`: the tool calls a `createAgent()` agent is paused on, and how to decide them. */
 export interface AgentApprovals {
   /**
-   * Approvals this agent paused on in this process and that are not decided
-   * yet, oldest first. TTL: an entry past its `expiresAt` stays listed until
-   * decided - the run is still paused - but deciding it denies the call.
+   * Approvals that are not decided yet, oldest first: the ones this agent
+   * paused on in this process and - through an `approvalStore` that
+   * implements `list` (the file, SQLite, KV and in-memory stores do) - the
+   * ones the store holds from another process or from before a restart. A
+   * pause of this process that the store no longer holds (another process
+   * resolved it) is left out. TTL: an entry past its `expiresAt` stays listed
+   * until decided - the run is still paused - but deciding it denies the call.
    */
   list(): Promise<PendingApproval[]>;
   /**
-   * The pending approval `id`, without deciding it: this process's pauses
-   * first, then - through an `approvalStore` that implements `load` - a pause
-   * saved before a restart (the request's facts as it was recorded, so a
+   * The pending approval `id`, without deciding it. With an `approvalStore`
+   * that implements `load`, the store answers first - a pause another process
+   * resolved is `undefined` here too, and a pause saved before a restart is
+   * found (the request's facts as it was recorded, so a
    * channel's function `approvers` sees the same input then as now, #280).
    * `undefined` when `id` is unknown or already resolved.
    */
@@ -442,12 +447,54 @@ export function createAgentApprovals(options: {
     return run;
   }
 
+  /**
+   * Eve DUI-F15: forgets a pause of this process that the store no longer
+   * holds - another process (or agent object) resolved it.
+   */
+  const forget = (id: string) => {
+    pending.delete(id);
+    sessionIds.delete(id);
+    sessions.delete(id);
+  };
+
+  /** This process's pauses the store still holds (all of them when it cannot `load`). */
+  async function livePending(): Promise<PendingApproval[]> {
+    const { load } = options.store;
+    const local = [...pending.values()];
+    if (!load) return local;
+    const held = await Promise.all(local.map(async (entry) => ((await load.call(options.store, entry.id)) ? entry : undefined)));
+    return local.filter((entry, index) => {
+      if (held[index]) return true;
+      forget(entry.id);
+      return false;
+    });
+  }
+
   const approvals: AgentApprovals = {
-    list: async () => [...pending.values()].map(withSession),
+    // Eve TOOLS-F13: a store that can `list` adds the pauses other processes (or this one before a restart) saved.
+    list: async () => {
+      const local = await livePending();
+      if (!options.store.list) return local.map(withSession);
+      const merged = new Map(local.map((entry) => [entry.id, entry]));
+      for (const entry of await options.store.list()) {
+        if (!merged.has(entry.id)) merged.set(entry.id, describeApproval(entry));
+      }
+      return oldestFirst([...merged.values()]).map(withSession);
+    },
     // #280: the durable store answers too, so a pause this process did not make is found again.
+    // Eve DUI-F15: a store that can `load` is asked first, so a pause resolved elsewhere is not reported.
     get: async (id) => {
-      const found = pending.get(id) ?? (await options.store.load?.(id))?.pending;
-      return found === undefined ? undefined : withSession(describeApproval(found));
+      const { load } = options.store;
+      if (!load) {
+        const found = pending.get(id);
+        return found === undefined ? undefined : withSession(found);
+      }
+      const record = await load.call(options.store, id);
+      if (!record) {
+        if (pending.has(id)) forget(id);
+        return undefined;
+      }
+      return withSession(pending.get(id) ?? describeApproval(record.pending));
     },
     resolve,
     answer: ({ id, answer }, resolveOptions) => resolve({ id, approved: true, note: answer }, resolveOptions),

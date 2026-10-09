@@ -25,7 +25,7 @@ import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { readFileWithRetry, renameWithRetry } from './fsRetry';
 import { dirname, join, resolve } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import type { ApprovalStore, ExecutionSnapshot, PendingApproval, ResolvedApproval } from '../execution/ApprovalGate';
+import { oldestFirst, type ApprovalStore, type ExecutionSnapshot, type PendingApproval, type ResolvedApproval } from '../execution/ApprovalGate';
 import {
   appendToRing,
   newestFirst,
@@ -244,6 +244,24 @@ class FileApprovalStore implements ApprovalStore {
     if ((await readText(file)) === undefined) file = (await this.legacyFile(id)) ?? file;
     const [raw, claim] = await Promise.all([readText(file), readText(`${file}.claim`)]);
     return raw === undefined || claim !== undefined ? null : (JSON.parse(raw, decodeBytes) as ResolvedApproval);
+  }
+
+  /** Eve TOOLS-F13: every unclaimed record in the directory, oldest first; a half-written file is skipped. */
+  async list(): Promise<PendingApproval[]> {
+    const found = new Map<string, PendingApproval>();
+    for (const name of await jsonFiles(this.dir)) {
+      const file = join(this.dir, `${name}.json`);
+      const [raw, claim] = await Promise.all([readText(file), readText(`${file}.claim`)]);
+      if (raw === undefined || claim !== undefined) continue;
+      let pending: PendingApproval | undefined;
+      try {
+        pending = (JSON.parse(raw, decodeBytes) as ResolvedApproval | null)?.pending;
+      } catch {
+        continue; // half-written
+      }
+      if (pending && typeof pending.id === 'string' && !found.has(pending.id)) found.set(pending.id, pending);
+    }
+    return oldestFirst([...found.values()]);
   }
 }
 
