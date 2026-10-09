@@ -389,6 +389,15 @@ provider adds to the request. Sub-agents and handoff targets use their own
 `modelSettings`, not the lead's. An agent directory can set the same object as
 `modelSettings` in its `agent.json`.
 
+The values are checked before any model call, at `createAgent()` and at each
+`send()` / `stream()`: `temperature` 0 to 2, `topP` 0 to 1, `frequencyPenalty`
+and `presencePenalty` -2 to 2, `maxTokens` a whole number of at least 1, `seed`
+a whole number, `stop` an array of strings. A value out of range, or an unknown
+key (such as the AI SDK's `maxOutputTokens`), throws a `ConfigurationError`
+with code `LOUSHO_CONFIG_INVALID` whose `field` names the key, e.g.
+`modelSettings.temperature`. A provider with a narrower range (Anthropic's
+`temperature` is 0 to 1) still rejects a value outside it.
+
 To share options between agents, type them as `CreateAgentBase` and spread
 them into `createAgent()`. Do not use `Partial<CreateAgentConfig>`: that type
 keeps `model` / `provider` and `instructions` / `prompt` mutually exclusive,
