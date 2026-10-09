@@ -3755,7 +3755,7 @@ can mount it next to your own routes.
 | `verify(req)` | Optional. Authenticate the request (a signature, a token). Return `true`/`false` or `{ ok, reason? }`; `false` answers `401 {"error":"Unauthorized"}` before anything is parsed or run. |
 | `parse(req, respond, ctx)` | The message: `{ sessionKey, input, metadata?, principal?, replyTo, event? }`; `{ decision: { id, approved?, note?, answer? } }` to resolve a pause this channel's turn stopped on (a button click); or `null` to acknowledge the request without a turn (a bot's own message, a retry). Call `respond(status, body)` to answer before the turn runs (a surface with a short timeout, a handshake). |
 | `reply(ctx)` | Deliver the reply: `ctx.text`, plus `inbound`, `sessionId`, `result`, `events`, `approval`, and `respond(status, body)` while the request is still open. |
-| `onApproval(ctx)` | Optional. Render a pause (buttons, a form). Default: `reply` with a text prompt in `ctx.text` and the request in `ctx.approval`. |
+| `onApproval(ctx)` | Optional. Render a pause (buttons, a form). Default: `reply` with a text prompt in `ctx.text` and the request in `ctx.approval` (`ctx.approvals`: every pending call, when the step paused on several). |
 | `onError(error, { channel, stage, sessionId? })` | Optional. Receives failures after the request was already acknowledged (a reply that could not be delivered, a failed turn or approval continuation). Default: `mountChannels({ onError })`, else `console.error` with the channel, stage, session id and SDK error code (never a token). A failed turn also tells the user "Sorry, that request failed." in the conversation (best effort). |
 | `stream` | Optional. `true` calls `reply` with `partial: true` and the text so far as the model writes, then once more with the final text. |
 | `sessionId(inbound)` | Optional. The session for a message. Default: `` `${name}:${sessionKey}` ``. |
@@ -3845,6 +3845,17 @@ through the same channel's `reply` (or `onApproval` again, if it pauses again):
   conversation's turn waits on exactly this approval (else 404), and the
   continuation joins its transcript. In process, a `sessionKey` naming another
   conversation than the one that paused gets 404.
+
+When one model step pauses on several calls (see
+[Several calls in one step](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#several-calls-in-one-step)),
+`onApproval` is called once per call, in call order: each gets its own
+`approval`, all of them get the step's pending calls in `approvals`, and only
+the first gets `respond` (the http channel answers with `approval` and
+`approvals`). Each call is decided on its own, through either way above, with
+the conversation's `sessionKey` after a restart. A decision that leaves other
+calls of the step undecided runs nothing and is answered through `reply` with
+`Decision recorded. Still waiting on: ...`; the decision on the last one runs
+the step and delivers the continuation.
 
 A decision is claimed before `onDecision` runs, so two decisions on one
 approval at once (a double click) decide it once: the second gets
@@ -4620,7 +4631,7 @@ plus a free-text field. The same endpoints work from `curl` or your own page:
 | -------- | ------------ |
 | `POST /chat` `{ "sessionId", "input" }` | Runs `agent.session({ id: sessionId }).stream(input)` and streams the turn as SSE: one `data: <AgentEvent JSON>` per event ([Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)), then `event: done`. History is kept per `sessionId` (1-128 characters of `A-Za-z0-9_-`). |
 | `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`; `pending` is `{ status, approvalId? }` while a turn waits on an approval, else `null`. A turn's messages are saved when it finishes, so while it is paused `messages` does not hold that turn yet: use `pending`. |
-| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides the pending approval (`agent.approvals.streamResolve()`), or answers a question (`agent.approvals.streamAnswer()`), and streams the continued turn as SSE. It can pause again with another `approval.requested`. `404` when `id` is not pending. |
+| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides the pending approval (`agent.approvals.streamResolve()`), or answers a question (`agent.approvals.streamAnswer()`), and streams the continued turn as SSE. It can pause again with another `approval.requested`. `404` when `id` is not pending. When the turn's step paused on several calls, each id is decided on its own; a decision that leaves others pending streams `run.done` with `finishReason: 'awaiting-approval'`, and the last one runs the step. |
 | `POST /chat` `{ "message" }` | Deprecated: no session, no streaming. Returns the agent's `ExecutionResult` as JSON, with a `Deprecation: true` header. |
 
 `--traces` (or `--traces=<dir>`) writes every run to local trace files with
@@ -6613,7 +6624,7 @@ a page or script written against the dev server works against the deployed one.
 | `GET /health` | `200 ok`. Never needs auth: point load balancers and container health checks here. |
 | `POST /chat` `{ "sessionId", "input" }` | Runs a turn of session `sessionId` (1-128 characters of `A-Za-z0-9_-`; a new id starts a conversation, a known one continues it) and streams it as SSE: one `data: <AgentEvent JSON>` per event ([Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)), then `event: done`. `input` is a string or an array of content parts. |
 | `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`. A turn's messages are saved when it finishes, so `messages` does not hold a turn that is paused on an approval; `pending` says it is. |
-| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn live as SSE, in the same framing and event types as `POST /chat` (the decided call's `tool.resume` / `tool.done` or `tool.error`, text deltas, `approval.requested` if it pauses again, `run.done`), from `agent.approvals.streamResolve()` / `streamAnswer()`. `404` when `id` is not pending. |
+| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn live as SSE, in the same framing and event types as `POST /chat` (the decided call's `tool.resume` / `tool.done` or `tool.error`, text deltas, `approval.requested` if it pauses again, `run.done`), from `agent.approvals.streamResolve()` / `streamAnswer()`. `404` when `id` is not pending. When the turn's step paused on several calls, each id is decided on its own; a decision that leaves others pending streams `run.done` with `finishReason: 'awaiting-approval'`, and the last one runs the step. |
 | `POST /chat` `{ "message" }` | Legacy, single turn without history or streaming: returns the agent's `ExecutionResult` as JSON, with a `Deprecation: true` header. |
 
 Bodies over 1MB get `413`, invalid JSON `400`.
