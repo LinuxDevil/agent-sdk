@@ -40,6 +40,8 @@ const PAIRS: [text: string, background: string][] = [
   ['warning', 'warning-soft'],
   ['danger', 'surface'],
   ['info', 'surface'],
+  // Primary buttons (Save) draw white text on the filled accent.
+  ['on-accent', 'accent-solid'],
 ];
 
 describe('theme contrast (Eve DUI-F9)', () => {
