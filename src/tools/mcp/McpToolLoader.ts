@@ -99,23 +99,43 @@ function modelToolName(server: string, tool: string, taken: Set<string>): string
  * `.d.ts` under `skipLibCheck: false`. A real `Client` satisfies this shape.
  */
 export interface McpClientLike {
-  /** `client.listTools()`: the tools the server advertises (`response.tools`). */
-  listTools(params?: { cursor?: string }, options?: unknown): Promise<{ tools: RawMcpTool[] }>;
+  /** `client.listTools()`: one page of the tools the server advertises (`response.tools`, then `nextCursor`). */
+  listTools(params?: { cursor?: string }, options?: unknown): Promise<{ tools: RawMcpTool[]; nextCursor?: string }>;
   /** `client.callTool()`: the raw result, handled by {@link handleCallToolResult}. */
   callTool(params: { name: string; arguments?: Record<string, unknown> }, resultSchema?: unknown, options?: unknown): Promise<unknown>;
 }
 
+/** Eve TOOLS-F18: the most `tools/list` pages read from one server. */
+const MAX_MCP_TOOL_PAGES = 100;
+
 /**
- * List the tools a connected MCP client's server advertises.
+ * List the tools a connected MCP client's server advertises, following
+ * `nextCursor` through every page (Eve TOOLS-F18), up to
+ * 100 pages; a server that sends more, or repeats a
+ * cursor, is cut off there with a warning through `options.logger`.
  *
- * This is a thin wrapper around `client.listTools()` - it returns
- * `response.tools` as-is and deliberately does NOT catch/wrap connection
- * errors: a `listTools()` rejection (e.g. the client isn't connected, or
- * the transport drops) propagates straight out to the caller.
+ * It deliberately does NOT catch/wrap connection errors: a `listTools()`
+ * rejection (e.g. the client isn't connected, or the transport drops)
+ * propagates straight out to the caller.
  */
-export async function listRemoteTools(client: McpClientLike): Promise<RawMcpTool[]> {
-  const response = await client.listTools();
-  return response.tools;
+export async function listRemoteTools(client: McpClientLike, options: { logger?: Logger; server?: string } = {}): Promise<RawMcpTool[]> {
+  const { logger = noopLogger, server = 'MCP server' } = options;
+  const tools: RawMcpTool[] = [];
+  const seen = new Set<string>();
+  let cursor: string | undefined;
+  for (let page = 0; page < MAX_MCP_TOOL_PAGES; page++) {
+    const response = await client.listTools(cursor === undefined ? undefined : { cursor });
+    tools.push(...response.tools);
+    cursor = response.nextCursor;
+    if (cursor === undefined || cursor === '') return tools;
+    if (seen.has(cursor)) {
+      logger.warn(`${server}: tools/list repeated the cursor '${cursor}'; stopped after ${page + 1} pages`, { server, cursor });
+      return tools;
+    }
+    seen.add(cursor);
+  }
+  logger.warn(`${server}: tools/list has more than ${MAX_MCP_TOOL_PAGES} pages; loaded the first ${MAX_MCP_TOOL_PAGES}`, { server });
+  return tools;
 }
 
 /** A tool that {@link loadMcpTools} could not load. */
@@ -182,7 +202,7 @@ export async function loadMcpTools(
   options: LoadMcpToolsOptions = {}
 ): Promise<Record<string, NamedToolDescriptor>> {
   const { logger = noopLogger, onSkip, approval = 'always', deferLoading, timeoutMs, tools: filter } = options;
-  const rawTools = selectTools(await listRemoteTools(client), connectionName, filter, logger);
+  const rawTools = selectTools(await listRemoteTools(client, { logger, server: `MCP server '${connectionName}'` }), connectionName, filter, logger);
   const descriptors: Record<string, NamedToolDescriptor> = {};
   const taken = new Set<string>();
 

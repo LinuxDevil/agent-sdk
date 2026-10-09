@@ -321,3 +321,56 @@ describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
     expect(result.text).toBeTypeOf('string');
   });
 });
+
+describe('MCP pagination, tools/list_changed and crashes (Eve TOOLS-F18)', () => {
+  const edgeFixture = fileURLToPath(new URL('./__fixtures__/edgeServer.mjs', import.meta.url));
+  const edge = { command: process.execPath, args: [edgeFixture], approval: 'never' as const, stderr: 'capture' as const };
+  const call = (mcp: McpConnections, name: string) => mcp.tools[name].tool.execute!({}, { toolCallId: 'c1', messages: [] });
+
+  it('loads the tools of every tools/list page', async () => {
+    const mcp = await connect({ edge });
+    expect(Object.keys(mcp.tools)).toEqual(['edge__grow', 'edge__die', 'edge__page_two']);
+  });
+
+  it('lists the tools again after tools/list_changed and reports them to onToolsChanged', async () => {
+    const onToolsChanged = vi.fn();
+    const mcp = await connect({ edge }, { onToolsChanged });
+    await call(mcp, 'edge__grow');
+    await vi.waitFor(() => expect(Object.keys(mcp.tools)).toContain('edge__grown'));
+    expect(onToolsChanged).toHaveBeenCalledWith(mcp.tools);
+  });
+
+  it("a server whose process exits reports 'failed' and logs a warning with the exit code", async () => {
+    const logger = warnLogger();
+    const mcp = await connect({ edge }, { logger });
+    await call(mcp, 'edge__die');
+    await vi.waitFor(() => expect(mcp.status()).toEqual({ edge: 'failed' }));
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringMatching(/'edge'.*closed unexpectedly \(exit code 3\)[\s\S]*dying now/),
+      expect.objectContaining({ exitCode: 3 })
+    );
+    // lazy (default): the next call reconnects.
+    await expect(call(mcp, 'edge__page_two')).resolves.toMatchObject({ text: 'page_two' });
+    expect(mcp.status()).toEqual({ edge: 'connected' });
+  });
+
+  it('close() is not a crash: no warning, status idle', async () => {
+    const logger = warnLogger();
+    const mcp = await connect({ edge }, { logger });
+    await mcp.close();
+    expect(mcp.status()).toEqual({ edge: 'idle' });
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("createAgent offers a server's new tools on the next model call after tools/list_changed", async () => {
+    const model = mockModel([{ toolCalls: [{ name: 'edge__grow', args: {} }] }, 'grown', 'again', 'again', 'again']);
+    const agent = createAgent({ provider: model, mcpServers: { edge } });
+    closers.push(() => agent.close());
+    await agent.send('grow');
+    expect(model.calls[0].tools?.map((t) => t.function.name)).not.toContain('edge__grown');
+    await vi.waitFor(async () => {
+      await agent.send('again');
+      expect(model.calls.at(-1)!.tools?.map((t) => t.function.name)).toContain('edge__grown');
+    });
+  });
+});

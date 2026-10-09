@@ -79,13 +79,24 @@ Options:
 - `lazy` (default `true`): after `close()` or a dropped connection, the next
   tool call reconnects. With `false` that call fails instead. Listing tools
   needs a connection, so `lazy` never delays the first connect.
-- `logger`: receives skipped-server and skipped-tool warnings (default: none).
+- `logger`: receives skipped-server and skipped-tool warnings, and a warning
+  (with the exit code and the last stderr lines) when a server's connection
+  closes without `close()` (default: none).
 - `tokens`: the token store (`AgentStore.tokens`) of servers with `oauth`;
   required when any server has `oauth`.
+- `onToolsChanged(tools)`: called after a server's tool list changed (see below).
 
 It returns `{ tools, close(), status() }`; `status()` maps each server to
-`'idle'`, `'connected'`, `'failed'` or `'needs-auth'` (an `oauth` server the
-app is not signed in to).
+`'idle'` (not connected yet, or after `close()`), `'connected'`, `'failed'`
+(it could not connect, or its connection dropped, e.g. the stdio process
+exited; with `lazy` the next tool call reconnects) or `'needs-auth'` (an
+`oauth` server the app is not signed in to).
+
+Tools are listed through every `tools/list` page (`nextCursor`), up to 100
+pages per server. When a server sends `notifications/tools/list_changed`, its
+tools are listed again: `tools` is updated in place (new tools added, gone ones
+removed) and `onToolsChanged` is called. An agent with `mcpServers` offers the
+new list from its next model call.
 
 `tools` is a `Record<string, ToolDescriptor>` keyed `<server>__<tool>` — a
 map, not the array `defineTool()` results make. `createAgent({ tools })` takes

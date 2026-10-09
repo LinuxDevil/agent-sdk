@@ -60,7 +60,8 @@ export function agentMcp(
   }
   const oauth = mcpOAuthSignIn(servers, tokens);
   const connect = lazyValue(async (): Promise<McpConnections> => {
-    const connections = await connectMcp(servers, { ...(tokens && { tokens }) });
+    // Eve TOOLS-F18: a server's `tools/list_changed` hands the updated tools to `register` again.
+    const connections = await connectMcp(servers, { ...(tokens && { tokens }), onToolsChanged: (tools) => register(tools) });
     register(connections.tools);
     return connections;
   });

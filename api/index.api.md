@@ -1364,6 +1364,7 @@ export interface ConnectMcpOptions {
     lazy?: boolean;
     logger?: Logger;
     onError?: 'throw' | 'skip';
+    onToolsChanged?: (tools: Record<string, NamedToolDescriptor>) => void;
     tokens?: OAuthTokenStore;
 }
 
@@ -3331,7 +3332,10 @@ const listDirInput: z.ZodObject<{
 }>;
 
 // @public
-export function listRemoteTools(client: McpClientLike): Promise<RawMcpTool[]>;
+export function listRemoteTools(client: McpClientLike, options?: {
+    logger?: Logger;
+    server?: string;
+}): Promise<RawMcpTool[]>;
 
 // @public
 interface LLMCallNode {
@@ -3632,6 +3636,7 @@ export interface McpClientLike {
         cursor?: string;
     }, options?: unknown): Promise<{
         tools: RawMcpTool[];
+        nextCursor?: string;
     }>;
 }
 
