@@ -166,12 +166,36 @@ export interface StepNode {
   input: string;
 }
 
-export interface SequenceNode {
+/**
+ * Eve DUR-F17: how `FlowExecutor` runs a node - retries and a time limit. Any
+ * executor-side node (and `sequence` / `parallel`) takes them.
+ *
+ * @example
+ * ```ts
+ * const step: EditorStep = { type: 'toolCall', tool: 'fetch_invoice', retry: { maxAttempts: 3, backoffMs: 500 }, timeoutMs: 10_000 };
+ * ```
+ */
+export interface NodeRunOptions {
+  /**
+   * Run the node again when it fails, up to `maxAttempts` times in all (an
+   * integer >= 1), waiting `backoffMs * 2^(attempt - 1)` ms before each retry
+   * (default 0). A cancelled run, or a run paused for approval, is not retried.
+   */
+  retry?: { maxAttempts: number; backoffMs?: number };
+  /**
+   * Fail an attempt that takes longer than this many ms with
+   * `LOUSHO_OPERATION_TIMEOUT` (a timed-out attempt can be retried). The
+   * attempt's model or tool call gets an aborted signal.
+   */
+  timeoutMs?: number;
+}
+
+export interface SequenceNode extends NodeRunOptions {
   type: 'sequence';
   steps: EditorStep[];
 }
 
-export interface ParallelNode {
+export interface ParallelNode extends NodeRunOptions {
   type: 'parallel';
   steps: EditorStep[];
 }
@@ -237,14 +261,14 @@ export interface OneOfOption {
 }
 
 /** `oneOf` as executed: runs the first option whose condition holds. */
-export interface OneOfOptionsNode {
+export interface OneOfOptionsNode extends NodeRunOptions {
   type: 'oneOf';
   id?: string;
   options: OneOfOption[];
 }
 
 /** `forEach` as executed: `items` is a literal array or a `$variable` reference. */
-export interface ForEachItemsNode {
+export interface ForEachItemsNode extends NodeRunOptions {
   type: 'forEach';
   id?: string;
   items: unknown[] | string;
@@ -256,14 +280,14 @@ export interface ForEachItemsNode {
 }
 
 /** `evaluator` as executed: evaluates `expression` and returns the result. */
-export interface ExpressionEvaluatorNode {
+export interface ExpressionEvaluatorNode extends NodeRunOptions {
   type: 'evaluator';
   id?: string;
   expression: string;
 }
 
 /** Calls the agent's provider with an interpolated prompt. */
-export interface LLMCallNode {
+export interface LLMCallNode extends NodeRunOptions {
   type: 'llmCall';
   id?: string;
   /** Prompt template; `{{var}}` placeholders are replaced by variable text. */
@@ -276,7 +300,7 @@ export interface LLMCallNode {
 }
 
 /** Calls a registered tool by name. */
-export interface ToolCallNode {
+export interface ToolCallNode extends NodeRunOptions {
   type: 'toolCall';
   id?: string;
   /** Name of the tool in the ToolRegistry. */
@@ -288,7 +312,7 @@ export interface ToolCallNode {
 }
 
 /** Sets a flow variable; a `value` string starting with `$` reads another variable. */
-export interface SetVariableNode {
+export interface SetVariableNode extends NodeRunOptions {
   type: 'setVariable';
   id?: string;
   variable: string;
@@ -296,21 +320,21 @@ export interface SetVariableNode {
 }
 
 /** Returns `value` (a string starting with `$` reads a variable). */
-export interface ReturnNode {
+export interface ReturnNode extends NodeRunOptions {
   type: 'return';
   id?: string;
   value?: unknown;
 }
 
 /** Ends the flow with `value` (a string starting with `$` reads a variable). */
-export interface EndNode {
+export interface EndNode extends NodeRunOptions {
   type: 'end';
   id?: string;
   value?: unknown;
 }
 
 /** Fails the flow with `message` (`{{var}}` placeholders are replaced). */
-export interface ThrowNode {
+export interface ThrowNode extends NodeRunOptions {
   type: 'throw';
   id?: string;
   message?: string;

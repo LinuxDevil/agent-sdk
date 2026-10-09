@@ -938,8 +938,6 @@ interface CheckpointError {
 // @public
 interface CheckpointHistoryEntry {
     // Warning: (ae-forgotten-export) The symbol "Checkpoint" needs to be exported by the entry point worker.d.ts
-    //
-    // (undocumented)
     checkpoint: Checkpoint;
     savedAt: string;
     status: CheckpointStatus;
@@ -952,20 +950,31 @@ interface CheckpointHistoryOptions {
 }
 
 // @public
+interface CheckpointListEntry {
+    checkpoint: Checkpoint;
+    sessionId: string;
+    status: CheckpointStatus;
+}
+
+// @public
+interface CheckpointListOptions {
+    status?: CheckpointStatus | readonly CheckpointStatus[];
+}
+
+// @public
 type CheckpointStatus = 'in-progress' | 'awaiting-approval' | 'finished';
 
 // @public
 interface CheckpointStore {
     // Warning: (ae-forgotten-export) The symbol "CheckpointDeleteOptions" needs to be exported by the entry point worker.d.ts
-    //
-    // (undocumented)
     delete(sessionId: string, options?: CheckpointDeleteOptions): Promise<void>;
     // Warning: (ae-forgotten-export) The symbol "CheckpointHistoryOptions" needs to be exported by the entry point worker.d.ts
     // Warning: (ae-forgotten-export) The symbol "CheckpointHistoryEntry" needs to be exported by the entry point worker.d.ts
     history?(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]>;
-    // (undocumented)
+    // Warning: (ae-forgotten-export) The symbol "CheckpointListOptions" needs to be exported by the entry point worker.d.ts
+    // Warning: (ae-forgotten-export) The symbol "CheckpointListEntry" needs to be exported by the entry point worker.d.ts
+    list?(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
     load(sessionId: string): Promise<Checkpoint | null>;
-    // (undocumented)
     save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
 }
 
@@ -1428,8 +1437,10 @@ type EditorShapeStep = StepNode | SequenceNode | ParallelNode | OneOfNode | ForE
 // @public
 type EditorStep = EditorShapeStep | RuntimeStep;
 
+// Warning: (ae-forgotten-export) The symbol "NodeRunOptions" needs to be exported by the entry point worker.d.ts
+//
 // @public
-interface EndNode {
+interface EndNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -1615,7 +1626,7 @@ interface ExecutionSnapshot {
 }
 
 // @public
-interface ExpressionEvaluatorNode {
+interface ExpressionEvaluatorNode extends NodeRunOptions {
     // (undocumented)
     expression: string;
     // (undocumented)
@@ -1691,7 +1702,7 @@ interface FlowToolSetting {
 }
 
 // @public
-interface ForEachItemsNode {
+interface ForEachItemsNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     indexVariable?: string;
@@ -2162,6 +2173,7 @@ export class KVCheckpointStore implements CheckpointStore {
     // (undocumented)
     delete(sessionId: string, options?: CheckpointDeleteOptions): Promise<void>;
     history(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]>;
+    list(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
     // (undocumented)
     load(sessionId: string): Promise<Checkpoint | null>;
     // (undocumented)
@@ -2230,7 +2242,7 @@ export interface KVStoreOptions {
 }
 
 // @public
-interface LLMCallNode {
+interface LLMCallNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -2563,6 +2575,15 @@ type NamedToolDescriptor = ToolDescriptor & {
 export function never(): false;
 
 // @public
+interface NodeRunOptions {
+    retry?: {
+        maxAttempts: number;
+        backoffMs?: number;
+    };
+    timeoutMs?: number;
+}
+
+// @public
 interface OAuthCallbackParams {
     // (undocumented)
     code?: string;
@@ -2710,7 +2731,7 @@ interface OneOfOption {
 }
 
 // @public
-interface OneOfOptionsNode {
+interface OneOfOptionsNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // Warning: (ae-forgotten-export) The symbol "OneOfOption" needs to be exported by the entry point worker.d.ts
@@ -2818,7 +2839,7 @@ interface OutputSpec<TSchema extends StandardSchemaV1 = StandardSchemaV1> {
 }
 
 // @public (undocumented)
-interface ParallelNode {
+interface ParallelNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
     // (undocumented)
@@ -2854,6 +2875,18 @@ interface PendingApproval {
     toolCallId: string;
     // (undocumented)
     toolName: string;
+}
+
+// @public
+interface PendingRun {
+    approvalId?: string;
+    approvalKind?: ApprovalKind;
+    checkpointId: string;
+    kind: 'session' | 'run';
+    lastError?: CheckpointError;
+    sessionId: string;
+    status: 'in-progress' | 'awaiting-approval';
+    step: number;
 }
 
 // @public
@@ -3190,7 +3223,7 @@ interface RetryInfo {
 }
 
 // @public
-interface ReturnNode {
+interface ReturnNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -3397,7 +3430,7 @@ export interface SendOptions {
 }
 
 // @public (undocumented)
-interface SequenceNode {
+interface SequenceNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
     // (undocumented)
@@ -3563,7 +3596,7 @@ type SessionTurnOptions = Partial<SessionTurnCheckpoint> & {
 };
 
 // @public
-interface SetVariableNode {
+interface SetVariableNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -3584,6 +3617,8 @@ export interface SimpleAgent<TObject = unknown> {
     fork: (sessionId: string, options: Omit<ForkOptions, 'sessionId' | 'checkpointStore'>) => Promise<ForkResult>;
     // Warning: (ae-forgotten-export) The symbol "AgentOAuth" needs to be exported by the entry point worker.d.ts
     oauth: AgentOAuth;
+    // Warning: (ae-forgotten-export) The symbol "PendingRun" needs to be exported by the entry point worker.d.ts
+    pending: () => Promise<PendingRun[]>;
     ready: () => Promise<void>;
     resume: (sessionId: string, options?: {
         signal?: AbortSignal;
@@ -4016,7 +4051,7 @@ type TextSource = {
 };
 
 // @public
-interface ThrowNode {
+interface ThrowNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -4120,7 +4155,7 @@ interface ToolCallHookResult {
 }
 
 // @public
-interface ToolCallNode {
+interface ToolCallNode extends NodeRunOptions {
     arguments?: Record<string, unknown>;
     // (undocumented)
     id?: string;
@@ -4359,13 +4394,13 @@ interface WithRetryOptions {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-CQFRlIZb.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CQFRlIZb.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CQFRlIZb.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CQFRlIZb.d.ts:3352:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CQFRlIZb.d.ts:3353:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
-// dist/index-Dy27pnXR.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
-// dist/index-Dy27pnXR.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-SvLqII_G.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-SvLqII_G.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-SvLqII_G.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-SvLqII_G.d.ts:3352:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-SvLqII_G.d.ts:3353:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
+// dist/index-Cv7ybp2f.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
+// dist/index-Cv7ybp2f.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point worker.d.ts
 
 // (No @packageDocumentation comment for this package)

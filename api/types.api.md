@@ -157,8 +157,10 @@ type EditorShapeStep = StepNode | SequenceNode | ParallelNode | OneOfNode | ForE
 // @public
 type EditorStep = EditorShapeStep | RuntimeStep;
 
+// Warning: (ae-forgotten-export) The symbol "NodeRunOptions" needs to be exported by the entry point index.d.ts
+//
 // @public
-interface EndNode {
+interface EndNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -180,7 +182,7 @@ interface EvaluatorNode {
 }
 
 // @public
-interface ExpressionEvaluatorNode {
+interface ExpressionEvaluatorNode extends NodeRunOptions {
     // (undocumented)
     expression: string;
     // (undocumented)
@@ -243,7 +245,7 @@ interface FlowToolSetting {
 }
 
 // @public
-interface ForEachItemsNode {
+interface ForEachItemsNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     indexVariable?: string;
@@ -291,7 +293,7 @@ export interface IToolRegistry {
 }
 
 // @public
-interface LLMCallNode {
+interface LLMCallNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -369,6 +371,15 @@ export type NamedToolDescriptor = ToolDescriptor & {
 };
 
 // @public
+interface NodeRunOptions {
+    retry?: {
+        maxAttempts: number;
+        backoffMs?: number;
+    };
+    timeoutMs?: number;
+}
+
+// @public
 type OAuthClientAuth = 'client_secret_post' | 'client_secret_basic';
 
 // Warning: (ae-forgotten-export) The symbol "OAuthProviderOptions" needs to be exported by the entry point index.d.ts
@@ -440,7 +451,7 @@ interface OneOfOption {
 }
 
 // @public
-interface OneOfOptionsNode {
+interface OneOfOptionsNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // Warning: (ae-forgotten-export) The symbol "OneOfOption" needs to be exported by the entry point index.d.ts
@@ -452,7 +463,7 @@ interface OneOfOptionsNode {
 }
 
 // @public (undocumented)
-interface ParallelNode {
+interface ParallelNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
     // (undocumented)
@@ -480,7 +491,7 @@ interface ReasoningBlock {
 }
 
 // @public
-interface ReturnNode {
+interface ReturnNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -566,7 +577,7 @@ interface SchemaIssue {
 }
 
 // @public (undocumented)
-interface SequenceNode {
+interface SequenceNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
     // (undocumented)
@@ -574,7 +585,7 @@ interface SequenceNode {
 }
 
 // @public
-interface SetVariableNode {
+interface SetVariableNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -626,7 +637,7 @@ interface TextContentPart {
 }
 
 // @public
-interface ThrowNode {
+interface ThrowNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -649,7 +660,7 @@ interface ToolCall {
 }
 
 // @public
-interface ToolCallNode {
+interface ToolCallNode extends NodeRunOptions {
     arguments?: Record<string, unknown>;
     // (undocumented)
     id?: string;
@@ -765,8 +776,8 @@ interface UIComponentNode {
 
 // Warnings were encountered during analysis:
 //
-// dist/index-Dy27pnXR.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-Dy27pnXR.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-Cv7ybp2f.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-Cv7ybp2f.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

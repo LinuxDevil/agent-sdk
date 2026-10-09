@@ -332,8 +332,10 @@ export class EncryptionUtils {
     generateKey(secretKey: string): Promise<void>;
 }
 
+// Warning: (ae-forgotten-export) The symbol "NodeRunOptions" needs to be exported by the entry point index.d.ts
+//
 // @public
-interface EndNode {
+interface EndNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -379,7 +381,7 @@ interface ExecutionSnapshot {
 }
 
 // @public
-interface ExpressionEvaluatorNode {
+interface ExpressionEvaluatorNode extends NodeRunOptions {
     // (undocumented)
     expression: string;
     // (undocumented)
@@ -475,7 +477,7 @@ interface FlowToolSetting {
 }
 
 // @public
-interface ForEachItemsNode {
+interface ForEachItemsNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     indexVariable?: string;
@@ -540,7 +542,7 @@ export function isValidJson(str: string): boolean;
 export function isValidUrl(url: string): boolean;
 
 // @public
-interface LLMCallNode {
+interface LLMCallNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -616,6 +618,15 @@ interface ModelUsage {
     outputTokens: number;
 }
 
+// @public
+interface NodeRunOptions {
+    retry?: {
+        maxAttempts: number;
+        backoffMs?: number;
+    };
+    timeoutMs?: number;
+}
+
 // @public (undocumented)
 interface OneOfNode {
     // (undocumented)
@@ -635,7 +646,7 @@ interface OneOfOption {
 }
 
 // @public
-interface OneOfOptionsNode {
+interface OneOfOptionsNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // Warning: (ae-forgotten-export) The symbol "OneOfOption" needs to be exported by the entry point index.d.ts
@@ -647,7 +658,7 @@ interface OneOfOptionsNode {
 }
 
 // @public (undocumented)
-interface ParallelNode {
+interface ParallelNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
     // (undocumented)
@@ -741,7 +752,7 @@ interface ResolvedApproval {
 }
 
 // @public
-interface ReturnNode {
+interface ReturnNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -801,7 +812,7 @@ export function safeValidate<T>(schema: ZodSchema<T>, data: unknown): {
 export function sanitizeString(str: string): string;
 
 // @public (undocumented)
-interface SequenceNode {
+interface SequenceNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
     // (undocumented)
@@ -809,7 +820,7 @@ interface SequenceNode {
 }
 
 // @public
-interface SetVariableNode {
+interface SetVariableNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -914,7 +925,7 @@ interface TextContentPart {
 }
 
 // @public
-interface ThrowNode {
+interface ThrowNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -937,7 +948,7 @@ interface ToolCall {
 }
 
 // @public
-interface ToolCallNode {
+interface ToolCallNode extends NodeRunOptions {
     arguments?: Record<string, unknown>;
     // (undocumented)
     id?: string;

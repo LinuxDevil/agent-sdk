@@ -450,8 +450,6 @@ interface CheckpointError {
 // @public
 interface CheckpointHistoryEntry {
     // Warning: (ae-forgotten-export) The symbol "Checkpoint" needs to be exported by the entry point index.d.ts
-    //
-    // (undocumented)
     checkpoint: Checkpoint;
     savedAt: string;
     status: CheckpointStatus;
@@ -464,20 +462,31 @@ interface CheckpointHistoryOptions {
 }
 
 // @public
+interface CheckpointListEntry {
+    checkpoint: Checkpoint;
+    sessionId: string;
+    status: CheckpointStatus;
+}
+
+// @public
+interface CheckpointListOptions {
+    status?: CheckpointStatus | readonly CheckpointStatus[];
+}
+
+// @public
 type CheckpointStatus = 'in-progress' | 'awaiting-approval' | 'finished';
 
 // @public
 interface CheckpointStore {
     // Warning: (ae-forgotten-export) The symbol "CheckpointDeleteOptions" needs to be exported by the entry point index.d.ts
-    //
-    // (undocumented)
     delete(sessionId: string, options?: CheckpointDeleteOptions): Promise<void>;
     // Warning: (ae-forgotten-export) The symbol "CheckpointHistoryOptions" needs to be exported by the entry point index.d.ts
     // Warning: (ae-forgotten-export) The symbol "CheckpointHistoryEntry" needs to be exported by the entry point index.d.ts
     history?(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]>;
-    // (undocumented)
+    // Warning: (ae-forgotten-export) The symbol "CheckpointListOptions" needs to be exported by the entry point index.d.ts
+    // Warning: (ae-forgotten-export) The symbol "CheckpointListEntry" needs to be exported by the entry point index.d.ts
+    list?(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
     load(sessionId: string): Promise<Checkpoint | null>;
-    // (undocumented)
     save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
 }
 
@@ -1136,6 +1145,18 @@ interface PendingApproval {
 }
 
 // @public
+interface PendingRun {
+    approvalId?: string;
+    approvalKind?: ApprovalKind;
+    checkpointId: string;
+    kind: 'session' | 'run';
+    lastError?: CheckpointError;
+    sessionId: string;
+    status: 'in-progress' | 'awaiting-approval';
+    step: number;
+}
+
+// @public
 interface PendingTurn {
     // (undocumented)
     approvalId?: string;
@@ -1595,6 +1616,8 @@ interface SimpleAgent<TObject = unknown> {
     fork: (sessionId: string, options: Omit<ForkOptions, 'sessionId' | 'checkpointStore'>) => Promise<ForkResult>;
     // Warning: (ae-forgotten-export) The symbol "AgentOAuth" needs to be exported by the entry point index.d.ts
     oauth: AgentOAuth;
+    // Warning: (ae-forgotten-export) The symbol "PendingRun" needs to be exported by the entry point index.d.ts
+    pending: () => Promise<PendingRun[]>;
     ready: () => Promise<void>;
     resume: (sessionId: string, options?: {
         signal?: AbortSignal;
@@ -1938,14 +1961,14 @@ interface Usage {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-CQFRlIZb.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-CQFRlIZb.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-CQFRlIZb.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-CQFRlIZb.d.ts:3352:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
-// dist/createAgent-CQFRlIZb.d.ts:3353:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
-// dist/index-Dy27pnXR.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-Dy27pnXR.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-Dy27pnXR.d.ts:1474:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
+// dist/createAgent-SvLqII_G.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-SvLqII_G.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-SvLqII_G.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-SvLqII_G.d.ts:3352:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point index.d.ts
+// dist/createAgent-SvLqII_G.d.ts:3353:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point index.d.ts
+// dist/index-Cv7ybp2f.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-Cv7ybp2f.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-Cv7ybp2f.d.ts:1474:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

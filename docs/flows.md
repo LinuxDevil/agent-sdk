@@ -121,6 +121,41 @@ A step without an `id` gets one that is unique within the run (`step-1`,
 `step-2`, ... in the order the steps start), so `step-start` and
 `step-complete` events can be paired by `stepId`.
 
+## Retries and time limits
+
+Any node can have `retry` and `timeoutMs`. That includes `llmCall`,
+`toolCall`, `sequence`, `parallel` and `forEach`.
+
+- `retry: { maxAttempts, backoffMs? }` runs a failing node again, up to
+  `maxAttempts` attempts in all. It waits `backoffMs * 2^(attempt - 1)` ms
+  before each retry (default `0`). Each failed attempt that is retried emits a
+  `step-retry` event with `{ attempt, maxAttempts, delayMs }` and the
+  attempt's `error`. Only the last failure emits `step-error`. A cancelled run
+  (`signal`) is not retried.
+- `timeoutMs` fails an attempt that runs longer with `LOUSHO_OPERATION_TIMEOUT`
+  (a `TimeoutError`). The attempt's model request or tool call gets an aborted
+  signal. A timed-out attempt is retried like any other failure. A tool that
+  ignores `ctx.abortSignal` keeps running in the background.
+
+Invalid values (`maxAttempts` < 1 or not an integer, a negative `backoffMs`,
+a `timeoutMs` <= 0) fail the step with `LOUSHO_FLOW_INVALID`.
+
+```ts
+import type { EditorStep } from '@lousho/build-ai-agent/flows';
+
+const fetchInvoice: EditorStep = {
+  type: 'toolCall',
+  tool: 'fetch_invoice',
+  arguments: { id: '{{invoiceId}}' },
+  outputVariable: 'invoice',
+  retry: { maxAttempts: 3, backoffMs: 500 },
+  timeoutMs: 10_000,
+};
+```
+
+A retried container runs its children again. The exception is a durable run
+(below): there, children that completed in an earlier attempt are skipped.
+
 ## Durable runs
 
 Pass a `checkpointStore` and a `runId` to make a run durable. The run's

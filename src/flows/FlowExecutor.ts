@@ -12,6 +12,7 @@ import {
   ExpressionEvaluatorNode,
   ForEachItemsNode,
   LLMCallNode,
+  NodeRunOptions,
   OneOfOption,
   OneOfOptionsNode,
   ParallelNode,
@@ -36,7 +37,7 @@ import {
   toolSpanInit,
 } from '../execution/genAiSpans';
 import { FLOW_NODE_SPAN_NAME, FlowAttr, GenAiAttr, GenAiOperation } from '../execution/semconv';
-import { ConfigurationError, SDKError, ValidationError } from '../execution/errors';
+import { ConfigurationError, SDKError, TimeoutError, ValidationError } from '../execution/errors';
 import type { PermissionOptions } from '../execution/permissions';
 import type { ApproveToolCall } from '../createAgentApprovals';
 import { gateFlowToolCall } from './flowToolGate';
@@ -168,6 +169,7 @@ export type FlowExecutionEventType =
   | 'step-start'
   | 'step-complete'
   | 'step-error'
+  | 'step-retry'
   | 'variable-set'
   | 'llm-call'
   | 'llm-response'
@@ -187,6 +189,8 @@ export interface FlowExecutionEventDataMap {
   'step-start': undefined;
   'step-complete': unknown;
   'step-error': undefined;
+  /** DUR-F17: attempt `attempt` of `maxAttempts` failed (the event's `error`); the next starts after `delayMs`. */
+  'step-retry': { attempt: number; maxAttempts: number; delayMs: number };
   'variable-set': { variable: string; value: unknown };
   'llm-call': { model: string | undefined; prompt: string };
   'llm-response': { text: string; usage: ProviderUsage | undefined };
@@ -335,6 +339,27 @@ type PathedContext = FlowExecutionContext & { [NODE_PATH]?: string };
 
 function nodePath(context: FlowExecutionContext): string {
   return (context as PathedContext)[NODE_PATH] ?? '0';
+}
+
+/** Resolves after `ms`, or rejects with the signal's reason once it aborts. */
+function abortableDelay(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(signal.reason);
+  }
+  if (ms <= 0) {
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 /**
@@ -654,7 +679,8 @@ export class FlowExecutor {
     });
 
     try {
-      const output = this.dispatchNode(node, context, events, onEvent);
+      const options = this.runOptions(node, stepId);
+      const output = options ? this.runWithRetry(node, stepId, options, context, events, onEvent) : this.dispatchNode(node, context, events, onEvent);
       const result = output instanceof Promise ? await output : output;
 
       // Emit step complete event
@@ -681,6 +707,94 @@ export class FlowExecutor {
       });
 
       throw error;
+    }
+  }
+
+  /** DUR-F17: a node's `retry` / `timeoutMs`, checked; `undefined` when it has neither. */
+  private static runOptions(node: EditorStep, stepId: string): { maxAttempts: number; backoffMs: number; timeoutMs?: number } | undefined {
+    const { retry, timeoutMs } = node as NodeRunOptions;
+    if (retry === undefined && timeoutMs === undefined) {
+      return undefined;
+    }
+    const maxAttempts = retry?.maxAttempts ?? 1;
+    const backoffMs = retry?.backoffMs ?? 0;
+    const invalid =
+      (!Number.isInteger(maxAttempts) || maxAttempts < 1 ? `retry.maxAttempts must be an integer >= 1, got ${maxAttempts}` : undefined) ??
+      (!Number.isFinite(backoffMs) || backoffMs < 0 ? `retry.backoffMs must be a number >= 0, got ${backoffMs}` : undefined) ??
+      (timeoutMs !== undefined && (!Number.isFinite(timeoutMs) || timeoutMs <= 0) ? `timeoutMs must be a number > 0, got ${timeoutMs}` : undefined);
+    if (invalid) {
+      throw new SDKError(`Flow step '${stepId}' (${node.type}): ${invalid}`, 'LOUSHO_FLOW_INVALID');
+    }
+    return { maxAttempts, backoffMs, timeoutMs };
+  }
+
+  /**
+   * DUR-F17: run a node's handler up to `maxAttempts` times, each attempt
+   * limited to `timeoutMs`. A cancelled run is not retried. In a durable run,
+   * the children an earlier attempt completed are not run again.
+   */
+  private static async runWithRetry(
+    node: EditorStep,
+    stepId: string,
+    options: { maxAttempts: number; backoffMs: number; timeoutMs?: number },
+    context: FlowExecutionContext,
+    events: FlowExecutionEvent[],
+    onEvent?: (event: FlowExecutionEvent) => void
+  ): Promise<unknown> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.runAttempt(node, stepId, options.timeoutMs, context, events, onEvent);
+      } catch (error) {
+        if (attempt >= options.maxAttempts || context.signal?.aborted) {
+          throw error;
+        }
+        const delayMs = options.backoffMs * 2 ** (attempt - 1);
+        emitEvent(events, onEvent, {
+          type: 'step-retry',
+          timestamp: new Date(),
+          stepId,
+          stepType: node.type,
+          data: { attempt, maxAttempts: options.maxAttempts, delayMs },
+          error: error as Error,
+        });
+        await abortableDelay(delayMs, context.signal);
+      }
+    }
+  }
+
+  /** One attempt at a node, failed with `LOUSHO_OPERATION_TIMEOUT` (and its signal aborted) past `timeoutMs`. */
+  private static async runAttempt(
+    node: EditorStep,
+    stepId: string,
+    timeoutMs: number | undefined,
+    context: FlowExecutionContext,
+    events: FlowExecutionEvent[],
+    onEvent?: (event: FlowExecutionEvent) => void
+  ): Promise<unknown> {
+    if (timeoutMs === undefined) {
+      return this.dispatchNode(node, context, events, onEvent);
+    }
+    const controller = new AbortController();
+    const parentSignal = context.signal;
+    const abortFromParent = () => controller.abort(parentSignal?.reason);
+    if (parentSignal?.aborted) {
+      abortFromParent();
+    }
+    parentSignal?.addEventListener('abort', abortFromParent, { once: true });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        const error = new TimeoutError(`Flow step '${stepId}' (${node.type}) timed out after ${timeoutMs} ms`, timeoutMs, `flow.node ${node.type}`);
+        controller.abort(error);
+        reject(error);
+      }, timeoutMs);
+    });
+    try {
+      const attempt = Promise.resolve().then(() => this.dispatchNode(node, { ...context, signal: controller.signal }, events, onEvent));
+      return await Promise.race([attempt, timedOut]);
+    } finally {
+      clearTimeout(timer);
+      parentSignal?.removeEventListener('abort', abortFromParent);
     }
   }
 
