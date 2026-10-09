@@ -8,6 +8,9 @@ import type { OAuthTokenStore } from '../../oauth/types';
 import type { TokenKeyInput } from '../../oauth/tokenCipher';
 import { sqliteTokenStore } from './tokenStore';
 
+/** A session turn's checkpoint id, `<session id>.turn-<n>` (AgentSession). */
+const TURN_CHECKPOINT = /^(.+)\.turn-\d+$/;
+
 /** Options for {@link SqliteStore.prune}. */
 export interface PruneOptions {
   /** Delete rows last updated more than this many milliseconds ago. */
@@ -97,7 +100,10 @@ export class SqliteStore {
   /**
    * Delete stale sessions and checkpoints (by last update), approvals that
    * were resolved more than `olderThanMs` ago, and expired pending OAuth
-   * sign-ins. Unresolved approvals and OAuth tokens are kept.
+   * sign-ins. Unresolved approvals and OAuth tokens are kept, and so is a run
+   * paused on an unresolved approval, however old: its checkpoint
+   * (`<id>.turn-<n>` for a session turn), that checkpoint's history and the
+   * session's transcript (Eve DUR-F6).
    *
    * @example
    * ```ts
@@ -111,16 +117,47 @@ export class SqliteStore {
     }
     const cutoff = Date.now() - olderThanMs;
     return this.connection.transaction(() => {
-      const run = (sql: string): number => Number(this.sql.get(sql).run(cutoff).changes);
+      const paused = this.pausedRuns();
+      // Deletes the rows older than the cutoff whose `owner` (a session or run id) no paused run needs.
+      const prune = (table: string, key: string, owner: string, column: string, keep: Set<string>): number => {
+        const stale = this.sql
+          .get(`SELECT ${key} AS pk, ${owner} AS owner FROM ${table} WHERE ${column} < ?`)
+          .all(cutoff)
+          .filter((row) => !keep.has(String(row.owner)));
+        for (const row of stale) this.sql.get(`DELETE FROM ${table} WHERE ${key} = ?`).run(row.pk as string | number);
+        return stale.length;
+      };
       // Old history entries go too; the count stays the checkpoints deleted.
-      run('DELETE FROM checkpoint_history WHERE saved_at < ?');
+      prune('checkpoint_history', 'id', 'session_id', 'saved_at', paused.checkpoints);
       return {
-        sessions: run('DELETE FROM sessions WHERE updated_at < ?'),
-        checkpoints: run('DELETE FROM checkpoints WHERE updated_at < ?'),
-        approvals: run('DELETE FROM approvals WHERE resolved_at IS NOT NULL AND resolved_at < ?'),
+        sessions: prune('sessions', 'id', 'id', 'updated_at', paused.sessions),
+        checkpoints: prune('checkpoints', 'session_id', 'session_id', 'updated_at', paused.checkpoints),
+        approvals: Number(this.sql.get('DELETE FROM approvals WHERE resolved_at IS NOT NULL AND resolved_at < ?').run(cutoff).changes),
         oauthPending: Number(this.sql.get('DELETE FROM oauth_pending WHERE expires_at <= ?').run(Date.now()).changes),
       };
     });
+  }
+
+  /**
+   * The checkpoints and sessions of runs paused on an unresolved approval:
+   * the run each approval's snapshot names, any checkpoint that names an
+   * unresolved approval as its own, and the session `<id>` of a
+   * `<id>.turn-<n>` session turn (a bare run id is its own session).
+   */
+  private pausedRuns(): { checkpoints: Set<string>; sessions: Set<string> } {
+    const runs = [
+      ...this.sql.get("SELECT json_extract(payload, '$.snapshot.sessionId') AS run FROM approvals WHERE resolved_at IS NULL").all(),
+      ...this.sql
+        .get(
+          `SELECT session_id AS run FROM checkpoints
+           WHERE json_extract(payload, '$.approvalId') IN (SELECT id FROM approvals WHERE resolved_at IS NULL)`
+        )
+        .all(),
+    ]
+      .map((row) => row.run)
+      .filter((run): run is string => typeof run === 'string' && run !== '');
+    const sessions = runs.map((run) => TURN_CHECKPOINT.exec(run)?.[1] ?? run);
+    return { checkpoints: new Set(runs), sessions: new Set(sessions) };
   }
 
   /** Close the database. Any later use of the store or its parts throws. Safe to call twice. */
