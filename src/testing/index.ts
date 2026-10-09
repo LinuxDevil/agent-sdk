@@ -28,7 +28,7 @@ export type {
 // installs its cassette wrapper here; tests may install their own provider
 // wrapper at the same point (docs/evals.md#record-replay-and-drift).
 export { setProviderInterceptor } from '../providers/interception';
-export type { ProviderInterceptor } from '../providers/interception';
+export type { ProviderInterceptor, ProviderInterceptContext } from '../providers/interception';
 export { hashEmbedder } from './hashEmbedder';
 export type { HashEmbedderOptions } from './hashEmbedder';
 // A ToolExecutionContext double for calling tool.execute(args, ctx) in a unit test.

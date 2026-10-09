@@ -2,7 +2,9 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { z } from 'zod';
 import { createAgent } from '../createAgent';
+import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
 import { CASSETTES_ENV, CONFIG_ENV, DRIFT_DIR_ENV, cassettePath, driftCassettePath, legacyCassettePath, withEvalCassettes } from './cassettes';
 import type { EvalResult } from './evalResult';
@@ -110,7 +112,7 @@ describe('withEvalCassettes', () => {
     vi.stubEnv(CASSETTES_ENV, 'record');
     const recorded = await run(build(mockModel([{ toolCalls: [task] }, 'Paris.']), mockModel(['Paris is the capital.'])));
     expect(recorded.reply).toBe('Paris.');
-    expect(recorded.result.cassettes).toEqual([cassettePath(file, 'Delegation', undefined), cassettePath(file, 'Delegation', undefined, 1)]);
+    expect(recorded.result.cassettes).toEqual([cassettePath(file, 'Delegation', undefined), cassettePath(file, 'Delegation', undefined, 1, 'researcher')]);
 
     vi.stubEnv(CASSETTES_ENV, 'replay');
     const leadModel = mockModel([]);
@@ -212,5 +214,72 @@ describe('cassette names (docs-qa F3, F14)', () => {
     });
     expect(String((caught as Error).message)).toContain('re-record it with: npx lousho eval --record --config vitest.eval.config.mts');
     expect(String((caught as Error).message)).not.toContain('LOUSHO_RECORD');
+  });
+});
+
+describe('parallel sub-agents (Eve MA-F7)', () => {
+  const noop = defineTool({ name: 'lookup', description: 'lookup', input: z.object({ q: z.string() }), execute: async ({ q }) => `data for ${q}` });
+  const realWorker = () =>
+    mockModel(
+      [
+        (req) => {
+          const last = req.messages.at(-1);
+          const prompt = String(req.messages.find((m) => m.role === 'user')?.content);
+          if (last?.role === 'user') return { toolCalls: [{ name: 'lookup', args: { q: prompt } }], delayMs: prompt.includes('A') ? 200 : 5 };
+          return { text: `answer for ${prompt}` };
+        },
+      ],
+      { onExhausted: 'repeat-last' }
+    );
+  const build = (worker: ReturnType<typeof mockModel>, instructions = 'w') =>
+    createAgent({
+      provider: mockModel([
+        { toolCalls: [
+          { name: 'task', args: { agent: 'worker', prompt: 'job A', description: 'a' } },
+          { name: 'task', args: { agent: 'worker', prompt: 'job B', description: 'b' } },
+        ] },
+        'both done',
+      ]),
+      instructions: 'lead',
+      subagents: { worker: createAgent({ provider: worker, instructions, description: 'Worker', tools: [noop] }) },
+    });
+  const run = async (file: string, agent: ReturnType<typeof build>) => {
+    let messages: Array<{ role: string; content: unknown }> = [];
+    await withEvalCassettes({ file, name: 'Parallel' }, async () => {
+      messages = (await agent.send('go')).messages as never;
+      return { name: 'Parallel', tags: [], passed: true, assertions: [], durationMs: 0, steps: 2, toolCalls: [] };
+    });
+    return messages.filter((m) => m.role === 'tool').map((m) => String(m.content));
+  };
+
+  it('replays two parallel tasks to one sub-agent whatever order the real model answered in', async () => {
+    const file = evalFile();
+    vi.stubEnv(CASSETTES_ENV, 'record');
+    await run(file, build(realWorker()));
+    vi.stubEnv(CASSETTES_ENV, 'replay');
+    const results = await run(file, build(mockModel([])));
+    expect(results.join('|')).toContain('answer for job A');
+    expect(results.join('|')).toContain('answer for job B');
+    expect(results.join('|')).not.toMatch(/does not match|failed/);
+  });
+
+  it('names a sub-agent cassette after its agent', async () => {
+    const file = evalFile();
+    vi.stubEnv(CASSETTES_ENV, 'record');
+    await run(file, build(realWorker()));
+    expect(fs.existsSync(cassettePath(file, 'Parallel', undefined, 1, 'worker'))).toBe(true);
+  });
+
+  it('lets a cassette mismatch in a sub-agent stop the run instead of becoming a task result', async () => {
+    const file = evalFile();
+    vi.stubEnv(CASSETTES_ENV, 'record');
+    await run(file, build(realWorker()));
+    vi.stubEnv(CASSETTES_ENV, 'replay');
+    const changed = build(mockModel([]), 'a different prompt');
+    const send = withEvalCassettes({ file, name: 'Parallel' }, async () => {
+      await changed.send('go');
+      return { name: 'Parallel', tags: [], passed: true, assertions: [], durationMs: 0, steps: 2, toolCalls: [] };
+    });
+    await expect(send).rejects.toMatchObject({ code: 'LOUSHO_CASSETTE_INVALID' });
   });
 });

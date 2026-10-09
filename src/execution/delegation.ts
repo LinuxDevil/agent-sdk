@@ -29,7 +29,7 @@ import { inheritGuardrails, type AgentGuardrails } from './ioGuardrails';
 import { HookRegistry, type AgentHook, type HookContext, type SubagentInfo } from './hooks';
 import { markPropagating } from './propagatingToolError';
 import { SubagentApprovalPause, subagentBudget, toolCallScopeOf, type ToolCallScope } from './subagentRuntime';
-import { RUN_EVENTS, runEventsOf, type StreamingExecuteOptions } from './agentRun';
+import { RUN_EVENTS, SUBAGENT_NAME, runEventsOf, type StreamingExecuteOptions } from './agentRun';
 import type { ToolRunContext } from './sandboxGuard';
 import { SDKError } from './errors';
 import { runUsageOfError } from './runUsage';
@@ -95,7 +95,11 @@ export async function runSubagent(
   const scope = toolCallScopeOf(request.toolOptions);
   const info = subagentInfo(scope, request);
   const capture = captureApproval(scope);
-  const options = childOptions(spec, scope, info, capture.store, request.toolOptions?.abortSignal);
+  const options = {
+    ...childOptions(spec, scope, info, capture.store, request.toolOptions?.abortSignal),
+    // Eval cassettes key a sub-agent's recording by this name.
+    [SUBAGENT_NAME]: request.name,
+  };
   const run = scope?.execute ?? execute;
   if (!run) {
     throw new SDKError(`Sub-agent '${request.name}' can only be started by a tool call of an agent run.`, 'LOUSHO_CONFIG_INVALID');

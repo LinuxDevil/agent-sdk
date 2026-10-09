@@ -26,6 +26,7 @@ import {
 } from './cassette';
 import { createSanitizer, firstDifference, sortTools, stableStringify, type Sanitizer } from './fingerprint';
 import { SDKError } from '../execution/errors';
+import { markPropagating } from '../execution/propagatingToolError';
 import type { HostedToolType } from '../tools/hosted';
 import type { HostedToolCall } from '../providers/llm';
 
@@ -110,6 +111,8 @@ export class CassetteMismatchError extends SDKError {
   ) {
     super(message, 'LOUSHO_CASSETTE_INVALID');
     this.name = 'CassetteMismatchError';
+    // A fixture failure must stop the run, not become a sub-agent tool's "failed" result (Eve MA-F7).
+    markPropagating(this);
   }
 }
 

@@ -25,7 +25,7 @@ import {
   isModelActionableProviderErrorCategory,
 } from './errors';
 import type { ExecuteOptions } from './AgentExecutor';
-import { runEventsOf } from './agentRun';
+import { runEventsOf, subagentNameOf } from './agentRun';
 import { outputResponseFormat } from './structuredOutput';
 import { withSteerSignal } from './inputQueue';
 import { mergeModelSettings } from './modelSettings';
@@ -262,7 +262,7 @@ export function generateInSpan(
 ): Promise<GeneratedStep> {
   const { exporter, onLLMResponse, hooks, redactContent } = options;
   // LOU-D46.2: the one place a run's model call is routed, so eval cassettes cover every entry point.
-  const provider = interceptProvider(options.provider);
+  const provider = interceptProvider(options.provider, { agent: subagentNameOf(options) ?? options.agent?.name });
   const captureContent = resolveCaptureContent(options.captureContent);
   const init = llmSpanInit(provider, generateRequest, { redactContent, captureContent });
 

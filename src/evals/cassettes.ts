@@ -17,6 +17,7 @@ import { createHash } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { setProviderInterceptor } from '../providers/interception';
+import { markPropagating } from '../execution/propagatingToolError';
 import type { LLMProvider } from '../providers/llm';
 import { recordReplay } from '../testing/recordReplay';
 import type { EvalResult } from './evalResult';
@@ -67,21 +68,25 @@ function slug(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'case';
 }
 
-function providerSuffix(index: number): string {
-  return index > 0 ? `.${index + 1}` : '';
+function providerSuffix(index: number, agent?: string): string {
+  if (index <= 0) return '';
+  return agent ? `.${slug(agent)}` : `.${index + 1}`;
 }
 
 /**
  * The committed cassette for a case's `index`-th (0-based) provider:
  * `<case>-<hash>.json`, then `<case>-<hash>.2.json`, ... The hash covers the
  * full label, so labels that slug or truncate alike still get their own file.
+ * With `agent` the later providers are named after their agent
+ * (`<case>-<hash>.researcher.json`), so which cassette a sub-agent reads does
+ * not depend on the order parallel sub-agents happened to call in.
  */
-export function cassettePath(evalFile: string, evalName: string, caseLabel: string | undefined, index = 0): string {
+export function cassettePath(evalFile: string, evalName: string, caseLabel: string | undefined, index = 0, agent?: string): string {
   const base =
     caseLabel === undefined
       ? 'default'
       : `${slug(caseLabel).slice(0, 48).replace(/-+$/, '')}-${createHash('sha256').update(caseLabel).digest('hex').slice(0, 8)}`;
-  return path.join(path.dirname(evalFile), '__cassettes__', slug(evalName), `${base}${providerSuffix(index)}.json`);
+  return path.join(path.dirname(evalFile), '__cassettes__', slug(evalName), `${base}${providerSuffix(index, agent)}.json`);
 }
 
 /** The cassette name older SDKs wrote (`<slug of the display label>.json`); still read when it is the only one present. */
@@ -95,6 +100,13 @@ export function driftCassettePath(driftDir: string, committed: string): string {
   return path.join(driftDir, `${createHash('sha256').update(path.resolve(committed)).digest('hex').slice(0, 16)}.json`);
 }
 
+/** A cassette setup failure: it stops the run, even from inside a sub-agent's task. */
+function fixtureError(message: string, code: 'LOUSHO_CASSETTE_INVALID'): SDKError {
+  const error = new SDKError(message, code);
+  markPropagating(error);
+  return error;
+}
+
 function displayName(run: Pick<CaseRun, 'name' | 'label'>): string {
   return run.label ? `${run.name} [${run.label}]` : run.name;
 }
@@ -106,12 +118,18 @@ function recordCommand(file: string): string {
 }
 
 /** The committed cassette a case uses: the hashed name, or a legacy-named one recorded by an older SDK. */
-function committedCassette(run: CaseRun, index: number): string {
-  const current = cassettePath(run.file, run.name, run.key ?? run.label, index);
+function committedCassette(run: CaseRun, index: number, agent: string | undefined): string {
+  const key = run.key ?? run.label;
+  let named = cassettePath(run.file, run.name, key, index, agent);
+  // Two providers of one agent name get the numbered file for the second.
+  if (agent && index > 0 && run.used.includes(named)) named = cassettePath(run.file, run.name, key, index);
   const reads = run.mode !== 'record' || run.driftDir !== undefined;
-  if (!reads || fs.existsSync(current)) return current;
+  if (!reads || fs.existsSync(named)) return named;
+  // Cassettes recorded before agent-named files: `<case>.2.json`, then the unhashed name.
+  const numbered = cassettePath(run.file, run.name, key, index);
+  if (fs.existsSync(numbered)) return numbered;
   const legacy = legacyCassettePath(run.file, run.name, run.label, index);
-  return fs.existsSync(legacy) ? legacy : current;
+  return fs.existsSync(legacy) ? legacy : named;
 }
 
 /** Two different cases recording to one cassette would silently overwrite each other: fail the second. */
@@ -119,7 +137,7 @@ function claimForRecording(run: CaseRun, cassette: string): void {
   const id = JSON.stringify([path.resolve(run.file), run.name, run.index ?? null, run.key ?? run.label ?? null]);
   const owner = recordedBy.get(cassette);
   if (owner && owner.id !== id) {
-    throw new SDKError(
+    throw fixtureError(
       `lousho eval --record: "${displayName(run)}" would record to ${path.relative(process.cwd(), cassette)}, ` +
         `which "${owner.label}" already recorded in this run. Give each case a distinct \`label\`.`,
       'LOUSHO_CASSETTE_INVALID'
@@ -128,15 +146,15 @@ function claimForRecording(run: CaseRun, cassette: string): void {
   recordedBy.set(cassette, { id, label: displayName(run) });
 }
 
-function wrapperFor(run: CaseRun, provider: LLMProvider): LLMProvider {
+function wrapperFor(run: CaseRun, provider: LLMProvider, agent?: string): LLMProvider {
   if (wrappers.has(provider)) return provider;
   const existing = run.wrappers.get(provider);
   if (existing) return existing;
-  const committed = committedCassette(run, run.wrappers.size);
+  const committed = committedCassette(run, run.wrappers.size, agent);
   const cassette = run.driftDir ? driftCassettePath(run.driftDir, committed) : committed;
   const exists = fs.existsSync(cassette);
   if (run.mode === 'replay' && !exists) {
-    throw new SDKError(
+    throw fixtureError(
       `lousho eval --replay: no cassette for "${displayName(run)}" at ${path.relative(process.cwd(), cassette)}. ` +
         `Record it with: ${recordCommand(run.file)}`,
       'LOUSHO_CASSETTE_INVALID'
@@ -148,6 +166,8 @@ function wrapperFor(run: CaseRun, provider: LLMProvider): LLMProvider {
     wrapper = recordReplay(provider, {
       cassette,
       mode: run.mode === 'record' ? 'record' : 'replay',
+      // Parallel calls reach one provider in whatever order the live model happened to answer in.
+      match: 'request',
       rerecordHint: `If the change is intentional, re-record it with: ${recordCommand(run.file)}`,
     });
     wrappers.add(wrapper);
@@ -160,9 +180,9 @@ function wrapperFor(run: CaseRun, provider: LLMProvider): LLMProvider {
 function installHook(): void {
   if (installed) return;
   installed = true;
-  setProviderInterceptor((provider) => {
+  setProviderInterceptor((provider, context) => {
     const run = activeCase.getStore();
-    return run ? wrapperFor(run, provider) : provider;
+    return run ? wrapperFor(run, provider, context?.agent) : provider;
   });
 }
 
