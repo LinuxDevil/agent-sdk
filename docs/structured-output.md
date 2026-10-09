@@ -140,6 +140,9 @@ console.log(object?.note); // typed: string | undefined
    limit (the model's `finishReason` was `'length'`): a repair would be cut
    off the same way, so the run ends at once with `outputError.kind:
    'truncated'` and a message that says to raise `modelSettings.maxTokens`.
+   The repair message and the reply it rejected are sent to that one model
+   call only: they are not in `result.messages` or the session transcript,
+   so a later turn never sees them.
 5. Still invalid, the run resolves (it does not reject) with
    `finishReason: 'output-invalid'`, no `object`, and `outputError`:
    `{ kind, message, issues: [{ path, message }] }`, where `kind` is
@@ -153,7 +156,8 @@ offered ("answer now") and validates that reply the same way. A valid
 answer ends the run `finishReason: 'max-steps'` with `object` set; an
 invalid one ends it `'output-invalid'` with `outputError`. The extra call
 is skipped when another budget limit (tokens, cost, duration) is already
-spent.
+spent. Like the repair message, the "answer now" prompt is sent to that
+call only and is not kept in `result.messages` or the session transcript.
 
 ## The schema in the prompt
 

@@ -85,6 +85,25 @@ export interface AgentRunState {
   handoffs?: number;
   /** N6: the options and tools of the agent a handoff in the last step switched to, for the loop to take. */
   switched?: { options: ExecuteOptions; tools: ToolDefinition[] };
+  /**
+   * Eve CORE-F3: messages of `messages` that only the model calls of this
+   * run see - the structured-output repair and forced-answer prompts, and
+   * the reply a repair rejected. They are left out of `result.messages` and
+   * of the finished checkpoint (the session transcript).
+   */
+  requestOnly?: Set<Message>;
+}
+
+/** Eve CORE-F3: marks `messages` (already in `state.messages`) as {@link AgentRunState.requestOnly}. */
+export function markRequestOnly(state: AgentRunState, ...messages: Message[]): void {
+  state.requestOnly ??= new Set();
+  for (const message of messages) state.requestOnly.add(message);
+}
+
+/** `state.messages` without the {@link AgentRunState.requestOnly} ones: what the run keeps. */
+function keptMessages(state: AgentRunState): Message[] {
+  const requestOnly = state.requestOnly;
+  return requestOnly?.size ? state.messages.filter((message) => !requestOnly.has(message)) : state.messages;
 }
 
 /**
@@ -255,7 +274,8 @@ export async function saveStepCheckpoint(
     agentId: agent.id || '',
     sessionId,
     stepIndex: state.steps,
-    messages: [...state.messages, ...state.queuedInput, ...(inputQueue?.messages ?? [])],
+    // Eve CORE-F3: an unfinished run keeps its request-only prompts, so a resume sends what the model saw.
+    messages: [...(status === 'finished' ? keptMessages(state) : state.messages), ...state.queuedInput, ...(inputQueue?.messages ?? [])],
     toolCalls: [...state.toolCalls],
     usage: structuredClone(state.usage),
     stepUsage: [...state.stepUsage],
@@ -347,7 +367,7 @@ export function toExecutionResult(
   return {
     text,
     ...(state.reasoning && { reasoning: state.reasoning }),
-    messages: state.messages,
+    messages: finishReason === 'awaiting-approval' ? state.messages : keptMessages(state),
     toolCalls: state.toolCalls,
     usage: state.usage,
     stepUsage: state.stepUsage,
