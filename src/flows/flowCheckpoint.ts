@@ -10,7 +10,7 @@
  */
 
 import type { ProviderUsage } from '../providers';
-import type { Checkpoint, CheckpointStatus, CheckpointStore, FlowCheckpointState } from '../execution/checkpoint';
+import type { Checkpoint, CheckpointStatus, CheckpointStore, FlowCheckpointState, FlowPendingApproval } from '../execution/checkpoint';
 import { ConfigurationError, SDKError } from '../execution/errors';
 
 /** The run's usage and completed-step count so far, as FlowExecutor reports them. */
@@ -56,6 +56,26 @@ export function durableOptions(
 }
 
 /**
+ * Thrown by a durable run's `toolCall` step whose approval is deferred (or
+ * that has no `approve` callback): the run stops and is saved as
+ * `'awaiting-approval'`. Not a failure: no `step-error`, no retry.
+ */
+export class FlowApprovalPause extends Error {
+  constructor(readonly pending: FlowPendingApproval) {
+    super(`Flow step '${pending.nodeId}' is awaiting approval '${pending.approvalId}' for tool '${pending.toolName}'`);
+    this.name = 'FlowApprovalPause';
+  }
+}
+
+/** A resumed run's decision on the approval it was paused on. */
+export interface FlowApprovalDecision {
+  /** The `approvalId` the paused run returned. */
+  approvalId: string;
+  /** `true` runs the paused tool call; `false` fails its step with `LOUSHO_FLOW_TOOL_DENIED`. */
+  approved: boolean;
+}
+
+/**
  * The state of one durable run: what completed, and the store it is saved to.
  * Saves are chained, so concurrent nodes (a `parallel` step) save in order.
  */
@@ -64,6 +84,7 @@ export class FlowRun {
   private readonly choices: Map<string, number>;
   private readonly priorUsage: ProviderUsage;
   private readonly priorSteps: number;
+  private readonly decisions = new Map<string, FlowApprovalDecision>();
   private saving: Promise<void> = Promise.resolve();
   /** Set by FlowExecutor once the run has started, to read its usage and steps. */
   progress: () => FlowRunProgress = () => ({ usage: { ...ZERO_USAGE }, steps: 0 });
@@ -101,6 +122,16 @@ export class FlowRun {
     this.choices.set(path, index);
   }
 
+  /** Apply the decision on the approval the run was paused at (node `nodeId`). */
+  decide(nodeId: string, decision: FlowApprovalDecision): void {
+    this.decisions.set(nodeId, decision);
+  }
+
+  /** The decision for the `toolCall` step at `path`, when the run was resumed with one. */
+  decisionFor(path: string): FlowApprovalDecision | undefined {
+    return this.decisions.get(path);
+  }
+
   /** Record a completed node, drop its children's entries, and save. */
   async complete(path: string, result: unknown): Promise<void> {
     const prefix = `${path}.`;
@@ -120,7 +151,7 @@ export class FlowRun {
   }
 
   /** Save the run's state now (after any save in flight). */
-  save(status: CheckpointStatus, extra: Partial<Pick<FlowCheckpointState, 'output'>> = {}): Promise<void> {
+  save(status: CheckpointStatus, extra: Partial<Pick<FlowCheckpointState, 'output' | 'pendingApproval'>> = {}): Promise<void> {
     const checkpoint = this.snapshot(status, extra);
     const next = this.saving.then(() => this.store.save(this.runId, checkpoint));
     // A failed save fails the node that made it; later saves still run.
@@ -128,7 +159,7 @@ export class FlowRun {
     return next;
   }
 
-  private snapshot(status: CheckpointStatus, extra: Partial<Pick<FlowCheckpointState, 'output'>>): Checkpoint {
+  private snapshot(status: CheckpointStatus, extra: Partial<Pick<FlowCheckpointState, 'output' | 'pendingApproval'>>): Checkpoint {
     const { usage, steps } = this.totals();
     // A copy, so a store that keeps the object is not changed by later steps.
     const flow: FlowCheckpointState = structuredClone({
@@ -149,6 +180,7 @@ export class FlowRun {
       toolCalls: [],
       usage: { promptTokens: usage.promptTokens, completionTokens: usage.completionTokens, totalTokens: usage.totalTokens },
       status,
+      ...(extra.pendingApproval && { approvalId: extra.pendingApproval.approvalId }),
       flow,
     };
   }

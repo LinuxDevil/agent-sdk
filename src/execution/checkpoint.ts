@@ -172,6 +172,20 @@ export interface FlowCheckpointState {
   steps: number;
   /** With `status: 'finished'`: the flow's output. */
   output?: unknown;
+  /** With `status: 'awaiting-approval'`: the `toolCall` step the run is paused on. */
+  pendingApproval?: FlowPendingApproval;
+}
+
+/** Eve DUR-F17: a flow `toolCall` step paused until its approval is decided. */
+export interface FlowPendingApproval {
+  /** Pass it back as `FlowExecutor.resume(flow, { ..., approval: { approvalId, approved } })`. */
+  approvalId: string;
+  /** The step's id in `completedNodeIds` terms. */
+  nodeId: string;
+  /** The tool waiting to run. */
+  toolName: string;
+  /** The arguments the tool will run with once approved. */
+  args: Record<string, unknown>;
 }
 
 /**

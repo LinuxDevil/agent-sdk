@@ -38,13 +38,10 @@ interface AgentFlow {
     //
     // (undocumented)
     agents?: FlowAgentDefinition[];
-    // (undocumented)
     code: string;
     // (undocumented)
     description?: string;
     // Warning: (ae-forgotten-export) The symbol "EditorStep" needs to be exported by the entry point index.d.ts
-    //
-    // (undocumented)
     flow?: EditorStep;
     // (undocumented)
     id?: string;
@@ -371,11 +368,15 @@ export type NamedToolDescriptor = ToolDescriptor & {
 };
 
 // @public
+interface NodeRetry {
+    backoffMs?: number;
+    maxAttempts: number;
+}
+
+// @public (undocumented)
 interface NodeRunOptions {
-    retry?: {
-        maxAttempts: number;
-        backoffMs?: number;
-    };
+    // Warning: (ae-forgotten-export) The symbol "NodeRetry" needs to be exported by the entry point index.d.ts
+    retry?: NodeRetry;
     timeoutMs?: number;
 }
 
@@ -776,8 +777,8 @@ interface UIComponentNode {
 
 // Warnings were encountered during analysis:
 //
-// dist/index-Jx0ez6Fz.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-Jx0ez6Fz.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-C5TXhmCn.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-C5TXhmCn.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

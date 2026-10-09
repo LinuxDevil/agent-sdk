@@ -49,11 +49,9 @@ interface AgentFingerprint {
 export interface AgentFlow {
     // (undocumented)
     agents?: FlowAgentDefinition[];
-    // (undocumented)
     code: string;
     // (undocumented)
     description?: string;
-    // (undocumented)
     flow?: EditorStep;
     // (undocumented)
     id?: string;
@@ -145,7 +143,6 @@ interface Checkpoint {
     businessState?: unknown;
     // (undocumented)
     finishReason?: string;
-    // Warning: (ae-forgotten-export) The symbol "FlowCheckpointState" needs to be exported by the entry point index.d.ts
     flow?: FlowCheckpointState;
     // Warning: (ae-forgotten-export) The symbol "CheckpointError" needs to be exported by the entry point index.d.ts
     lastError?: CheckpointError;
@@ -365,6 +362,12 @@ export interface FlowAgentDefinition {
 }
 
 // @public
+export interface FlowApprovalDecision {
+    approvalId: string;
+    approved: boolean;
+}
+
+// @public
 export class FlowBuilder {
     addAgent(agent: FlowAgentDefinition): this;
     addInput(input: FlowInputVariable): this;
@@ -381,12 +384,13 @@ export class FlowBuilder {
 }
 
 // @public
-interface FlowCheckpointState {
+export interface FlowCheckpointState {
     choices: Record<string, number>;
     code: string;
     completedNodeIds: string[];
     nodeResults: Record<string, unknown>;
     output?: unknown;
+    pendingApproval?: FlowPendingApproval;
     steps: number;
     // Warning: (ae-forgotten-export) The symbol "ProviderUsage" needs to be exported by the entry point index.d.ts
     usage: ProviderUsage;
@@ -562,11 +566,7 @@ export interface FlowExecutionEventDataMap {
     'step-complete': unknown;
     // (undocumented)
     'step-error': undefined;
-    'step-retry': {
-        attempt: number;
-        maxAttempts: number;
-        delayMs: number;
-    };
+    'step-retry': FlowStepRetry;
     // (undocumented)
     'step-start': undefined;
     // (undocumented)
@@ -612,12 +612,15 @@ export type FlowExecutionMode = 'sync' | 'async';
 
 // @public
 export interface FlowExecutionResult {
+    approvalId?: string;
     // (undocumented)
     error?: Error;
     // (undocumented)
     events: FlowExecutionEvent[];
     // (undocumented)
     output: unknown;
+    pendingApproval?: FlowPendingApproval;
+    status: 'completed' | 'failed' | 'awaiting-approval';
     // (undocumented)
     steps: number;
     // (undocumented)
@@ -652,11 +655,27 @@ export interface FlowInputVariable {
 export type FlowOutputMode = 'stream' | 'buffer';
 
 // @public
+export interface FlowPendingApproval {
+    approvalId: string;
+    args: Record<string, unknown>;
+    nodeId: string;
+    toolName: string;
+}
+
+// @public
 export type FlowResumeContext = Omit<FlowExecutionContext, 'variables' | 'checkpointStore' | 'runId'> & {
     checkpointStore: CheckpointStore;
     runId: string;
     variables?: Record<string, unknown>;
+    approval?: FlowApprovalDecision;
 };
+
+// @public
+export interface FlowStepRetry {
+    attempt: number;
+    delayMs: number;
+    maxAttempts: number;
+}
 
 // @public
 export interface FlowToolSetting {
@@ -897,11 +916,14 @@ type NamedToolDescriptor = ToolDescriptor & {
 };
 
 // @public
+export interface NodeRetry {
+    backoffMs?: number;
+    maxAttempts: number;
+}
+
+// @public (undocumented)
 export interface NodeRunOptions {
-    retry?: {
-        maxAttempts: number;
-        backoffMs?: number;
-    };
+    retry?: NodeRetry;
     timeoutMs?: number;
 }
 
@@ -1588,11 +1610,11 @@ export function validateFlowInput(input: Record<string, unknown>, variables: Flo
 
 // Warnings were encountered during analysis:
 //
-// dist/index-Jx0ez6Fz.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-Jx0ez6Fz.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-Jx0ez6Fz.d.ts:2009:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
-// dist/index-Jx0ez6Fz.d.ts:2052:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
-// dist/index-Jx0ez6Fz.d.ts:2052:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
+// dist/index-C5TXhmCn.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-C5TXhmCn.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-C5TXhmCn.d.ts:2009:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
+// dist/index-C5TXhmCn.d.ts:2052:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
+// dist/index-C5TXhmCn.d.ts:2052:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

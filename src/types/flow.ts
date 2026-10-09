@@ -89,10 +89,12 @@ export interface FlowAgentDefinition {
  */
 export interface AgentFlow {
   id?: string;
+  /** The flow's identifier; a durable run is tied to it (`FlowExecutor.resume()` refuses another flow's run). */
   code: string;
   name: string;
   description?: string;
   inputs?: FlowInputVariable[];
+  /** The root node `FlowExecutor` runs. */
   flow?: EditorStep;
   agents?: FlowAgentDefinition[];
 }
@@ -175,13 +177,21 @@ export interface StepNode {
  * const step: EditorStep = { type: 'toolCall', tool: 'fetch_invoice', retry: { maxAttempts: 3, backoffMs: 500 }, timeoutMs: 10_000 };
  * ```
  */
+/** Eve DUR-F17: a node's `retry` setting (see {@link NodeRunOptions.retry}). */
+export interface NodeRetry {
+  /** Attempts in all, including the first (an integer >= 1). */
+  maxAttempts: number;
+  /** The wait before the first retry, doubled for each one after (default 0). */
+  backoffMs?: number;
+}
+
 export interface NodeRunOptions {
   /**
    * Run the node again when it fails, up to `maxAttempts` times in all (an
    * integer >= 1), waiting `backoffMs * 2^(attempt - 1)` ms before each retry
    * (default 0). A cancelled run, or a run paused for approval, is not retried.
    */
-  retry?: { maxAttempts: number; backoffMs?: number };
+  retry?: NodeRetry;
   /**
    * Fail an attempt that takes longer than this many ms with
    * `LOUSHO_OPERATION_TIMEOUT` (a timed-out attempt can be retried). The

@@ -50,13 +50,10 @@ interface AgentFlow {
     //
     // (undocumented)
     agents?: FlowAgentDefinition[];
-    // (undocumented)
     code: string;
     // (undocumented)
     description?: string;
     // Warning: (ae-forgotten-export) The symbol "EditorStep" needs to be exported by the entry point kv.d.ts
-    //
-    // (undocumented)
     flow?: EditorStep;
     // (undocumented)
     id?: string;
@@ -386,6 +383,8 @@ interface FlowCheckpointState {
     completedNodeIds: string[];
     nodeResults: Record<string, unknown>;
     output?: unknown;
+    // Warning: (ae-forgotten-export) The symbol "FlowPendingApproval" needs to be exported by the entry point kv.d.ts
+    pendingApproval?: FlowPendingApproval;
     steps: number;
     // Warning: (ae-forgotten-export) The symbol "ProviderUsage" needs to be exported by the entry point kv.d.ts
     usage: ProviderUsage;
@@ -407,6 +406,14 @@ interface FlowInputVariable {
     //
     // (undocumented)
     type: FlowInputType;
+}
+
+// @public
+interface FlowPendingApproval {
+    approvalId: string;
+    args: Record<string, unknown>;
+    nodeId: string;
+    toolName: string;
 }
 
 // @public
@@ -644,11 +651,15 @@ interface ModelUsage {
 }
 
 // @public
+interface NodeRetry {
+    backoffMs?: number;
+    maxAttempts: number;
+}
+
+// @public (undocumented)
 interface NodeRunOptions {
-    retry?: {
-        maxAttempts: number;
-        backoffMs?: number;
-    };
+    // Warning: (ae-forgotten-export) The symbol "NodeRetry" needs to be exported by the entry point kv.d.ts
+    retry?: NodeRetry;
     timeoutMs?: number;
 }
 

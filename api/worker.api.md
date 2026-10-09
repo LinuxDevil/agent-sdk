@@ -212,13 +212,10 @@ interface AgentFlow {
     //
     // (undocumented)
     agents?: FlowAgentDefinition[];
-    // (undocumented)
     code: string;
     // (undocumented)
     description?: string;
     // Warning: (ae-forgotten-export) The symbol "EditorStep" needs to be exported by the entry point worker.d.ts
-    //
-    // (undocumented)
     flow?: EditorStep;
     // (undocumented)
     id?: string;
@@ -1674,6 +1671,8 @@ interface FlowCheckpointState {
     completedNodeIds: string[];
     nodeResults: Record<string, unknown>;
     output?: unknown;
+    // Warning: (ae-forgotten-export) The symbol "FlowPendingApproval" needs to be exported by the entry point worker.d.ts
+    pendingApproval?: FlowPendingApproval;
     steps: number;
     // Warning: (ae-forgotten-export) The symbol "ProviderUsage" needs to be exported by the entry point worker.d.ts
     usage: ProviderUsage;
@@ -1695,6 +1694,14 @@ interface FlowInputVariable {
     //
     // (undocumented)
     type: FlowInputType;
+}
+
+// @public
+interface FlowPendingApproval {
+    approvalId: string;
+    args: Record<string, unknown>;
+    nodeId: string;
+    toolName: string;
 }
 
 // @public
@@ -2586,11 +2593,15 @@ type NamedToolDescriptor = ToolDescriptor & {
 export function never(): false;
 
 // @public
+interface NodeRetry {
+    backoffMs?: number;
+    maxAttempts: number;
+}
+
+// @public (undocumented)
 interface NodeRunOptions {
-    retry?: {
-        maxAttempts: number;
-        backoffMs?: number;
-    };
+    // Warning: (ae-forgotten-export) The symbol "NodeRetry" needs to be exported by the entry point worker.d.ts
+    retry?: NodeRetry;
     timeoutMs?: number;
 }
 
@@ -4405,13 +4416,13 @@ interface WithRetryOptions {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-CEpzVPkH.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CEpzVPkH.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CEpzVPkH.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CEpzVPkH.d.ts:3352:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CEpzVPkH.d.ts:3353:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
-// dist/index-Jx0ez6Fz.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
-// dist/index-Jx0ez6Fz.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BYE3OSWr.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BYE3OSWr.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BYE3OSWr.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BYE3OSWr.d.ts:3352:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BYE3OSWr.d.ts:3353:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
+// dist/index-C5TXhmCn.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
+// dist/index-C5TXhmCn.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point worker.d.ts
 
 // (No @packageDocumentation comment for this package)
