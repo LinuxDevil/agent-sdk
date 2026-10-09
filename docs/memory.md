@@ -205,6 +205,26 @@ Every built-in provider dedupes on `text`: adding an item whose text is
 already stored returns the stored item instead of a duplicate (so an agent
 that remembers the same fact twice keeps one copy).
 
+### Several writers
+
+Concurrent `add()` / `remove()` calls on one provider keep every item. Across
+providers it depends on the storage:
+
+- `fileMemory`: several providers on one `dir`, in one process or several
+  (two agent processes, a worker and a CLI), keep every item. Each change
+  holds a lock file, `<key file>.lock`, while it reads and rewrites the key's
+  file; a lock left by a crashed process is taken over after 30 s, and a lock
+  held for more than 10 s fails the call with `LOUSHO_STORAGE_FAILED`.
+  Windows' transient `EPERM` / `EACCES` / `EBUSY` on read and replace are
+  retried. A network filesystem without atomic exclusive create does not get
+  this guarantee.
+- `sqliteMemory`: each change is one write transaction, so several providers
+  and processes on one database keep every item.
+- `kvMemory`, `sqliteVectorMemory` and your own providers: changes are
+  ordered only within one provider object. Share one provider object between
+  the agents of a process; two processes writing the same scope key at once
+  can drop an item (last write wins).
+
 ### SQLite
 
 Pass the same `SqliteStore` to the agent and to the provider, and sessions,

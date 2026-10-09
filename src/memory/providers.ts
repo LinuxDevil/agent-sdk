@@ -12,6 +12,13 @@ export interface MemoryProviderOptions {
 interface ItemStore {
   load(scopeKey: string): Promise<MemoryItem[]>;
   save(scopeKey: string, items: MemoryItem[]): Promise<void>;
+  /**
+   * Eve MEM-F8: loads, changes and saves one key's items as one step that
+   * other writers of the same storage (other provider instances, other
+   * processes) cannot interleave with. Without it, `itemsProvider` does
+   * `load` then `save`, serialized only within this provider instance.
+   */
+  update?(scopeKey: string, change: (items: MemoryItem[]) => MemoryItem[]): Promise<void>;
 }
 
 /** Lower-cased words of `text`, a trailing plural `s` dropped (`cats` -> `cat`). */
@@ -48,14 +55,15 @@ function select(items: readonly MemoryItem[], { limit, query }: { limit?: number
 
 /**
  * A `MemoryProvider` over `store`. Changes to one key are made one at a time,
- * so concurrent adds keep every item. `add` dedupes on `text`: adding an item
+ * so concurrent adds keep every item - within this provider instance, or
+ * across instances and processes when `store` has an atomic `update`. `add` dedupes on `text`: adding an item
  * whose text is already stored returns the stored one unchanged.
  */
 export function itemsProvider(store: ItemStore, { maxItems = 1000 }: MemoryProviderOptions = {}): MemoryProvider {
   const serial = keyedQueue();
   const update = async (key: string, method: string, change: (items: MemoryItem[]) => MemoryItem[]): Promise<void> => {
     assertScopeKey(key, method);
-    await serial(key, async () => store.save(key, change(await store.load(key))));
+    await serial(key, async () => (store.update ? store.update(key, change) : store.save(key, change(await store.load(key)))));
   };
   return {
     async list(key, options) {

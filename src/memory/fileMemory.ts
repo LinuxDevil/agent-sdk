@@ -1,7 +1,9 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { newId } from '../utils/id';
 import { caseSafeName, findLegacyFile, removeLegacyFile } from '../storage/fileNames';
+import { withFileLock } from '../storage/fileLock';
+import { readFileWithRetry, renameWithRetry } from '../storage/fsRetry';
 import type { MemoryItem, MemoryProvider } from './defineMemory';
 import { itemsProvider, type MemoryProviderOptions } from './providers';
 
@@ -13,7 +15,12 @@ export interface FileMemoryOptions extends MemoryProviderOptions {
 
 /**
  * Keeps memory in `dir`, one JSON file per scope key, written atomically
- * (temp file + rename). The file name is the percent-encoded key with each
+ * (temp file + rename). Each change holds a lock file (`<file>.lock`) while
+ * it reads, changes and writes the key's file, so several `fileMemory`
+ * providers - in this process or in other processes - can share `dir`
+ * without losing each other's items (Eve MEM-F8). A lock left by a crashed
+ * process is taken over after 30 s. Windows' transient `EPERM` / `EACCES` /
+ * `EBUSY` on read and rename are retried. The file name is the percent-encoded key with each
  * uppercase letter written as `^` and the lowercase letter, so keys that differ
  * only in case (`user:Alice`, `user:alice`) get different files on Windows and
  * macOS too.
@@ -27,26 +34,37 @@ export function fileMemory({ dir, ...options }: FileMemoryOptions): MemoryProvid
   const fileOf = (key: string) => join(dir, `${nameOf(key)}.json`);
   const read = async (file: string): Promise<MemoryItem[] | undefined> => {
     try {
-      return JSON.parse(await readFile(file, 'utf8')) as MemoryItem[];
+      return JSON.parse(await readFileWithRetry(file)) as MemoryItem[];
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
       throw error;
     }
   };
+  const load = async (key: string): Promise<MemoryItem[]> => {
+    const items = await read(fileOf(key));
+    if (items !== undefined) return items;
+    const legacy = await findLegacyFile(dir, nameOf(key), encodeURIComponent(key));
+    return (legacy !== undefined && (await read(legacy))) || [];
+  };
+  const save = async (key: string, items: MemoryItem[]): Promise<void> => {
+    await mkdir(dir, { recursive: true });
+    const temp = `${fileOf(key)}.${newId()}.tmp`;
+    await writeFile(temp, JSON.stringify(items), 'utf8');
+    try {
+      await renameWithRetry(temp, fileOf(key));
+    } catch (error) {
+      await rm(temp, { force: true }).catch(() => undefined);
+      throw error;
+    }
+    await removeLegacyFile(dir, nameOf(key), encodeURIComponent(key));
+  };
   return itemsProvider(
     {
-      async load(key) {
-        const items = await read(fileOf(key));
-        if (items !== undefined) return items;
-        const legacy = await findLegacyFile(dir, nameOf(key), encodeURIComponent(key));
-        return (legacy !== undefined && (await read(legacy))) || [];
-      },
-      async save(key, items) {
+      load,
+      save,
+      async update(key, change) {
         await mkdir(dir, { recursive: true });
-        const temp = `${fileOf(key)}.${newId()}.tmp`;
-        await writeFile(temp, JSON.stringify(items), 'utf8');
-        await rename(temp, fileOf(key));
-        await removeLegacyFile(dir, nameOf(key), encodeURIComponent(key));
+        await withFileLock(`${fileOf(key)}.lock`, async () => save(key, change(await load(key))));
       },
     },
     options
