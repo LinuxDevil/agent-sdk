@@ -107,6 +107,7 @@ function ChatSessionBar({ viewedChatSession }: { viewedChatSession: ViewedChatSe
   return (
     <div className="chat-session-bar">
       <select
+        aria-label="Past conversations"
         value=""
         onChange={(e) => {
           if (e.target.value) void viewChatSession(e.target.value);
@@ -180,7 +181,7 @@ function MessageList({ messages, isRunning, pendingApproval }: MessageListProps)
   }, [renderable.length, isRunning]);
 
   return (
-    <div className="chat-messages" ref={listRef}>
+    <div className="chat-messages" ref={listRef} role="log" aria-label="Conversation">
       <EmptyChatNotice count={renderable.length} isRunning={isRunning} />
       {renderable.map((m) => (
         <Bubble key={m.id} message={m} toolResults={toolResults} />
@@ -232,6 +233,7 @@ function ChatInputRow({ viewing, isPausedForApproval, inputDisabled }: ChatInput
   return (
     <div className="chat-input-row">
       <textarea
+        aria-label="Message"
         className="chat-input"
         rows={1}
         placeholder={placeholderFor(viewing, isPausedForApproval)}
@@ -264,7 +266,11 @@ export function ChatPanel() {
       <ChatSessionBar viewedChatSession={viewedChatSession} />
       <MessageList messages={displayedMessages} isRunning={isRunning} pendingApproval={pendingApproval} />
 
-      {chatActionError && <div className="chat-action-error">{chatActionError}</div>}
+      {chatActionError && (
+        <div className="chat-action-error" role="alert">
+          {chatActionError}
+        </div>
+      )}
 
       <ChatInputRow
         viewing={viewing}

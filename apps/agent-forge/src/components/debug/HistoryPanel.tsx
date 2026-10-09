@@ -56,7 +56,7 @@ function ReplayEditor({ step, onFork, onCancel }: { step: RunHistoryStep; onFork
   return (
     <div className="replay-editor">
       <b>Replay from step {step.step}</b>
-      <select className="select" value={target} onChange={(e) => choose(e.target.value)}>
+      <select className="select" aria-label="What to change" value={target} onChange={(e) => choose(e.target.value)}>
         <option value="append">Append a user message</option>
         {step.toolCalls.map((call) => (
           <option key={call.id} value={call.id}>Edit the result of {call.name} ({call.id})</option>
@@ -189,7 +189,7 @@ export function HistoryPanel() {
   if (steps.length === 0) return <div className="logs-empty">No checkpoint history yet - run the agent first.</div>;
   return (
     <div className="history-panel">
-      {error && <div className="run-error">{error}</div>}
+      {error && <div className="run-error" role="alert">{error}</div>}
       <HistoryList steps={steps} onReplay={setReplaying} />
       {replaying && (
         <ReplayEditor

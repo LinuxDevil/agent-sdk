@@ -148,6 +148,7 @@ function ProviderKeyField({ label, status, draft, onDraftChange, onSave, onRemov
     <div className="field">
       <label>{label}</label>
       <input
+        aria-label={label}
         className="input"
         type="password"
         placeholder={keyPlaceholder(status)}
@@ -168,7 +169,11 @@ function ProviderKeyField({ label, status, draft, onDraftChange, onSave, onRemov
 }
 
 function InlineError({ message }: { message: string | undefined }) {
-  return message ? <div className="run-error">{message}</div> : null;
+  return message ? (
+    <div className="run-error" role="alert">
+      {message}
+    </div>
+  ) : null;
 }
 
 function ProviderKeysSection() {
@@ -208,6 +213,7 @@ function ProfileEditor({ profileDraft, isActive, onChange, onSave, onActivate }:
       <div className="field">
         <label>Provider</label>
         <select
+          aria-label="Provider"
           className="select"
           value={profileDraft.providerType}
           onChange={(e) => onChange({ ...profileDraft, providerType: e.target.value })}
@@ -222,6 +228,7 @@ function ProfileEditor({ profileDraft, isActive, onChange, onSave, onActivate }:
       <div className="field">
         <label>Hook timeout (ms)</label>
         <input
+          aria-label="Hook timeout (ms)"
           className="input"
           type="number"
           min={100}
@@ -271,7 +278,7 @@ function ProfileSelect({ selectedId, profiles, activeProfileId, onSelect }: Prof
   return (
     <div className="field">
       <label>Active profile</label>
-      <select className="select" value={selectedId ?? ''} onChange={(e) => onSelect(e.target.value)}>
+      <select className="select" aria-label="Active profile" value={selectedId ?? ''} onChange={(e) => onSelect(e.target.value)}>
         {profiles.map((p) => (
           <option key={p.id} value={p.id}>
             {p.name}
@@ -351,7 +358,7 @@ function DeploySection({ deployAdapter, onAdapterChange }: DeploySectionProps) {
       </div>
       <div className="field">
         <label>Adapter</label>
-        <select className="select" value={deployAdapter} onChange={(e) => onAdapterChange(e.target.value)}>
+        <select className="select" aria-label="Deploy adapter" value={deployAdapter} onChange={(e) => onAdapterChange(e.target.value)}>
           {deployAdapters.map((a) => (
             <option key={a} value={a}>
               {a}

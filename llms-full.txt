@@ -1917,7 +1917,9 @@ exists.
    it on the canvas.
 2. **Look at the graph.** A blank agent is one `llm` node. Drag more nodes
    in from the left rail's palette (**Trigger**, **LLM step**, **Tool
-   call**, **Approval gate**, **Response / output**) and connect them by
+   call**, **Approval gate**, **Response / output**), or click (or press
+   Enter on) a palette item to add it at the centre of the canvas, and
+   connect them by
    dragging between their handles. Click a node to edit its settings
    (prompt, provider/model, tools, breakpoints) in the Inspector on the
    right.
@@ -1983,7 +1985,8 @@ To attach one:
    they're the two points `AgentExecutor` actually calls out to).
 2. Open the Inspector's **Hooks** section. Drag a **Pre-hook** or
    **Post-hook** entry from the left rail's palette onto the node (or drop
-   it directly in the Hooks section) to attach a new one; you'll get a
+   it directly in the Hooks section), or click the palette entry while the
+   node is selected, to attach a new one; you'll get a
    choice of starter templates (`redact-pii`, `rate-limit`, `audit-log`,
    `inject-context`) as an editable starting point.
 3. Click the hook's chip to select it, then edit its code in the CodeMirror
@@ -5941,6 +5944,47 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 - Each retry is recorded on the call's `chat` span as `lousho.retry.count` and
   `lousho.retry.errors` (see [Observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md)).
 
+## Rate limits
+
+`withRateLimit(provider, limits)` queues a provider's `generate()` and
+`stream()` calls so they stay under client-side limits, so sub-agent fan-out,
+flow waves and eval suites cannot burst unbounded model calls. Every limit is
+optional:
+
+```ts
+import { withRateLimit, createRateLimiter } from '@lousho/build-ai-agent';
+
+const provider = withRateLimit(resolveProvider('openai/gpt-4o-mini'), {
+  requestsPerMinute: 60, // calls started per rolling minute
+  tokensPerMinute: 200_000, // estimated tokens per rolling minute
+  maxConcurrent: 4, // calls in flight at once
+});
+```
+
+- Calls are admitted first in, first out. A call waiting for its turn rejects
+  with its `signal`'s reason as soon as it is aborted, and never starts.
+- `tokensPerMinute` books each call at `estimateTokens()` of its messages and
+  tool definitions plus its `maxTokens`, then re-books it at the usage the
+  provider reports. A single call larger than the limit still runs, alone in
+  its window.
+- A `stream()` holds its `maxConcurrent` slot until the stream ends.
+- Invalid limits (not a positive number, or `maxConcurrent` not a whole
+  number) throw `LOUSHO_CONFIG_INVALID`.
+- Wrap outside `withRetry()` to count a call and its retries as one, or inside
+  to count each attempt.
+- Pass a `createRateLimiter(limits)` instead of the limits to share one budget
+  between several providers.
+
+`createAgent({ rateLimit })` takes the same limits (or a limiter). One budget
+covers every model call of the agent's runs, including the sub-agents and
+handoff targets a run starts (a sub-agent inherits the lead run's budget, so
+its own provider is queued too). Give several agents the same
+`createRateLimiter()` to share it across them.
+
+```ts
+createAgent({ model: 'openai/gpt-4o-mini', subagents: { researcher }, rateLimit: { maxConcurrent: 2 } });
+```
+
 ## `createAgent()` options
 
 | Option         | Description                                                    |
@@ -5967,6 +6011,7 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `projectInstructions` | `true` or `{ cwd?, files? }`: append the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (off by default; see [Project instructions](#project-instructions)). |
 | `retry`    | `withRetry()` options for failed model calls, or `false`. Default `{ maxRetries: 2 }` for `model` strings; a `provider` instance is wrapped only when set. See [Provider retries and fallback](#provider-retries-and-fallback). |
 | `fallbackModels` | `provider/model` strings tried in order when the model still fails after its retries. |
+| `rateLimit` | `{ requestsPerMinute?, tokensPerMinute?, maxConcurrent? }` (or a `createRateLimiter()`): queue the agent's model calls, and its sub-agents' and handoff targets', under one budget. See [Rate limits](#rate-limits). |
 | `hooks`    | `AgentHook[]` run around every model call and tool call, in order, before the compaction hook (see [Hooks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hooks.md)). |
 | `compaction` | `true` (prune old tool results above 90% of the context window) or `{ strategy?, thresholdPercent?, contextWindow?, protectedTokens?, reserveOutputTokens?, onCompaction?, summarizer? }`; `summarizer` (`'provider/model'` or an `LLMProvider`) selects the two-phase strategy. `stream()` reports `compaction.start` / `compaction.done`. See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md#compacting-an-agent). |
 

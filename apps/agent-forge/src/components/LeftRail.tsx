@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import type { DragEvent } from 'react';
+import { useStoreApi } from '@xyflow/react';
 import { useAppState } from '../state/AppState';
 import { PALETTE_DRAG_MIME, HOOK_DRAG_MIME } from '../canvas/dnd';
 import { AGENT_TEMPLATES, type TemplateId } from '../canvas/templates';
+import { addHookToNode, addNode } from '../canvas/graphMutations';
+import { pickHookTemplate, viewportCentrePosition } from '../canvas/paletteActions';
 import { StatusPill } from './StatusPill';
 import { errorMessage } from './errorMessage';
+import { tabIds, tabListKeyDown } from './tabs';
 import { agentIdProblem } from '../../shared/agentId';
 import type { AgentGraphNodeType, AgentNodeHookPhase } from '../graph/types';
 
@@ -219,31 +223,74 @@ function AgentsTab({ draft }: { draft: NewAgentDraft }) {
   );
 }
 
+/**
+ * Eve DUI-F9: a palette entry is a real button - drag it onto the canvas as
+ * before, or activate it (click, Enter, Space) to add it without a mouse.
+ */
 function PaletteItem({
   label,
   color,
   title,
   onDragStart,
+  onActivate,
 }: {
   label: string;
   color: string;
   title: string;
-  onDragStart: (e: DragEvent<HTMLDivElement>) => void;
+  onDragStart: (e: DragEvent<HTMLButtonElement>) => void;
+  onActivate: () => void;
 }) {
   return (
-    <div className="node-palette-item" draggable onDragStart={onDragStart} title={title}>
-      <span className="node-swatch" style={{ background: color }} />
+    <button
+      type="button"
+      className="node-palette-item"
+      draggable
+      onDragStart={onDragStart}
+      onClick={onActivate}
+      title={title}
+    >
+      <span className="node-swatch" style={{ background: color }} aria-hidden="true" />
       {label}
-    </div>
+    </button>
   );
 }
 
-function startPaletteDrag(e: DragEvent<HTMLDivElement>, mime: string, payload: string) {
+function startPaletteDrag(e: DragEvent<HTMLButtonElement>, mime: string, payload: string) {
   e.dataTransfer.setData(mime, payload);
   e.dataTransfer.effectAllowed = 'move';
 }
 
+/** Click/keyboard equivalents of the palette's drag-and-drop (Eve DUI-F9). */
+function usePaletteActions() {
+  const { graph, setGraph, selectedNodeId, setSelectedNodeId } = useAppState();
+  const flow = useStoreApi();
+  const [notice, setNotice] = useState<string | undefined>(undefined);
+
+  function addAtViewportCentre(nodeType: AgentGraphNodeType, label: string) {
+    const { transform, width, height } = flow.getState();
+    const position = viewportCentrePosition(transform, width, height);
+    const next = addNode(graph, nodeType, position);
+    const added = next.nodes[next.nodes.length - 1];
+    setGraph(() => next);
+    setSelectedNodeId(added.id);
+    setNotice(`Added ${label} to the canvas.`);
+  }
+
+  function attachHook(phase: AgentNodeHookPhase, label: string) {
+    const target = graph.nodes.find((n) => n.id === selectedNodeId);
+    if (!target || (target.type !== 'llm' && target.type !== 'tool')) {
+      setNotice(`Select an LLM or tool node first, then add the ${label}.`);
+      return;
+    }
+    setGraph((g) => addHookToNode(g, target.id, pickHookTemplate(target.type as 'llm' | 'tool', phase)));
+    setNotice(`Attached a ${label} to ${target.label}.`);
+  }
+
+  return { notice, addAtViewportCentre, attachHook };
+}
+
 function NodesTab() {
+  const { notice, addAtViewportCentre, attachHook } = usePaletteActions();
   return (
     <div className="rail-body">
       {NODE_PALETTE.map((group) => (
@@ -254,8 +301,9 @@ function NodesTab() {
               key={item.label}
               label={item.label}
               color={item.color}
-              title="Drag onto the canvas to add"
+              title="Drag onto the canvas, or press to add at the centre"
               onDragStart={(e) => startPaletteDrag(e, PALETTE_DRAG_MIME, item.nodeType)}
+              onActivate={() => addAtViewportCentre(item.nodeType, item.label)}
             />
           ))}
         </div>
@@ -267,34 +315,63 @@ function NodesTab() {
             key={item.label}
             label={item.label}
             color={item.color}
-            title="Drag onto a node to attach a hook"
+            title="Drag onto a node, or press to attach to the selected LLM/tool node"
             onDragStart={(e) => startPaletteDrag(e, HOOK_DRAG_MIME, item.phase)}
+            onActivate={() => attachHook(item.phase, item.label.toLowerCase())}
           />
         ))}
+      </div>
+      <div className="hint palette-notice" role="status">
+        {notice}
       </div>
     </div>
   );
 }
 
+const RAIL_TABS = [
+  { id: 'agents', label: 'Agents' },
+  { id: 'nodes', label: 'Nodes' },
+] as const;
+type RailTabId = (typeof RAIL_TABS)[number]['id'];
+const RAIL_TAB_IDS: RailTabId[] = RAIL_TABS.map((t) => t.id);
+
 export function LeftRail() {
   const { railTab, setRailTab } = useAppState();
   const draft = useNewAgentDraft();
+  const ids = tabIds('rail', railTab);
 
+  // Eve DUI-F9: a `nav` landmark with a real WAI-ARIA tablist.
   return (
-    <div className="rail">
-      <div className="rail-tabs">
-        <button
-          className={`rail-tab${railTab === 'agents' ? ' active' : ''}`}
-          onClick={() => setRailTab('agents')}
-        >
-          Agents
-        </button>
-        <button className={`rail-tab${railTab === 'nodes' ? ' active' : ''}`} onClick={() => setRailTab('nodes')}>
-          Nodes
-        </button>
+    <nav className="rail" aria-label="Agents and node palette">
+      <div
+        className="rail-tabs"
+        role="tablist"
+        aria-label="Rail"
+        onKeyDown={tabListKeyDown('rail', RAIL_TAB_IDS, railTab, setRailTab)}
+      >
+        {RAIL_TABS.map((tab) => {
+          const selected = railTab === tab.id;
+          const { tab: tabId, panel } = tabIds('rail', tab.id);
+          return (
+            <button
+              key={tab.id}
+              id={tabId}
+              role="tab"
+              aria-selected={selected}
+              aria-controls={panel}
+              tabIndex={selected ? 0 : -1}
+              className={`rail-tab${selected ? ' active' : ''}`}
+              onClick={() => setRailTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
-      {railTab === 'agents' ? <AgentsTab draft={draft} /> : <NodesTab />}
-    </div>
+      <div className="rail-panel" id={ids.panel} role="tabpanel" aria-labelledby={ids.tab}>
+        {railTab === 'agents' ? <AgentsTab draft={draft} /> : <NodesTab />}
+      </div>
+    </nav>
   );
 }

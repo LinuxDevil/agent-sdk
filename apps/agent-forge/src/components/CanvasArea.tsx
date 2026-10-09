@@ -6,7 +6,6 @@ import {
   Controls,
   MiniMap,
   ReactFlow,
-  ReactFlowProvider,
   useReactFlow,
   type Connection,
   type Edge,
@@ -31,8 +30,7 @@ import {
 import { autoLayout } from '../canvas/layout';
 import { isEdgeTypeAllowed } from '../graph/connectionRules';
 import { PALETTE_DRAG_MIME, HOOK_DRAG_MIME } from '../canvas/dnd';
-import { HOOK_TEMPLATES } from '../hooks/hookTemplates';
-import type { HookTemplate } from '../hooks/hookTemplates';
+import { pickHookTemplate } from '../canvas/paletteActions';
 import type { AgentGraphNode, AgentGraphNodeType, AgentGraphSpec, AgentNodeHookPhase } from '../graph/types';
 
 type SetGraph = ReturnType<typeof useAppState>['setGraph'];
@@ -104,21 +102,6 @@ function nodeIdAtPoint(clientX: number, clientY: number): string | undefined {
   const el = document.elementFromPoint(clientX, clientY);
   const nodeEl = el?.closest<HTMLElement>('[data-node-id]');
   return nodeEl?.dataset.nodeId;
-}
-
-/**
- * Attach the first starter template matching both this palette item's phase
- * (see LeftRail's HOOK_PALETTE) and the target node's hook point (llm ->
- * generate, tool -> toolCall) as a sensible default; the Inspector lets the
- * user pick a different template/edit the code afterward.
- */
-function pickHookTemplate(targetType: 'llm' | 'tool', hookPhase: AgentNodeHookPhase): HookTemplate {
-  const point = targetType === 'llm' ? 'generate' : 'toolCall';
-  return (
-    HOOK_TEMPLATES.find((t) => t.phase === hookPhase && t.point === point) ??
-    HOOK_TEMPLATES.find((t) => t.point === point) ??
-    HOOK_TEMPLATES[0]
-  );
 }
 
 /** Auto-clearing "connection rejected" banner message. */
@@ -350,14 +333,18 @@ function CanvasInner() {
   const { handleAutoLayout, handleFitView, handleDuplicate } = useToolbarActions(setGraph, selectedNodeId);
 
   return (
-    <div className="canvas-wrap" onDrop={onDrop} onDragOver={onDragOver}>
+    <main className="canvas-wrap" aria-label="Agent graph" onDrop={onDrop} onDragOver={onDragOver}>
       <CanvasToolbar
         canDuplicate={!!selectedNodeId}
         onAutoLayout={handleAutoLayout}
         onFitView={handleFitView}
         onDuplicate={handleDuplicate}
       />
-      {connectError && <div className="canvas-connect-error">{connectError}</div>}
+      {connectError && (
+        <div className="canvas-connect-error" role="alert">
+          {connectError}
+        </div>
+      )}
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -375,21 +362,18 @@ function CanvasInner() {
         <MiniMap position="top-right" pannable zoomable />
         <Controls position="bottom-right" showInteractive={false} />
       </ReactFlow>
-    </div>
+    </main>
   );
 }
 
 /**
  * Real ReactFlow-based node-graph editor (LOU-M), replacing the LOU-L1
- * placeholder. `@xyflow/react` is this app's chosen package - `reactflow`
+ * placeholder. Its `ReactFlowProvider` lives in App.tsx (Eve DUI-F9) so the
+ * left rail's palette can add a node at the viewport centre. `@xyflow/react` is this app's chosen package - `reactflow`
  * on npm is the predecessor name, now in maintenance mode pointing
  * adopters at `@xyflow/react` (same team, actively released); see the
  * epic's PR description for the full rationale.
  */
 export function CanvasArea() {
-  return (
-    <ReactFlowProvider>
-      <CanvasInner />
-    </ReactFlowProvider>
-  );
+  return <CanvasInner />;
 }

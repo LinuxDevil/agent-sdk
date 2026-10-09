@@ -37,7 +37,7 @@ function ApprovalNotice({ runStatus }: { runStatus: RunStatusPayload }) {
 
 function ErrorNotice({ message }: { message: string | undefined }) {
   return message ? (
-    <span className="run-error" title={message}>
+    <span className="run-error" title={message} role="alert">
       {message}
     </span>
   ) : null;
@@ -86,6 +86,7 @@ function DebugToggle() {
   return (
     <button
       className={`btn${debugMode ? ' btn-primary' : ' btn-ghost'}`}
+      aria-pressed={debugMode}
       onClick={() => {
         setDebugMode(!debugMode);
         if (!debugMode) setDrawerTab('trace');
@@ -170,7 +171,7 @@ export function Topbar() {
   const isRunning = status === 'running';
 
   return (
-    <div className="topbar">
+    <header className="topbar">
       <BrandMark />
       <div className="crumbs">
         <span>Agents</span>
@@ -182,7 +183,7 @@ export function Topbar() {
 
       <RunNotices runStatus={runStatus} actionError={actionError} />
 
-      <StatusPill status={status} />
+      <StatusPill status={status} live />
 
       {/*
         R3: real per-environment settings profile (name + provider type),
@@ -208,6 +209,6 @@ export function Topbar() {
       <button className="btn btn-primary" onClick={() => void handleSave()}>
         Save
       </button>
-    </div>
+    </header>
   );
 }
