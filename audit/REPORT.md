@@ -35,10 +35,10 @@ Real-world audit: six consumer harnesses built against the **packed alpha.18 tar
 | B11 | `fireSchedule` implemented (`src/schedules/`) but never exported — no supported "run schedule now" | low–med | hostinger-monitor | **fixed** |
 | B12 | `CompactedLLMProviderError` drops the upstream body — real provider message hidden (`responseBody:undefined`) | medium | repo-maintainer | **fixed** |
 | B13 | Finished session turns delete checkpoint **and** history → `agent.fork` can't branch them (asymmetric with `send()` runs) | low | incident-responder / companion F5 | **fixed** |
-| B14 | In-process `prompt` schedules never get a `sessionId` → ephemeral, undurable turns | medium | hostinger-monitor | **fixed** |
+| B14 | In-process `prompt` schedules never get a `sessionId` → ephemeral, undurable turns | medium | hostinger-monitor | **fixed** *(did not hold at first; fixed by Eve PR #509, schedules sessions)* |
 | B15 | `SendOptions` lacks `parentSpanId` — `ExecuteOptions.parentSpanId` exists but unreachable via `createAgent().send()` | low–med | research-analyst | **fixed** |
-| B16 | String `allow` prefixes on `createShellTool` accept arbitrary trailing args → can escape the workspace root | medium / security | coding-agent | **fixed** |
-| B17 | Legacy `input`/`prompt`/`args`/`result` span attrs are **on by default** — `fileTraceExporter` persists full prompts/tool results to disk | low / security | research-analyst | **fixed** |
+| B16 | String `allow` prefixes on `createShellTool` accept arbitrary trailing args → can escape the workspace root | medium / security | coding-agent | **fixed** *(did not hold at first; fixed by Eve PR #452, shell allow-list)* |
+| B17 | Legacy `input`/`prompt`/`args`/`result` span attrs are **on by default** — `fileTraceExporter` persists full prompts/tool results to disk | low / security | research-analyst | **fixed** *(did not hold at first; fixed by Eve PR #457, `redactContent` default)* |
 
 ## Enhancements — shipped by the merged fixes
 
