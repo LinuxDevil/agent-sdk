@@ -505,7 +505,7 @@ export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
     // (undocumented)
     protected createModel(modelId: string): Promise<LanguageModel>;
     // (undocumented)
-    protected readonly fallbackModel = "claude-3-5-sonnet-latest";
+    protected readonly fallbackModel = "claude-sonnet-4-5";
     protected fileMediaTypes(): readonly string[];
     getModels(): Promise<string[]>;
     protected hostedToolsFor(tools: readonly HostedTool[], _modelId: string): Promise<Record<string, unknown>>;
@@ -4304,7 +4304,7 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
     // (undocumented)
     protected createModel(modelId: string): Promise<LanguageModel>;
     // (undocumented)
-    protected readonly fallbackModel = "gpt-4";
+    protected readonly fallbackModel = "gpt-4o-mini";
     protected fileMediaTypes(): readonly string[];
     getModels(): Promise<string[]>;
     protected hostedToolsFor(tools: readonly HostedTool[], _modelId: string): Promise<Record<string, unknown>>;
@@ -4390,7 +4390,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
     // (undocumented)
     protected createModel(modelId: string, options?: GenerateOptions): Promise<LanguageModel>;
     // (undocumented)
-    protected readonly fallbackModel = "openai/gpt-3.5-turbo";
+    protected readonly fallbackModel = "openai/gpt-4o-mini";
     protected fileMediaTypes(): readonly string[];
     // (undocumented)
     generate(options: GenerateOptions): Promise<GenerateResult>;
