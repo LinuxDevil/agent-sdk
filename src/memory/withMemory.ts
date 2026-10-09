@@ -29,11 +29,34 @@ function toolNames({ name, expose }: MemorySlot): string[] {
   return [...(expose.remember ? [`remember_${name}`] : []), ...(expose.recall ? [`recall_${name}`] : [])];
 }
 
+/** Most items one `recall_<name>` call returns, whatever `limit` the model asks for (Eve MEM-F11). */
+const MAX_RECALL_LIMIT = 100;
+
+/** Eve MEM-F15: how long a remembered item lasts, by the slot's scope. */
+function persistence(slot: MemorySlot): string {
+  if (slot.scope === 'session') return 'recalled later in this conversation';
+  if (slot.scope === 'global') return 'recalled in later conversations';
+  return 'recalled in later conversations with the same user or key';
+}
+
+/** What `recall_<name>` returns for an item: its `score` (vector providers) and, on a free-text slot, its other metadata (Eve MEM-F11). */
+function recalledItem(slot: MemorySlot, { id, text, createdAt, metadata }: MemoryItem) {
+  const { score, ...rest } = metadata ?? {};
+  return {
+    id,
+    text,
+    createdAt,
+    ...(typeof score === 'number' && { score }),
+    // An itemSchema slot's metadata is the parsed `text`: not sent twice.
+    ...(!slot.itemSchema && Object.keys(rest).length > 0 && { metadata: rest }),
+  };
+}
+
 function memoryTools([slot, key]: BoundSlot): DefinedTool[] {
   const about = slot.description ? ` It holds: ${slot.description}` : '';
   const remember = defineTool({
     name: `remember_${slot.name}`,
-    description: `Save a fact to the "${slot.name}" memory so it is recalled in later conversations.${about}`,
+    description: `Save a fact to the "${slot.name}" memory so it is ${persistence(slot)}.${about}`,
     input: slot.itemSchema ?? z.object({ text: z.string().min(1).describe('The fact, written so it makes sense on its own') }),
     execute: async (args) => {
       // With an itemSchema the parsed arguments are the item: canonical JSON
@@ -49,9 +72,12 @@ function memoryTools([slot, key]: BoundSlot): DefinedTool[] {
     // N4: recalling changes nothing, so plan mode can use it.
     annotations: { readOnlyHint: true, destructiveHint: false },
     description: `Search the "${slot.name}" memory${slot.provider.ranking === 'relevance' ? ' by meaning, most relevant first' : ', newest items first'}.${about}`,
-    input: z.object({ query: z.string().optional(), limit: z.number().int().positive().optional() }),
+    input: z.object({
+      query: z.string().optional(),
+      limit: z.number().int().positive().optional().describe(`Most items to return (at most ${MAX_RECALL_LIMIT})`),
+    }),
     execute: async ({ query, limit = slot.recall.maxItems }) => ({
-      items: (await slot.provider.list(key, { query, limit })).map(({ id, text, createdAt }) => ({ id, text, createdAt })),
+      items: (await slot.provider.list(key, { query, limit: Math.min(limit, MAX_RECALL_LIMIT) })).map((item) => recalledItem(slot, item)),
     }),
   });
   // Bound to this run's scope key, so they exist in this run's registry only
@@ -65,7 +91,9 @@ function memoryTools([slot, key]: BoundSlot): DefinedTool[] {
 const BLOCK = /\n*<memory name="([^"]*)">[\s\S]*?<\/memory>/g;
 
 function block(name: string, items: readonly MemoryItem[]): string {
-  const lines = items.map((item) => `- ${item.text.replace(/<\/memory>/gi, '').replace(/\s+/g, ' ').trim()}`);
+  // Eve MEM-F16: an opening or closing memory tag inside an item would break
+  // the block (and the replacement of blocks in a resumed transcript).
+  const lines = items.map((item) => `- ${item.text.replace(/<(\/?memory)/gi, '&lt;$1').replace(/\s+/g, ' ').trim()}`);
   return [`<memory name="${name}">`, ...lines, '</memory>'].join('\n');
 }
 
