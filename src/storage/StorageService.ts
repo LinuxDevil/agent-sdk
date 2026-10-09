@@ -7,6 +7,7 @@
 
 import { IStorageService } from './types';
 import { SDKError } from '../execution/errors';
+import { decodeBytes, encodeBytes } from './jsonBytes';
 
 // Buffer and process exist on Node.js only (checked with typeof before use);
 // declared with just the members used, so this module needs no Node.js types.
@@ -224,6 +225,7 @@ export class StorageService implements IStorageService {
 
   /**
    * Read a JSON file from disk and parse it. Returns {} if not found.
+   * A `{ "$bytes": "<base64>" }` value comes back as a `Uint8Array`.
    */
   public readPlainJSONAttachment<T = unknown>(storageKey: string): T {
     this.ensureDirExists();
@@ -232,15 +234,17 @@ export class StorageService implements IStorageService {
       return {} as T;
     }
     const raw = this.fs.readFileSync(filePath, 'utf8');
-    return JSON.parse(raw) as T;
+    return JSON.parse(raw, decodeBytes) as T;
   }
 
   /**
    * Writes data as JSON to disk. Checks size against maxFileSizeMB (default 10).
+   * A `Uint8Array` (image or file bytes in a checkpoint or approval snapshot)
+   * is written as `{ "$bytes": "<base64>" }`, like the other stores (Eve E14).
    */
   public writePlainJSONAttachment(storageKey: string, data: unknown, maxFileSizeMB = 10): void {
     this.ensureParentDirExists(this.getFilePath(storageKey));
-    const jsonString = JSON.stringify(data);
+    const jsonString = JSON.stringify(data, encodeBytes);
     // Calculate size (use Buffer if available, otherwise approximate)
     const size = typeof Buffer !== 'undefined' 
       ? Buffer.byteLength(jsonString, 'utf8')

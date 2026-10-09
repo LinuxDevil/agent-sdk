@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ExecutionSnapshot, StorageServiceApprovalStore, PendingApproval } from './ApprovalGate';
+import { describeApprovalStoreContract } from '../storage/sqlite/__fixtures__/storeContracts';
 import { StorageService, FileSystemAdapter, PathAdapter } from '../storage/StorageService';
 
 /**
@@ -46,6 +47,9 @@ function createApprovalStore(): StorageServiceApprovalStore {
   const storageService = new StorageService('test-db-hash', 'test-schema', fs, path, '/test/root');
   return new StorageServiceApprovalStore(storageService);
 }
+
+// The shared store contract (LOU-W5), including the Uint8Array round-trip (Eve DUR-F5, E14).
+describeApprovalStoreContract('StorageServiceApprovalStore', createApprovalStore);
 
 function buildSnapshot(pending: PendingApproval): ExecutionSnapshot {
   return {
