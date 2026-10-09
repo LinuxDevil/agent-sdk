@@ -47,6 +47,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { parseCommand, portValue, stringValue, usageError, type CommandSpec } from './args';
 import { ConfigurationError } from '../execution/errors';
 
@@ -73,7 +74,25 @@ export interface StudioOptions {
   packageRoot?: string;
 }
 
+/**
+ * Eve DUI-F1: env var carrying the per-launch API token to the studio server
+ * (and, in dev mode, to Vite's proxy). Mirrors `STUDIO_TOKEN_ENV` in
+ * `apps/agent-forge/server/auth.ts`.
+ */
+const STUDIO_TOKEN_ENV = 'LOUSHO_STUDIO_TOKEN';
+/** Extra origins the API accepts - in dev mode, the Vite dev server's (vite.config.ts pins port 5173). */
+const STUDIO_ALLOWED_ORIGINS_ENV = 'LOUSHO_STUDIO_ALLOWED_ORIGINS';
+const VITE_DEV_ORIGINS = ['http://localhost:5173', 'http://127.0.0.1:5173'];
+
+/** The URL to open: the studio's origin plus the per-launch token. */
+export function studioUrl(apiHost: string, apiPort: number, token: string): string {
+  const host = apiHost === '0.0.0.0' || apiHost === '::' ? '127.0.0.1' : apiHost.includes(':') ? `[${apiHost}]` : apiHost;
+  return `http://${host}:${apiPort}/?token=${encodeURIComponent(token)}`;
+}
+
 export interface StudioHandle {
+  /** Eve DUI-F1: the per-launch token every API/WebSocket request must carry (it is in the printed URL). */
+  token: string;
   /** The LOU-N API server (prod: also serves the UI). Always present. */
   apiProcess: ChildProcess;
   /** The Vite dev server. Only present in dev mode. */
@@ -118,9 +137,10 @@ export function startStudio(options: StudioOptions = {}): StudioHandle {
   if (!appDir) throw agentForgeNotFound(repoRoot, packageRoot);
 
   const mode = resolveMode(appDir, requested);
+  const token = randomBytes(24).toString('base64url');
 
-  if (mode === 'prod') return startProdStudio(appDir, repoRoot, apiPort, apiHost);
-  return startDevStudio(appDir, repoRoot, apiPort, apiHost);
+  if (mode === 'prod') return startProdStudio(appDir, repoRoot, apiPort, apiHost, token);
+  return startDevStudio(appDir, repoRoot, apiPort, apiHost, token);
 }
 
 /**
@@ -167,7 +187,7 @@ function assertProdBuildPresent(appDir: string, entry: string): void {
   }
 }
 
-function startProdStudio(appDir: string, repoRoot: string, apiPort: number, apiHost: string): StudioHandle {
+function startProdStudio(appDir: string, repoRoot: string, apiPort: number, apiHost: string, token: string): StudioHandle {
   const entry = distServerEntry(appDir);
   assertProdBuildPresent(appDir, entry);
 
@@ -176,7 +196,7 @@ function startProdStudio(appDir: string, repoRoot: string, apiPort: number, apiH
   const apiProcess = spawn(process.execPath, [entry], {
     cwd: appDir,
     stdio: 'inherit',
-    env: { ...process.env, PORT: String(apiPort), HOST: apiHost, BASE_DIR: repoRoot },
+    env: { ...process.env, PORT: String(apiPort), HOST: apiHost, BASE_DIR: repoRoot, [STUDIO_TOKEN_ENV]: token },
   });
 
   function stop(): void {
@@ -185,9 +205,9 @@ function startProdStudio(appDir: string, repoRoot: string, apiPort: number, apiH
 
   apiProcess.on('exit', (code) => reportUnexpectedExit('server', code));
 
-  console.log(`[lousho studio] Agent Forge: http://${apiHost}:${apiPort}`);
+  console.log(`[lousho studio] Agent Forge: ${studioUrl(apiHost, apiPort, token)}`);
 
-  return { apiProcess, mode: 'prod', stop };
+  return { apiProcess, mode: 'prod', token, stop };
 }
 
 function assertDevSourcePresent(appDir: string): void {
@@ -200,7 +220,7 @@ function assertDevSourcePresent(appDir: string): void {
   }
 }
 
-function startDevStudio(appDir: string, repoRoot: string, apiPort: number, apiHost: string): StudioHandle {
+function startDevStudio(appDir: string, repoRoot: string, apiPort: number, apiHost: string, token: string): StudioHandle {
   assertDevSourcePresent(appDir);
   const npmCmd = resolveNpmCommand();
 
@@ -218,6 +238,9 @@ function startDevStudio(appDir: string, repoRoot: string, apiPort: number, apiHo
       // with HMR - even if a stale apps/agent-forge/dist build happens to
       // exist on disk from a previous `build:studio` run.
       NO_STATIC: '1',
+      [STUDIO_TOKEN_ENV]: token,
+      // The browser's Origin is Vite's, proxied through to this server.
+      [STUDIO_ALLOWED_ORIGINS_ENV]: VITE_DEV_ORIGINS.join(','),
     },
   });
 
@@ -248,9 +271,9 @@ function startDevStudio(appDir: string, repoRoot: string, apiPort: number, apiHo
   });
 
   console.log(`[lousho studio] API server:  http://${apiHost}:${apiPort}`);
-  console.log('[lousho studio] Agent Forge UI: see the Vite dev server output above for its URL (default http://localhost:5173)');
+  console.log(`[lousho studio] Agent Forge UI: ${VITE_DEV_ORIGINS[0]}/?token=${encodeURIComponent(token)}`);
 
-  return { apiProcess, viteProcess, mode: 'dev', stop };
+  return { apiProcess, viteProcess, mode: 'dev', token, stop };
 }
 
 const USAGE = 'Usage: lousho studio [--port N] [--host H] [--prod|--dev]';

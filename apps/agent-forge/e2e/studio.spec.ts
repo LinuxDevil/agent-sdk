@@ -44,7 +44,8 @@ import { test, expect } from '@playwright/test';
 test('create an agent, hit an approval gate via chat, approve it, and complete the run', async ({ page }) => {
   const agentId = `e2e-approval-agent-${Date.now()}`;
 
-  await page.goto('/');
+  // Eve DUI-F1: the studio URL carries the per-launch token (see playwright.config.ts).
+  await page.goto('/?token=e2e-studio-token');
   await expect(page.locator('.app')).toBeVisible();
 
   // --- Create an agent from the "Support bot" template (trigger -> llm ->

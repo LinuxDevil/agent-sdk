@@ -16,6 +16,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type { RunManager } from './runRegistry';
 import { isValidAgentId } from './types';
 import type { StreamMessage } from '../shared/wireTypes';
+import { checkApiAccess, checkHostAndOrigin, type StudioAccessOptions } from './auth';
 
 const STREAM_PATH_RE = /^\/agents\/([^/]+)\/stream$/;
 
@@ -41,7 +42,21 @@ function streamAgentId(req: IncomingMessage): string | undefined {
   return isValidAgentId(agentId) ? agentId : undefined;
 }
 
-export function attachWebSocketServer(server: HttpServer, runManager: RunManager): WebSocketServer {
+/** Eve DUI-F1: the same Host/Origin/token gate as the HTTP API (see auth.ts); omitted `access` skips only the token. */
+function rejectUpgrade(req: IncomingMessage, socket: Socket, access: StudioAccessOptions | undefined): boolean {
+  const decision = access ? checkApiAccess(req, access) : checkHostAndOrigin(req, { token: '' });
+  if (decision.ok) return false;
+  const reason = decision.status === 401 ? 'Unauthorized' : 'Forbidden';
+  const CRLF = '\r\n';
+  socket.end(`HTTP/1.1 ${decision.status} ${reason}${CRLF}Connection: close${CRLF}Content-Length: 0${CRLF}${CRLF}`);
+  return true;
+}
+
+export function attachWebSocketServer(
+  server: HttpServer,
+  runManager: RunManager,
+  access?: StudioAccessOptions
+): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true });
   // agentId -> connected sockets, so status/event broadcasts only fan out
   // to clients watching that one agent's run.
@@ -66,6 +81,7 @@ export function attachWebSocketServer(server: HttpServer, runManager: RunManager
   }
 
   server.on('upgrade', (req: IncomingMessage, socket: Socket, head: Buffer) => {
+    if (rejectUpgrade(req, socket, access)) return;
     const agentId = streamAgentId(req);
     if (!agentId) {
       socket.destroy();

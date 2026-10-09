@@ -227,7 +227,7 @@ Workers limits are in [Deployment](./deployment.md).
 ## `lousho studio`
 
 ```bash
-npx lousho studio            # http://127.0.0.1:4750
+npx lousho studio            # prints http://127.0.0.1:4750/?token=<per-launch token>
 npx lousho studio --port 5000
 ```
 

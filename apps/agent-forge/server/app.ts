@@ -31,7 +31,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
-import cors from 'cors';
 import { ConfigurationError, SDKError, type AgentSpec, type ForkPatch } from '@lousho/build-ai-agent';
 import { TriggerRegistry } from '@lousho/build-ai-agent/triggers';
 import type { AgentStore } from '../src/persistence/AgentStore';
@@ -56,6 +55,7 @@ import {
   traceDirExists,
 } from './traceStore';
 import { DEPLOY_ADAPTERS, isDeployAdapter, runDeploy } from './deployRunner';
+import { checkApiAccess, checkHostAndOrigin, type StudioAccessOptions } from './auth';
 
 export interface CreateAppOptions {
   agentStore: AgentStore;
@@ -78,7 +78,17 @@ export interface CreateAppOptions {
    * `src/cli/studio.ts`.
    */
   staticDir?: string;
+  /**
+   * Eve DUI-F1: the per-launch token (and extra allowed hosts) every API
+   * request must present - see auth.ts. `startStudioServer()` always passes
+   * one; omitting it (in-process tests only) skips the token check, while
+   * the Host/Origin check still applies.
+   */
+  access?: StudioAccessOptions;
 }
+
+/** Path prefixes of the API (everything except `/health` and the static client). */
+const API_PREFIXES = ['/agents', '/runs', '/settings'];
 
 function asyncRoute(fn: (req: Request, res: Response) => Promise<void>) {
   return (req: Request, res: Response, next: NextFunction) => {
@@ -574,9 +584,24 @@ export function createApp({
   secretsStore,
   settingsStore,
   staticDir,
+  access,
 }: CreateAppOptions): Express {
   const app = express();
-  app.use(cors());
+  // Eve DUI-F1: no CORS middleware - the client is same-origin (served by
+  // this server, or proxied by Vite in dev). Every request must name a
+  // loopback Host and carry no foreign Origin; API routes also need the token.
+  app.use((req, res, next) => {
+    const decision = access
+      ? (API_PREFIXES.some((prefix) => req.path === prefix || req.path.startsWith(`${prefix}/`))
+          ? checkApiAccess(req, access)
+          : checkHostAndOrigin(req, access))
+      : checkHostAndOrigin(req, { token: '' });
+    if (!decision.ok) {
+      res.status(decision.status).json({ error: decision.error });
+      return;
+    }
+    next();
+  });
   app.use(express.json({ limit: '2mb' }));
 
   const secrets = secretsStore ?? new SecretsStore(baseDir);

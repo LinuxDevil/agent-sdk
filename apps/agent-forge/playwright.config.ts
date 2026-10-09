@@ -21,6 +21,8 @@ import { fileURLToPath } from 'node:url';
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-forge-e2e-'));
 const port = Number(process.env.LOUSHO_STUDIO_E2E_PORT ?? 4799);
+/** Eve DUI-F1: the API needs the per-launch token; pin one so the spec can open `/?token=...`. */
+const E2E_STUDIO_TOKEN = 'e2e-studio-token';
 
 export default defineConfig({
   testDir: './e2e',
@@ -37,7 +39,7 @@ export default defineConfig({
   webServer: {
     command: 'node dist-server/index.cjs',
     cwd: moduleDir,
-    env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', BASE_DIR: baseDir },
+    env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', BASE_DIR: baseDir, LOUSHO_STUDIO_TOKEN: E2E_STUDIO_TOKEN },
     url: `http://127.0.0.1:${port}/health`,
     reuseExistingServer: false,
     timeout: 20_000,
