@@ -3,7 +3,8 @@
  * `send()` calls (and, for `FileSessionStore`, between processes).
  */
 
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { readFileWithRetry, renameWithRetry } from '../storage/fsRetry';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { Message } from '../providers/llm';
@@ -127,7 +128,7 @@ export class FileSessionStore implements SessionStore {
     const temp = `${file}.${process.pid}.${randomUUID()}.tmp`;
     try {
       await writeFile(temp, JSON.stringify(messages, encodeBytes), 'utf8');
-      await rename(temp, file);
+      await renameWithRetry(temp, file);
     } catch (error) {
       await rm(temp, { force: true });
       throw error;
@@ -144,7 +145,7 @@ export class FileSessionStore implements SessionStore {
 /** The file's text, or `undefined` when it does not exist. */
 async function readText(file: string): Promise<string | undefined> {
   try {
-    return await readFile(file, 'utf8');
+    return await readFileWithRetry(file);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
     throw error;
