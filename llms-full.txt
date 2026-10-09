@@ -35,7 +35,7 @@ Four things set it apart:
 
 ## Installation
 
-Requires Node.js 22.19 or newer. Scaffold a new project with one command:
+Requires Node.js 22.19 or newer (the floor comes from the `undici@8` dependency; `.ts` agent files also rely on Node's built-in type stripping, on by default since 22.18). Scaffold a new project with one command:
 
 ```bash
 npm create lousho-agent my-agent                     # agent, example tool, offline test
@@ -349,7 +349,7 @@ Source: docs/installation.md
 
 ## Requirements
 
-- Node.js **22.19 or newer** (`engines.node` in `package.json`, set by the `undici@8` dependency; `undici` is loaded only when the `http_request` or `web_fetch` tool makes a request, see [Optional peers](#optional-peers)).
+- Node.js **22.19 or newer** (`engines.node` in `package.json`, set by the `undici@8` dependency, whose own `engines` is `>=22.19.0`; the other version-gated Node features it uses are `node:sqlite` for `SqliteStore` (22.13) and native type stripping for `.ts` agent files (22.18), both below that floor, so lowering it means relaxing the `undici` dependency first; `undici` is loaded only when the `http_request` or `web_fetch` tool makes a request, see [Optional peers](#optional-peers)).
 - TypeScript is optional but recommended - the SDK ships full type
   definitions.
 
@@ -4484,7 +4484,7 @@ endpoints below (1MB body limit). What `<path>` is follows from the path:
 
 Any other extension, a missing path, or a module with no agent export fails
 with a coded error (`LOUSHO_SPEC_UNSUPPORTED_FORMAT`, `LOUSHO_CONFIG_INVALID`)
-and its fix. A `.ts` module is imported by the running Node (22.19 or later
+and its fix. A `.ts` module is imported by the running Node (22.18 or later
 strips types, so relative imports need their file extension); use `.js` for
 code that needs a transpiler.
 

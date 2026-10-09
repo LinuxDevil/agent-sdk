@@ -38,7 +38,7 @@ Four things set it apart:
 
 ## Installation
 
-Requires Node.js 22.19 or newer. Scaffold a new project with one command:
+Requires Node.js 22.19 or newer (the floor comes from the `undici@8` dependency; `.ts` agent files also rely on Node's built-in type stripping, on by default since 22.18). Scaffold a new project with one command:
 
 ```bash
 npm create lousho-agent my-agent                     # agent, example tool, offline test

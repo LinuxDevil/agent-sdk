@@ -88,7 +88,7 @@ endpoints below (1MB body limit). What `<path>` is follows from the path:
 
 Any other extension, a missing path, or a module with no agent export fails
 with a coded error (`LOUSHO_SPEC_UNSUPPORTED_FORMAT`, `LOUSHO_CONFIG_INVALID`)
-and its fix. A `.ts` module is imported by the running Node (22.19 or later
+and its fix. A `.ts` module is imported by the running Node (22.18 or later
 strips types, so relative imports need their file extension); use `.js` for
 code that needs a transpiler.
 
