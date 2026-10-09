@@ -13,7 +13,7 @@ import type * as http from 'node:http';
 import type { SimpleAgent } from '../createAgent';
 import type { SessionStore } from '../session/sessionStore';
 import type { SessionStores } from '../session/AgentSession';
-import { readRawBody, sendFailure, sendJson } from '../server/chatRoutes';
+import { PayloadTooLargeError, readRawBody, sendJson } from '../server/chatRoutes';
 import {
   toChannelRequest,
   type Channel,
@@ -22,7 +22,7 @@ import {
   type ChannelErrorHandler,
   type ChannelRespond,
 } from './defineChannel';
-import { reportChannelError } from './channelSupport';
+import { channelFailureBody, reportChannelError } from './channelSupport';
 import { channelCore, type ChannelCore } from './channelCore';
 import { SDKError } from '../execution/errors';
 
@@ -98,8 +98,10 @@ export function mountChannels(
       await core.handle(channel, isApproval ? decodeURIComponent(route[2]) : undefined, request, respond);
       respond(200, { ok: true });
     } catch (error) {
-      if (responded) await reportChannelError(channel.onError ?? options.onError, error, { channel: channel.name, stage: 'parse' });
-      else sendFailure(res, error);
+      const status = error instanceof PayloadTooLargeError ? 413 : error instanceof SyntaxError ? 400 : 500;
+      // Eve CH-F6: a failure after the ack, or a 500's detail, goes to onError; the client never sees an internal message.
+      if (responded || status === 500) await reportChannelError(channel.onError ?? options.onError, error, { channel: channel.name, stage: 'parse' });
+      if (!responded) sendJson(res, status, channelFailureBody(status, error));
       responded = true;
     }
     return true;

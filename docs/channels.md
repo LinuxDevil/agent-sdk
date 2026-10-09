@@ -77,8 +77,11 @@ never over re-serialized JSON), `text` and `native` (the host's request).
 
 A reply that does not call `respond` is followed by `200 {"ok":true}`; a surface
 that delivers replies out of band (posting to a chat API) only needs to
-acknowledge the request. An error thrown by `parse` answers 400 for a
-`SyntaxError` (bad JSON) and 500 otherwise; a body over 1MB gets 413.
+acknowledge the request. An error thrown by `verify` or `parse` answers 400
+for a `SyntaxError` (bad JSON) and 500 otherwise; a body over 1MB gets 413. A
+500 body is only `{ "error": "The request failed. The server log has the
+details.", "code"? }`, as on the session routes: the error itself goes to
+`onError` (stage `'parse'`), never to the caller.
 
 ```ts
 import { createAgent, defineChannel, mountChannels } from '@lousho/build-ai-agent';

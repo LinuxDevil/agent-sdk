@@ -63,6 +63,19 @@ function emailTool() {
 const callEmail = { toolCalls: [{ name: 'send_email', args: { to: 'sam@example.com' }, id: 'call_email' }] };
 
 describe('defineChannel / mountChannels (LOU-P7)', () => {
+  it('a 500 does not leak the internal error message; the detail goes to onError (Eve CH-F6)', async () => {
+    const onError = vi.fn();
+    const { channel } = recordingChannel({
+      onError,
+      verify: async () => {
+        throw Object.assign(new Error('connect ECONNREFUSED postgres://admin:hunter2@10.0.0.1:5432/prod'), { code: 'ECONNREFUSED' });
+      },
+    });
+    const res = await post(mountChannels(createAgent({ provider: mockModel(['hi']) }), [channel]), '/channels/test', { user: 'ali', text: 'hi' });
+    expect(res).toEqual({ handled: true, status: 500, json: { error: 'The request failed. The server log has the details.', code: 'ECONNREFUSED' } });
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining('hunter2') }), expect.objectContaining({ channel: 'test', stage: 'parse' }));
+  });
+
   it('runs inbound -> session -> reply and answers the open request', async () => {
     const agent = createAgent({ provider: mockModel(['Hello Ali']) });
     const { channel, replies } = recordingChannel();

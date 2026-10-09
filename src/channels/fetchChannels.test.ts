@@ -4,7 +4,7 @@
  * `POST <basePath>/<name>/approvals/:id`, Request in, Response out, so a
  * Worker host can serve the same channels.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createAgent } from '../createAgent';
 import { mockModel } from '../testing';
 import { defineChannel, type Channel, type ChannelReplyContext } from './defineChannel';
@@ -46,6 +46,31 @@ describe('mountFetchChannels (#298)', () => {
     expect(await response?.json()).toEqual({ ok: true });
     expect(replies.map((r) => r.text)).toEqual(['Hello there']);
     expect(replies[0].sessionId).toMatch(/^test_a-/);
+  });
+
+  it('a 500 does not leak the internal error message; the detail goes to onError (Eve CH-F6)', async () => {
+    const secret = 'connect ECONNREFUSED postgres://admin:hunter2@10.0.0.1:5432/prod';
+    const onError = vi.fn();
+    const { channel } = recordingChannel({
+      onError,
+      verify: async () => {
+        throw new Error(secret);
+      },
+    });
+    const handler = mountFetchChannels(createAgent({ provider: mockModel(['hi']) }), [channel]);
+    const response = await handler(post('/channels/test', { user: 'a', text: 'hi' }));
+    expect(response?.status).toBe(500);
+    const text = await response!.text();
+    expect(text).not.toContain('hunter2');
+    expect(JSON.parse(text)).toEqual({ error: 'The request failed. The server log has the details.' });
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: secret }), expect.objectContaining({ channel: 'test' }));
+  });
+
+  it('keeps the 400 for a body that is not JSON (Eve CH-F6)', async () => {
+    const { channel } = recordingChannel();
+    const handler = mountFetchChannels(createAgent({ provider: mockModel(['hi']) }), [channel]);
+    const response = await handler(new Request('http://worker/channels/test', { method: 'POST', body: '{nope' }));
+    expect(response?.status).toBe(400);
   });
 
   it('answers 401 when the channel verify fails', async () => {
