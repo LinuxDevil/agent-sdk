@@ -69,6 +69,24 @@ describe('run usage (LOU-V5)', () => {
     expect(formatUsage(result.usage)).toBe('2,500 in / 500 out tokens · $0.0007 (2 model calls)');
   });
 
+  it('Eve PROV-F4: sums cache reads and writes, and prices them at the cache rates', async () => {
+    const provider = mockModel(
+      [
+        { ...callEcho, usage: { inputTokens: 5000, outputTokens: 10, cacheWriteTokens: 4800 } },
+        { text: 'done', usage: { inputTokens: 5100, outputTokens: 10, cachedInputTokens: 4800 } },
+      ],
+      { defaultModel: 'claude-haiku-4-5' }
+    );
+
+    const result = await AgentExecutor.execute({ agent: agent(), input: 'go', provider, toolRegistry: registry() });
+
+    expect(result.usage).toMatchObject({ inputTokens: 10100, cachedInputTokens: 4800, cacheWriteTokens: 4800 });
+    // Step 1: 200 uncached at $1 + 4,800 written at $1.25; step 2: 300 uncached + 4,800 read at $0.10; 20 out at $5.
+    const expected = (500 * 1 + 4800 * 1.25 + 4800 * 0.1 + 20 * 5) / 1e6;
+    expect(result.usage.costUsd).toBeCloseTo(expected, 10);
+    expect(result.stepUsage?.[1]).toMatchObject({ usage: { cachedInputTokens: 4800 }, costUsd: expect.closeTo((300 + 4800 * 0.1 + 50) / 1e6, 10) });
+  });
+
   it('formatUsage keeps significant digits for a tiny cost (Eve CORE-F17)', () => {
     const base = { inputTokens: 10, outputTokens: 5, modelCalls: 1, estimated: false };
     expect(formatUsage({ ...base, costUsd: 0.000042 })).toBe('10 in / 5 out tokens · $0.000042 (1 model call)');

@@ -161,13 +161,14 @@ function clone<T>(value: T): T {
 /** Only the token counts (and a reported cost) are stored; a call that reported no usage records none. */
 function recordedUsage(usage: ProviderUsage | undefined): { usage?: ProviderUsage } {
   if (!usage) return {};
-  const { promptTokens, completionTokens, totalTokens, cachedInputTokens, reasoningTokens, costUsd } = usage;
+  const { promptTokens, completionTokens, totalTokens, cachedInputTokens, cacheWriteTokens, reasoningTokens, costUsd } = usage;
   return {
     usage: {
       promptTokens,
       completionTokens,
       totalTokens,
       ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
+      ...(cacheWriteTokens !== undefined ? { cacheWriteTokens } : {}),
       ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
       ...(costUsd !== undefined ? { costUsd } : {}),
     },

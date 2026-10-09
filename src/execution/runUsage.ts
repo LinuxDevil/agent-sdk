@@ -66,7 +66,7 @@ export function measureUsage(
   return { model, usage, estimated: !reported, costUsd };
 }
 
-type OptionalCount = 'cachedInputTokens' | 'reasoningTokens';
+type OptionalCount = 'cachedInputTokens' | 'cacheWriteTokens' | 'reasoningTokens';
 
 function addOptional(run: RunUsage, key: OptionalCount, add: number | undefined): void {
   if (add !== undefined) run[key] = (run[key] ?? 0) + add;
@@ -104,6 +104,7 @@ export function recordStepUsage(run: RunUsage, step: CallUsage): void {
   run.modelCalls += 1;
   run.estimated ||= step.estimated;
   addOptional(run, 'cachedInputTokens', usage.cachedInputTokens);
+  addOptional(run, 'cacheWriteTokens', usage.cacheWriteTokens);
   addOptional(run, 'reasoningTokens', usage.reasoningTokens);
   addToModel(run, step.model, { ...usage, costUsd: step.costUsd ?? estimateCost(usage, step.model) }, 1);
   refreshDerived(run);
@@ -155,6 +156,7 @@ export function mergeDelegatedUsage(run: RunUsage, child: RunUsage): void {
   run.modelCalls += child.modelCalls;
   run.estimated ||= child.estimated;
   addOptional(run, 'cachedInputTokens', child.cachedInputTokens);
+  addOptional(run, 'cacheWriteTokens', child.cacheWriteTokens);
   addOptional(run, 'reasoningTokens', child.reasoningTokens);
   for (const [model, entry] of Object.entries(child.byModel)) addToModel(run, model, entry, entry.calls);
   addHostedCounts(run, child.hostedToolCalls);

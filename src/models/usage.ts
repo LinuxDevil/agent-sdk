@@ -17,8 +17,10 @@ export interface Usage {
   outputTokens: number;
   /** `inputTokens + outputTokens`, or the provider's own total. */
   totalTokens: number;
-  /** Input tokens served from the provider's prompt cache. Only set when the provider reports it. */
+  /** Input tokens served from the provider's prompt cache (a part of `inputTokens`). Only set when the provider reports it. */
   cachedInputTokens?: number;
+  /** Input tokens written to the provider's prompt cache (a part of `inputTokens`; Anthropic bills them at 1.25x). Only set when the provider reports it. */
+  cacheWriteTokens?: number;
   /** Output tokens spent on hidden reasoning. Only set when the provider reports it. */
   reasoningTokens?: number;
 }
@@ -62,6 +64,8 @@ export interface RunUsage {
   totalTokens: number;
   /** Sum of `cachedInputTokens` over the calls that reported it; absent when none did. */
   cachedInputTokens?: number;
+  /** Sum of `cacheWriteTokens` over the calls that reported it; absent when none did. */
+  cacheWriteTokens?: number;
   /** Sum of `reasoningTokens` over the calls that reported it; absent when none did. */
   reasoningTokens?: number;
   /**
@@ -126,6 +130,7 @@ export function normalizeUsage(raw: ProviderUsage | undefined): Usage | undefine
     outputTokens: raw.completionTokens,
     totalTokens: isCount(raw.totalTokens) ? raw.totalTokens : raw.promptTokens + raw.completionTokens,
     ...(isCount(raw.cachedInputTokens) ? { cachedInputTokens: raw.cachedInputTokens } : {}),
+    ...(isCount(raw.cacheWriteTokens) ? { cacheWriteTokens: raw.cacheWriteTokens } : {}),
     ...(isCount(raw.reasoningTokens) ? { reasoningTokens: raw.reasoningTokens } : {}),
   };
 }

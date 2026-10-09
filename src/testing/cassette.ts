@@ -19,6 +19,7 @@ const usageSchema = z.object({
   totalTokens: z.number(),
   /** Optional, so cassettes recorded before they were kept still read. */
   cachedInputTokens: z.number().optional(),
+  cacheWriteTokens: z.number().optional(),
   reasoningTokens: z.number().optional(),
   costUsd: z.number().optional(),
 });

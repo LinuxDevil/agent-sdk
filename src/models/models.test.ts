@@ -161,4 +161,22 @@ describe('estimateCost', () => {
     expect(estimateCost({ inputTokens: 10, outputTokens: 10 }, 'nope')).toBeUndefined();
     expect(estimateCost({ inputTokens: 10, outputTokens: 10 }, 'llama3.1')).toBeUndefined();
   });
+
+  it('Eve PROV-F4: prices cache reads and cache writes at their own rates', () => {
+    // Anthropic: reads at 10% of input, 5-minute writes at 125%.
+    // 1M input = 100k uncached + 900k read: 0.1 * $1 + 0.9 * $0.10.
+    expect(estimateCost({ inputTokens: 1_000_000, outputTokens: 0, cachedInputTokens: 900_000 }, 'claude-haiku-4-5')).toBeCloseTo(0.19);
+    // 1M input, all written to the cache: $1.25.
+    expect(estimateCost({ inputTokens: 1_000_000, outputTokens: 0, cacheWriteTokens: 1_000_000 }, 'anthropic/claude-haiku-4.5')).toBeCloseTo(1.25);
+    // OpenAI: cached input at 50% on gpt-4o-mini, writes cost nothing extra.
+    expect(estimateCost({ inputTokens: 1_000_000, outputTokens: 0, cachedInputTokens: 1_000_000 }, 'gpt-4o-mini')).toBeCloseTo(0.075);
+    expect(estimateCost({ inputTokens: 1_000_000, outputTokens: 0, cacheWriteTokens: 1_000_000 }, 'gpt-4o-mini')).toBeCloseTo(0.15);
+  });
+
+  it('Eve PROV-F4: a model without a cache price bills cached tokens at the input rate, and never below zero uncached', () => {
+    registerModel({ id: 'no-cache-price', provider: 'x', contextWindow: 1000, inputCostPerMTok: 2, outputCostPerMTok: 4 });
+    expect(estimateCost({ inputTokens: 1_000_000, outputTokens: 0, cachedInputTokens: 500_000, cacheWriteTokens: 500_000 }, 'no-cache-price')).toBeCloseTo(2);
+    // Cached tokens are a part of `inputTokens`: more cached than input is clamped, never priced negative.
+    expect(estimateCost({ inputTokens: 10, outputTokens: 0, cachedInputTokens: 1_000_000 }, 'claude-haiku-4-5')).toBeCloseTo(0.000001, 9);
+  });
 });

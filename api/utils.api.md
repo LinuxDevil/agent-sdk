@@ -729,6 +729,7 @@ interface RunUsage {
     // Warning: (ae-forgotten-export) The symbol "ModelUsage" needs to be exported by the entry point index.d.ts
     byModel: Record<string, ModelUsage>;
     cachedInputTokens?: number;
+    cacheWriteTokens?: number;
     // @deprecated (undocumented)
     completionTokens: number;
     costUsd: number | undefined;
@@ -940,6 +941,7 @@ interface UIComponentNode {
 // @public
 interface Usage {
     cachedInputTokens?: number;
+    cacheWriteTokens?: number;
     inputTokens: number;
     outputTokens: number;
     reasoningTokens?: number;

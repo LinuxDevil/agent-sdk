@@ -363,6 +363,7 @@ type PiiType = 'email' | 'phone' | 'credit-card' | 'iban' | 'us-ssn' | 'ip-addre
 // @public
 interface ProviderUsage {
     cachedInputTokens?: number;
+    cacheWriteTokens?: number;
     // (undocumented)
     completionTokens: number;
     costUsd?: number;
@@ -407,6 +408,7 @@ interface RunUsage {
     // Warning: (ae-forgotten-export) The symbol "ModelUsage" needs to be exported by the entry point index.d.ts
     byModel: Record<string, ModelUsage>;
     cachedInputTokens?: number;
+    cacheWriteTokens?: number;
     // @deprecated (undocumented)
     completionTokens: number;
     costUsd: number | undefined;
@@ -559,6 +561,7 @@ export class TriggerRegistry {
 // @public
 interface Usage {
     cachedInputTokens?: number;
+    cacheWriteTokens?: number;
     inputTokens: number;
     outputTokens: number;
     reasoningTokens?: number;
@@ -601,8 +604,8 @@ export interface WebhookTriggerHandle extends TriggerHandle {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-DfKYNbZe.d.ts:787:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-DfKYNbZe.d.ts:804:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BgIsKR1f.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BgIsKR1f.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

@@ -374,6 +374,8 @@ export interface MockTurnObject {
     usage?: {
         inputTokens: number;
         outputTokens: number;
+        cachedInputTokens?: number;
+        cacheWriteTokens?: number;
     };
 }
 
@@ -461,6 +463,7 @@ export type ProviderInterceptor = (provider: LLMProvider, context?: ProviderInte
 // @public
 interface ProviderUsage {
     cachedInputTokens?: number;
+    cacheWriteTokens?: number;
     // (undocumented)
     completionTokens: number;
     costUsd?: number;
@@ -529,6 +532,7 @@ interface RunUsage {
     // Warning: (ae-forgotten-export) The symbol "ModelUsage" needs to be exported by the entry point index.d.ts
     byModel: Record<string, ModelUsage>;
     cachedInputTokens?: number;
+    cacheWriteTokens?: number;
     // @deprecated (undocumented)
     completionTokens: number;
     costUsd: number | undefined;
@@ -727,9 +731,9 @@ interface ToolExecutionContext {
 
 // Warnings were encountered during analysis:
 //
-// dist/index-DflclLiQ.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-DflclLiQ.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-DflclLiQ.d.ts:1452:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
+// dist/index-BmtyMuK3.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-BmtyMuK3.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-BmtyMuK3.d.ts:1452:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

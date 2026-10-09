@@ -102,14 +102,21 @@ function finishReasonOf(message: PiAssistantMessage): GenerateResult['finishReas
   return reason === 'stop' && message.content.some((part) => part.type === 'toolCall') ? 'tool_calls' : reason;
 }
 
-/** pi `Usage` -> our provider-facing usage; `costUsd` keeps pi's own total (catalog-priced). */
+/**
+ * pi `Usage` -> our provider-facing usage; `costUsd` keeps pi's own total (catalog-priced).
+ * pi's `input` leaves out the cache reads and writes; `promptTokens` counts them (Eve PROV-F4).
+ */
 function piUsage(usage: PiAssistantMessage['usage'] | undefined): ProviderUsage | undefined {
   if (!usage || typeof usage.input !== 'number' || typeof usage.output !== 'number') return undefined;
+  const cacheRead = usage.cacheRead > 0 ? usage.cacheRead : 0;
+  const cacheWrite = usage.cacheWrite > 0 ? usage.cacheWrite : 0;
+  const promptTokens = usage.input + cacheRead + cacheWrite;
   return {
-    promptTokens: usage.input,
+    promptTokens,
     completionTokens: usage.output,
-    totalTokens: typeof usage.totalTokens === 'number' ? usage.totalTokens : usage.input + usage.output,
-    ...(usage.cacheRead > 0 ? { cachedInputTokens: usage.cacheRead } : {}),
+    totalTokens: typeof usage.totalTokens === 'number' ? usage.totalTokens : promptTokens + usage.output,
+    ...(cacheRead > 0 ? { cachedInputTokens: cacheRead } : {}),
+    ...(cacheWrite > 0 ? { cacheWriteTokens: cacheWrite } : {}),
     ...(typeof usage.reasoning === 'number' ? { reasoningTokens: usage.reasoning } : {}),
     ...(usage.cost && typeof usage.cost.total === 'number' && usage.cost.total > 0 ? { costUsd: usage.cost.total } : {}), // 0 = pi priced nothing: the registry's catalog price applies
   };
