@@ -11,10 +11,21 @@ For each slot, `createAgent({ memory })`:
 1. **Recalls** at the start of every run (`send()`, `stream()`, each session
    turn): on the run's first model call, the newest items go into the system
    prompt in a `<memory name="...">` block. The block stays for the rest of
-   the run and is not saved in the session transcript.
+   the run. A session's stored transcript (`session.messages`) does not keep
+   it, but the run's own transcript does: `result.messages` of `send()` /
+   `stream()`, and the run's checkpoints (a run continued after an approval
+   recalls from them), contain the system message with the recalled items. Do
+   not log or export those as if they held no memory.
 2. Gives the model a **`remember_<name>`** tool (input `{ text }`, or your own
    `itemSchema`) to store a new item, and a **`recall_<name>`** tool (input
-   `{ query?, limit? }`) to search the slot, newest items first.
+   `{ query?, limit? }`, `limit` capped at 100) to search the slot, newest items first.
+   Each returned item has its `id`, `text` and `createdAt`, plus `score` from a
+   vector provider and, on a slot without `itemSchema`, its other `metadata`.
+   The `remember_<name>` description tells the model how long items last: in
+   later conversations (`'global'`), later in this conversation (`'session'`),
+   or in later conversations with the same user or key (a scope function).
+   Memory tags inside item text are escaped (`&lt;memory`, `&lt;/memory`) so
+   an item cannot open or close a block.
 
 ## Memory in code
 
