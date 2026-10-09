@@ -84,15 +84,44 @@ function serverAuth(options: DeployedServerOptions): readonly AuthFn[] | undefin
   return envToken === undefined ? entries : [...entries, apiToken(envToken)];
 }
 
+/** Default bound of {@link DeployedServer.shutdown}'s wait for in-flight turns; `LOUSHO_SHUTDOWN_TIMEOUT_MS` overrides it in the generated server. */
+export const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+
+/** What {@link createDeployedServer} returns. */
+export interface DeployedServer {
+  server: http.Server;
+  /** Whether requests are checked (a token or an auth list), so the caller can warn when it listens publicly without. */
+  authenticated: boolean;
+  /**
+   * Eve DUR-F15: a graceful stop, for SIGTERM. Stops accepting connections
+   * (`server.close()`), stops the schedules (no new fires), then waits for
+   * what is in flight - requests and their turns (a channel turn, a stream),
+   * turns that outlived a disconnected client, and schedule fires - for at
+   * most `timeoutMs` (default 10 s), and finally closes the connections left.
+   * It does not close the agent: call `agent.close()` after it.
+   */
+  shutdown(options?: { timeoutMs?: number }): Promise<void>;
+}
+
 /**
  * An (unlistening) http server for `agent`. `authenticated` tells whether
  * requests are checked (a token or an auth list), so the caller can warn when
- * it listens publicly without.
+ * it listens publicly without; `shutdown()` drains it.
  */
-export function createDeployedServer(agent: SimpleAgent, options: DeployedServerOptions = {}): { server: http.Server; authenticated: boolean } {
+export function createDeployedServer(agent: SimpleAgent, options: DeployedServerOptions = {}): DeployedServer {
   const auth = serverAuth(options);
   // Channels authenticate themselves (their own verify), so they sit beside the bearer-protected chat routes.
   const channels = options.channels?.length ? mountChannels(agent, options.channels) : undefined;
+  // DUR-F15: requests being handled, and turns that outlived their client, for shutdown() to wait for.
+  const inFlight = new Set<Promise<unknown>>();
+  const track = (work: Promise<unknown>): void => {
+    const settled = work.then(
+      () => undefined,
+      () => undefined
+    );
+    inFlight.add(settled);
+    void settled.then(() => inFlight.delete(settled));
+  };
   // N9b: a channel turn paused on a sign-in continues on its surface once the callback stored the token.
   const { authorizeSession, authorizeApproval, exposeErrors, onDisconnect, waitUntil } = options;
   const chat: ChatRoutesContext = {
@@ -103,17 +132,39 @@ export function createDeployedServer(agent: SimpleAgent, options: DeployedServer
     authorizeApproval,
     exposeErrors,
     onDisconnect,
-    waitUntil,
+    waitUntil: (promise) => {
+      track(promise);
+      waitUntil?.(promise);
+    },
   };
   const handle = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
     if (await channels?.(req, res)) return;
     await relayFetch(req, res, (request) => serveFetch(request, chat, auth));
   };
-  const server = http.createServer((req, res) => void handle(req, res).catch((error) => replyUnhandled(res, error)));
+  const server = http.createServer((req, res) => track(handle(req, res).catch((error) => replyUnhandled(res, error))));
+  let running: ReturnType<typeof startSchedules> | undefined;
+  let schedulesStopped: Promise<void> | undefined;
+  const stopSchedules = (): Promise<void> => (schedulesStopped ??= running?.stop() ?? Promise.resolve());
   if (options.schedules?.length) {
-    let running: ReturnType<typeof startSchedules> | undefined;
     server.on('listening', () => (running = startSchedules(agent, options.schedules ?? [], options.scheduler)));
-    server.on('close', () => running?.stop());
+    server.on('close', () => void stopSchedules());
   }
-  return { server, authenticated: auth !== undefined };
+  const shutdown = async ({ timeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS }: { timeoutMs?: number } = {}): Promise<void> => {
+    if (server.listening) server.close();
+    server.closeIdleConnections();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timedOut = new Promise<'timeout'>((done) => (timer = setTimeout(() => done('timeout'), timeoutMs)));
+    const drained = (async () => {
+      await stopSchedules();
+      // A request can start a detached turn while it ends: wait until nothing is left.
+      while (inFlight.size > 0) await Promise.all(inFlight);
+    })();
+    const outcome = await Promise.race([drained, timedOut]);
+    clearTimeout(timer);
+    if (outcome === 'timeout') {
+      console.warn(`[lousho server] shutdown: ${inFlight.size} request(s) or turn(s) still running after ${timeoutMs} ms; closing their connections.`);
+    }
+    server.closeAllConnections();
+  };
+  return { server, authenticated: auth !== undefined, shutdown };
 }

@@ -129,7 +129,22 @@ node dist/server.js --port=8080 --host=0.0.0.0
 
 Like `lousho dev`, it binds to `127.0.0.1` unless you opt in to another
 interface with `--host=<h>` (or `HOST=<h>`); the port comes from `--port`,
-`PORT`, or defaults to `3000`. SIGINT/SIGTERM close the agent before exiting.
+`PORT`, or defaults to `3000`.
+
+On SIGINT or SIGTERM (a `docker stop`, a rolling deploy) the server drains
+before it exits:
+1. It stops accepting connections.
+2. It stops the schedules, so nothing fires again.
+3. It waits for the requests and turns already running, including schedule
+   fires and turns whose client disconnected. The wait is capped at 10 seconds,
+   or `LOUSHO_SHUTDOWN_TIMEOUT_MS`.
+4. It closes the connections still open and calls `agent.close()`.
+
+Keep the platform's grace period (Docker's `--stop-timeout`, Kubernetes'
+`terminationGracePeriodSeconds`) longer than that wait. When you serve
+`createDeployedServer(agent, options)` yourself, it returns the same drain as
+`shutdown({ timeoutMs? })`. Call `agent.close()` after it.
+
 Provider credentials are read from the same
 environment variables as everywhere else (`OPENAI_API_KEY`, ...).
 

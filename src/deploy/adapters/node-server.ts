@@ -145,7 +145,7 @@ const LOOPBACK = ['127.0.0.1', 'localhost', '::1'];
 
 async function main(): Promise<void> {
   ${variant.boot}
-  const { server, authenticated } = createDeployedServer(agent, ${variant.options});
+  const { server, authenticated, shutdown } = createDeployedServer(agent, ${variant.options});
 
   server.on('error', (err: NodeJS.ErrnoException) => {
     console.error(
@@ -164,8 +164,16 @@ async function main(): Promise<void> {
     }
   });
 
+  // Eve DUR-F15: stop accepting, stop the schedules, let in-flight turns finish (bounded), then close the agent.
+  const shutdownTimeoutMs = Number(process.env.LOUSHO_SHUTDOWN_TIMEOUT_MS) || undefined;
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-    process.once(signal, () => void agent.close().finally(() => process.exit(0)));
+    process.once(signal, () => {
+      console.log('[lousho server] ' + signal + ': finishing in-flight requests, then shutting down');
+      void shutdown({ timeoutMs: shutdownTimeoutMs })
+        .catch((error: Error) => console.error('[lousho server] shutdown failed: ' + error.message))
+        .finally(() => agent.close())
+        .finally(() => process.exit(0));
+    });
   }
 }
 
