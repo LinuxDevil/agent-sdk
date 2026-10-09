@@ -138,7 +138,7 @@ function settledStatus(finishReason: string): AgentUIStatus {
 /** Eve CORE-F9: the error to show for a non-`stop` ending, unless an `error` event already set one. */
 function endingError(finishReason: string, current: AgentEventError | null): AgentEventError | null {
   if (current || !Object.hasOwn(FAILED_ENDINGS, finishReason)) return current;
-  return { name: 'RunEndedError', message: FAILED_ENDINGS[finishReason], code: 'LOUSHO_RUN_ENDED' };
+  return { name: 'RunEndedError', message: FAILED_ENDINGS[finishReason] };
 }
 
 /** Applies `update` to the last assistant message, appending an empty one first if the last message is not one. */
