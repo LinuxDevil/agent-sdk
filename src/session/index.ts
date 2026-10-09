@@ -12,5 +12,5 @@ export type {
   SessionTurnCheckpoint,
   SessionTurnOptions,
 } from './AgentSession';
-export { MemorySessionStore, FileSessionStore } from './sessionStore';
-export type { SessionStore } from './sessionStore';
+export { MemorySessionStore, FileSessionStore, transcriptRevision } from './sessionStore';
+export type { SessionStore, FileSessionStoreOptions } from './sessionStore';

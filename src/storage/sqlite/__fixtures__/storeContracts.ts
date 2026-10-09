@@ -4,7 +4,7 @@
  * `factory` returns a fresh, empty store (and may be async).
  */
 import { describe, it, expect } from 'vitest';
-import type { SessionStore } from '../../../session/sessionStore';
+import { transcriptRevision, type SessionStore } from '../../../session/sessionStore';
 import type { Checkpoint, CheckpointStore } from '../../../execution/checkpoint';
 import type { ApprovalStore, ExecutionSnapshot, PendingApproval } from '../../../execution/ApprovalGate';
 import type { Message } from '../../../providers/llm';
@@ -101,6 +101,34 @@ export function describeSessionStoreContract(name: string, factory: Factory<Sess
       const store = await factory();
       await expect(store.save('../x', convo)).rejects.toThrow(/Invalid session id/);
       await expect(store.load('a/b')).rejects.toThrow(/Invalid session id/);
+    });
+
+    // Eve DUR-F4: the optional compare-and-swap a session commits through.
+    it('saveIf saves only over the expected revision', async () => {
+      const store = await factory();
+      if (!store.saveIf) return;
+      expect(await store.saveIf('a', transcriptRevision(undefined), convo)).toBe(true);
+      expect(await store.load('a')).toEqual(convo);
+      // The revision of the empty transcript no longer matches.
+      expect(await store.saveIf('a', transcriptRevision([]), [convo[0]])).toBe(false);
+      expect(await store.load('a')).toEqual(convo);
+      expect(await store.saveIf('a', transcriptRevision(convo), [convo[0]])).toBe(true);
+      expect(await store.load('a')).toEqual([convo[0]]);
+      await store.save('b', convoWithBytes);
+      expect(await store.saveIf('b', transcriptRevision(convoWithBytes), convo)).toBe(true);
+    });
+
+    it('saveIf lets exactly one of two concurrent writers over the same revision win', async () => {
+      const store = await factory();
+      if (!store.saveIf) return;
+      await store.save('a', convo);
+      const base = transcriptRevision(convo);
+      const results = await Promise.all([
+        store.saveIf('a', base, [...convo, { role: 'user', content: 'one' }]),
+        store.saveIf('a', base, [...convo, { role: 'user', content: 'two' }]),
+      ]);
+      expect(results.filter(Boolean)).toHaveLength(1);
+      expect(await store.load('a')).toHaveLength(3);
     });
   });
 }

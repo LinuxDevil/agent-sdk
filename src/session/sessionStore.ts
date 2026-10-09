@@ -3,7 +3,7 @@
  * `send()` calls (and, for `FileSessionStore`, between processes).
  */
 
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, open, rm, stat, writeFile } from 'node:fs/promises';
 import { readFileWithRetry, renameWithRetry } from '../storage/fsRetry';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -29,6 +29,20 @@ export function decodeBytes(_key: string, value: unknown): unknown {
 }
 
 /**
+ * Eve DUR-F4: the revision of a transcript, for {@link SessionStore.saveIf}: an opaque string that changes whenever
+ * the transcript does (today its JSON, bytes as `$bytes`, as stores save it). A missing transcript has the revision
+ * of an empty one. Compare revisions only for equality.
+ *
+ * @example
+ * ```ts
+ * const saved = await store.saveIf('chat-1', transcriptRevision(await store.load('chat-1')), next);
+ * ```
+ */
+export function transcriptRevision(messages: readonly Message[] | undefined): string {
+  return JSON.stringify(messages ?? [], encodeBytes);
+}
+
+/**
  * Persistence for session transcripts. A transcript is the conversation
  * without the system prompt (the agent supplies that on every run).
  *
@@ -46,6 +60,15 @@ export interface SessionStore {
   save(id: string, messages: readonly Message[]): Promise<void>;
   /** Remove the transcript saved under `id`; a missing id is not an error. */
   delete(id: string): Promise<void>;
+  /**
+   * Optional compare-and-swap (Eve DUR-F4): atomically replace the transcript saved under `id` with `messages` only
+   * if the saved one still has `expectedRevision` ({@link transcriptRevision}; a missing transcript counts as empty).
+   * Resolves `false`, saving nothing, when another writer changed it first. A session commits each turn through it,
+   * so two processes (or two store objects over the same data) finishing a turn at once cannot both commit: the
+   * loser fails with `LOUSHO_SESSION_BUSY`. Without it a session falls back to a load, compare and save, which
+   * a writer in another process can still slip between.
+   */
+  saveIf?(id: string, expectedRevision: string, messages: readonly Message[]): Promise<boolean>;
 }
 
 export { assertSessionId };
@@ -78,7 +101,26 @@ export class MemorySessionStore implements SessionStore {
     assertSessionId(id);
     this.sessions.delete(id);
   }
+
+  async saveIf(id: string, expectedRevision: string, messages: readonly Message[]): Promise<boolean> {
+    assertSessionId(id);
+    if (transcriptRevision(this.sessions.get(id)) !== expectedRevision) return false;
+    this.sessions.set(id, structuredClone([...messages]));
+    return true;
+  }
 }
+
+/** Options of {@link FileSessionStore}. */
+export interface FileSessionStoreOptions {
+  /**
+   * How old (ms) a `saveIf` lock file is when it counts as left by a crashed writer and is taken over (default
+   * 10 000). A live writer holds it only while it reads and writes one transcript.
+   */
+  staleLockMs?: number;
+}
+
+/** How long (ms) `FileSessionStore.saveIf` waits for another writer's lock before failing with `LOUSHO_STORAGE_BUSY`. */
+const LOCK_WAIT_MS = 5_000;
 
 /**
  * One JSON file per session (`<dir>/<id>.json`), written atomically (temp
@@ -95,9 +137,11 @@ export class MemorySessionStore implements SessionStore {
  */
 export class FileSessionStore implements SessionStore {
   private readonly dir: string;
+  private readonly staleLockMs: number;
 
-  constructor(dir: string) {
+  constructor(dir: string, options: FileSessionStoreOptions = {}) {
     this.dir = resolve(dir);
+    this.staleLockMs = options.staleLockMs ?? 10_000;
   }
 
   private fileFor(id: string): string {
@@ -139,6 +183,46 @@ export class FileSessionStore implements SessionStore {
   async delete(id: string): Promise<void> {
     await rm(this.fileFor(id), { force: true });
     await removeLegacyFile(this.dir, caseSafeName(id), id);
+  }
+
+  /**
+   * Compare-and-swap under a lock file (`<id>.json.lock`, created with `O_EXCL`), so writers in other processes
+   * wait for each other. A lock older than `staleLockMs` (its writer crashed) is taken over.
+   */
+  async saveIf(id: string, expectedRevision: string, messages: readonly Message[]): Promise<boolean> {
+    const lock = `${this.fileFor(id)}.lock`;
+    await mkdir(this.dir, { recursive: true });
+    await this.acquire(lock);
+    try {
+      if (transcriptRevision(await this.load(id)) !== expectedRevision) return false;
+      await this.save(id, messages);
+      return true;
+    } finally {
+      await rm(lock, { force: true });
+    }
+  }
+
+  private async acquire(lock: string): Promise<void> {
+    const deadline = Date.now() + LOCK_WAIT_MS;
+    for (let delay = 5; ; delay = Math.min(delay * 2, 100)) {
+      try {
+        await (await open(lock, 'wx')).close();
+        return;
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        // Windows reports EPERM for a file being deleted by another process; treat it like EEXIST.
+        if (code !== 'EEXIST' && code !== 'EPERM') throw error;
+      }
+      const held = await stat(lock).catch(() => undefined);
+      if (held && Date.now() - held.mtimeMs > this.staleLockMs) {
+        await rm(lock, { force: true });
+        continue;
+      }
+      if (Date.now() > deadline) {
+        throw new SDKError(`Session lock ${lock} is held by another writer; try again.`, 'LOUSHO_STORAGE_BUSY');
+      }
+      await new Promise<void>((done) => setTimeout(done, delay));
+    }
   }
 }
 

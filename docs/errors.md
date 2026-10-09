@@ -488,7 +488,8 @@ paused on an approval (`error.approvalId`), so it cannot take new input yet.
 **Means:** `session.compact()`, `session.clear()` or `session.fork()` was called while a turn of
 that session is running or queued. From `send()` / `stream()`: another writer the in-process
 queue cannot see (another process, or a second store object over the same data) committed a
-turn while this one ran, so this turn was not committed. Tool calls of the turn that ran are
+turn while this one ran, so this turn was not committed (atomically with a store that has
+`saveIf`: memory, file and SQLite; best effort with KV). Tool calls of the turn that ran are
 kept: the turn up to their results is added after the other writer's turn.
 
 **Fix:** await the turn's `send()` (or abort it), then call again. After a `send()` that failed

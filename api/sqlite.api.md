@@ -778,6 +778,7 @@ interface SessionStore {
     delete(id: string): Promise<void>;
     load(id: string): Promise<Message[] | undefined>;
     save(id: string, messages: readonly Message[]): Promise<void>;
+    saveIf?(id: string, expectedRevision: string, messages: readonly Message[]): Promise<boolean>;
 }
 
 // @public

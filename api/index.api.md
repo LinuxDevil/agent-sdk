@@ -2355,13 +2355,19 @@ export interface FileSearchOptions {
 
 // @public
 export class FileSessionStore implements SessionStore {
-    constructor(dir: string);
+    constructor(dir: string, options?: FileSessionStoreOptions);
     // (undocumented)
     delete(id: string): Promise<void>;
     // (undocumented)
     load(id: string): Promise<Message[] | undefined>;
     // (undocumented)
     save(id: string, messages: readonly Message[]): Promise<void>;
+    saveIf(id: string, expectedRevision: string, messages: readonly Message[]): Promise<boolean>;
+}
+
+// @public
+export interface FileSessionStoreOptions {
+    staleLockMs?: number;
 }
 
 // @public
@@ -3894,6 +3900,8 @@ export class MemorySessionStore implements SessionStore {
     load(id: string): Promise<Message[] | undefined>;
     // (undocumented)
     save(id: string, messages: readonly Message[]): Promise<void>;
+    // (undocumented)
+    saveIf(id: string, expectedRevision: string, messages: readonly Message[]): Promise<boolean>;
 }
 
 // @public
@@ -5735,6 +5743,7 @@ export interface SessionStore {
     delete(id: string): Promise<void>;
     load(id: string): Promise<Message[] | undefined>;
     save(id: string, messages: readonly Message[]): Promise<void>;
+    saveIf?(id: string, expectedRevision: string, messages: readonly Message[]): Promise<boolean>;
 }
 
 // @public
@@ -6923,6 +6932,9 @@ export interface TrajectoryStep {
         result?: string;
     }[];
 }
+
+// @public
+export function transcriptRevision(messages: readonly Message[] | undefined): string;
 
 // @public
 export function twoPhaseStrategy(options: SummarizeStrategyOptions): CompactionStrategy;

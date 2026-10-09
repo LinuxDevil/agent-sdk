@@ -15,7 +15,7 @@ import { getCheckpointHistory, type Checkpoint, type CheckpointError, type Check
 import type { ApprovalKind } from '../execution/ApprovalGate';
 import { CompactedLLMProviderError, ConfigurationError, SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 import { streamSessionTurn } from './sessionStream';
-import { MemorySessionStore, assertSessionId, encodeBytes, type SessionStore } from './sessionStore';
+import { MemorySessionStore, assertSessionId, encodeBytes, transcriptRevision, type SessionStore } from './sessionStore';
 import { addSpent, runSpent, sessionSpent, type BudgetSpent, type RunLimits, type SessionBudget } from '../execution/budget';
 import { restoreRunUsage } from '../execution/runUsage';
 import { AGENT_EVENT_SCHEMA_VERSION, type AgentEvent, type AgentEventPayload } from '../execution/agentEvents';
@@ -1004,18 +1004,28 @@ export class AgentSession<TObject = unknown> {
       const sessionUsage = addSpent(sessionSpent(this.transcript), spent);
       next[next.length - 1] = { ...last, metadata: { ...last.metadata, sessionUsage } };
     }
-    await this.assertBaseUnchanged(next);
-    await this.store.save(this.id, next);
+    if (!(await this.saveOver(this.transcript, next))) await this.busy(next);
     const turn = this.turnCheckpoint();
     this.transcript = next;
     if (turn) await turn.checkpointStore.delete(turn.sessionId, { keepHistory: true });
   }
 
   /**
+   * Saves `next` only if the store still holds `base`. With the store's `saveIf` (Eve DUR-F4) that is one atomic
+   * compare-and-swap; without it, a load, compare and save, which a writer in another process can slip between.
+   */
+  private async saveOver(base: readonly Message[], next: readonly Message[]): Promise<boolean> {
+    if (this.store.saveIf) return this.store.saveIf(this.id, transcriptRevision(base), next);
+    if (!sameTranscript((await this.store.load(this.id)) ?? [], base)) return false;
+    await this.store.save(this.id, next);
+    return true;
+  }
+
+  /**
    * Optimistic concurrency for turns that CANNOT share this process's queue:
    * a second `SessionStore` object over the same transcript (another process,
-   * or `fileStore(dir)` built twice). If the store no longer holds the
-   * transcript this turn started from, committing would overwrite the other
+   * or `fileStore(dir)` built twice). When the store no longer holds the
+   * transcript this turn started from (`saveOver` failed), committing would overwrite the other
    * writer's turn without an error - instead the turn's leftover checkpoint
    * is dropped (replaying it later would clobber the committed transcript
    * anyway) and the send fails with `LOUSHO_SESSION_BUSY`. Tool calls of the
@@ -1023,21 +1033,18 @@ export class AgentSession<TObject = unknown> {
    * to their results is added after the other writer's transcript, as an
    * aborted turn keeps them (B4).
    */
-  private async assertBaseUnchanged(next: readonly Message[]): Promise<void> {
+  private async busy(next: readonly Message[]): Promise<never> {
     const stored = (await this.store.load(this.id)) ?? [];
     const base = this.transcript;
-    if (sameTranscript(stored, base)) return;
     const turn = this.turnCheckpoint();
     if (turn) await turn.checkpointStore.delete(turn.sessionId, { keepHistory: true });
     const ran = sameTranscript(next.slice(0, base.length), base) ? completedToolPrefix(next, base) : undefined;
-    if (ran) {
-      const kept = [...stored, ...ran.slice(base.length)];
-      await this.store.save(this.id, kept);
-      this.transcript = kept;
-    }
+    const kept = ran && [...stored, ...ran.slice(base.length)];
+    const keptRan = kept !== undefined && (await this.saveOver(stored, kept));
+    if (keptRan) this.transcript = kept;
     throw new SDKError(
       `Session '${this.id}' was changed by another session object or process while this turn ran; ` +
-        (ran ? "the turn was not committed, except its tool calls that ran, which were added after the other writer's turn. " : 'the turn was not committed. ') +
+        (keptRan ? "the turn was not committed, except its tool calls that ran, which were added after the other writer's turn. " : 'the turn was not committed. ') +
         'Reload the transcript and send again.',
       'LOUSHO_SESSION_BUSY'
     );

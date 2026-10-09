@@ -202,6 +202,9 @@ describe('checkpointed sessions (LOU-W9)', () => {
       save: async () => {
         throw new Error('session store gone');
       },
+      saveIf: async () => {
+        throw new Error('session store gone');
+      },
     });
     const model = mockModel(['Hi.']);
     await expect(createAgent({ provider: model }).session({ id: 'chat', store: failing, checkpointStore: checkpoints }).send('hello')).rejects.toThrow(

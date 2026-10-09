@@ -15,6 +15,7 @@ function unavailable(): never {
 }
 
 export const randomUUID = (): string => globalThis.crypto.randomUUID();
+// node:crypto: `createHash` names a forked session whose id is too long (AgentSession).
 export const createHash = unavailable;
 
 // node:fs, node:fs/promises, node:os, node:path
@@ -30,6 +31,7 @@ export const writeFile = unavailable;
 export const mkdir = unavailable;
 export const rename = unavailable;
 export const rm = unavailable;
+export const open = unavailable;
 export const readdir = unavailable;
 export const realpath = unavailable;
 export const stat = unavailable;

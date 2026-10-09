@@ -46,6 +46,12 @@ export interface KVStoreOptions {
 
 const putOptions = (expirationTtl?: number) => (expirationTtl ? { expirationTtl } : undefined);
 
+/**
+ * Sessions on Workers KV. It has no `saveIf` (Eve DUR-F4): KV has no compare-and-swap and is eventually consistent,
+ * so a session's `LOUSHO_SESSION_BUSY` check here is best-effort: two Workers finishing a turn on the same session
+ * at the same moment can still both commit, and one turn is lost. Route one session's traffic to one place (or keep
+ * sessions in a Durable Object or D1) when that matters.
+ */
 class KVSessionStore implements SessionStore {
   constructor(
     private readonly kv: KVBinding,

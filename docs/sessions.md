@@ -226,8 +226,21 @@ interface SessionStore {
   load(id: string): Promise<Message[] | undefined>;
   save(id: string, messages: readonly Message[]): Promise<void>;
   delete(id: string): Promise<void>;
+  // Optional compare-and-swap: save only if the stored transcript still has this revision.
+  saveIf?(id: string, expectedRevision: string, messages: readonly Message[]): Promise<boolean>;
 }
 ```
+
+Each turn commits through `saveIf` when the store has it, with
+`transcriptRevision(<the transcript the turn started from>)`. Two processes (or
+two store objects over the same data) that finish a turn on one session at the
+same moment then cannot both commit: one wins, the other's `send()` rejects with
+`LOUSHO_SESSION_BUSY`. `MemorySessionStore`, `FileSessionStore` (a
+`<id>.json.lock` file created exclusively; a lock older than `staleLockMs`,
+default 10 s, is taken over) and `SqliteStore.sessions` (one `BEGIN IMMEDIATE`
+transaction) implement it. A store without it, such as `KVStore.sessions` (KV
+has no compare-and-swap), gets a best-effort load, compare and save, which a
+writer in another process can still slip between, losing one turn.
 
 - `MemorySessionStore` (the default, one new store per session) lives as long as
   the process. Share one instance between sessions to look them up by id.
