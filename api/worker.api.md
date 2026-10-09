@@ -490,7 +490,7 @@ export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
     // (undocumented)
     protected createModel(modelId: string): Promise<LanguageModel>;
     // (undocumented)
-    protected readonly fallbackModel = "claude-3-5-sonnet-latest";
+    protected readonly fallbackModel = "claude-sonnet-4-5";
     protected fileMediaTypes(): readonly string[];
     getModels(): Promise<string[]>;
     protected hostedToolsFor(tools: readonly HostedTool[], _modelId: string): Promise<Record<string, unknown>>;
@@ -1467,6 +1467,7 @@ const ERROR_CODES: {
     readonly LOUSHO_CHANNEL_REQUEST_FAILED: "Check the platform's token and permissions and its status page; the message names the call and its status.";
     readonly LOUSHO_APPROVAL_STORE_MISSING: "Pass an approvalStore (e.g. new InMemoryApprovalStore()), or use createAgent(), which has one.";
     readonly LOUSHO_APPROVAL_NOT_FOUND: "Resolve an id that is still pending (agent.approvals.list() lists them); each approval resolves once.";
+    readonly LOUSHO_APPROVAL_ORPHANED: "The paused session turn was deleted (e.g. by a store's prune()); the approval cannot be continued - start a new turn instead.";
     readonly LOUSHO_APPROVAL_CONFLICT: "Another request decided this approval at the same time; read the session to see the outcome instead of deciding again.";
     readonly LOUSHO_APPROVAL_FORBIDDEN: "Decide the approval as a caller the route's authorizeApproval accepts (by default, the caller the run acts for).";
     readonly LOUSHO_SESSION_FORBIDDEN: "Use a session the route's authorizeSession lets this caller read, continue or decide approvals in.";
@@ -2686,7 +2687,7 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
     // (undocumented)
     protected createModel(modelId: string): Promise<LanguageModel>;
     // (undocumented)
-    protected readonly fallbackModel = "gpt-4";
+    protected readonly fallbackModel = "gpt-4o-mini";
     protected fileMediaTypes(): readonly string[];
     getModels(): Promise<string[]>;
     protected hostedToolsFor(tools: readonly HostedTool[], _modelId: string): Promise<Record<string, unknown>>;
@@ -2730,7 +2731,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
     // (undocumented)
     protected createModel(modelId: string, options?: GenerateOptions): Promise<LanguageModel>;
     // (undocumented)
-    protected readonly fallbackModel = "openai/gpt-3.5-turbo";
+    protected readonly fallbackModel = "openai/gpt-4o-mini";
     protected fileMediaTypes(): readonly string[];
     // (undocumented)
     generate(options: GenerateOptions): Promise<GenerateResult>;
@@ -4282,13 +4283,13 @@ interface WithRetryOptions {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-CGsQD2UX.d.ts:778:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CGsQD2UX.d.ts:795:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CGsQD2UX.d.ts:1156:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CGsQD2UX.d.ts:3207:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-CGsQD2UX.d.ts:3208:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
-// dist/index-CS8qGkxd.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
-// dist/index-CS8qGkxd.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-DcObuUP6.d.ts:778:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-DcObuUP6.d.ts:795:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-DcObuUP6.d.ts:1156:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-DcObuUP6.d.ts:3214:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-DcObuUP6.d.ts:3215:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
+// dist/index-B69TilK9.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
+// dist/index-B69TilK9.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point worker.d.ts
 
 // (No @packageDocumentation comment for this package)
