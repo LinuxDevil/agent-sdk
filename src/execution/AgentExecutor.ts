@@ -39,6 +39,7 @@ import {
   type ToolCallScope,
 } from './subagentRuntime';
 import { ConfigurationError, isAbortError, isCassetteError } from './errors';
+import { abortReasonOf } from './abortReason';
 import type { HostedTool } from '../tools/hosted';
 import { assertHostedToolsSupported, countHostedCalls, withHostedCalls } from './hostedToolCalls';
 import {
@@ -702,6 +703,21 @@ export interface ExecutionResult<TObject = unknown> {
   /** One entry per model call of this process's run, in order (LOU-V5). */
   stepUsage?: StepUsage[];
   finishReason: ExecutionFinishReason;
+  /**
+   * Eve CORE-F15: why a run that ended `'aborted'` was aborted - the
+   * signal's `reason` as `{ name, message }`: `'TimeoutError'` for
+   * `AbortSignal.timeout()`, `'AbortError'` for a plain
+   * `controller.abort()`, an Error reason's own name and message, or
+   * `'AbortError'` with the text of a non-Error reason
+   * (`controller.abort('user left')`). Absent on other endings.
+   *
+   * @example
+   * ```ts
+   * const result = await agent.send('hi', { signal: AbortSignal.timeout(30_000) });
+   * if (result.abortReason?.name === 'TimeoutError') console.log('timed out');
+   * ```
+   */
+  abortReason?: { name: string; message: string };
   steps: number;
   approvalId?: string;
   /** LOU-V4: the final reply parsed and validated with `output`; absent unless it was valid. */
@@ -1292,6 +1308,12 @@ export class AgentExecutor {
       called = true;
       const generated = await generateInSpan(options, generateRequest, state.messages, agentSpanId, callSignal, inputCheck, partial);
       callSignal?.throwIfAborted();
+      // Eve CORE-F15: a provider that ignored the signal still ends the run 'aborted', its late reply dropped.
+      if (options.signal?.aborted) {
+        recordStep(state, generated.measured);
+        called = false;
+        options.signal.throwIfAborted();
+      }
       return generated;
     } catch (generateError) {
       // N5b: whatever else happened, a blocked input wins; nothing goes on before the checks settled.
@@ -1822,7 +1844,7 @@ export class AgentExecutor {
       state.interruptedText = undefined;
     }
 
-    return toExecutionResult(state, state.finalText, 'aborted');
+    return { ...toExecutionResult(state, state.finalText, 'aborted'), abortReason: abortReasonOf(options.signal) };
   }
 
   /**

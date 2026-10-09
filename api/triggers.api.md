@@ -149,6 +149,10 @@ type ExecutionFinishReason = GenerateResult['finishReason'] | 'awaiting-approval
 
 // @public
 interface ExecutionResult<TObject = unknown> {
+    abortReason?: {
+        name: string;
+        message: string;
+    };
     agentName?: string;
     // (undocumented)
     approvalId?: string;
@@ -604,8 +608,8 @@ export interface WebhookTriggerHandle extends TriggerHandle {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-Bz5M83pn.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-Bz5M83pn.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BoMnNQ6I.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BoMnNQ6I.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

@@ -99,8 +99,17 @@ export interface MockTurnObject {
   usage?: { inputTokens: number; outputTokens: number; cachedInputTokens?: number; cacheWriteTokens?: number };
   /** Finish reason to report. Defaults to `'tool_calls'` when there are tool calls, else `'stop'`. */
   finishReason?: GenerateResult['finishReason'];
-  /** Wait this many milliseconds before answering. */
+  /**
+   * Wait this many milliseconds before answering. Eve CORE-F15: the wait
+   * ends early, rejecting with the signal's reason, when the request's
+   * `signal` aborts (unless `ignoreSignal`).
+   */
   delayMs?: number;
+  /**
+   * Eve CORE-F15: act like a provider without cancellation support: wait out
+   * `delayMs` and answer even after the request's `signal` aborted.
+   */
+  ignoreSignal?: boolean;
 }
 
 /** A non-dynamic turn: a bare string (shorthand for `{ text }`) or a {@link MockTurnObject}. */
@@ -164,6 +173,8 @@ interface ResolvedTurn {
   hostedToolCalls: HostedToolCall[];
   finishReason: GenerateResult['finishReason'];
   usage: GenerateResult['usage'];
+  /** Eve CORE-F15: the request's signal, which a stream checks between chunks (unset for an `ignoreSignal` turn). */
+  signal?: AbortSignal;
 }
 
 /**
@@ -195,6 +206,21 @@ function describeLastMessage(request: MockRequest): string {
 
 function toStaticTurn(turn: MockStaticTurn): MockTurnObject {
   return typeof turn === 'string' ? { text: turn } : turn;
+}
+
+/** Eve CORE-F15: waits `ms`, rejecting with `signal`'s reason as soon as it aborts. */
+function delay(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 function chunkText(text: string): string[] {
@@ -256,11 +282,16 @@ class ScriptedMockModel implements MockModel {
     const chunks = chunkText(turn.text);
     const fullStream = async function* (): AsyncGenerator<StreamChunk> {
       for (const hostedToolCall of turn.hostedToolCalls) {
+        turn.signal?.throwIfAborted();
         const { result: _result, isError: _isError, sources: _sources, ...started } = hostedToolCall;
         yield { type: 'hosted-tool-call', hostedToolCall: started };
         yield { type: 'hosted-tool-result', hostedToolCall };
       }
-      for (const textDelta of chunks) yield { type: 'text-delta', textDelta };
+      for (const textDelta of chunks) {
+        turn.signal?.throwIfAborted();
+        yield { type: 'text-delta', textDelta };
+      }
+      turn.signal?.throwIfAborted();
       for (const toolCall of turn.toolCalls) yield { type: 'tool-call', toolCall };
       yield { type: 'finish', finishReason: turn.finishReason, usage: turn.usage };
     };
@@ -298,9 +329,12 @@ class ScriptedMockModel implements MockModel {
     const request = snapshot(options);
     this.recorded.push(request);
     const turn = toStaticTurn(await this.nextTurn(request));
-    if (turn.delayMs) await new Promise<void>((resolve) => setTimeout(resolve, turn.delayMs));
+    // Eve CORE-F15: a cancelled request rejects with the signal's reason, like a real provider's.
+    const signal = turn.ignoreSignal ? undefined : options.signal;
+    signal?.throwIfAborted();
+    if (turn.delayMs) await delay(turn.delayMs, signal);
     if (turn.error) throw turn.error;
-    return this.toResolved(turn);
+    return { ...this.toResolved(turn), ...(signal && { signal }) };
   }
 
   private async nextTurn(request: MockRequest): Promise<MockStaticTurn> {

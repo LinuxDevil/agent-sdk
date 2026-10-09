@@ -946,6 +946,10 @@ export type ExecutionFinishReason = GenerateResult['finishReason'] | 'awaiting-a
 
 // @public
 export interface ExecutionResult<TObject = unknown> {
+    abortReason?: {
+        name: string;
+        message: string;
+    };
     agentName?: string;
     // (undocumented)
     approvalId?: string;
@@ -3054,9 +3058,9 @@ interface Usage {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-Bz5M83pn.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-Bz5M83pn.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-Bz5M83pn.d.ts:1255:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BoMnNQ6I.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BoMnNQ6I.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BoMnNQ6I.d.ts:1255:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
 // dist/index-C5TXhmCn.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
 // dist/index-C5TXhmCn.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/index-C5TXhmCn.d.ts:2009:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
