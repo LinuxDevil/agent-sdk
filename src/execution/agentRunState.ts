@@ -16,7 +16,7 @@ import { CompactedLLMProviderError, SessionAwaitingApprovalError } from './error
 import { inputMessages, insertToolResult, newSessionMessages, splitPendingTurn } from './transcript';
 import type { CallUsage, RunUsage, StepUsage } from '../models/usage';
 import { emptyRunUsage, recordStepUsage, restoreRunUsage } from './runUsage';
-import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
+import type { ExecuteOptions, ExecutionFinishReason, ExecutionResult } from './AgentExecutor';
 import type { ToolCallOutcome } from './toolCallExecution';
 import type { UnrecordedToolCall } from './toolBatch';
 import type { RunBudget } from './budget';
@@ -36,7 +36,7 @@ export interface AgentRunState {
   steps: number;
   businessState: unknown;
   finalText: string;
-  finishReason: string;
+  finishReason: ExecutionFinishReason;
   /** LOU-V13: the reasoning text of this run's steps so far. */
   reasoning?: string;
   /**
@@ -369,7 +369,7 @@ export function pushAbortedBatchResults(
 export function toExecutionResult(
   state: AgentRunState,
   text: string,
-  finishReason: string
+  finishReason: ExecutionFinishReason
 ): ExecutionResult {
   return {
     text,

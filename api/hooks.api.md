@@ -244,7 +244,7 @@ interface ContextClearedEvent extends AgentEventBase<'context.cleared'> {
 }
 
 // @public
-type ExecutionFinishReason = GenerateResult['finishReason'] | 'awaiting-approval' | 'aborted' | 'max-steps' | 'output-invalid' | 'budget-exceeded' | 'guardrail' | (string & {});
+type ExecutionFinishReason = GenerateResult['finishReason'] | 'awaiting-approval' | 'aborted' | 'max-steps' | 'output-invalid' | 'budget-exceeded' | 'guardrail';
 
 // @public
 interface FileContentPart {
@@ -763,7 +763,7 @@ interface StandardSchemaV1<Input = unknown, Output = Input> {
 
 // @public
 interface StepDoneEvent extends AgentEventBase<'step.done'> {
-    finishReason: ExecutionFinishReason;
+    finishReason: ExecutionFinishReason | 'steered';
     // (undocumented)
     step: number;
     usage?: AgentEventUsage;

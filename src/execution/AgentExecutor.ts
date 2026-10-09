@@ -81,7 +81,7 @@ import {
   saveStepCheckpoint,
   toExecutionResult,
 } from './agentRunState';
-import { AgentRun, RUN_EVENTS, StreamingExecuteOptions, observeRun, partialSink, runEventsOf, startAgentRun } from './agentRun';
+import { AgentRun, RUN_EVENTS, StreamingExecuteOptions, modelFinishReason, observeRun, partialSink, runEventsOf, startAgentRun } from './agentRun';
 import type { AgentEvent } from './agentEvents';
 import { withSteerSignal, type InputQueue } from './inputQueue';
 import { assertOutputSchema, OutputError, outputInstruction, outputRepairMessage, truncatedOutput, validateOutput, type OutputSpec } from './structuredOutput';
@@ -125,11 +125,11 @@ export { PropagatingToolError } from './propagatingToolError';
 
 /**
  * Why a run ended, as reported on `ExecutionResult.finishReason` and the
- * `finish` event. The known values are listed for autocomplete; a provider
- * may report others, so this stays open to any string.
+ * `finish` event. A closed union, so a typo does not compile (Eve CORE-F14).
  *
- * - `'stop'`, `'length'`, `'tool_calls'`, `'content_filter'`, `'error'`:
- *   the model's own finish reason for its last turn.
+ * - `'stop'`, `'length'`, `'tool_calls'`, `'content_filter'`, `'error'`,
+ *   `'other'`: the model's own finish reason for its last turn. A reason a
+ *   provider reports outside this set is reported as `'other'`.
  * - `'awaiting-approval'`: paused on a tool call that needs a human
  *   decision (see `resumeAfterApproval()`).
  * - `'aborted'`: cancelled through `ExecuteOptions.signal` (LOU-V1).
@@ -151,8 +151,7 @@ export type ExecutionFinishReason =
   | 'max-steps'
   | 'output-invalid'
   | 'budget-exceeded'
-  | 'guardrail'
-  | (string & {});
+  | 'guardrail';
 
 /**
  * Execution options
@@ -1185,7 +1184,7 @@ export class AgentExecutor {
     if (typeof text !== 'string') return text;
     // F13: `functions.read_file` runs `read_file` when that is a known tool.
     const known = new Set([...tools.map((tool) => tool.function.name), ...(options.toolRegistry?.list() ?? [])]);
-    const result = { ...generated, text, toolCalls: resolveToolCallNames(generated.toolCalls, known) };
+    const result = { ...generated, text, toolCalls: resolveToolCallNames(generated.toolCalls, known), finishReason: modelFinishReason(generated.finishReason) };
     noteReasoning(state, result.reasoning);
 
     // Handle text response

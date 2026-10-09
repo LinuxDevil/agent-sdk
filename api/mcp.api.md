@@ -725,7 +725,7 @@ const ERROR_CODES: {
 type ErrorCode = keyof typeof ERROR_CODES;
 
 // @public
-type ExecutionFinishReason = GenerateResult['finishReason'] | 'awaiting-approval' | 'aborted' | 'max-steps' | 'output-invalid' | 'budget-exceeded' | 'guardrail' | (string & {});
+type ExecutionFinishReason = GenerateResult['finishReason'] | 'awaiting-approval' | 'aborted' | 'max-steps' | 'output-invalid' | 'budget-exceeded' | 'guardrail';
 
 // @public
 interface ExecutionResult<TObject = unknown> {
@@ -2060,7 +2060,7 @@ interface SteerResult {
 
 // @public
 interface StepDoneEvent extends AgentEventBase<'step.done'> {
-    finishReason: ExecutionFinishReason;
+    finishReason: ExecutionFinishReason | 'steered';
     // (undocumented)
     step: number;
     usage?: AgentEventUsage;
