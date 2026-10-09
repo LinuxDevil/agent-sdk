@@ -5,7 +5,8 @@ How a run ends, how to stop one, and how tool calls of one model turn run in par
 ## Finish reasons
 
 `result.finishReason` says why a run ended: the model's own reason for its last
-turn (`'stop'`, `'length'`, `'tool_calls'`, `'content_filter'`, `'error'`, `'other'`),
+turn (`'stop'`, `'length'`, `'tool_calls'`, `'content_filter'`, `'error'`, `'other'`;
+a reason a provider reports outside these is `'other'`),
 `'awaiting-approval'` (paused on a tool call that needs a human), `'aborted'`
 (cancelled with `signal`), `'max-steps'`, `'output-invalid'` (the reply
 did not match the `output` schema even after the repair step, see
@@ -13,7 +14,9 @@ did not match the `output` schema even after the repair step, see
 `limits` budget such as `maxTokens` or `maxCostUsd` tripped; `result.budget`
 says which, see [Budgets](./configuration.md#budgets)), or `'guardrail'` (an
 input, output or tool guardrail blocked; `result.guardrail` says which, see
-[Input and output guardrails](./guardrails.md#input-and-output-guardrails)). `'max-steps'` means the `maxSteps`
+[Input and output guardrails](./guardrails.md#input-and-output-guardrails)). The type
+(`ExecutionFinishReason`) is a closed union, so comparing with a misspelled
+reason does not compile. `'max-steps'` means the `maxSteps`
 budget (default 10) ran out while the model still wanted to continue, so the
 reply may be empty or partial; a run that finishes naturally within the budget
 keeps its `'stop'`. Steps carried over by `initialSteps` or an approval resume

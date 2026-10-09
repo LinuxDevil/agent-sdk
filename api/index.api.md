@@ -2217,7 +2217,7 @@ interface ExecuteOptions extends PermissionOptions {
 }
 
 // @public
-export type ExecutionFinishReason = GenerateResult['finishReason'] | 'awaiting-approval' | 'aborted' | 'max-steps' | 'output-invalid' | 'budget-exceeded' | 'guardrail' | (string & {});
+export type ExecutionFinishReason = GenerateResult['finishReason'] | 'awaiting-approval' | 'aborted' | 'max-steps' | 'output-invalid' | 'budget-exceeded' | 'guardrail';
 
 // @public
 export interface ExecutionResult<TObject = unknown> {
@@ -5967,7 +5967,7 @@ export interface SteerResult {
 
 // @public
 export interface StepDoneEvent extends AgentEventBase<'step.done'> {
-    finishReason: ExecutionFinishReason;
+    finishReason: ExecutionFinishReason | 'steered';
     // (undocumented)
     step: number;
     usage?: AgentEventUsage;

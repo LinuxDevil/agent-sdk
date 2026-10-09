@@ -265,7 +265,7 @@ export interface StepDoneEvent extends AgentEventBase<'step.done'> {
    * or `'awaiting-approval'`, `'aborted'`, `'steered'` (LOU-V10: its model call
    * was aborted by `run.steer()`) or `'error'` when the step ended that way.
    */
-  finishReason: ExecutionFinishReason;
+  finishReason: ExecutionFinishReason | 'steered';
   /** Tokens used by this step's model call, when it produced a response. */
   usage?: AgentEventUsage;
 }

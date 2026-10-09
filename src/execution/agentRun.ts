@@ -17,7 +17,7 @@
 
 import { newId } from '../utils/id';
 import type { GenerateOptions, GenerateResult, HostedToolCall, LLMProvider, ToolCall } from '../providers';
-import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
+import type { ExecuteOptions, ExecutionFinishReason, ExecutionResult } from './AgentExecutor';
 import type { StepUsage } from '../models/usage';
 import { describeApproval, type PendingApproval } from './ApprovalGate';
 import type { HookEventPayload, SubagentInfo } from './hooks';
@@ -42,6 +42,20 @@ import type { GuardrailTrip } from './ioGuardrails';
 import type { AgentDrift } from './agentFingerprint';
 import { isTodoListResult } from '../tools/built-in/todo';
 import { cappedHostedResult, settleHostedFinish } from './hostedToolCalls';
+
+const MODEL_FINISH_REASONS: ReadonlySet<string> = new Set<GenerateResult['finishReason']>([
+  'stop',
+  'length',
+  'tool_calls',
+  'content_filter',
+  'error',
+  'other',
+]);
+
+/** Eve CORE-F14: a provider's finish reason, or `'other'` when it is not one of the known ones. */
+export function modelFinishReason(reason: unknown): GenerateResult['finishReason'] {
+  return typeof reason === 'string' && MODEL_FINISH_REASONS.has(reason) ? (reason as GenerateResult['finishReason']) : 'other';
+}
 
 /**
  * The handle returned by `agent.stream()` and `AgentExecutor.stream()`.
@@ -152,7 +166,7 @@ export interface RunEventSink {
   runFailed(error: unknown): void;
   stepStart(step: number): void;
   /** `finishReason` overrides the step's own (the model's) finish reason. */
-  stepDone(step: number, finishReason?: string): void;
+  stepDone(step: number, finishReason?: ExecutionFinishReason | 'steered'): void;
   approvalRequested(pending: PendingApproval): void;
   /** LOU-X2: a tool call's permission decision. */
   permissionDecision(entry: PermissionDecisionEntry): void;
@@ -453,7 +467,7 @@ class RunEvents {
           {
             type: 'step.done',
             step,
-            finishReason: finishReason ?? measured?.finishReason ?? 'error',
+            finishReason: finishReason ?? (measured ? modelFinishReason(measured.finishReason) : 'error'),
             ...(measured && {
               usage: toEventUsage({ ...measured.usage, estimated: measured.estimated, costUsd: measured.costUsd }),
             }),
