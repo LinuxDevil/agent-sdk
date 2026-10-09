@@ -1,20 +1,20 @@
-# ops-pipeline (LOU-J8)
+# ops-pipeline
 
-An end-to-end "flagship pipeline" demo composing every LOU-J primitive:
+An end-to-end "flagship pipeline" demo composing every primitive:
 
-1. **Monitor** (LOU-J4) - a `POST /webhook` listener that receives a Grafana/
+1. **Monitor** - a `POST /webhook` listener that receives a Grafana/
    Datadog-shaped `ErrorSignal`, dedupes it by signature, and asks the
    monitor agent to triage it.
-2. **Approval gate** (LOU-C, via the real `ApprovalGate`/`resumeAfterApproval`)
+2. **Approval gate** (via the real `ApprovalGate`/`resumeAfterApproval`)
    - the monitor's delegation to the fixer agent is flagged
    `needsApproval: true`, so it always pauses for a human before the fixer
    agent ever runs.
-3. **Slack "Fix it" button** (LOU-J5) - the pause posts a Slack alert with a
+3. **Slack "Fix it" button** - the pause posts a Slack alert with a
    "Fix it" button; clicking it (`POST /slack/interactions`) resumes the
    paused run through the REAL `resumeAfterApproval()`.
-4. **Fixer** (LOU-J6) - once approved, the fixer agent diagnoses the error
+4. **Fixer** - once approved, the fixer agent diagnoses the error
    and produces a unified diff.
-5. **PatchCheck-gated PR** (LOU-J7) - the diff is checked against the REAL
+5. **PatchCheck-gated PR** - the diff is checked against the REAL
    `secretScanCheck` + a diff-size cap BEFORE a GitHub PR is even
    considered; a failure notifies Slack instead of ever calling GitHub.
 
@@ -73,9 +73,9 @@ it needs **zero external network access** and zero API keys.
 
 ## Files
 
-- `monitor.ts` - LOU-J4: ErrorSignal type, dedup, `POST /webhook`.
-- `fixer.ts` - LOU-J6: fixer agent, diff extraction, fixer-tool wiring.
-- `guardedPr.ts` - LOU-J7: patch-check-gated PR creation.
+- `monitor.ts` - ErrorSignal type, dedup, `POST /webhook`.
+- `fixer.ts` - fixer agent, diff extraction, fixer-tool wiring.
+- `guardedPr.ts` - patch-check-gated PR creation.
 - `demoProvider.ts` - a deterministic, zero-network scripted LLM provider
   used by the demo in place of a real model.
 - `mocks/` - mock Grafana sender, mock Slack API, mock GitHub API (same
