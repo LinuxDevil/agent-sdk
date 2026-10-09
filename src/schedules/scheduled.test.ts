@@ -16,7 +16,7 @@ function ctx() {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('handleScheduled', () => {
-  it('runs the schedules matching controller.cron as turns in session schedule-<name>, inside waitUntil', async () => {
+  it('runs the schedules matching controller.cron as turns in session schedule-<name>-<fire time>, inside waitUntil', async () => {
     const store = memoryStore();
     const provider = mockModel(['Report sent.']);
     const agent = createAgent({ provider, prompt: 'You report.', store });
@@ -25,14 +25,44 @@ describe('handleScheduled', () => {
       defineSchedule({ name: 'other', cron: '*/5 * * * *', prompt: 'Not me.' }),
     ];
     const context = ctx();
-    const done = handleScheduled(agent, schedules, { cron: '0 9  * * MON' }, context);
+    const scheduledTime = Date.parse('2026-10-05T09:00:00Z');
+    const done = handleScheduled(agent, schedules, { cron: '0 9  * * MON', scheduledTime }, context);
     expect(context.promises).toEqual([done]);
     await done;
     expect(provider.calls).toHaveLength(1);
-    const sessionId = 'schedule-report';
+    const sessionId = 'schedule-report-2026-10-05T090000Z';
     expect(sessionId).toMatch(/^[A-Za-z0-9_-]{1,128}$/);
     const session = await store.checkpoints?.load(sessionId);
     expect(JSON.stringify(session)).toContain('Weekly report.');
+  });
+
+  it('gives every fire its own session so the transcript does not grow (Eve DUR-F10)', async () => {
+    const store = memoryStore();
+    const provider = mockModel(['Report sent.'], { onExhausted: 'repeat-last' });
+    const agent = createAgent({ provider, prompt: 'You report.', store });
+    const schedules = [defineSchedule({ name: 'report', cron: '0 9 * * *', prompt: 'Daily report.' })];
+    for (let day = 0; day < 3; day++) {
+      await handleScheduled(agent, schedules, { cron: '0 9 * * *', scheduledTime: Date.parse('2026-10-05T09:00:00Z') + day * 864e5 }, ctx());
+    }
+    expect(provider.calls.map((call) => call.messages.length)).toEqual([
+      provider.calls[0].messages.length,
+      provider.calls[0].messages.length,
+      provider.calls[0].messages.length,
+    ]);
+    for (const day of ['05', '06', '07']) {
+      expect(JSON.stringify(await store.checkpoints?.load(`schedule-report-2026-10-${day}T090000Z`))).toContain('Daily report.');
+    }
+  });
+
+  it('sharedSession: true keeps one schedule-<name> session across fires', async () => {
+    const store = memoryStore();
+    const provider = mockModel(['ok'], { onExhausted: 'repeat-last' });
+    const agent = createAgent({ provider, prompt: 'x', store });
+    const schedules = [defineSchedule({ name: 'memo', cron: '0 9 * * *', prompt: 'Note.', sharedSession: true })];
+    await handleScheduled(agent, schedules, { cron: '0 9 * * *', scheduledTime: Date.parse('2026-10-05T09:00:00Z') }, ctx());
+    await handleScheduled(agent, schedules, { cron: '0 9 * * *', scheduledTime: Date.parse('2026-10-06T09:00:00Z') }, ctx());
+    expect(provider.calls[1].messages.length).toBeGreaterThan(provider.calls[0].messages.length);
+    expect(JSON.stringify(await store.checkpoints?.load('schedule-memo'))).toContain('Note.');
   });
 
   it('runs every schedule sharing the expression and isolates a failing one', async () => {

@@ -69,7 +69,9 @@ process.once('SIGTERM', () => void running.stop().then(() => agent.close()));
 
 `fireSchedule(agent, schedule, { name?, firedAt?, sessionId? })` fires a schedule
 once, immediately, exactly as a tick would: it calls `run`, or sends `prompt`
-as a turn (in `sessionId` when given, which needs an agent with a store). It
+as a turn (in `sessionId` when given, which needs an agent with a store; by
+default each fire runs in its own session, `schedule-<name>-<fire time>`, when the agent has
+a store, and `schedule-<name>` when the schedule sets `sharedSession: true`). It
 rejects when the run fails, including with `LOUSHO_SCHEDULE_RUN_INCOMPLETE`, so
 it suits an ops "run now" and tests.
 
@@ -145,12 +147,15 @@ triggers:
 
 `lousho build` writes the deduplicated expressions to `[triggers] crons` and the
 Worker's `scheduled()` runs every trigger whose `cron` equals the invoked one as
-an agent turn inside `ctx.waitUntil()`. Each trigger has its own session,
-`schedule-<name>`, so its runs are inspectable in the KV session store when
-`AGENT_CHECKPOINTS` is bound (`GET /chat/schedule-weekly-report`). The run
+an agent turn inside `ctx.waitUntil()`. Each fire has its own session,
+`schedule-<name>-<fire time>` (for example `schedule-weekly-report-2026-10-05T090000Z`),
+so its run is inspectable in the KV session store when `AGENT_CHECKPOINTS` is
+bound and a daily job does not re-send every earlier report. Set
+`sharedSession: true` on a `defineSchedule()` prompt schedule to keep one
+`schedule-<name>` session instead; its transcript then grows with every fire. The run
 happens inside `ctx.waitUntil()`, past the request's lifetime, so give the
 agent a store (`KVStore` on `AGENT_CHECKPOINTS`) — an in-memory one keeps the
-`schedule-<name>` sessions only until the isolate is recycled. A failing
+schedule sessions only until the isolate is recycled. A failing
 trigger is logged with `console.error` (name and error code) and never
 stops the others, and `scheduled()` never throws. A turn that ends with a
 `finishReason` other than `'stop'` is logged the same way, as

@@ -4778,6 +4778,7 @@ export interface PromptScheduleInput extends ScheduleBase {
     prompt: string;
     // (undocumented)
     run?: never;
+    sharedSession?: boolean;
 }
 
 // @public
@@ -5222,6 +5223,8 @@ export interface RunScheduleInput extends ScheduleBase {
     prompt?: never;
     // (undocumented)
     run: (ctx: ScheduleContext) => Promise<void>;
+    // (undocumented)
+    sharedSession?: never;
 }
 
 // @public
