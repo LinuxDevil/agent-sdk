@@ -27,6 +27,7 @@ vi.mock('ai', async () => {
 import { z as z4 } from 'zod/v4';
 import { OpenAIProvider } from './OpenAIProvider';
 import { OpenRouterProvider } from './OpenRouterProvider';
+import { AnthropicProvider } from './AnthropicProvider';
 import { isRetryableProviderError, withRetry } from './resilience';
 import { MODEL_SETTING_KEYS } from '../execution/modelSettings';
 import { installedAiMajor, itOnAiV4 } from './aiMajor.testkit';
@@ -76,6 +77,40 @@ describe('AiSdkProvider', () => {
       await provider.generate({ model: '', messages: [{ role: 'user', content: 'hi' }], toolChoice: 'required' });
       expect(generateTextMock.mock.calls[0][0].toolChoice).toEqual({ type: 'tool', toolName: 'echo' });
       expect(generateTextMock.mock.calls[1][0].toolChoice).toBeUndefined();
+    });
+  });
+
+  describe('Anthropic prompt-cache breakpoints (Eve PROV-F4)', () => {
+    const tool = (name: string) => ({ type: 'function' as const, function: { name, description: name, parameters: { type: 'object', properties: {} } } });
+    const request = {
+      model: 'claude-haiku-4-5',
+      messages: [
+        { role: 'system' as const, content: 'rules' },
+        { role: 'user' as const, content: 'hi' },
+      ],
+      tools: [tool('a'), tool('b')],
+    };
+    const cache = { anthropic: { cacheControl: { type: 'ephemeral' } } };
+
+    it('marks the system prompt, the last user turn and (ai 6/7) the last tool', async () => {
+      generateTextMock.mockResolvedValue(textResult('stop'));
+      await new AnthropicProvider({ apiKey: 'k' }).generate(request);
+      const settings = generateTextMock.mock.calls[0][0];
+      expect(settings.messages.map((message: { providerOptions?: unknown }) => message.providerOptions)).toEqual([cache, cache]);
+      if (!isV4) {
+        expect(settings.tools.a.providerOptions).toBeUndefined();
+        expect(settings.tools.b.providerOptions).toEqual(cache);
+      }
+    });
+
+    it('marks nothing with promptCaching: false, nor for an OpenAI model', async () => {
+      generateTextMock.mockResolvedValue(textResult('stop'));
+      await new AnthropicProvider({ apiKey: 'k' }).generate({ ...request, promptCaching: false });
+      await new OpenAIProvider({ apiKey: 'k' }).generate({ ...request, model: 'gpt-4o' });
+      for (const [settings] of generateTextMock.mock.calls) {
+        expect(JSON.stringify(settings.messages)).not.toContain('cacheControl');
+        expect(Object.values(settings.tools ?? {}).some((t) => (t as { providerOptions?: unknown }).providerOptions)).toBe(false);
+      }
     });
   });
 

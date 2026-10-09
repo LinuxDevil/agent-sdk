@@ -10,7 +10,7 @@ import type { BackgroundTaskView } from '../subagents/backgroundTasks';
 import { assertMaxSubagentDepth, withSubagents } from '../subagents/withSubagents';
 import type { StandardSchemaV1 } from '../utils/zodCompat';
 import { newId } from '../utils/id';
-import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult, ToolDefinition, type ReasoningOption, type ModelSettings, type RateLimiter } from '../providers';
+import { LLMProvider, Message, ToolCall, GenerateOptions, GenerateResult, ToolDefinition, type ReasoningOption, type ModelSettings, type RateLimiter, type PromptCachingOption } from '../providers';
 import { AgentConfig } from '../types';
 import { ToolRegistry } from '../tools';
 import { SandboxAdapter, NoopSandbox } from '../security/sandboxCore';
@@ -646,6 +646,11 @@ export interface ExecuteOptions extends PermissionOptions {
    * (`GenerateOptions.reasoning`). See docs/reasoning.md.
    */
   reasoning?: ReasoningOption;
+  /**
+   * Eve PROV-F4: Anthropic prompt caching on every model call of the run
+   * (`GenerateOptions.promptCaching`); `'auto'` when unset. See docs/models-and-cost.md#prompt-caching.
+   */
+  promptCaching?: PromptCachingOption;
   /**
    * N6: agents this run can hand the conversation to, one tool each. A call
    * to one is not run as a tool: once the other calls of its step are done,

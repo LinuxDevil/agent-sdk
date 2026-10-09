@@ -60,6 +60,8 @@ export interface AiSdkCallSettings {
   providerOptions?: Record<string, unknown>;
   /** N1a: the hosted tools' AI SDK tool objects by name (`ai` 6/7 only), merged into `tools` as they are. */
   hostedTools?: Record<string, unknown>;
+  /** Eve PROV-F4: `providerOptions` of the last function tool (Anthropic's cache breakpoint; `ai` 6/7 only). */
+  lastToolProviderOptions?: Record<string, unknown>;
 }
 
 /** Whether `ai` is v5 or later (the v6/v7 call shape). */
@@ -275,20 +277,21 @@ function toModelMessage(message: AiSdkMessage) {
  * as it is, a JSON Schema wrapped with `jsonSchema()`) and no `execute`, so
  * the SDK returns the calls and AgentExecutor runs them.
  */
-function toModernTools(ai: AiSdkModule, toolDefs: ToolDefinition[] | undefined) {
+function toModernTools(ai: AiSdkModule, toolDefs: ToolDefinition[] | undefined, lastProviderOptions?: Record<string, unknown>) {
   if (!toolDefs?.length) return undefined;
-  const tools: Record<string, { description: string; inputSchema: unknown }> = {};
+  const tools: Record<string, { description: string; inputSchema: unknown; providerOptions?: Record<string, unknown> }> = {};
   for (const { function: fn } of toolDefs) {
     const schema = fn.parameters ?? {};
     const raw = 'jsonSchema' in schema && 'validate' in schema ? schema.jsonSchema : schema;
     tools[fn.name] = { description: fn.description, inputSchema: '~standard' in schema ? schema : ai.jsonSchema(raw as never) };
   }
+  if (lastProviderOptions) tools[toolDefs[toolDefs.length - 1].function.name].providerOptions = lastProviderOptions;
   return tools;
 }
 
 /** N1a: the function tools plus the hosted tools' provider tool objects, passed exactly as the provider package made them. */
-function modernToolSet(ai: AiSdkModule, toolDefs: ToolDefinition[] | undefined, hostedTools: Record<string, unknown> | undefined) {
-  const tools = toModernTools(ai, toolDefs);
+function modernToolSet(ai: AiSdkModule, toolDefs: ToolDefinition[] | undefined, hostedTools: Record<string, unknown> | undefined, lastToolProviderOptions?: Record<string, unknown>) {
+  const tools = toModernTools(ai, toolDefs, lastToolProviderOptions);
   if (!hostedTools || Object.keys(hostedTools).length === 0) return tools;
   return { ...tools, ...hostedTools };
 }
@@ -323,7 +326,7 @@ function toModernRequest(ai: AiSdkModule, settings: AiSdkCallSettings, options: 
     seed: settings.seed,
     stopSequences: settings.stopSequences,
     toolChoice: settings.toolChoice,
-    tools: modernToolSet(ai, options.tools, settings.hostedTools),
+    tools: modernToolSet(ai, options.tools, settings.hostedTools, settings.lastToolProviderOptions),
     stopWhen: ai.stepCountIs?.(1), // Single step - tool execution happens in AgentExecutor
     providerOptions: settings.providerOptions,
     maxRetries: settings.maxRetries,
@@ -411,8 +414,8 @@ function hostedCallsOf(content: AiSdkContentPart[] | undefined): HostedToolCall[
 }
 
 /** `settings` without the hosted tools, for `ai` v4 (which cannot send them). */
-function v4Settings(settings: AiSdkCallSettings): Omit<AiSdkCallSettings, 'hostedTools'> {
-  const { hostedTools: _hosted, ...rest } = settings;
+function v4Settings(settings: AiSdkCallSettings): Omit<AiSdkCallSettings, 'hostedTools' | 'lastToolProviderOptions'> {
+  const { hostedTools: _hosted, lastToolProviderOptions: _cache, ...rest } = settings;
   return rest;
 }
 

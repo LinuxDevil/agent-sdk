@@ -340,3 +340,34 @@ describe('AgentExecutor on ai v7 (LOU-D26)', () => {
     ]);
   });
 });
+
+describe('Anthropic prompt-cache breakpoints on ai v7 (Eve PROV-F4)', () => {
+  const tool = (name: string) => ({ type: 'function' as const, function: { name, description: name, parameters: { type: 'object', properties: {} } } });
+  const cache = { anthropic: { cacheControl: { type: 'ephemeral' } } };
+
+  it('reach the model on the system prompt, the last user turn and the last tool; cache writes are reported', async () => {
+    const provider = new AnthropicProvider({ name: 'anthropic', apiKey: 'k', maxRetries: 0 });
+    const calls = onV7(provider, [
+      modelResult({
+        usage: { inputTokens: { total: 5000, noCache: 100, cacheRead: 0, cacheWrite: 4900 }, outputTokens: { total: 5, text: 5, reasoning: undefined } },
+      }),
+    ]);
+
+    const result = await provider.generate({
+      model: 'claude-haiku-4-5',
+      messages: [
+        { role: 'system', content: 'rules' },
+        { role: 'user', content: 'hi' },
+      ],
+      tools: [tool('a'), tool('b')],
+    });
+
+    expect(calls[0]!.prompt.map((message) => message.providerOptions)).toEqual([cache, cache]);
+    const tools = calls[0]!.tools as Array<{ name: string; providerOptions?: unknown }>;
+    expect(tools.map((t) => [t.name, t.providerOptions])).toEqual([
+      ['a', undefined],
+      ['b', cache],
+    ]);
+    expect(result.usage).toMatchObject({ promptTokens: 5000, cacheWriteTokens: 4900 });
+  });
+});

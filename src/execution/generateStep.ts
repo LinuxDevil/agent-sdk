@@ -169,6 +169,8 @@ export async function prepareGenerateRequest(
     ...(options.output ? { responseFormat: outputResponseFormat(options.output) } : {}),
     // LOU-V13: the providers send it only to models that accept it.
     ...(options.reasoning !== undefined && { reasoning: options.reasoning }),
+    // Eve PROV-F4: the providers mark Anthropic cache breakpoints unless it is `false`.
+    ...(options.promptCaching !== undefined && { promptCaching: options.promptCaching }),
     // LOU-V1: lets the provider cancel the in-flight request.
     ...(signal ? { signal } : {}),
   };

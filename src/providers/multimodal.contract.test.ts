@@ -65,7 +65,8 @@ describe.each(providers)('%s provider: multimodal user content (LOU-V11)', (_nam
       },
     ];
 
-    const result = await provider.generate({ messages });
+    // Without Eve PROV-F4's cache breakpoints, which the Anthropic provider adds by default (promptCaching.test.ts).
+    const result = await provider.generate({ messages, promptCaching: false });
 
     expect(result.text).toBe('a cat');
     expect(prompts[0]).toEqual([
@@ -87,6 +88,7 @@ describe.each(providers)('%s provider: multimodal user content (LOU-V11)', (_nam
 
     await provider.generate({
       messages: [{ role: 'user', content: [{ type: 'image', image: 'https://example.com/cat.png' }] }],
+      promptCaching: false,
     });
 
     expect(prompts[0][0]).toEqual({

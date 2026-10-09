@@ -36,6 +36,7 @@ import { ToolConcurrency, assertToolConcurrency } from './execution/toolBatch';
 import { assertMaxToolResultChars } from './execution/toolResult';
 import type { Skill } from './skills/defineSkill';
 import type { Message, ModelSettings } from './providers/llm';
+import type { PromptCachingOption } from './providers/promptCaching';
 import type { ReasoningOption } from './providers/reasoning';
 import {
   AgentSession,
@@ -333,6 +334,15 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    * ```
    */
   modelSettings?: ModelSettings;
+  /**
+   * Eve PROV-F4: Anthropic prompt caching. `'auto'` (the default) marks
+   * `cache_control` breakpoints on the system prompt, the last tool
+   * definition and the last user turn for Claude models (`anthropic/...`, and
+   * `openrouter/anthropic/...`), so the next call reads that prefix at 10% of
+   * the input price (writes cost 125%). `false` marks none. OpenAI and other
+   * providers cache on their own. See docs/models-and-cost.md#prompt-caching.
+   */
+  promptCaching?: PromptCachingOption;
   /**
    * LOU-D41: called with every {@link AgentEvent} of this agent's runs -
    * `send()`, `stream()`, session turns and runs resumed after an approval -
@@ -896,6 +906,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     approvalTtlMs: config.approvalTtlMs,
     onAgentDrift: config.onAgentDrift,
     reasoning: config.reasoning,
+    ...(config.promptCaching !== undefined && { promptCaching: config.promptCaching }),
     // C6: also for resumed runs and when this agent is a sub-agent.
     modelSettings: config.modelSettings,
     // Eve PROV-F14: one budget for the agent's runs, its sub-agents and handoff targets.

@@ -14,6 +14,7 @@
  * Subclasses load their peer lazily inside `createModel()`, on first use.
  */
 
+import { ANTHROPIC_CACHE_BREAKPOINT, withMessageBreakpoints } from './promptCaching';
 import * as aiModule from 'ai';
 import type { LanguageModel } from 'ai';
 import type {
@@ -367,14 +368,26 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
   /** Set by providers whose hostedToolsFor() maps the helpers (OpenAI, Anthropic). */
   protected readonly mapsHostedTools: boolean = false;
 
+  /**
+   * Eve PROV-F4: whether this call marks Anthropic cache breakpoints with
+   * `providerOptions.anthropic.cacheControl` (AnthropicProvider: Claude
+   * models unless `promptCaching: false`). None by default.
+   */
+  protected cachesPrompt(_modelId: string, _options: GenerateOptions): boolean {
+    return false;
+  }
+
   /** The call settings shared by generate() and stream(). */
   private async buildCallSettings(options: GenerateOptions) {
     const modelId = options.model || this.defaultModel;
     const hostedTools = options.hostedTools?.length ? await this.hostedToolsFor(options.hostedTools, modelId) : undefined;
+    const caching = this.cachesPrompt(modelId, options);
+    const messages = this.convertMessages(options.messages);
     return {
       ...(hostedTools && { hostedTools }),
+      ...(caching && { lastToolProviderOptions: ANTHROPIC_CACHE_BREAKPOINT }),
       model: await this.createModel(modelId, options),
-      messages: this.convertMessages(options.messages),
+      messages: caching ? withMessageBreakpoints(messages) : messages,
       temperature: options.temperature,
       maxTokens: options.maxTokens,
       topP: options.topP,

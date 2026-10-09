@@ -70,3 +70,30 @@ registerModel({
   outputCostPerMTok: 1.2,
 });
 ```
+
+## Prompt caching
+
+Anthropic caches a request prefix only up to a `cache_control` breakpoint that the request marks. OpenAI, and most other providers, cache long prefixes on their own. With `promptCaching: 'auto'` (the default), the built-in `anthropic` provider and the `openrouter` provider mark breakpoints for Claude models (`anthropic/...`, `openrouter/anthropic/...`). They mark three of the four that Anthropic allows:
+
+- the system prompt (the last system message),
+- the last tool definition,
+- the last user turn. With the `anthropic` provider, a trailing tool-result turn is marked too, so each step of a tool loop reads the conversation so far from the cache.
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ model: 'openrouter/anthropic/claude-haiku-4.5', instructions: longPolicy }); // promptCaching: 'auto'
+const first = await agent.send('Where is order 1042?'); // writes the prefix: usage.cacheWriteTokens
+const second = await agent.send('And order 1043?'); // reads it: usage.cachedInputTokens, ~10% of the input price
+createAgent({ model: 'anthropic/claude-haiku-4-5', promptCaching: false }); // no breakpoints
+```
+
+A cache read costs 10% of the input price. A cache write costs 125% and lasts 5 minutes, so a prompt that is sent only once costs a little more with caching. Anthropic caches only prefixes above a minimum length (1,024 to 4,096 tokens, depending on the model), and shorter prompts are sent uncached. On the `anthropic` provider, tool and system breakpoints need `ai` 6 or 7 (`@ai-sdk/anthropic` 3 or 4). The `@ai-sdk/anthropic` 0.0.x peer pinned for `ai` 4 does not send them. A custom provider gets the setting as `GenerateOptions.promptCaching`.
+
+Measured through OpenRouter on `anthropic/claude-haiku-4.5`, with a 6,834-token prompt (system prompt and one tool):
+
+| Call | Input tokens | Cache read | Cache write | Cost |
+| --- | --- | --- | --- | --- |
+| `promptCaching: false` | 6,834 | - | - | $0.00686 |
+| `'auto'`, first call | 6,834 | - | 6,831 | $0.00857 |
+| `'auto'`, second call | 6,834 | 6,831 | - | $0.00071 |

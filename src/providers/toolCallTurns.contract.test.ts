@@ -272,6 +272,8 @@ describe('AgentExecutor -> provider: second step sees the first step tool calls'
       input: 'Weather in Paris and Rome?',
       provider: create(),
       toolRegistry,
+      // The wire payload without Eve PROV-F4's cache breakpoints (promptCaching.test.ts covers them).
+      promptCaching: false,
     });
 
     expect(result.text).toBe('Paris is 21C and clear; Rome is unavailable.');
