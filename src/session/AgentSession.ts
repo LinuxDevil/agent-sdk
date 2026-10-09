@@ -11,7 +11,7 @@ import { toMessages, type AgentInput } from '../providers/content';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import { startAgentRun, type AgentRun } from '../execution/agentRun';
 import { InputQueue } from '../execution/inputQueue';
-import type { Checkpoint, CheckpointStore } from '../execution/checkpoint';
+import { getCheckpointHistory, type Checkpoint, type CheckpointStore } from '../execution/checkpoint';
 import type { ApprovalKind } from '../execution/ApprovalGate';
 import { ConfigurationError, SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 import { streamSessionTurn } from './sessionStream';
@@ -575,7 +575,9 @@ export class AgentSession<TObject = unknown> {
   /**
    * Empties the transcript (LOU-W8) and saves the empty conversation. The
    * session keeps its id, its store and its options (limits, turn policy);
-   * the transcript, an interrupted turn's checkpoint and the spend recorded in
+   * the transcript, every turn's checkpoint and checkpoint history (Eve
+   * DUR-F8: they hold copies of the transcript, so `agent.fork('<id>.turn-<n>')`
+   * cannot bring the conversation back) and the spend recorded in
    * the transcript for `limits` are gone. Memory slots are cross-session and
    * untouched. Emits `context.cleared` to `on()` listeners. Rejects with
    * `LOUSHO_SESSION_BUSY` while a turn is running and
@@ -586,12 +588,10 @@ export class AgentSession<TObject = unknown> {
       await this.ensureLoaded();
       const pending = this.checkpointStore ? await this.pendingCheckpoint() : null;
       if (pending?.status === 'awaiting-approval') throw this.awaitingApproval(pending);
-      await this.deleteCheckpoint();
+      await this.deleteTurnCheckpoints();
       await this.store.delete(this.id);
       const messagesCleared = this.transcript.length;
       this.transcript = [];
-      // A first turn that finished just before a crash, so was never adopted.
-      await this.deleteCheckpoint();
       this.emitter()({ type: 'context.cleared', sessionId: this.id, messagesCleared });
     });
   }
@@ -791,6 +791,23 @@ export class AgentSession<TObject = unknown> {
     const checkpoint = { ...this.turnCheckpoint(), ...(inputQueue && { inputQueue }), permissionMode: this.currentPermissionMode, ...(this.turnEvents && { onAgentEvent: this.turnEvents }) };
     if (!this.limits) return checkpoint;
     return { ...checkpoint, sessionBudget: { limits: this.limits, spent: sessionSpent(this.transcript) } };
+  }
+
+  /**
+   * Eve DUR-F8: deletes the checkpoint and checkpoint history of every turn of the session, `<id>.turn-<n>`. A turn's
+   * `n` is the transcript length when it started, so `n` runs up to the transcript's length - or further, when a
+   * compaction shortened it: every checkpoint found holds the transcript of its turn, whose length is a later turn's `n`.
+   */
+  private async deleteTurnCheckpoints(): Promise<void> {
+    const { checkpointStore } = this;
+    if (!checkpointStore) return;
+    let last = this.transcript.length;
+    for (let n = 0; n <= last; n++) {
+      const id = `${this.id}.turn-${n}`;
+      const saved = [await checkpointStore.load(id), ...((await getCheckpointHistory(checkpointStore, id)) ?? []).map((entry) => entry.checkpoint)];
+      for (const checkpoint of saved) if (checkpoint) last = Math.max(last, checkpoint.messages.length);
+      await checkpointStore.delete(id);
+    }
   }
 
   private async deleteCheckpoint(): Promise<void> {

@@ -304,6 +304,61 @@ describe('checkpointed sessions (LOU-W9)', () => {
     expect(out.text).toBe('fork answer');
   });
 
+  // Eve DUR-F8: clear() deleted only the current turn's checkpoint; every committed turn's checkpoint HISTORY (full
+  // transcript copies) survived, and agent.fork('<id>.turn-<n>') revived the cleared conversation.
+  it.each([
+    ['memoryStore()', memoryStore],
+    ["SqliteStore(':memory:')", () => new SqliteStore(':memory:')],
+    ['KVCheckpointStore', () => {
+      const data = new Map<string, string>();
+      const kv = { get: async (key: string) => data.get(key) ?? null, put: async (key: string, value: string) => void data.set(key, value), delete: async (key: string) => void data.delete(key) };
+      return { sessions: new MemorySessionStore(), checkpoints: new KVCheckpointStore(kv) };
+    }],
+  ])('clear() deletes every turn checkpoint and its history, so fork cannot revive the conversation (%s)', async (_name, makeStore) => {
+    const store = makeStore();
+    const runs: Runs = {};
+    const model = mockModel([(r) => (r.messages.at(-1)?.role === 'tool' ? 'Noted.' : calling('lookup'))], { onExhausted: 'repeat-last' });
+    const agent = createAgent({ provider: model, tools: [tool('lookup', runs)], store });
+    const session = agent.session({ id: 'patient-9' });
+    await session.send('hello');
+    await session.send('My diagnosis is HIV-positive, please note it');
+    await session.send('thanks');
+    const turnIds = Array.from({ length: 13 }, (_, n) => `patient-9.turn-${n}`);
+    const kept = async () => (await Promise.all(turnIds.map(async (id) => (await store.checkpoints.history!(id)).length))).reduce((a, b) => a + b, 0);
+    expect(await kept()).toBeGreaterThan(0);
+
+    await session.clear();
+
+    expect(await agent.session({ id: 'patient-9' }).load()).toEqual([]);
+    expect(await kept()).toBe(0);
+    for (const id of turnIds) expect(await store.checkpoints.load(id)).toBeNull();
+    await expect(agent.fork('patient-9.turn-4', { fromStep: 1 })).rejects.toThrow();
+    // The session works again, from turn 0.
+    expect((await session.send('hi again')).text).toBe('Noted.');
+    (store as { close?: () => void }).close?.();
+  });
+
+  it('clear() also deletes the checkpoints of turns from before a compaction shortened the transcript (Eve DUR-F8)', async () => {
+    const store = memoryStore();
+    const runs: Runs = {};
+    const model = mockModel([(r) => (r.messages.at(-1)?.role === 'tool' ? 'Noted.' : calling('lookup'))], { onExhausted: 'repeat-last' });
+    const agent = createAgent({ provider: model, tools: [tool('lookup', runs)], store });
+    const session = agent.session({ id: 'p' });
+    for (const text of ['one', 'two', 'three']) await session.send(text);
+    await session.compact({
+      strategy: { name: 'summary', compact: async ({ messages }) => ({ messages: [{ role: 'user', content: 'summary' }, messages.at(-1)!], tokensBefore: 0, tokensAfter: 0, prunedToolCallIds: [] }) },
+    });
+    await session.send('four');
+    const turnIds = Array.from({ length: 13 }, (_, n) => `p.turn-${n}`);
+    const kept = async () => (await Promise.all(turnIds.map(async (id) => (await store.checkpoints.history!(id)).length))).reduce((a, b) => a + b, 0);
+    expect((await store.checkpoints.history!('p.turn-8')).length).toBeGreaterThan(0);
+    expect(session.messages).toHaveLength(6);
+
+    await session.clear();
+
+    expect(await kept()).toBe(0);
+  });
+
   it('an aborted turn, discardPending() and clear() leave no pending turn', async () => {
     const runs: Runs = {};
     const tools = [tool('a', runs), tool('b', runs, { crashOnce: true })];
