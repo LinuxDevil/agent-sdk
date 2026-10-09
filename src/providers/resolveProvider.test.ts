@@ -182,6 +182,20 @@ describe('resolveProvider errors (LOU-D1)', () => {
     expect(() => resolveProvider(spec)).toThrow(withCode('LOUSHO_PEER_MISSING'));
   });
 
+  it('resolves "<name>/<model>" for a provider added with LLMProviderRegistry.register() (Eve PROV-F13)', () => {
+    const factory = vi.fn((config: { defaultModel?: string }) => ({ ...fakeProvider('f13-custom'), defaultModel: config.defaultModel }) as unknown as LLMProvider);
+    LLMProviderRegistry.register('f13-custom', factory);
+
+    const provider = resolveProvider('F13-Custom/some-model');
+
+    expect(provider.name).toBe('f13-custom');
+    expect(factory).toHaveBeenCalledWith(expect.objectContaining({ defaultModel: 'some-model' }));
+  });
+
+  it('still rejects a provider that is neither built in nor registered', () => {
+    expect(() => resolveProvider('f13-nobody/some-model')).toThrow(withCode('LOUSHO_PROVIDER_UNKNOWN'));
+  });
+
   it('rethrows unrelated registry errors unchanged', () => {
     vi.stubEnv('OPENAI_API_KEY', 'k');
     vi.spyOn(LLMProviderRegistry, 'create').mockImplementation(() => {
