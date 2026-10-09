@@ -29,6 +29,12 @@ export interface AssertionResult {
 export interface EvalToolCall {
   name: string;
   args: unknown;
+  /**
+   * Set on a call a sub-agent made: the sub-agent names from the lead's
+   * delegate down (`['researcher']`, or `['researcher', 'fetcher']` when it
+   * delegated again). Absent on the lead agent's own calls.
+   */
+  subagentPath?: string[];
 }
 
 /** The outcome of one eval case. */
