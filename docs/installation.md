@@ -123,6 +123,16 @@ both connect through an undici `Agent` whose DNS lookup checks the address
 and pins the connection to it, and `http_request` also scopes
 `validateSSL: false` to that `Agent`. The global `fetch` can express neither.
 
+### Package size
+
+The tarball is about 4 MB packed (15 MB unpacked). That is a stated trade-off,
+not an accident: `src/` ships because `lousho build` bundles
+`src/deploy/runtime.worker.ts` and `src/index.ts` from the installed package
+and the `dist/` source maps point at it (the maps carry no embedded source;
+embedding it instead and dropping `src/` measured larger, 5.2 MB packed), and
+`apps/agent-forge/` is the prebuilt dashboard that `lousho studio` serves. The
+1 MB `llms-full.txt` is in the repo, not the package.
+
 ## Entry points share code (ESM and CJS)
 
 The package entries (`.`, `./hooks`, `./tools`, `./mcp`, ...) are built with code

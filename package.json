@@ -131,7 +131,6 @@
     "!apps/agent-forge/dist-server/*.map",
     "README.md",
     "llms.txt",
-    "llms-full.txt",
     "docs/*.md",
     "!docs/eslint-baseline-followup.md",
     "LICENSE",

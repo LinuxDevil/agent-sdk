@@ -48,11 +48,13 @@ const REPO_ROOT = path.resolve(__dirname, '..');
  * 1.0.0-rc.0 (A7): 948 entries / ~16.4 MiB / ~4.3 MiB. Re-measured on
  * 1.0.0-alpha.19 after the audit-fix merge (pi provider, kits, expanded
  * docs and llms-full.txt): 983 entries / ~18.0 MiB unpacked / ~4.75 MiB
- * packed - packed budget raised to 5 MiB.
+ * packed - packed budget raised to 5 MiB. `llms-full.txt` (1 MB of docs as
+ * text) then left the package (Eve F4): 1001 entries / ~15.3 MiB / ~4.07 MiB
+ * packed, so the budgets are now 17 MiB unpacked and 4.5 MiB packed.
  */
 const MAX_ENTRIES = 1050;
-const MAX_UNPACKED_BYTES = 19 * 1024 * 1024;
-const MAX_PACKED_BYTES = 5 * 1024 * 1024;
+const MAX_UNPACKED_BYTES = 17 * 1024 * 1024;
+const MAX_PACKED_BYTES = 4.5 * 1024 * 1024;
 
 const DEFAULT_PEERS = 'ai@7 zod@4 @ai-sdk/openai@4 react@19 vue@3 @opentelemetry/api@1';
 const FORBIDDEN_PATHS = [

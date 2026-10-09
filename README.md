@@ -260,11 +260,12 @@ OpenRouter.
 
 The full guides are at [lousho.com](https://lousho.com), in English and Arabic.
 
-**For AI coding agents.** The package ships its docs in machine-readable form:
+**For AI coding agents.** The repo carries its docs in machine-readable form:
 `llms-full.txt` (this README and every docs page in one file, with absolute
 links) and `llms.txt` (an [llmstxt.org](https://llmstxt.org) index), both in
-the repo root and in `node_modules/@lousho/build-ai-agent/`. They are generated
-with `npm run docs:llms` and checked in CI.
+the repo root. Only the small `llms.txt` index (and the `docs/*.md` pages it
+links to) is in the npm package; fetch `llms-full.txt` from the repo. They are
+generated with `npm run docs:llms` and checked in CI.
 
 ## Examples
 
