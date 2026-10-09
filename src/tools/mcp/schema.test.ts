@@ -155,7 +155,7 @@ describe('jsonSchemaToZod (LOU-Z1 features)', () => {
     for (const key of ['oneOf', 'anyOf']) {
       const zodSchema = jsonSchemaToZod({ ...base, [key]: [{ required: ['issue_number'] }, { required: ['title'] }] });
       expect(zodSchema).toBeInstanceOf(z.ZodObject);
-      expect(Object.keys((zodSchema as z.AnyZodObject).shape)).toEqual(['owner', 'repo', 'issue_number', 'title']);
+      expect(Object.keys((zodSchema as unknown as { shape: Record<string, unknown> }).shape)).toEqual(['owner', 'repo', 'issue_number', 'title']);
       expect(zodSchema.safeParse({ owner: 'o', repo: 'r', issue_number: 1 }).success).toBe(true);
       expect(zodSchema.safeParse({ owner: 42, bogus: 1 }).success).toBe(false);
       expect(zodSchema.safeParse({}).success).toBe(false);
