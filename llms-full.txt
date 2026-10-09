@@ -7858,7 +7858,10 @@ with no `approve` callback.
 
 **Means:** storage failed: a SQLite database could not be opened (the `cause`
 has the driver's error), was used after `close()`, has a newer schema than this
-SDK knows, or `node:sqlite` is missing; or a file exceeded the storage size limit.
+SDK knows, or `node:sqlite` is missing; or a file exceeded the storage size limit;
+or a `fileStore()` / `FileSessionStore` file could not be read or replaced
+because another handle kept it open (Windows `EPERM` / `EACCES` / `EBUSY`
+for longer than the ~1.3 s the store retries; the `cause` is the last error).
 
 **Fix:** check the path and permissions, use Node >= 22.13 for `SqliteStore` (or a
 file-based store), and create a new store after closing one.
@@ -10898,18 +10901,38 @@ the agent one that outlives a serverless invocation when you use sessions.
 A session id is bound to the first authenticated caller that uses it - a
 different principal gets 403 (see [Route auth and principals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md) for
 the default, its in-memory limit, and `ownsSession` to override it; deriving
-the id from the caller, `u-${userId}`, keeps it obvious). Approvals are
-decided by `approvers`: by default the user a gated call runs for cannot
-approve it themselves, so a single-user app that prompts its own user should
-set `approvers: (caller) => caller !== undefined` (or finer).
+the id from the caller, `u-${userId}`, keeps it obvious).
 
 For an app with more than one user, also pass `authorizeSession`, so a user
-cannot read or continue another user's session. If an approval must come from
-someone other than the user (a supervisor approving a refund), pass
-`authorizeApproval` too: by default the user the run acts for may approve their
-own call. An error reaches the client as its `name` and `code` with a generic
-message; `exposeErrors: true` sends the raw text. See
-[Who may decide an approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-decide-an-approval).
+cannot read or continue another user's session.
+
+**Who may approve a call.** `createRouteHandler` has no `approvers` option; approvals are decided by
+`authorizeApproval({ principal, sessionId, approval })`. By default
+(`callerOwnsApproval`) the user a gated call runs for may approve it, and
+cannot decide another user's call, so a single-user app that prompts its own
+user needs nothing. That also means a user can approve their own refund. If an
+approval must come from someone else, pass `authorizeApproval`. This is a
+two-person rule: a supervisor decides, and never on a call that runs for
+themselves:
+
+```ts
+import { createAgent, createRouteHandler, memoryStore } from '@lousho/build-ai-agent';
+import { jwt } from '@lousho/build-ai-agent/auth';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', store: memoryStore() });
+
+export const { GET, POST } = createRouteHandler(agent, {
+  auth: jwt({ secret: process.env.JWT_SECRET!, issuer: 'https://auth.example.com', audience: 'agent-api' }),
+  authorizeApproval: ({ principal, approval }) =>
+    principal?.claims?.role === 'supervisor' &&
+    !(principal.id === approval.principal?.id && principal.issuer === approval.principal?.issuer),
+});
+```
+
+An error reaches the client as its `name` and `code` with a generic message;
+`exposeErrors: true` sends the raw text. See
+[Who may decide an approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-decide-an-approval) for the
+`403` it answers with and the supervisor-in-any-session variant.
 
 If the client goes away while a session turn streams (a closed tab, a dropped
 connection), the turn still runs to its end on the server and is saved to the
@@ -13593,7 +13616,8 @@ How a run ends, how to stop one, and how tool calls of one model turn run in par
 ## Finish reasons
 
 `result.finishReason` says why a run ended: the model's own reason for its last
-turn (`'stop'`, `'length'`, `'tool_calls'`, `'content_filter'`, `'error'`, `'other'`),
+turn (`'stop'`, `'length'`, `'tool_calls'`, `'content_filter'`, `'error'`, `'other'`;
+a reason a provider reports outside these is `'other'`),
 `'awaiting-approval'` (paused on a tool call that needs a human), `'aborted'`
 (cancelled with `signal`), `'max-steps'`, `'output-invalid'` (the reply
 did not match the `output` schema even after the repair step, see
@@ -13601,7 +13625,9 @@ did not match the `output` schema even after the repair step, see
 `limits` budget such as `maxTokens` or `maxCostUsd` tripped; `result.budget`
 says which, see [Budgets](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets)), or `'guardrail'` (an
 input, output or tool guardrail blocked; `result.guardrail` says which, see
-[Input and output guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md#input-and-output-guardrails)). `'max-steps'` means the `maxSteps`
+[Input and output guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md#input-and-output-guardrails)). The type
+(`ExecutionFinishReason`) is a closed union, so comparing with a misspelled
+reason does not compile. `'max-steps'` means the `maxSteps`
 budget (default 10) ran out while the model still wanted to continue, so the
 reply may be empty or partial; a run that finishes naturally within the budget
 keeps its `'stop'`. Steps carried over by `initialSteps` or an approval resume
@@ -14178,7 +14204,11 @@ Each one is an `AgentStore` part: pass them together as
 `fileStore(dir)`, `SqliteStore` and `KVStore` are ready-made `AgentStore`s. For
 plain files, `fileStore(dir)` writes one JSON file per session, checkpoint and
 pending approval under `dir`, each written to a temp file and renamed into
-place, with no lock files:
+place, with no lock files. On Windows a rename over, or a read of, a file that
+another writer or reader has open fails for a moment with `EPERM`, `EACCES` or
+`EBUSY`; `fileStore()` and `FileSessionStore` retry it with a short backoff (about
+1.3 s in all) and then fail with `LOUSHO_STORAGE_FAILED`. Concurrent saves to one
+file still end with one of them (the last rename wins):
 
 ```ts
 import { createAgent, fileStore } from '@lousho/build-ai-agent';
