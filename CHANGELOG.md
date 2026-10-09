@@ -49,6 +49,7 @@ This section lists what is on `main` and not yet on npm.
 
 ### Fixed
 - Channels: a 500 from `mountChannels()` / `mountFetchChannels()` (a throwing `verify` or `parse`) no longer echoes the internal error message; the body is the session routes' generic text (plus the error `code`) and the error goes to `onError` (Eve CH-F6).
+- `lousho init` now says, after scaffolding, when the chosen provider's API key is not in the environment (`npm run dev` will fail until it is set in `.env`; `npm run test` runs offline), instead of ending on a next-steps list that dead-ends (Eve CLI-F19).
 - `session.clear()` now deletes the checkpoint and checkpoint history of every turn (`<id>.turn-<n>`, including turns from before a compaction), not only the pending one. The history held full copies of the cleared transcript, and `agent.fork('<id>.turn-<n>')` could bring the conversation back. (Eve DUR-F8)
 - Channels: two near-simultaneous decisions on one approval (a double click while `onDecision` runs) decide it once; the loser gets `409 LOUSHO_APPROVAL_CONFLICT` (or nothing, once the surface was acknowledged) instead of a 500 or a false "Sorry, that request failed." reply (Eve CH-F7).
 - `lousho build --target=node-server` reports a bundling failure as a `LOUSHO_DEPLOY_FAILED` error (an unresolved package says to `npm install` it, like `lousho dev`) instead of esbuild's raw log with misleading advice, no longer reports success, and removes the half-written `dist/`; `LOUSHO_BUILD_VERBOSE=1` still shows the full log (Eve CLI-F7).

@@ -56,6 +56,25 @@ describe('runInit --yes', () => {
     expect(text).toContain('npm run dev');
   });
 
+  it('says so when no API key is set, and stays quiet when one is (Eve CLI-F19)', async () => {
+    const keyless = harness();
+    await runInit(['a', '--yes', '--no-install', '--no-git'], keyless.environment);
+    const text = keyless.out.join('');
+    expect(text).toContain('No OPENAI_API_KEY found in your environment');
+    expect(text).toContain('npm run test');
+    const withKey = harness({ env: { OPENAI_API_KEY: 'sk-test' } });
+    await runInit(['b', '--yes', '--no-install', '--no-git'], withKey.environment);
+    expect(withKey.out.join('')).not.toContain('found in your environment');
+    // a key for another provider does not satisfy an explicit --provider
+    const other = harness({ env: { ANTHROPIC_API_KEY: 'sk-test' } });
+    await runInit(['c', '--yes', '--provider', 'openai', '--no-install', '--no-git'], other.environment);
+    expect(other.out.join('')).toContain('No OPENAI_API_KEY found');
+    // ollama needs no key
+    const local = harness();
+    await runInit(['d', '--yes', '--provider', 'ollama', '--no-install', '--no-git'], local.environment);
+    expect(local.out.join('')).not.toContain('found in your environment');
+  });
+
   it('uses my-agent as the directory when none is given', async () => {
     expect(await runInit(['--yes', '--no-install', '--no-git'], harness().environment)).toBe(0);
     expect(fs.existsSync(path.join(root, 'my-agent', 'package.json'))).toBe(true);
