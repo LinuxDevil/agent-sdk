@@ -80,6 +80,7 @@ function LogFilterBar({ filters }: { filters: LogFilters }) {
       />
       <input
         type="search"
+        aria-label="Search logs"
         placeholder="Search logs..."
         value={filters.search}
         onChange={(e) => filters.setSearch(e.target.value)}

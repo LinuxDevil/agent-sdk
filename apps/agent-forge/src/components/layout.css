@@ -12,6 +12,19 @@
   grid-template-rows: 48px 1fr 240px;
 }
 
+/* Eve DUI-F9: read by screen readers, not drawn (the page h1, status prefixes). */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ---------- Top bar ---------- */
 .topbar {
   display: flex;
@@ -310,6 +323,67 @@
   font-size: 12px;
   font-weight: 500;
 }
+/* Eve DUI-F9: palette items, hook switches/chips and toggles are native buttons. */
+button.node-palette-item {
+  width: 100%;
+  text-align: left;
+  color: var(--text);
+  font-family: inherit;
+}
+.rail-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.palette-notice {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  margin: 8px 4px 0;
+}
+button.switch {
+  padding: 0;
+}
+button.chip,
+button.breakpoint-toggle {
+  color: var(--text);
+  cursor: pointer;
+}
+button.breakpoint-toggle {
+  font-family: inherit;
+}
+.hook-chip-select {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.hook-chip-select .hook-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.node-palette-item:focus-visible,
+.switch:focus-visible,
+.chip:focus-visible,
+.breakpoint-toggle:focus-visible,
+.hook-chip-select:focus-visible,
+.rail-tab:focus-visible,
+.drawer-tab:focus-visible,
+.agent-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .node-swatch {
   width: 9px;
   height: 9px;

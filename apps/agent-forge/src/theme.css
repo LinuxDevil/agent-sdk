@@ -16,17 +16,19 @@
   --surface-2: light-dark(#eceef3, #171b24);
   --border: light-dark(#d7dbe4, #262b39);
   --text: light-dark(#171a21, #e7e9f2);
-  --text-muted: light-dark(#61667a, #9096ac);
-  --text-faint: light-dark(#8a8fa3, #656b83);
+  /* Eve DUI-F9: every text token meets WCAG AA (4.5:1) on the surfaces it is
+     drawn on, in both schemes - enforced by src/__tests__/contrast.test.ts. */
+  --text-muted: light-dark(#4f5466, #9096ac);
+  --text-faint: light-dark(#5e6376, #8a90a6);
   --accent: light-dark(#4c4ee8, #7678f0);
   --accent-soft: light-dark(#e7e7fc, #23234a);
-  --success: light-dark(#16a34a, #34d399);
+  --success: light-dark(#137333, #34d399);
   --success-soft: light-dark(#dcf3e4, #113325);
-  --warning: light-dark(#b7791f, #fbbf24);
+  --warning: light-dark(#8a5a12, #fbbf24);
   --warning-soft: light-dark(#fbedd3, #3a2c0d);
-  --danger: light-dark(#d92d20, #f87171);
+  --danger: light-dark(#b42318, #f87171);
   --danger-soft: light-dark(#fbe2df, #3a1615);
-  --info: light-dark(#0284c7, #38bdf8);
+  --info: light-dark(#0369a1, #38bdf8);
   --shadow: 0 1px 2px rgba(20, 22, 30, 0.06), 0 8px 24px -12px rgba(20, 22, 30, 0.18);
   --font-ui: 'IBM Plex Sans', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;

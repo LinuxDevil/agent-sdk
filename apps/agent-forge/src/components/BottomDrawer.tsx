@@ -8,6 +8,7 @@ import { HistoryPanel } from './debug/HistoryPanel';
 import { DebugBar } from './debug/DebugBar';
 import { ChatPanel } from './ChatPanel';
 import { SettingsPanel } from './SettingsPanel';
+import { tabIds, tabListKeyDown } from './tabs';
 
 const TABS: { id: DrawerTab; label: string }[] = [
   { id: 'chat', label: 'Chat' },
@@ -17,6 +18,7 @@ const TABS: { id: DrawerTab; label: string }[] = [
   { id: 'history', label: 'History' },
   { id: 'settings', label: 'Settings' },
 ];
+const TAB_IDS = TABS.map((t) => t.id);
 
 const TAB_PANELS: Record<DrawerTab, () => ReactElement> = {
   chat: () => <ChatPanel />,
@@ -42,25 +44,47 @@ const FLUSH_BODY_STYLE: CSSProperties = { padding: 0, overflow: 'hidden' };
  */
 export function BottomDrawer() {
   const { drawerTab, setDrawerTab } = useAppState();
+  const ids = tabIds('drawer', drawerTab);
 
+  // Eve DUI-F9: a real WAI-ARIA tablist (roles, aria-selected, arrow keys).
   return (
-    <div className="drawer">
-      <div className="drawer-tabs">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            className={`drawer-tab${drawerTab === tab.id ? ' active' : ''}`}
-            onClick={() => setDrawerTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
+    <section className="drawer" aria-label="Run panels">
+      <div
+        className="drawer-tabs"
+        role="tablist"
+        aria-label="Run panels"
+        onKeyDown={tabListKeyDown('drawer', TAB_IDS, drawerTab, setDrawerTab)}
+      >
+        {TABS.map((tab) => {
+          const selected = drawerTab === tab.id;
+          const { tab: tabId, panel } = tabIds('drawer', tab.id);
+          return (
+            <button
+              key={tab.id}
+              id={tabId}
+              role="tab"
+              aria-selected={selected}
+              aria-controls={panel}
+              tabIndex={selected ? 0 : -1}
+              className={`drawer-tab${selected ? ' active' : ''}`}
+              onClick={() => setDrawerTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
         <div className="drawer-spacer" />
       </div>
       {drawerTab === 'trace' && <DebugBar />}
-      <div className="drawer-body" style={FLUSH_TABS.has(drawerTab) ? FLUSH_BODY_STYLE : undefined}>
+      <div
+        className="drawer-body"
+        id={ids.panel}
+        role="tabpanel"
+        aria-labelledby={ids.tab}
+        style={FLUSH_TABS.has(drawerTab) ? FLUSH_BODY_STYLE : undefined}
+      >
         {TAB_PANELS[drawerTab]()}
       </div>
-    </div>
+    </section>
   );
 }

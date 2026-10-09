@@ -110,7 +110,9 @@ exists.
    it on the canvas.
 2. **Look at the graph.** A blank agent is one `llm` node. Drag more nodes
    in from the left rail's palette (**Trigger**, **LLM step**, **Tool
-   call**, **Approval gate**, **Response / output**) and connect them by
+   call**, **Approval gate**, **Response / output**), or click (or press
+   Enter on) a palette item to add it at the centre of the canvas, and
+   connect them by
    dragging between their handles. Click a node to edit its settings
    (prompt, provider/model, tools, breakpoints) in the Inspector on the
    right.
@@ -176,7 +178,8 @@ To attach one:
    they're the two points `AgentExecutor` actually calls out to).
 2. Open the Inspector's **Hooks** section. Drag a **Pre-hook** or
    **Post-hook** entry from the left rail's palette onto the node (or drop
-   it directly in the Hooks section) to attach a new one; you'll get a
+   it directly in the Hooks section), or click the palette entry while the
+   node is selected, to attach a new one; you'll get a
    choice of starter templates (`redact-pii`, `rate-limit`, `audit-log`,
    `inject-context`) as an editable starting point.
 3. Click the hook's chip to select it, then edit its code in the CodeMirror

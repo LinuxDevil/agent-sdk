@@ -30,12 +30,15 @@ interface HookChipProps {
   onRemoved: () => void;
 }
 
+/** Eve DUI-F9: a native button with `role="switch"`, so Enter/Space toggle it and its state is announced. */
 function HookToggleSwitch({ hook, onToggle }: { hook: AgentNodeHookInstance; onToggle: () => void }) {
   return (
-    <div
+    <button
+      type="button"
       className={`switch${hook.enabled ? ' on' : ''}`}
-      role="button"
-      tabIndex={0}
+      role="switch"
+      aria-checked={hook.enabled}
+      aria-label={`${hook.name} hook enabled`}
       title={hook.enabled ? 'Disable this hook' : 'Enable this hook'}
       onClick={(e) => {
         e.stopPropagation();
@@ -53,22 +56,34 @@ function HookWhen({ hook }: { hook: AgentNodeHookInstance }) {
   );
 }
 
+/**
+ * Eve DUI-F9: the chip holds three native buttons (enable switch, select,
+ * remove) side by side rather than nesting buttons inside a `role="button"`
+ * div - so each is reachable and operable from the keyboard.
+ */
 function HookChip({ node, hook, selected, setGraph, onSelect, onRemoved }: HookChipProps) {
   return (
-    <div
-      className={`hook-chip${selected ? ' selected' : ''}`}
-      data-hook={hook.name}
-      role="button"
-      tabIndex={0}
-      onClick={onSelect}
-    >
+    <div className={`hook-chip${selected ? ' selected' : ''}`} data-hook={hook.name} onClick={onSelect}>
       <HookToggleSwitch hook={hook} onToggle={() => setGraph((g) => toggleNodeHook(g, node.id, hook.id))} />
-      <span className="hook-chip-name">{hook.name}</span>
-      <HookWhen hook={hook} />
       <button
+        type="button"
+        className="hook-chip-select"
+        aria-pressed={selected}
+        title="Edit this hook's code"
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect();
+        }}
+      >
+        <span className="hook-chip-name">{hook.name}</span>
+        <HookWhen hook={hook} />
+      </button>
+      <button
+        type="button"
         className="btn btn-ghost"
         style={{ padding: '2px 6px' }}
         title="Remove this hook"
+        aria-label={`Remove the ${hook.name} hook`}
         onClick={(e) => {
           e.stopPropagation();
           setGraph((g) => removeNodeHook(g, node.id, hook.id));
@@ -212,6 +227,7 @@ function BranchRow({ edge, target, setGraph }: BranchRowProps) {
       </div>
       <input
         className="input"
+        aria-label={`Condition for the branch to ${branchTargetLabel(edge, target)}`}
         placeholder="Condition, e.g. '{{classify}}' === 'refund' (quote the placeholder; blank = default branch)"
         value={edge.condition ?? ''}
         onChange={(e) => setGraph((g) => updateEdgeCondition(g, edge.id, e.target.value))}
@@ -277,17 +293,19 @@ function BreakpointField({
   const on = breakpoints.includes(breakpointKey);
   return (
     <div className="field">
-      <label>Breakpoint</label>
-      <span
+      <label htmlFor="node-breakpoint">Breakpoint</label>
+      {/* Eve DUI-F9: a native toggle button (Enter/Space, announced as pressed). */}
+      <button
+        type="button"
+        id="node-breakpoint"
         className={`breakpoint-toggle${on ? ' on' : ''}`}
-        role="button"
-        tabIndex={0}
+        aria-pressed={on}
         onClick={() =>
           void setBreakpoints(on ? breakpoints.filter((b) => b !== breakpointKey) : [...breakpoints, breakpointKey])
         }
       >
         {on ? 'Break before this node ●' : 'Break before this node'}
-      </span>
+      </button>
     </div>
   );
 }
@@ -296,9 +314,11 @@ function LlmFields({ node, patch }: { node: NodeOf<'llm'>; patch: PatchNode }) {
   return (
     <>
       <div className="field">
-        <label>Provider &amp; model</label>
+        <label htmlFor="node-provider">Provider &amp; model</label>
         <div className="row2">
           <select
+            id="node-provider"
+            aria-label="Provider"
             className="select"
             value={node.data.provider.type}
             onChange={(e) => patch({ provider: { ...node.data.provider, type: e.target.value } })}
@@ -310,6 +330,8 @@ function LlmFields({ node, patch }: { node: NodeOf<'llm'>; patch: PatchNode }) {
             ))}
           </select>
           <input
+            id="node-model"
+            aria-label="Model"
             className="input"
             value={node.data.provider.model}
             onChange={(e) => patch({ provider: { ...node.data.provider, model: e.target.value } })}
@@ -361,15 +383,17 @@ function ApprovalFields({ node, patch }: { node: NodeOf<'approval'>; patch: Patc
   const { requiresApproval } = node.data.policy;
   return (
     <div className="field">
-      <label>Requires approval</label>
-      <span
+      <label htmlFor="node-requires-approval">Requires approval</label>
+      {/* Eve DUI-F9: a native toggle button (Enter/Space, announced as pressed). */}
+      <button
+        type="button"
+        id="node-requires-approval"
         className={`chip${requiresApproval ? ' on' : ''}`}
-        role="button"
-        tabIndex={0}
+        aria-pressed={Boolean(requiresApproval)}
         onClick={() => patch({ policy: { ...node.data.policy, requiresApproval: !requiresApproval } })}
       >
         {requiresApproval ? 'yes' : 'no'}
-      </span>
+      </button>
     </div>
   );
 }
@@ -417,7 +441,7 @@ function breakpointKeyFor(node: AgentGraphNode): string | undefined {
 
 function EmptyInspector() {
   return (
-    <div className="inspector">
+    <aside className="inspector" aria-label="Inspector">
       <div className="inspector-head">
         <div className="k">Inspector</div>
         <div className="v">No node selected</div>
@@ -425,7 +449,7 @@ function EmptyInspector() {
       <div className="inspector-body">
         <div className="hint">Select a node on the canvas to view and edit its configuration.</div>
       </div>
-    </div>
+    </aside>
   );
 }
 
@@ -452,7 +476,7 @@ function NodeInspector({ selected }: { selected: AgentGraphNode }) {
   const breakpointKey = breakpointKeyFor(selected);
 
   return (
-    <div className="inspector">
+    <aside className="inspector" aria-label="Inspector">
       <div className="inspector-head">
         <div className="k">Selected node ({selected.type})</div>
         <div className="v">{selected.label}</div>
@@ -477,7 +501,7 @@ function NodeInspector({ selected }: { selected: AgentGraphNode }) {
           </>
         )}
       </div>
-    </div>
+    </aside>
   );
 }
 
