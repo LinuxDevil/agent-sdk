@@ -596,7 +596,7 @@ interface GenerateOptions {
 // @public
 interface GenerateResult {
     // (undocumented)
-    finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'error';
+    finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'error' | 'other';
     // Warning: (ae-forgotten-export) The symbol "HostedToolCall" needs to be exported by the entry point index.d.ts
     hostedToolCalls?: HostedToolCall[];
     // (undocumented)
@@ -1414,11 +1414,11 @@ export function validateFlowInput(input: Record<string, unknown>, variables: Flo
 // Warnings were encountered during analysis:
 //
 // dist/flows/index.d.ts:192:9 - (ae-forgotten-export) The symbol "ProviderUsage" needs to be exported by the entry point index.d.ts
-// dist/index-mxNQzgqJ.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-mxNQzgqJ.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-mxNQzgqJ.d.ts:1939:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
-// dist/index-mxNQzgqJ.d.ts:1982:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
-// dist/index-mxNQzgqJ.d.ts:1982:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
+// dist/index-CS8qGkxd.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-CS8qGkxd.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-CS8qGkxd.d.ts:1950:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
+// dist/index-CS8qGkxd.d.ts:1993:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
+// dist/index-CS8qGkxd.d.ts:1993:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
