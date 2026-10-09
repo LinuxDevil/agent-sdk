@@ -127,16 +127,20 @@ class KVApprovalStore implements ApprovalStore {
    */
   async list(): Promise<PendingApproval[]> {
     if (!this.kv.list) return [];
-    const found: PendingApproval[] = [];
+    const names = new Set<string>();
     let cursor: string | undefined;
     do {
       const page = await this.kv.list({ prefix: this.prefix, ...(cursor !== undefined && { cursor }) });
-      for (const { name } of page.keys) {
-        const raw = await this.kv.get(name);
-        if (raw !== null) found.push(fromKVJson<ResolvedApproval>(raw).pending);
-      }
+      for (const { name } of page.keys) names.add(name);
       cursor = page.list_complete ? undefined : page.cursor;
     } while (cursor !== undefined);
+    const found: PendingApproval[] = [];
+    for (const name of names) {
+      // A `#claim` marker is not a record, and a record with one is being resolved.
+      if (name.endsWith('#claim') || names.has(`${name}#claim`)) continue;
+      const raw = await this.kv.get(name);
+      if (raw !== null) found.push(fromKVJson<ResolvedApproval>(raw).pending);
+    }
     return oldestFirst(found);
   }
 }
