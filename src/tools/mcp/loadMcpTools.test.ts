@@ -136,7 +136,13 @@ describe('loadMcpTools approval (LOU-Z5)', () => {
     return Object.fromEntries(Object.entries(loaded).map(([name, d]) => [name.slice(3), d.needsApproval]));
   };
 
-  it("'annotations' (the default): readOnlyHint runs; destructiveHint true or absent asks; destructiveHint false runs", async () => {
+  it("Eve TOOLS-F11: the default asks for every tool, whatever the server's hints say", async () => {
+    expect(Object.values(await asks()).every((v) => v === true)).toBe(true);
+    const loaded = await loadMcpTools(client, 's');
+    expect(loaded.s__read_only.metadata?.mcp?.annotationsTrusted).toBe(false);
+  });
+
+  it("'annotations' (opt-in): readOnlyHint runs; destructiveHint true or absent asks; destructiveHint false runs", async () => {
     const expected = {
       plain: true,
       read_only: false,
@@ -147,7 +153,6 @@ describe('loadMcpTools approval (LOU-Z5)', () => {
       hints_only: true,
       titled: false,
     };
-    expect(await asks()).toEqual(expected);
     expect(await asks('annotations')).toEqual(expected);
   });
 
@@ -171,7 +176,7 @@ describe('loadMcpTools approval (LOU-Z5)', () => {
   });
 
   it('keeps the raw annotations in metadata.mcp and uses the title as displayName', async () => {
-    const loaded = await loadMcpTools(client, 's');
+    const loaded = await loadMcpTools(client, 's', { approval: 'annotations' });
     expect(loaded.s__titled.metadata).toEqual({ mcp: { annotations: { title: 'Nice Title', readOnlyHint: true }, server: 's', tool: 'titled' } });
     expect(loaded.s__titled.displayName).toBe('Nice Title');
     expect(loaded.s__plain.metadata?.mcp?.annotations).toBeUndefined();

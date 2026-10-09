@@ -40,11 +40,11 @@ The full option reference is in [MCP](./mcp.md); OAuth sign-in flow in
 
 ## Approval for connector writes
 
-Reads should run free; writes should ask. MCP tools carry
-`readOnlyHint`/`destructiveHint` annotations, and the default
-`approval: 'annotations'` turns those into the SDK's approval gate: a
-`slack.post_message` pauses the run until approved, `docs.get_document` does
-not. Tune it per server:
+Reads should run free; writes should ask. By default every MCP tool asks
+(`approval: 'always'`). MCP tools carry `readOnlyHint`/`destructiveHint`
+annotations, and `approval: 'annotations'` on a server you trust turns those
+into the SDK's approval gate: a `slack.post_message` pauses the run until
+approved, `docs.get_document` does not. Tune it per server:
 
 ```ts no-run
 import { createAgent } from '@lousho/build-ai-agent';
@@ -58,7 +58,7 @@ const agent = createAgent({
     slack: {
       url: 'https://mcp.slack.com/mcp',
       // Ask before any write, never before reads whose server marked them read-only.
-      approval: 'annotations', // default; or ({ name }) => !name.startsWith('search')
+      approval: 'annotations', // trust the server's hints (default 'always'); or ({ name }) => !name.startsWith('search')
     },
     scratch: { command: 'node', args: ['./local.js'], approval: 'never' },
   },

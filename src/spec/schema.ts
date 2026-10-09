@@ -71,7 +71,7 @@ export interface McpStdioServerSpec {
    * `'capture'` only keeps them; `'inherit'` and `'ignore'` keep nothing.
    */
   stderr?: 'forward' | 'capture' | 'inherit' | 'ignore';
-  /** Which of this server's tools ask for approval (LOU-Z5). Default `'annotations'`. */
+  /** Which of this server's tools ask for approval (LOU-Z5). Default `'always'` (Eve TOOLS-F11). */
   approval?: McpApproval;
   /** N2: withhold this server's tools from the model until `tool_search` finds them (docs/tool-search.md). */
   deferLoading?: boolean;
@@ -105,7 +105,7 @@ export interface McpOAuthOptions {
 export interface McpHttpServerSpec {
   url: string;
   headers?: Record<string, string>;
-  /** Which of this server's tools ask for approval (LOU-Z5). Default `'annotations'`. */
+  /** Which of this server's tools ask for approval (LOU-Z5). Default `'always'` (Eve TOOLS-F11). */
   approval?: McpApproval;
   /** N2: withhold this server's tools from the model until `tool_search` finds them (docs/tool-search.md). */
   deferLoading?: boolean;

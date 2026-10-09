@@ -59,9 +59,10 @@ says nothing is treated as one with side effects and is refused.
   `list_dir`, `glob`, `grep`, `todo_read`, `current_date`, `day_name`,
   `web_fetch`, `load_skill`, every `recall_<name>` memory tool, and
   `agent_status` / `agent_await` (they watch background sub-agents). An
-  [OpenAPI tool](./openapi-tools.md) for a `GET` operation has it too, and an
-  [MCP tool](./mcp.md) keeps the hint its server sent: it is the server's word,
-  not a guarantee, so only connect servers you trust.
+  [OpenAPI tool](./openapi-tools.md) for a `GET` operation has it too. An
+  [MCP tool](./mcp.md) counts only when its server entry sets
+  `approval: 'annotations'`: the hint is the server's word, not a guarantee, so
+  by default plan mode refuses every MCP tool.
 - The built-in `ask_question` (it only asks; the call still pauses for the
   answer) and `task` (its sub-agent inherits plan mode, see below).
 - [Hosted provider tools](./hosted-tools.md) run inside the provider's request,

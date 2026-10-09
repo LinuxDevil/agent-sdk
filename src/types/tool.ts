@@ -117,6 +117,11 @@ export interface ToolMetadata {
     server?: string;
     /** The tool's own MCP name, which `<server>__<tool>` may have sanitized; calls go to the server under this name. */
     tool?: string;
+    /**
+     * Eve TOOLS-F11: `false` when the annotations came from an MCP server whose
+     * `approval` is not `'annotations'`; plan mode then ignores its `readOnlyHint`.
+     */
+    annotationsTrusted?: boolean;
   };
   /**
    * N4: the tool edits files in a workspace (`defineTool({ editsFiles })`):

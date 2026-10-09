@@ -1149,9 +1149,20 @@ function splitHostedTools(tools: AgentToolsOption | undefined): { local: ToolEnt
   return { local, hosted };
 }
 
-/** Adds connected MCP tools (LOU-Z4) to a run's tools. */
+/**
+ * Adds connected MCP tools (LOU-Z4) to a run's tools. Eve TOOLS-F11: an MCP tool
+ * may not take the name of another tool (it would replace it and its approval gate).
+ */
 function addMcpTools(target: RunTools, tools: Record<string, ToolDescriptor>): void {
   for (const [name, descriptor] of Object.entries(tools)) {
+    const existing = target.toolRegistry?.get(name);
+    if (existing && existing !== descriptor) {
+      throw new ConfigurationError(
+        `createAgent: MCP tool '${name}' has the same name as another tool of this agent. ` +
+          'Rename the local tool, or leave the MCP tool out with the server entry `tools: { exclude }`.',
+        'mcpServers'
+      );
+    }
     target.toolRegistry?.register(name, descriptor);
     target.toolsConfig[name] = { tool: name };
   }

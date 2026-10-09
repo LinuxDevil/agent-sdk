@@ -67,7 +67,7 @@ describe('serveMcp annotations (LOU-Z5.2)', () => {
   });
 
   it('round trip: read-only runs, needsApproval pauses, unannotated keeps the default (asks)', async () => {
-    const loaded = await loadMcpTools(await connectToServer(), 'srv');
+    const loaded = await loadMcpTools(await connectToServer(), 'srv', { approval: 'annotations' });
     const run = async (tool: string) => {
       const model = mockModel([{ toolCalls: [{ name: `srv__${tool}` }] }, 'done']);
       return createAgent({ prompt: 'p', provider: model, tools: loaded }).send('go');

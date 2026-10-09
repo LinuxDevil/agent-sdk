@@ -78,11 +78,19 @@ describe('connectMcp (LOU-Z4)', () => {
   });
 
   it('passes each server its own approval and keeps the annotations on the descriptor (LOU-Z5)', async () => {
-    const mcp = await connect({ strict: { ...stdio(), approval: 'always' }, loose: { ...stdio(), approval: 'never' }, auto: stdio() });
+    const mcp = await connect({
+      strict: { ...stdio(), approval: 'always' },
+      loose: { ...stdio(), approval: 'never' },
+      auto: { ...stdio(), approval: 'annotations' },
+      plain: stdio(),
+    });
     const asks = (name: string) => mcp.tools[name].needsApproval;
     expect([asks('strict__echo'), asks('loose__wipe'), asks('auto__echo'), asks('auto__wipe')]).toEqual([true, false, false, true]);
+    // Eve TOOLS-F11: by default every MCP tool asks, whatever its server's hints say.
+    expect([asks('plain__echo'), asks('plain__wipe')]).toEqual([true, true]);
     expect(mcp.tools.auto__echo.displayName).toBe('Echo');
     expect(mcp.tools.auto__echo.metadata).toEqual({ mcp: { annotations: { title: 'Echo', readOnlyHint: true }, server: 'auto', tool: 'echo' } });
+    expect(mcp.tools.plain__echo.metadata?.mcp?.annotationsTrusted).toBe(false);
   });
 
   it('timeoutMs on the server entry bounds each tool call (audit D4)', async () => {
@@ -159,7 +167,7 @@ describe('connectMcp (LOU-Z4)', () => {
 describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
   it('connects on the first send() and runs an MCP tool', async () => {
     const model = mockModel([{ toolCalls: [{ name: 'files__echo', args: { text: 'ping' } }] }, 'done']);
-    const agent = createAgent({ provider: model, mcpServers: { files: stdio('mcp:') } });
+    const agent = createAgent({ provider: model, mcpServers: { files: { ...stdio('mcp:'), approval: 'annotations' } } });
     closers.push(() => agent.close());
 
     const result = await agent.send('echo ping');
@@ -170,7 +178,7 @@ describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
 
   it('stream() waits for the servers, and ready() / close() are no-ops without them', async () => {
     const model = mockModel([{ toolCalls: [{ name: 'files__echo', args: { text: 'x' } }] }, 'streamed']);
-    const agent = createAgent({ provider: model, mcpServers: { files: stdio() } });
+    const agent = createAgent({ provider: model, mcpServers: { files: { ...stdio(), approval: 'annotations' } } });
     closers.push(() => agent.close());
     const types: string[] = [];
     for await (const event of agent.stream('go')) types.push(event.type);
@@ -200,11 +208,60 @@ describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
     await expect(agent.close()).resolves.toBeUndefined();
   });
 
+  it("Eve TOOLS-F11: by default a readOnlyHint MCP tool still pauses for approval", async () => {
+    const agent = createAgent({
+      provider: mockModel([{ toolCalls: [{ name: 'files__echo', args: { text: 'hi' } }] }, 'done']),
+      mcpServers: { files: stdio() },
+    });
+    closers.push(() => agent.close());
+    const result = await agent.send('echo');
+    expect(result.finishReason).toBe('awaiting-approval');
+  });
+
+  it("Eve TOOLS-F11: plan mode refuses a server's readOnlyHint tool unless approval is 'annotations'", async () => {
+    const echo = { toolCalls: [{ name: 'files__echo', args: { text: 'hi' }, id: 'call_echo' }] };
+    const run = async (approval?: 'annotations') => {
+      const model = mockModel([echo, 'done']);
+      const agent = createAgent({
+        provider: model,
+        permissionMode: 'plan',
+        mcpServers: { files: { ...stdio(), ...(approval && { approval }) } },
+      });
+      closers.push(() => agent.close());
+      const result = await agent.send('echo');
+      return JSON.stringify(result.messages);
+    };
+    expect(await run()).toMatch(/plan mode/i);
+    expect(await run('annotations')).toContain('hi');
+  });
+
+  it('Eve TOOLS-F11: an MCP tool with the name of a local tool is refused (LOUSHO_CONFIG_INVALID)', async () => {
+    let ran = false;
+    const local = defineTool({
+      name: 'files__wipe',
+      description: 'local, gated',
+      input: z.object({}),
+      needsApproval: true,
+      execute: async () => {
+        ran = true;
+        return 'local';
+      },
+    });
+    const agent = createAgent({
+      provider: mockModel([{ toolCalls: [{ name: 'files__wipe', args: {} }] }, 'done']),
+      tools: [local],
+      mcpServers: { files: { ...stdio(), approval: 'never' } },
+    });
+    closers.push(() => agent.close());
+    await expect(agent.send('go')).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_INVALID', message: expect.stringContaining("'files__wipe'") });
+    expect(ran).toBe(false);
+  });
+
   it('a destructive MCP tool pauses the run for approval; a readOnly one runs (LOU-Z5)', async () => {
     const wipe = { toolCalls: [{ name: 'files__wipe', args: { path: '/data' }, id: 'call_wipe' }] };
     const agent = createAgent({
       provider: mockModel([{ toolCalls: [{ name: 'files__echo', args: { text: 'hi' } }] }, wipe, 'wiped.']),
-      mcpServers: { files: stdio() },
+      mcpServers: { files: { ...stdio(), approval: 'annotations' } },
     });
     closers.push(() => agent.close());
 
