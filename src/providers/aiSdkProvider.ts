@@ -271,7 +271,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
   protected readonly ai: AiSdkModule = aiModule;
 
   /** The connection options every `@ai-sdk/*` provider factory takes: `apiKey`, `baseURL`, `headers` and a custom `fetch`. */
-  protected clientOptions(): { apiKey?: string; baseURL?: string; headers?: Record<string, string>; fetch?: typeof globalThis.fetch } {
+  protected clientOptions(): Pick<AiSdkProviderConfig, 'apiKey' | 'baseURL' | 'headers' | 'fetch'> {
     return {
       apiKey: this.config.apiKey,
       baseURL: this.config.baseURL,

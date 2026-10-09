@@ -434,6 +434,7 @@ abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLM
     protected readonly acceptsFileParts: boolean;
     protected readonly ai: AiSdkModule;
     protected cachesPrompt(_modelId: string, _options: GenerateOptions): boolean;
+    protected clientOptions(): Pick<AiSdkProviderConfig, 'apiKey' | 'baseURL' | 'headers' | 'fetch'>;
     // (undocumented)
     protected config: TConfig;
     // @deprecated
