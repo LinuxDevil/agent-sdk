@@ -854,7 +854,9 @@ has the driver's error), was used after `close()`, has a newer schema than this
 SDK knows, or `node:sqlite` is missing; or a file exceeded the storage size limit;
 or a `fileStore()` / `FileSessionStore` file could not be read or replaced
 because another handle kept it open (Windows `EPERM` / `EACCES` / `EBUSY`
-for longer than the ~1.3 s the store retries; the `cause` is the last error).
+for longer than the ~1.3 s the store retries; the `cause` is the last error);
+or a `fileMemory` change waited more than 10 s for another writer's
+`<key file>.lock` lock file.
 
 **Fix:** check the path and permissions, use Node >= 22.13 for `SqliteStore` (or a
 file-based store), and create a new store after closing one.

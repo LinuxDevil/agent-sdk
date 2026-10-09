@@ -38,6 +38,15 @@ afterEach(() => {
 describeMemoryProviderContract('sqliteMemory', (options) => sqliteMemory(open(tempFile()), options));
 
 describe('sqliteMemory', () => {
+  it('keeps every item when two providers on one store add to one key at once (Eve MEM-F8)', async () => {
+    const store = open(tempFile());
+    const a = sqliteMemory(store);
+    const b = sqliteMemory(store);
+    const texts = Array.from({ length: 10 }, (_, i) => [`a${i}`, `b${i}`]).flat();
+    await Promise.all(texts.map((text) => (text.startsWith('a') ? a : b).add('notes#global', { text })));
+    expect((await a.list('notes#global')).map((item) => item.text).sort()).toEqual(texts.slice().sort());
+  });
+
   it('persists across two SqliteStore instances on the same file', async () => {
     const file = tempFile();
     const first = open(file);
