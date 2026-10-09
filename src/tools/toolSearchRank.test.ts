@@ -27,6 +27,29 @@ describe('rankToolsByKeywords (N2)', () => {
     expect(rankToolsByKeywords('weather forecasts', tools)[0]).toBe('get_weather');
   });
 
+  it('finds tools by a synonym or a word of the same family (Eve MEM-F13)', () => {
+    const more = [
+      { name: 'fetch_equity_quote', description: 'Latest trade for a ticker' },
+      { name: 'job_status', description: 'Report a job' },
+      { name: 'get_weather', description: 'Get the weather forecast for a city' },
+      { name: 'convert_currency', description: 'Convert an amount of money' },
+    ];
+    expect(rankToolsByKeywords('share value', more)).toEqual(['fetch_equity_quote']);
+    expect(rankToolsByKeywords('statuses', more)).toEqual(['job_status']);
+    expect(searchWords('statuses boxes addresses analysis uses')).toEqual(['status', 'box', 'address', 'analysis', 'use']);
+    expect(rankToolsByKeywords('converting', more)).toEqual(['convert_currency']);
+    expect(rankToolsByKeywords('current', [{ name: 'convert_currency', description: 'Currency' }])).toEqual([]);
+    expect(rankToolsByKeywords('retrieve forecast', more)[0]).toBe('get_weather');
+  });
+
+  it('still ranks an exact word above a related one', () => {
+    const pair = [
+      { name: 'fetch_page', description: 'Download a URL' },
+      { name: 'get_page', description: 'Download a URL' },
+    ];
+    expect(rankToolsByKeywords('get page', pair)).toEqual(['get_page', 'fetch_page']);
+  });
+
   it('orders ties by name and leaves out tools with no shared word', () => {
     const tied = [
       { name: 'b_tool', description: 'search' },

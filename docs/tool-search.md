@@ -102,8 +102,15 @@ tool (approvals, permissions and guardrails apply as usual). `stream()` reports
 The default ranking compares the query's words with each deferred tool's name
 (split on `_`, `-`, `__` and camelCase) and description, case-insensitively.
 A word found in the name counts three times as much as one found in the
-description; ties are ordered by name. The same function is exported as
-`rankToolsByKeywords(query, tools)`.
+description; plurals are folded (`statuses` finds `status`). A related word
+gets partial credit: the same word family (`sending` finds `send`) or a synonym
+from a small built-in table of common tool verbs and nouns (`fetch` / `get` /
+`retrieve`, `delete` / `remove`, `share` / `stock` / `equity`,
+`value` / `price` / `quote`), so `share value` finds `fetch_equity_quote`.
+Exact words still rank above related ones; ties are ordered by name. The same
+function is exported as `rankToolsByKeywords(query, tools)`. It stays
+lexical: for real semantic search, pass your own `search` (for example
+embeddings).
 
 ## `toolSearch` options
 
