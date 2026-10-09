@@ -216,6 +216,13 @@ export interface ExecuteOptions extends PermissionOptions {
   agentSpanId?: string;
   maxSteps?: number;
   /**
+   * Eve CORE-F13: text appended to the system prompt of every model call of
+   * this run (`send(msg, { instructions })`), after the agent's own
+   * instructions. Sent with each request, never written to the transcript, so
+   * a continued `sessionId` run gets it too and a checkpoint never keeps it.
+   */
+  appendInstructions?: string;
+  /**
    * LOU-V6: token, cost, time and step budgets of this run, checked before
    * every model call and after one that asks for tools; `maxDurationMs` also
    * aborts in-flight calls. A tripped limit ends the run with

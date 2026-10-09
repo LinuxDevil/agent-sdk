@@ -2156,6 +2156,7 @@ interface ExecuteOptions extends PermissionOptions {
     agent: AgentConfig;
     // @internal
     agentSpanId?: string;
+    appendInstructions?: string;
     // (undocumented)
     approvalStore?: ApprovalStore;
     approvalTtlMs?: number;
@@ -5598,6 +5599,8 @@ export function secretsGuardrail(options?: {
 // @public
 export interface SendOptions {
     approvalTtlMs?: number;
+    instructions?: string;
+    maxSteps?: number;
     metadata?: Record<string, unknown>;
     modelSettings?: ModelSettings;
     onEvent?: (event: AgentEvent) => void;
