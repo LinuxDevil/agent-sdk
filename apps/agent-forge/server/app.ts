@@ -6,7 +6,9 @@
  *   GET  /agents                     -> AgentStoreEntry[] (saved agent specs on disk)
  *   GET  /agents/:id                 -> AgentSpec | 404
  *   PUT  /agents/:id                 -> save an AgentSpec to disk (body: AgentSpec)
- *   POST /agents/:id/run             -> body: { spec?: AgentSpec, input: string }
+ *   DELETE /agents/:id               -> remove the saved spec, 204 (Eve DUI-F2)
+ *   GET  /workspace                  -> { baseDir } - the directory `.lousho/` lives under (Eve DUI-F2)
+ *   POST /agents/:id/run            -> body: { spec?: AgentSpec, input: string }
  *   POST /agents/:id/stop            -> abort the in-flight run, if any
  *   GET  /agents/:id/status          -> AgentRunStatusPayload
  *   POST /agents/:id/approve         -> body: { approvalId, approved, note? }
@@ -88,7 +90,7 @@ export interface CreateAppOptions {
 }
 
 /** Path prefixes of the API (everything except `/health` and the static client). */
-const API_PREFIXES = ['/agents', '/runs', '/settings'];
+const API_PREFIXES = ['/agents', '/runs', '/settings', '/workspace'];
 
 function asyncRoute(fn: (req: Request, res: Response) => Promise<void>) {
   return (req: Request, res: Response, next: NextFunction) => {
@@ -153,6 +155,24 @@ function registerAgentRoutes(app: Express, agentStore: AgentStore): void {
       res.status(204).end();
     })
   );
+
+  app.delete(
+    '/agents/:id',
+    asyncRoute(async (req, res) => {
+      await agentStore.remove(paramId(req));
+      res.status(204).end();
+    })
+  );
+}
+
+/**
+ * Eve DUI-F2: the workspace the studio serves - the client keys its draft
+ * cache by it, so unsaved edits never leak into another project's studio.
+ */
+function registerWorkspaceRoute(app: Express, baseDir: string): void {
+  app.get('/workspace', (_req, res) => {
+    res.json({ baseDir: path.resolve(baseDir) });
+  });
 }
 
 /** Run lifecycle: start, stop, status, and resolving a pending tool approval. */
@@ -635,6 +655,7 @@ export function createApp({
   });
 
   registerAgentRoutes(app, agentStore);
+  registerWorkspaceRoute(app, baseDir);
   registerRunRoutes(app, runManager);
   registerChatRoutes(app, runManager, triggerRegistry);
   registerDebugRoutes(app, runManager);

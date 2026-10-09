@@ -1870,9 +1870,21 @@ API is locked to the browser tab you opened from the printed URL:
 
 From `curl`, pass the token: `curl -H "x-lousho-studio-token: $TOKEN" localhost:4750/agents`.
 
+### Where agents live
+
+Agent specs and run state are stored under `.lousho/` in the directory you
 ran `lousho studio` from (agent YAML files under `.lousho/agents/`,
 checkpoints and approvals alongside them) - the same `.lousho/` layout
 `lousho dev`/`lousho build` use.
+
+The left rail lists exactly the agents in that `.lousho/agents/`: a YAML
+file you add there shows up, and an agent you create in the studio is
+written there at once (autosave and **Save** both write the file), so it
+can be chatted with straight away. Another project, opened in its own
+`lousho studio`, shows only its own agents. The browser keeps nothing but a
+draft of an edit that could not reach the server (it is pushed on the next
+load), stored per workspace directory. A file in `.lousho/agents/` that no
+longer parses is skipped with a warning in the server log.
 
 ### Production vs. dev mode
 
@@ -8331,8 +8343,12 @@ npx lousho eval --drift         # re-record and diff each case's trajectory
   `default.json`. Give each case a unique `label` so the names stay stable:
   two cases that would still share a cassette (the same label twice) fail at
   record time instead of overwriting each other. A case whose agent uses more
-  than one provider (a sub-agent on another model) gets `<case>-<hash>.2.json`
-  and so on. The files use the normal cassette format, with API keys redacted;
+  than one provider (a sub-agent on another model) gets one named after the
+  sub-agent, `<case>-<hash>.<agent>.json` (older `.2.json` files are still
+  replayed). Replay matches each call by its request, not its position, so
+  parallel sub-agent tasks replay whatever order the live model answered in; a
+  mismatch stops the run with `LOUSHO_CASSETTE_INVALID` even when it happens
+  inside a sub-agent. The files use the normal cassette format, with API keys redacted;
   review and commit them. Re-recording a case whose exchanges did not change
   leaves its file untouched (`recordedAt` is kept), so only real changes show
   in a diff. Cassettes recorded by an older SDK under the unhashed
@@ -13886,6 +13902,8 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   of the transcript when the turn started), so a new process finds the
   interrupted turn without any extra bookkeeping. A finished turn joins the
   transcript, exactly as a plain `send()` does, and its checkpoint is deleted.
+  The turn id is only the checkpoint key: tools, `needsApproval`, permission
+  rules and tool-call hooks still get the session's own id as `ctx.sessionId`.
 - `resume()` continues the turn through the executor's resume path
   (`input: []`): tool calls whose results were recorded do not run again, and
   a recorded model response is not requested again. A tool that was running
@@ -14909,9 +14927,14 @@ console.log(object?.note); // typed: string | undefined
    the JSON Schema itself (some local models echo it), the message says so
    and shows an example object of the right shape instead. The repair step
    counts against `maxSteps`, and there is none when the budget is spent.
+   There is none either when the reply was cut off at the `maxTokens`
+   limit (the model's `finishReason` was `'length'`): a repair would be cut
+   off the same way, so the run ends at once with `outputError.kind:
+   'truncated'` and a message that says to raise `modelSettings.maxTokens`.
 5. Still invalid, the run resolves (it does not reject) with
    `finishReason: 'output-invalid'`, no `object`, and `outputError`:
-   `{ message, issues: [{ path, message }] }`.
+   `{ kind, message, issues: [{ path, message }] }`, where `kind` is
+   `'invalid'` or `'truncated'`.
 
 ## Out of steps
 

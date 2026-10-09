@@ -27,6 +27,7 @@ import type {
   TraceSummaryPayload,
 } from '../../shared/wireTypes';
 import { STUDIO_TOKEN_HEADER, loadStudioToken } from './studioToken';
+import type { AgentStoreEntry } from '../persistence/AgentStore';
 
 /** Same-origin default: `lousho studio` prints the API server's own URL, but in dev the Vite server proxies to it (see vite.config.ts). */
 const DEFAULT_BASE_URL = '';
@@ -87,6 +88,35 @@ class RuntimeClient {
     return body as T;
   }
 
+  /** Eve DUI-F2: the saved agents in the studio's `.lousho/agents/`. */
+  async listAgents(): Promise<AgentStoreEntry[]> {
+    return this.request('/agents', { method: 'GET' });
+  }
+
+  /** Eve DUI-F2: one saved agent's spec, or undefined when there is none. */
+  async loadAgent(agentId: string): Promise<AgentSpec | undefined> {
+    try {
+      return await this.request<AgentSpec>(`/agents/${encodeURIComponent(agentId)}`, { method: 'GET' });
+    } catch (error) {
+      if (error instanceof RuntimeApiError && error.status === 404) return undefined;
+      throw error;
+    }
+  }
+
+  /** Eve DUI-F2: writes `.lousho/agents/<id>.yaml`. */
+  async saveAgent(agentId: string, spec: AgentSpec): Promise<void> {
+    await this.request(`/agents/${encodeURIComponent(agentId)}`, { method: 'PUT', body: JSON.stringify(spec) });
+  }
+
+  async deleteAgent(agentId: string): Promise<void> {
+    await this.request(`/agents/${encodeURIComponent(agentId)}`, { method: 'DELETE' });
+  }
+
+  /** Eve DUI-F2: the directory the studio serves (`.lousho/` lives under it). */
+  async workspace(): Promise<{ baseDir: string }> {
+    return this.request('/workspace', { method: 'GET' });
+  }
+
   async run(agentId: string, input: string, spec: AgentSpec): Promise<AgentRunStatusPayload> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/run`, {
       method: 'POST',
@@ -135,10 +165,12 @@ class RuntimeClient {
   }
 
   /** P1: sends a chat message - continues the agent's conversation (or starts one), replying over the WS `subscribe()` stream as `{type:'chat'}`. */
-  async sendMessage(agentId: string, message: string): Promise<AgentRunStatusPayload> {
+  async sendMessage(agentId: string, message: string, spec?: AgentSpec): Promise<AgentRunStatusPayload> {
+    // Eve DUI-F7: send the canvas's current spec along, like run() does, so
+    // chat never runs a stale (or missing) saved spec.
     return this.request(`/agents/${encodeURIComponent(agentId)}/message`, {
       method: 'POST',
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, spec }),
     });
   }
 

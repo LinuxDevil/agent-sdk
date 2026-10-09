@@ -27,9 +27,9 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
-    // jsdom throws for `window.localStorage` on an opaque (about:blank)
-    // origin, which is the environment's default when no url is given -
-    // LocalStorageAgentStore's tests need a real http(s) origin.
+    // jsdom throws for `window.localStorage`/`sessionStorage` on an opaque
+    // (about:blank) origin, which is the environment's default when no url
+    // is given - the studio token and draft cache need a real http(s) origin.
     environmentOptions: {
       jsdom: { url: 'http://localhost' },
     },

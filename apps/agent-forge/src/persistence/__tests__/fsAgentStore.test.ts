@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentSpec } from '@lousho/build-ai-agent';
 import { createFsAgentStore } from '../fsAgentStore';
 
@@ -53,5 +53,16 @@ describe('createFsAgentStore', () => {
     await store.save('ops-pipeline', spec);
     await store.remove('ops-pipeline');
     expect(await store.load('ops-pipeline')).toBeUndefined();
+  });
+
+  it('skips an unreadable file or an invalid id instead of failing the whole list (Eve DUI-F2)', async () => {
+    const store = createFsAgentStore(tmpDir);
+    await store.save('good', spec);
+    const dir = path.join(tmpDir, '.lousho', 'agents');
+    fs.writeFileSync(path.join(dir, 'broken.yaml'), 'name: [unclosed', 'utf8');
+    fs.writeFileSync(path.join(dir, 'My Agent.yaml'), 'name: x\nprompt: y\nprovider: { type: mock, model: m }\n', 'utf8');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect((await store.list()).map((e) => e.id)).toEqual(['good']);
+    warn.mockRestore();
   });
 });

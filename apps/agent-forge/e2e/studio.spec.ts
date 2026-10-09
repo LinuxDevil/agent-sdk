@@ -19,9 +19,8 @@ import { test, expect } from '@playwright/test';
  * file's doc comment; none of the core SDK's spec-resolvable built-in
  * tools set `needsApproval`, the same reason
  * `server/__tests__/approvalFlow.test.ts` has to construct a
- * `ToolDescriptor` by hand instead) -> click Run once with the default
- * "Run the agent." input (which doesn't mention the tool, so it just
- * completes normally - see below for why this step exists) -> send a chat
+ * `ToolDescriptor` by hand instead) -> check the agent is saved in the
+ * server workspace -> send a chat
  * message that mentions the tool (the mock provider's tool-call heuristic:
  * it calls any registered tool whose name appears in the last user message
  * - see `src/providers/mock.ts`) -> the run pauses awaiting approval ->
@@ -29,17 +28,10 @@ import { test, expect } from '@playwright/test';
  * (`ApprovalCard`/`ChatPanel.tsx`, the same component and endpoint the
  * epic brief calls for) -> the run resumes and completes.
  *
- * The graph editor's own "Save" button (`Topbar.tsx`) only persists to the
- * BROWSER's `LocalStorageAgentStore` (`src/state/AppState.tsx`'s `store`) -
- * it never PUTs to the server. `POST /agents/:id/run` (the "Run" button)
- * DOES send its current in-memory spec along in the request body, and
- * `RunManager.launch()` persists that spec server-side as a side effect
- * (`server/runRegistry.ts`) before executing it - which is what
- * `POST /agents/:id/message` (Chat) needs, since IT sends no spec at all
- * and falls back to loading whatever was last saved server-side
- * (`runtimeClient.ts`'s `sendMessage()`). So this test clicks Run once,
- * purely to get the edited spec persisted server-side, before switching to
- * Chat to actually trigger the approval gate.
+ * Agents live in the server workspace (`HttpAgentStore` over `PUT /agents`,
+ * Eve DUI-F2), and Chat sends the canvas's current spec with each message
+ * (Eve DUI-F7) - so this test chats on the freshly created agent straight
+ * away, with no Run first.
  */
 test('create an agent, hit an approval gate via chat, approve it, and complete the run', async ({ page }) => {
   const agentId = `e2e-approval-agent-${Date.now()}`;
@@ -66,12 +58,18 @@ test('create an agent, hit an approval gate via chat, approve it, and complete t
   await toolNameInput.fill('demo-approval');
   await expect(toolNameInput).toHaveValue('demo-approval');
 
-  // Run once (see the file-level doc comment above for why) to persist
-  // this edited spec server-side, and wait for it to actually finish.
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeDisabled({ timeout: 15_000 });
+  // Eve DUI-F2: the new agent is a file in the server workspace, not a
+  // browser-only entry.
+  await expect
+    .poll(async () => {
+      const res = await page.request.get('/agents', { headers: { 'x-lousho-studio-token': 'e2e-studio-token' } });
+      return ((await res.json()) as { id: string }[]).map((a) => a.id);
+    })
+    .toContain(agentId);
 
-  // --- Chat: send a message mentioning the tool, hitting the approval gate ---
+  // --- Chat (no Run first - Eve DUI-F7: chat on a new agent works, and
+  // sends the canvas's current spec): send a message mentioning the tool,
+  // hitting the approval gate --- send a message mentioning the tool, hitting the approval gate ---
   const chatInput = page.locator('.chat-input');
   await expect(chatInput).toBeVisible();
   await chatInput.fill('Please call demo-approval to look something up for me.');
