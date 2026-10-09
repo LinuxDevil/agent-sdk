@@ -48,20 +48,37 @@ interface Resolved {
 /** Model ids, per provider, of the families known to accept reasoning options (bypassed by `force`). */
 const REASONING_MODELS: Record<string, RegExp> = {
   openai: /^(?!o1-(mini|preview))(o[1-9]|gpt-[5-9])(?!.*-chat)/,
-  anthropic: /^claude-(3-7|(sonnet|opus|haiku)-[4-9])/,
-  openrouter: /\/(o[1-9]|gpt-[5-9])|claude-(3[.-]7|(sonnet|opus|haiku)-[4-9])|deepseek-r1|gemini-(2\.5|[3-9])|grok-[3-9]|qwen3|:thinking$/,
+  anthropic: /^claude-(3-7|(sonnet|opus|haiku|fable)-[4-9])/,
+  openrouter: /\/(o[1-9]|gpt-[5-9])|claude-(3[.-]7|(sonnet|opus|haiku|fable)-[4-9])|deepseek-(r1|v3[.-][1-9])|gpt-oss|gemini-(2\.5|[3-9])|grok-[3-9]|qwen3|:thinking$/,
   ollama: /deepseek-r1|qwen3|gpt-oss|magistral/,
 };
 
 /** Anthropic thinking budget per effort, in tokens (1024 is Anthropic's minimum). */
 const THINKING_BUDGETS: Record<Effort, number> = { minimal: 1024, low: 2048, medium: 8192, high: 24576 };
 
+const warnedNotSent = new Set<string>();
+
+/** F10: warns (once per provider and model) that `reasoning` is set but is not sent, so it is not dropped silently. */
+function warnNotSent(provider: string, modelId: string): void {
+  const key = `${provider}/${modelId}`;
+  if (warnedNotSent.has(key)) return;
+  warnedNotSent.add(key);
+  console.warn(
+    `[lousho] \`reasoning\` is set but is not sent to ${provider} model '${modelId}': it is not in the known reasoning families. ` +
+      "If the model does reason, pass { effort, force: true }. See docs/reasoning.md#which-models-get-it."
+  );
+}
+
 /** The settings to send to `provider`'s `modelId`, or `undefined` when nothing is sent. */
 function resolveReasoning(provider: string, modelId: string, option: ReasoningOption | undefined): Resolved | undefined {
   if (option === undefined) return undefined;
   const { effort = 'medium', budgetTokens, summary, force } = typeof option === 'string' ? { effort: option } : option;
   const known = REASONING_MODELS[provider];
-  if (effort === 'none' || !known || !(force || known.test(modelId))) return undefined;
+  if (effort === 'none') return undefined;
+  if (!known || !(force || known.test(modelId))) {
+    warnNotSent(provider, modelId);
+    return undefined;
+  }
   return { effort, budgetTokens, summary };
 }
 

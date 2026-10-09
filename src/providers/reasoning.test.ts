@@ -23,6 +23,28 @@ type V7Options = Parameters<MockLanguageModelV4['doGenerate']>[0];
 type V7Result = Awaited<ReturnType<MockLanguageModelV4['doGenerate']>>;
 type V4Options = Parameters<MockLanguageModelV1['doGenerate']>[0];
 
+describe('reasoning that is set but not sent (Eve PROV-F10)', () => {
+  it('sends it to Fable, gpt-oss and DeepSeek V3.x on OpenRouter and to Fable on Anthropic', () => {
+    for (const model of ['anthropic/claude-fable-5.1', 'openai/gpt-oss-120b', 'deepseek/deepseek-v3.1-terminus']) {
+      expect(openRouterReasoning(model, 'low')).toEqual({ reasoning: { effort: 'low' } });
+    }
+    expect(reasoningProviderOptions('anthropic', 'claude-fable-5-1', 'low')).toEqual({ anthropic: { thinking: { type: 'enabled', budgetTokens: 2048 } } });
+  });
+
+  it('warns once per model when it is set but not sent, and not when it is sent or off', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    expect(reasoningProviderOptions('anthropic', 'claude-unlisted-1', 'high')).toBeUndefined();
+    expect(reasoningProviderOptions('anthropic', 'claude-unlisted-1', 'high')).toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0][0]).toContain("claude-unlisted-1");
+    reasoningProviderOptions('anthropic', 'claude-unlisted-2', 'none');
+    reasoningProviderOptions('anthropic', 'claude-unlisted-2', undefined);
+    reasoningProviderOptions('anthropic', 'claude-unlisted-2', { effort: 'low', force: true });
+    reasoningProviderOptions('anthropic', 'claude-sonnet-4-5', 'low');
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();

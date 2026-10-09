@@ -70,11 +70,12 @@ that does not reason never gets an unknown-option error:
 | Provider | Model ids |
 | --- | --- |
 | OpenAI | `o1` and later o-series (not `o1-mini` / `o1-preview`), `gpt-5` and later (not the `-chat` models) |
-| Anthropic | `claude-3-7-*`, `claude-sonnet-4*`, `claude-opus-4*`, `claude-haiku-4*` and later |
-| OpenRouter | `*/o1`..., `*/gpt-5`..., Claude 3.7 / 4+, `deepseek-r1`, `gemini-2.5`+, `grok-3`+, `qwen3`, `:thinking` variants |
+| Anthropic | `claude-3-7-*`, `claude-sonnet-4*`, `claude-opus-4*`, `claude-haiku-4*`, `claude-fable-*` and later |
+| OpenRouter | `*/o1`..., `*/gpt-5`..., Claude 3.7 / 4+ (including Fable), `deepseek-r1`, `deepseek-v3.1`+, `gpt-oss`, `gemini-2.5`+, `grok-3`+, `qwen3`, `:thinking` variants |
 | Ollama | `deepseek-r1`, `qwen3`, `gpt-oss`, `magistral` |
 
 For any other model id (a fine-tune, a new family) pass `{ effort, force: true }`.
+When `reasoning` is set and a model is not sent it, a warning is logged once per provider and model.
 
 ## Events and results
 
