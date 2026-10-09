@@ -22,7 +22,7 @@ import type { OAuthTokenStore } from '../oauth/types';
 import { signInRequest } from '../oauth/signIn';
 import { forkSession } from './fork';
 import type { CallUsage, RunUsage, StepUsage } from '../models/usage';
-import { mergeDelegatedUsage, recordStepUsage } from './runUsage';
+import { attachRunUsage, mergeDelegatedUsage, recordStepUsage } from './runUsage';
 import { TraceExporter, withSpan } from './tracing';
 import {
   agentRunSpanInit,
@@ -843,6 +843,23 @@ export class AgentExecutor {
     assertHostedToolsSupported(options.hostedTools, agent, options.provider);
 
     const state = await loadRunState(options);
+    try {
+      return await this.runLoadedAgentLoop(options, state, tools, agentSpanId, budget);
+    } catch (error) {
+      // Eve MA-F1: a lead that ran this as a sub-agent still counts what it spent before failing.
+      attachRunUsage(error, state.usage);
+      throw error;
+    }
+  }
+
+  /** runAgentLoop() once the run's state is loaded. */
+  private static async runLoadedAgentLoop(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    tools: ToolDefinition[],
+    agentSpanId: string,
+    budget?: RunBudget
+  ): Promise<ExecutionResult> {
     // N10b: the run's principal, as loaded (an unfinished checkpoint's wins), frozen once. `options` is
     // this run's own copy (extendRunOptions() made it), and the scope every tool call hands on.
     options.principal = state.principal;
