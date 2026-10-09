@@ -21,7 +21,8 @@
  * safe across processes (see `FileApprovalStore`).
  */
 
-import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import { readFileWithRetry, renameWithRetry } from './fsRetry';
 import { dirname, join, resolve } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import type { ApprovalStore, ExecutionSnapshot, PendingApproval, ResolvedApproval } from '../execution/ApprovalGate';
@@ -78,7 +79,7 @@ function isMissing(error: unknown): boolean {
 /** `undefined` when `file` does not exist. */
 async function readText(file: string): Promise<string | undefined> {
   try {
-    return await readFile(file, 'utf8');
+    return await readFileWithRetry(file);
   } catch (error) {
     if (isMissing(error)) return undefined;
     throw error;
@@ -105,7 +106,7 @@ async function writeAtomic(file: string, value: unknown): Promise<void> {
       await mkdir(dirname(file), { recursive: true });
       await writeFile(temp, content, 'utf8');
     }
-    await rename(temp, file);
+    await renameWithRetry(temp, file);
   } catch (error) {
     await rm(temp, { force: true });
     throw error;

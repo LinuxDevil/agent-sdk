@@ -278,7 +278,11 @@ Each one is an `AgentStore` part: pass them together as
 `fileStore(dir)`, `SqliteStore` and `KVStore` are ready-made `AgentStore`s. For
 plain files, `fileStore(dir)` writes one JSON file per session, checkpoint and
 pending approval under `dir`, each written to a temp file and renamed into
-place, with no lock files:
+place, with no lock files. On Windows a rename over, or a read of, a file that
+another writer or reader has open fails for a moment with `EPERM`, `EACCES` or
+`EBUSY`; `fileStore()` and `FileSessionStore` retry it with a short backoff (about
+1.3 s in all) and then fail with `LOUSHO_STORAGE_FAILED`. Concurrent saves to one
+file still end with one of them (the last rename wins):
 
 ```ts
 import { createAgent, fileStore } from '@lousho/build-ai-agent';
