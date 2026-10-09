@@ -140,9 +140,12 @@ interface Checkpoint {
     approvalId?: string;
     // Warning: (ae-forgotten-export) The symbol "ApprovalKind" needs to be exported by the entry point kv.d.ts
     approvalKind?: ApprovalKind;
+    attempts?: number;
     businessState?: unknown;
     // (undocumented)
     finishReason?: string;
+    // Warning: (ae-forgotten-export) The symbol "CheckpointError" needs to be exported by the entry point kv.d.ts
+    lastError?: CheckpointError;
     // Warning: (ae-forgotten-export) The symbol "Message" needs to be exported by the entry point kv.d.ts
     //
     // (undocumented)
@@ -171,6 +174,16 @@ export const CHECKPOINT_KV_BINDING = "AGENT_CHECKPOINTS";
 // @public
 interface CheckpointDeleteOptions {
     keepHistory?: boolean;
+}
+
+// @public
+interface CheckpointError {
+    at: string;
+    category?: string;
+    code?: string;
+    // (undocumented)
+    message: string;
+    retryable: boolean;
 }
 
 // @public

@@ -887,9 +887,12 @@ interface Checkpoint {
     agentId: string;
     approvalId?: string;
     approvalKind?: ApprovalKind;
+    attempts?: number;
     businessState?: unknown;
     // (undocumented)
     finishReason?: string;
+    // Warning: (ae-forgotten-export) The symbol "CheckpointError" needs to be exported by the entry point worker.d.ts
+    lastError?: CheckpointError;
     // (undocumented)
     messages: Message[];
     metadata?: Record<string, unknown>;
@@ -915,6 +918,16 @@ export const CHECKPOINT_KV_BINDING = "AGENT_CHECKPOINTS";
 // @public
 interface CheckpointDeleteOptions {
     keepHistory?: boolean;
+}
+
+// @public
+interface CheckpointError {
+    at: string;
+    category?: string;
+    code?: string;
+    // (undocumented)
+    message: string;
+    retryable: boolean;
 }
 
 // @public
@@ -1477,6 +1490,7 @@ const ERROR_CODES: {
     readonly LOUSHO_SESSION_ID_INVALID: "Use 1-128 characters from A-Z, a-z, 0-9, '_' and '-', or omit the id.";
     readonly LOUSHO_SESSION_BUSY: "Wait for the running turn to finish (await its send(), or abort it), then call again.";
     readonly LOUSHO_SESSION_TURN_PENDING: "Finish the interrupted turn with session.resume(), or drop it with session.discardPending(), then call again.";
+    readonly LOUSHO_SESSION_TURN_FAILED: "Drop the failed turn with session.discardPending() and send again, or fix the cause and retry it with session.resume().";
     readonly LOUSHO_SESSION_FILE_CORRUPT: "Restore or delete the session file named in the message.";
     readonly LOUSHO_SESSION_STREAM_UNSUPPORTED: "Create the session with agent.session(), which can stream, or call send() instead.";
     readonly LOUSHO_SESSION_STEP_NOT_FOUND: "Pass a fromStep in the range the message lists (see session.history()); 0 keeps nothing.";

@@ -72,6 +72,7 @@ export const ERROR_CODES = {
   LOUSHO_SESSION_ID_INVALID: "Use 1-128 characters from A-Z, a-z, 0-9, '_' and '-', or omit the id.",
   LOUSHO_SESSION_BUSY: 'Wait for the running turn to finish (await its send(), or abort it), then call again.',
   LOUSHO_SESSION_TURN_PENDING: 'Finish the interrupted turn with session.resume(), or drop it with session.discardPending(), then call again.',
+  LOUSHO_SESSION_TURN_FAILED: "Drop the failed turn with session.discardPending() and send again, or fix the cause and retry it with session.resume().",
   LOUSHO_SESSION_FILE_CORRUPT: 'Restore or delete the session file named in the message.',
   LOUSHO_SESSION_STREAM_UNSUPPORTED: 'Create the session with agent.session(), which can stream, or call send() instead.',
   LOUSHO_SESSION_STEP_NOT_FOUND: 'Pass a fromStep in the range the message lists (see session.history()); 0 keeps nothing.',

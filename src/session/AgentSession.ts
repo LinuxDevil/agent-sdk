@@ -11,9 +11,9 @@ import { toMessages, type AgentInput } from '../providers/content';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import { startAgentRun, type AgentRun } from '../execution/agentRun';
 import { InputQueue } from '../execution/inputQueue';
-import { getCheckpointHistory, type Checkpoint, type CheckpointStore } from '../execution/checkpoint';
+import { getCheckpointHistory, type Checkpoint, type CheckpointError, type CheckpointStore } from '../execution/checkpoint';
 import type { ApprovalKind } from '../execution/ApprovalGate';
-import { ConfigurationError, SDKError, SessionAwaitingApprovalError } from '../execution/errors';
+import { CompactedLLMProviderError, ConfigurationError, SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 import { streamSessionTurn } from './sessionStream';
 import { MemorySessionStore, assertSessionId, encodeBytes, type SessionStore } from './sessionStore';
 import { addSpent, runSpent, sessionSpent, type BudgetSpent, type RunLimits, type SessionBudget } from '../execution/budget';
@@ -291,6 +291,27 @@ function notRun(message: Message): boolean {
 }
 
 /**
+ * Eve DUR-F11: what a failed attempt at a checkpointed turn records. Only a provider error known not to go away is
+ * not retryable: a context-length or auth failure, or another 4xx response (not 408 / 409 / 429). A crash, a network
+ * error, a 5xx or an unclassified failure stays retryable, so the next `send()` resumes the turn as before.
+ */
+function checkpointError(error: unknown): CheckpointError {
+  const compacted = error instanceof CompactedLLMProviderError ? error.compacted : undefined;
+  const code = error instanceof SDKError ? error.code : undefined;
+  const cause = error instanceof Error ? (error.cause as { status?: unknown; statusCode?: unknown } | undefined) : undefined;
+  const status = Number(compacted?.statusCode ?? cause?.statusCode ?? cause?.status);
+  const clientError = status >= 400 && status < 500 && ![408, 409, 429].includes(status);
+  const permanent = compacted !== undefined && !compacted.retryable && (compacted.category === 'context-length-exceeded' || compacted.category === 'auth-failure' || clientError);
+  return {
+    message: error instanceof Error ? error.message : String(error),
+    ...(code && { code }),
+    ...(compacted && { category: compacted.category }),
+    retryable: !permanent,
+    at: new Date().toISOString(),
+  };
+}
+
+/**
  * B4: what an aborted turn keeps: its `messages` up to the last result of a
  * tool call that ran in it (with the rest of that call's batch, so every call
  * is answered), or `undefined` when no tool call of the turn finished. A
@@ -495,7 +516,7 @@ export class AgentSession<TObject = unknown> {
             const call = { input, metadata: options.metadata, principal: options.principal };
             const run = streamRun([...this.transcript, ...toMessages(input)], signal, this.turnOptions(inputs), call);
             started(run);
-            return this.record(await run.result);
+            return this.record(await this.attempt(() => run.result));
           },
           inputs,
           (joined) => started(startAgentRun(() => joined))
@@ -534,7 +555,7 @@ export class AgentSession<TObject = unknown> {
    * ```
    */
   resume(options: { signal?: AbortSignal } = {}): Promise<ExecutionResult | null> {
-    return this.enqueue(() => this.resumePending(options.signal));
+    return this.enqueue(() => this.resumePending(options.signal, true));
   }
 
   /** Drops a pending turn without finishing it; the transcript stays as it was before that turn. */
@@ -773,7 +794,28 @@ export class AgentSession<TObject = unknown> {
 
   private async turn(call: SessionTurnCall, inputs: InputQueue, signal?: AbortSignal): Promise<ExecutionResult> {
     await this.beforeTurn(signal);
-    return this.record(await this.run([...this.transcript, ...toMessages(call.input)], signal, this.turnOptions(inputs), call));
+    return this.record(await this.attempt(() => this.run([...this.transcript, ...toMessages(call.input)], signal, this.turnOptions(inputs), call)));
+  }
+
+  /**
+   * Eve DUR-F11: runs a turn's `run`; when it throws in a checkpointed session, the turn's checkpoint records the
+   * error (`lastError`) and the failed attempts (`attempts`), so a turn that failed for good is not replayed by
+   * every later `send()` (see `resumePending`).
+   */
+  private async attempt(run: () => Promise<ExecutionResult>): Promise<ExecutionResult> {
+    try {
+      return await run();
+    } catch (error) {
+      await this.recordFailure(error).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async recordFailure(error: unknown): Promise<void> {
+    const turn = this.turnCheckpoint();
+    const checkpoint = turn && (await turn.checkpointStore.load(turn.sessionId));
+    if (!turn || !checkpoint || (checkpoint.status ?? 'in-progress') !== 'in-progress') return;
+    await turn.checkpointStore.save(turn.sessionId, { ...checkpoint, lastError: checkpointError(error), attempts: (checkpoint.attempts ?? 0) + 1 });
   }
 
   /**
@@ -871,14 +913,24 @@ export class AgentSession<TObject = unknown> {
     return null;
   }
 
-  private async resumePending(signal?: AbortSignal): Promise<ExecutionResult | null> {
+  /** `retryFailed` (an explicit `resume()`): run a turn again whose last attempt failed with an error retrying cannot fix. */
+  private async resumePending(signal?: AbortSignal, retryFailed = false): Promise<ExecutionResult | null> {
     const pending = await this.pendingCheckpoint();
     if (!pending) return null;
     if (pending.status === 'awaiting-approval') {
       this.foundPaused(pending);
       throw this.awaitingApproval(pending);
     }
-    return this.record(await this.run([], signal, this.turnOptions()));
+    const failed = pending.lastError;
+    if (failed && !failed.retryable && !retryFailed) {
+      throw new SDKError(
+        `Session '${this.id}' has a turn that failed ${pending.attempts ?? 1} time(s) with an error retrying cannot fix ` +
+          `(${failed.code ? `${failed.code}: ` : ''}${failed.message}). Call session.discardPending() to drop that turn and send again, ` +
+          'or session.resume() to try it once more after fixing the cause.',
+        'LOUSHO_SESSION_TURN_FAILED'
+      );
+    }
+    return this.record(await this.attempt(() => this.run([], signal, this.turnOptions())));
   }
 
   /**

@@ -29,6 +29,19 @@ export const RUN_CONFIG_KEY = 'loushoRunConfig';
  */
 export type CheckpointStatus = 'in-progress' | 'awaiting-approval' | 'finished';
 
+/** Eve DUR-F11: a failed attempt at a checkpointed session turn (`Checkpoint.lastError`). */
+export interface CheckpointError {
+  message: string;
+  /** The error's `LOUSHO_*` code, when it has one. */
+  code?: string;
+  /** For a provider error: its compacted category (`'context-length-exceeded'`, `'rate-limit'`, ...). */
+  category?: string;
+  /** False for a provider error that will not go away (context length, auth, another 4xx); true for a crash, a network error, a 5xx or an unclassified failure. */
+  retryable: boolean;
+  /** When the attempt failed (ISO 8601). */
+  at: string;
+}
+
 /**
  * A snapshot of an agent run, saved after each model response, after each
  * tool result and when the run pauses or finishes, so execution can resume
@@ -92,6 +105,15 @@ export interface Checkpoint {
   status?: CheckpointStatus;
   /** LOU-U8: with `status: 'awaiting-approval'`, the id of the pending approval. */
   approvalId?: string;
+  /**
+   * Eve DUR-F11: why the last attempt at a session's turn failed, written by
+   * the session when its run throws. A provider error that retrying cannot fix
+   * (`retryable: false`, e.g. a 400) makes `send()` fail with
+   * `LOUSHO_SESSION_TURN_FAILED` instead of replaying the turn.
+   */
+  lastError?: CheckpointError;
+  /** Eve DUR-F11: how many attempts at the session's turn failed so far. */
+  attempts?: number;
   /**
    * M10a: with `status: 'awaiting-approval'`, `'question'` when the pending
    * approval is an `ask_question` call (`PendingApproval.kind`), so a
