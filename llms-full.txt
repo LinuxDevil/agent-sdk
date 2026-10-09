@@ -1027,7 +1027,8 @@ run once when a run starts, before the first model call, and again on every
 session turn. Everything else applies to what they return: `fallbackModels`
 and `retry`, `projectInstructions`, memory, skills, sub-agents, MCP tools,
 permissions, approvals and guardrails. A dynamic agent used as a sub-agent
-resolves with the task prompt as `input`.
+resolves with the task prompt as `input` and the lead run's `sessionId`,
+`metadata` and `principal`.
 
 ```ts
 import { createAgent, defineTool } from '@lousho/build-ai-agent';
@@ -6112,6 +6113,23 @@ with code `LOUSHO_CONFIG_INVALID` whose `field` names the key, e.g.
 `modelSettings.temperature`. A provider with a narrower range (Anthropic's
 `temperature` is 0 to 1) still rejects a value outside it.
 
+### Per-call options
+
+Besides `modelSettings`, a `send()` or `stream()` call can set its own
+`maxSteps` (instead of the agent's; a whole number of at least 1, checked like
+`createAgent`'s) and `instructions`, which are appended to the agent's
+instructions for that run:
+
+```ts
+await agent.send('Summarize the ticket.', { maxSteps: 2, instructions: 'Answer in French.' });
+```
+
+The appended `instructions` go with every model call of the run (a handoff
+target's too) but are not written to the transcript, so a later call with the
+same `sessionId` runs without them unless it passes them again. A run continued
+by `agent.approvals.resolve()` or `agent.resume()` uses the agent's `maxSteps`
+and instructions.
+
 To share options between agents, type them as `CreateAgentBase` and spread
 them into `createAgent()`. Do not use `Partial<CreateAgentConfig>`: that type
 keeps `model` / `provider` and `instructions` / `prompt` mutually exclusive,
@@ -6568,7 +6586,22 @@ node dist/server.js --port=8080 --host=0.0.0.0
 
 Like `lousho dev`, it binds to `127.0.0.1` unless you opt in to another
 interface with `--host=<h>` (or `HOST=<h>`); the port comes from `--port`,
-`PORT`, or defaults to `3000`. SIGINT/SIGTERM close the agent before exiting.
+`PORT`, or defaults to `3000`.
+
+On SIGINT or SIGTERM (a `docker stop`, a rolling deploy) the server drains
+before it exits:
+1. It stops accepting connections.
+2. It stops the schedules, so nothing fires again.
+3. It waits for the requests and turns already running, including schedule
+   fires and turns whose client disconnected. The wait is capped at 10 seconds,
+   or `LOUSHO_SHUTDOWN_TIMEOUT_MS`.
+4. It closes the connections still open and calls `agent.close()`.
+
+Keep the platform's grace period (Docker's `--stop-timeout`, Kubernetes'
+`terminationGracePeriodSeconds`) longer than that wait. When you serve
+`createDeployedServer(agent, options)` yourself, it returns the same drain as
+`shutdown({ timeoutMs? })`. Call `agent.close()` after it.
+
 Provider credentials are read from the same
 environment variables as everywhere else (`OPENAI_API_KEY`, ...).
 
@@ -8028,7 +8061,7 @@ file-based store), and create a new store after closing one.
 
 ### LOUSHO_STORAGE_BUSY
 
-**Means:** a `SqliteStore` write could not get the database's write lock because another connection or process (a second replica, a backup, a long transaction) holds it. The driver waits only briefly (50 ms) so the event loop is not frozen; the original driver error is the `cause`.
+**Means:** a `SqliteStore` write could not get the database's write lock because another connection or process (a second replica, a backup, a long transaction) holds it. The driver waits only briefly (50 ms) so the event loop is not frozen; the stores' transactional writes (checkpoint and approval saves, `resolve()`, `saveIf()`, OAuth sign-in claims, SQLite memory updates) then retry with backoff for about 5 seconds before they give up with this error. `prune()` does not retry. The original driver error is the `cause`.
 
 **Fix:** retry the call. If it keeps happening, find what holds the lock for long.
 
@@ -8979,6 +9012,41 @@ reported) of every `llmCall` in the run, including a failed one.
 A step without an `id` gets one that is unique within the run (`step-1`,
 `step-2`, ... in the order the steps start), so `step-start` and
 `step-complete` events can be paired by `stepId`.
+
+## Retries and time limits
+
+Any node can have `retry` and `timeoutMs`. That includes `llmCall`,
+`toolCall`, `sequence`, `parallel` and `forEach`.
+
+- `retry: { maxAttempts, backoffMs? }` runs a failing node again, up to
+  `maxAttempts` attempts in all. It waits `backoffMs * 2^(attempt - 1)` ms
+  before each retry (default `0`). Each failed attempt that is retried emits a
+  `step-retry` event with `{ attempt, maxAttempts, delayMs }` and the
+  attempt's `error`. Only the last failure emits `step-error`. A cancelled run
+  (`signal`) is not retried.
+- `timeoutMs` fails an attempt that runs longer with `LOUSHO_OPERATION_TIMEOUT`
+  (a `TimeoutError`). The attempt's model request or tool call gets an aborted
+  signal. A timed-out attempt is retried like any other failure. A tool that
+  ignores `ctx.abortSignal` keeps running in the background.
+
+Invalid values (`maxAttempts` < 1 or not an integer, a negative `backoffMs`,
+a `timeoutMs` <= 0) fail the step with `LOUSHO_FLOW_INVALID`.
+
+```ts
+import type { EditorStep } from '@lousho/build-ai-agent/flows';
+
+const fetchInvoice: EditorStep = {
+  type: 'toolCall',
+  tool: 'fetch_invoice',
+  arguments: { id: '{{invoiceId}}' },
+  outputVariable: 'invoice',
+  retry: { maxAttempts: 3, backoffMs: 500 },
+  timeoutMs: 10_000,
+};
+```
+
+A retried container runs its children again. The exception is a durable run
+(below): there, children that completed in an earlier attempt are skipped.
 
 ## Durable runs
 
@@ -11130,6 +11198,33 @@ registerModel({
   outputCostPerMTok: 1.2,
 });
 ```
+
+## Prompt caching
+
+Anthropic caches a request prefix only up to a `cache_control` breakpoint that the request marks. OpenAI, and most other providers, cache long prefixes on their own. With `promptCaching: 'auto'` (the default), the built-in `anthropic` provider and the `openrouter` provider mark breakpoints for Claude models (`anthropic/...`, `openrouter/anthropic/...`). They mark three of the four that Anthropic allows:
+
+- the system prompt (the last system message),
+- the last tool definition,
+- the last user turn. With the `anthropic` provider, a trailing tool-result turn is marked too, so each step of a tool loop reads the conversation so far from the cache.
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ model: 'openrouter/anthropic/claude-haiku-4.5', instructions: longPolicy }); // promptCaching: 'auto'
+const first = await agent.send('Where is order 1042?'); // writes the prefix: usage.cacheWriteTokens
+const second = await agent.send('And order 1043?'); // reads it: usage.cachedInputTokens, ~10% of the input price
+createAgent({ model: 'anthropic/claude-haiku-4-5', promptCaching: false }); // no breakpoints
+```
+
+A cache read costs 10% of the input price. A cache write costs 125% and lasts 5 minutes, so a prompt that is sent only once costs a little more with caching. Anthropic caches only prefixes above a minimum length (1,024 to 4,096 tokens, depending on the model), and shorter prompts are sent uncached. On the `anthropic` provider, tool and system breakpoints need `ai` 6 or 7 (`@ai-sdk/anthropic` 3 or 4). The `@ai-sdk/anthropic` 0.0.x peer pinned for `ai` 4 does not send them. A custom provider gets the setting as `GenerateOptions.promptCaching`.
+
+Measured through OpenRouter on `anthropic/claude-haiku-4.5`, with a 6,834-token prompt (system prompt and one tool):
+
+| Call | Input tokens | Cache read | Cache write | Cost |
+| --- | --- | --- | --- | --- |
+| `promptCaching: false` | 6,834 | - | - | $0.00686 |
+| `'auto'`, first call | 6,834 | - | 6,831 | $0.00857 |
+| `'auto'`, second call | 6,834 | 6,831 | - | $0.00071 |
 
 # Next.js and other Fetch-API frameworks
 
@@ -14311,13 +14406,24 @@ console.log((await second) === (await first)); // true: one turn, one result
 `send()` and `stream()` take a string, content parts (`[{ type: 'text', ... }, { type: 'image', ... }]`, one user message) or a `Message[]`; the stores keep the parts, see [Multimodal input](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md#multimodal-input).
 
 A `send()` that throws (a provider error, or a tool that throws a
-`PropagatingToolError`) or is aborted with `signal` leaves the transcript
-exactly as it was before that call, with one exception: an aborted `send()`
-keeps the turn up to the last tool call that ran (its user message, the
-assistant's tool calls and their results; calls of that batch that never
-started keep a "cancelled" result), so a side effect such as a refund is never
-missing from the transcript. An aborted `send()` resolves with
-`finishReason: 'aborted'`, as `agent.send()` does. The stored transcript never
+`PropagatingToolError`) leaves the transcript exactly as it was before that
+call. A `send()` aborted with `signal` (a Stop button) keeps what the user and
+the model already said, so `GET /chat/:id` and the next turn still have the
+context:
+
+- the user's message, once the model was called (a signal already aborted
+  before the first model call drops the turn whole);
+- the turn up to the last tool call that ran (the assistant's tool calls and
+  their results; calls of that batch that never started keep a "cancelled"
+  result), so a side effect such as a refund is never missing;
+- the reply the model had streamed when it was stopped, as an assistant
+  message with `metadata: { interrupted: true }` (only `stream()` streams; a
+  plain `send()` call has no partial reply).
+
+An aborted `send()` resolves with `finishReason: 'aborted'`, as `agent.send()`
+does. Its `usage` counts the stopped model call, estimated from the request
+and the streamed text when the provider reported none, so a session's
+`limits.maxCostUsd` is not undercounted. The stored transcript never
 contains an assistant tool-call turn without the matching tool results.
 
 A `send()` that pauses on a `needsApproval` tool resolves with
@@ -14357,9 +14463,10 @@ const { text } = await session.send('What is my name?');
   exactly as `send()` saves them, and only then is `run.done` delivered. When
   the `for await` loop ends, or `run.result` resolves, the transcript is
   complete. The events carry the `runId` of the returned handle.
-- An aborted run (`signal`, or breaking out of the loop early) or a failed one
-  leaves the transcript as it was before the call, like `send()` (an aborted
-  run keeps the tool calls that ran). A run that
+- A failed run leaves the transcript as it was before the call, like `send()`.
+  An aborted run (`signal`, or breaking out of the loop early) keeps the user's
+  message, the tool calls that ran and the reply streamed so far (marked
+  `metadata.interrupted`), like an aborted `send()`. A run that
   was already finished when the loop was left is saved. A failed run ends the
   stream with `error` and `run.done` (`finishReason: 'error'`), and
   `run.result` rejects. This includes a store that fails to load or save: the
@@ -14439,9 +14546,9 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   `SessionAwaitingApprovalError` (`LOUSHO_SESSION_AWAITING_APPROVAL`) too, and
   their `pending()` reports the pause. Decide the approval, or drop the turn with
   `agent.session({ id }).discardPending()`, to take new turns again.
-- An aborted turn is dropped (its checkpoint is deleted), as without a
-  checkpoint store, except for the tool calls that ran in it, which join the
-  transcript. `clear()` deletes a pending turn too, and the checkpoint
+- An aborted turn's checkpoint is deleted; what it kept (the user's message,
+  the tool calls that ran, the interrupted reply) joins the transcript, as
+  without a checkpoint store. `clear()` deletes a pending turn too, and the checkpoint
   history of every turn, so cleared turns are no longer forkable.
 
 ## Stores
@@ -15686,8 +15793,8 @@ With `subagents`, the lead agent gets:
    sub-agent (`- name: description`), plus a sentence saying that a sub-agent
    sees only the prompt it is given.
 2. ONE tool, `task`, with the input
-   `{ agent: <one of the names>, prompt: string, description: string, background?: boolean, taskId?: string, mode?: 'new' | 'resume' | 'fork' }`
-   (`description` is a 3-5 word label used in events and hooks; `taskId` and
+   `{ agent: <one of the names>, prompt: string, description?: string, background?: boolean, taskId?: string, mode?: 'new' | 'resume' | 'fork' }`
+   (`description` is an optional 3-5 word label used in events and hooks; `taskId` and
    `mode` continue an earlier task, see [Continuing a task](#continuing-a-task)).
 3. Three tools for background tasks: `agent_status`, `agent_await` and
    `agent_cancel` (see [Background sub-agents](#background-sub-agents)).
@@ -15816,6 +15923,12 @@ const lead = createAgent({
 For `AgentExecutor.execute()`, attach the same options to the `subagents`
 value with `withSubagentOptions(subagents, options)`, which returns it. On
 `createAgent()`, `subagentOptions` override options attached that way.
+
+A lead that never needs background tasks can leave them out with
+`subagentOptions: { background: false }`: the lead then gets only the `task`
+tool, without its `background` argument, and the prompt block does not mention
+background tasks. That saves the three tools' schemas and text (several hundred
+tokens) on every lead request.
 
 A background sub-agent inherits from the lead run like a synchronous one
 (hooks, tracing, event listeners, usage roll-up), and `maxSubagentDepth` applies the
@@ -16819,10 +16932,11 @@ loaded tool into a `LOUSHO_MCP_AUTH_REQUIRED` tool error, as without deferral.
 
 ## Prompt caching
 
-The tool list changes when tools load. Providers that cache the request prefix
-(Anthropic prompt caching, OpenAI's automatic caching) put tool definitions at
-the start of it, so a step that loads tools can miss the cache from that point.
-Loading happens a few times per run at most; if your runs reuse a long cached
+The tool list changes when tools load. OpenAI caches the request prefix
+automatically, and for Claude models the SDK marks Anthropic cache breakpoints
+([`promptCaching: 'auto'`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/models-and-cost.md#prompt-caching)). Both put tool
+definitions at the start of the prefix, so a step that loads tools misses the
+cache from that point and writes a new entry. Loading happens a few times per run at most. If your runs reuse a long cached
 prefix across many calls, compare the cost with `toolSearch: false`.
 
 # Tools

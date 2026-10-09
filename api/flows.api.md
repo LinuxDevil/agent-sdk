@@ -186,8 +186,6 @@ interface CheckpointError {
 // @public
 interface CheckpointHistoryEntry {
     // Warning: (ae-forgotten-export) The symbol "Checkpoint" needs to be exported by the entry point index.d.ts
-    //
-    // (undocumented)
     checkpoint: Checkpoint;
     savedAt: string;
     status: CheckpointStatus;
@@ -200,20 +198,31 @@ interface CheckpointHistoryOptions {
 }
 
 // @public
+interface CheckpointListEntry {
+    checkpoint: Checkpoint;
+    sessionId: string;
+    status: CheckpointStatus;
+}
+
+// @public
+interface CheckpointListOptions {
+    status?: CheckpointStatus | readonly CheckpointStatus[];
+}
+
+// @public
 type CheckpointStatus = 'in-progress' | 'awaiting-approval' | 'finished';
 
 // @public
 interface CheckpointStore {
     // Warning: (ae-forgotten-export) The symbol "CheckpointDeleteOptions" needs to be exported by the entry point index.d.ts
-    //
-    // (undocumented)
     delete(sessionId: string, options?: CheckpointDeleteOptions): Promise<void>;
     // Warning: (ae-forgotten-export) The symbol "CheckpointHistoryOptions" needs to be exported by the entry point index.d.ts
     // Warning: (ae-forgotten-export) The symbol "CheckpointHistoryEntry" needs to be exported by the entry point index.d.ts
     history?(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]>;
-    // (undocumented)
+    // Warning: (ae-forgotten-export) The symbol "CheckpointListOptions" needs to be exported by the entry point index.d.ts
+    // Warning: (ae-forgotten-export) The symbol "CheckpointListEntry" needs to be exported by the entry point index.d.ts
+    list?(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
     load(sessionId: string): Promise<Checkpoint | null>;
-    // (undocumented)
     save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
 }
 
@@ -295,7 +304,7 @@ export type EditorShapeStep = StepNode | SequenceNode | ParallelNode | OneOfNode
 export type EditorStep = EditorShapeStep | RuntimeStep;
 
 // @public
-export interface EndNode {
+export interface EndNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -317,7 +326,7 @@ export interface EvaluatorNode {
 }
 
 // @public
-export interface ExpressionEvaluatorNode {
+export interface ExpressionEvaluatorNode extends NodeRunOptions {
     // (undocumented)
     expression: string;
     // (undocumented)
@@ -553,6 +562,11 @@ export interface FlowExecutionEventDataMap {
     'step-complete': unknown;
     // (undocumented)
     'step-error': undefined;
+    'step-retry': {
+        attempt: number;
+        maxAttempts: number;
+        delayMs: number;
+    };
     // (undocumented)
     'step-start': undefined;
     // (undocumented)
@@ -591,7 +605,7 @@ export interface FlowExecutionEventOf<T extends FlowExecutionEventType> {
 }
 
 // @public
-export type FlowExecutionEventType = 'flow-start' | 'flow-complete' | 'flow-error' | 'step-start' | 'step-complete' | 'step-error' | 'variable-set' | 'llm-call' | 'llm-response' | 'tool-call' | 'tool-result' | 'condition-evaluated' | 'loop-iteration';
+export type FlowExecutionEventType = 'flow-start' | 'flow-complete' | 'flow-error' | 'step-start' | 'step-complete' | 'step-error' | 'step-retry' | 'variable-set' | 'llm-call' | 'llm-response' | 'tool-call' | 'tool-result' | 'condition-evaluated' | 'loop-iteration';
 
 // @public
 export type FlowExecutionMode = 'sync' | 'async';
@@ -653,7 +667,7 @@ export interface FlowToolSetting {
 }
 
 // @public
-export interface ForEachItemsNode {
+export interface ForEachItemsNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     indexVariable?: string;
@@ -792,7 +806,7 @@ export const INPUT_TYPE_LABELS: Record<FlowInputType, string>;
 export function isCreateAgentResult(value: unknown): boolean;
 
 // @public
-export interface LLMCallNode {
+export interface LLMCallNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -883,6 +897,15 @@ type NamedToolDescriptor = ToolDescriptor & {
 };
 
 // @public
+export interface NodeRunOptions {
+    retry?: {
+        maxAttempts: number;
+        backoffMs?: number;
+    };
+    timeoutMs?: number;
+}
+
+// @public
 type OAuthClientAuth = 'client_secret_post' | 'client_secret_basic';
 
 // Warning: (ae-forgotten-export) The symbol "OAuthProviderOptions" needs to be exported by the entry point index.d.ts
@@ -954,7 +977,7 @@ export interface OneOfOption {
 }
 
 // @public
-export interface OneOfOptionsNode {
+export interface OneOfOptionsNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -964,7 +987,7 @@ export interface OneOfOptionsNode {
 }
 
 // @public (undocumented)
-export interface ParallelNode {
+export interface ParallelNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
     // (undocumented)
@@ -1144,7 +1167,7 @@ interface ReasoningSettings {
 export function replaceVariablesInString(str: string, variables: Record<string, string>): string;
 
 // @public
-export interface ReturnNode {
+export interface ReturnNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -1220,7 +1243,7 @@ interface SchemaIssue {
 }
 
 // @public (undocumented)
-export interface SequenceNode {
+export interface SequenceNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
     // (undocumented)
@@ -1235,7 +1258,7 @@ interface ServedBy {
 }
 
 // @public
-export interface SetVariableNode {
+export interface SetVariableNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -1374,7 +1397,7 @@ interface TextContentPart {
 }
 
 // @public
-export interface ThrowNode {
+export interface ThrowNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -1403,7 +1426,7 @@ interface ToolCall {
 }
 
 // @public
-export interface ToolCallNode {
+export interface ToolCallNode extends NodeRunOptions {
     arguments?: Record<string, unknown>;
     // (undocumented)
     id?: string;
@@ -1565,11 +1588,11 @@ export function validateFlowInput(input: Record<string, unknown>, variables: Flo
 
 // Warnings were encountered during analysis:
 //
-// dist/index-Dy27pnXR.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-Dy27pnXR.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-Dy27pnXR.d.ts:1994:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
-// dist/index-Dy27pnXR.d.ts:2037:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
-// dist/index-Dy27pnXR.d.ts:2037:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
+// dist/index-Cv7ybp2f.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-Cv7ybp2f.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-Cv7ybp2f.d.ts:1994:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
+// dist/index-Cv7ybp2f.d.ts:2037:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
+// dist/index-Cv7ybp2f.d.ts:2037:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

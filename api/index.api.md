@@ -1913,8 +1913,10 @@ export interface EmbeddingProvider {
 // @public
 export function emptyRunUsage(): RunUsage;
 
+// Warning: (ae-forgotten-export) The symbol "NodeRunOptions" needs to be exported by the entry point index.d.ts
+//
 // @public
-interface EndNode {
+interface EndNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -2295,7 +2297,7 @@ export interface ExpectedCall {
 }
 
 // @public
-interface ExpressionEvaluatorNode {
+interface ExpressionEvaluatorNode extends NodeRunOptions {
     // (undocumented)
     expression: string;
     // (undocumented)
@@ -2496,7 +2498,7 @@ interface FlowToolSetting {
 }
 
 // @public
-interface ForEachItemsNode {
+interface ForEachItemsNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     indexVariable?: string;
@@ -3403,7 +3405,7 @@ export function listRemoteTools(client: McpClientLike, options?: {
 }): Promise<RawMcpTool[]>;
 
 // @public
-interface LLMCallNode {
+interface LLMCallNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -4174,6 +4176,15 @@ export function never(): false;
 export function newestFirst<T>(ring: readonly T[], options?: CheckpointHistoryOptions): T[];
 
 // @public
+interface NodeRunOptions {
+    retry?: {
+        maxAttempts: number;
+        backoffMs?: number;
+    };
+    timeoutMs?: number;
+}
+
+// @public
 export class NodeWorkspace implements Workspace {
     constructor(options: NodeWorkspaceOptions);
     chmod(path: string, mode: number): Promise<void>;
@@ -4375,7 +4386,7 @@ interface OneOfOption {
 }
 
 // @public
-interface OneOfOptionsNode {
+interface OneOfOptionsNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // Warning: (ae-forgotten-export) The symbol "OneOfOption" needs to be exported by the entry point index.d.ts
@@ -4524,7 +4535,7 @@ export interface OutputSpec<TSchema extends StandardSchemaV1 = StandardSchemaV1>
 }
 
 // @public (undocumented)
-interface ParallelNode {
+interface ParallelNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
     // (undocumented)
@@ -5263,7 +5274,7 @@ export interface RetryInfo {
 }
 
 // @public
-interface ReturnNode {
+interface ReturnNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -5638,7 +5649,7 @@ export interface SendOptions {
 }
 
 // @public (undocumented)
-interface SequenceNode {
+interface SequenceNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
     // (undocumented)
@@ -5834,7 +5845,7 @@ export type SessionTurnOptions = Partial<SessionTurnCheckpoint> & {
 export function setTokenEstimator(estimator?: TokenEstimator): void;
 
 // @public
-interface SetVariableNode {
+interface SetVariableNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -6476,7 +6487,7 @@ type TextSource = {
 };
 
 // @public
-interface ThrowNode {
+interface ThrowNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -6666,7 +6677,7 @@ export interface ToolCallHookResult {
 }
 
 // @public
-interface ToolCallNode {
+interface ToolCallNode extends NodeRunOptions {
     arguments?: Record<string, unknown>;
     // (undocumented)
     id?: string;
@@ -7304,8 +7315,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-Dy27pnXR.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-Dy27pnXR.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-Cv7ybp2f.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-Cv7ybp2f.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)

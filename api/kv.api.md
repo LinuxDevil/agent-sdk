@@ -293,8 +293,10 @@ type EditorShapeStep = StepNode | SequenceNode | ParallelNode | OneOfNode | ForE
 // @public
 type EditorStep = EditorShapeStep | RuntimeStep;
 
+// Warning: (ae-forgotten-export) The symbol "NodeRunOptions" needs to be exported by the entry point kv.d.ts
+//
 // @public
-interface EndNode {
+interface EndNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -340,7 +342,7 @@ interface ExecutionSnapshot {
 }
 
 // @public
-interface ExpressionEvaluatorNode {
+interface ExpressionEvaluatorNode extends NodeRunOptions {
     // (undocumented)
     expression: string;
     // (undocumented)
@@ -416,7 +418,7 @@ interface FlowToolSetting {
 }
 
 // @public
-interface ForEachItemsNode {
+interface ForEachItemsNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     indexVariable?: string;
@@ -543,7 +545,7 @@ export interface KVStoreOptions {
 }
 
 // @public
-interface LLMCallNode {
+interface LLMCallNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -637,6 +639,15 @@ interface ModelUsage {
 }
 
 // @public
+interface NodeRunOptions {
+    retry?: {
+        maxAttempts: number;
+        backoffMs?: number;
+    };
+    timeoutMs?: number;
+}
+
+// @public
 interface OAuthToken {
     // (undocumented)
     accessToken: string;
@@ -715,7 +726,7 @@ interface OneOfOption {
 }
 
 // @public
-interface OneOfOptionsNode {
+interface OneOfOptionsNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // Warning: (ae-forgotten-export) The symbol "OneOfOption" needs to be exported by the entry point kv.d.ts
@@ -727,7 +738,7 @@ interface OneOfOptionsNode {
 }
 
 // @public (undocumented)
-interface ParallelNode {
+interface ParallelNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
     // (undocumented)
@@ -827,7 +838,7 @@ interface ResolvedApproval {
 }
 
 // @public
-interface ReturnNode {
+interface ReturnNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -875,7 +886,7 @@ interface RunUsage {
 }
 
 // @public (undocumented)
-interface SequenceNode {
+interface SequenceNode extends NodeRunOptions {
     // (undocumented)
     steps: EditorStep[];
     // (undocumented)
@@ -891,7 +902,7 @@ interface SessionStore {
 }
 
 // @public
-interface SetVariableNode {
+interface SetVariableNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -953,7 +964,7 @@ interface TextContentPart {
 }
 
 // @public
-interface ThrowNode {
+interface ThrowNode extends NodeRunOptions {
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -988,7 +999,7 @@ interface ToolCall {
 }
 
 // @public
-interface ToolCallNode {
+interface ToolCallNode extends NodeRunOptions {
     arguments?: Record<string, unknown>;
     // (undocumented)
     id?: string;
