@@ -10,6 +10,7 @@ import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
 import type { AgentEvent } from './agentEvents';
+import { memoryStore } from '../storage/agentStore';
 
 const weather = z.object({ city: z.string(), tempC: z.number() });
 
@@ -644,5 +645,56 @@ describe('structured output cut off by maxTokens (Eve CORE-F12)', () => {
 
     expect(result.finishReason).toBe('output-invalid');
     expect(result.outputError?.kind).toBe('truncated');
+  });
+});
+
+describe('synthetic structured-output prompts stay request-only (Eve CORE-F3)', () => {
+  const isSynthetic = (content: unknown) => /^\[output-invalid\]|^You are out of steps/.test(String(content));
+  const lookup = defineTool({ name: 'lookup', description: 'l', input: z.object({}), execute: async () => 21 });
+
+  it('the repair prompt and the rejected reply are sent to the model but not kept in result.messages', async () => {
+    const model = mockModel(['not json', '{"city":"Paris","tempC":21}']);
+    const result = await createAgent({ provider: model, output: weather }).send('Weather in Paris?');
+
+    expect(model.calls[1].messages.at(-1)?.content).toMatch(/^\[output-invalid\]/);
+    expect(result.object).toEqual({ city: 'Paris', tempC: 21 });
+    expect(result.messages.filter((m) => m.role !== 'system').map((m) => [m.role, m.content])).toEqual([
+      ['user', 'Weather in Paris?'],
+      ['assistant', '{"city":"Paris","tempC":21}'],
+    ]);
+  });
+
+  it('the forced-answer prompt is not kept in result.messages', async () => {
+    const model = mockModel([{ toolCalls: [{ name: 'lookup' }] }, '{"city":"Paris","tempC":21}']);
+    const result = await createAgent({ provider: model, tools: [lookup], output: weather, maxSteps: 1 }).send('go');
+
+    expect(model.calls[1].messages.at(-1)?.content).toMatch(/^You are out of steps/);
+    expect(result.object).toEqual({ city: 'Paris', tempC: 21 });
+    expect(result.messages.some((m) => isSynthetic(m.content))).toBe(false);
+    expect(result.messages.at(-1)).toEqual({ role: 'assistant', content: '{"city":"Paris","tempC":21}' });
+  });
+
+  it('neither prompt reaches the session transcript, and the next turn does not see them', async () => {
+    const model = mockModel([
+      'not json',
+      '{"city":"Paris","tempC":21}',
+      { toolCalls: [{ name: 'lookup' }] },
+      { toolCalls: [{ name: 'lookup' }] },
+      '{"city":"Oslo","tempC":3}',
+      '{"city":"Rome","tempC":30}',
+    ]);
+    const agent = createAgent({ provider: model, tools: [lookup], output: weather, maxSteps: 2, store: memoryStore() });
+    const session = agent.session({ id: 'core-f3' });
+
+    await session.send('Paris?');
+    await session.send('Oslo?');
+    await session.send('Rome?');
+
+    const transcript = await session.load();
+    expect(transcript.some((m) => isSynthetic(m.content))).toBe(false);
+    expect(transcript.some((m) => m.content === 'not json')).toBe(false);
+    expect(model.calls[1].messages.at(-1)?.content).toMatch(/^\[output-invalid\]/);
+    expect(model.calls[4].messages.at(-1)?.content).toMatch(/^You are out of steps/);
+    expect(model.calls[5].messages.some((m) => isSynthetic(m.content) || m.content === 'not json')).toBe(false);
   });
 });
