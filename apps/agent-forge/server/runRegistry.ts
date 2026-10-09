@@ -77,6 +77,8 @@ interface RunEntry {
    * the process.
    */
   lastSpec?: AgentSpec;
+  /** Eve DUI-F4: `<provider>/<model>` the last run actually used, for the Topbar's env pill. */
+  provider?: string;
   /** O3: live step-through debug session for this agent's in-flight run, if any. */
   debugSession?: DebugSession;
   /**
@@ -203,6 +205,7 @@ export class RunManager extends EventEmitter {
       error: entry.error,
       resultText: entry.resultText,
       result: entry.result,
+      provider: entry.provider,
       updatedAt: entry.updatedAt,
     };
   }
@@ -443,7 +446,16 @@ export class RunManager extends EventEmitter {
     const input: string | Message[] =
       priorMessages.length > 0 ? [...priorMessages.map(toSdkMessage), toSdkMessage(userMessage)] : text;
 
-    await this.launch(agentId, input, spec, { skipSystemPromptInjection: priorMessages.length > 0 });
+    try {
+      await this.launch(agentId, input, spec, { skipSystemPromptInjection: priorMessages.length > 0 });
+    } catch (error) {
+      // The run never started (no spec, provider not configured - Eve
+      // DUI-F4): take the user's message back out of the transcript so a
+      // retry after fixing it doesn't send it twice.
+      const current = this.entries.get(agentId);
+      if (current) this.emitChat(agentId, this.setEntry(agentId, { messages: priorMessages }, current));
+      throw error;
+    }
   }
 
   /** Picks the spec to run: the supplied one (persisted if a saveSpec hook exists), else the last-run one, else the saved one. */
@@ -460,17 +472,6 @@ export class RunManager extends EventEmitter {
       await this.opts.saveSpec(agentId, spec);
     }
     return resolvedSpec;
-  }
-
-  private emitMockFallbackWarning(agentId: string, providerType: string): void {
-    this.emit('log', agentId, {
-      id: randomUUID(),
-      agentId,
-      timestamp: new Date().toISOString(),
-      level: 'warn' as LogLevel,
-      phase: 'trigger' as LogPhase,
-      message: `No stored/env API key found for provider '${providerType}' - running with the mock provider instead (configure a key in Settings to use it for real).`,
-    } satisfies LogEntry);
   }
 
   /**
@@ -497,15 +498,12 @@ export class RunManager extends EventEmitter {
     // entry would be stuck reporting 'running' forever (the .catch() chain
     // that would otherwise flip it to 'error' is never reached, since the
     // throw happens before AgentExecutor.execute() is even called).
-    const { agent, provider, toolRegistry, hooks, sandbox, usedMockProviderFallback } = buildAgentFromSpec(
+    const { agent, provider, toolRegistry, hooks, sandbox } = buildAgentFromSpec(
       resolvedSpec,
       agentId,
       undefined,
       { secretsStore: this.opts.secretsStore, hookTimeoutMs: this.opts.settingsStore?.activeProfile().hookTimeoutMs }
     );
-    if (usedMockProviderFallback) {
-      this.emitMockFallbackWarning(agentId, resolvedSpec.provider.type);
-    }
 
     const sessionId = agentId;
     const controller = new AbortController();
@@ -522,6 +520,7 @@ export class RunManager extends EventEmitter {
         pendingApproval: undefined,
         resultText: undefined,
         lastSpec: resolvedSpec,
+        provider: `${provider.name}/${resolvedSpec.provider.model}`,
         debugSession,
       },
       existing

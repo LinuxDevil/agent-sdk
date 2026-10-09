@@ -61,15 +61,22 @@ function profileName(profile: ActiveProfile) {
   return profile?.name ?? 'local';
 }
 
-function profileProviderType(profile: ActiveProfile, fallback: string) {
-  return profile?.providerType ?? fallback;
-}
-
+/**
+ * Eve DUI-F4: the env pill names the provider the agent actually runs on -
+ * the one the in-flight run reported, else the agent's own spec - not the
+ * settings profile's (cosmetic) provider type. A mock agent gets a visible
+ * MOCK badge, so canned replies are never mistaken for a real model.
+ */
 function EnvSelect() {
-  const { spec, activeProfile } = useAppState();
+  const { spec, activeProfile, runStatus } = useAppState();
+  const live = runStatus?.status === 'running' || runStatus?.status === 'paused';
+  const provider = (live && runStatus?.provider) || `${spec.provider.type}/${spec.provider.model}`;
+  const isMock = provider.split('/')[0] === 'mock';
+  const title = [profileTitle(activeProfile), `Provider: ${provider}`].filter(Boolean).join(' - ');
   return (
-    <div className="env-select" title={profileTitle(activeProfile)}>
-      <span className="dot" /> {profileName(activeProfile)} &middot; {profileProviderType(activeProfile, spec.provider.type)} provider
+    <div className={`env-select${isMock ? ' env-select-mock' : ''}`} title={title}>
+      <span className="dot" /> {profileName(activeProfile)} &middot; {provider}
+      {isMock && <span className="mock-badge">MOCK</span>}
     </div>
   );
 }

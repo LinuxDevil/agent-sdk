@@ -55,6 +55,8 @@ export interface AgentRunStatusPayload {
    * (src/runtime/runtimeClient.ts) where it's rendered generically.
    */
   result?: unknown;
+  /** Eve DUI-F4: `<provider>/<model>` the latest run actually used (e.g. `openai/gpt-4o-mini`, `mock/mock-1`). */
+  provider?: string;
   updatedAt: string;
 }
 

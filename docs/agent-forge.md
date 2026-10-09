@@ -276,6 +276,14 @@ agent. Other providers still read their environment variables, the same way
 `lousho dev`/`lousho build` do (see [Configuration](./configuration.md)), and
 the `mock` provider needs no credentials.
 
+An agent whose provider has no key (no stored key and no environment
+variable) does not run. **Run** and **Chat** fail with
+`LOUSHO_PROVIDER_MISSING_API_KEY` and a message naming the fix: add the key
+in Settings, set the environment variable, or switch the agent's provider to
+`mock`. The studio never swaps in the mock provider on its own. The top bar's
+provider pill shows the `provider/model` the agent actually runs on, and a
+mock agent carries a **MOCK** badge.
+
 ## Dev mode
 
 If you're working inside this SDK's own monorepo (contributing to Agent

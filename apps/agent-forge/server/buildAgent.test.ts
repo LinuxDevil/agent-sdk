@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import type { AgentSpec } from '@lousho/build-ai-agent';
+import { ConfigurationError, type AgentSpec } from '@lousho/build-ai-agent';
 import { buildAgentFromSpec } from './buildAgent';
 import { SecretsStore } from './secretsStore';
 
@@ -32,14 +32,19 @@ describe('buildAgentFromSpec - R1 provider resolution', () => {
   it('resolves the mock provider unchanged when the spec asks for mock', () => {
     const built = buildAgentFromSpec(BASE_SPEC, 'agent-1', undefined, { secretsStore });
     expect(built.provider.name).toBe('mock');
-    expect(built.usedMockProviderFallback).toBe(false);
   });
 
-  it('falls back to mock when a real provider type has no stored key and no env var', () => {
+  it('fails with an actionable LOUSHO_PROVIDER_MISSING_API_KEY error, not a silent mock run, when a real provider has no key (Eve DUI-F4)', () => {
     const spec: AgentSpec = { ...BASE_SPEC, provider: { type: 'openai', model: 'gpt-4o' } };
-    const built = buildAgentFromSpec(spec, 'agent-2', undefined, { secretsStore });
-    expect(built.provider.name).toBe('mock');
-    expect(built.usedMockProviderFallback).toBe(true);
+    let caught: unknown;
+    try {
+      buildAgentFromSpec(spec, 'agent-2', undefined, { secretsStore });
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ConfigurationError);
+    expect((caught as ConfigurationError).code).toBe('LOUSHO_PROVIDER_MISSING_API_KEY');
+    expect((caught as Error).message).toMatch(/No API key for provider 'openai'.*Settings.*OPENAI_API_KEY.*'mock'/);
   });
 
   it('resolves the real provider when a key is stored in secretsStore', () => {
@@ -47,7 +52,6 @@ describe('buildAgentFromSpec - R1 provider resolution', () => {
     const spec: AgentSpec = { ...BASE_SPEC, provider: { type: 'openai', model: 'gpt-4o' } };
     const built = buildAgentFromSpec(spec, 'agent-3', undefined, { secretsStore });
     expect(built.provider.name).toBe('openai');
-    expect(built.usedMockProviderFallback).toBe(false);
   });
 
   it('resolves the real provider from an env var when no key is stored', () => {
@@ -55,7 +59,6 @@ describe('buildAgentFromSpec - R1 provider resolution', () => {
     const spec: AgentSpec = { ...BASE_SPEC, provider: { type: 'anthropic', model: 'claude-3-5-sonnet-latest' } };
     const built = buildAgentFromSpec(spec, 'agent-4', undefined, { secretsStore });
     expect(built.provider.name).toBe('anthropic');
-    expect(built.usedMockProviderFallback).toBe(false);
   });
 
   it('prefers a stored key over an env var when both are present', () => {
@@ -64,20 +67,23 @@ describe('buildAgentFromSpec - R1 provider resolution', () => {
     const spec: AgentSpec = { ...BASE_SPEC, provider: { type: 'openai', model: 'gpt-4o' } };
     const built = buildAgentFromSpec(spec, 'agent-5', undefined, { secretsStore });
     expect(built.provider.name).toBe('openai');
-    expect(built.usedMockProviderFallback).toBe(false);
   });
 
-  it('falls back to mock (never throws) when no secretsStore is supplied at all', () => {
-    const spec: AgentSpec = { ...BASE_SPEC, provider: { type: 'openai', model: 'gpt-4o' } };
-    expect(() => buildAgentFromSpec(spec, 'agent-6')).not.toThrow();
-    const built = buildAgentFromSpec(spec, 'agent-6');
-    expect(built.provider.name).toBe('mock');
-    expect(built.usedMockProviderFallback).toBe(true);
+  it('fails the same way when no secretsStore is supplied at all', () => {
+    const spec: AgentSpec = { ...BASE_SPEC, provider: { type: 'anthropic', model: 'claude-3-5-sonnet-latest' } };
+    expect(() => buildAgentFromSpec(spec, 'agent-6')).toThrow(/No API key for provider 'anthropic'.*ANTHROPIC_API_KEY/);
   });
 
-  it('falls back to mock for an env-only real provider (ollama) with no usable env config, rather than throwing', () => {
+  it('never substitutes mock for an env-only real provider (ollama)', () => {
     const spec: AgentSpec = { ...BASE_SPEC, provider: { type: 'ollama', model: 'llama3' } };
-    expect(() => buildAgentFromSpec(spec, 'agent-ollama', undefined, { secretsStore })).not.toThrow();
+    const built = buildAgentFromSpec(spec, 'agent-ollama', undefined, { secretsStore });
+    expect(built.provider.name).not.toBe('mock');
+  });
+
+  it("passes an env-only provider's own config error on with a pointer to the fix (openrouter without a key)", () => {
+    delete process.env.OPENROUTER_API_KEY;
+    const spec: AgentSpec = { ...BASE_SPEC, provider: { type: 'openrouter', model: 'openai/gpt-4o-mini' } };
+    expect(() => buildAgentFromSpec(spec, 'agent-or', undefined, { secretsStore })).toThrow(/Provider 'openrouter' is not usable/);
   });
 
   it('still throws for a genuinely unrecognized provider type (a real config error, not a missing key)', () => {
