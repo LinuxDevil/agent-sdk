@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Node.js **22.19 or newer** (`engines.node` in `package.json`, set by the `undici@8` dependency; `undici` is loaded only when the `http_request` or `web_fetch` tool makes a request, see [Optional peers](#optional-peers)).
+- Node.js **22.19 or newer** (`engines.node` in `package.json`, set by the `undici@8` dependency, whose own `engines` is `>=22.19.0`; the other version-gated Node features it uses are `node:sqlite` for `SqliteStore` (22.13) and native type stripping for `.ts` agent files (22.18), both below that floor, so lowering it means relaxing the `undici` dependency first; `undici` is loaded only when the `http_request` or `web_fetch` tool makes a request, see [Optional peers](#optional-peers)).
 - TypeScript is optional but recommended - the SDK ships full type
   definitions.
 
