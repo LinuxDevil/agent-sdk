@@ -337,7 +337,8 @@ async function approvalOf(agent: SimpleAgent, session: AgentSession, id: string)
   const live = (await agent.approvals.list()).find((candidate) => candidate.id === id && candidate.sessionId !== undefined);
   if (live) return live.sessionId === session.id ? live : undefined;
   const turn = await session.pending();
-  if (turn?.status !== 'awaiting-approval' || turn.approvalId !== id) return undefined;
+  // Eve TOOLS-F12: a turn paused on several calls of one step waits on each of them.
+  if (turn?.status !== 'awaiting-approval' || !(turn.approvalIds ?? [turn.approvalId]).includes(id)) return undefined;
   // A store without `load()` cannot say whose call it is: the run then counts as having no principal.
   return (await agent.approvals.get(id)) ?? { id, toolCallId: '', toolName: '', args: {}, createdAt: '', sessionId: session.id };
 }

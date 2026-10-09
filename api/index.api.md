@@ -994,6 +994,7 @@ export interface ChannelInbound<TEvent = unknown> {
 // @public
 export interface ChannelReplyContext<TEvent = unknown> {
     approval?: PendingApproval;
+    approvals?: PendingApproval[];
     events?: AgentEvent[];
     // (undocumented)
     inbound: ChannelInbound<TEvent>;

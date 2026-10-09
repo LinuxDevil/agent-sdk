@@ -25,6 +25,7 @@ import {
 } from './defineChannel';
 import { reportChannelError } from './channelSupport';
 import type { Principal } from '../auth/types';
+import type { PendingApproval } from '../execution/ApprovalGate';
 import { SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 
 /** Options of {@link channelCore}: what the hosts' mount options share. */
@@ -60,6 +61,12 @@ export interface ChannelCore {
 }
 
 const FAILED_TEXT = 'Sorry, that request failed.';
+
+/** Eve TOOLS-F12: the reply to a decision that leaves other calls of its step undecided. */
+function stillWaiting(approvals: readonly PendingApproval[]): string {
+  const left = approvals.map((approval) => `${approval.toolName} (approval id: ${approval.id})`).join(', ');
+  return `Decision recorded. Still waiting on: ${left}.`;
+}
 
 interface PausedTurn {
   channel: Channel;
@@ -194,15 +201,27 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
     return next;
   }
 
-  /** Replies with the turn's result, or hands a pause to `onApproval` (default: a text prompt via `reply`). */
+  /**
+   * Replies with the turn's result, or hands a pause to `onApproval` (default: a text prompt via `reply`).
+   * Eve TOOLS-F12: a step paused on several calls hands each to `onApproval` once (only the first gets
+   * `respond`); a decision that leaves others of its step pending replies with what is left.
+   */
   async function finish(turn: PausedTurn, result: ExecutionResult, events: AgentEvent[] | undefined, respond?: ChannelRespond): Promise<void> {
     const { channel, inbound, sessionId } = turn;
-    const pending = result.finishReason === 'awaiting-approval' ? await agent.approvals.list() : [];
-    const approval = pending.find((request) => request.id === result.approvalId);
-    if (!approval) return guard(turn, 'reply', respond, () => channel.reply({ inbound, sessionId, text: result.text, result, events, respond }));
-    paused.set(approval.id, turn);
-    const ctx = { inbound, sessionId, text: approvalPrompt(approval), result, events, approval, respond };
-    await guard(turn, 'reply', respond, () => (channel.onApproval ? channel.onApproval(ctx) : channel.reply(ctx)));
+    const ids = result.finishReason === 'awaiting-approval' ? (result.approvalIds ?? (result.approvalId === undefined ? [] : [result.approvalId])) : [];
+    const pending = ids.length > 0 ? await agent.approvals.list() : [];
+    const approvals = ids.flatMap((id) => pending.filter((request) => request.id === id));
+    if (approvals.length === 0) return guard(turn, 'reply', respond, () => channel.reply({ inbound, sessionId, text: result.text, result, events, respond }));
+    const fresh = approvals.filter((approval) => !paused.has(approval.id));
+    for (const approval of approvals) paused.set(approval.id, turn);
+    const group = approvals.length > 1 ? { approvals } : {};
+    if (fresh.length === 0) {
+      return guard(turn, 'reply', respond, () => channel.reply({ inbound, sessionId, text: stillWaiting(approvals), result, ...group, respond }));
+    }
+    for (const [index, approval] of fresh.entries()) {
+      const ctx = { inbound, sessionId, text: approvalPrompt(approval), result, events, approval, ...group, ...(index === 0 && { respond }) };
+      await guard(turn, 'reply', respond, () => (channel.onApproval ? channel.onApproval(ctx) : channel.reply(ctx)));
+    }
   }
 
   function runTurn(turn: PausedTurn, respond: ChannelRespond): Promise<void> {
@@ -234,12 +253,15 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
     const pending = await session.pending();
     if (!pending) return !checkpointed;
     const isAnswer = typeof decision.answer === 'string';
-    const kind = pending.approvalKind ?? 'tool';
-    if (pending.status !== 'awaiting-approval' || pending.approvalId !== decision.id || isAnswer !== (kind === 'question') || kind === 'sign-in') return false;
+    // Eve TOOLS-F12: a turn paused on several calls of one step waits on each of them.
+    const ids = pending.approvalIds ?? (pending.approvalId === undefined ? [] : [pending.approvalId]);
+    if (pending.status !== 'awaiting-approval' || !ids.includes(decision.id)) return false;
+    const kind = (decision.id === pending.approvalId ? pending.approvalKind : (await agent.approvals.get(decision.id))?.kind) ?? 'tool';
+    if (isAnswer !== (kind === 'question') || kind === 'sign-in') return false;
     try {
       await session.resume();
     } catch (error) {
-      if (error instanceof SessionAwaitingApprovalError && error.approvalId === decision.id) return true;
+      if (error instanceof SessionAwaitingApprovalError && error.approvalId !== undefined && ids.includes(error.approvalId)) return true;
       throw error;
     }
     return false;

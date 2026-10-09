@@ -537,3 +537,72 @@ describe('defineChannel / mountChannels (LOU-P7)', () => {
     expect(() => mountChannels(createAgent({ provider: mockModel([]) }), [channel, channel])).toThrow(/unique/);
   });
 });
+
+describe('channels: a step paused on several calls (Eve TOOLS-F12)', () => {
+  const twoEmails = {
+    toolCalls: [
+      { name: 'send_email', args: { to: 'sam@example.com' }, id: 'call_sam' },
+      { name: 'send_email', args: { to: 'kim@example.com' }, id: 'call_kim' },
+    ],
+  };
+
+  it('prompts each call once; each is decided on its own and the last decision runs the step', async () => {
+    const { tool, execute } = emailTool();
+    const onApproval = vi.fn(async (_ctx: ChannelReplyContext) => undefined);
+    const { channel, replies } = recordingChannel({ onApproval });
+    const handler = mountChannels(createAgent({ provider: mockModel([twoEmails, 'Both sent.']), tools: [tool] }), [channel]);
+
+    await post(handler, '/channels/test', { user: 'ali', text: 'Email Sam and Kim' });
+    expect(onApproval).toHaveBeenCalledTimes(2);
+    const prompted = onApproval.mock.calls.map(([ctx]) => ctx);
+    expect(prompted.map((ctx) => ctx.approval?.args)).toEqual([{ to: 'sam@example.com' }, { to: 'kim@example.com' }]);
+    expect(prompted[0].approvals).toHaveLength(2);
+    const [sam, kim] = prompted.map((ctx) => ctx.approval!.id);
+
+    const decided = await post(handler, `/channels/test/approvals/${kim}`, { approved: true });
+    expect(decided.status).toBe(200);
+    expect(execute).not.toHaveBeenCalled();
+    expect(onApproval).toHaveBeenCalledTimes(2);
+    expect(replies.at(-1)?.text).toBe(`Decision recorded. Still waiting on: send_email (approval id: ${sam}).`);
+
+    await post(handler, `/channels/test/approvals/${sam}`, { approved: false });
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute.mock.calls[0][0]).toEqual({ to: 'kim@example.com' });
+    expect(replies.at(-1)?.text).toBe('Both sent.');
+  });
+
+  it('the http channel answers with every pending call, and a decision with what is left', async () => {
+    const { tool } = emailTool();
+    const handler = mountChannels(createAgent({ provider: mockModel([twoEmails, 'Both sent.']), tools: [tool] }), [httpChannel()]);
+    const paused = await post(handler, '/channels/http', { sessionKey: 'u1', input: 'Email Sam and Kim' });
+    const approvals = paused.json.approvals as Array<{ id: string }>;
+    expect(approvals).toHaveLength(2);
+    expect((paused.json.approval as { id: string }).id).toBe(approvals[0].id);
+
+    const partial = await post(handler, `/channels/http/approvals/${approvals[0].id}`, { approved: true });
+    expect(partial.json).toMatchObject({ finishReason: 'awaiting-approval' });
+    const done = await post(handler, `/channels/http/approvals/${approvals[1].id}`, { approved: true });
+    expect(done.json).toMatchObject({ finishReason: 'stop', text: 'Both sent.' });
+  });
+
+  it('after a restart, a decision on any call of the step is bound to its conversation', async () => {
+    const stores = durableStores();
+    const execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`);
+    const mount = (responses: Parameters<typeof mockModel>[0]) => {
+      const tool = defineTool({ name: 'send_email', description: 'Sends an email', input: z.object({ to: z.string() }), needsApproval: true, execute });
+      const agent = createAgent({ provider: mockModel(responses), tools: [tool], approvalStore: stores.approvalStore });
+      return mountChannels(agent, [httpChannel()], { store: stores.store });
+    };
+    const paused = await post(mount([twoEmails]), '/channels/http', { sessionKey: 'u1', input: 'Email Sam and Kim' });
+    const [sam, kim] = (paused.json.approvals as Array<{ id: string }>).map((approval) => approval.id);
+
+    const second = mount([]);
+    expect(await post(second, `/channels/http/approvals/${kim}`, { approved: true, sessionKey: 'u2' })).toMatchObject({ status: 404 });
+    expect(await post(second, `/channels/http/approvals/${kim}`, { approved: true, sessionKey: 'u1' })).toMatchObject({ status: 200, json: { finishReason: 'awaiting-approval' } });
+    expect(execute).not.toHaveBeenCalled();
+
+    const done = await post(mount(['Both sent.']), `/channels/http/approvals/${sam}`, { approved: true, sessionKey: 'u1' });
+    expect(done).toMatchObject({ status: 200, json: { finishReason: 'stop', text: 'Both sent.' } });
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+});

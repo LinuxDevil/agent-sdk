@@ -133,6 +133,12 @@ export interface ChannelReplyContext<TEvent = unknown> {
   events?: AgentEvent[];
   /** Set when the turn paused on this approval or question. */
   approval?: PendingApproval;
+  /**
+   * Eve TOOLS-F12: when the paused step waits on several calls, every one of
+   * them not decided yet, in call order (`approval` is one of them; each is
+   * handed to `onApproval` once). Absent when the step paused on one call.
+   */
+  approvals?: PendingApproval[];
   /** Present while the inbound HTTP request is still open (absent for `resolveApproval()` calls). */
   respond?: ChannelRespond;
 }
