@@ -3893,30 +3893,15 @@ export class MemorySessionStore implements SessionStore {
 }
 
 // @public
-export interface MemorySlot {
-    // (undocumented)
-    readonly description?: string;
-    // (undocumented)
-    readonly expose: {
-        remember: boolean;
-        recall: boolean;
-        forget: boolean;
-    };
+export interface MemorySlot extends Readonly<Pick<DefineMemoryOptions, 'name' | 'description' | 'scope' | 'provider' | 'itemSchema'>> {
+    readonly expose: Required<NonNullable<DefineMemoryOptions['expose']>>;
     readonly itemKey?: readonly string[];
-    // (undocumented)
-    readonly itemSchema?: StandardSchemaV1;
-    // (undocumented)
-    readonly name: string;
-    // (undocumented)
-    readonly provider: MemoryProvider;
     // (undocumented)
     readonly recall: {
         onSessionStart: boolean;
         maxItems: number;
         query: 'last-input' | 'none';
     };
-    // (undocumented)
-    readonly scope: MemoryScope;
 }
 
 // @public

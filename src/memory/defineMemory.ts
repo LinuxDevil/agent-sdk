@@ -154,21 +154,10 @@ export interface DefineMemoryOptions {
 }
 
 /** A memory slot made by {@link defineMemory}, defaults applied. Pass it to `createAgent({ memory })`. */
-export interface MemorySlot {
-  readonly name: string;
-  readonly description?: string;
-  readonly scope: MemoryScope;
-  readonly provider: MemoryProvider;
+export interface MemorySlot extends Readonly<Pick<DefineMemoryOptions, 'name' | 'description' | 'scope' | 'provider' | 'itemSchema'>> {
   readonly recall: { onSessionStart: boolean; maxItems: number; query: 'last-input' | 'none' };
-  readonly expose: {
-    /** The model gets `remember_<name>`. */
-    remember: boolean;
-    /** The model gets `recall_<name>`. */
-    recall: boolean;
-    /** The model gets `forget_<name>`. */
-    forget: boolean;
-  };
-  readonly itemSchema?: StandardSchemaV1;
+  /** Which tools the model gets (see {@link DefineMemoryOptions.expose}). */
+  readonly expose: Required<NonNullable<DefineMemoryOptions['expose']>>;
   /** The fields that identify an item of an `itemSchema` slot (see {@link DefineMemoryOptions.itemKey}). */
   readonly itemKey?: readonly string[];
 }
@@ -186,6 +175,23 @@ const SLOT_NAME = /^[a-zA-Z0-9_-]{1,55}$/;
  */
 export function defineMemory(options: DefineMemoryOptions): MemorySlot {
   const { name, description, scope, provider, recall = {}, expose = {}, itemSchema, itemKey } = options;
+  assertSlotParts(name, scope, provider, itemSchema);
+  const keyFields = resolveItemKey(name, itemSchema, itemKey);
+  const resolvedRecall = resolveRecall(name, recall);
+  return Object.freeze({
+    name,
+    ...(description !== undefined && { description }),
+    scope,
+    provider,
+    recall: resolvedRecall,
+    expose: { remember: expose.remember ?? true, recall: expose.recall ?? true, forget: expose.forget ?? false },
+    ...(itemSchema !== undefined && { itemSchema }),
+    ...(keyFields !== undefined && { itemKey: Object.freeze([...keyFields]) }),
+  });
+}
+
+/** Throws unless the slot's name, scope, provider and (optional) itemSchema are valid. */
+function assertSlotParts(name: string, scope: MemoryScope, provider: MemoryProvider, itemSchema: StandardSchemaV1 | undefined): void {
   if (typeof name !== 'string' || !SLOT_NAME.test(name)) {
     throw new SDKError(`defineMemory: invalid name ${JSON.stringify(name)}. Use 1-55 characters of A-Z, a-z, 0-9, '_' and '-'.`, 'LOUSHO_MEMORY_INVALID');
   }
@@ -204,15 +210,23 @@ export function defineMemory(options: DefineMemoryOptions): MemorySlot {
       'LOUSHO_MEMORY_INVALID'
     );
   }
+}
+
+/** Normalizes `itemKey` to an array of field names (`undefined` when unset), throwing when it is invalid. */
+function resolveItemKey(name: string, itemSchema: StandardSchemaV1 | undefined, itemKey: DefineMemoryOptions['itemKey']): readonly string[] | undefined {
   const keyFields = itemKey === undefined ? undefined : typeof itemKey === 'string' ? [itemKey] : itemKey;
-  if (keyFields !== undefined) {
-    if (itemSchema === undefined) {
-      throw new SDKError(`defineMemory: memory '${name}': itemKey needs an itemSchema (the fields it names are fields of the schema).`, 'LOUSHO_MEMORY_INVALID');
-    }
-    if (!Array.isArray(keyFields) || keyFields.length === 0 || !keyFields.every((field) => typeof field === 'string' && field !== '')) {
-      throw new SDKError(`defineMemory: memory '${name}': itemKey must be a field name or a non-empty array of field names, got ${JSON.stringify(itemKey)}.`, 'LOUSHO_MEMORY_INVALID');
-    }
+  if (keyFields === undefined) return undefined;
+  if (itemSchema === undefined) {
+    throw new SDKError(`defineMemory: memory '${name}': itemKey needs an itemSchema (the fields it names are fields of the schema).`, 'LOUSHO_MEMORY_INVALID');
   }
+  if (!Array.isArray(keyFields) || keyFields.length === 0 || !keyFields.every((field) => typeof field === 'string' && field !== '')) {
+    throw new SDKError(`defineMemory: memory '${name}': itemKey must be a field name or a non-empty array of field names, got ${JSON.stringify(itemKey)}.`, 'LOUSHO_MEMORY_INVALID');
+  }
+  return keyFields;
+}
+
+/** Validates `recall` and applies its defaults. */
+function resolveRecall(name: string, recall: NonNullable<DefineMemoryOptions['recall']>): MemorySlot['recall'] {
   if (recall.query !== undefined && recall.query !== 'last-input' && recall.query !== 'none') {
     throw new SDKError(`defineMemory: memory '${name}': recall.query must be 'last-input' or 'none', got ${JSON.stringify(recall.query)}.`, 'LOUSHO_MEMORY_INVALID');
   }
@@ -220,14 +234,5 @@ export function defineMemory(options: DefineMemoryOptions): MemorySlot {
   if (!Number.isInteger(maxItems) || maxItems < 1) {
     throw new SDKError(`defineMemory: memory '${name}': recall.maxItems must be a positive integer, got ${maxItems}.`, 'LOUSHO_MEMORY_INVALID');
   }
-  return Object.freeze({
-    name,
-    ...(description !== undefined && { description }),
-    scope,
-    provider,
-    recall: { onSessionStart: recall.onSessionStart ?? true, maxItems, query: recall.query ?? 'none' },
-    expose: { remember: expose.remember ?? true, recall: expose.recall ?? true, forget: expose.forget ?? false },
-    ...(itemSchema !== undefined && { itemSchema }),
-    ...(keyFields !== undefined && { itemKey: Object.freeze([...keyFields]) }),
-  });
+  return { onSessionStart: recall.onSessionStart ?? true, maxItems, query: recall.query ?? 'none' };
 }

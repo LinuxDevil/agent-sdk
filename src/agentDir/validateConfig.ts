@@ -381,10 +381,15 @@ function assertApprovalTtlMs(file: string, value: unknown): void {
   }
 }
 
+/** The entries of the object-valued key `name` (none when it is undefined); fails unless it is a plain object. */
+function objectEntries(file: string, name: string, example: string, value: unknown): [string, unknown][] {
+  if (value === undefined) return [];
+  if (!isPlainObject(value)) fail(file, `'${name}' must be an object like ${example}, got ${describeValue(value)}.`);
+  return Object.entries(value);
+}
+
 function assertLimits(file: string, value: unknown): void {
-  if (value === undefined) return;
-  if (!isPlainObject(value)) fail(file, `'limits' must be an object like { "maxCostUsd": 0.05 }, got ${describeValue(value)}.`);
-  for (const [key, entry] of Object.entries(value)) {
+  for (const [key, entry] of objectEntries(file, 'limits', '{ "maxCostUsd": 0.05 }', value)) {
     if (!LIMIT_KEYS.has(key)) fail(file, `'limits.${key}' is not a known limit. Allowed keys: ${[...LIMIT_KEYS].join(', ')}.`);
     if (key === 'onExceeded') {
       if (entry !== 'stop' && entry !== 'throw') fail(file, `'limits.onExceeded' must be 'stop' or 'throw', got ${describeValue(entry)}.`);
@@ -395,26 +400,34 @@ function assertLimits(file: string, value: unknown): void {
 }
 
 function assertModelSettings(file: string, value: unknown): void {
-  if (value === undefined) return;
-  if (!isPlainObject(value)) fail(file, `'modelSettings' must be an object like { "maxTokens": 1024 }, got ${describeValue(value)}.`);
-  for (const [key, entry] of Object.entries(value)) {
+  for (const [key, entry] of objectEntries(file, 'modelSettings', '{ "maxTokens": 1024 }', value)) {
     if (!(MODEL_SETTING_KEYS as readonly string[]).includes(key)) {
       fail(file, `'modelSettings.${key}' is not a known setting. Allowed keys: ${MODEL_SETTING_KEYS.join(', ')}.`);
     }
-    if (key === 'toolChoice') {
-      const named = isPlainObject(entry) && entry.type === 'function' && isPlainObject(entry.function) && typeof entry.function.name === 'string';
-      if (!(entry === 'auto' || entry === 'required' || entry === 'none' || named)) {
-        fail(file, `'modelSettings.toolChoice' must be "auto", "required", "none" or { "type": "function", "function": { "name": ... } }, got ${describeValue(entry)}.`);
-      }
-    } else if (key === 'stop') {
-      if (!(Array.isArray(entry) && entry.every((stop) => typeof stop === 'string'))) fail(file, `'modelSettings.stop' must be an array of strings, got ${describeValue(entry)}.`);
-    } else if (!(typeof entry === 'number' && Number.isFinite(entry))) {
-      fail(file, `'modelSettings.${key}' must be a number, got ${describeValue(entry)}.`);
-    } else {
-      // Eve CORE-F13: the same ranges createAgent checks (temperature 0..2, maxTokens >= 1, ...).
-      const problem = modelSettingProblem(key, entry);
-      if (problem) fail(file, `'modelSettings.${key}' ${problem}.`);
-    }
+    assertModelSetting(file, key, entry);
+  }
+}
+
+/** Fails unless `entry` is a valid value for the (known) `modelSettings` key `key`. */
+function assertModelSetting(file: string, key: string, entry: unknown): void {
+  if (key === 'toolChoice') {
+    assertToolChoice(file, entry);
+  } else if (key === 'stop') {
+    if (!(Array.isArray(entry) && entry.every((stop) => typeof stop === 'string'))) fail(file, `'modelSettings.stop' must be an array of strings, got ${describeValue(entry)}.`);
+  } else if (!(typeof entry === 'number' && Number.isFinite(entry))) {
+    fail(file, `'modelSettings.${key}' must be a number, got ${describeValue(entry)}.`);
+  } else {
+    // Eve CORE-F13: the same ranges createAgent checks (temperature 0..2, maxTokens >= 1, ...).
+    const problem = modelSettingProblem(key, entry);
+    if (problem) fail(file, `'modelSettings.${key}' ${problem}.`);
+  }
+}
+
+/** Fails unless `entry` is a valid `modelSettings.toolChoice`. */
+function assertToolChoice(file: string, entry: unknown): void {
+  const named = isPlainObject(entry) && entry.type === 'function' && isPlainObject(entry.function) && typeof entry.function.name === 'string';
+  if (!(entry === 'auto' || entry === 'required' || entry === 'none' || named)) {
+    fail(file, `'modelSettings.toolChoice' must be "auto", "required", "none" or { "type": "function", "function": { "name": ... } }, got ${describeValue(entry)}.`);
   }
 }
 

@@ -83,11 +83,9 @@ export function mountChannels(
   if (byName.size !== channels.length) throw new SDKError('mountChannels: channel names must be unique', 'LOUSHO_CHANNEL_INVALID');
   const core: ChannelCore = channelCore(agent, channels, options);
   const handler = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> => {
-    const { pathname } = new URL(req.url ?? '/', 'http://localhost');
-    const route = req.method === 'POST' && pathname.startsWith(`${basePath}/`) ? pathname.slice(basePath.length + 1).split('/') : [];
-    const channel = byName.get(route[0] ?? ''); // names need no decoding: [A-Za-z0-9_-] only
-    const isApproval = route.length === 3 && route[1] === 'approvals';
-    if (!channel || (route.length !== 1 && !isApproval)) return false;
+    const match = matchChannelRoute(req, basePath, byName);
+    if (!match) return false;
+    const { channel, approvalId } = match;
     let responded = false;
     const respond: ChannelRespond = (status, body) => {
       if (!responded) sendJson(res, status, body);
@@ -95,18 +93,36 @@ export function mountChannels(
     };
     try {
       const request = toChannelRequest(req, await readRawBody(req));
-      await core.handle(channel, isApproval ? decodeURIComponent(route[2]) : undefined, request, respond);
+      await core.handle(channel, approvalId === undefined ? undefined : decodeURIComponent(approvalId), request, respond);
       respond(200, { ok: true });
     } catch (error) {
-      const status = error instanceof PayloadTooLargeError ? 413 : error instanceof SyntaxError ? 400 : 500;
-      // Eve CH-F6: a failure after the ack, or a 500's detail, goes to onError; the client never sees an internal message.
-      if (responded || status === 500) await reportChannelError(channel.onError ?? options.onError, error, { channel: channel.name, stage: 'parse' });
-      if (!responded) sendJson(res, status, channelFailureBody(status, error));
-      responded = true;
+      await failChannelRequest(error, responded, respond, channel, options);
     }
     return true;
   };
   return Object.assign(handler, { resolveApproval: core.resolveApproval });
+}
+
+/** The channel a request addresses and, on its approvals route, the (still encoded) approval id; undefined for any other request. */
+function matchChannelRoute(
+  req: http.IncomingMessage,
+  basePath: string,
+  byName: ReadonlyMap<string, Channel>
+): { channel: Channel; approvalId?: string } | undefined {
+  const { pathname } = new URL(req.url ?? '/', 'http://localhost');
+  const route = req.method === 'POST' && pathname.startsWith(`${basePath}/`) ? pathname.slice(basePath.length + 1).split('/') : [];
+  const channel = byName.get(route[0] ?? ''); // names need no decoding: [A-Za-z0-9_-] only
+  const isApproval = route.length === 3 && route[1] === 'approvals';
+  if (!channel || (route.length !== 1 && !isApproval)) return undefined;
+  return { channel, approvalId: isApproval ? route[2] : undefined };
+}
+
+/** Answers a failed channel request (413, 400 or 500) unless it was already answered, reporting what the client does not see. */
+async function failChannelRequest(error: unknown, responded: boolean, respond: ChannelRespond, channel: Channel, options: MountChannelsOptions): Promise<void> {
+  const status = error instanceof PayloadTooLargeError ? 413 : error instanceof SyntaxError ? 400 : 500;
+  // Eve CH-F6: a failure after the ack, or a 500's detail, goes to onError; the client never sees an internal message.
+  if (responded || status === 500) await reportChannelError(channel.onError ?? options.onError, error, { channel: channel.name, stage: 'parse' });
+  respond(status, channelFailureBody(status, error)); // a no-op once the request was answered
 }
 
 /**
