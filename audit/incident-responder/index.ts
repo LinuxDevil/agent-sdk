@@ -17,7 +17,7 @@
 import '../_shared/env.ts';
 import * as http from 'node:http';
 import { createHmac } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { decide, mountChannels, webhookChannel, SessionAwaitingApprovalError, SDKError } from '@lousho/build-ai-agent';
 import { LIVE_MODEL, hasLiveKey, report } from '../_shared/env.ts';
@@ -89,6 +89,9 @@ async function main(): Promise<void> {
   /* -------------------------------------------------------------- */
   /* Surface 1: webhook channel + HMAC auth -> agent session          */
   /* -------------------------------------------------------------- */
+  // Channel sessions are durable since EVE-0 (#472): the inc-7001 conversation
+  // from an earlier run would otherwise carry over. Start each run clean.
+  rmSync(STORE_DIR, { recursive: true, force: true });
   const { commander } = buildCommander();
   const alerts = webhookChannel({
     name: 'alerts',
