@@ -39,6 +39,7 @@ interface AgentErrorEvent extends AgentEventBase<'error'> {
 // Warning: (ae-forgotten-export) The symbol "RunStartEvent" needs to be exported by the entry point hooks.d.ts
 // Warning: (ae-forgotten-export) The symbol "StepStartEvent" needs to be exported by the entry point hooks.d.ts
 // Warning: (ae-forgotten-export) The symbol "TextDeltaEvent" needs to be exported by the entry point hooks.d.ts
+// Warning: (ae-forgotten-export) The symbol "ObjectDeltaEvent" needs to be exported by the entry point hooks.d.ts
 // Warning: (ae-forgotten-export) The symbol "TextDoneEvent" needs to be exported by the entry point hooks.d.ts
 // Warning: (ae-forgotten-export) The symbol "ReasoningStartEvent" needs to be exported by the entry point hooks.d.ts
 // Warning: (ae-forgotten-export) The symbol "ReasoningDeltaEvent" needs to be exported by the entry point hooks.d.ts
@@ -69,7 +70,7 @@ interface AgentErrorEvent extends AgentEventBase<'error'> {
 // Warning: (ae-forgotten-export) The symbol "RunDoneEvent" needs to be exported by the entry point hooks.d.ts
 //
 // @public
-type AgentEvent = RunStartEvent | StepStartEvent | TextDeltaEvent | TextDoneEvent | ReasoningStartEvent | ReasoningDeltaEvent | ReasoningDoneEvent | ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | TodoUpdatedEvent | ToolErrorEvent | ApprovalRequestedEvent | PermissionDecisionEvent | StepDoneEvent | AgentErrorEvent | ProviderRetryEvent | ProviderFallbackEvent | CompactionStartEvent | CompactionDoneEvent | ContextClearedEvent | BudgetExceededEvent | InputQueuedEvent | InputSteeredEvent | InputAppliedEvent | GuardrailTrippedEvent | GuardrailRewroteEvent | AgentDriftEvent | HandoffEvent | RunDoneEvent;
+type AgentEvent = RunStartEvent | StepStartEvent | TextDeltaEvent | ObjectDeltaEvent | TextDoneEvent | ReasoningStartEvent | ReasoningDeltaEvent | ReasoningDoneEvent | ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | TodoUpdatedEvent | ToolErrorEvent | ApprovalRequestedEvent | PermissionDecisionEvent | StepDoneEvent | AgentErrorEvent | ProviderRetryEvent | ProviderFallbackEvent | CompactionStartEvent | CompactionDoneEvent | ContextClearedEvent | BudgetExceededEvent | InputQueuedEvent | InputSteeredEvent | InputAppliedEvent | GuardrailTrippedEvent | GuardrailRewroteEvent | AgentDriftEvent | HandoffEvent | RunDoneEvent;
 
 // @public
 interface AgentEventBase<TType extends string> {
@@ -538,6 +539,12 @@ type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 type ModerationCategory = 'hate' | 'harassment' | 'self-harm' | 'sexual' | 'sexual-minors' | 'violence' | 'illicit';
 
 // @public
+interface ObjectDeltaEvent extends AgentEventBase<'object.delta'> {
+    // (undocumented)
+    object: unknown;
+}
+
+// @public
 type PermissionAction = 'allow' | 'deny' | 'ask';
 
 // Warning: (ae-forgotten-export) The symbol "PermissionAction" needs to be exported by the entry point hooks.d.ts
@@ -1000,12 +1007,21 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
 
 // Warnings were encountered during analysis:
 //
+<<<<<<< HEAD
 // dist/createAgent-BYE3OSWr.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point hooks.d.ts
 // dist/createAgent-BYE3OSWr.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point hooks.d.ts
 // dist/createAgent-BYE3OSWr.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point hooks.d.ts
 // dist/index-C5TXhmCn.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point hooks.d.ts
 // dist/index-C5TXhmCn.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point hooks.d.ts
 // dist/index-C5TXhmCn.d.ts:1489:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point hooks.d.ts
+=======
+// dist/createAgent-BR0R10_9.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point hooks.d.ts
+// dist/createAgent-BR0R10_9.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point hooks.d.ts
+// dist/createAgent-BR0R10_9.d.ts:1255:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point hooks.d.ts
+// dist/index-Jx0ez6Fz.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point hooks.d.ts
+// dist/index-Jx0ez6Fz.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point hooks.d.ts
+// dist/index-Jx0ez6Fz.d.ts:1489:9 - (ae-forgotten-export) The symbol "StandardSchemaV1" needs to be exported by the entry point hooks.d.ts
+>>>>>>> 90602354 (chore(api): regenerate reports)
 
 // (No @packageDocumentation comment for this package)
 
