@@ -2563,9 +2563,11 @@ makes: the pending approval records `expiresAt` (an ISO-8601 timestamp, like
 `createdAt`), and the `approval.requested` stream event carries it too, so a
 UI can show the deadline. Past it, the pause can no longer be approved -
 deciding it, whenever and wherever that happens, denies the call: the model
-gets a `kind: 'denied'` tool error with reason `'approval expired'` (the
-`APPROVAL_EXPIRED_REASON` export) and the run goes on, like a rejection. An
-expired pause resolved with `approved: true` does not run the tool.
+gets a `kind: 'denied'` tool error (`Approval of 'send_email' expired before it was
+decided`, with no separate `reason` field) and the run goes on, like a rejection.
+The reason string `'approval expired'` (the `APPROVAL_EXPIRED_REASON` export)
+is only on the audit entry (`onPermissionDecision`). An expired pause resolved
+with `approved: true` does not run the tool.
 
 ```ts
 import { createAgent, defineTool } from '@lousho/build-ai-agent';
@@ -4493,7 +4495,7 @@ plus a free-text field. The same endpoints work from `curl` or your own page:
 | Endpoint | What it does |
 | -------- | ------------ |
 | `POST /chat` `{ "sessionId", "input" }` | Runs `agent.session({ id: sessionId }).stream(input)` and streams the turn as SSE: one `data: <AgentEvent JSON>` per event ([Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)), then `event: done`. History is kept per `sessionId` (1-128 characters of `A-Za-z0-9_-`). |
-| `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`; `pending` is `{ status, approvalId? }` while a turn waits on an approval, else `null`. |
+| `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`; `pending` is `{ status, approvalId? }` while a turn waits on an approval, else `null`. A turn's messages are saved when it finishes, so while it is paused `messages` does not hold that turn yet: use `pending`. |
 | `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides the pending approval (`agent.approvals.streamResolve()`), or answers a question (`agent.approvals.streamAnswer()`), and streams the continued turn as SSE. It can pause again with another `approval.requested`. `404` when `id` is not pending. |
 | `POST /chat` `{ "message" }` | Deprecated: no session, no streaming. Returns the agent's `ExecutionResult` as JSON, with a `Deprecation: true` header. |
 
@@ -5876,7 +5878,8 @@ for await (const event of agent.stream('Hello!')) {
   agent is created. The agent runs `withFallback([withRetry(primary), withRetry(fallback1), ...])`:
   every call starts with the primary model.
 - `stream()` and `session.stream()` report each retry as a `provider.retry`
-  event and each switch as `provider.fallback` (see
+  event and each switch as `provider.fallback`; its `from` and `to` are provider
+  names (such as `openai`), not model ids (see
   [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/stream-events.md#event-schema-version-1)). `send()` returns the
   final result as before.
 
@@ -6449,7 +6452,7 @@ a page or script written against the dev server works against the deployed one.
 | -------- | ------------ |
 | `GET /health` | `200 ok`. Never needs auth: point load balancers and container health checks here. |
 | `POST /chat` `{ "sessionId", "input" }` | Runs a turn of session `sessionId` (1-128 characters of `A-Za-z0-9_-`; a new id starts a conversation, a known one continues it) and streams it as SSE: one `data: <AgentEvent JSON>` per event ([Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)), then `event: done`. `input` is a string or an array of content parts. |
-| `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`. |
+| `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`. A turn's messages are saved when it finishes, so `messages` does not hold a turn that is paused on an approval; `pending` says it is. |
 | `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn live as SSE, in the same framing and event types as `POST /chat` (the decided call's `tool.resume` / `tool.done` or `tool.error`, text deltas, `approval.requested` if it pauses again, `run.done`), from `agent.approvals.streamResolve()` / `streamAnswer()`. `404` when `id` is not pending. |
 | `POST /chat` `{ "message" }` | Legacy, single turn without history or streaming: returns the agent's `ExecutionResult` as JSON, with a `Deprecation: true` header. |
 
@@ -6546,8 +6549,8 @@ browser-platform ES module; the build fails if any `node:` import ends up in the
 `dist/server.js` bundles the SDK but leaves its optional peers (the `peerDependenciesMeta`
 entries of its package.json: provider packages, `dockerode`, the MCP SDK, `prompts`, ...) external, so a build
 never needs one you do not use. The generated `package.json` already lists the
-ones the agent needs where the server runs - `@lousho/build-ai-agent` (pinned
-to the version that built it), the provider package the spec names (at the
+ones the agent needs where the server runs - `@lousho/build-ai-agent` (at
+`^` the version that built it, a caret range, not an exact pin), the provider package the spec names (at the
 range pairing with the build's `ai` major, e.g. `@ai-sdk/openai` for an OpenAI
 agent) and `@modelcontextprotocol/sdk` when the spec has `mcpServers` - so the
 docker image's `npm install --omit=dev` or a `npm install` next to the
@@ -9289,7 +9292,8 @@ instruction is added to every target's system prompt.
 
 Because approvals and memory are run-level, options like `approve`, `approvalStore`,
 `permissionMode`, `approvalTtlMs`, `store` or `memory` on a target agent are never
-consulted after a handoff - `createAgent()` warns once (per target) when a
+consulted after a handoff - the agent warns once (per target), on its first run
+that reaches the handoff graph (not when `createAgent()` is called), when a
 reachable target was created with them; set them on the agent runs start with.
 
 ## Sessions
@@ -10364,7 +10368,7 @@ when you seed, read or prune a slot's items from code.
 | `scope` | Scope key | One memory per |
 |---|---|---|
 | `'global'` | `'global'` | agent (shared by every run) |
-| `'session'` | `'session:<id>'`: the `agent.session({ id })` id, or `send()` / `stream()`'s `sessionId` | session |
+| `'session'` | `'session:<id>'`: the `agent.session({ id })` id, or `send()` / `stream()`'s `sessionId` (which needs a `store` with checkpoints) | session |
 | `({ sessionId, metadata }) => string \| undefined` | what the function returns | whatever you key by, e.g. a user |
 
 A scope function sees the run's `sessionId` and the `metadata` passed to
@@ -10935,7 +10939,7 @@ accepted, and a request outside the base path is a 404).
 | `POST <basePath>` | `{ input, sessionId? }`: the turn streamed as SSE. This is what `useLoushoAgent({ url })` posts; without a `sessionId` each turn is a fresh session |
 | `POST <basePath>/approvals/:id` | `{ approved, note? }` or `{ answer }`: the continuation streamed (`useLoushoAgent`'s `approvalsUrl`) |
 | `POST <basePath>/chat` | `{ sessionId, input }`: the session API of the deployed server |
-| `GET <basePath>/chat/:sessionId` | the session's transcript and pending approvals |
+| `GET <basePath>/chat/:sessionId` | the session's transcript and pending approvals (a turn paused on an approval is in `pending`, not yet in `messages`) |
 | `POST <basePath>/chat/:sessionId/approvals/:id` | decide an approval in a session |
 | `POST <basePath>/ui` | with `uiMessageStream: true`: the AI SDK `useChat` endpoint |
 | `GET <basePath>/oauth/callback` | the OAuth provider's redirect after a sign-in; never behind `auth` (the single-use `state` protects it) |
@@ -12842,7 +12846,10 @@ provider packages:
 
 The install hint of a missing provider package and `lousho doctor` name the
 version for the `ai` you have installed, and `lousho doctor` flags a mismatched
-pair (for example `ai` 7 with `@ai-sdk/openai` 1.x). `OllamaProvider` loads
+pair (for example `ai` 7 with `@ai-sdk/openai` 1.x). Only `lousho doctor` and
+`fromAiSdk()` check the pairing: a built-in provider (a `model` string) loads
+whatever major is installed without checking it, so run `lousho doctor` to catch
+a mismatch before the first call. `OllamaProvider` loads
 `ollama-ai-provider` on `ai` 4 and `ollama-ai-provider-v2` on `ai` 6/7; the v2
 package peers on zod 4, which the SDK accepts, so install zod 4
 with it (zod 3 projects use Ollama with `ai` 4). `lousho init` scaffolds `ai@^7.0.0` with `@ai-sdk/*@^4.0.0` for
@@ -16662,7 +16669,7 @@ node.
 | `ctx.toolCallId` | The model's id for this call. It stays the same when the call is re-run after a crash. A call with no model turn behind it (a flow node) gets a generated id. |
 | `ctx.messages` | A read-only copy of the transcript the model had seen before it made the call: no system prompt and not the assistant turn that made the call. Empty for a flow node. |
 | `ctx.abortSignal` | The run's `AbortSignal`, set when the run has one. |
-| `ctx.sessionId` | The run's session id — `agent.session({ id })`'s id or `send()`'s / `AgentExecutor.execute()`'s `sessionId`; absent when the run has none. |
+| `ctx.sessionId` | The run's session id — `agent.session({ id })`'s id or `send()`'s / `AgentExecutor.execute()`'s `sessionId` (`send({ sessionId })` needs `createAgent({ store })` with checkpoints, else it throws `LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE`); absent when the run has none. |
 | `ctx.principal` | Who the run acts for (route auth's caller, a channel's sender), frozen; absent without one. See [Principals in tools and approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#principals-in-tools-and-approvals). |
 | `ctx.approval` | Set when the call runs because a human approved it: the approval's `id` (an idempotency key for a side effect, see [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md#deciding-one-approval-twice)), the decision's `note`, and `by`, who decided, when the decision named them. |
 

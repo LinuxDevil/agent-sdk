@@ -242,9 +242,11 @@ makes: the pending approval records `expiresAt` (an ISO-8601 timestamp, like
 `createdAt`), and the `approval.requested` stream event carries it too, so a
 UI can show the deadline. Past it, the pause can no longer be approved -
 deciding it, whenever and wherever that happens, denies the call: the model
-gets a `kind: 'denied'` tool error with reason `'approval expired'` (the
-`APPROVAL_EXPIRED_REASON` export) and the run goes on, like a rejection. An
-expired pause resolved with `approved: true` does not run the tool.
+gets a `kind: 'denied'` tool error (`Approval of 'send_email' expired before it was
+decided`, with no separate `reason` field) and the run goes on, like a rejection.
+The reason string `'approval expired'` (the `APPROVAL_EXPIRED_REASON` export)
+is only on the audit entry (`onPermissionDecision`). An expired pause resolved
+with `approved: true` does not run the tool.
 
 ```ts
 import { createAgent, defineTool } from '@lousho/build-ai-agent';

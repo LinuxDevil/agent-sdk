@@ -73,7 +73,7 @@ when you seed, read or prune a slot's items from code.
 | `scope` | Scope key | One memory per |
 |---|---|---|
 | `'global'` | `'global'` | agent (shared by every run) |
-| `'session'` | `'session:<id>'`: the `agent.session({ id })` id, or `send()` / `stream()`'s `sessionId` | session |
+| `'session'` | `'session:<id>'`: the `agent.session({ id })` id, or `send()` / `stream()`'s `sessionId` (which needs a `store` with checkpoints) | session |
 | `({ sessionId, metadata }) => string \| undefined` | what the function returns | whatever you key by, e.g. a user |
 
 A scope function sees the run's `sessionId` and the `metadata` passed to
