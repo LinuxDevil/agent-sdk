@@ -244,6 +244,24 @@ and the final `run.done` event carries `object` (JSON-encoded) when the
 reply was valid. The repair step shows up as one more
 `step.start` / `step.done` pair. See [Streaming](./streaming.md).
 
+While the reply streams, each `text.delta` that changes the parsed reply is
+followed by an `object.delta` event whose `object` is the partial object so
+far: an unfinished string value is cut where the text is, an unfinished key or
+number is left out, and the open objects and arrays are closed. It is not
+validated against the schema (a field may still be missing); use it to render
+progress, and `result.object` for the answer. The UI bindings keep it as
+`partialObject`.
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+const planner = createAgent({ model: 'openai/gpt-4o-mini', output: z.object({ days: z.array(z.string()) }) });
+for await (const event of planner.stream('Plan a 3-day trip to Lisbon.')) {
+  if (event.type === 'object.delta') console.log(event.object); // { days: ['Alfama and the castle', 'Bel'] }, ...
+}
+```
+
 ## Advanced: the executor API
 
 `AgentExecutor.execute()` and `AgentExecutor.stream()` take the same

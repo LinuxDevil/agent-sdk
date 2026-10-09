@@ -129,6 +129,7 @@ interface AgentErrorEvent extends AgentEventBase<'error'> {
 // Warning: (ae-forgotten-export) The symbol "RunStartEvent" needs to be exported by the entry point index.d.ts
 // Warning: (ae-forgotten-export) The symbol "StepStartEvent" needs to be exported by the entry point index.d.ts
 // Warning: (ae-forgotten-export) The symbol "TextDeltaEvent" needs to be exported by the entry point index.d.ts
+// Warning: (ae-forgotten-export) The symbol "ObjectDeltaEvent" needs to be exported by the entry point index.d.ts
 // Warning: (ae-forgotten-export) The symbol "TextDoneEvent" needs to be exported by the entry point index.d.ts
 // Warning: (ae-forgotten-export) The symbol "ReasoningStartEvent" needs to be exported by the entry point index.d.ts
 // Warning: (ae-forgotten-export) The symbol "ReasoningDeltaEvent" needs to be exported by the entry point index.d.ts
@@ -159,7 +160,7 @@ interface AgentErrorEvent extends AgentEventBase<'error'> {
 // Warning: (ae-forgotten-export) The symbol "RunDoneEvent" needs to be exported by the entry point index.d.ts
 //
 // @public
-type AgentEvent = RunStartEvent | StepStartEvent | TextDeltaEvent | TextDoneEvent | ReasoningStartEvent | ReasoningDeltaEvent | ReasoningDoneEvent | ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | TodoUpdatedEvent | ToolErrorEvent | ApprovalRequestedEvent | PermissionDecisionEvent | StepDoneEvent | AgentErrorEvent | ProviderRetryEvent | ProviderFallbackEvent | CompactionStartEvent | CompactionDoneEvent | ContextClearedEvent | BudgetExceededEvent | InputQueuedEvent | InputSteeredEvent | InputAppliedEvent | GuardrailTrippedEvent | GuardrailRewroteEvent | AgentDriftEvent | HandoffEvent | RunDoneEvent;
+type AgentEvent = RunStartEvent | StepStartEvent | TextDeltaEvent | ObjectDeltaEvent | TextDoneEvent | ReasoningStartEvent | ReasoningDeltaEvent | ReasoningDoneEvent | ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | TodoUpdatedEvent | ToolErrorEvent | ApprovalRequestedEvent | PermissionDecisionEvent | StepDoneEvent | AgentErrorEvent | ProviderRetryEvent | ProviderFallbackEvent | CompactionStartEvent | CompactionDoneEvent | ContextClearedEvent | BudgetExceededEvent | InputQueuedEvent | InputSteeredEvent | InputAppliedEvent | GuardrailTrippedEvent | GuardrailRewroteEvent | AgentDriftEvent | HandoffEvent | RunDoneEvent;
 
 // @public
 interface AgentEventBase<TType extends string> {
@@ -1703,6 +1704,12 @@ interface OAuthTokenStore {
     takePending(state: string): Promise<PendingSignIn | undefined>;
 }
 
+// @public
+interface ObjectDeltaEvent extends AgentEventBase<'object.delta'> {
+    // (undocumented)
+    object: unknown;
+}
+
 // @public (undocumented)
 interface OneOfNode {
     // (undocumented)
@@ -3047,9 +3054,9 @@ interface Usage {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-BYE3OSWr.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BYE3OSWr.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-BYE3OSWr.d.ts:1245:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-Bz5M83pn.d.ts:867:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-Bz5M83pn.d.ts:884:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-Bz5M83pn.d.ts:1255:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
 // dist/index-C5TXhmCn.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
 // dist/index-C5TXhmCn.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/index-C5TXhmCn.d.ts:2009:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts

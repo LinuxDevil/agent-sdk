@@ -107,6 +107,7 @@ export type {
   RunStartEvent,
   StepStartEvent,
   TextDeltaEvent,
+  ObjectDeltaEvent,
   TextDoneEvent,
   ReasoningStartEvent,
   ReasoningDeltaEvent,
