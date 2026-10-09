@@ -273,7 +273,7 @@ An agent built with [@lousho/build-ai-agent](https://github.com/LinuxDevil/agent
 ## Next 3 commands
 
 \`\`\`bash
-cp .env.example .env     # then put your ${info.envKey} in .env${yaml ? ' (or export it)' : ''}
+# copy .env.example to .env (cp on macOS/Linux, copy on Windows), then put your ${info.envKey} in it${yaml ? ' (or export it)' : ''}
 ${run(pm, 'dev')}${yaml ? '          # chat UI with hot reload' : '          # chat with the agent in your terminal'}
 ${run(pm, 'test')}         # offline tests, no API key needed
 \`\`\`

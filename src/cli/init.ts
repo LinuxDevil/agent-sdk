@@ -112,7 +112,7 @@ function nextSteps(dir: string, cwd: string, pm: PackageManager, envKey: string,
   const relative = path.relative(cwd, dir) || '.';
   const lines = [`cd ${relative.includes(' ') ? JSON.stringify(relative) : relative}`];
   if (!installed) lines.push(`${pm} install`);
-  lines.push(`cp .env.example .env   # then set ${envKey}`, `${pm} run dev`);
+  lines.push(`${process.platform === 'win32' ? 'copy' : 'cp'} .env.example .env   # then set ${envKey}`, `${pm} run dev`);
   const keyNote = keyMissing
     ? `\nNo ${envKey} found in your environment, so \`${pm} run dev\` will fail until you set it in .env. \`${pm} run test\` runs offline without a key.\n`
     : '';

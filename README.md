@@ -42,7 +42,7 @@ Requires Node.js 22.19 or newer. Scaffold a new project with one command:
 
 ```bash
 npm create lousho-agent my-agent                     # agent, example tool, offline test
-cd my-agent && cp .env.example .env                  # then put your API key in .env
+cd my-agent                                          # copy .env.example to .env (cp on macOS/Linux, copy on Windows), put your API key in it
 npm run dev                                          # chat in the terminal; `npm test` runs offline
 ```
 
