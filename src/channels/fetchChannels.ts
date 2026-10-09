@@ -36,6 +36,15 @@ export interface FetchChannelsOptions {
   onError?: ChannelErrorHandler;
   /** Called when a button decision names who decided (the Slack and Discord channels do): the audit trail of approvals. */
   onDecision?(event: { decision: ChannelApprovalDecision; approver: NonNullable<ChannelDecision['approver']>; sessionId: string; channel: string }): void | Promise<void>;
+  /**
+   * Eve CH-F4: keeps a turn alive past an early acknowledgment when the host
+   * passes no `ctx.waitUntil` to the handler: `waitUntil` from
+   * `@vercel/functions` (or `after` from `next/server`) on serverless, or
+   * `(turn) => void turn` on a long-running server (Bun, Deno, Node), whose
+   * process outlives the response anyway. Without either, the answer waits
+   * for the turn to end - too late for Slack's and Discord's 3-second ack.
+   */
+  waitUntil?: (promise: Promise<unknown>) => void;
 }
 
 /** The optional ExecutionContext of a Fetch host: keeps work alive after the response. */
@@ -105,16 +114,20 @@ async function settledResponse(
   turn: Promise<void>,
   acknowledged: Promise<void>,
   answer: PendingAnswer,
-  ctx: FetchChannelsContext | undefined,
-  report: (error: unknown) => Promise<void>
+  waitUntil: ((promise: Promise<unknown>) => void) | undefined,
+  report: (error: unknown) => Promise<void>,
+  warnHeld: () => void
 ): Promise<Response> {
   const settled = await Promise.race([acknowledged.then(() => 'ack' as const), turn.then(() => 'done' as const, (error: unknown) => ({ error }))]);
   if (settled === 'ack') {
     // The surface was answered before the turn ended: keep the turn alive
-    // past the response (ctx.waitUntil, or by awaiting it here).
+    // past the response (ctx.waitUntil / options.waitUntil, or by awaiting it here).
     const tail = turn.catch(report);
-    if (ctx?.waitUntil) ctx.waitUntil(tail);
-    else await tail;
+    if (waitUntil) waitUntil(tail);
+    else {
+      warnHeld();
+      await tail;
+    }
     const answered = answer.current as { status: number; body: unknown };
     return jsonResponse(answered.status, answered.body);
   }
@@ -138,7 +151,8 @@ async function settledResponse(
  * When a channel's `parse` acknowledges the request early (its `respond`
  * call), the answer is returned as soon as it is written and the turn keeps
  * running: handed to `ctx.waitUntil()` when the host passes one (a Worker's
- * ExecutionContext), awaited before the answer otherwise.
+ * ExecutionContext), else to the `waitUntil` option, else awaited before the
+ * answer (with a one-time warning: too late for a 3-second webhook ack).
  *
  * @example
  * ```ts
@@ -156,6 +170,16 @@ export function mountFetchChannels(
   const byName = new Map(channels.map((channel) => [channel.name, channel]));
   if (byName.size !== channels.length) throw new SDKError('mountFetchChannels: channel names must be unique', 'LOUSHO_CHANNEL_INVALID');
   const core = channelCore(agent, channels, options);
+  let warned = false;
+  /** Eve CH-F4: once per handler, when an early ack is held back until the turn ends. */
+  const warnHeld = () => {
+    if (warned) return;
+    warned = true;
+    console.warn(
+      '[lousho channels] a channel acknowledged its request early, but no waitUntil was given: the response waits for the whole turn, ' +
+        "which misses Slack's and Discord's 3-second deadline. Pass ctx.waitUntil to the handler or mountFetchChannels(agent, channels, { waitUntil })."
+    );
+  };
 
   const handler = async (request: Request, ctx?: FetchChannelsContext): Promise<Response | undefined> => {
     const { pathname, search } = new URL(request.url);
@@ -191,7 +215,8 @@ export function mountFetchChannels(
     } catch (error) {
       return failureResponse(error, report);
     }
-    return settledResponse(turn, acknowledged, answer, ctx, report);
+    const waitUntil = ctx?.waitUntil?.bind(ctx) ?? options.waitUntil;
+    return settledResponse(turn, acknowledged, answer, waitUntil, report, warnHeld);
   };
   return Object.assign(handler, { resolveApproval: core.resolveApproval });
 }
