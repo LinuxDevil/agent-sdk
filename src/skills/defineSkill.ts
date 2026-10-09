@@ -10,6 +10,13 @@ export interface DefineSkillOptions {
   description: string;
   /** The full instructions (markdown). Only sent to the model once it calls `load_skill`. */
   content: string;
+  /**
+   * Absolute path of the folder holding the skill's bundled files (a `FORMS.md`,
+   * a `scripts/` folder). `loadSkills()` sets it for `<name>/SKILL.md` skills.
+   * `load_skill` then reports the folder and a `read_skill_file` tool reads
+   * files inside it.
+   */
+  directory?: string;
 }
 
 /**
@@ -22,6 +29,8 @@ export interface Skill {
   readonly name: string;
   readonly description: string;
   readonly content: string;
+  /** The folder of the skill's bundled files, when it has one (see {@link DefineSkillOptions.directory}). */
+  readonly directory?: string;
 }
 
 function fail(problem: string, fix: string): never {
@@ -73,9 +82,9 @@ function assertName(name: unknown): asserts name is string {
  * ```
  */
 export function defineSkill(opts: DefineSkillOptions): Skill {
-  const { name, description, content } = opts ?? ({} as Partial<DefineSkillOptions>);
+  const { name, description, content, directory } = opts ?? ({} as Partial<DefineSkillOptions>);
   assertName(name);
   assertNonEmpty(name, 'description', description);
   assertNonEmpty(name, 'content', content);
-  return Object.freeze({ name, description: description.trim(), content });
+  return Object.freeze({ name, description: description.trim(), content, ...(directory ? { directory } : {}) });
 }

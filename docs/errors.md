@@ -798,9 +798,10 @@ malformed. The message names the file.
 
 ### LOUSHO_SKILL_INVALID
 
-**Means:** a skill is malformed (`defineSkill()`, a `skills/` folder) or
-`withSkills()` was given duplicate names, or a skill name that collides with the
-`load_skill` tool.
+**Means:** a skill is malformed (`defineSkill()`, a `skills/` folder, including
+`loadSkills()` on a file with bad frontmatter) or `withSkills()` was given
+duplicate names, or a skill name that collides with the `load_skill` or
+`read_skill_file` tool.
 
 **Fix:** give each skill a unique name, a description and content; rename a tool called
 `load_skill`. See [Skills](./skills.md).

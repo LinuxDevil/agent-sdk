@@ -1663,6 +1663,7 @@ export function defineSkill(opts: DefineSkillOptions): Skill;
 export interface DefineSkillOptions {
     content: string;
     description: string;
+    directory?: string;
     name: string;
 }
 
@@ -5792,6 +5793,7 @@ export interface Skill {
     readonly content: string;
     // (undocumented)
     readonly description: string;
+    readonly directory?: string;
     // (undocumented)
     readonly name: string;
 }

@@ -73,9 +73,20 @@ Use the imperative mood and link the PR.
 - `description` is required.
 - `name` is optional and defaults to the folder name (`SKILL.md` layout) or the
   file name without `.md`.
-- Folders without a `SKILL.md` are ignored.
+- Folders without a `SKILL.md` are ignored. So is a loose `.md` file with no
+  frontmatter (a `README.md`): it is skipped with a console warning instead of
+  failing the whole load. A file with frontmatter but no `description` is still
+  an error.
+- A `<name>/SKILL.md` skill records its folder as `skill.directory`. `load_skill`
+  then appends the folder path and lists the files next to `SKILL.md` (up to 50),
+  and a `read_skill_file` tool (input `{ skill, path }`) is registered to read
+  them. The path is relative to the skill's folder and cannot leave it: `..`,
+  absolute paths and symlinks out are refused. Text files up to 256 KB can be
+  read. `defineSkill({ directory })` sets the same field for a skill you build
+  in code. A tool of your own named `read_skill_file` clashes the same way
+  `load_skill` does.
 - Skills come back sorted by name, so prompts are deterministic.
-- Errors name the file and the problem: missing description, invalid YAML,
+- Errors are `LOUSHO_SKILL_INVALID` and name the file and the problem: missing description, invalid YAML,
   invalid name, an unreadable directory, or two skills with the same name
   (both paths are listed).
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -171,18 +171,67 @@ describe('loadSkills', () => {
 
     expect(skills).toEqual([
       { name: 'alpha', description: 'Alpha skill', content: 'Alpha body' },
-      { name: 'renamed', description: 'Mid: skill', content: 'Mid body' },
-      { name: 'zeta', description: 'Zeta skill', content: 'Zeta body' },
+      { name: 'renamed', description: 'Mid: skill', content: 'Mid body', directory: path.join(dir, 'mid') },
+      { name: 'zeta', description: 'Zeta skill', content: 'Zeta body', directory: path.join(dir, 'zeta') },
     ]);
   });
 
   it('names the file when the description is missing', async () => {
-    const file = await write('a.md', '# no frontmatter at all');
+    const file = await write('a.md', '---\nname: a\n---\nbody');
     await expect(loadSkills(dir)).rejects.toThrow(
       new RegExp(`${file.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')}: missing 'description'`)
     );
-    await write('a.md', '---\nname: a\n---\nbody');
-    await expect(loadSkills(dir)).rejects.toThrow(/missing 'description'/);
+    const error = await loadSkills(dir).catch((e: Error & { code?: string }) => e);
+    expect((error as { code?: string }).code).toBe('LOUSHO_SKILL_INVALID');
+  });
+
+  it('skips a loose markdown file with no frontmatter (a README) with a warning (Eve MA-F13)', async () => {
+    await write('README.md', '# My skills\n\nSkills for our agents.');
+    await write('pdf/SKILL.md', '---\ndescription: Work with PDFs\n---\nPDF body');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const skills = await loadSkills(dir);
+      expect(skills.map((s) => s.name)).toEqual(['pdf']);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain('README.md');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('gives a folder skill its directory and reads bundled files through a confined read_skill_file (Eve MA-F13)', async () => {
+    await write('pdf/SKILL.md', '---\ndescription: Work with PDFs\n---\nSee FORMS.md for forms.');
+    await write('pdf/FORMS.md', 'FORMS-BODY');
+    await write('pdf/scripts/fill.py', 'print("fill")');
+    await write('secret.txt', 'TOP-SECRET');
+    const model = mockModel([
+      { toolCalls: [{ name: 'load_skill', args: { name: 'pdf' } }] },
+      {
+        toolCalls: [
+          { name: 'read_skill_file', args: { skill: 'pdf', path: 'FORMS.md' } },
+          { name: 'read_skill_file', args: { skill: 'pdf', path: '../secret.txt' } },
+          { name: 'read_skill_file', args: { skill: 'pdf', path: path.join(dir, 'secret.txt') } },
+        ],
+      },
+      'ok',
+    ]);
+    await createAgent({ prompt: 'p', provider: model, skills: await loadSkills(dir) }).send('go');
+    expect(model.calls[0].tools?.map((t) => (t as { function?: { name?: string }; name?: string }).function?.name ?? (t as { name?: string }).name)).toContain('read_skill_file');
+    const tools = (n: number) => model.calls[n].messages.filter((m) => m.role === 'tool').map((m) => { const raw = String(m.content); try { const v = JSON.parse(raw); return typeof v === 'string' ? v : raw; } catch { return raw; } });
+    const loaded = tools(1)[0];
+    expect(loaded).toContain(`Skill directory: ${path.join(dir, 'pdf')}`);
+    expect(loaded).toContain('- FORMS.md');
+    expect(loaded).toContain('- scripts/fill.py');
+    const reads = tools(2).slice(1);
+    expect(reads.join('\n')).toContain('FORMS-BODY');
+    expect(reads.join('\n')).not.toContain('TOP-SECRET');
+    expect(reads.filter((r) => /outside the directory/.test(r))).toHaveLength(2);
+  });
+
+  it('registers no read_skill_file when no skill has a directory', async () => {
+    const model = mockModel(['ok']);
+    await createAgent({ prompt: 'p', provider: model, skills: [changelog] }).send('go');
+    expect(model.calls[0].tools?.map((t) => (t as { function?: { name?: string }; name?: string }).function?.name ?? (t as { name?: string }).name)).not.toContain('read_skill_file');
   });
 
   it('names the file for invalid YAML, non-mapping frontmatter and invalid names', async () => {
