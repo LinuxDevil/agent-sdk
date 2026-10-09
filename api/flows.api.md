@@ -128,6 +128,7 @@ interface Checkpoint {
     // (undocumented)
     agentId: string;
     approvalId?: string;
+    approvalIds?: string[];
     approvalKind?: ApprovalKind;
     attempts?: number;
     businessState?: unknown;

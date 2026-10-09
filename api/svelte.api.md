@@ -16,6 +16,7 @@ interface AgentApprovals {
     get(id: string): Promise<PendingApproval | undefined>;
     list(): Promise<PendingApproval[]>;
     resolve(decision: ApprovalDecision, options?: ResolveApprovalOptions): Promise<ExecutionResult>;
+    resolveAll(decisions: readonly ApprovalDecision[], options?: ResolveApprovalOptions): Promise<ExecutionResult>;
     streamAnswer(reply: {
         id: string;
         answer: string;
@@ -320,6 +321,7 @@ interface Checkpoint {
     // (undocumented)
     agentId: string;
     approvalId?: string;
+    approvalIds?: string[];
     approvalKind?: ApprovalKind;
     attempts?: number;
     businessState?: unknown;
@@ -536,8 +538,8 @@ interface ExecutionResult<TObject = unknown> {
         message: string;
     };
     agentName?: string;
-    // (undocumented)
     approvalId?: string;
+    approvalIds?: string[];
     backgroundTasks?: BackgroundTaskView[];
     budget?: BudgetExceeded;
     // (undocumented)
@@ -1013,6 +1015,7 @@ interface PendingApproval {
 // @public
 interface PendingRun {
     approvalId?: string;
+    approvalIds?: string[];
     approvalKind?: ApprovalKind;
     checkpointId: string;
     kind: 'session' | 'run';
@@ -1026,6 +1029,7 @@ interface PendingRun {
 interface PendingTurn {
     // (undocumented)
     approvalId?: string;
+    approvalIds?: string[];
     approvalKind?: ApprovalKind;
     status: 'in-progress' | 'awaiting-approval';
 }

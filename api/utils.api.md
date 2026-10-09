@@ -66,6 +66,12 @@ interface AgentSettings {
 }
 
 // @public
+interface ApprovalGroupMember {
+    decision?: GroupDecision;
+    pending: PendingApproval;
+}
+
+// @public
 type ApprovalKind = 'tool' | 'question' | 'sign-in';
 
 // @public
@@ -120,6 +126,7 @@ interface Checkpoint {
     // (undocumented)
     agentId: string;
     approvalId?: string;
+    approvalIds?: string[];
     approvalKind?: ApprovalKind;
     attempts?: number;
     businessState?: unknown;
@@ -303,11 +310,12 @@ interface ExecutionSnapshot {
     // (undocumented)
     agent: AgentConfig;
     agentFingerprint?: AgentFingerprint;
+    approvalGroup?: ApprovalGroupMember[];
     contextSessionId?: string;
     // (undocumented)
     currentMessages: Message[];
+    heldSubagent?: SubagentSuspension;
     metadata?: Record<string, unknown>;
-    // (undocumented)
     pendingToolCall: PendingApproval;
     principal?: Principal;
     remainingToolCalls?: ToolCall[];
@@ -444,6 +452,17 @@ interface ForEachNode {
 
 // @public
 export function generatePassword(): string;
+
+// @public
+interface GroupDecision {
+    approved: boolean;
+    args?: Record<string, unknown>;
+    automatic?: true;
+    by?: Principal;
+    expired?: true;
+    note?: string;
+    remember?: 'session';
+}
 
 // @public
 export function hasRequiredKeys<T extends object>(obj: T, requiredKeys: (keyof T)[]): boolean;

@@ -267,6 +267,9 @@ The step's calls that need no approval do not wait: they run when the step
 does, before the pause.
 
 ```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini' /* , tools: [payInvoice, archiveThread] */ });
 const paused = await agent.send('Pay the invoice and archive the thread');
 // paused.approvalIds: ['…pay', '…archive']
 const result = await agent.approvals.resolveAll([

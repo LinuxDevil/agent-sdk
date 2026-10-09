@@ -138,8 +138,8 @@ interface ExecutionResult<TObject = unknown> {
         message: string;
     };
     agentName?: string;
-    // (undocumented)
     approvalId?: string;
+    approvalIds?: string[];
     backgroundTasks?: BackgroundTaskView[];
     budget?: BudgetExceeded;
     // (undocumented)
