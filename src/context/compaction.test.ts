@@ -129,6 +129,33 @@ function request(messages: Message[], model = 'compaction-test-model'): Generate
   return { model, messages };
 }
 
+describe('protectedTokens on a small context window (Eve MEM-F5)', () => {
+  it('the default protectedTokens never covers a small window: an 8K local model still prunes', async () => {
+    const messages = transcript(20); // about 20K tokens of tool results
+    const result = await compactMessages(messages, { contextWindow: 8_192 });
+    expect(result.prunedToolCallIds.length).toBeGreaterThan(10);
+    expect(result.tokensAfter).toBeLessThan(result.tokensBefore);
+  });
+
+  it('clamps an explicit protectedTokens at or above the threshold and warns once', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const messages = transcript(20);
+      const result = await compactMessages(messages, { contextWindow: 8_192, protectedTokens: 40_000 });
+      await compactMessages(messages, { contextWindow: 8_192, protectedTokens: 40_000 });
+      expect(result.prunedToolCallIds.length).toBeGreaterThan(10);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toMatch(/protectedTokens \(40000\) is not below the compaction threshold/);
+      // A value below the threshold is the caller's choice and is kept.
+      const kept = await compactMessages(messages, { contextWindow: 8_192, protectedTokens: 6_000 });
+      expect(kept.prunedToolCallIds.length).toBeLessThan(result.prunedToolCallIds.length);
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
 describe('compaction with multimodal content (LOU-V11)', () => {
   it('measures a tool result given as parts by its text and leaves user image parts alone', async () => {
     const original = transcript(4);

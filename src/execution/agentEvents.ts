@@ -350,6 +350,13 @@ export interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
   /** `true` when old turns were replaced by a model-written summary (the text is not sent). */
   summary?: boolean;
   error?: { message: string };
+  /**
+   * `true` when the strategy could not change anything (Eve MEM-F14). The
+   * hook then compacts that transcript quietly: no events until an attempt
+   * changes something, so a run stuck over the threshold does not report a
+   * start/done pair on every step.
+   */
+  unchanged?: boolean;
   /** `'manual'` for `session.compact()` (LOU-W8); absent for the hook's automatic compaction. */
   trigger?: 'manual';
 }
