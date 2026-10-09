@@ -600,8 +600,8 @@ export interface WebhookTriggerHandle extends TriggerHandle {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-DeLyD_05.d.ts:778:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-DeLyD_05.d.ts:795:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BpOjxIKW.d.ts:778:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BpOjxIKW.d.ts:795:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

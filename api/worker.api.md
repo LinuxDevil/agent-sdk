@@ -4267,11 +4267,11 @@ interface WithRetryOptions {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-DeLyD_05.d.ts:778:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-DeLyD_05.d.ts:795:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-DeLyD_05.d.ts:1156:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-DeLyD_05.d.ts:3196:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
-// dist/createAgent-DeLyD_05.d.ts:3197:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BpOjxIKW.d.ts:778:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BpOjxIKW.d.ts:795:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BpOjxIKW.d.ts:1156:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BpOjxIKW.d.ts:3198:5 - (ae-forgotten-export) The symbol "SessionBudget" needs to be exported by the entry point worker.d.ts
+// dist/createAgent-BpOjxIKW.d.ts:3199:5 - (ae-forgotten-export) The symbol "InputQueue" needs to be exported by the entry point worker.d.ts
 // dist/index-CAF7vF8c.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point worker.d.ts
 // dist/index-CAF7vF8c.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point worker.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point worker.d.ts

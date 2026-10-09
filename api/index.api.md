@@ -3239,8 +3239,8 @@ const ItemSchema: z.ZodObject<{
     }>>;
     dependencies: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
-    name: string;
     type: "tool" | "memory" | "skill" | "channel" | "schedule" | "kit";
+    name: string;
     description: string;
     permissions: {
         env?: string[] | undefined;
@@ -3255,8 +3255,8 @@ const ItemSchema: z.ZodObject<{
     }[];
     dependencies?: string[] | undefined;
 }, {
-    name: string;
     type: "tool" | "memory" | "skill" | "channel" | "schedule" | "kit";
+    name: string;
     description: string;
     files: {
         path: string;
@@ -3363,7 +3363,6 @@ export interface LLMJudgeConfig {
     model?: string;
     provider: LLMProvider;
     rubric: string;
-    // (undocumented)
     temperature?: number;
 }
 
