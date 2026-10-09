@@ -2303,6 +2303,11 @@ parts and other file parts to file parts (the part's `url`, a `data:` or
 `http(s)` URL, becomes the data). Tool, reasoning, data, source and unknown
 parts are ignored, and messages that end up empty are dropped.
 
+The messages come from the client, so only `user` and `assistant` messages are
+kept: a `system` message (or any other role, or an entry that is not a message)
+is dropped, so a caller cannot add instructions to the agent's prompt. Set
+instructions on the agent (`createAgent({ instructions })`), not in the request.
+
 A dedicated `@lousho/build-ai-agent/ai-sdk-ui` subpath may follow; for now the
 functions come from the package root.
 
@@ -10202,10 +10207,21 @@ For each slot, `createAgent({ memory })`:
 1. **Recalls** at the start of every run (`send()`, `stream()`, each session
    turn): on the run's first model call, the newest items go into the system
    prompt in a `<memory name="...">` block. The block stays for the rest of
-   the run and is not saved in the session transcript.
+   the run. A session's stored transcript (`session.messages`) does not keep
+   it, but the run's own transcript does: `result.messages` of `send()` /
+   `stream()`, and the run's checkpoints (a run continued after an approval
+   recalls from them), contain the system message with the recalled items. Do
+   not log or export those as if they held no memory.
 2. Gives the model a **`remember_<name>`** tool (input `{ text }`, or your own
    `itemSchema`) to store a new item, and a **`recall_<name>`** tool (input
-   `{ query?, limit? }`) to search the slot, newest items first.
+   `{ query?, limit? }`, `limit` capped at 100) to search the slot, newest items first.
+   Each returned item has its `id`, `text` and `createdAt`, plus `score` from a
+   vector provider and, on a slot without `itemSchema`, its other `metadata`.
+   The `remember_<name>` description tells the model how long items last: in
+   later conversations (`'global'`), later in this conversation (`'session'`),
+   or in later conversations with the same user or key (a scope function).
+   Memory tags inside item text are escaped (`&lt;memory`, `&lt;/memory`) so
+   an item cannot open or close a block.
 
 ## Memory in code
 
@@ -14252,9 +14268,12 @@ console.log(fork.id, reply.text); // 'trip-fork-1', 'Porto has a direct flight a
   has when it forks), so streaming, approvals and checkpointed turns work as on any
   `agent.session()`, and `agent.session({ id: fork.id, store })` continues it
   later, in another process too. Its id is `id` when you pass one, else
-  `<id>-fork-<n>` for the first `n` from 1 that has no transcript. An `id` that
+  `<id>-fork-<n>` for the first `n` from 1 that has no transcript (for an id
+  too long for that suffix, `<start of id>-<8 hex of its hash>-fork-<n>`, still
+  within 128 characters). An `id` that
   already has a transcript (or the session's own id) is refused with
   [`LOUSHO_SESSION_EXISTS`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_session_exists).
+- The fork's `messages` hold its transcript as soon as `fork()` resolves.
 - The original session's transcript and checkpoints are not changed.
 - Budgets: the spend recorded for `limits` stays on the kept messages, so a
   fork's `limits` start from what the session had spent at the end of the last
