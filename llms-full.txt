@@ -1870,9 +1870,21 @@ API is locked to the browser tab you opened from the printed URL:
 
 From `curl`, pass the token: `curl -H "x-lousho-studio-token: $TOKEN" localhost:4750/agents`.
 
+### Where agents live
+
+Agent specs and run state are stored under `.lousho/` in the directory you
 ran `lousho studio` from (agent YAML files under `.lousho/agents/`,
 checkpoints and approvals alongside them) - the same `.lousho/` layout
 `lousho dev`/`lousho build` use.
+
+The left rail lists exactly the agents in that `.lousho/agents/`: a YAML
+file you add there shows up, and an agent you create in the studio is
+written there at once (autosave and **Save** both write the file), so it
+can be chatted with straight away. Another project, opened in its own
+`lousho studio`, shows only its own agents. The browser keeps nothing but a
+draft of an edit that could not reach the server (it is pushed on the next
+load), stored per workspace directory. A file in `.lousho/agents/` that no
+longer parses is skipped with a warning in the server log.
 
 ### Production vs. dev mode
 
@@ -5848,7 +5860,7 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
 | `tools`    | An array of `defineTool()` results, or a `Record<string, ToolDescriptor>` keyed by the name the agent uses (see [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md)). |
 | `name`     | Agent name (default `'agent'`).                                    |
 | `description` | What the agent does, in a sentence. Required when it is used as a sub-agent. |
-| `maxSteps` | Passed through to `AgentExecutor.execute()`.                        |
+| `maxSteps` | Passed through to `AgentExecutor.execute()`. A whole number >= 1; anything else throws `LOUSHO_CONFIG_INVALID`. |
 | `modelSettings` | Sampling settings sent on every model call: `{ maxTokens?, temperature?, topP?, frequencyPenalty?, presencePenalty?, stop?, seed?, toolChoice? }`. A `send()` / `stream()` call's own `modelSettings` win key by key. See [Model settings](#model-settings). |
 | `limits`   | Budgets of each run: `{ maxTokens?, maxInputTokens?, maxOutputTokens?, maxCostUsd?, maxDurationMs?, maxSteps?, onExceeded? }`. A tripped limit ends the run with `finishReason: 'budget-exceeded'`. See [Budgets](#budgets). |
 | `toolConcurrency` | How many tool calls of one model turn run at once: a positive integer or `'unbounded'` (default). See [Parallel tool calls](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/runs.md#parallel-tool-calls). |
@@ -5870,7 +5882,7 @@ With neither `model` nor `provider`, `createAgent()` resolves from the
 environment: `LOUSHO_MODEL` (a `'provider/model'` string) if set, otherwise
 the first provider whose variable is set, checked in this order:
 `OPENAI_API_KEY` (`openai/gpt-4o-mini`), `ANTHROPIC_API_KEY`
-(`anthropic/claude-3-5-sonnet-latest`), `OPENROUTER_API_KEY`
+(`anthropic/claude-sonnet-4-5`), `OPENROUTER_API_KEY`
 (`openrouter/openai/gpt-4o-mini`), `OLLAMA_BASE_URL` (`ollama/llama3`). If none
 is set it throws an error listing exactly which options or variables fix it.
 
@@ -5931,7 +5943,7 @@ agent) or on `AgentExecutor.execute()` / `stream()`:
 | `maxOutputTokens` | Completion tokens (`usage.outputTokens`). |
 | `maxCostUsd`      | USD (`usage.costUsd`): the cost the provider reported for each call (OpenRouter's `usage.cost`), else the [price table](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/models-and-cost.md#models-and-the-price-table) estimate. Not checked while a model used has unknown pricing (`costUsd` is `undefined`); a warning is logged once. |
 | `maxDurationMs`   | Wall-clock time of the `execute()` / `stream()` call. |
-| `maxSteps`        | Model steps. An alias of the `maxSteps` option: when both are set the stricter wins (the option's tie reports `'max-steps'`); alone, it replaces the default of 10. |
+| `maxSteps`        | Model steps. An alias of the `maxSteps` option: when both are set the stricter wins (the option's tie reports `'max-steps'`); alone, it replaces the default of 10. With `output` set, running out of it makes the same forced answer call as `maxSteps` ([Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md#out-of-steps)); the run still ends `'budget-exceeded'`, with `object` when the answer validated. |
 
 Limits are checked before every model call (so after every tool batch) and
 after a model call that asks for tools; `maxDurationMs` also aborts an
@@ -6975,11 +6987,11 @@ Find a code by area:
 | [Providers and peers](#providers-and-peers) | [`LOUSHO_PROVIDER_SPEC_INVALID`](#lousho_provider_spec_invalid), [`LOUSHO_PROVIDER_UNKNOWN`](#lousho_provider_unknown), [`LOUSHO_PROVIDER_MISSING_API_KEY`](#lousho_provider_missing_api_key), [`LOUSHO_PROVIDER_REQUEST_FAILED`](#lousho_provider_request_failed), [`LOUSHO_PROVIDER_RATE_LIMITED`](#lousho_provider_rate_limited), [`LOUSHO_PEER_MISSING`](#lousho_peer_missing), [`LOUSHO_HOSTED_TOOL_UNSUPPORTED`](#lousho_hosted_tool_unsupported), [`LOUSHO_UNSUPPORTED_CONTENT`](#lousho_unsupported_content) | Resolving a model string, a missing API key or peer package, a failed or rate-limited model request, a hosted tool the provider cannot run, a file the provider cannot send. |
 | [Agent spec files](#agent-spec-files) | [`LOUSHO_SPEC_NOT_FOUND`](#lousho_spec_not_found), [`LOUSHO_SPEC_INVALID`](#lousho_spec_invalid), [`LOUSHO_SPEC_UNKNOWN_FIELD`](#lousho_spec_unknown_field), [`LOUSHO_SPEC_UNSUPPORTED_FORMAT`](#lousho_spec_unsupported_format) | Loading an `AgentSpec` file with `loadSpec()` or `specToAgent()`. |
 | [Tools](#tools) | [`LOUSHO_TOOL_NOT_FOUND`](#lousho_tool_not_found), [`LOUSHO_TOOL_NEEDS_CREDENTIALS`](#lousho_tool_needs_credentials), [`LOUSHO_TOOL_EXECUTION_FAILED`](#lousho_tool_execution_failed), [`LOUSHO_TOOL_ARGS_INVALID`](#lousho_tool_args_invalid), [`LOUSHO_MCP_START_FAILED`](#lousho_mcp_start_failed) | A tool the model called is unknown, needs credentials, threw, or got invalid arguments; a stdio MCP server did not start. |
-| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
+| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_ORPHANED`](#lousho_approval_orphaned), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
 | [Schedules](#schedules) | [`LOUSHO_SCHEDULE_INVALID`](#lousho_schedule_invalid), [`LOUSHO_SCHEDULE_RUN_INCOMPLETE`](#lousho_schedule_run_incomplete) | Defining or loading a schedule, or a scheduled turn that did not finish. |
 | [Channels](#channels) | [`LOUSHO_CHANNEL_INVALID`](#lousho_channel_invalid), [`LOUSHO_MEMORY_INVALID`](#lousho_memory_invalid) | Defining a channel or a memory slot. |
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
-| [Sandbox](#sandbox) | [`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`](#lousho_sandbox_egress_unsupported) | Asking a sandbox for something it cannot do on the current platform. |
+| [Sandbox](#sandbox) | [`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`](#lousho_sandbox_egress_unsupported), [`LOUSHO_SANDBOX_PATH_DENIED`](#lousho_sandbox_path_denied) | Asking a sandbox for something it cannot do on the current platform, or to write outside its root. |
 | [Agent directories, skills and flows](#agent-directories-skills-and-flows) | [`LOUSHO_AGENT_DIR_INVALID`](#lousho_agent_dir_invalid), [`LOUSHO_SKILL_INVALID`](#lousho_skill_invalid), [`LOUSHO_FLOW_INVALID`](#lousho_flow_invalid), [`LOUSHO_FLOW_TOOL_DENIED`](#lousho_flow_tool_denied) | Loading an agent directory, a skill, or a flow definition, and gating a flow's tool calls. |
 | [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_STORAGE_BUSY`](#lousho_storage_busy), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed) | A storage backend, a trigger, a channel request or `lousho build`. |
 | [Tests and evals](#tests-and-evals) | [`LOUSHO_EVALS_INVALID`](#lousho_evals_invalid), [`LOUSHO_TEST_FAILED`](#lousho_test_failed), [`LOUSHO_CASSETTE_INVALID`](#lousho_cassette_invalid) | `defineEval()`, `mockModel` and cassettes. |
@@ -7313,6 +7325,20 @@ paused result); each approval resolves once.
 The approvals route (`POST /chat/:sessionId/approvals/:id`) answers this code
 with a `404` also when the approval belongs to another session than the one
 in the URL.
+
+### LOUSHO_APPROVAL_ORPHANED
+
+**Means:** `agent.approvals.resolve()` (or `streamResolve()`) got an approval
+whose session turn is no longer stored: the turn's `<id>.turn-<n>` checkpoint
+was deleted (by an older `SqliteStore.prune()`, a TTL, or by hand). The tool
+was not run and the approval stays pending.
+
+**Fix:** start a new turn in the session instead; there is nothing left to
+continue. `SqliteStore.prune()` keeps paused turns, so this needs the
+checkpoint to be removed some other way.
+
+**Example:** deleting `cust-7.turn-2` from the checkpoint store, then
+approving the refund that turn paused on.
 
 ### LOUSHO_APPROVAL_CONFLICT
 
@@ -7664,6 +7690,18 @@ than 25.0.5, which forwards DNS from internal networks.
 `network: 'none'`. See [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md#sandboxed-shell-sandboxshell).
 
 **Example:** `new SubprocessSandbox({ network: { allow: ['api.github.com'] }, broker })` with Docker Desktop.
+
+### LOUSHO_SANDBOX_PATH_DENIED
+
+**Means:** `SubprocessSandbox.writeFile()` was given a path outside the sandbox's
+`root` (by `..`, an absolute path elsewhere, or a symlink that leads out), or the
+root itself. Nothing was written.
+
+**Fix:** write under the root, or construct the sandbox with the `root` that should
+contain the file (`new SubprocessSandbox({ root })`; the default is the working
+directory at construction). See [Guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md#sandboxed-tools).
+
+**Example:** `sandbox.writeFile('/etc/profile.d/x.sh', ...)` with the default root.
 
 ## Agent directories, skills and flows
 
@@ -8331,8 +8369,12 @@ npx lousho eval --drift         # re-record and diff each case's trajectory
   `default.json`. Give each case a unique `label` so the names stay stable:
   two cases that would still share a cassette (the same label twice) fail at
   record time instead of overwriting each other. A case whose agent uses more
-  than one provider (a sub-agent on another model) gets `<case>-<hash>.2.json`
-  and so on. The files use the normal cassette format, with API keys redacted;
+  than one provider (a sub-agent on another model) gets one named after the
+  sub-agent, `<case>-<hash>.<agent>.json` (older `.2.json` files are still
+  replayed). Replay matches each call by its request, not its position, so
+  parallel sub-agent tasks replay whatever order the live model answered in; a
+  mismatch stops the run with `LOUSHO_CASSETTE_INVALID` even when it happens
+  inside a sub-agent. The files use the normal cassette format, with API keys redacted;
   review and commit them. Re-recording a case whose exchanges did not change
   leaves its file untouched (`recordedAt` is kept), so only real changes show
   in a diff. Cassettes recorded by an older SDK under the unhashed
@@ -8921,7 +8963,13 @@ await AgentExecutor.execute({ agent, input, provider, toolRegistry, sandbox: new
   `cwd` you pass. It needs a running Docker daemon and the optional peer
   `dockerode` (`npm install dockerode@^5.0.1`; loaded on first use). When the
   run is cancelled (`run.abort()`, `signal`) or the command times out, the
-  container is killed and removed.
+  container is killed and removed. Each container runs as a non-root user
+  (`user`, default `'1000:1000'`; on a Linux host it must be able to write the
+  mounted `cwd`), with every Linux capability dropped, `no-new-privileges`, and
+  `limits` of 512 MiB memory, 256 processes and 1 CPU by default.
+  `writeFile(path)` writes on the host only under `root` (default: the working
+  directory); a path outside it, also through a symlink, is refused with
+  `LOUSHO_SANDBOX_PATH_DENIED`.
 - Implement `SandboxAdapter` (`name`, `run(cmd, args, opts)`, `writeFile(path, content)`)
   for another backend.
 
@@ -9844,13 +9892,24 @@ Options:
 - `lazy` (default `true`): after `close()` or a dropped connection, the next
   tool call reconnects. With `false` that call fails instead. Listing tools
   needs a connection, so `lazy` never delays the first connect.
-- `logger`: receives skipped-server and skipped-tool warnings (default: none).
+- `logger`: receives skipped-server and skipped-tool warnings, and a warning
+  (with the exit code and the last stderr lines) when a server's connection
+  closes without `close()` (default: none).
 - `tokens`: the token store (`AgentStore.tokens`) of servers with `oauth`;
   required when any server has `oauth`.
+- `onToolsChanged(tools)`: called after a server's tool list changed (see below).
 
 It returns `{ tools, close(), status() }`; `status()` maps each server to
-`'idle'`, `'connected'`, `'failed'` or `'needs-auth'` (an `oauth` server the
-app is not signed in to).
+`'idle'` (not connected yet, or after `close()`), `'connected'`, `'failed'`
+(it could not connect, or its connection dropped, e.g. the stdio process
+exited; with `lazy` the next tool call reconnects) or `'needs-auth'` (an
+`oauth` server the app is not signed in to).
+
+Tools are listed through every `tools/list` page (`nextCursor`), up to 100
+pages per server. When a server sends `notifications/tools/list_changed`, its
+tools are listed again: `tools` is updated in place (new tools added, gone ones
+removed) and `onToolsChanged` is called. An agent with `mcpServers` offers the
+new list from its next model call.
 
 `tools` is a `Record<string, ToolDescriptor>` keyed `<server>__<tool>` — a
 map, not the array `defineTool()` results make. `createAgent({ tools })` takes
@@ -11373,12 +11432,15 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | Attribute | Value |
 | --- | --- |
 | `gen_ai.operation.name` | `invoke_agent` |
-| `gen_ai.agent.name` | The agent's `name` |
+| `gen_ai.agent.name` | The agent's `name`. An unnamed sub-agent uses the key the lead knows it by (`subagents: { researcher }` gives `researcher`), and the span is named after it |
 | `gen_ai.agent.id` | The agent's `id`, when set |
 | `gen_ai.provider.name` | The provider's `name` |
 | `gen_ai.conversation.id` | `sessionId`, when set |
 | `lousho.cost_usd` | Cumulative estimated USD of the run (every model call and delegated child run, including a background child that finishes before the run ends); absent when any model used has no known price |
 | `lousho.usage.estimated` | `true` when any of the run's tokens were estimated |
+| `lousho.subagent.name` | On a sub-agent's run: the name the lead knows it by (the `task` tool's `agent`) |
+| `lousho.subagent.depth` | On a sub-agent's run: `1` for a sub-agent of the top-level run, `2` for its sub-agent, and so on |
+| `lousho.task.id` | On a sub-agent's run started by `task`: the task's `taskId` |
 
 ### Model call: `chat {model}` (CLIENT)
 
@@ -12371,7 +12433,9 @@ then wrap its model with `fromAiSdk()` (below). Otherwise implement the
 `LLMProvider` interface (`name`, `generate()`, `stream()`, `supportsTools()`,
 `supportsStreaming()`, `getModels()`, optionally `defaultModel`) and pass the
 instance as `provider`, or register a factory with
-`LLMProviderRegistry.register(name, factory)`.
+`LLMProviderRegistry.register(name, factory)`; a registered name then works in a
+model string (`model: 'name/model-id'`), and the factory receives `defaultModel` and reads its
+own credentials.
 
 ### Slow local models: a custom `fetch`
 
@@ -12841,6 +12905,7 @@ on the server.
 | `todos` | The agent's todo list (`{ id, content, status }[]`), set by each `todo.updated` event of the [todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#todo-tools); `[]` until the first one. It carries across turns; see [Todos](#todos). |
 | `lastEvent` | The last event received, for anything the projection does not cover. |
 | `send(input)` | Starts a turn. If a turn is still running, it is aborted first. `input` is a string, content parts or a `Message[]` (an `AgentInput`); the user bubble shows the text with an `[image]` / `[file]` marker per other part (remote mode POSTs it as `{ "input": ... }`). |
+| `reset()` | Aborts the run, forgets the in-process session and clears the chat (remote mode starts a new chat id), as `reset()` in the Vue and Svelte bindings. |
 | `stop()` | Aborts the turn in flight through its `AbortSignal`; `status` goes back to `'idle'`. |
 | `approve(note?)`, `reject(note?)` | Decide `pendingApproval` (see below). |
 | `answer(text)` | Answers a question (`pendingApproval.kind === 'question'`); the same as `approve(text)`. `reject()` declines it. |
@@ -13886,6 +13951,8 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   of the transcript when the turn started), so a new process finds the
   interrupted turn without any extra bookkeeping. A finished turn joins the
   transcript, exactly as a plain `send()` does, and its checkpoint is deleted.
+  The turn id is only the checkpoint key: tools, `needsApproval`, permission
+  rules and tool-call hooks still get the session's own id as `ctx.sessionId`.
 - `resume()` continues the turn through the executor's resume path
   (`input: []`): tool calls whose results were recorded do not run again, and
   a recorded model response is not requested again. A tool that was running
@@ -14029,7 +14096,11 @@ With the executor directly, pass `store.checkpoints` as `checkpointStore` and
   round-trip unchanged.
 - `prune()` removes sessions and checkpoints not updated within `olderThanMs`,
   approvals resolved that long ago and expired pending OAuth sign-ins;
-  unresolved approvals and OAuth tokens are kept.
+  unresolved approvals and OAuth tokens are kept, and so is a turn paused on
+  an unresolved approval (its checkpoint and the session's transcript),
+  however old. Resolving an approval whose paused turn was deleted anyway
+  fails with [`LOUSHO_APPROVAL_ORPHANED`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_approval_orphaned)
+  without running the tool.
 - A file that is not a SQLite database fails with an error naming the path;
   using the store after `close()` throws a clear error.
 
@@ -14909,9 +14980,17 @@ console.log(object?.note); // typed: string | undefined
    the JSON Schema itself (some local models echo it), the message says so
    and shows an example object of the right shape instead. The repair step
    counts against `maxSteps`, and there is none when the budget is spent.
+   There is none either when the reply was cut off at the `maxTokens`
+   limit (the model's `finishReason` was `'length'`): a repair would be cut
+   off the same way, so the run ends at once with `outputError.kind:
+   'truncated'` and a message that says to raise `modelSettings.maxTokens`.
+   The repair message and the reply it rejected are sent to that one model
+   call only: they are not in `result.messages` or the session transcript,
+   so a later turn never sees them.
 5. Still invalid, the run resolves (it does not reject) with
    `finishReason: 'output-invalid'`, no `object`, and `outputError`:
-   `{ message, issues: [{ path, message }] }`.
+   `{ kind, message, issues: [{ path, message }] }`, where `kind` is
+   `'invalid'` or `'truncated'`.
 
 ## Out of steps
 
@@ -14921,7 +15000,10 @@ offered ("answer now") and validates that reply the same way. A valid
 answer ends the run `finishReason: 'max-steps'` with `object` set; an
 invalid one ends it `'output-invalid'` with `outputError`. The extra call
 is skipped when another budget limit (tokens, cost, duration) is already
-spent.
+spent. A `limits.maxSteps` that runs out gets the same call; that run
+still ends `'budget-exceeded'` with `result.budget`, plus `object` when the
+answer validated. Like the repair message, the "answer now" prompt is sent to that
+call only and is not kept in `result.messages` or the session transcript.
 
 ## The schema in the prompt
 

@@ -1,7 +1,8 @@
 import { createContext, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { AgentSpec } from '@lousho/build-ai-agent';
-import { LocalStorageAgentStore } from '../persistence/LocalStorageAgentStore';
+import { HttpAgentStore } from '../persistence/HttpAgentStore';
+import { runtimeClient } from '../runtime/runtimeClient';
 import type { AgentStore, AgentStoreEntry } from '../persistence/AgentStore';
 import type { AgentGraphSpec } from '../graph/types';
 import type { TemplateId } from '../canvas/templates';
@@ -139,7 +140,8 @@ interface AppState {
 const AppStateContext = createContext<AppState | undefined>(undefined);
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
-  const store = useMemo(() => new LocalStorageAgentStore(), []);
+  // Eve DUI-F2: agents live in the server workspace (.lousho/agents/), not the browser.
+  const store = useMemo(() => new HttpAgentStore(runtimeClient), []);
   const [railTab, setRailTab] = useState<RailTab>('agents');
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('chat');
   const doc = useAgentDocument(store);
@@ -147,7 +149,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const agentStatuses = useAgentStatuses(doc.agents);
   const stream = useAgentStream(agentId);
   const run = useRunControls({ agentId, spec, ...stream });
-  const chatControls = useChatControls({ agentId, ...stream });
+  const chatControls = useChatControls({ agentId, spec, ...stream });
   const { activeProfile, refreshActiveProfile } = useActiveProfile();
 
   const value: AppState = {

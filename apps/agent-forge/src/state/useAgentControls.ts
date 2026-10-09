@@ -77,6 +77,8 @@ export function useRunControls({ agentId, spec, runStatus, setLogs, setSpans, se
 
 interface ChatControlDeps {
   agentId: string;
+  /** Eve DUI-F7: sent with each message so chat runs the canvas as it is now. */
+  spec: AgentSpec;
   setChat: Dispatch<SetStateAction<ChatState>>;
   setChatActionError: Dispatch<SetStateAction<string | undefined>>;
   setChatSessions: Dispatch<SetStateAction<ChatSessionMeta[]>>;
@@ -86,6 +88,7 @@ interface ChatControlDeps {
 /** P1/P3 chat actions: send a message, start a new session, browse past sessions. */
 export function useChatControls({
   agentId,
+  spec,
   setChat,
   setChatActionError,
   setChatSessions,
@@ -95,13 +98,13 @@ export function useChatControls({
     async (text: string) => {
       setChatActionError(undefined);
       try {
-        await runtimeClient.sendMessage(agentId, text);
+        await runtimeClient.sendMessage(agentId, text, spec);
       } catch (error) {
         setChatActionError(error instanceof RuntimeApiError ? error.message : (error as Error).message);
         throw error;
       }
     },
-    [agentId]
+    [agentId, spec]
   );
 
   const startNewChat = useCallback(async () => {

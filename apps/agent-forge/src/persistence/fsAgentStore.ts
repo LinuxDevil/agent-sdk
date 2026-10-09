@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
 import { loadSpec, type AgentSpec } from '@lousho/build-ai-agent';
 import type { AgentStore, AgentStoreEntry } from './AgentStore';
+import { isValidAgentId } from '../../shared/agentId';
 
 /**
  * Filesystem-backed `AgentStore`, saving/loading plain `AgentSpec` YAML
@@ -12,16 +13,10 @@ import type { AgentStore, AgentStoreEntry } from './AgentStore';
  * `yaml` package for writing - there is only one AgentSpec file format in
  * this repo, not a second bespoke one for the app.
  *
- * NOT wired into the Vite/browser app (`apps/agent-forge/src/App.tsx` uses
- * `LocalStorageAgentStore` instead) - a browser has no `node:fs` access.
- * This module is the interface point LOU-N's runtime control server is
- * expected to expose over HTTP/IPC: that server can import
- * `createFsAgentStore()` directly and serve it behind whatever transport it
- * adds, rather than reinventing filesystem persistence.
- *
- * TODO(LOU-N): wire this up behind the runtime control server so the
- * browser app can call it remotely instead of only using
- * `LocalStorageAgentStore`.
+ * The studio server (server/index.ts) serves this store over
+ * `GET/PUT/DELETE /agents`, and the browser app reads it through
+ * `HttpAgentStore` (Eve DUI-F2) - so the agent list is exactly
+ * `.lousho/agents/` of the directory `lousho studio` was started in.
  */
 /** Where `createFsAgentStore(baseDir)` reads/writes agent `id`'s spec - exposed (LOU-R2) so the runtime server's deploy route can hand `lousho build --agent=<path>` the exact file this store manages, without duplicating the `.lousho/agents/<id>.yaml` convention. */
 export function agentSpecFilePath(baseDir: string, id: string): string {
@@ -43,11 +38,21 @@ export function createFsAgentStore(baseDir: string): AgentStore {
     async list(): Promise<AgentStoreEntry[]> {
       if (!fs.existsSync(agentsDir)) return [];
       const files = fs.readdirSync(agentsDir).filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'));
-      return files.map((file) => {
+      const entries: AgentStoreEntry[] = [];
+      for (const file of files) {
         const id = file.replace(/\.ya?ml$/, '');
-        const stat = fs.statSync(path.join(agentsDir, file));
-        return { id, spec: loadSpec(path.join(agentsDir, file)), updatedAt: stat.mtime.toISOString() };
-      });
+        // Eve DUI-F2: the studio lists this directory now, so one hand-edited
+        // file that no longer parses (or an id the API would reject) is
+        // skipped instead of failing the whole list.
+        if (!isValidAgentId(id)) continue;
+        try {
+          const stat = fs.statSync(path.join(agentsDir, file));
+          entries.push({ id, spec: loadSpec(path.join(agentsDir, file)), updatedAt: stat.mtime.toISOString() });
+        } catch (error) {
+          console.warn(`[agent-forge] skipping unreadable agent spec '${file}': ${(error as Error).message}`);
+        }
+      }
+      return entries.sort((a, b) => a.id.localeCompare(b.id));
     },
 
     async load(id: string): Promise<AgentSpec | undefined> {

@@ -75,6 +75,17 @@ describe('LOU-N HTTP API', () => {
     expect(res.text).toBe('ok');
   });
 
+  it('GET /workspace names the served directory; DELETE /agents/:id removes a saved spec (Eve DUI-F2)', async () => {
+    const ws = await request(app).get('/workspace');
+    expect(ws.status).toBe(200);
+    expect(ws.body.baseDir).toBe(path.resolve(baseDir));
+
+    await request(app).put('/agents/doomed').send(SPEC).expect(204);
+    expect((await request(app).get('/agents')).body.map((e: { id: string }) => e.id)).toContain('doomed');
+    await request(app).delete('/agents/doomed').expect(204);
+    await request(app).get('/agents/doomed').expect(404);
+  });
+
   it('GET /agents/:id/status returns idle before any run', async () => {
     const res = await request(app).get('/agents/nope/status');
     expect(res.status).toBe(200);

@@ -39,8 +39,9 @@ interface AutosaveDeps {
 }
 
 /**
- * Autosave: debounce writes so we're not hitting localStorage on every
- * node drag frame, but still persist without an explicit Save click.
+ * Autosave: debounce writes so we're not hitting the server on every
+ * node drag frame, but still persist without an explicit Save click. A
+ * failed save leaves the document dirty (HttpAgentStore keeps a draft).
  */
 function useAutosave({ store, agentId, spec, dirty, setDirty, refreshAgents }: AutosaveDeps): void {
   const autosaveTimer = useRef<ReturnType<typeof setTimeout>>();
@@ -48,10 +49,15 @@ function useAutosave({ store, agentId, spec, dirty, setDirty, refreshAgents }: A
     if (!dirty) return;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => {
-      store.save(agentId, spec).then(() => {
-        setDirty(false);
-        void refreshAgents();
-      });
+      store.save(agentId, spec).then(
+        () => {
+          setDirty(false);
+          void refreshAgents();
+        },
+        () => {
+          // Stays dirty: the UNSAVED badge keeps showing, and the next edit or Save retries.
+        }
+      );
     }, AUTOSAVE_DEBOUNCE_MS);
     return () => {
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
@@ -79,20 +85,36 @@ export function useAgentDocument(store: AgentStore) {
   }, [graph]);
 
   const refreshAgents = useCallback(async () => {
-    setAgents(await store.list());
+    try {
+      setAgents(await store.list());
+    } catch {
+      // Server unreachable: keep the last list rather than failing the caller.
+    }
   }, [store]);
 
-  // Load any previously-saved spec for this agent, and the agent list, on mount.
+  // On mount: the agent list from the server (`.lousho/agents/`), and the
+  // first saved agent - or, when there is none, an unsaved 'untitled-agent'.
   useEffect(() => {
     let cancelled = false;
-    store.load(agentId).then((loaded) => {
-      if (!cancelled && loaded) {
-        const loadedGraph = specToGraph(loaded);
-        setGraphState(loadedGraph);
-        setSelectedNodeId(firstLlmNodeId(loadedGraph));
+    void (async () => {
+      let list: AgentStoreEntry[] = [];
+      try {
+        list = await store.list();
+      } catch {
+        return; // Server unreachable: stay on the unsaved default agent.
       }
-    });
-    void refreshAgents();
+      if (cancelled) return;
+      setAgents(list);
+      const id = list.some((entry) => entry.id === agentId) ? agentId : list[0]?.id;
+      if (!id) return;
+      const loaded = await store.load(id).catch(() => undefined);
+      if (cancelled || !loaded) return;
+      const loadedGraph = specToGraph(loaded);
+      setAgentId(id);
+      setGraphState(loadedGraph);
+      lastValidSpec.current = loaded;
+      setSelectedNodeId(firstLlmNodeId(loadedGraph));
+    })();
     return () => {
       cancelled = true;
     };

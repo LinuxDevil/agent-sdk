@@ -128,9 +128,9 @@ function SpecFileButtons() {
   );
 }
 
-/** Stop/Run actions, surfacing a failed attempt as a message next to the buttons. */
+/** Stop/Run/Save actions, surfacing a failed attempt as a message next to the buttons. */
 function useRunActions() {
-  const { runAgent, stopAgent } = useAppState();
+  const { runAgent, stopAgent, save } = useAppState();
   const [actionError, setActionError] = useState<string | undefined>(undefined);
 
   async function attempt(action: () => Promise<unknown>) {
@@ -148,13 +148,14 @@ function useRunActions() {
   // rather than blocking Run on an empty prompt.
   const handleRun = () => attempt(() => runAgent('Run the agent.'));
   const handleStop = () => attempt(() => stopAgent());
+  const handleSave = () => attempt(() => save());
 
-  return { actionError, handleRun, handleStop };
+  return { actionError, handleRun, handleStop, handleSave };
 }
 
 export function Topbar() {
-  const { spec, save, dirty, runStatus } = useAppState();
-  const { actionError, handleRun, handleStop } = useRunActions();
+  const { spec, dirty, runStatus } = useAppState();
+  const { actionError, handleRun, handleStop, handleSave } = useRunActions();
 
   const status = runStatus?.status ?? 'idle';
   const isRunning = status === 'running';
@@ -195,7 +196,7 @@ export function Topbar() {
         Run
       </button>
       <SpecFileButtons />
-      <button className="btn btn-primary" onClick={() => void save()}>
+      <button className="btn btn-primary" onClick={() => void handleSave()}>
         Save
       </button>
     </div>

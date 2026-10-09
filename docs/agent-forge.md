@@ -66,10 +66,21 @@ API is locked to the browser tab you opened from the printed URL:
 
 From `curl`, pass the token: `curl -H "x-lousho-studio-token: $TOKEN" localhost:4750/agents`.
 
+### Where agents live
 
+Agent specs and run state are stored under `.lousho/` in the directory you
 ran `lousho studio` from (agent YAML files under `.lousho/agents/`,
 checkpoints and approvals alongside them) - the same `.lousho/` layout
 `lousho dev`/`lousho build` use.
+
+The left rail lists exactly the agents in that `.lousho/agents/`: a YAML
+file you add there shows up, and an agent you create in the studio is
+written there at once (autosave and **Save** both write the file), so it
+can be chatted with straight away. Another project, opened in its own
+`lousho studio`, shows only its own agents. The browser keeps nothing but a
+draft of an edit that could not reach the server (it is pushed on the next
+load), stored per workspace directory. A file in `.lousho/agents/` that no
+longer parses is skipped with a warning in the server log.
 
 ### Production vs. dev mode
 
