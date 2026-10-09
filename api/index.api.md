@@ -621,6 +621,7 @@ export interface ApprovalSignIn {
 
 // @public
 export interface ApprovalStore {
+    list?(): Promise<PendingApproval[]>;
     load?(id: string): Promise<ResolvedApproval | null>;
     // (undocumented)
     resolve(id: string): Promise<ResolvedApproval | null>;
@@ -3089,6 +3090,7 @@ export type InferSchemaOutput<S extends StandardSchemaV1> = NonNullable<S['~stan
 
 // @public
 export class InMemoryApprovalStore implements ApprovalStore {
+    list(): Promise<PendingApproval[]>;
     // (undocumented)
     load(id: string): Promise<ResolvedApproval | null>;
     // (undocumented)
@@ -7211,8 +7213,8 @@ const writeFileInput: z.ZodObject<{
 
 // Warnings were encountered during analysis:
 //
-// dist/index-BmtyMuK3.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-BmtyMuK3.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-f8aV-zBF.d.ts:26:13 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-f8aV-zBF.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
 // dist/types-pCR-dHOL.d.ts:34:5 - (ae-forgotten-export) The symbol "AuthChallenge" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
