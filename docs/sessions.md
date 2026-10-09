@@ -82,13 +82,24 @@ console.log((await second) === (await first)); // true: one turn, one result
 `send()` and `stream()` take a string, content parts (`[{ type: 'text', ... }, { type: 'image', ... }]`, one user message) or a `Message[]`; the stores keep the parts, see [Multimodal input](./providers.md#multimodal-input).
 
 A `send()` that throws (a provider error, or a tool that throws a
-`PropagatingToolError`) or is aborted with `signal` leaves the transcript
-exactly as it was before that call, with one exception: an aborted `send()`
-keeps the turn up to the last tool call that ran (its user message, the
-assistant's tool calls and their results; calls of that batch that never
-started keep a "cancelled" result), so a side effect such as a refund is never
-missing from the transcript. An aborted `send()` resolves with
-`finishReason: 'aborted'`, as `agent.send()` does. The stored transcript never
+`PropagatingToolError`) leaves the transcript exactly as it was before that
+call. A `send()` aborted with `signal` (a Stop button) keeps what the user and
+the model already said, so `GET /chat/:id` and the next turn still have the
+context:
+
+- the user's message, once the model was called (a signal already aborted
+  before the first model call drops the turn whole);
+- the turn up to the last tool call that ran (the assistant's tool calls and
+  their results; calls of that batch that never started keep a "cancelled"
+  result), so a side effect such as a refund is never missing;
+- the reply the model had streamed when it was stopped, as an assistant
+  message with `metadata: { interrupted: true }` (only `stream()` streams; a
+  plain `send()` call has no partial reply).
+
+An aborted `send()` resolves with `finishReason: 'aborted'`, as `agent.send()`
+does. Its `usage` counts the stopped model call, estimated from the request
+and the streamed text when the provider reported none, so a session's
+`limits.maxCostUsd` is not undercounted. The stored transcript never
 contains an assistant tool-call turn without the matching tool results.
 
 A `send()` that pauses on a `needsApproval` tool resolves with
@@ -128,9 +139,10 @@ const { text } = await session.send('What is my name?');
   exactly as `send()` saves them, and only then is `run.done` delivered. When
   the `for await` loop ends, or `run.result` resolves, the transcript is
   complete. The events carry the `runId` of the returned handle.
-- An aborted run (`signal`, or breaking out of the loop early) or a failed one
-  leaves the transcript as it was before the call, like `send()` (an aborted
-  run keeps the tool calls that ran). A run that
+- A failed run leaves the transcript as it was before the call, like `send()`.
+  An aborted run (`signal`, or breaking out of the loop early) keeps the user's
+  message, the tool calls that ran and the reply streamed so far (marked
+  `metadata.interrupted`), like an aborted `send()`. A run that
   was already finished when the loop was left is saved. A failed run ends the
   stream with `error` and `run.done` (`finishReason: 'error'`), and
   `run.result` rejects. This includes a store that fails to load or save: the
@@ -210,9 +222,9 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   `SessionAwaitingApprovalError` (`LOUSHO_SESSION_AWAITING_APPROVAL`) too, and
   their `pending()` reports the pause. Decide the approval, or drop the turn with
   `agent.session({ id }).discardPending()`, to take new turns again.
-- An aborted turn is dropped (its checkpoint is deleted), as without a
-  checkpoint store, except for the tool calls that ran in it, which join the
-  transcript. `clear()` deletes a pending turn too, and the checkpoint
+- An aborted turn's checkpoint is deleted; what it kept (the user's message,
+  the tool calls that ran, the interrupted reply) joins the transcript, as
+  without a checkpoint store. `clear()` deletes a pending turn too, and the checkpoint
   history of every turn, so cleared turns are no longer forkable.
 
 ## Stores

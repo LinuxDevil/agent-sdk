@@ -251,9 +251,18 @@ function recordingRetries(request: GenerateOptions, span: Span): GenerateOptions
 }
 
 /**
+ * Eve CORE-F11: the usage of a model call the run's signal aborted - nothing reported it, so it is estimated from
+ * the request and `text`, the reply streamed before the abort - so budgets and the session's spend count it.
+ */
+export function measureAbortedCall(options: ExecuteOptions, messages: Message[], text: string): CallUsage {
+  return measureUsage(resolveModel(options) ?? options.provider.name, messages, { text, finishReason: 'stop' });
+}
+
+/**
  * Runs provider.generate() inside a `chat {model}` span parented to the
  * run's `invoke_agent` span, followed by the onLLMResponse callback and
  * postGenerate hooks. A steer (`callSignal`, LOU-V10) rejects it at once.
+ * `partial` collects the text the call streamed so far (Eve CORE-F11).
  */
 export function generateInSpan(
   options: ExecuteOptions,
@@ -261,7 +270,8 @@ export function generateInSpan(
   messages: Message[],
   agentSpanId: string,
   callSignal?: AbortSignal,
-  inputCheck?: ParallelInputCheck
+  inputCheck?: ParallelInputCheck,
+  partial?: { text: string }
 ): Promise<GeneratedStep> {
   const { exporter, onLLMResponse, hooks, redactContent } = options;
   // LOU-D46.2: the one place a run's model call is routed, so eval cassettes cover every entry point.
@@ -284,7 +294,10 @@ export function generateInSpan(
       const hold = inputCheck?.verdict;
       const request = recordingRetries(generateRequest, llmSpan);
       const generated = settleHostedFinish(
-        await abortable(runEvents ? runEvents.generate(provider, request, onOutput, hold) : provider.generate(request), callSignal)
+        await abortable(
+          runEvents ? runEvents.generate(provider, request, onOutput, hold, partial && ((text) => (partial.text += text))) : provider.generate(request),
+          callSignal
+        )
       );
       const llmLatencyMs = Date.now() - llmStart;
 

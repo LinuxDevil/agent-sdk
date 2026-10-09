@@ -188,7 +188,7 @@ export interface RunEventSink {
    * N5b: with `hold`, the step's `text.delta`, `reasoning.*` and provider-run tool events wait for it: released
    * in order when it resolves `true`, dropped when `false`.
    */
-  generate(provider: LLMProvider, request: GenerateOptions, onOutput?: () => void, hold?: Promise<boolean>): Promise<GenerateResult>;
+  generate(provider: LLMProvider, request: GenerateOptions, onOutput?: () => void, hold?: Promise<boolean>, onText?: (text: string) => void): Promise<GenerateResult>;
   /** LOU-Y1: the sink for a sub-agent's run, whose events carry `subagent`. */
   forSubagent(subagent: SubagentInfo): RunEventSink;
 }
@@ -506,9 +506,9 @@ class RunEvents {
       agentDrift: (drift) => this.emit({ type: 'agent.drift', ...drift }, subagent),
       handoff: (handoff) => this.emit({ type: 'handoff', ...handoff }, subagent),
       guardrail: (event) => this.emit(event, subagent),
-      generate: async (provider, request, onOutput, hold) => {
+      generate: async (provider, request, onOutput, hold, onText) => {
         const call = withProviderEvents(request, this.providerEvents(subagent));
-        const generated = settleHostedFinish(await this.generateStep(provider, call, subagent, onOutput, hold));
+        const generated = settleHostedFinish(await this.generateStep(provider, call, subagent, onOutput, hold, onText));
         const measured = measureUsage(generated.servedBy?.model ?? request.model ?? provider.name, request.messages, generated);
         const measuredStep = { finishReason: generated.finishReason, ...measured, usage: measured.usage };
         // N5b: a step a parallel input guardrail blocked reports only the usage the provider reported.
@@ -539,11 +539,15 @@ class RunEvents {
     request: GenerateOptions,
     subagent: SubagentInfo | undefined,
     onOutput?: () => void,
-    hold?: Promise<boolean>
+    hold?: Promise<boolean>,
+    onText?: (text: string) => void
   ): Promise<GenerateResult> {
     const report = heldUntil(hold);
     const sink: StepSink = {
-      onTextDelta: (text) => report(() => this.emit({ type: 'text.delta', text }, subagent)),
+      onTextDelta: (text) => {
+        onText?.(text);
+        report(() => this.emit({ type: 'text.delta', text }, subagent));
+      },
       onReasoning: (event) => report(() => this.emit(event, subagent)),
       onHostedToolCall: (hosted) => report(() => this.hostedStarted(hosted, subagent)),
       onHostedToolResult: (hosted) => report(() => this.hostedSettled(hosted, subagent)),
