@@ -111,7 +111,7 @@ node.
 | `ctx.abortSignal` | The run's `AbortSignal`, set when the run has one. |
 | `ctx.sessionId` | The run's session id — `agent.session({ id })`'s id or `send()`'s / `AgentExecutor.execute()`'s `sessionId`; absent when the run has none. |
 | `ctx.principal` | Who the run acts for (route auth's caller, a channel's sender), frozen; absent without one. See [Principals in tools and approvals](./auth.md#principals-in-tools-and-approvals). |
-| `ctx.approval` | Set when the call runs because a human approved it: the decision's `note`, and `by`, who decided, when the decision named them. |
+| `ctx.approval` | Set when the call runs because a human approved it: the approval's `id` (an idempotency key for a side effect, see [Cloudflare Workers](cloudflare-workers.md#deciding-one-approval-twice)), the decision's `note`, and `by`, who decided, when the decision named them. |
 
 A `sandboxExecute(args, sandbox)` that ignores the third argument keeps working.
 

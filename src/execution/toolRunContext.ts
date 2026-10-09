@@ -82,7 +82,7 @@ export function buildToolRunContext(input: ToolRunInput): ToolExecutionContext {
 }
 
 /** The decision a tool sees, with its approver frozen (N10b). */
-function approvalOf({ note, by }: NonNullable<ToolExecutionContext['approval']>): NonNullable<ToolExecutionContext['approval']> {
+function approvalOf({ id, note, by }: NonNullable<ToolExecutionContext['approval']>): NonNullable<ToolExecutionContext['approval']> {
   const approver = readonlyPrincipal(by);
-  return Object.freeze({ ...(note !== undefined && { note }), ...(approver && { by: approver }) });
+  return Object.freeze({ ...(id !== undefined && { id }), ...(note !== undefined && { note }), ...(approver && { by: approver }) });
 }

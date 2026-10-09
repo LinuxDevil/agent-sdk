@@ -170,3 +170,53 @@ describe('agent.fork() with a KVStore (LOU-D43.2)', () => {
     expect(compareTrajectories(original!, forked!).divergedAt).toBe(1);
   });
 });
+
+describe('KVStore approvals: two decisions of one approval at once (Eve DUR-F9)', () => {
+  /** A KV whose every operation yields first, so two requests interleave like separate isolates. */
+  function slowKV() {
+    const fake = fakeKV();
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 1));
+    const kv: KVBinding = {
+      get: async (key) => (await tick(), fake.kv.get(key)),
+      put: async (key, value, options) => (await tick(), fake.kv.put(key, value, options)),
+      delete: async (key) => (await tick(), fake.kv.delete(key)),
+    };
+    return { ...fake, kv };
+  }
+
+  it('hands the record to only one of two concurrent resolves', async () => {
+    const { kv } = slowKV();
+    const { approvals } = new KVStore(kv);
+    await approvals.save(pending, snapshot);
+    const results = await Promise.all([approvals.resolve('ap-1'), approvals.resolve('ap-1')]);
+    expect(results.filter((record) => record !== null)).toHaveLength(1);
+  });
+
+  it('a pause saved again after a resolve can be resolved again', async () => {
+    const { kv, ttls } = fakeKV();
+    const { approvals } = new KVStore(kv);
+    await approvals.save(pending, snapshot);
+    expect(await approvals.resolve('ap-1')).not.toBeNull();
+    expect(ttls.get('approvals/ap-1#claim')).toBe(60);
+    await approvals.save(pending, snapshot);
+    expect(await approvals.resolve('ap-1')).toEqual({ pending, snapshot });
+  });
+
+  it('runs the approved tool once for a double approve, and gives it the approval id as an idempotency key', async () => {
+    const { kv } = slowKV();
+    const store = new KVStore(kv);
+    const seen: (string | undefined)[] = [];
+    const payout = defineTool({
+      name: 'payout',
+      description: 'pay vendor',
+      input: z.object({}),
+      needsApproval: true,
+      execute: async (_args, ctx) => (seen.push(ctx.approval?.id), 'paid'),
+    });
+    const provider = mockModel([(req) => (req.messages.at(-1)?.role === 'tool' ? 'Paid.' : { toolCalls: [{ name: 'payout', args: {} }] })], { onExhausted: 'repeat-last' });
+    const paused = await createAgent({ provider, tools: [payout], store }).send('pay invoice 77', { sessionId: 'inv-77' });
+    expect(paused.approvalId).toBeDefined();
+    await Promise.allSettled([1, 2].map(() => createAgent({ provider, tools: [payout], store }).approvals.resolve({ id: paused.approvalId!, approved: true })));
+    expect(seen).toEqual([paused.approvalId]);
+  });
+});

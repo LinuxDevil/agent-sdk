@@ -226,6 +226,7 @@ Worker reads). `KVStore`'s keys, with an optional `prefix` before each:
 | `sessions/<id>` | The transcript as JSON (image and file bytes as `{ "$bytes": "<base64>" }`, like `FileSessionStore`). |
 | `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, with its history under `checkpoints/<id>#history`; bytes encoded the same way). |
 | `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided; bytes encoded the same way). |
+| `approvals/<id>#claim` | The claim of the request deciding that approval (a random token, expires after 60 seconds; see below). |
 | `oauth/tokens/<key>`, `oauth/pending/<state>` | OAuth tokens and pending sign-ins, encrypted with `tokenKey` (the `LOUSHO_TOKEN_KEY` secret in the generated Worker); see [OAuth](oauth.md#token-storage). |
 | `memory/<slot>#<scope>` | The items of a `kvMemory()` memory slot (`notes#global`, `prefs#session:<id>` or a custom scope's key) - written by the provider itself, not `KVStore`. |
 
@@ -239,6 +240,37 @@ approvals endpoint continues it from KV. The continuation streams as a normal
 resumed run: the decided call's `tool.resume` and `tool.done` (`tool.error` for
 a rejection), then the turn's events, ending with a `run.done` that carries
 the final text.
+
+### Deciding one approval twice
+
+KV has no compare-and-swap, so `KVStore` cannot claim an approval atomically
+the way `fileStore` and `SqliteStore` do. To decide one, a request writes a
+random token under `approvals/<id>#claim` (unless a claim is already there),
+reads it back, and only the request whose token is still there deletes the
+approval and runs the call. A double click, a retried webhook or two reviewers
+deciding at once then run the approved tool once in the common case.
+
+This narrows the race but does not close it: two requests served by different
+edge locations within KV's propagation delay (up to about 60 seconds) can both
+read their own token and both run the call. For a tool with a side effect that
+must happen once (a payment, an email), pass `ctx.approval.id` on as an
+idempotency key. It is the same for every attempt to run one decided call:
+
+```ts
+const payout = defineTool({
+  name: 'payout',
+  description: 'Pay a vendor invoice',
+  input: z.object({ invoice: z.string(), cents: z.number() }),
+  needsApproval: true,
+  execute: async ({ invoice, cents }, ctx) =>
+    payments.create({ invoice, cents }, { idempotencyKey: ctx.approval?.id ?? ctx.toolCallId }),
+});
+```
+
+When it has to be exact, keep the approvals in a store with an atomic claim: a
+Durable Object, or D1 through an `ApprovalStore` of your own whose `resolve()`
+deletes and returns the record in one statement. The generated Worker binds
+no Durable Object, so it uses `KVStore`.
 
 The deprecated `POST /chat { "message", "sessionId"? }` keeps its earlier
 behaviour on Workers: with a `sessionId` the run is checkpointed to

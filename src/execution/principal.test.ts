@@ -232,7 +232,7 @@ describe('pause and resume (N10b)', () => {
 
     expect(result.text).toBe('sent');
     expect(send.seen[0].principal).toEqual(ALICE);
-    expect(send.seen[0].approval).toEqual({ by: BOB });
+    expect(send.seen[0].approval).toEqual({ id: expect.any(String), by: BOB });
     expect(log.ids()).toEqual(['alice']);
     expect(log.seen[0].approval).toBeUndefined();
   });
@@ -256,7 +256,7 @@ describe('pause and resume (N10b)', () => {
 
     expect(result.text).toBe('sent');
     expect(send.seen[0].principal).toEqual(ALICE);
-    expect(send.seen[0].approval).toEqual({ note: 'ok', by: BOB });
+    expect(send.seen[0].approval).toEqual({ id: expect.any(String), note: 'ok', by: BOB });
   });
 
   it('an approval snapshot saved before N10b resumes with no principal', async () => {
@@ -289,7 +289,7 @@ describe('pause and resume (N10b)', () => {
     expect(result.text).toBe('sent');
     expect(requests[0].principal).toEqual(ALICE);
     expect(send.seen[0].principal).toEqual(ALICE);
-    expect(send.seen[0].approval).toEqual({});
+    expect(send.seen[0].approval).toEqual({ id: expect.any(String) });
   });
 
   it('a crashed checkpointed run (SqliteStore on disk) finished by agent.resume() in a new agent runs its tools for the original principal', async () => {

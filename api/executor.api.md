@@ -625,6 +625,7 @@ interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
     // (undocumented)
     tokensBefore: number;
     trigger?: 'manual';
+    unchanged?: boolean;
 }
 
 // Warning: (ae-forgotten-export) The symbol "CompactMessagesOptions" needs to be exported by the entry point index.d.ts
@@ -864,6 +865,7 @@ export interface ExecuteOptions extends PermissionOptions {
     maxSteps?: number;
     maxSubagentDepth?: number;
     maxTokens?: number;
+    maxToolResultChars?: number;
     metadata?: Record<string, unknown>;
     // Warning: (ae-forgotten-export) The symbol "ModelSettings" needs to be exported by the entry point index.d.ts
     modelSettings?: ModelSettings;
@@ -2813,6 +2815,7 @@ interface ToolErrorEvent extends AgentEventBase<'tool.error'> {
 interface ToolExecutionContext {
     abortSignal?: AbortSignal;
     approval?: {
+        id?: string;
         note?: string;
         by?: Readonly<Principal>;
     };
@@ -2942,14 +2945,14 @@ interface Usage {
 
 // Warnings were encountered during analysis:
 //
-// dist/createAgent-DPqTBd5v.d.ts:787:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
-// dist/createAgent-DPqTBd5v.d.ts:804:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
-// dist/createAgent-DPqTBd5v.d.ts:1165:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
-// dist/index-B69TilK9.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
-// dist/index-B69TilK9.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
-// dist/index-B69TilK9.d.ts:1954:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
-// dist/index-B69TilK9.d.ts:1997:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
-// dist/index-B69TilK9.d.ts:1997:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BsevHZuU.d.ts:787:9 - (ae-forgotten-export) The symbol "PiiType" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BsevHZuU.d.ts:804:5 - (ae-forgotten-export) The symbol "ModerationCategory" needs to be exported by the entry point index.d.ts
+// dist/createAgent-BsevHZuU.d.ts:1165:9 - (ae-forgotten-export) The symbol "CompactedProviderErrorCategory" needs to be exported by the entry point index.d.ts
+// dist/index-WjNJ2J5c.d.ts:34:5 - (ae-forgotten-export) The symbol "SchemaIssue" needs to be exported by the entry point index.d.ts
+// dist/index-WjNJ2J5c.d.ts:45:9 - (ae-forgotten-export) The symbol "StandardResult" needs to be exported by the entry point index.d.ts
+// dist/index-WjNJ2J5c.d.ts:1958:9 - (ae-forgotten-export) The symbol "McpToolAnnotations" needs to be exported by the entry point index.d.ts
+// dist/index-WjNJ2J5c.d.ts:2001:5 - (ae-forgotten-export) The symbol "ApprovalCheckContext" needs to be exported by the entry point index.d.ts
+// dist/index-WjNJ2J5c.d.ts:2001:5 - (ae-forgotten-export) The symbol "ApprovalOutcome" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 
