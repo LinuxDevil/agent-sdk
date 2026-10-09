@@ -469,6 +469,39 @@ describe('defineChannel / mountChannels (LOU-P7)', () => {
     });
   });
 
+  describe('the approvals route after a restart (Eve CH-F10)', () => {
+    function mountHttp(responses: Parameters<typeof mockModel>[0], stores: ReturnType<typeof durableStores>, execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`)) {
+      const tool = defineTool({ name: 'send_email', description: 'Sends an email', input: z.object({ to: z.string() }), needsApproval: true, execute });
+      const agent = createAgent({ provider: mockModel(responses), tools: [tool], approvalStore: stores.approvalStore });
+      return { agent, execute, handler: mountChannels(agent, [httpChannel()], { store: stores.store }) };
+    }
+
+    it('decides a pause this process forgot when the body names the conversation (`sessionKey`)', async () => {
+      const stores = durableStores();
+      const first = mountHttp([callEmail], stores);
+      const paused = await post(first.handler, '/channels/http', { sessionKey: 'u1', input: 'Email Sam' });
+      const id = (paused.json.approval as { id: string }).id;
+
+      const second = mountHttp(['Email sent.'], stores, first.execute);
+      expect(await post(second.handler, `/channels/http/approvals/${id}`, { approved: true })).toMatchObject({ status: 404 });
+      expect(await post(second.handler, `/channels/http/approvals/${id}`, { approved: true, sessionKey: 'u2' })).toMatchObject({ status: 404 });
+      expect(first.execute).not.toHaveBeenCalled();
+
+      const decided = await post(second.handler, `/channels/http/approvals/${id}`, { approved: true, sessionKey: 'u1' });
+      expect(decided).toMatchObject({ status: 200, json: { text: 'Email sent.', sessionId: paused.json.sessionId } });
+      expect(first.execute).toHaveBeenCalledTimes(1);
+      expect(await stores.transcript()).toContain('Email sent.');
+    });
+
+    it('in process, a `sessionKey` naming another conversation is refused', async () => {
+      const t = mountHttp([callEmail, 'Email sent.'], durableStores());
+      const paused = await post(t.handler, '/channels/http', { sessionKey: 'u1', input: 'Email Sam' });
+      const id = (paused.json.approval as { id: string }).id;
+      expect(await post(t.handler, `/channels/http/approvals/${id}`, { approved: true, sessionKey: 'u2' })).toMatchObject({ status: 404 });
+      expect(await post(t.handler, `/channels/http/approvals/${id}`, { approved: true, sessionKey: 'u1' })).toMatchObject({ status: 200, json: { text: 'Email sent.' } });
+    });
+  });
+
   describe("without a `store` option, channel sessions use the agent's store (Eve EVE-0)", () => {
     it('agent.resume() refuses a paused channel turn and the transcript is the one agent.session() sees', async () => {
       const store = memoryStore();

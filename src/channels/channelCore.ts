@@ -73,11 +73,15 @@ async function isAuthorized(channel: Channel, req: ChannelRequest): Promise<bool
   return typeof verdict === 'boolean' ? verdict : verdict.ok;
 }
 
-/** The decision in an approvals-route body, or undefined when it has neither `approved` nor `answer`. */
-function readDecision(id: string, text: string): ChannelApprovalDecision | undefined {
-  const { approved, note, answer } = (JSON.parse(text || '{}') ?? {}) as Record<string, unknown>;
-  if (typeof answer === 'string') return { id, answer };
-  if (typeof approved === 'boolean') return { id, approved, note: typeof note === 'string' ? note : undefined };
+/**
+ * The decision in an approvals-route body, or undefined when it has neither `approved` nor `answer`.
+ * Eve CH-F10: an optional `sessionKey` names the conversation, so a pause this process forgot can still be bound.
+ */
+function readDecision(id: string, text: string): { decision: ChannelApprovalDecision; sessionKey?: string } | undefined {
+  const { approved, note, answer, sessionKey } = (JSON.parse(text || '{}') ?? {}) as Record<string, unknown>;
+  const key = typeof sessionKey === 'string' && sessionKey ? { sessionKey } : {};
+  if (typeof answer === 'string') return { decision: { id, answer }, ...key };
+  if (typeof approved === 'boolean') return { decision: { id, approved, note: typeof note === 'string' ? note : undefined }, ...key };
   return undefined;
 }
 
@@ -320,9 +324,15 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
       const turn = { channel, inbound, sessionId: channelSessionId(channel, inbound) };
       return serialized(turn.sessionId, () => runTurn(turn, tracked));
     }
-    const decision = readDecision(approvalId, req.text);
-    if (!decision) return tracked(400, { error: "Request body must be JSON with 'approved' (and optional 'note') or 'answer'" });
-    await decide(channel, { decision }, tracked);
+    const body = readDecision(approvalId, req.text);
+    if (!body) return tracked(400, { error: "Request body must be JSON with 'approved' (and optional 'note') or 'answer'" });
+    const { decision, sessionKey } = body;
+    const known = paused.get(decision.id);
+    // Eve CH-F10: the conversation the body names, for a pause this process forgot (a restart, another replica). A pause
+    // it remembers keeps its own inbound (where the reply goes); the named conversation must still be the one that paused.
+    const named: ChannelInbound | undefined = sessionKey === undefined ? undefined : { sessionKey, input: '', replyTo: known?.inbound.replyTo ?? null };
+    const sameAsKnown = known && named && channelSessionId(channel, named) === known.sessionId;
+    await decide(channel, { decision, ...(named && !sameAsKnown && { inbound: named }) }, tracked);
   }
 
   /**
