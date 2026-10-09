@@ -53,6 +53,7 @@ This section lists what is on `main` and not yet on npm.
 
 ### Fixed
 - Package size: `llms-full.txt` (1 MB of docs as text) no longer ships in the npm tarball (4.60 to 4.27 MB packed, 17.06 to 16.05 MB unpacked; `llms.txt` stays, `llms-full.txt` remains in the repo). `src/` stays published because `lousho build` bundles from it, and embedding sources in the maps instead measured larger (5.24 MB packed). The trade-off is stated in `docs/installation.md#package-size` (Eve F4).
+- Build: the `/worker` entry builds again: the file stores' Windows retry helper (`storage/fsRetry`) now resolves its `node:fs/promises` import to the Worker shim. (Eve DUR-F13 follow-up)
 - Docs: why `engines.node` is `>=22.19.0` (the `undici@8` dependency; type stripping needs 22.18 and `node:sqlite` 22.13). The floor is kept: lowering it means relaxing the `undici` dependency first, which was not verifiable without older Node builds (Eve F13).
 - README: the visual tool is named "Agent Forge" and launched with `lousho studio` in one consistent phrasing; the stray `packages/create-loushy-agent` directory the audit found was never tracked (an untracked leftover `dist/` and `node_modules/` in one checkout), so nothing in the repo needed removing (Eve F11).
 - The two test files that sat inside `docs/` (`docs-links.test.ts`, `buildACodingAgent.test.ts`) and the coding-agent cassette now live in `scripts/`, so `docs/` holds only pages (Eve F16).
