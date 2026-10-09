@@ -37,7 +37,7 @@ export const FEATURE_PEERS: Readonly<Record<string, FeaturePeer>> = {
   },
   'quickjs-emscripten': { range: '^0.32.0', feature: 'code mode (`createAgent({ codeMode })`)' },
   '@earendil-works/pi-ai': {
-    range: '1.0.3',
+    range: '^1.0.3',
     feature: "the 'pi' provider (`pi/<provider>/<model>` specs, e.g. pi/openrouter/openai/gpt-4o-mini)",
   },
 };

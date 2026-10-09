@@ -293,7 +293,7 @@ mapped). Each throws `LOUSHO_CONFIG_INVALID`:
 package:
 
 ```bash
-npm install @earendil-works/pi-ai@1.0.3
+npm install @earendil-works/pi-ai@^1.0.3
 ```
 
 ```ts
