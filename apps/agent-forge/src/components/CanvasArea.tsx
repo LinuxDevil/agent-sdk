@@ -16,7 +16,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { useAppState } from '../state/AppState';
 import { isEditableTarget } from '../canvas/isEditableTarget';
-import { NODE_TYPES, type AgentNodeData } from '../canvas/AgentNode';
+import { NODE_TYPES, flowNodeType, miniMapNodeClassName, type AgentNodeData } from '../canvas/AgentNode';
 import {
   addHookToNode,
   addNode,
@@ -47,18 +47,41 @@ function hasBreakpointOn(n: AgentGraphNode, breakpoints: string[]): boolean {
   return !!key && breakpoints.includes(key);
 }
 
+/**
+ * Eve DUI-F22: each node's DOM size as React Flow measured it. The canvas is
+ * controlled (nodes are rebuilt from `graph` every render), so the
+ * `dimensions` changes React Flow reports must be fed back as `measured` -
+ * without it the MiniMap has no node sizes and draws nothing.
+ */
+type MeasuredSizes = Record<string, { width: number; height: number }>;
+
+/** Folds a batch of `dimensions` changes into the measured-size map (same object when nothing changed). */
+export function applyDimensionChanges(prev: MeasuredSizes, changes: NodeChange[]): MeasuredSizes {
+  let next = prev;
+  for (const change of changes) {
+    if (change.type !== 'dimensions' || !change.dimensions) continue;
+    const { width, height } = change.dimensions;
+    const old = next[change.id];
+    if (old && old.width === width && old.height === height) continue;
+    next = { ...next, [change.id]: { width, height } };
+  }
+  return next;
+}
+
 function toRfNodes(
   graph: AgentGraphSpec,
   selectedNodeId: string | undefined,
   onRename: (id: string, label: string) => void,
   highlightedNodeId: string | undefined,
-  breakpoints: string[]
+  breakpoints: string[],
+  measured: MeasuredSizes = {}
 ): Node<AgentNodeData>[] {
   return graph.nodes.map((n) => ({
     id: n.id,
-    type: n.type,
+    type: flowNodeType(n.type),
     position: n.position,
     selected: n.id === selectedNodeId,
+    measured: measured[n.id],
     data: {
       graphNode: n,
       onRename,
@@ -122,17 +145,21 @@ function useConnectError() {
 function useGraphEditHandlers(
   setGraph: SetGraph,
   selectedNodeId: string | undefined,
-  setSelectedNodeId: SetSelectedNodeId
+  setSelectedNodeId: SetSelectedNodeId,
+  setMeasured: (updater: (prev: MeasuredSizes) => MeasuredSizes) => void
 ) {
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
       if (changes.some((c) => c.type === 'position' && c.position)) {
         setGraph((g) => applyPositionChanges(g, changes));
       }
+      if (changes.some((c) => c.type === 'dimensions')) {
+        setMeasured((prev) => applyDimensionChanges(prev, changes));
+      }
       const selection = lastSelectionChange(changes);
       if (selection) setSelectedNodeId(selection.selected ? selection.id : undefined);
     },
-    [setGraph, setSelectedNodeId]
+    [setGraph, setSelectedNodeId, setMeasured]
   );
 
   const onEdgesChange = useCallback(
@@ -342,13 +369,14 @@ function CanvasInner() {
 
   const breakpoints = debugState?.breakpoints ?? [];
   const breakpointsKey = breakpoints.join(',');
+  const [measured, setMeasured] = useState<MeasuredSizes>({});
   const nodes = useMemo(
-    () => toRfNodes(graph, selectedNodeId, onRename, highlightedNodeId, breakpoints),
-    [graph, selectedNodeId, onRename, highlightedNodeId, breakpointsKey]
+    () => toRfNodes(graph, selectedNodeId, onRename, highlightedNodeId, breakpoints, measured),
+    [graph, selectedNodeId, onRename, highlightedNodeId, breakpointsKey, measured]
   );
   const edges = useMemo(() => toRfEdges(graph), [graph]);
 
-  const editHandlers = useGraphEditHandlers(setGraph, selectedNodeId, setSelectedNodeId);
+  const editHandlers = useGraphEditHandlers(setGraph, selectedNodeId, setSelectedNodeId, setMeasured);
   const { onConnect, isValidConnection } = useConnectionHandlers(graph, setGraph, flashError);
   const { onDragOver, onDrop } = useDropHandlers(graph, setGraph, flashError);
   const { handleAutoLayout, handleFitView, handleDuplicate } = useToolbarActions(setGraph, selectedNodeId);
@@ -381,7 +409,14 @@ function CanvasInner() {
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
-        <MiniMap position="top-right" pannable zoomable />
+        <MiniMap
+          position="top-right"
+          pannable
+          zoomable
+          nodeClassName={miniMapNodeClassName}
+          nodeBorderRadius={4}
+          ariaLabel="Graph overview"
+        />
         <Controls position="bottom-right" showInteractive={false} />
       </ReactFlow>
     </main>

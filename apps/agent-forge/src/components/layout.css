@@ -489,6 +489,32 @@ button.breakpoint-toggle {
   border-radius: 9px;
   box-shadow: var(--shadow);
 }
+/* Eve DUI-F22: minimap nodes in their type's swatch colour (AgentNode.tsx's
+   miniMapNodeClassName), and a mask that is visible on --surface in both
+   schemes - the default light-grey nodes and mask vanished on it. */
+.react-flow__minimap-mask {
+  fill: color-mix(in srgb, var(--text) 10%, transparent);
+}
+.react-flow__minimap-node {
+  fill: var(--text-faint);
+  stroke: none;
+}
+.react-flow__minimap-node.minimap-node-trigger {
+  fill: var(--info);
+}
+.react-flow__minimap-node.minimap-node-llm {
+  fill: var(--accent);
+}
+.react-flow__minimap-node.minimap-node-tool,
+.react-flow__minimap-node.minimap-node-approval {
+  fill: var(--warning);
+}
+.react-flow__minimap-node.minimap-node-router {
+  fill: var(--danger);
+}
+.react-flow__minimap-node.minimap-node-output {
+  fill: var(--success);
+}
 .react-flow__controls {
   box-shadow: var(--shadow);
   border-radius: 9px;
