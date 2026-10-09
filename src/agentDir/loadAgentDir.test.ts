@@ -172,6 +172,7 @@ describe('loadAgentDir', () => {
       'double',
       'echo',
       'load_skill',
+      'read_skill_file',
       'task',
     ]);
     const outputs = toolMessages(model.calls[1]).join('\n');
