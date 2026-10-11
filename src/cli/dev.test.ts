@@ -452,6 +452,51 @@ describe('agent directories and TS modules (LOU-D31)', () => {
     await waitFor(async () => (await status(handle!)).reloads > before);
   });
 
+  it('keeps watching a folder that is deleted and created again, and logs only real paths', async () => {
+    const dir = copyFixture('dev-agent');
+    const tools = path.join(dir, 'tools');
+    const toolFile = path.join(tools, 'ping.ts');
+    const original = fs.readFileSync(toolFile, 'utf8');
+    const logs = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const provider = mockModel(['ok', 'ok']);
+    handle = await startDevServer(dir, 0, '127.0.0.1', { overrides: { provider }, debounceMs: 20 });
+    const settle = async () => {
+      // Let the watchers deliver every event, so the next step starts from a quiet tree.
+      let reloads = -1;
+      while (reloads !== (await status(handle!)).reloads) {
+        reloads = (await status(handle!)).reloads;
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+      return reloads;
+    };
+
+    // What `git checkout` of a branch without the folder, then back, does.
+    fs.rmSync(tools, { recursive: true });
+    await settle();
+    fs.mkdirSync(tools);
+    fs.writeFileSync(toolFile, original);
+    let before = await settle();
+
+    for (const name of ['ping_a', 'ping_b']) {
+      fs.writeFileSync(toolFile, original.replace("'ping'", `'${name}'`));
+      await waitFor(async () => (await status(handle!)).reloads > before);
+      before = await settle();
+    }
+    await chat(handle);
+    expect(provider.calls[0].tools?.map((t) => t.function.name)).toEqual(['ping_b']);
+
+    // A file added to the recreated folder is picked up too.
+    fs.writeFileSync(path.join(tools, 'pong.ts'), original.replace("'ping'", "'pong'"));
+    await waitFor(async () => (await status(handle!)).reloads > before);
+    await settle();
+    await chat(handle);
+    expect(provider.calls[1].tools?.map((t) => t.function.name).sort()).toEqual(['ping_b', 'pong']);
+
+    const changed = logs.mock.calls.map((call) => String(call[0])).filter((line) => line.includes('changed:'));
+    expect(changed.join('\n')).not.toMatch(/tools[\\/]tools/);
+    logs.mockRestore();
+  });
+
   it('reloads a module when it or a local import changes', async () => {
     const dir = copyFixture('dev-module');
     const file = path.join(dir, 'agent.ts');
