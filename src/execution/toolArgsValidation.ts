@@ -7,6 +7,7 @@
 import { ToolDescriptor } from '../types';
 import type { ToolCall } from '../providers';
 import { ToolExecutionError } from './errors';
+import { brandClass } from '../utils/brand';
 import { getToolInputSchema } from '../tools/toolContract';
 import { toolErrorResult, type ToolErrorResult } from './toolErrors';
 import { issueMessage, issuePath, type SchemaIssue, type StandardSchemaV1 } from '../utils/zodCompat';
@@ -160,6 +161,7 @@ export class ToolArgumentsValidationError extends ToolExecutionError {
     };
   }
 }
+brandClass(ToolArgumentsValidationError, 'ToolArgumentsValidationError');
 
 interface SafeParseResult {
   success: boolean;

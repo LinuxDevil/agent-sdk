@@ -8,6 +8,7 @@
 import type { Message } from '../providers';
 import type { RunUsage } from '../models/usage';
 import { ConfigurationError, SDKError } from './errors';
+import { brandClass } from '../utils/brand';
 
 /** Limits on a run (`createAgent({ limits })`, `ExecuteOptions.limits`) or on a session (`agent.session({ limits })`). */
 export interface RunLimits {
@@ -61,6 +62,7 @@ export class BudgetExceededError extends SDKError {
     this.name = 'BudgetExceededError';
   }
 }
+brandClass(BudgetExceededError, 'BudgetExceededError');
 
 const SPENT_KEYS: Record<BudgetLimit, keyof BudgetSpent> = {
   maxTokens: 'totalTokens',

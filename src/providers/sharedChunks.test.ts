@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { SDKError } from '../execution/errors';
+import { SDKError, ValidationError } from '../execution/errors';
 import { HookRegistry } from '../execution/hooks';
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
@@ -56,8 +56,12 @@ describe('shared chunks across package entries (LOU-D42)', () => {
         sdkError: new esmRoot.SDKError('x') instanceof cjsRoot.SDKError,
         hookRegistry: new esmRoot.HookRegistry() instanceof cjsRoot.HookRegistry,
         subclassNotConfused: new esmRoot.SDKError('x') instanceof cjsRoot.AgentExecutionError === false,
+        subclasses: ['ValidationError', 'TimeoutError', 'RateLimitError', 'ConfigurationError', 'MissingPeerDependencyError']
+          .filter((name) => !(Reflect.construct(esmRoot[name], ['x', 'y']) instanceof cjsRoot[name])),
+        inherited: new esmRoot.CompactedLLMProviderError({ error: 'x', category: 'unknown', retryable: false }) instanceof cjsRoot.LLMProviderError,
+        siblingNotConfused: new esmRoot.TimeoutError('x') instanceof cjsRoot.RateLimitError === false,
       };`);
-    expect(result).toEqual({ distinctCopies: true, sdkError: true, hookRegistry: true, subclassNotConfused: true });
+    expect(result).toEqual({ distinctCopies: true, sdkError: true, hookRegistry: true, subclassNotConfused: true, subclasses: [], inherited: true, siblingNotConfused: true });
   });
 
   it('brands answer instanceof for foreign-copy objects but not for unrelated ones', () => {
@@ -66,6 +70,12 @@ describe('shared chunks across package entries (LOU-D42)', () => {
     expect(new Error('x')).not.toBeInstanceOf(SDKError);
     expect({}).not.toBeInstanceOf(HookRegistry);
     expect((null as unknown as object) instanceof SDKError).toBe(false);
+    expect(Object.create({ [Symbol.for('lousho.ValidationError')]: true })).toBeInstanceOf(ValidationError);
+    expect(new SDKError('x')).not.toBeInstanceOf(ValidationError);
+    // A user's own subclass is not branded: the default check, so its parent's instances are not its own.
+    class MyValidationError extends ValidationError {}
+    expect(new ValidationError('x')).not.toBeInstanceOf(MyValidationError);
+    expect(new MyValidationError('x')).toBeInstanceOf(ValidationError);
   });
 
   it('every package.json exports target exists in dist/', () => {

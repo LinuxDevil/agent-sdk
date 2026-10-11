@@ -12,6 +12,7 @@
 
 import { type AiMajor, findPeerPairing, peerInstallCommand } from './providerSpec';
 import { SDKError } from '../execution/errors';
+import { brandClass } from '../utils/brand';
 
 /** An optional peer that enables one SDK feature rather than one LLM provider. */
 export interface FeaturePeer {
@@ -82,6 +83,7 @@ export class MissingPeerDependencyError extends SDKError {
   /** The feature that needs the package, when known (every feature peer; not provider peers). */
   readonly feature?: string;
 }
+brandClass(MissingPeerDependencyError, 'MissingPeerDependencyError');
 
 /**
  * True when `error` (or an error it wraps as `cause`, as test runners and
