@@ -101,8 +101,8 @@ describe('NodeServerAdapter with an agent directory', () => {
       expect(await chat({})).toBe(401);
       expect(await chat({ Authorization: 'Bearer wrong' })).toBe(401);
       expect(await chat({ Authorization: 'Bearer dir-token' })).toBe(200);
-      // the session belongs to the first principal that used it (the token); another principal gets 403
-      expect(await chat({ Authorization: `Basic ${btoa('ops:pw')}` })).toBe(403);
+      // a read claims nothing (only a turn does), so another principal can still read the unused id
+      expect(await chat({ Authorization: `Basic ${btoa('ops:pw')}` })).toBe(200);
     } finally {
       stop();
     }

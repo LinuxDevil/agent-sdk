@@ -10,6 +10,7 @@ import { mockModel } from '../testing';
 import { memoryStore } from '../storage/agentStore';
 import { createRouteHandler, type RouteHandlerOptions } from './routeHandler';
 import { serveFetch } from './fetchRoutes';
+import { MAX_SESSION_OWNERS, sessionOwnership } from './requestGuard';
 import type { AuthFn } from '../auth';
 
 const deploy = defineTool({ name: 'deploy', description: 'Deploys', input: z.object({}), needsApproval: true, execute: () => 'shipped' });
@@ -65,6 +66,18 @@ describe('cross-site requests (CSRF)', () => {
     expect((await handler(post('/chat', json({ sessionId: 'o4', input: 'hi' }), { ...alice, ...asJson }))).status).toBe(200);
   });
 
+  it('matches a proxied host with its default port, the standard Forwarded header, and allowedOrigins with a trailing slash', async () => {
+    const { handler } = routes(['a', 'b', 'c', 'd'], { allowedOrigins: ['https://App.example/'] });
+    const proxied = { ...alice, ...asJson, host: 'internal:3000' };
+    expect((await handler(post('/chat', json({ sessionId: 'p1', input: 'hi' }), { ...proxied, 'x-forwarded-host': 'agent.example:443', origin: 'https://agent.example' }))).status).toBe(200);
+    expect((await handler(post('/chat', json({ sessionId: 'p2', input: 'hi' }), { ...proxied, forwarded: 'for=10.0.0.1;host="agent.example";proto=https', origin: 'https://agent.example' }))).status).toBe(200);
+    expect((await handler(post('/chat', json({ sessionId: 'p3', input: 'hi' }), { ...alice, ...asJson, origin: 'https://app.example' }))).status).toBe(200);
+    expect((await handler(post('/chat', json({ sessionId: 'p4', input: 'hi' }), { ...alice, ...asJson, host: 'app.test:80', origin: 'http://app.test' }))).status).toBe(200);
+    // A port that is not the scheme's default still has to match.
+    expect((await handler(post('/chat', json({ sessionId: 'p5', input: 'hi' }), { ...proxied, 'x-forwarded-host': 'agent.example:8443', origin: 'https://agent.example' }))).status).toBe(403);
+    expect((await handler(post('/chat', json({ sessionId: 'p6', input: 'hi' }), { ...proxied, forwarded: 'host=evil.example', origin: 'https://agent.example' }))).status).toBe(403);
+  });
+
   it("allowedOrigins: ['*'] turns the origin check off", async () => {
     const { handler } = routes(['a'], { allowedOrigins: ['*'] });
     expect((await handler(post('/chat', json({ sessionId: 'w1', input: 'hi' }), { ...alice, ...asJson, origin: 'https://other.example' }))).status).toBe(200);
@@ -89,6 +102,15 @@ describe('JSON bodies', () => {
     }
     expect((await handler(post('/chat', json({ sessionId: 'j1', input: 'hi' }), alice))).status).toBe(415);
     expect(model.calls).toHaveLength(0);
+  });
+
+  it('accepts the JSON type sent twice (a client header next to the default one), but not JSON joined with another type', async () => {
+    const { handler, model } = routes(['a']);
+    const doubled = await handler(post('/chat', json({ sessionId: 'j4', input: 'hi' }), { ...alice, 'content-type': 'application/json, application/json' }));
+    expect(doubled.status).toBe(200);
+    await doubled.text();
+    expect((await handler(post('/chat', json({ sessionId: 'j5', input: 'hi' }), { ...alice, 'content-type': 'application/json, text/plain' }))).status).toBe(415);
+    expect(model.calls).toHaveLength(1);
   });
 
   it('accepts JSON with parameters, and requireJsonBody: false accepts any type', async () => {
@@ -120,6 +142,33 @@ describe('default session owner', () => {
     expect(await read.json()).toMatchObject({ code: 'LOUSHO_SESSION_FORBIDDEN' });
     expect((await handler(post('/chat', json({ sessionId: 'alice-chat', input: 'hi' }), { ...bob, ...asJson }))).status).toBe(403);
     expect((await handler(new Request('http://app.test/api/agent/chat/alice-chat', { headers: alice }))).status).toBe(200);
+  });
+
+  it('a read claims nothing: a GET of an unused id cannot lock its user out', async () => {
+    const { handler } = routes(['Hi Alice.']);
+    const bob = { cookie: 'user=bob' };
+    const early = await handler(new Request('http://app.test/api/agent/chat/alice-2', { headers: bob }));
+    expect(early.status).toBe(200);
+    expect(await early.json()).toMatchObject({ messages: [] });
+    const turn = await handler(post('/chat', json({ sessionId: 'alice-2', input: 'hi' }), { ...alice, ...asJson }));
+    expect(turn.status).toBe(200);
+    await turn.text();
+    expect((await handler(new Request('http://app.test/api/agent/chat/alice-2', { headers: bob }))).status).toBe(403);
+    expect((await handler(new Request('http://app.test/api/agent/chat/alice-2', { headers: alice }))).status).toBe(200);
+  });
+
+  it(`keeps at most ${MAX_SESSION_OWNERS} owners per agent, forgetting the least recently used`, () => {
+    const agent = {};
+    const user = (id: string) => ({ id, type: 'user' as const, authenticator: 'custom' });
+    expect(sessionOwnership(agent, user('alice'), 'first', true)).toBe('owner');
+    expect(sessionOwnership(agent, user('bob'), 'second', true)).toBe('owner');
+    for (let i = 0; i < MAX_SESSION_OWNERS - 2; i++) sessionOwnership(agent, user('carol'), `s${i}`, true);
+    // A read never claims; using 'first' again makes 'second' the least recently used.
+    expect(sessionOwnership(agent, user('bob'), 'unused', false)).toBe('unclaimed');
+    expect(sessionOwnership(agent, user('alice'), 'first', false)).toBe('owner');
+    sessionOwnership(agent, user('carol'), 'one-more', true);
+    expect(sessionOwnership(agent, user('bob'), 'first', false)).toBe('other');
+    expect(sessionOwnership(agent, user('alice'), 'second', false)).toBe('unclaimed');
   });
 
   it('a route without auth checks no owner', async () => {

@@ -63,8 +63,8 @@ accepted, and a request outside the base path is a 404).
 
 Sessions are kept by the agent's `store` (`createAgent({ store })`), so give
 the agent one that outlives a serverless invocation when you use sessions.
-With `auth`, a session id is bound to the first principal that reads or
-continues it, and a different principal gets `403`
+With `auth`, a session id is bound to the first principal that sends it a
+turn (reading an id claims nothing), and a different principal gets `403`
 (`LOUSHO_SESSION_FORBIDDEN`). That binding is kept in memory, so a new
 serverless instance forgets it: for an app with more than one user, pass
 `authorizeSession` as well, e.g. with ids derived from the caller
@@ -83,19 +83,25 @@ cannot decide another user's call, so a single-user app that prompts its own
 user needs nothing. That also means a user can approve their own refund. If an
 approval must come from someone else, pass `authorizeApproval`. This is a
 two-person rule: a supervisor decides, and never on a call that runs for
-themselves:
+themselves. The supervisor also needs `authorizeSession` to read the
+customer's session (`GET /chat/:id`, to show what they are approving) and to
+decide in it; by default the session belongs to the customer alone:
 
 ```ts
 import { createAgent, createRouteHandler, memoryStore } from '@lousho/build-ai-agent';
 import { jwt } from '@lousho/build-ai-agent/auth';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', store: memoryStore() });
+const isSupervisor = (principal?: { claims?: Readonly<Record<string, unknown>> }) => principal?.claims?.role === 'supervisor';
 
 export const { GET, POST } = createRouteHandler(agent, {
   auth: jwt({ secret: process.env.JWT_SECRET!, issuer: 'https://auth.example.com', audience: 'agent-api' }),
+  // Customers use their own sessions (ids that start with their id); supervisors may read and decide in any session.
+  authorizeSession: ({ principal, sessionId, action }) =>
+    sessionId.startsWith(`${principal?.id}-`) || (action !== 'chat' && isSupervisor(principal)),
   authorizeApproval: ({ principal, approval }) =>
-    principal?.claims?.role === 'supervisor' &&
-    !(principal.id === approval.principal?.id && principal.issuer === approval.principal?.issuer),
+    isSupervisor(principal) &&
+    !(principal?.id === approval.principal?.id && principal?.issuer === approval.principal?.issuer),
 });
 ```
 
