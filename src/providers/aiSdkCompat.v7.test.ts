@@ -53,9 +53,15 @@ function modelResult(overrides: Partial<ModelResult> = {}): ModelResult {
 }
 
 /** Run `provider` on `ai` v7 with a MockLanguageModelV4; returns the call options the model got. */
-function onV7(provider: LLMProvider, results: ModelResult[] = [modelResult()], supportsUrls = false, modelProvider?: string): CallOptions[] {
+function onV7(
+  provider: LLMProvider,
+  results: ModelResult[] = [modelResult()],
+  supportsUrls = false,
+  modelProvider?: string,
+  ModelClass: typeof MockLanguageModelV4 = MockLanguageModelV4
+): CallOptions[] {
   const calls: CallOptions[] = [];
-  const model = new MockLanguageModelV4({
+  const model = new ModelClass({
     ...(modelProvider && { provider: modelProvider }),
     supportedUrls: supportsUrls ? { 'image/*': [/^https:\/\//] } : {},
     doGenerate: async (options) => {
@@ -73,6 +79,12 @@ function onV7(provider: LLMProvider, results: ModelResult[] = [modelResult()], s
 afterEach(() => {
   vi.restoreAllMocks();
 });
+
+/** Stand-ins named as `@ai-sdk/openai`'s classes, which `createOpenAI({ name })` and `@ai-sdk/azure` build under other provider names. */
+class OpenAIChatLanguageModel extends MockLanguageModelV4 {}
+class OpenAIResponsesLanguageModel extends MockLanguageModelV4 {}
+/** As `@ai-sdk/openai-compatible` (and `@ai-sdk/groq`, `@ai-sdk/mistral`, ...): sends an error output's value as is. */
+class OpenAICompatibleChatLanguageModel extends MockLanguageModelV4 {}
 
 const history: Message[] = [
   { role: 'system', content: 'You report weather.' },
@@ -145,6 +157,38 @@ describe.each(providers)('%s provider on ai v7: generate() (LOU-D26)', (_name, m
       { toolCallId: 'call_B', output: { type: 'json', value: { error: 'Error', message: 'Rome station offline' } } },
       { toolCallId: 'orphan', output: { type: 'text', value: 'plain text' } },
       { toolCallId: 'call_B', output: { type: 'text', value: 'offline' } },
+    ]);
+  });
+
+  it.each([
+    ['createOpenAI({ name: "groq" }).chat()', 'groq.chat', OpenAIChatLanguageModel],
+    ['createOpenAI({ name: "together" })()', 'together.responses', OpenAIResponsesLanguageModel],
+    ['createAzure().chat()', 'azure.chat', OpenAIChatLanguageModel],
+  ])('sends error results as plain ones to %s, an @ai-sdk/openai model under another name', async (_label, modelProvider, ModelClass) => {
+    const provider = make();
+    const calls = onV7(provider, undefined, false, modelProvider, ModelClass);
+    await provider.generate({ messages: history });
+
+    const tool = calls[0]!.prompt.find((message) => message.role === 'tool');
+    expect(tool?.content).toMatchObject([
+      { toolCallId: 'call_A', output: { type: 'json' } },
+      { toolCallId: 'call_B', output: { type: 'json', value: { error: 'Error', message: 'Rome station offline' } } },
+      { toolCallId: 'orphan', output: { type: 'text' } },
+      { toolCallId: 'call_B', output: { type: 'text', value: 'offline' } },
+    ]);
+  });
+
+  it('keeps error results flagged for an OpenAI-compatible model that does not wrap them', async () => {
+    const provider = make();
+    const calls = onV7(provider, undefined, false, 'groq.chat', OpenAICompatibleChatLanguageModel);
+    await provider.generate({ messages: history });
+
+    const tool = calls[0]!.prompt.find((message) => message.role === 'tool');
+    expect(tool?.content).toMatchObject([
+      { toolCallId: 'call_A', output: { type: 'json' } },
+      { toolCallId: 'call_B', output: { type: 'error-json', value: { error: 'Error', message: 'Rome station offline' } } },
+      { toolCallId: 'orphan', output: { type: 'text' } },
+      { toolCallId: 'call_B', output: { type: 'error-text', value: 'offline' } },
     ]);
   });
 
