@@ -57,12 +57,15 @@ describe.each(backends)('run leases over %s', (_name, backend) => {
   it("a second process's send() is refused while the first one's turn runs, and nothing runs twice", async () => {
     const open = backend();
     const charges: string[] = [];
+    let charging!: () => void;
+    const started = new Promise<void>((resolve) => (charging = resolve));
     const charge = defineTool({
       name: 'charge',
       description: 'charge',
       input: z.object({ amount: z.number() }),
       execute: async (_args, ctx) => {
         charges.push(ctx.toolCallId);
+        charging();
         await new Promise((resolve) => setTimeout(resolve, 300));
         return { ok: true };
       },
@@ -71,7 +74,8 @@ describe.each(backends)('run leases over %s', (_name, backend) => {
     const b = createAgent({ provider: mockModel([replyTo('B')], { onExhausted: 'repeat-last' }), tools: [charge], store: open() });
 
     const first = a.session({ id: 'u1' }).send('charge me');
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Wait until the first turn is inside its tool call (lease held), not a fixed delay.
+    await started;
     await expect(b.session({ id: 'u1' }).send('hello')).rejects.toMatchObject({ code: 'LOUSHO_SESSION_BUSY' });
     expect((await first).text).toBe('A done');
 
@@ -86,15 +90,17 @@ describe.each(backends)('run leases over %s', (_name, backend) => {
     const open = backend();
     let release!: () => void;
     const gate = new Promise<void>((resolve) => (release = resolve));
-    const slow = defineTool({ name: 'slow', description: 'slow', input: z.object({}), execute: async () => gate.then(() => 'ok') });
+    let running!: () => void;
+    const started = new Promise<void>((resolve) => (running = resolve));
+    const slow = defineTool({ name: 'slow', description: 'slow', input: z.object({}), execute: async () => (running(), gate.then(() => 'ok')) });
     const model = () => mockModel([{ toolCalls: [{ name: 'slow', id: 'call_slow' }] }, 'done'], { onExhausted: 'repeat-last' });
     const a = createAgent({ provider: model(), tools: [slow], store: open() });
     const b = createAgent({ provider: model(), tools: [slow], store: open() });
-    const running = a.send('go', { sessionId: 'job-1' });
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    const run = a.send('go', { sessionId: 'job-1' });
+    await started;
     await expect(b.resume('job-1')).rejects.toMatchObject({ code: 'LOUSHO_SESSION_BUSY' });
     release();
-    expect((await running).text).toBe('done');
+    expect((await run).text).toBe('done');
   });
 });
 
