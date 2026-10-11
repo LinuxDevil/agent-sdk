@@ -2727,6 +2727,9 @@ const agent = createAgent({
 - An `approve` callback that is still waiting at the deadline is cut off: the
   `send()` / session turn resumes with the denial.
 - `send(message, { approvalTtlMs })` overrides it for one run.
+- A deadline is a positive number of milliseconds of at most 100 years;
+  anything else, `1e20` included, throws
+  `LOUSHO_CONFIG_INVALID`. Leave it out for pauses that never expire.
 - A permission rule's `ttlMs` bounds only that rule's pauses and wins over
   the agent default: `{ tool: 'deploy', action: 'ask', ttlMs: 30_000 }`, or
   `ask('deploy', { ttlMs: 30_000 })`.
@@ -7113,20 +7116,59 @@ before any tool runs or any model is called (a resolved approval stays
 pending). Two replicas behind a load balancer therefore never run one turn's
 tool calls twice.
 
-A lease whose holder died is taken over once it expires. The file and SQLite
-stores also take it over at once when the holder was a process on the same host
-that is gone, so the usual "restart and resume" path does not wait. If a run
-stalls for longer than its lease (the event loop blocked for 30 seconds) and
-another process takes over, the stalled run stops with `LOUSHO_SESSION_BUSY` at
-its next checkpoint instead of overwriting the new holder's progress.
+A lease whose holder died is taken over once it expires. Expiry is judged by
+the clock of the process that wants the lease against the expiry the holder
+wrote with its own clock, so the file and SQLite stores wait one more lease
+period (30 seconds) past it: a run left by a crashed process on another
+machine is taken over 30 to 60 seconds after its last heartbeat, and replicas
+whose clocks disagree by less than about 50 seconds never take over each
+other's live runs. Keep replica clocks in sync (NTP); a larger skew can let
+two replicas run one turn.
+
+The file and SQLite stores take a lease over at once, without waiting, only
+when its holder is provably gone:
+
+- a run of the same process (the same thread and SDK instance) that no longer
+  runs, so the usual "restart and resume" path does not wait;
+- on Linux, a process that has exited, on the same host, the same boot and the
+  same PID namespace (the lease records the boot id, the PID namespace and the
+  process start time, so a reused process id does not count as alive or dead
+  by mistake);
+- on macOS and Windows, a process id of the same host that no longer exists.
+
+A run of another worker thread of the same process, or of another container
+with the same hostname on a shared volume (or a process restarted in a new
+container), is never taken over early: it waits for the expiry.
+
+The run's lease owner id is a fencing token. The heartbeat renews the lease
+only while the run still holds it (it never takes back a lease another process
+took, or one released after another process finished the run), and every
+checkpoint the run saves is written only if the run still holds the lease,
+atomically with that check in the file, SQLite and in-memory stores. So if a
+run stalls for longer than its lease (the process was paused, or the event loop
+blocked) and another process takes over, the stalled run stops with
+`LOUSHO_SESSION_BUSY` at its next checkpoint instead of overwriting the new
+holder's progress, and a session turn's late result is not added to the
+transcript. A tool call the stalled run was already making when it lost the
+lease is not undone: keep tools idempotent where a stall is possible.
 
 The file, SQLite and in-memory stores take leases atomically. KV has no
 compare-and-swap: `KVStore` writes the lease, waits 50 ms and reads it back,
 which serializes requests at one location but not across edge locations within
-KV's propagation delay. A custom `CheckpointStore` takes part by implementing
-`acquireLease(id, owner, ttlMs)` (an atomic "take or renew unless another owner
-holds an unexpired lease", resolving `true` when taken) and
-`releaseLease(id, owner)`; without them runs execute without leases.
+KV's propagation delay; its fenced saves are a read then a write. A custom
+`CheckpointStore` takes part by implementing `acquireLease(id, owner, ttlMs)`
+(an atomic "take or renew unless another owner holds an unexpired lease",
+resolving `true` when taken) and `releaseLease(id, owner)`; without them runs
+execute without leases. It can add `renewLease(id, owner, ttlMs)` (renew only
+the owner's own lease) and `saveIfLeased(id, checkpoint, owner)` (save only
+while the owner holds the lease, atomically); without them a run renews its
+lease with `acquireLease` right before each save, which leaves a short window.
+
+During a rolling upgrade from a release without run leases, the old replicas
+neither take nor respect leases, so a turn can still run on an old and a new
+replica at once until every replica runs the new release. A SQLite database
+opened by this release is migrated (the `leases` table) and is then refused by
+older releases; roll back by restoring a copy of the file.
 
 Schedules use the same mechanism: `fireSchedule()` (and so `startSchedules()`)
 claims each schedule's fire time in the agent's checkpoint store first, so
@@ -8062,8 +8104,10 @@ approval stays pending.
 
 **Fix:** await the turn's `send()` (or abort it), then call again. After a `send()` that failed
 this way, send again: the session reads the current transcript at the start of every call. A
-lease left by a process that died is taken over once it expires (30 s), or at once by the
-file and SQLite stores when that process is gone from the same host.
+lease left by a process that died is taken over once it expires (30 s, plus up to 30 s of
+clock-skew grace on the file and SQLite stores), or at once when that process provably exited
+on the same host and PID namespace. A run that stalled past its lease fails with this code at
+its next checkpoint instead of overwriting the run that took over.
 
 ### LOUSHO_SESSION_TURN_PENDING
 
@@ -15201,8 +15245,10 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   `agent.fork('<id>.turn-<n>', { fromStep })` can fork those; older turns'
   histories are deleted as new turns commit (each history entry holds a copy of
   the whole transcript, so keeping every turn's would grow the store with the
-  square of the conversation's length). `session.fork()` works from the
-  transcript and is not limited by it.
+  square of the conversation's length). History outside the window that is
+  already in the store - kept by an earlier release, or under a larger
+  `turnHistoryLimit` - is deleted over the next commits too, up to 32 turns per
+  commit. `session.fork()` works from the transcript and is not limited by it.
 - While a turn runs, it holds a run lease on its checkpoint (see
   [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases)): a `send()` on the same
   session from another process, replica or store object fails with
@@ -15354,6 +15400,20 @@ a minute); a session commits its turns with a compare-and-swap under a lock file
 (`sessions/<id>.json.lock`), and a running checkpointed run holds its run lease
 in `leases/<id>.json` (see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases)).
 For many processes sharing a store, `SqliteStore` is the sturdier choice.
+
+`fileStore(dir).prune({ olderThanMs })` deletes what was last written more than
+`olderThanMs` ago, like `SqliteStore.prune()`: transcripts, checkpoints and
+checkpoint history files, plus expired pending OAuth sign-ins. A run paused on
+a pending approval is kept, however old (its checkpoint, its history and its
+session's transcript), and so are pending approvals and OAuth tokens. It
+resolves with the counts, `{ sessions, checkpoints, oauthPending }`:
+
+```ts
+import { fileStore } from '@lousho/build-ai-agent';
+
+const store = fileStore('./.lousho');
+await store.prune({ olderThanMs: 30 * 24 * 60 * 60 * 1000 }); // a month
+```
 
 Any object with the three methods of a part works there too: a Redis
 `SessionStore`, or a KV-backed `CheckpointStore` on Cloudflare Workers (the
@@ -18671,7 +18731,10 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | Resolving an approval whose run was deleted or replaced fails with `LOUSHO_APPROVAL_ORPHANED` and withdraws it (it used to overwrite the newer conversation). | no opt-out |
 | A session turn paused for approval locks the session id: a new turn on it throws `SessionAwaitingApprovalError` (`LOUSHO_SESSION_AWAITING_APPROVAL`). | decide the approval, or `session.discardPending()` |
 | Session turns keep the checkpoint history of the latest 10 committed turns. See [Durable sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#durable-sessions). | `agent.session({ id, turnHistoryLimit })` with a larger whole number |
-| `sessionId` must be 1-200 characters of `A-Za-z0-9_.-` on every store, and may not end in `.turn-<n>` or `.paused`; `''` is refused. | no opt-out |
+| `sessionId` must be 1-200 characters of `A-Za-z0-9_.-` on every store, and may not end in `.turn-<n>`, `.paused` or `.fire` (a schedule's fire claim); `''` is refused. | no opt-out |
+| A lease left by a process that died on another machine (or in another container with the same hostname) is taken over 30 to 60 seconds after its last heartbeat (a grace for clock skew), not at 30 seconds. See [Run leases](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases). | no opt-out |
+| During a rolling upgrade, replicas still on an earlier release neither take nor respect run leases, so a turn can run twice until every replica is upgraded. A SQLite database opened by this release is migrated and then refused by older releases. | upgrade all replicas together; keep a copy of the database to roll back |
+| `approvalTtlMs` (and an `ask` rule's `ttlMs`) above 100 years throws `LOUSHO_CONFIG_INVALID` instead of meaning "never expires". | leave it out for pauses that never expire |
 | A deterministic provider error records `lastError` on the turn's checkpoint, and later calls on that session fail fast with `LOUSHO_SESSION_TURN_FAILED`. | `session.discardPending()`, or fix the cause and `session.resume()` |
 | With a store, tools, `needsApproval`, permission rules and hooks get the session id as `ctx.sessionId`, not the turn checkpoint key `<id>.turn-<n>`. | no opt-out |
 | Several calls of one step that need approval pause once, on all of them (`result.approvalIds`); calls that need no approval run before the pause. See [Several calls in one step](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#several-calls-in-one-step). | no opt-out |
