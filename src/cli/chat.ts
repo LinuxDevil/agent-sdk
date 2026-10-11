@@ -12,7 +12,7 @@ import { specToAgent } from '../spec/specToAgent';
 import type { AgentStore } from '../storage/agentStore';
 import { fileTraceExporter } from '../traces';
 import { DEFAULT_TRACE_DIR } from '../traces/format';
-import { parseCommand, stringValue, takeOptionalValueFlag, usageError, type CommandSpec } from './args';
+import { exitCodeFor, parseCommand, stringValue, takeOptionalValueFlag, usageError, type CommandSpec } from './args';
 import { runChatRepl } from './chatRepl';
 import { detectTarget, loadTarget } from './devReload';
 
@@ -138,7 +138,7 @@ export async function runChat(
     });
   } catch (error) {
     io.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-    return 1;
+    return exitCodeFor(error);
   } finally {
     rl?.close();
     store?.close();

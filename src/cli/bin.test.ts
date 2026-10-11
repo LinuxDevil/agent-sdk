@@ -28,6 +28,14 @@ describe('bin/lousho.js', () => {
     expect(banner).not.toContain('stub');
     expect(banner).toContain('[--timeout <ms>]');
     expect(banner).toContain('lousho --version');
+    expect(banner).toContain('[--allowed-hosts a,b]');
+    expect(banner).toContain('2 usage error');
+  });
+
+  it('exits 2 for an unknown command, like every command does for a usage error', () => {
+    const res = lousho('bogus');
+    expect(res.status).toBe(2);
+    expect(res.stderr).toContain("unknown command 'bogus'");
   });
 });
 

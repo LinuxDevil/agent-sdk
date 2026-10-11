@@ -5,7 +5,8 @@
  * replaces the whole list, `todo_read` returns it, and both share one store.
  */
 import { z } from 'zod';
-import { defineTool } from '../defineTool';
+import { defineTool, type DefinedTool } from '../defineTool';
+import type { StandardSchemaV1 } from '../../utils/zodCompat';
 
 /** Progress of a {@link Todo}. */
 export type TodoStatus = 'pending' | 'in_progress' | 'completed';
@@ -81,7 +82,12 @@ const todoItem = z.object({
   status: z.enum(['pending', 'in_progress', 'completed']),
 });
 
-type TodoItemInput = z.output<typeof todoItem>;
+/** One item of a `todo_write` call; `id` is optional. */
+interface TodoItemInput {
+  id?: string;
+  content: string;
+  status: TodoStatus;
+}
 
 function validateList(items: TodoItemInput[], ctx: z.RefinementCtx): void {
   const inProgress = items.filter((item) => item.status === 'in_progress').length;
@@ -132,8 +138,9 @@ function assignIds(items: TodoItemInput[], existing: Todo[]): Todo[] {
   }));
 }
 
-type TodoWriteTool = ReturnType<typeof buildWriteTool>;
-type TodoReadTool = ReturnType<typeof buildReadTool>;
+// Spelled out instead of inferred, so the published declarations name no zod-major-specific schema types.
+type TodoWriteTool = DefinedTool<StandardSchemaV1<{ todos: TodoItemInput[] }>, TodoListResult>;
+type TodoReadTool = DefinedTool<StandardSchemaV1<Record<string, never>>, TodoListResult>;
 
 function memoryStore(): TodoStore {
   let todos: Todo[] = [];
@@ -145,7 +152,7 @@ function memoryStore(): TodoStore {
   };
 }
 
-function buildWriteTool(store: TodoStore, onChange: TodoToolsOptions['onChange']) {
+function buildWriteTool(store: TodoStore, onChange: TodoToolsOptions['onChange']): TodoWriteTool {
   return defineTool({
     name: 'todo_write',
     description:
@@ -162,7 +169,7 @@ function buildWriteTool(store: TodoStore, onChange: TodoToolsOptions['onChange']
   });
 }
 
-function buildReadTool(store: TodoStore) {
+function buildReadTool(store: TodoStore): TodoReadTool {
   return defineTool({
     name: 'todo_read',
     annotations: { readOnlyHint: true, destructiveHint: false },

@@ -272,7 +272,8 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 
 | Change | Opt-out |
 | ------ | ------- |
-| `lousho dev`, `chat`, `acp`, `mcp` and `doctor` load `./.env` when it exists; variables already set win. See [CLI](./cli.md). | remove or rename `.env` |
+| `lousho dev`, `chat`, `acp`, `mcp`, `doctor`, `eval` and `build` load `./.env` when it exists; variables already set win. See [CLI](./cli.md). | remove or rename `.env` |
+| Every `lousho` usage error (unknown command or flag, bad value, extra argument) exits 2; 1 means the command ran and failed. See [CLI](./cli.md). | check for a non-zero exit instead of exactly 1 |
 | `t.maxCostUsd(n)` fails when a run reports no cost (the model has no known price). See [Evals](./evals.md). | `t.maxCostUsd(n, { unknownCost: 'skip' })` |
 | `lousho eval` gives each live, `--record` and `--drift` case 10 minutes instead of vitest's 5 s. See [Time limits](./evals.md#time-limits). | `--timeout <ms>` or `defineEval({ timeoutMs })` |
 | Agent Forge fails a run on a real provider with no API key (`LOUSHO_PROVIDER_MISSING_API_KEY`) instead of silently using the mock provider. | switch the agent's provider to `mock` |

@@ -7,6 +7,7 @@ import type { FsProvider } from './types';
 import { normalizeWorkspacePath } from './paths';
 import { editFile, globFiles, grepFiles, listDirectory, prepareEdit, readNumberedLines, type FsLimits } from './fsOperations';
 import type { WorkspaceCheckpoints } from './checkpoints';
+import type { StandardSchemaV1 } from '../../utils/zodCompat';
 
 const pathField = z.string().describe('Path relative to the workspace root, e.g. "src/index.ts".');
 
@@ -39,15 +40,27 @@ const grepInput = z.object({
   ignore_case: z.boolean().optional().describe('Case-insensitive search.'),
 });
 
-/** The (parsed) arguments of each file system tool, keyed by tool name. */
+/**
+ * The (parsed) arguments of each file system tool, keyed by tool name.
+ * Spelled out rather than inferred from the schemas, so the published
+ * declarations name no zod-major-specific types; the `satisfies` checks
+ * below keep the two in step.
+ */
 export interface FsToolArgs {
-  read_file: z.output<typeof readFileInput>;
-  write_file: z.output<typeof writeFileInput>;
-  edit_file: z.output<typeof editFileInput>;
-  list_dir: z.output<typeof listDirInput>;
-  glob: z.output<typeof globInput>;
-  grep: z.output<typeof grepInput>;
+  read_file: { path: string; offset?: number; limit?: number };
+  write_file: { path: string; content: string };
+  edit_file: { path: string; old_string: string; new_string: string; replace_all?: boolean };
+  list_dir: { path?: string };
+  glob: { pattern: string; path?: string };
+  grep: { pattern: string; path?: string; glob?: string; ignore_case?: boolean };
 }
+
+readFileInput satisfies StandardSchemaV1<FsToolArgs['read_file']>;
+writeFileInput satisfies StandardSchemaV1<FsToolArgs['write_file']>;
+editFileInput satisfies StandardSchemaV1<FsToolArgs['edit_file']>;
+listDirInput satisfies StandardSchemaV1<FsToolArgs['list_dir']>;
+globInput satisfies StandardSchemaV1<FsToolArgs['glob']>;
+grepInput satisfies StandardSchemaV1<FsToolArgs['grep']>;
 
 /** Name of a tool created by {@link createFsTools}. */
 export type FsToolName = keyof FsToolArgs;

@@ -8,6 +8,7 @@ import { resolveAgentDir } from '../agentDir';
 import { runAdd, parseAddArgs, type AddIo } from './add';
 import { planFiles } from './addWrite';
 import { DEFAULT_REGISTRY, DEFAULT_REGISTRY_FALLBACK, type RegistryItem } from './registry';
+import { VERSION } from '../version';
 
 function sink() {
   const chunks: string[] = [];
@@ -200,6 +201,8 @@ describe('lousho add', () => {
   it('falls back to the raw GitHub copy when the default registry host is unreachable, and only for the default', async () => {
     const dist = path.join(__dirname, '..', '..', 'registry', 'dist');
     const fallbackBase = DEFAULT_REGISTRY_FALLBACK.replace(/index\.json$/, '');
+    // Pinned to the installed version's release tag, not a moving branch.
+    expect(DEFAULT_REGISTRY_FALLBACK).toBe(`https://raw.githubusercontent.com/LinuxDevil/agent-sdk/v${VERSION}/registry/dist/index.json`);
     const seen: string[] = [];
     const fetchStub = (async (input: string | URL | Request) => {
       const url = String(input);
@@ -316,9 +319,9 @@ describe('permission manifest', () => {
     expect(dry.out).toContain('Permissions it asks for');
   });
 
-  it('rejects an unknown --allow value', async () => {
+  it('rejects an unknown --allow value as a usage error (exit 2)', async () => {
     const result = await add(withRegistry('shell', '--yes', '--allow', 'exec,root'));
-    expect(result.code).toBe(1);
+    expect(result.code).toBe(2);
     expect(result.err).toContain("got 'root'");
   });
 

@@ -278,6 +278,12 @@ dist
 .lousho/
 `;
 
+/** The .gitignore; a `--sdk-path` build of the SDK (a local tarball the dependency points at) is ignored too. */
+function gitignore(config: ProjectConfig): string {
+  const tarball = /^file:\.\/(.+\.(?:tgz|tar\.gz))$/i.exec(config.sdkDependency)?.[1];
+  return tarball ? `${GITIGNORE}# local SDK build from --sdk-path\n${tarball}\n` : GITIGNORE;
+}
+
 function run(pm: PackageManager, script: string): string {
   return `${pm} run ${script}`;
 }
@@ -318,7 +324,7 @@ export function renderProject(config: ProjectConfig): Record<string, string> {
   const files: Record<string, string> = {
     'package.json': packageJson(config),
     'tsconfig.json': tsconfig(),
-    '.gitignore': GITIGNORE,
+    '.gitignore': gitignore(config),
     '.env.example': envExample(config),
     'README.md': readme(config),
     'src/agent.test.ts': yaml ? yamlTestSource(config) : testSource(),

@@ -18,7 +18,7 @@ import { SDKError } from '../execution/errors';
 import { checkItem, formatFinding } from './addCheck';
 import { readReceipt, RECEIPT_FILE, writeReceipt, type Receipt } from './addReceipt';
 import { checkTargets, planFiles, writeFiles, type PlannedFile } from './addWrite';
-import { parseCommand, stringValue, usageError, type CommandSpec } from './args';
+import { exitCodeFor, parseCommand, stringValue, usageError, type CommandSpec } from './args';
 import { loadItem, openRegistry, type RegistryIndex, type RegistryItem, type RegistryOptions } from './registry';
 
 const USAGE = 'Usage: lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allow exec,fs-write,network,env] [--overwrite] [--dry-run]\n       lousho add --list [--registry <url-or-path>]';
@@ -140,14 +140,15 @@ function enforceFlags(args: AddArgs, item: RegistryItem, io: AddIo): void {
   const elevated = elevatedPermissions(item);
   const flags = `--yes${elevated.length > 0 ? ` --allow ${elevated.join(',')}` : ''}`;
   const review = `Run with --dry-run first to review its permissions and files.`;
+  // A refusal (exit 1), not a usage error: whether these flags are needed depends on the item.
+  const refuse = (message: string) => new SDKError(`lousho add: ${message}`, 'LOUSHO_CONFIG_INVALID', { hint: SPEC.usage });
   if (!args.yes) {
     if (io.stdin.isTTY) return;
-    throw usageError(SPEC, `stdin is not interactive, so it cannot ask for confirmation; pass ${flags} to install '${item.name}' without asking. ${review}`);
+    throw refuse(`stdin is not interactive, so it cannot ask for confirmation; pass ${flags} to install '${item.name}' without asking. ${review}`);
   }
   const missing = elevated.filter((name) => !args.allow.includes(name));
   if (missing.length === 0) return;
-  throw usageError(
-    SPEC,
+  throw refuse(
     `'${item.name}' asks for elevated permissions that --yes does not grant on its own (missing: --allow ${missing.join(',')}); pass ${flags} to install it without asking. ${review}`
   );
 }
@@ -260,6 +261,6 @@ export async function runAdd(args: string[], io: AddIo = { stdin: process.stdin,
     return await runParsed(parsed, io);
   } catch (error) {
     io.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-    return 1;
+    return exitCodeFor(error);
   }
 }

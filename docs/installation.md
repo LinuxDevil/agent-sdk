@@ -169,6 +169,18 @@ The entries `exports` declares, and what each one holds:
 | `@lousho/build-ai-agent/vue` | `useLoushoAgent()` as a Vue composable (needs `vue`) |
 | `@lousho/build-ai-agent/svelte` | `loushoAgent()` as a Svelte store |
 
+### TypeScript settings
+
+The declarations type-check with `skipLibCheck: false` under zod 3 and zod 4,
+with `moduleResolution` `bundler`, `nodenext` and `node16` (ESM). One
+combination fails, and the cause is upstream: a CommonJS project
+(no `"type": "module"`) with `module`/`moduleResolution: "node16"` and `ai` 7.
+`ai` 7 ships ES modules only, and TypeScript's node16 mode does not let CommonJS
+code import those types (error TS1479 inside the SDK's declarations). Use
+`"module": "nodenext"` (it resolves them) or `"moduleResolution": "bundler"`,
+add `"type": "module"`, or keep `skipLibCheck: true` (what `lousho init`
+projects use).
+
 ## Installing from a local build
 
 To try an unreleased commit, build and pack the SDK from a checkout of this

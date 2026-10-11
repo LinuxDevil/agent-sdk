@@ -16,6 +16,7 @@ import { SDKError } from '../../execution/errors';
 import { isHostPattern, matchesHost } from '../../security/hostPattern';
 import { findSsrfBlockedError, isPrivateAddress, pinnedLookup } from '../../security/privateAddress';
 import { defineTool, type DefinedTool } from '../defineTool';
+import type { StandardSchemaV1 } from '../../utils/zodCompat';
 import { toolFailure } from './toolFailure';
 import { htmlToText } from './htmlToText';
 
@@ -306,7 +307,7 @@ const webFetchInput = z.object({
  * per origin and closed when idle); there is no close hook, so it is left to
  * garbage collection with the tool.
  */
-export function createWebFetchTool(options: WebFetchToolOptions = {}): DefinedTool<typeof webFetchInput, WebFetchResult> {
+export function createWebFetchTool(options: WebFetchToolOptions = {}): DefinedTool<StandardSchemaV1<{ url: string }>, WebFetchResult> {
   const policy = buildPolicy(options);
   const transport = options.transport ?? createPinnedTransport(policy.allowPrivate);
   return defineTool({

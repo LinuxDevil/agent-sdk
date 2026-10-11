@@ -608,6 +608,18 @@ describe('helpers', () => {
     expect(explainImportError('/x/a.ts', new Error('boom')).message).toContain('failed to import /x/a.ts: boom');
   });
 
+  it('explains TypeScript syntax that type stripping cannot erase, without claiming TypeScript cannot load', () => {
+    const cause = Object.assign(new Error('TypeScript enum is not supported in strip-only mode'), {
+      code: 'ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX',
+    });
+    const message = explainImportError('/x/tools/a.ts', cause).message;
+    expect(message).toContain('/x/tools/a.ts');
+    expect(message).toContain('enum');
+    expect(message).toContain('--experimental-transform-types');
+    expect(message).not.toContain('cannot load TypeScript files');
+    expect(message).not.toContain('your-script.ts');
+  });
+
   it('codes an unresolvable package import with a hint naming the package and where Node looks for it', () => {
     const esm = Object.assign(new Error("Cannot find package '@lousho/build-ai-agent' imported from /k/tools/fs.ts"), { code: 'ERR_MODULE_NOT_FOUND' });
     const error = explainImportError('/k/tools/fs.ts', esm) as SDKError;

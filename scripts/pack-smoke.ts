@@ -19,7 +19,8 @@
  *   5. in that project, runs Node: ESM `import` and CJS `require` of the root
  *      and of every `exports` subpath, a mock-model agent turn in both formats,
  *      `lousho --help` / `lousho doctor` through the installed bin, and
- *      `tsc --noEmit` with `moduleResolution` bundler and node16.
+ *      `tsc --noEmit` with `moduleResolution` bundler and node16, plus the
+ *      declarations with `skipLibCheck: false` under zod 3 and zod 4.
  *
  * Usage: npm run pack-smoke [-- --skip-build] [--keep]
  * Peer versions can be overridden for a matrix run, e.g.
@@ -174,13 +175,13 @@ const SUBPATH_TYPE_PEERS: Record<string, string[]> = {
  * The optional feature peers (`dockerode`, `@modelcontextprotocol/sdk`, ...) are
  * deliberately NOT installed: their types must not appear in what we publish (#346).
  * `@types/json-schema` is installed because the `ai` peer's own declarations need it.
- * `zod` is remapped to a zod 3 install: the published declarations are emitted
- * against zod 3 (the devDependency) and name zod-3 generic shapes a zod 4
- * install cannot resolve - a separate, pre-existing limitation of the
- * declarations, not what this check is for.
+ * The check runs twice, with `zod` remapped to a zod 3 and then to a zod 4
+ * install: the peer range allows both, and the declarations are emitted
+ * against zod 3 (the devDependency), so a declaration that names a
+ * zod-3-only type (`ZodEffects`, a three-argument `ZodObject`) fails the zod 4 run.
  */
 function checkStrictLibs(project: string, tsc: string): void {
-  mustRun('npm install type packages for strict-libs', 'npm', ['install', '--no-audit', '--no-fund', '--no-save', '@types/json-schema', 'zod3@npm:zod@3'], project);
+  mustRun('npm install type packages for strict-libs', 'npm', ['install', '--no-audit', '--no-fund', '--no-save', '@types/json-schema', 'zod3@npm:zod@3', 'zod4@npm:zod@4'], project);
   const pkgDir = path.join(project, 'node_modules', ...SDK_NAME.split('/'));
   const checked: string[] = [];
   for (const e of listExports(pkgDir)) {
@@ -194,24 +195,27 @@ function checkStrictLibs(project: string, tsc: string): void {
   const specs = listExports(pkgDir).filter((e) => checked.includes(e.subpath)).map((e) => e.spec);
   const lines = specs.map((spec, i) => `import type * as m${i} from '${spec}';\nexport type { m${i} };`);
   fs.writeFileSync(path.join(project, 'strict-libs-entry.ts'), lines.join('\n') + '\n');
-  const cfg = {
-    compilerOptions: {
-      module: 'esnext',
-      moduleResolution: 'bundler',
-      target: 'es2022',
-      strict: true,
-      noEmit: true,
-      skipLibCheck: false,
-      types: ['node'],
-      baseUrl: '.',
-      paths: { zod: ['./node_modules/zod3'] },
-    },
-    files: ['strict-libs-entry.ts'],
-  };
-  fs.writeFileSync(path.join(project, 'tsconfig.strict-libs.json'), JSON.stringify(cfg, null, 2));
-  const res = run(process.execPath, [tsc, '-p', 'tsconfig.strict-libs.json'], project);
-  if (res.status !== 0) fail(`tsc (strict-libs, skipLibCheck: false) failed:\n${res.stdout}${res.stderr}`);
-  else log(`tsc --noEmit (strict-libs, skipLibCheck: false): declarations of ${checked.join(', ')} are clean`);
+  for (const zod of ['zod3', 'zod4']) {
+    const cfg = {
+      compilerOptions: {
+        module: 'esnext',
+        moduleResolution: 'bundler',
+        target: 'es2022',
+        strict: true,
+        noEmit: true,
+        skipLibCheck: false,
+        types: ['node'],
+        baseUrl: '.',
+        paths: { zod: [`./node_modules/${zod}`] },
+      },
+      files: ['strict-libs-entry.ts'],
+    };
+    const config = `tsconfig.strict-libs-${zod}.json`;
+    fs.writeFileSync(path.join(project, config), JSON.stringify(cfg, null, 2));
+    const res = run(process.execPath, [tsc, '-p', config], project);
+    if (res.status !== 0) fail(`tsc (strict-libs, skipLibCheck: false, ${zod}) failed:\n${res.stdout}${res.stderr}`);
+    else log(`tsc --noEmit (strict-libs, skipLibCheck: false, ${zod}): declarations of ${checked.join(', ')} are clean`);
+  }
 }
 
 function checkTypes(project: string): void {

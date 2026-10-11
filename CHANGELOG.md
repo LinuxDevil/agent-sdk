@@ -70,6 +70,13 @@ This section lists what is on `main` and not yet on npm.
 - Structured output: when `maxSteps` runs out while the model is still calling tools, a run with `output` set now makes one last model call with no tools offered ("answer now") and validates its reply - the result carries `object` (still `finishReason: 'max-steps'`) or `outputError` (`'output-invalid'`) instead of neither. The extra call is skipped when another budget limit (tokens, cost, duration) is already spent. See [Structured output](docs/structured-output.md).
 
 ### Fixed
+- The published type declarations type-check with `skipLibCheck: false` under zod 4 as well as zod 3: `createTodoTools()`, `askQuestionTool()`, `createWebFetchTool()` / `webFetchTool`, `FsToolArgs` and `lousho add`'s registry types are spelled out instead of inferred zod-3 schema types (`ZodEffects`, three-argument `ZodObject`). Their tool `input` is typed as a `StandardSchemaV1` of the arguments. `npm run pack-smoke` now checks the packed declarations against zod 3 and zod 4.
+- `lousho dev` reloads an edited CommonJS tool file (`.cjs`, or `.js` without `"type": "module"`) and the CommonJS helpers it requires, and reports a broken one (`failed to reload ..., keeping the previous agent`) instead of logging "reloaded" and serving the cached copy. It also keeps reloading a file an editor replaces on save (write to a temp file, then rename), which on Linux stopped being watched after its first save.
+- `lousho build` warns when the agent's provider package (e.g. `@ai-sdk/openai` for `provider: openai`) is not installed, since the built agent would fail every request.
+- The CLI no longer prints Node's `MODULE_TYPELESS_PACKAGE_JSON` warning each time it loads a `tools/*.ts` file in a project without `"type": "module"`.
+- A tool file with TypeScript syntax that Node's type stripping cannot erase (`enum`, `namespace`, parameter properties) gets an error that says so and suggests `NODE_OPTIONS=--experimental-transform-types`, instead of "this process cannot load TypeScript files".
+- `lousho dev --help` and `lousho --help` describe `--allowed-hosts`; an unexpected failure to load a CLI command is reported instead of an unhandled rejection.
+- `lousho init --sdk-path` adds the copied SDK tarball to the generated project's `.gitignore`.
 - A file part the provider cannot send rejects `send()` / `stream()` with `LOUSHO_UNSUPPORTED_CONTENT` itself, as docs/errors.md describes, instead of a `LOUSHO_PROVIDER_REQUEST_FAILED` whose `cause` had that code.
 - On ai 7 (`@ai-sdk/openai` 4) a tool error reached the model wrapped twice (`{"error":{"error":"ToolNotFoundError",...}}`); the OpenAI and OpenRouter providers now send it once, as on ai 4 and 6.
 - An OpenAI-compatible server that answers a streaming request with a whole JSON completion (it ignores `stream: true`) no longer ends the run with empty text: the completion is replayed as a stream, so `stream()` and `send(input, { onEvent })` get its text, tool calls and usage.
@@ -309,6 +316,9 @@ This section lists what is on `main` and not yet on npm.
 - The `@modelcontextprotocol/sdk` peer range is now `^1.31.0` (was `^1.30.1`), which has the fix for GHSA-6qxp-vccf-f47h that MCP OAuth relies on.
 
 ### Changed
+- **Behavior change (CLI):** every `lousho` usage error exits 2 (an unknown command, an unknown flag, a missing or invalid value, an extra argument, a missing `--target`, a bad `lousho init` flag); 1 is left for a command that ran and failed. Before, only `eval` and `traces` exited 2 and the others 1. See [CLI](docs/cli.md).
+- `lousho eval` and `lousho build` load `./.env` like the other agent commands (judge evals and builds need provider keys).
+- `lousho add`'s fallback registry URL points at the release tag of the installed SDK (`raw.githubusercontent.com/LinuxDevil/agent-sdk/v<version>/registry/dist/index.json`) instead of `main`.
 - **Behavior change:** a rate-limited model call (`compacted.category: 'rate-limit'`, e.g. a 429) now has the code `LOUSHO_PROVIDER_RATE_LIMITED`, as docs/errors.md described, instead of `LOUSHO_PROVIDER_REQUEST_FAILED`. It is still a `CompactedLLMProviderError` / `LLMProviderError`.
 - **Behavior change:** `createAgent({ provider })` with a built-in provider instance or a `fromAiSdk()` provider and no `retry` wraps it in `withRetry()` with the provider's `maxRetries` (default 2), like a model string: retries now emit `provider.retry` events, and `fromAiSdk()` retries (it made none).
 - **Behavior change:** `OpenAIProvider` sends `store: false` on the Responses API (ai 6/7) unless `store: true` is set; the SDK resends the transcript on every call and never refers to a stored response.

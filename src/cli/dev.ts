@@ -29,7 +29,7 @@ import { fileTraceExporter } from '../traces';
 import { DEFAULT_TRACE_DIR } from '../traces/format';
 import { findSdkRoot } from '../deploy/bundle';
 import { moduleDir } from '../utils/moduleDir';
-import { parseCommand, portValue, stringValue, takeOptionalValueFlag, usageError, type CommandSpec } from './args';
+import { exitCodeFor, parseCommand, portValue, stringValue, takeOptionalValueFlag, usageError, type CommandSpec } from './args';
 import { detectTarget, hasOwnStore, startReloader, type DevOptions, type DevState } from './devReload';
 import { hostHeaderAllowed, isLoopbackHost } from '../server/hostCheck';
 
@@ -276,6 +276,6 @@ export async function runDev(rest: string[]): Promise<number> {
     return 0;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
-    return 1;
+    return exitCodeFor(error);
   }
 }

@@ -49,18 +49,20 @@ the `=` form: `--model=-x`. `--traces` is the one flag whose value is optional:
 it takes it only in the `=` form (`--traces=./t`), so `--traces agent.yaml` is
 still the flag followed by the path.
 
-A usage error exits 1, except for `lousho eval` and `lousho traces`, which
-exit 2 for it because 1 is their "something failed" verdict (a gate failure,
-no matching trace). `lousho build` prints where it wrote the build (default
+**Exit codes.** Every command exits 0 on success, 1 when it ran and failed
+(an agent that cannot load, a build error, `lousho eval`'s gate failure, no
+matching trace, `lousho add` refusing an item without `--yes`), and 2 for a
+usage error: an unknown command, an unknown flag, a missing or invalid
+value, an extra argument, or a missing `--target`. `lousho build` prints where it wrote the build (default
 `.lousho/build/<target>`) and the command to run there.
 
-**`.env`.** The commands that run an agent (`dev`, `chat`, `acp`, `mcp`) and
-`doctor` load `./.env` from the working directory when it exists, like
+**`.env`.** The commands that run an agent (`dev`, `chat`, `acp`, `mcp`),
+`doctor`, `eval` (judge evals need provider keys) and `build` load `./.env` from the working directory when it exists, like
 `node --env-file-if-exists=.env`: a variable already set in the environment
 wins over the file.
 
 `lousho init` is the exception: it parses its own flags, and a bad flag or
-value fails with `InitUsageError` — its message printed as-is, exit code 1 —
+value fails with `InitUsageError` — its message printed as-is, exit code 2 —
 not the shared `LOUSHO_CONFIG_INVALID` path. The only short flags besides
 `-h` are `-y` for `--yes`, on `init` and on `add`.
 

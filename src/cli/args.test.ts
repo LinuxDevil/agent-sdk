@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PassThrough } from 'node:stream';
-import { parseCommand, portValue, usageError, type CommandSpec } from './args';
+import { USAGE_EXIT_CODE, exitCodeFor, parseCommand, portValue, usageError, type CommandSpec } from './args';
+import { runAcp } from './acp';
+import { runAdd } from './add';
+import { realInitEnvironment, runInit } from './init';
+import { runTraces } from './traces';
 import { runBuild, parseBuildArgs } from './build';
 import { parseChatArgs, runChat } from './chat';
 import { parseDevArgs, runDev } from './dev';
@@ -101,6 +105,11 @@ describe.each(CASES)('lousho $command flag parsing', ({ command, parse, base, ru
     }
   });
 
+  it('exits 2 for a usage error (1 is left for a command that ran and failed)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await run([...base, '--bogus'])).toBe(2);
+  });
+
   it('prints the usage for -h and --help and exits 0 without running', async () => {
     for (const arg of ['-h', '--help']) {
       expect(parse([arg])).toMatchObject({ help: true });
@@ -143,6 +152,24 @@ describe.each(CASES.filter((c) => c.positionals >= 1))('lousho $command --', ({ 
   it('ends the flags at --', () => {
     const args = parse(['--', '--looks-like-a-flag']) as { path?: string; configPath?: string; specPath?: string; globs?: string[] };
     expect(args.path ?? args.configPath ?? args.specPath ?? args.globs?.[0]).toBe('--looks-like-a-flag');
+  });
+});
+
+describe('usage errors exit 2 in every command', () => {
+  const io = () => ({ stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough() });
+
+  it('acp, add, traces and init too; the shared helper marks only usage errors', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await runAcp(['a.yaml', '--bogus'], io())).toBe(2);
+    expect(await runAdd(['--bogus'], io())).toBe(2);
+    expect(await runTraces(['--limit', 'abc'])).toBe(2);
+    const errors: string[] = [];
+    const init = { ...realInitEnvironment(), writeError: (text: string) => void errors.push(text) };
+    expect(await runInit(['--bogus'], init)).toBe(2);
+    expect(errors.join('')).toContain('lousho init');
+    expect(exitCodeFor(usageError({ command: 'x', usage: 'Usage: lousho x' }, 'bad'))).toBe(2);
+    expect(exitCodeFor(new Error('a failure'))).toBe(1);
+    expect(USAGE_EXIT_CODE).toBe(2);
   });
 });
 

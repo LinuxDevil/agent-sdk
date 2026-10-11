@@ -13,7 +13,7 @@ import { findSdkRoot } from '../deploy/bundle';
 import { loadSpec } from '../spec/loadSpec';
 import { resolveAgentDir } from '../agentDir';
 import { resolveSpecTool } from '../spec/specToAgent';
-import { parseCommand, type CommandSpec } from './args';
+import { exitCodeFor, parseCommand, type CommandSpec } from './args';
 import { runDoctor } from './doctorCore';
 import { renderJson, renderReport } from './doctorRender';
 import type { DoctorEnvironment, SdkManifest } from './doctorTypes';
@@ -137,7 +137,13 @@ export async function runDoctorCommand(
   env?: DoctorEnvironment,
   write: (text: string) => void = (text) => console.log(text)
 ): Promise<number> {
-  const args = parseDoctorArgs(argv);
+  let args: DoctorArgs;
+  try {
+    args = parseDoctorArgs(argv);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return exitCodeFor(error);
+  }
   if (args.help) {
     write(HELP);
     return 0;
