@@ -4,7 +4,7 @@
  * approvals, id validation, a corrupt history file, and two agents on one dir.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, readdirSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -257,6 +257,36 @@ describe('fileStore(dir): case-safe file names (Eve DUR-F7)', () => {
 
     expect((await store.approvals.resolve('Appr_1'))?.pending).toEqual(pending);
     expect(readdirSync(join(dir, 'approvals'))).toEqual([]);
+  });
+
+  it('reads files an earlier release wrote under a long case-safe name that is now shortened, and moves them on the next save', async () => {
+    const dir = tempDir();
+    const store = fileStore(dir);
+    // 91 uppercase letters: a 182-character case-safe name, written as it is before names were shortened past 180.
+    const id = 'A'.repeat(91);
+    const oldName = '^a'.repeat(91);
+    const write = (sub: string, value: unknown) => {
+      mkdirSync(join(dir, sub), { recursive: true });
+      writeFileSync(join(dir, sub, `${oldName}.json`), JSON.stringify(value));
+    };
+    write('sessions', hi);
+    write('checkpoints', makeCheckpoint({ sessionId: id, stepIndex: 1, status: 'awaiting-approval' }));
+    write('checkpoint-history', [{ step: 1, savedAt: new Date().toISOString(), status: 'in-progress', checkpoint: makeCheckpoint({ sessionId: id, stepIndex: 1 }) }]);
+
+    expect(await store.sessions.load(id)).toEqual(hi);
+    expect((await store.checkpoints.load(id))?.stepIndex).toBe(1);
+    expect((await store.checkpoints.history!(id)).map((entry) => entry.step)).toEqual([1]);
+    expect((await store.checkpoints.list!()).map((entry) => entry.sessionId)).toEqual([id]);
+
+    await store.sessions.save(id, [...hi, { role: 'assistant', content: 'hello' }]);
+    await save(store, id, 2);
+    for (const sub of ['sessions', 'checkpoints', 'checkpoint-history']) {
+      const names = readdirSync(join(dir, sub));
+      expect(names).toHaveLength(1);
+      expect(names[0].startsWith('~')).toBe(true);
+    }
+    expect((await store.checkpoints.history!(id)).map((entry) => entry.step)).toEqual([2, 1]);
+    expect((await store.sessions.load(id))?.length).toBe(2);
   });
 
   it("does not read a lowercase id's legacy file for a mixed-case id", async () => {

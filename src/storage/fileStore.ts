@@ -50,7 +50,7 @@ import { ConfigurationError } from '../execution/errors';
 import { decodeBytes, encodeBytes, FileSessionStore } from '../session/sessionStore';
 import type { AgentStore } from './agentStore';
 import { caseSafeName, findLegacyFile, idFromCaseSafeName, removeLegacyFile } from './fileNames';
-import { fileNameOf, HASHED_NAME_MARK, readTextFile, writeFileAtomic } from './atomicFile';
+import { fileNameOf, HASHED_NAME_MARK, legacyNamesOf, readTextFile, writeFileAtomic } from './atomicFile';
 import { withFileLock } from './fileLock';
 import { LEASE_SWEEP_AGE_MS, leaseAvailable, newLeaseRecord, parseLeaseRecord } from './leaseRecord';
 import { assertCheckpointId, isCheckpointId } from '../session/checkpointId';
@@ -88,7 +88,7 @@ const readText = readTextFile;
 async function readById(dir: string, id: string): Promise<string | undefined> {
   const raw = await readText(join(dir, `${fileNameOf(id)}.json`));
   if (raw !== undefined) return raw;
-  const legacy = await findLegacyFile(dir, fileNameOf(id), id);
+  const legacy = await findLegacyFile(dir, fileNameOf(id), legacyNamesOf(id));
   return legacy === undefined ? undefined : readText(legacy);
 }
 
@@ -191,11 +191,11 @@ class FileCheckpointStore implements CheckpointStore {
     const file = this.fileFor(this.checkpointDir, sessionId);
     const name = fileNameOf(sessionId);
     await writeAtomic(file, name.includes(HASHED_NAME_MARK) ? { ...checkpoint, [ID_FIELD]: sessionId } : checkpoint);
-    await removeLegacyFile(this.checkpointDir, name, sessionId);
+    await removeLegacyFile(this.checkpointDir, name, legacyNamesOf(sessionId));
     if (this.historyLimit === 0) return;
     const ring = appendToRing(await this.readRing(sessionId), toHistoryEntry(checkpoint), this.historyLimit);
     await writeAtomic(this.fileFor(this.historyDir, sessionId), ring);
-    await removeLegacyFile(this.historyDir, name, sessionId);
+    await removeLegacyFile(this.historyDir, name, legacyNamesOf(sessionId));
   }
 
   async load(sessionId: string): Promise<Checkpoint | null> {
@@ -210,10 +210,10 @@ class FileCheckpointStore implements CheckpointStore {
   async delete(sessionId: string, options: CheckpointDeleteOptions = {}): Promise<void> {
     const name = fileNameOf(sessionId);
     await rm(this.fileFor(this.checkpointDir, sessionId), { force: true });
-    await removeLegacyFile(this.checkpointDir, name, sessionId);
+    await removeLegacyFile(this.checkpointDir, name, legacyNamesOf(sessionId));
     if (options.keepHistory) return;
     await rm(this.fileFor(this.historyDir, sessionId), { force: true });
-    await removeLegacyFile(this.historyDir, name, sessionId);
+    await removeLegacyFile(this.historyDir, name, legacyNamesOf(sessionId));
   }
 
   async history(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]> {
@@ -336,7 +336,7 @@ class FileApprovalStore implements ApprovalStore {
 
   /** The file of `id` written before case-safe names, when there is one. */
   private legacyFile(id: string): Promise<string | undefined> {
-    return findLegacyFile(this.dir, fileNameOf(id), id);
+    return findLegacyFile(this.dir, fileNameOf(id), legacyNamesOf(id));
   }
 
   async save(pending: PendingApproval, snapshot: ExecutionSnapshot): Promise<void> {
@@ -344,7 +344,7 @@ class FileApprovalStore implements ApprovalStore {
     const record: ResolvedApproval = { pending, snapshot };
     await writeAtomic(file, record);
     await rm(`${file}.claim`, { force: true });
-    await removeLegacyFile(this.dir, fileNameOf(pending.id), pending.id);
+    await removeLegacyFile(this.dir, fileNameOf(pending.id), legacyNamesOf(pending.id));
   }
 
   async resolve(id: string): Promise<ResolvedApproval | null> {
