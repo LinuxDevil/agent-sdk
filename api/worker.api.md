@@ -602,6 +602,22 @@ interface BudgetSpent {
 }
 
 // @public
+interface BuiltinProviderConfigs {
+    // (undocumented)
+    anthropic: AnthropicProviderConfig;
+    // (undocumented)
+    mock: MockProviderConfig;
+    // (undocumented)
+    ollama: OllamaProviderConfig;
+    // (undocumented)
+    openai: OpenAIProviderConfig;
+    // (undocumented)
+    openrouter: OpenRouterProviderConfig;
+    // (undocumented)
+    pi: PiProviderConfig;
+}
+
+// @public
 interface Channel<TEvent = unknown> {
     name: string;
     onApproval?(ctx: ChannelApprovalContext<TEvent>): Promise<void>;
@@ -2045,7 +2061,7 @@ interface LLMProviderConfig {
 // @public
 export class LLMProviderRegistry {
     static clear(): void;
-    static create<C extends object = LLMProviderConfig>(name: string, config: C & LLMProviderConfig): LLMProvider;
+    static create<C extends object = LLMProviderConfig, N extends string = string>(name: N, config: ProviderCreateConfig<N, C>): LLMProvider;
     static getProviderNames(): string[];
     static has(name: string): boolean;
     static register<C extends LLMProviderConfig>(name: string, factory: ProviderFactory<C>): void;
@@ -2433,6 +2449,14 @@ interface ObjectDeltaEvent extends AgentEventBase<'object.delta'> {
 }
 
 // @public
+interface OllamaProviderConfig extends AiSdkProviderConfig {
+    // (undocumented)
+    baseURL?: string;
+    // (undocumented)
+    defaultModel?: string;
+}
+
+// @public
 export function once(options?: {
     per?: 'tool' | 'args';
 }): ApprovalPolicy;
@@ -2724,6 +2748,39 @@ export type PerRun<T> = T | ((ctx: RunConfigContext) => T | Promise<T>);
 type PiiType = 'email' | 'phone' | 'credit-card' | 'iban' | 'us-ssn' | 'ip-address';
 
 // @public
+interface PiModel {
+    api: string;
+    // (undocumented)
+    baseUrl: string;
+    // (undocumented)
+    contextWindow: number;
+    // (undocumented)
+    cost: {
+        input: number;
+        output: number;
+        cacheRead: number;
+        cacheWrite: number;
+    };
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    input: readonly string[];
+    // (undocumented)
+    maxTokens: number;
+    // (undocumented)
+    name: string;
+    provider: string;
+    // (undocumented)
+    reasoning: boolean;
+}
+
+// @public
+interface PiProviderConfig extends LLMProviderConfig {
+    // (undocumented)
+    models?: readonly PiModel[];
+}
+
+// @public
 interface PostToolCallOutcome {
     // (undocumented)
     result: unknown;
@@ -2759,6 +2816,9 @@ export interface PromptScheduleInput extends ScheduleBase {
     run?: never;
     sharedSession?: boolean;
 }
+
+// @public
+type ProviderCreateConfig<N extends string, C extends object = LLMProviderConfig> = Lowercase<N> extends keyof BuiltinProviderConfigs ? BuiltinProviderConfigs[Lowercase<N>] : C & LLMProviderConfig;
 
 // @public
 type ProviderFactory<C extends LLMProviderConfig = LLMProviderConfig> = (config: C) => LLMProvider;

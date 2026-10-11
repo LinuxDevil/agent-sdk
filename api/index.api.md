@@ -825,6 +825,22 @@ export interface BudgetSpent {
 }
 
 // @public
+export interface BuiltinProviderConfigs {
+    // (undocumented)
+    anthropic: AnthropicProviderConfig;
+    // (undocumented)
+    mock: MockProviderConfig;
+    // (undocumented)
+    ollama: OllamaProviderConfig;
+    // (undocumented)
+    openai: OpenAIProviderConfig;
+    // (undocumented)
+    openrouter: OpenRouterProviderConfig;
+    // (undocumented)
+    pi: PiProviderConfig;
+}
+
+// @public
 export interface CalledToolOptions {
     args?: Record<string, unknown>;
     subagent?: string;
@@ -3337,7 +3353,7 @@ export class LLMProviderError extends SDKError {
 // @public
 export class LLMProviderRegistry {
     static clear(): void;
-    static create<C extends object = LLMProviderConfig>(name: string, config: C & LLMProviderConfig): LLMProvider;
+    static create<C extends object = LLMProviderConfig, N extends string = string>(name: N, config: ProviderCreateConfig<N, C>): LLMProvider;
     static getProviderNames(): string[];
     static has(name: string): boolean;
     static register<C extends LLMProviderConfig>(name: string, factory: ProviderFactory<C>): void;
@@ -4759,6 +4775,9 @@ export interface ProposedPatch {
     // (undocumented)
     diff: string;
 }
+
+// @public
+export type ProviderCreateConfig<N extends string, C extends object = LLMProviderConfig> = Lowercase<N> extends keyof BuiltinProviderConfigs ? BuiltinProviderConfigs[Lowercase<N>] : C & LLMProviderConfig;
 
 // @public
 export type ProviderFactory<C extends LLMProviderConfig = LLMProviderConfig> = (config: C) => LLMProvider;
