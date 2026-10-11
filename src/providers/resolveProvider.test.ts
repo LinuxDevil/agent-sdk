@@ -192,6 +192,15 @@ describe('resolveProvider errors (LOU-D1)', () => {
     expect(factory).toHaveBeenCalledWith(expect.objectContaining({ defaultModel: 'some-model' }));
   });
 
+  it('resolves "mock/<model>" before any provider was registered (an entry point that never loaded the root)', () => {
+    vi.spyOn(LLMProviderRegistry, 'has').mockReturnValue(false);
+
+    const provider = resolveProvider('mock/mock-1');
+
+    expect(provider.name).toBe('mock');
+    expect(provider.defaultModel).toBe('mock-1');
+  });
+
   it('still rejects a provider that is neither built in nor registered', () => {
     expect(() => resolveProvider('f13-nobody/some-model')).toThrow(withCode('LOUSHO_PROVIDER_UNKNOWN'));
   });

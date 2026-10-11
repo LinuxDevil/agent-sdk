@@ -186,6 +186,9 @@ const PROVIDERS: Record<string, ProviderEntry> = {
 
 const PROVIDER_NAMES = Object.keys(PROVIDERS);
 
+/** The built-in test provider: registered like the others, but needs no key and no peer, so it has no entry above. */
+const MOCK_PROVIDER = 'mock';
+
 /** Env var that overrides the automatic provider choice, e.g. `LOUSHO_MODEL=anthropic/claude-sonnet-4-5`. */
 const MODEL_ENV_VAR = 'LOUSHO_MODEL';
 
@@ -309,7 +312,8 @@ export function resolveProviderSpec(spec: string, caller: string, registry: Prov
   const entry = PROVIDERS[providerName];
   if (!entry) {
     // F13: a provider added with LLMProviderRegistry.register() can be named in a model string too; its factory reads its own credentials.
-    if (registry.has?.(providerName)) return registry.create(providerName, { ...extra, defaultModel: model });
+    // 'mock' is built in: create() registers it on first use, whichever entry point (ESM or CJS copy) loaded this.
+    if (registry.has?.(providerName) || providerName === MOCK_PROVIDER) return registry.create(providerName, { ...extra, defaultModel: model });
     throw unknownProviderError(caller, spec.slice(0, separatorIndex), spec);
   }
 
