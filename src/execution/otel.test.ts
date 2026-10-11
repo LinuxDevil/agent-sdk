@@ -6,7 +6,10 @@ import * as otelApi from '@opentelemetry/api';
 import type { Tracer, Span as OtelSpan, Context, Meter } from '@opentelemetry/api';
 import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
 import { AggregationTemporality, InMemoryMetricExporter, MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { createOtelTraceExporter, MAX_TRACKED_SPANS } from './otel';
+import { createOtelTraceExporter } from './otel';
+
+/** The exporter's cap on tracked spans (MAX_TRACKED_SPANS in otel.ts). */
+const MAX_TRACKED_SPANS = 10_000;
 import { AgentExecutor } from './AgentExecutor';
 import { Span, TraceExporter } from './tracing';
 import { ToolRegistry, defineTool } from '../tools';

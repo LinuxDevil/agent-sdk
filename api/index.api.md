@@ -2081,7 +2081,7 @@ export interface EvalTestContext {
     check<T>(name: string, value: T, check: Check<T>): void;
     completed(): void;
     judge(rubric: string): Promise<number>;
-    maxCostUsd(limit: number): void;
+    maxCostUsd(limit: number, options?: MaxCostOptions): void;
     maxSteps(limit: number): void;
     maxTokens(limit: number): void;
     notCalledTool(name: string, options?: ToolScopeOptions): void;
@@ -2610,6 +2610,7 @@ export const GenAiAttr: {
     readonly REQUEST_TEMPERATURE: "gen_ai.request.temperature";
     readonly REQUEST_MAX_TOKENS: "gen_ai.request.max_tokens";
     readonly RESPONSE_MODEL: "gen_ai.response.model";
+    readonly RESPONSE_ID: "gen_ai.response.id";
     readonly RESPONSE_FINISH_REASONS: "gen_ai.response.finish_reasons";
     readonly USAGE_INPUT_TOKENS: "gen_ai.usage.input_tokens";
     readonly USAGE_OUTPUT_TOKENS: "gen_ai.usage.output_tokens";
@@ -3629,6 +3630,11 @@ export type Matcher = string | RegExp | ((text: string) => boolean);
 export function matches(pattern: RegExp): Check<string>;
 
 // @public
+export interface MaxCostOptions {
+    unknownCost?: 'fail' | 'skip';
+}
+
+// @public
 export function maxLengthGuardrail(input: {
     maxChars: number;
 }): IoGuardrail;
@@ -3704,6 +3710,7 @@ export interface McpHttpServerSpec {
     // (undocumented)
     headers?: Record<string, string>;
     oauth?: McpOAuthOptions;
+    optional?: boolean;
     timeoutMs?: number;
     tools?: McpToolFilter;
     // (undocumented)
@@ -3769,6 +3776,7 @@ export interface McpStdioServerSpec {
     deferLoading?: boolean;
     // (undocumented)
     env?: Record<string, string>;
+    optional?: boolean;
     stderr?: 'forward' | 'capture' | 'inherit' | 'ignore';
     timeoutMs?: number;
     tools?: McpToolFilter;

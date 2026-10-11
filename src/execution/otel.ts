@@ -94,7 +94,7 @@ export interface OtelTraceExporterOptions {
 }
 
 /** How many spans an exporter tracks at most for parenting (open ones, and ended ones of a tree still open). */
-export const MAX_TRACKED_SPANS = 10_000;
+const MAX_TRACKED_SPANS = 10_000;
 
 const LEGACY_KEYS: ReadonlySet<string> = new Set(Object.values(LegacyAttr));
 

@@ -12,6 +12,7 @@ export function createOtelTraceExporter(options?: OtelTraceExporterOptions): Tra
 
 // @public
 export interface OtelTraceExporterOptions {
+    legacyAttributes?: boolean;
     meter?: Meter;
     metrics?: boolean;
     tracer?: Tracer;
