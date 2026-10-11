@@ -299,6 +299,43 @@ describe('fileStore(dir): case-safe file names (Eve DUR-F7)', () => {
   });
 });
 
+describe('fileStore(dir).prune()', () => {
+  /** Backdates every file under `dir` whose name starts with one of `prefixes` by an hour. */
+  const age = (dir: string, prefixes: string[]) => {
+    const old = new Date(Date.now() - 60 * 60_000);
+    for (const sub of ['sessions', 'checkpoints', 'checkpoint-history']) {
+      for (const name of readdirSync(join(dir, sub))) if (prefixes.some((prefix) => name.startsWith(prefix))) utimesSync(join(dir, sub, name), old, old);
+    }
+  };
+
+  it('deletes old transcripts, checkpoints and history files, but keeps recent ones and a run paused on a pending approval', async () => {
+    const dir = tempDir();
+    const tools = [defineTool({ name: 'deploy', description: 'deploy', input: z.object({}), needsApproval: true, execute: async () => 'deployed' })];
+    const model = mockModel([(request) => (request.messages.at(-1)?.content === 'deploy' ? { toolCalls: [{ name: 'deploy', id: 'call_1' }] } : 'ok')], { onExhausted: 'repeat-last' });
+    const store = fileStore(dir);
+    const agent = createAgent({ provider: model, tools, store });
+    await agent.session({ id: 'old' }).send('hi');
+    await agent.session({ id: 'recent' }).send('hi');
+    const paused = await agent.session({ id: 'waiting' }).send('deploy');
+    expect(paused.finishReason).toBe('awaiting-approval');
+    await agent.send('hi', { sessionId: 'old-run' });
+    age(dir, ['old', 'waiting']);
+
+    await expect(store.prune({ olderThanMs: -1 })).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_INVALID' });
+    expect(await store.prune({ olderThanMs: 60_000 })).toEqual({ sessions: 1, checkpoints: 1, oauthPending: 0 });
+    expect(readdirSync(join(dir, 'sessions'))).toEqual(['recent.json']);
+    expect(readdirSync(join(dir, 'checkpoints')).filter((name) => name.startsWith('waiting')).sort()).toEqual(['waiting.paused.json', 'waiting.turn-0.json']);
+    expect(readdirSync(join(dir, 'checkpoint-history')).some((name) => name.startsWith('old'))).toBe(false);
+    expect(await store.checkpoints.load('old-run')).toBeNull();
+    // The paused turn is intact and still resolves.
+    const done = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+    expect(done.text).toBe('ok');
+    // Once decided, the old paused-turn pointer is stale and goes.
+    expect(await store.prune({ olderThanMs: 60_000 })).toEqual({ sessions: 0, checkpoints: 1, oauthPending: 0 });
+    expect(readdirSync(join(dir, 'sessions')).sort()).toEqual(['recent.json', 'waiting.json']);
+  });
+});
+
 describe('createAgent({ store: fileStore(dir) }) (R2)', () => {
   it('a session survives a second createAgent() on the same dir', async () => {
     const dir = tempDir();

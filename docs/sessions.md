@@ -222,8 +222,10 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   `agent.fork('<id>.turn-<n>', { fromStep })` can fork those; older turns'
   histories are deleted as new turns commit (each history entry holds a copy of
   the whole transcript, so keeping every turn's would grow the store with the
-  square of the conversation's length). `session.fork()` works from the
-  transcript and is not limited by it.
+  square of the conversation's length). History outside the window that is
+  already in the store - kept by an earlier release, or under a larger
+  `turnHistoryLimit` - is deleted over the next commits too, up to 32 turns per
+  commit. `session.fork()` works from the transcript and is not limited by it.
 - While a turn runs, it holds a run lease on its checkpoint (see
   [Durable execution](./durable-execution.md#run-leases)): a `send()` on the same
   session from another process, replica or store object fails with
@@ -375,6 +377,20 @@ a minute); a session commits its turns with a compare-and-swap under a lock file
 (`sessions/<id>.json.lock`), and a running checkpointed run holds its run lease
 in `leases/<id>.json` (see [Durable execution](./durable-execution.md#run-leases)).
 For many processes sharing a store, `SqliteStore` is the sturdier choice.
+
+`fileStore(dir).prune({ olderThanMs })` deletes what was last written more than
+`olderThanMs` ago, like `SqliteStore.prune()`: transcripts, checkpoints and
+checkpoint history files, plus expired pending OAuth sign-ins. A run paused on
+a pending approval is kept, however old (its checkpoint, its history and its
+session's transcript), and so are pending approvals and OAuth tokens. It
+resolves with the counts, `{ sessions, checkpoints, oauthPending }`:
+
+```ts
+import { fileStore } from '@lousho/build-ai-agent';
+
+const store = fileStore('./.lousho');
+await store.prune({ olderThanMs: 30 * 24 * 60 * 60 * 1000 }); // a month
+```
 
 Any object with the three methods of a part works there too: a Redis
 `SessionStore`, or a KV-backed `CheckpointStore` on Cloudflare Workers (the
