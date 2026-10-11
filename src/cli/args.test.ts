@@ -47,6 +47,8 @@ describe('parseCommand', () => {
   it('takes a value that starts with - only in the = form, and ends the flags at --', () => {
     expect(parseCommand(SPEC, ['--name=-x']).values.name).toBe('-x');
     expect(() => parseCommand(SPEC, ['--name', '-x'])).toThrowError(/--name needs a value/);
+    // A negative number is the likely intent: say how to pass it.
+    expect(() => parseCommand(SPEC, ['--name', '-1'])).toThrowError(/--name needs a value; a value that starts with '-' needs the = form: --name=-1\./);
     const parsed = parseCommand(SPEC, ['--name', 'a', '--', '--all']);
     expect(parsed.positionals).toEqual(['--all']);
     expect(parsed.values.all).toBeUndefined();

@@ -2,90 +2,83 @@
 'use strict';
 
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 
 const USAGE = [
-  'Usage:',
+  'Usage: lousho <command> [options]      (lousho <command> --help for its flags)',
+  '',
+  'Commands:',
   '  lousho init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force] [--sdk-path <dir|tgz>]',
+  '      Scaffold a new agent project (what `npm create lousho-agent` runs).',
   '  lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--no-schedules] [--traces[=dir]]',
+  '      Serve an agent with a local chat UI and HTTP API; reloads on file changes.',
   '  lousho chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>] [--traces[=dir]]',
+  '      Chat with an agent in the terminal.',
   '  lousho acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]',
+  '      Serve an agent over the Agent Client Protocol on stdio (for editors).',
   '  lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allow <list>] [--overwrite] [--dry-run] | --list',
-  '  lousho build <agent-dir|spec> --target=<name> [--out=<dir>]   (or --agent=<path>)',
+  '      Install a tool, skill, channel, schedule or kit from a registry into an agent directory.',
+  '  lousho build <agent-dir|spec> --target=<node-server|cloudflare-worker|docker> [--out=<dir>]   (or --agent=<path>)',
+  '      Bundle an agent for deployment (default output: .lousho/build/<target>).',
   '  lousho studio [--port N] [--host H] [--prod|--dev]',
+  '      Open Agent Forge, the visual agent builder.',
   '  lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]',
-  '  lousho doctor [agent.yaml|json] [--json] [--ping]',
+  '      Serve an agent as an MCP server (stdio by default).',
+  '  lousho doctor [agent.yaml|json|agent-dir] [--json] [--ping]',
+  '      Check Node, peer dependencies, API keys and (optionally) an agent spec.',
   '  lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]',
+  '      Run *.eval.ts files under your vitest and report the results.',
   '  lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]',
+  '      List saved traces (fileTraceExporter) or print one as a span tree.',
   '  lousho --version',
+  '      Print the package version.',
+  '',
+  'The agent commands (dev, chat, acp, mcp, doctor) load ./.env when it exists; variables already set win.',
 ].join('\n');
 
-// Flag parsing for every command lives in src/cli/args.ts (node:util parseArgs, strict);
-// each command's `run*` resolves with its exit code.
-async function runDev(rest) {
-  const { runDev: run } = require(path.join(__dirname, '..', 'dist', 'cli', 'dev.js'));
-  process.exitCode = await run(rest);
+/**
+ * Loads a command module from the ESM build (dist/cli/*.mjs). A user's tool
+ * file (`tools/*.ts`) is an ES module, so its `import '@lousho/build-ai-agent'`
+ * resolves to the ESM build: loading the CLI from the same build means the
+ * agent directory and the tools it loads share one copy of the SDK.
+ */
+function load(name) {
+  return import(pathToFileURL(path.join(__dirname, '..', 'dist', 'cli', `${name}.mjs`)).href);
 }
 
-// A terminal REPL for an agent (LOU-D33); see src/cli/chat.ts. Returns the exit code.
-async function runChatCommand(rest) {
-  const { runChat } = require(path.join(__dirname, '..', 'dist', 'cli', 'chat.js'));
-  process.exitCode = await runChat(rest);
-}
+/** Each command: the dist/cli module, its exported `run*` (resolves with the exit code), and whether it loads ./.env. */
+const COMMANDS = new Map([
+  // Scaffolds a new project (LOU-D3); see src/cli/init.ts. Also what `npm create lousho-agent` runs.
+  ['init', { module: 'init', run: 'runInit' }],
+  ['dev', { module: 'dev', run: 'runDev', env: true }],
+  // A terminal REPL for an agent (LOU-D33); see src/cli/chat.ts.
+  ['chat', { module: 'chat', run: 'runChat', env: true }],
+  // Serves an agent over the Agent Client Protocol on stdio (LOU-Z6); see src/cli/acp.ts.
+  ['acp', { module: 'acp', run: 'runAcp', env: true }],
+  // Installs a tool, skill, channel, schedule or memory slot from a JSON registry (LOU-D50); see src/cli/add.ts.
+  ['add', { module: 'add', run: 'runAdd' }],
+  ['build', { module: 'build', run: 'runBuild' }],
+  // Default 'auto': prod (single built server+UI) when apps/agent-forge has
+  // been built (`npm run build:studio`), dev (Vite + tsx, two processes)
+  // otherwise. --prod/--dev force one or the other - see src/cli/studio.ts.
+  ['studio', { module: 'studio', run: 'runStudio' }],
+  // Serves an agent spec over MCP (stdio by default). The server keeps the
+  // process alive; see src/cli/mcp.ts.
+  ['mcp', { module: 'mcp', run: 'runMcp', env: true }],
+  ['doctor', { module: 'doctor', run: 'runDoctorCommand', env: true }],
+  // Runs eval files under the project's vitest; the exit code is the verdict (see src/cli/eval.ts).
+  ['eval', { module: 'eval', run: 'runEval' }],
+  // Lists the runs fileTraceExporter() saved, or prints one as a span tree (M5a); see src/cli/traces.ts.
+  ['traces', { module: 'traces', run: 'runTraces' }],
+]);
 
-// Serves an agent over the Agent Client Protocol on stdio (LOU-Z6); see src/cli/acp.ts.
-async function runAcpCommand(rest) {
-  const { runAcp } = require(path.join(__dirname, '..', 'dist', 'cli', 'acp.js'));
-  process.exitCode = await runAcp(rest);
-}
-
-// Installs a tool, skill, channel, schedule or memory slot from a JSON registry (LOU-D50); see src/cli/add.ts.
-async function runAddCommand(rest) {
-  const { runAdd } = require(path.join(__dirname, '..', 'dist', 'cli', 'add.js'));
-  process.exitCode = await runAdd(rest);
-}
-
-async function runBuildCommand(rest) {
-  const { runBuild } = require(path.join(__dirname, '..', 'dist', 'cli', 'build.js'));
-  process.exitCode = await runBuild(rest);
-}
-
-// Default 'auto': prod (single built server+UI) when apps/agent-forge has
-// been built (`npm run build:studio`), dev (Vite + tsx, two processes)
-// otherwise. --prod/--dev force one or the other - see src/cli/studio.ts.
-async function runStudioCommand(rest) {
-  const { runStudio } = require(path.join(__dirname, '..', 'dist', 'cli', 'studio.js'));
-  process.exitCode = await runStudio(rest);
-}
-
-// Scaffolds a new project (LOU-D3); see src/cli/init.ts. Also what `npm create lousho-agent` runs.
-async function runInitCommand(rest) {
-  const { runInit } = require(path.join(__dirname, '..', 'dist', 'cli', 'init.js'));
-  process.exitCode = await runInit(rest);
-}
-
-async function runDoctorCommand(rest) {
-  const { runDoctorCommand: run } = require(path.join(__dirname, '..', 'dist', 'cli', 'doctor.js'));
-  process.exitCode = await run(rest);
-}
-
-// Serves an agent spec over MCP (stdio by default). The server keeps the
-// process alive; see src/cli/mcp.ts. Only the exit code is set on failure.
-async function runMcp(rest) {
-  const { runMcp: start } = require(path.join(__dirname, '..', 'dist', 'cli', 'mcp.js'));
-  process.exitCode = await start(rest);
-}
-
-// Runs eval files under the project's vitest and reports the results; the
-// exit code is the verdict (see src/cli/eval.ts).
-async function runEvalCommand(rest) {
-  const { runEval } = require(path.join(__dirname, '..', 'dist', 'cli', 'eval.js'));
-  process.exitCode = await runEval(rest);
-}
-
-// Lists the runs fileTraceExporter() saved, or prints one as a span tree (M5a); see src/cli/traces.ts.
-async function runTracesCommand(rest) {
-  const { runTraces } = require(path.join(__dirname, '..', 'dist', 'cli', 'traces.js'));
-  process.exitCode = await runTraces(rest);
+/** Loads ./.env into process.env (variables already set are kept), like `node --env-file-if-exists=.env`. */
+function loadDotEnv() {
+  try {
+    process.loadEnvFile(path.resolve('.env'));
+  } catch (error) {
+    if (error.code !== 'ENOENT') console.error(`lousho: could not load .env: ${error.message}`);
+  }
 }
 
 // `lousho --version` / `-v` / `version` print the package version (kept in sync with VERSION by scripts/sync-version.mjs).
@@ -97,19 +90,8 @@ function runHelp() {
   console.log(USAGE);
 }
 
-const COMMANDS = new Map([
-  ['init', runInitCommand],
-  ['dev', runDev],
-  ['chat', runChatCommand],
-  ['acp', runAcpCommand],
-  ['add', runAddCommand],
-  ['build', runBuildCommand],
-  ['studio', runStudioCommand],
-  ['mcp', runMcp],
-  ['doctor', runDoctorCommand],
-  ['eval', runEvalCommand],
-  ['traces', runTracesCommand],
-  // `lousho --help` / `-h` / `help` print the usage and succeed (a bare `lousho` is still an error).
+// `lousho --help` / `-h` / `help` print the usage and succeed (a bare `lousho` is still an error).
+const BUILTINS = new Map([
   ['--help', runHelp],
   ['-h', runHelp],
   ['help', runHelp],
@@ -118,15 +100,23 @@ const COMMANDS = new Map([
   ['version', runVersion],
 ]);
 
+function unknownCommand(command) {
+  console.error(`lousho: unknown command '${command ?? ''}'.\n${USAGE}`);
+  process.exitCode = 1;
+}
+
+async function runCommand(entry, rest) {
+  if (entry.env) loadDotEnv();
+  const mod = await load(entry.module);
+  process.exitCode = await mod[entry.run](rest);
+}
+
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
-  const run = COMMANDS.get(command);
-  if (!run) {
-    console.error(`lousho: unknown command '${command || ''}'.\n${USAGE}`);
-    process.exitCode = 1;
-    return;
-  }
-  return run(rest);
+  const builtin = BUILTINS.get(command);
+  if (builtin) return builtin();
+  const entry = COMMANDS.get(command);
+  return entry ? runCommand(entry, rest) : unknownCommand(command);
 }
 
 main();

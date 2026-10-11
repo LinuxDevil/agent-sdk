@@ -38,12 +38,18 @@ export function usageError(spec: Pick<CommandSpec, 'command' | 'usage'>, message
 }
 
 /** Node's error text, in the CLI's words (`unknown option '--x'.`, `--x needs a value.`). */
-function describe(error: unknown): string {
+function describe(error: unknown, args: readonly string[]): string {
   const { code, message } = error as { code?: string; message: string };
   const flag = /'(-[^'\s]*)/.exec(message)?.[1] ?? '';
   if (code === 'ERR_PARSE_ARGS_UNKNOWN_OPTION') return `unknown option '${flag}'.`;
   if (code === 'ERR_PARSE_ARGS_INVALID_OPTION_VALUE') {
-    return message.includes('does not take') ? `${flag} does not take a value.` : `${flag} needs a value.`;
+    if (message.includes('does not take')) return `${flag} does not take a value.`;
+    // `--limit -1`: the value looks like a flag, so parseArgs did not take it.
+    const next = args[args.indexOf(flag) + 1];
+    if (next !== undefined && /^-[\d.]/.test(next) && args.includes(flag)) {
+      return `${flag} needs a value; a value that starts with '-' needs the = form: ${flag}=${next}.`;
+    }
+    return `${flag} needs a value.`;
   }
   return `${message}.`;
 }
@@ -59,7 +65,7 @@ export function parseCommand(spec: CommandSpec, args: readonly string[]): Parsed
       strict: true,
     });
   } catch (error) {
-    throw usageError(spec, describe(error));
+    throw usageError(spec, describe(error, args));
   }
   const values = parsed.values as Record<string, Value>;
   const help = values.help === true;

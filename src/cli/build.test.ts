@@ -3,7 +3,8 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { runBuild, parseBuildArgs, stubAdapterCalls, BuildIO } from './build';
+import { runBuild, parseBuildArgs, stubAdapter, stubAdapterCalls, BuildIO } from './build';
+import { registerAdapter } from '../deploy';
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const BIN = path.join(REPO_ROOT, 'bin', 'lousho.js');
@@ -30,6 +31,9 @@ describe('parseBuildArgs', () => {
 });
 
 describe('runBuild', () => {
+  beforeAll(() => {
+    registerAdapter('stub', stubAdapter);
+  });
   beforeEach(() => {
     stubAdapterCalls.length = 0;
   });
@@ -40,8 +44,23 @@ describe('runBuild', () => {
 
     expect(code).toBe(0);
     expect(stubAdapterCalls).toEqual(['scaffold', 'build', 'describe']);
-    expect(io.out).toEqual(['stub adapter calls: scaffold,build,describe']);
+    expect(io.out).toEqual([`Built stub in ${path.join('.lousho', 'build', 'stub')}. From there, run:\nstub adapter calls: scaffold,build,describe`]);
     expect(io.err).toEqual([]);
+  });
+
+  it('warns when --out names a directory that is not empty', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-build-out-'));
+    fs.writeFileSync(path.join(dir, 'keep.txt'), 'x');
+    const io = captureIO();
+    expect(await runBuild(['--target=stub', `--out=${dir}`], io)).toBe(0);
+    expect(io.err.join('\n')).toMatch(/^Warning: --out .* is not empty/);
+  });
+
+  it('--help lists the targets; the test-only stub target is not one of them by default', async () => {
+    const io = captureIO();
+    expect(await runBuild(['--help'], io)).toBe(0);
+    expect(io.out.join('\n')).toMatch(/node-server.*\n.*cloudflare-worker.*\n.*docker/);
+    expect(io.out.join('\n')).not.toContain('stub');
   });
 
   it('exits non-zero with "unknown target" on stderr for an unregistered target', async () => {
@@ -70,7 +89,8 @@ describe('bin/lousho.js build (subprocess smoke test)', () => {
       config: false,
       entry: { 'cli/build': path.join(REPO_ROOT, 'src', 'cli', 'build.ts') },
       outDir: path.join(REPO_ROOT, 'dist'),
-      format: ['cjs'],
+      // The bin loads the ESM build (dist/cli/*.mjs).
+      format: ['esm'],
       external: ['tsup', 'ai', 'zod'],
       clean: false,
       silent: true,
@@ -81,6 +101,7 @@ describe('bin/lousho.js build (subprocess smoke test)', () => {
     try {
       const stdout = execFileSync(process.execPath, [BIN, ...args], {
         cwd: REPO_ROOT,
+        env: { ...process.env, LOUSHO_BUILD_STUB_ADAPTER: '1' },
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
       });
@@ -103,7 +124,7 @@ describe('bin/lousho.js build (subprocess smoke test)', () => {
     expect(stdout).toContain('--traces[=dir]');
     expect(stdout).toContain('--drift');
     expect(stdout).toContain('--sdk-path');
-    expect(stdout).toContain('lousho build <agent-dir|spec> --target=<name>');
+    expect(stdout).toContain('lousho build <agent-dir|spec> --target=<node-server|cloudflare-worker|docker>');
   });
 
   it('dispatches `lousho build --target=stub` and runs scaffold, build, describe in order', () => {
@@ -123,7 +144,7 @@ describe('bin/lousho.js build (subprocess smoke test)', () => {
     const result = runBin(['build', '--target=node-server', `--agent=${specPath}`, `--out=${outDir}`]);
     expect(result.stderr).toBe('');
     expect(result.code).toBe(0);
-    expect(result.stdout.trim()).toBe('node dist/server.js');
+    expect(result.stdout.trim()).toBe(`Built node-server in ${path.relative(REPO_ROOT, outDir)}. From there, run:\nnode dist/server.js`);
     expect(fs.statSync(path.join(outDir, 'dist', 'server.js')).size).toBeGreaterThan(0);
   }, 120_000);
 

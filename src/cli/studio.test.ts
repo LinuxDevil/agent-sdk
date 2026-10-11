@@ -46,6 +46,13 @@ describe('startStudio', () => {
     expect(() => startStudio({ repoRoot, mode: 'dev' })).toThrow(/dev mode/);
   });
 
+  it("mode: 'auto' on a package packed without Agent Forge says so, not 'monorepo only' (a local npm pack)", () => {
+    const packageRoot = tmp();
+    fs.mkdirSync(path.join(packageRoot, 'apps', 'agent-forge'), { recursive: true });
+    fs.writeFileSync(path.join(packageRoot, 'apps', 'agent-forge', 'package.json'), '{}');
+    expect(() => startStudio({ repoRoot: tmp(), packageRoot })).toThrow(/has no Agent Forge build .*npm run build:studio' before 'npm pack'/);
+  });
+
   it("mode: 'auto' resolves to prod when apps/agent-forge/dist-server/index.cjs has been built", () => {
     // Exercised indirectly: 'auto' with a built dist-server/index.cjs present
     // should hit the *prod* code path, which spawns `node <entry>` - proven

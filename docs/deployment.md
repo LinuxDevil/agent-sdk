@@ -160,8 +160,11 @@ environment variables as everywhere else (`OPENAI_API_KEY`, ...).
 
 Reuses the `node-server` scaffold and bundle and adds a `Dockerfile` based
 on `node:22-slim` that copies `dist/` and runs `node dist/server.js` on port
-3000. The image sets `HOST=0.0.0.0` - inside a container the server has to
-listen on all interfaces for `docker run -p` to reach it. Pass provider
+3000 as the image's unprivileged `node` user. The image sets `HOST=0.0.0.0` -
+inside a container the server has to listen on all interfaces for
+`docker run -p` to reach it. For a reproducible image, run
+`npm install --package-lock-only` in the output directory once and keep the
+`package-lock.json`: the Dockerfile then installs with `npm ci`. Pass provider
 credentials at run time:
 
 ```bash

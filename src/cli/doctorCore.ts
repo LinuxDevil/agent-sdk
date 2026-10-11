@@ -28,7 +28,7 @@ export interface DoctorOptions {
 
 /** Runs every check and returns the report; never throws for a bad setup. */
 export async function runDoctor(env: DoctorEnvironment, options: DoctorOptions = {}): Promise<DoctorReport> {
-  const spec = inspectSpec(env);
+  const spec = await inspectSpec(env);
   const ollama = await checkOllama(env, spec.needs);
   const docker = await checkDocker(env, spec.needs);
   const baseUrl = checkOpenAIBaseUrl(env);

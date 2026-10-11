@@ -9,7 +9,9 @@ import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { MissingPeerDependencyError, loadOptionalPeer } from '../providers/optionalPeer';
+import { findSdkRoot } from '../deploy/bundle';
 import { loadSpec } from '../spec/loadSpec';
+import { resolveAgentDir } from '../agentDir';
 import { resolveSpecTool } from '../spec/specToAgent';
 import { parseCommand, type CommandSpec } from './args';
 import { runDoctor } from './doctorCore';
@@ -27,7 +29,17 @@ export interface DoctorArgs {
   help?: boolean;
 }
 
-const USAGE = 'Usage: lousho doctor [agent.yaml|json] [--json] [--ping]';
+const USAGE = 'Usage: lousho doctor [agent.yaml|json|agent-dir] [--json] [--ping]';
+
+const HELP = `${USAGE}
+
+Checks Node, the SDK's peer packages, provider API keys and, given a path, an agent spec or agent directory.
+Prints a fix for every problem; exits 1 when a check fails. ./.env is loaded when it exists.
+
+Options:
+  --json      print the report as JSON
+  --ping      also check that each configured provider endpoint answers
+  -h, --help  show this help`;
 
 const SPEC: CommandSpec = {
   command: 'doctor',
@@ -94,8 +106,7 @@ async function dockerReachable(): Promise<boolean> {
 }
 
 function readSdkManifest(): SdkManifest {
-  // dist/cli/doctor.js and src/cli/doctor.ts both sit two levels below the package root.
-  return JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8'));
+  return JSON.parse(fs.readFileSync(path.join(findSdkRoot(), 'package.json'), 'utf8'));
 }
 
 /** The real DoctorEnvironment for the current process. */
@@ -107,6 +118,11 @@ export function buildEnvironment(args: DoctorArgs, cwd: string = process.cwd()):
     sdk: readSdkManifest(),
     resolvePackageVersion: (name) => resolveVersion(cwd, name),
     specPath: args.specPath ? resolveSpecFile(args.specPath) : undefined,
+    isDirectory: (file) => fs.existsSync(file) && fs.statSync(file).isDirectory(),
+    loadAgentDir: async (dir) => {
+      const { config, manifest } = await resolveAgentDir(dir);
+      return { name: manifest.name, model: typeof config.model === 'string' ? config.model : undefined, tools: manifest.tools };
+    },
     loadSpec,
     resolveTool: resolveSpecTool,
     commandExists: (command) => commandExists(command, process.env),
@@ -123,7 +139,7 @@ export async function runDoctorCommand(
 ): Promise<number> {
   const args = parseDoctorArgs(argv);
   if (args.help) {
-    write(USAGE);
+    write(HELP);
     return 0;
   }
   const report = await runDoctor(env ?? buildEnvironment(args), { ping: args.ping });

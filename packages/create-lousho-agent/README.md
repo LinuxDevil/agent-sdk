@@ -18,12 +18,13 @@ Without arguments it asks for the directory, the provider and the template. For 
 
 | Option | Values |
 | ------ | ------ |
-| `--provider` | `openai`, `anthropic`, `openrouter`, `ollama` |
+| `--provider` | `openai`, `anthropic`, `openrouter`, `ollama`, `pi` |
 | `--template` | `minimal`, `tools`, `yaml` |
 | `--package-manager` | `npm`, `pnpm`, `yarn`, `bun` |
 | `--no-install` | skip installing dependencies |
 | `--no-git` | skip `git init` |
 | `--force` | write into a non-empty directory |
+| `--sdk-path <dir\|tgz>` | for SDK development: depend on an SDK checkout or a packed `.tgz` instead of the published version |
 
 With npm, put the options after `--`:
 
@@ -31,7 +32,7 @@ With npm, put the options after `--`:
 npm create lousho-agent my-agent -- --yes --provider anthropic --template tools
 ```
 
-This package is a thin wrapper: it runs `lousho init` from the SDK, so `npx lousho init --help` lists every option.
+This package is a thin wrapper: it runs `lousho init` from the SDK, so `npx @lousho/build-ai-agent init --help` lists every option.
 
 ## Links
 

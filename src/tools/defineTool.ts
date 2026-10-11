@@ -2,6 +2,7 @@ import type { ApprovalCheckContext, ApprovalOutcome, McpToolAnnotations, ToolDes
 import type { SandboxAdapter } from '../security/sandboxCore';
 import { legacyAiTool } from './toolContract';
 import { isModelSchema, nonObjectRoot, unrepresentableFields, type InferSchemaOutput, type StandardSchemaV1 } from '../utils/zodCompat';
+import { sharedWeakSet } from '../utils/brand';
 import { SDKError } from '../execution/errors';
 
 /** Tool names must satisfy the constraint LLM providers impose on function names. */
@@ -97,7 +98,8 @@ export type ToolInput<T extends DefinedTool> = InferSchemaOutput<T['input']>;
 /** The awaited return type of a defined tool's `execute`; for a generator `execute` (N13b), the type it yields. */
 export type ToolOutput<T extends DefinedTool> = NonNullable<T['_types']>['output'];
 
-const definedTools = new WeakSet<object>();
+/** Shared across loaded SDK copies, so a tool from the ESM build passes the check in the CJS build and vice versa. */
+const definedTools = sharedWeakSet('lousho.definedTools');
 
 /** True when `value` was created by {@link defineTool}. */
 export function isDefinedTool(value: unknown): value is DefinedTool {
