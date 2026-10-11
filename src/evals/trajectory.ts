@@ -87,8 +87,13 @@ export interface EvalTestContext {
   maxSteps(limit: number): void;
   /** Gate: total tokens are at most `limit`. */
   maxTokens(limit: number): void;
-  /** Gate: reported cost is at most `limit` USD. Skipped when the run reports no cost. */
-  maxCostUsd(limit: number): void;
+  /**
+   * Gate: reported cost is at most `limit` USD. When a run reports no cost
+   * (`usage.costUsd`; the model has no known price), it fails, since the
+   * budget cannot be checked; `{ unknownCost: 'skip' }` skips it instead
+   * (counted as passed, marked `skipped`, with a `console.warn`).
+   */
+  maxCostUsd(limit: number, options?: MaxCostOptions): void;
   /** Named gate assertion: `check` must pass for `value`. */
   check<T>(name: string, value: T, check: Check<T>): void;
   /** Named soft assertion: recorded with its score, never fails the eval (unless `--strict`). */
@@ -98,6 +103,12 @@ export interface EvalTestContext {
    * and returns a 0..1 score. Throws unless `defineEval({ judge })` is set.
    */
   judge(rubric: string): Promise<number>;
+}
+
+/** Options of {@link EvalTestContext.maxCostUsd}. */
+export interface MaxCostOptions {
+  /** A run that reports no cost: `'fail'` (default) fails the gate, `'skip'` skips it with a warning. */
+  unknownCost?: 'fail' | 'skip';
 }
 
 /** A tool call a sub-agent made, and the lead's tool call that started that sub-agent's branch. */
@@ -228,18 +239,18 @@ class TrajectoryContext implements EvalTestContext {
     this.gate(`maxTokens(${limit})`, tokens <= limit, `maxTokens(${limit}) failed: the agent used ${tokens} tokens`);
   }
 
-  maxCostUsd(limit: number): void {
+  maxCostUsd(limit: number, options: MaxCostOptions = {}): void {
     const label = `maxCostUsd(${limit})`;
     const costs = this.results.map((r) => (r.usage as { costUsd?: number } | undefined)?.costUsd);
     if (costs.length === 0 || costs.some((cost) => typeof cost !== 'number')) {
-      this.recorded.push({
-        name: label,
-        kind: 'gate',
-        passed: true,
-        score: 1,
-        skipped: true,
-        message: `${label} skipped: this run reported no cost (usage.costUsd)`,
-      });
+      const why = costs.length === 0 ? 'no run yet - call t.send() first' : 'the run reported no cost (usage.costUsd), so the budget cannot be checked';
+      if (options.unknownCost !== 'skip' || costs.length === 0) {
+        const hint = costs.length === 0 ? '' : ". Give the model a price (registerModel) or pass { unknownCost: 'skip' }";
+        return this.gate(label, false, `${label} failed: ${why}${hint}`);
+      }
+      const message = `${label} skipped: ${why}`;
+      console.warn(`[lousho] ${message}`);
+      this.recorded.push({ name: label, kind: 'gate', passed: true, score: 1, skipped: true, message });
       return;
     }
     const total = (costs as number[]).reduce((sum, cost) => sum + cost, 0);
