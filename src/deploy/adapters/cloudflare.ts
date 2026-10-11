@@ -51,8 +51,30 @@ import { explainWorkerBuildError } from '../workerSdkExports';
 export { WORKER_SUPPORTED_PROVIDERS, WORKER_SUPPORTED_TOOLS } from '../workerSupport';
 export { WORKER_SDK_EXPORTS, explainWorkerBuildError } from '../workerSdkExports';
 
-/** Pinned so a given SDK version always generates the same, reproducible config. */
+/**
+ * The default, pinned so a given SDK version always generates the same,
+ * reproducible config. A date set in an existing `wrangler.toml` in the
+ * output directory is kept on rebuild (see {@link writeWranglerToml}).
+ */
 const COMPATIBILITY_DATE = '2024-09-23';
+
+const COMPATIBILITY_DATE_LINE = /^compatibility_date\s*=\s*"(\d{4}-\d{2}-\d{2})"\s*$/m;
+
+/**
+ * Writes `outDir/wrangler.toml`, keeping the `compatibility_date` of the file
+ * already there: the generated file is rewritten on every build, so a date
+ * moved forward by hand would otherwise silently go back to the default.
+ */
+function writeWranglerToml(outDir: string, source: string): void {
+  const file = path.join(outDir, 'wrangler.toml');
+  let kept: string | undefined;
+  try {
+    kept = COMPATIBILITY_DATE_LINE.exec(fs.readFileSync(file, 'utf8'))?.[1];
+  } catch {
+    // No wrangler.toml yet.
+  }
+  writeFile(file, kept ? source.replace(COMPATIBILITY_DATE_LINE, `compatibility_date = "${kept}"`) : source);
+}
 
 /**
  * Cloudflare Workers script size limit (LOU-I3 AC: "bundle size stays under
@@ -341,7 +363,7 @@ export const CloudflareWorkerAdapter: DeploymentAdapter = {
   async scaffold(agentPath: string, outDir: string): Promise<void> {
     if (isAgentDir(agentPath)) {
       const { name, schedules } = await scaffoldWorkerAgentDir(agentPath, outDir);
-      writeFile(path.join(outDir, 'wrangler.toml'), wranglerDirTomlSource(name, workerDirCrons(schedules)));
+      writeWranglerToml(outDir, wranglerDirTomlSource(name, workerDirCrons(schedules)));
       return;
     }
     const spec = loadAgentSpecForDeploy(agentPath);
@@ -351,7 +373,7 @@ export const CloudflareWorkerAdapter: DeploymentAdapter = {
 
     writeFile(path.join(outDir, 'agent.config.js'), agentConfigModuleSource(spec));
     writeFile(path.join(outDir, 'worker.ts'), WORKER_TS);
-    writeFile(path.join(outDir, 'wrangler.toml'), wranglerTomlSource(spec));
+    writeWranglerToml(outDir, wranglerTomlSource(spec));
   },
 
   async build(outDir: string): Promise<void> {
