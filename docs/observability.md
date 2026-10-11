@@ -35,7 +35,9 @@ const agent = createAgent({
 });
 ```
 
-Any object with `onSpanStart` and `onSpanEnd` is an exporter.
+Any object with `onSpanStart` and `onSpanEnd` is an exporter. The run does not
+wait for them: a hook that throws, or an `async` one whose promise rejects, is
+reported once per exporter with `console.warn` and otherwise ignored.
 
 #### Advanced: the executor API
 
