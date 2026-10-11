@@ -47,7 +47,11 @@ has the exit code and the last lines the process wrote to stderr.
 `stderr: 'forward'` (default) also copies the process's stderr to this one's,
 `'capture'` only keeps the last lines, and `'inherit'` / `'ignore'` keep none.
 `connectTimeoutMs` (stdio or HTTP) bounds the `initialize` handshake; the
-default is the MCP SDK's 60 seconds. HTTP
+default is the MCP SDK's 60 seconds. By default a server that cannot connect
+fails every `send()` of the agent; mark a server you can do without
+`optional: true` and it is left out with a `console.warn` instead (its tools
+stay out for the life of the agent). `connectMcp()` skips an `optional` server
+the same way, even with `onError: 'throw'`. HTTP
 entries use the streamable HTTP transport and send the static `headers` on every
 request. An HTTP entry can also sign in with OAuth, as the MCP authorization
 spec describes: add `oauth: { redirectUri }` and an operator signs the agent in

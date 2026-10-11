@@ -36,7 +36,10 @@ export interface ConnectMcpOptions {
    * demand, `false` fails the call.
    */
   lazy?: boolean;
-  /** A server that cannot connect: `'throw'` (default) rejects; `'skip'` warns through `logger` and leaves it out. */
+  /**
+   * A server that cannot connect: `'throw'` (default) rejects; `'skip'` warns through `logger` and leaves it out.
+   * A server with `optional: true` is always skipped like that.
+   */
   onError?: 'throw' | 'skip';
   /** Receives skipped-server and skipped-tool warnings. Defaults to a no-op logger. */
   logger?: Logger;
@@ -385,7 +388,7 @@ export async function connectMcp(
     const { name } = connections[index];
     const error: unknown = result.reason;
     const reason = error instanceof Error ? error.message : String(error);
-    if (onError === 'throw' || error instanceof MissingPeerDependencyError) {
+    if ((onError === 'throw' && !servers[name].optional) || error instanceof MissingPeerDependencyError) {
       await close();
       // N9c: LOUSHO_MCP_AUTH_REQUIRED (and LOUSHO_MCP_START_FAILED) keep their code.
       throw error instanceof MissingPeerDependencyError || error instanceof McpStartError || connections[index].status === 'needs-auth'

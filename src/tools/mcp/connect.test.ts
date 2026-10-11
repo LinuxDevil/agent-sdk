@@ -71,6 +71,13 @@ describe('connectMcp (LOU-Z4)', () => {
     );
   });
 
+  it("skips a server with optional: true even with onError: 'throw'", async () => {
+    const logger = warnLogger();
+    const mcp = await connect({ files: stdio(), broken: { command: 'lousho-no-such-command-z4', optional: true } }, { logger });
+    expect(Object.keys(mcp.tools)).toEqual(['files__echo', 'files__wipe']);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("skipping MCP server 'broken'"), expect.objectContaining({ server: 'broken' }));
+  });
+
   it('rejects by default when a server cannot connect, naming it', async () => {
     await expect(connectMcp({ files: stdio(), broken: { command: 'lousho-no-such-command-z4' } })).rejects.toThrow(
       /MCP server 'broken' failed to start/
@@ -206,6 +213,24 @@ describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
     await expect(agent.send('hi')).rejects.toThrow(/'broken' failed to start/);
     await expect(agent.ready()).rejects.toThrow(/'broken' failed to start/);
     await expect(agent.close()).resolves.toBeUndefined();
+  });
+
+  it('an optional server that cannot connect is left out with a warning; the agent still runs', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const model = mockModel([{ toolCalls: [{ name: 'files__echo', args: { text: 'ping' } }] }, 'done']);
+      const agent = createAgent({
+        provider: model,
+        mcpServers: { broken: { command: 'lousho-no-such-command-z4', optional: true }, files: { ...stdio('mcp:'), approval: 'never' } },
+      });
+      closers.push(() => agent.close());
+      const result = await agent.send('echo ping');
+      expect(result.text).toBe('done');
+      expect(model.calls[0].tools?.map((t) => t.function.name)).toEqual(['files__echo', 'files__wipe']);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("skipping MCP server 'broken'"), expect.anything());
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("Eve TOOLS-F11: by default a readOnlyHint MCP tool still pauses for approval", async () => {
