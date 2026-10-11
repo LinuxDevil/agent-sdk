@@ -70,6 +70,10 @@ export const ERROR_CODES = {
   LOUSHO_APPROVAL_CONFLICT:'Another request decided this approval at the same time; read the session to see the outcome instead of deciding again.',
   LOUSHO_APPROVAL_FORBIDDEN: 'Decide the approval as a caller the route\'s authorizeApproval accepts (by default, the caller the run acts for).',
   LOUSHO_SESSION_FORBIDDEN: 'Use a session the route\'s authorizeSession lets this caller read, continue or decide approvals in.',
+  /** A session route refused a cross-site POST or a `Host` outside `allowedHosts` (`403`). */
+  LOUSHO_REQUEST_FORBIDDEN: "Call from the server's own origin (or add the page's origin to allowedOrigins) and use a Host the server allows (allowedHosts).",
+  /** A session route refused a POST body that is not JSON (`415`). */
+  LOUSHO_UNSUPPORTED_MEDIA_TYPE: "Send the request body as JSON with the header 'Content-Type: application/json'.",
   LOUSHO_SESSION_AWAITING_APPROVAL: 'Resolve the pending approval first (agent.approvals.resolve() or resumeAfterApproval()), then send again.',
   LOUSHO_SESSION_ID_INVALID: "Session ids: 1-128 characters from A-Z, a-z, 0-9, '_' and '-'. Run ids (send({ sessionId })): up to 200 and '.' too, not ending in '.turn-<n>' or '.paused'.",
   LOUSHO_SESSION_BUSY: 'Wait for the running turn to finish (await its send(), or abort it), then call again.',

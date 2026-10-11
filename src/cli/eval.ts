@@ -22,7 +22,7 @@ import { REMOTE_TOKEN_ENV, REMOTE_URL_ENV } from '../evals/remoteTarget';
 import { SDKError } from '../execution/errors';
 import { readCassette } from '../testing/cassette';
 import { parseCommand, stringValue, usageError, type CommandSpec } from './args';
-import { failsRun, parseResults, renderDriftTable, renderJson, renderJunit, renderTable, unreportedFailures, type DriftRow } from './evalReport';
+import { failsRun, parseResults, renderDriftTable, renderJson, renderJunit, renderTable, unreportedFailures, vitestError, type DriftRow } from './evalReport';
 
 const USAGE =
   'Usage: lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]';
@@ -304,15 +304,41 @@ function readVitestJson(file: string | undefined): unknown {
   }
 }
 
+/**
+ * True when vitest found no test file: with the generated config it then exits 1
+ * without writing its JSON report (a file that fails to load is still in the
+ * report). Unknown (false) under the user's own config, which has no report.
+ */
+function ranNoFiles(vitestJson: string | undefined, report: unknown): boolean {
+  if (!vitestJson) return false;
+  if (report === undefined) return !fs.existsSync(vitestJson);
+  const { testResults } = report as { testResults?: unknown };
+  return Array.isArray(testResults) && testResults.length === 0;
+}
+
+function noFilesLooked(args: EvalCliArgs): string {
+  if (args.globs.length > 0) return `nothing matches ${args.globs.join(', ')}`;
+  return args.judge ? 'looked for **/*.judge.eval.{ts,mts,js,mjs}' : 'looked for **/*.eval.{ts,mts,js,mjs}';
+}
+
 async function runAndReport(args: EvalCliArgs, deps: Required<EvalDeps>, vitestBin: string): Promise<number> {
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-eval-'));
   try {
     const invocation = prepareInvocation(args, deps.cwd, workDir);
     const vitestCode = await deps.spawnVitest(vitestBin, invocation.args, invocation.env);
     const results = parseResults(fs.readFileSync(invocation.resultsFile, 'utf8'));
-    results.push(...unreportedFailures(results, readVitestJson(invocation.vitestJson), vitestCode, { cwd: deps.cwd, strict: args.strict }));
+    const vitestReport = readVitestJson(invocation.vitestJson);
+    const noFiles = results.length === 0 && vitestCode !== 0 && ranNoFiles(invocation.vitestJson, vitestReport);
+    if (noFiles) {
+      const message = `no eval files found (${noFilesLooked(args)}). Name eval files *.eval.ts, or pass globs. If vitest printed an error above instead, fix that first.`;
+      // The reports still record the failed run.
+      results.push(vitestError('run', message));
+      deps.log(`\nlousho eval: ${message}`);
+    } else {
+      results.push(...unreportedFailures(results, vitestReport, vitestCode, { cwd: deps.cwd, strict: args.strict }));
+    }
     const drift = args.drift ? applyDrift(results, args, invocation.env[DRIFT_DIR_ENV] as string) : undefined;
-    deps.log(results.length > 0 ? `\n${renderTable(results, args.strict)}` : '\nlousho eval: no eval results were recorded.');
+    if (!noFiles) deps.log(results.length > 0 ? `\n${renderTable(results, args.strict)}` : '\nlousho eval: no eval results were recorded.');
     if (drift) deps.log(`\n${renderDriftTable(drift)}`);
     if (args.junit) writeReport(args.junit, renderJunit(results, args.strict));
     if (args.json) writeReport(args.json, renderJson(results, args.strict));

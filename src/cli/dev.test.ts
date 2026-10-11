@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { startDevServer, DevServerHandle } from './dev';
@@ -127,6 +128,54 @@ describe('startDevServer', () => {
 
     const addr = handle.server.address();
     expect(addr && typeof addr === 'object' ? addr.address : addr).toBe('127.0.0.1');
+  });
+
+  it('refuses a foreign Host header (DNS rebinding), keeps /health open, and accepts --allowed-hosts', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-dev-'));
+    handle = await startDevServer(writeConfig(dir), 0);
+    const port = addressPort(handle);
+    const status = (route: string, host: string, method = 'GET') =>
+      new Promise<number>((resolve, reject) => {
+        const req = http.request({ host: '127.0.0.1', port, path: route, method, headers: { host, 'content-type': 'application/json' } }, (res) => {
+          res.resume();
+          resolve(res.statusCode ?? 0);
+        });
+        req.on('error', reject);
+        req.end(method === 'POST' ? JSON.stringify({ sessionId: 'rebind', input: 'hi' }) : undefined);
+      });
+    expect(await status('/chat', `evil.example:${port}`, 'POST')).toBe(403);
+    expect(await status('/chat/rebind', `127.attacker.example:${port}`)).toBe(403);
+    expect(await status('/', `evil.example:${port}`)).toBe(403);
+    expect(await status('/dev/status', `evil.example:${port}`)).toBe(403);
+    expect(await status('/health', `evil.example:${port}`)).toBe(200);
+    expect(await status('/dev/status', `localhost:${port}`)).toBe(200);
+    expect(await status('/dev/status', `[::1]:${port}`)).toBe(200);
+    await handle.close();
+
+    handle = await startDevServer(writeConfig(dir), 0, '127.0.0.1', { allowedHosts: ['devbox.test'] });
+    const allowedPort = addressPort(handle);
+    const allowed = (host: string) =>
+      new Promise<number>((resolve, reject) => {
+        http.get({ host: '127.0.0.1', port: allowedPort, path: '/dev/status', headers: { host } }, (res) => {
+          res.resume();
+          resolve(res.statusCode ?? 0);
+        }).on('error', reject);
+      });
+    expect(await allowed(`devbox.test:${allowedPort}`)).toBe(200);
+    expect(await allowed(`localhost:${allowedPort}`)).toBe(200);
+    expect(await allowed(`evil.example:${allowedPort}`)).toBe(403);
+  });
+
+  it('warns when bound to a non-loopback host (no auth on the dev server)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-dev-'));
+    handle = await startDevServer(writeConfig(dir), 0, '0.0.0.0');
+    expect(warn.mock.calls.map((call) => String(call[0])).join('\n')).toMatch(/no authentication.*anyone who can reach 0\.0\.0\.0:/);
+    await handle.close();
+    warn.mockClear();
+    handle = await startDevServer(writeConfig(dir), 0);
+    expect(warn.mock.calls.map((call) => String(call[0])).join('\n')).not.toMatch(/no authentication/);
+    warn.mockRestore();
   });
 
   it('rejects with a clear message when the port is already in use', async () => {

@@ -300,9 +300,9 @@ function allDocFiles(): string[] {
 function sourcePaths(): Record<string, string[]> {
   const pkg = readJson(path.join(REPO_ROOT, 'package.json'));
   const paths: Record<string, string[]> = {};
-  for (const [subpath, target] of Object.entries<{ types: string }>(pkg.exports)) {
+  for (const [subpath, target] of Object.entries<{ require: { types: string } }>(pkg.exports)) {
     const specifier = subpath === '.' ? pkg.name : `${pkg.name}/${subpath.slice(2)}`;
-    paths[specifier] = [target.types.replace(/^\.\/dist\//, 'src/').replace(/\.d\.ts$/, '.ts')];
+    paths[specifier] = [target.require.types.replace(/^\.\/dist\//, 'src/').replace(/\.d\.ts$/, '.ts')];
   }
   return paths;
 }

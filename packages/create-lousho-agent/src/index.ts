@@ -19,6 +19,10 @@ export function loushoBin(): string {
 
 /** Runs `lousho init <argv>`; resolves to its exit code. */
 export function main(argv: string[]): Promise<number> {
+  if (argv.includes('--help') || argv.includes('-h')) {
+    // The usage below is `lousho init`'s; say how it maps to this command.
+    process.stdout.write('npm create lousho-agent [dir] -- [options] runs `lousho init [dir] [options]`:\n\n');
+  }
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [loushoBin(), 'init', ...argv], { stdio: 'inherit' });
     child.on('error', (error) => {

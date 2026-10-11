@@ -3,11 +3,12 @@
 import { SDKError } from '../execution/errors';
 import { SubagentApprovalPause } from '../execution/subagentRuntime';
 import { resolveRemoteApproval, runRemoteTurn, type PendingApproval, type SessionTurnSummary } from '../server/sessionClient';
+import { sharedWeakSet } from '../utils/brand';
 import { newId } from '../utils/id';
 import type { RemoteAgentOptions, RemoteRunOptions, RemoteSubagent } from './types';
 
 /** The agents {@link remoteAgent} and {@link defineRemoteSubagent} made, so `withSubagents()` can tell them from `createAgent()` agents. */
-const remoteSubagents = new WeakSet<object>();
+const remoteSubagents = sharedWeakSet('lousho.remoteSubagents');
 
 /** Whether `value` was made by {@link remoteAgent} or {@link defineRemoteSubagent}. */
 export function isRemoteSubagent(value: unknown): value is RemoteSubagent {

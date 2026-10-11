@@ -13,7 +13,7 @@ const INSTALLED: Record<string, string> = {
   '@ai-sdk/anthropic': '0.0.42',
   'ollama-ai-provider': '1.2.0',
   dockerode: '5.0.1',
-  '@modelcontextprotocol/sdk': '1.30.1',
+  '@modelcontextprotocol/sdk': '1.31.0',
   prompts: '2.4.2',
 };
 
@@ -30,7 +30,7 @@ function makeEnv(overrides: Partial<DoctorEnvironment> = {}): DoctorEnvironment 
         '@ai-sdk/anthropic': '^0.0.42',
         'ollama-ai-provider': '^1.2.0',
         dockerode: '^5.0.1',
-        '@modelcontextprotocol/sdk': '^1.30.1',
+        '@modelcontextprotocol/sdk': '^1.31.0',
         prompts: '^2.4.2',
       },
     },
@@ -191,7 +191,7 @@ describe('optional feature peers (LOU-D40)', () => {
 
   it.each([
     ['dockerode', 'npm install dockerode@^5.0.1'],
-    ['@modelcontextprotocol/sdk', 'npm install @modelcontextprotocol/sdk@^1.30.1'],
+    ['@modelcontextprotocol/sdk', 'npm install @modelcontextprotocol/sdk@^1.31.0'],
     ['prompts', 'npm install prompts@^2.4.2'],
   ])('%s: warn with the exact install command when missing', async (name, fix) => {
     const result = await check(makeEnv({ resolvePackageVersion: without(name) }), `optional-peer.${name}`);
@@ -514,7 +514,7 @@ describe('report, rendering and exit codes', () => {
       [warn] Provider package @earendil-works/pi-ai: not installed (optional)
              fix: npm install @earendil-works/pi-ai@^1.0.3
       [ ok ] Optional package dockerode: 5.0.1 installed - enables Docker sandboxing (SubprocessSandbox)
-      [ ok ] Optional package @modelcontextprotocol/sdk: 1.30.1 installed - enables MCP (serveMcp, \`lousho mcp\` and MCP client connections)
+      [ ok ] Optional package @modelcontextprotocol/sdk: 1.31.0 installed - enables MCP (serveMcp, \`lousho mcp\` and MCP client connections)
       [ ok ] Optional package prompts: 2.4.2 installed - enables the interactive prompts of \`lousho init\` (pass --yes to skip them)
       [warn] Optional package quickjs-emscripten: not installed (optional) - enables code mode (\`createAgent({ codeMode })\`)
              fix: npm install quickjs-emscripten@^0.32.0
@@ -541,5 +541,51 @@ describe('report, rendering and exit codes', () => {
   it('renders JSON that round-trips', async () => {
     const report = await runDoctor(makeEnv());
     expect(JSON.parse(renderJson(report))).toEqual(report);
+  });
+});
+
+describe('agent directory', () => {
+  const dirEnv = (overrides: Partial<DoctorEnvironment> = {}) =>
+    makeEnv({
+      specPath: '/p/ck',
+      isDirectory: () => true,
+      loadAgentDir: async () => ({ name: 'ck', model: 'anthropic/claude-x', tools: ['read_file', 'edit_file'] }),
+      ...overrides,
+    });
+
+  it('loads the directory instead of reading it as a spec file (no EISDIR)', async () => {
+    const loadSpec = vi.fn();
+    const env = dirEnv({ loadSpec });
+    expect(await check(env, 'spec')).toMatchObject({ status: 'ok', title: 'Agent directory', finding: "'ck' loads (2 tool(s): read_file, edit_file)" });
+    expect(await check(env, 'spec.provider')).toMatchObject({ status: 'ok' });
+    expect(loadSpec).not.toHaveBeenCalled();
+    // The model's provider drives the API key check.
+    expect(await check(env, 'env.anthropic')).toMatchObject({ status: 'fail' });
+  });
+
+  it('reports a directory that fails to load, with the loader message', async () => {
+    const env = dirEnv({
+      loadAgentDir: async () => {
+        throw new Error('loadAgentDir: /p/ck/tools/x.ts: it exports nothing');
+      },
+    });
+    expect(await check(env, 'spec')).toMatchObject({ status: 'fail', finding: expect.stringContaining('tools/x.ts'), fix: 'Fix the file named above in /p/ck.' });
+  });
+
+  it('flags an unknown provider in the model string', async () => {
+    const env = dirEnv({ loadAgentDir: async () => ({ name: 'ck', model: 'gemini/pro', tools: [] }) });
+    expect(await check(env, 'spec.provider')).toMatchObject({ status: 'fail', fix: expect.stringMatching(/^Set the config's model/) });
+  });
+});
+
+describe('spec load failure fix text', () => {
+  it('a missing spec says to check the path, not to fix fields', async () => {
+    const env = makeEnv({
+      specPath: 'nope.yaml',
+      loadSpec: () => {
+        throw Object.assign(new Error('spec not found'), { code: 'LOUSHO_SPEC_NOT_FOUND' });
+      },
+    });
+    expect((await check(env, 'spec')).fix).toMatch(/^Check the path: nope\.yaml does not exist/);
   });
 });

@@ -73,7 +73,13 @@ a page or script written against the dev server works against the deployed one.
 | `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn live as SSE, in the same framing and event types as `POST /chat` (the decided call's `tool.resume` / `tool.done` or `tool.error`, text deltas, `approval.requested` if it pauses again, `run.done`), from `agent.approvals.streamResolve()` / `streamAnswer()`. `404` when `id` is not pending. When the turn's step paused on several calls, each id is decided on its own; a decision that leaves others pending streams `run.done` with `finishReason: 'awaiting-approval'`, and the last one runs the step. |
 | `POST /chat` `{ "message" }` | Legacy, single turn without history or streaming: returns the agent's `ExecutionResult` as JSON, with a `Deprecation: true` header. |
 
-Bodies over 1MB get `413`, invalid JSON `400`.
+Bodies over 1MB get `413`, invalid JSON `400`. A POST must send
+`Content-Type: application/json` (anything else is `415`,
+`LOUSHO_UNSUPPORTED_MEDIA_TYPE`), and a browser POST from another origin is
+`403` (`LOUSHO_REQUEST_FORBIDDEN`): see
+[Cross-site requests](./auth.md#cross-site-requests). Once auth accepts a
+caller, a session belongs to the first principal that uses it
+([Who may use a session](./auth.md#who-may-use-a-session)).
 
 ```bash
 curl -N http://127.0.0.1:3000/chat \
@@ -98,7 +104,9 @@ Programmatically, `adapter.scaffold(agentPath, outDir, { auth: { token } })`
 bakes a token into the built `node-server` or `docker` server for when the
 variable is not set. The variable wins, and a baked token is readable in
 `dist/server.js`, so prefer the variable. The Worker reads the token from its
-`LOUSHO_API_TOKEN` binding only.
+`LOUSHO_API_TOKEN` binding only; without one it refuses `GET /chat/:sessionId`
+unless the `LOUSHO_ALLOW_OPEN_TRANSCRIPTS` var is `"true"`
+([Cloudflare Workers](./cloudflare-workers.md)).
 
 For JWT, OpenID Connect or Basic auth, and to know who is calling, the
 `node-server` and `docker` targets take an ordered auth list from an agent
@@ -152,8 +160,11 @@ environment variables as everywhere else (`OPENAI_API_KEY`, ...).
 
 Reuses the `node-server` scaffold and bundle and adds a `Dockerfile` based
 on `node:22-slim` that copies `dist/` and runs `node dist/server.js` on port
-3000. The image sets `HOST=0.0.0.0` - inside a container the server has to
-listen on all interfaces for `docker run -p` to reach it. Pass provider
+3000 as the image's unprivileged `node` user. The image sets `HOST=0.0.0.0` -
+inside a container the server has to listen on all interfaces for
+`docker run -p` to reach it. For a reproducible image, run
+`npm install --package-lock-only` in the output directory once and keep the
+`package-lock.json`: the Dockerfile then installs with `npm ci`. Pass provider
 credentials at run time:
 
 ```bash

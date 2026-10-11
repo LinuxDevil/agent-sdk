@@ -60,8 +60,11 @@ describe('DockerAdapter', () => {
     expect(lines).toContain('FROM node:22-slim');
     expect(lines).toContain('WORKDIR /app');
     expect(lines).toContain('COPY dist/ ./dist/');
-    expect(lines).toContain('COPY package.json ./');
-    expect(lines).toContain('RUN npm install --omit=dev');
+    // An optional lockfile makes the install reproducible (npm ci); without one it falls back to npm install.
+    expect(lines).toContain('COPY package.json package-lock.json* ./');
+    expect(lines).toContain('RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi && npm cache clean --force');
+    // Not root.
+    expect(lines).toContain('USER node');
     expect(lines).toContain('EXPOSE 3000');
     expect(lines).toContain('CMD ["node", "dist/server.js"]');
     // Container needs an explicit all-interfaces opt-in to be reachable via -p.

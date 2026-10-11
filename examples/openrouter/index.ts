@@ -309,8 +309,9 @@ async function runSnippet(name: string): Promise<void> {
 
 async function main() {
   if (!apiKey) {
-    console.log('Please set OPENROUTER_API_KEY environment variable');
-    console.log('Get your key at: https://openrouter.ai/keys');
+    console.error('Please set OPENROUTER_API_KEY environment variable');
+    console.error('Get your key at: https://openrouter.ai/keys');
+    process.exitCode = 1;
     return;
   }
 

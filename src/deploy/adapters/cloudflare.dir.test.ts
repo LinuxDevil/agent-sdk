@@ -82,7 +82,7 @@ describe('cloudflare-worker target: agent directories (M3b, #298)', () => {
 
     it("runs a /chat turn that calls the directory's echo tool, with the skill in the system prompt", async () => {
       const response = await handler.fetch(
-        new Request('http://worker/chat', { method: 'POST', body: JSON.stringify({ message: 'Please echo this' }) }),
+        new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'Please echo this' }) }),
         {}
       );
       expect(response.status).toBe(200);
@@ -104,7 +104,7 @@ describe('cloudflare-worker target: agent directories (M3b, #298)', () => {
     it('serves sessions over SSE with bearer auth, like a spec Worker', async () => {
       const env = { LOUSHO_API_TOKEN: 'tok' };
       const post = (headers: Record<string, string>) =>
-        handler.fetch(new Request('http://worker/chat', { method: 'POST', headers, body: JSON.stringify({ sessionId: 's1', input: 'hi' }) }), env);
+        handler.fetch(new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ sessionId: 's1', input: 'hi' }) }), env);
       expect((await post({})).status).toBe(401);
       const raw = await (await post({ Authorization: 'Bearer tok' })).text();
       expect(raw).toContain('"type":"run.done"');
@@ -151,7 +151,7 @@ describe('cloudflare-worker target: agent directories (M3b, #298)', () => {
 
     it('delegates to the sub-agent through delegate_to_reviewer, with the AGENTS.md in the system prompt', async () => {
       const response = await handler.fetch(
-        new Request('http://worker/chat', { method: 'POST', body: JSON.stringify({ message: 'use delegate_to_reviewer' }) }),
+        new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'use delegate_to_reviewer' }) }),
         {}
       );
       expect(response.status).toBe(200);
@@ -203,7 +203,7 @@ describe('cloudflare-worker target: agent directories (M3b, #298)', () => {
         delete: async (key: string) => void kv.delete(key),
       };
       const response = await handler.fetch(
-        new Request('http://worker/chat', { method: 'POST', body: JSON.stringify({ message: 'use recall_notes' }) }),
+        new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'use recall_notes' }) }),
         { AGENT_CHECKPOINTS: binding }
       );
       expect(response.status).toBe(200);

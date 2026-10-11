@@ -290,7 +290,7 @@ typo, with a suggestion.
 **Example:**
 
 ```text
-loadSpec: 'agent.yaml' failed validation - 'prompt': AgentSpec validation failed: missing required field 'prompt'; unknown field 'promt' (did you mean 'prompt'?)
+loadSpec: 'agent.yaml' failed validation - 'prompt': missing required field 'prompt'; unknown field 'promt' (did you mean 'prompt'?)
 ```
 
 ### LOUSHO_SPEC_UNKNOWN_FIELD
@@ -455,8 +455,37 @@ refused this caller the action (`read`, `chat` or `approve`) on this session.
 
 **Fix:** use a session this caller owns, or change `authorizeSession`.
 
-**Example:** user `bob` reads `GET /chat/alice-1`, and `authorizeSession`
-only allows ids that start with the caller's id.
+**Example:** user `bob` reads `GET /chat/alice-1`, which `alice` used first
+(the default when no `authorizeSession` is set), or `authorizeSession` only
+allows ids that start with the caller's id.
+
+### LOUSHO_REQUEST_FORBIDDEN
+
+**Means:** a `403` from a session route before it ran: a POST came from a page
+on another origin (its `Origin` is not the server's own and not in
+`allowedOrigins`, or the browser marked it `Sec-Fetch-Site: cross-site`), or
+the `Host` header is not one the server allows (`allowedHosts`, or loopback
+names on `lousho dev`).
+
+**Fix:** call from the server's own origin, or add the page's origin to
+`allowedOrigins` (see [Route auth](./auth.md#cross-site-requests)); for a
+`Host` refusal, add the name to `allowedHosts` (`--allowed-hosts` on
+`lousho dev`).
+
+**Example:** a page on `https://evil.example` posts to `/api/agent/chat` with
+the user's session cookie.
+
+### LOUSHO_UNSUPPORTED_MEDIA_TYPE
+
+**Means:** a `415` from a session route: a POST body was not sent as JSON.
+Form and `text/plain` bodies are refused because another site can send them
+without a CORS preflight.
+
+**Fix:** send `Content-Type: application/json` (`curl -H 'Content-Type:
+application/json'`), or pass `requireJsonBody: false`.
+
+**Example:** `curl -d '{"sessionId":"a","input":"hi"}' /chat` without `-H`
+sends `application/x-www-form-urlencoded`.
 
 ### LOUSHO_SESSION_AWAITING_APPROVAL
 
@@ -479,7 +508,9 @@ ending with `.`), the same rule on every store; or it ends with `.turn-<n>` or
 `.paused`, which are a session's own checkpoint keys (a run under
 `'victim.turn-2'` would write into session `victim`'s turn).
 
-**Fix:** use an id such as `'user-42'`, or omit it to get a generated one.
+**Fix:** use an id such as `'chat-9f2c4e7a1b'`, or omit it to get a generated one. On a
+route that serves several users, do not make ids guessable from a user's name or number
+(see [Who may use a session](./auth.md#who-may-use-a-session)).
 
 **Example:** `agent.session({ id: '../etc' })`, or
 `agent.send(msg, { sessionId: 'chat.turn-2' })`.

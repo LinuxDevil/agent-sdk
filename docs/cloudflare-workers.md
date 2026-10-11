@@ -168,7 +168,8 @@ add their own routes under `/channels` (see above). Its bindings:
 
 | Binding | Kind | What it does |
 | ------- | ---- | ------------ |
-| `LOUSHO_API_TOKEN` | secret (`npx wrangler secret put LOUSHO_API_TOKEN`) | Makes every route except `/health` require `Authorization: Bearer <token>` (constant-time compare, `401` JSON otherwise). Without it the Worker is open to anyone who has its URL, so **set it before you deploy**. |
+| `LOUSHO_API_TOKEN` | secret (`npx wrangler secret put LOUSHO_API_TOKEN`) | Makes every route except `/health` require `Authorization: Bearer <token>` (constant-time compare, `401` JSON otherwise). Without it the Worker is open to anyone who has its URL, so **set it before you deploy** (`lousho build` reminds you). Without it, `GET /chat/:sessionId` answers `403` (`LOUSHO_REQUEST_FORBIDDEN`) rather than hand any session's transcript to whoever knows its id. |
+| `LOUSHO_ALLOW_OPEN_TRANSCRIPTS` | variable (`[vars]` in `wrangler.toml`) | `"true"` serves `GET /chat/:sessionId` on a Worker without `LOUSHO_API_TOKEN`, to anyone. Leave it unset outside a throwaway demo. |
 | `AGENT_CHECKPOINTS` | KV namespace | Holds sessions, checkpoints, paused approvals and `kvMemory()` items, in one namespace, as `KVStore` (below). Without it they live in the memory of one isolate, which Cloudflare recycles at will: fine for trying a deploy out, not for production. |
 | `LOUSHO_HTTP_ALLOW` | variable (`[vars]` in `wrangler.toml`) | The host names the `http` tool may reach, comma-separated: `api.github.com`, or `*.example.com` for subdomains only. Unset or empty, every `http` request is refused. See [Providers and tools](#providers-and-tools). |
 

@@ -157,6 +157,13 @@ describe('runEval with a fake vitest', () => {
     expect(code).toBe(1);
   });
 
+  it('says no eval files were found when vitest ran none (it exits 1 and writes no report)', async () => {
+    const log = vi.fn();
+    expect(await runEval([], { resolveVitest: () => 'v', spawnVitest: fakeVitest([], 1).spawnVitest, log })).toBe(1);
+    expect(log.mock.calls[0][0]).toContain('lousho eval: no eval files found (looked for **/*.eval.{ts,mts,js,mjs})');
+    expect(log.mock.calls[0][0]).not.toContain('1 failed');
+  });
+
   it('says so when no results were recorded', async () => {
     const log = vi.fn();
     await runEval([], { resolveVitest: () => 'v', spawnVitest: fakeVitest([]).spawnVitest, log });

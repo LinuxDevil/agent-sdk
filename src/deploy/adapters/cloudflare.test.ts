@@ -18,7 +18,7 @@
  * A real `wrangler deploy` to Cloudflare is intentionally never run from
  * the test suite (it needs account credentials and creates live resources).
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { execFileSync, spawn, ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -202,13 +202,25 @@ describe('CloudflareWorkerAdapter', () => {
 
   describe('scaffold + build', () => {
     let outDir: string;
+    let buildWarnings = '';
 
     beforeAll(async () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-cf-'));
       outDir = path.join(dir, 'out');
       await CloudflareWorkerAdapter.scaffold(writeSpec(dir, SPEC), outDir);
-      await withBuildLock(() => CloudflareWorkerAdapter.build(outDir));
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        await withBuildLock(() => CloudflareWorkerAdapter.build(outDir));
+        buildWarnings = warn.mock.calls.map((call) => String(call[0])).join('\n');
+      } finally {
+        warn.mockRestore();
+      }
     }, 120_000);
+
+    it('warns at build time that the Worker is open until the LOUSHO_API_TOKEN secret is set', () => {
+      expect(buildWarnings).toContain('wrangler secret put LOUSHO_API_TOKEN');
+      expect(buildWarnings).toContain('LOUSHO_ALLOW_OPEN_TRANSCRIPTS');
+    });
 
     it('scaffolds worker.ts (fetch handler, no Node builtins), agent.config.js and wrangler.toml', () => {
       const worker = fs.readFileSync(path.join(outDir, 'worker.ts'), 'utf8');
@@ -306,18 +318,19 @@ describe('CloudflareWorkerAdapter', () => {
       expect(await health.text()).toBe('ok');
 
       const chat = await handler.fetch(
-        new Request('http://worker/chat', { method: 'POST', body: JSON.stringify({ message: 'hi' }) }),
+        new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'hi' }) }),
         {}
       );
       expect(chat.status).toBe(200);
       expect((await chat.json()).text).toBe('This is a mock response.');
 
-      const bad = await handler.fetch(new Request('http://worker/chat', { method: 'POST', body: '{}' }));
+      const bad = await handler.fetch(new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }));
       expect(bad.status).toBe(400);
 
       const oversized = await handler.fetch(
         new Request('http://worker/chat', {
           method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: 'x'.repeat(2 * 1024 * 1024) }),
         })
       );
@@ -330,7 +343,7 @@ describe('CloudflareWorkerAdapter', () => {
       const env = { LOUSHO_API_TOKEN: 'tok' };
       const auth = { Authorization: 'Bearer tok' };
       const post = (body: unknown, headers: Record<string, string> = {}) =>
-        handler.fetch(new Request('http://worker/chat', { method: 'POST', headers, body: JSON.stringify(body) }), env);
+        handler.fetch(new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) }), env);
 
       expect((await handler.fetch(new Request('http://worker/health'), env)).status).toBe(200);
       expect((await post({ sessionId: 'built-1', input: 'hi' })).status).toBe(401);
@@ -408,7 +421,7 @@ describe('CloudflareWorkerAdapter', () => {
 
           const chat = await fetch(`${base}/chat`, {
             method: 'POST',
-            headers: { Authorization: 'Bearer dev-token' },
+            headers: { Authorization: 'Bearer dev-token', 'Content-Type': 'application/json' },
             body: JSON.stringify({ message: 'hello from workerd' }),
           });
           expect(chat.status).toBe(200);
@@ -417,7 +430,7 @@ describe('CloudflareWorkerAdapter', () => {
           // LOU-D51: a streamed turn with a session, over the KV namespace wrangler dev simulates.
           const streamed = await fetch(`${base}/chat`, {
             method: 'POST',
-            headers: { Authorization: 'Bearer dev-token' },
+            headers: { Authorization: 'Bearer dev-token', 'Content-Type': 'application/json' },
             body: JSON.stringify({ sessionId: 'workerd-1', input: 'hello from workerd' }),
           });
           expect(streamed.status).toBe(200);
@@ -473,7 +486,7 @@ describe('CloudflareWorkerAdapter', () => {
           const mod = await import(pathToFileURL(bundlePath).href);
           const handler = mod.default as { fetch: (r: Request, env?: Record<string, unknown>) => Promise<Response> };
           const chat = await handler.fetch(
-            new Request('http://worker/chat', { method: 'POST', body: JSON.stringify({ message: 'hi' }) }),
+            new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'hi' }) }),
             { [`${providerType.toUpperCase()}_API_KEY`]: 'sk-test-not-a-real-key' }
           );
           const body = await chat.json();
@@ -555,7 +568,7 @@ describe('CloudflareWorkerAdapter', () => {
         const mod = await import(pathToFileURL(path.join(outDir, 'dist', 'worker.js')).href);
         const handler = mod.default as { fetch: (r: Request, env?: Record<string, unknown>) => Promise<Response> };
         const response = await handler.fetch(
-          new Request('http://worker/chat', { method: 'POST', body: JSON.stringify({ message: 'fetch the data' }) }),
+          new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'fetch the data' }) }),
           { OPENROUTER_API_KEY: 'sk-or-test-not-a-real-key', ...env }
         );
         const body = await response.json();

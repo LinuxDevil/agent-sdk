@@ -20,7 +20,8 @@
     "noUnusedParameters": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": { "@lousho/build-ai-agent": ["./src/index.ts"] }
   },
   "include": ["src/**/*", "typings/**/*.d.ts"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts", "**/*.test-d.ts"]

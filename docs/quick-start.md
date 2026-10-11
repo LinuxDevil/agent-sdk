@@ -11,18 +11,20 @@ agent, an example tool, an offline test, a `.env.example` for your provider),
 installs its dependencies and runs `git init`:
 
 ```bash
-npx lousho init my-agent
+npm create lousho-agent my-agent
 cd my-agent
 # copy .env.example to .env (cp on macOS/Linux, copy on Windows), then put your API key in it
 npm run dev              # chat with your agent in the terminal
 npm test                 # offline tests: no API key needed
 ```
 
-`npm create lousho-agent my-agent` is equivalent, and so is
-`npx @lousho/build-ai-agent init my-agent` when the SDK is not installed yet
-(a bare `npx lousho` only finds the `lousho` command once the SDK is in your
-`node_modules`). Without arguments, `init` asks for the directory, provider and
-template; `lousho init --help` lists every flag.
+`npx @lousho/build-ai-agent init my-agent` is equivalent (pass `--provider`
+and `--template`, since it runs without the interactive prompts). Inside a
+project that already has the SDK installed, `npx lousho init` works too: the
+`lousho` command comes from the SDK package, so a bare `npx lousho` outside such
+a project finds nothing to run. Without arguments, `init` asks for the
+directory, provider and template; `npx @lousho/build-ai-agent init --help`
+lists every flag.
 
 Prefer to add the SDK to an existing project? Install it by hand (see
 [Installation](./installation.md)):

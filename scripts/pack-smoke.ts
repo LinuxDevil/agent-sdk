@@ -28,6 +28,7 @@
  * Needs network access to the npm registry. It is deliberately NOT part of
  * `npm test`. It never publishes: `npm publish` is only ever run with --dry-run.
  */
+import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -74,6 +75,7 @@ const FORBIDDEN_PATHS = [
   /__cassettes__\//,
   /(^|\/)node_modules\//,
   /^apps\/agent-forge\/dist-server\/.*\.map$/,
+  /^dist\/deploy\/worker\.m?js\.map$/,
   /\.pem$/,
   /\.key$/,
 ];
@@ -242,6 +244,43 @@ function checkTypes(project: string): void {
   checkStrictLibs(project, tsc);
 }
 
+/**
+ * `lousho chat|doctor <agent-dir>` through the installed bin, with a `tools/*.ts`
+ * file (ESM, importing the SDK) and a `tools/*.cjs` file (requiring it): the CLI
+ * and the tool files must agree on which tools are defineTool() tools, whichever
+ * build (ESM or CJS) each loaded.
+ */
+function checkAgentDir(project: string): void {
+  const agent = path.join(project, 'smoke-agent');
+  fs.mkdirSync(path.join(agent, 'tools'), { recursive: true });
+  fs.writeFileSync(path.join(agent, 'agent.json'), JSON.stringify({ name: 'smoke-agent', model: 'mock/mock-1' }));
+  fs.writeFileSync(path.join(agent, 'instructions.md'), 'You are a smoke test.\n');
+  fs.writeFileSync(
+    path.join(agent, 'tools', 'ping.ts'),
+    `import { z } from 'zod';\nimport { defineTool } from '${SDK_NAME}';\n` +
+      "export default defineTool({ name: 'ping', description: 'Ping', input: z.object({}), execute: () => 'pong' });\n"
+  );
+  fs.writeFileSync(
+    path.join(agent, 'tools', 'pong.cjs'),
+    `const { z } = require('zod');\nconst { defineTool } = require('${SDK_NAME}');\n` +
+      "module.exports = defineTool({ name: 'pong', description: 'Pong', input: z.object({}), execute: () => 'ping' });\n"
+  );
+  const bin = path.join(project, 'node_modules', ...SDK_NAME.split('/'), 'bin', 'lousho.js');
+  const chat = spawnSync(process.execPath, [bin, 'chat', 'smoke-agent'], { cwd: project, input: 'hi\n', encoding: 'utf8' });
+  if (chat.status !== 0 || !chat.stdout.includes('This is a mock response.')) {
+    fail(`lousho chat <agent-dir with tools/*.ts and *.cjs> failed (exit ${chat.status}):\n${chat.stdout}${chat.stderr}`);
+  } else log('lousho chat <agent-dir> with ESM and CJS tool files: ok');
+  const doctor = run(process.execPath, [bin, 'doctor', 'smoke-agent', '--json'], project);
+  try {
+    const report = JSON.parse(doctor.stdout) as { checks: { id: string; status: string; finding: string }[] };
+    const spec = report.checks.find((c) => c.id === 'spec');
+    if (spec?.status !== 'ok' || !spec.finding.includes('ping, pong')) fail(`lousho doctor <agent-dir>: ${JSON.stringify(spec)}`);
+    else log(`lousho doctor <agent-dir>: ${spec.finding}`);
+  } catch {
+    fail(`lousho doctor <agent-dir> did not produce JSON: ${doctor.stdout}${doctor.stderr}`);
+  }
+}
+
 function main(): void {
   if (!args.has('--skip-build')) {
     mustRun('npm run build', 'npm', ['run', 'build'], REPO_ROOT);
@@ -281,6 +320,7 @@ function main(): void {
     const pkgDir = path.join(project, 'node_modules', ...SDK_NAME.split('/'));
     checkModuleLoads(rep, project, pkgDir);
     checkBin(rep, project);
+    checkAgentDir(project);
     checkTypes(project);
     const creatorBin = path.join(creatorProject, 'node_modules', '.bin', IS_WIN ? 'create-lousho-agent.cmd' : 'create-lousho-agent');
     if (!fs.existsSync(creatorBin)) fail('create-lousho-agent bin was not installed');
