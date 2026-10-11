@@ -53,9 +53,10 @@ function modelResult(overrides: Partial<ModelResult> = {}): ModelResult {
 }
 
 /** Run `provider` on `ai` v7 with a MockLanguageModelV4; returns the call options the model got. */
-function onV7(provider: LLMProvider, results: ModelResult[] = [modelResult()], supportsUrls = false): CallOptions[] {
+function onV7(provider: LLMProvider, results: ModelResult[] = [modelResult()], supportsUrls = false, modelProvider?: string): CallOptions[] {
   const calls: CallOptions[] = [];
   const model = new MockLanguageModelV4({
+    ...(modelProvider && { provider: modelProvider }),
     supportedUrls: supportsUrls ? { 'image/*': [/^https:\/\//] } : {},
     doGenerate: async (options) => {
       calls.push(options);
@@ -130,6 +131,20 @@ describe.each(providers)('%s provider on ai v7: generate() (LOU-D26)', (_name, m
           { type: 'tool-result', toolCallId: 'call_B', toolName: 'get_weather', output: { type: 'error-text', value: 'offline' } },
         ],
       },
+    ]);
+  });
+
+  it('sends error results as plain ones to an OpenAI-wire model, which wraps errors in {"error": ...} itself', async () => {
+    const provider = make();
+    const calls = onV7(provider, undefined, false, 'openai.chat');
+    await provider.generate({ messages: history });
+
+    const tool = calls[0]!.prompt.find((message) => message.role === 'tool');
+    expect(tool?.content).toMatchObject([
+      { toolCallId: 'call_A', output: { type: 'json', value: { tempC: 21, sky: 'clear' } } },
+      { toolCallId: 'call_B', output: { type: 'json', value: { error: 'Error', message: 'Rome station offline' } } },
+      { toolCallId: 'orphan', output: { type: 'text', value: 'plain text' } },
+      { toolCallId: 'call_B', output: { type: 'text', value: 'offline' } },
     ]);
   });
 

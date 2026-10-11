@@ -7855,8 +7855,7 @@ that the provider cannot send: its media type is not one the provider sends on
 your `ai` major (see [Multimodal input](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md#multimodal-input)). The
 call is rejected before anything is sent, so the model never answers without
 the file. Under `withFallback()` (or `fallbackModels`) the next provider gets
-the call. Inside an agent run the error reaches you as the `cause` of a
-`LOUSHO_PROVIDER_REQUEST_FAILED` error, with the same message.
+the call. `agent.send()` and `agent.stream()` reject with this code.
 
 **Fix:** send the file to a provider and `ai` major that takes its type (or
 list the type in `fromAiSdk(model, { fileMediaTypes })`), put the file's text
@@ -11797,7 +11796,7 @@ const usd = estimateCost({ inputTokens: used, outputTokens: 500 }, 'my-llama'); 
 
 - `estimateTokens(input, { model?, estimator? })` is a heuristic (about 4 characters per token for English, more for CJK and other scripts, plus per-message overhead and tool-call JSON). Expect roughly 15-20% error on English: fine for compaction and budgets, not for billing. Plug in a real tokenizer with `setTokenEstimator(fn)` or `options.estimator`.
 - `getModelInfo(id)` matches the exact id, then `provider/id`, then dated snapshots (`gpt-4o-mini-2024-07-18` resolves to `gpt-4o-mini`). Unknown models return `undefined`. (In `createAgent({ model })` and `resolveProvider()` strings the `vendor/` model prefix chooses the provider; with OpenRouter use `openrouter/<vendor>/<model>`, e.g. `openrouter/openai/gpt-4o-mini`.)
-- `registerModel(info)` adds or overrides an entry; the latest registration wins. Register local models (LM Studio, Ollama, vLLM) with the context window they were loaded with: [compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md#local-and-unknown-models) and [tool search](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tool-search.md) otherwise assume 128,000 tokens and log a one-time warning.
+- `registerModel(info)` adds or overrides an entry; the latest registration wins. Register local models (LM Studio, Ollama, vLLM) with the context window they were loaded with: [compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md#local-and-unknown-models) and [tool search](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tool-search.md) otherwise assume 128,000 tokens and log a one-time warning. Local models have no built-in price (the Ollama entries carry only a context window), so their `costUsd` is `undefined` and `limits.maxCostUsd` only warns; register a price, `0` included, to have it counted and the limit enforced: `registerModel({ id: 'llama3', provider: 'ollama', contextWindow: 8192, inputCostPerMTok: 0, outputCostPerMTok: 0 })`.
 - `estimateCost(usage, model)` returns USD, or `undefined` (not `0`) when the model or its prices are unknown. `usage.cachedInputTokens` and `usage.cacheWriteTokens`, when given, are the parts of `inputTokens` read from and written to the provider's prompt cache. They are priced at `cachedInputCostPerMTok` and `cacheWriteCostPerMTok`, or at the input price when the model has none. The built-in OpenAI entries carry OpenAI's cached-input price (for example 50% on `gpt-4o-mini`; writes cost nothing extra). The Anthropic entries bill reads at 10% and 5-minute writes at 125% of the input price.
 
 The built-in context windows and prices are a dated snapshot (see the retrieval date and sources at the top of `src/models/modelData.ts`). Providers change prices and models, so override entries with `registerModel` when you need billing-grade numbers.
@@ -13661,7 +13660,10 @@ then wrap its model with `fromAiSdk()` (below). Otherwise implement the
 instance as `provider`, or register a factory with
 `LLMProviderRegistry.register(name, factory)`; a registered name then works in a
 model string (`model: 'name/model-id'`), and the factory receives `defaultModel` and reads its
-own credentials.
+own credentials. A factory can take its own config type, an interface that
+extends `LLMProviderConfig` (for example `BedrockConfig` with a `region`):
+`register('bedrock', (config: BedrockConfig) => new BedrockProvider(config))`,
+then `LLMProviderRegistry.create('bedrock', { region: 'eu-west-1' })`.
 
 ### Request timeout
 
@@ -13670,6 +13672,13 @@ response to start and between two of its chunks. A call that waits longer
 fails with a retryable `TimeoutError` (`compacted.category: 'timeout'`), which
 `retry` retries. It never cuts off an answer that keeps streaming. The default
 is 10 minutes; `0` or `Infinity` turns it off.
+
+The timeout applies to each attempt, and a timed-out attempt is retried (a
+hung connection is often transient), so a provider that never answers fails
+after up to `timeout` × (`maxRetries` + 1) plus the backoff: about 30 minutes
+with the defaults (10 minutes, 2 retries). A stream that stalls after it sent
+text is not retried, so it fails after one `timeout`. To fail sooner, lower
+`timeout` or `retry.maxRetries`.
 
 ```ts
 import { OpenAIProvider } from '@lousho/build-ai-agent';

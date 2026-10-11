@@ -70,7 +70,8 @@ export interface AiSdkProviderConfig extends LLMProviderConfig {
    * The longest wait, in ms, for a model response to start and between two of
    * its chunks; a call that waits longer fails with a retryable `TimeoutError`.
    * It does not cap a long answer that keeps streaming. Default 600_000
-   * (10 minutes); `0` or `Infinity` turns it off.
+   * (10 minutes); `0` or `Infinity` turns it off. Each retry waits again, so
+   * a provider that never answers fails after up to `timeout` x (retries + 1).
    */
   timeout?: number;
 }

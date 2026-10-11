@@ -265,8 +265,7 @@ that the provider cannot send: its media type is not one the provider sends on
 your `ai` major (see [Multimodal input](./providers.md#multimodal-input)). The
 call is rejected before anything is sent, so the model never answers without
 the file. Under `withFallback()` (or `fallbackModels`) the next provider gets
-the call. Inside an agent run the error reaches you as the `cause` of a
-`LOUSHO_PROVIDER_REQUEST_FAILED` error, with the same message.
+the call. `agent.send()` and `agent.stream()` reject with this code.
 
 **Fix:** send the file to a provider and `ai` major that takes its type (or
 list the type in `fromAiSdk(model, { fileMediaTypes })`), put the file's text

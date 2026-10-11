@@ -214,7 +214,10 @@ then wrap its model with `fromAiSdk()` (below). Otherwise implement the
 instance as `provider`, or register a factory with
 `LLMProviderRegistry.register(name, factory)`; a registered name then works in a
 model string (`model: 'name/model-id'`), and the factory receives `defaultModel` and reads its
-own credentials.
+own credentials. A factory can take its own config type, an interface that
+extends `LLMProviderConfig` (for example `BedrockConfig` with a `region`):
+`register('bedrock', (config: BedrockConfig) => new BedrockProvider(config))`,
+then `LLMProviderRegistry.create('bedrock', { region: 'eu-west-1' })`.
 
 ### Request timeout
 
@@ -223,6 +226,13 @@ response to start and between two of its chunks. A call that waits longer
 fails with a retryable `TimeoutError` (`compacted.category: 'timeout'`), which
 `retry` retries. It never cuts off an answer that keeps streaming. The default
 is 10 minutes; `0` or `Infinity` turns it off.
+
+The timeout applies to each attempt, and a timed-out attempt is retried (a
+hung connection is often transient), so a provider that never answers fails
+after up to `timeout` × (`maxRetries` + 1) plus the backoff: about 30 minutes
+with the defaults (10 minutes, 2 retries). A stream that stalls after it sent
+text is not retried, so it fails after one `timeout`. To fail sooner, lower
+`timeout` or `retry.maxRetries`.
 
 ```ts
 import { OpenAIProvider } from '@lousho/build-ai-agent';
