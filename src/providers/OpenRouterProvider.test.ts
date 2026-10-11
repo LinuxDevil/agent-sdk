@@ -4,6 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { OpenRouterProvider, OpenRouterProviderConfig } from './OpenRouterProvider';
+import { createAgent } from '../createAgent';
 
 describe('OpenRouterProvider', () => {
   let config: OpenRouterProviderConfig;
@@ -172,6 +173,19 @@ describe('OpenRouterProvider', () => {
       try {
         const provider = new OpenRouterProvider({ defaultModel: 'openai/gpt-4o-mini' } as OpenRouterProviderConfig);
         await expect(provider.generate({ messages: [{ role: 'user', content: 'hi' }], model: 'openai/gpt-4o-mini' })).rejects.toThrow(/OPENROUTER_API_KEY/);
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it('an agent run without a key fails with LOUSHO_PROVIDER_MISSING_API_KEY, not a failed request', async () => {
+      vi.stubEnv('OPENROUTER_API_KEY', '');
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      try {
+        const agent = createAgent({ provider: new OpenRouterProvider({ defaultModel: 'openai/gpt-4o-mini' } as OpenRouterProviderConfig) });
+        await expect(agent.send('hi')).rejects.toMatchObject({ code: 'LOUSHO_PROVIDER_MISSING_API_KEY', message: expect.stringMatching(/OPENROUTER_API_KEY/) });
         expect(fetchMock).not.toHaveBeenCalled();
       } finally {
         vi.unstubAllEnvs();
