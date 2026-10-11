@@ -206,6 +206,8 @@ describe('tool calls through the real provider package', () => {
     const [tool] = toolResults(server);
     expect(tool.content).toMatch(message);
     expect(tool.content).not.toMatch(/\(root\): Expected object, received string/);
+    // Sent once as the SDK's tool error, not wrapped again in `{"error": ...}` by the provider package (ai 7).
+    expect(JSON.parse(tool.content)).toMatchObject({ error: 'ToolArgumentsValidationError', toolName: 'add', kind: 'validation' });
   });
 
   it('a call to an unknown tool reaches the model as a tool error (every ai major)', async () => {
@@ -214,6 +216,77 @@ describe('tool calls through the real provider package', () => {
     const result = await createAgent({ provider: providers[0][1](server), tools: [add], instructions: 'x', retry: false }).send('go');
 
     expect(result.text).toBe('ok');
-    expect(toolResults(server)[0].content).toMatch(/ToolNotFoundError|not found/);
+    expect(JSON.parse(toolResults(server)[0].content)).toMatchObject({ error: 'ToolNotFoundError', toolName: 'nope', kind: 'not-found' });
+  });
+
+  it('a tool that throws reaches the model as one tool error, on the chat and the stream path', async () => {
+    const failing = defineTool({ ...add, execute: () => { throw new Error('disk full'); } });
+    const server = await fakeServer((n, body) => {
+      const first = n % 2 === 0;
+      if (body.stream) return { sse: first ? [chunk([{ index: 0, delta: { tool_calls: [{ index: 0, ...call('c1', '{"a":1,"b":2}') }] }, finish_reason: 'tool_calls' }])] : textStream('ok') };
+      return { json: first ? completion(null, 'tool_calls', [call('c1', '{"a":1,"b":2}')]) : completion('ok', 'stop') };
+    });
+    const agent = createAgent({ provider: providers[0][1](server), tools: [failing], instructions: 'x', retry: false });
+
+    expect((await agent.send('go')).text).toBe('ok');
+    expect((await agent.stream('go').result).text).toBe('ok');
+    for (const n of [1, 3]) {
+      const tool = ((server.requests[n].messages ?? []) as Array<{ role: string; content: string }>).find((m) => m.role === 'tool');
+      const content = JSON.parse(tool?.content ?? '') as Record<string, unknown>;
+      expect(content).toMatchObject({ message: expect.stringContaining('disk full') });
+      expect(typeof content.error).toBe('string');
+    }
+  });
+});
+
+describe('the request a provider answers', () => {
+  it('a file part the provider cannot send rejects send() with LOUSHO_UNSUPPORTED_CONTENT, sending nothing', async () => {
+    const server = await fakeServer(() => ({ json: completion('ok', 'stop') }));
+    const agent = createAgent({ provider: providers[0][1](server), instructions: 'x', retry: fast });
+    const sheet = [{ type: 'file' as const, data: new Uint8Array([1, 2, 3]), mimeType: 'application/vnd.ms-excel', filename: 'a.xls' }];
+
+    await expect(agent.send(sheet)).rejects.toMatchObject({ code: 'LOUSHO_UNSUPPORTED_CONTENT', message: expect.stringContaining('application/vnd.ms-excel') });
+    await expect(agent.stream(sheet).result).rejects.toMatchObject({ code: 'LOUSHO_UNSUPPORTED_CONTENT' });
+    expect(server.requests).toHaveLength(0);
+  });
+
+  it.each(providers)("a mid-stream error chunk keeps the upstream chunk as the error's responseBody: %s", async (_name, make) => {
+    const upstream = { error: { message: 'Context size has been exceeded.' } };
+    const server = await fakeServer(() => ({ sse: [upstream] }));
+    const error = await createAgent({ provider: make(server), instructions: 'x', retry: fast }).stream('hi').result.catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(CompactedLLMProviderError);
+    const compacted = error as CompactedLLMProviderError;
+    expect(compacted.compacted).toMatchObject({ category: 'context-length-exceeded', retryable: false });
+    expect(compacted.message).toMatch(/Context size has been exceeded/);
+    expect(JSON.parse(String((compacted.cause as { responseBody?: string }).responseBody))).toEqual(upstream);
+    expect(server.requests).toHaveLength(1);
+  });
+
+  it.each(providers)('a JSON reply to a streaming request keeps its text: send() with onEvent and stream(): %s', async (_name, make) => {
+    const server = await fakeServer(() => ({ json: completion('hello there', 'stop') }));
+    const agent = createAgent({ provider: make(server), instructions: 'x', retry: false });
+    const deltas: string[] = [];
+
+    const sent = await agent.send('hi', { onEvent: (event) => { if (event.type === 'text.delta') deltas.push(event.text); } });
+    const streamed = await agent.stream('hi').result;
+
+    expect(server.requests.every((body) => body.stream === true)).toBe(true);
+    expect(sent).toMatchObject({ text: 'hello there', finishReason: 'stop' });
+    expect(deltas.join('')).toBe('hello there');
+    expect(streamed).toMatchObject({ text: 'hello there', finishReason: 'stop' });
+    expect(streamed.usage).toMatchObject({ inputTokens: 10, outputTokens: 5 });
+  });
+
+  it('a JSON reply with tool calls to a streaming request runs the tools', async () => {
+    const add = defineTool({ name: 'add', description: 'Adds', input: z.object({ a: z.number(), b: z.number() }), execute: ({ a, b }) => ({ sum: a + b }) });
+    const toolCall = { id: 'c1', type: 'function', function: { name: 'add', arguments: '{"a":1,"b":2}' } };
+    const server = await fakeServer((n) => ({ json: n === 0 ? completion(null, 'tool_calls', [toolCall]) : completion('3', 'stop') }));
+
+    const result = await createAgent({ provider: providers[0][1](server), tools: [add], instructions: 'x', retry: false }).stream('1+2?').result;
+
+    expect(result.text).toBe('3');
+    const tool = ((server.requests[1].messages ?? []) as Array<{ role: string; content: string }>).find((m) => m.role === 'tool');
+    expect(JSON.parse(tool?.content ?? '')).toEqual({ sum: 3 });
   });
 });
