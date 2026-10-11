@@ -200,20 +200,59 @@ before any tool runs or any model is called (a resolved approval stays
 pending). Two replicas behind a load balancer therefore never run one turn's
 tool calls twice.
 
-A lease whose holder died is taken over once it expires. The file and SQLite
-stores also take it over at once when the holder was a process on the same host
-that is gone, so the usual "restart and resume" path does not wait. If a run
-stalls for longer than its lease (the event loop blocked for 30 seconds) and
-another process takes over, the stalled run stops with `LOUSHO_SESSION_BUSY` at
-its next checkpoint instead of overwriting the new holder's progress.
+A lease whose holder died is taken over once it expires. Expiry is judged by
+the clock of the process that wants the lease against the expiry the holder
+wrote with its own clock, so the file and SQLite stores wait one more lease
+period (30 seconds) past it: a run left by a crashed process on another
+machine is taken over 30 to 60 seconds after its last heartbeat, and replicas
+whose clocks disagree by less than about 50 seconds never take over each
+other's live runs. Keep replica clocks in sync (NTP); a larger skew can let
+two replicas run one turn.
+
+The file and SQLite stores take a lease over at once, without waiting, only
+when its holder is provably gone:
+
+- a run of the same process (the same thread and SDK instance) that no longer
+  runs, so the usual "restart and resume" path does not wait;
+- on Linux, a process that has exited, on the same host, the same boot and the
+  same PID namespace (the lease records the boot id, the PID namespace and the
+  process start time, so a reused process id does not count as alive or dead
+  by mistake);
+- on macOS and Windows, a process id of the same host that no longer exists.
+
+A run of another worker thread of the same process, or of another container
+with the same hostname on a shared volume (or a process restarted in a new
+container), is never taken over early: it waits for the expiry.
+
+The run's lease owner id is a fencing token. The heartbeat renews the lease
+only while the run still holds it (it never takes back a lease another process
+took, or one released after another process finished the run), and every
+checkpoint the run saves is written only if the run still holds the lease,
+atomically with that check in the file, SQLite and in-memory stores. So if a
+run stalls for longer than its lease (the process was paused, or the event loop
+blocked) and another process takes over, the stalled run stops with
+`LOUSHO_SESSION_BUSY` at its next checkpoint instead of overwriting the new
+holder's progress, and a session turn's late result is not added to the
+transcript. A tool call the stalled run was already making when it lost the
+lease is not undone: keep tools idempotent where a stall is possible.
 
 The file, SQLite and in-memory stores take leases atomically. KV has no
 compare-and-swap: `KVStore` writes the lease, waits 50 ms and reads it back,
 which serializes requests at one location but not across edge locations within
-KV's propagation delay. A custom `CheckpointStore` takes part by implementing
-`acquireLease(id, owner, ttlMs)` (an atomic "take or renew unless another owner
-holds an unexpired lease", resolving `true` when taken) and
-`releaseLease(id, owner)`; without them runs execute without leases.
+KV's propagation delay; its fenced saves are a read then a write. A custom
+`CheckpointStore` takes part by implementing `acquireLease(id, owner, ttlMs)`
+(an atomic "take or renew unless another owner holds an unexpired lease",
+resolving `true` when taken) and `releaseLease(id, owner)`; without them runs
+execute without leases. It can add `renewLease(id, owner, ttlMs)` (renew only
+the owner's own lease) and `saveIfLeased(id, checkpoint, owner)` (save only
+while the owner holds the lease, atomically); without them a run renews its
+lease with `acquireLease` right before each save, which leaves a short window.
+
+During a rolling upgrade from a release without run leases, the old replicas
+neither take nor respect leases, so a turn can still run on an old and a new
+replica at once until every replica runs the new release. A SQLite database
+opened by this release is migrated (the `leases` table) and is then refused by
+older releases; roll back by restoring a copy of the file.
 
 Schedules use the same mechanism: `fireSchedule()` (and so `startSchedules()`)
 claims each schedule's fire time in the agent's checkpoint store first, so

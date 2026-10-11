@@ -264,6 +264,27 @@ export class KVCheckpointStore implements CheckpointStore {
     return parseLease(await this.kv.get(key))?.owner === owner;
   }
 
+  /**
+   * Renews `owner`'s own run lease; `false` when another owner holds it. Best
+   * effort like {@link acquireLease}: a lease KV does not return (not yet
+   * visible here, or expired) is written again.
+   */
+  async renewLease(sessionId: string, owner: string, ttlMs: number): Promise<boolean> {
+    const key = this.leaseKey(sessionId);
+    const held = parseLease(await this.kv.get(key));
+    if (held && held.owner !== owner) return false;
+    await this.kv.put(key, JSON.stringify({ owner, expiresAt: Date.now() + ttlMs }), { expirationTtl: Math.max(60, Math.ceil(ttlMs / 1000) * 2) });
+    return true;
+  }
+
+  /** Saves unless another owner holds the lease; best effort (a read, then the save), as KV has no transactions. */
+  async saveIfLeased(sessionId: string, checkpoint: Checkpoint, owner: string): Promise<boolean> {
+    const held = parseLease(await this.kv.get(this.leaseKey(sessionId)));
+    if (held && held.owner !== owner) return false;
+    await this.save(sessionId, checkpoint);
+    return true;
+  }
+
   /** Releases `owner`'s run lease on `sessionId`; a lease another owner holds is left alone. */
   async releaseLease(sessionId: string, owner: string): Promise<void> {
     const key = this.leaseKey(sessionId);

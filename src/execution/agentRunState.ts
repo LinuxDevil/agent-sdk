@@ -26,7 +26,7 @@ import { readonlyPrincipal, resumedRunPrincipal } from './runPrincipal';
 import { withHostedCalls } from './hostedToolCalls';
 import { toolOutcomeMessage } from './toolResult';
 import type { ParallelInputCheck } from './ioGuardrails';
-import { REPLACES_CHECKPOINT, runBusyError, type RunLease, type RunLeaseOptions } from './runLease';
+import { REPLACES_CHECKPOINT, type RunLease, type RunLeaseOptions } from './runLease';
 
 export interface AgentRunState {
   messages: Message[];
@@ -349,16 +349,12 @@ export async function saveStepCheckpoint(
     // LOU-R16: so a crash resume's hooks keep seeing the run's metadata.
     ...(options.metadata !== undefined && { metadata: options.metadata }),
   };
-  assertLeaseHeld(state, sessionId);
-  const save = () => checkpointStore.save(sessionId, checkpoint);
+  // Under the run's lease, a save is fenced: a run that lost it (it stalled past it) fails instead of overwriting the new holder's progress.
+  const { lease } = state;
+  const save = () => (lease?.id === sessionId ? lease.save(checkpoint) : checkpointStore.save(sessionId, checkpoint));
   const saved = state.saving ? state.saving.then(save) : save();
   state.saving = saved.catch(() => undefined);
   await saved;
-}
-
-/** A run whose lease was taken over (it stalled past the lease's expiry) must not overwrite the new holder's progress. */
-function assertLeaseHeld(state: AgentRunState, sessionId: string): void {
-  if (state.lease?.lost) throw runBusyError(sessionId, 'was taken over by another process after this run lost its lease (it stalled)');
 }
 
 /**
