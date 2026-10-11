@@ -44,7 +44,7 @@ import { gateFlowToolCall } from './flowToolGate';
 import { validateFlowInput } from './inputs';
 import { abortableDelay } from '../providers/abortableDelay';
 import type { CheckpointStore } from '../execution/checkpoint';
-import { FlowApprovalPause, FlowRun, addUsage, durableOptions, flowStateOf, type FlowApprovalDecision } from './flowCheckpoint';
+import { FlowApprovalPause, FlowRun, addUsage, durableOptions, flowStateOf, flowStructure, type FlowApprovalDecision } from './flowCheckpoint';
 import type { FlowPendingApproval } from '../execution/checkpoint';
 
 /**
@@ -417,7 +417,7 @@ export class FlowExecutor {
       }
     }
     const variables = { ...context.variables };
-    const run = durable ? new FlowRun(durable.store, durable.runId, flow.code, variables) : undefined;
+    const run = durable ? new FlowRun(durable.store, durable.runId, flow.code, variables, undefined, flowStructure(flow.flow)) : undefined;
     return this.traced(flow, { ...context, variables }, onEvent, run);
   }
 
@@ -444,12 +444,13 @@ export class FlowExecutor {
     this.assertRunnableAgent(context.agent);
     const { store, runId } = durableOptions(context, 'resume')!;
     const checkpoint = await store.load(runId);
-    const saved = flowStateOf(checkpoint, runId, flow.code);
+    const structure = flowStructure(flow.flow);
+    const saved = flowStateOf(checkpoint, runId, flow.code, structure);
     if (checkpoint?.status === 'finished' && !context.approval) {
       return { status: 'completed', success: true, output: saved.output, variables: saved.variables, steps: saved.steps, events: [], usage: saved.usage };
     }
     const variables = { ...saved.variables };
-    const run = new FlowRun(store, runId, flow.code, variables, saved);
+    const run = new FlowRun(store, runId, flow.code, variables, saved, structure);
     const pending = checkpoint?.status === 'awaiting-approval' ? saved.pendingApproval : undefined;
     this.assertApprovalDecision(runId, pending, context.approval);
     if (pending && context.approval) {

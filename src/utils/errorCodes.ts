@@ -54,6 +54,8 @@ export const ERROR_CODES = {
   LOUSHO_FLOW_INVALID: 'Fix the flow definition the message names (its name, code, inputs and node types).',
   LOUSHO_FLOW_TOOL_DENIED:
     "Pass an approve callback in the flow context to decide tool calls that need approval, or change the permission rule or needsApproval policy that denied the call.",
+  /** `FlowExecutor.resume()` with a flow whose steps changed since the run was saved. */
+  LOUSHO_FLOW_CHANGED: 'Resume the run with the flow version that started it (same steps in the same order), or start a new run with another runId.',
   LOUSHO_STORAGE_FAILED: 'Read the message: it names the database or file that failed; check the path, permissions and Node version, and the `cause`.',
   LOUSHO_STORAGE_BUSY: 'Another process holds the SQLite write lock; retry the call, or find what keeps the lock (a long transaction, a backup, a second replica).',
   LOUSHO_TRIGGER_INVALID: 'Fix the trigger option the message names; the message shows a working example.',
@@ -64,7 +66,7 @@ export const ERROR_CODES = {
   LOUSHO_CHANNEL_REQUEST_FAILED: "Check the platform's token and permissions and its status page; the message names the call and its status.",
   LOUSHO_APPROVAL_STORE_MISSING: 'Pass an approvalStore (e.g. new InMemoryApprovalStore()), or use createAgent(), which has one.',
   LOUSHO_APPROVAL_NOT_FOUND: 'Resolve an id that is still pending (agent.approvals.list() lists them); each approval resolves once.',
-  LOUSHO_APPROVAL_ORPHANED: "The paused session turn was deleted (e.g. by a store's prune()); the approval cannot be continued - start a new turn instead.",
+  LOUSHO_APPROVAL_ORPHANED: "The paused run (or session turn) was deleted or replaced by a newer one; the approval is withdrawn and cannot be continued - start a new turn instead.",
   LOUSHO_APPROVAL_CONFLICT:'Another request decided this approval at the same time; read the session to see the outcome instead of deciding again.',
   LOUSHO_APPROVAL_FORBIDDEN: 'Decide the approval as a caller the route\'s authorizeApproval accepts (by default, the caller the run acts for).',
   LOUSHO_SESSION_FORBIDDEN: 'Use a session the route\'s authorizeSession lets this caller read, continue or decide approvals in.',
@@ -73,11 +75,11 @@ export const ERROR_CODES = {
   /** A session route refused a POST body that is not JSON (`415`). */
   LOUSHO_UNSUPPORTED_MEDIA_TYPE: "Send the request body as JSON with the header 'Content-Type: application/json'.",
   LOUSHO_SESSION_AWAITING_APPROVAL: 'Resolve the pending approval first (agent.approvals.resolve() or resumeAfterApproval()), then send again.',
-  LOUSHO_SESSION_ID_INVALID: "Use 1-128 characters from A-Z, a-z, 0-9, '_' and '-', or omit the id.",
+  LOUSHO_SESSION_ID_INVALID: "Session ids: 1-128 characters from A-Z, a-z, 0-9, '_' and '-'. Run ids (send({ sessionId })): up to 200 and '.' too, not ending in '.turn-<n>' or '.paused'.",
   LOUSHO_SESSION_BUSY: 'Wait for the running turn to finish (await its send(), or abort it), then call again.',
   LOUSHO_SESSION_TURN_PENDING: 'Finish the interrupted turn with session.resume(), or drop it with session.discardPending(), then call again.',
   LOUSHO_SESSION_TURN_FAILED: "Drop the failed turn with session.discardPending() and send again, or fix the cause and retry it with session.resume().",
-  LOUSHO_SESSION_FILE_CORRUPT: 'Restore or delete the session file named in the message.',
+  LOUSHO_SESSION_FILE_CORRUPT: 'Restore or delete the session transcript named in the message (session.clear() removes it).',
   LOUSHO_SESSION_STREAM_UNSUPPORTED: 'Create the session with agent.session(), which can stream, or call send() instead.',
   LOUSHO_SESSION_STEP_NOT_FOUND: 'Pass a fromStep in the range the message lists (see session.history()); 0 keeps nothing.',
   LOUSHO_SESSION_EXISTS: 'Pick a session id that has no transcript in the store yet, or leave `id` out for <id>-fork-<n>.',
@@ -89,6 +91,8 @@ export const ERROR_CODES = {
   LOUSHO_SUBAGENT_TASK_BUSY: 'Wait for the task with agent_await (or stop it with agent_cancel), then continue it.',
   LOUSHO_CHECKPOINT_NOT_FOUND:
     "Fork at a step the session's checkpoint history still keeps (checkpointStore.history() lists them), or raise the store's historyLimit.",
+  /** A stored checkpoint cannot be read (not JSON, or not a checkpoint). */
+  LOUSHO_CHECKPOINT_CORRUPT: 'Drop the unreadable checkpoint with session.discardPending() or session.clear() (or checkpointStore.delete(id)); the interrupted run cannot be resumed.',
   LOUSHO_AGENT_DRIFT: "Resume with the agent that paused the run (same model, tools and instructions), or set onAgentDrift: 'warn' or 'ignore' to continue anyway.",
   LOUSHO_RESUME_TOOL_MISSING: 'Bring the tool named in the message back (same name), or drop the paused run: delete its checkpoint and reject its approval.',
   LOUSHO_RUN_ALREADY_ITERATED: 'Iterate an AgentRun once; call stream() again for a new run.',

@@ -185,7 +185,8 @@ describe('cloudflare-worker target: agent directories (M3b, #298)', () => {
       await handler.scheduled?.({ cron: '0 9 * * MON' }, { AGENT_CHECKPOINTS: binding }, { waitUntil: (promise) => waited.push(promise) });
       await Promise.all(waited);
       // A prompt schedule runs a turn under session `schedule-<name>`, checkpointed in the KV store.
-      const checkpointKey = [...kv.keys()].find((key) => key.startsWith('checkpoints/schedule-report-'));
+      // The fire's claim (`...fire#lease`) is not its checkpoint.
+      const checkpointKey = [...kv.keys()].find((key) => key.startsWith('checkpoints/schedule-report-') && !key.includes('#'));
       const checkpoint = checkpointKey === undefined ? undefined : kv.get(checkpointKey);
       expect(JSON.stringify(checkpoint)).toContain('Write the report.');
       // A cron the directory does not schedule runs nothing.

@@ -71,12 +71,12 @@ Find a code by area:
 | [Providers and peers](#providers-and-peers) | [`LOUSHO_PROVIDER_SPEC_INVALID`](#lousho_provider_spec_invalid), [`LOUSHO_PROVIDER_UNKNOWN`](#lousho_provider_unknown), [`LOUSHO_PROVIDER_MISSING_API_KEY`](#lousho_provider_missing_api_key), [`LOUSHO_PROVIDER_REQUEST_FAILED`](#lousho_provider_request_failed), [`LOUSHO_PROVIDER_RATE_LIMITED`](#lousho_provider_rate_limited), [`LOUSHO_PEER_MISSING`](#lousho_peer_missing), [`LOUSHO_HOSTED_TOOL_UNSUPPORTED`](#lousho_hosted_tool_unsupported), [`LOUSHO_UNSUPPORTED_CONTENT`](#lousho_unsupported_content) | Resolving a model string, a missing API key or peer package, a failed or rate-limited model request, a hosted tool the provider cannot run, a file the provider cannot send. |
 | [Agent spec files](#agent-spec-files) | [`LOUSHO_SPEC_NOT_FOUND`](#lousho_spec_not_found), [`LOUSHO_SPEC_INVALID`](#lousho_spec_invalid), [`LOUSHO_SPEC_UNKNOWN_FIELD`](#lousho_spec_unknown_field), [`LOUSHO_SPEC_UNSUPPORTED_FORMAT`](#lousho_spec_unsupported_format) | Loading an `AgentSpec` file with `loadSpec()` or `specToAgent()`. |
 | [Tools](#tools) | [`LOUSHO_TOOL_NOT_FOUND`](#lousho_tool_not_found), [`LOUSHO_TOOL_NEEDS_CREDENTIALS`](#lousho_tool_needs_credentials), [`LOUSHO_TOOL_EXECUTION_FAILED`](#lousho_tool_execution_failed), [`LOUSHO_TOOL_ARGS_INVALID`](#lousho_tool_args_invalid), [`LOUSHO_MCP_START_FAILED`](#lousho_mcp_start_failed) | A tool the model called is unknown, needs credentials, threw, or got invalid arguments; a stdio MCP server did not start. |
-| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_ORPHANED`](#lousho_approval_orphaned), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_TURN_FAILED`](#lousho_session_turn_failed), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
+| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_ORPHANED`](#lousho_approval_orphaned), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_TURN_FAILED`](#lousho_session_turn_failed), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_CHECKPOINT_CORRUPT`](#lousho_checkpoint_corrupt), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
 | [Schedules](#schedules) | [`LOUSHO_SCHEDULE_INVALID`](#lousho_schedule_invalid), [`LOUSHO_SCHEDULE_RUN_INCOMPLETE`](#lousho_schedule_run_incomplete) | Defining or loading a schedule, or a scheduled turn that did not finish. |
 | [Channels](#channels) | [`LOUSHO_CHANNEL_INVALID`](#lousho_channel_invalid), [`LOUSHO_MEMORY_INVALID`](#lousho_memory_invalid) | Defining a channel or a memory slot. |
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
 | [Sandbox](#sandbox) | [`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`](#lousho_sandbox_egress_unsupported), [`LOUSHO_SANDBOX_PATH_DENIED`](#lousho_sandbox_path_denied) | Asking a sandbox for something it cannot do on the current platform, or to write outside its root. |
-| [Agent directories, skills and flows](#agent-directories-skills-and-flows) | [`LOUSHO_AGENT_DIR_INVALID`](#lousho_agent_dir_invalid), [`LOUSHO_SKILL_INVALID`](#lousho_skill_invalid), [`LOUSHO_FLOW_INVALID`](#lousho_flow_invalid), [`LOUSHO_FLOW_TOOL_DENIED`](#lousho_flow_tool_denied) | Loading an agent directory, a skill, or a flow definition, and gating a flow's tool calls. |
+| [Agent directories, skills and flows](#agent-directories-skills-and-flows) | [`LOUSHO_AGENT_DIR_INVALID`](#lousho_agent_dir_invalid), [`LOUSHO_SKILL_INVALID`](#lousho_skill_invalid), [`LOUSHO_FLOW_INVALID`](#lousho_flow_invalid), [`LOUSHO_FLOW_TOOL_DENIED`](#lousho_flow_tool_denied), [`LOUSHO_FLOW_CHANGED`](#lousho_flow_changed) | Loading an agent directory, a skill, or a flow definition, and gating a flow's tool calls. |
 | [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_STORAGE_BUSY`](#lousho_storage_busy), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed) | A storage backend, a trigger, a channel request or `lousho build`. |
 | [Tests and evals](#tests-and-evals) | [`LOUSHO_EVALS_INVALID`](#lousho_evals_invalid), [`LOUSHO_TEST_FAILED`](#lousho_test_failed), [`LOUSHO_CASSETTE_INVALID`](#lousho_cassette_invalid) | `defineEval()`, `mockModel` and cassettes. |
 | [General](#general) | [`LOUSHO_GENERIC_ERROR`](#lousho_generic_error), [`LOUSHO_AGENT_EXECUTION_FAILED`](#lousho_agent_execution_failed), [`LOUSHO_FLOW_EXECUTION_FAILED`](#lousho_flow_execution_failed), [`LOUSHO_VALIDATION_FAILED`](#lousho_validation_failed), [`LOUSHO_OPERATION_TIMEOUT`](#lousho_operation_timeout), [`LOUSHO_OUTPUT_INVALID`](#lousho_output_invalid), [`LOUSHO_BUDGET_EXCEEDED`](#lousho_budget_exceeded), [`LOUSHO_GUARDRAIL_TRIPPED`](#lousho_guardrail_tripped) | Run-level failures: a timeout, a budget or guardrail stop, invalid output, and the catch-all codes. |
@@ -412,14 +412,17 @@ in the URL.
 
 ### LOUSHO_APPROVAL_ORPHANED
 
-**Means:** `agent.approvals.resolve()` (or `streamResolve()`) got an approval
-whose session turn is no longer stored: the turn's `<id>.turn-<n>` checkpoint
-was deleted (by an older `SqliteStore.prune()`, a TTL, or by hand). The tool
-was not run and the approval stays pending.
+**Means:** `agent.approvals.resolve()` (or `streamResolve()`, or
+`resumeAfterApproval()`) got an approval whose paused run no longer waits on
+it: the run's checkpoint (a session turn's `<id>.turn-<n>`, or a
+`send(msg, { sessionId })` run's) was deleted (by `checkpoints.delete(id)`,
+`discardPending()`, a TTL, or by hand) or replaced by a newer run under the same
+id. The tool was not run, and the approval is withdrawn: it is no longer listed,
+and resolving it again fails with `LOUSHO_APPROVAL_NOT_FOUND`.
 
-**Fix:** start a new turn in the session instead; there is nothing left to
-continue. `SqliteStore.prune()` keeps paused turns, so this needs the
-checkpoint to be removed some other way.
+**Fix:** start a new turn in the session (or a new run) instead; there is
+nothing left to continue. `SqliteStore.prune()` keeps paused turns, so this
+needs the checkpoint to be removed some other way.
 
 **Example:** deleting `cust-7.turn-2` from the checkpoint store, then
 approving the refund that turn paused on.
@@ -498,19 +501,27 @@ paused on an approval (`error.approvalId`), so it cannot take new input yet.
 ### LOUSHO_SESSION_ID_INVALID
 
 **Means:** a session id is not 1-128 characters of letters, digits, `_` and
-`-` (ids become file names, so `../` and `/` are refused).
+`-` (ids become file names, so `../` and `/` are refused). Or a run id
+(`agent.send()` / `agent.stream()`'s `sessionId`, a checkpoint store's id) is
+not 1-200 characters of letters, digits, `_`, `-` and `.` (not starting or
+ending with `.`), the same rule on every store; or it ends with `.turn-<n>` or
+`.paused`, which are a session's own checkpoint keys (a run under
+`'victim.turn-2'` would write into session `victim`'s turn).
 
 **Fix:** use an id such as `'chat-9f2c4e7a1b'`, or omit it to get a generated one. On a
 route that serves several users, do not make ids guessable from a user's name or number
 (see [Who may use a session](./auth.md#who-may-use-a-session)).
 
-**Example:** `agent.session({ id: '../etc' })`.
+**Example:** `agent.session({ id: '../etc' })`, or
+`agent.send(msg, { sessionId: 'chat.turn-2' })`.
 
 ### LOUSHO_SESSION_FILE_CORRUPT
 
-**Means:** a `FileSessionStore` file is not a JSON array of messages.
+**Means:** a stored transcript (a `FileSessionStore` file, or a `SqliteStore`
+row) is not valid JSON or not a JSON array of messages, e.g. a write cut short.
 
-**Fix:** restore the file from a backup, or delete it to start the session over.
+**Fix:** restore the file from a backup, or delete it to start the session over:
+`session.clear()` removes it.
 
 **Example:** `sessions/user-42.json` containing `{}`.
 
@@ -521,10 +532,17 @@ that session is running or queued. From `send()` / `stream()`: another writer th
 queue cannot see (another process, or a second store object over the same data) committed a
 turn while this one ran, so this turn was not committed (atomically with a store that has
 `saveIf`: memory, file and SQLite; best effort with KV). Tool calls of the turn that ran are
-kept: the turn up to their results is added after the other writer's turn.
+kept: the turn up to their results is added after the other writer's turn. Also from `send()`,
+`resume()`, `agent.send(msg, { sessionId })`, `agent.resume()` and `approvals.resolve()`: the
+checkpointed run (or session turn) is running in another process, replica or store object right
+now, which holds its run lease (see
+[Durable execution](./durable-execution.md#run-leases)); nothing ran here, and a resolved
+approval stays pending.
 
 **Fix:** await the turn's `send()` (or abort it), then call again. After a `send()` that failed
-this way, send again: the session reads the current transcript at the start of every call.
+this way, send again: the session reads the current transcript at the start of every call. A
+lease left by a process that died is taken over once it expires (30 s), or at once by the
+file and SQLite stores when that process is gone from the same host.
 
 ### LOUSHO_SESSION_TURN_PENDING
 
@@ -647,6 +665,20 @@ The message lists the steps that are kept.
 See [Durable execution](./durable-execution.md#fork-and-replay).
 
 **Example:** `agent.fork('job-1', { fromStep: 9 })` after a 3-step run.
+
+### LOUSHO_CHECKPOINT_CORRUPT
+
+**Means:** a stored checkpoint cannot be read: it is not valid JSON or not a
+checkpoint, typically a write cut short by a crash or power loss on a store
+without durable writes. `send()`, `resume()` and `agent.resume()` fail on it,
+and `agent.pending()` lists the run as `'in-progress'` with this code in its
+`lastError` (`retryable: false`).
+
+**Fix:** drop it: `session.discardPending()` (or `session.clear()`) for a
+session's turn, `checkpointStore.delete(id)` for a run. The interrupted run
+cannot be resumed.
+
+**Example:** a 0-byte `checkpoints/chat.turn-2.json` left after a power loss.
 
 ### LOUSHO_AGENT_DRIFT
 
@@ -875,6 +907,20 @@ or change the rule that denied the call. See [Flows](./flows.md#tool-calls).
 
 **Example:** a flow step that calls a `needsApproval: true` payment tool, run
 with no `approve` callback.
+
+### LOUSHO_FLOW_CHANGED
+
+**Means:** `FlowExecutor.resume()` was called with a flow whose steps changed
+(added, removed, moved, or a step's type, id, tool or agent changed) since the
+run was saved. Completed steps are saved by their place in the flow, so the
+saved results would land on the wrong steps. Prompts and other settings may
+change freely.
+
+**Fix:** resume with the flow version that started the run, or start a new run
+under another `runId`. See [Flows](./flows.md).
+
+**Example:** a run saved after `charge` in `[charge, notify]`, resumed with
+`[audit, charge, notify]`.
 
 ## Storage, deployment and integrations
 

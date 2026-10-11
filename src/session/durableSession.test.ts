@@ -43,8 +43,9 @@ function checkpointStore(failSave?: number): KVCheckpointStore & { data: Map<str
   const store = new KVCheckpointStore({
     get: async (key) => data.get(key) ?? null,
     put: async (key, value) => {
-      saves++;
-      if (saves === failSave) throw new Error('disk gone');
+      // Run leases (`<id>#lease`) are not checkpoint saves.
+      if (!key.endsWith('#lease')) saves++;
+      if (saves === failSave && !key.endsWith('#lease')) throw new Error('disk gone');
       data.set(key, value);
     },
     delete: async (key) => {
@@ -305,6 +306,24 @@ describe('checkpointed sessions (LOU-W9)', () => {
     const forked = await agent.fork('chat.turn-0', { fromStep: history[0].step });
     const out = await agent.send('again?', { sessionId: forked.sessionId });
     expect(out.text).toBe('fork answer');
+  });
+
+  it('keeps the checkpoint history of only the last turnHistoryLimit turns, so storage does not grow with every turn', async () => {
+    const store = memoryStore();
+    const runs: Runs = {};
+    const model = mockModel([(r) => (r.messages.at(-1)?.role === 'tool' ? 'Noted.' : calling('lookup'))], { onExhausted: 'repeat-last' });
+    const agent = createAgent({ provider: model, tools: [tool('lookup', runs)], store });
+    const session = agent.session({ id: 'chat', turnHistoryLimit: 2 });
+    for (let turn = 0; turn < 6; turn++) await session.send(`turn ${turn}`);
+    // Each turn adds four messages: turn n is checkpointed as chat.turn-<4n>.
+    const kept = [];
+    for (let n = 0; n < 6; n++) if ((await store.checkpoints.history!(`chat.turn-${4 * n}`)).length > 0) kept.push(n);
+    expect(kept).toEqual([4, 5]);
+    expect(() => agent.session({ id: 'x', turnHistoryLimit: -1 })).toThrow(/turnHistoryLimit/);
+
+    const none = agent.session({ id: 'none', turnHistoryLimit: 0 });
+    await none.send('hi');
+    expect(await store.checkpoints.history!('none.turn-0')).toEqual([]);
   });
 
   // Eve DUR-F8: clear() deleted only the current turn's checkpoint; every committed turn's checkpoint HISTORY (full

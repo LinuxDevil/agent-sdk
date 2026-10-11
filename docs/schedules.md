@@ -75,6 +75,14 @@ a store, and `schedule-<name>` when the schedule sets `sharedSession: true`). It
 rejects when the run fails, including with `LOUSHO_SCHEDULE_RUN_INCOMPLETE`, so
 it suits an ops "run now" and tests.
 
+With an agent `store` (file, SQLite, KV or `memoryStore()`), each fire first
+claims its schedule name and fire time (to the second) in `store.checkpoints`,
+so several replicas running `startSchedules()` on one store fire each tick once:
+the replicas that lose the claim resolve without running anything. Two manual
+fires of one schedule within the same second count as one tick too. On KV the
+claim is best effort across edge locations (see
+[Durable execution](./durable-execution.md#run-leases)).
+
 ```ts
 import { createAgent, createMockProvider, defineSchedule, fireSchedule } from '@lousho/build-ai-agent';
 

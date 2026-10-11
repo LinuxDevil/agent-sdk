@@ -58,6 +58,8 @@
 import {
   appendToRing,
   listCheckpoints,
+  listedCheckpoint,
+  parseCheckpoint,
   newestFirst,
   resolveHistoryLimit,
   toHistoryEntry,
@@ -70,7 +72,10 @@ import {
   type CheckpointStore,
 } from '../execution/checkpoint';
 import { newId } from '../utils/id';
+import { ConfigurationError } from '../execution/errors';
+import { assertCheckpointId, isCheckpointId } from '../session/checkpointId';
 import { fromKVJson, toKVJson } from './kvBytes';
+import { decodeBytes } from '../storage/jsonBytes';
 
 /** The `put()` option the stores use: seconds until the key expires (KV accepts 60 or more). */
 export interface KVPutOptions {
@@ -143,7 +148,13 @@ export class KVCheckpointStore implements CheckpointStore {
   }
 
   private key(sessionId: string): string {
+    // One id rule for every backend: no `#`, so a run id can never name a history key (`<id>#history`).
+    assertCheckpointId(sessionId);
     return `${this.keyPrefix}${sessionId}`;
+  }
+
+  private leaseKey(sessionId: string): string {
+    return `${this.key(sessionId)}#lease`;
   }
 
   private indexKey(sessionId: string): string {
@@ -182,8 +193,7 @@ export class KVCheckpointStore implements CheckpointStore {
 
   async load(sessionId: string): Promise<Checkpoint | null> {
     const raw = await this.kv.get(this.key(sessionId));
-    if (raw === null) return null;
-    return fromKVJson<Checkpoint>(raw);
+    return raw === null ? null : parseCheckpoint(raw, sessionId, 'the KV namespace', decodeBytes);
   }
 
   async delete(sessionId: string, options: CheckpointDeleteOptions = {}): Promise<void> {
@@ -212,7 +222,12 @@ export class KVCheckpointStore implements CheckpointStore {
    * checkpoint written elsewhere in the last ~60 seconds may be missing or stale.
    */
   async list(options?: CheckpointListOptions): Promise<CheckpointListEntry[]> {
-    if (!this.kv.list) return [];
+    if (!this.kv.list) {
+      throw new ConfigurationError(
+        "KVCheckpointStore.list() needs a KV binding with list() (a real Workers KV namespace has it); this binding has none, so the store's checkpoints cannot be listed.",
+        'store.checkpoints'
+      );
+    }
     const ids: string[] = [];
     let cursor: string | undefined;
     do {
@@ -221,11 +236,59 @@ export class KVCheckpointStore implements CheckpointStore {
       for (const { name } of page.keys) if (!name.includes('#')) ids.push(name.slice(this.keyPrefix.length));
       cursor = page.list_complete ? undefined : page.cursor;
     } while (cursor !== undefined);
-    const found: Array<[string, Checkpoint]> = [];
-    for (const id of ids) {
-      const checkpoint = await this.load(id);
-      if (checkpoint) found.push([id, checkpoint]);
+    const found: Array<readonly [string, Checkpoint]> = [];
+    for (const id of ids.filter(isCheckpointId)) {
+      const raw = await this.kv.get(this.key(id));
+      // A value that cannot be read is listed as the run `load()` fails on.
+      if (raw !== null) found.push(listedCheckpoint(id, () => parseCheckpoint(raw, id, 'the KV namespace', decodeBytes)));
     }
     return listCheckpoints(found, options);
+  }
+
+  /**
+   * Run lease, best effort: KV has no compare-and-swap, so this reads the
+   * lease, writes its own when it is free, waits {@link KV_SETTLE_MS} and reads
+   * it back. Within one location that makes exactly one of two concurrent
+   * callers win; across edge locations (KV propagates writes in up to ~60 s)
+   * two can still both win. Route a session's requests to one location when
+   * that matters.
+   */
+  async acquireLease(sessionId: string, owner: string, ttlMs: number): Promise<boolean> {
+    const key = this.leaseKey(sessionId);
+    const held = parseLease(await this.kv.get(key));
+    if (held && held.owner !== owner && held.expiresAt > Date.now()) return false;
+    const mine = JSON.stringify({ owner, expiresAt: Date.now() + ttlMs });
+    await this.kv.put(key, mine, { expirationTtl: Math.max(60, Math.ceil(ttlMs / 1000) * 2) });
+    if (held?.owner === owner) return true;
+    await settle();
+    return parseLease(await this.kv.get(key))?.owner === owner;
+  }
+
+  /** Releases `owner`'s run lease on `sessionId`; a lease another owner holds is left alone. */
+  async releaseLease(sessionId: string, owner: string): Promise<void> {
+    const key = this.leaseKey(sessionId);
+    if (parseLease(await this.kv.get(key))?.owner === owner) await this.kv.delete(key);
+  }
+}
+
+/**
+ * How long (ms) a KV claim waits between writing its token and reading it back.
+ * A concurrent caller at the same location writes its own token within this
+ * window, so of two callers only the one whose token survived wins.
+ */
+const KV_SETTLE_MS = 50;
+
+/** Waits {@link KV_SETTLE_MS}. */
+export function settle(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, KV_SETTLE_MS));
+}
+
+function parseLease(raw: string | null): { owner: string; expiresAt: number } | undefined {
+  if (raw === null) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as { owner?: unknown; expiresAt?: unknown } | null;
+    return typeof parsed?.owner === 'string' && typeof parsed.expiresAt === 'number' ? { owner: parsed.owner, expiresAt: parsed.expiresAt } : undefined;
+  } catch {
+    return undefined;
   }
 }

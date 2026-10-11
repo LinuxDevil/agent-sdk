@@ -83,8 +83,9 @@ function checkpointStore(failSave?: number): KVCheckpointStore & { data: Map<str
   const store = new KVCheckpointStore({
     get: async (key) => data.get(key) ?? null,
     put: async (key, value) => {
-      saves++;
-      if (saves === failSave) throw new Error('disk gone');
+      // Run leases (`<id>#lease`) are not checkpoint saves.
+      if (!key.endsWith('#lease')) saves++;
+      if (saves === failSave && !key.endsWith('#lease')) throw new Error('disk gone');
       data.set(key, value);
     },
     delete: async (key) => {

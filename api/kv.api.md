@@ -136,6 +136,7 @@ interface Checkpoint {
     runConfig?: unknown;
     // (undocumented)
     sessionId: string;
+    startedToolCallIds?: string[];
     status?: CheckpointStatus;
     // (undocumented)
     stepIndex: number;
@@ -193,10 +194,12 @@ type CheckpointStatus = 'in-progress' | 'awaiting-approval' | 'finished';
 
 // @public
 interface CheckpointStore {
+    acquireLease?(sessionId: string, owner: string, ttlMs: number): Promise<boolean>;
     delete(sessionId: string, options?: CheckpointDeleteOptions): Promise<void>;
     history?(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]>;
     list?(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
     load(sessionId: string): Promise<Checkpoint | null>;
+    releaseLease?(sessionId: string, owner: string): Promise<void>;
     save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
 }
 
@@ -328,6 +331,7 @@ interface FlowCheckpointState {
     output?: unknown;
     pendingApproval?: FlowPendingApproval;
     steps: number;
+    structure?: string;
     usage: ProviderUsage;
     variables: Record<string, unknown>;
 }
@@ -426,12 +430,14 @@ export class KVCheckpointStore implements CheckpointStore {
     options?: {
         historyLimit?: number;
     });
+    acquireLease(sessionId: string, owner: string, ttlMs: number): Promise<boolean>;
     // (undocumented)
     delete(sessionId: string, options?: CheckpointDeleteOptions): Promise<void>;
     history(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]>;
     list(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
     // (undocumented)
     load(sessionId: string): Promise<Checkpoint | null>;
+    releaseLease(sessionId: string, owner: string): Promise<void>;
     // (undocumented)
     save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
 }

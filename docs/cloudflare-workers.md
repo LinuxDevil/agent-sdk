@@ -232,6 +232,7 @@ Worker reads). `KVStore`'s keys, with an optional `prefix` before each:
 | `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, with its history under `checkpoints/<id>#history`; bytes encoded the same way). |
 | `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided; bytes encoded the same way). |
 | `approvals/<id>#claim` | The claim of the request deciding that approval (a random token, expires after 60 seconds; see below). |
+| `checkpoints/<id>#lease` | The run lease of a durable run or session turn while it executes (an owner id and an expiry; see [Run leases](durable-execution.md#run-leases)). |
 | `oauth/tokens/<key>`, `oauth/pending/<state>` | OAuth tokens and pending sign-ins, encrypted with `tokenKey` (the `LOUSHO_TOKEN_KEY` secret in the generated Worker); see [OAuth](oauth.md#token-storage). |
 | `memory/<slot>#<scope>` | The items of a `kvMemory()` memory slot (`notes#global`, `prefs#session:<id>` or a custom scope's key) - written by the provider itself, not `KVStore`. |
 
@@ -251,11 +252,14 @@ the final text.
 KV has no compare-and-swap, so `KVStore` cannot claim an approval atomically
 the way `fileStore` and `SqliteStore` do. To decide one, a request writes a
 random token under `approvals/<id>#claim` (unless a claim is already there),
-reads it back, and only the request whose token is still there deletes the
-approval and runs the call. A double click, a retried webhook or two reviewers
-deciding at once then run the approved tool once in the common case.
+waits 50 ms, reads it back, and only the request whose token is still there
+(and that still finds the approval) deletes the approval and runs the call. At
+one location, where a concurrent request writes its own token within that
+window, a double click, a retried webhook or two reviewers deciding at once run
+the approved tool exactly once. Run leases (`checkpoints/<id>#lease`) are taken
+the same way.
 
-This narrows the race but does not close it: two requests served by different
+This does not close the race across locations: two requests served by different
 edge locations within KV's propagation delay (up to about 60 seconds) can both
 read their own token and both run the call. For a tool with a side effect that
 must happen once (a payment, an email), pass `ctx.approval.id` on as an
