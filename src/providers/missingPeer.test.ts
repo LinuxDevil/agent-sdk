@@ -122,7 +122,7 @@ describe('feature peers (LOU-D40)', () => {
 
   it.each([
     ['dockerode', 'Docker sandboxing', 'npm install dockerode@^5.0.1'],
-    ['@modelcontextprotocol/sdk', 'MCP', 'npm install @modelcontextprotocol/sdk@^1.30.1'],
+    ['@modelcontextprotocol/sdk', 'MCP', 'npm install @modelcontextprotocol/sdk@^1.31.0'],
     ['prompts', '`lousho init`', 'npm install prompts@^2.4.2'],
   ])('the error for %s names the feature and the exact install command', async (name, feature, command) => {
     const error = await loadOptionalPeer(name, () => Promise.reject(moduleNotFound(name))).catch((e: unknown) => e);
@@ -141,7 +141,7 @@ describe('feature peers (LOU-D40)', () => {
     const { buildServer } = await import('../tools/mcp/server/buildServer');
     await expect(buildServer({ name: 'x', version: '1', tools: [] } as never)).rejects.toMatchObject({
       name: 'MissingPeerDependencyError',
-      installCommand: 'npm install @modelcontextprotocol/sdk@^1.30.1',
+      installCommand: 'npm install @modelcontextprotocol/sdk@^1.31.0',
     });
     vi.doUnmock('@modelcontextprotocol/sdk/server/mcp.js');
   });

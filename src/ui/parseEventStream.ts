@@ -27,7 +27,7 @@ function parseLine(line: string): AgentEvent | undefined {
  *
  * @example
  * ```ts
- * const response = await fetch('/api/agent', { method: 'POST', body: JSON.stringify({ input: 'Hi' }) });
+ * const response = await fetch('/api/agent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input: 'Hi' }) });
  * for await (const event of parseEventStream(response)) {
  *   if (event.type === 'text.delta') console.log(event.text);
  * }

@@ -443,7 +443,7 @@ the `lousho init` questions or code mode installs none of them:
 | Package                     | Range     | Enables                                                                                       | Install                                          |
 | --------------------------- | --------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | `dockerode`                 | `^5.0.1`  | Docker sandboxing: `SubprocessSandbox` (and `lousho doctor`'s Docker ping)                    | `npm install dockerode@^5.0.1`                   |
-| `@modelcontextprotocol/sdk` | `^1.30.1` | MCP: `createAgent({ mcpServers })` / `connectMcp()`, `serveMcp()` and `lousho mcp`            | `npm install @modelcontextprotocol/sdk@^1.30.1`  |
+| `@modelcontextprotocol/sdk` | `^1.31.0` | MCP: `createAgent({ mcpServers })` / `connectMcp()`, `serveMcp()` and `lousho mcp`            | `npm install @modelcontextprotocol/sdk@^1.31.0`  |
 | `@opentelemetry/api`        | `^1.9.1`  | OpenTelemetry tracing: `createOtelTraceExporter()` from `@lousho/build-ai-agent/otel`         | `npm install @opentelemetry/api@^1.9.1`          |
 | `react`                     | `^18`, `^19` | The React bindings (`@lousho/build-ai-agent/react`)                                      | `npm install react`                              |
 | `vue`                       | `^3`      | The Vue bindings (`@lousho/build-ai-agent/vue`)                                               | `npm install vue@^3`                             |
@@ -3185,12 +3185,18 @@ permission rules and sub-agents see it too: see
 
 ## Security notes
 
-- **Route auth does not check who owns a session** unless you pass
-  `authorizeSession`. Without it, any caller who passes auth and knows a session
-  id can read its transcript (`GET /chat/:id`) and continue it. Pass
-  `authorizeSession`, use session ids that cannot be guessed, or derive them
-  from the principal on your side. See
+- **Sessions belong to their first caller by default.** Once route auth
+  accepted a caller, a session id is bound to the first principal that reads
+  or continues it, and any other principal gets `403`
+  (`LOUSHO_SESSION_FORBIDDEN`). That record lives in memory, per process (or
+  Worker isolate): a restart or a second replica forgets it, and the first
+  caller after that claims the session. With more than one instance, pass
+  `authorizeSession` that checks ownership against your own data. See
   [Who may use a session](#who-may-use-a-session).
+- **Cookies need CSRF protection, which the routes give by default.** A POST
+  must be JSON (`415` otherwise) and must not come from another site's page
+  (`403`, `LOUSHO_REQUEST_FORBIDDEN`). Keep your session cookie `SameSite=Lax`
+  or `Strict` as well. See [Cross-site requests](#cross-site-requests).
 - **Approvals.** A decision only reaches an approval of the session in the URL
   (another session's approval is a `404`). By default only the caller the run
   acts for may decide it. If an approval must come from someone else, such as a
@@ -3315,12 +3321,74 @@ belongs to that caller is used only for that caller's calls, whoever approves.
 
 ### Who may use a session
 
-`createRouteHandler()` and `createDeployedServer()` take `authorizeSession`.
-It is asked before a caller reads a session (`action: 'read'`), sends it a
-turn (`'chat'`, also `POST <basePath>` and the `useChat` endpoint) or decides
-one of its approvals (`'approve'`). Return `false` for a `403`
-(`LOUSHO_SESSION_FORBIDDEN`). Without it every caller route auth accepted may
-use every session.
+By default, once route auth accepted a caller, a session belongs to the first
+principal that reads it or sends it a turn (principals are compared by `id`,
+`type`, `authenticator` and `issuer`). Another principal gets `403`
+(`LOUSHO_SESSION_FORBIDDEN`) on `GET /chat/:id`, `POST /chat`, `POST
+<basePath>` and the `useChat` endpoint; decisions on its approvals are left to
+`authorizeApproval` (below). A route without auth checks nothing. All callers
+of one `apiToken()` are one principal, so they share every session.
+
+The owner is remembered in memory, per agent: a restart, a second replica or
+a Worker isolate that is recycled forgets it, and the next caller claims the
+session. So for anything that runs on more than one instance, check ownership
+yourself.
+
+`createRouteHandler()` and `createDeployedServer()` take `authorizeSession`,
+which replaces that default. It is asked before a caller reads a session
+(`action: 'read'`), sends it a turn (`'chat'`, also `POST <basePath>` and the
+`useChat` endpoint) or decides one of its approvals (`'approve'`). Return
+`false` for a `403` (`LOUSHO_SESSION_FORBIDDEN`). Deriving the id from the
+caller keeps the check stateless:
+
+```ts
+import { createAgent, createRouteHandler, memoryStore } from '@lousho/build-ai-agent';
+import { jwt } from '@lousho/build-ai-agent/auth';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', store: memoryStore() });
+
+export const { GET, POST } = createRouteHandler(agent, {
+  auth: jwt({ secret: process.env.JWT_SECRET!, issuer: 'https://auth.example.com', audience: 'agent-api' }),
+  // Session ids are `<user id>-<anything>`: a user can only reach their own.
+  authorizeSession: ({ principal, sessionId }) => sessionId.startsWith(`${principal?.id}-`),
+});
+```
+
+`authorizeSession: () => true` lets every authenticated caller use every
+session (the behavior before this default).
+
+### Cross-site requests
+
+A browser sends cookies with requests that another site's page makes, so with
+cookie-based auth a page on `evil.example` could otherwise start a turn or
+approve a call as your user. The session routes refuse that by default:
+
+- a POST whose `Origin` is not the server's own (its `Host`, or the
+  `X-Forwarded-Host` a proxy in front sets) and not in `allowedOrigins`, or
+  that the browser marked `Sec-Fetch-Site: cross-site`, is `403`
+  (`LOUSHO_REQUEST_FORBIDDEN`). Requests without an `Origin` (curl, a server,
+  another agent) are not affected;
+- a POST body must be `Content-Type: application/json` (`415`,
+  `LOUSHO_UNSUPPORTED_MEDIA_TYPE` otherwise): forms and `text/plain` are what
+  another site can send without a CORS preflight.
+
+A front end on another origin is listed in `allowedOrigins` (it also needs
+CORS headers, which your host adds); `allowedOrigins: ['*']` turns the origin
+check off and `requireJsonBody: false` the content-type one. `allowedHosts`
+(off by default) refuses any request whose `Host` is not listed, against DNS
+rebinding of a server on a private address. All three work on
+`createRouteHandler()` and `createDeployedServer()`.
+
+```ts
+import { createAgent, createRouteHandler } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini' });
+
+export const { GET, POST } = createRouteHandler(agent, {
+  auth: process.env.AGENT_TOKEN,
+  allowedOrigins: ['https://app.example.com'],
+});
+```
 
 ### Who may decide an approval
 
@@ -4044,8 +4112,8 @@ the `prompt` option (or the first string option) is the message.
 
 - Every request's `X-Signature-Ed25519` / `X-Signature-Timestamp` is verified
   over `timestamp + body`; a missing or bad signature, or a timestamp more
-  than five minutes from local time (a replayed request), answers 401, as
-  Discord requires. `PING` is answered with `PONG`.
+  than five minutes old or more than a minute ahead of local time (a replayed
+  request), answers 401, as Discord requires. `PING` is answered with `PONG`.
 - A command is acknowledged at once with a deferred response (within Discord's
   3-second limit); the reply then edits the original response
   (`PATCH /webhooks/{applicationId}/{token}/messages/@original`). Text over
@@ -4210,7 +4278,18 @@ so it also runs on Workers.
   waits 10 seconds and does not retry, and a slow reply is posted as a new
   comment. A `ping` is acknowledged without a turn. A redelivery (the same
   `X-GitHub-Delivery`, e.g. "Redeliver" in the app settings) is acknowledged
-  and not run again; ids are kept in memory for an hour.
+  and not run again; ids are kept in memory for an hour, which a restart or a
+  second replica does not see. Pass `deliveries` (a `DeliveryStore`, whose
+  `seen(id)` records an id and resolves whether it was there before) to keep
+  them somewhere shared and durable, e.g. Redis `SET NX EX`:
+
+  ```ts
+  import { githubChannel, type DeliveryStore } from '@lousho/build-ai-agent';
+
+  const seenIds = new Set<string>(); // stands in for Redis or a database table
+  const deliveries: DeliveryStore = { seen: (id) => seenIds.has(id) || (seenIds.add(id), false) };
+  const github = githubChannel({ webhookSecret: process.env.GITHUB_WEBHOOK_SECRET ?? '', botName: 'my-agent', token: process.env.GITHUB_TOKEN, deliveries });
+  ```
 - A comment on an issue, on a pull request (the conversation tab) or a review
   comment (on a line of the diff) that contains `@<botName>` as a whole word
   (case-insensitive) starts a turn, with the mention removed from the text. Once
@@ -4556,7 +4635,7 @@ Every command that takes a `<spec>` reads an agent spec file (`.yaml`,
 
 ```text
 lousho init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force] [--sdk-path <dir|tgz>]
-lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--no-schedules] [--traces[=dir]]
+lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--allowed-hosts a,b] [--no-schedules] [--traces[=dir]]
 lousho chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>] [--traces[=dir]]
 lousho acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]
 lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allow <list>] [--overwrite] [--dry-run]    (or --list)
@@ -4691,7 +4770,18 @@ Directories and modules are your code and run with your permissions; only run
 
 - `--port` - default `3737`.
 - `--host` - default `127.0.0.1` (localhost only). Pass e.g. `--host=0.0.0.0`
-  to opt in to LAN access.
+  to opt in to LAN access; `lousho dev` has no auth and shows raw provider
+  errors, so it then prints a warning.
+- `--allowed-hosts a,b` - extra host names the `Host` header may carry. To
+  stop DNS rebinding (a web page re-pointing its own domain at your machine),
+  every route but `/health` and `/channels/*` answers `403`
+  (`LOUSHO_REQUEST_FORBIDDEN`) unless `Host` is `localhost`, a `127.x.x.x`
+  address or `[::1]`; off loopback, IP addresses and the `--host` name are
+  accepted too. Given, the list replaces that rule (loopback names stay
+  accepted); `*` accepts any host.
+- POST bodies must be `Content-Type: application/json` (`415` otherwise), and
+  a browser POST from another origin is `403`, as on the deployed server
+  ([Cross-site requests](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#cross-site-requests)).
 
 ## `lousho chat`
 
@@ -4945,7 +5035,8 @@ add their own routes under `/channels` (see above). Its bindings:
 
 | Binding | Kind | What it does |
 | ------- | ---- | ------------ |
-| `LOUSHO_API_TOKEN` | secret (`npx wrangler secret put LOUSHO_API_TOKEN`) | Makes every route except `/health` require `Authorization: Bearer <token>` (constant-time compare, `401` JSON otherwise). Without it the Worker is open to anyone who has its URL, so **set it before you deploy**. |
+| `LOUSHO_API_TOKEN` | secret (`npx wrangler secret put LOUSHO_API_TOKEN`) | Makes every route except `/health` require `Authorization: Bearer <token>` (constant-time compare, `401` JSON otherwise). Without it the Worker is open to anyone who has its URL, so **set it before you deploy** (`lousho build` reminds you). Without it, `GET /chat/:sessionId` answers `403` (`LOUSHO_REQUEST_FORBIDDEN`) rather than hand any session's transcript to whoever knows its id. |
+| `LOUSHO_ALLOW_OPEN_TRANSCRIPTS` | variable (`[vars]` in `wrangler.toml`) | `"true"` serves `GET /chat/:sessionId` on a Worker without `LOUSHO_API_TOKEN`, to anyone. Leave it unset outside a throwaway demo. |
 | `AGENT_CHECKPOINTS` | KV namespace | Holds sessions, checkpoints, paused approvals and `kvMemory()` items, in one namespace, as `KVStore` (below). Without it they live in the memory of one isolate, which Cloudflare recycles at will: fine for trying a deploy out, not for production. |
 | `LOUSHO_HTTP_ALLOW` | variable (`[vars]` in `wrangler.toml`) | The host names the `http` tool may reach, comma-separated: `api.github.com`, or `*.example.com` for subdomains only. Unset or empty, every `http` request is refused. See [Providers and tools](#providers-and-tools). |
 
@@ -6639,7 +6730,13 @@ a page or script written against the dev server works against the deployed one.
 | `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn live as SSE, in the same framing and event types as `POST /chat` (the decided call's `tool.resume` / `tool.done` or `tool.error`, text deltas, `approval.requested` if it pauses again, `run.done`), from `agent.approvals.streamResolve()` / `streamAnswer()`. `404` when `id` is not pending. When the turn's step paused on several calls, each id is decided on its own; a decision that leaves others pending streams `run.done` with `finishReason: 'awaiting-approval'`, and the last one runs the step. |
 | `POST /chat` `{ "message" }` | Legacy, single turn without history or streaming: returns the agent's `ExecutionResult` as JSON, with a `Deprecation: true` header. |
 
-Bodies over 1MB get `413`, invalid JSON `400`.
+Bodies over 1MB get `413`, invalid JSON `400`. A POST must send
+`Content-Type: application/json` (anything else is `415`,
+`LOUSHO_UNSUPPORTED_MEDIA_TYPE`), and a browser POST from another origin is
+`403` (`LOUSHO_REQUEST_FORBIDDEN`): see
+[Cross-site requests](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#cross-site-requests). Once auth accepts a
+caller, a session belongs to the first principal that uses it
+([Who may use a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-use-a-session)).
 
 ```bash
 curl -N http://127.0.0.1:3000/chat \
@@ -6664,7 +6761,9 @@ Programmatically, `adapter.scaffold(agentPath, outDir, { auth: { token } })`
 bakes a token into the built `node-server` or `docker` server for when the
 variable is not set. The variable wins, and a baked token is readable in
 `dist/server.js`, so prefer the variable. The Worker reads the token from its
-`LOUSHO_API_TOKEN` binding only.
+`LOUSHO_API_TOKEN` binding only; without one it refuses `GET /chat/:sessionId`
+unless the `LOUSHO_ALLOW_OPEN_TRANSCRIPTS` var is `"true"`
+([Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md)).
 
 For JWT, OpenID Connect or Basic auth, and to know who is calling, the
 `node-server` and `docker` targets take an ordered auth list from an agent
@@ -7764,8 +7863,37 @@ refused this caller the action (`read`, `chat` or `approve`) on this session.
 
 **Fix:** use a session this caller owns, or change `authorizeSession`.
 
-**Example:** user `bob` reads `GET /chat/alice-1`, and `authorizeSession`
-only allows ids that start with the caller's id.
+**Example:** user `bob` reads `GET /chat/alice-1`, which `alice` used first
+(the default when no `authorizeSession` is set), or `authorizeSession` only
+allows ids that start with the caller's id.
+
+### LOUSHO_REQUEST_FORBIDDEN
+
+**Means:** a `403` from a session route before it ran: a POST came from a page
+on another origin (its `Origin` is not the server's own and not in
+`allowedOrigins`, or the browser marked it `Sec-Fetch-Site: cross-site`), or
+the `Host` header is not one the server allows (`allowedHosts`, or loopback
+names on `lousho dev`).
+
+**Fix:** call from the server's own origin, or add the page's origin to
+`allowedOrigins` (see [Route auth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#cross-site-requests)); for a
+`Host` refusal, add the name to `allowedHosts` (`--allowed-hosts` on
+`lousho dev`).
+
+**Example:** a page on `https://evil.example` posts to `/api/agent/chat` with
+the user's session cookie.
+
+### LOUSHO_UNSUPPORTED_MEDIA_TYPE
+
+**Means:** a `415` from a session route: a POST body was not sent as JSON.
+Form and `text/plain` bodies are refused because another site can send them
+without a CORS preflight.
+
+**Fix:** send `Content-Type: application/json` (`curl -H 'Content-Type:
+application/json'`), or pass `requireJsonBody: false`.
+
+**Example:** `curl -d '{"sessionId":"a","input":"hi"}' /chat` without `-H`
+sends `application/x-www-form-urlencoded`.
 
 ### LOUSHO_SESSION_AWAITING_APPROVAL
 
@@ -7783,7 +7911,9 @@ paused on an approval (`error.approvalId`), so it cannot take new input yet.
 **Means:** a session id is not 1-128 characters of letters, digits, `_` and
 `-` (ids become file names, so `../` and `/` are refused).
 
-**Fix:** use an id such as `'user-42'`, or omit it to get a generated one.
+**Fix:** use an id such as `'chat-9f2c4e7a1b'`, or omit it to get a generated one. On a
+route that serves several users, do not make ids guessable from a user's name or number
+(see [Who may use a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-use-a-session)).
 
 **Example:** `agent.session({ id: '../etc' })`.
 
@@ -10699,7 +10829,8 @@ await server.close();
   to require an `Authorization: Bearer` header; binding a non-loopback host
   without `auth` logs a warning. To block DNS rebinding (a web page re-pointing
   its own domain at your machine), a loopback bind answers `403` unless the
-  `Host` header is `localhost`, `127.x.x.x` or `[::1]`, and any request whose
+  `Host` header is `localhost`, a `127.x.x.x` address or `[::1]` (never a
+  name such as `127.attacker.example`), and any request whose
   `Origin` header is not same-origin with `Host` gets `403`. Set
   `allowedHosts: ['mcp.internal']` to accept other names (it replaces the
   loopback default; on a non-loopback bind there is no Host check unless you
@@ -11537,13 +11668,18 @@ accepted, and a request outside the base path is a 404).
 
 Sessions are kept by the agent's `store` (`createAgent({ store })`), so give
 the agent one that outlives a serverless invocation when you use sessions.
-A session id is bound to the first authenticated caller that uses it - a
-different principal gets 403 (see [Route auth and principals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md) for
-the default, its in-memory limit, and `ownsSession` to override it; deriving
-the id from the caller, `u-${userId}`, keeps it obvious).
+With `auth`, a session id is bound to the first principal that reads or
+continues it, and a different principal gets `403`
+(`LOUSHO_SESSION_FORBIDDEN`). That binding is kept in memory, so a new
+serverless instance forgets it: for an app with more than one user, pass
+`authorizeSession` as well, e.g. with ids derived from the caller
+(`${userId}-<anything>`). See
+[Who may use a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-use-a-session).
 
-For an app with more than one user, also pass `authorizeSession`, so a user
-cannot read or continue another user's session.
+POST routes take JSON only (`Content-Type: application/json`, which
+`useLoushoAgent` and `useChat` send) and refuse a browser request from another
+origin unless you list it in `allowedOrigins`: see
+[Cross-site requests](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#cross-site-requests).
 
 **Who may approve a call.** `createRouteHandler` has no `approvers` option; approvals are decided by
 `authorizeApproval({ principal, sessionId, approval })`. By default
@@ -17729,11 +17865,15 @@ const handler = mountChannels(agent, [
 ]);
 ```
 
-`WebhookTriggerAdapter` starts an HTTP server. **Always set `auth` for a
-webhook that is reachable from outside your machine**: without it, anyone who
-can reach the port can run your agent (and spend your tokens). If you listen
-on a non-loopback host with no `auth`, the adapter logs a one-time warning
-through `options.logger`.
+`WebhookTriggerAdapter` starts an HTTP server on `127.0.0.1` (this machine
+only) unless you pass `host`. **Always set `auth` for a webhook that is
+reachable from outside your machine**: without it, anyone who can reach the
+port can run your agent (and spend your tokens). A non-loopback `host` (e.g.
+`'0.0.0.0'`) without `auth` throws `LOUSHO_TRIGGER_INVALID` at construction;
+`allowUnauthenticated: true` allows it anyway and logs a one-time warning
+through `options.logger`. Without `auth` on loopback, a request whose `Host`
+is not a loopback name (DNS rebinding) or that carries an `Origin` header (a
+web page) gets `403`.
 
 ```ts
 import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
@@ -17770,7 +17910,8 @@ new WebhookTriggerAdapter({
 
 HMAC options: `header` (default `x-signature-256`), `algorithm` (`sha256` or
 `sha1`, default `sha256`), `prefix` (default `sha256=`; `''` for a bare
-digest), `timestampHeader` and `toleranceSeconds`. Signatures and bearer
+digest), `timestampHeader` and `toleranceSeconds` (a timestamp may also be at
+most a minute ahead of local time). Signatures and bearer
 tokens are compared in constant time. A request that fails authentication gets
 a generic `401 {"error":"Unauthorized"}` - the response never says which check
 failed - and the reason (never a secret or signature) is logged at `warn`
@@ -17804,7 +17945,8 @@ one-time warning through `options.logger`. With it, every request is verified
 as [Slack documents](https://docs.slack.dev/authentication/verifying-requests-from-slack)
 before the body is parsed: HMAC-SHA256 over `v0:{X-Slack-Request-Timestamp}:{raw body}`,
 compared in constant time with `X-Slack-Signature` (`v0=<hex>`), and requests
-more than five minutes old are rejected. Failures get a generic
+more than five minutes old, or more than a minute ahead of local time, are
+rejected (the timestamp is in seconds, as Slack sends it). Failures get a generic
 `401 {"error":"Unauthorized"}`; the reason (never a secret or signature) is
 logged at `warn` level. The signed `url_verification` handshake is answered
 after verification.

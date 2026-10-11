@@ -316,7 +316,7 @@ describe('remote sub-agent approvals through the lead run (LOU-Y7.3)', () => {
     const { agent } = lead(remoteAgent({ url: 'https://remote.test', auth: TOKEN, fetch: server.fetch }));
     const paused = await agent.send('go');
     const { sessionId } = (await server.requests[0].json()) as { sessionId: string };
-    const direct = { method: 'POST', headers: { Authorization: `Bearer ${TOKEN}` }, body: JSON.stringify({ approved: true }) };
+    const direct = { method: 'POST', headers: { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ approved: true }) };
     await (await server.fetch(`https://remote.test/chat/${sessionId}/approvals/${paused.approvalId}`, direct)).text();
 
     const result = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });

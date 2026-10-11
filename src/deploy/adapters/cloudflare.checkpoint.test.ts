@@ -107,6 +107,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
     const res = await handler.fetch(
       new Request('http://worker/chat', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: 'hi', sessionId: 'no-kv-session' }),
       }),
       {} // no AGENT_CHECKPOINTS binding at all
@@ -119,6 +120,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
     const res = await handler.fetch(
       new Request('http://worker/chat', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: 'hi', sessionId: 12345 }),
       })
     );
@@ -132,6 +134,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
     const res = await handler.fetch(
       new Request('http://worker/chat', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: 'please call current-date for me', sessionId }),
       }),
       { [CHECKPOINT_KV_BINDING]: kv }
@@ -165,6 +168,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
     const captureRes = await handler.fetch(
       new Request('http://worker/chat', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: 'please call current-date now', sessionId: captureSessionId }),
       }),
       { [CHECKPOINT_KV_BINDING]: capturingKv }
@@ -203,6 +207,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
     const resumeRes = await handler.fetch(
       new Request('http://worker/chat', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: 'totally unrelated follow-up text', sessionId: resumeSessionId }),
       }),
       { [CHECKPOINT_KV_BINDING]: resumeKv }

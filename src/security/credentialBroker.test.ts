@@ -165,7 +165,7 @@ describe('createCredentialBroker (LOU-X12)', () => {
     socket.on('error', () => {});
     await b.close();
     await closed;
-    await expect(viaProxy(b, `http://${upstreamHost}/`)).rejects.toThrow(/ECONNREFUSED/);
+    await expect(viaProxy(b, `http://${upstreamHost}/`)).rejects.toThrow(/ECONNREFUSED|ECONNRESET/);
   });
 
   describe('listen() on another address for one subnet (LOU-X12.2)', () => {

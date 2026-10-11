@@ -143,6 +143,20 @@ describe('githubChannel (N11b)', () => {
     expect(t.calls.map(text)).toEqual(['Hello', 'Again']);
   });
 
+  it('records delivery ids in a given DeliveryStore, so a replica or a restart sharing it runs a redelivery once', async () => {
+    const seen = new Set<string>();
+    const deliveries = { seen: vi.fn(async (id: string) => seen.has(id) || (seen.add(id), false)) };
+    const body = issueComment('@my-agent hi');
+    const first = setup(['Hello'], {}, { channel: { deliveries } });
+    await first.send(body, { delivery: 'd-shared' });
+    // A second process (a new channel and agent) over the same store.
+    const second = setup(['never'], {}, { channel: { deliveries } });
+    await second.send(body, { delivery: 'd-shared' });
+    expect(first.model.calls).toHaveLength(1);
+    expect(second.model.calls).toHaveLength(0);
+    expect(deliveries.seen).toHaveBeenCalledWith('d-shared');
+  });
+
   it('rejects a missing, malformed or wrong signature with 401 and runs nothing', async () => {
     const t = setup(['never']);
     const body = issueComment('@my-agent hi');

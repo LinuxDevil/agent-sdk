@@ -8,7 +8,7 @@
  * A comment is text written by anyone who can comment: it is untrusted input.
  */
 import { ConfigurationError, SDKError } from '../execution/errors';
-import { deliveryLog, mayApprove, reportChannelError, type Approvers, splitText } from './channelSupport';
+import { deliveryLog, mayApprove, reportChannelError, type Approvers, type DeliveryStore, splitText } from './channelSupport';
 import { createInstallationTokens } from './githubAppAuth';
 import {
   defineChannel,
@@ -22,6 +22,8 @@ import {
   type ChannelRespond,
   type ChannelUser,
 } from './defineChannel';
+
+export type { DeliveryStore } from './channelSupport';
 
 /** Who wrote a comment, as the webhook reports it (`user.login`, `author_association`). */
 export interface GitHubCommenter {
@@ -82,8 +84,19 @@ export interface GitHubChannelOptions {
    * `pull_request` subscription then only gets the `200` acknowledgement).
    */
   pullRequestOpened?: boolean;
+  /**
+   * Where `X-GitHub-Delivery` ids are recorded, so a redelivery is not run
+   * twice. Default: in memory for an hour, which a restart or a second
+   * replica does not share; pass a durable, shared {@link DeliveryStore} then.
+   */
+  deliveries?: DeliveryStore;
   /** Failures after the webhook was acknowledged (reply delivery, the turn, an approval). Default: `console.error`. */
   onError?: ChannelErrorHandler;
+}
+
+/** Whether a delivery id was taken before (and records it): in `store`, or in memory for an hour. */
+function deliveryCheck(store: DeliveryStore | undefined): (id: string) => boolean | Promise<boolean> {
+  return store ? (id) => id !== '' && store.seen(id) : deliveryLog();
 }
 
 /** A GitHub comment event, as `githubChannel()` reads it. */
@@ -247,7 +260,7 @@ export function githubChannel(options: GitHubChannelOptions): Channel<GitHubComm
   const prompts = new Map<string, string>();
   const questions = new Map<string, string>();
   /** Eve CH-F8: deliveries this channel already took. */
-  const delivered = deliveryLog();
+  const delivered = deliveryCheck(options.deliveries);
   /** Approval ids this channel already passed on as a decision. */
   const decided = new Set<string>();
 
@@ -432,7 +445,7 @@ export function githubChannel(options: GitHubChannelOptions): Channel<GitHubComm
       respond(200, { ok: true }); // GitHub gives a webhook 10 seconds and does not retry
       // Eve CH-F8: a redelivery ("Redeliver" in the app settings, or a timed-out delivery) keeps its delivery id: run it once.
       const delivery = req.headers['x-github-delivery'];
-      if (typeof delivery === 'string' && delivered(delivery)) return null;
+      if (typeof delivery === 'string' && (await delivered(delivery))) return null;
       const kind = req.headers['x-github-event'];
       if (kind === 'pull_request') {
         const pr = options.pullRequestOpened ? readPullRequestOpened(JSON.parse(req.text || '{}') as Payload) : null;

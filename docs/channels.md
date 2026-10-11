@@ -362,8 +362,8 @@ the `prompt` option (or the first string option) is the message.
 
 - Every request's `X-Signature-Ed25519` / `X-Signature-Timestamp` is verified
   over `timestamp + body`; a missing or bad signature, or a timestamp more
-  than five minutes from local time (a replayed request), answers 401, as
-  Discord requires. `PING` is answered with `PONG`.
+  than five minutes old or more than a minute ahead of local time (a replayed
+  request), answers 401, as Discord requires. `PING` is answered with `PONG`.
 - A command is acknowledged at once with a deferred response (within Discord's
   3-second limit); the reply then edits the original response
   (`PATCH /webhooks/{applicationId}/{token}/messages/@original`). Text over
@@ -528,7 +528,18 @@ so it also runs on Workers.
   waits 10 seconds and does not retry, and a slow reply is posted as a new
   comment. A `ping` is acknowledged without a turn. A redelivery (the same
   `X-GitHub-Delivery`, e.g. "Redeliver" in the app settings) is acknowledged
-  and not run again; ids are kept in memory for an hour.
+  and not run again; ids are kept in memory for an hour, which a restart or a
+  second replica does not see. Pass `deliveries` (a `DeliveryStore`, whose
+  `seen(id)` records an id and resolves whether it was there before) to keep
+  them somewhere shared and durable, e.g. Redis `SET NX EX`:
+
+  ```ts
+  import { githubChannel, type DeliveryStore } from '@lousho/build-ai-agent';
+
+  const seenIds = new Set<string>(); // stands in for Redis or a database table
+  const deliveries: DeliveryStore = { seen: (id) => seenIds.has(id) || (seenIds.add(id), false) };
+  const github = githubChannel({ webhookSecret: process.env.GITHUB_WEBHOOK_SECRET ?? '', botName: 'my-agent', token: process.env.GITHUB_TOKEN, deliveries });
+  ```
 - A comment on an issue, on a pull request (the conversation tab) or a review
   comment (on a line of the diff) that contains `@<botName>` as a whole word
   (case-insensitive) starts a turn, with the mention removed from the text. Once

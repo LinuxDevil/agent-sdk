@@ -548,6 +548,7 @@ export class WebhookTriggerAdapter implements TriggerAdapter<http.ServerResponse
 
 // @public @deprecated
 export interface WebhookTriggerAdapterOptions {
+    allowUnauthenticated?: boolean;
     auth?: WebhookAuth;
     host?: string;
     logger?: Logger;

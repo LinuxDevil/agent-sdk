@@ -26,6 +26,8 @@ import type { WebhookAuth } from '../webhookAuth';
 import { toChannelRequest } from '../../channels/defineChannel';
 import { readRawBody, PayloadTooLargeError } from '../../server/chatRoutes';
 import { webhookChannel, type WebhookChannel } from '../../channels/webhookChannel';
+import { hostHeaderAllowed, isLoopbackHost } from '../../server/hostCheck';
+import { SDKError } from '../../execution/errors';
 
 /**
  * Options for {@link WebhookTriggerAdapter}.
@@ -35,7 +37,11 @@ import { webhookChannel, type WebhookChannel } from '../../channels/webhookChann
 export interface WebhookTriggerAdapterOptions {
   /** Port to listen on. Defaults to 0 (OS-assigned ephemeral port - inspect `handle.port` after `listen()`). */
   port?: number;
-  /** Host to bind to. Defaults to '0.0.0.0'. */
+  /**
+   * Host to bind to. Defaults to `'127.0.0.1'` (this machine only). A
+   * non-loopback host (e.g. `'0.0.0.0'`) needs `auth`, or
+   * `allowUnauthenticated: true`.
+   */
   host?: string;
   /** Only requests to this path are handled; everything else gets a 404. Defaults to '/'. */
   path?: string;
@@ -52,6 +58,12 @@ export interface WebhookTriggerAdapterOptions {
    * ```
    */
   auth?: WebhookAuth;
+  /**
+   * Listen on a non-loopback `host` without `auth`: anyone who can reach the
+   * port can then run your agent. Default `false`, which makes the
+   * constructor throw `LOUSHO_TRIGGER_INVALID` for that configuration.
+   */
+  allowUnauthenticated?: boolean;
   /** Receives auth failures and the "no auth configured" warning. Defaults to a no-op logger. */
   logger?: Logger;
 }
@@ -66,6 +78,8 @@ export interface WebhookTriggerHandle extends TriggerHandle {
   readonly port: number;
 }
 
+const DEFAULT_HOST = '127.0.0.1';
+
 function writeJson(res: http.ServerResponse, status: number, value: unknown): void {
   res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(value));
 }
@@ -74,6 +88,9 @@ type WebhookOnEvent = (input: string, context: TriggerContext) => Promise<Execut
 
 interface WebhookRuntime {
   path: string;
+  /** The bound host, and whether requests are authenticated: an open loopback listener refuses browser and rebound requests. */
+  host: string;
+  open: boolean;
   onEvent: WebhookOnEvent;
   channel: WebhookChannel;
   logger: Logger;
@@ -116,11 +133,13 @@ async function handleWebhookRequest(
     writeJson(res, 404, { error: 'Not found' });
     return;
   }
+  // Without auth on loopback, a web page must not reach the agent: not through DNS rebinding (a foreign
+  // `Host`) and not with a cross-site POST (a webhook sender sends no `Origin`).
+  if (runtime.open && (!hostHeaderAllowed(req.headers.host, runtime.host) || req.headers.origin !== undefined)) {
+    writeJson(res, 403, { error: 'Forbidden' });
+    return;
+  }
   await respondWithAgentResult(runtime, req, res);
-}
-
-function isLoopbackHost(host: string): boolean {
-  return host === 'localhost' || host === '::1' || host === '[::1]' || /^127\./.test(host);
 }
 
 /**
@@ -136,6 +155,14 @@ export class WebhookTriggerAdapter implements TriggerAdapter<http.ServerResponse
   private readonly channel: WebhookChannel;
 
   constructor(private readonly options: WebhookTriggerAdapterOptions = {}) {
+    const host = options.host ?? DEFAULT_HOST;
+    if (!options.auth && !options.allowUnauthenticated && !isLoopbackHost(host)) {
+      throw new SDKError(
+        `WebhookTriggerAdapter: refusing to listen on ${host} without \`auth\`: anyone who can reach it could run your agent. ` +
+          "Configure options.auth (hmac, bearer or custom), bind '127.0.0.1', or pass allowUnauthenticated: true.",
+        'LOUSHO_TRIGGER_INVALID'
+      );
+    }
     this.channel = webhookChannel({ auth: options.auth });
   }
 
@@ -152,9 +179,10 @@ export class WebhookTriggerAdapter implements TriggerAdapter<http.ServerResponse
     agent: RunnableAgent,
     onEvent: WebhookOnEvent
   ): WebhookTriggerHandle {
-    const host = this.options.host ?? '0.0.0.0';
+    const host = this.options.host ?? DEFAULT_HOST;
     const logger = this.options.logger ?? noopLogger;
-    const runtime: WebhookRuntime = { path: this.options.path ?? '/', onEvent, channel: this.channel, logger };
+    const open = !this.options.auth && isLoopbackHost(host);
+    const runtime: WebhookRuntime = { path: this.options.path ?? '/', host, open, onEvent, channel: this.channel, logger };
     this.warnIfUnauthenticated(host, logger);
 
     const server = http.createServer((req, res) => {

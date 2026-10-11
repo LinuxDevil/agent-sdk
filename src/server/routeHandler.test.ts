@@ -260,12 +260,20 @@ describe('createRouteHandler (LOU-P4)', () => {
       expect(continued.find((e) => e.type === 'tool.done')).toMatchObject({ result: 'shipped' });
     });
 
-    it('authorizeSession enforces ownership; without it any authenticated caller may use a session', async () => {
+    it('by default a session belongs to its first principal; authorizeSession replaces that rule', async () => {
       const { handler } = authed(['Hi Alice.', 'follow-up']);
       await (await handler(post('/api/agent/chat', { sessionId: 'mine', input: 'hi' }, as('alice')))).text();
-      // default: route auth is the only gate — guard guessable session ids with authorizeSession
-      expect((await handler(get('/api/agent/chat/mine', as('bob')))).status).toBe(200);
+      // default: alice used it first, so bob can neither read nor continue it
+      const read = await handler(get('/api/agent/chat/mine', as('bob')));
+      expect(read.status).toBe(403);
+      expect(await read.json()).toMatchObject({ code: 'LOUSHO_SESSION_FORBIDDEN' });
+      expect((await handler(post('/api/agent/chat', { sessionId: 'mine', input: 'mine now' }, as('bob')))).status).toBe(403);
       expect((await handler(get('/api/agent/chat/mine', as('alice')))).status).toBe(200);
+
+      // the opt-out: every authenticated caller may use every session
+      const shared = authed(['a'], { authorizeSession: () => true });
+      await (await shared.handler(post('/api/agent/chat', { sessionId: 'team', input: 'hi' }, as('alice')))).text();
+      expect((await shared.handler(get('/api/agent/chat/team', as('bob')))).status).toBe(200);
 
       const owned = authed(['a', 'b'], {
         authorizeSession: ({ principal, sessionId }) => sessionId === `u-${principal?.id}`,

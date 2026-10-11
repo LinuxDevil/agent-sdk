@@ -180,6 +180,8 @@ describe('--traces[=dir] (#282)', () => {
     expect(parseChatArgs(['a.yaml', '--traces=./t']).traces).toBe('./t');
     expect(parseDevArgs(['a.yaml', '--traces', '--port', '4000'])).toMatchObject({ path: 'a.yaml', port: 4000, traces: true });
     expect(parseDevArgs(['a.yaml', '--traces=out/t']).traces).toBe('out/t');
+    expect(parseDevArgs(['a.yaml', '--allowed-hosts', 'devbox.local, agent.test']).allowedHosts).toEqual(['devbox.local', 'agent.test']);
+    expect(parseDevArgs(['a.yaml']).allowedHosts).toBeUndefined();
   });
 
   it('rejects an empty directory and leaves what follows -- alone', () => {

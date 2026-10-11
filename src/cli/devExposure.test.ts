@@ -7,6 +7,6 @@ describe('lousho dev --host warning', () => {
   });
 
   it.each(['0.0.0.0', '::', '192.168.1.20'])('warns that %s exposes an unauthenticated agent', (host) => {
-    expect(exposureWarning(host, 3737)).toMatch(new RegExp(`no authentication, so anyone who can reach ${host.replace(/\./g, '\\.')}:3737`));
+    expect(exposureWarning(host, 3737)).toMatch(new RegExp(`no authentication.*anyone who can reach ${host.replace(/\./g, '\\.')}:3737`));
   });
 });

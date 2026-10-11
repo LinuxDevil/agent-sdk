@@ -275,12 +275,18 @@ permission rules and sub-agents see it too: see
 
 ## Security notes
 
-- **Route auth does not check who owns a session** unless you pass
-  `authorizeSession`. Without it, any caller who passes auth and knows a session
-  id can read its transcript (`GET /chat/:id`) and continue it. Pass
-  `authorizeSession`, use session ids that cannot be guessed, or derive them
-  from the principal on your side. See
+- **Sessions belong to their first caller by default.** Once route auth
+  accepted a caller, a session id is bound to the first principal that reads
+  or continues it, and any other principal gets `403`
+  (`LOUSHO_SESSION_FORBIDDEN`). That record lives in memory, per process (or
+  Worker isolate): a restart or a second replica forgets it, and the first
+  caller after that claims the session. With more than one instance, pass
+  `authorizeSession` that checks ownership against your own data. See
   [Who may use a session](#who-may-use-a-session).
+- **Cookies need CSRF protection, which the routes give by default.** A POST
+  must be JSON (`415` otherwise) and must not come from another site's page
+  (`403`, `LOUSHO_REQUEST_FORBIDDEN`). Keep your session cookie `SameSite=Lax`
+  or `Strict` as well. See [Cross-site requests](#cross-site-requests).
 - **Approvals.** A decision only reaches an approval of the session in the URL
   (another session's approval is a `404`). By default only the caller the run
   acts for may decide it. If an approval must come from someone else, such as a
@@ -405,12 +411,74 @@ belongs to that caller is used only for that caller's calls, whoever approves.
 
 ### Who may use a session
 
-`createRouteHandler()` and `createDeployedServer()` take `authorizeSession`.
-It is asked before a caller reads a session (`action: 'read'`), sends it a
-turn (`'chat'`, also `POST <basePath>` and the `useChat` endpoint) or decides
-one of its approvals (`'approve'`). Return `false` for a `403`
-(`LOUSHO_SESSION_FORBIDDEN`). Without it every caller route auth accepted may
-use every session.
+By default, once route auth accepted a caller, a session belongs to the first
+principal that reads it or sends it a turn (principals are compared by `id`,
+`type`, `authenticator` and `issuer`). Another principal gets `403`
+(`LOUSHO_SESSION_FORBIDDEN`) on `GET /chat/:id`, `POST /chat`, `POST
+<basePath>` and the `useChat` endpoint; decisions on its approvals are left to
+`authorizeApproval` (below). A route without auth checks nothing. All callers
+of one `apiToken()` are one principal, so they share every session.
+
+The owner is remembered in memory, per agent: a restart, a second replica or
+a Worker isolate that is recycled forgets it, and the next caller claims the
+session. So for anything that runs on more than one instance, check ownership
+yourself.
+
+`createRouteHandler()` and `createDeployedServer()` take `authorizeSession`,
+which replaces that default. It is asked before a caller reads a session
+(`action: 'read'`), sends it a turn (`'chat'`, also `POST <basePath>` and the
+`useChat` endpoint) or decides one of its approvals (`'approve'`). Return
+`false` for a `403` (`LOUSHO_SESSION_FORBIDDEN`). Deriving the id from the
+caller keeps the check stateless:
+
+```ts
+import { createAgent, createRouteHandler, memoryStore } from '@lousho/build-ai-agent';
+import { jwt } from '@lousho/build-ai-agent/auth';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', store: memoryStore() });
+
+export const { GET, POST } = createRouteHandler(agent, {
+  auth: jwt({ secret: process.env.JWT_SECRET!, issuer: 'https://auth.example.com', audience: 'agent-api' }),
+  // Session ids are `<user id>-<anything>`: a user can only reach their own.
+  authorizeSession: ({ principal, sessionId }) => sessionId.startsWith(`${principal?.id}-`),
+});
+```
+
+`authorizeSession: () => true` lets every authenticated caller use every
+session (the behavior before this default).
+
+### Cross-site requests
+
+A browser sends cookies with requests that another site's page makes, so with
+cookie-based auth a page on `evil.example` could otherwise start a turn or
+approve a call as your user. The session routes refuse that by default:
+
+- a POST whose `Origin` is not the server's own (its `Host`, or the
+  `X-Forwarded-Host` a proxy in front sets) and not in `allowedOrigins`, or
+  that the browser marked `Sec-Fetch-Site: cross-site`, is `403`
+  (`LOUSHO_REQUEST_FORBIDDEN`). Requests without an `Origin` (curl, a server,
+  another agent) are not affected;
+- a POST body must be `Content-Type: application/json` (`415`,
+  `LOUSHO_UNSUPPORTED_MEDIA_TYPE` otherwise): forms and `text/plain` are what
+  another site can send without a CORS preflight.
+
+A front end on another origin is listed in `allowedOrigins` (it also needs
+CORS headers, which your host adds); `allowedOrigins: ['*']` turns the origin
+check off and `requireJsonBody: false` the content-type one. `allowedHosts`
+(off by default) refuses any request whose `Host` is not listed, against DNS
+rebinding of a server on a private address. All three work on
+`createRouteHandler()` and `createDeployedServer()`.
+
+```ts
+import { createAgent, createRouteHandler } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini' });
+
+export const { GET, POST } = createRouteHandler(agent, {
+  auth: process.env.AGENT_TOKEN,
+  allowedOrigins: ['https://app.example.com'],
+});
+```
 
 ### Who may decide an approval
 
