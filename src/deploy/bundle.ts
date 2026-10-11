@@ -114,7 +114,7 @@ export function workerSandboxShimPlugin(): Plugin {
  * what `createAgent()` reaches. A Node builtin imported anywhere else (a
  * provider, a tool) is not shimmed, so the build's `node:` leak check fails it.
  */
-export const NODE_SHIMMED_IMPORTERS = ['createAgent', 'session/sessionStore', 'storage/fileNames', 'session/AgentSession', 'projectInstructions', 'tools/mcp/connect', 'skills/withSkills', 'storage/fsRetry'];
+export const NODE_SHIMMED_IMPORTERS = ['createAgent', 'session/sessionStore', 'storage/fileNames', 'session/AgentSession', 'projectInstructions', 'tools/mcp/connect', 'skills/withSkills', 'storage/fsRetry', 'storage/atomicFile', 'storage/fileLock'];
 
 /**
  * esbuild plugin (cloudflare-worker target only) that redirects the `node:*`

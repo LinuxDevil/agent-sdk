@@ -213,6 +213,35 @@ export function describeCheckpointStoreContract(name: string, factory: Factory<C
       await store.save('run-1', makeCheckpoint({ messages: convoWithBytes }));
       expectBytesRoundTrip((await store.load('run-1'))?.messages);
     });
+
+    it('run leases: one owner at a time, renewable, released or expired for the next', async () => {
+      const store = await factory();
+      if (!store.acquireLease || !store.releaseLease) return; // optional
+      // `claim:` owners are told apart by expiry only (no process to check on).
+      expect(await store.acquireLease('run-1', 'claim:a', 60_000)).toBe(true);
+      expect(await store.acquireLease('run-1', 'claim:b', 60_000)).toBe(false);
+      expect(await store.acquireLease('run-2', 'claim:b', 60_000)).toBe(true);
+      expect(await store.acquireLease('run-1', 'claim:a', 60_000)).toBe(true); // renewed
+      await store.releaseLease('run-1', 'claim:b'); // not the holder: no effect
+      expect(await store.acquireLease('run-1', 'claim:b', 60_000)).toBe(false);
+      await store.releaseLease('run-1', 'claim:a');
+      expect(await store.acquireLease('run-1', 'claim:b', 1)).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(await store.acquireLease('run-1', 'claim:c', 60_000)).toBe(true); // b's expired
+      expect(await store.load('run-1')).toBeNull(); // a lease is not a checkpoint
+    });
+
+    it('rejects ids no backend can store, the same way on every backend', async () => {
+      const store = await factory();
+      if (!store.acquireLease) return; // the built-in stores
+      for (const id of ['', '../x', 'a/b', '.hidden', 'trailing.', 'caf\u00e9', 'victim#history', 'x'.repeat(201)]) {
+        await expect(store.load(id)).rejects.toMatchObject({ code: 'LOUSHO_SESSION_ID_INVALID' });
+      }
+      const long = `${'X'.repeat(128)}.turn-12`;
+      await store.save(long, makeCheckpoint({ sessionId: long }));
+      expect((await store.load(long))?.sessionId).toBe(long);
+      if (store.list) expect((await store.list()).map((entry) => entry.sessionId)).toContain(long);
+    });
   });
 }
 

@@ -87,6 +87,17 @@ export const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX memory_vectors_created ON memory_vectors (scope_key, created_at);
   `,
+  // Run leases: who runs a checkpointed run now (owner, expiry, host), so two
+  // processes cannot resume one run at the same time. A new table.
+  `
+  CREATE TABLE leases (
+    id TEXT PRIMARY KEY,
+    owner TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    host TEXT
+  );
+  CREATE INDEX leases_expires_at ON leases (expires_at);
+  `,
 ];
 
 function readVersion(db: SqlDatabase): number {

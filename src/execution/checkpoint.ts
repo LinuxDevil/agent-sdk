@@ -8,7 +8,7 @@ import { readJSONAttachmentLocked, type StorageService } from '../storage/Storag
 import type { StepUsage } from '../models/usage';
 import type { CheckpointUsage } from './runUsage';
 import type { AgentFingerprint } from './agentFingerprint';
-import { ConfigurationError } from './errors';
+import { ConfigurationError, SDKError } from './errors';
 import type { ApprovalKind } from './ApprovalGate';
 import type { Principal } from '../auth/types';
 
@@ -154,6 +154,14 @@ export interface Checkpoint {
    */
   metadata?: Record<string, unknown>;
   /**
+   * Tool calls an approval resume started (approved calls) and whose results
+   * were not saved yet. A run resumed from this checkpoint does not run them
+   * again: each gets a `kind: 'interrupted'` error result saying it may or may
+   * not have taken effect (approved calls run at most once, see
+   * docs/durable-execution.md). Absent otherwise.
+   */
+  startedToolCallIds?: string[];
+  /**
    * Eve DUR-F17: present on a flow run's checkpoint (`FlowExecutor` with a
    * `checkpointStore` and `runId`): where the flow stands. Opaque to agent runs.
    */
@@ -174,6 +182,8 @@ export function pausedApprovalIds(checkpoint: Pick<Checkpoint, 'approvalId' | 'a
 export interface FlowCheckpointState {
   /** The flow's `code`; a resume with another flow is refused. */
   code: string;
+  /** A hash of the flow's step structure (types, ids, tools, order); a resume with a flow whose steps changed is refused. Absent on older checkpoints. */
+  structure?: string;
   /** The flow's variables after the last completed node. */
   variables: Record<string, unknown>;
   /** Structural ids (`0`, `0.1`, `0.1.2`, ...) of the nodes that completed, children of a completed node omitted. */
@@ -299,6 +309,20 @@ export interface CheckpointStore {
    * is built on it.
    */
   list?(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
+  /**
+   * Run lease (optional): atomically takes, or renews, the lease on `sessionId`
+   * for `owner` until `ttlMs` from now, unless another owner holds a lease that
+   * has not expired. Resolves `true` when `owner` holds it afterwards. A
+   * checkpointed run holds the lease on its id while it executes (renewing it
+   * every `ttlMs / 3`), so another process, replica or store object cannot
+   * resume the same run at the same time: it fails with `LOUSHO_SESSION_BUSY`
+   * before anything runs. A store without it runs without leases. The file,
+   * SQLite, KV (best effort) and in-memory stores implement it. See
+   * docs/durable-execution.md#run-leases.
+   */
+  acquireLease?(sessionId: string, owner: string, ttlMs: number): Promise<boolean>;
+  /** Releases `owner`'s lease on `sessionId`; a lease another owner holds is left alone. */
+  releaseLease?(sessionId: string, owner: string): Promise<void>;
 }
 
 /** Options for {@link CheckpointStore.list} (Eve DUR-F15). */
@@ -329,6 +353,80 @@ export function listCheckpoints(checkpoints: Iterable<readonly [string, Checkpoi
     if (!wanted || wanted.has(status)) entries.push({ sessionId, status, checkpoint });
   }
   return entries.sort((a, b) => (a.sessionId < b.sessionId ? -1 : a.sessionId > b.sessionId ? 1 : 0));
+}
+
+/**
+ * Parses a stored checkpoint, throwing `LOUSHO_CHECKPOINT_CORRUPT` (naming
+ * `id` and `where`) when it is not valid JSON or not a checkpoint - a write
+ * cut short by a crash or power loss - instead of a raw `SyntaxError`.
+ */
+export function parseCheckpoint(raw: string, id: string, where: string, reviver?: (key: string, value: unknown) => unknown): Checkpoint {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw, reviver);
+  } catch (error) {
+    throw checkpointCorrupt(id, where, 'it is not valid JSON', error);
+  }
+  return assertCheckpointShape(parsed, id, where);
+}
+
+/** `value` when it has a checkpoint's shape (an object with a `messages` array), else `LOUSHO_CHECKPOINT_CORRUPT`. */
+function assertCheckpointShape(value: unknown, id: string, where: string): Checkpoint {
+  const candidate = value as Partial<Checkpoint> | null;
+  if (typeof candidate !== 'object' || candidate === null || Array.isArray(candidate) || !Array.isArray(candidate.messages)) {
+    throw checkpointCorrupt(id, where, 'it is not a checkpoint object');
+  }
+  return candidate as Checkpoint;
+}
+
+function checkpointCorrupt(id: string, where: string, why: string, cause?: unknown): SDKError {
+  return new SDKError(
+    `The checkpoint of '${id}' in ${where} is corrupt: ${why} (a write cut short by a crash or power loss?). ` +
+      "Drop it with session.discardPending() / session.clear() (or checkpointStore.delete(id)); its run cannot be resumed.",
+    'LOUSHO_CHECKPOINT_CORRUPT',
+    cause === undefined ? undefined : { cause }
+  );
+}
+
+/** Whether `error` is the `LOUSHO_CHECKPOINT_CORRUPT` error of {@link parseCheckpoint}. */
+export function isCheckpointCorrupt(error: unknown): boolean {
+  return error instanceof SDKError && error.code === 'LOUSHO_CHECKPOINT_CORRUPT';
+}
+
+/**
+ * What a store's `list()` reports for a checkpoint it cannot read: an
+ * `'in-progress'` entry whose `lastError` (`LOUSHO_CHECKPOINT_CORRUPT`, not
+ * retryable) says why, so `agent.pending()` shows the run that `send()` /
+ * `resume()` fail on instead of hiding it.
+ */
+function corruptCheckpointEntry(id: string, error: unknown): [string, Checkpoint] {
+  return [
+    id,
+    {
+      agentId: '',
+      sessionId: id,
+      stepIndex: 0,
+      messages: [],
+      toolCalls: [],
+      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+      status: 'in-progress',
+      lastError: {
+        message: error instanceof Error ? error.message : String(error),
+        code: 'LOUSHO_CHECKPOINT_CORRUPT',
+        retryable: false,
+        at: new Date().toISOString(),
+      },
+    },
+  ];
+}
+
+/** A store's `list()` entry for `id`: the checkpoint `read()` parses, or {@link corruptCheckpointEntry} when it throws. */
+export function listedCheckpoint(id: string, read: () => Checkpoint): readonly [string, Checkpoint] {
+  try {
+    return [id, read()];
+  } catch (error) {
+    return corruptCheckpointEntry(id, error);
+  }
 }
 
 /**

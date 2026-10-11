@@ -35,6 +35,7 @@ export const open = unavailable;
 export const readdir = unavailable;
 export const realpath = unavailable;
 export const stat = unavailable;
+export const utimes = unavailable;
 export const tmpdir = unavailable;
 export const join = unavailable;
 export const resolve = unavailable;

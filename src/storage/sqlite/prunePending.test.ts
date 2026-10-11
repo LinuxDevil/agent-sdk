@@ -113,8 +113,10 @@ describe('SqliteStore.prune() and paused turns (Eve DUR-F6)', () => {
 
     const restarted = createAgent({ provider: mockModel(['Refund sent.', 'Refund sent.']), tools, store });
     await expect(restarted.approvals.resolve({ id: paused.approvalId!, approved: true })).rejects.toMatchObject({ code: 'LOUSHO_APPROVAL_ORPHANED' });
+    // The orphaned approval is withdrawn: no longer listed, and never refused (or resurrected) again.
+    expect(await restarted.approvals.list()).toEqual([]);
     const run = restarted.approvals.streamResolve({ id: paused.approvalId!, approved: true });
-    await expect(run.result).rejects.toMatchObject({ code: 'LOUSHO_APPROVAL_ORPHANED' });
+    await expect(run.result).rejects.toMatchObject({ code: 'LOUSHO_APPROVAL_NOT_FOUND' });
     expect(refunds).toEqual([]);
   });
 });

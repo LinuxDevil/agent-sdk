@@ -23,7 +23,7 @@ import type { AgentStore } from '../storage/agentStore';
 import type { OAuthTokenStore } from '../oauth/types';
 import type { TokenKeyInput } from '../oauth/tokenCipher';
 import { kvTokenStore } from './kvTokenStore';
-import { DEFAULT_KV_KEY_PREFIX, KVCheckpointStore, type KVBinding } from './kvCheckpointStore';
+import { DEFAULT_KV_KEY_PREFIX, KVCheckpointStore, settle, type KVBinding } from './kvCheckpointStore';
 import { fromKVJson, toKVJson } from './kvBytes';
 import { newId } from '../utils/id';
 
@@ -84,10 +84,12 @@ const CLAIM_TTL_SECONDS = 60;
 /**
  * Eve DUR-F9: KV has no compare-and-swap, so resolving claims the approval
  * first: it writes a random token under `<id>#claim` (unless a claim is
- * already there), reads it back, and only the request whose token survived
- * deletes the record and runs the call. That turns two concurrent decisions
- * (a double click, a retried webhook, two reviewers) into one in the common
- * case; it is not atomic - two requests at different edge locations within
+ * already there), waits a short settle window (`KV_SETTLE_MS`), reads it back,
+ * and only the request whose token survived (and that still finds the record)
+ * deletes the record and runs the call. Within one location that turns two
+ * concurrent decisions (a double click, a retried webhook, two reviewers) into
+ * exactly one, as long as KV answers within the settle window; it is not
+ * atomic across locations - two requests at different edge locations within
  * KV's propagation delay can still both win - so the approved tool also gets
  * the approval id as `ctx.approval.id`, an idempotency key for its side
  * effect (docs/cloudflare-workers.md).
@@ -116,7 +118,11 @@ class KVApprovalStore implements ApprovalStore {
     if ((await this.kv.get(this.claimKey(id))) !== null) return null;
     const token = newId('claim');
     await this.kv.put(this.claimKey(id), token, { expirationTtl: CLAIM_TTL_SECONDS });
+    // A concurrent caller that read no claim writes its token within the settle window; then only the last token wins.
+    await settle();
     if ((await this.kv.get(this.claimKey(id))) !== token) return null;
+    // The record must still be there: a caller that won earlier deletes it before its claim can be overwritten.
+    if ((await this.kv.get(`${this.prefix}${id}`)) === null) return null;
     await this.kv.delete(`${this.prefix}${id}`);
     return fromKVJson<ResolvedApproval>(raw);
   }
