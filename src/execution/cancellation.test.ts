@@ -338,7 +338,14 @@ describe('AgentExecutor cancellation (LOU-V1)', () => {
   });
 
   it('a delegated child agent is aborted together with its parent', async () => {
-    const child = scriptedProvider(hangUntilAborted);
+    const controller = new AbortController();
+    // Abort once the child is actually running, not on a timer: on a busy runner a
+    // fixed delay can fire before the delegated call starts.
+    const child = scriptedProvider((options: GenerateOptions) => {
+      const pending = hangUntilAborted(options);
+      setTimeout(() => controller.abort(), 0);
+      return pending;
+    });
     const childAgent = createAgent({ name: 'Child', provider: child.provider, description: 'Child agent' });
     const parent = scriptedProvider(async () => ({
       ...toolCallResult({
@@ -350,8 +357,6 @@ describe('AgentExecutor cancellation (LOU-V1)', () => {
         },
       }),
     }));
-    const controller = new AbortController();
-    setTimeout(() => controller.abort(), 20);
 
     const result = await AgentExecutor.execute({
       agent: agentWithTools(),
