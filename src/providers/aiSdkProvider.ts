@@ -450,9 +450,12 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
     return { passed, builtIn: tools.filter((tool) => tool.type !== 'custom') };
   }
 
-  /** The `toolChoice` this provider sends for the call's; the same one by default. */
-  protected toolChoiceFor(choice: GenerateOptions['toolChoice']): GenerateOptions['toolChoice'] {
-    return choice;
+  /**
+   * Whether this provider's package sends `toolChoice: 'none'` by dropping the
+   * tools; `'auto'` is sent instead then (see AnthropicProvider). False by default.
+   */
+  protected get dropsToolsForNone(): boolean {
+    return false;
   }
 
   /** Set by providers whose hostedToolsFor() maps the helpers (OpenAI, Anthropic). */
@@ -485,7 +488,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
       presencePenalty: options.presencePenalty,
       seed: options.seed,
       ...(options.stop?.length && { stopSequences: options.stop }),
-      ...toolChoiceOf(options, hostedTools, this.toolChoiceFor(options.toolChoice)),
+      ...toolChoiceOf(options, hostedTools, options.toolChoice === 'none' && this.dropsToolsForNone ? 'auto' : options.toolChoice),
       tools: convertTools(this.ai, options.tools),
       maxSteps: 1, // Single step - tool execution happens in AgentExecutor
       // The 'ai' SDK's own retries (its default is 2), off for a call that

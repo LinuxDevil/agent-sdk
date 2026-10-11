@@ -162,7 +162,7 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     configField: 'baseURL',
     envRequired: false,
     peers: OLLAMA_PEERS,
-    envDefaultModel: 'llama3.1',
+    envDefaultModel: 'llama3',
   },
   /**
    * H2: `pi/<pi-provider>/<model>` routes through `@earendil-works/pi-ai`.

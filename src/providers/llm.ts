@@ -423,6 +423,7 @@ export interface LLMProviderConfig {
   apiKey?: string;
   baseURL?: string;
   defaultModel?: string;
+  /** Request time limit in ms; the built-in providers' meaning is on `AiSdkProviderConfig.timeout`. */
   timeout?: number;
   maxRetries?: number;
   headers?: Record<string, string>;

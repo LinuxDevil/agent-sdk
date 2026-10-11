@@ -89,8 +89,8 @@ export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
    * rejects a transcript with tool blocks but no tools; `'auto'` keeps them
    * (the forced-answer call asks for no tools in its prompt and ignores any).
    */
-  protected toolChoiceFor(choice: GenerateOptions['toolChoice']): GenerateOptions['toolChoice'] {
-    return choice === 'none' && aiMajorOf(this.ai) !== 6 ? 'auto' : choice;
+  protected get dropsToolsForNone(): boolean {
+    return aiMajorOf(this.ai) !== 6;
   }
 
   /** Eve PROV-F4: cache breakpoints on Claude models unless the call says `promptCaching: false`. */

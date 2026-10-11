@@ -334,6 +334,7 @@ abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLM
     protected convertMessages(messages: Message[]): AiSdkMessage[];
     protected abstract createModel(modelId: string, options?: GenerateOptions): LanguageModel | Promise<LanguageModel>;
     get defaultModel(): string;
+    protected get dropsToolsForNone(): boolean;
     protected abstract readonly fallbackModel: string;
     protected fileMediaTypes(): readonly string[];
     generate(options: GenerateOptions): Promise<GenerateResult>;
@@ -356,7 +357,6 @@ abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLM
     abstract supportsStreaming(model: string): boolean;
     // (undocumented)
     abstract supportsTools(model: string): boolean;
-    protected toolChoiceFor(choice: GenerateOptions['toolChoice']): GenerateOptions['toolChoice'];
 }
 
 // @public
@@ -376,6 +376,7 @@ export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
     protected cachesPrompt(modelId: string, options: GenerateOptions): boolean;
     // (undocumented)
     protected createModel(modelId: string): Promise<LanguageModel>;
+    protected get dropsToolsForNone(): boolean;
     // (undocumented)
     protected readonly fallbackModel = "claude-sonnet-4-5";
     protected fileMediaTypes(): readonly string[];
@@ -389,7 +390,6 @@ export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
     supportsHostedTool(type: HostedToolType | 'custom'): boolean;
     supportsStreaming(_model: string): boolean;
     supportsTools(model: string): boolean;
-    protected toolChoiceFor(choice: GenerateOptions['toolChoice']): GenerateOptions['toolChoice'];
 }
 
 // @public
@@ -2015,7 +2015,6 @@ interface LLMProviderConfig {
     maxRetries?: number;
     // (undocumented)
     name?: string;
-    // (undocumented)
     timeout?: number;
 }
 
