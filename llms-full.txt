@@ -6165,7 +6165,7 @@ environment: `LOUSHO_MODEL` (a `'provider/model'` string) if set, otherwise
 the first provider whose variable is set, checked in this order:
 `OPENAI_API_KEY` (`openai/gpt-4o-mini`), `ANTHROPIC_API_KEY`
 (`anthropic/claude-sonnet-4-5`), `OPENROUTER_API_KEY`
-(`openrouter/openai/gpt-4o-mini`), `OLLAMA_BASE_URL` (`ollama/llama3`). If none
+(`openrouter/openai/gpt-4o-mini`), `OLLAMA_BASE_URL` (`ollama/llama3.1`). If none
 is set it throws an error listing exactly which options or variables fix it.
 
 Misconfiguration errors say how to fix themselves: a missing key names the
@@ -7492,8 +7492,12 @@ or pass your own `provider` instance.
 
 **Means:** a model call failed (`LLMProviderError`, and
 `CompactedLLMProviderError`, whose `compacted.category` says why:
-`rate-limit`, `timeout`, `context-length-exceeded`, `quota-exceeded`, `auth-failure`,
-`unknown`).
+`timeout`, `context-length-exceeded`, `quota-exceeded`, `auth-failure`,
+`unknown`; a `rate-limit` failure has its own code,
+[`LOUSHO_PROVIDER_RATE_LIMITED`](#lousho_provider_rate_limited)).
+An OpenAI-compatible response that reports a failure inside a 200 (OpenRouter's
+`finish_reason: "error"` or an `error` chunk mid-stream) fails as a retryable
+502 instead of returning the cut-off text.
 A context overflow is `context-length-exceeded` (not retryable) whatever the
 status, including llama.cpp / LM Studio's "exceeds the available context size"
 and "Context size has been exceeded", and whether it arrives from the request
@@ -7513,13 +7517,16 @@ transient failures, use `withRetry()` / `fallbackModels`
 
 ### LOUSHO_PROVIDER_RATE_LIMITED
 
-**Means:** a `RateLimitError`: the provider throttled the caller.
+**Means:** the provider throttled the caller: a model call failed with
+`compacted.category: 'rate-limit'` (a `CompactedLLMProviderError`, still an
+`LLMProviderError`), or a `RateLimitError`.
 
-**Fix:** retry after `error.retryAfter` seconds (`withRetry()` does this, up to
+**Fix:** retry after `compacted.retryAfterMs` (`withRetry()` does this, up to
 `backoff.maxMs`; a longer `Retry-After` fails at once with
 `compacted.retryAfterMs` set), or send fewer requests.
 
-**Example:** a 429 response.
+**Example:** a 429 response (OpenAI's out-of-credit `insufficient_quota` 429
+is `quota-exceeded`, so `LOUSHO_PROVIDER_REQUEST_FAILED`).
 
 ### LOUSHO_PEER_MISSING
 
@@ -13065,9 +13072,11 @@ const agent = createAgent({
 ```
 
 The `model` string and each fallback are resolved with the `ai` SDK's own
-retries off, so `retry` is the only retry layer. A `provider` instance is
-wrapped only when you set `retry`, and then its own `ai` SDK retries are off
-too (`retry: false` sends each call once). A streamed step that fails before
+retries off, so `retry` is the only retry layer. A built-in provider instance
+and a `fromAiSdk()` provider are wrapped the same way (with their own
+`maxRetries`, default 2, when `retry` is unset), and their `ai` SDK retries
+are then off (`retry: false` sends each call once). Any other `provider`
+instance is wrapped only when you set `retry`. A streamed step that fails before
 any text or tool call (after reasoning only) is retried as well. `agent.stream()` reports `provider.retry`
 and `provider.fallback` events. Details in
 [Provider retries and fallback](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#provider-retries-and-fallback).
@@ -13209,6 +13218,20 @@ instance as `provider`, or register a factory with
 model string (`model: 'name/model-id'`), and the factory receives `defaultModel` and reads its
 own credentials.
 
+### Request timeout
+
+The built-in providers' `timeout` option (ms) is the longest wait for a model
+response to start and between two of its chunks. A call that waits longer
+fails with a retryable `TimeoutError` (`compacted.category: 'timeout'`), which
+`retry` retries. It never cuts off an answer that keeps streaming. The default
+is 10 minutes; `0` or `Infinity` turns it off.
+
+```ts
+import { OpenAIProvider } from '@lousho/build-ai-agent';
+
+const provider = new OpenAIProvider({ apiKey: process.env.OPENAI_API_KEY!, timeout: 60_000 });
+```
+
 ### Slow local models: a custom `fetch`
 
 `OpenAIProvider`, `AnthropicProvider`, `OpenRouterProvider` and
@@ -13232,6 +13255,7 @@ const agent = createAgent({
     baseURL: 'http://localhost:1234/v1',
     defaultModel: 'qwen3-32b',
     fetch: (input, init) => fetch(input, { ...init, dispatcher } as RequestInit),
+    timeout: 15 * 60_000, // the provider's own limit (default 10 minutes) too
   }),
   retry: { maxRetries: 2 },
 });
@@ -13265,7 +13289,7 @@ your installed `ai`, so install the provider package major that pairs with it
 | `fileMediaTypes` | `[]` | Media types sent as `file` parts. Images are always sent. |
 | `unsupportedFiles` | `'error'` | Any other file part: reject the call with `LOUSHO_UNSUPPORTED_CONTENT` (`'error'`), or send a text note in its place (`'text-note'`). |
 | `replaysReasoning` | `false` | Send signed reasoning blocks back on assistant turns (Anthropic models). |
-| `maxRetries` | `0` | The AI SDK's own retries per call; `createAgent()` retries through its `retry` option. |
+| `maxRetries` | `0` (direct calls), `2` (under `createAgent()`) | Called directly, the AI SDK's own retries per call. Under `createAgent()` without `retry`, the retries of the `withRetry()` it wraps the provider in. |
 
 The provider serves the one model it wraps, with tools and streaming on, and
 leaves reasoning settings to the model you built (the `reasoning` option is not
@@ -13380,9 +13404,10 @@ const agent = createAgent({
 **The `openai/<model>` string with `OPENAI_BASE_URL`.** `@ai-sdk/openai` reads
 `OPENAI_BASE_URL`, so `createAgent({ model: 'openai/qwen3-8b' })` with
 `OPENAI_BASE_URL=http://localhost:1234/v1` and a dummy `OPENAI_API_KEY=any`
-calls the local server without code changes. That route always uses the
-Responses API, so it works only with servers that implement `/v1/responses`
-(LM Studio does); for the others construct `OpenAIProvider` with `api: 'chat'`.
+calls the local server without code changes. That route uses the Responses
+API unless `LOUSHO_OPENAI_API=chat` is set too, which selects Chat Completions
+for every `OpenAIProvider` without an explicit `api` (what vLLM, llama.cpp and
+Ollama's `/v1` need).
 
 **Any AI SDK model.** `fromAiSdk()` wraps a Chat Completions model built with
 `@ai-sdk/openai` directly (or `@ai-sdk/openai-compatible`, if you use it):
@@ -14302,7 +14327,9 @@ How it behaves:
   `fetch`, and delegated child runs (the `task` tool) are aborted along
   with their parent.
 - An aborted run **resolves** (it does not reject) with
-  `finishReason: 'aborted'` and the messages and steps so far. A rejection
+  `finishReason: 'aborted'` and the messages and steps so far. A streamed
+  model call cut off by the abort leaves the text it streamed as
+  `result.text` (and as an assistant message marked `interrupted`). A rejection
   caused by the abort, such as an `AbortError`, is not treated as a failure:
   it is not retried by the provider retry and fallback wrappers and is not
   compacted into a provider error.
@@ -14311,7 +14338,9 @@ How it behaves:
   call is abandoned at the abort (its late reply, and anything it streams
   afterwards, is dropped) and the run ends `'aborted'`. A tool that ignores
   its `abortSignal` is waited for; the run then ends `'aborted'` without
-  another model call.
+  another model call. `defineTool({ timeoutMs })` bounds a tool's call: one
+  still running then fails with a tool error the model sees, and a run
+  aborted while such a call runs stops waiting for it.
 - `result.abortReason` says why: the signal's reason as `{ name, message }`,
   `name` being `'TimeoutError'` for `AbortSignal.timeout()`, `'AbortError'`
   for `controller.abort()` (with the text of a string reason, e.g.
@@ -17295,6 +17324,7 @@ With many tools, mark them `deferLoading` so the model finds them with a built-i
 | `annotations` | no | MCP hints (`readOnlyHint`, `destructiveHint`, ...), stored as `metadata.mcp.annotations`. `readOnlyHint: true` lets the tool run in [plan mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md#which-tools-are-read-only). |
 | `deferLoading` | no | Withhold the tool's definition from the model until it finds the tool with `tool_search`. See [Tool search](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tool-search.md). |
 | `editsFiles` | no | The tool edits files: [`permissionMode: 'acceptEdits'`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md#file-edits-the-editsfiles-marker) runs its calls without asking. Stored as `metadata.editsFiles`. |
+| `timeoutMs` | no | The longest a call may run, in ms. A call still running then fails with a tool error the model sees, its `abortSignal` is aborted, and the run goes on without it. Not applied to a streaming (`async function*`) tool. |
 | `requiresSandbox` | no | Run the tool through the configured `SandboxAdapter` instead of in-process (needs `sandboxExecute`). See [Guardrails and sandboxing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md#sandboxed-tools). |
 | `sandboxExecute(args, sandbox)` | no | The sandboxed execution path used when `requiresSandbox` is true. |
 
