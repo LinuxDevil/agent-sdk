@@ -34,26 +34,31 @@ export function idFromCaseSafeName(name: string): string {
   return name.replace(/\^([a-z])/g, (_, letter: string) => letter.toUpperCase());
 }
 
-/**
- * The path of `<legacyName>.json` in `dir` when it is a file written before
- * case-safe names: it differs from `<name>.json` and the directory lists exactly
- * that name (case included). `undefined` otherwise, or when `dir` is missing.
- */
-export async function findLegacyFile(dir: string, name: string, legacyName: string): Promise<string | undefined> {
-  if (legacyName === name) return undefined;
-  const file = `${legacyName}.json`;
-  let entries: string[];
+/** The `<legacy name>.json` files in `dir` among `legacyNames` (other than `<name>.json`), listed by exactly that name, first ones first. */
+async function legacyFiles(dir: string, name: string, legacyNames: string | readonly string[]): Promise<string[]> {
+  const candidates = (typeof legacyNames === 'string' ? [legacyNames] : legacyNames).filter((legacy) => legacy !== name);
+  if (candidates.length === 0) return [];
+  let entries: Set<string>;
   try {
-    entries = await readdir(dir);
+    entries = new Set(await readdir(dir));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
     throw error;
   }
-  return entries.includes(file) ? join(dir, file) : undefined;
+  return candidates.filter((legacy) => entries.has(`${legacy}.json`)).map((legacy) => join(dir, `${legacy}.json`));
 }
 
-/** After a save under the case-safe name, remove the legacy file it replaces (if any). */
-export async function removeLegacyFile(dir: string, name: string, legacyName: string): Promise<void> {
-  const legacy = await findLegacyFile(dir, name, legacyName);
-  if (legacy) await rm(legacy, { force: true });
+/**
+ * The path of `<legacyName>.json` in `dir` (of the first of several legacy
+ * names that has one) when it is a file written under an earlier name: it
+ * differs from `<name>.json` and the directory lists exactly that name (case
+ * included). `undefined` otherwise, or when `dir` is missing.
+ */
+export async function findLegacyFile(dir: string, name: string, legacyNames: string | readonly string[]): Promise<string | undefined> {
+  return (await legacyFiles(dir, name, legacyNames))[0];
+}
+
+/** After a save under the current name, remove the legacy files it replaces (if any). */
+export async function removeLegacyFile(dir: string, name: string, legacyNames: string | readonly string[]): Promise<void> {
+  for (const legacy of await legacyFiles(dir, name, legacyNames)) await rm(legacy, { force: true });
 }

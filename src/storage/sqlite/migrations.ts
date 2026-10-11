@@ -98,6 +98,14 @@ export const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX leases_expires_at ON leases (expires_at);
   `,
+  // Run leases name the holder's process (PID namespace and start time), so a
+  // lease of another container with the same hostname is never taken over
+  // early, and the lease period, for the clock-skew grace (leaseRecord.ts).
+  `
+  ALTER TABLE leases ADD COLUMN pid_space TEXT;
+  ALTER TABLE leases ADD COLUMN pid_start TEXT;
+  ALTER TABLE leases ADD COLUMN ttl_ms INTEGER;
+  `,
 ];
 
 function readVersion(db: SqlDatabase): number {

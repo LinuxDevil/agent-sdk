@@ -9,7 +9,7 @@ import type { Message } from '../providers/llm';
 import { SDKError } from '../execution/errors';
 import { assertSessionId } from './sessionId';
 import { findLegacyFile, removeLegacyFile } from '../storage/fileNames';
-import { fileNameOf, readTextFile, writeFileAtomic } from '../storage/atomicFile';
+import { fileNameOf, legacyNamesOf, readTextFile, writeFileAtomic } from '../storage/atomicFile';
 import { withFileLock } from '../storage/fileLock';
 
 /** How bytes (image and file parts, LOU-V11) are saved in a JSON transcript: `{ "$bytes": "<base64>" }`. */
@@ -153,7 +153,7 @@ export class FileSessionStore implements SessionStore {
     let file = this.fileFor(id);
     let raw = await readTextFile(file);
     if (raw === undefined) {
-      const legacy = await findLegacyFile(this.dir, fileNameOf(id), id);
+      const legacy = await findLegacyFile(this.dir, fileNameOf(id), legacyNamesOf(id));
       if (legacy === undefined) return undefined;
       file = legacy;
       raw = await readTextFile(file);
@@ -175,12 +175,12 @@ export class FileSessionStore implements SessionStore {
     const file = this.fileFor(id);
     await mkdir(this.dir, { recursive: true });
     await writeFileAtomic(file, JSON.stringify(messages, encodeBytes));
-    await removeLegacyFile(this.dir, fileNameOf(id), id);
+    await removeLegacyFile(this.dir, fileNameOf(id), legacyNamesOf(id));
   }
 
   async delete(id: string): Promise<void> {
     await rm(this.fileFor(id), { force: true });
-    await removeLegacyFile(this.dir, fileNameOf(id), id);
+    await removeLegacyFile(this.dir, fileNameOf(id), legacyNamesOf(id));
   }
 
   /**
