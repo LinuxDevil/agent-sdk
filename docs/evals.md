@@ -336,6 +336,23 @@ jobs:
 Run `--tag smoke` on every pull request and the full set nightly; run
 `--judge` only where you accept real LLM calls and their cost.
 
+### Environment variables
+
+`lousho eval` passes its flags to the vitest process that runs the eval files
+through environment variables. You do not set them yourself; they are listed
+so you recognise them in a CI log or a custom runner:
+
+| Variable | Set from | Meaning |
+| --- | --- | --- |
+| `LOUSHO_EVAL_CASSETTES` | `--record`, `--replay`, CI | Cassette mode for the run: `record`, `replay` or `auto` (replay a case whose cassette exists, run the rest live). Under `replay` and `auto` a `model:` spec resolves without its API key. |
+| `LOUSHO_EVAL_DRIFT_DIR` | `--drift` | With `record`: where the drift run writes its cassettes instead of next to the eval file. |
+| `LOUSHO_EVAL_CONFIG` | `--config` | The config path, so re-record hints can repeat it. |
+| `LOUSHO_EVAL_TAGS` | `--tag` | Comma-separated tags; only cases with one of them run. |
+| `LOUSHO_EVAL_RESULTS` | always | The file each case appends its result line to, which `lousho eval` reads back (see [`lousho eval`](#lousho-eval)). |
+| `LOUSHO_EVAL_URL` | `--url` | Base URL of the deployed agent to run the cases against. |
+| `LOUSHO_EVAL_TOKEN` | `--token` | Bearer token for `--url`. |
+| `LOUSHO_ALLOW_LLM_JUDGE` | `--judge` | Set to `1` inside the judge runner. Without it, `llmJudge()` / `llmCritique()` called outside that runner throw `LOUSHO_EVALS_INVALID`, so a misplaced judge eval never makes a paid model call in a normal test run. |
+
 ## Record, replay and drift
 
 An eval against a real model is slow, costs money and needs a key; the same

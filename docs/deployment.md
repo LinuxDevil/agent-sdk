@@ -48,9 +48,11 @@ before. The optional `dockerode` sandbox is not bundled (it loads lazily), so a
 directory that uses `SubprocessSandbox` must install it where it runs.
 
 The Cloudflare Worker target builds a directory's config, `instructions.md`,
-`tools/` and `skills/`; it rejects `subagents/`, `schedules/`, `channels/`,
-`memory/`, `projectInstructions` and a `model` whose provider the Worker lacks,
-naming what to remove. Tools run inside the Worker with its rights, and may import
+`tools/`, `skills/`, `subagents/`, `schedules/` (as Worker cron triggers),
+`channels/`, `memory/` and `projectInstructions`; it rejects a `model` whose
+provider the Worker lacks, and the other features the Worker column of
+[What works and what does not](./cloudflare-workers.md#what-works-and-what-does-not)
+leaves out, naming what to remove. Tools run inside the Worker with its rights, and may import
 only a Worker-safe part of `@lousho/build-ai-agent`
 ([Cloudflare Workers](./cloudflare-workers.md#build-and-deploy) has the details):
 

@@ -69,6 +69,16 @@ API is locked to the browser tab you opened from the printed URL:
 
 From `curl`, pass the token: `curl -H "x-lousho-studio-token: $TOKEN" localhost:4750/agents`.
 
+`lousho studio` hands these to the processes it starts through environment
+variables; you only set them yourself when you start the studio server
+without the CLI:
+
+| Variable | Read by | Meaning |
+| --- | --- | --- |
+| `LOUSHO_STUDIO_TOKEN` | the studio API server | The access token. Unset, the server mints a random one per launch. |
+| `LOUSHO_STUDIO_ALLOWED_ORIGINS` | the studio API server | Comma-separated extra origins to accept besides the studio's own (dev mode sets the Vite dev server's). |
+| `LOUSHO_STUDIO_API_URL` | the Vite dev server (dev mode) | Where to proxy API calls (default `http://127.0.0.1:4750`). |
+
 ### Where agents live
 
 Agent specs and run state are stored under `.lousho/` in the directory you

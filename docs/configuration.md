@@ -201,12 +201,14 @@ for await (const event of agent.stream('Hello!')) {
   `fallbackModels` entry. createAgent builds those providers with the `ai`
   SDK's own retries off (`maxRetries: 0`), so retries happen in one place and
   the default `{ maxRetries: 2 }` makes as many calls as before.
-- A `provider` instance you pass keeps its own retry behaviour (for a built-in
-  provider, the `ai` SDK's `maxRetries`, default 2) unless you set `retry`.
-  With `retry` set, the instance is wrapped in `withRetry()` and that is the
-  only retry layer: a built-in provider's calls go out with the `ai` SDK's own
-  retries off, so `{ maxRetries: 2 }` makes at most 3 requests, and
-  `retry: false` sends each call once. `fallbackModels` work with it too.
+- A built-in provider instance (`OpenAIProvider`, `AnthropicProvider`,
+  `OpenRouterProvider`, `OllamaProvider`) or a `fromAiSdk()` provider is
+  wrapped in `withRetry()` too, even without `retry`: then with the provider's
+  own `maxRetries` (default 2), so its retries emit `provider.retry` events like
+  a model string's. Its calls go out with the `ai` SDK's own retries off, so
+  `{ maxRetries: 2 }` makes at most 3 requests, and `retry: false` sends each
+  call once. Any other `provider` instance (your own `LLMProvider`) is wrapped
+  only when you set `retry`. `fallbackModels` work with all of them.
 - `fallbackModels` are `provider/model` strings, resolved like `model` when the
   agent is created. The agent runs `withFallback([withRetry(primary), withRetry(fallback1), ...])`:
   every call starts with the primary model.
@@ -276,7 +278,12 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
   `LLMProviderConfig` fields of the same names.
 - `withRetry` is the only retry layer: the built-in providers send its calls
   with the `ai` SDK's own retries off, whatever their config's `maxRetries`.
-  That `maxRetries` (default 2) applies only to a provider used unwrapped.
+  That `maxRetries` (default 2) is the `ai` SDK's retry count for a provider
+  used unwrapped (called directly), and the `withRetry()` count `createAgent()`
+  uses for that provider when `retry` is unset.
+- A rate-limited call (a 429) fails, once the retries are used up, with
+  `LOUSHO_PROVIDER_RATE_LIMITED`; other failed calls with
+  `LOUSHO_PROVIDER_REQUEST_FAILED` (see [Errors](./errors.md)).
 - Each retry is recorded on the call's `chat` span as `lousho.retry.count` and
   `lousho.retry.errors` (see [Observability](./observability.md)).
 
@@ -348,11 +355,26 @@ createAgent({ model: 'openai/gpt-4o-mini', subagents: { researcher }, rateLimit:
 | `approvalStore` | Where a `needsApproval` pause is saved (default: `store.approvals`, else a per-agent `InMemoryApprovalStore`); see [Approvals](./approvals.md). |
 | `approve`  | `(call) => boolean`: decide approvals in code instead of pausing. |
 | `projectInstructions` | `true` or `{ cwd?, files? }`: append the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (off by default; see [Project instructions](#project-instructions)). |
-| `retry`    | `withRetry()` options for failed model calls, or `false`. Default `{ maxRetries: 2 }` for `model` strings; a `provider` instance is wrapped only when set. See [Provider retries and fallback](#provider-retries-and-fallback). |
+| `retry`    | `withRetry()` options for failed model calls, or `false`. Default `{ maxRetries: 2 }` for `model` strings, and the provider's own `maxRetries` (default 2) for a built-in or `fromAiSdk()` provider instance; any other `provider` instance is wrapped only when set. See [Provider retries and fallback](#provider-retries-and-fallback). |
 | `fallbackModels` | `provider/model` strings tried in order when the model still fails after its retries. |
 | `rateLimit` | `{ requestsPerMinute?, tokensPerMinute?, maxConcurrent? }` (or a `createRateLimiter()`): queue the agent's model calls, and its sub-agents' and handoff targets', under one budget. See [Rate limits](#rate-limits). |
 | `hooks`    | `AgentHook[]` run around every model call and tool call, in order, before the compaction hook (see [Hooks](./hooks.md)). |
 | `compaction` | `true` (prune old tool results above 90% of the context window) or `{ strategy?, thresholdPercent?, contextWindow?, protectedTokens?, reserveOutputTokens?, onCompaction?, summarizer? }`; `summarizer` (`'provider/model'` or an `LLMProvider`) selects the two-phase strategy. `stream()` reports `compaction.start` / `compaction.done`. See [Context compaction](./compaction.md#compacting-an-agent). |
+| `mcpServers` | MCP servers to connect, keyed by name (stdio `{ command, args?, env? }` or HTTP `{ url, headers? }`); their tools are named `<server>__<tool>` and ask for approval by default. `optional: true` leaves out a server that cannot connect. See [MCP](./mcp.md#use-mcp-servers-in-an-agent). |
+| `subagentOptions` | Background sub-agent options: `maxConcurrent` (default 3), `awaitBackgroundOnFinish` (default `false`) and `background: false` to offer only the `task` tool. See [Sub-agents](./sub-agents.md). |
+| `codeMode` | `true` or `CodeModeOptions`: adds a `run_code` tool that lets the model call the agent's tools from one short script in a QuickJS sandbox. See [Code mode](./code-mode.md). |
+| `guardrails` | Input, output and tool guardrails of each run; sub-agents inherit them. See [Guardrails](./guardrails.md). |
+| `maxToolResultChars` | The most characters of one tool result the model gets (default `50_000`; `Infinity` turns the cap off). See [Tools](./tools.md). |
+| `onAgentDrift` | What a resume does when the agent differs from the one that paused the run: `'warn'` (default), `'error'` or `'ignore'`. See [Durable execution](./durable-execution.md#resuming-with-a-changed-agent). |
+| `reasoning` | How much the model reasons before it answers: an effort, or `{ effort, budgetTokens, summary, force }`. See [Reasoning](./reasoning.md). |
+| `promptCaching` | `'auto'` (default) marks Anthropic `cache_control` breakpoints for Claude models; `false` marks none. See [Prompt caching](./models-and-cost.md#prompt-caching). |
+| `output` | A schema for the final reply; `send()` / `stream()` resolve with `result.object`. See [Structured output](./structured-output.md). |
+| `onEvent` | Called with every `AgentEvent` of the agent's runs, in the order `stream()` yields them. See [Listening without iterating](./streaming.md#listening-without-iterating). |
+| `exporter`, `captureContent`, `redactContent` | Tracing: a `TraceExporter` that receives a span for every run, whether message and tool content is recorded on the spans (off by default), and whether the deprecated content attributes are left out (default `true`). See [Observability](./observability.md#message-and-argument-content-is-opt-in). |
+| `approvalTtlMs` | How long a pause for approval stays decidable, in milliseconds; decided later, the call is denied. Unset: pauses never expire. See [Approval expiry](./approvals.md#approval-expiry). |
+| `askQuestion` | Adds the built-in `ask_question` tool; the run pauses until `agent.approvals.answer()`. Off by default. See [Asking the user a question](./approvals.md#asking-the-user-a-question). |
+| `permissions`, `permissionMode` | Permission rules (`allow` / `ask` / `deny`) and a named preset over them (`'default'`, `'plan'`, `'acceptEdits'` or `'dontAsk'`). See [Permission policies](./approvals.md#permission-policies) and [Permission modes](./permission-modes.md). |
+| `onPermissionDecision`, `onPermissionModeChange` | Audit callbacks: one entry per tool call's permission decision, and one per mode switch. See [Permission modes](./permission-modes.md). |
 
 With neither `model` nor `provider`, `createAgent()` resolves from the
 environment: `LOUSHO_MODEL` (a `'provider/model'` string) if set, otherwise

@@ -103,7 +103,7 @@ the community terms that named two of them — all runnable in the repo:
 ### Typed decisions ("System One" style)
 
 Some steps shouldn't generate text at all — they should *decide*: classify,
-route, score, verify. The pattern (TypeSafe's Jev makes a whole model of it)
+route, score, verify. The pattern
 is a typed probabilistic decision: unstructured state in, `{ action,
 confidence }` out, and the workflow branches on it. In Lousho that's an
 agent with an `output` schema feeding a flow's `oneOf` — and a confidence

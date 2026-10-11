@@ -70,7 +70,7 @@
 ## Examples
 
 - [agent-dir](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/agent-dir/README.md): An agent defined as a directory: `instructions.md` is the system prompt, `tools/word_count.ts` is a `defineTool()` tool, `skills/tone.md` is a skill and `agent.json` holds config. `index.ts` loads it with `loadAgentDir()` and swaps in a scripted `mockModel`, so it runs offline.
-- [coding-agent-workflows](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/coding-agent-workflows/README.md): A coding agent driven by deterministic workflows whose routing is a typed decision — the Lousho equivalent of TypeSafe's Jev / "System One" pattern (introducing-system-one-models-and-jev).
+- [coding-agent-workflows](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/coding-agent-workflows/README.md): A coding agent driven by deterministic workflows whose routing is a typed decision (the "System One" pattern).
 - [coding-harness](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/coding-harness/README.md): A small coding harness assembled from Lousho's building blocks in one `createCodingHarness()` function. It stacks the layers most open-source harnesses share (OpenCode, Codex, Pi, Crush) on one `createAgent()` call
 - [connectors](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/connectors/README.md): Connect an agent to external services (Google Docs, Slack, GitHub, Notion, …) the way Claude's connectors do: over MCP.
 - [data-analyst](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/data-analyst/README.md): The "chat with your database" archetype (Vanna, Databricks Genie, every text-to-SQL agent) assembled from one `createAgent()` call: a natural-language question comes in, `get_schema` lets the agent inspect the CREATE TABLEs and row counts, `run_query` executes the SELECT the agent writes, and the agent answers with real rows.
@@ -86,7 +86,7 @@
 - [slack-notifier](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/slack-notifier/README.md): Turns a raw event description into a short, Slack-ready notification message, built with `createAgent()`.
 - [support-bot](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/support-bot/README.md): A minimal customer-support agent built with `createAgent()`. Empathetic, concise, and always asks for an order number when a customer reports a problem.
 - [support-desk](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/support-desk/README.md): The production support archetype (OpenAI Swarm's shape) built on `createAgent({ handoffs })`: a triage agent classifies the request and hands the *whole conversation* to a specialist, which replies to the customer itself and owns every later turn until it hands back.
-- [waves](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/waves/README.md): WAVE engineering — Workers · Aggregate · Verify · Extend — the bounded-parallel pattern from the community "waves" workflows (rayfernando-skills, Wave-Engineering/claudecode-workflow).
+- [waves](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/waves/README.md): Waves — Workers · Aggregate · Verify · Extend — the bounded-parallel pattern from the community "waves" workflows (rayfernando-skills, Wave-Engineering/claudecode-workflow).
 - [workflow-router](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/workflow-router/README.md): An agent that classifies an incoming request into one of a fixed set of categories (`billing`/`technical`/`sales`), built with `createAgent()`.
 
 ## Optional

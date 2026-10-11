@@ -230,6 +230,20 @@ import { OpenAIProvider } from '@lousho/build-ai-agent';
 const provider = new OpenAIProvider({ apiKey: process.env.OPENAI_API_KEY!, timeout: 60_000 });
 ```
 
+### OpenAI response storage (`store`)
+
+On the Responses API (the default `api`, on `ai` 6/7), `OpenAIProvider` sends
+`store: false`, so OpenAI does not keep the calls server-side: the SDK sends
+the whole transcript on every call and never refers to a stored response.
+Pass `store: true` to have OpenAI store them (for its dashboard logs or
+evals). `store` is ignored with `api: 'chat'`.
+
+```ts
+import { OpenAIProvider } from '@lousho/build-ai-agent';
+
+const provider = new OpenAIProvider({ apiKey: process.env.OPENAI_API_KEY!, store: true });
+```
+
 ### Slow local models: a custom `fetch`
 
 `OpenAIProvider`, `AnthropicProvider`, `OpenRouterProvider` and

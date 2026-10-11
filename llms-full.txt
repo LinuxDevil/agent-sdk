@@ -278,9 +278,9 @@ Most examples run offline with a mock provider; see the
 | [evaluator-loop](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/evaluator-loop) | Writer/critic loop: `llmCritique()` scores a draft and returns feedback until it passes |
 | [data-analyst](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/data-analyst) | Text-to-SQL over `node:sqlite` with read-only enforcement — `DELETE`/`DROP` can never run |
 | [plan-mode](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/plan-mode) | Read and propose in `plan` mode, then apply edits after `setPermissionMode('acceptEdits')` |
-| [waves](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/waves) | WAVE engineering: bounded parallel workers, deterministic aggregate, typed verify gate, extend only on named gaps |
+| [waves](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/waves) | Waves: bounded parallel workers, deterministic aggregate, typed verify gate, extend only on named gaps |
 | [phase-pipeline](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/phase-pipeline) | Phase engineering on flows: discuss → spec → plan → implement → proof gate, `oneOf` retry ladder |
-| [coding-agent-workflows](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/coding-agent-workflows) | Jev-style typed decisions routing a coding agent between fix/refactor/explain workflows, confidence-floor escalation |
+| [coding-agent-workflows](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/coding-agent-workflows) | Typed decisions routing a coding agent between fix/refactor/explain workflows, confidence-floor escalation |
 | [connectors](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/connectors) | MCP connectors (Google Docs/Slack shape) run offline against a mock `serveMcp` stdio server |
 | [hostinger-deploy](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/hostinger-deploy) | Deploy an agent to a real Hostinger VPS: API check, docker build+ship over SSH, health + approval smoke tests |
 | [agent-dir](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/agent-dir) | An agent defined as a directory and loaded with `loadAgentDir()` |
@@ -326,13 +326,17 @@ notes. Known gaps:
 - File (non-image) parts reach the model only for media types the provider
   accepts (`application/pdf` for OpenAI and OpenRouter, `application/pdf` and
   `text/plain` for Anthropic, on `ai` 6/7); other types - and every file part
-  on `ai` 4 - are replaced by a text note ([Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md)).
+  on `ai` 4 - fail the call with `LOUSHO_UNSUPPORTED_CONTENT`, or are replaced
+  by a text note with `unsupportedFiles: 'text-note'`
+  ([Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md#multimodal-input)).
 - The `pi` provider and `piAgent()` are Node-only (they run Pi's engine);
   `lousho build --target=cloudflare-worker` refuses `pi/...` model specs and
   `engine: 'pi'` sub-agent directories.
-- The Cloudflare Worker target has a limited provider and tool set, and builds
-  agent directories without sub-agents, schedules, channels or memory slots
-  ([Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md)).
+- The Cloudflare Worker target has a limited provider and tool set (no
+  `ollama`, no `web-fetch`, no sandbox, no stdio MCP servers, no code mode,
+  cron schedules in UTC only); agent directories with sub-agents, schedules,
+  channels and memory slots build for it
+  ([Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md#what-works-and-what-does-not)).
 
 ## Contributing
 
@@ -1889,6 +1893,16 @@ API is locked to the browser tab you opened from the printed URL:
 - `GET /health` and the static client need no token.
 
 From `curl`, pass the token: `curl -H "x-lousho-studio-token: $TOKEN" localhost:4750/agents`.
+
+`lousho studio` hands these to the processes it starts through environment
+variables; you only set them yourself when you start the studio server
+without the CLI:
+
+| Variable | Read by | Meaning |
+| --- | --- | --- |
+| `LOUSHO_STUDIO_TOKEN` | the studio API server | The access token. Unset, the server mints a random one per launch. |
+| `LOUSHO_STUDIO_ALLOWED_ORIGINS` | the studio API server | Comma-separated extra origins to accept besides the studio's own (dev mode sets the Vite dev server's). |
+| `LOUSHO_STUDIO_API_URL` | the Vite dev server (dev mode) | Where to proxy API calls (default `http://127.0.0.1:4750`). |
 
 ### Where agents live
 
@@ -6116,12 +6130,14 @@ for await (const event of agent.stream('Hello!')) {
   `fallbackModels` entry. createAgent builds those providers with the `ai`
   SDK's own retries off (`maxRetries: 0`), so retries happen in one place and
   the default `{ maxRetries: 2 }` makes as many calls as before.
-- A `provider` instance you pass keeps its own retry behaviour (for a built-in
-  provider, the `ai` SDK's `maxRetries`, default 2) unless you set `retry`.
-  With `retry` set, the instance is wrapped in `withRetry()` and that is the
-  only retry layer: a built-in provider's calls go out with the `ai` SDK's own
-  retries off, so `{ maxRetries: 2 }` makes at most 3 requests, and
-  `retry: false` sends each call once. `fallbackModels` work with it too.
+- A built-in provider instance (`OpenAIProvider`, `AnthropicProvider`,
+  `OpenRouterProvider`, `OllamaProvider`) or a `fromAiSdk()` provider is
+  wrapped in `withRetry()` too, even without `retry`: then with the provider's
+  own `maxRetries` (default 2), so its retries emit `provider.retry` events like
+  a model string's. Its calls go out with the `ai` SDK's own retries off, so
+  `{ maxRetries: 2 }` makes at most 3 requests, and `retry: false` sends each
+  call once. Any other `provider` instance (your own `LLMProvider`) is wrapped
+  only when you set `retry`. `fallbackModels` work with all of them.
 - `fallbackModels` are `provider/model` strings, resolved like `model` when the
   agent is created. The agent runs `withFallback([withRetry(primary), withRetry(fallback1), ...])`:
   every call starts with the primary model.
@@ -6191,7 +6207,12 @@ const agent = createAgent({ prompt: 'You are helpful.', provider });
   `LLMProviderConfig` fields of the same names.
 - `withRetry` is the only retry layer: the built-in providers send its calls
   with the `ai` SDK's own retries off, whatever their config's `maxRetries`.
-  That `maxRetries` (default 2) applies only to a provider used unwrapped.
+  That `maxRetries` (default 2) is the `ai` SDK's retry count for a provider
+  used unwrapped (called directly), and the `withRetry()` count `createAgent()`
+  uses for that provider when `retry` is unset.
+- A rate-limited call (a 429) fails, once the retries are used up, with
+  `LOUSHO_PROVIDER_RATE_LIMITED`; other failed calls with
+  `LOUSHO_PROVIDER_REQUEST_FAILED` (see [Errors](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md)).
 - Each retry is recorded on the call's `chat` span as `lousho.retry.count` and
   `lousho.retry.errors` (see [Observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md)).
 
@@ -6263,11 +6284,26 @@ createAgent({ model: 'openai/gpt-4o-mini', subagents: { researcher }, rateLimit:
 | `approvalStore` | Where a `needsApproval` pause is saved (default: `store.approvals`, else a per-agent `InMemoryApprovalStore`); see [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md). |
 | `approve`  | `(call) => boolean`: decide approvals in code instead of pausing. |
 | `projectInstructions` | `true` or `{ cwd?, files? }`: append the nearest `AGENTS.md` / `CLAUDE.md` to the instructions (off by default; see [Project instructions](#project-instructions)). |
-| `retry`    | `withRetry()` options for failed model calls, or `false`. Default `{ maxRetries: 2 }` for `model` strings; a `provider` instance is wrapped only when set. See [Provider retries and fallback](#provider-retries-and-fallback). |
+| `retry`    | `withRetry()` options for failed model calls, or `false`. Default `{ maxRetries: 2 }` for `model` strings, and the provider's own `maxRetries` (default 2) for a built-in or `fromAiSdk()` provider instance; any other `provider` instance is wrapped only when set. See [Provider retries and fallback](#provider-retries-and-fallback). |
 | `fallbackModels` | `provider/model` strings tried in order when the model still fails after its retries. |
 | `rateLimit` | `{ requestsPerMinute?, tokensPerMinute?, maxConcurrent? }` (or a `createRateLimiter()`): queue the agent's model calls, and its sub-agents' and handoff targets', under one budget. See [Rate limits](#rate-limits). |
 | `hooks`    | `AgentHook[]` run around every model call and tool call, in order, before the compaction hook (see [Hooks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hooks.md)). |
 | `compaction` | `true` (prune old tool results above 90% of the context window) or `{ strategy?, thresholdPercent?, contextWindow?, protectedTokens?, reserveOutputTokens?, onCompaction?, summarizer? }`; `summarizer` (`'provider/model'` or an `LLMProvider`) selects the two-phase strategy. `stream()` reports `compaction.start` / `compaction.done`. See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md#compacting-an-agent). |
+| `mcpServers` | MCP servers to connect, keyed by name (stdio `{ command, args?, env? }` or HTTP `{ url, headers? }`); their tools are named `<server>__<tool>` and ask for approval by default. `optional: true` leaves out a server that cannot connect. See [MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#use-mcp-servers-in-an-agent). |
+| `subagentOptions` | Background sub-agent options: `maxConcurrent` (default 3), `awaitBackgroundOnFinish` (default `false`) and `background: false` to offer only the `task` tool. See [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md). |
+| `codeMode` | `true` or `CodeModeOptions`: adds a `run_code` tool that lets the model call the agent's tools from one short script in a QuickJS sandbox. See [Code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md). |
+| `guardrails` | Input, output and tool guardrails of each run; sub-agents inherit them. See [Guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md). |
+| `maxToolResultChars` | The most characters of one tool result the model gets (default `50_000`; `Infinity` turns the cap off). See [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md). |
+| `onAgentDrift` | What a resume does when the agent differs from the one that paused the run: `'warn'` (default), `'error'` or `'ignore'`. See [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#resuming-with-a-changed-agent). |
+| `reasoning` | How much the model reasons before it answers: an effort, or `{ effort, budgetTokens, summary, force }`. See [Reasoning](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md). |
+| `promptCaching` | `'auto'` (default) marks Anthropic `cache_control` breakpoints for Claude models; `false` marks none. See [Prompt caching](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/models-and-cost.md#prompt-caching). |
+| `output` | A schema for the final reply; `send()` / `stream()` resolve with `result.object`. See [Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md). |
+| `onEvent` | Called with every `AgentEvent` of the agent's runs, in the order `stream()` yields them. See [Listening without iterating](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md#listening-without-iterating). |
+| `exporter`, `captureContent`, `redactContent` | Tracing: a `TraceExporter` that receives a span for every run, whether message and tool content is recorded on the spans (off by default), and whether the deprecated content attributes are left out (default `true`). See [Observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md#message-and-argument-content-is-opt-in). |
+| `approvalTtlMs` | How long a pause for approval stays decidable, in milliseconds; decided later, the call is denied. Unset: pauses never expire. See [Approval expiry](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#approval-expiry). |
+| `askQuestion` | Adds the built-in `ask_question` tool; the run pauses until `agent.approvals.answer()`. Off by default. See [Asking the user a question](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#asking-the-user-a-question). |
+| `permissions`, `permissionMode` | Permission rules (`allow` / `ask` / `deny`) and a named preset over them (`'default'`, `'plan'`, `'acceptEdits'` or `'dontAsk'`). See [Permission policies](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies) and [Permission modes](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md). |
+| `onPermissionDecision`, `onPermissionModeChange` | Audit callbacks: one entry per tool call's permission decision, and one per mode switch. See [Permission modes](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md). |
 
 With neither `model` nor `provider`, `createAgent()` resolves from the
 environment: `LOUSHO_MODEL` (a `'provider/model'` string) if set, otherwise
@@ -6711,9 +6747,11 @@ before. The optional `dockerode` sandbox is not bundled (it loads lazily), so a
 directory that uses `SubprocessSandbox` must install it where it runs.
 
 The Cloudflare Worker target builds a directory's config, `instructions.md`,
-`tools/` and `skills/`; it rejects `subagents/`, `schedules/`, `channels/`,
-`memory/`, `projectInstructions` and a `model` whose provider the Worker lacks,
-naming what to remove. Tools run inside the Worker with its rights, and may import
+`tools/`, `skills/`, `subagents/`, `schedules/` (as Worker cron triggers),
+`channels/`, `memory/` and `projectInstructions`; it rejects a `model` whose
+provider the Worker lacks, and the other features the Worker column of
+[What works and what does not](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md#what-works-and-what-does-not)
+leaves out, naming what to remove. Tools run inside the Worker with its rights, and may import
 only a Worker-safe part of `@lousho/build-ai-agent`
 ([Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md#build-and-deploy) has the details):
 
@@ -8537,7 +8575,7 @@ within `error.timeoutMs`.
 
 **Fix:** raise the timeout, or make the operation faster.
 
-**Example:** `retryWithTimeout()` whose operation takes longer than its timeout.
+**Example:** a flow step with `timeoutMs` whose attempt takes longer than that (`error.operation` is `flow.node <type>`).
 
 ### LOUSHO_OUTPUT_INVALID
 
@@ -9066,6 +9104,23 @@ jobs:
 
 Run `--tag smoke` on every pull request and the full set nightly; run
 `--judge` only where you accept real LLM calls and their cost.
+
+### Environment variables
+
+`lousho eval` passes its flags to the vitest process that runs the eval files
+through environment variables. You do not set them yourself; they are listed
+so you recognise them in a CI log or a custom runner:
+
+| Variable | Set from | Meaning |
+| --- | --- | --- |
+| `LOUSHO_EVAL_CASSETTES` | `--record`, `--replay`, CI | Cassette mode for the run: `record`, `replay` or `auto` (replay a case whose cassette exists, run the rest live). Under `replay` and `auto` a `model:` spec resolves without its API key. |
+| `LOUSHO_EVAL_DRIFT_DIR` | `--drift` | With `record`: where the drift run writes its cassettes instead of next to the eval file. |
+| `LOUSHO_EVAL_CONFIG` | `--config` | The config path, so re-record hints can repeat it. |
+| `LOUSHO_EVAL_TAGS` | `--tag` | Comma-separated tags; only cases with one of them run. |
+| `LOUSHO_EVAL_RESULTS` | always | The file each case appends its result line to, which `lousho eval` reads back (see [`lousho eval`](#lousho-eval)). |
+| `LOUSHO_EVAL_URL` | `--url` | Base URL of the deployed agent to run the cases against. |
+| `LOUSHO_EVAL_TOKEN` | `--token` | Bearer token for `--url`. |
+| `LOUSHO_ALLOW_LLM_JUDGE` | `--judge` | Set to `1` inside the judge runner. Without it, `llmJudge()` / `llmCritique()` called outside that runner throw `LOUSHO_EVALS_INVALID`, so a misplaced judge eval never makes a paid model call in a normal test run. |
 
 ## Record, replay and drift
 
@@ -9832,7 +9887,7 @@ await AgentExecutor.execute({ agent, input, provider, toolRegistry, sandbox: new
   auto-removed Docker container, with no host directory mounted except the
   `cwd` you pass. It needs a running Docker daemon and the optional peer
   `dockerode` (`npm install dockerode@^5.0.1`; loaded on first use). When the
-  run is cancelled (`run.abort()`, `signal`) or the command times out, the
+  run is cancelled (its `signal` aborts) or the command times out, the
   container is killed and removed. Each container runs as a non-root user
   (`user`, default `'1000:1000'`; on a Linux host it must be able to write the
   mounted `cwd`), with every Linux capability dropped, `no-new-privileges`, and
@@ -13239,7 +13294,7 @@ the community terms that named two of them — all runnable in the repo:
 ### Typed decisions ("System One" style)
 
 Some steps shouldn't generate text at all — they should *decide*: classify,
-route, score, verify. The pattern (TypeSafe's Jev makes a whole model of it)
+route, score, verify. The pattern
 is a typed probabilistic decision: unstructured state in, `{ action,
 confidence }` out, and the workflow branches on it. In Lousho that's an
 agent with an `output` schema feeding a flow's `oneOf` — and a confidence
@@ -13513,6 +13568,20 @@ is 10 minutes; `0` or `Infinity` turns it off.
 import { OpenAIProvider } from '@lousho/build-ai-agent';
 
 const provider = new OpenAIProvider({ apiKey: process.env.OPENAI_API_KEY!, timeout: 60_000 });
+```
+
+### OpenAI response storage (`store`)
+
+On the Responses API (the default `api`, on `ai` 6/7), `OpenAIProvider` sends
+`store: false`, so OpenAI does not keep the calls server-side: the SDK sends
+the whole transcript on every call and never refers to a stored response.
+Pass `store: true` to have OpenAI store them (for its dashboard logs or
+evals). `store` is ignored with `api: 'chat'`.
+
+```ts
+import { OpenAIProvider } from '@lousho/build-ai-agent';
+
+const provider = new OpenAIProvider({ apiKey: process.env.OPENAI_API_KEY!, store: true });
 ```
 
 ### Slow local models: a custom `fetch`
@@ -17773,7 +17842,7 @@ its kind by carrying a `toolErrorKind` property. An error extending
 | `createTodoTools()` | `todo_write` / `todo_read` so an agent can plan multi-step work; see [Todo tools](#todo-tools). |
 | `askQuestionTool()`, `createAgent({ askQuestion: true })` | `ask_question`: the agent asks the user something and the run pauses until `agent.approvals.answer()`; see [Asking the user a question](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#asking-the-user-a-question). |
 | `createFsTools()`, `createShellTool()` | File system and shell tools for coding agents; see [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md). |
-| `createEmailTool()`, `createSlackTool()`, `createGitHubTools()`, `createJiraTools()` (from `@lousho/build-ai-agent/integrations`) | Integrations that need credentials, so they are built with options. |
+| `createEmailTool()`, `createSlackTool()`, `createGitHubTools()`, `createJiraTools()` (from `@lousho/build-ai-agent/integrations`) | Integrations that need credentials, so they are built with options. `createSlackTool()` (and `SlackTriggerAdapter` from `/triggers`) reads the webhook URL from `SLACK_WEBHOOK_URL` unless you pass `webhookUrl`; `createJiraTools()` takes `baseUrl`, `email` and `apiToken` explicitly (conventionally from `JIRA_BASE_URL`, `JIRA_EMAIL` and `JIRA_API_TOKEN`). |
 | `createAgent({ mcpServers })`, `connectMcp(servers)` | Every tool of MCP servers given as config (stdio `command` or HTTP `url`), named `<server>__<tool>`; see [Use MCP servers in an agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#use-mcp-servers-in-an-agent). |
 | `openApiTools(document, options)` | One tool per operation of an OpenAPI 3.0 / 3.1 document; mutating operations ask for approval. See [OpenAPI tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/openapi-tools.md). |
 | `loadMcpTools(client, name)` | Every tool of a connected MCP server; see [MCP tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#tools-from-a-client-you-connected-yourself). |
@@ -18390,6 +18459,10 @@ and its options did not change - an agent that only does
 `createAgent({ model, instructions, tools })` and `agent.send()` upgrades by
 changing nothing but the version.
 
+Already on `1.0.0-alpha.19`? Skip to
+[Upgrading from alpha.19](#upgrading-from-alpha19) for what changed on `main`
+since.
+
 ```bash
 npm install @lousho/build-ai-agent@^1.0.0-alpha.19
 ```
@@ -18561,6 +18634,93 @@ runtime behavior or types your code may rely on, one line each:
 - The published package is smaller: test-only files no longer ship, and
   source maps no longer embed `sourcesContent` (their `sources` still resolve
   to the shipped `src/`). No API change.
+
+## Upgrading from alpha.19
+
+`1.0.0-alpha.19` is the latest release on npm. The changes on `main` since
+then (the `[Unreleased]` section of the [CHANGELOG](https://github.com/LinuxDevil/agent-sdk/blob/main/CHANGELOG.md)) are
+mostly fixes and additions, but some change a default or a behavior your code
+may rely on. Each is listed below with the way back to the old behavior, where
+there is one. A change marked "no opt-out" closed a security or data-loss bug.
+
+### HTTP routes, servers and channels
+
+| Change | Opt-out |
+| ------ | ------- |
+| With route auth and no `authorizeSession`, a session belongs to the first principal that reads or continues it; another principal gets `403 LOUSHO_SESSION_FORBIDDEN`. The owner is kept in memory per agent, so pass `authorizeSession` on more than one instance. See [Who may use a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-use-a-session). | `authorizeSession: () => true` |
+| The session routes (`createRouteHandler()`, `createDeployedServer()`, the Worker, `lousho dev`) refuse a cross-site POST (`403 LOUSHO_REQUEST_FORBIDDEN`) and a POST body that is not `Content-Type: application/json` (`415 LOUSHO_UNSUPPORTED_MEDIA_TYPE`). The new `allowedHosts` (off by default) refuses unlisted `Host` headers. See [Cross-site requests](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#cross-site-requests). | `allowedOrigins: ['*']`, `requireJsonBody: false` (or list the front end's origin in `allowedOrigins`) |
+| `POST /chat/:sessionId/approvals/:id` answers `404` unless the approval belongs to that session, and only the caller the paused run acts for may decide it. | `authorizeApproval` to let others (a supervisor) decide |
+| The routes send an error's `name` and `code` with a generic message instead of its raw text (in `error` events, `500` bodies and `provider.retry` / `provider.fallback` events); the full error goes to `console.error`. | `exposeErrors: true` (`lousho dev` sets it) |
+| A client that disconnects mid-turn no longer aborts the turn: it runs to its end and is saved. See [Next.js routes](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md#routes). | `onDisconnect: 'abort'` |
+| `lousho dev` answers `403` to a request whose `Host` is not a loopback name (or, off loopback, an IP address or the `--host` name), against DNS rebinding. | `--allowed-hosts a,b` |
+| `WebhookTriggerAdapter` binds `127.0.0.1` (was `0.0.0.0`), throws `LOUSHO_TRIGGER_INVALID` for a non-loopback `host` without `auth`, and without `auth` refuses a foreign `Host` or a request with an `Origin`. See [Webhook authentication](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md#webhook-authentication). | `host: '0.0.0.0'` with `auth`, or `allowUnauthenticated: true` |
+| The Cloudflare Worker refuses `GET /chat/:sessionId` (`403`) when no `LOUSHO_API_TOKEN` secret is set. See [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md). | the `LOUSHO_ALLOW_OPEN_TRANSCRIPTS` var set to `"true"` |
+| `serveMcp()` over HTTP checks `Host` and `Origin` against DNS rebinding; loopback is exactly `localhost`, a `127.x.x.x` address or `::1` (also for `WebhookTriggerAdapter`). | `allowedHosts` / `allowedOrigins` on `serveMcp()`'s HTTP transport (`['*']` turns a check off) |
+| Agent Forge (`lousho studio`) sends no CORS headers, refuses a foreign `Origin` or non-loopback `Host`, and needs the per-launch token it prints. See [Access token](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md#access-token). | no opt-out |
+| `fromUIMessages()` (and so `POST <base>/ui`) drops client-sent `system` messages and any role other than `user` / `assistant`. | no opt-out |
+| Slack and Discord signature checks accept a timestamp at most a minute ahead (was five minutes either way), read in seconds. | no opt-out |
+| `telegramChannel` and `teamsChannel` no longer post an OAuth sign-in link in a group chat. | no opt-out |
+| Channels without a `store` keep their transcripts in the agent's `createAgent({ store })` when it has `sessions`. | pass the channel its own `store` |
+
+### Sessions, approvals and durability
+
+| Change | Opt-out |
+| ------ | ------- |
+| A checkpointed run holds a run lease while it executes: a second process, replica or store object that sends to the same session, resumes it or resolves one of its approvals fails with `LOUSHO_SESSION_BUSY` instead of running its tool calls a second time. See [Run leases](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases). | no opt-out (a custom `CheckpointStore` without `acquireLease()` gets no lease) |
+| Approvals run at most once: deciding one re-saves the turn as `'in-progress'` with the call in `Checkpoint.startedToolCallIds`; after a crash mid-call, resuming gives that call a `kind: 'interrupted'` tool error instead of running it again. See [Guarantees](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#guarantees). | no opt-out |
+| Resolving an approval whose run was deleted or replaced fails with `LOUSHO_APPROVAL_ORPHANED` and withdraws it (it used to overwrite the newer conversation). | no opt-out |
+| A session turn paused for approval locks the session id: a new turn on it throws `SessionAwaitingApprovalError` (`LOUSHO_SESSION_AWAITING_APPROVAL`). | decide the approval, or `session.discardPending()` |
+| Session turns keep the checkpoint history of the latest 10 committed turns. See [Durable sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#durable-sessions). | `agent.session({ id, turnHistoryLimit })` with a larger whole number |
+| `sessionId` must be 1-200 characters of `A-Za-z0-9_.-` on every store, and may not end in `.turn-<n>` or `.paused`; `''` is refused. | no opt-out |
+| A deterministic provider error records `lastError` on the turn's checkpoint, and later calls on that session fail fast with `LOUSHO_SESSION_TURN_FAILED`. | `session.discardPending()`, or fix the cause and `session.resume()` |
+| With a store, tools, `needsApproval`, permission rules and hooks get the session id as `ctx.sessionId`, not the turn checkpoint key `<id>.turn-<n>`. | no opt-out |
+| Several calls of one step that need approval pause once, on all of them (`result.approvalIds`); calls that need no approval run before the pause. See [Several calls in one step](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#several-calls-in-one-step). | no opt-out |
+| `once()` no longer remembers a yes from a `createAgent({ approve })` callback, and an approval note that is exactly `'defer'` defers. | no opt-out |
+| A corrupt checkpoint fails with `LOUSHO_CHECKPOINT_CORRUPT` (it threw a raw `SyntaxError`). | no opt-out |
+| Memory slots store items under `<slot name>#<scope key>`; items written by alpha.19 are not read. | run `migrateMemoryKeys(slot)` once per slot ([Memory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/memory.md#items-from-before-slot-name-keys)) |
+| Keyword recall (`inMemoryMemory`, `fileMemory`, `sqliteMemory`, worker memory) matches whole words instead of substrings. | no opt-out |
+| A prompt schedule runs every fire in its own session, `schedule-<name>-<fire time>`. See [Prompt schedules and sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md#prompt-schedules-and-sessions). | `defineSchedule({ sharedSession: true })` |
+| `FlowExecutor.resume()` refuses a flow whose steps changed since the run was saved (`LOUSHO_FLOW_CHANGED`). | no opt-out |
+
+### Providers and model calls
+
+| Change | Opt-out |
+| ------ | ------- |
+| `createAgent({ provider })` with a built-in provider instance or a `fromAiSdk()` provider and no `retry` wraps it in `withRetry()` with the provider's `maxRetries` (default 2): retries emit `provider.retry`, and `fromAiSdk()` retries (it made none). See [Provider retries and fallback](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#provider-retries-and-fallback). | `retry: false` |
+| A rate-limited call (a 429) has the code `LOUSHO_PROVIDER_RATE_LIMITED` instead of `LOUSHO_PROVIDER_REQUEST_FAILED`. An out-of-credit account (`insufficient_quota`, a 402) is the non-retryable category `quota-exceeded`. | no opt-out: match both codes |
+| The built-in providers' `timeout` is applied: 10 minutes by default, for the wait for a response to start and between two chunks. See [Request timeout](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md#request-timeout). | `timeout: 0` (or `Infinity`) |
+| `OpenAIProvider` sends `store: false` on the Responses API. See [OpenAI response storage](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md#openai-response-storage-store). | `store: true` |
+| A user file part the provider cannot send rejects the call with `LOUSHO_UNSUPPORTED_CONTENT` instead of a `[file ... not sent]` note. See [Multimodal input](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md#multimodal-input). | `unsupportedFiles: 'text-note'` |
+| `LLMProviderConfig` has no index signature: a misspelled option is a type error. | extend the interface for a custom provider's own fields |
+| A 200 response that carries a failure (`finish_reason: "error"`, an `error` chunk) fails the call with a retryable error instead of succeeding with truncated text; an unknown finish reason is `'other'`, and `ExecutionFinishReason` is a closed union. | no opt-out |
+| An aborted run ends `finishReason: 'aborted'` at once, even when the provider ignores the signal. See [Cancellation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/runs.md#cancellation). | no opt-out |
+| The `openrouter` provider created without `apiKey` reads `OPENROUTER_API_KEY` (it sent `OPENAI_API_KEY`). | pass `apiKey` |
+| The `@modelcontextprotocol/sdk` peer range is `^1.31.0`. | no opt-out |
+
+### Tools, MCP and tracing
+
+| Change | Opt-out |
+| ------ | ------- |
+| MCP tools ask for approval by default (`approval: 'always'`); an MCP tool whose name equals a local tool's is refused. See [Approval for MCP tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#approval-for-mcp-tools). | `approval: 'annotations'` on servers you trust |
+| Tool results are capped at 50,000 characters (head and tail kept). | `maxToolResultChars: Infinity` |
+| `defineTool()` throws `LOUSHO_CONFIG_INVALID` for a non-object `input` root or a `z.date()` / `z.bigint()` field; tool-call arguments that are not valid JSON reach the model as `LOUSHO_TOOL_ARGS_INVALID` instead of running the tool with `{}`. | no opt-out |
+| A flow `toolCall` step passes the agent's gate (`permissions`, `permissionMode`, approval) and validates its arguments; a call that needs approval fails with `LOUSHO_FLOW_TOOL_DENIED` without `approve`. See [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md#tool-calls). | pass `approve` in the flow context |
+| `createShellTool` `allow` string patterns refuse arguments that leave the workspace (`..`, `~`, absolute paths), also through quotes. | an `allow` `CommandRule` with an `args` check |
+| `SubprocessSandbox` writes only under `root` and runs containers as `1000:1000` with all capabilities dropped. See [Sandboxed tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md#sandboxed-tools). | `root`, `user: 'root'` |
+| An MCP result made only of text reaches the model as `{ "text": ... }`. | no opt-out |
+| `redactContent` defaults to `true`: the deprecated `input` / `prompt` / `args` / `result` span attributes are left out, so `fileTraceExporter()` files hold no content. See [Observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md#message-and-argument-content-is-opt-in). | `redactContent: false` (or `captureContent: true` for the `gen_ai.*` content) |
+| `agent.stream()` rethrows the run's error after the `error` and `run.done` events. See [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md). | `stream(input, { throwOnError: false })` |
+| `send([])` throws `LOUSHO_CONFIG_INVALID`. | no opt-out |
+
+### CLI, evals and Agent Forge
+
+| Change | Opt-out |
+| ------ | ------- |
+| `lousho dev`, `chat`, `acp`, `mcp` and `doctor` load `./.env` when it exists; variables already set win. See [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md). | remove or rename `.env` |
+| `t.maxCostUsd(n)` fails when a run reports no cost (the model has no known price). See [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md). | `t.maxCostUsd(n, { unknownCost: 'skip' })` |
+| `lousho eval` gives each live, `--record` and `--drift` case 10 minutes instead of vitest's 5 s. See [Time limits](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md#time-limits). | `--timeout <ms>` or `defineEval({ timeoutMs })` |
+| Agent Forge fails a run on a real provider with no API key (`LOUSHO_PROVIDER_MISSING_API_KEY`) instead of silently using the mock provider. | switch the agent's provider to `mock` |
+| The npm package no longer ships `llms-full.txt` (it stays in the repository; `llms.txt` ships). | fetch `llms-full.txt` from the repository |
 
 ## What 1.0 promises
 

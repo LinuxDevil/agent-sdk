@@ -281,9 +281,9 @@ Most examples run offline with a mock provider; see the
 | [evaluator-loop](examples/evaluator-loop) | Writer/critic loop: `llmCritique()` scores a draft and returns feedback until it passes |
 | [data-analyst](examples/data-analyst) | Text-to-SQL over `node:sqlite` with read-only enforcement — `DELETE`/`DROP` can never run |
 | [plan-mode](examples/plan-mode) | Read and propose in `plan` mode, then apply edits after `setPermissionMode('acceptEdits')` |
-| [waves](examples/waves) | WAVE engineering: bounded parallel workers, deterministic aggregate, typed verify gate, extend only on named gaps |
+| [waves](examples/waves) | Waves: bounded parallel workers, deterministic aggregate, typed verify gate, extend only on named gaps |
 | [phase-pipeline](examples/phase-pipeline) | Phase engineering on flows: discuss → spec → plan → implement → proof gate, `oneOf` retry ladder |
-| [coding-agent-workflows](examples/coding-agent-workflows) | Jev-style typed decisions routing a coding agent between fix/refactor/explain workflows, confidence-floor escalation |
+| [coding-agent-workflows](examples/coding-agent-workflows) | Typed decisions routing a coding agent between fix/refactor/explain workflows, confidence-floor escalation |
 | [connectors](examples/connectors) | MCP connectors (Google Docs/Slack shape) run offline against a mock `serveMcp` stdio server |
 | [hostinger-deploy](examples/hostinger-deploy) | Deploy an agent to a real Hostinger VPS: API check, docker build+ship over SSH, health + approval smoke tests |
 | [agent-dir](examples/agent-dir) | An agent defined as a directory and loaded with `loadAgentDir()` |
@@ -329,13 +329,17 @@ notes. Known gaps:
 - File (non-image) parts reach the model only for media types the provider
   accepts (`application/pdf` for OpenAI and OpenRouter, `application/pdf` and
   `text/plain` for Anthropic, on `ai` 6/7); other types - and every file part
-  on `ai` 4 - are replaced by a text note ([Providers](docs/providers.md)).
+  on `ai` 4 - fail the call with `LOUSHO_UNSUPPORTED_CONTENT`, or are replaced
+  by a text note with `unsupportedFiles: 'text-note'`
+  ([Providers](docs/providers.md#multimodal-input)).
 - The `pi` provider and `piAgent()` are Node-only (they run Pi's engine);
   `lousho build --target=cloudflare-worker` refuses `pi/...` model specs and
   `engine: 'pi'` sub-agent directories.
-- The Cloudflare Worker target has a limited provider and tool set, and builds
-  agent directories without sub-agents, schedules, channels or memory slots
-  ([Cloudflare Workers](docs/cloudflare-workers.md)).
+- The Cloudflare Worker target has a limited provider and tool set (no
+  `ollama`, no `web-fetch`, no sandbox, no stdio MCP servers, no code mode,
+  cron schedules in UTC only); agent directories with sub-agents, schedules,
+  channels and memory slots build for it
+  ([Cloudflare Workers](docs/cloudflare-workers.md#what-works-and-what-does-not)).
 
 ## Contributing
 

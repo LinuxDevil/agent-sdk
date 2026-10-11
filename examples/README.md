@@ -15,7 +15,7 @@ A coding-agent harness: a broken `add()` fixture the agent must fix under a guar
 
 ## [coding-agent-workflows](./coding-agent-workflows)
 
-A coding agent driven by deterministic flows whose routing is a **typed decision** — the Jev/"System One" pattern: `createAgent({ output })` returns `{ route, confidence, reason }`, low-confidence requests escalate to the careful path, and each route is a phase workflow with a proof gate.
+A coding agent driven by deterministic flows whose routing is a **typed decision** (the "System One" pattern): `createAgent({ output })` returns `{ route, confidence, reason }`, low-confidence requests escalate to the careful path, and each route is a phase workflow with a proof gate.
 
 ## [connectors](./connectors)
 
@@ -81,7 +81,7 @@ Runnable examples of `AgentExecutor.execute()` wired to console and OpenTelemetr
 
 ## [waves](./waves)
 
-WAVE engineering — Workers · Aggregate · Verify · Extend: bounded parallel workers in clean contexts, a deterministic aggregate, a typed `{ verdict, gaps }` verifier, and a follow-up wave that runs only on the gaps it names.
+Waves — Workers · Aggregate · Verify · Extend: bounded parallel workers in clean contexts, a deterministic aggregate, a typed `{ verdict, gaps }` verifier, and a follow-up wave that runs only on the gaps it names.
 
 ## [workflow-router](./workflow-router)
 
