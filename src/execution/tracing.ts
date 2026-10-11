@@ -237,18 +237,28 @@ const warnedExporters = new WeakSet<TraceExporter>();
 
 /**
  * Calls an exporter hook, never letting it fail the traced work: a throwing
- * exporter (a broken observability backend) is reported once with
- * `console.warn` and otherwise ignored, like the OpenTelemetry SDK does.
+ * exporter (a broken observability backend), or an async one whose promise
+ * rejects, is reported once with `console.warn` and otherwise ignored, like
+ * the OpenTelemetry SDK does.
  */
 function notifyExporter(exporter: TraceExporter | undefined, hook: 'onSpanStart' | 'onSpanEnd', span: Span): void {
   if (!exporter) return;
-  try {
-    exporter[hook](span);
-  } catch (error) {
+  const warn = (error: unknown) => {
     if (warnedExporters.has(exporter)) return;
     warnedExporters.add(exporter);
     console.warn(
       `[lousho] A trace exporter's ${hook} threw (${error instanceof Error ? error.message : String(error)}); the run continues. Further errors from this exporter are not reported.`
     );
+  };
+  try {
+    // The hooks are typed `void`, but an `async` implementation is assignable: catch its rejection.
+    const result: unknown = exporter[hook](span);
+    if (isThenable(result)) result.then(undefined, warn);
+  } catch (error) {
+    warn(error);
   }
+}
+
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return typeof value === 'object' && value !== null && typeof (value as { then?: unknown }).then === 'function';
 }

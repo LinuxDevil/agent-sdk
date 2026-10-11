@@ -73,8 +73,11 @@ source declares cron triggers) and bundles it as a
 browser-platform ES module; the build fails if any `node:` import ends up in
 `dist/worker.js`. `wrangler.toml` points `main` at `dist/worker.js` with
 `no_bundle = true`, so exactly the verified bundle is uploaded. Its
-`compatibility_date` defaults to a date pinned per SDK version; change it in
-the generated `wrangler.toml` and later builds keep your date. It builds and
+`compatibility_date` defaults to a date pinned per SDK version (`2026-09-01`).
+The first build writes the whole file; later builds only update the keys the
+build owns (`name`, `main`, `no_bundle` and `[triggers] crons`) and keep
+everything else you changed or added: your `compatibility_date`, `[vars]`, a
+filled-in `[[kv_namespaces]]` block, routes and comments. It builds and
 runs with `ai` v4 (the default install) or `ai` v7 (with
 `@ai-sdk/openai`/`@ai-sdk/anthropic` v4) installed, with no compatibility
 flag (no `nodejs_compat`):

@@ -48,6 +48,7 @@ import { WORKER_SUPPORTED_PROVIDERS, WORKER_SUPPORTED_TOOLS } from '../workerSup
 import { isAgentDir } from './node-server-dir';
 import { scaffoldWorkerAgentDir } from './cloudflare-dir';
 import { explainWorkerBuildError } from '../workerSdkExports';
+import { mergeWranglerToml } from './wranglerToml';
 
 export { WORKER_SUPPORTED_PROVIDERS, WORKER_SUPPORTED_TOOLS } from '../workerSupport';
 export { WORKER_SDK_EXPORTS, explainWorkerBuildError } from '../workerSdkExports';
@@ -57,24 +58,38 @@ export { WORKER_SDK_EXPORTS, explainWorkerBuildError } from '../workerSdkExports
  * reproducible config. A date set in an existing `wrangler.toml` in the
  * output directory is kept on rebuild (see {@link writeWranglerToml}).
  */
-const COMPATIBILITY_DATE = '2024-09-23';
-
-const COMPATIBILITY_DATE_LINE = /^compatibility_date\s*=\s*"(\d{4}-\d{2}-\d{2})"\s*$/m;
+const COMPATIBILITY_DATE = '2026-09-01';
 
 /**
- * Writes `outDir/wrangler.toml`, keeping the `compatibility_date` of the file
- * already there: the generated file is rewritten on every build, so a date
- * moved forward by hand would otherwise silently go back to the default.
+ * Writes `outDir/wrangler.toml` for a Worker. The first build writes the
+ * whole generated file; a rebuild updates only the keys the build owns
+ * (`name`, `main`, `no_bundle` and the `[triggers] crons` of the spec) in the
+ * file already there, so `[vars]`, a filled-in `[[kv_namespaces]]` binding,
+ * routes, comments and a `compatibility_date` moved forward by hand survive.
  */
-function writeWranglerToml(outDir: string, source: string): void {
+function writeWranglerToml(outDir: string, name: string, crons: readonly string[], tools: readonly string[] | undefined): void {
   const file = path.join(outDir, 'wrangler.toml');
-  let kept: string | undefined;
+  let existing: string | undefined;
   try {
-    kept = COMPATIBILITY_DATE_LINE.exec(fs.readFileSync(file, 'utf8'))?.[1];
+    existing = fs.readFileSync(file, 'utf8');
   } catch {
     // No wrangler.toml yet.
   }
-  writeFile(file, kept ? source.replace(COMPATIBILITY_DATE_LINE, `compatibility_date = "${kept}"`) : source);
+  if (existing === undefined) return writeFile(file, tomlSource(name, crons, tools));
+  writeFile(
+    file,
+    mergeWranglerToml(existing, [
+      { key: 'name', value: JSON.stringify(workerName({ name })) },
+      { key: 'main', value: '"dist/worker.js"' },
+      { key: 'compatibility_date', value: `"${COMPATIBILITY_DATE}"`, keepExisting: true },
+      { key: 'no_bundle', value: 'true' },
+      { table: 'triggers', key: 'crons', value: crons.length === 0 ? undefined : cronsLiteral(crons) },
+    ])
+  );
+}
+
+function cronsLiteral(crons: readonly string[]): string {
+  return `[${crons.map((cron) => JSON.stringify(cron)).join(', ')}]`;
 }
 
 /**
@@ -207,7 +222,7 @@ function tomlSource(name: string, crons: readonly string[], tools: readonly stri
       : [
           '# Cron triggers (UTC): Cloudflare calls the Worker\'s scheduled() for each.',
           '[triggers]',
-          `crons = [${crons.map((cron) => JSON.stringify(cron)).join(', ')}]`,
+          `crons = ${cronsLiteral(crons)}`,
           '',
         ];
   return [
@@ -255,11 +270,6 @@ function tomlSource(name: string, crons: readonly string[], tools: readonly stri
 /** wrangler.toml for the Worker of `spec` (its cron triggers become `[triggers] crons`). */
 export function wranglerTomlSource(spec: Pick<AgentSpec, 'name' | 'tools' | 'triggers'>): string {
   return tomlSource(spec.name, workerCrons(spec), spec.tools);
-}
-
-/** wrangler.toml for the Worker of an agent directory: `crons` from its `schedules/` (workerDirCrons), no built-in tools. Internal to this adapter. */
-function wranglerDirTomlSource(name: string, crons: string[]): string {
-  return tomlSource(name, crons, undefined);
 }
 
 const WORKER_TS = `/**
@@ -371,7 +381,7 @@ export const CloudflareWorkerAdapter: DeploymentAdapter = {
   async scaffold(agentPath: string, outDir: string): Promise<void> {
     if (isAgentDir(agentPath)) {
       const { name, schedules } = await scaffoldWorkerAgentDir(agentPath, outDir);
-      writeWranglerToml(outDir, wranglerDirTomlSource(name, workerDirCrons(schedules)));
+      writeWranglerToml(outDir, name, workerDirCrons(schedules), undefined);
       return;
     }
     const spec = loadAgentSpecForDeploy(agentPath);
@@ -381,7 +391,7 @@ export const CloudflareWorkerAdapter: DeploymentAdapter = {
 
     writeFile(path.join(outDir, 'agent.config.js'), agentConfigModuleSource(spec));
     writeFile(path.join(outDir, 'worker.ts'), WORKER_TS);
-    writeWranglerToml(outDir, wranglerTomlSource(spec));
+    writeWranglerToml(outDir, spec.name, workerCrons(spec), spec.tools);
   },
 
   async build(outDir: string): Promise<void> {

@@ -134,6 +134,22 @@ describe('CloudflareWorkerAdapter', () => {
     }
   });
 
+  it('keeps hand edits to wrangler.toml on rebuild and updates only the keys the build owns', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-cf-merge-'));
+    try {
+      const out = path.join(dir, 'out');
+      await CloudflareWorkerAdapter.scaffold(writeSpec(dir, SPEC), out);
+      const file = path.join(out, 'wrangler.toml');
+      const edited = `${fs.readFileSync(file, 'utf8')}\n[vars]\nFOO = "bar"\n\n[[kv_namespaces]]\nbinding = "AGENT_CHECKPOINTS"\nid = "abc"\n`;
+      fs.writeFileSync(file, edited);
+      await CloudflareWorkerAdapter.scaffold(writeSpec(dir, { ...SPEC, name: 'renamed' }), out);
+      const rebuilt = fs.readFileSync(file, 'utf8');
+      expect(rebuilt).toBe(edited.replace(/^name = ".*"$/m, 'name = "renamed"'));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('findNodeBuiltinReferences detects node: specifiers', () => {
     expect(findNodeBuiltinReferences(`import fs from "node:fs"; require('node:http')`)).toEqual([
       '"node:fs"',

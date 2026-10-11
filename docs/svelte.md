@@ -62,8 +62,12 @@ snippets here):
   destroyed). There is no `destroy()`: this is how Svelte stores stop their
   work. A transient read that subscribes and unsubscribes in the same turn,
   like `get(agent)` from `svelte/store`, does not count, so it never aborts a
-  run. A store nobody subscribes to still runs a turn you started with
-  `send()`; call `stop()` yourself if you drop it.
+  run. The store cannot tell such a read from a component that is mounted and
+  destroyed within the same microtask turn (for example created and torn down
+  in one synchronous block, or by a `{#if}` that flips back before the next
+  microtask): that component's leaving does not abort the run either. A store
+  nobody subscribes to still runs a turn you started with `send()`; call
+  `stop()` yourself if you drop it or if you unmount that quickly.
 
 The reducer and the stream parser are exported from this subpath too
 (`reduceAgentEvents`, `initialAgentUIState`, `parseEventStream`), the same

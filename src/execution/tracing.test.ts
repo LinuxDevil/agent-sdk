@@ -204,6 +204,27 @@ describe('withSpan with a throwing exporter', () => {
     }
   });
 
+  it('catches a rejection from an async exporter, warning once', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    const exporter: TraceExporter = {
+      onSpanStart: async () => { throw new Error('backend down'); },
+      onSpanEnd: () => Promise.reject(new Error('backend down')) as unknown as void,
+    };
+    try {
+      await expect(withSpan(exporter, 'a', {}, async () => 1)).resolves.toBe(1);
+      await expect(withSpan(exporter, 'b', {}, async () => 2)).resolves.toBe(2);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(unhandled).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain('backend down');
+    } finally {
+      process.off('unhandledRejection', unhandled);
+      warn.mockRestore();
+    }
+  });
+
   it('still rethrows the error from fn, not the exporter error', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const exporter: TraceExporter = { onSpanStart: () => {}, onSpanEnd: () => { throw new Error('exporter broke'); } };
