@@ -70,9 +70,11 @@ const agent = createAgent({
 ```
 
 The `model` string and each fallback are resolved with the `ai` SDK's own
-retries off, so `retry` is the only retry layer. A `provider` instance is
-wrapped only when you set `retry`, and then its own `ai` SDK retries are off
-too (`retry: false` sends each call once). A streamed step that fails before
+retries off, so `retry` is the only retry layer. A built-in provider instance
+and a `fromAiSdk()` provider are wrapped the same way (with their own
+`maxRetries`, default 2, when `retry` is unset), and their `ai` SDK retries
+are then off (`retry: false` sends each call once). Any other `provider`
+instance is wrapped only when you set `retry`. A streamed step that fails before
 any text or tool call (after reasoning only) is retried as well. `agent.stream()` reports `provider.retry`
 and `provider.fallback` events. Details in
 [Provider retries and fallback](./configuration.md#provider-retries-and-fallback).
@@ -214,6 +216,20 @@ instance as `provider`, or register a factory with
 model string (`model: 'name/model-id'`), and the factory receives `defaultModel` and reads its
 own credentials.
 
+### Request timeout
+
+The built-in providers' `timeout` option (ms) is the longest wait for a model
+response to start and between two of its chunks. A call that waits longer
+fails with a retryable `TimeoutError` (`compacted.category: 'timeout'`), which
+`retry` retries. It never cuts off an answer that keeps streaming. The default
+is 10 minutes; `0` or `Infinity` turns it off.
+
+```ts
+import { OpenAIProvider } from '@lousho/build-ai-agent';
+
+const provider = new OpenAIProvider({ apiKey: process.env.OPENAI_API_KEY!, timeout: 60_000 });
+```
+
 ### Slow local models: a custom `fetch`
 
 `OpenAIProvider`, `AnthropicProvider`, `OpenRouterProvider` and
@@ -237,6 +253,7 @@ const agent = createAgent({
     baseURL: 'http://localhost:1234/v1',
     defaultModel: 'qwen3-32b',
     fetch: (input, init) => fetch(input, { ...init, dispatcher } as RequestInit),
+    timeout: 15 * 60_000, // the provider's own limit (default 10 minutes) too
   }),
   retry: { maxRetries: 2 },
 });
@@ -270,7 +287,7 @@ your installed `ai`, so install the provider package major that pairs with it
 | `fileMediaTypes` | `[]` | Media types sent as `file` parts. Images are always sent. |
 | `unsupportedFiles` | `'error'` | Any other file part: reject the call with `LOUSHO_UNSUPPORTED_CONTENT` (`'error'`), or send a text note in its place (`'text-note'`). |
 | `replaysReasoning` | `false` | Send signed reasoning blocks back on assistant turns (Anthropic models). |
-| `maxRetries` | `0` | The AI SDK's own retries per call; `createAgent()` retries through its `retry` option. |
+| `maxRetries` | `0` (direct calls), `2` (under `createAgent()`) | Called directly, the AI SDK's own retries per call. Under `createAgent()` without `retry`, the retries of the `withRetry()` it wraps the provider in. |
 
 The provider serves the one model it wraps, with tools and streaming on, and
 leaves reasoning settings to the model you built (the `reasoning` option is not
@@ -385,9 +402,10 @@ const agent = createAgent({
 **The `openai/<model>` string with `OPENAI_BASE_URL`.** `@ai-sdk/openai` reads
 `OPENAI_BASE_URL`, so `createAgent({ model: 'openai/qwen3-8b' })` with
 `OPENAI_BASE_URL=http://localhost:1234/v1` and a dummy `OPENAI_API_KEY=any`
-calls the local server without code changes. That route always uses the
-Responses API, so it works only with servers that implement `/v1/responses`
-(LM Studio does); for the others construct `OpenAIProvider` with `api: 'chat'`.
+calls the local server without code changes. That route uses the Responses
+API unless `LOUSHO_OPENAI_API=chat` is set too, which selects Chat Completions
+for every `OpenAIProvider` without an explicit `api` (what vLLM, llama.cpp and
+Ollama's `/v1` need).
 
 **Any AI SDK model.** `fromAiSdk()` wraps a Chat Completions model built with
 `@ai-sdk/openai` directly (or `@ai-sdk/openai-compatible`, if you use it):

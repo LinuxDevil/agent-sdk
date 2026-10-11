@@ -434,6 +434,7 @@ abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLM
     protected readonly acceptsFileParts: boolean;
     protected readonly ai: AiSdkModule;
     protected cachesPrompt(_modelId: string, _options: GenerateOptions): boolean;
+    protected readonly checksChatFailures: boolean;
     protected clientOptions(): Pick<AiSdkProviderConfig, 'apiKey' | 'baseURL' | 'headers' | 'fetch'>;
     // (undocumented)
     protected config: TConfig;
@@ -452,6 +453,7 @@ abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLM
     abstract readonly name: string;
     protected reasoningOptions(modelId: string, options: GenerateOptions): Record<string, unknown> | undefined;
     protected readonly replaysReasoning: boolean;
+    protected requestFetch(watch?: () => ResponseWatch | undefined): typeof globalThis.fetch;
     protected splitHostedTools(tools: readonly HostedTool[]): {
         passed: Record<string, unknown>;
         builtIn: HostedTool[];
@@ -462,6 +464,7 @@ abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLM
     abstract supportsStreaming(model: string): boolean;
     // (undocumented)
     abstract supportsTools(model: string): boolean;
+    protected toolChoiceFor(choice: GenerateOptions['toolChoice']): GenerateOptions['toolChoice'];
 }
 
 // @public
@@ -469,6 +472,7 @@ interface AiSdkProviderConfig extends LLMProviderConfig {
     // (undocumented)
     defaultModel?: string;
     fetch?: typeof globalThis.fetch;
+    timeout?: number;
     unsupportedFiles?: UnsupportedFiles;
 }
 
@@ -496,6 +500,7 @@ export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
     supportsHostedTool(type: HostedToolType | 'custom'): boolean;
     supportsStreaming(_model: string): boolean;
     supportsTools(model: string): boolean;
+    protected toolChoiceFor(choice: GenerateOptions['toolChoice']): GenerateOptions['toolChoice'];
 }
 
 // @public
@@ -1694,6 +1699,7 @@ export interface DefineToolOptions<S extends StandardSchemaV1, R> {
     needsApproval?: boolean | ((args: InferSchemaOutput<S>, ctx: ApprovalCheckContext) => ApprovalOutcome | Promise<ApprovalOutcome>);
     requiresSandbox?: boolean;
     sandboxExecute?: (args: InferSchemaOutput<S>, sandbox: SandboxAdapter) => Promise<unknown>;
+    timeoutMs?: number;
 }
 
 // @public
@@ -3416,8 +3422,6 @@ export interface LLMProvider {
 // @public
 export interface LLMProviderConfig {
     // (undocumented)
-    [key: string]: unknown;
-    // (undocumented)
     apiKey?: string;
     // (undocumented)
     baseURL?: string;
@@ -3435,7 +3439,7 @@ export interface LLMProviderConfig {
 
 // @public
 export class LLMProviderError extends SDKError {
-    constructor(message: string, providerName?: string | undefined, statusCode?: number | undefined, cause?: Error | undefined);
+    constructor(message: string, providerName?: string | undefined, statusCode?: number | undefined, cause?: Error | undefined, code?: ErrorCode);
     // (undocumented)
     readonly cause?: Error | undefined;
     // (undocumented)
@@ -4301,7 +4305,7 @@ export class OllamaProvider extends AiSdkProvider<OllamaProviderConfig> {
     readonly name = "ollama";
     protected reasoningOptions(modelId: string, options: GenerateOptions): Record<string, unknown> | undefined;
     supportsStreaming(_model: string): boolean;
-    supportsTools(model: string): boolean;
+    supportsTools(_model: string): boolean;
 }
 
 // @public
@@ -4348,6 +4352,8 @@ interface OneOfOptionsNode extends NodeRunOptions {
 // @public
 export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
     // (undocumented)
+    protected readonly checksChatFailures = true;
+    // (undocumented)
     protected createModel(modelId: string): Promise<LanguageModel>;
     // (undocumented)
     protected readonly fallbackModel = "gpt-4o-mini";
@@ -4361,7 +4367,7 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
     protected reasoningOptions(modelId: string, options: GenerateOptions): Record<string, unknown> | undefined;
     supportsHostedTool(type: HostedToolType | 'custom'): boolean;
     supportsStreaming(_model: string): boolean;
-    supportsTools(model: string): boolean;
+    supportsTools(_model: string): boolean;
 }
 
 // @public
@@ -4375,6 +4381,7 @@ export interface OpenAIProviderConfig extends AiSdkProviderConfig {
     defaultModel?: string;
     // (undocumented)
     organization?: string;
+    store?: boolean;
 }
 
 // @public
@@ -4451,7 +4458,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
     stream(options: GenerateOptions): Promise<StreamResult>;
     supportsHostedTool(type: HostedToolType | 'custom'): boolean;
     supportsStreaming(_model: string): boolean;
-    supportsTools(model: string): boolean;
+    supportsTools(_model: string): boolean;
 }
 
 // @public
@@ -5201,6 +5208,13 @@ export function resolveSpecProvider(type: string, model: string): LLMProvider;
 
 // @public
 export function resolveSpecTool(name: string): ToolDescriptor;
+
+// @public
+interface ResponseWatch {
+    data?(text: string): UpstreamFailure | undefined;
+    end?(complete: boolean): void;
+    rewrite?(text: string): string | undefined;
+}
 
 // @public
 export interface RetryInfo {
@@ -6951,6 +6965,14 @@ export interface UIMessagePartLike {
 
 // @public
 export type UnsupportedFiles = 'error' | 'text-note';
+
+// @public
+interface UpstreamFailure {
+    // (undocumented)
+    message: string;
+    // (undocumented)
+    status: number;
+}
 
 // @public
 export interface Usage {

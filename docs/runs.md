@@ -63,7 +63,9 @@ How it behaves:
   `fetch`, and delegated child runs (the `task` tool) are aborted along
   with their parent.
 - An aborted run **resolves** (it does not reject) with
-  `finishReason: 'aborted'` and the messages and steps so far. A rejection
+  `finishReason: 'aborted'` and the messages and steps so far. A streamed
+  model call cut off by the abort leaves the text it streamed as
+  `result.text` (and as an assistant message marked `interrupted`). A rejection
   caused by the abort, such as an `AbortError`, is not treated as a failure:
   it is not retried by the provider retry and fallback wrappers and is not
   compacted into a provider error.
@@ -72,7 +74,9 @@ How it behaves:
   call is abandoned at the abort (its late reply, and anything it streams
   afterwards, is dropped) and the run ends `'aborted'`. A tool that ignores
   its `abortSignal` is waited for; the run then ends `'aborted'` without
-  another model call.
+  another model call. `defineTool({ timeoutMs })` bounds a tool's call: one
+  still running then fails with a tool error the model sees, and a run
+  aborted while such a call runs stops waiting for it.
 - `result.abortReason` says why: the signal's reason as `{ name, message }`,
   `name` being `'TimeoutError'` for `AbortSignal.timeout()`, `'AbortError'`
   for `controller.abort()` (with the text of a string reason, e.g.

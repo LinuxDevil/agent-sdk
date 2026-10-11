@@ -42,6 +42,7 @@ With many tools, mark them `deferLoading` so the model finds them with a built-i
 | `annotations` | no | MCP hints (`readOnlyHint`, `destructiveHint`, ...), stored as `metadata.mcp.annotations`. `readOnlyHint: true` lets the tool run in [plan mode](./permission-modes.md#which-tools-are-read-only). |
 | `deferLoading` | no | Withhold the tool's definition from the model until it finds the tool with `tool_search`. See [Tool search](./tool-search.md). |
 | `editsFiles` | no | The tool edits files: [`permissionMode: 'acceptEdits'`](./permission-modes.md#file-edits-the-editsfiles-marker) runs its calls without asking. Stored as `metadata.editsFiles`. |
+| `timeoutMs` | no | The longest a call may run, in ms. A call still running then fails with a tool error the model sees, its `abortSignal` is aborted, and the run goes on without it. Not applied to a streaming (`async function*`) tool. |
 | `requiresSandbox` | no | Run the tool through the configured `SandboxAdapter` instead of in-process (needs `sandboxExecute`). See [Guardrails and sandboxing](./guardrails.md#sandboxed-tools). |
 | `sandboxExecute(args, sandbox)` | no | The sandboxed execution path used when `requiresSandbox` is true. |
 
