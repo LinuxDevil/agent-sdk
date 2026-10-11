@@ -40,6 +40,7 @@ import {
   ErrorAttr,
   GenAiAttr,
   GenAiMetric,
+  LegacyAttr,
   GenAiOperation,
   OPERATION_DURATION_BUCKETS,
   TOKEN_USAGE_BUCKETS,
@@ -81,7 +82,21 @@ export interface OtelTraceExporterOptions {
    * `metrics.getMeter(tracerName, tracerVersion)`. Ignored when `metrics` is `false`.
    */
   meter?: Meter;
+  /**
+   * Also set the deprecated pre-semconv attribute names (`model`,
+   * `promptTokens`, `completionTokens`, `totalTokens`, `finishReason`,
+   * `toolName`, `latencyMs`, `error`, and the opt-in content ones) next to the
+   * `gen_ai.*` ones. Default `true`; `false` keeps only the semantic-convention
+   * attributes, halving the attribute count of every span. The SDK's own
+   * spans (`fileTraceExporter`, custom exporters) are unaffected.
+   */
+  legacyAttributes?: boolean;
 }
+
+/** How many spans an exporter tracks at most for parenting (open ones, and ended ones of a tree still open). */
+const MAX_TRACKED_SPANS = 10_000;
+
+const LEGACY_KEYS: ReadonlySet<string> = new Set(Object.values(LegacyAttr));
 
 /**
  * Creates a {@link TraceExporter} that starts/ends a real OpenTelemetry
@@ -117,6 +132,7 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
   // Span (matched by parentId) can be started as a child of the right
   // OTel context instead of the ambient one.
   const recordMetrics = resolveMetricsRecorder(options);
+  const skipLegacy = options.legacyAttributes === false;
 
   // Entries outlive their span: a queued background sub-agent can start after
   // its `execute_tool task` parent ended, and must still join that trace
@@ -137,10 +153,16 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
       // Seed OTel span attributes with whatever this SDK already knew at
       // span-start time (e.g. model, toolName). onSpanEnd below adds
       // whatever was filled in afterwards (token counts, results, ...).
-      setAttributes(otelSpan, span.attributes);
+      setAttributes(otelSpan, span.attributes, skipLegacy);
 
       const ctx = trace.setSpan(parentContext, otelSpan);
       otelSpansById.set(span.id, { span: otelSpan, ctx, rootId: parentEntry ? parentEntry.rootId : span.id });
+      // A tree whose root never ends (a run abandoned mid-approval, a process that stopped awaiting it) would keep
+      // its entries forever: past the cap the oldest go, which in practice are those of such abandoned trees.
+      if (otelSpansById.size > MAX_TRACKED_SPANS) {
+        const oldest = otelSpansById.keys().next().value;
+        if (oldest !== undefined) otelSpansById.delete(oldest);
+      }
     },
 
     onSpanEnd(span: Span) {
@@ -149,7 +171,7 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
         return;
       }
 
-      setAttributes(entry.span, span.attributes);
+      setAttributes(entry.span, span.attributes, skipLegacy);
       if (span.status?.code === 'error') {
         entry.span.setStatus({ code: SpanStatusCode.ERROR, message: span.status.message });
       }
@@ -223,9 +245,9 @@ function recordTokens(histogram: Histogram, span: Span, attributes: Attributes):
   }
 }
 
-function setAttributes(otelSpan: OtelSpan, attributes: Record<string, unknown>): void {
+function setAttributes(otelSpan: OtelSpan, attributes: Record<string, unknown>, skipLegacy: boolean): void {
   for (const [key, value] of Object.entries(attributes)) {
-    if (value !== undefined) {
+    if (value !== undefined && !(skipLegacy && LEGACY_KEYS.has(key))) {
       otelSpan.setAttribute(key, toOtelAttributeValue(value));
     }
   }

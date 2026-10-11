@@ -73,7 +73,7 @@ failed gate, so one run shows all that is wrong.
 | `t.toolOrder([a, b], { subagent? })` | gate | the tools were called in this order (other calls may sit in between) |
 | `t.maxSteps(n)` | gate | the agent took at most `n` model steps |
 | `t.maxTokens(n)` | gate | the agent used at most `n` tokens |
-| `t.maxCostUsd(n)` | gate | the run's reported cost is at most `n` USD. Skipped (counts as passed, marked `skipped`) when the SDK reports no cost |
+| `t.maxCostUsd(n, { unknownCost? })` | gate | the run's reported cost is at most `n` USD. When the SDK reports no cost (the model has no known price; see `registerModel`) the gate fails, since the budget cannot be checked; with `unknownCost: 'skip'` it is skipped instead (counts as passed, marked `skipped`, with a `console.warn`) |
 | `t.check(name, value, check)` | gate | `check` passes for `value` |
 | `t.soft(name, value, check)` | soft | never fails the run (unless `--strict`); the score is recorded and reported |
 | `await t.judge(rubric)` | n/a | returns a 0 to 1 score from an LLM judge (see [Judge evals](#judge-evals)) |
@@ -430,8 +430,8 @@ unchanged. The `agent` in the file is not used; give the deployment's own model
 and tools the behaviour you want to check.
 
 - A check that needs data the stream does not carry fails and says so (for
-  example `maxTokens` when `run.done` has no usage); `maxCostUsd` is reported as
-  skipped when there is no cost.
+  example `maxTokens` when `run.done` has no usage); `maxCostUsd` fails when there
+  is no cost, unless you pass `{ unknownCost: 'skip' }`.
 - `--url` cannot be combined with `--record`, `--replay` or `--drift`
   (`LOUSHO_CONFIG_CONFLICTING_OPTIONS`): cassettes record a provider in-process.
   Score/threshold evals (`score:` form) also need an in-process provider and fail

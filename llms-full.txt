@@ -4939,7 +4939,9 @@ The build generates a module Worker (`export default { fetch }`, plus `scheduled
 source declares cron triggers) and bundles it as a
 browser-platform ES module; the build fails if any `node:` import ends up in
 `dist/worker.js`. `wrangler.toml` points `main` at `dist/worker.js` with
-`no_bundle = true`, so exactly the verified bundle is uploaded. It builds and
+`no_bundle = true`, so exactly the verified bundle is uploaded. Its
+`compatibility_date` defaults to a date pinned per SDK version; change it in
+the generated `wrangler.toml` and later builds keep your date. It builds and
 runs with `ai` v4 (the default install) or `ai` v7 (with
 `@ai-sdk/openai`/`@ai-sdk/anthropic` v4) installed, with no compatibility
 flag (no `nodejs_compat`):
@@ -8795,7 +8797,7 @@ failed gate, so one run shows all that is wrong.
 | `t.toolOrder([a, b], { subagent? })` | gate | the tools were called in this order (other calls may sit in between) |
 | `t.maxSteps(n)` | gate | the agent took at most `n` model steps |
 | `t.maxTokens(n)` | gate | the agent used at most `n` tokens |
-| `t.maxCostUsd(n)` | gate | the run's reported cost is at most `n` USD. Skipped (counts as passed, marked `skipped`) when the SDK reports no cost |
+| `t.maxCostUsd(n, { unknownCost? })` | gate | the run's reported cost is at most `n` USD. When the SDK reports no cost (the model has no known price; see `registerModel`) the gate fails, since the budget cannot be checked; with `unknownCost: 'skip'` it is skipped instead (counts as passed, marked `skipped`, with a `console.warn`) |
 | `t.check(name, value, check)` | gate | `check` passes for `value` |
 | `t.soft(name, value, check)` | soft | never fails the run (unless `--strict`); the score is recorded and reported |
 | `await t.judge(rubric)` | n/a | returns a 0 to 1 score from an LLM judge (see [Judge evals](#judge-evals)) |
@@ -9152,8 +9154,8 @@ unchanged. The `agent` in the file is not used; give the deployment's own model
 and tools the behaviour you want to check.
 
 - A check that needs data the stream does not carry fails and says so (for
-  example `maxTokens` when `run.done` has no usage); `maxCostUsd` is reported as
-  skipped when there is no cost.
+  example `maxTokens` when `run.done` has no usage); `maxCostUsd` fails when there
+  is no cost, unless you pass `{ unknownCost: 'skip' }`.
 - `--url` cannot be combined with `--record`, `--replay` or `--drift`
   (`LOUSHO_CONFIG_CONFLICTING_OPTIONS`): cassettes record a provider in-process.
   Score/threshold evals (`score:` form) also need an in-process provider and fail
@@ -10722,7 +10724,11 @@ has the exit code and the last lines the process wrote to stderr.
 `stderr: 'forward'` (default) also copies the process's stderr to this one's,
 `'capture'` only keeps the last lines, and `'inherit'` / `'ignore'` keep none.
 `connectTimeoutMs` (stdio or HTTP) bounds the `initialize` handshake; the
-default is the MCP SDK's 60 seconds. HTTP
+default is the MCP SDK's 60 seconds. By default a server that cannot connect
+fails every `send()` of the agent; mark a server you can do without
+`optional: true` and it is left out with a `console.warn` instead (its tools
+stay out for the life of the agent). `connectMcp()` skips an `optional` server
+the same way, even with `onError: 'throw'`. HTTP
 entries use the streamable HTTP transport and send the static `headers` on every
 request. An HTTP entry can also sign in with OAuth, as the MCP authorization
 spec describes: add `oauth: { redirectUri }` and an operator signs the agent in
@@ -10931,10 +10937,16 @@ await server.close();
 
 - **Stateless.** Every call to the agent tool is a fresh conversation.
 - **Cancellation.** Cancelling the MCP request aborts the agent run
-  (`agent.send(message, { signal })`).
+  (`agent.send(message, { signal })`). Over HTTP the run is also aborted when
+  the client disconnects, and when a client timeout sends
+  `notifications/cancelled` in a later `POST`: that cancel is matched to the
+  request by its id and the client (remote address, `Authorization`,
+  `User-Agent`), and ignored when several requests in flight match.
 - **Errors.** An agent failure comes back as an MCP result with `isError: true`.
 - **Approvals.** Approval-gated tools cannot be approved over MCP. A run that
-  pauses for approval returns `isError: true` with a message saying so. Tools
+  pauses for approval returns `isError: true` with a message saying so, and
+  its pending approvals are rejected without continuing the run, so they do not
+  pile up in the agent's approval store. Tools
   flagged `needsApproval` are not exposed directly unless you pass
   `allowApprovalTools: true`; if you do, clients run them with **no human gate**.
 - **stdio.** Nothing but the MCP protocol is written to stdout; warnings go to stderr.
@@ -12469,7 +12481,9 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `gen_ai.agent.name` | The agent's `name`. An unnamed sub-agent uses the key the lead knows it by (`subagents: { researcher }` gives `researcher`), and the span is named after it |
 | `gen_ai.agent.id` | The agent's `id`, when set |
 | `gen_ai.provider.name` | The provider's `name` |
+| `gen_ai.request.model` | The agent's model (`settings.model`, else the provider's default), when known |
 | `gen_ai.conversation.id` | `sessionId`, when set |
+| `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` | The run's total tokens: every model call, including those of delegated child runs; absent when no call reported usage. The `gen_ai.client.token.usage` metric still counts each model call once |
 | `lousho.cost_usd` | Cumulative estimated USD of the run (every model call and delegated child run, including a background child that finishes before the run ends); absent when any model used has no known price |
 | `lousho.usage.estimated` | `true` when any of the run's tokens were estimated |
 | `lousho.subagent.name` | On a sub-agent's run: the name the lead knows it by (the `task` tool's `agent`) |
@@ -12485,6 +12499,7 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `gen_ai.request.model` | The requested model |
 | `gen_ai.request.temperature`, `gen_ai.request.max_tokens` | When set |
 | `gen_ai.response.model` | When the provider reports it |
+| `gen_ai.response.id` | The provider's response id, when it reports one |
 | `gen_ai.response.finish_reasons` | e.g. `["stop"]`, `["tool_call"]` |
 | `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` | Token usage |
 | `lousho.cost_usd` | Estimated USD of this step, when the built-in price table (or `registerModel`) knows the model; absent otherwise |
@@ -12619,6 +12634,10 @@ changed (to what the spec requires); update queries that matched on them.
 | `toolName` | `gen_ai.tool.name` |
 | `error` (the error message; absent on success) | `error.type` and the span status |
 | `input`, `prompt`, `args`, `result` | `gen_ai.input.messages`, `gen_ai.tool.call.arguments`, `gen_ai.tool.call.result` (opt-in, see above) |
+
+With `createOtelTraceExporter({ legacyAttributes: false })` the OpenTelemetry
+spans carry only the GenAI names, not the deprecated ones next to them (fewer
+attributes per span); the default `true` keeps both.
 
 The deprecated content attributes (`input`, `prompt`, `args`, `result`) are
 off by default: `redactContent` defaults to `true`. Pass `redactContent: false`
@@ -13922,7 +13941,7 @@ The first argument says where the agent runs.
 
 | Source | What the hook does |
 | ------ | ------------------ |
-| `{ url, sessionId?, headers?, fetch? }` | **Remote.** `send(input)` POSTs `{ "input": "...", "sessionId": "..." }` as JSON to `url` and reads the response body as an event stream: SSE (`data: {...}` lines) or newline-delimited JSON, one event per line. The server below writes exactly that. The hook generates one `sessionId` per chat and sends it with every turn, so a session-aware server (`createRouteHandler`) keeps the conversation; pass your own `sessionId` to resume a stored session. `reset()` starts a new chat id. |
+| `{ url, sessionId?, headers?, fetch? }` | **Remote.** `send(input)` POSTs `{ "input": "...", "sessionId": "..." }` as JSON to `url` and reads the response body as an event stream: SSE (`data: {...}` lines; one event's JSON may span several `data:` lines) or newline-delimited JSON, one event per line. The server below writes exactly that. The hook generates one `sessionId` per chat and sends it with every turn, so a session-aware server (`createRouteHandler`) keeps the conversation; pass your own `sessionId` to resume a stored session. `reset()` starts a new chat id. |
 | `{ agent }` | **In process.** `send(input)` calls `agent.stream(input)`. Every turn is a new run with no history, like `agent.send()`. |
 | `{ agent, sessionId }` | **In process, multi-turn.** The hook creates `agent.session({ id: sessionId })` once and streams each turn with `session.stream()`, so turns see the conversation so far. |
 
@@ -13938,7 +13957,7 @@ on the server.
 | `toolCalls[i]` | `{ id, name, args, status, result?, error?, partial? }`, `status` being `'running'`, `'awaiting-approval'`, `'done'`, `'error'` or `'rejected'`. `partial` is the latest `tool.partial` snapshot of a running [streaming tool](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#streaming-partial-results), removed when the call settles or pauses. |
 | `status` | `'idle'`, `'streaming'`, `'awaiting-approval'` or `'error'`. |
 | `pendingApproval` | `{ id, toolCallId, toolName, args }` of the tool call the run paused on, else `null`. For an `ask_question` call it also has `kind: 'question'` and `question: { text, options?, allowFreeText? }`; a tool waiting on an OAuth sign-in has `kind: 'sign-in'` and `signIn: { provider, displayName?, url }` (see [What the user sees](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#what-the-user-sees)). |
-| `error` | `{ name, message }` of the last `error` event or a failed request, else `null`. |
+| `error` | `{ name, message }` of the last `error` event or a failed request, else `null`. A remote stream that ends before its `run.done` (a proxy timeout, a server restart) sets `status: 'error'` with an error named `StreamEndedError`. |
 | `usage` | Token usage of the last finished run (from `run.done`), else `null`. |
 | `finishReason` | How the last run ended (`run.done`): `'stop'`, `'max-steps'`, `'output-invalid'`, `'budget-exceeded'`, `'guardrail'`, ...; `null` before the first run ends. The four named after `stop` also set `status: 'error'` and an `error` named `RunEndedError` (unless an `error` event already did), so the chat does not look like it finished normally. |
 | `todos` | The agent's todo list (`{ id, content, status }[]`), set by each `todo.updated` event of the [todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#todo-tools); `[]` until the first one. It carries across turns; see [Todos](#todos). |
@@ -17015,7 +17034,9 @@ snippets here):
 - **Cleanup is unsubscribing.** `stop()` aborts the request in flight, and so
   does the last subscriber going away (the component using `$agent` is
   destroyed). There is no `destroy()`: this is how Svelte stores stop their
-  work. A store nobody subscribes to still runs a turn you started with
+  work. A transient read that subscribes and unsubscribes in the same turn,
+  like `get(agent)` from `svelte/store`, does not count, so it never aborts a
+  run. A store nobody subscribes to still runs a turn you started with
   `send()`; call `stop()` yourself if you drop it.
 
 The reducer and the stream parser are exported from this subpath too

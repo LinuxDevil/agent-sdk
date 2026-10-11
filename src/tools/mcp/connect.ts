@@ -36,7 +36,10 @@ export interface ConnectMcpOptions {
    * demand, `false` fails the call.
    */
   lazy?: boolean;
-  /** A server that cannot connect: `'throw'` (default) rejects; `'skip'` warns through `logger` and leaves it out. */
+  /**
+   * A server that cannot connect: `'throw'` (default) rejects; `'skip'` warns through `logger` and leaves it out.
+   * A server with `optional: true` is always skipped like that.
+   */
   onError?: 'throw' | 'skip';
   /** Receives skipped-server and skipped-tool warnings. Defaults to a no-op logger. */
   logger?: Logger;
@@ -189,6 +192,11 @@ function oauthProvider(name: string, server: McpServerSpec, tokens: OAuthTokenSt
   return storeOAuthProvider(name, server, tokens);
 }
 
+/** The MCP SDK's error for a request on a client whose transport is gone (thrown before anything is sent). */
+function isNotConnected(error: unknown): boolean {
+  return error instanceof Error && error.message === 'Not connected';
+}
+
 /** One server: connects on demand and remembers its status. */
 class ServerConnection {
   status: McpServerStatus = 'idle';
@@ -207,13 +215,34 @@ class ServerConnection {
 
   /** What the tool descriptors call through: the current client, reconnected if needed. */
   readonly handle: McpClientLike = {
-    listTools: (params, options) =>
-      this.use().then((client) => client.listTools(params, options as RequestOptions).catch((error: unknown) => this.failed(error))),
+    listTools: (params, options) => this.request((client) => client.listTools(params, options as RequestOptions)),
     callTool: (params, resultSchema, options) =>
-      this.use().then((client) =>
-        client.callTool(params, resultSchema as never, options as RequestOptions).catch((error: unknown) => this.failed(error))
-      ),
+      this.request((client) => client.callTool(params, resultSchema as never, options as RequestOptions)),
   };
+
+  /**
+   * Runs `send` on the current client. A client whose transport is gone
+   * without its `onclose` having fired (yet) fails with the MCP SDK's bare
+   * `Not connected`, before anything is sent: that counts as a dropped
+   * connection, and with `lazy` the call is sent once more on a new one.
+   */
+  private async request<T>(send: (client: Client) => Promise<T>): Promise<T> {
+    const current = this.use();
+    const client = await current;
+    try {
+      return await send(client);
+    } catch (error) {
+      if (!isNotConnected(error)) return this.failed(error);
+      if (this.client === current) {
+        this.client = undefined;
+        this.closed = true;
+        this.status = 'failed';
+        void client.close().catch(() => undefined);
+      }
+      if (!this.lazy) throw error;
+      return send(await this.use()).catch((retryError: unknown) => this.failed(retryError));
+    }
+  }
 
   /**
    * N9c: a call refused for want of a sign-in (a revoked grant) drops the
@@ -385,7 +414,7 @@ export async function connectMcp(
     const { name } = connections[index];
     const error: unknown = result.reason;
     const reason = error instanceof Error ? error.message : String(error);
-    if (onError === 'throw' || error instanceof MissingPeerDependencyError) {
+    if ((onError === 'throw' && !servers[name].optional) || error instanceof MissingPeerDependencyError) {
       await close();
       // N9c: LOUSHO_MCP_AUTH_REQUIRED (and LOUSHO_MCP_START_FAILED) keep their code.
       throw error instanceof MissingPeerDependencyError || error instanceof McpStartError || connections[index].status === 'needs-auth'

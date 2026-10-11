@@ -115,7 +115,9 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `gen_ai.agent.name` | The agent's `name`. An unnamed sub-agent uses the key the lead knows it by (`subagents: { researcher }` gives `researcher`), and the span is named after it |
 | `gen_ai.agent.id` | The agent's `id`, when set |
 | `gen_ai.provider.name` | The provider's `name` |
+| `gen_ai.request.model` | The agent's model (`settings.model`, else the provider's default), when known |
 | `gen_ai.conversation.id` | `sessionId`, when set |
+| `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` | The run's total tokens: every model call, including those of delegated child runs; absent when no call reported usage. The `gen_ai.client.token.usage` metric still counts each model call once |
 | `lousho.cost_usd` | Cumulative estimated USD of the run (every model call and delegated child run, including a background child that finishes before the run ends); absent when any model used has no known price |
 | `lousho.usage.estimated` | `true` when any of the run's tokens were estimated |
 | `lousho.subagent.name` | On a sub-agent's run: the name the lead knows it by (the `task` tool's `agent`) |
@@ -131,6 +133,7 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `gen_ai.request.model` | The requested model |
 | `gen_ai.request.temperature`, `gen_ai.request.max_tokens` | When set |
 | `gen_ai.response.model` | When the provider reports it |
+| `gen_ai.response.id` | The provider's response id, when it reports one |
 | `gen_ai.response.finish_reasons` | e.g. `["stop"]`, `["tool_call"]` |
 | `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` | Token usage |
 | `lousho.cost_usd` | Estimated USD of this step, when the built-in price table (or `registerModel`) knows the model; absent otherwise |
@@ -265,6 +268,10 @@ changed (to what the spec requires); update queries that matched on them.
 | `toolName` | `gen_ai.tool.name` |
 | `error` (the error message; absent on success) | `error.type` and the span status |
 | `input`, `prompt`, `args`, `result` | `gen_ai.input.messages`, `gen_ai.tool.call.arguments`, `gen_ai.tool.call.result` (opt-in, see above) |
+
+With `createOtelTraceExporter({ legacyAttributes: false })` the OpenTelemetry
+spans carry only the GenAI names, not the deprecated ones next to them (fewer
+attributes per span); the default `true` keeps both.
 
 The deprecated content attributes (`input`, `prompt`, `args`, `result`) are
 off by default: `redactContent` defaults to `true`. Pass `redactContent: false`

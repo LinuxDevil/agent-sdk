@@ -23,5 +23,15 @@ export default tseslint.config(
       ],
       '@typescript-eslint/ban-ts-comment': 'error',
     },
+  },
+  {
+    // Type-aware rules, for the library source only (tests are not in tsconfig.json's program).
+    files: ['src/**/*.ts'],
+    ignores: ['src/**/*.test.ts', 'src/**/*.spec.ts', 'src/**/*.test-d.ts'],
+    languageOptions: { parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname } },
+    rules: {
+      // A promise nobody awaits loses its rejection; `void` marks one left to run on purpose.
+      '@typescript-eslint/no-floating-promises': 'error',
+    },
   }
 );

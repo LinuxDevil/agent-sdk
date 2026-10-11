@@ -47,7 +47,11 @@ has the exit code and the last lines the process wrote to stderr.
 `stderr: 'forward'` (default) also copies the process's stderr to this one's,
 `'capture'` only keeps the last lines, and `'inherit'` / `'ignore'` keep none.
 `connectTimeoutMs` (stdio or HTTP) bounds the `initialize` handshake; the
-default is the MCP SDK's 60 seconds. HTTP
+default is the MCP SDK's 60 seconds. By default a server that cannot connect
+fails every `send()` of the agent; mark a server you can do without
+`optional: true` and it is left out with a `console.warn` instead (its tools
+stay out for the life of the agent). `connectMcp()` skips an `optional` server
+the same way, even with `onError: 'throw'`. HTTP
 entries use the streamable HTTP transport and send the static `headers` on every
 request. An HTTP entry can also sign in with OAuth, as the MCP authorization
 spec describes: add `oauth: { redirectUri }` and an operator signs the agent in
@@ -256,10 +260,16 @@ await server.close();
 
 - **Stateless.** Every call to the agent tool is a fresh conversation.
 - **Cancellation.** Cancelling the MCP request aborts the agent run
-  (`agent.send(message, { signal })`).
+  (`agent.send(message, { signal })`). Over HTTP the run is also aborted when
+  the client disconnects, and when a client timeout sends
+  `notifications/cancelled` in a later `POST`: that cancel is matched to the
+  request by its id and the client (remote address, `Authorization`,
+  `User-Agent`), and ignored when several requests in flight match.
 - **Errors.** An agent failure comes back as an MCP result with `isError: true`.
 - **Approvals.** Approval-gated tools cannot be approved over MCP. A run that
-  pauses for approval returns `isError: true` with a message saying so. Tools
+  pauses for approval returns `isError: true` with a message saying so, and
+  its pending approvals are rejected without continuing the run, so they do not
+  pile up in the agent's approval store. Tools
   flagged `needsApproval` are not exposed directly unless you pass
   `allowApprovalTools: true`; if you do, clients run them with **no human gate**.
 - **stdio.** Nothing but the MCP protocol is written to stdout; warnings go to stderr.

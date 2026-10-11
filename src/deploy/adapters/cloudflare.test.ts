@@ -119,6 +119,21 @@ describe('CloudflareWorkerAdapter', () => {
     expect(workerName({ ...SPEC, name: 'x'.repeat(100) })).toHaveLength(63);
   });
 
+  it('keeps the compatibility_date of an existing wrangler.toml when it scaffolds again', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-cf-date-'));
+    try {
+      const out = path.join(dir, 'out');
+      await CloudflareWorkerAdapter.scaffold(writeSpec(dir, SPEC), out);
+      const file = path.join(out, 'wrangler.toml');
+      const first = fs.readFileSync(file, 'utf8');
+      fs.writeFileSync(file, first.replace(/^compatibility_date = ".*"$/m, 'compatibility_date = "2026-09-01"'));
+      await CloudflareWorkerAdapter.scaffold(writeSpec(dir, SPEC), out);
+      expect(fs.readFileSync(file, 'utf8')).toBe(first.replace(/^compatibility_date = ".*"$/m, 'compatibility_date = "2026-09-01"'));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('findNodeBuiltinReferences detects node: specifiers', () => {
     expect(findNodeBuiltinReferences(`import fs from "node:fs"; require('node:http')`)).toEqual([
       '"node:fs"',

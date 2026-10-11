@@ -72,3 +72,27 @@ describe('parseEventStream (LOU-D15)', () => {
     expect((await collect(chunked(text))).map((e) => e.type)).toEqual(['agent.drift', 'todo.updated']);
   });
 });
+
+describe('parseEventStream multi-line SSE data', () => {
+  it('joins the data: lines of one SSE event with a newline', async () => {
+    const sse = sample
+      .map((e) => `data: ${JSON.stringify(e, null, 2).split('\n').join('\ndata: ')}\n\n`)
+      .join('');
+    expect(await collect(chunked(sse))).toEqual(sample);
+    expect(await collect(chunked(sse.replace(/\n/g, '\r\n'), 3))).toEqual(sample);
+  });
+
+  it('accepts data: without the space and consecutive single-line events without blank lines', async () => {
+    const sse = sample.map((e) => `data:${JSON.stringify(e)}\n`).join('');
+    expect(await collect(chunked(sse))).toEqual(sample);
+  });
+
+  it('yields a single-line event before its blank line arrives', async () => {
+    let push!: (text: string) => void;
+    const body = new ReadableStream<Uint8Array>({ start: (c) => { push = (t) => c.enqueue(new TextEncoder().encode(t)); } });
+    const iterator = parseEventStream({ body })[Symbol.asyncIterator]();
+    push(`data: ${JSON.stringify(sample[0])}\n`);
+    await expect(iterator.next()).resolves.toEqual({ value: sample[0], done: false });
+    await iterator.return?.(undefined);
+  });
+});

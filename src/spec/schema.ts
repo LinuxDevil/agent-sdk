@@ -81,6 +81,13 @@ export interface McpStdioServerSpec {
   connectTimeoutMs?: number;
   /** Load only some of this server's tools, by their MCP names: `{ include?, exclude? }`. */
   tools?: McpToolFilter;
+  /**
+   * A server that fails to connect is left out (with a warning) instead of
+   * failing every run of the agent (`connectMcp()` skips it even with
+   * `onError: 'throw'`). Default `false`. In `createAgent({ mcpServers })` its
+   * tools then stay out for the life of the agent.
+   */
+  optional?: boolean;
 }
 
 /**
@@ -117,6 +124,13 @@ export interface McpHttpServerSpec {
   tools?: McpToolFilter;
   /** Sign in to this server with OAuth (N9c); see {@link McpOAuthOptions}. */
   oauth?: McpOAuthOptions;
+  /**
+   * A server that fails to connect is left out (with a warning) instead of
+   * failing every run of the agent (`connectMcp()` skips it even with
+   * `onError: 'throw'`). Default `false`. In `createAgent({ mcpServers })` its
+   * tools then stay out for the life of the agent.
+   */
+  optional?: boolean;
 }
 
 /**

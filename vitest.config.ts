@@ -63,27 +63,32 @@ export default defineConfig({
       // LOU-P's growth (new server/chat + ChatPanel/ApprovalCard code, all
       // covered by apps/agent-forge's own 49/49 + 74/74 suites) tipped the
       // denominator enough to trip the global threshold below.
-      exclude: ['**/*.test.ts', '**/*.spec.ts', 'dist/**', 'node_modules/**', 'apps/**', '.claude/**'],
-      // Floor set 1-2 points below the measured baseline (LOU-B4). Measured with
-      // `npm run test:coverage`, excluding the 3 provider test suites that fail
-      // to even load in this repo because @ai-sdk/openai and ollama-ai-provider
-      // are optional peer deps that aren't installed here (see LOU-B2/typings).
-      //
-      // Re-measured for LOU-L: `npm run test:coverage` had never actually run
-      // to completion in CI (masked by the `npm run lint` step failing first
-      // on every PR since LOU-B - see the eslint.config.mjs fix in this same
-      // PR) once packages/create-lousho-agent's dist finally got built ahead
-      // of the test step, its own source is exercised too, which raises
-      // statements/functions/lines but landed branches ~2.5pts under the old
-      // (never-actually-verified) 84.52% figure. Branches floor lowered to
-      // match this newly-verified real baseline; the other three floors were
-      // already comfortably under the new, higher measured numbers.
-      // Baseline: statements 71.34%, branches 81.95%, functions 78.64%, lines 71.34%.
+      // Only the library source counts: scripts/, examples/, audit/ and
+      // packages/ are not shipped code, and counting them (and any scratch
+      // directory a test made in the repo) diluted the figure to ~82% while
+      // src/ itself sat at ~96%, so the floors below caught nothing.
+      include: ['src/**'],
+      exclude: [
+        '**/*.test.ts',
+        '**/*.spec.ts',
+        '**/*.test-d.ts',
+        '**/*.eval.ts',
+        '**/__fixtures__/**',
+        'dist/**',
+        'node_modules/**',
+        'apps/**',
+        '.claude/**',
+      ],
+      // Floors set 1.5-2 points below the measured baseline of src/ alone
+      // (`npm run test:coverage`, 2026-10): statements 96.64%, branches
+      // 91.06%, functions 96.05%, lines 96.64%. They used to sit ~35 points
+      // under the real figure because the denominator counted scripts/,
+      // examples/ and audit/ too (see `include` above).
       thresholds: {
-        statements: 61,
-        branches: 80,
-        functions: 72,
-        lines: 61,
+        statements: 95,
+        branches: 89,
+        functions: 94,
+        lines: 95,
       },
     },
   },

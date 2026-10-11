@@ -12,12 +12,14 @@
  * name, and a defineTool() tool is only recognized when the file and the
  * loader share one copy of the SDK — loading the directory through src/ would
  * be a second copy. This is also why the test needs `npm run build` to have
- * run, as in CI. The temp agent directory sits inside the repository so its
- * `zod` and `@lousho/build-ai-agent` imports resolve like a real project's
- * (self-reference to the built package, node_modules for zod).
+ * run, as in CI. The temp agent directory (in the OS temp dir) gets a
+ * `node_modules` link to the repository's, so its `zod` and
+ * `@lousho/build-ai-agent` imports resolve like a real project's (the
+ * package's workspace self-link, node_modules for zod).
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import { resolveAgentDir } from '@lousho/build-ai-agent';
@@ -52,9 +54,10 @@ async function add(args: string[]) {
 }
 
 beforeEach(() => {
-  // Inside the repository so the installed files' `zod` and
+  // The node_modules link lets the installed files' `zod` and
   // `@lousho/build-ai-agent` imports resolve (see the comment at the top).
-  root = fs.mkdtempSync(path.join(REPO_ROOT, '.lousho-default-registry-'));
+  root = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-default-registry-'));
+  fs.symlinkSync(path.join(REPO_ROOT, 'node_modules'), path.join(root, 'node_modules'), 'junction');
   agentDir = path.join(root, 'agent');
   fs.mkdirSync(agentDir);
   fs.writeFileSync(path.join(agentDir, 'instructions.md'), 'You help the user.');

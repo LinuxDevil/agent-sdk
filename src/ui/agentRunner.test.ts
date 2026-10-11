@@ -132,3 +132,39 @@ describe('remote mode session id (Eve CORE-F1)', () => {
     expect(state.error?.message).toBe('POST /send failed with 502');
   });
 });
+
+describe('a remote stream that ends before run.done', () => {
+  function remote(body: Uint8Array[]) {
+    let state: AgentUIState = initialAgentUIState;
+    const fetchMock = (async () => new Response(new Blob(body as BlobPart[]), { headers: { 'Content-Type': 'text/event-stream' } })) as typeof fetch;
+    const runner = createAgentRunner({
+      source: () => ({ url: '/send', fetch: fetchMock }),
+      options: () => ({}),
+      state: () => state,
+      dispatch: (action) => (state = reduceAgentEvents(state, action)),
+    });
+    return { runner, state: () => state };
+  }
+
+  it('ends in an error instead of staying streaming', async () => {
+    const h = remote([frame({ type: 'run.start', agentName: 'a' }), frame({ type: 'text.delta', text: 'hel' })]);
+    await h.runner.send('hi');
+    expect(h.state()).toMatchObject({ status: 'error', error: { name: 'StreamEndedError' } });
+    expect(h.state().messages[1].text).toBe('hel');
+  });
+
+  it("does not count a sub-agent's run.done as the end of the run", async () => {
+    const h = remote([frame({ type: 'run.done', finishReason: 'stop', text: '', subagent: { name: 's', depth: 1, toolCallId: 't' } })]);
+    await h.runner.send('hi');
+    expect(h.state().status).toBe('error');
+  });
+
+  it('settles normally when run.done or a pause arrives', async () => {
+    const done = remote([frame({ type: 'text.delta', text: 'ok' }), frame({ type: 'run.done', finishReason: 'stop', text: 'ok' })]);
+    await done.runner.send('hi');
+    expect(done.state()).toMatchObject({ status: 'idle', error: null });
+    const paused = remote([frame({ type: 'approval.requested', approvalId: 'ap1', toolCallId: 'c1', toolName: 'pay', args: {} })]);
+    await paused.runner.send('hi');
+    expect(paused.state().status).toBe('awaiting-approval');
+  });
+});
