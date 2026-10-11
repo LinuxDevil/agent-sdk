@@ -4,7 +4,7 @@
  * approvals, id validation, a corrupt history file, and two agents on one dir.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -137,6 +137,57 @@ describe('fileStore(dir) (R2)', () => {
     expect(await store.approvals.resolve('appr_stale')).toBeNull();
     await store.approvals.save(pending, makeSnapshot(pending));
     expect((await store.approvals.resolve('appr_stale'))?.pending.id).toBe('appr_stale');
+  });
+
+  it('a claim a crashed resolver left long ago is taken over, so the approval is not stuck forever', async () => {
+    const dir = tempDir();
+    const store = fileStore(dir);
+    const pending = makePending('appr_old');
+    await store.approvals.save(pending, makeSnapshot(pending));
+    const claim = join(dir, 'approvals', 'appr_old.json.claim');
+    writeFileSync(claim, '1234');
+    const old = new Date(Date.now() - 120_000);
+    utimesSync(claim, old, old);
+    const [first, second] = await Promise.all([store.approvals.resolve('appr_old'), fileStore(dir).approvals.resolve('appr_old')]);
+    expect([first, second].filter(Boolean).map((record) => record?.pending.id)).toEqual(['appr_old']);
+    expect(await store.approvals.resolve('appr_old')).toBeNull();
+  });
+
+  it('a corrupt checkpoint fails load() with LOUSHO_CHECKPOINT_CORRUPT and is listed as an in-progress run with that error', async () => {
+    const dir = tempDir();
+    const store = fileStore(dir);
+    await save(store, 'run-1', 1);
+    writeFileSync(join(dir, 'checkpoints', 'run-1.json'), '{"agentId": "a", "mess');
+    writeFileSync(join(dir, 'checkpoints', 'run-2.json'), '[]');
+    await expect(store.checkpoints.load('run-1')).rejects.toMatchObject({ code: 'LOUSHO_CHECKPOINT_CORRUPT' });
+    await expect(store.checkpoints.load('run-2')).rejects.toMatchObject({ code: 'LOUSHO_CHECKPOINT_CORRUPT' });
+    const listed = await store.checkpoints.list!({ status: 'in-progress' });
+    expect(listed.map((entry) => [entry.sessionId, entry.checkpoint.lastError?.code, entry.checkpoint.lastError?.retryable])).toEqual([
+      ['run-1', 'LOUSHO_CHECKPOINT_CORRUPT', false],
+      ['run-2', 'LOUSHO_CHECKPOINT_CORRUPT', false],
+    ]);
+    await store.checkpoints.delete('run-1');
+    expect(await store.checkpoints.load('run-1')).toBeNull();
+  });
+
+  it('stores ids that would make a bad file name (too long once case-safe, a Windows device name) under a hashed name', async () => {
+    const dir = tempDir();
+    const store = fileStore(dir);
+    const long = 'X'.repeat(128);
+    await store.sessions.save(long, [{ role: 'user', content: 'hi' }]);
+    expect(await store.sessions.load(long)).toEqual([{ role: 'user', content: 'hi' }]);
+    for (const id of [`${long}.turn-4`, 'nul', 'com1.turn-0']) await save(store, id, 3);
+    expect((await store.checkpoints.list!()).map((entry) => entry.sessionId).sort()).toEqual(['com1.turn-0', 'nul', `${long}.turn-4`].sort());
+    expect((await store.checkpoints.load('nul'))?.stepIndex).toBe(3);
+    expect(readdirSync(join(dir, 'checkpoints')).some((name) => /^(nul|com1)\./i.test(name))).toBe(false);
+  });
+
+  it('a run lease held by a process that is gone from this host is taken over at once', async () => {
+    const dir = tempDir();
+    const store = fileStore(dir);
+    expect(await store.checkpoints.acquireLease!('run-1', '999999999:dead-run', 60_000)).toBe(true);
+    expect(await fileStore(dir).checkpoints.acquireLease!('run-1', 'claim:other', 60_000)).toBe(true);
+    expect(await fileStore(dir).checkpoints.acquireLease!('run-1', 'claim:third', 60_000)).toBe(false);
   });
 
   it('rejects session, checkpoint and approval ids that would escape the directory', async () => {

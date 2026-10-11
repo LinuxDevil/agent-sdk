@@ -153,6 +153,31 @@ describe('OpenRouterProvider', () => {
       expect(url).not.toContain('/responses');
     });
 
+    it('without apiKey, sends OPENROUTER_API_KEY and never OPENAI_API_KEY', async () => {
+      vi.stubEnv('OPENAI_API_KEY', 'sk-openai-must-not-leak');
+      vi.stubEnv('OPENROUTER_API_KEY', 'sk-or-right-key');
+      try {
+        const { headers } = await requestOf(new OpenRouterProvider({ defaultModel: 'openai/gpt-4o-mini' } as OpenRouterProviderConfig));
+        expect(headers.get('authorization')).toBe('Bearer sk-or-right-key');
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it('without apiKey or OPENROUTER_API_KEY, fails naming OPENROUTER_API_KEY and sends nothing', async () => {
+      vi.stubEnv('OPENAI_API_KEY', 'sk-openai-must-not-leak');
+      vi.stubEnv('OPENROUTER_API_KEY', '');
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      try {
+        const provider = new OpenRouterProvider({ defaultModel: 'openai/gpt-4o-mini' } as OpenRouterProviderConfig);
+        await expect(provider.generate({ messages: [{ role: 'user', content: 'hi' }], model: 'openai/gpt-4o-mini' })).rejects.toThrow(/OPENROUTER_API_KEY/);
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
     it('sends the API key and the site attribution headers', async () => {
       const { headers } = await requestOf(new OpenRouterProvider(config));
       expect(headers.get('authorization')).toBe('Bearer test-api-key');

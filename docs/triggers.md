@@ -85,11 +85,15 @@ const handler = mountChannels(agent, [
 ]);
 ```
 
-`WebhookTriggerAdapter` starts an HTTP server. **Always set `auth` for a
-webhook that is reachable from outside your machine**: without it, anyone who
-can reach the port can run your agent (and spend your tokens). If you listen
-on a non-loopback host with no `auth`, the adapter logs a one-time warning
-through `options.logger`.
+`WebhookTriggerAdapter` starts an HTTP server on `127.0.0.1` (this machine
+only) unless you pass `host`. **Always set `auth` for a webhook that is
+reachable from outside your machine**: without it, anyone who can reach the
+port can run your agent (and spend your tokens). A non-loopback `host` (e.g.
+`'0.0.0.0'`) without `auth` throws `LOUSHO_TRIGGER_INVALID` at construction;
+`allowUnauthenticated: true` allows it anyway and logs a one-time warning
+through `options.logger`. Without `auth` on loopback, a request whose `Host`
+is not a loopback name (DNS rebinding) or that carries an `Origin` header (a
+web page) gets `403`.
 
 ```ts
 import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
@@ -126,7 +130,8 @@ new WebhookTriggerAdapter({
 
 HMAC options: `header` (default `x-signature-256`), `algorithm` (`sha256` or
 `sha1`, default `sha256`), `prefix` (default `sha256=`; `''` for a bare
-digest), `timestampHeader` and `toleranceSeconds`. Signatures and bearer
+digest), `timestampHeader` and `toleranceSeconds` (a timestamp may also be at
+most a minute ahead of local time). Signatures and bearer
 tokens are compared in constant time. A request that fails authentication gets
 a generic `401 {"error":"Unauthorized"}` - the response never says which check
 failed - and the reason (never a secret or signature) is logged at `warn`
@@ -160,7 +165,8 @@ one-time warning through `options.logger`. With it, every request is verified
 as [Slack documents](https://docs.slack.dev/authentication/verifying-requests-from-slack)
 before the body is parsed: HMAC-SHA256 over `v0:{X-Slack-Request-Timestamp}:{raw body}`,
 compared in constant time with `X-Slack-Signature` (`v0=<hex>`), and requests
-more than five minutes old are rejected. Failures get a generic
+more than five minutes old, or more than a minute ahead of local time, are
+rejected (the timestamp is in seconds, as Slack sends it). Failures get a generic
 `401 {"error":"Unauthorized"}`; the reason (never a secret or signature) is
 logged at `warn` level. The signed `url_verification` handshake is answered
 after verification.

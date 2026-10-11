@@ -64,7 +64,8 @@ function packageJson(config: ProjectConfig): string {
     private: true,
     type: 'module',
     scripts: {
-      dev: yaml ? 'lousho dev agent.yaml' : 'tsx --env-file-if-exists=.env src/index.ts',
+      // `lousho dev` loads .env itself, and so does src/index.ts (tsx --env-file-if-exists prints "not found" twice).
+      dev: yaml ? 'lousho dev agent.yaml' : 'tsx src/index.ts',
       test: 'vitest run',
       typecheck: 'tsc --noEmit',
       doctor: yaml ? 'lousho doctor agent.yaml' : 'lousho doctor',
@@ -78,7 +79,7 @@ function packageJson(config: ProjectConfig): string {
       '@types/node': '^22.0.0',
       tsx: '^4.19.0',
       typescript: '^5.6.0',
-      vitest: '^3.2.4',
+      vitest: '^5.0.3',
     },
     engines: { node: '>=22.19.0' },
   };
@@ -163,14 +164,36 @@ function indexSource(): string {
   return `import { createInterface } from 'node:readline/promises';
 import { buildAgent } from './agent.js';
 
-const agent = buildAgent();
+// Load .env when there is one; variables already set in the environment win.
+try {
+  process.loadEnvFile();
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+}
+
+const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+let agent: ReturnType<typeof buildAgent>;
+try {
+  agent = buildAgent();
+} catch (error) {
+  // e.g. a missing API key: the message says which variable to set (in .env).
+  console.error(errorText(error));
+  process.exit(1);
+}
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 rl.on('close', () => process.exit(0));
 
 console.log('Chat with your agent. Press Ctrl+C to quit.');
 for (;;) {
   const message = (await rl.question('you> ')).trim();
-  if (message) console.log(\`agent> \${(await agent.send(message)).text}\`);
+  if (!message) continue;
+  try {
+    console.log(\`agent> \${(await agent.send(message)).text}\`);
+  } catch (error) {
+    // An invalid key, a rate limit or no network: report it and keep the chat open.
+    console.error(\`error: \${errorText(error)}\`);
+  }
 }
 `;
 }
@@ -211,14 +234,13 @@ function yamlTestSource(config: ProjectConfig): string {
   return `import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { loadSpec } from '@lousho/build-ai-agent';
-import { ConfigurationError } from '../../execution/errors';
 
 describe('agent.yaml', () => {
   it('is a valid agent spec', () => {
     const spec = loadSpec(fileURLToPath(new URL('../agent.yaml', import.meta.url)));
 
-    expect(spec.name).toBe('${config.name}');
-    expect(spec.provider.type).toBe('${config.provider}');
+    expect(spec.name).toBe(${JSON.stringify(config.name)});
+    expect(spec.provider.type).toBe(${JSON.stringify(config.provider)});
     expect(spec.tools).toContain('current-date');
   });
 });
@@ -226,7 +248,8 @@ describe('agent.yaml', () => {
 }
 
 function agentYaml(config: ProjectConfig): string {
-  return `name: ${config.name}
+  // JSON strings are valid YAML: a name like `123`, `true` or `null` stays a string.
+  return `name: ${JSON.stringify(config.name)}
 prompt: You are a helpful assistant. Use your tools when they help.
 provider:
   type: ${config.provider}

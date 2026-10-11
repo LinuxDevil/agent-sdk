@@ -48,6 +48,22 @@ describeApprovalStoreContract('KVStore.approvals', () => new KVStore(fakeKV().kv
 const pending: PendingApproval = { id: 'ap-1', toolCallId: 'call-1', toolName: 'ping', args: { n: 1 }, createdAt: '2026-01-01T00:00:00.000Z' };
 const snapshot = { currentMessages: [{ role: 'user', content: 'hi' }], pendingToolCall: pending, steps: 1 } as unknown as ExecutionSnapshot;
 
+describe('KVStore checkpoints', () => {
+  it('a corrupt checkpoint value fails load() with LOUSHO_CHECKPOINT_CORRUPT and is listed with that error', async () => {
+    const { kv, data } = fakeKV();
+    const { checkpoints } = new KVStore(kv);
+    data.set('checkpoints/run-1', '{"broken');
+    await expect(checkpoints.load('run-1')).rejects.toMatchObject({ code: 'LOUSHO_CHECKPOINT_CORRUPT' });
+    expect((await checkpoints.list()).map((entry) => entry.checkpoint.lastError?.code)).toEqual(['LOUSHO_CHECKPOINT_CORRUPT']);
+  });
+
+  it('list() fails clearly when the binding cannot list, instead of reporting no runs', async () => {
+    const { kv } = fakeKV();
+    const { checkpoints } = new KVStore({ get: kv.get, put: kv.put, delete: kv.delete });
+    await expect(checkpoints.list()).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_INVALID' });
+  });
+});
+
 describe('KVStore sessions', () => {
   it('saves a transcript as JSON under sessions/<id>, loads it back, and deletes it', async () => {
     const { kv, data } = fakeKV();
@@ -197,6 +213,22 @@ describe('KVStore approvals: two decisions of one approval at once (Eve DUR-F9)'
     await approvals.save(pending, snapshot);
     const results = await Promise.all([approvals.resolve('ap-1'), approvals.resolve('ap-1')]);
     expect(results.filter((record) => record !== null)).toHaveLength(1);
+  });
+
+  it('hands the record to exactly one caller when operations take a random 0-3 ms (one location)', async () => {
+    const fake = fakeKV();
+    const jitter = () => new Promise((resolve) => setTimeout(resolve, Math.random() * 3));
+    const kv: KVBinding = {
+      get: async (key) => (await jitter(), fake.kv.get(key)),
+      put: async (key, value, options) => (await jitter(), fake.kv.put(key, value, options)),
+      delete: async (key) => (await jitter(), fake.kv.delete(key)),
+    };
+    const { approvals } = new KVStore(kv);
+    for (let trial = 0; trial < 30; trial++) {
+      await approvals.save(pending, snapshot);
+      const results = await Promise.all([approvals.resolve('ap-1'), approvals.resolve('ap-1')]);
+      expect(results.filter((record) => record !== null)).toHaveLength(1);
+    }
   });
 
   it('a pause saved again after a resolve can be resolved again', async () => {

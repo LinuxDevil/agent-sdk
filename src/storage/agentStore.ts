@@ -19,6 +19,8 @@ import {
   type CheckpointStore,
 } from '../execution/checkpoint';
 import type { ApprovalStore } from '../execution/ApprovalGate';
+import { isLiveLeaseOwner } from '../execution/runLease';
+import { assertCheckpointId } from '../session/checkpointId';
 import { InMemoryApprovalStore } from '../execution/InMemoryApprovalStore';
 import { MemorySessionStore, type SessionStore } from '../session/sessionStore';
 import { MemoryTokenStore } from '../oauth/memoryTokenStore';
@@ -53,6 +55,7 @@ export interface AgentStore {
 class MemoryCheckpointStore implements CheckpointStore {
   private readonly checkpoints = new Map<string, Checkpoint>();
   private readonly rings = new Map<string, CheckpointHistoryEntry[]>();
+  private readonly leases = new Map<string, { owner: string; expiresAt: number }>();
   private readonly historyLimit: number;
 
   constructor(options: MemoryStoreOptions = {}) {
@@ -60,6 +63,7 @@ class MemoryCheckpointStore implements CheckpointStore {
   }
 
   async save(sessionId: string, checkpoint: Checkpoint): Promise<void> {
+    assertCheckpointId(sessionId);
     this.checkpoints.set(sessionId, structuredClone(checkpoint));
     if (this.historyLimit > 0) {
       const entry = toHistoryEntry(structuredClone(checkpoint));
@@ -68,11 +72,13 @@ class MemoryCheckpointStore implements CheckpointStore {
   }
 
   async load(sessionId: string): Promise<Checkpoint | null> {
+    assertCheckpointId(sessionId);
     const checkpoint = this.checkpoints.get(sessionId);
     return checkpoint ? structuredClone(checkpoint) : null;
   }
 
   async delete(sessionId: string, options: CheckpointDeleteOptions = {}): Promise<void> {
+    assertCheckpointId(sessionId);
     this.checkpoints.delete(sessionId);
     if (!options.keepHistory) this.rings.delete(sessionId);
   }
@@ -84,6 +90,24 @@ class MemoryCheckpointStore implements CheckpointStore {
   /** Eve DUR-F15: the latest checkpoint of every id, by id. */
   async list(options?: CheckpointListOptions): Promise<CheckpointListEntry[]> {
     return structuredClone(listCheckpoints(this.checkpoints, options));
+  }
+
+  /**
+   * Run lease: free when expired, or when its run no longer runs in this
+   * process (everything that shares this store lives in one process).
+   */
+  async acquireLease(sessionId: string, owner: string, ttlMs: number): Promise<boolean> {
+    assertCheckpointId(sessionId);
+    const now = Date.now();
+    const held = this.leases.get(sessionId);
+    if (held && held.owner !== owner && held.expiresAt > now && (held.owner.startsWith('claim:') || isLiveLeaseOwner(held.owner))) return false;
+    this.leases.set(sessionId, { owner, expiresAt: now + ttlMs });
+    for (const [id, lease] of this.leases) if (lease.expiresAt < now) this.leases.delete(id);
+    return true;
+  }
+
+  async releaseLease(sessionId: string, owner: string): Promise<void> {
+    if (this.leases.get(sessionId)?.owner === owner) this.leases.delete(sessionId);
   }
 }
 

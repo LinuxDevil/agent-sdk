@@ -1,6 +1,8 @@
 import type { Message } from '../../providers/llm';
 import {
   listCheckpoints,
+  listedCheckpoint,
+  parseCheckpoint,
   resolveHistoryLimit,
   type Checkpoint,
   type CheckpointDeleteOptions,
@@ -19,6 +21,9 @@ import {
 } from '../../execution/ApprovalGate';
 import { assertSessionId, decodeBytes, encodeBytes, transcriptRevision, type SessionStore } from '../../session/sessionStore';
 import type { Connection } from './connection';
+import { SDKError } from '../../execution/errors';
+import { assertCheckpointId } from '../../session/checkpointId';
+import { LEASE_SWEEP_AGE_MS, leaseAvailable, newLeaseRecord, type LeaseRecord } from '../leaseRecord';
 import type { SqlStatement } from './driver';
 
 /** Prepared statements, prepared once each; `connection.db` throws a clear error after close. */
@@ -40,6 +45,27 @@ export class Statements {
 const parse = <T>(row: { payload?: unknown } | undefined): T | undefined =>
   row === undefined ? undefined : (JSON.parse(String(row.payload), decodeBytes) as T);
 
+/** A `leases` row as a lease record; `undefined` without a row. */
+function leaseOfRow(row: Record<string, unknown> | undefined): LeaseRecord | undefined {
+  if (row === undefined) return undefined;
+  return { owner: String(row.owner), expiresAt: Number(row.expires_at), ...(typeof row.host === 'string' && { host: row.host }) };
+}
+
+/** A transcript row, or `LOUSHO_SESSION_FILE_CORRUPT` when it is not a JSON array of messages. */
+function parseTranscript(row: { payload?: unknown } | undefined, id: string): Message[] | undefined {
+  if (row === undefined) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(String(row.payload), decodeBytes);
+  } catch {
+    parsed = undefined;
+  }
+  if (!Array.isArray(parsed)) {
+    throw new SDKError(`The transcript of session '${id}' in the SQLite sessions table is corrupt: expected a JSON array of messages.`, 'LOUSHO_SESSION_FILE_CORRUPT');
+  }
+  return parsed as Message[];
+}
+
 // `table` and `key` are fixed identifiers from this file, never user input.
 const upsert = (table: string, key: string): string =>
   `INSERT INTO ${table} (${key}, payload, created_at, updated_at) VALUES (?, ?, ?, ?)
@@ -54,7 +80,7 @@ export class SqliteSessionStore implements SessionStore {
 
   async load(id: string): Promise<Message[] | undefined> {
     assertSessionId(id);
-    return parse<Message[]>(this.sql.get('SELECT payload FROM sessions WHERE id = ?').get(id));
+    return parseTranscript(this.sql.get('SELECT payload FROM sessions WHERE id = ?').get(id), id);
   }
 
   async save(id: string, messages: readonly Message[]): Promise<void> {
@@ -73,7 +99,7 @@ export class SqliteSessionStore implements SessionStore {
     assertSessionId(id);
     const payload = JSON.stringify(messages, encodeBytes);
     return this.connection.transactionAsync(() => {
-      const stored = parse<Message[]>(this.sql.get('SELECT payload FROM sessions WHERE id = ?').get(id));
+      const stored = parseTranscript(this.sql.get('SELECT payload FROM sessions WHERE id = ?').get(id), id);
       if (transcriptRevision(stored) !== expectedRevision) return false;
       const now = Date.now();
       this.sql.get(upsert('sessions', 'id')).run(id, payload, now, now);
@@ -99,6 +125,7 @@ export class SqliteCheckpointStore implements CheckpointStore {
   }
 
   async save(sessionId: string, checkpoint: Checkpoint): Promise<void> {
+    assertCheckpointId(sessionId);
     const now = Date.now();
     const payload = JSON.stringify(checkpoint, encodeBytes);
     await this.connection.transactionAsync(() => {
@@ -117,11 +144,13 @@ export class SqliteCheckpointStore implements CheckpointStore {
   }
 
   async load(sessionId: string): Promise<Checkpoint | null> {
+    assertCheckpointId(sessionId);
     const row = this.sql.get('SELECT payload FROM checkpoints WHERE session_id = ?').get(sessionId);
-    return parse<Checkpoint>(row) ?? null;
+    return row === undefined ? null : parseCheckpoint(String(row.payload), sessionId, 'the SQLite checkpoints table', decodeBytes);
   }
 
   async delete(sessionId: string, options: CheckpointDeleteOptions = {}): Promise<void> {
+    assertCheckpointId(sessionId);
     await this.connection.transactionAsync(() => {
       this.sql.get('DELETE FROM checkpoints WHERE session_id = ?').run(sessionId);
       if (!options.keepHistory) this.sql.get('DELETE FROM checkpoint_history WHERE session_id = ?').run(sessionId);
@@ -144,9 +173,29 @@ export class SqliteCheckpointStore implements CheckpointStore {
   async list(options?: CheckpointListOptions): Promise<CheckpointListEntry[]> {
     const rows = this.sql.get('SELECT session_id, payload FROM checkpoints ORDER BY session_id').all();
     return listCheckpoints(
-      rows.map((row) => [String(row.session_id), JSON.parse(String(row.payload), decodeBytes) as Checkpoint] as const),
+      // A row that cannot be read is listed as the run `load()` fails on.
+      rows.map((row) => listedCheckpoint(String(row.session_id), () => parseCheckpoint(String(row.payload), String(row.session_id), 'the SQLite checkpoints table', decodeBytes))),
       options
     );
+  }
+
+  /** Run lease: the read, check and write run in one `BEGIN IMMEDIATE` transaction (see `leaseRecord.ts`). */
+  async acquireLease(sessionId: string, owner: string, ttlMs: number): Promise<boolean> {
+    assertCheckpointId(sessionId);
+    return this.connection.transactionAsync(() => {
+      const held = leaseOfRow(this.sql.get('SELECT owner, expires_at, host FROM leases WHERE id = ?').get(sessionId));
+      if (!leaseAvailable(held, owner)) return false;
+      const lease = newLeaseRecord(owner, ttlMs);
+      this.sql
+        .get('INSERT INTO leases (id, owner, expires_at, host) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET owner = excluded.owner, expires_at = excluded.expires_at, host = excluded.host')
+        .run(sessionId, owner, lease.expiresAt, lease.host);
+      this.sql.get('DELETE FROM leases WHERE expires_at < ?').run(Date.now() - LEASE_SWEEP_AGE_MS);
+      return true;
+    });
+  }
+
+  async releaseLease(sessionId: string, owner: string): Promise<void> {
+    this.sql.get('DELETE FROM leases WHERE id = ? AND owner = ?').run(sessionId, owner);
   }
 }
 

@@ -62,10 +62,13 @@ export function mustRun(rep: Reporter, label: string, cmd: string, argv: string[
 /** All `exports` subpaths with their targets, from the installed package.json. */
 export function listExports(pkgDir: string): { subpath: string; spec: string; targets: string[] }[] {
   const pkg = JSON.parse(fs.readFileSync(path.join(pkgDir, 'package.json'), 'utf8'));
-  return Object.entries<Record<string, string>>(pkg.exports).map(([subpath, conds]) => ({
+  // Conditions may nest (`import: { types, default }`): every leaf string is a target.
+  const leaves = (node: unknown): string[] =>
+    typeof node === 'string' ? [node] : node && typeof node === 'object' ? Object.values(node).flatMap(leaves) : [];
+  return Object.entries<unknown>(pkg.exports).map(([subpath, conds]) => ({
     subpath,
     spec: subpath === '.' ? SDK_NAME : `${SDK_NAME}/${subpath.slice(2)}`,
-    targets: Object.values(conds),
+    targets: leaves(conds),
   }));
 }
 

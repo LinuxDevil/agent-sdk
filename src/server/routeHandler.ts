@@ -14,6 +14,7 @@ import { apiToken } from '../auth/basic';
 import { fromUIMessages, toUIMessageStreamResponse, type UIMessageLike } from './uiMessageStream';
 import { assertSessionId } from '../session/sessionStore';
 import { SDKError } from '../execution/errors';
+import { hostRefusal, postRefusal } from './requestGuard';
 
 export { callerOwnsApproval, type ApprovalAccessRequest, type ChatRoutesAccess, type SessionAccessRequest, type SessionAction } from './fetchRoutes';
 
@@ -86,6 +87,8 @@ function warnOpenInProduction(): void {
 }
 
 async function uiChat(agent: SimpleAgent, request: Request, principal: Principal | undefined, ctx: ChatRoutesContext): Promise<Response> {
+  const refused = hostRefusal(request, ctx) ?? postRefusal(request, ctx);
+  if (refused) return refused;
   const body = (await request.json().catch(() => undefined)) as { messages?: UIMessageLike[]; id?: unknown } | undefined;
   if (!Array.isArray(body?.messages)) return json(400, { error: "Request body must be JSON with a 'messages' array" });
   const { id } = body;
@@ -144,8 +147,8 @@ async function hookRoute(agent: SimpleAgent, request: Request, path: string): Pr
  */
 export function createRouteHandler(agent: SimpleAgent, options: RouteHandlerOptions = {}): RouteHandlers {
   const base = (options.basePath ?? '/api/agent').replace(/\/+$/, '');
-  const { authorizeSession, authorizeApproval, exposeErrors, onDisconnect, waitUntil } = options;
-  const ctx: ChatRoutesContext = { name: 'route', agent: () => agent, authorizeSession, authorizeApproval, exposeErrors, onDisconnect, waitUntil };
+  const { authorizeSession, authorizeApproval, exposeErrors, onDisconnect, waitUntil, allowedOrigins, requireJsonBody, allowedHosts } = options;
+  const ctx: ChatRoutesContext = { name: 'route', agent: () => agent, authorizeSession, authorizeApproval, exposeErrors, onDisconnect, waitUntil, allowedOrigins, requireJsonBody, allowedHosts };
   const auth = authList(options.auth);
   if (!auth) warnOpenInProduction();
   const handler: RouteHandler = async (request) => {

@@ -52,6 +52,8 @@ export interface DevOptions {
   schedules?: boolean;
   /** Overrides for the scheduler (clock, timers, error sink); mainly for tests. */
   scheduler?: StartSchedulesOptions;
+  /** `--allowed-hosts`: host names the `Host` header may carry besides loopback ones (and, off loopback, IP addresses); `'*'` for any. */
+  allowedHosts?: string[];
 }
 
 /** What a target loads into: the agent and, for an agent directory, its schedules and channels. */

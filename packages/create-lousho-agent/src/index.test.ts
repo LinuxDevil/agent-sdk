@@ -29,7 +29,9 @@ describe('create-lousho-agent wraps lousho init', () => {
   });
 
   it('forwards its arguments to lousho init (--help)', () => {
-    expect(run(['--help'])).toContain('Usage: lousho init');
+    const help = run(['--help']);
+    expect(help).toContain('npm create lousho-agent [dir] -- [options] runs `lousho init [dir] [options]`');
+    expect(help).toContain('Usage: lousho init');
   });
 
   it('scaffolds a project from the positional directory and flags', () => {

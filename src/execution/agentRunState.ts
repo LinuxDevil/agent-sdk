@@ -26,6 +26,7 @@ import { readonlyPrincipal, resumedRunPrincipal } from './runPrincipal';
 import { withHostedCalls } from './hostedToolCalls';
 import { toolOutcomeMessage } from './toolResult';
 import type { ParallelInputCheck } from './ioGuardrails';
+import { REPLACES_CHECKPOINT, runBusyError, type RunLease, type RunLeaseOptions } from './runLease';
 
 export interface AgentRunState {
   messages: Message[];
@@ -97,6 +98,8 @@ export interface AgentRunState {
    * of the finished checkpoint (the session transcript).
    */
   requestOnly?: Set<Message>;
+  /** The run lease the run holds on its checkpoint id, when the store has leases (see `runLease.ts`). */
+  lease?: RunLease;
 }
 
 /** Eve CORE-F3: marks `messages` (already in `state.messages`) as {@link AgentRunState.requestOnly}. */
@@ -184,6 +187,13 @@ function freshState(options: ExecuteOptions): InitialRunState {
   };
 }
 
+/** The checkpoint the run continues from: its id's, unless it has none or `REPLACES_CHECKPOINT` (the input holds it already). */
+async function checkpointToContinue(options: ExecuteOptions): Promise<Checkpoint | null> {
+  const { sessionId, checkpointStore } = options;
+  if (!sessionId || !checkpointStore || (options as RunLeaseOptions)[REPLACES_CHECKPOINT]) return null;
+  return checkpointStore.load(sessionId);
+}
+
 /**
  * If a checkpoint exists for this sessionId, rehydrate state from it
  * instead of building messages from scratch. Either way, unanswered tool
@@ -193,16 +203,14 @@ function freshState(options: ExecuteOptions): InitialRunState {
  */
 export async function loadRunState(options: ExecuteOptions): Promise<AgentRunState> {
   const { sessionId, checkpointStore } = options;
-  let checkpoint: Checkpoint | null = null;
-  if (sessionId && checkpointStore) {
-    checkpoint = await checkpointStore.load(sessionId);
-  }
+  const checkpoint = await checkpointToContinue(options);
   if (sessionId && checkpoint?.status === 'awaiting-approval') {
     throw new SessionAwaitingApprovalError(sessionId, checkpoint.approvalId, checkpoint.approvalKind);
   }
 
   const initial = checkpoint ? stateFromCheckpoint(checkpoint, options) : freshState(options);
   const turn = splitPendingTurn(initial.messages);
+  settleStartedCalls(turn, checkpoint);
   // N10b: an unfinished run goes on as the caller it was saved with; a finished one starts a new run.
   const principal = readonlyPrincipal(
     sessionId && checkpoint && checkpoint.status !== 'finished' ? resumedRunPrincipal(checkpoint.principal, options.principal, sessionId) : options.principal
@@ -229,6 +237,38 @@ export async function loadRunState(options: ExecuteOptions): Promise<AgentRunSta
     ...(principal && { principal }),
     ...(metadata !== undefined && { metadata }),
   };
+}
+
+/**
+ * An approved call that had started when an unfinished run stopped (its checkpoint's
+ * `startedToolCallIds`) and has no result is not run again: it gets an error
+ * result saying it may or may not have taken effect (at-most-once for approved
+ * calls, see docs/durable-execution.md), so a crash during an approved side
+ * effect is neither repeated silently nor lost from the transcript.
+ */
+function settleStartedCalls(turn: ReturnType<typeof splitPendingTurn>, checkpoint: Checkpoint | null): void {
+  const started = checkpoint?.status === 'finished' ? undefined : checkpoint?.startedToolCallIds;
+  if (!started || started.length === 0) return;
+  const ids = new Set(started);
+  for (const call of turn.pendingToolCalls.filter((pending) => ids.has(pending.id))) {
+    insertToolResult(turn.messages, {
+      role: 'tool',
+      content: JSON.stringify(
+        toolErrorResult({
+          toolName: call.function.name,
+          error:
+            `The approved call to '${call.function.name}' had started when the run stopped (a crash or restart), ` +
+            'before its result was saved. It may or may not have taken effect, and it was not run again: check its effect before retrying it.',
+          kind: 'interrupted',
+        })
+      ),
+      name: call.function.name,
+      toolCallId: call.id,
+      toolName: call.function.name,
+      isError: true,
+    });
+  }
+  turn.pendingToolCalls = turn.pendingToolCalls.filter((pending) => !ids.has(pending.id));
 }
 
 /**
@@ -309,10 +349,16 @@ export async function saveStepCheckpoint(
     // LOU-R16: so a crash resume's hooks keep seeing the run's metadata.
     ...(options.metadata !== undefined && { metadata: options.metadata }),
   };
+  assertLeaseHeld(state, sessionId);
   const save = () => checkpointStore.save(sessionId, checkpoint);
   const saved = state.saving ? state.saving.then(save) : save();
   state.saving = saved.catch(() => undefined);
   await saved;
+}
+
+/** A run whose lease was taken over (it stalled past the lease's expiry) must not overwrite the new holder's progress. */
+function assertLeaseHeld(state: AgentRunState, sessionId: string): void {
+  if (state.lease?.lost) throw runBusyError(sessionId, 'was taken over by another process after this run lost its lease (it stalled)');
 }
 
 /**

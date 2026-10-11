@@ -28,7 +28,7 @@ export interface FeaturePeer {
 export const FEATURE_PEERS: Readonly<Record<string, FeaturePeer>> = {
   dockerode: { range: '^5.0.1', feature: 'Docker sandboxing (SubprocessSandbox)' },
   '@modelcontextprotocol/sdk': {
-    range: '^1.30.1',
+    range: '^1.31.0',
     feature: 'MCP (serveMcp, `lousho mcp` and MCP client connections)',
   },
   prompts: {

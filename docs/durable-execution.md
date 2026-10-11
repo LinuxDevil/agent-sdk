@@ -178,8 +178,46 @@ approvalKind?, step, lastError? }`:
   with `agent.session({ id }).discardPending()`.
 
 A run that is still running in some process is listed as `'in-progress'`
-too, so run the recovery loop before the process accepts new requests, and in
-one process at a time.
+too. Resuming it is safe: the run holds a lease (see [Run leases](#run-leases)),
+so `agent.resume()` fails with `LOUSHO_SESSION_BUSY` before anything runs
+instead of running its tool calls a second time.
+
+A checkpoint that cannot be read (a write cut short by a power loss on a store
+without durable writes) is listed as `'in-progress'` with `lastError.code`
+`LOUSHO_CHECKPOINT_CORRUPT` (`retryable: false`), the error `send()` and
+`resume()` fail with; drop it with `discardPending()` (or `clear()`), or
+`store.checkpoints.delete(id)` for a run.
+
+## Run leases
+
+While a checkpointed run executes (a session turn, a `send(msg, { sessionId })`
+run, an approval resume), it holds a lease on its checkpoint id in the
+checkpoint store: an owner id and an expiry 30 seconds out, renewed every 10
+seconds. A second process, replica or store object that tries to run or resume
+the same id meanwhile - a `send()` that would resume the pending turn first,
+`agent.resume()`, `agent.approvals.resolve()` - fails with `LOUSHO_SESSION_BUSY`
+before any tool runs or any model is called (a resolved approval stays
+pending). Two replicas behind a load balancer therefore never run one turn's
+tool calls twice.
+
+A lease whose holder died is taken over once it expires. The file and SQLite
+stores also take it over at once when the holder was a process on the same host
+that is gone, so the usual "restart and resume" path does not wait. If a run
+stalls for longer than its lease (the event loop blocked for 30 seconds) and
+another process takes over, the stalled run stops with `LOUSHO_SESSION_BUSY` at
+its next checkpoint instead of overwriting the new holder's progress.
+
+The file, SQLite and in-memory stores take leases atomically. KV has no
+compare-and-swap: `KVStore` writes the lease, waits 50 ms and reads it back,
+which serializes requests at one location but not across edge locations within
+KV's propagation delay. A custom `CheckpointStore` takes part by implementing
+`acquireLease(id, owner, ttlMs)` (an atomic "take or renew unless another owner
+holds an unexpired lease", resolving `true` when taken) and
+`releaseLease(id, owner)`; without them runs execute without leases.
+
+Schedules use the same mechanism: `fireSchedule()` (and so `startSchedules()`)
+claims each schedule's fire time in the agent's checkpoint store first, so
+replicas that fire the same tick run it once.
 
 `agent.pending()` needs a checkpoint store with `list()`: the file, SQLite,
 in-memory and KV stores have one (`KVStore` lists only when its namespace
@@ -205,6 +243,22 @@ filtering and ordering for you. Without it `agent.pending()` throws
   plan).
 - **The provider always receives a valid transcript**: tool results
   directly follow their tool-call turn, and new user input comes after them.
+- **An approved call runs at most once.** Deciding an approval keeps the
+  paused run's checkpoint: it is re-saved as `'in-progress'` with the approved
+  call marked as started (`startedToolCallIds`) before the call runs, and
+  saved again with its result before the run continues. If the process dies
+  while the approved call runs, the turn is not lost: `pending()` lists it,
+  and resuming it does not run the call again. The call gets an error result
+  (`kind: 'interrupted'`) telling the model it may or may not have taken
+  effect, so the model can check or ask instead of silently repeating it - a
+  human approved it once, not twice.
+- **A stale approval never comes back.** An approval continues its run only
+  while that run's checkpoint still waits on it. Once the checkpoint was
+  deleted (`checkpoints.delete(id)`, `discardPending()`, a prune) or replaced
+  by a newer run under the same id, resolving it fails with
+  `LOUSHO_APPROVAL_ORPHANED` and withdraws it, without running the tool or
+  touching the newer run. `discardPending()` withdraws the dropped turn's
+  approvals at once.
 
 ## At-least-once tools: make side effects idempotent
 
@@ -532,9 +586,14 @@ if (original && replayed) {
 - A `sessionId` identifies one logical conversation. Concurrent
   `agent.send()` / `agent.stream()` calls with the same `sessionId` on one
   agent store run one after another, in call order, in this process. Two
-  processes (or two store objects over the same data), or two raw
-  `AgentExecutor.execute()` calls, on the same id at the same time are not
-  supported: the last save wins.
+  processes (or two store objects over the same data) on the same id at the
+  same time are refused with `LOUSHO_SESSION_BUSY` by the run lease (best
+  effort on KV, see [Run leases](#run-leases)); with a custom store that has no
+  leases, the last save wins.
+- A run id (`sessionId` of `send()` / `stream()`) is 1-200 characters of
+  letters, digits, `_`, `-` and `.`, not starting or ending with `.`, on every
+  store, and may not end with `.turn-<n>` or `.paused`: those are a session's
+  own checkpoint keys. Anything else fails with `LOUSHO_SESSION_ID_INVALID`.
 - If you call `resumeAfterApproval()` (the function behind
   `agent.approvals.resolve()`) without the `checkpointStore`, the session
   keeps its `'awaiting-approval'` mark and later `send()` (or `execute()`)

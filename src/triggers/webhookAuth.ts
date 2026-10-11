@@ -32,8 +32,8 @@ export interface HmacWebhookAuth {
   /**
    * Header carrying a Unix timestamp (seconds, or milliseconds). When set,
    * the signed payload becomes `${timestamp}.${rawBody}` and requests whose
-   * timestamp is further than `toleranceSeconds` from now are rejected,
-   * which prevents replaying a captured request.
+   * timestamp is older than `toleranceSeconds`, or more than a minute ahead
+   * of local time, are rejected, which prevents replaying a captured request.
    */
   timestampHeader?: string;
   /** Maximum accepted clock difference in seconds. Defaults to 300. Requires `timestampHeader`. */
@@ -112,7 +112,7 @@ function checkTimestamp(auth: HmacWebhookAuth, req: IncomingMessage, nowMs: numb
   if (!auth.timestampHeader) return undefined;
   const timestamp = headerValue(req, auth.timestampHeader);
   if (timestamp === undefined) return 'missing timestamp';
-  return isFresh(timestamp, auth.toleranceSeconds ?? DEFAULT_TOLERANCE_SECONDS, nowMs) ? undefined : 'stale timestamp';
+  return isFresh(timestamp, auth.toleranceSeconds ?? DEFAULT_TOLERANCE_SECONDS, nowMs, 'auto') ? undefined : 'stale timestamp';
 }
 
 function checkHmac(auth: HmacWebhookAuth, req: IncomingMessage, rawBody: Buffer, nowMs: number): string | undefined {

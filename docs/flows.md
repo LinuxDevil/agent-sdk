@@ -191,8 +191,12 @@ if (!first.success) {
 
 - A node is identified by its place in the flow, not its `id`. Resume a run
   with the flow that started it. A resume with a flow of another `code` is
-  refused with `LOUSHO_CONFIG_INVALID`. A changed flow with the same `code` is
-  not detected.
+  refused with `LOUSHO_CONFIG_INVALID`. The run also saves its flow's
+  structure (each node's type, `id`, tool or agent, and their order); a resume
+  with the same `code` whose steps were added, removed or moved is refused with
+  `LOUSHO_FLOW_CHANGED`, since the saved results would land on the wrong steps.
+  Editing a prompt, condition or other setting keeps the structure. Runs saved
+  before this check resume without it.
 - Resuming a finished run returns its saved result with no events, and runs
   nothing. `execute()` with the `runId` of a finished run starts a new run.
   `execute()` with the `runId` of an unfinished run is refused with

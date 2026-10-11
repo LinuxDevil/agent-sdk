@@ -1,5 +1,6 @@
 import type { SimpleAgent } from '../createAgent';
 import { SDKError } from '../execution/errors';
+import { sharedWeakSet } from '../utils/brand';
 import { CronExpressionError, parseCronExpression } from '../triggers/cronExpression';
 
 /** What a `run` schedule receives each time it fires. */
@@ -47,7 +48,8 @@ export type ScheduleInput = PromptScheduleInput | RunScheduleInput;
 /** A validated schedule. Create it with {@link defineSchedule}. */
 export type DefinedSchedule = Readonly<ScheduleInput>;
 
-const defined = new WeakSet<object>();
+/** Shared across loaded SDK copies (see sharedWeakSet()). */
+const defined = sharedWeakSet('lousho.definedSchedules');
 
 /** True when `value` was created by {@link defineSchedule}. */
 export function isDefinedSchedule(value: unknown): value is DefinedSchedule {

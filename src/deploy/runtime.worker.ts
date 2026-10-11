@@ -119,6 +119,27 @@ export type WorkerEnv = Record<string, unknown>;
 /** Env binding holding the bearer token of the API (`wrangler secret put LOUSHO_API_TOKEN`). */
 const API_TOKEN_BINDING = 'LOUSHO_API_TOKEN';
 
+/** Var (`"true"`) that lets a Worker without `LOUSHO_API_TOKEN` serve session transcripts anyway. */
+const OPEN_TRANSCRIPTS_BINDING = 'LOUSHO_ALLOW_OPEN_TRANSCRIPTS';
+
+/** The API token binding, or `undefined` when it is unset or empty. */
+function apiTokenOf(env: WorkerEnv): string | undefined {
+  const token = env[API_TOKEN_BINDING];
+  return typeof token === 'string' && token ? token : undefined;
+}
+
+/**
+ * Without `LOUSHO_API_TOKEN` anyone can call the Worker, and a transcript
+ * read (`GET /chat/:sessionId`) would hand any session's conversation to
+ * whoever knows its id: it is refused unless `LOUSHO_ALLOW_OPEN_TRANSCRIPTS`
+ * is `"true"`. `undefined` when the request may go on.
+ */
+function openTranscriptRefusal(request: Request, env: WorkerEnv): Response | undefined {
+  if (apiTokenOf(env) || env[OPEN_TRANSCRIPTS_BINDING] === 'true' || request.method !== 'GET' || !/^\/chat\/[^/]+$/.test(new URL(request.url).pathname)) return undefined;
+  const error = `Session transcripts need auth: set the ${API_TOKEN_BINDING} secret (npx wrangler secret put ${API_TOKEN_BINDING}), or set the ${OPEN_TRANSCRIPTS_BINDING} var to "true" to serve them to anyone.`;
+  return new Response(JSON.stringify({ error, code: 'LOUSHO_REQUEST_FORBIDDEN' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+}
+
 let isolateStore: Required<AgentStore> | undefined;
 
 /**
@@ -179,19 +200,21 @@ function workerAgent(spec: AgentSpec, env: WorkerEnv): SimpleAgent {
 }
 
 /** Serves one request with `makeAgent`'s agent: the routes and bearer auth of {@link handleWorkerRequest}. */
-function serveWorker(request: Request, env: WorkerEnv, makeAgent: () => SimpleAgent): Promise<Response> {
-  const token = env[API_TOKEN_BINDING];
+async function serveWorker(request: Request, env: WorkerEnv, makeAgent: () => SimpleAgent): Promise<Response> {
+  const refused = openTranscriptRefusal(request, env);
+  if (refused) return refused;
   // One agent per request: an approval route needs the agent that opened the session.
   let agent: SimpleAgent | undefined;
   const chat = { name: 'lousho worker', agent: () => (agent ??= makeAgent()), durableMessage: true };
-  return serveFetch(request, chat, typeof token === 'string' && token ? token : undefined);
+  return serveFetch(request, chat, apiTokenOf(env));
 }
 
 /**
  * Serves one request of the Worker's API: `GET /health` (open), sessions, SSE
  * streaming and approvals under `/chat`, and the deprecated `POST /chat
  * { message, sessionId? }`. With a `LOUSHO_API_TOKEN` binding every route but
- * `/health` needs `Authorization: Bearer <token>`.
+ * `/health` needs `Authorization: Bearer <token>`; without it, `GET
+ * /chat/:sessionId` is refused unless `LOUSHO_ALLOW_OPEN_TRANSCRIPTS` is `"true"`.
  */
 export function handleWorkerRequest(request: Request, env: WorkerEnv, spec: AgentSpec): Promise<Response> {
   return serveWorker(request, env, () => workerAgent(spec, env));
@@ -315,7 +338,6 @@ export async function handleWorkerAgentDirRequest(
   const makeAgent = () => (agent ??= workerAgentFromDir(dir, env));
   const channels =
     resolved.channels.length === 0 ? undefined : mountFetchChannels(makeAgent(), resolved.channels, { store: workerStore(env) });
-  const token = env[API_TOKEN_BINDING];
   const chat: ChatRoutesContext = {
     name: 'lousho worker',
     agent: makeAgent,
@@ -325,7 +347,7 @@ export async function handleWorkerAgentDirRequest(
     // N9b: a channel turn paused on a sign-in continues on its surface once the callback stored the token.
     ...(channels === undefined ? {} : { afterSignIn: (result: OAuthCompleteResult) => continueChannelSignIn(channels, result) }),
   };
-  return (await channels?.(request, ctx)) ?? serveFetch(request, chat, typeof token === 'string' && token ? token : undefined);
+  return (await channels?.(request, ctx)) ?? openTranscriptRefusal(request, env) ?? serveFetch(request, chat, apiTokenOf(env));
 }
 
 export { handleScheduled } from '../schedules/scheduled';

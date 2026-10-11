@@ -3,14 +3,14 @@
  * `send()` calls (and, for `FileSessionStore`, between processes).
  */
 
-import { mkdir, open, rm, stat, writeFile } from 'node:fs/promises';
-import { readFileWithRetry, renameWithRetry } from '../storage/fsRetry';
+import { mkdir, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { randomUUID } from 'node:crypto';
 import type { Message } from '../providers/llm';
 import { SDKError } from '../execution/errors';
 import { assertSessionId } from './sessionId';
-import { caseSafeName, findLegacyFile, removeLegacyFile } from '../storage/fileNames';
+import { findLegacyFile, removeLegacyFile } from '../storage/fileNames';
+import { fileNameOf, readTextFile, writeFileAtomic } from '../storage/atomicFile';
+import { withFileLock } from '../storage/fileLock';
 
 /** How bytes (image and file parts, LOU-V11) are saved in a JSON transcript: `{ "$bytes": "<base64>" }`. */
 const BYTES_KEY = '$bytes';
@@ -146,20 +146,25 @@ export class FileSessionStore implements SessionStore {
 
   private fileFor(id: string): string {
     assertSessionId(id);
-    return join(this.dir, `${caseSafeName(id)}.json`);
+    return join(this.dir, `${fileNameOf(id)}.json`);
   }
 
   async load(id: string): Promise<Message[] | undefined> {
     let file = this.fileFor(id);
-    let raw = await readText(file);
+    let raw = await readTextFile(file);
     if (raw === undefined) {
-      const legacy = await findLegacyFile(this.dir, caseSafeName(id), id);
+      const legacy = await findLegacyFile(this.dir, fileNameOf(id), id);
       if (legacy === undefined) return undefined;
       file = legacy;
-      raw = await readText(file);
+      raw = await readTextFile(file);
       if (raw === undefined) return undefined;
     }
-    const parsed: unknown = JSON.parse(raw, decodeBytes);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw, decodeBytes);
+    } catch (error) {
+      throw new SDKError(`Session file ${file} is corrupt: it is not valid JSON (a write cut short?).`, 'LOUSHO_SESSION_FILE_CORRUPT', { cause: error });
+    }
     if (!Array.isArray(parsed)) {
       throw new SDKError(`Session file ${file} is corrupt: expected a JSON array of messages.`, 'LOUSHO_SESSION_FILE_CORRUPT');
     }
@@ -169,69 +174,31 @@ export class FileSessionStore implements SessionStore {
   async save(id: string, messages: readonly Message[]): Promise<void> {
     const file = this.fileFor(id);
     await mkdir(this.dir, { recursive: true });
-    const temp = `${file}.${process.pid}.${randomUUID()}.tmp`;
-    try {
-      await writeFile(temp, JSON.stringify(messages, encodeBytes), 'utf8');
-      await renameWithRetry(temp, file);
-    } catch (error) {
-      await rm(temp, { force: true });
-      throw error;
-    }
-    await removeLegacyFile(this.dir, caseSafeName(id), id);
+    await writeFileAtomic(file, JSON.stringify(messages, encodeBytes));
+    await removeLegacyFile(this.dir, fileNameOf(id), id);
   }
 
   async delete(id: string): Promise<void> {
     await rm(this.fileFor(id), { force: true });
-    await removeLegacyFile(this.dir, caseSafeName(id), id);
+    await removeLegacyFile(this.dir, fileNameOf(id), id);
   }
 
   /**
    * Compare-and-swap under a lock file (`<id>.json.lock`, created with `O_EXCL`), so writers in other processes
-   * wait for each other. A lock older than `staleLockMs` (its writer crashed) is taken over.
+   * wait for each other. A lock older than `staleLockMs` (its writer crashed) is taken over by one writer only
+   * (see `withFileLock`).
    */
   async saveIf(id: string, expectedRevision: string, messages: readonly Message[]): Promise<boolean> {
     const lock = `${this.fileFor(id)}.lock`;
     await mkdir(this.dir, { recursive: true });
-    await this.acquire(lock);
-    try {
-      if (transcriptRevision(await this.load(id)) !== expectedRevision) return false;
-      await this.save(id, messages);
-      return true;
-    } finally {
-      await rm(lock, { force: true });
-    }
-  }
-
-  private async acquire(lock: string): Promise<void> {
-    const deadline = Date.now() + LOCK_WAIT_MS;
-    for (let delay = 5; ; delay = Math.min(delay * 2, 100)) {
-      try {
-        await (await open(lock, 'wx')).close();
-        return;
-      } catch (error) {
-        const code = (error as NodeJS.ErrnoException).code;
-        // Windows reports EPERM for a file being deleted by another process; treat it like EEXIST.
-        if (code !== 'EEXIST' && code !== 'EPERM') throw error;
-      }
-      const held = await stat(lock).catch(() => undefined);
-      if (held && Date.now() - held.mtimeMs > this.staleLockMs) {
-        await rm(lock, { force: true });
-        continue;
-      }
-      if (Date.now() > deadline) {
-        throw new SDKError(`Session lock ${lock} is held by another writer; try again.`, 'LOUSHO_STORAGE_BUSY');
-      }
-      await new Promise<void>((done) => setTimeout(done, delay));
-    }
-  }
-}
-
-/** The file's text, or `undefined` when it does not exist. */
-async function readText(file: string): Promise<string | undefined> {
-  try {
-    return await readFileWithRetry(file);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
-    throw error;
+    return withFileLock(
+      lock,
+      async () => {
+        if (transcriptRevision(await this.load(id)) !== expectedRevision) return false;
+        await this.save(id, messages);
+        return true;
+      },
+      { timeoutMs: LOCK_WAIT_MS, staleMs: this.staleLockMs, busyCode: 'LOUSHO_STORAGE_BUSY' }
+    );
   }
 }

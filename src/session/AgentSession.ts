@@ -11,7 +11,7 @@ import { toMessages, type AgentInput } from '../providers/content';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import { startAgentRun, type AgentRun } from '../execution/agentRun';
 import { InputQueue } from '../execution/inputQueue';
-import { getCheckpointHistory, pausedApprovalIds, type Checkpoint, type CheckpointError, type CheckpointStore } from '../execution/checkpoint';
+import { getCheckpointHistory, isCheckpointCorrupt, pausedApprovalIds, type Checkpoint, type CheckpointError, type CheckpointStore } from '../execution/checkpoint';
 import type { ApprovalKind } from '../execution/ApprovalGate';
 import { CompactedLLMProviderError, ConfigurationError, SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 import { streamSessionTurn } from './sessionStream';
@@ -83,6 +83,14 @@ export interface SessionOptions {
   permissionMode?: PermissionOptions['permissionMode'];
   /** Called by `setPermissionMode()` (N4). `agent.session()` defaults it to the agent's `onPermissionModeChange`. */
   onPermissionModeChange?: PermissionOptions['onPermissionModeChange'];
+  /**
+   * In a checkpointed session, how many of the latest committed turns keep their
+   * checkpoint history, so `agent.fork('<id>.turn-<n>', { fromStep })` can fork
+   * them (default 10; `0` keeps none). Every history entry holds a copy of the
+   * whole transcript, so older turns' histories are deleted as new turns
+   * commit. `session.fork()` works from the transcript and is not affected.
+   */
+  turnHistoryLimit?: number;
 }
 
 /** A transcript store plus, optionally, a checkpoint store (e.g. a `SqliteStore`). */
@@ -227,6 +235,18 @@ export function withDefaultStores(options: SessionOptions = {}, defaults: Partia
   };
 }
 
+/** How many committed turns keep their checkpoint history by default (see `SessionOptions.turnHistoryLimit`). */
+const DEFAULT_TURN_HISTORY_LIMIT = 10;
+
+/** Most turns whose history one commit deletes (see `dropOldTurnHistory`). */
+const DROPPED_TURNS_PER_COMMIT = 4;
+
+/** `null` for a checkpoint that cannot be read (`LOUSHO_CHECKPOINT_CORRUPT`); any other error is rethrown. */
+function ignoreCorrupt(error: unknown): null {
+  if (isCheckpointCorrupt(error)) return null;
+  throw error;
+}
+
 /**
  * Eve EVE-0: the checkpoint id under which a session records its turn that
  * waits on an approval - a pointer to that turn's `<id>.turn-<n>` checkpoint,
@@ -275,6 +295,13 @@ export function providerValidPrefix(messages: readonly Message[]): Message[] {
     i = end;
   }
   return messages.slice(0, i);
+}
+
+/** `turnHistoryLimit`, validated: a whole number >= 0. */
+function turnHistoryLimitOf(value: number | undefined): number {
+  if (value === undefined) return DEFAULT_TURN_HISTORY_LIMIT;
+  if (Number.isInteger(value) && value >= 0) return value;
+  throw new ConfigurationError(`agent.session: 'turnHistoryLimit' must be a whole number >= 0, got ${String(value)}.`, 'turnHistoryLimit');
 }
 
 /** Whether two transcripts are the same (bytes compared by value). */
@@ -370,6 +397,7 @@ export class AgentSession<TObject = unknown> {
   private readonly spawn: SessionSpawner | undefined;
   private mode: SessionOptions['permissionMode'];
   private readonly onPermissionModeChange: SessionOptions['onPermissionModeChange'];
+  private readonly turnHistoryLimit: number;
   /** N4: the session's mode at the time of the call; handed to every turn, so a switch applies from the next tool call. */
   protected readonly currentPermissionMode = (): PermissionMode => this.permissionMode;
   private readonly listeners = new Set<(event: AgentEvent) => void>();
@@ -415,6 +443,7 @@ export class AgentSession<TObject = unknown> {
     if (typeof options.permissionMode === 'string') assertPermissionMode(options.permissionMode, 'agent.session');
     this.mode = options.permissionMode;
     this.onPermissionModeChange = options.onPermissionModeChange;
+    this.turnHistoryLimit = turnHistoryLimitOf(options.turnHistoryLimit);
     this.run = run;
     this.streamRun = streamRun;
     this.options = options;
@@ -582,14 +611,36 @@ export class AgentSession<TObject = unknown> {
   /** Drops a pending turn without finishing it; the transcript stays as it was before that turn. */
   discardPending(): Promise<void> {
     return this.enqueue(async () => {
-      const pending = await this.pendingCheckpoint();
+      let pending: Checkpoint | null;
+      try {
+        pending = await this.pendingCheckpoint();
+      } catch (error) {
+        if (!isCheckpointCorrupt(error)) throw error;
+        // A checkpoint that cannot be read is dropped too: it is the only way out of it.
+        return this.discardUnreadable();
+      }
       if (!pending) return;
       await this.deleteCheckpoint();
       // Eve EVE-0: a paused turn another view of the session started (another transcript length) is dropped too.
       if (this.checkpointStore && pending.sessionId !== this.turnCheckpoint()?.sessionId) await this.checkpointStore.delete(pending.sessionId);
       await this.checkpointStore?.delete(pausedTurnKey(this.id));
+      // Its approvals can never continue it now: they are withdrawn, so they are not listed or decided any more.
+      if (pending.status === 'awaiting-approval') await this.pendingTurnDiscarded(pausedApprovalIds(pending));
     });
   }
+
+  /** Drops this transcript's turn checkpoint and the paused-turn pointer (and its turn), whichever cannot be read. */
+  private async discardUnreadable(): Promise<void> {
+    const { checkpointStore } = this;
+    if (!checkpointStore) return;
+    await this.deleteCheckpoint();
+    const pointer = await checkpointStore.load(pausedTurnKey(this.id)).catch(ignoreCorrupt);
+    if (pointer) await checkpointStore.delete(pointer.sessionId);
+    await checkpointStore.delete(pausedTurnKey(this.id));
+  }
+
+  /** Called with the approvals of a paused turn `discardPending()` dropped; `createAgent()` withdraws them from its approval store. */
+  protected async pendingTurnDiscarded(_approvalIds: string[]): Promise<void> {}
 
   /**
    * Listens for the session's events (LOU-R18): every turn's events as the
@@ -656,10 +707,18 @@ export class AgentSession<TObject = unknown> {
    */
   clear(): Promise<void> {
     return this.idle(async () => {
-      await this.ensureLoaded();
-      const pending = this.checkpointStore ? await this.pendingCheckpoint() : null;
+      try {
+        await this.ensureLoaded();
+      } catch (error) {
+        // A transcript file that cannot be read is what clear() removes.
+        if (!(error instanceof SDKError && error.code === 'LOUSHO_SESSION_FILE_CORRUPT')) throw error;
+        this.transcript = [];
+        this.loaded = true;
+      }
+      const pending = this.checkpointStore ? await this.pendingCheckpoint().catch(ignoreCorrupt) : null;
       if (pending?.status === 'awaiting-approval') throw this.awaitingApproval(pending);
       await this.deleteTurnCheckpoints();
+      if (this.checkpointStore) await this.discardUnreadable();
       await this.checkpointStore?.delete(pausedTurnKey(this.id));
       await this.store.delete(this.id);
       const messagesCleared = this.transcript.length;
@@ -845,6 +904,8 @@ export class AgentSession<TObject = unknown> {
   }
 
   private async recordFailure(error: unknown): Promise<void> {
+    // A turn refused because another process runs it (its run lease) did not run: the checkpoint is that process's.
+    if (error instanceof SDKError && error.code === 'LOUSHO_SESSION_BUSY') return;
     const turn = this.turnCheckpoint();
     const checkpoint = turn && (await turn.checkpointStore.load(turn.sessionId));
     if (!turn || !checkpoint || (checkpoint.status ?? 'in-progress') !== 'in-progress') return;
@@ -922,7 +983,8 @@ export class AgentSession<TObject = unknown> {
     let last = this.transcript.length;
     for (let n = 0; n <= last; n++) {
       const id = `${this.id}.turn-${n}`;
-      const saved = [await checkpointStore.load(id), ...((await getCheckpointHistory(checkpointStore, id)) ?? []).map((entry) => entry.checkpoint)];
+      // Only the newest history entry: it holds the turn's longest transcript (reading whole rings made clear() quadratic).
+      const saved = [await checkpointStore.load(id).catch(ignoreCorrupt), ...((await getCheckpointHistory(checkpointStore, id, { limit: 1 })) ?? []).map((entry) => entry.checkpoint)];
       for (const checkpoint of saved) if (checkpoint) last = Math.max(last, checkpoint.messages.length);
       await checkpointStore.delete(id);
     }
@@ -1027,10 +1089,33 @@ export class AgentSession<TObject = unknown> {
       const sessionUsage = addSpent(sessionSpent(this.transcript), spent);
       next[next.length - 1] = { ...last, metadata: { ...last.metadata, sessionUsage } };
     }
-    if (!(await this.saveOver(this.transcript, next))) await this.busy(next);
+    if (!(await this.saveOver(this.transcript, next))) return this.busy(next);
     const turn = this.turnCheckpoint();
+    const start = this.transcript.length;
     this.transcript = next;
-    if (turn) await turn.checkpointStore.delete(turn.sessionId, { keepHistory: true });
+    if (turn) {
+      await turn.checkpointStore.delete(turn.sessionId, { keepHistory: this.turnHistoryLimit > 0 });
+      await this.dropOldTurnHistory(next, start);
+    }
+  }
+
+  /**
+   * Keeps the checkpoint history of only the last `turnHistoryLimit` committed
+   * turns (each holds copies of the whole transcript, so keeping every turn's
+   * grew the store quadratically). A turn's checkpoint id is `<id>.turn-<n>`,
+   * `n` being where its user message starts in the transcript, so the turns that
+   * just fell out of the window are found from the user messages before
+   * `start`, the turn just committed.
+   */
+  private async dropOldTurnHistory(transcript: readonly Message[], start: number): Promise<void> {
+    const { checkpointStore } = this;
+    const keep = this.turnHistoryLimit;
+    if (!checkpointStore || keep === 0) return;
+    const starts: number[] = [];
+    for (let i = 0; i < start && i < transcript.length; i++) if (transcript[i].role === 'user') starts.push(i);
+    // Turns older than the window: the latest few of them (a turn can hold more than one user message, e.g. queued input).
+    const dropped = starts.slice(0, Math.max(0, starts.length - (keep - 1))).slice(-DROPPED_TURNS_PER_COMMIT);
+    for (const n of dropped) await checkpointStore.delete(`${this.id}.turn-${n}`);
   }
 
   /**
@@ -1056,10 +1141,16 @@ export class AgentSession<TObject = unknown> {
    * to their results is added after the other writer's transcript, as an
    * aborted turn keeps them (B4).
    */
-  private async busy(next: readonly Message[]): Promise<never> {
+  private async busy(next: readonly Message[]): Promise<void> {
     const stored = (await this.store.load(this.id)) ?? [];
     const base = this.transcript;
     const turn = this.turnCheckpoint();
+    // The other writer committed this very turn (it adopted the finished checkpoint first): nothing is lost or duplicated.
+    if (stored.length >= next.length && sameTranscript(stored.slice(0, next.length), next)) {
+      this.transcript = stored;
+      if (turn) await turn.checkpointStore.delete(turn.sessionId, { keepHistory: true });
+      return;
+    }
     if (turn) await turn.checkpointStore.delete(turn.sessionId, { keepHistory: true });
     const ran = sameTranscript(next.slice(0, base.length), base) ? completedToolPrefix(next, base) : undefined;
     const kept = ran && [...stored, ...ran.slice(base.length)];

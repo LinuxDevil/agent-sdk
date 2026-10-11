@@ -149,6 +149,21 @@ describe('SqliteStore migrations', () => {
     db.close();
   });
 
+  it('reports a corrupt checkpoint or transcript row with a typed error, and lists the run instead of failing', async () => {
+    const file = join(tempDir(), 'corrupt.db');
+    const store = open(file);
+    await store.checkpoints.save('run-1', makeCheckpoint({ sessionId: 'run-1' }));
+    await store.sessions.save('s1', [{ role: 'user', content: 'hi' }]);
+    const raw = new DatabaseSync(file);
+    raw.prepare("UPDATE checkpoints SET payload = '{\"broken' WHERE session_id = 'run-1'").run();
+    raw.prepare("UPDATE sessions SET payload = '{\"broken' WHERE id = 's1'").run();
+    raw.close();
+
+    await expect(store.checkpoints.load('run-1')).rejects.toMatchObject({ code: 'LOUSHO_CHECKPOINT_CORRUPT' });
+    expect((await store.checkpoints.list!()).map((entry) => [entry.sessionId, entry.checkpoint.lastError?.code])).toEqual([['run-1', 'LOUSHO_CHECKPOINT_CORRUPT']]);
+    await expect(store.sessions.load('s1')).rejects.toMatchObject({ code: 'LOUSHO_SESSION_FILE_CORRUPT' });
+  });
+
   it('opens a file written before the checkpoint history existed (LOU-D43)', async () => {
     const file = join(tempDir(), 'old.db');
     const raw = new DatabaseSync(file);

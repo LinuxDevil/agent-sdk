@@ -227,7 +227,7 @@ function sameFile(a: string, b: string): boolean {
   return norm(a) === norm(b);
 }
 
-function vitestError(label: string, message: string): EvalResult {
+export function vitestError(label: string, message: string): EvalResult {
   return { name: 'vitest', case: label, tags: [], passed: false, assertions: [], durationMs: 0, steps: 0, toolCalls: [], error: message };
 }
 

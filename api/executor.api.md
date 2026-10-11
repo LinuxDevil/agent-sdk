@@ -247,6 +247,7 @@ class AgentSession<TObject = unknown> {
     on(listener: (event: AgentEvent) => void): () => void;
     protected pausedTurnFound(_approvalId: string): void;
     pending(): Promise<PendingTurn | null>;
+    protected pendingTurnDiscarded(_approvalIds: string[]): Promise<void>;
     get permissionMode(): PermissionMode;
     resume(options?: {
         signal?: AbortSignal;
@@ -436,6 +437,7 @@ interface Checkpoint {
     runConfig?: unknown;
     // (undocumented)
     sessionId: string;
+    startedToolCallIds?: string[];
     status?: CheckpointStatus;
     // (undocumented)
     stepIndex: number;
@@ -490,10 +492,12 @@ type CheckpointStatus = 'in-progress' | 'awaiting-approval' | 'finished';
 
 // @public
 interface CheckpointStore {
+    acquireLease?(sessionId: string, owner: string, ttlMs: number): Promise<boolean>;
     delete(sessionId: string, options?: CheckpointDeleteOptions): Promise<void>;
     history?(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]>;
     list?(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
     load(sessionId: string): Promise<Checkpoint | null>;
+    releaseLease?(sessionId: string, owner: string): Promise<void>;
     save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
 }
 
@@ -857,6 +861,7 @@ interface FlowCheckpointState {
     output?: unknown;
     pendingApproval?: FlowPendingApproval;
     steps: number;
+    structure?: string;
     usage: ProviderUsage;
     variables: Record<string, unknown>;
 }
@@ -2116,6 +2121,7 @@ interface SessionOptions {
     onPermissionModeChange?: PermissionOptions['onPermissionModeChange'];
     permissionMode?: PermissionOptions['permissionMode'];
     store?: SessionStore | SessionStores;
+    turnHistoryLimit?: number;
     turnPolicy?: 'queue' | 'steer' | 'wait';
 }
 
