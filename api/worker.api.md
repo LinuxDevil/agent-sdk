@@ -715,10 +715,13 @@ interface ChannelUser {
 
 // @public
 interface ChatRoutesAccess {
+    allowedHosts?: readonly string[];
+    allowedOrigins?: readonly string[];
     authorizeApproval?: (request: ApprovalAccessRequest) => boolean | Promise<boolean>;
     authorizeSession?: (request: SessionAccessRequest) => boolean | Promise<boolean>;
     exposeErrors?: boolean;
     onDisconnect?: 'continue' | 'abort';
+    requireJsonBody?: boolean;
     waitUntil?: (promise: Promise<unknown>) => void;
 }
 
@@ -1129,6 +1132,11 @@ interface DelegatedUsage {
 }
 
 // @public
+interface DeliveryStore {
+    seen(id: string): boolean | Promise<boolean>;
+}
+
+// @public
 export function discordChannel(options: DiscordChannelOptions): Channel<DiscordInteraction>;
 
 // @public
@@ -1265,6 +1273,8 @@ const ERROR_CODES: {
     readonly LOUSHO_APPROVAL_CONFLICT: "Another request decided this approval at the same time; read the session to see the outcome instead of deciding again.";
     readonly LOUSHO_APPROVAL_FORBIDDEN: "Decide the approval as a caller the route's authorizeApproval accepts (by default, the caller the run acts for).";
     readonly LOUSHO_SESSION_FORBIDDEN: "Use a session the route's authorizeSession lets this caller read, continue or decide approvals in.";
+    readonly LOUSHO_REQUEST_FORBIDDEN: "Call from the server's own origin (or add the page's origin to allowedOrigins) and use a Host the server allows (allowedHosts).";
+    readonly LOUSHO_UNSUPPORTED_MEDIA_TYPE: "Send the request body as JSON with the header 'Content-Type: application/json'.";
     readonly LOUSHO_SESSION_AWAITING_APPROVAL: "Resolve the pending approval first (agent.approvals.resolve() or resumeAfterApproval()), then send again.";
     readonly LOUSHO_SESSION_ID_INVALID: "Use 1-128 characters from A-Z, a-z, 0-9, '_' and '-', or omit the id.";
     readonly LOUSHO_SESSION_BUSY: "Wait for the running turn to finish (await its send(), or abort it), then call again.";
@@ -1592,6 +1602,7 @@ interface GitHubChannelOptions {
     approvers?: Approvers;
     botLogin?: string;
     botName: string;
+    deliveries?: DeliveryStore;
     fetch?: typeof fetch;
     name?: string;
     onError?: ChannelErrorHandler;
