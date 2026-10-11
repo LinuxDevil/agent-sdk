@@ -32,7 +32,7 @@ console.log(session.id, session.messages.length);
 | `on(listener)` | Listens for the session's events: every turn's events as they happen (`send()` and `stream()` turns, and a paused turn continued by `agent.approvals.resolve()`), plus `compact()` / `clear()` events (`compaction.start`, `compaction.done`, `context.cleared`); returns a function that removes the listener. A turn's events are the `AgentEvent`s its `stream()` yields. |
 | `pending()` | In a [durable session](#durable-sessions), the turn that has not finished (`{ status, approvalId?, approvalKind? }`; `approvalKind` is `'question'` when the turn waits on an `ask_question`), or `null`. |
 | `resume({ signal })` | In a durable session, finishes an interrupted turn and resolves with its result, or `null` when none is pending. |
-| `discardPending()` | In a durable session, drops an unfinished turn without running it. |
+| `discardPending()` | In a durable session, drops an unfinished turn without running it, and withdraws the approvals it waited on (they are no longer listed, and resolving one fails with `LOUSHO_APPROVAL_NOT_FOUND`). Also drops a turn checkpoint that cannot be read (`LOUSHO_CHECKPOINT_CORRUPT`). |
 | `history()` | The steps of the transcript (one per model response, with its tool calls and results) - see [Forking a session](#forking-a-session). |
 | `fork({ fromStep, id?, patch? })` | A new session that starts from this one's transcript up to a step; this session is not changed - see [Forking a session](#forking-a-session). |
 
@@ -217,6 +217,18 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   transcript, exactly as a plain `send()` does, and its checkpoint is deleted.
   The turn id is only the checkpoint key: tools, `needsApproval`, permission
   rules and tool-call hooks still get the session's own id as `ctx.sessionId`.
+  The turn's checkpoint history is kept for the latest `turnHistoryLimit`
+  committed turns (default 10, `agent.session({ id, turnHistoryLimit })`), so
+  `agent.fork('<id>.turn-<n>', { fromStep })` can fork those; older turns'
+  histories are deleted as new turns commit (each history entry holds a copy of
+  the whole transcript, so keeping every turn's would grow the store with the
+  square of the conversation's length). `session.fork()` works from the
+  transcript and is not limited by it.
+- While a turn runs, it holds a run lease on its checkpoint (see
+  [Durable execution](./durable-execution.md#run-leases)): a `send()` on the same
+  session from another process, replica or store object fails with
+  `LOUSHO_SESSION_BUSY` before it runs anything, instead of resuming the live
+  turn and running its tool calls a second time.
 - `resume()` continues the turn through the executor's resume path
   (`input: []`): tool calls whose results were recorded do not run again, and
   a recorded model response is not requested again. A tool that was running
@@ -327,8 +339,8 @@ Each one is an `AgentStore` part: pass them together as
 `createAgent({ store: { sessions, checkpoints, approvals } })`. `memoryStore()`,
 `fileStore(dir)`, `SqliteStore` and `KVStore` are ready-made `AgentStore`s. For
 plain files, `fileStore(dir)` writes one JSON file per session, checkpoint and
-pending approval under `dir`, each written to a temp file and renamed into
-place, with no lock files. On Windows a rename over, or a read of, a file that
+pending approval under `dir`, each written to a temp file, flushed to disk and
+renamed into place (so a crash or a power loss never leaves half a file). On Windows a rename over, or a read of, a file that
 another writer or reader has open fails for a moment with `EPERM`, `EACCES` or
 `EBUSY`; `fileStore()` and `FileSessionStore` retry it with a short backoff (about
 1.3 s in all) and then fail with `LOUSHO_STORAGE_FAILED`. Concurrent saves to one
@@ -347,7 +359,10 @@ letter in lowercase (`Alice` -> `sessions/^alice.json`): the default
 filesystems of Windows and macOS ignore case, and `alice` and `Alice` must not
 share a transcript. An id without uppercase letters keeps its plain name. A file
 saved by an older version under a mixed-case name (`Alice.json`) is still read
-for exactly that id, and moved to its new name on the next save.
+for exactly that id, and moved to its new name on the next save. An id that
+would make too long a file name once encoded (an all-uppercase 128-character
+session id plus `.turn-<n>`), or a Windows device name (`nul`, `com1`), is
+stored as `~<prefix>~<hash>.json` instead.
 
 Each `checkpoints/<id>.json` has a `checkpoint-history/<id>.json` next to it:
 the checkpoint's bounded history, oldest first. Directories are created on
@@ -355,9 +370,11 @@ first write, so `approvals/` (and `oauth/`) only appear after the first pending
 approval (or sign-in).
 
 Resolving an approval from `fileStore` is safe across processes (only one
-caller gets the record); two processes writing one session at the same moment
-are not coordinated, so the last write wins. For several processes sharing a
-store, use `SqliteStore`.
+caller gets the record, and a claim a crashed resolver left is taken over after
+a minute); a session commits its turns with a compare-and-swap under a lock file
+(`sessions/<id>.json.lock`), and a running checkpointed run holds its run lease
+in `leases/<id>.json` (see [Durable execution](./durable-execution.md#run-leases)).
+For many processes sharing a store, `SqliteStore` is the sturdier choice.
 
 Any object with the three methods of a part works there too: a Redis
 `SessionStore`, or a KV-backed `CheckpointStore` on Cloudflare Workers (the

@@ -145,6 +145,7 @@ class AgentSession<TObject = unknown> {
     on(listener: (event: AgentEvent) => void): () => void;
     protected pausedTurnFound(_approvalId: string): void;
     pending(): Promise<PendingTurn | null>;
+    protected pendingTurnDiscarded(_approvalIds: string[]): Promise<void>;
     get permissionMode(): PermissionMode;
     resume(options?: {
         signal?: AbortSignal;
@@ -374,6 +375,7 @@ interface Checkpoint {
     runConfig?: unknown;
     // (undocumented)
     sessionId: string;
+    startedToolCallIds?: string[];
     status?: CheckpointStatus;
     // (undocumented)
     stepIndex: number;
@@ -428,10 +430,12 @@ type CheckpointStatus = 'in-progress' | 'awaiting-approval' | 'finished';
 
 // @public
 interface CheckpointStore {
+    acquireLease?(sessionId: string, owner: string, ttlMs: number): Promise<boolean>;
     delete(sessionId: string, options?: CheckpointDeleteOptions): Promise<void>;
     history?(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]>;
     list?(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
     load(sessionId: string): Promise<Checkpoint | null>;
+    releaseLease?(sessionId: string, owner: string): Promise<void>;
     save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
 }
 
@@ -716,6 +720,7 @@ const ERROR_CODES: {
     readonly LOUSHO_SKILL_INVALID: "Fix the skill the message names (a name, a description and content), or the skills option it was passed to.";
     readonly LOUSHO_FLOW_INVALID: "Fix the flow definition the message names (its name, code, inputs and node types).";
     readonly LOUSHO_FLOW_TOOL_DENIED: "Pass an approve callback in the flow context to decide tool calls that need approval, or change the permission rule or needsApproval policy that denied the call.";
+    readonly LOUSHO_FLOW_CHANGED: "Resume the run with the flow version that started it (same steps in the same order), or start a new run with another runId.";
     readonly LOUSHO_STORAGE_FAILED: "Read the message: it names the database or file that failed; check the path, permissions and Node version, and the `cause`.";
     readonly LOUSHO_STORAGE_BUSY: "Another process holds the SQLite write lock; retry the call, or find what keeps the lock (a long transaction, a backup, a second replica).";
     readonly LOUSHO_TRIGGER_INVALID: "Fix the trigger option the message names; the message shows a working example.";
@@ -726,16 +731,16 @@ const ERROR_CODES: {
     readonly LOUSHO_CHANNEL_REQUEST_FAILED: "Check the platform's token and permissions and its status page; the message names the call and its status.";
     readonly LOUSHO_APPROVAL_STORE_MISSING: "Pass an approvalStore (e.g. new InMemoryApprovalStore()), or use createAgent(), which has one.";
     readonly LOUSHO_APPROVAL_NOT_FOUND: "Resolve an id that is still pending (agent.approvals.list() lists them); each approval resolves once.";
-    readonly LOUSHO_APPROVAL_ORPHANED: "The paused session turn was deleted (e.g. by a store's prune()); the approval cannot be continued - start a new turn instead.";
+    readonly LOUSHO_APPROVAL_ORPHANED: "The paused run (or session turn) was deleted or replaced by a newer one; the approval is withdrawn and cannot be continued - start a new turn instead.";
     readonly LOUSHO_APPROVAL_CONFLICT: "Another request decided this approval at the same time; read the session to see the outcome instead of deciding again.";
     readonly LOUSHO_APPROVAL_FORBIDDEN: "Decide the approval as a caller the route's authorizeApproval accepts (by default, the caller the run acts for).";
     readonly LOUSHO_SESSION_FORBIDDEN: "Use a session the route's authorizeSession lets this caller read, continue or decide approvals in.";
     readonly LOUSHO_SESSION_AWAITING_APPROVAL: "Resolve the pending approval first (agent.approvals.resolve() or resumeAfterApproval()), then send again.";
-    readonly LOUSHO_SESSION_ID_INVALID: "Use 1-128 characters from A-Z, a-z, 0-9, '_' and '-', or omit the id.";
+    readonly LOUSHO_SESSION_ID_INVALID: "Session ids: 1-128 characters from A-Z, a-z, 0-9, '_' and '-'. Run ids (send({ sessionId })): up to 200 and '.' too, not ending in '.turn-<n>' or '.paused'.";
     readonly LOUSHO_SESSION_BUSY: "Wait for the running turn to finish (await its send(), or abort it), then call again.";
     readonly LOUSHO_SESSION_TURN_PENDING: "Finish the interrupted turn with session.resume(), or drop it with session.discardPending(), then call again.";
     readonly LOUSHO_SESSION_TURN_FAILED: "Drop the failed turn with session.discardPending() and send again, or fix the cause and retry it with session.resume().";
-    readonly LOUSHO_SESSION_FILE_CORRUPT: "Restore or delete the session file named in the message.";
+    readonly LOUSHO_SESSION_FILE_CORRUPT: "Restore or delete the session transcript named in the message (session.clear() removes it).";
     readonly LOUSHO_SESSION_STREAM_UNSUPPORTED: "Create the session with agent.session(), which can stream, or call send() instead.";
     readonly LOUSHO_SESSION_STEP_NOT_FOUND: "Pass a fromStep in the range the message lists (see session.history()); 0 keeps nothing.";
     readonly LOUSHO_SESSION_EXISTS: "Pick a session id that has no transcript in the store yet, or leave `id` out for <id>-fork-<n>.";
@@ -745,6 +750,7 @@ const ERROR_CODES: {
     readonly LOUSHO_SUBAGENT_TASK_NOT_FOUND: "Pass a taskId from an earlier task result of this lead session, with the same agent, or omit taskId to start a new task.";
     readonly LOUSHO_SUBAGENT_TASK_BUSY: "Wait for the task with agent_await (or stop it with agent_cancel), then continue it.";
     readonly LOUSHO_CHECKPOINT_NOT_FOUND: "Fork at a step the session's checkpoint history still keeps (checkpointStore.history() lists them), or raise the store's historyLimit.";
+    readonly LOUSHO_CHECKPOINT_CORRUPT: "Drop the unreadable checkpoint with session.discardPending() or session.clear() (or checkpointStore.delete(id)); the interrupted run cannot be resumed.";
     readonly LOUSHO_AGENT_DRIFT: "Resume with the agent that paused the run (same model, tools and instructions), or set onAgentDrift: 'warn' or 'ignore' to continue anyway.";
     readonly LOUSHO_RESUME_TOOL_MISSING: "Bring the tool named in the message back (same name), or drop the paused run: delete its checkpoint and reject its approval.";
     readonly LOUSHO_RUN_ALREADY_ITERATED: "Iterate an AgentRun once; call stream() again for a new run.";
@@ -851,6 +857,7 @@ interface FlowCheckpointState {
     output?: unknown;
     pendingApproval?: FlowPendingApproval;
     steps: number;
+    structure?: string;
     usage: ProviderUsage;
     variables: Record<string, unknown>;
 }
@@ -2319,6 +2326,7 @@ interface SessionOptions {
     onPermissionModeChange?: PermissionOptions['onPermissionModeChange'];
     permissionMode?: PermissionOptions['permissionMode'];
     store?: SessionStore | SessionStores;
+    turnHistoryLimit?: number;
     turnPolicy?: 'queue' | 'steer' | 'wait';
 }
 

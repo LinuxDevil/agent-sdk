@@ -4996,6 +4996,7 @@ Worker reads). `KVStore`'s keys, with an optional `prefix` before each:
 | `checkpoints/<id>` | The `Checkpoint` of a durable run or session turn (`KVCheckpointStore`, with its history under `checkpoints/<id>#history`; bytes encoded the same way). |
 | `approvals/<id>` | A paused approval and the snapshot that resumes it (deleted when it is decided; bytes encoded the same way). |
 | `approvals/<id>#claim` | The claim of the request deciding that approval (a random token, expires after 60 seconds; see below). |
+| `checkpoints/<id>#lease` | The run lease of a durable run or session turn while it executes (an owner id and an expiry; see [Run leases](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases)). |
 | `oauth/tokens/<key>`, `oauth/pending/<state>` | OAuth tokens and pending sign-ins, encrypted with `tokenKey` (the `LOUSHO_TOKEN_KEY` secret in the generated Worker); see [OAuth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#token-storage). |
 | `memory/<slot>#<scope>` | The items of a `kvMemory()` memory slot (`notes#global`, `prefs#session:<id>` or a custom scope's key) - written by the provider itself, not `KVStore`. |
 
@@ -5015,11 +5016,14 @@ the final text.
 KV has no compare-and-swap, so `KVStore` cannot claim an approval atomically
 the way `fileStore` and `SqliteStore` do. To decide one, a request writes a
 random token under `approvals/<id>#claim` (unless a claim is already there),
-reads it back, and only the request whose token is still there deletes the
-approval and runs the call. A double click, a retried webhook or two reviewers
-deciding at once then run the approved tool once in the common case.
+waits 50 ms, reads it back, and only the request whose token is still there
+(and that still finds the approval) deletes the approval and runs the call. At
+one location, where a concurrent request writes its own token within that
+window, a double click, a retried webhook or two reviewers deciding at once run
+the approved tool exactly once. Run leases (`checkpoints/<id>#lease`) are taken
+the same way.
 
-This narrows the race but does not close it: two requests served by different
+This does not close the race across locations: two requests served by different
 edge locations within KV's propagation delay (up to about 60 seconds) can both
 read their own token and both run the call. For a tool with a side effect that
 must happen once (a payment, an email), pass `ctx.approval.id` on as an
@@ -6933,8 +6937,46 @@ approvalKind?, step, lastError? }`:
   with `agent.session({ id }).discardPending()`.
 
 A run that is still running in some process is listed as `'in-progress'`
-too, so run the recovery loop before the process accepts new requests, and in
-one process at a time.
+too. Resuming it is safe: the run holds a lease (see [Run leases](#run-leases)),
+so `agent.resume()` fails with `LOUSHO_SESSION_BUSY` before anything runs
+instead of running its tool calls a second time.
+
+A checkpoint that cannot be read (a write cut short by a power loss on a store
+without durable writes) is listed as `'in-progress'` with `lastError.code`
+`LOUSHO_CHECKPOINT_CORRUPT` (`retryable: false`), the error `send()` and
+`resume()` fail with; drop it with `discardPending()` (or `clear()`), or
+`store.checkpoints.delete(id)` for a run.
+
+## Run leases
+
+While a checkpointed run executes (a session turn, a `send(msg, { sessionId })`
+run, an approval resume), it holds a lease on its checkpoint id in the
+checkpoint store: an owner id and an expiry 30 seconds out, renewed every 10
+seconds. A second process, replica or store object that tries to run or resume
+the same id meanwhile - a `send()` that would resume the pending turn first,
+`agent.resume()`, `agent.approvals.resolve()` - fails with `LOUSHO_SESSION_BUSY`
+before any tool runs or any model is called (a resolved approval stays
+pending). Two replicas behind a load balancer therefore never run one turn's
+tool calls twice.
+
+A lease whose holder died is taken over once it expires. The file and SQLite
+stores also take it over at once when the holder was a process on the same host
+that is gone, so the usual "restart and resume" path does not wait. If a run
+stalls for longer than its lease (the event loop blocked for 30 seconds) and
+another process takes over, the stalled run stops with `LOUSHO_SESSION_BUSY` at
+its next checkpoint instead of overwriting the new holder's progress.
+
+The file, SQLite and in-memory stores take leases atomically. KV has no
+compare-and-swap: `KVStore` writes the lease, waits 50 ms and reads it back,
+which serializes requests at one location but not across edge locations within
+KV's propagation delay. A custom `CheckpointStore` takes part by implementing
+`acquireLease(id, owner, ttlMs)` (an atomic "take or renew unless another owner
+holds an unexpired lease", resolving `true` when taken) and
+`releaseLease(id, owner)`; without them runs execute without leases.
+
+Schedules use the same mechanism: `fireSchedule()` (and so `startSchedules()`)
+claims each schedule's fire time in the agent's checkpoint store first, so
+replicas that fire the same tick run it once.
 
 `agent.pending()` needs a checkpoint store with `list()`: the file, SQLite,
 in-memory and KV stores have one (`KVStore` lists only when its namespace
@@ -6960,6 +7002,22 @@ filtering and ordering for you. Without it `agent.pending()` throws
   plan).
 - **The provider always receives a valid transcript**: tool results
   directly follow their tool-call turn, and new user input comes after them.
+- **An approved call runs at most once.** Deciding an approval keeps the
+  paused run's checkpoint: it is re-saved as `'in-progress'` with the approved
+  call marked as started (`startedToolCallIds`) before the call runs, and
+  saved again with its result before the run continues. If the process dies
+  while the approved call runs, the turn is not lost: `pending()` lists it,
+  and resuming it does not run the call again. The call gets an error result
+  (`kind: 'interrupted'`) telling the model it may or may not have taken
+  effect, so the model can check or ask instead of silently repeating it - a
+  human approved it once, not twice.
+- **A stale approval never comes back.** An approval continues its run only
+  while that run's checkpoint still waits on it. Once the checkpoint was
+  deleted (`checkpoints.delete(id)`, `discardPending()`, a prune) or replaced
+  by a newer run under the same id, resolving it fails with
+  `LOUSHO_APPROVAL_ORPHANED` and withdraws it, without running the tool or
+  touching the newer run. `discardPending()` withdraws the dropped turn's
+  approvals at once.
 
 ## At-least-once tools: make side effects idempotent
 
@@ -7286,9 +7344,14 @@ if (original && replayed) {
 - A `sessionId` identifies one logical conversation. Concurrent
   `agent.send()` / `agent.stream()` calls with the same `sessionId` on one
   agent store run one after another, in call order, in this process. Two
-  processes (or two store objects over the same data), or two raw
-  `AgentExecutor.execute()` calls, on the same id at the same time are not
-  supported: the last save wins.
+  processes (or two store objects over the same data) on the same id at the
+  same time are refused with `LOUSHO_SESSION_BUSY` by the run lease (best
+  effort on KV, see [Run leases](#run-leases)); with a custom store that has no
+  leases, the last save wins.
+- A run id (`sessionId` of `send()` / `stream()`) is 1-200 characters of
+  letters, digits, `_`, `-` and `.`, not starting or ending with `.`, on every
+  store, and may not end with `.turn-<n>` or `.paused`: those are a session's
+  own checkpoint keys. Anything else fails with `LOUSHO_SESSION_ID_INVALID`.
 - If you call `resumeAfterApproval()` (the function behind
   `agent.approvals.resolve()`) without the `checkpointStore`, the session
   keeps its `'awaiting-approval'` mark and later `send()` (or `execute()`)
@@ -7368,12 +7431,12 @@ Find a code by area:
 | [Providers and peers](#providers-and-peers) | [`LOUSHO_PROVIDER_SPEC_INVALID`](#lousho_provider_spec_invalid), [`LOUSHO_PROVIDER_UNKNOWN`](#lousho_provider_unknown), [`LOUSHO_PROVIDER_MISSING_API_KEY`](#lousho_provider_missing_api_key), [`LOUSHO_PROVIDER_REQUEST_FAILED`](#lousho_provider_request_failed), [`LOUSHO_PROVIDER_RATE_LIMITED`](#lousho_provider_rate_limited), [`LOUSHO_PEER_MISSING`](#lousho_peer_missing), [`LOUSHO_HOSTED_TOOL_UNSUPPORTED`](#lousho_hosted_tool_unsupported), [`LOUSHO_UNSUPPORTED_CONTENT`](#lousho_unsupported_content) | Resolving a model string, a missing API key or peer package, a failed or rate-limited model request, a hosted tool the provider cannot run, a file the provider cannot send. |
 | [Agent spec files](#agent-spec-files) | [`LOUSHO_SPEC_NOT_FOUND`](#lousho_spec_not_found), [`LOUSHO_SPEC_INVALID`](#lousho_spec_invalid), [`LOUSHO_SPEC_UNKNOWN_FIELD`](#lousho_spec_unknown_field), [`LOUSHO_SPEC_UNSUPPORTED_FORMAT`](#lousho_spec_unsupported_format) | Loading an `AgentSpec` file with `loadSpec()` or `specToAgent()`. |
 | [Tools](#tools) | [`LOUSHO_TOOL_NOT_FOUND`](#lousho_tool_not_found), [`LOUSHO_TOOL_NEEDS_CREDENTIALS`](#lousho_tool_needs_credentials), [`LOUSHO_TOOL_EXECUTION_FAILED`](#lousho_tool_execution_failed), [`LOUSHO_TOOL_ARGS_INVALID`](#lousho_tool_args_invalid), [`LOUSHO_MCP_START_FAILED`](#lousho_mcp_start_failed) | A tool the model called is unknown, needs credentials, threw, or got invalid arguments; a stdio MCP server did not start. |
-| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_ORPHANED`](#lousho_approval_orphaned), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_TURN_FAILED`](#lousho_session_turn_failed), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
+| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_ORPHANED`](#lousho_approval_orphaned), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_TURN_FAILED`](#lousho_session_turn_failed), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_CHECKPOINT_CORRUPT`](#lousho_checkpoint_corrupt), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
 | [Schedules](#schedules) | [`LOUSHO_SCHEDULE_INVALID`](#lousho_schedule_invalid), [`LOUSHO_SCHEDULE_RUN_INCOMPLETE`](#lousho_schedule_run_incomplete) | Defining or loading a schedule, or a scheduled turn that did not finish. |
 | [Channels](#channels) | [`LOUSHO_CHANNEL_INVALID`](#lousho_channel_invalid), [`LOUSHO_MEMORY_INVALID`](#lousho_memory_invalid) | Defining a channel or a memory slot. |
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
 | [Sandbox](#sandbox) | [`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`](#lousho_sandbox_egress_unsupported), [`LOUSHO_SANDBOX_PATH_DENIED`](#lousho_sandbox_path_denied) | Asking a sandbox for something it cannot do on the current platform, or to write outside its root. |
-| [Agent directories, skills and flows](#agent-directories-skills-and-flows) | [`LOUSHO_AGENT_DIR_INVALID`](#lousho_agent_dir_invalid), [`LOUSHO_SKILL_INVALID`](#lousho_skill_invalid), [`LOUSHO_FLOW_INVALID`](#lousho_flow_invalid), [`LOUSHO_FLOW_TOOL_DENIED`](#lousho_flow_tool_denied) | Loading an agent directory, a skill, or a flow definition, and gating a flow's tool calls. |
+| [Agent directories, skills and flows](#agent-directories-skills-and-flows) | [`LOUSHO_AGENT_DIR_INVALID`](#lousho_agent_dir_invalid), [`LOUSHO_SKILL_INVALID`](#lousho_skill_invalid), [`LOUSHO_FLOW_INVALID`](#lousho_flow_invalid), [`LOUSHO_FLOW_TOOL_DENIED`](#lousho_flow_tool_denied), [`LOUSHO_FLOW_CHANGED`](#lousho_flow_changed) | Loading an agent directory, a skill, or a flow definition, and gating a flow's tool calls. |
 | [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_STORAGE_BUSY`](#lousho_storage_busy), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed) | A storage backend, a trigger, a channel request or `lousho build`. |
 | [Tests and evals](#tests-and-evals) | [`LOUSHO_EVALS_INVALID`](#lousho_evals_invalid), [`LOUSHO_TEST_FAILED`](#lousho_test_failed), [`LOUSHO_CASSETTE_INVALID`](#lousho_cassette_invalid) | `defineEval()`, `mockModel` and cassettes. |
 | [General](#general) | [`LOUSHO_GENERIC_ERROR`](#lousho_generic_error), [`LOUSHO_AGENT_EXECUTION_FAILED`](#lousho_agent_execution_failed), [`LOUSHO_FLOW_EXECUTION_FAILED`](#lousho_flow_execution_failed), [`LOUSHO_VALIDATION_FAILED`](#lousho_validation_failed), [`LOUSHO_OPERATION_TIMEOUT`](#lousho_operation_timeout), [`LOUSHO_OUTPUT_INVALID`](#lousho_output_invalid), [`LOUSHO_BUDGET_EXCEEDED`](#lousho_budget_exceeded), [`LOUSHO_GUARDRAIL_TRIPPED`](#lousho_guardrail_tripped) | Run-level failures: a timeout, a budget or guardrail stop, invalid output, and the catch-all codes. |
@@ -7709,14 +7772,17 @@ in the URL.
 
 ### LOUSHO_APPROVAL_ORPHANED
 
-**Means:** `agent.approvals.resolve()` (or `streamResolve()`) got an approval
-whose session turn is no longer stored: the turn's `<id>.turn-<n>` checkpoint
-was deleted (by an older `SqliteStore.prune()`, a TTL, or by hand). The tool
-was not run and the approval stays pending.
+**Means:** `agent.approvals.resolve()` (or `streamResolve()`, or
+`resumeAfterApproval()`) got an approval whose paused run no longer waits on
+it: the run's checkpoint (a session turn's `<id>.turn-<n>`, or a
+`send(msg, { sessionId })` run's) was deleted (by `checkpoints.delete(id)`,
+`discardPending()`, a TTL, or by hand) or replaced by a newer run under the same
+id. The tool was not run, and the approval is withdrawn: it is no longer listed,
+and resolving it again fails with `LOUSHO_APPROVAL_NOT_FOUND`.
 
-**Fix:** start a new turn in the session instead; there is nothing left to
-continue. `SqliteStore.prune()` keeps paused turns, so this needs the
-checkpoint to be removed some other way.
+**Fix:** start a new turn in the session (or a new run) instead; there is
+nothing left to continue. `SqliteStore.prune()` keeps paused turns, so this
+needs the checkpoint to be removed some other way.
 
 **Example:** deleting `cust-7.turn-2` from the checkpoint store, then
 approving the refund that turn paused on.
@@ -7766,17 +7832,25 @@ paused on an approval (`error.approvalId`), so it cannot take new input yet.
 ### LOUSHO_SESSION_ID_INVALID
 
 **Means:** a session id is not 1-128 characters of letters, digits, `_` and
-`-` (ids become file names, so `../` and `/` are refused).
+`-` (ids become file names, so `../` and `/` are refused). Or a run id
+(`agent.send()` / `agent.stream()`'s `sessionId`, a checkpoint store's id) is
+not 1-200 characters of letters, digits, `_`, `-` and `.` (not starting or
+ending with `.`), the same rule on every store; or it ends with `.turn-<n>` or
+`.paused`, which are a session's own checkpoint keys (a run under
+`'victim.turn-2'` would write into session `victim`'s turn).
 
 **Fix:** use an id such as `'user-42'`, or omit it to get a generated one.
 
-**Example:** `agent.session({ id: '../etc' })`.
+**Example:** `agent.session({ id: '../etc' })`, or
+`agent.send(msg, { sessionId: 'chat.turn-2' })`.
 
 ### LOUSHO_SESSION_FILE_CORRUPT
 
-**Means:** a `FileSessionStore` file is not a JSON array of messages.
+**Means:** a stored transcript (a `FileSessionStore` file, or a `SqliteStore`
+row) is not valid JSON or not a JSON array of messages, e.g. a write cut short.
 
-**Fix:** restore the file from a backup, or delete it to start the session over.
+**Fix:** restore the file from a backup, or delete it to start the session over:
+`session.clear()` removes it.
 
 **Example:** `sessions/user-42.json` containing `{}`.
 
@@ -7787,10 +7861,17 @@ that session is running or queued. From `send()` / `stream()`: another writer th
 queue cannot see (another process, or a second store object over the same data) committed a
 turn while this one ran, so this turn was not committed (atomically with a store that has
 `saveIf`: memory, file and SQLite; best effort with KV). Tool calls of the turn that ran are
-kept: the turn up to their results is added after the other writer's turn.
+kept: the turn up to their results is added after the other writer's turn. Also from `send()`,
+`resume()`, `agent.send(msg, { sessionId })`, `agent.resume()` and `approvals.resolve()`: the
+checkpointed run (or session turn) is running in another process, replica or store object right
+now, which holds its run lease (see
+[Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases)); nothing ran here, and a resolved
+approval stays pending.
 
 **Fix:** await the turn's `send()` (or abort it), then call again. After a `send()` that failed
-this way, send again: the session reads the current transcript at the start of every call.
+this way, send again: the session reads the current transcript at the start of every call. A
+lease left by a process that died is taken over once it expires (30 s), or at once by the
+file and SQLite stores when that process is gone from the same host.
 
 ### LOUSHO_SESSION_TURN_PENDING
 
@@ -7913,6 +7994,20 @@ The message lists the steps that are kept.
 See [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#fork-and-replay).
 
 **Example:** `agent.fork('job-1', { fromStep: 9 })` after a 3-step run.
+
+### LOUSHO_CHECKPOINT_CORRUPT
+
+**Means:** a stored checkpoint cannot be read: it is not valid JSON or not a
+checkpoint, typically a write cut short by a crash or power loss on a store
+without durable writes. `send()`, `resume()` and `agent.resume()` fail on it,
+and `agent.pending()` lists the run as `'in-progress'` with this code in its
+`lastError` (`retryable: false`).
+
+**Fix:** drop it: `session.discardPending()` (or `session.clear()`) for a
+session's turn, `checkpointStore.delete(id)` for a run. The interrupted run
+cannot be resumed.
+
+**Example:** a 0-byte `checkpoints/chat.turn-2.json` left after a power loss.
 
 ### LOUSHO_AGENT_DRIFT
 
@@ -8141,6 +8236,20 @@ or change the rule that denied the call. See [Flows](https://github.com/LinuxDev
 
 **Example:** a flow step that calls a `needsApproval: true` payment tool, run
 with no `approve` callback.
+
+### LOUSHO_FLOW_CHANGED
+
+**Means:** `FlowExecutor.resume()` was called with a flow whose steps changed
+(added, removed, moved, or a step's type, id, tool or agent changed) since the
+run was saved. Completed steps are saved by their place in the flow, so the
+saved results would land on the wrong steps. Prompts and other settings may
+change freely.
+
+**Fix:** resume with the flow version that started the run, or start a new run
+under another `runId`. See [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md).
+
+**Example:** a run saved after `charge` in `[charge, notify]`, resumed with
+`[audit, charge, notify]`.
 
 ## Storage, deployment and integrations
 
@@ -9199,8 +9308,12 @@ if (!first.success) {
 
 - A node is identified by its place in the flow, not its `id`. Resume a run
   with the flow that started it. A resume with a flow of another `code` is
-  refused with `LOUSHO_CONFIG_INVALID`. A changed flow with the same `code` is
-  not detected.
+  refused with `LOUSHO_CONFIG_INVALID`. The run also saves its flow's
+  structure (each node's type, `id`, tool or agent, and their order); a resume
+  with the same `code` whose steps were added, removed or moved is refused with
+  `LOUSHO_FLOW_CHANGED`, since the saved results would land on the wrong steps.
+  Editing a prompt, condition or other setting keeps the structure. Runs saved
+  before this check resume without it.
 - Resuming a finished run returns its saved result with no events, and runs
   nothing. `execute()` with the `runId` of a finished run starts a new run.
   `execute()` with the `runId` of an unfinished run is refused with
@@ -14463,6 +14576,14 @@ a store, and `schedule-<name>` when the schedule sets `sharedSession: true`). It
 rejects when the run fails, including with `LOUSHO_SCHEDULE_RUN_INCOMPLETE`, so
 it suits an ops "run now" and tests.
 
+With an agent `store` (file, SQLite, KV or `memoryStore()`), each fire first
+claims its schedule name and fire time (to the second) in `store.checkpoints`,
+so several replicas running `startSchedules()` on one store fire each tick once:
+the replicas that lose the claim resolve without running anything. Two manual
+fires of one schedule within the same second count as one tick too. On KV the
+claim is best effort across edge locations (see
+[Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases)).
+
 ```ts
 import { createAgent, createMockProvider, defineSchedule, fireSchedule } from '@lousho/build-ai-agent';
 
@@ -14622,7 +14743,7 @@ console.log(session.id, session.messages.length);
 | `on(listener)` | Listens for the session's events: every turn's events as they happen (`send()` and `stream()` turns, and a paused turn continued by `agent.approvals.resolve()`), plus `compact()` / `clear()` events (`compaction.start`, `compaction.done`, `context.cleared`); returns a function that removes the listener. A turn's events are the `AgentEvent`s its `stream()` yields. |
 | `pending()` | In a [durable session](#durable-sessions), the turn that has not finished (`{ status, approvalId?, approvalKind? }`; `approvalKind` is `'question'` when the turn waits on an `ask_question`), or `null`. |
 | `resume({ signal })` | In a durable session, finishes an interrupted turn and resolves with its result, or `null` when none is pending. |
-| `discardPending()` | In a durable session, drops an unfinished turn without running it. |
+| `discardPending()` | In a durable session, drops an unfinished turn without running it, and withdraws the approvals it waited on (they are no longer listed, and resolving one fails with `LOUSHO_APPROVAL_NOT_FOUND`). Also drops a turn checkpoint that cannot be read (`LOUSHO_CHECKPOINT_CORRUPT`). |
 | `history()` | The steps of the transcript (one per model response, with its tool calls and results) - see [Forking a session](#forking-a-session). |
 | `fork({ fromStep, id?, patch? })` | A new session that starts from this one's transcript up to a step; this session is not changed - see [Forking a session](#forking-a-session). |
 
@@ -14807,6 +14928,18 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   transcript, exactly as a plain `send()` does, and its checkpoint is deleted.
   The turn id is only the checkpoint key: tools, `needsApproval`, permission
   rules and tool-call hooks still get the session's own id as `ctx.sessionId`.
+  The turn's checkpoint history is kept for the latest `turnHistoryLimit`
+  committed turns (default 10, `agent.session({ id, turnHistoryLimit })`), so
+  `agent.fork('<id>.turn-<n>', { fromStep })` can fork those; older turns'
+  histories are deleted as new turns commit (each history entry holds a copy of
+  the whole transcript, so keeping every turn's would grow the store with the
+  square of the conversation's length). `session.fork()` works from the
+  transcript and is not limited by it.
+- While a turn runs, it holds a run lease on its checkpoint (see
+  [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases)): a `send()` on the same
+  session from another process, replica or store object fails with
+  `LOUSHO_SESSION_BUSY` before it runs anything, instead of resuming the live
+  turn and running its tool calls a second time.
 - `resume()` continues the turn through the executor's resume path
   (`input: []`): tool calls whose results were recorded do not run again, and
   a recorded model response is not requested again. A tool that was running
@@ -14917,8 +15050,8 @@ Each one is an `AgentStore` part: pass them together as
 `createAgent({ store: { sessions, checkpoints, approvals } })`. `memoryStore()`,
 `fileStore(dir)`, `SqliteStore` and `KVStore` are ready-made `AgentStore`s. For
 plain files, `fileStore(dir)` writes one JSON file per session, checkpoint and
-pending approval under `dir`, each written to a temp file and renamed into
-place, with no lock files. On Windows a rename over, or a read of, a file that
+pending approval under `dir`, each written to a temp file, flushed to disk and
+renamed into place (so a crash or a power loss never leaves half a file). On Windows a rename over, or a read of, a file that
 another writer or reader has open fails for a moment with `EPERM`, `EACCES` or
 `EBUSY`; `fileStore()` and `FileSessionStore` retry it with a short backoff (about
 1.3 s in all) and then fail with `LOUSHO_STORAGE_FAILED`. Concurrent saves to one
@@ -14937,7 +15070,10 @@ letter in lowercase (`Alice` -> `sessions/^alice.json`): the default
 filesystems of Windows and macOS ignore case, and `alice` and `Alice` must not
 share a transcript. An id without uppercase letters keeps its plain name. A file
 saved by an older version under a mixed-case name (`Alice.json`) is still read
-for exactly that id, and moved to its new name on the next save.
+for exactly that id, and moved to its new name on the next save. An id that
+would make too long a file name once encoded (an all-uppercase 128-character
+session id plus `.turn-<n>`), or a Windows device name (`nul`, `com1`), is
+stored as `~<prefix>~<hash>.json` instead.
 
 Each `checkpoints/<id>.json` has a `checkpoint-history/<id>.json` next to it:
 the checkpoint's bounded history, oldest first. Directories are created on
@@ -14945,9 +15081,11 @@ first write, so `approvals/` (and `oauth/`) only appear after the first pending
 approval (or sign-in).
 
 Resolving an approval from `fileStore` is safe across processes (only one
-caller gets the record); two processes writing one session at the same moment
-are not coordinated, so the last write wins. For several processes sharing a
-store, use `SqliteStore`.
+caller gets the record, and a claim a crashed resolver left is taken over after
+a minute); a session commits its turns with a compare-and-swap under a lock file
+(`sessions/<id>.json.lock`), and a running checkpointed run holds its run lease
+in `leases/<id>.json` (see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases)).
+For many processes sharing a store, `SqliteStore` is the sturdier choice.
 
 Any object with the three methods of a part works there too: a Redis
 `SessionStore`, or a KV-backed `CheckpointStore` on Cloudflare Workers (the
