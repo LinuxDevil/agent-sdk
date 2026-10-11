@@ -92,8 +92,9 @@ async function fauxPi(stateDir: string) {
 }
 
 beforeEach(async () => {
-  // Inside the repository so the kit's `@lousho/build-ai-agent` imports resolve.
-  root = fs.mkdtempSync(path.join(REPO_ROOT, '.coding-pi-'));
+  // The node_modules link lets the kit's `@lousho/build-ai-agent` imports resolve.
+  root = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-coding-pi-'));
+  fs.symlinkSync(path.join(REPO_ROOT, 'node_modules'), path.join(root, 'node_modules'), 'junction');
   const result = await add(['coding-pi', '--registry', INDEX, '--dir', '.', '--yes', '--allow', 'exec,fs-write,network,env']);
   expect(result.err).toBe('');
   expect(result.code).toBe(0);

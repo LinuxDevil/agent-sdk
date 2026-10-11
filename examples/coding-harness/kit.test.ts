@@ -4,8 +4,9 @@
  * deploys it - the same behavior as the inline harness in ./index.test.ts,
  * proven from the installed files instead of one createAgent() call.
  *
- * The scratch agent directory sits inside the repository so the kit's
- * `@lousho/build-ai-agent` imports resolve, and the directory is loaded
+ * The scratch agent directory (in the OS temp dir) gets a `node_modules`
+ * link to the repository's so the kit's `@lousho/build-ai-agent` imports
+ * resolve, and the directory is loaded
  * through the package itself (dist/) - the kit's files import the SDK by
  * name and a defineTool() tool is only recognized by the same copy of it.
  * Like defaultRegistry.test.ts this needs `npm run build` to have run.
@@ -96,9 +97,10 @@ const systemOf = (call: { messages: readonly { role: string; content: unknown }[
   String(call.messages.find((m) => m.role === 'system')?.content);
 
 beforeEach(async () => {
-  // Inside the repository so the kit's `@lousho/build-ai-agent` imports
+  // The node_modules link lets the kit's `@lousho/build-ai-agent` imports
   // resolve (the SDK is a workspace self-link), like defaultRegistry.test.ts.
-  root = fs.mkdtempSync(path.join(REPO_ROOT, '.coding-kit-'));
+  root = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-coding-kit-'));
+  fs.symlinkSync(path.join(REPO_ROOT, 'node_modules'), path.join(root, 'node_modules'), 'junction');
   const result = await add(['coding-kit', '--registry', INDEX, '--dir', '.', '--yes', '--allow', 'exec,fs-write']);
   expect(result.err).toBe('');
   expect(result.code).toBe(0);
