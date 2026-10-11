@@ -441,14 +441,17 @@ export interface LLMProviderConfig {
  */
 export type ProviderFactory<C extends LLMProviderConfig = LLMProviderConfig> = (config: C) => LLMProvider;
 
+/** A provider's config with `apiKey` optional, as the registry's factories fall back to the provider's environment variable. */
+export type RegistryProviderConfig<T extends LLMProviderConfig> = Omit<T, 'apiKey'> & { apiKey?: string };
+
 /**
  * The config each built-in provider name takes in
  * {@link LLMProviderRegistry.create}, so an option typo there is a type error.
  */
 export interface BuiltinProviderConfigs {
-  openai: OpenAIProviderConfig;
-  anthropic: AnthropicProviderConfig;
-  openrouter: OpenRouterProviderConfig;
+  openai: RegistryProviderConfig<OpenAIProviderConfig>;
+  anthropic: RegistryProviderConfig<AnthropicProviderConfig>;
+  openrouter: RegistryProviderConfig<OpenRouterProviderConfig>;
   ollama: OllamaProviderConfig;
   pi: PiProviderConfig;
   mock: MockProviderConfig;

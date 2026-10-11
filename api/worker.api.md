@@ -604,15 +604,15 @@ interface BudgetSpent {
 // @public
 interface BuiltinProviderConfigs {
     // (undocumented)
-    anthropic: AnthropicProviderConfig;
+    anthropic: RegistryProviderConfig<AnthropicProviderConfig>;
     // (undocumented)
     mock: MockProviderConfig;
     // (undocumented)
     ollama: OllamaProviderConfig;
     // (undocumented)
-    openai: OpenAIProviderConfig;
+    openai: RegistryProviderConfig<OpenAIProviderConfig>;
     // (undocumented)
-    openrouter: OpenRouterProviderConfig;
+    openrouter: RegistryProviderConfig<OpenRouterProviderConfig>;
     // (undocumented)
     pi: PiProviderConfig;
 }
@@ -2929,6 +2929,11 @@ interface ReasoningSettings {
 
 // @public
 type ReasoningStartEvent = AgentEventBase<'reasoning.start'>;
+
+// @public
+type RegistryProviderConfig<T extends LLMProviderConfig> = Omit<T, 'apiKey'> & {
+    apiKey?: string;
+};
 
 // @public
 interface RemoteRunOptions {

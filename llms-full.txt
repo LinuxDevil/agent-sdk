@@ -13678,6 +13678,11 @@ own credentials. A factory can take its own config type, an interface that
 extends `LLMProviderConfig` (for example `BedrockConfig` with a `region`):
 `register('bedrock', (config: BedrockConfig) => new BedrockProvider(config))`,
 then `LLMProviderRegistry.create('bedrock', { region: 'eu-west-1' })`.
+A built-in name (`'openai'`, `'anthropic'`, `'openrouter'`, `'ollama'`, `'pi'`,
+`'mock'`) takes that provider's own config type (`BuiltinProviderConfigs`), so
+`create('openai', { baseUrl: '...' })` is a type error; if you registered your
+own factory under a built-in name, pass its config type:
+`create<MyOpenAIConfig>('openai', ...)`.
 
 ### Request timeout
 

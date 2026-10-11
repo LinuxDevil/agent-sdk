@@ -38,6 +38,9 @@ describe('LLMProviderRegistry types (custom providers)', () => {
     LLMProviderRegistry.create('ollama', { baseURL: 'http://localhost:11434' });
     LLMProviderRegistry.create('mock', { responses: ['hi'] });
     LLMProviderRegistry.create('OpenAI', { apiKey: 'k' });
+    // apiKey may be left out (the provider reads its environment variable) or undefined.
+    LLMProviderRegistry.create('anthropic', { defaultModel: 'claude-sonnet-5-5' });
+    LLMProviderRegistry.create('openrouter', { apiKey: process.env.OPENROUTER_API_KEY });
     // @ts-expect-error a typo of a built-in provider's option
     LLMProviderRegistry.create('openai', { apiKey: 'k', baseUrl: 'typo' });
     // @ts-expect-error a typo, whatever the name's case

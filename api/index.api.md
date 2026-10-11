@@ -827,15 +827,15 @@ export interface BudgetSpent {
 // @public
 export interface BuiltinProviderConfigs {
     // (undocumented)
-    anthropic: AnthropicProviderConfig;
+    anthropic: RegistryProviderConfig<AnthropicProviderConfig>;
     // (undocumented)
     mock: MockProviderConfig;
     // (undocumented)
     ollama: OllamaProviderConfig;
     // (undocumented)
-    openai: OpenAIProviderConfig;
+    openai: RegistryProviderConfig<OpenAIProviderConfig>;
     // (undocumented)
-    openrouter: OpenRouterProviderConfig;
+    openrouter: RegistryProviderConfig<OpenRouterProviderConfig>;
     // (undocumented)
     pi: PiProviderConfig;
 }
@@ -5002,6 +5002,11 @@ export interface RegistryItemStatus {
 
 // @public (undocumented)
 type RegistryItemType = 'tool' | 'skill' | 'channel' | 'schedule' | 'memory' | 'kit';
+
+// @public
+export type RegistryProviderConfig<T extends LLMProviderConfig> = Omit<T, 'apiKey'> & {
+    apiKey?: string;
+};
 
 // @public
 export interface RegistryStatus {
