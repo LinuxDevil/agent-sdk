@@ -52,7 +52,7 @@ The first argument says where the agent runs.
 
 | Source | What the hook does |
 | ------ | ------------------ |
-| `{ url, sessionId?, headers?, fetch? }` | **Remote.** `send(input)` POSTs `{ "input": "...", "sessionId": "..." }` as JSON to `url` and reads the response body as an event stream: SSE (`data: {...}` lines) or newline-delimited JSON, one event per line. The server below writes exactly that. The hook generates one `sessionId` per chat and sends it with every turn, so a session-aware server (`createRouteHandler`) keeps the conversation; pass your own `sessionId` to resume a stored session. `reset()` starts a new chat id. |
+| `{ url, sessionId?, headers?, fetch? }` | **Remote.** `send(input)` POSTs `{ "input": "...", "sessionId": "..." }` as JSON to `url` and reads the response body as an event stream: SSE (`data: {...}` lines; one event's JSON may span several `data:` lines) or newline-delimited JSON, one event per line. The server below writes exactly that. The hook generates one `sessionId` per chat and sends it with every turn, so a session-aware server (`createRouteHandler`) keeps the conversation; pass your own `sessionId` to resume a stored session. `reset()` starts a new chat id. |
 | `{ agent }` | **In process.** `send(input)` calls `agent.stream(input)`. Every turn is a new run with no history, like `agent.send()`. |
 | `{ agent, sessionId }` | **In process, multi-turn.** The hook creates `agent.session({ id: sessionId })` once and streams each turn with `session.stream()`, so turns see the conversation so far. |
 
@@ -68,7 +68,7 @@ on the server.
 | `toolCalls[i]` | `{ id, name, args, status, result?, error?, partial? }`, `status` being `'running'`, `'awaiting-approval'`, `'done'`, `'error'` or `'rejected'`. `partial` is the latest `tool.partial` snapshot of a running [streaming tool](./tools.md#streaming-partial-results), removed when the call settles or pauses. |
 | `status` | `'idle'`, `'streaming'`, `'awaiting-approval'` or `'error'`. |
 | `pendingApproval` | `{ id, toolCallId, toolName, args }` of the tool call the run paused on, else `null`. For an `ask_question` call it also has `kind: 'question'` and `question: { text, options?, allowFreeText? }`; a tool waiting on an OAuth sign-in has `kind: 'sign-in'` and `signIn: { provider, displayName?, url }` (see [What the user sees](./oauth.md#what-the-user-sees)). |
-| `error` | `{ name, message }` of the last `error` event or a failed request, else `null`. |
+| `error` | `{ name, message }` of the last `error` event or a failed request, else `null`. A remote stream that ends before its `run.done` (a proxy timeout, a server restart) sets `status: 'error'` with an error named `StreamEndedError`. |
 | `usage` | Token usage of the last finished run (from `run.done`), else `null`. |
 | `finishReason` | How the last run ended (`run.done`): `'stop'`, `'max-steps'`, `'output-invalid'`, `'budget-exceeded'`, `'guardrail'`, ...; `null` before the first run ends. The four named after `stop` also set `status: 'error'` and an `error` named `RunEndedError` (unless an `error` event already did), so the chat does not look like it finished normally. |
 | `todos` | The agent's todo list (`{ id, content, status }[]`), set by each `todo.updated` event of the [todo tools](./tools.md#todo-tools); `[]` until the first one. It carries across turns; see [Todos](#todos). |

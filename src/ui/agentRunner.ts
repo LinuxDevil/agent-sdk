@@ -99,6 +99,11 @@ async function relayContinuation(response: Response, emit: Emit): Promise<void> 
   for await (const event of parseEventStream(response)) emit(event);
 }
 
+/** Whether `action` ends the run's stream in a settled state (done, or paused for a decision). */
+function settlesRun(action: AgentEvent | AgentUIAction): boolean {
+  return action.type === 'ui.resumed' || action.type === 'approval.requested' || (action.type === 'run.done' && !action.subagent);
+}
+
 /**
  * The runner of one chat: `send`, `stop`, `approve`, `reject`, `answer`, plus
  * `reset` (aborts, forgets the in-process session and clears the state).
@@ -117,15 +122,24 @@ export function createAgentRunner(host: AgentRunnerHost): AgentCommands & { rese
     return cached.session;
   }
 
-  /** Runs `task` as the current run; once another run replaces it, its events are dropped. */
+  /**
+   * Runs `task` as the current run; once another run replaces it, its events are dropped.
+   * A stream that ends cleanly but before the run settled (no top-level `run.done`, no
+   * pause for approval: a proxy timeout, a server restart, a truncated body) ends the
+   * run with a `StreamEndedError` instead of leaving it `streaming` forever.
+   */
   async function run(task: (emit: Emit, signal: AbortSignal) => Promise<void>): Promise<void> {
     controller?.abort();
     const mine = (controller = new AbortController());
+    let settled = false;
     const emit: Emit = (action) => {
-      if (controller === mine) host.dispatch(action);
+      if (controller !== mine) return;
+      if (settlesRun(action)) settled = true;
+      host.dispatch(action);
     };
     try {
       await task(emit, mine.signal);
+      if (!settled && !mine.signal.aborted) emit({ type: 'ui.error', error: { name: 'StreamEndedError', message: 'The event stream ended before the run finished (no run.done event).' } });
     } catch (error) {
       if (!mine.signal.aborted) emit({ type: 'ui.error', error: toEventError(error) });
     } finally {
