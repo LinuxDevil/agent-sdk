@@ -1061,7 +1061,7 @@ within `error.timeoutMs`.
 
 **Fix:** raise the timeout, or make the operation faster.
 
-**Example:** `retryWithTimeout()` whose operation takes longer than its timeout.
+**Example:** a flow step with `timeoutMs` whose attempt takes longer than that (`error.operation` is `flow.node <type>`).
 
 ### LOUSHO_OUTPUT_INVALID
 

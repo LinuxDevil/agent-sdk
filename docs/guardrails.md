@@ -235,7 +235,7 @@ await AgentExecutor.execute({ agent, input, provider, toolRegistry, sandbox: new
   auto-removed Docker container, with no host directory mounted except the
   `cwd` you pass. It needs a running Docker daemon and the optional peer
   `dockerode` (`npm install dockerode@^5.0.1`; loaded on first use). When the
-  run is cancelled (`run.abort()`, `signal`) or the command times out, the
+  run is cancelled (its `signal` aborts) or the command times out, the
   container is killed and removed. Each container runs as a non-root user
   (`user`, default `'1000:1000'`; on a Linux host it must be able to write the
   mounted `cwd`), with every Linux capability dropped, `no-new-privileges`, and

@@ -1,11 +1,11 @@
 # coding-agent-workflows
 
-A coding agent driven by **deterministic workflows** whose routing is a **typed decision** — the Lousho equivalent of TypeSafe's Jev / "System One" pattern ([introducing-system-one-models-and-jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev)).
+A coding agent driven by **deterministic workflows** whose routing is a **typed decision** (the "System One" pattern).
 
-Jev models answer structured probabilistic questions — classify, route, score, verify — instead of generating text. The Lousho form of that is `createAgent({ output: DECISION })`: the model returns `{ route, confidence, reason }` validated by a zod schema (readable as `result.object`), and the workflow branches on the typed fields.
+A typed decision answers a structured probabilistic question — classify, route, score, verify — instead of generating text. The Lousho form of that is `createAgent({ output: DECISION })`: the model returns `{ route, confidence, reason }` validated by a zod schema (readable as `result.object`), and the workflow branches on the typed fields.
 
 ```text
-request ──► TRIAGE { route, confidence, reason }   ◄── the Jev-style step
+request ──► TRIAGE { route, confidence, reason }   ◄── the typed decision
                 │ 'fix'      ∧ confident ──► fix flow:      edit → verify
                 │ 'refactor' ∧ confident ──► refactor flow: plan → edit → verify
                 │ 'explain'  ∧ confident ──► explain flow:  read-only llmCall
