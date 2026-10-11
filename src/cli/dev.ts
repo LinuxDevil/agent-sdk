@@ -29,6 +29,7 @@ import { fileTraceExporter } from '../traces';
 import { DEFAULT_TRACE_DIR } from '../traces/format';
 import { parseCommand, portValue, stringValue, takeOptionalValueFlag, usageError, type CommandSpec } from './args';
 import { detectTarget, hasOwnStore, startReloader, type DevOptions, type DevState } from './devReload';
+import { hostHeaderAllowed, isLoopbackHost } from '../server/hostCheck';
 
 export type { DevOptions } from './devReload';
 
@@ -73,8 +74,29 @@ const ROUTES = new Map<string, RouteHandler>([
   ['GET /', handleChatUi],
 ]);
 
-async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse, holder: AgentHolder): Promise<void> {
+/** Where the server listens and which extra `Host` names it accepts. */
+interface DevAccess {
+  host: string;
+  allowedHosts?: string[];
+}
+
+/**
+ * The dev server is open and shows raw errors, so a web page must not reach it
+ * through DNS rebinding: only loopback names (and, off loopback, IP addresses,
+ * the bound host and `allowedHosts`) are served. Channels authenticate
+ * themselves and are reached through tunnels, so they are not checked.
+ */
+function hostForbidden(req: http.IncomingMessage, pathname: string, access: DevAccess): boolean {
+  if (pathname === '/health' || pathname.startsWith('/channels/')) return false;
+  const allowed = access.allowedHosts && [...access.allowedHosts, 'localhost', '127.0.0.1', '[::1]'];
+  return !hostHeaderAllowed(req.headers.host, access.host, allowed);
+}
+
+async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse, holder: AgentHolder, access: DevAccess): Promise<void> {
   const { pathname } = new URL(req.url ?? '/', 'http://localhost');
+  if (hostForbidden(req, pathname, access)) {
+    return sendJson(res, 403, { error: `Host "${req.headers.host ?? ''}" is not allowed. Pass --allowed-hosts to accept it.`, code: 'LOUSHO_REQUEST_FORBIDDEN' });
+  }
   const handler = ROUTES.get(`${req.method} ${pathname}`);
   if (handler) return handler(req, res, holder);
   if (await holder.channels?.(req, res)) return;
@@ -91,9 +113,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   if (!(await handleChatRequest(req, res, chat))) sendText(res, 404, 'not found');
 }
 
-function createDevHttpServer(holder: AgentHolder): http.Server {
+function createDevHttpServer(holder: AgentHolder, access: DevAccess): http.Server {
   return http.createServer((req, res) => {
-    handleRequest(req, res, holder).catch((error) => {
+    handleRequest(req, res, holder, access).catch((error) => {
       console.error('[lousho dev] unhandled request error:', error);
       if (!res.headersSent) {
         res.writeHead(500);
@@ -148,12 +170,18 @@ export async function startDevServer(
   options: DevOptions = {}
 ): Promise<DevServerHandle> {
   const reloader = await startReloader(detectTarget(configPath), options);
-  const server = createDevHttpServer(reloader.state);
+  const server = createDevHttpServer(reloader.state, { host, allowedHosts: options.allowedHosts });
   try {
     await listenOnPort(server, port, host);
   } catch (error) {
     await reloader.close();
     throw error;
+  }
+  if (!isLoopbackHost(host)) {
+    console.warn(
+      `[lousho dev] warning: listening on ${host} with no auth and raw error messages: anyone who can reach this port can use the agent ` +
+        '(and its tools, keys and files). Bind 127.0.0.1 unless you trust the network.'
+    );
   }
 
   return {
@@ -166,19 +194,21 @@ export async function startDevServer(
   };
 }
 
-const USAGE = 'Usage: lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--no-schedules] [--traces[=dir]]';
+const USAGE = 'Usage: lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--allowed-hosts a,b] [--no-schedules] [--traces[=dir]]';
 
 const SPEC: CommandSpec = {
   command: 'dev',
   usage: USAGE,
   positionals: 1,
-  options: { port: { type: 'string' }, host: { type: 'string' }, 'no-schedules': { type: 'boolean' } },
+  options: { port: { type: 'string' }, host: { type: 'string' }, 'allowed-hosts': { type: 'string' }, 'no-schedules': { type: 'boolean' } },
 };
 
 export interface DevCliArgs {
   path: string;
   port: number;
   host: string;
+  /** `--allowed-hosts a,b`: extra `Host` names to serve. */
+  allowedHosts?: string[];
   /** `--no-schedules`: an agent directory's schedules are not started. */
   noSchedules?: boolean;
   /** `--traces` (the default dir) or `--traces=<dir>`: write local traces there. */
@@ -194,7 +224,8 @@ export function parseDevArgs(rest: string[]): DevCliArgs {
   if (help) return { path: '', port: 3737, host: '127.0.0.1', help };
   if (positionals.length === 0) throw usageError(SPEC, 'a path is required (a spec file, an agent directory or a .ts/.js agent module).');
   const noSchedules = values['no-schedules'] === true || undefined;
-  return { path: positionals[0], port: portValue(SPEC, values.port, 3737), host: stringValue(values.host) ?? '127.0.0.1', noSchedules, traces };
+  const allowedHosts = stringValue(values['allowed-hosts'])?.split(',').map((entry) => entry.trim()).filter(Boolean);
+  return { path: positionals[0], port: portValue(SPEC, values.port, 3737), host: stringValue(values.host) ?? '127.0.0.1', ...(allowedHosts && { allowedHosts }), noSchedules, traces };
 }
 
 /** Runs `lousho dev` with the arguments after `dev`; resolves with the exit code once the server listens. */
@@ -205,7 +236,7 @@ export async function runDev(rest: string[]): Promise<number> {
       console.log(USAGE);
       return 0;
     }
-    const options: DevOptions = { schedules: !args.noSchedules };
+    const options: DevOptions = { schedules: !args.noSchedules, ...(args.allowedHosts && { allowedHosts: args.allowedHosts }) };
     if (args.traces) {
       const dir = args.traces === true ? DEFAULT_TRACE_DIR : args.traces;
       options.overrides = { exporter: fileTraceExporter({ dir }) };

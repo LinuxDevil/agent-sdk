@@ -26,7 +26,7 @@ Every command that takes a `<spec>` reads an agent spec file (`.yaml`,
 
 ```text
 lousho init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force] [--sdk-path <dir|tgz>]
-lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--no-schedules] [--traces[=dir]]
+lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--allowed-hosts a,b] [--no-schedules] [--traces[=dir]]
 lousho chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>] [--traces[=dir]]
 lousho acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]
 lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allow <list>] [--overwrite] [--dry-run]    (or --list)
@@ -151,7 +151,18 @@ Directories and modules are your code and run with your permissions; only run
 
 - `--port` - default `3737`.
 - `--host` - default `127.0.0.1` (localhost only). Pass e.g. `--host=0.0.0.0`
-  to opt in to LAN access.
+  to opt in to LAN access; `lousho dev` has no auth and shows raw provider
+  errors, so it then prints a warning.
+- `--allowed-hosts a,b` - extra host names the `Host` header may carry. To
+  stop DNS rebinding (a web page re-pointing its own domain at your machine),
+  every route but `/health` and `/channels/*` answers `403`
+  (`LOUSHO_REQUEST_FORBIDDEN`) unless `Host` is `localhost`, a `127.x.x.x`
+  address or `[::1]`; off loopback, IP addresses and the `--host` name are
+  accepted too. Given, the list replaces that rule (loopback names stay
+  accepted); `*` accepts any host.
+- POST bodies must be `Content-Type: application/json` (`415` otherwise), and
+  a browser POST from another origin is `403`, as on the deployed server
+  ([Cross-site requests](./auth.md#cross-site-requests)).
 
 ## `lousho chat`
 
