@@ -96,7 +96,11 @@ describe('OpenTelemetry GenAI semantic conventions (LOU-D9)', () => {
       'gen_ai.agent.name': 'Weather Bot',
       'gen_ai.agent.id': 'agent-1',
       'gen_ai.provider.name': provider.name,
+      'gen_ai.request.model': 'test-model',
       'gen_ai.conversation.id': 'session-9',
+      // The run's total over its model calls.
+      'gen_ai.usage.input_tokens': 30,
+      'gen_ai.usage.output_tokens': 12,
       input: 'Weather in Paris?', // deprecated
     });
   });
@@ -459,5 +463,21 @@ describe('lousho.cost_usd and lousho.usage.estimated spans (LOU-D48)', () => {
     expect(chat1.attributes['lousho.usage.estimated']).toBe(true);
     expect(chat2.attributes['lousho.usage.estimated']).toBe(true);
     expect(run.attributes['lousho.cost_usd']).toBeCloseTo(result.usage.costUsd as number, 12);
+  });
+});
+
+describe('gen_ai.response.id on chat spans', () => {
+  it("records the provider's response id (AI SDK response.id, else an OpenAI-style id)", async () => {
+    const { recordLlmResult } = await import('./genAiSpans');
+    const span = (): Span => ({ id: 's', name: 'chat m', attributes: { 'gen_ai.request.model': 'm' }, startTime: 0 });
+    const aiSdk = span();
+    recordLlmResult(aiSdk, { text: 'hi', finishReason: 'stop', rawResponse: { response: { id: 'resp_1', modelId: 'm-1' } } }, false);
+    expect(aiSdk.attributes).toMatchObject({ 'gen_ai.response.id': 'resp_1', 'gen_ai.response.model': 'm-1' });
+    const openAi = span();
+    recordLlmResult(openAi, { text: 'hi', finishReason: 'stop', rawResponse: { id: 'chatcmpl-2' } }, false);
+    expect(openAi.attributes['gen_ai.response.id']).toBe('chatcmpl-2');
+    const none = span();
+    recordLlmResult(none, { text: 'hi', finishReason: 'stop' }, false);
+    expect(none.attributes).not.toHaveProperty('gen_ai.response.id');
   });
 });

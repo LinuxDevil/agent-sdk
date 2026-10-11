@@ -150,6 +150,26 @@ describe('loushoAgent for Svelte remote and abort (LOU-P3)', () => {
     expect(remote.signals[0].aborted).toBe(true);
   });
 
+  it('a transient subscribe/unsubscribe (svelte/store get()) does not abort the run', async () => {
+    const remote = openFetch();
+    const store = loushoAgent({ url: '/api/agent', fetch: remote.fetch });
+    const sending = store.send('Long story');
+    await vi.waitFor(() => expect(remote.signals.length).toBe(1));
+    let seen: AgentUIState | undefined;
+    store.subscribe((state) => (seen = state))();
+    expect(seen?.status).toBe('streaming');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(remote.signals[0].aborted).toBe(false);
+
+    const watcher = watch(store);
+    store.subscribe(() => {})();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(remote.signals[0].aborted).toBe(false);
+    watcher.unsubscribe();
+    await sending;
+    expect(remote.signals[0].aborted).toBe(true);
+  });
+
 });
 
 describe('loushoTodos (N12)', () => {

@@ -2092,6 +2092,7 @@ interface McpHttpServerSpec {
     // (undocumented)
     headers?: Record<string, string>;
     oauth?: McpOAuthOptions;
+    optional?: boolean;
     timeoutMs?: number;
     tools?: McpToolFilter;
     // (undocumented)
@@ -2123,6 +2124,7 @@ interface McpStdioServerSpec {
     deferLoading?: boolean;
     // (undocumented)
     env?: Record<string, string>;
+    optional?: boolean;
     stderr?: 'forward' | 'capture' | 'inherit' | 'ignore';
     timeoutMs?: number;
     tools?: McpToolFilter;

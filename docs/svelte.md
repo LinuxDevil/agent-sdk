@@ -60,7 +60,9 @@ snippets here):
 - **Cleanup is unsubscribing.** `stop()` aborts the request in flight, and so
   does the last subscriber going away (the component using `$agent` is
   destroyed). There is no `destroy()`: this is how Svelte stores stop their
-  work. A store nobody subscribes to still runs a turn you started with
+  work. A transient read that subscribes and unsubscribes in the same turn,
+  like `get(agent)` from `svelte/store`, does not count, so it never aborts a
+  run. A store nobody subscribes to still runs a turn you started with
   `send()`; call `stop()` yourself if you drop it.
 
 The reducer and the stream parser are exported from this subpath too

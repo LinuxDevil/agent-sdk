@@ -52,6 +52,24 @@ function agentResultToMcp(result: ExecutionResult): CallToolResult {
   return textResult(result.text);
 }
 
+/**
+ * Settles the approvals a run paused on, since nobody can decide them over MCP
+ * (the call returns an error): each is rejected under an aborted signal, so it
+ * leaves the agent's approval store and the run stops without another model
+ * call, instead of piling up for the life of the server.
+ */
+async function discardPauses(agent: SimpleAgent, result: ExecutionResult): Promise<void> {
+  const ids = result.approvalIds ?? (result.approvalId ? [result.approvalId] : []);
+  const signal = AbortSignal.abort();
+  for (const id of ids) {
+    try {
+      await agent.approvals?.resolve({ id, approved: false, note: 'Approvals cannot be given over MCP.' }, { signal });
+    } catch {
+      // Already settled, or not a createAgent() agent's pause: nothing to clean up.
+    }
+  }
+}
+
 function registerAgentTool(server: McpServer, spec: ServerSpec): void {
   server.registerTool(
     spec.agentToolName,
@@ -62,7 +80,9 @@ function registerAgentTool(server: McpServer, spec: ServerSpec): void {
     async ({ message }, extra) => {
       try {
         // Each call is a fresh conversation; the MCP request signal cancels the run.
-        return agentResultToMcp(await spec.agent.send(message, { signal: extra.signal }));
+        const result = await spec.agent.send(message, { signal: extra.signal });
+        if (result.finishReason === 'awaiting-approval') await discardPauses(spec.agent, result);
+        return agentResultToMcp(result);
       } catch (error) {
         return textResult(`The agent failed: ${errorMessage(error)}`, true);
       }

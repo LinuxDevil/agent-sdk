@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
@@ -219,14 +219,29 @@ describe('trajectory assertions: diagnostic failures', () => {
     ]);
   });
 
-  it('maxCostUsd() is skipped (and counts as passed) when the run reports no cost', async () => {
+  it('maxCostUsd() fails when the run reports no cost, since the budget cannot be checked', async () => {
     const result = await run(async (t) => {
       await t.send('go');
       t.maxCostUsd(0.01);
     });
-    expect(result.passed).toBe(true);
-    expect(result.assertions[0]).toMatchObject({ name: 'maxCostUsd(0.01)', passed: true, skipped: true });
-    expect(result.assertions[0].message).toContain('no cost');
+    expect(result.passed).toBe(false);
+    expect(failedMessages(result)[0]).toMatch(/^maxCostUsd\(0\.01\) failed: the run reported no cost .*unknownCost: 'skip'/);
+  });
+
+  it("maxCostUsd(n, { unknownCost: 'skip' }) skips (counted as passed) with a warning", async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const result = await run(async (t) => {
+        await t.send('go');
+        t.maxCostUsd(0.01, { unknownCost: 'skip' });
+      });
+      expect(result.passed).toBe(true);
+      expect(result.assertions[0]).toMatchObject({ name: 'maxCostUsd(0.01)', passed: true, skipped: true });
+      expect(result.assertions[0].message).toContain('no cost');
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('maxCostUsd(0.01) skipped'));
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('maxCostUsd() enforces the limit when usage.costUsd is reported', async () => {

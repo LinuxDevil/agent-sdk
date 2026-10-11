@@ -10,6 +10,7 @@ import { ConfigurationError } from '../../execution/errors';
 import { AgentExecutor, type ExecuteOptions, type ExecutionResult } from '../../execution/AgentExecutor';
 import { RUN_EVENTS, startAgentRun, type AgentRun, type StreamingExecuteOptions } from '../../execution/agentRun';
 import { lazyValue } from '../../providers/optionalPeer';
+import { noopLogger, type Logger } from '../../execution/logger';
 import { connectMcp, type McpConnections } from './connect';
 import { assertMcpOAuth, completeMcpSignIn, hasMcpOAuth, mcpStoreMissing, startMcpSignIn, type McpOAuthServerSpec } from './mcpOAuth';
 
@@ -45,6 +46,14 @@ function mcpOAuthSignIn(servers: Record<string, McpServerSpec>, tokens: OAuthTok
   };
 }
 
+/** Reports a skipped `optional` server; connectMcp's other warnings (a skipped tool name) stay quiet, as before. */
+const optionalServerLogger: Logger = {
+  ...noopLogger,
+  warn(message, meta) {
+    if (message.startsWith('connectMcp: skipping MCP server')) console.warn(`[lousho] ${message} (optional: true)`, meta ?? '');
+  },
+};
+
 /**
  * Connects `servers` on the first `ready()` (a failure is not cached, so the
  * next call retries) and hands their tools to `register`. Without servers,
@@ -61,7 +70,12 @@ export function agentMcp(
   const oauth = mcpOAuthSignIn(servers, tokens);
   const connect = lazyValue(async (): Promise<McpConnections> => {
     // Eve TOOLS-F18: a server's `tools/list_changed` hands the updated tools to `register` again.
-    const connections = await connectMcp(servers, { ...(tokens && { tokens }), onToolsChanged: (tools) => register(tools) });
+    const connections = await connectMcp(servers, {
+      ...(tokens && { tokens }),
+      onToolsChanged: (tools) => register(tools),
+      // A server with `optional: true` that fails to connect is skipped with this warning.
+      logger: optionalServerLogger,
+    });
     register(connections.tools);
     return connections;
   });
