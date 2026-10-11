@@ -19,6 +19,7 @@ import type { AgentHook, GenerateHookContext } from '../execution/hooks';
 import { estimateTokens } from '../models/estimateTokens';
 import { SDKError } from '../execution/errors';
 import { requestOverheadTokens, resolveContextWindow } from './contextWindow';
+import { getModelInfo } from '../models/registry';
 
 /** Counts the tokens of a message or a conversation. */
 export type CompactionTokenCounter = (input: Message | Message[]) => number;
@@ -178,13 +179,49 @@ Write only the summary.`;
 /** The first line of the message that replaces summarized turns. */
 export const SUMMARY_HEADER = '[Conversation summary]';
 
-function renderForSummary(messages: Message[]): string {
-  return messages
-    .map((m) => {
-      const calls = (m.toolCalls ?? []).map((c) => `\n[called ${c.function.name}(${c.function.arguments})]`).join('');
-      return `${m.role === 'tool' ? `tool ${m.toolName ?? ''}`.trim() : m.role}: ${textOf(m)}${calls}`;
-    })
-    .join('\n\n');
+function renderMessage(m: Message): string {
+  const calls = (m.toolCalls ?? []).map((c) => `\n[called ${c.function.name}(${c.function.arguments})]`).join('');
+  return `${m.role === 'tool' ? `tool ${m.toolName ?? ''}`.trim() : m.role}: ${textOf(m)}${calls}`;
+}
+
+/**
+ * The folded turns as the summarizer's input, in parts of at most about
+ * `budget` tokens each, so a long history does not overflow a summarizer
+ * with a smaller window. One message larger than a part is cut to fit.
+ */
+function renderInParts(messages: Message[], count: CompactionTokenCounter, budget: number): string[] {
+  if (budget === Infinity) return [messages.map(renderMessage).join('\n\n')];
+  const tokens = (text: string) => count({ role: 'user', content: text });
+  const parts: string[] = [];
+  let current = '';
+  for (const message of messages) {
+    let rendered = renderMessage(message);
+    const size = tokens(rendered);
+    if (size > budget) {
+      const keep = Math.max(1, Math.floor((rendered.length * budget) / size));
+      rendered = `${rendered.slice(0, keep)}\n[... ${rendered.length - keep} characters cut for the summary]`;
+    }
+    const joined = current ? `${current}\n\n${rendered}` : rendered;
+    if (current && tokens(joined) > budget) {
+      parts.push(current);
+      current = rendered;
+    } else {
+      current = joined;
+    }
+  }
+  if (current) parts.push(current);
+  return parts;
+}
+
+/**
+ * The tokens of history one summary call takes: half the summarizer model's
+ * window (room for its prompt, the summary so far and its reply), when the
+ * registry knows the model; otherwise no limit (one call, as the model's
+ * window is unknown).
+ */
+function summaryBudget(provider: LLMProvider, maxSummaryTokens: number | undefined): number {
+  const window = provider.defaultModel ? getModelInfo(provider.defaultModel)?.contextWindow : undefined;
+  return window === undefined ? Infinity : Math.max(1024, Math.floor(window / 2) - (maxSummaryTokens ?? 0));
 }
 
 /**
@@ -242,18 +279,24 @@ export function summarizeStrategy(options: SummarizeStrategyOptions): Compaction
       if (folded.length === 0) return { messages, tokensBefore, tokensAfter: tokensBefore, prunedToolCallIds: [] };
       try {
         provider ??= typeof options.model === 'string' ? resolveProvider(options.model) : options.model;
-        const request: GenerateOptions = {
-          messages: [
-            { role: 'system', content: options.prompt ?? DEFAULT_SUMMARY_PROMPT },
-            { role: 'user', content: renderForSummary(folded) },
-          ],
-          maxTokens: options.maxSummaryTokens,
-          signal,
-        };
-        // Inside a run, the call counts in its usage, traces and budgets.
-        const { text } = await (input.generate ? input.generate(provider, request) : provider.generate(request));
-        const summary = text.trim();
-        if (!summary) throw new SDKError('the summarizer returned an empty summary', 'LOUSHO_AGENT_EXECUTION_FAILED');
+        const summarizer = provider;
+        const budget = summaryBudget(summarizer, options.maxSummaryTokens);
+        let summary = '';
+        // A history larger than one call takes several, each folding the next part into the summary so far.
+        for (const part of renderInParts(folded, count, budget)) {
+          const request: GenerateOptions = {
+            messages: [
+              { role: 'system', content: options.prompt ?? DEFAULT_SUMMARY_PROMPT },
+              { role: 'user', content: summary ? `${SUMMARY_HEADER}\n${summary}\n\n[The conversation continues]\n${part}` : part },
+            ],
+            maxTokens: options.maxSummaryTokens,
+            signal,
+          };
+          // Inside a run, the call counts in its usage, traces and budgets.
+          const { text } = await (input.generate ? input.generate(summarizer, request) : summarizer.generate(request));
+          summary = text.trim();
+          if (!summary) throw new SDKError('the summarizer returned an empty summary', 'LOUSHO_AGENT_EXECUTION_FAILED');
+        }
         kept.splice(summaryAt, 0, { role: 'user', content: `${SUMMARY_HEADER}\n${summary}` });
         const compacted = [...kept, ...tail];
         return { messages: compacted, tokensBefore, tokensAfter: count(compacted), prunedToolCallIds: [], summary };

@@ -151,7 +151,7 @@ describe("finishReason 'max-steps'", () => {
 describe('limits.maxSteps and maxSteps validation (Eve CORE-F5)', () => {
   const answer = z.object({ answer: z.string() });
   const script = () =>
-    mockModel([(req) => (req.tools?.length ? { toolCalls: [{ name: 'ping' }] } : '{"answer":"from gathered data"}')], {
+    mockModel([(req) => (req.tools?.length && req.toolChoice !== 'none' ? { toolCalls: [{ name: 'ping' }] } : '{"answer":"from gathered data"}')], {
       onExhausted: 'repeat-last',
     });
 
@@ -163,7 +163,7 @@ describe('limits.maxSteps and maxSteps validation (Eve CORE-F5)', () => {
     expect(result.finishReason).toBe('budget-exceeded');
     expect(result.budget).toMatchObject({ limit: 'maxSteps', max: 1 });
     expect(model.calls).toHaveLength(2);
-    expect(model.calls[1].tools).toBeUndefined();
+    expect(model.calls[1].toolChoice).toBe('none');
   });
 
   it('limits.maxSteps tighter than maxSteps gets the forced answer too', async () => {

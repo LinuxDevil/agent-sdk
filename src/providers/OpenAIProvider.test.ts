@@ -4,6 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { OpenAIProvider } from './OpenAIProvider';
+import { estimateCost } from '../models/registry';
 
 describe('OpenAIProvider', () => {
   let provider: OpenAIProvider;
@@ -43,8 +44,9 @@ describe('OpenAIProvider', () => {
       expect(provider.supportsTools('gpt-3.5-turbo')).toBe(true);
     });
 
-    it('should return false for unsupported models', () => {
-      expect(provider.supportsTools('davinci')).toBe(false);
+    it('sends tools for current reasoning models too', () => {
+      expect(provider.supportsTools('gpt-5')).toBe(true);
+      expect(provider.supportsTools('o3')).toBe(true);
     });
   });
 
@@ -59,9 +61,10 @@ describe('OpenAIProvider', () => {
   describe('getModels', () => {
     it('should return list of common models', async () => {
       const models = await provider.getModels();
-      expect(models).toContain('gpt-4');
+      expect(models).toContain('gpt-5');
       expect(models).toContain('gpt-4o');
-      expect(models).toContain('gpt-3.5-turbo');
+      // Every listed model has a built-in price.
+      for (const model of models) expect(estimateCost({ inputTokens: 1, outputTokens: 1 }, model)).toBeGreaterThan(0);
     });
   });
 

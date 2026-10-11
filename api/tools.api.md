@@ -638,6 +638,7 @@ export interface DefineToolOptions<S extends StandardSchemaV1, R> {
     needsApproval?: boolean | ((args: InferSchemaOutput<S>, ctx: ApprovalCheckContext) => ApprovalOutcome | Promise<ApprovalOutcome>);
     requiresSandbox?: boolean;
     sandboxExecute?: (args: InferSchemaOutput<S>, sandbox: SandboxAdapter) => Promise<unknown>;
+    timeoutMs?: number;
 }
 
 // @public

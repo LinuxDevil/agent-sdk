@@ -195,8 +195,12 @@ or pass your own `provider` instance.
 
 **Means:** a model call failed (`LLMProviderError`, and
 `CompactedLLMProviderError`, whose `compacted.category` says why:
-`rate-limit`, `timeout`, `context-length-exceeded`, `quota-exceeded`, `auth-failure`,
-`unknown`).
+`timeout`, `context-length-exceeded`, `quota-exceeded`, `auth-failure`,
+`unknown`; a `rate-limit` failure has its own code,
+[`LOUSHO_PROVIDER_RATE_LIMITED`](#lousho_provider_rate_limited)).
+An OpenAI-compatible response that reports a failure inside a 200 (OpenRouter's
+`finish_reason: "error"` or an `error` chunk mid-stream) fails as a retryable
+502 instead of returning the cut-off text.
 A context overflow is `context-length-exceeded` (not retryable) whatever the
 status, including llama.cpp / LM Studio's "exceeds the available context size"
 and "Context size has been exceeded", and whether it arrives from the request
@@ -216,13 +220,16 @@ transient failures, use `withRetry()` / `fallbackModels`
 
 ### LOUSHO_PROVIDER_RATE_LIMITED
 
-**Means:** a `RateLimitError`: the provider throttled the caller.
+**Means:** the provider throttled the caller: a model call failed with
+`compacted.category: 'rate-limit'` (a `CompactedLLMProviderError`, still an
+`LLMProviderError`), or a `RateLimitError`.
 
-**Fix:** retry after `error.retryAfter` seconds (`withRetry()` does this, up to
+**Fix:** retry after `compacted.retryAfterMs` (`withRetry()` does this, up to
 `backoff.maxMs`; a longer `Retry-After` fails at once with
 `compacted.retryAfterMs` set), or send fewer requests.
 
-**Example:** a 429 response.
+**Example:** a 429 response (OpenAI's out-of-credit `insufficient_quota` 429
+is `quota-exceeded`, so `LOUSHO_PROVIDER_REQUEST_FAILED`).
 
 ### LOUSHO_PEER_MISSING
 

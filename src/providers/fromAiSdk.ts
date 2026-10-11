@@ -11,7 +11,7 @@ import * as aiModule from 'ai';
 import type { LanguageModel } from 'ai';
 import { ConfigurationError } from '../execution/errors';
 import type { GenerateOptions, LLMProvider } from './llm';
-import { AiSdkProvider, type AiSdkProviderConfig, type UnsupportedFiles } from './aiSdkProvider';
+import { AiSdkProvider, setDefaultAgentRetries, type AiSdkProviderConfig, type UnsupportedFiles } from './aiSdkProvider';
 import { aiMajorOf, type AiSdkModule } from './aiSdkCompat';
 
 /** Options of {@link fromAiSdk}. */
@@ -24,7 +24,11 @@ export interface FromAiSdkOptions {
   unsupportedFiles?: UnsupportedFiles;
   /** Send signed reasoning blocks back on assistant turns (Anthropic models). Default false. */
   replaysReasoning?: boolean;
-  /** The AI SDK's own retries per call. Default 0: createAgent() retries through `retry`. */
+  /**
+   * Retries per call. Called directly, the provider makes this many AI SDK
+   * retries (default 0); under createAgent() without `retry` it gets
+   * `withRetry()` with this many (default 2), like a built-in provider.
+   */
   maxRetries?: number;
 }
 
@@ -92,6 +96,7 @@ class FromAiSdkProvider extends AiSdkProvider<AiSdkProviderConfig> {
     this.model = model;
     this.replaysReasoning = options.replaysReasoning ?? false;
     this.sendable = (options.fileMediaTypes ?? []).map((type) => type.trim().toLowerCase());
+    setDefaultAgentRetries(this, () => options.maxRetries ?? 2);
   }
 
   protected createModel(modelId: string): LanguageModel {
@@ -108,10 +113,24 @@ class FromAiSdkProvider extends AiSdkProvider<AiSdkProviderConfig> {
     return this.sendable;
   }
 
-  /** The caller configured the model; the built-in providers' reasoning mapping does not apply to an unknown provider. */
-  protected reasoningOptions(_modelId: string, _options: GenerateOptions): undefined {
+  /**
+   * The caller configured the model; the built-in providers' reasoning mapping
+   * does not apply to an unknown provider. A `reasoning` option is not sent,
+   * with one warning, so it is never dropped silently.
+   */
+  protected reasoningOptions(modelId: string, options: GenerateOptions): undefined {
+    const reasoning = options.reasoning;
+    const off = reasoning === undefined || reasoning === 'none' || (typeof reasoning === 'object' && reasoning.effort === 'none');
+    if (!off && !this.warnedReasoning) {
+      this.warnedReasoning = true;
+      console.warn(
+        `[lousho] \`reasoning\` is set but is not sent to the fromAiSdk() model '${modelId}': fromAiSdk() leaves reasoning to the model you built. ` +
+          "Set it on the model or its providerOptions instead. See docs/reasoning.md#which-models-get-it."
+      );
+    }
     return undefined;
   }
+  private warnedReasoning = false;
 
   supportsTools(): boolean {
     return true;

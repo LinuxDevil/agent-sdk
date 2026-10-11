@@ -8,10 +8,11 @@
  * by several providers or by a whole agent tree (`createAgent({ rateLimit })`).
  */
 
-import type { GenerateOptions, LLMProvider, ProviderUsage, StreamChunk, StreamResult } from './llm';
+import type { GenerateOptions, LLMProvider, StreamChunk, StreamResult } from './llm';
 import { estimateTokens } from '../models/estimateTokens';
 import { delegateCapabilities } from './delegateCapabilities';
 import { ConfigurationError } from '../execution/errors';
+import { withProviderEvents } from './providerEvents';
 
 /** Limits of a {@link RateLimiter}. Each one is optional; an unset limit is not enforced. */
 export interface RateLimitOptions {
@@ -152,6 +153,11 @@ export class RateLimiter {
     }
   }
 
+  /** A request started inside a held slot (a `withRetry()` retry): it counts against `requestsPerMinute`. */
+  private bookStart(): void {
+    this.starts.push(Date.now());
+  }
+
   private take(tokens: number, now: number): RateLimitLease {
     this.active++;
     this.starts.push(now);
@@ -185,6 +191,11 @@ function estimateCall(call: GenerateOptions): number {
   return estimateTokens(call.messages, { model: call.model }) + tools + (call.maxTokens ?? 0);
 }
 
+/** `call`, with each `withRetry()` retry inside it booked against `requestsPerMinute`: every HTTP request counts. */
+function countingRetries(call: GenerateOptions, limiter: RateLimiter): GenerateOptions {
+  return withProviderEvents(call, { retry: () => limiter['bookStart'](), fallback: () => undefined });
+}
+
 /**
  * Queue a provider's `generate()` and `stream()` calls to stay under the
  * limits (Eve PROV-F14). Calls are admitted in order; one waiting for its turn
@@ -193,8 +204,9 @@ function estimateCall(call: GenerateOptions): number {
  * values settle). Pass a {@link RateLimiter} (`createRateLimiter()`) to share
  * one budget between several providers.
  *
- * Put it outside `withRetry()` to count a call and all its retries as one, or
- * inside to count every attempt.
+ * Outside `withRetry()` (as `createAgent({ rateLimit, retry })` puts it), a
+ * call holds one slot through its retries, and each retry still counts as a
+ * request against `requestsPerMinute`; inside, every attempt queues on its own.
  *
  * @example
  * ```ts
@@ -217,7 +229,7 @@ export function withRateLimit(provider: LLMProvider, limits: RateLimitOptions | 
     async generate(call) {
       const lease = await limiter.acquire(estimateCall(call), call.signal);
       try {
-        const result = await provider.generate(call);
+        const result = await provider.generate(countingRetries(call, limiter));
         lease.release(result.usage?.totalTokens);
         return result;
       } catch (error) {
@@ -229,29 +241,53 @@ export function withRateLimit(provider: LLMProvider, limits: RateLimitOptions | 
       const lease = await limiter.acquire(estimateCall(call), call.signal);
       let streamed: StreamResult;
       try {
-        streamed = await provider.stream(call);
+        streamed = await provider.stream(countingRetries(call, limiter));
       } catch (error) {
         lease.release();
         throw error;
       }
-      // The reported usage re-books the call; the slot is freed when the stream ends, or its final text settles.
-      Promise.resolve(streamed.usage).then(
-        (usage: ProviderUsage | undefined) => lease.adjust(usage?.totalTokens),
-        () => undefined
-      );
+      // The slot is freed when the stream ends, or - when nobody reads the stream - its text settles.
+      // The final values are read when needed, not now: a `withRetry()` inside swaps them for each retry's.
+      let reading = false;
       Promise.resolve(streamed.text).then(
-        () => lease.release(),
-        () => lease.release()
+        () => reading || lease.release(),
+        () => reading || lease.release()
       );
       const source = streamed.fullStream;
       const fullStream = (async function* (): AsyncGenerator<StreamChunk> {
+        reading = true;
         try {
           yield* source;
+          // The reported usage re-books the call.
+          lease.adjust((await Promise.resolve(streamed.usage).catch(() => undefined))?.totalTokens);
         } finally {
           lease.release();
         }
       })();
-      return { ...streamed, fullStream };
+      return {
+        fullStream,
+        get textStream() {
+          return streamed.textStream;
+        },
+        get text() {
+          return streamed.text;
+        },
+        get usage() {
+          return streamed.usage;
+        },
+        get finishReason() {
+          return streamed.finishReason;
+        },
+        get toolCalls() {
+          return streamed.toolCalls;
+        },
+        get servedBy() {
+          return streamed.servedBy;
+        },
+        set servedBy(value) {
+          streamed.servedBy = value;
+        },
+      };
     },
     ...delegateCapabilities(provider),
   };

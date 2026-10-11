@@ -42,9 +42,9 @@ describe('OllamaProvider', () => {
       expect(provider.supportsTools('mistral-7b')).toBe(true);
     });
 
-    it('should return false for unsupported models', () => {
-      expect(provider.supportsTools('llama2')).toBe(false);
-      expect(provider.supportsTools('codellama')).toBe(false);
+    it('sends tools for any model (the server rejects a model without tool support)', () => {
+      expect(provider.supportsTools('qwen3')).toBe(true);
+      expect(provider.supportsTools('codellama')).toBe(true);
     });
   });
 
@@ -87,7 +87,7 @@ describe('OllamaProvider', () => {
       vi.stubGlobal('fetch', fetchMock);
       const models = await new OllamaProvider({ name: 'ollama', baseURL }).getModels();
       expect(models).toEqual(['m1']);
-      expect(fetchMock).toHaveBeenCalledWith(expected);
+      expect(fetchMock).toHaveBeenCalledWith(expected, expect.anything());
     });
 
     // The model request goes through `ollama-ai-provider` (the `ai` 4 package, installed by default).

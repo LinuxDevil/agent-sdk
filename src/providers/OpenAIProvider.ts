@@ -49,8 +49,23 @@ export interface OpenAIProviderConfig extends AiSdkProviderConfig {
    * that only implement Chat Completions (llama.cpp, vLLM, Ollama's `/v1`, Groq,
    * DeepSeek, ...). Hosted tools (`webSearch()`, `codeInterpreter()`,
    * `fileSearch()`) need `'responses'`; `hostedTool()` pass-through works on both.
+   * Unset, the `LOUSHO_OPENAI_API` environment variable (`chat` or `responses`)
+   * decides, so an `openai/<model>` string with `OPENAI_BASE_URL` can reach a
+   * Chat-Completions-only server.
    */
   api?: 'responses' | 'chat';
+  /**
+   * Whether OpenAI keeps Responses API calls server-side (its `store`). Default
+   * `false`: the SDK sends the whole transcript on every call and never refers
+   * to a stored response, so nothing needs storing. Ignored with `api: 'chat'`.
+   */
+  store?: boolean;
+}
+
+/** `LOUSHO_OPENAI_API`, where there is a `process.env` (not in a browser or Worker). */
+function envApi(): string | undefined {
+  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+  return env?.LOUSHO_OPENAI_API?.trim().toLowerCase();
 }
 
 /**
@@ -59,6 +74,7 @@ export interface OpenAIProviderConfig extends AiSdkProviderConfig {
 export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
   readonly name = 'openai';
   protected readonly mapsHostedTools = true;
+  protected readonly checksChatFailures = true;
   protected readonly fallbackModel = 'gpt-4o-mini';
   /** Loads `@ai-sdk/openai` on first use (it is an optional peer). */
   private readonly loadProvider = lazyValue(async () => {
@@ -71,9 +87,9 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
     return aiMajorOf(this.ai) >= 6 ? ['application/pdf'] : [];
   }
 
-  /** `api: 'chat'`: the Chat Completions API (`/chat/completions`) instead of the Responses API. */
+  /** `api: 'chat'` (or `LOUSHO_OPENAI_API=chat`): the Chat Completions API (`/chat/completions`) instead of the Responses API. */
   private get usesChat(): boolean {
-    return this.config.api === 'chat';
+    return (this.config.api ?? envApi()) === 'chat';
   }
 
   protected async createModel(modelId: string): Promise<LanguageModel> {
@@ -82,12 +98,20 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
     return this.usesChat ? provider.chat(modelId) : provider(modelId);
   }
 
-  /** Chat Completions has no reasoning summary, so only the effort is sent. */
+  /**
+   * The call's `providerOptions`: the reasoning (Chat Completions has no
+   * reasoning summary, so only the effort is sent there) and, on the Responses
+   * API of `@ai-sdk/openai` 3+, `store` (default `false`).
+   */
   protected reasoningOptions(modelId: string, options: GenerateOptions): Record<string, unknown> | undefined {
     const sent = super.reasoningOptions(modelId, options);
-    if (!this.usesChat || !sent) return sent;
-    const { reasoningSummary: _summary, ...openai } = sent.openai as Record<string, unknown>;
-    return { ...sent, openai };
+    if (this.usesChat) {
+      if (!sent) return sent;
+      const { reasoningSummary: _summary, ...openai } = sent.openai as Record<string, unknown>;
+      return { ...sent, openai };
+    }
+    if (aiMajorOf(this.ai) < 6) return sent;
+    return { ...sent, openai: { ...(sent?.openai as Record<string, unknown> | undefined), store: this.config.store ?? false } };
   }
 
   /**
@@ -128,11 +152,12 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
   }
 
   /**
-   * Check if model supports tools
+   * Whether this provider sends tools for `model`: always (current OpenAI
+   * models all call tools; a model that cannot is rejected by the API).
+   * Informational: the runtime does not consult it.
    */
-  supportsTools(model: string): boolean {
-    // Most GPT models support tools
-    return model.startsWith('gpt-4') || model.startsWith('gpt-3.5-turbo');
+  supportsTools(_model: string): boolean {
+    return true;
   }
 
   /**
@@ -146,13 +171,7 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
    * Get available models
    */
   async getModels(): Promise<string[]> {
-    // Return common models (fetching from API requires additional setup)
-    return [
-      'gpt-4',
-      'gpt-4-turbo',
-      'gpt-4o',
-      'gpt-4o-mini',
-      'gpt-3.5-turbo',
-    ];
+    // Current models with a built-in price (fetching from the API requires additional setup)
+    return ['gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini', 'o3', 'o4-mini'];
   }
 }

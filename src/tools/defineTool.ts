@@ -3,7 +3,7 @@ import type { SandboxAdapter } from '../security/sandboxCore';
 import { legacyAiTool } from './toolContract';
 import { isModelSchema, nonObjectRoot, unrepresentableFields, type InferSchemaOutput, type StandardSchemaV1 } from '../utils/zodCompat';
 import { sharedWeakSet } from '../utils/brand';
-import { SDKError } from '../execution/errors';
+import { SDKError, ToolExecutionError } from '../execution/errors';
 
 /** Tool names must satisfy the constraint LLM providers impose on function names. */
 const TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
@@ -52,6 +52,14 @@ export interface DefineToolOptions<S extends StandardSchemaV1, R> {
    * docs/tool-search.md.
    */
   deferLoading?: boolean;
+  /**
+   * The longest a call may run, in ms. A call still running then fails with a
+   * tool error the model sees ("timed out after N ms"), its `abortSignal` is
+   * aborted, and the run goes on without waiting for it; a run that is
+   * aborted stops waiting too. Not applied to a streaming (`async function*`)
+   * tool. Default: no limit.
+   */
+  timeoutMs?: number;
   /** Route execution through the configured SandboxAdapter (requires `sandboxExecute`). */
   requiresSandbox?: boolean;
   /** Sandboxed execution path used instead of `execute` when `requiresSandbox` is true. */
@@ -137,6 +145,46 @@ function assertValidOptions(opts: { name?: unknown; description?: unknown; input
   if (typeof execute !== 'function') {
     fail(`tool '${name}' needs an 'execute' function`, `Example: execute: async (args) => ({ ok: true })`);
   }
+  const { timeoutMs } = opts as { timeoutMs?: unknown };
+  if (timeoutMs !== undefined && !(typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0)) {
+    fail(`tool '${name}': 'timeoutMs' must be a positive number of milliseconds, got ${String(timeoutMs)}`, 'Example: timeoutMs: 30_000');
+  }
+}
+
+/**
+ * `run` with `ctx.abortSignal` also aborted after `timeoutMs`: the call
+ * rejects then (with a `ToolExecutionError` the model sees), or as soon as the
+ * run's own signal aborts, without waiting for a tool that ignores the signal.
+ * A streaming tool's generator is returned as it is.
+ */
+async function withTimeout<T>(
+  name: string,
+  timeoutMs: number,
+  ctx: ToolExecutionContext,
+  run: (ctx: ToolExecutionContext) => T | Promise<T>
+): Promise<T> {
+  const controller = new AbortController();
+  const outer = ctx.abortSignal;
+  const signal = outer ? AbortSignal.any([outer, controller.signal]) : controller.signal;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  const stopped = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      const error = new ToolExecutionError(`Tool '${name}' timed out after ${timeoutMs} ms`, name, undefined, 'LOUSHO_OPERATION_TIMEOUT');
+      controller.abort(error);
+      reject(error);
+    }, timeoutMs);
+    onAbort = () => reject(outer?.reason);
+    outer?.addEventListener('abort', onAbort, { once: true });
+    if (outer?.aborted) onAbort();
+  });
+  stopped.catch(() => undefined);
+  try {
+    return await Promise.race([Promise.resolve(run({ ...ctx, abortSignal: signal })), stopped]);
+  } finally {
+    clearTimeout(timer);
+    if (onAbort) outer?.removeEventListener('abort', onAbort);
+  }
 }
 
 /**
@@ -200,8 +248,9 @@ export function defineTool<S extends StandardSchemaV1, R>(
   assertValidOptions(opts);
 
   // N13b: an async generator passes through unchanged (it is not thenable); the runtime iterates it.
+  const { timeoutMs } = opts;
   const execute = async (args: InferSchemaOutput<S>, ctx: ToolExecutionContext): Promise<Awaited<R>> =>
-    await opts.execute(args, ctx);
+    timeoutMs === undefined ? await opts.execute(args, ctx) : await withTimeout(opts.name, timeoutMs, ctx, (timed) => opts.execute(args, timed));
   // legacy (.tool): the `ai` v4 Tool shape. Removed in D26.
   const legacyTool = legacyAiTool(opts.description, opts.input, execute as NonNullable<ToolDescriptor['execute']>);
   const defined: DefinedTool<S, ToolResultOf<R>, Awaited<R>> = {

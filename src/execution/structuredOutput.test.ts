@@ -134,7 +134,9 @@ describe('structured output (LOU-V4)', () => {
     expect(result.steps).toBe(2);
     expect(result.object).toEqual({ city: 'Paris', tempC: 21 });
     expect(model.calls).toHaveLength(3);
-    expect(model.calls[2].tools).toBeUndefined();
+    // The transcript has tool calls, so the tools go along (Anthropic requires them), with no tool allowed.
+    expect(model.calls[2].tools?.map((tool) => tool.function.name)).toEqual(['lookup']);
+    expect(model.calls[2].toolChoice).toBe('none');
   });
 
   it('reports outputError when the forced answer at maxSteps is still invalid', async () => {

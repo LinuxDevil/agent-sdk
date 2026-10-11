@@ -10,6 +10,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GenerateOptions } from './llm';
+import { estimateCost } from '../models/registry';
 
 const generateTextMock = vi.fn();
 const streamTextMock = vi.fn();
@@ -93,7 +94,8 @@ describe('AnthropicProvider', () => {
     it('should return a non-empty list of common models', async () => {
       const models = await provider.getModels();
       expect(models.length).toBeGreaterThan(0);
-      expect(models).toContain('claude-3-5-sonnet-latest');
+      expect(models).toContain('claude-sonnet-4-5');
+      for (const model of models) expect(estimateCost({ inputTokens: 1, outputTokens: 1 }, model)).toBeGreaterThan(0);
     });
   });
 

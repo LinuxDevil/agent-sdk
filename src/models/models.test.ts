@@ -116,7 +116,7 @@ describe('model registry', () => {
   });
 
   it('does not match a different model that merely shares a prefix', () => {
-    expect(getModelInfo('o3-mini')).toBeUndefined();
+    expect(getModelInfo('o4')).toBeUndefined();
     expect(getModelInfo('gpt-5.4')).toBeUndefined();
     expect(getModelInfo('does-not-exist')).toBeUndefined();
   });
@@ -178,5 +178,23 @@ describe('estimateCost', () => {
     expect(estimateCost({ inputTokens: 1_000_000, outputTokens: 0, cachedInputTokens: 500_000, cacheWriteTokens: 500_000 }, 'no-cache-price')).toBeCloseTo(2);
     // Cached tokens are a part of `inputTokens`: more cached than input is clamped, never priced negative.
     expect(estimateCost({ inputTokens: 10, outputTokens: 0, cachedInputTokens: 1_000_000 }, 'claude-haiku-4-5')).toBeCloseTo(0.000001, 9);
+  });
+});
+
+describe('OpenRouter variants and the default models', () => {
+  it(':free costs nothing; other variants keep the window but have no guessed price', () => {
+    expect(estimateCost({ inputTokens: 1_000_000, outputTokens: 1_000_000 }, 'openai/gpt-4o-mini:free')).toBe(0);
+    expect(getModelInfo('openai/gpt-4o:extended')).toMatchObject({ contextWindow: 128000 });
+    expect(estimateCost({ inputTokens: 1_000, outputTokens: 1_000 }, 'openai/gpt-4o:extended')).toBeUndefined();
+    expect(estimateCost({ inputTokens: 1_000, outputTokens: 1_000 }, 'openai/gpt-4o:nitro')).toBeUndefined();
+    // An Ollama size tag still names the model itself.
+    expect(getModelInfo('llama3.1:8b')?.contextWindow).toBe(131072);
+  });
+
+  it('prices the providers\' default and listed models', () => {
+    for (const model of ['claude-sonnet-4-5', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o3-mini', 'gpt-5-nano']) {
+      expect(estimateCost({ inputTokens: 1_000, outputTokens: 1_000 }, model)).toBeGreaterThan(0);
+    }
+    expect(getModelInfo('llama3')?.contextWindow).toBe(8192);
   });
 });

@@ -64,8 +64,28 @@ describe('OpenAIProvider api option', () => {
 
   it("api: 'chat' sends the reasoning effort without the Responses-only summary", () => {
     const options: GenerateOptions = { messages: [], reasoning: { effort: 'high', summary: 'auto' } };
-    expect(openAI().reasoningOptions('o3', options)).toEqual({ openai: { reasoningEffort: 'high', reasoningSummary: 'auto' } });
+    expect(openAI().reasoningOptions('o3', options)).toMatchObject({ openai: { reasoningEffort: 'high', reasoningSummary: 'auto' } });
     expect(openAI({ api: 'chat' }).reasoningOptions('o3', options)).toEqual({ openai: { reasoningEffort: 'high' } });
     expect(openAI({ api: 'chat' }).reasoningOptions('qwen3', options)).toBeUndefined();
+  });
+
+  it("LOUSHO_OPENAI_API=chat selects Chat Completions when the config does not say; the config wins", () => {
+    process.env.LOUSHO_OPENAI_API = 'chat';
+    try {
+      expect(openAI().supportsHostedTool('web_search')).toBe(false);
+      expect(openAI({ api: 'responses' }).supportsHostedTool('web_search')).toBe(true);
+    } finally {
+      delete process.env.LOUSHO_OPENAI_API;
+    }
+    expect(openAI().supportsHostedTool('web_search')).toBe(true);
+  });
+
+  it("the Responses API is sent store: false unless the config says otherwise; Chat Completions gets no store", () => {
+    const options: GenerateOptions = { messages: [] };
+    const store = (provider: ReturnType<typeof openAI>) =>
+      (provider.reasoningOptions('gpt-4o', options) as { openai?: { store?: boolean } } | undefined)?.openai?.store;
+    expect(store(openAI())).toBe(false);
+    expect(store(openAI({ store: true }))).toBe(true);
+    expect(openAI({ api: 'chat' }).reasoningOptions('gpt-4o', options)).toBeUndefined();
   });
 });

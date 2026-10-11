@@ -37,6 +37,7 @@ import { textOf } from './content';
 import { SDKError } from '../utils/sdkError';
 import { isRawJsonSchema, schemaToJsonSchema } from '../utils/zodCompat';
 import { type AiSdkCallSettings, type AiSdkMessage, type AiSdkModule, aiMajorOf, compatGenerateText, streamCompat } from './aiSdkCompat';
+import { DEFAULT_REQUEST_TIMEOUT_MS, chatCompletionWatch, providerFetch, type ResponseWatch } from './providerFetch';
 
 // The `ai` v4 request shapes built here, as our own structural types (LOU-D28a):
 // `ai` v6/v7 do not export the v4 ones, and aiSdkCompat maps these to v6/v7.
@@ -65,6 +66,13 @@ export interface AiSdkProviderConfig extends LLMProviderConfig {
    * gives up on a response whose headers take over 300 s. Default: `globalThis.fetch`.
    */
   fetch?: typeof globalThis.fetch;
+  /**
+   * The longest wait, in ms, for a model response to start and between two of
+   * its chunks; a call that waits longer fails with a retryable `TimeoutError`.
+   * It does not cap a long answer that keeps streaming. Default 600_000
+   * (10 minutes); `0` or `Infinity` turns it off.
+   */
+  timeout?: number;
 }
 
 /** `JSON.parse(text)`, or `fallback` when `text` is not a JSON string. */
@@ -78,13 +86,23 @@ function parseJsonOr(text: unknown, fallback: unknown): unknown {
 }
 
 /**
+ * A non-user message's text: its text parts, one per line (a system or
+ * assistant message has no parts of its own on the wire, and `textOf()`
+ * would run `line1` and `line2` together).
+ */
+function partsText(msg: Message): string {
+  if (!Array.isArray(msg.content)) return textOf(msg);
+  return msg.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n');
+}
+
+/**
  * An assistant turn that made tool calls becomes an optional text part
  * followed by one `tool-call` part per call. Arguments are decoded from our
  * JSON string to the object the 'ai' SDK expects (`{}` if unparseable, so
  * the turn is still accepted by providers that require an object).
  */
 function toAssistantToolCallMessage(msg: Message, toolCalls: ToolCall[], support: PartSupport): AiSdkMessage {
-  const text = textOf(msg);
+  const text = partsText(msg);
   const reasoning = support.reasoning ? (msg.reasoning ?? []).map(toReasoningPart) : [];
   const parts: Array<ReasoningPart | TextContentPart | ToolCallPart> = [...reasoning, ...(text ? [{ type: 'text' as const, text }] : [])];
   for (const tc of toolCalls) {
@@ -185,19 +203,32 @@ function toCoreMessages(messages: Message[], support: PartSupport): AiSdkMessage
     if (msg.role === 'user' && Array.isArray(msg.content)) {
       return { role: 'user', content: msg.content.map((part) => toUserPart(part, support)) };
     }
-    return { role: msg.role, content: textOf(msg) };
+    return { role: msg.role, content: partsText(msg) };
   });
 }
 
+/** The JSON Schema of a tool's `parameters`, whatever form they take (zod 3 through ai 4's own converter). */
+function v4JsonSchema(ai: AiSdkModule, parameters: unknown): unknown {
+  const json = schemaToJsonSchema(parameters) ?? (isRawJsonSchema(parameters) ? parameters : undefined);
+  if (json) return json;
+  if (typeof parameters === 'object' && parameters !== null && 'jsonSchema' in parameters && 'validate' in parameters) {
+    return (parameters as { jsonSchema: unknown }).jsonSchema;
+  }
+  const zodSchema = (ai as { zodSchema?: (schema: unknown) => { jsonSchema: unknown } }).zodSchema;
+  return typeof zodSchema === 'function' ? zodSchema(parameters).jsonSchema : undefined;
+}
+
 /**
- * A tool's `parameters` for `ai` v4, whose own converter only reads zod 3:
- * a zod 4 / Standard JSON Schema goes as its JSON Schema (LOU-D29), and a
- * plain JSON-Schema object is wrapped as-is (LOU-R4) - left bare, v4's
- * `asSchema` would feed it to the zod converter and crash on `._def.typeName`.
+ * A tool's `parameters` for `ai` v4: its JSON Schema (LOU-D29, LOU-R4: v4's
+ * own converter only reads zod 3), with a validation that accepts any value.
+ * The executor validates the arguments and hands a bad call back to the model
+ * as a tool error; ai 4's own validation would throw and end the run.
  */
 function v4Parameters(ai: AiSdkModule, parameters: unknown): unknown {
-  const json = schemaToJsonSchema(parameters) ?? (isRawJsonSchema(parameters) ? parameters : undefined);
-  return json ? ai.jsonSchema(json as never) : parameters;
+  const json = v4JsonSchema(ai, parameters);
+  if (json === undefined) return parameters;
+  const permissive = { validate: (value: unknown) => ({ success: true, value }) };
+  return (ai.jsonSchema as unknown as (schema: unknown, options: unknown) => unknown)(json, permissive);
 }
 
 /**
@@ -231,9 +262,12 @@ function supportsStructuredOutputs(model: unknown): boolean {
   return typeof model === 'object' && model !== null && Boolean((model as { supportsStructuredOutputs?: unknown }).supportsStructuredOutputs);
 }
 
-/** F9: the AI SDK's `toolChoice` for a call, only when the call has tools (a forced-answer call has none, and a choice without tools is an API error). */
-function toolChoiceOf(options: GenerateOptions, hostedTools: Record<string, unknown> | undefined): { toolChoice?: AiSdkCallSettings['toolChoice'] } {
-  const choice = options.toolChoice;
+/** F9: the AI SDK's `toolChoice` for a call, only when the call has tools (a choice without tools is an API error). */
+function toolChoiceOf(
+  options: GenerateOptions,
+  hostedTools: Record<string, unknown> | undefined,
+  choice: GenerateOptions['toolChoice'] = options.toolChoice
+): { toolChoice?: AiSdkCallSettings['toolChoice'] } {
   if (choice === undefined || !(options.tools?.length || (hostedTools && Object.keys(hostedTools).length))) return {};
   return { toolChoice: typeof choice === 'string' ? choice : { type: 'tool', toolName: choice.function.name } };
 }
@@ -258,6 +292,25 @@ function toOutput(format: GenerateOptions['responseFormat']): AiSdkOutput | unde
   };
 }
 
+/** Each 'ai'-SDK-backed provider's retry count when createAgent() wraps it without a `retry` option. */
+const agentRetries = new WeakMap<LLMProvider, () => number>();
+
+/**
+ * Internal: the retries createAgent() gives a provider instance passed without
+ * `retry` - an 'ai'-SDK-backed provider gets `withRetry()` with as many
+ * retries as it would make itself (its `maxRetries`, default 2), so a string
+ * model, a built-in instance and `fromAiSdk()` retry alike (with
+ * `provider.retry` events); any other provider: `undefined` (not wrapped).
+ */
+export function defaultAgentRetries(provider: LLMProvider): number | undefined {
+  return agentRetries.get(provider)?.();
+}
+
+/** Internal: sets {@link defaultAgentRetries} for `provider`. */
+export function setDefaultAgentRetries(provider: LLMProvider, retries: () => number): void {
+  agentRetries.set(provider, retries);
+}
+
 /**
  * Base class for providers built on the 'ai' SDK. Subclasses supply the
  * model factory (createModel), the fallback model id, and the capability /
@@ -270,14 +323,35 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
   /** The 'ai' module calls go through: the installed one (v4, v6 or v7); tests swap it. */
   protected readonly ai: AiSdkModule = aiModule;
 
-  /** The connection options every `@ai-sdk/*` provider factory takes: `apiKey`, `baseURL`, `headers` and a custom `fetch`. */
+  /** The connection options every `@ai-sdk/*` provider factory takes: `apiKey`, `baseURL`, `headers` and the `fetch` of {@link requestFetch}. */
   protected clientOptions(): Pick<AiSdkProviderConfig, 'apiKey' | 'baseURL' | 'headers' | 'fetch'> {
     return {
       apiKey: this.config.apiKey,
       baseURL: this.config.baseURL,
       headers: this.config.headers,
-      ...(this.config.fetch && { fetch: this.config.fetch }),
+      fetch: this.requestFetch(),
     };
+  }
+
+  /**
+   * Whether this provider's responses are OpenAI Chat Completions, whose
+   * in-response failures (`finish_reason: "error"`, an `error` chunk) fail
+   * the call and whose repeated tool-call ids are made unique (see providerFetch).
+   */
+  protected readonly checksChatFailures: boolean = false;
+
+  /**
+   * The `fetch` the model calls go through: the configured one (else the
+   * global one, read per request), bounded by `timeout`, with the chat
+   * failure check when {@link checksChatFailures}, or `watch` instead.
+   */
+  protected requestFetch(watch?: () => ResponseWatch | undefined): typeof globalThis.fetch {
+    const chatFailures = (): ResponseWatch | undefined => (this.checksChatFailures ? chatCompletionWatch() : undefined);
+    return providerFetch({
+      send: () => this.config.fetch ?? globalThis.fetch,
+      timeoutMs: this.config.timeout ?? DEFAULT_REQUEST_TIMEOUT_MS,
+      watch: watch ?? chatFailures,
+    });
   }
 
   /** Model id used when neither the call nor the config names one. */
@@ -285,6 +359,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
 
   constructor(config: TConfig) {
     this.config = config;
+    setDefaultAgentRetries(this, () => this.config.maxRetries ?? 2);
   }
 
   /** The configured `defaultModel`, else this provider's built-in default. */
@@ -375,6 +450,14 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
     return { passed, builtIn: tools.filter((tool) => tool.type !== 'custom') };
   }
 
+  /**
+   * Whether this provider's package sends `toolChoice: 'none'` by dropping the
+   * tools; `'auto'` is sent instead then (see AnthropicProvider). False by default.
+   */
+  protected get dropsToolsForNone(): boolean {
+    return false;
+  }
+
   /** Set by providers whose hostedToolsFor() maps the helpers (OpenAI, Anthropic). */
   protected readonly mapsHostedTools: boolean = false;
 
@@ -405,7 +488,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
       presencePenalty: options.presencePenalty,
       seed: options.seed,
       ...(options.stop?.length && { stopSequences: options.stop }),
-      ...toolChoiceOf(options, hostedTools),
+      ...toolChoiceOf(options, hostedTools, options.toolChoice === 'none' && this.dropsToolsForNone ? 'auto' : options.toolChoice),
       tools: convertTools(this.ai, options.tools),
       maxSteps: 1, // Single step - tool execution happens in AgentExecutor
       // The 'ai' SDK's own retries (its default is 2), off for a call that

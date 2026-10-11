@@ -6,7 +6,7 @@
  * then the answer.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as aiV7 from 'ai-v7';
 import { MockLanguageModelV4 } from 'ai-v7/test';
 import { MockLanguageModelV1 } from 'ai/test';
@@ -163,6 +163,46 @@ describe('fromAiSdk() in createAgent (M2)', () => {
     await createAgent({ provider: onV7(model), tools: [addTool().tool], reasoning: 'high', retry: false }).send('2 + 3?');
     expect(calls[0]!.tools).toMatchObject([{ type: 'function', name: 'add' }]);
     expect(calls[0]!.providerOptions).toBeUndefined();
+  });
+});
+
+describe('fromAiSdk() raw finish reason, retries and reasoning', () => {
+  const textResult = (raw: string) => ({
+    content: [{ type: 'text' as const, text: 'The answer is 4' }],
+    finishReason: { unified: 'other' as const, raw },
+    usage: v7Usage,
+    warnings: [],
+  });
+
+  it("ai 7: a raw finish reason 'error' (mapped to 'other' by the provider package) fails the call instead of returning the cut-off text", async () => {
+    const model = new MockLanguageModelV4({ modelId: 'm', doGenerate: async () => textResult('error') });
+    await expect(createAgent({ provider: onV7(model), instructions: 'x', retry: false }).send('2+2?')).rejects.toMatchObject({
+      compacted: { statusCode: 502, retryable: true },
+    });
+  });
+
+  it('ai 7: under createAgent() without `retry`, a retryable failure is retried (twice by default), like a model string', async () => {
+    let calls = 0;
+    const model = new MockLanguageModelV4({
+      modelId: 'm',
+      doGenerate: async () => {
+        calls++;
+        if (calls === 1) throw new aiV7.APICallError({ message: 'Service Unavailable', url: 'https://x', requestBodyValues: {}, statusCode: 503, isRetryable: true });
+        return textResult('stop');
+      },
+    });
+    const result = await createAgent({ provider: onV7(model), instructions: 'x' }).send('hi');
+    expect(result.text).toBe('The answer is 4');
+    expect(calls).toBe(2);
+  });
+
+  it('warns once that `reasoning` is not sent', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const provider = onV7(v7Model().model);
+    await createAgent({ provider, instructions: 'x', reasoning: 'high', retry: false }).send('2 + 3?').catch(() => undefined);
+    await createAgent({ provider, instructions: 'x', reasoning: 'high', retry: false }).send('2 + 3?').catch(() => undefined);
+    expect(warn.mock.calls.filter(([message]) => String(message).includes('`reasoning` is set but is not sent to the fromAiSdk() model'))).toHaveLength(1);
+    warn.mockRestore();
   });
 });
 

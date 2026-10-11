@@ -71,3 +71,26 @@ describe('one retry layer for a provider instance (C2)', () => {
     expect(fetch).toHaveBeenCalledTimes(3);
   });
 });
+
+describe('retry defaults of a provider instance', () => {
+  it('a built-in instance without `retry` is wrapped in withRetry() with its own maxRetries (the ai SDK retries off)', async () => {
+    const fetch = failingFetch();
+    const events: string[] = [];
+    const run = createAgent({ provider: new OpenAIProvider({ apiKey: 'k', fetch, maxRetries: 1 }), instructions: 'x' }).stream('hi', { throwOnError: false });
+    for await (const event of run) events.push(event.type);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(events).toContain('provider.retry');
+  });
+});
+
+describe.skipIf(!ollamaPeerInstalled)('OllamaProvider connection options', () => {
+  it('sends the configured headers, and apiKey as a bearer token', async () => {
+    const fetch = failingFetch();
+    await new OllamaProvider({ fetch, maxRetries: 0, apiKey: 'secret', headers: { 'x-team': 'a' } })
+      .generate({ messages: [{ role: 'user', content: 'hi' }] })
+      .catch(() => undefined);
+    const headers = new Headers((fetch.mock.calls[0] as unknown as [unknown, RequestInit])[1].headers);
+    expect(headers.get('authorization')).toBe('Bearer secret');
+    expect(headers.get('x-team')).toBe('a');
+  });
+});

@@ -14,16 +14,18 @@ const FINISH_REASONS: ReadonlySet<string> = new Set<GenerateResult['finishReason
   'tool_calls',
   'content_filter',
   'error',
+  'other',
 ]);
 
 /**
  * A stream's finish reason as a GenerateResult one. Accepts both our
- * spelling and the 'ai' SDK's (`'tool-calls'`); anything else is `'error'`,
- * as in `generate()`.
+ * spelling and the 'ai' SDK's (`'tool-calls'`); anything else (`'unknown'`,
+ * a new reason, a stream that reported none) is `'other'`, as in `generate()`.
+ * A failed stream rejects instead of finishing.
  */
 function toFinishReason(reason: string | undefined): GenerateResult['finishReason'] {
   const normalized = (reason ?? 'stop').replace(/-/g, '_');
-  return FINISH_REASONS.has(normalized) ? (normalized as GenerateResult['finishReason']) : 'error';
+  return FINISH_REASONS.has(normalized) ? (normalized as GenerateResult['finishReason']) : 'other';
 }
 
 /** Whether to stream this request: the provider has `stream()` and supports streaming its model. */

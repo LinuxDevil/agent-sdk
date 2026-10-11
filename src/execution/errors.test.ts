@@ -692,3 +692,38 @@ describe('Error Classes', () => {
     });
   });
 });
+
+describe('provider error classification fixes', () => {
+  const apiError = (statusCode: number, message: string, headers: Record<string, string> = {}) =>
+    new APICallError({ message, url: 'https://x', requestBodyValues: {}, statusCode, responseHeaders: headers, isRetryable: statusCode >= 500 || statusCode === 429 });
+
+  it('a negative Retry-After (or retry-after-ms) is no wait at all, never a negative one', () => {
+    expect(compactProviderError(apiError(429, 'slow down', { 'retry-after': '-5' })).retryAfterMs).toBe(0);
+    expect(compactProviderError(apiError(429, 'slow down', { 'retry-after-ms': '-250' })).retryAfterMs).toBe(0);
+  });
+
+  it('"authentication" in a 5xx body stays a retryable server failure', () => {
+    expect(compactProviderError(apiError(503, 'authentication service unavailable'))).toMatchObject({ category: 'unknown', retryable: true });
+    expect(compactProviderError(apiError(400, 'authentication header malformed'))).toMatchObject({ category: 'auth-failure', retryable: false });
+  });
+
+  it('"aborted" in a 4xx body does not make a rejected request a retryable timeout', () => {
+    expect(compactProviderError(apiError(400, 'request aborted: invalid field'))).toMatchObject({ category: 'unknown', retryable: false });
+    expect(compactProviderError(apiError(502, 'upstream request aborted'))).toMatchObject({ category: 'timeout', retryable: true });
+  });
+
+  it('a rate-limited call has the code LOUSHO_PROVIDER_RATE_LIMITED; other failures keep LOUSHO_PROVIDER_REQUEST_FAILED', () => {
+    const limited = new CompactedLLMProviderError(compactProviderError(apiError(429, 'Too Many Requests')));
+    expect(limited.code).toBe('LOUSHO_PROVIDER_RATE_LIMITED');
+    expect(limited).toBeInstanceOf(LLMProviderError);
+    expect(new CompactedLLMProviderError(compactProviderError(apiError(500, 'boom'))).code).toBe('LOUSHO_PROVIDER_REQUEST_FAILED');
+  });
+});
+
+describe('a wrapped body-read failure', () => {
+  it("is classified by the failure inside the AI SDK's 'Failed to process successful response' (status 200)", () => {
+    const inner = new APICallError({ message: 'Upstream died', url: 'https://x', requestBodyValues: {}, statusCode: 502, isRetryable: true });
+    const outer = new APICallError({ message: 'Failed to process successful response', url: 'https://x', requestBodyValues: {}, statusCode: 200, cause: inner, isRetryable: false });
+    expect(compactProviderError(outer)).toMatchObject({ error: 'Upstream died', statusCode: 502, retryable: true });
+  });
+});

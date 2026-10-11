@@ -130,14 +130,14 @@ describe('the Ollama package OllamaProvider loads', () => {
   it('ai 4: ollama-ai-provider, with the v1 model settings', async () => {
     const { createOllama, model } = mockOllama('ollama-ai-provider');
     await (await ollamaOn(aiV4Stub())).createModel('llama3');
-    expect(createOllama).toHaveBeenCalledWith({ baseURL: 'http://localhost:11434/api' });
+    expect(createOllama).toHaveBeenCalledWith(expect.objectContaining({ baseURL: 'http://localhost:11434/api', headers: {} }));
     expect(model).toHaveBeenCalledWith('llama3', { simulateStreaming: true, structuredOutputs: true });
   });
 
   it('ai 7: ollama-ai-provider-v2, which takes no model settings', async () => {
     const { createOllama, model } = mockOllama('ollama-ai-provider-v2');
     await (await ollamaOn(aiV7)).createModel('llama3');
-    expect(createOllama).toHaveBeenCalledWith({ baseURL: 'http://localhost:11434/api' });
+    expect(createOllama).toHaveBeenCalledWith(expect.objectContaining({ baseURL: 'http://localhost:11434/api', headers: {} }));
     expect(model).toHaveBeenCalledWith('llama3');
   });
 });

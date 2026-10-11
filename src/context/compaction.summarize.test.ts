@@ -14,7 +14,7 @@ import {
 } from './compaction';
 import type { Message } from '../providers';
 import { textOf } from '../providers';
-import { estimateTokens } from '../models';
+import { estimateTokens, registerModel } from '../models';
 import { HookRegistry } from '../execution/hooks';
 import { AgentExecutor } from '../execution/AgentExecutor';
 import { defineTool } from '../tools/defineTool';
@@ -437,6 +437,21 @@ describe('summarize compaction in a run', () => {
     for (const req of model.calls) {
       expectValidTranscript(req.messages as Message[]);
     }
+    expectValidTranscript(result.messages);
+  });
+});
+
+describe('summarizeStrategy with a summarizer smaller than the history', () => {
+  it('summarizes in parts that fit half the summarizer model\'s window, folding each into the summary so far', async () => {
+    registerModel({ id: 'tiny-summarizer', provider: 'mock', contextWindow: 4_000 });
+    const summarizer = mockModel(Array.from({ length: 20 }, (_, i) => `S${i + 1}`), { defaultModel: 'tiny-summarizer' });
+    const original = transcript(10);
+    const result = await compactMessages(original, { protectedTokens: 0, strategy: summarizeStrategy({ model: summarizer }) });
+
+    expect(summarizer.calls.length).toBeGreaterThan(1);
+    for (const call of summarizer.calls) expect(estimateTokens(call.messages as Message[])).toBeLessThan(4_000);
+    expect(textOf(summarizer.calls[1].messages[1])).toMatch(/^\[Conversation summary\]\nS1\n/);
+    expect(result.summary).toBe(`S${summarizer.calls.length}`);
     expectValidTranscript(result.messages);
   });
 });

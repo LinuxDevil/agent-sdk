@@ -352,6 +352,13 @@ export function compactGenerateError(
   generateError: unknown,
   providerName: string
 ): { compacted: CompactedProviderError; error: CompactedLLMProviderError } {
+  // Already compacted (withRetry() gives up on a Retry-After past `backoff.maxMs` with one): compacting it
+  // again would read only its message and lose the category, status code and `retryAfterMs`.
+  if (generateError instanceof CompactedLLMProviderError) {
+    if (generateError.compacted.providerName !== undefined) return { compacted: generateError.compacted, error: generateError };
+    const compacted = { ...generateError.compacted, providerName };
+    return { compacted, error: new CompactedLLMProviderError(compacted, generateError.cause ?? generateError) };
+  }
   const compacted = compactProviderError(generateError, providerName);
   return {
     compacted,

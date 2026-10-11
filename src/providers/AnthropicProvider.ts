@@ -53,7 +53,7 @@ export interface AnthropicProviderConfig extends AiSdkProviderConfig {
 }
 
 /** Model-id prefixes of the Claude families that support tool use. */
-const TOOL_CAPABLE_PREFIXES = ['claude-3', 'claude-4', 'claude-sonnet', 'claude-opus', 'claude-haiku'];
+const TOOL_CAPABLE_PREFIXES = ['claude-3', 'claude-4', 'claude-sonnet', 'claude-opus', 'claude-haiku', 'claude-fable', 'claude-mythos'];
 
 /**
  * Anthropic Provider using the 'ai' SDK
@@ -81,6 +81,16 @@ export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
 
   protected async createModel(modelId: string): Promise<LanguageModel> {
     return (await this.loadProvider())(modelId);
+  }
+
+  /**
+   * `@ai-sdk/anthropic` 0.x/1.x (ai 4) and 4.x (ai 7) send `toolChoice: 'none'`
+   * by dropping the tools (3.x, ai 6, sends Anthropic's `none`), and Claude
+   * rejects a transcript with tool blocks but no tools; `'auto'` keeps them
+   * (the forced-answer call asks for no tools in its prompt and ignores any).
+   */
+  protected get dropsToolsForNone(): boolean {
+    return aiMajorOf(this.ai) !== 6;
   }
 
   /** Eve PROV-F4: cache breakpoints on Claude models unless the call says `promptCaching: false`. */
@@ -120,10 +130,10 @@ export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
   }
 
   /**
-   * Check if model supports tools
+   * Whether `model` calls tools: every Claude 3+ model. Informational: the
+   * runtime does not consult it.
    */
   supportsTools(model: string): boolean {
-    // All current Claude 3+ models support tool use
     return TOOL_CAPABLE_PREFIXES.some((prefix) => model.startsWith(prefix));
   }
 
@@ -138,13 +148,7 @@ export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
    * Get available models
    */
   async getModels(): Promise<string[]> {
-    // Return common models (fetching from API requires additional setup)
-    return [
-      'claude-3-5-sonnet-latest',
-      'claude-3-5-haiku-latest',
-      'claude-3-opus-latest',
-      'claude-3-sonnet-20240229',
-      'claude-3-haiku-20240307',
-    ];
+    // Current models with a built-in price (fetching from the API requires additional setup)
+    return ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-fable-5-1', 'claude-sonnet-4-6', 'claude-sonnet-4-5', 'claude-haiku-4-5'];
   }
 }

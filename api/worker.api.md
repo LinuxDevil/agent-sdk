@@ -327,6 +327,7 @@ abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLM
     protected readonly acceptsFileParts: boolean;
     protected readonly ai: AiSdkModule;
     protected cachesPrompt(_modelId: string, _options: GenerateOptions): boolean;
+    protected readonly checksChatFailures: boolean;
     protected clientOptions(): Pick<AiSdkProviderConfig, 'apiKey' | 'baseURL' | 'headers' | 'fetch'>;
     // (undocumented)
     protected config: TConfig;
@@ -334,6 +335,7 @@ abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLM
     protected convertMessages(messages: Message[]): AiSdkMessage[];
     protected abstract createModel(modelId: string, options?: GenerateOptions): LanguageModel | Promise<LanguageModel>;
     get defaultModel(): string;
+    protected get dropsToolsForNone(): boolean;
     protected abstract readonly fallbackModel: string;
     protected fileMediaTypes(): readonly string[];
     generate(options: GenerateOptions): Promise<GenerateResult>;
@@ -345,6 +347,7 @@ abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> implements LLM
     abstract readonly name: string;
     protected reasoningOptions(modelId: string, options: GenerateOptions): Record<string, unknown> | undefined;
     protected readonly replaysReasoning: boolean;
+    protected requestFetch(watch?: () => ResponseWatch | undefined): typeof globalThis.fetch;
     protected splitHostedTools(tools: readonly HostedTool[]): {
         passed: Record<string, unknown>;
         builtIn: HostedTool[];
@@ -362,6 +365,7 @@ interface AiSdkProviderConfig extends LLMProviderConfig {
     // (undocumented)
     defaultModel?: string;
     fetch?: typeof globalThis.fetch;
+    timeout?: number;
     unsupportedFiles?: UnsupportedFiles;
 }
 
@@ -373,6 +377,7 @@ export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
     protected cachesPrompt(modelId: string, options: GenerateOptions): boolean;
     // (undocumented)
     protected createModel(modelId: string): Promise<LanguageModel>;
+    protected get dropsToolsForNone(): boolean;
     // (undocumented)
     protected readonly fallbackModel = "claude-sonnet-4-5";
     protected fileMediaTypes(): readonly string[];
@@ -1117,6 +1122,7 @@ interface DefineToolOptions<S extends StandardSchemaV1, R> {
     needsApproval?: boolean | ((args: InferSchemaOutput<S>, ctx: ApprovalCheckContext) => ApprovalOutcome | Promise<ApprovalOutcome>);
     requiresSandbox?: boolean;
     sandboxExecute?: (args: InferSchemaOutput<S>, sandbox: SandboxAdapter) => Promise<unknown>;
+    timeoutMs?: number;
 }
 
 // @public
@@ -2018,8 +2024,6 @@ export interface LLMProvider {
 // @public
 interface LLMProviderConfig {
     // (undocumented)
-    [key: string]: unknown;
-    // (undocumented)
     apiKey?: string;
     // (undocumented)
     baseURL?: string;
@@ -2031,7 +2035,6 @@ interface LLMProviderConfig {
     maxRetries?: number;
     // (undocumented)
     name?: string;
-    // (undocumented)
     timeout?: number;
 }
 
@@ -2461,6 +2464,8 @@ interface OneOfOptionsNode extends NodeRunOptions {
 // @public
 export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
     // (undocumented)
+    protected readonly checksChatFailures = true;
+    // (undocumented)
     protected createModel(modelId: string): Promise<LanguageModel>;
     // (undocumented)
     protected readonly fallbackModel = "gpt-4o-mini";
@@ -2474,7 +2479,7 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
     protected reasoningOptions(modelId: string, options: GenerateOptions): Record<string, unknown> | undefined;
     supportsHostedTool(type: HostedToolType | 'custom'): boolean;
     supportsStreaming(_model: string): boolean;
-    supportsTools(model: string): boolean;
+    supportsTools(_model: string): boolean;
 }
 
 // @public
@@ -2488,6 +2493,7 @@ interface OpenAIProviderConfig extends AiSdkProviderConfig {
     defaultModel?: string;
     // (undocumented)
     organization?: string;
+    store?: boolean;
 }
 
 // @public
@@ -2519,7 +2525,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
     stream(options: GenerateOptions): Promise<StreamResult>;
     supportsHostedTool(type: HostedToolType | 'custom'): boolean;
     supportsStreaming(_model: string): boolean;
-    supportsTools(model: string): boolean;
+    supportsTools(_model: string): boolean;
 }
 
 // @public
@@ -2903,6 +2909,13 @@ interface ResolvedApproval {
     pending: PendingApproval;
     // (undocumented)
     snapshot: ExecutionSnapshot;
+}
+
+// @public
+interface ResponseWatch {
+    data?(text: string): UpstreamFailure | undefined;
+    end?(complete: boolean): void;
+    rewrite?(text: string): string | undefined;
 }
 
 // @public
@@ -3970,6 +3983,14 @@ interface UIComponentNode {
 
 // @public
 type UnsupportedFiles = 'error' | 'text-note';
+
+// @public
+interface UpstreamFailure {
+    // (undocumented)
+    message: string;
+    // (undocumented)
+    status: number;
+}
 
 // @public
 interface Usage {

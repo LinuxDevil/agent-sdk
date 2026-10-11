@@ -131,8 +131,8 @@ describe('reasoning options per provider (LOU-V13)', () => {
     const openaiCalls = onV7(openai);
     await openai.generate({ messages: user, model: 'gpt-4o', reasoning: 'high' });
     await openai.generate({ messages: user, model: 'o4-mini', reasoning: 'high' });
-    expect(openaiCalls[0]!.providerOptions).toBeUndefined();
-    expect(openaiCalls[1]!.providerOptions).toEqual({ openai: { reasoningEffort: 'high' } });
+    expect(openaiCalls[0]!.providerOptions).toEqual({ openai: { store: false } });
+    expect(openaiCalls[1]!.providerOptions).toEqual({ openai: { reasoningEffort: 'high', store: false } });
 
     const ollama = new OllamaProvider({ maxRetries: 0 });
     const ollamaCalls = onV7(ollama);
