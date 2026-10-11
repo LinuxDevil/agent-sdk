@@ -6,7 +6,7 @@
  * run's tool calls. Also: run ids cannot address a session's own checkpoint keys.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -101,6 +101,93 @@ describe.each(backends)('run leases over %s', (_name, backend) => {
     await expect(b.resume('job-1')).rejects.toMatchObject({ code: 'LOUSHO_SESSION_BUSY' });
     release();
     expect((await run).text).toBe('done');
+  });
+});
+
+/** Two "processes" over the same data, and a way to make the lease on `id` look long expired (its holder stalled). */
+const stallable: Array<[string, () => { open: () => AgentStore; stall: (id: string) => void }]> = [
+  ['fileStore', () => {
+    const dir = tempDir();
+    return {
+      open: () => fileStore(dir),
+      stall: (id) => {
+        const file = join(dir, 'leases', `${id}.json`);
+        writeFileSync(file, JSON.stringify({ ...JSON.parse(readFileSync(file, 'utf8')), expiresAt: Date.now() - 120_000 }));
+      },
+    };
+  }],
+  ['SqliteStore', () => {
+    const file = join(tempDir(), 'db.sqlite');
+    const open = () => {
+      const store = new SqliteStore(file);
+      sqlite.push(store);
+      return store;
+    };
+    const admin = open();
+    return { open, stall: (id) => void admin.connection.db.prepare('UPDATE leases SET expires_at = ? WHERE id = ?').run(Date.now() - 120_000, id) };
+  }],
+];
+
+describe.each(stallable)('a run that stalled past its lease, over %s', (_name, backend) => {
+  it('cannot overwrite the progress of the process that took over, even after that one released the lease', async () => {
+    const { open, stall } = backend();
+    const calls: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let running!: () => void;
+    const started = new Promise<void>((resolve) => (running = resolve));
+    const work = (who: string) =>
+      defineTool({
+        name: 'work',
+        description: 'work',
+        input: z.object({}),
+        execute: async () => {
+          calls.push(who);
+          if (who === 'A') {
+            running();
+            await gate;
+          }
+          return `by ${who}`;
+        },
+      });
+    const model = (who: string) => mockModel([(request) => (request.messages.at(-1)?.role === 'tool' ? `done by ${who}` : { toolCalls: [{ name: 'work', id: 'call_1' }] })], { onExhausted: 'repeat-last' });
+    const a = createAgent({ provider: model('A'), tools: [work('A')], store: open() });
+    const bStore = open();
+    const b = createAgent({ provider: model('B'), tools: [work('B')], store: bStore });
+
+    const first = a.send('go', { sessionId: 'job-1' });
+    await started;
+    stall('job-1');
+    expect((await b.resume('job-1'))?.text).toBe('done by B');
+    release();
+    await expect(first).rejects.toMatchObject({ code: 'LOUSHO_SESSION_BUSY' });
+
+    expect(calls).toEqual(['A', 'B']);
+    const checkpoint = await bStore.checkpoints!.load('job-1');
+    expect(checkpoint?.status).toBe('finished');
+    expect(checkpoint?.messages.at(-1)?.content).toBe('done by B');
+  });
+
+  it("a session turn: its late result is not appended after the other process's turn", async () => {
+    const { open, stall } = backend();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let running!: () => void;
+    const started = new Promise<void>((resolve) => (running = resolve));
+    const work = (who: string) =>
+      defineTool({ name: 'work', description: 'work', input: z.object({}), execute: async () => (who === 'A' ? (running(), gate.then(() => 'by A')) : 'by B') });
+    const model = (who: string) => mockModel([(request) => (request.messages.at(-1)?.role === 'tool' ? `done by ${who}` : { toolCalls: [{ name: 'work', id: 'call_1' }] })], { onExhausted: 'repeat-last' });
+    const a = createAgent({ provider: model('A'), tools: [work('A')], store: open() });
+    const b = createAgent({ provider: model('B'), tools: [work('B')], store: open() });
+
+    const first = a.session({ id: 's1' }).send('go');
+    await started;
+    stall('s1.turn-0');
+    expect((await b.session({ id: 's1' }).resume())?.text).toBe('done by B');
+    release();
+    await expect(first).rejects.toMatchObject({ code: 'LOUSHO_SESSION_BUSY' });
+    const transcript = await b.session({ id: 's1' }).load();
+    expect(transcript.map((message) => `${message.role}:${typeof message.content === 'string' ? message.content : ''}`)).toEqual(['user:go', 'assistant:', 'tool:"by B"', 'assistant:done by B']);
   });
 });
 

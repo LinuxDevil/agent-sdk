@@ -276,6 +276,27 @@ class FileCheckpointStore implements CheckpointStore {
     });
   }
 
+  /** Renews `owner`'s own lease under its lock file; a lease that is gone or another owner's is not taken. */
+  async renewLease(sessionId: string, owner: string, ttlMs: number): Promise<boolean> {
+    return this.underOwnLease(sessionId, owner, (file) => writeAtomic(file, newLeaseRecord(owner, ttlMs)));
+  }
+
+  /** Saves under the lease's lock file, only while `owner` holds the lease. */
+  async saveIfLeased(sessionId: string, checkpoint: Checkpoint, owner: string): Promise<boolean> {
+    return this.underOwnLease(sessionId, owner, () => this.save(sessionId, checkpoint));
+  }
+
+  /** Runs `task` under the lease's lock when `owner` holds the lease on `sessionId`; `false` (nothing run) otherwise. */
+  private async underOwnLease(sessionId: string, owner: string, task: (file: string) => Promise<void>): Promise<boolean> {
+    const file = this.leaseFile(sessionId);
+    if ((await readText(file)) === undefined) return false;
+    return withFileLock(`${file}.lock`, async () => {
+      if (parseLeaseRecord(await readText(file))?.owner !== owner) return false;
+      await task(file);
+      return true;
+    });
+  }
+
   async releaseLease(sessionId: string, owner: string): Promise<void> {
     const file = this.leaseFile(sessionId);
     if ((await readText(file)) === undefined) return;
