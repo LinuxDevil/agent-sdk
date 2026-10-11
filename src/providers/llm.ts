@@ -430,9 +430,10 @@ export interface LLMProviderConfig {
 }
 
 /**
- * Provider factory function type
+ * Provider factory function type. `C` is the config the factory reads: a
+ * custom provider extends `LLMProviderConfig` with its own options.
  */
-export type ProviderFactory = (config: LLMProviderConfig) => LLMProvider;
+export type ProviderFactory<C extends LLMProviderConfig = LLMProviderConfig> = (config: C) => LLMProvider;
 
 /**
  * Provider registry
@@ -441,16 +442,19 @@ export class LLMProviderRegistry {
   private static providers = new Map<string, ProviderFactory>();
 
   /**
-   * Register a provider
+   * Register a provider. The factory may take its own config type, e.g.
+   * `(config: BedrockConfig) => ...` with `BedrockConfig extends LLMProviderConfig`.
    */
-  static register(name: string, factory: ProviderFactory): void {
-    this.providers.set(name.toLowerCase(), factory);
+  static register<C extends LLMProviderConfig>(name: string, factory: ProviderFactory<C>): void {
+    // The registry is keyed by name only; `create()` hands the caller's config to the factory as given.
+    this.providers.set(name.toLowerCase(), factory as ProviderFactory);
   }
 
   /**
-   * Create provider instance
+   * Create provider instance. `config` may carry the provider's own options
+   * (e.g. `{ apiKey, region }` for a registered custom provider).
    */
-  static create(name: string, config: LLMProviderConfig): LLMProvider {
+  static create<C extends object = LLMProviderConfig>(name: string, config: C & LLMProviderConfig): LLMProvider {
     // On a miss, register the built-ins first (LOU-R1): entry points that
     // never load src/index.ts - deep imports, `lousho dev`/`chat`/`acp`,
     // generated deploy servers - otherwise saw only 'mock'. Only missing

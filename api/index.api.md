@@ -3469,10 +3469,10 @@ export class LLMProviderError extends SDKError {
 // @public
 export class LLMProviderRegistry {
     static clear(): void;
-    static create(name: string, config: LLMProviderConfig): LLMProvider;
+    static create<C extends object = LLMProviderConfig>(name: string, config: C & LLMProviderConfig): LLMProvider;
     static getProviderNames(): string[];
     static has(name: string): boolean;
-    static register(name: string, factory: ProviderFactory): void;
+    static register<C extends LLMProviderConfig>(name: string, factory: ProviderFactory<C>): void;
 }
 
 // @public
@@ -4893,7 +4893,7 @@ export interface ProposedPatch {
 }
 
 // @public
-export type ProviderFactory = (config: LLMProviderConfig) => LLMProvider;
+export type ProviderFactory<C extends LLMProviderConfig = LLMProviderConfig> = (config: C) => LLMProvider;
 
 // @public
 export interface ProviderFallbackEvent extends AgentEventBase<'provider.fallback'> {
@@ -5236,6 +5236,7 @@ export function resolveSpecTool(name: string): ToolDescriptor;
 
 // @public
 interface ResponseWatch {
+    asStream?(text: string): string | undefined;
     data?(text: string): UpstreamFailure | undefined;
     end?(complete: boolean): void;
     rewrite?(text: string): string | undefined;
@@ -6994,6 +6995,7 @@ export type UnsupportedFiles = 'error' | 'text-note';
 
 // @public
 interface UpstreamFailure {
+    body?: string;
     // (undocumented)
     message: string;
     // (undocumented)
