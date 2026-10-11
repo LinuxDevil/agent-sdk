@@ -14,7 +14,8 @@ export type ToolErrorKind =
   | 'not-run'
   | 'mcp'
   | 'sandbox'
-  | 'denied';
+  | 'denied'
+  | 'interrupted';
 
 /** Max characters of an error message sent to the model (see {@link toolErrorResult}). */
 const MAX_TOOL_ERROR_MESSAGE_LENGTH = 2000;
@@ -29,6 +30,7 @@ const DEFAULT_ERROR_NAME: Record<ToolErrorKind, string> = {
   mcp: 'McpToolError',
   sandbox: 'SandboxRequiredError',
   denied: 'ToolDeniedError',
+  interrupted: 'ToolInterruptedError',
 };
 
 /**

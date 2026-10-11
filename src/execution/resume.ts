@@ -25,7 +25,8 @@ import {
 import { validateToolArguments } from './toolArgsValidation';
 import { AgentExecutor, ExecuteOptions, ExecutionResult, extendRunOptions } from './AgentExecutor';
 import { observeRun, partialSink, runEventsOf, streamResumed, type AgentRun, type ToolSettled } from './agentRun';
-import { Checkpoint, CheckpointStore, RUN_CONFIG_KEY } from './checkpoint';
+import { Checkpoint, CheckpointStore, RUN_CONFIG_KEY, pausedApprovalIds } from './checkpoint';
+import { acquireRunLease, HELD_RUN_LEASE, REPLACES_CHECKPOINT, type RunLease, type RunLeaseOptions } from './runLease';
 import { checkAgentDrift, fingerprintOf, type AgentDrift } from './agentFingerprint';
 import type { AgentConfig } from '../types';
 import { NoopSandbox } from '../security/sandboxCore';
@@ -176,15 +177,42 @@ async function resumeObserved(
   if ('paused' in claim) return claim.paused;
   const { record } = claim;
 
-  const { pending, snapshot } = record;
+  const { snapshot } = record;
   // N10b: the run goes on as the caller that paused it, whoever resumes it (an old snapshot: no principal).
   const { approver, ...rest } = observed;
   const executeOptions = resumedOptions(rest, snapshot);
   const decided = await effectiveDecision(record, decision, approvalStore, executeOptions, grouped);
-  const messages: Message[] = [...snapshot.currentMessages];
   const drift = await checkApprovalDrift(record, decided, { approvalStore, toolRegistry, provider, executeOptions }, grouped ? claimed : record);
 
-  const staleCheckpoint = await clearStaleCheckpoint(snapshot.sessionId, checkpointStore);
+  const { lease, staleCheckpoint } = await holdPausedRun(record, decided, approvalStore, checkpointStore, grouped ? claimed : record, executeOptions.businessState);
+  try {
+    return await continueDecided({ decided, record, claimed, drift, staleCheckpoint, lease, approvalStore, toolRegistry, provider, executeOptions, approver, checkpointStore });
+  } finally {
+    await lease?.release();
+  }
+}
+
+/** What {@link continueDecided} needs: a resume whose decision is settled and whose paused run is held. */
+interface DecidedResume {
+  decided: ApprovalDecision;
+  record: ResolvedApproval;
+  claimed: ResolvedApproval;
+  drift: AgentDrift | undefined;
+  staleCheckpoint: Checkpoint | null | undefined;
+  lease: RunLease | undefined;
+  approvalStore: ApprovalStore;
+  toolRegistry: ToolRegistry;
+  provider: LLMProvider;
+  executeOptions: ResumeExecuteOptions;
+  approver: Principal | undefined;
+  checkpointStore: CheckpointStore | undefined;
+}
+
+/** Runs the decided call and continues the run, inside the run's span. */
+function continueDecided(resume: DecidedResume): Promise<ExecutionResult> {
+  const { decided, record, claimed, drift, staleCheckpoint, lease, approvalStore, toolRegistry, provider, executeOptions, approver, checkpointStore } = resume;
+  const { pending, snapshot } = record;
+  const messages: Message[] = [...snapshot.currentMessages];
 
   const ctx: ResumeContext = {
     decision: decided,
@@ -207,7 +235,7 @@ async function resumeObserved(
       { redactContent: executeOptions.redactContent, captureContent }
     );
   const init = runSpan();
-  const resumed: ResumedRun = { ctx, claimed, pending, drift, staleCheckpoint, checkpointStore, runSpan };
+  const resumed: ResumedRun = { ctx, claimed, pending, drift, staleCheckpoint, checkpointStore, runSpan, lease };
   return withSpan(executeOptions.exporter, init.name, init.attributes, (span) => continueInRunSpan(resumed, span), executeOptions.parentSpanId, init.kind);
 }
 
@@ -289,6 +317,8 @@ interface ResumedRun {
   staleCheckpoint: Checkpoint | null | undefined;
   checkpointStore: CheckpointStore | undefined;
   runSpan: () => ReturnType<typeof agentRunSpanInit>;
+  /** The run lease the resume holds on the paused run's checkpoint id, handed to the continuation. */
+  lease: RunLease | undefined;
 }
 
 type DecidedStep = Awaited<ReturnType<typeof decidedToolMessage>> | { group: true };
@@ -307,7 +337,7 @@ async function continueInRunSpan(resumed: ResumedRun, span: Span): Promise<Execu
     return step.paused;
   }
   // N6: the approved transfer completed its switch - continue the run as the target.
-  if ('handoff' in step) return continueHandoff(ctx, step.handoff, span, checkpointStore, businessState);
+  if ('handoff' in step) return continueHandoff(ctx, step.handoff, span, checkpointStore, businessState, resumed.lease);
   // LOU-Y1: a call whose sub-agent paused already has a placeholder result.
   if ('message' in step) replaceToolResult(messages, step.message);
   // Eve TOOLS-F12: a sub-agent of the step paused too - the run pauses on it now.
@@ -334,6 +364,7 @@ async function continueInRunSpan(resumed: ResumedRun, span: Span): Promise<Execu
       staleBusinessState,
       usage: ctx.usage,
       agentSpanId: span.id,
+      lease: resumed.lease,
     })
   );
 }
@@ -357,11 +388,13 @@ function continueHandoff(
   handoff: HandoffSwitch,
   span: Span,
   checkpointStore: CheckpointStore | undefined,
-  businessState: unknown
+  businessState: unknown,
+  lease: RunLease | undefined
 ): Promise<ExecutionResult> {
   const { snapshot, executeOptions } = ctx;
-  return keepTurnOnFailure(snapshot, handoff.messages, checkpointStore, businessState, ctx.usage, () =>
+  return keepTurnOnFailure(snapshot, handoff.messages, checkpointStore, businessState, ctx.usage, async () =>
     AgentExecutor.execute({
+      ...(await saveDecidedTurn(snapshot, handoff.messages, checkpointStore, businessState, ctx.usage, lease)),
       ...handoff.options,
       agentSpanId: span.id,
       input: handoff.messages,
@@ -1086,48 +1119,121 @@ async function approvedCodeMode(ctx: ResumeContext, scope: ToolCallScope): Promi
 }
 
 /**
- * Defense in depth: a checkpoint under this sessionId (if any) was
- * written before this pause and is therefore stale by construction -
- * clear it now so it can't be loaded by this resume or by some later,
- * unrelated execute() call against the same sessionId+checkpointStore.
+ * Takes hold of the paused run before the decided call runs, when the run is
+ * checkpointed (`snapshot.sessionId` + `checkpointStore`):
  *
- * Doing this BEFORE the AgentExecutor.execute() call in
- * continueResumedRun() (rather than just relying on
- * `skipSystemPromptInjection`/`initialSteps` to make a rehydration
- * "harmless") is what makes it safe to pass sessionId and checkpointStore
- * through to that call: its rehydration branch only triggers when
- * `checkpointStore.load(sessionId)` finds something, and by the time it
- * runs (synchronously after this delete resolves, with no intervening
- * await back to caller code) there is nothing left to find.
+ * - takes its run lease (see `runLease.ts`), so no other process resumes the
+ *   checkpoint while the decided call runs; on `LOUSHO_SESSION_BUSY` the claimed
+ *   record is put back, so the approval stays decidable;
+ * - refuses a stale approval with `LOUSHO_APPROVAL_ORPHANED` (the record stays
+ *   consumed): the checkpoint must still be the pause this approval belongs to.
+ *   A pause whose checkpoint was deleted (`checkpoints.delete(id)`,
+ *   `discardPending()`, a prune) or replaced by a newer run under the same id
+ *   would otherwise come back and overwrite that newer conversation;
+ * - and, instead of deleting the paused checkpoint before the call runs (a
+ *   crash then lost the whole turn while the call had run), re-saves it as
+ *   `'in-progress'` with the approved calls in `startedToolCallIds`. A crash
+ *   before their results are saved leaves a run that resumes without running
+ *   them again: each gets an "interrupted, may or may not have taken effect"
+ *   result (approved calls run at most once, docs/durable-execution.md).
  *
- * Accepted race: if some OTHER process/caller writes a new checkpoint
- * under this exact sessionId in the narrow window between this delete
- * and the execute() call's load(), that checkpoint would be picked up
- * instead of the freshly-reconstructed messages. This mirrors how
- * ApprovalStore.resolve() is documented as delete-on-read without
- * an additional distributed lock (see executeApprovedTool()'s catch block) -
- * this codebase accepts same-sessionId-concurrent-caller races as an
- * existing caller-responsibility invariant (a sessionId identifies a single
- * logical run) rather than adding cross-process locking to CheckpointStore.
- *
- * LOU-T1: reads the pre-pause checkpoint off before deleting it (and
- * returns it), so its businessState can be carried forward into the
- * resumed run's own checkpoint-writes (see `businessState:` in
- * continueResumedRun()), and - M10c - so it can be put back when a paused
- * sub-agent refuses the resume. This load is purely a data read - it does
- * not touch, and has no bearing on, the rehydration-safety delete
- * immediately after it.
+ * Returns the pre-pause checkpoint (LOU-T1: its businessState is carried into
+ * the resumed run; M10c: it is put back when a paused sub-agent refuses the
+ * resume) and the lease, which the caller releases.
  */
-async function clearStaleCheckpoint(
-  sessionId: string | undefined,
-  checkpointStore: CheckpointStore | undefined
-): Promise<Checkpoint | null | undefined> {
-  if (!sessionId || !checkpointStore) {
-    return undefined;
+async function holdPausedRun(
+  record: ResolvedApproval,
+  decided: ApprovalDecision,
+  approvalStore: ApprovalStore,
+  checkpointStore: CheckpointStore | undefined,
+  putBack: ResolvedApproval,
+  businessState: unknown
+): Promise<{ lease?: RunLease; staleCheckpoint: Checkpoint | null | undefined }> {
+  const { snapshot, pending } = record;
+  const sessionId = snapshot.sessionId;
+  if (!sessionId || !checkpointStore) return { staleCheckpoint: undefined };
+  let lease: RunLease | undefined;
+  try {
+    lease = await acquireRunLease(checkpointStore, sessionId);
+  } catch (error) {
+    await approvalStore.save(putBack.pending, putBack.snapshot);
+    throw error;
   }
-  const staleCheckpoint: Checkpoint | null = await checkpointStore.load(sessionId);
-  await checkpointStore.delete(sessionId);
-  return staleCheckpoint;
+  try {
+    const staleCheckpoint = await checkpointStore.load(sessionId);
+    const ids = new Set([pending.id, ...(snapshot.approvalGroup ?? []).map((member) => member.pending.id)]);
+    const pausedHere = staleCheckpoint?.status === 'awaiting-approval' && pausedApprovalIds(staleCheckpoint).some((id) => ids.has(id));
+    if (!pausedHere) {
+      throw new SDKError(
+        `Approval '${pending.id}' belongs to the run checkpointed as '${sessionId}', but that run no longer waits on it ` +
+          `(its checkpoint was ${staleCheckpoint ? 'replaced by a newer run' : 'deleted'}), so it cannot be continued and the tool was not run. ` +
+          'The approval is consumed.',
+        'LOUSHO_APPROVAL_ORPHANED'
+      );
+    }
+    const started = snapshot.subagent ? [] : approvedCallIds(record, decided);
+    const marked: Checkpoint = {
+      ...staleCheckpoint,
+      status: 'in-progress',
+      // LOU-T1: an explicit businessState of the resuming call wins, as on the continuation's own saves.
+      ...(businessState !== undefined && { businessState }),
+      ...(started.length > 0 && { startedToolCallIds: started }),
+    };
+    delete marked.approvalId;
+    delete marked.approvalIds;
+    delete marked.approvalKind;
+    await checkpointStore.save(sessionId, marked);
+    return { lease, staleCheckpoint };
+  } catch (error) {
+    await lease?.release();
+    throw error;
+  }
+}
+
+/** The tool call ids of the calls a decision approves: the decided call, or a decided group's approved calls. */
+function approvedCallIds({ pending, snapshot }: ResolvedApproval, decided: ApprovalDecision): string[] {
+  const group = snapshot.approvalGroup;
+  if (group && group.length > 1) return group.filter((member) => member.decision?.approved).map((member) => member.pending.toolCallId);
+  return decided.approved ? [pending.toolCallId] : [];
+}
+
+/**
+ * Saves the transcript the continuation starts from (the decided call's result
+ * included, no call marked as started) as the run's `'in-progress'` checkpoint
+ * before the continuation runs, so a crash at any point after the decided call
+ * resumes from its result. Returns the internal options that make the
+ * continuation start from its input and overwrite this checkpoint (rather than
+ * continue it and double the transcript), under the lease the resume holds.
+ */
+async function saveDecidedTurn(
+  snapshot: ExecutionSnapshot,
+  messages: Message[],
+  checkpointStore: CheckpointStore | undefined,
+  businessState: unknown,
+  usage: RunUsage,
+  lease: RunLease | undefined
+): Promise<RunLeaseOptions> {
+  if (!snapshot.sessionId || !checkpointStore) return {};
+  await checkpointStore.save(snapshot.sessionId, turnCheckpoint(snapshot, messages, businessState, usage));
+  return { [REPLACES_CHECKPOINT]: true, ...(lease && { [HELD_RUN_LEASE]: lease }) };
+}
+
+/** The `'in-progress'` checkpoint of a resumed run whose transcript is `messages`. */
+function turnCheckpoint(snapshot: ExecutionSnapshot, messages: Message[], businessState: unknown, usage: RunUsage): Checkpoint {
+  return {
+    agentId: snapshot.agent.id || '',
+    sessionId: snapshot.sessionId as string,
+    stepIndex: snapshot.steps,
+    messages,
+    toolCalls: [],
+    usage: structuredClone(usage),
+    businessState,
+    status: 'in-progress',
+    ...(snapshot.agentFingerprint && { agentFingerprint: snapshot.agentFingerprint }),
+    ...(snapshot.agent.metadata?.[RUN_CONFIG_KEY] !== undefined && { runConfig: snapshot.agent.metadata[RUN_CONFIG_KEY] }),
+    ...(snapshot.principal && { principal: snapshot.principal }),
+    ...(snapshot.metadata !== undefined && { metadata: snapshot.metadata }),
+  };
 }
 
 /**
@@ -1161,20 +1267,7 @@ async function keepTurnOnFailure(
   } catch (error) {
     try {
       if (snapshot.sessionId && checkpointStore && !(await checkpointStore.load(snapshot.sessionId))) {
-        await checkpointStore.save(snapshot.sessionId, {
-          agentId: snapshot.agent.id || '',
-          sessionId: snapshot.sessionId,
-          stepIndex: snapshot.steps,
-          messages,
-          toolCalls: [],
-          usage: structuredClone(usage),
-          businessState,
-          status: 'in-progress',
-          ...(snapshot.agentFingerprint && { agentFingerprint: snapshot.agentFingerprint }),
-          ...(snapshot.agent.metadata?.[RUN_CONFIG_KEY] !== undefined && { runConfig: snapshot.agent.metadata[RUN_CONFIG_KEY] }),
-          ...(snapshot.principal && { principal: snapshot.principal }),
-          ...(snapshot.metadata !== undefined && { metadata: snapshot.metadata }),
-        });
+        await checkpointStore.save(snapshot.sessionId, turnCheckpoint(snapshot, messages, businessState, usage));
       }
     } catch {
       // A best-effort preserve: never mask the continuation's own error.
@@ -1441,7 +1534,7 @@ function partialsOf(pending: PendingApproval, executeOptions: ResumeExecuteOptio
  * all, this is `undefined` and AgentExecutor.execute() behaves exactly as
  * it always has for callers that don't use durable execution.
  */
-function continueResumedRun(
+async function continueResumedRun(
   snapshot: ExecutionSnapshot,
   messages: Message[],
   run: {
@@ -1453,10 +1546,12 @@ function continueResumedRun(
     staleBusinessState: unknown;
     usage: RunUsage;
     agentSpanId: string;
+    lease: RunLease | undefined;
   }
 ): Promise<ExecutionResult> {
   const { executeOptions } = run;
   return AgentExecutor.execute({
+    ...(await saveDecidedTurn(snapshot, messages, run.checkpointStore, run.executeOptions.businessState !== undefined ? run.executeOptions.businessState : run.staleBusinessState, run.usage, run.lease)),
     ...executeOptions,
     agentSpanId: run.agentSpanId,
     agent: snapshot.agent,

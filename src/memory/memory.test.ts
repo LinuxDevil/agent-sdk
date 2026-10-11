@@ -253,7 +253,7 @@ describe('createAgent({ memory })', () => {
     expect(systemOf(model.lastCall)).not.toContain('<memory');
   });
 
-  it('keeps the recalled block, without memory tools, in a run continued after an approval', async () => {
+  it('keeps the recalled block and the memory tools in a run continued after an approval', async () => {
     const notes = defineMemory({ name: 'notes', scope: 'global', provider: await seeded(['likes tea']) });
     const send = defineTool({ name: 'send', description: 's', input: z.object({}), needsApproval: true, execute: () => 'sent' });
     const model = mockModel([{ toolCalls: [{ name: 'send' }] }, 'done']);
@@ -262,9 +262,9 @@ describe('createAgent({ memory })', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
     expect(systemOf(model.lastCall)).toContain('- likes tea');
-    expect(toolsOf(model.lastCall)).toEqual(['send']);
-    // The per-run memory tools the resumed run does not rebind are `transient`:
-    // they are not agent identity, so their absence reports no drift.
+    expect(systemOf(model.lastCall).match(/<memory/g)).toHaveLength(1);
+    // The continued run binds the memory tools again, to the scope it paused with.
+    expect(toolsOf(model.lastCall)).toEqual(['send', 'remember_notes', 'recall_notes']);
     expect(warn).not.toHaveBeenCalled();
     warn.mockRestore();
   });
