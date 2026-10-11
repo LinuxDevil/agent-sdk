@@ -351,7 +351,8 @@ export class SubprocessSandbox implements SandboxAdapter {
         throw err;
       }
       await new Promise<void>((resolve, reject) => {
-        docker.pull(this.image, (pullErr: Error | null, stream?: NodeJS.ReadableStream) => {
+        // With a callback, dockerode reports through it; the returned promise is not used.
+        void docker.pull(this.image, (pullErr: Error | null, stream?: NodeJS.ReadableStream) => {
           if (pullErr || !stream) {
             reject(pullErr ?? new Error(`SubprocessSandbox: failed to start pulling image '${this.image}'`));
             return;

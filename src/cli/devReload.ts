@@ -276,8 +276,9 @@ export async function startReloader(target: DevTarget, options: DevOptions = {})
       const next = await loadDevTarget(target, options);
       if (closed) return void (await next.agent.close());
       const previous = state.agent;
-      // The old schedules stop before the new ones start, so a reload never leaves two sets of timers.
-      schedules?.stop();
+      // The old schedules stop (their timers synchronously; a run in flight finishes on its own) before the new
+      // ones start, so a reload never leaves two sets of timers.
+      void schedules?.stop();
       schedules = activate(state, next, options);
       state.reloads += 1;
       delete state.error;
@@ -304,7 +305,7 @@ export async function startReloader(target: DevTarget, options: DevOptions = {})
       clearTimeout(timer);
       stop();
       await running;
-      schedules?.stop();
+      await schedules?.stop();
       await state.agent.close().catch(() => undefined);
     },
   };
