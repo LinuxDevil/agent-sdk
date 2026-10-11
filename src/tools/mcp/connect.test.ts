@@ -51,6 +51,21 @@ describe('connectMcp (LOU-Z4)', () => {
     expect(mcp.status()).toEqual({ files: 'connected' });
   });
 
+  it("a call that fails with the SDK's 'Not connected' reconnects and is sent once more", async () => {
+    const log = join(mkdtempSync(join(tmpdir(), 'lousho-mcp-')), 'starts.log');
+    closers.push(async () => rmSync(dirname(log), { recursive: true, force: true }));
+    const mcp = await connect({ files: { ...stdio(), env: { FIXTURE_START_LOG: log } } });
+    const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
+    const spy = vi.spyOn(Client.prototype, 'callTool').mockRejectedValueOnce(new Error('Not connected'));
+    try {
+      await expect(callEcho(mcp, 'files__echo', 'again')).resolves.toMatchObject({ text: 'again' });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(mcp.status()).toEqual({ files: 'connected' });
+    expect(readFileSync(log, 'utf8').match(/start/g)).toHaveLength(2);
+  });
+
   it('with lazy: false a tool call after close() fails', async () => {
     const mcp = await connect({ files: stdio() }, { lazy: false });
     await mcp.close();
