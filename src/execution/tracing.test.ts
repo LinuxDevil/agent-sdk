@@ -186,3 +186,47 @@ describe('withSpan cost rollup (LOU-D48)', () => {
     expect(ends[ends.length - 1].attributes['lousho.cost_usd']).toBe(2.5);
   });
 });
+
+describe('withSpan with a throwing exporter', () => {
+  it('runs fn and returns its result when onSpanStart/onSpanEnd throw, warning once', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const exporter: TraceExporter = {
+      onSpanStart: () => { throw new Error('exporter broke'); },
+      onSpanEnd: () => { throw new Error('exporter broke'); },
+    };
+    try {
+      await expect(withSpan(exporter, 'a', {}, async () => 1)).resolves.toBe(1);
+      await expect(withSpan(exporter, 'b', {}, async () => 2)).resolves.toBe(2);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain('exporter broke');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('still rethrows the error from fn, not the exporter error', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const exporter: TraceExporter = { onSpanStart: () => {}, onSpanEnd: () => { throw new Error('exporter broke'); } };
+    try {
+      await expect(withSpan(exporter, 'a', {}, async () => { throw new Error('work failed'); })).rejects.toThrow('work failed');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('does not fail an agent run', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { createAgent } = await import('../createAgent');
+    const { mockModel } = await import('../testing');
+    try {
+      const agent = createAgent({
+        provider: mockModel(['hi']),
+        exporter: { onSpanStart() { throw new Error('exporter broke'); }, onSpanEnd() {} },
+      });
+      const result = await agent.send('x');
+      expect(result.text).toBe('hi');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});

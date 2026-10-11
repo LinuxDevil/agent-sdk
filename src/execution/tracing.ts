@@ -158,7 +158,9 @@ export interface TraceExporter {
  * notifying `exporter` (if provided) on start and end.
  *
  * - When no exporter is supplied, `fn` still runs normally and withSpan()
- *   never throws on account of the missing exporter.
+ *   never throws on account of the missing exporter. An exporter whose
+ *   `onSpanStart`/`onSpanEnd` throws never fails `fn` either: the error is
+ *   reported once per exporter with `console.warn` and swallowed.
  * - `onSpanEnd` always fires via a `finally` block, even when `fn` throws.
  *   On error, an `error` attribute (the error's message, or the error
  *   itself when it's not an Error) is added to the span's attributes
@@ -196,7 +198,7 @@ export async function withSpan<T>(
 
   const own: UsageRollup = { costUsd: 0, priced: false, unpriced: false, estimated: false };
   track(span, own);
-  exporter?.onSpanStart(span);
+  notifyExporter(exporter, 'onSpanStart', span);
 
   try {
     return await fn(span);
@@ -208,6 +210,27 @@ export async function withSpan<T>(
     applyRollup(span, own);
     rollUpUsage(span, own);
     untrack(span.id);
-    exporter?.onSpanEnd(span);
+    notifyExporter(exporter, 'onSpanEnd', span);
+  }
+}
+
+/** Exporters that already threw once; later throws from them are not reported again. */
+const warnedExporters = new WeakSet<TraceExporter>();
+
+/**
+ * Calls an exporter hook, never letting it fail the traced work: a throwing
+ * exporter (a broken observability backend) is reported once with
+ * `console.warn` and otherwise ignored, like the OpenTelemetry SDK does.
+ */
+function notifyExporter(exporter: TraceExporter | undefined, hook: 'onSpanStart' | 'onSpanEnd', span: Span): void {
+  if (!exporter) return;
+  try {
+    exporter[hook](span);
+  } catch (error) {
+    if (warnedExporters.has(exporter)) return;
+    warnedExporters.add(exporter);
+    console.warn(
+      `[lousho] A trace exporter's ${hook} threw (${error instanceof Error ? error.message : String(error)}); the run continues. Further errors from this exporter are not reported.`
+    );
   }
 }
