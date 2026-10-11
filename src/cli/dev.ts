@@ -184,12 +184,8 @@ export async function startDevServer(
     await reloader.close();
     throw error;
   }
-  if (!isLoopbackHost(host)) {
-    console.warn(
-      `[lousho dev] warning: listening on ${host} with no auth and raw error messages: anyone who can reach this port can use the agent ` +
-        '(and its tools, keys and files). Bind 127.0.0.1 unless you trust the network.'
-    );
-  }
+  const warning = exposureWarning(host, port);
+  if (warning) console.warn(warning);
 
   return {
     server,
@@ -248,13 +244,13 @@ export function parseDevArgs(rest: string[]): DevCliArgs {
   return { path: positionals[0], port: portValue(SPEC, values.port, 3737), host: stringValue(values.host) ?? '127.0.0.1', ...(allowedHosts && { allowedHosts }), noSchedules, traces };
 }
 
-/** Hosts that only this machine can reach: no warning for these. */
-const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
-
 /** The warning `lousho dev --host <h>` prints for a host other machines can reach (the dev server has no auth). */
 export function exposureWarning(host: string, port: number): string | undefined {
-  if (LOCAL_HOSTS.has(host)) return undefined;
-  return `lousho dev: warning: the dev server has no authentication, so anyone who can reach ${host}:${port} can use this agent and its tools.`;
+  if (isLoopbackHost(host)) return undefined;
+  return (
+    `lousho dev: warning: the dev server has no authentication and shows raw error messages, so anyone who can reach ${host}:${port} ` +
+    'can use this agent and its tools, keys and files. Bind 127.0.0.1 unless you trust the network.'
+  );
 }
 
 /** Runs `lousho dev` with the arguments after `dev`; resolves with the exit code once the server listens. */
@@ -273,8 +269,6 @@ export async function runDev(rest: string[]): Promise<number> {
     }
     const handle = await startDevServer(path.resolve(args.path), args.port, args.host, options);
     console.log(`lousho dev: listening on http://${args.host}:${handle.port}`);
-    const warning = exposureWarning(args.host, handle.port);
-    if (warning) console.warn(warning);
     return 0;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

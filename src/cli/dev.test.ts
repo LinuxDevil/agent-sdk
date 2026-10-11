@@ -170,11 +170,11 @@ describe('startDevServer', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-dev-'));
     handle = await startDevServer(writeConfig(dir), 0, '0.0.0.0');
-    expect(warn.mock.calls.map((call) => String(call[0])).join('\n')).toMatch(/listening on 0\.0\.0\.0 with no auth/);
+    expect(warn.mock.calls.map((call) => String(call[0])).join('\n')).toMatch(/no authentication.*anyone who can reach 0\.0\.0\.0:/);
     await handle.close();
     warn.mockClear();
     handle = await startDevServer(writeConfig(dir), 0);
-    expect(warn.mock.calls.map((call) => String(call[0])).join('\n')).not.toMatch(/no auth/);
+    expect(warn.mock.calls.map((call) => String(call[0])).join('\n')).not.toMatch(/no authentication/);
     warn.mockRestore();
   });
 
