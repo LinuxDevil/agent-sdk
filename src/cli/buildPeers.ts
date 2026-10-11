@@ -26,7 +26,7 @@ function readData(file: string): Record<string, unknown> | undefined {
  * agent.json/agent.yaml (`provider`, or the prefix of `model`) names. A code
  * config (agent.ts) is not run for this, so it gives undefined.
  */
-export function agentProviderName(agentPath: string): string | undefined {
+function agentProviderName(agentPath: string): string | undefined {
   let stat: fs.Stats;
   try {
     stat = fs.statSync(agentPath);
