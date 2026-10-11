@@ -153,6 +153,12 @@ describe('a remote stream that ends before run.done', () => {
     expect(h.state().messages[1].text).toBe('hel');
   });
 
+  it("keeps the server's error event when the stream then ends without run.done", async () => {
+    const h = remote([frame({ type: 'run.start', agentName: 'a' }), frame({ type: 'error', error: { name: 'ProviderError', message: 'real server error' } })]);
+    await h.runner.send('hi');
+    expect(h.state()).toMatchObject({ status: 'error', error: { name: 'ProviderError', message: 'real server error' } });
+  });
+
   it("does not count a sub-agent's run.done as the end of the run", async () => {
     const h = remote([frame({ type: 'run.done', finishReason: 'stop', text: '', subagent: { name: 's', depth: 1, toolCallId: 't' } })]);
     await h.runner.send('hi');

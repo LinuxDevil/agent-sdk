@@ -126,20 +126,25 @@ export function createAgentRunner(host: AgentRunnerHost): AgentCommands & { rese
    * Runs `task` as the current run; once another run replaces it, its events are dropped.
    * A stream that ends cleanly but before the run settled (no top-level `run.done`, no
    * pause for approval: a proxy timeout, a server restart, a truncated body) ends the
-   * run with a `StreamEndedError` instead of leaving it `streaming` forever.
+   * run with a `StreamEndedError` instead of leaving it `streaming` forever, or with the
+   * run's own `error` event when one came before the stream ended.
    */
   async function run(task: (emit: Emit, signal: AbortSignal) => Promise<void>): Promise<void> {
     controller?.abort();
     const mine = (controller = new AbortController());
     let settled = false;
+    let lastError: AgentEventError | undefined;
     const emit: Emit = (action) => {
       if (controller !== mine) return;
       if (settlesRun(action)) settled = true;
+      if (action.type === 'error' && !action.subagent) lastError = action.error;
       host.dispatch(action);
     };
     try {
       await task(emit, mine.signal);
-      if (!settled && !mine.signal.aborted) emit({ type: 'ui.error', error: { name: 'StreamEndedError', message: 'The event stream ended before the run finished (no run.done event).' } });
+      if (!settled && !mine.signal.aborted) {
+        emit({ type: 'ui.error', error: lastError ?? { name: 'StreamEndedError', message: 'The event stream ended before the run finished (no run.done event).' } });
+      }
     } catch (error) {
       if (!mine.signal.aborted) emit({ type: 'ui.error', error: toEventError(error) });
     } finally {
