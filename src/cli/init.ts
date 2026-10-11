@@ -13,6 +13,7 @@ import { findSdkRoot } from '../deploy/bundle';
 import { detectProviderFromEnv, listProviders } from '../providers/providerSpec';
 import {
   INIT_USAGE,
+  InitUsageError,
   PACKAGE_MANAGERS,
   PROVIDER_NAMES,
   TEMPLATES,
@@ -24,6 +25,7 @@ import {
   type Template,
 } from './init/options';
 import { askMissing, type AskInput, type InitAnswers } from './init/prompts';
+import { USAGE_EXIT_CODE } from './args';
 import { MissingPeerDependencyError } from '../providers/optionalPeer';
 import { assertWritable, packageNameFor, writeFiles } from './init/scaffold';
 import { resolveSdkDependency, type SdkManifest } from './init/sdkDependency';
@@ -181,13 +183,20 @@ async function scaffold(options: InitOptions, environment: InitEnvironment): Pro
  * the process exit code; usage errors are printed, not thrown.
  */
 export async function runInit(argv: string[], environment: InitEnvironment = realInitEnvironment()): Promise<number> {
+  let options: InitOptions;
   try {
-    const options = parseInitArgs(argv, environment.env);
-    if (options.help) {
-      environment.write(`${INIT_USAGE}\n`);
-      return 0;
-    }
-    validateFlags(options);
+    options = parseInitArgs(argv, environment.env);
+    if (!options.help) validateFlags(options);
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+    environment.writeError(`${error.message}\n`);
+    return error instanceof InitUsageError ? USAGE_EXIT_CODE : 1;
+  }
+  if (options.help) {
+    environment.write(`${INIT_USAGE}\n`);
+    return 0;
+  }
+  try {
     return await scaffold(options, environment);
   } catch (error) {
     if (!(error instanceof Error)) throw error;

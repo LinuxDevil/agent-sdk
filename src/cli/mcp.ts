@@ -7,7 +7,7 @@ import * as path from 'node:path';
 import { loadSpec } from '../spec/loadSpec';
 import { specToAgent } from '../spec/specToAgent';
 import { detectTarget, loadTarget } from './devReload';
-import { parseCommand, portValue, stringValue, usageError, type CommandSpec } from './args';
+import { exitCodeFor, parseCommand, portValue, stringValue, usageError, type CommandSpec } from './args';
 import type { SimpleAgent } from '../createAgent';
 import { serveMcp, type ServeMcpHandle } from '../tools/mcp/server/serveMcp';
 
@@ -85,6 +85,6 @@ export async function runMcp(rest: string[]): Promise<number> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(message.startsWith('lousho') ? message : `lousho mcp: ${message}`);
-    return 1;
+    return exitCodeFor(error);
   }
 }

@@ -10,7 +10,7 @@ const USAGE = [
   'Commands:',
   '  lousho init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force] [--sdk-path <dir|tgz>]',
   '      Scaffold a new agent project (what `npm create lousho-agent` runs).',
-  '  lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--no-schedules] [--traces[=dir]]',
+  '  lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--allowed-hosts a,b] [--no-schedules] [--traces[=dir]]',
   '      Serve an agent with a local chat UI and HTTP API; reloads on file changes.',
   '  lousho chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>] [--traces[=dir]]',
   '      Chat with an agent in the terminal.',
@@ -33,7 +33,8 @@ const USAGE = [
   '  lousho --version',
   '      Print the package version.',
   '',
-  'The agent commands (dev, chat, acp, mcp, doctor) load ./.env when it exists; variables already set win.',
+  'The agent commands (dev, chat, acp, mcp, doctor, eval, build) load ./.env when it exists; variables already set win.',
+  'Exit codes: 0 success, 1 failure, 2 usage error (unknown command, bad flag or argument).',
 ].join('\n');
 
 /**
@@ -57,7 +58,7 @@ const COMMANDS = new Map([
   ['acp', { module: 'acp', run: 'runAcp', env: true }],
   // Installs a tool, skill, channel, schedule or memory slot from a JSON registry (LOU-D50); see src/cli/add.ts.
   ['add', { module: 'add', run: 'runAdd' }],
-  ['build', { module: 'build', run: 'runBuild' }],
+  ['build', { module: 'build', run: 'runBuild', env: true }],
   // Default 'auto': prod (single built server+UI) when apps/agent-forge has
   // been built (`npm run build:studio`), dev (Vite + tsx, two processes)
   // otherwise. --prod/--dev force one or the other - see src/cli/studio.ts.
@@ -67,7 +68,7 @@ const COMMANDS = new Map([
   ['mcp', { module: 'mcp', run: 'runMcp', env: true }],
   ['doctor', { module: 'doctor', run: 'runDoctorCommand', env: true }],
   // Runs eval files under the project's vitest; the exit code is the verdict (see src/cli/eval.ts).
-  ['eval', { module: 'eval', run: 'runEval' }],
+  ['eval', { module: 'eval', run: 'runEval', env: true }],
   // Lists the runs fileTraceExporter() saved, or prints one as a span tree (M5a); see src/cli/traces.ts.
   ['traces', { module: 'traces', run: 'runTraces' }],
 ]);
@@ -100,13 +101,33 @@ const BUILTINS = new Map([
   ['version', runVersion],
 ]);
 
+/** The exit code for a usage error, as every command returns it (src/cli/args.ts USAGE_EXIT_CODE). */
+const USAGE_EXIT_CODE = 2;
+
 function unknownCommand(command) {
   console.error(`lousho: unknown command '${command ?? ''}'.\n${USAGE}`);
-  process.exitCode = 1;
+  process.exitCode = USAGE_EXIT_CODE;
+}
+
+/**
+ * Drops Node's MODULE_TYPELESS_PACKAGE_JSON warning: the CLI imports a
+ * `tools/*.ts` file as an ES module even in a project whose package.json has
+ * no "type": "module", and Node would print that warning on every load and
+ * reload. Every other warning is emitted as usual.
+ */
+function quietTypelessPackageWarning() {
+  const emitWarning = process.emitWarning;
+  process.emitWarning = function (warning, ...rest) {
+    const options = rest[0];
+    const code = typeof options === 'object' && options !== null ? options.code : rest[1];
+    if (code === 'MODULE_TYPELESS_PACKAGE_JSON') return;
+    return emitWarning.call(process, warning, ...rest);
+  };
 }
 
 async function runCommand(entry, rest) {
   if (entry.env) loadDotEnv();
+  quietTypelessPackageWarning();
   const mod = await load(entry.module);
   process.exitCode = await mod[entry.run](rest);
 }
@@ -119,4 +140,8 @@ async function main() {
   return entry ? runCommand(entry, rest) : unknownCommand(command);
 }
 
-main();
+main().catch((error) => {
+  // A command reports its own errors; this is a failure to load one (a broken install, a missing build).
+  console.error(`lousho: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`);
+  process.exitCode = 1;
+});

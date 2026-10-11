@@ -121,6 +121,9 @@ describe('runInit --yes', () => {
     await runInit(['local', '--yes', '--no-install', '--no-git', '--sdk-path', tarball], harness().environment);
     expect(JSON.parse(read('local', 'package.json')).dependencies['@lousho/build-ai-agent']).toBe('file:./sdk-9.9.9.tgz');
     expect(fs.existsSync(path.join(root, 'local', 'sdk-9.9.9.tgz'))).toBe(true);
+    // The vendored tarball is a local build, not source: it is git-ignored.
+    expect(read('local', '.gitignore')).toMatch(/^sdk-9\.9\.9\.tgz$/m);
+    expect(read('plain', '.gitignore')).not.toMatch(/tgz/);
   });
 
   it('derives a valid package name from the directory', async () => {
@@ -163,7 +166,7 @@ describe('runInit guards', () => {
     [['--wat'], /--wat/],
   ])('rejects bad flags %j with a clear message', async (flags, message) => {
     const h = harness();
-    expect(await runInit(['x', '--yes', ...flags], h.environment)).toBe(1);
+    expect(await runInit(['x', '--yes', ...flags], h.environment)).toBe(2);
     expect(h.err.join('')).toMatch(message);
     expect(fs.existsSync(path.join(root, 'x'))).toBe(false);
   });

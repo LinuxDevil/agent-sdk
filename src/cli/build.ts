@@ -17,7 +17,9 @@ import {
   registerAdapter,
   registerBuiltInAdapters,
 } from '../deploy';
-import { parseCommand, stringValue, type CommandSpec } from './args';
+import { findSdkRoot } from '../deploy/bundle';
+import { USAGE_EXIT_CODE, exitCodeFor, parseCommand, stringValue, type CommandSpec } from './args';
+import { missingProviderPeerWarning } from './buildPeers';
 
 export interface BuildArgs {
   target?: string;
@@ -87,6 +89,8 @@ if (process.env.LOUSHO_BUILD_STUB_ADAPTER === '1') registerAdapter('stub', stubA
 export interface BuildIO {
   stdout: (line: string) => void;
   stderr: (line: string) => void;
+  /** Where the agent's provider package is looked up (default: the SDK's own folder, as the bundler does). */
+  resolveFrom?: string;
 }
 
 const defaultIO: BuildIO = {
@@ -96,7 +100,8 @@ const defaultIO: BuildIO = {
 
 /**
  * Runs `lousho build` for the given argv (everything after `build`) and
- * resolves with the process exit code (0 on success, 1 on any error).
+ * resolves with the process exit code (0 on success, 2 for a usage error, 1 for
+ * any other error).
  * Never throws - adapter errors are reported on stderr.
  */
 export async function runBuild(argv: string[], io: BuildIO = defaultIO): Promise<number> {
@@ -105,7 +110,7 @@ export async function runBuild(argv: string[], io: BuildIO = defaultIO): Promise
     args = parseBuildArgs(argv);
   } catch (error) {
     io.stderr(`Error: ${(error as Error).message}`);
-    return 1;
+    return exitCodeFor(error);
   }
   if (args.help) {
     io.stdout(HELP);
@@ -114,7 +119,7 @@ export async function runBuild(argv: string[], io: BuildIO = defaultIO): Promise
 
   if (!args.target) {
     io.stderr(`Error: --target is required. ${USAGE}`);
-    return 1;
+    return USAGE_EXIT_CODE;
   }
 
   const adapter = getAdapter(args.target);
@@ -122,7 +127,7 @@ export async function runBuild(argv: string[], io: BuildIO = defaultIO): Promise
     io.stderr(
       `Error: unknown target "${args.target}". Known targets: ${listAdapters().join(', ')}`
     );
-    return 1;
+    return USAGE_EXIT_CODE;
   }
 
   try {
@@ -141,6 +146,8 @@ async function driveAdapter(adapter: DeploymentAdapter, args: BuildArgs, target:
   if (args.out && isNonEmptyDir(outDir)) {
     io.stderr(`Warning: --out ${args.out} is not empty; files the build writes replace the ones there.`);
   }
+  const peerWarning = agentPath ? missingProviderPeerWarning(agentPath, io.resolveFrom ?? findSdkRoot()) : undefined;
+  if (peerWarning) io.stderr(peerWarning);
   await adapter.scaffold(agentPath, outDir);
   await adapter.build(outDir);
   const shown = path.relative(process.cwd(), outDir) || '.';

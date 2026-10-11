@@ -8,7 +8,7 @@ import * as readline from 'node:readline';
 import type { Readable, Writable } from 'node:stream';
 import { serveAcp } from '../acp/serveAcp';
 import type { CreateAgentConfig } from '../createAgent';
-import { parseCommand, stringValue, usageError, type CommandSpec } from './args';
+import { exitCodeFor, parseCommand, stringValue, usageError, type CommandSpec } from './args';
 import { buildAgent } from './chat';
 
 const USAGE = 'Usage: lousho acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]';
@@ -71,6 +71,6 @@ export async function runAcp(args: string[], io: AcpIo = { stdin: process.stdin,
     return 0;
   } catch (error) {
     io.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-    return 1;
+    return exitCodeFor(error);
   }
 }

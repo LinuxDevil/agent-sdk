@@ -63,19 +63,46 @@ describe('runBuild', () => {
     expect(io.out.join('\n')).not.toContain('stub');
   });
 
-  it('exits non-zero with "unknown target" on stderr for an unregistered target', async () => {
+  it('exits 2 (usage error) with "unknown target" on stderr for an unregistered target', async () => {
     const io = captureIO();
     const code = await runBuild(['--target=doesnotexist'], io);
 
-    expect(code).not.toBe(0);
+    expect(code).toBe(2);
     expect(io.err.join('\n')).toContain('Error: unknown target "doesnotexist"');
     expect(stubAdapterCalls).toEqual([]);
   });
 
-  it('exits non-zero when --target is missing', async () => {
+  it('exits 2 (usage error) when --target is missing or a flag is unknown', async () => {
     const io = captureIO();
-    expect(await runBuild([], io)).toBe(1);
+    expect(await runBuild([], io)).toBe(2);
     expect(io.err.join('\n')).toContain('--target is required');
+    expect(await runBuild(['--target=stub', '--bogus'], captureIO())).toBe(2);
+  });
+
+  it("warns when the provider package of the spec's provider is not installed, and builds anyway", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-build-peer-'));
+    const spec = path.join(dir, 'agent.yaml');
+    fs.writeFileSync(spec, 'name: a\nprompt: p\nprovider:\n  type: openai\n  model: gpt-4o-mini\n');
+    const io = { ...captureIO(), resolveFrom: dir };
+    expect(await runBuild(['--target=stub', `--agent=${spec}`], io)).toBe(0);
+    expect(io.err.join('\n')).toMatch(/'openai' provider, but its package @ai-sdk\/openai is not installed[\s\S]*npm install @ai-sdk\/openai@/);
+
+    // An agent directory's agent.json model prefix counts too; with the package installed there is no warning.
+    const agentDir = path.join(dir, 'agent');
+    fs.mkdirSync(agentDir);
+    fs.writeFileSync(path.join(agentDir, 'agent.json'), JSON.stringify({ model: 'anthropic/claude-x' }));
+    const missing = { ...captureIO(), resolveFrom: dir };
+    await runBuild(['--target=stub', `--agent=${agentDir}`], missing);
+    expect(missing.err.join('\n')).toContain('@ai-sdk/anthropic is not installed');
+    const installed = { ...captureIO(), resolveFrom: REPO_ROOT };
+    await runBuild(['--target=stub', `--agent=${agentDir}`], installed);
+    expect(installed.err).toEqual([]);
+
+    // The mock provider needs no package.
+    fs.writeFileSync(spec, 'name: a\nprompt: p\nprovider:\n  type: mock\n  model: m\n');
+    const mock = { ...captureIO(), resolveFrom: dir };
+    await runBuild(['--target=stub', `--agent=${spec}`], mock);
+    expect(mock.err).toEqual([]);
   });
 });
 

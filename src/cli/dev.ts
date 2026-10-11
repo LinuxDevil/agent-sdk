@@ -29,7 +29,7 @@ import { fileTraceExporter } from '../traces';
 import { DEFAULT_TRACE_DIR } from '../traces/format';
 import { findSdkRoot } from '../deploy/bundle';
 import { moduleDir } from '../utils/moduleDir';
-import { parseCommand, portValue, stringValue, takeOptionalValueFlag, usageError, type CommandSpec } from './args';
+import { exitCodeFor, parseCommand, portValue, stringValue, takeOptionalValueFlag, usageError, type CommandSpec } from './args';
 import { detectTarget, hasOwnStore, startReloader, type DevOptions, type DevState } from './devReload';
 import { hostHeaderAllowed, isLoopbackHost } from '../server/hostCheck';
 
@@ -208,6 +208,7 @@ The path is a spec file (.yaml/.yml/.json), an agent directory, or a .ts/.js mod
 Options:
   --port N          port to listen on (default 3737)
   --host H          interface to bind (default 127.0.0.1; 0.0.0.0 exposes the agent, unauthenticated, to your network)
+  --allowed-hosts a,b  extra Host header names to accept, comma-separated (e.g. a tunnel or LAN name)
   --no-schedules    do not start an agent directory's schedules
   --traces[=dir]    write local trace files (default .lousho/traces); view them with lousho traces
   -h, --help        show this help`;
@@ -272,6 +273,6 @@ export async function runDev(rest: string[]): Promise<number> {
     return 0;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
-    return 1;
+    return exitCodeFor(error);
   }
 }

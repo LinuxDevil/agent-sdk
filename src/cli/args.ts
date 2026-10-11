@@ -32,9 +32,20 @@ export interface ParsedCommand {
   help: boolean;
 }
 
+/** The exit code of every command for a usage error (bad flag or argument); 1 means the command ran and failed. */
+export const USAGE_EXIT_CODE = 2;
+
 /** The coded usage error every command shares. */
 export function usageError(spec: Pick<CommandSpec, 'command' | 'usage'>, message: string): SDKError {
-  return new SDKError(`lousho ${spec.command}: ${message}`, 'LOUSHO_CONFIG_INVALID', { hint: spec.usage });
+  const error = new SDKError(`lousho ${spec.command}: ${message}`, 'LOUSHO_CONFIG_INVALID', { hint: spec.usage });
+  // A property rather than a class or a WeakSet: the CLI modules are separate bundles.
+  Object.defineProperty(error, 'usage', { value: true, enumerable: false });
+  return error;
+}
+
+/** {@link USAGE_EXIT_CODE} for an error from {@link usageError}, else 1. */
+export function exitCodeFor(error: unknown): number {
+  return (error as { usage?: unknown } | null)?.usage === true ? USAGE_EXIT_CODE : 1;
 }
 
 /** Node's error text, in the CLI's words (`unknown option '--x'.`, `--x needs a value.`). */

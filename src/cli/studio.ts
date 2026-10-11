@@ -48,7 +48,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { parseCommand, portValue, stringValue, usageError, type CommandSpec } from './args';
+import { exitCodeFor, parseCommand, portValue, stringValue, usageError, type CommandSpec } from './args';
 import { ConfigurationError } from '../execution/errors';
 import { findSdkRoot } from '../deploy/bundle';
 
@@ -313,6 +313,6 @@ export async function runStudio(rest: string[]): Promise<number> {
     return 0;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
-    return 1;
+    return exitCodeFor(error);
   }
 }
