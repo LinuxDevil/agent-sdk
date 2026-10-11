@@ -370,10 +370,10 @@ createAgent({ model: 'openai/gpt-4o-mini', subagents: { researcher }, rateLimit:
 | `promptCaching` | `'auto'` (default) marks Anthropic `cache_control` breakpoints for Claude models; `false` marks none. See [Prompt caching](./models-and-cost.md#prompt-caching). |
 | `output` | A schema for the final reply; `send()` / `stream()` resolve with `result.object`. See [Structured output](./structured-output.md). |
 | `onEvent` | Called with every `AgentEvent` of the agent's runs, in the order `stream()` yields them. See [Listening without iterating](./streaming.md#listening-without-iterating). |
-| `exporter`, `captureContent`, `redactContent` | Tracing: a `TraceExporter` that receives a span for every run, whether message and tool content is recorded on the spans (off by default), and whether the deprecated content attributes are left out (default `true`). See [Observability](./observability.md). |
-| `approvalTtlMs` | How long a pause for approval stays decidable, in milliseconds; decided later, the call is denied. Unset: pauses never expire. See [Approvals](./approvals.md). |
-| `askQuestion` | Adds the built-in `ask_question` tool; the run pauses until `agent.approvals.answer()`. Off by default. See [Approvals](./approvals.md). |
-| `permissions`, `permissionMode` | Permission rules (`allow` / `ask` / `deny`) and a named preset over them (`'default'`, `'plan'`, `'acceptEdits'` or `'dontAsk'`). See [Permission modes](./permission-modes.md). |
+| `exporter`, `captureContent`, `redactContent` | Tracing: a `TraceExporter` that receives a span for every run, whether message and tool content is recorded on the spans (off by default), and whether the deprecated content attributes are left out (default `true`). See [Observability](./observability.md#message-and-argument-content-is-opt-in). |
+| `approvalTtlMs` | How long a pause for approval stays decidable, in milliseconds; decided later, the call is denied. Unset: pauses never expire. See [Approval expiry](./approvals.md#approval-expiry). |
+| `askQuestion` | Adds the built-in `ask_question` tool; the run pauses until `agent.approvals.answer()`. Off by default. See [Asking the user a question](./approvals.md#asking-the-user-a-question). |
+| `permissions`, `permissionMode` | Permission rules (`allow` / `ask` / `deny`) and a named preset over them (`'default'`, `'plan'`, `'acceptEdits'` or `'dontAsk'`). See [Permission policies](./approvals.md#permission-policies) and [Permission modes](./permission-modes.md). |
 | `onPermissionDecision`, `onPermissionModeChange` | Audit callbacks: one entry per tool call's permission decision, and one per mode switch. See [Permission modes](./permission-modes.md). |
 
 With neither `model` nor `provider`, `createAgent()` resolves from the
