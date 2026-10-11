@@ -234,3 +234,49 @@ describe('createAgent({ rateLimit })', () => {
     expect(() => createAgent({ provider: mockOf('a'), rateLimit: { maxConcurrent: 0 } })).toThrow(ConfigurationError);
   });
 });
+
+describe('withRateLimit over withRetry on streams', () => {
+  /** A provider whose first stream fails after reasoning only (retried by withRetry), the second answering `ok`. */
+  function flakyStreams(): LLMProvider {
+    let attempt = 0;
+    const provider = new MockLLMProvider({ defaultModel: 'mock' });
+    provider.stream = async () => {
+      const mine = ++attempt;
+      // As a real stream's: the text settles when the stream does.
+      let settle!: (text: Promise<string>) => void;
+      const text = new Promise<string>((resolve) => (settle = resolve));
+      text.catch(() => undefined);
+      const chunks = async function* (): AsyncGenerator<StreamChunk> {
+        yield { type: 'reasoning-delta', textDelta: 'hmm' };
+        if (mine === 1) {
+          const error = new Error('Service Unavailable: upstream timed out');
+          settle(Promise.reject(error));
+          throw error;
+        }
+        yield { type: 'text-delta', textDelta: 'ok' };
+        yield { type: 'finish', finishReason: 'stop', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } };
+        settle(Promise.resolve('ok'));
+      };
+      return { fullStream: chunks(), textStream: (async function* () {})(), text, usage: Promise.resolve(undefined), finishReason: Promise.resolve('stop'), toolCalls: Promise.resolve([]) };
+    };
+    return provider;
+  }
+
+  it("the result's final values are the retry's, the slot is held until the retried stream ends, and the retry counts as a request", async () => {
+    const { withRetry } = await import('./resilience');
+    const limiter = createRateLimiter({ maxConcurrent: 1, requestsPerMinute: 100 });
+    const provider = withRateLimit(withRetry(flakyStreams(), { backoff: { initialMs: 1, jitter: false } }), limiter);
+
+    const streamed = await provider.stream({ messages: [{ role: 'user', content: 'hi' }] });
+    const types: string[] = [];
+    for await (const chunk of streamed.fullStream) {
+      types.push(chunk.type);
+      if (chunk.type === 'text-delta') expect(limiter.inFlight).toBe(1);
+    }
+
+    expect(types).toEqual(['reasoning-delta', 'reasoning-delta', 'text-delta', 'finish']);
+    await expect(streamed.text).resolves.toBe('ok');
+    expect(limiter.inFlight).toBe(0);
+    expect((limiter as unknown as { starts: number[] }).starts).toHaveLength(2);
+  });
+});

@@ -426,7 +426,6 @@ export interface LLMProviderConfig {
   timeout?: number;
   maxRetries?: number;
   headers?: Record<string, string>;
-  [key: string]: unknown;
 }
 
 /**

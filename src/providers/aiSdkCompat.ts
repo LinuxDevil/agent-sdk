@@ -105,6 +105,8 @@ interface AiSdkContentPart extends Partial<AiSdkToolCall> {
 interface AiSdkGenerateResult {
   text: string;
   finishReason: string;
+  /** ai 6/7: the provider's own finish reason, before mapping. */
+  rawFinishReason?: unknown;
   usage?: Record<string, unknown>;
   toolCalls?: AiSdkToolCall[];
   /** v5+: the step's parts in order (N1a reads the provider-executed calls, their results and sources). */
@@ -115,13 +117,61 @@ interface AiSdkGenerateResult {
   reasoning?: unknown;
 }
 
+/** The key under which a v4 call ai 4 could not parse carries its own name and raw arguments (see repairV4ToolCall). */
+const RAW_CALL = '__lousho_raw_tool_call';
+
+/**
+ * ai 4's repair hook: a call to a tool it does not know, or whose arguments
+ * are not JSON, would throw and end the run (ai 6/7 return it as an invalid
+ * call instead). It is sent on as a call of a known tool whose arguments carry
+ * the original name and text, which convertToolCalls() puts back, so the
+ * executor reports the bad call to the model like on ai 6/7.
+ */
+function repairV4ToolCall({ toolCall, tools }: { toolCall: { toolName: string; args: string }; tools: Record<string, unknown> }) {
+  const known = Object.keys(tools)[0];
+  if (known === undefined) return null;
+  return { ...toolCall, toolName: known, args: JSON.stringify({ [RAW_CALL]: { name: toolCall.toolName, args: toolCall.args } }) };
+}
+
+/** A v4 call repaired by repairV4ToolCall(): its original name and argument text. */
+function rawCall(input: unknown): { name: string; args: string } | undefined {
+  const raw = typeof input === 'object' && input !== null ? (input as Record<string, unknown>)[RAW_CALL] : undefined;
+  const { name, args } = (raw ?? {}) as { name?: unknown; args?: unknown };
+  return typeof name === 'string' && typeof args === 'string' ? { name, args } : undefined;
+}
+
+/**
+ * A call's arguments as our JSON text. A tool's input is always an object, so
+ * a string input is text the SDK could not parse (ai 6/7 pass an invalid
+ * call's raw text on): it goes on as it is, and the executor reports it as
+ * invalid JSON, not as "a string instead of an object".
+ */
+function argumentsText(input: unknown): string {
+  return typeof input === 'string' ? input : JSON.stringify(input);
+}
+
+/**
+ * `id`, or, when an earlier call of the step had it, `id_2`, `id_3`, ...: two
+ * calls with one id would leave two results the next request cannot tell apart.
+ */
+function uniqueCallId(id: string, used: Set<string>): string {
+  let unique = id;
+  for (let n = 2; used.has(unique); n++) unique = `${id}_${n}`;
+  used.add(unique);
+  return unique;
+}
+
 /** Convert tool calls from 'ai' SDK format to our format; a provider-executed call (N1a) is left out. */
-function convertToolCalls(calls: AiSdkToolCall[]): ToolCall[] {
-  return calls.filter((tc) => !tc.providerExecuted).map((tc) => ({
-    id: tc.toolCallId,
-    type: 'function' as const,
-    function: { name: tc.toolName, arguments: JSON.stringify(tc.input ?? tc.args) },
-  }));
+function convertToolCalls(calls: AiSdkToolCall[], used: Set<string> = new Set()): ToolCall[] {
+  return calls.filter((tc) => !tc.providerExecuted).map((tc) => {
+    const input = tc.input ?? tc.args;
+    const raw = rawCall(input);
+    return {
+      id: uniqueCallId(tc.toolCallId, used),
+      type: 'function' as const,
+      function: raw ? { name: raw.name, arguments: raw.args } : { name: tc.toolName, arguments: argumentsText(input) },
+    };
+  });
 }
 
 const FINISH_REASONS = new Map<string, GenerateResult['finishReason']>([
@@ -141,9 +191,12 @@ function mapFinishReason(reason: string): GenerateResult['finishReason'] {
  * upstream failure mid-generation as a 200 with `finish_reason: "error"`) failed,
  * and what it wrote is cut off. Thrown as a retryable 502 so withRetry() retries
  * it and a run does not resolve as a success with truncated text.
+ * `@ai-sdk/openai` maps the raw `error` to the unified `other` (`unknown` on
+ * ai 4), so the raw reason ai 6/7 keep (`rawFinishReason`) is checked too; the
+ * built-in providers also catch it in the response itself (providerFetch).
  */
-function failedStep(reason: string | undefined): void {
-  if (reason !== 'error') return;
+function failedStep(reason: string | undefined, rawReason?: unknown): void {
+  if (reason !== 'error' && rawReason !== 'error') return;
   throw new APICallError({
     message: "The provider ended the response with finish reason 'error' (an upstream failure after the response started); the text is incomplete.",
     url: '',
@@ -245,12 +298,49 @@ function modernReasoning({ text = '', signature, data }: Record<string, unknown>
   return { type: 'reasoning', text, ...(anthropic && { providerOptions: { anthropic } }) };
 }
 
+/** Leading bytes of the image formats providers take, by media type. */
+const IMAGE_SIGNATURES: Array<[string, number[]]> = [
+  ['image/png', [0x89, 0x50, 0x4e, 0x47]],
+  ['image/jpeg', [0xff, 0xd8, 0xff]],
+  ['image/gif', [0x47, 0x49, 0x46, 0x38]],
+  ['image/webp', [0x52, 0x49, 0x46, 0x46]],
+];
+
+/** The first bytes of an image given as bytes, a base64 string or a data URL (a URL to fetch has none). */
+function leadingBytes(image: unknown): Uint8Array | undefined {
+  if (image instanceof Uint8Array) return image.subarray(0, 12);
+  if (image instanceof ArrayBuffer) return new Uint8Array(image, 0, Math.min(12, image.byteLength));
+  if (typeof image !== 'string' || /^https?:\/\//i.test(image)) return undefined;
+  const base64 = image.startsWith('data:') ? image.slice(image.indexOf(',') + 1) : image;
+  try {
+    return Uint8Array.from(atob(base64.slice(0, 16)), (char) => char.charCodeAt(0));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * An image part's media type when it has none: a data URL's own, else read
+ * from the bytes' signature, else `image/*`. v5+ file parts skip the AI
+ * SDK's sniffing, and `@ai-sdk/*` 3 send `image/*` as `image/jpeg`.
+ */
+function imageMediaType(image: unknown): string {
+  if (typeof image === 'string') {
+    const dataUrl = /^data:(image\/[\w.+-]+)[;,]/i.exec(image);
+    if (dataUrl) return dataUrl[1].toLowerCase();
+  }
+  const bytes = leadingBytes(image);
+  const match = bytes && IMAGE_SIGNATURES.find(([, signature]) => signature.every((byte, index) => bytes[index] === byte));
+  if (match?.[0] === 'image/webp' && String.fromCharCode(...(bytes?.subarray(8, 12) ?? [])) !== 'WEBP') return 'image/*';
+  return match?.[0] ?? 'image/*';
+}
+
 /** v4 part types whose v5+ shape differs by more than `mimeType` -> `mediaType`. */
 const MODERN_PARTS: Record<string, (part: Record<string, unknown>) => Record<string, unknown>> = {
   'tool-call': ({ args, ...rest }) => ({ ...rest, input: args }),
   'tool-result': ({ result, isError, ...rest }) => ({ ...rest, output: toolOutput(result, isError as boolean | undefined) }),
   // `ai` 5+ deprecates `image` parts (a warning per image): a `file` part with an image media type.
-  image: ({ image, mimeType }) => ({ type: 'file', data: image, mediaType: mimeType ?? 'image/*' }),
+  image: ({ image, mimeType }) => ({ type: 'file', data: image, mediaType: mimeType ?? imageMediaType(image) }),
   reasoning: modernReasoning,
   'redacted-reasoning': modernReasoning,
 };
@@ -413,10 +503,15 @@ function hostedCallsOf(content: AiSdkContentPart[] | undefined): HostedToolCall[
   return [...calls.values()];
 }
 
-/** `settings` without the hosted tools, for `ai` v4 (which cannot send them). */
-function v4Settings(settings: AiSdkCallSettings): Omit<AiSdkCallSettings, 'hostedTools' | 'lastToolProviderOptions'> {
+/**
+ * `settings` for `ai` v4: without the hosted tools (which it cannot send), with
+ * the repair hook for calls it cannot parse, and streaming each call's
+ * arguments, so a call whose arguments never complete still reaches the
+ * executor (as on ai 6/7).
+ */
+function v4Settings(settings: AiSdkCallSettings) {
   const { hostedTools: _hosted, lastToolProviderOptions: _cache, ...rest } = settings;
-  return rest;
+  return { ...rest, experimental_repairToolCall: repairV4ToolCall, toolCallStreaming: true };
 }
 
 /** Call `generateText()` on `ai` (v4 or v6/v7) and normalize its result. */
@@ -428,7 +523,7 @@ export async function compatGenerateText(
   const modern = isModernAi(ai);
   const request = modern ? toModernRequest(ai, settings, options) : v4Settings(settings);
   const result = (await ai.generateText(request as never)) as AiSdkGenerateResult;
-  failedStep(result.finishReason);
+  failedStep(result.finishReason, result.rawFinishReason);
   const reasoning = reasoningOf(result, modern);
   const hostedToolCalls = modern ? hostedCallsOf(result.content) : [];
   return {
@@ -451,7 +546,11 @@ interface AiSdkStreamPart extends AiSdkContentPart {
   /** `tool-input-start` / `-delta` (v6/v7). */
   id?: string;
   delta?: string;
+  /** ai 4 `tool-call-delta`. */
+  argsTextDelta?: string;
   finishReason?: string;
+  /** ai 6/7 `finish`: the provider's own finish reason, before mapping. */
+  rawFinishReason?: unknown;
   /** v4 `reasoning-signature` / `redacted-reasoning` (LOU-V13). */
   signature?: string;
   data?: string;
@@ -477,6 +576,8 @@ interface ChunkState {
   modern: boolean;
   signal?: AbortSignal;
   inputs: Map<string, { toolName: string; input: string }>;
+  /** The ids of the tool calls already reported (see uniqueCallId). */
+  callIds: Set<string>;
   /** LOU-V13: the open v6/v7 reasoning block's `providerMetadata` (Anthropic sends the signature on a delta). */
   reasoningMetadata?: unknown;
   /** N1a: provider-executed calls by id, the last one seen, and a settled one whose result chunk waits for the sources after it. */
@@ -502,12 +603,12 @@ function reasoningEnd(reasoning: Omit<ReasoningBlock, 'text'>): StreamChunk[] {
  * `tool-input-start`/`-delta`/`-end` that no `tool-call` followed (when one
  * does, v6/v7 emits that whole call after the input, and it is used instead).
  */
-function finishChunks(part: AiSdkStreamPart, { modern, inputs }: ChunkState): StreamChunk[] {
+function finishChunks(part: AiSdkStreamPart, { modern, inputs, callIds }: ChunkState): StreamChunk[] {
   const chunks: StreamChunk[] = [...inputs].map(([id, { toolName, input }]) => ({
     type: 'tool-call',
-    toolCall: { id, type: 'function', function: { name: toolName, arguments: input || '{}' } },
+    toolCall: { id: uniqueCallId(id, callIds), type: 'function', function: { name: toolName, arguments: input || '{}' } },
   }));
-  failedStep(part.finishReason);
+  failedStep(part.finishReason, part.rawFinishReason);
   const usage = usageOf(modern, modern ? part.totalUsage : part.usage, part.providerMetadata);
   chunks.push({ type: 'finish', finishReason: part.finishReason, ...(usage ? { usage } : {}) });
   return chunks;
@@ -571,9 +672,19 @@ const PART_CHUNKS = new Map<string, (part: AiSdkStreamPart, state: ChunkState) =
     if (pending) pending.input += part.delta ?? '';
     return [];
   }],
+  // ai 4 (`toolCallStreaming`): the same, keyed by `toolCallId`.
+  ['tool-call-streaming-start', (part, { inputs }) => {
+    inputs.set(part.toolCallId ?? '', { toolName: part.toolName ?? '', input: '' });
+    return [];
+  }],
+  ['tool-call-delta', (part, { inputs }) => {
+    const pending = inputs.get(part.toolCallId ?? '');
+    if (pending) pending.input += part.argsTextDelta ?? '';
+    return [];
+  }],
   ['tool-call', (part, state) => {
     state.inputs.delete(part.toolCallId ?? '');
-    if (!part.providerExecuted) return [{ type: 'tool-call', toolCall: convertToolCalls([part as AiSdkToolCall])[0] }];
+    if (!part.providerExecuted) return [{ type: 'tool-call', toolCall: convertToolCalls([part as AiSdkToolCall], state.callIds)[0] }];
     const hostedToolCall = hostedCallOf(part);
     state.hosted.set(hostedToolCall.id, hostedToolCall);
     state.lastHosted = hostedToolCall;
@@ -596,7 +707,7 @@ const PART_CHUNKS = new Map<string, (part: AiSdkStreamPart, state: ChunkState) =
 
 /** Either major's `fullStream` as our chunks (see PART_CHUNKS). */
 async function* toChunks(result: AiSdkStreamResult, modern: boolean, signal?: AbortSignal): AsyncGenerator<StreamChunk> {
-  const state: ChunkState = { modern, signal, inputs: new Map(), hosted: new Map() };
+  const state: ChunkState = { modern, signal, inputs: new Map(), callIds: new Set(), hosted: new Map() };
   for await (const part of result.fullStream ?? []) {
     if (part.type !== 'source') yield* flushHosted(state);
     yield* PART_CHUNKS.get(part.type)?.(part, state) ?? [];
@@ -640,7 +751,7 @@ export async function streamCompat(
     text: handled(Promise.resolve(result.text)),
     usage: handled(finalUsage(result, modern)),
     finishReason: handled(Promise.resolve(result.finishReason)),
-    toolCalls: handled(Promise.resolve(result.toolCalls).then(convertToolCalls)),
+    toolCalls: handled(Promise.resolve(result.toolCalls).then((calls) => convertToolCalls(calls))),
   };
 }
 

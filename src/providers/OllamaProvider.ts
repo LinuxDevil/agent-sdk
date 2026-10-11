@@ -47,10 +47,19 @@ export class OllamaProvider extends AiSdkProvider<OllamaProviderConfig> {
         : await loadOptionalPeer('ollama-ai-provider-v2', () => import('ollama-ai-provider-v2'), major);
     const ollama = createOllama({
       baseURL: normalizeOllamaBaseUrl(this.config.baseURL),
-      ...(this.config.fetch && { fetch: this.config.fetch }),
+      headers: this.requestHeaders(),
+      fetch: this.requestFetch(),
     });
     return { modern: major !== 4, ollama };
   });
+
+  /** The configured `headers`, with `apiKey` as a bearer token (an authenticating proxy, Ollama's cloud API). */
+  private requestHeaders(): Record<string, string> {
+    return {
+      ...(this.config.apiKey && { Authorization: `Bearer ${this.config.apiKey}` }),
+      ...this.config.headers,
+    };
+  }
 
   constructor(config: OllamaProviderConfig, logger: Logger = noopLogger) {
     super(config);
@@ -74,11 +83,12 @@ export class OllamaProvider extends AiSdkProvider<OllamaProviderConfig> {
   }
 
   /**
-   * Check if model supports tools
+   * Whether this provider sends tools for `model`: always (Ollama rejects
+   * tools for a model whose template has none). Informational: the runtime
+   * does not consult it.
    */
-  supportsTools(model: string): boolean {
-    // Newer Llama models support tools
-    return model.includes('llama3') || model.includes('mistral');
+  supportsTools(_model: string): boolean {
+    return true;
   }
 
   /**
@@ -93,12 +103,14 @@ export class OllamaProvider extends AiSdkProvider<OllamaProviderConfig> {
    */
   async getModels(): Promise<string[]> {
     try {
-      const response = await fetch(`${normalizeOllamaBaseUrl(this.config.baseURL)}/tags`);
+      const response = await (this.config.fetch ?? globalThis.fetch)(`${normalizeOllamaBaseUrl(this.config.baseURL)}/tags`, {
+        headers: this.requestHeaders(),
+      });
       const data = (await response.json()) as { models?: Array<{ name: string }> };
       return data.models?.map((m) => m.name) || [];
     } catch (error) {
       this.logger.warn('Failed to fetch Ollama models', { error: (error as Error).message });
-      return ['llama3.1', 'llama2', 'mistral'];
+      return ['llama3.1', 'mistral'];
     }
   }
 }

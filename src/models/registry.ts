@@ -101,16 +101,43 @@ function lookupExactOrPrefix(id: string): ModelInfo | undefined {
  * the given id is a dated snapshot of (so `gpt-4o-mini-2024-07-18` resolves to
  * `gpt-4o-mini`, but `o3-mini` does not resolve to `o3`), each also tried
  * without a `provider/` prefix (as in `resolveProvider('openai/gpt-4o-mini')`).
- * Returns `undefined` for unknown models.
+ * An OpenRouter `:free` variant costs 0; its other variants (`:extended`,
+ * `:nitro`, `:thinking`, `:online`, ...) have the base model's context window
+ * and no price. Returns `undefined` for unknown models.
  *
  * @example
  * getModelInfo('openai/gpt-4o-mini')?.contextWindow; // 128000
  */
 export function getModelInfo(model: string): ModelInfo | undefined {
+  const variant = OPENROUTER_VARIANT.exec(model);
+  if (variant && !registry.has(model)) {
+    const base = lookupWithoutPrefix(model.slice(0, variant.index));
+    return base && variantInfo(base, model, variant[1].toLowerCase());
+  }
+  return lookupWithoutPrefix(model);
+}
+
+/** {@link lookupExactOrPrefix}, also tried without a `provider/` prefix. */
+function lookupWithoutPrefix(model: string): ModelInfo | undefined {
   const direct = lookupExactOrPrefix(model);
   if (direct) return direct;
   const slash = model.indexOf('/');
   return slash > 0 ? lookupExactOrPrefix(model.slice(slash + 1)) : undefined;
+}
+
+/**
+ * OpenRouter's model variants (`openai/gpt-4o:extended`): `:free` costs
+ * nothing, and the others are served by other endpoints or with other
+ * features at prices of their own, so they keep the base model's context
+ * window but no price (a known price is never guessed). Other `:tag`s (an
+ * Ollama size such as `llama3.1:8b`) name the model itself.
+ */
+const OPENROUTER_VARIANT = /:(free|extended|nitro|floor|thinking|online|exacto|beta)$/i;
+
+function variantInfo(base: ModelInfo, id: string, variant: string): ModelInfo {
+  const { inputCostPerMTok: _input, outputCostPerMTok: _output, cachedInputCostPerMTok: _cached, cacheWriteCostPerMTok: _write, ...facts } = base;
+  if (variant !== 'free') return { ...facts, id };
+  return { ...facts, id, inputCostPerMTok: 0, outputCostPerMTok: 0, cachedInputCostPerMTok: 0, cacheWriteCostPerMTok: 0 };
 }
 
 /** A token count, or 0 for a missing or invalid one. */

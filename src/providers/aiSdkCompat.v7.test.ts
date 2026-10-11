@@ -252,6 +252,47 @@ describe.each(providers)('%s provider on ai v7: generate() (LOU-D26)', (_name, m
     });
   });
 
+  it('reads the media type of an image given without one from its bytes, base64 or data URL (ai 6 sends image/* as image/jpeg)', async () => {
+    const provider = make();
+    const calls = onV7(provider);
+    const GIF = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 1]);
+
+    await provider.generate({
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'image', image: PNG },
+            { type: 'image', image: Buffer.from(PNG).toString('base64') },
+            { type: 'image', image: GIF },
+            { type: 'image', image: `data:image/webp;base64,${Buffer.from([1, 2, 3]).toString('base64')}` },
+            { type: 'image', image: new Uint8Array([1, 2, 3]) },
+          ],
+        },
+      ],
+    });
+
+    expect((calls[0]!.prompt[0] as { content: Array<{ mediaType: string }> }).content.map((part) => part.mediaType)).toEqual([
+      'image/png',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'image/*',
+    ]);
+  });
+
+  it('sends the text parts of a system or assistant message one per line', async () => {
+    const provider = make();
+    const calls = onV7(provider);
+    await provider.generate({
+      messages: [
+        { role: 'system', content: [{ type: 'text', text: 'line1' }, { type: 'text', text: 'line2' }] },
+        { role: 'user', content: 'hi' },
+      ],
+    });
+    expect(calls[0]!.prompt[0]).toMatchObject({ role: 'system', content: 'line1\nline2' });
+  });
+
   it("with unsupportedFiles: 'text-note', sends an unsupported file type as a text note, and the text of system and assistant parts", async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const provider = make({ unsupportedFiles: 'text-note' });

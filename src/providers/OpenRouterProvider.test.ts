@@ -79,7 +79,7 @@ describe('OpenRouterProvider', () => {
       expect(models).toBeInstanceOf(Array);
       expect(models.length).toBeGreaterThan(0);
       expect(models).toContain('openai/gpt-4o');
-      expect(models).toContain('anthropic/claude-3.5-sonnet');
+      expect(models).toContain('anthropic/claude-sonnet-4.5');
     });
 
     it('should return fallback models when the network is unreachable', async () => {
@@ -99,7 +99,17 @@ describe('OpenRouterProvider', () => {
 
       expect(await provider.getModels()).toEqual(['a/model-1', 'b/model-2']);
       expect(fetchMock).toHaveBeenCalledWith('https://openrouter.ai/api/v1/models', {
-        headers: { Authorization: 'Bearer test-api-key' },
+        headers: { Authorization: 'Bearer test-api-key', 'HTTP-Referer': 'https://example.com', 'X-Title': 'Test Site' },
+      });
+    });
+
+    it('asks the configured baseURL and fetch, with the configured headers', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: [{ id: 'a/model-1' }] })));
+      const provider = new OpenRouterProvider({ name: 'openrouter', apiKey: 'test-api-key', baseURL: 'https://gateway.example.com/v1/', fetch: fetchMock, siteName: 'Demo' });
+
+      expect(await provider.getModels()).toEqual(['a/model-1']);
+      expect(fetchMock).toHaveBeenCalledWith('https://gateway.example.com/v1/models', {
+        headers: { 'X-Title': 'Demo', Authorization: 'Bearer test-api-key' },
       });
     });
 

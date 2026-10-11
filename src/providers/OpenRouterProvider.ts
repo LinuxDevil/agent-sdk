@@ -10,6 +10,7 @@ import { lazyValue, loadOptionalPeer } from './optionalPeer';
 import { Logger, noopLogger } from '../execution/logger';
 import { SDKError } from '../execution/errors';
 import type { GenerateOptions, GenerateResult, HostedToolCall, ProviderUsage, ReasoningBlock, StreamChunk, StreamResult } from './llm';
+import { chatCompletionWatch, type ResponseWatch } from './providerFetch';
 import { openRouterReasoning } from './reasoning';
 import { cachesPrompt, withBodyBreakpoints } from './promptCaching';
 import { mappedHostedOptions, type HostedOptionMapping } from './hostedToolMapping';
@@ -159,23 +160,31 @@ function scanResponseBody(chunk: ResponseBody | null, found: CallObservation): v
   for (const choice of chunk?.choices ?? []) scanChoice(choice, found);
 }
 
-/** A JSON response body, or a server-sent-events stream of JSON chunks, as a {@link CallObservation}. */
-function parseResponseBody(text: string): CallObservation {
+/**
+ * The watch of one response: each JSON body or stream chunk is scanned into a
+ * {@link CallObservation} as it passes (the body is not buffered a second
+ * time) and checked for an in-response failure; `observe` gets the
+ * observation, settled once the body was read to its end (`undefined` when
+ * it was not).
+ */
+function observingWatch(observe: RequestChanges['observe']): ResponseWatch {
+  const chat = chatCompletionWatch();
+  if (!observe) return chat;
   const found: CallObservation = { sources: [], reasoning: [] };
-  const lines = text.trimStart().startsWith('{')
-    ? [text]
-    : text
-        .split('\n')
-        .filter((line) => line.startsWith('data:'))
-        .map((line) => line.slice(5));
-  for (const line of lines) {
-    try {
-      scanResponseBody(JSON.parse(line) as ResponseBody, found);
-    } catch {
-      // `[DONE]` or a partial line carries nothing.
-    }
-  }
-  return found;
+  let settle: (found: CallObservation | undefined) => void = () => undefined;
+  observe(new Promise((resolve) => (settle = resolve)));
+  return {
+    rewrite: chat.rewrite,
+    data(text) {
+      try {
+        scanResponseBody(JSON.parse(text) as ResponseBody, found);
+      } catch {
+        // A chunk that is not JSON carries nothing.
+      }
+      return chat.data?.(text);
+    },
+    end: (complete) => settle(complete ? found : undefined),
+  };
 }
 
 /** The observed reasoning pieces as {@link ReasoningBlock}s: each `end` marker closes the block being accumulated. */
@@ -209,7 +218,7 @@ interface RequestChanges {
   tools?: unknown[];
   /** Eve PROV-F4: a last change to the whole body (Anthropic `cache_control` breakpoints). */
   rewrite?: (body: Record<string, unknown>) => Record<string, unknown>;
-  /** Called with the parsed response of each successful call (the last one wins). */
+  /** Called with what each successful call's response leaves, once read (the last one wins). */
   observe?: (settled: Promise<CallObservation | undefined>) => void;
 }
 
@@ -223,17 +232,7 @@ function withRequestChanges(changes: RequestChanges, send: typeof fetch): typeof
       const changed = { ...json, ...changes.merge, ...(tools && { tools }) };
       body = JSON.stringify(changes.rewrite ? changes.rewrite(changed) : changed);
     }
-    const response = await send(input, { ...init, body });
-    if (changes.observe && response.ok) {
-      // The clone is read in the background; the caller reads the original as usual.
-      changes.observe(
-        response
-          .clone()
-          .text()
-          .then(parseResponseBody, () => undefined)
-      );
-    }
-    return response;
+    return send(input, { ...init, body });
   };
 }
 
@@ -411,17 +410,22 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
   /** `@ai-sdk/openai` pointed at OpenRouter; `changes` (LOU-V13 `reasoning`, N1b web search) are applied to each request. */
   private async openRouter(changes?: RequestChanges) {
     // LOU-R5: every call goes through the fetch that keeps the body's error
-    // message; the request `changes` compose inside it. `globalThis.fetch` is
-    // read per call so tests can stub it after the provider was created; a
-    // configured `fetch` (C2) is used instead.
-    const base: typeof fetch = (input, init) => (this.config.fetch ?? globalThis.fetch)(input, init);
+    // message; the request `changes` compose inside it, and the response is
+    // watched (its observation, and in-response failures) under the
+    // provider's `timeout` (requestFetch).
+    const base = this.requestFetch(() => observingWatch(changes?.observe));
     const inner: typeof fetch = changes ? withRequestChanges(changes, base) : base;
     return (await this.loadFactory())({
       apiKey: this.config.apiKey,
-      baseURL: OPENROUTER_API_URL,
+      baseURL: this.baseURL,
       headers: buildHeaders(this.config),
       fetch: withErrorMessage(inner),
     });
+  }
+
+  /** The configured `baseURL` (a gateway, proxy or regional endpoint), else OpenRouter's API. */
+  private get baseURL(): string {
+    return (this.config.baseURL || OPENROUTER_API_URL).replace(/\/+$/, '');
   }
 
   /** What each call (by its options object) left in OpenRouter's response: the web search (N1b) and the reasoning (LOU-R8). */
@@ -445,7 +449,8 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
     // N1b: OpenRouter's web search is a server tool in the `tools` array, not an AI SDK tool.
     const search = options?.hostedTools?.find((tool) => tool.type === 'web_search');
     const changes: RequestChanges = {
-      ...(reasoning && { merge: reasoning }),
+      // PROV-F3: asks for `usage.cost` (OpenRouter's usage accounting) instead of relying on it arriving unrequested.
+      merge: { usage: { include: true }, ...reasoning },
       // Eve PROV-F4: `@ai-sdk/openai` has no field for Anthropic's `cache_control`, so it is added to the body.
       ...(cachesPrompt(modelId, options?.promptCaching) && { rewrite: withBodyBreakpoints }),
     };
@@ -552,31 +557,11 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
   }
 
   /**
-   * Check if model supports tools
-   * Most OpenRouter models support tools, especially OpenAI and Anthropic models
+   * Whether this provider sends tools for `model`: always (OpenRouter routes a
+   * call with tools only to endpoints that support them). Informational: the
+   * runtime does not consult it.
    */
-  supportsTools(model: string): boolean {
-    // OpenAI models
-    if (model.includes('gpt-4') || model.includes('gpt-3.5-turbo')) {
-      return true;
-    }
-
-    // Anthropic models
-    if (model.includes('claude')) {
-      return true;
-    }
-
-    // Google models
-    if (model.includes('gemini')) {
-      return true;
-    }
-
-    // Mistral models
-    if (model.includes('mistral')) {
-      return true;
-    }
-
-    // Default to true for most models
+  supportsTools(_model: string): boolean {
     return true;
   }
 
@@ -592,8 +577,9 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
    * a non-OK response so callers can log and fall back.
    */
   private async fetchModelCatalog(what: string): Promise<OpenRouterModel[] | undefined> {
-    const response = await fetch(`${OPENROUTER_API_URL}/models`, {
+    const response = await (this.config.fetch ?? globalThis.fetch)(`${this.baseURL}/models`, {
       headers: {
+        ...buildHeaders(this.config),
         'Authorization': `Bearer ${this.config.apiKey}`,
       },
     });
@@ -619,19 +605,16 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
 
       // Return some popular models as fallback
       return [
+        'openai/gpt-5',
+        'openai/gpt-5-mini',
+        'openai/gpt-4.1',
+        'openai/gpt-4.1-mini',
         'openai/gpt-4o',
         'openai/gpt-4o-mini',
-        'openai/gpt-4-turbo',
-        'openai/gpt-3.5-turbo',
-        'anthropic/claude-3.5-sonnet',
-        'anthropic/claude-3-opus',
-        'anthropic/claude-3-haiku',
-        'google/gemini-pro',
-        'google/gemini-pro-1.5',
+        'anthropic/claude-sonnet-4.5',
+        'anthropic/claude-haiku-4.5',
         'meta-llama/llama-3.1-70b-instruct',
         'meta-llama/llama-3.1-8b-instruct',
-        'mistralai/mistral-large',
-        'mistralai/mixtral-8x7b-instruct',
       ];
     }
   }
