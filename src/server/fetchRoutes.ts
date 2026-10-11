@@ -29,7 +29,7 @@ import type { AuthFn, Principal } from '../auth/types';
 import { routeAuth } from '../auth/routeAuth';
 import { apiToken } from '../auth/basic';
 import type { OAuthCompleteResult } from '../oauth/signIn';
-import { firstCallerOwns, hostRefusal, postRefusal } from './requestGuard';
+import { hostRefusal, postRefusal, sessionOwnership } from './requestGuard';
 
 /** A1: what a caller wants to do with a session: read its transcript, send it a turn, or decide one of its approvals. */
 export type SessionAction = 'read' | 'chat' | 'approve';
@@ -58,13 +58,15 @@ export interface ChatRoutesAccess {
    * Whether `principal` may `action` session `sessionId` (read it, send it a
    * turn, decide one of its approvals). Return `false` for a `403`
    * (`LOUSHO_SESSION_FORBIDDEN`). Default: once route auth accepted a caller,
-   * a session belongs to the first principal that reads or continues it, and
-   * every other principal gets the `403` (a decision is left to
+   * a session belongs to the principal whose turn started it, and every other
+   * principal gets the `403`; reading an id claims nothing, so a caller cannot
+   * squat an id before its user starts it. A decision is left to
    * `authorizeApproval`, which by default lets only the caller the paused run
-   * acts for decide). That record is kept in memory (per process, or
-   * per Worker isolate), so a restart or another replica forgets it: for more
-   * than one instance, check ownership here (docs/auth.md). A route without
-   * auth checks nothing. `() => true` lets every caller use every session.
+   * acts for decide. That record is kept in memory per agent object, for the
+   * 100 000 most recently used sessions, so a restart, another replica or a
+   * host that builds its agent per request (the generated Worker) forgets it:
+   * there, check ownership here (docs/auth.md). A route without auth checks
+   * nothing. `() => true` lets every caller use every session.
    */
   authorizeSession?: (request: SessionAccessRequest) => boolean | Promise<boolean>;
   /**
@@ -317,10 +319,17 @@ function failureResponse(ctx: ChatRoutesContext, error: unknown): Response {
 
 const ACTION_WORDS: Record<SessionAction, string> = { read: 'read', chat: 'continue', approve: 'decide approvals of' };
 
-/** A1: the `403` for a caller `authorizeSession` (by default, the session's first principal) refuses; `undefined` when it may go on. */
+/**
+ * A1: the `403` for a caller `authorizeSession` refuses; `undefined` when it
+ * may go on. Without `authorizeSession` (and once route auth accepted a
+ * caller), a turn claims an unclaimed session for its caller, and only that
+ * caller may read or continue it after; a read claims nothing, so reading an
+ * id cannot lock its user out. A decision is left to `authorizeApproval`.
+ */
 export async function sessionForbidden(ctx: ChatRoutesContext, principal: Principal | undefined, sessionId: string, action: SessionAction): Promise<Response | undefined> {
-  // Without `authorizeSession`, a decision is left to `authorizeApproval`: by default only the caller the paused run acts for.
-  const allowed = ctx.authorizeSession ? await ctx.authorizeSession({ principal, sessionId, action }) : action === 'approve' || firstCallerOwns(ctx.agent(), principal, sessionId);
+  const allowed = ctx.authorizeSession
+    ? await ctx.authorizeSession({ principal, sessionId, action })
+    : action === 'approve' || principal === undefined || sessionOwnership(ctx.agent(), principal, sessionId, action === 'chat') !== 'other';
   if (allowed) return undefined;
   return jsonResponse(403, { error: `Not allowed to ${ACTION_WORDS[action]} this session`, code: 'LOUSHO_SESSION_FORBIDDEN' });
 }

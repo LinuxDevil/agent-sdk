@@ -141,6 +141,28 @@ describe('deployed node server /chat API', () => {
   });
 });
 
+describe('deployed node server request checks from the environment', () => {
+  it('reads LOUSHO_ALLOWED_ORIGINS, LOUSHO_ALLOWED_HOSTS and LOUSHO_REQUIRE_JSON_BODY; options win', async () => {
+    const env = { LOUSHO_ALLOWED_ORIGINS: 'https://app.example', LOUSHO_ALLOWED_HOSTS: '127.0.0.1', LOUSHO_REQUIRE_JSON_BODY: 'false' };
+    const { call } = await serve(mockModel(['a', 'b', 'c']), { env });
+    expect((await call('/chat', { sessionId: 'e1', input: 'hi' }, { Origin: 'https://app.example' })).status).toBe(200);
+    expect((await call('/chat', { sessionId: 'e2', input: 'hi' }, { Origin: 'https://evil.example' })).status).toBe(403);
+    expect((await call('/chat', { sessionId: 'e3', input: 'hi' }, { 'Content-Type': 'text/plain' })).status).toBe(200);
+    server?.closeAllConnections();
+    await new Promise((resolve) => server!.close(resolve));
+    await agent?.close();
+
+    const strict = await serve(mockModel(['a']), { env: { LOUSHO_ALLOWED_HOSTS: 'agent.example' } });
+    expect((await strict.call('/chat/e1')).status).toBe(403);
+    server?.closeAllConnections();
+    await new Promise((resolve) => server!.close(resolve));
+    await agent?.close();
+
+    const overridden = await serve(mockModel(['a']), { env: { LOUSHO_ALLOWED_HOSTS: 'agent.example' }, allowedHosts: ['127.0.0.1'] });
+    expect((await overridden.call('/chat/e1')).status).toBe(200);
+  });
+});
+
 describe('deployed node server auth list (N10a)', () => {
   const basicHeader = (user: string, password: string) => ({ Authorization: `Basic ${btoa(`${user}:${password}`)}` });
 

@@ -1,11 +1,17 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { loadSpec } from './loadSpec';
 
+const tmpDirs: string[] = [];
+afterAll(() => {
+  for (const dir of tmpDirs) fs.rmSync(dir, { recursive: true, force: true });
+});
+
 function tmpFile(name: string, content: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-spec-'));
+  tmpDirs.push(dir);
   const filePath = path.join(dir, name);
   fs.writeFileSync(filePath, content);
   return filePath;
@@ -17,6 +23,24 @@ describe('loadSpec', () => {
     expect(() => loadSpec(missing)).toThrow(expect.objectContaining({ code: 'LOUSHO_SPEC_NOT_FOUND' }));
     expect(() => loadSpec(missing)).toThrow(/does not exist/);
     expect(() => loadSpec(missing)).not.toThrow(/ENOENT/);
+  });
+
+  it("keeps 'optional' on a YAML mcpServers entry", () => {
+    const filePath = tmpFile(
+      'agent.yaml',
+      `
+name: mcp-agent
+prompt: hi
+provider:
+  type: mock
+  model: m
+mcpServers:
+  bad:
+    command: nope-xyz
+    optional: true
+`
+    );
+    expect(loadSpec(filePath).mcpServers).toEqual({ bad: { command: 'nope-xyz', optional: true } });
   });
 
   it('loads a .yaml spec file', () => {

@@ -125,7 +125,9 @@ function serverSource(variant: ServerVariant): string {
  * LOUSHO_API_TOKEN makes every route except /health require
  * 'Authorization: Bearer <token>' (after the agent directory's auth.ts, if
  * it has one: see docs/auth.md). LOUSHO_STORE ('memory', the default, or
- * 'sqlite:<path>') chooses where sessions live.
+ * 'sqlite:<path>') chooses where sessions live. LOUSHO_ALLOWED_ORIGINS,
+ * LOUSHO_ALLOWED_HOSTS (comma-separated) and LOUSHO_REQUIRE_JSON_BODY=false
+ * set the routes' cross-site, Host and body checks (docs/auth.md).
  *
  * Binds to 127.0.0.1 by default; pass --host=<h> (or HOST=<h>) to opt in to
  * listening on other interfaces. Port: --port=<n> / PORT, default 3000.

@@ -4,6 +4,7 @@
  * session state is kept.
  */
 import * as http from 'node:http';
+import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { loadOptionalPeer } from '../../../providers/optionalPeer';
@@ -128,8 +129,10 @@ function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
  * The requests in flight on a listener, so a `notifications/cancelled` (which,
  * the transport being stateless, arrives in another POST and so at another
  * `McpServer`) can stop the run it names. A request is known by its JSON-RPC
- * id and the client that sent it (remote address, `Authorization` and
- * `User-Agent`); a cancel that matches several requests is ambiguous and is
+ * id and the client that sent it: the `Mcp-Session-Id` the listener handed out
+ * on `initialize` (which Streamable HTTP clients send back on every request),
+ * or, for a client that sends none, its remote address, `Authorization` and
+ * `User-Agent`. A cancel that matches several requests is ambiguous and is
  * ignored.
  */
 type InFlight = Map<string, Set<() => void>>;
@@ -146,7 +149,30 @@ function messagesOf(body: unknown): JsonRpcMessage[] {
 }
 
 function requestKey(req: http.IncomingMessage, id: unknown): string {
+  const session = req.headers['mcp-session-id'];
+  if (typeof session === 'string' && session) return JSON.stringify(['session', req.headers.authorization ?? '', session, id]);
   return JSON.stringify([req.socket.remoteAddress ?? '', req.headers.authorization ?? '', req.headers['user-agent'] ?? '', id]);
+}
+
+/** The ids of the JSON-RPC requests (not notifications) in `body`. */
+function requestIds(body: unknown): Array<string | number> {
+  return messagesOf(body)
+    .filter((message) => typeof message.method === 'string')
+    .map((message) => message.id)
+    .filter((id): id is string | number => typeof id === 'string' || typeof id === 'number');
+}
+
+/** Answers each request in a cancelled POST with a JSON-RPC error, so whoever waits on it is not left hanging. */
+function answerCancelled(res: http.ServerResponse, body: unknown): void {
+  if (res.headersSent || res.writableEnded) return;
+  const errors = requestIds(body).map((id) => ({ jsonrpc: '2.0', id, error: { code: -32800, message: 'Request cancelled' } }));
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(Array.isArray(body) ? errors : errors[0]));
+}
+
+/** Whether `body` holds an `initialize` request. */
+function isInitialize(body: unknown): boolean {
+  return messagesOf(body).some((message) => message.method === 'initialize');
 }
 
 /** Stops the run of each request a `notifications/cancelled` in `body` names, when exactly one matches. */
@@ -160,9 +186,7 @@ function relayCancels(inFlight: InFlight, req: http.IncomingMessage, body: unkno
 
 /** Registers `cancel` for the requests in `body`; returns the function that unregisters them. */
 function track(inFlight: InFlight, req: http.IncomingMessage, body: unknown, cancel: () => void): () => void {
-  const keys = messagesOf(body)
-    .filter((message) => typeof message.method === 'string' && (typeof message.id === 'string' || typeof message.id === 'number'))
-    .map((message) => requestKey(req, message.id));
+  const keys = requestIds(body).map((id) => requestKey(req, id));
   for (const key of keys) inFlight.set(key, (inFlight.get(key) ?? new Set()).add(cancel));
   return () => {
     for (const key of keys) {
@@ -186,13 +210,20 @@ async function serveRequest(
     import('@modelcontextprotocol/sdk/server/streamableHttp.js')
   );
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
+  // The server keeps no session state, but a session id tells clients that share an address, token and
+  // User-Agent apart, so a cancel only reaches the requests of the client that sent it.
+  if (isInitialize(body)) res.setHeader('Mcp-Session-Id', randomUUID());
   // Closing the server aborts its in-flight handlers' signals, which cancels the agent run. That happens when the
   // client disconnects, and when a later POST cancels this request (`notifications/cancelled`).
   const close = () => {
     void transport.close();
     void mcp.close();
   };
-  const untrack = track(inFlight, req, body, close);
+  const untrack = track(inFlight, req, body, () => {
+    close();
+    // A closed transport never answers the request: answer it here.
+    answerCancelled(res, body);
+  });
   res.on('close', () => {
     untrack();
     close();

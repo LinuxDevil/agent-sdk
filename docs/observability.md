@@ -35,7 +35,9 @@ const agent = createAgent({
 });
 ```
 
-Any object with `onSpanStart` and `onSpanEnd` is an exporter.
+Any object with `onSpanStart` and `onSpanEnd` is an exporter. The run does not
+wait for them: a hook that throws, or an `async` one whose promise rejects, is
+reported once per exporter with `console.warn` and otherwise ignored.
 
 #### Advanced: the executor API
 
@@ -117,12 +119,28 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `gen_ai.provider.name` | The provider's `name` |
 | `gen_ai.request.model` | The agent's model (`settings.model`, else the provider's default), when known |
 | `gen_ai.conversation.id` | `sessionId`, when set |
-| `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` | The run's total tokens: every model call, including those of delegated child runs; absent when no call reported usage. The `gen_ai.client.token.usage` metric still counts each model call once |
+| `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` | The run's total tokens: every model call, including those of delegated child runs; absent when no call reported usage. These repeat the `chat` spans' tokens: see [Summing token usage over spans](#summing-token-usage-over-spans). The `gen_ai.client.token.usage` metric still counts each model call once |
 | `lousho.cost_usd` | Cumulative estimated USD of the run (every model call and delegated child run, including a background child that finishes before the run ends); absent when any model used has no known price |
 | `lousho.usage.estimated` | `true` when any of the run's tokens were estimated |
 | `lousho.subagent.name` | On a sub-agent's run: the name the lead knows it by (the `task` tool's `agent`) |
 | `lousho.subagent.depth` | On a sub-agent's run: `1` for a sub-agent of the top-level run, `2` for its sub-agent, and so on |
 | `lousho.task.id` | On a sub-agent's run started by `task`: the task's `taskId` |
+
+#### Summing token usage over spans
+
+The totals on `invoke_agent` spans count tokens that the run's `chat` spans
+already carry, and a lead run's total also counts its sub-agents' runs. A
+backend that adds up `gen_ai.usage.*` over every span of a trace (some
+OpenTelemetry LLM cost dashboards do) therefore counts each token at least
+twice, and once more per level of sub-agent nesting: a lead with one sub-agent
+whose model calls used 33 + 7 input tokens shows 40 on the `chat` spans, 7 on
+the sub-agent's `invoke_agent` span and 40 on the lead's, 87 in all.
+
+To get the true total, sum `chat` spans only (`gen_ai.operation.name = chat`),
+read the top-level `invoke_agent` span alone, or use the
+`gen_ai.client.token.usage` metric. If the backend cannot filter, pass
+`createOtelTraceExporter({ agentUsageTotals: false })`: the usage attributes
+then stay on `chat` spans only (`lousho.cost_usd` stays on every span).
 
 ### Model call: `chat {model}` (CLIENT)
 

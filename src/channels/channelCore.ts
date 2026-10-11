@@ -27,6 +27,7 @@ import { reportChannelError } from './channelSupport';
 import type { Principal } from '../auth/types';
 import type { PendingApproval } from '../execution/ApprovalGate';
 import { SDKError, SessionAwaitingApprovalError } from '../execution/errors';
+import { crossSiteRequest } from '../server/requestGuard';
 
 /** Options of {@link channelCore}: what the hosts' mount options share. */
 export interface ChannelCoreOptions {
@@ -72,6 +73,22 @@ interface PausedTurn {
   channel: Channel;
   inbound: ChannelInbound;
   sessionId: string;
+}
+
+/** A channel request's header `name` (lowercase), list values joined as `node:http` would. */
+function headerOf(req: ChannelRequest, name: string): string | null {
+  const value = req.headers[name];
+  return value === undefined ? null : Array.isArray(value) ? value.join(', ') : value;
+}
+
+/**
+ * Whether `req` to a channel without `verify` comes from a web page on
+ * another site. A webhook sender or a server sends no `Origin`; a browser
+ * does, so with nothing else to authenticate the request, a page on another
+ * site must not start a turn (or decide a pause) on the user's behalf.
+ */
+function crossSiteToOpenChannel(channel: Channel, req: ChannelRequest): boolean {
+  return !channel.verify && crossSiteRequest({ get: (name) => headerOf(req, name) }, undefined);
 }
 
 async function isAuthorized(channel: Channel, req: ChannelRequest): Promise<boolean> {
@@ -339,6 +356,7 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
       answered.add(tracked);
       respond(status, body);
     };
+    if (crossSiteToOpenChannel(channel, req)) return tracked(403, { error: 'Cross-site request refused', code: 'LOUSHO_REQUEST_FORBIDDEN' });
     if (!(await isAuthorized(channel, req))) return tracked(401, { error: 'Unauthorized' });
     if (approvalId === undefined) {
       const inbound = await channel.parse(req, tracked, contextFor(channel));

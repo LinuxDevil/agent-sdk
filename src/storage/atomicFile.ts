@@ -39,6 +39,17 @@ export function fileNameOf(id: string): string {
   return `${HASHED_NAME_MARK}${safe.slice(0, 100)}${HASHED_NAME_MARK}${createHash('sha256').update(id).digest('hex').slice(0, 40)}`;
 }
 
+/**
+ * The names an id's file had in earlier releases, newest first: its case-safe
+ * name when that is now shortened (case-safe names of up to about 200
+ * characters were written as they are), and the id itself (before case-safe
+ * names).
+ */
+export function legacyNamesOf(id: string): string[] {
+  const safe = caseSafeName(id);
+  return safe === id ? [id] : [safe, id];
+}
+
 /** The file's text, or `undefined` when it does not exist. */
 export async function readTextFile(file: string): Promise<string | undefined> {
   try {

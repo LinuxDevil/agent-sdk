@@ -292,6 +292,25 @@ function toolOutput(result: unknown, isError: boolean | undefined) {
   return { type: isError ? 'error-json' : 'json', value: result ?? null };
 }
 
+/**
+ * Whether `model` sends tool errors as plain results. `@ai-sdk/openai` 4
+ * wraps an error output in `{"error": ...}`, and ours already say they are
+ * errors (`{"error": "ToolNotFoundError", ...}`), so the model got them
+ * wrapped twice; OpenAI's API has no error flag for it to lose.
+ */
+function sendsPlainToolErrors(model: unknown): boolean {
+  const provider = (model as { provider?: unknown } | null)?.provider;
+  return typeof provider === 'string' && /^openai(\.|$)/.test(provider);
+}
+
+/** A v5+ error tool output as the plain one with the same value. */
+function plainToolError(part: Record<string, unknown>): Record<string, unknown> {
+  const output = part.output as { type?: unknown; value?: unknown } | undefined;
+  if (output?.type === 'error-json') return { ...part, output: { type: 'json', value: output.value } };
+  if (output?.type === 'error-text') return { ...part, output: { type: 'text', value: output.value } };
+  return part;
+}
+
 /** LOU-V13: a v4 reasoning part as v5+ carries it, Anthropic's signature or redacted data in `providerOptions`. */
 function modernReasoning({ text = '', signature, data }: Record<string, unknown>): Record<string, unknown> {
   const anthropic = data !== undefined ? { redactedData: data } : signature !== undefined ? { signature } : undefined;
@@ -356,10 +375,11 @@ function toModernPart(part: Record<string, unknown>): Record<string, unknown> {
   return part;
 }
 
-/** A v4 CoreMessage as a v5+ ModelMessage. */
-function toModelMessage(message: AiSdkMessage) {
+/** A v4 CoreMessage as a v5+ ModelMessage; `plainToolErrors`: see {@link sendsPlainToolErrors}. */
+function toModelMessage(message: AiSdkMessage, plainToolErrors = false) {
   if (typeof message.content === 'string') return message;
-  return { ...message, content: message.content.map((part) => toModernPart(part as Record<string, unknown>)) };
+  const content = message.content.map((part) => toModernPart(part as Record<string, unknown>));
+  return { ...message, content: plainToolErrors && message.role === 'tool' ? content.map(plainToolError) : content };
 }
 
 /**
@@ -403,9 +423,10 @@ function toModernOutput(format: GenerateOptions['responseFormat']) {
 
 /** `settings` (v4 shape) as an `ai` v6/v7 `generateText()` request. */
 function toModernRequest(ai: AiSdkModule, settings: AiSdkCallSettings, options: GenerateOptions) {
+  const plainToolErrors = sendsPlainToolErrors(settings.model);
   return {
     model: settings.model,
-    messages: settings.messages.map(toModelMessage),
+    messages: settings.messages.map((message) => toModelMessage(message, plainToolErrors)),
     // AgentExecutor sends the system prompt as a message; v7 rejects that by default.
     allowSystemInMessages: true,
     temperature: settings.temperature,

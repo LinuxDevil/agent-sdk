@@ -167,11 +167,13 @@ Directories and modules are your code and run with your permissions; only run
   errors, so it then prints a warning.
 - `--allowed-hosts a,b` - extra host names the `Host` header may carry. To
   stop DNS rebinding (a web page re-pointing its own domain at your machine),
-  every route but `/health` and `/channels/*` answers `403`
-  (`LOUSHO_REQUEST_FORBIDDEN`) unless `Host` is `localhost`, a `127.x.x.x`
-  address or `[::1]`; off loopback, IP addresses and the `--host` name are
-  accepted too. Given, the list replaces that rule (loopback names stay
-  accepted); `*` accepts any host.
+  every route but `/health` and the channels that `verify` their requests
+  answers `403` (`LOUSHO_REQUEST_FORBIDDEN`) unless `Host` is `localhost`, a
+  `127.x.x.x` address or `[::1]`; off loopback, IP addresses and the `--host`
+  name are accepted too. The list adds to that rule (a tunnel's name, e.g.);
+  `*` accepts any host. A channel without `verify` (`httpChannel()` with no
+  `verify`) is checked like the dev routes, so reach it through a tunnel only
+  with its name in the list.
 - POST bodies must be `Content-Type: application/json` (`415` otherwise), and
   a browser POST from another origin is `403`, as on the deployed server
   ([Cross-site requests](./auth.md#cross-site-requests)).

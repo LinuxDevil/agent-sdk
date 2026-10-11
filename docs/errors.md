@@ -265,8 +265,7 @@ that the provider cannot send: its media type is not one the provider sends on
 your `ai` major (see [Multimodal input](./providers.md#multimodal-input)). The
 call is rejected before anything is sent, so the model never answers without
 the file. Under `withFallback()` (or `fallbackModels`) the next provider gets
-the call. Inside an agent run the error reaches you as the `cause` of a
-`LOUSHO_PROVIDER_REQUEST_FAILED` error, with the same message.
+the call. `agent.send()` and `agent.stream()` reject with this code.
 
 **Fix:** send the file to a provider and `ai` major that takes its type (or
 list the type in `fromAiSdk(model, { fileMediaTypes })`), put the file's text
@@ -548,8 +547,10 @@ approval stays pending.
 
 **Fix:** await the turn's `send()` (or abort it), then call again. After a `send()` that failed
 this way, send again: the session reads the current transcript at the start of every call. A
-lease left by a process that died is taken over once it expires (30 s), or at once by the
-file and SQLite stores when that process is gone from the same host.
+lease left by a process that died is taken over once it expires (30 s, plus up to 30 s of
+clock-skew grace on the file and SQLite stores), or at once when that process provably exited
+on the same host and PID namespace. A run that stalled past its lease fails with this code at
+its next checkpoint instead of overwriting the run that took over.
 
 ### LOUSHO_SESSION_TURN_PENDING
 

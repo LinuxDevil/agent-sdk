@@ -38,7 +38,7 @@ import {
   suspensionRecord,
   type ToolCallScope,
 } from './subagentRuntime';
-import { ConfigurationError, isAbortError, isCassetteError } from './errors';
+import { ConfigurationError, isAbortError, isCassetteError, SDKError } from './errors';
 import { abortReasonOf } from './abortReason';
 import type { HostedTool } from '../tools/hosted';
 import { assertHostedToolsSupported, countHostedCalls, withHostedCalls } from './hostedToolCalls';
@@ -1402,6 +1402,12 @@ export class AgentExecutor {
     // path, the call number and the re-record hint behind a generic
     // CompactedLLMProviderError.
     if (isCassetteError(generateError)) {
+      throw generateError;
+    }
+
+    // A file part the provider cannot send is rejected before any request:
+    // it reaches the caller with its own code, LOUSHO_UNSUPPORTED_CONTENT.
+    if (generateError instanceof SDKError && generateError.code === 'LOUSHO_UNSUPPORTED_CONTENT') {
       throw generateError;
     }
 

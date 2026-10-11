@@ -153,6 +153,12 @@ describe('a remote stream that ends before run.done', () => {
     expect(h.state().messages[1].text).toBe('hel');
   });
 
+  it("keeps the server's error event when the stream then ends without run.done", async () => {
+    const h = remote([frame({ type: 'run.start', agentName: 'a' }), frame({ type: 'error', error: { name: 'ProviderError', message: 'real server error' } })]);
+    await h.runner.send('hi');
+    expect(h.state()).toMatchObject({ status: 'error', error: { name: 'ProviderError', message: 'real server error' } });
+  });
+
   it("does not count a sub-agent's run.done as the end of the run", async () => {
     const h = remote([frame({ type: 'run.done', finishReason: 'stop', text: '', subagent: { name: 's', depth: 1, toolCallId: 't' } })]);
     await h.runner.send('hi');
@@ -166,5 +172,36 @@ describe('a remote stream that ends before run.done', () => {
     const paused = remote([frame({ type: 'approval.requested', approvalId: 'ap1', toolCallId: 'c1', toolName: 'pay', args: {} })]);
     await paused.runner.send('hi');
     expect(paused.state().status).toBe('awaiting-approval');
+  });
+});
+
+describe('createAgentRunner request headers', () => {
+  async function sentHeaders(headers: unknown): Promise<Headers> {
+    let seen: RequestInit | undefined;
+    const fetchMock = (async (_url: string | URL | Request, init?: RequestInit) => {
+      seen = init;
+      return new Response(new Blob([frame({ type: 'run.done', finishReason: 'stop', text: 'ok' })] as BlobPart[]), { headers: { 'Content-Type': 'text/event-stream' } });
+    }) as typeof fetch;
+    let state: AgentUIState = initialAgentUIState;
+    const runner = createAgentRunner({
+      source: () => ({ url: '/send', fetch: fetchMock, headers: headers as Record<string, string> }),
+      options: () => ({}),
+      state: () => state,
+      dispatch: (action) => (state = reduceAgentEvents(state, action)),
+    });
+    await runner.send('hi');
+    return new Headers(seen?.headers);
+  }
+
+  it('sends one content-type when the caller sets its own in another case', async () => {
+    const headers = await sentHeaders({ Authorization: 'Bearer t', 'content-type': 'application/json' });
+    expect(headers.get('content-type')).toBe('application/json');
+    expect(headers.get('authorization')).toBe('Bearer t');
+  });
+
+  it('sends the entries of a Headers instance, plus the JSON content-type', async () => {
+    const headers = await sentHeaders(new Headers({ Authorization: 'Bearer t' }));
+    expect(headers.get('authorization')).toBe('Bearer t');
+    expect(headers.get('content-type')).toBe('application/json');
   });
 });

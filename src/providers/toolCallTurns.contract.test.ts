@@ -112,7 +112,12 @@ const history: Message[] = [
   { role: 'user', content: 'Thanks!' },
 ];
 
-const expectedPayload: Payload = [
+/**
+ * The payload for provider `name`. On `ai` 6/7 the OpenAI-wire providers send
+ * the error result as a plain one: `@ai-sdk/openai` 4 would wrap an error
+ * output in `{"error": ...}` again, and the result already says it failed.
+ */
+const expectedPayload = (name: string): Payload => [
   { role: 'user', content: 'Weather in Paris and Rome?' },
   {
     role: 'assistant',
@@ -135,7 +140,7 @@ const expectedPayload: Payload = [
         'call_B',
         'get_weather',
         { error: 'Error', toolName: 'get_weather', message: 'Rome station offline', kind: 'execution' },
-        true
+        installedAiMajor === 4 || !['openai', 'openrouter'].includes(name)
       ),
     ],
   },
@@ -150,7 +155,7 @@ async function wirePayload(provider: LLMProvider, messages: Message[]): Promise<
   return generateTextMock.mock.calls[0][0].messages;
 }
 
-describe.each(providers)('%s provider: tool-call turns at the ai-SDK boundary', (_name, create) => {
+describe.each(providers)('%s provider: tool-call turns at the ai-SDK boundary', (name, create) => {
   beforeEach(() => {
     generateTextMock.mockReset();
   });
@@ -158,7 +163,7 @@ describe.each(providers)('%s provider: tool-call turns at the ai-SDK boundary', 
   it('keeps the assistant tool-call turn and links every tool result to it', async () => {
     const payload = await wirePayload(create(), history);
 
-    expect(payload).toEqual(expectedPayload);
+    expect(payload).toEqual(expectedPayload(name));
     // The installed 'ai' version accepts it, dropping nothing.
     expectAccepted(payload);
   });
@@ -177,7 +182,7 @@ describe.each(providers)('%s provider: tool-call turns at the ai-SDK boundary', 
     // agent-forge's FileCheckpointStore, the Worker's KV store).
     const restored = JSON.parse(JSON.stringify(checkpoint)) as Checkpoint;
 
-    expect(await wirePayload(create(), restored.messages)).toEqual(expectedPayload);
+    expect(await wirePayload(create(), restored.messages)).toEqual(expectedPayload(name));
   });
 
   it('sends a tool-call turn with no text as tool-call parts only', async () => {
@@ -236,7 +241,7 @@ describe('AgentExecutor -> provider: second step sees the first step tool calls'
     generateTextMock.mockReset();
   });
 
-  it.each(providers)('%s', async (_name, create) => {
+  it.each(providers)('%s', async (name, create) => {
     const toolRegistry = new ToolRegistry();
     toolRegistry.register('get_weather', {
       displayName: 'Get weather',
@@ -279,6 +284,6 @@ describe('AgentExecutor -> provider: second step sees the first step tool calls'
     expect(result.text).toBe('Paris is 21C and clear; Rome is unavailable.');
     const secondCall = generateTextMock.mock.calls[1][0].messages as Payload;
     const fromUser = secondCall.slice(secondCall.findIndex((m) => m.role === 'user'));
-    expect(fromUser).toEqual(expectedPayload.slice(0, 4));
+    expect(fromUser).toEqual(expectedPayload(name).slice(0, 4));
   });
 });

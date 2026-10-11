@@ -418,7 +418,15 @@ describe('lousho eval --record with labels that truncate alike (docs-qa F3)', ()
   const fixture = path.join(FIXTURES, 'collide.eval.ts');
   const cassettes = path.join(FIXTURES, '__cassettes__', 'slug-collision');
   const quietVitest = createVitestSpawner('ignore');
-  const clean = () => fs.rmSync(cassettes, { recursive: true, force: true });
+  const clean = () => {
+    fs.rmSync(cassettes, { recursive: true, force: true });
+    // Also the __cassettes__ directory the recording created, unless something else is still in it.
+    try {
+      fs.rmdirSync(path.dirname(cassettes));
+    } catch {
+      // Absent, or not empty.
+    }
+  };
   beforeAll(clean);
   afterAll(clean);
   afterEach(() => {

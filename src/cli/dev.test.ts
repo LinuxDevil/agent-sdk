@@ -166,6 +166,25 @@ describe('startDevServer', () => {
     expect(await allowed(`evil.example:${allowedPort}`)).toBe(403);
   });
 
+  it('--allowed-hosts adds to the defaults: off loopback, IP addresses are still served', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-dev-'));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    handle = await startDevServer(writeConfig(dir), 0, '0.0.0.0', { allowedHosts: ['devbox.test'] });
+    const port = addressPort(handle);
+    const status = (host: string) =>
+      new Promise<number>((resolve, reject) => {
+        http.get({ host: '127.0.0.1', port, path: '/dev/status', headers: { host } }, (res) => {
+          res.resume();
+          resolve(res.statusCode ?? 0);
+        }).on('error', reject);
+      });
+    expect(await status(`192.168.1.20:${port}`)).toBe(200);
+    expect(await status(`devbox.test:${port}`)).toBe(200);
+    expect(await status(`localhost:${port}`)).toBe(200);
+    expect(await status(`evil.example:${port}`)).toBe(403);
+    vi.restoreAllMocks();
+  });
+
   it('warns when bound to a non-loopback host (no auth on the dev server)', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-dev-'));

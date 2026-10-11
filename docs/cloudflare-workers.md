@@ -73,8 +73,11 @@ source declares cron triggers) and bundles it as a
 browser-platform ES module; the build fails if any `node:` import ends up in
 `dist/worker.js`. `wrangler.toml` points `main` at `dist/worker.js` with
 `no_bundle = true`, so exactly the verified bundle is uploaded. Its
-`compatibility_date` defaults to a date pinned per SDK version; change it in
-the generated `wrangler.toml` and later builds keep your date. It builds and
+`compatibility_date` defaults to a date pinned per SDK version (`2026-09-01`).
+The first build writes the whole file; later builds only update the keys the
+build owns (`name`, `main`, `no_bundle` and `[triggers] crons`) and keep
+everything else you changed or added: your `compatibility_date`, `[vars]`, a
+filled-in `[[kv_namespaces]]` block, routes and comments. It builds and
 runs with `ai` v4 (the default install) or `ai` v7 (with
 `@ai-sdk/openai`/`@ai-sdk/anthropic` v4) installed, with no compatibility
 flag (no `nodejs_compat`):
@@ -170,8 +173,9 @@ add their own routes under `/channels` (see above). Its bindings:
 
 | Binding | Kind | What it does |
 | ------- | ---- | ------------ |
-| `LOUSHO_API_TOKEN` | secret (`npx wrangler secret put LOUSHO_API_TOKEN`) | Makes every route except `/health` require `Authorization: Bearer <token>` (constant-time compare, `401` JSON otherwise). Without it the Worker is open to anyone who has its URL, so **set it before you deploy** (`lousho build` reminds you). Without it, `GET /chat/:sessionId` answers `403` (`LOUSHO_REQUEST_FORBIDDEN`) rather than hand any session's transcript to whoever knows its id. |
-| `LOUSHO_ALLOW_OPEN_TRANSCRIPTS` | variable (`[vars]` in `wrangler.toml`) | `"true"` serves `GET /chat/:sessionId` on a Worker without `LOUSHO_API_TOKEN`, to anyone. Leave it unset outside a throwaway demo. |
+| `LOUSHO_API_TOKEN` | secret (`npx wrangler secret put LOUSHO_API_TOKEN`) | Makes every route except `/health` require `Authorization: Bearer <token>` (constant-time compare, `401` JSON otherwise). **Set it before you deploy** (`lousho build` reminds you): without it every `/chat` route (a turn, a transcript, an approval decision) answers `403` (`LOUSHO_REQUEST_FORBIDDEN`), since anyone with the URL could otherwise chat on your provider key and read, continue or approve any session by its id. `/health`, the OAuth callback and `channels/` (which verify their own requests) stay open. |
+| `LOUSHO_ALLOW_OPEN_SESSIONS` | variable (`[vars]` in `wrangler.toml`, or `.dev.vars` for `wrangler dev`) | `"true"` serves the `/chat` routes on a Worker without `LOUSHO_API_TOKEN`, to anyone. Leave it unset outside a throwaway demo. Its earlier name, `LOUSHO_ALLOW_OPEN_TRANSCRIPTS`, still works. |
+| `LOUSHO_ALLOWED_ORIGINS`, `LOUSHO_ALLOWED_HOSTS`, `LOUSHO_REQUIRE_JSON_BODY` | variables | The routes' `allowedOrigins` and `allowedHosts` (comma-separated) and, with `"false"`, `requireJsonBody: false`: for a front end on another origin, or a proxy in front. See [Cross-site requests](./auth.md#cross-site-requests). |
 | `AGENT_CHECKPOINTS` | KV namespace | Holds sessions, checkpoints, paused approvals and `kvMemory()` items, in one namespace, as `KVStore` (below). Without it they live in the memory of one isolate, which Cloudflare recycles at will: fine for trying a deploy out, not for production. |
 | `LOUSHO_HTTP_ALLOW` | variable (`[vars]` in `wrangler.toml`) | The host names the `http` tool may reach, comma-separated: `api.github.com`, or `*.example.com` for subdomains only. Unset or empty, every `http` request is refused. See [Providers and tools](#providers-and-tools). |
 

@@ -110,7 +110,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: 'hi', sessionId: 'no-kv-session' }),
       }),
-      {} // no AGENT_CHECKPOINTS binding at all
+      { LOUSHO_ALLOW_OPEN_SESSIONS: 'true' } // no AGENT_CHECKPOINTS binding at all
     );
     expect(res.status).toBe(200);
     expect((await res.json()).text).toBe('This is a mock response.');
@@ -122,7 +122,8 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: 'hi', sessionId: 12345 }),
-      })
+      }),
+      { LOUSHO_ALLOW_OPEN_SESSIONS: 'true' }
     );
     expect(res.status).toBe(400);
   });
@@ -137,7 +138,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: 'please call current-date for me', sessionId }),
       }),
-      { [CHECKPOINT_KV_BINDING]: kv }
+      { [CHECKPOINT_KV_BINDING]: kv, LOUSHO_ALLOW_OPEN_SESSIONS: 'true' }
     );
 
     expect(res.status).toBe(200);
@@ -172,7 +173,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: 'please call current-date now', sessionId: captureSessionId }),
       }),
-      { [CHECKPOINT_KV_BINDING]: capturingKv }
+      { [CHECKPOINT_KV_BINDING]: capturingKv, LOUSHO_ALLOW_OPEN_SESSIONS: 'true' }
     );
     expect(captureRes.status).toBe(200);
 
@@ -211,7 +212,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: 'totally unrelated follow-up text', sessionId: resumeSessionId }),
       }),
-      { [CHECKPOINT_KV_BINDING]: resumeKv }
+      { [CHECKPOINT_KV_BINDING]: resumeKv, LOUSHO_ALLOW_OPEN_SESSIONS: 'true' }
     );
 
     expect(resumeRes.status).toBe(200);

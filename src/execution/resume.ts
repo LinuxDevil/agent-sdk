@@ -26,7 +26,7 @@ import { validateToolArguments } from './toolArgsValidation';
 import { AgentExecutor, ExecuteOptions, ExecutionResult, extendRunOptions } from './AgentExecutor';
 import { observeRun, partialSink, runEventsOf, streamResumed, type AgentRun, type ToolSettled } from './agentRun';
 import { Checkpoint, CheckpointStore, RUN_CONFIG_KEY, pausedApprovalIds } from './checkpoint';
-import { acquireRunLease, HELD_RUN_LEASE, REPLACES_CHECKPOINT, type RunLease, type RunLeaseOptions } from './runLease';
+import { acquireRunLease, fencedCheckpointStore, HELD_RUN_LEASE, REPLACES_CHECKPOINT, type RunLease, type RunLeaseOptions } from './runLease';
 import { checkAgentDrift, fingerprintOf, type AgentDrift } from './agentFingerprint';
 import type { AgentConfig } from '../types';
 import { NoopSandbox } from '../security/sandboxCore';
@@ -186,7 +186,9 @@ async function resumeObserved(
 
   const { lease, staleCheckpoint } = await holdPausedRun(record, decided, approvalStore, checkpointStore, grouped ? claimed : record, executeOptions.businessState);
   try {
-    return await continueDecided({ decided, record, claimed, drift, staleCheckpoint, lease, approvalStore, toolRegistry, provider, executeOptions, approver, checkpointStore });
+    // Every save of the paused run's checkpoint from here on is fenced by its lease.
+    const fenced = fencedCheckpointStore(checkpointStore, lease);
+    return await continueDecided({ decided, record, claimed, drift, staleCheckpoint, lease, approvalStore, toolRegistry, provider, executeOptions, approver, checkpointStore: fenced });
   } finally {
     await lease?.release();
   }
@@ -1182,7 +1184,7 @@ async function holdPausedRun(
     delete marked.approvalId;
     delete marked.approvalIds;
     delete marked.approvalKind;
-    await checkpointStore.save(sessionId, marked);
+    await (lease ? lease.save(marked) : checkpointStore.save(sessionId, marked));
     return { lease, staleCheckpoint };
   } catch (error) {
     await lease?.release();

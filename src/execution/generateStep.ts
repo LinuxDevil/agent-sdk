@@ -19,6 +19,7 @@ import { measureUsage } from './runUsage';
 import { llmSpanInit, recordLlmResult, resolveCaptureContent } from './genAiSpans';
 import { SdkAttr } from './semconv';
 import { GenerateHookContext } from './hooks';
+import { APICallError } from 'ai';
 import {
   CompactedLLMProviderError,
   CompactedProviderError,
@@ -362,8 +363,21 @@ export function compactGenerateError(
   const compacted = compactProviderError(generateError, providerName);
   return {
     compacted,
-    error: new CompactedLLMProviderError(compacted, generateError as Error),
+    error: new CompactedLLMProviderError(compacted, failureInsideSuccess(generateError) as Error),
   };
+}
+
+/**
+ * The failure inside `@ai-sdk/provider-utils` 4+'s "Failed to process
+ * successful response" (status 200), such as an error reported mid-stream,
+ * so the error's `cause` keeps its status and upstream `responseBody`.
+ */
+function failureInsideSuccess(error: unknown): unknown {
+  let failure = error;
+  while (APICallError.isInstance(failure) && (failure.statusCode ?? 0) < 400 && APICallError.isInstance(failure.cause)) {
+    failure = failure.cause;
+  }
+  return failure;
 }
 
 /**

@@ -64,7 +64,7 @@ export type { AgentApprovals, ApproveToolCall, ResolveApprovalOptions } from './
 export type { PendingRun } from './agentPending';
 // One store for sessions, checkpoints and approvals: createAgent({ store }) (LOU-D30)
 export { memoryStore, type AgentStore, type MemoryStoreOptions } from './storage/agentStore';
-export { fileStore, type FileStoreOptions } from './storage/fileStore';
+export { fileStore, type FileStore, type FileStoreOptions, type FileStorePruneOptions, type FileStorePruneResult } from './storage/fileStore';
 // OAuth token storage: AgentStore.tokens (N9a)
 export * from './oauth';
 

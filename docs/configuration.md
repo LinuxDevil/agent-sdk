@@ -122,6 +122,7 @@ an invalid entry fails with the entry name in the message, e.g.
 `'mcpServers.files': missing 'command' (stdio server) or 'url' (HTTP server)`.
 An optional `approval` (`always`, the default, `annotations` or `never`) says which of the server's tools ask for approval; see [Approval for MCP tools](./mcp.md#approval-for-mcp-tools).
 An optional `deferLoading: true` withholds the server's tools from the model until it finds them with `tool_search`; see [Tool search](./tool-search.md).
+An optional `optional: true` leaves out a server that cannot connect (with a warning) instead of failing every send; see [Use MCP servers in an agent](./mcp.md#use-mcp-servers-in-an-agent).
 An HTTP entry may set `oauth` (`redirectUri`, optional `clientId`, `clientSecret`, `scopes` and `clientName`) to sign in to the server with OAuth instead of a static `Authorization` header; see [MCP servers with OAuth](./oauth.md#mcp-servers-with-oauth).
 `lousho doctor` checks each stdio `command` is resolvable.
 

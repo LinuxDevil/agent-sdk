@@ -825,7 +825,9 @@ interface CheckpointStore {
     list?(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
     load(sessionId: string): Promise<Checkpoint | null>;
     releaseLease?(sessionId: string, owner: string): Promise<void>;
+    renewLease?(sessionId: string, owner: string, ttlMs: number): Promise<boolean>;
     save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
+    saveIfLeased?(sessionId: string, checkpoint: Checkpoint, owner: string): Promise<boolean>;
 }
 
 // @public
@@ -1931,8 +1933,10 @@ export class KVCheckpointStore implements CheckpointStore {
     // (undocumented)
     load(sessionId: string): Promise<Checkpoint | null>;
     releaseLease(sessionId: string, owner: string): Promise<void>;
+    renewLease(sessionId: string, owner: string, ttlMs: number): Promise<boolean>;
     // (undocumented)
     save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
+    saveIfLeased(sessionId: string, checkpoint: Checkpoint, owner: string): Promise<boolean>;
 }
 
 // @public
@@ -2041,10 +2045,10 @@ interface LLMProviderConfig {
 // @public
 export class LLMProviderRegistry {
     static clear(): void;
-    static create(name: string, config: LLMProviderConfig): LLMProvider;
+    static create<C extends object = LLMProviderConfig>(name: string, config: C & LLMProviderConfig): LLMProvider;
     static getProviderNames(): string[];
     static has(name: string): boolean;
-    static register(name: string, factory: ProviderFactory): void;
+    static register<C extends LLMProviderConfig>(name: string, factory: ProviderFactory<C>): void;
 }
 
 // @public
@@ -2757,7 +2761,7 @@ export interface PromptScheduleInput extends ScheduleBase {
 }
 
 // @public
-type ProviderFactory = (config: LLMProviderConfig) => LLMProvider;
+type ProviderFactory<C extends LLMProviderConfig = LLMProviderConfig> = (config: C) => LLMProvider;
 
 // @public
 interface ProviderFallbackEvent extends AgentEventBase<'provider.fallback'> {
@@ -2913,6 +2917,7 @@ interface ResolvedApproval {
 
 // @public
 interface ResponseWatch {
+    asStream?(text: string): string | undefined;
     data?(text: string): UpstreamFailure | undefined;
     end?(complete: boolean): void;
     rewrite?(text: string): string | undefined;
@@ -3986,6 +3991,7 @@ type UnsupportedFiles = 'error' | 'text-note';
 
 // @public
 interface UpstreamFailure {
+    body?: string;
     // (undocumented)
     message: string;
     // (undocumented)

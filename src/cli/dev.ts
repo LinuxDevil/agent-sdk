@@ -89,19 +89,21 @@ interface DevAccess {
 
 /**
  * The dev server is open and shows raw errors, so a web page must not reach it
- * through DNS rebinding: only loopback names (and, off loopback, IP addresses,
- * the bound host and `allowedHosts`) are served. Channels authenticate
- * themselves and are reached through tunnels, so they are not checked.
+ * through DNS rebinding: only loopback names (and, off loopback, IP addresses
+ * and the bound host), plus `allowedHosts`, are served. A channel that
+ * verifies its requests (a signature, a token) is reached through tunnels
+ * under their own names, so it is not checked; one without `verify` is.
  */
-function hostForbidden(req: http.IncomingMessage, pathname: string, access: DevAccess): boolean {
-  if (pathname === '/health' || pathname.startsWith('/channels/')) return false;
-  const allowed = access.allowedHosts && [...access.allowedHosts, 'localhost', '127.0.0.1', '[::1]'];
-  return !hostHeaderAllowed(req.headers.host, access.host, allowed);
+function hostForbidden(req: http.IncomingMessage, pathname: string, access: DevAccess, holder: AgentHolder): boolean {
+  const channel = /^\/channels\/([^/]+)/.exec(pathname)?.[1];
+  if (pathname === '/health' || (channel !== undefined && holder.verifiedChannels?.has(channel))) return false;
+  const host = req.headers.host;
+  return !hostHeaderAllowed(host, access.host) && !(access.allowedHosts && hostHeaderAllowed(host, access.host, access.allowedHosts));
 }
 
 async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse, holder: AgentHolder, access: DevAccess): Promise<void> {
   const { pathname } = new URL(req.url ?? '/', 'http://localhost');
-  if (hostForbidden(req, pathname, access)) {
+  if (hostForbidden(req, pathname, access, holder)) {
     return sendJson(res, 403, { error: `Host "${req.headers.host ?? ''}" is not allowed. Pass --allowed-hosts to accept it.`, code: 'LOUSHO_REQUEST_FORBIDDEN' });
   }
   const handler = ROUTES.get(`${req.method} ${pathname}`);
@@ -208,7 +210,8 @@ The path is a spec file (.yaml/.yml/.json), an agent directory, or a .ts/.js mod
 Options:
   --port N          port to listen on (default 3737)
   --host H          interface to bind (default 127.0.0.1; 0.0.0.0 exposes the agent, unauthenticated, to your network)
-  --allowed-hosts a,b  extra Host header names to accept, comma-separated (e.g. a tunnel or LAN name)
+  --allowed-hosts a,b
+                    extra Host names to serve (a tunnel's name), besides loopback names and, off loopback, IP addresses
   --no-schedules    do not start an agent directory's schedules
   --traces[=dir]    write local trace files (default .lousho/traces); view them with lousho traces
   -h, --help        show this help`;

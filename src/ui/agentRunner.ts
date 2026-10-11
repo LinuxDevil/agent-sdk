@@ -81,7 +81,12 @@ async function serverMessage(response: Response): Promise<string | undefined> {
 }
 
 async function post(source: RemoteAgentSource, url: string, body: unknown, signal: AbortSignal): Promise<Response> {
-  const headers = { 'Content-Type': 'application/json', ...source.headers };
+  // A `Headers` instance spreads to `{}`: read its entries. A `content-type` the caller sets in any case replaces the
+  // default instead of being sent next to it (two values arrive joined, which the routes' JSON check refused).
+  const given: Record<string, string> = { ...source.headers };
+  if ((source.headers as unknown) instanceof Headers) (source.headers as unknown as Headers).forEach((value, name) => (given[name] = value));
+  const typed = Object.keys(given).some((name) => name.toLowerCase() === 'content-type');
+  const headers = typed ? given : { 'Content-Type': 'application/json', ...given };
   const response = await (source.fetch ?? fetch)(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
   if (!response.ok) {
     // The message stays as it was (the UI shows it); the code says what kind of failure it is.
@@ -126,20 +131,25 @@ export function createAgentRunner(host: AgentRunnerHost): AgentCommands & { rese
    * Runs `task` as the current run; once another run replaces it, its events are dropped.
    * A stream that ends cleanly but before the run settled (no top-level `run.done`, no
    * pause for approval: a proxy timeout, a server restart, a truncated body) ends the
-   * run with a `StreamEndedError` instead of leaving it `streaming` forever.
+   * run with a `StreamEndedError` instead of leaving it `streaming` forever, or with the
+   * run's own `error` event when one came before the stream ended.
    */
   async function run(task: (emit: Emit, signal: AbortSignal) => Promise<void>): Promise<void> {
     controller?.abort();
     const mine = (controller = new AbortController());
     let settled = false;
+    let lastError: AgentEventError | undefined;
     const emit: Emit = (action) => {
       if (controller !== mine) return;
       if (settlesRun(action)) settled = true;
+      if (action.type === 'error' && !action.subagent) lastError = action.error;
       host.dispatch(action);
     };
     try {
       await task(emit, mine.signal);
-      if (!settled && !mine.signal.aborted) emit({ type: 'ui.error', error: { name: 'StreamEndedError', message: 'The event stream ended before the run finished (no run.done event).' } });
+      if (!settled && !mine.signal.aborted) {
+        emit({ type: 'ui.error', error: lastError ?? { name: 'StreamEndedError', message: 'The event stream ended before the run finished (no run.done event).' } });
+      }
     } catch (error) {
       if (!mine.signal.aborted) emit({ type: 'ui.error', error: toEventError(error) });
     } finally {

@@ -275,13 +275,14 @@ permission rules and sub-agents see it too: see
 
 ## Security notes
 
-- **Sessions belong to their first caller by default.** Once route auth
-  accepted a caller, a session id is bound to the first principal that reads
-  or continues it, and any other principal gets `403`
-  (`LOUSHO_SESSION_FORBIDDEN`). That record lives in memory, per process (or
-  Worker isolate): a restart or a second replica forgets it, and the first
-  caller after that claims the session. With more than one instance, pass
-  `authorizeSession` that checks ownership against your own data. See
+- **Sessions belong to the caller that started them by default.** Once route
+  auth accepted a caller, a session id is bound to the first principal that
+  sends it a turn (reading an id claims nothing), and any other principal gets
+  `403` (`LOUSHO_SESSION_FORBIDDEN`). That record lives in memory, per agent:
+  a restart, a second replica or the generated Worker (which builds its agent
+  per request) forgets it, and the next caller to send a turn claims the
+  session. With more than one instance, pass `authorizeSession` that checks
+  ownership against your own data. See
   [Who may use a session](#who-may-use-a-session).
 - **Cookies need CSRF protection, which the routes give by default.** A POST
   must be JSON (`415` otherwise) and must not come from another site's page
@@ -412,16 +413,20 @@ belongs to that caller is used only for that caller's calls, whoever approves.
 ### Who may use a session
 
 By default, once route auth accepted a caller, a session belongs to the first
-principal that reads it or sends it a turn (principals are compared by `id`,
-`type`, `authenticator` and `issuer`). Another principal gets `403`
+principal that sends it a turn (principals are compared by `id`, `type`,
+`authenticator` and `issuer`). Another principal gets `403`
 (`LOUSHO_SESSION_FORBIDDEN`) on `GET /chat/:id`, `POST /chat`, `POST
 <basePath>` and the `useChat` endpoint; decisions on its approvals are left to
-`authorizeApproval` (below). A route without auth checks nothing. All callers
-of one `apiToken()` are one principal, so they share every session.
+`authorizeApproval` (below). Reading an id nobody has sent a turn to yet
+claims nothing, so a caller cannot lock a user out of a predictable id
+(`user-42`) by reading it first. A route without auth checks nothing. All
+callers of one `apiToken()` are one principal, so they share every session.
 
-The owner is remembered in memory, per agent: a restart, a second replica or
-a Worker isolate that is recycled forgets it, and the next caller claims the
-session. So for anything that runs on more than one instance, check ownership
+The owner is remembered in memory, per agent object, for the 100,000 most
+recently used sessions: a restart, a second replica, a session unused for
+longer, or the generated Cloudflare Worker (which builds its agent per
+request) forgets it, and the next caller to send a turn claims the session.
+So for anything that runs on more than one instance, check ownership
 yourself.
 
 `createRouteHandler()` and `createDeployedServer()` take `authorizeSession`,
@@ -453,21 +458,37 @@ A browser sends cookies with requests that another site's page makes, so with
 cookie-based auth a page on `evil.example` could otherwise start a turn or
 approve a call as your user. The session routes refuse that by default:
 
-- a POST whose `Origin` is not the server's own (its `Host`, or the
-  `X-Forwarded-Host` a proxy in front sets) and not in `allowedOrigins`, or
-  that the browser marked `Sec-Fetch-Site: cross-site`, is `403`
-  (`LOUSHO_REQUEST_FORBIDDEN`). Requests without an `Origin` (curl, a server,
-  another agent) are not affected;
+- a POST whose `Origin` is not the server's own (its `Host`, or the host a
+  proxy in front reports in `X-Forwarded-Host` or `Forwarded: host=`) and not
+  in `allowedOrigins`, or that the browser marked `Sec-Fetch-Site:
+  cross-site`, is `403` (`LOUSHO_REQUEST_FORBIDDEN`). Requests without an
+  `Origin` (curl, a server, another agent) are not affected;
 - a POST body must be `Content-Type: application/json` (`415`,
   `LOUSHO_UNSUPPORTED_MEDIA_TYPE` otherwise): forms and `text/plain` are what
   another site can send without a CORS preflight.
 
 A front end on another origin is listed in `allowedOrigins` (it also needs
 CORS headers, which your host adds); `allowedOrigins: ['*']` turns the origin
-check off and `requireJsonBody: false` the content-type one. `allowedHosts`
-(off by default) refuses any request whose `Host` is not listed, against DNS
-rebinding of a server on a private address. All three work on
-`createRouteHandler()` and `createDeployedServer()`.
+check off and `requireJsonBody: false` the content-type one. Entries are
+compared as origins: case, a trailing slash and a default port
+(`https://app.example:443`) do not matter. `allowedHosts` (off by default)
+refuses any request whose `Host` is not listed, against DNS rebinding of a
+server on a private address. All three work on `createRouteHandler()` and
+`createDeployedServer()`; the generated node server and Cloudflare Worker read
+them from `LOUSHO_ALLOWED_ORIGINS` and `LOUSHO_ALLOWED_HOSTS` (comma-separated)
+and `LOUSHO_REQUIRE_JSON_BODY=false`.
+
+Behind a reverse proxy:
+
+- The proxy must tell the server the public host, or a browser's same-site
+  POST is `403`: keep the original `Host` (nginx `proxy_set_header Host
+  $host;`), or set `X-Forwarded-Host` (`proxy_set_header X-Forwarded-Host
+  $host;`) or `Forwarded: host=...`. A default port in it
+  (`agent.example:443`) matches an `https://agent.example` page. Otherwise
+  list the public origin in `allowedOrigins`.
+- `allowedHosts` checks only the `Host` header the server receives, never the
+  forwarded ones (a page that rebinds DNS can set those). Behind a proxy that
+  rewrites `Host`, list the upstream name the proxy sends, not the public one.
 
 ```ts
 import { createAgent, createRouteHandler } from '@lousho/build-ai-agent';
@@ -496,8 +517,8 @@ their own call, and cannot decide another user's. A run without a principal,
 or a route without auth, accepts any caller.
 
 When `needsApproval` means that someone else must approve, say who. Here a
-customer can no longer approve their own refund, and a supervisor can decide in
-any session:
+customer can no longer approve their own refund, and a supervisor can read any
+session (to see what they are approving) and decide in it:
 
 ```ts
 import { createAgent, createRouteHandler, memoryStore } from '@lousho/build-ai-agent';
@@ -508,9 +529,9 @@ const isSupervisor = (principal?: { claims?: Readonly<Record<string, unknown>> }
 
 export const { GET, POST } = createRouteHandler(agent, {
   auth: jwt({ secret: process.env.JWT_SECRET!, issuer: 'https://auth.example.com', audience: 'agent-api' }),
-  // Customers use their own sessions (ids that start with their id); supervisors may decide in any session.
+  // Customers use their own sessions (ids that start with their id); supervisors may read and decide in any session.
   authorizeSession: ({ principal, sessionId, action }) =>
-    sessionId.startsWith(`${principal?.id}-`) || (action === 'approve' && isSupervisor(principal)),
+    sessionId.startsWith(`${principal?.id}-`) || (action !== 'chat' && isSupervisor(principal)),
   authorizeApproval: ({ principal }) => isSupervisor(principal),
 });
 ```

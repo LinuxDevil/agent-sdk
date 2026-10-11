@@ -27,7 +27,7 @@ interface Posted {
 
 /** Drives `handler` with a fake `node:http` request and response pair. */
 async function post(handler: ChannelsHandler, path: string, body: unknown, headers: Record<string, string> = {}): Promise<Posted> {
-  const req = Object.assign(Readable.from([Buffer.from(typeof body === 'string' ? body : JSON.stringify(body))]), { method: 'POST', url: path, headers });
+  const req = Object.assign(Readable.from([Buffer.from(typeof body === 'string' ? body : JSON.stringify(body))]), { method: 'POST', url: path, headers: { 'content-type': 'application/json', ...headers } });
   const res = { status: 0, body: '' };
   const fakeRes = {
     writeHead: (status: number) => ((res.status = status), fakeRes),
@@ -119,6 +119,31 @@ describe('defineChannel / mountChannels (LOU-P7)', () => {
     expect((await post(handler, '/hooks/other', {})).handled).toBe(false);
     expect((await post(handler, '/chat', {})).handled).toBe(false);
     expect((await post(handler, '/hooks/http', { input: 'no key' })).status).toBe(400);
+  });
+
+  it('a channel without verify refuses a browser request from another site, and httpChannel a body that is not JSON', async () => {
+    const model = mockModel(['Pong', 'Pong']);
+    const handler = mountChannels(createAgent({ provider: model }), [httpChannel()]);
+    const body = { sessionKey: 'u1', input: 'ping' };
+    const local = { host: 'localhost:3737' };
+
+    expect(await post(handler, '/channels/http', body, { ...local, origin: 'https://evil.example' })).toMatchObject({ status: 403, json: { code: 'LOUSHO_REQUEST_FORBIDDEN' } });
+    expect((await post(handler, '/channels/http', body, { ...local, 'sec-fetch-site': 'cross-site' })).status).toBe(403);
+    expect((await post(handler, '/channels/http/approvals/a1', { approved: true }, { ...local, origin: 'null' })).status).toBe(403);
+    for (const type of ['text/plain', 'application/x-www-form-urlencoded']) {
+      expect(await post(handler, '/channels/http', body, { ...local, 'content-type': type })).toMatchObject({ status: 415, json: { code: 'LOUSHO_UNSUPPORTED_MEDIA_TYPE' } });
+    }
+    expect(model.calls).toHaveLength(0);
+    // A page on the server's own origin, and a webhook sender (no Origin), still get through.
+    expect((await post(handler, '/channels/http', body, { ...local, origin: 'http://localhost:3737' })).status).toBe(200);
+    expect((await post(handler, '/channels/http', body, local)).status).toBe(200);
+  });
+
+  it('a channel with verify decides itself: no cross-site or body type check is added', async () => {
+    const api = httpChannel({ verify: async (req) => req.headers.authorization === 'Bearer t' });
+    const handler = mountChannels(createAgent({ provider: mockModel(['Pong']) }), [api]);
+    const res = await post(handler, '/channels/http', { sessionKey: 'u1', input: 'ping' }, { authorization: 'Bearer t', origin: 'https://app.example', 'content-type': 'text/plain' });
+    expect(res.status).toBe(200);
   });
 
   it('rejects a request that fails verify with 401, before parsing or running', async () => {

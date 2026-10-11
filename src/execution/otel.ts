@@ -91,10 +91,27 @@ export interface OtelTraceExporterOptions {
    * spans (`fileTraceExporter`, custom exporters) are unaffected.
    */
   legacyAttributes?: boolean;
+  /**
+   * Set the run's total `gen_ai.usage.input_tokens` / `output_tokens` on
+   * `invoke_agent` spans. Default `true`. Those totals repeat the tokens of
+   * the run's `chat` spans (and a lead's total repeats its sub-agents'), so a
+   * backend that sums `gen_ai.usage.*` over every span of a trace counts each
+   * token two or more times; `false` leaves the usage attributes on `chat`
+   * spans only. The run's cost (`lousho.cost_usd`) and the token metric are
+   * unaffected.
+   */
+  agentUsageTotals?: boolean;
 }
 
-/** How many spans an exporter tracks at most for parenting (open ones, and ended ones of a tree still open). */
-const MAX_TRACKED_SPANS = 10_000;
+/** How many ended spans of still-open trees an exporter keeps for parenting late children. */
+const MAX_ENDED_SPANS = 10_000;
+
+/**
+ * How many open spans an exporter tracks at most. Past it, the oldest open span (in practice one of a run
+ * abandoned mid-approval, whose root never ends) is ended and exported as-is, with `lousho.span.evicted`, and
+ * released.
+ */
+const MAX_OPEN_SPANS = 100_000;
 
 const LEGACY_KEYS: ReadonlySet<string> = new Set(Object.values(LegacyAttr));
 
@@ -132,12 +149,30 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
   // Span (matched by parentId) can be started as a child of the right
   // OTel context instead of the ambient one.
   const recordMetrics = resolveMetricsRecorder(options);
-  const skipLegacy = options.legacyAttributes === false;
+  const skip = skippedKeys(options);
 
   // Entries outlive their span: a queued background sub-agent can start after
   // its `execute_tool task` parent ended, and must still join that trace
   // (Eve MA-F3). A whole tree's entries are dropped when its root span ends.
   const otelSpansById = new Map<string, { span: OtelSpan; ctx: Context; rootId: string }>();
+  // The ids of ended (non-root) spans still in the map, oldest end first: only these are evicted past the
+  // cap, so an open span (a long run's root) is never lost.
+  const endedIds = new Set<string>();
+
+  const release = (id: string) => {
+    otelSpansById.delete(id);
+    endedIds.delete(id);
+  };
+
+  const evictOldestOpen = () => {
+    for (const [id, entry] of otelSpansById) {
+      if (endedIds.has(id)) continue;
+      entry.span.setAttribute('lousho.span.evicted', true);
+      entry.span.end();
+      release(id);
+      return;
+    }
+  };
 
   return {
     onSpanStart(span: Span) {
@@ -153,16 +188,13 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
       // Seed OTel span attributes with whatever this SDK already knew at
       // span-start time (e.g. model, toolName). onSpanEnd below adds
       // whatever was filled in afterwards (token counts, results, ...).
-      setAttributes(otelSpan, span.attributes, skipLegacy);
+      setAttributes(otelSpan, span.attributes, skip(span));
 
       const ctx = trace.setSpan(parentContext, otelSpan);
       otelSpansById.set(span.id, { span: otelSpan, ctx, rootId: parentEntry ? parentEntry.rootId : span.id });
       // A tree whose root never ends (a run abandoned mid-approval, a process that stopped awaiting it) would keep
-      // its entries forever: past the cap the oldest go, which in practice are those of such abandoned trees.
-      if (otelSpansById.size > MAX_TRACKED_SPANS) {
-        const oldest = otelSpansById.keys().next().value;
-        if (oldest !== undefined) otelSpansById.delete(oldest);
-      }
+      // its open spans forever: past a much larger cap the oldest open one is ended and released.
+      if (otelSpansById.size - endedIds.size > MAX_OPEN_SPANS) evictOldestOpen();
     },
 
     onSpanEnd(span: Span) {
@@ -171,14 +203,20 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
         return;
       }
 
-      setAttributes(entry.span, span.attributes, skipLegacy);
+      setAttributes(entry.span, span.attributes, skip(span));
       if (span.status?.code === 'error') {
         entry.span.setStatus({ code: SpanStatusCode.ERROR, message: span.status.message });
       }
       entry.span.end(span.endTime);
       if (entry.rootId === span.id) {
         for (const [id, other] of otelSpansById) {
-          if (other.rootId === span.id) otelSpansById.delete(id);
+          if (other.rootId === span.id) release(id);
+        }
+      } else {
+        endedIds.add(span.id);
+        if (endedIds.size > MAX_ENDED_SPANS) {
+          const oldest = endedIds.values().next().value;
+          if (oldest !== undefined) release(oldest);
         }
       }
       recordMetrics(span);
@@ -245,9 +283,21 @@ function recordTokens(histogram: Histogram, span: Span, attributes: Attributes):
   }
 }
 
-function setAttributes(otelSpan: OtelSpan, attributes: Record<string, unknown>, skipLegacy: boolean): void {
+const AGENT_USAGE_KEYS: ReadonlySet<string> = new Set([GenAiAttr.USAGE_INPUT_TOKENS, GenAiAttr.USAGE_OUTPUT_TOKENS]);
+
+/** The attribute names `options` leaves out of a span's OTel attributes. */
+function skippedKeys(options: OtelTraceExporterOptions): (span: Span) => (key: string) => boolean {
+  const skipLegacy = options.legacyAttributes === false;
+  const skipAgentUsage = options.agentUsageTotals === false;
+  return (span) => {
+    const agentUsage = skipAgentUsage && span.attributes[GenAiAttr.OPERATION_NAME] === GenAiOperation.INVOKE_AGENT;
+    return (key) => (skipLegacy && LEGACY_KEYS.has(key)) || (agentUsage && AGENT_USAGE_KEYS.has(key));
+  };
+}
+
+function setAttributes(otelSpan: OtelSpan, attributes: Record<string, unknown>, skip: (key: string) => boolean): void {
   for (const [key, value] of Object.entries(attributes)) {
-    if (value !== undefined && !(skipLegacy && LEGACY_KEYS.has(key))) {
+    if (value !== undefined && !skip(key)) {
       otelSpan.setAttribute(key, toOtelAttributeValue(value));
     }
   }
