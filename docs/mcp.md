@@ -263,8 +263,13 @@ await server.close();
   (`agent.send(message, { signal })`). Over HTTP the run is also aborted when
   the client disconnects, and when a client timeout sends
   `notifications/cancelled` in a later `POST`: that cancel is matched to the
-  request by its id and the client (remote address, `Authorization`,
-  `User-Agent`), and ignored when several requests in flight match.
+  request by its id and the client. The server keeps no session state, but it
+  answers `initialize` with an `Mcp-Session-Id` header, which Streamable HTTP
+  clients (`connectMcp()`, the MCP SDK) send back, so two clients behind one
+  address and token are told apart. A client that sends no session id is known
+  by its remote address, `Authorization` and `User-Agent`, and its cancel is
+  ignored when several requests in flight match. The cancelled request is
+  answered with a JSON-RPC error (`-32800`, `Request cancelled`).
 - **Errors.** An agent failure comes back as an MCP result with `isError: true`.
 - **Approvals.** Approval-gated tools cannot be approved over MCP. A run that
   pauses for approval returns `isError: true` with a message saying so, and
