@@ -64,6 +64,7 @@ import { AgentSpec } from '../spec/schema';
 import { createAgent, SimpleAgent, type CreateAgentConfig } from '../createAgent';
 import { memoryStore, AgentStore } from '../storage/agentStore';
 import { serveFetch, type ChatRoutesContext } from '../server/fetchRoutes';
+import { requestGuardFromEnv } from '../server/requestGuard';
 import { mountFetchChannels } from '../channels/fetchChannels';
 import { continueChannelSignIn } from '../channels/channelCore';
 import type { OAuthCompleteResult } from '../oauth/signIn';
@@ -119,7 +120,10 @@ export type WorkerEnv = Record<string, unknown>;
 /** Env binding holding the bearer token of the API (`wrangler secret put LOUSHO_API_TOKEN`). */
 const API_TOKEN_BINDING = 'LOUSHO_API_TOKEN';
 
-/** Var (`"true"`) that lets a Worker without `LOUSHO_API_TOKEN` serve session transcripts anyway. */
+/** Var (`"true"`) that lets a Worker without `LOUSHO_API_TOKEN` serve its session routes to anyone. */
+const OPEN_SESSIONS_BINDING = 'LOUSHO_ALLOW_OPEN_SESSIONS';
+
+/** The earlier name of {@link OPEN_SESSIONS_BINDING}, still read. */
 const OPEN_TRANSCRIPTS_BINDING = 'LOUSHO_ALLOW_OPEN_TRANSCRIPTS';
 
 /** The API token binding, or `undefined` when it is unset or empty. */
@@ -129,14 +133,16 @@ function apiTokenOf(env: WorkerEnv): string | undefined {
 }
 
 /**
- * Without `LOUSHO_API_TOKEN` anyone can call the Worker, and a transcript
- * read (`GET /chat/:sessionId`) would hand any session's conversation to
- * whoever knows its id: it is refused unless `LOUSHO_ALLOW_OPEN_TRANSCRIPTS`
- * is `"true"`. `undefined` when the request may go on.
+ * Without `LOUSHO_API_TOKEN` anyone who has the Worker's URL could chat on
+ * the provider key, continue or read any session by its id, and decide its
+ * approvals: the session routes (`/chat...`) are refused unless
+ * `LOUSHO_ALLOW_OPEN_SESSIONS` is `"true"`. `/health`, the OAuth callback and
+ * the channels (which verify their own requests) stay open. `undefined` when
+ * the request may go on.
  */
-function openTranscriptRefusal(request: Request, env: WorkerEnv): Response | undefined {
-  if (apiTokenOf(env) || env[OPEN_TRANSCRIPTS_BINDING] === 'true' || request.method !== 'GET' || !/^\/chat\/[^/]+$/.test(new URL(request.url).pathname)) return undefined;
-  const error = `Session transcripts need auth: set the ${API_TOKEN_BINDING} secret (npx wrangler secret put ${API_TOKEN_BINDING}), or set the ${OPEN_TRANSCRIPTS_BINDING} var to "true" to serve them to anyone.`;
+function openSessionsRefusal(request: Request, env: WorkerEnv): Response | undefined {
+  if (apiTokenOf(env) || env[OPEN_SESSIONS_BINDING] === 'true' || env[OPEN_TRANSCRIPTS_BINDING] === 'true' || !/^\/chat(?:\/|$)/.test(new URL(request.url).pathname)) return undefined;
+  const error = `This Worker has no ${API_TOKEN_BINDING}, so its session routes are closed: set the secret (npx wrangler secret put ${API_TOKEN_BINDING}), or set the ${OPEN_SESSIONS_BINDING} var to "true" to serve them to anyone.`;
   return new Response(JSON.stringify({ error, code: 'LOUSHO_REQUEST_FORBIDDEN' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
 }
 
@@ -201,11 +207,11 @@ function workerAgent(spec: AgentSpec, env: WorkerEnv): SimpleAgent {
 
 /** Serves one request with `makeAgent`'s agent: the routes and bearer auth of {@link handleWorkerRequest}. */
 async function serveWorker(request: Request, env: WorkerEnv, makeAgent: () => SimpleAgent): Promise<Response> {
-  const refused = openTranscriptRefusal(request, env);
+  const refused = openSessionsRefusal(request, env);
   if (refused) return refused;
   // One agent per request: an approval route needs the agent that opened the session.
   let agent: SimpleAgent | undefined;
-  const chat = { name: 'lousho worker', agent: () => (agent ??= makeAgent()), durableMessage: true };
+  const chat: ChatRoutesContext = { name: 'lousho worker', agent: () => (agent ??= makeAgent()), durableMessage: true, ...requestGuardFromEnv(env) };
   return serveFetch(request, chat, apiTokenOf(env));
 }
 
@@ -213,8 +219,10 @@ async function serveWorker(request: Request, env: WorkerEnv, makeAgent: () => Si
  * Serves one request of the Worker's API: `GET /health` (open), sessions, SSE
  * streaming and approvals under `/chat`, and the deprecated `POST /chat
  * { message, sessionId? }`. With a `LOUSHO_API_TOKEN` binding every route but
- * `/health` needs `Authorization: Bearer <token>`; without it, `GET
- * /chat/:sessionId` is refused unless `LOUSHO_ALLOW_OPEN_TRANSCRIPTS` is `"true"`.
+ * `/health` needs `Authorization: Bearer <token>`; without it, the `/chat`
+ * routes are refused unless `LOUSHO_ALLOW_OPEN_SESSIONS` is `"true"`.
+ * `LOUSHO_ALLOWED_ORIGINS`, `LOUSHO_ALLOWED_HOSTS` and `LOUSHO_REQUIRE_JSON_BODY`
+ * set the routes' `allowedOrigins`, `allowedHosts` and `requireJsonBody`.
  */
 export function handleWorkerRequest(request: Request, env: WorkerEnv, spec: AgentSpec): Promise<Response> {
   return serveWorker(request, env, () => workerAgent(spec, env));
@@ -342,12 +350,14 @@ export async function handleWorkerAgentDirRequest(
     name: 'lousho worker',
     agent: makeAgent,
     durableMessage: true,
+    // LOUSHO_ALLOWED_ORIGINS, LOUSHO_ALLOWED_HOSTS and LOUSHO_REQUIRE_JSON_BODY.
+    ...requestGuardFromEnv(env),
     // B4: a turn whose client went away finishes (and is saved) inside `ctx.waitUntil`.
     ...(ctx && { waitUntil: (promise: Promise<unknown>) => ctx.waitUntil(promise) }),
     // N9b: a channel turn paused on a sign-in continues on its surface once the callback stored the token.
     ...(channels === undefined ? {} : { afterSignIn: (result: OAuthCompleteResult) => continueChannelSignIn(channels, result) }),
   };
-  return (await channels?.(request, ctx)) ?? openTranscriptRefusal(request, env) ?? serveFetch(request, chat, apiTokenOf(env));
+  return (await channels?.(request, ctx)) ?? openSessionsRefusal(request, env) ?? serveFetch(request, chat, apiTokenOf(env));
 }
 
 export { handleScheduled } from '../schedules/scheduled';

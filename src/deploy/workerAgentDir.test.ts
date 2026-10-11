@@ -243,7 +243,7 @@ describe('the Worker runtime of an agent directory (M3b)', () => {
     const agentDir = dir({ skills: [{ name: 'notes', description: 'Release notes', content: '# Notes' }], config: { model: 'mock/test', maxSteps: 3, toolConcurrency: 1 } });
     const response = await handleWorkerAgentDirRequest(
       new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'echo it' }) }),
-      {},
+      { LOUSHO_ALLOW_OPEN_SESSIONS: 'true' },
       agentDir
     );
     const result = (await response.json()) as { toolCalls: Array<{ function: { name: string } }>; messages: Array<{ role: string; content: unknown }> };
@@ -254,7 +254,11 @@ describe('the Worker runtime of an agent directory (M3b)', () => {
 
 describe('the Worker runtime of an agent directory: subagents, channels, memory, schedules (#298)', () => {
   const chat = (agentDir: WorkerAgentDir, body: unknown, env: Record<string, unknown> = {}) =>
-    handleWorkerAgentDirRequest(new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), env, agentDir);
+    handleWorkerAgentDirRequest(
+      new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
+      { LOUSHO_ALLOW_OPEN_SESSIONS: 'true', ...env },
+      agentDir
+    );
 
   it('adds a delegate_to_<name> tool per sub-agent, which runs the sub-agent with the inherited model', async () => {
     const agentDir = dir({
@@ -273,7 +277,7 @@ describe('the Worker runtime of an agent directory: subagents, channels, memory,
   it('serves a directory channel under /channels without the API token', async () => {
     const agentDir = dir({ channelModules: [{ file: 'channels/api.ts', module: { default: httpChannel({ name: 'api' }) } }] });
     const response = await handleWorkerAgentDirRequest(
-      new Request('http://worker/channels/api', { method: 'POST', body: JSON.stringify({ sessionKey: 'u1', input: 'hi' }) }),
+      new Request('http://worker/channels/api', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionKey: 'u1', input: 'hi' }) }),
       { LOUSHO_API_TOKEN: 'tok' },
       agentDir
     );
@@ -284,6 +288,23 @@ describe('the Worker runtime of an agent directory: subagents, channels, memory,
     // The channel route does not shadow the chat API.
     const chatResponse = await chat(agentDir, { message: 'hi' }, { LOUSHO_API_TOKEN: 'tok' });
     expect(chatResponse.status).toBe(401);
+  });
+
+  it('with no LOUSHO_API_TOKEN at all, keeps the channels open but refuses the /chat routes', async () => {
+    const agentDir = dir({ channelModules: [{ file: 'channels/api.ts', module: { default: httpChannel({ name: 'api' }) } }] });
+    const channel = await handleWorkerAgentDirRequest(
+      new Request('http://worker/channels/api', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionKey: 'u2', input: 'hi' }) }),
+      {},
+      agentDir
+    );
+    expect(channel.status).toBe(200);
+    const refused = await handleWorkerAgentDirRequest(
+      new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 's1', input: 'hi' }) }),
+      {},
+      agentDir
+    );
+    expect(refused.status).toBe(403);
+    expect(await refused.json()).toMatchObject({ code: 'LOUSHO_REQUEST_FORBIDDEN' });
   });
 
   it('binds a kvMemory() provider to the KV namespace on env', async () => {

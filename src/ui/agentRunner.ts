@@ -81,7 +81,12 @@ async function serverMessage(response: Response): Promise<string | undefined> {
 }
 
 async function post(source: RemoteAgentSource, url: string, body: unknown, signal: AbortSignal): Promise<Response> {
-  const headers = { 'Content-Type': 'application/json', ...source.headers };
+  // A `Headers` instance spreads to `{}`: read its entries. A `content-type` the caller sets in any case replaces the
+  // default instead of being sent next to it (two values arrive joined, which the routes' JSON check refused).
+  const given: Record<string, string> = { ...source.headers };
+  if ((source.headers as unknown) instanceof Headers) (source.headers as unknown as Headers).forEach((value, name) => (given[name] = value));
+  const typed = Object.keys(given).some((name) => name.toLowerCase() === 'content-type');
+  const headers = typed ? given : { 'Content-Type': 'application/json', ...given };
   const response = await (source.fetch ?? fetch)(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
   if (!response.ok) {
     // The message stays as it was (the UI shows it); the code says what kind of failure it is.

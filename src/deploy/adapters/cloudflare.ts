@@ -238,6 +238,12 @@ function tomlSource(name: string, crons: readonly string[], tools: readonly stri
     '#   npx wrangler secret put LOUSHO_API_TOKEN',
     '#   npx wrangler secret put OPENAI_API_KEY',
     '#',
+    '# Without LOUSHO_API_TOKEN the /chat routes answer 403. To serve them to',
+    '# anyone (a throwaway demo, or `wrangler dev`), set LOUSHO_ALLOW_OPEN_SESSIONS',
+    '# = "true" under [vars] (or in .dev.vars). Behind a proxy or for a front end',
+    '# on another origin: LOUSHO_ALLOWED_ORIGINS, LOUSHO_ALLOWED_HOSTS (comma-',
+    '# separated) and LOUSHO_REQUIRE_JSON_BODY = "false" (docs/auth.md).',
+    '#',
     '# [[kv_namespaces]]',
     `# binding = "${CHECKPOINT_KV_BINDING}"`,
     '# id = "<production namespace id, from the command above>"',
@@ -267,7 +273,8 @@ const WORKER_TS = `/**
  *   POST /chat/:sessionId/approvals/:id  -> { approved, note? } or { answer }, streamed
  *
  * Worker bindings (see wrangler.toml): the \`LOUSHO_API_TOKEN\` secret makes every
- * route except /health require 'Authorization: Bearer <token>'; the provider API
+ * route except /health require 'Authorization: Bearer <token>' (without it the
+ * /chat routes answer 403 unless the LOUSHO_ALLOW_OPEN_SESSIONS var is "true"); the provider API
  * key is a secret named <TYPE>_API_KEY (e.g. OPENAI_API_KEY); the
  * \`${CHECKPOINT_KV_BINDING}\` KV namespace keeps sessions, checkpoints and approvals between
  * requests (without it they live in the memory of one isolate).
@@ -428,8 +435,8 @@ export const CloudflareWorkerAdapter: DeploymentAdapter = {
     // The API token is a Worker secret, set after the build: say what an unset one means.
     console.warn(
       'lousho build: set the LOUSHO_API_TOKEN secret before you deploy (npx wrangler secret put LOUSHO_API_TOKEN). ' +
-        'Without it anyone can chat with the Worker, and GET /chat/:sessionId is refused unless the ' +
-        'LOUSHO_ALLOW_OPEN_TRANSCRIPTS var is "true".'
+        'Without it the Worker refuses every /chat route (403) unless the LOUSHO_ALLOW_OPEN_SESSIONS var is "true", ' +
+        'which lets anyone with the URL chat on your provider key and read, continue or approve any session by its id.'
     );
     const sizeReport = measureBundleSize(bundlePath);
     if (sizeReport.overLimit) {

@@ -726,8 +726,10 @@ export function isModelActionableProviderErrorCategory(
  */
 export class CompactedLLMProviderError extends LLMProviderError {
   constructor(public readonly compacted: CompactedProviderError, cause?: Error) {
-    // A throttled call (`rate-limit`, e.g. a 429) has its own code; every other failure is a failed request.
-    const code: ErrorCode = compacted.category === 'rate-limit' ? 'LOUSHO_PROVIDER_RATE_LIMITED' : 'LOUSHO_PROVIDER_REQUEST_FAILED';
+    // A throttled call (`rate-limit`, e.g. a 429) has its own code, as does a provider that refused to call without
+    // an API key (it says so before any request); every other failure is a failed request.
+    const missingKey = cause instanceof SDKError && cause.code === 'LOUSHO_PROVIDER_MISSING_API_KEY';
+    const code: ErrorCode = missingKey ? 'LOUSHO_PROVIDER_MISSING_API_KEY' : compacted.category === 'rate-limit' ? 'LOUSHO_PROVIDER_RATE_LIMITED' : 'LOUSHO_PROVIDER_REQUEST_FAILED';
     super(compacted.error, compacted.providerName, compacted.statusCode, cause, code);
     this.name = 'CompactedLLMProviderError';
   }
