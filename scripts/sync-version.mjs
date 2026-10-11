@@ -6,9 +6,9 @@ import fs from 'node:fs';
 const root = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const version = root.version;
 
-const indexPath = 'src/index.ts';
+const indexPath = 'src/version.ts';
 const indexSrc = fs.readFileSync(indexPath, 'utf8');
-if (!/export const VERSION = '[^']+'/.test(indexSrc)) throw new Error('sync-version: VERSION export not found in src/index.ts');
+if (!/export const VERSION = '[^']+'/.test(indexSrc)) throw new Error('sync-version: VERSION export not found in src/version.ts');
 const next = indexSrc.replace(/export const VERSION = '[^']+'/, `export const VERSION = '${version}'`);
 if (next !== indexSrc) fs.writeFileSync(indexPath, next);
 

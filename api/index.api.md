@@ -10,7 +10,6 @@ import { KeyObject } from 'node:crypto';
 import { LanguageModel } from 'ai';
 import * as net from 'node:net';
 import { Tool } from 'ai';
-import { z } from 'zod';
 import { ZodError } from 'zod';
 import { ZodTypeAny } from 'zod';
 
@@ -647,22 +646,14 @@ export function ask(tools: PermissionToolMatcher, options?: {
 export const ASK_QUESTION_TOOL_NAME = "ask_question";
 
 // @public
-export type AskQuestionInput = z.output<typeof askQuestionInput>;
-
-// @public
-const askQuestionInput: z.ZodObject<{
-    question: z.ZodString;
-    options: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
-    allowFreeText: z.ZodOptional<z.ZodBoolean>;
-}, "strip", z.ZodTypeAny, {
+export interface AskQuestionInput {
+    // (undocumented)
+    allowFreeText?: boolean;
+    // (undocumented)
+    options?: string[];
+    // (undocumented)
     question: string;
-    options?: string[] | undefined;
-    allowFreeText?: boolean | undefined;
-}, {
-    question: string;
-    options?: string[] | undefined;
-    allowFreeText?: boolean | undefined;
-}>;
+}
 
 // @public
 export interface AskQuestionResult {
@@ -672,7 +663,7 @@ export interface AskQuestionResult {
 }
 
 // @public
-export function askQuestionTool(): DefinedTool<typeof askQuestionInput, AskQuestionResult>;
+export function askQuestionTool(): DefinedTool<StandardSchemaV1<AskQuestionInput>, AskQuestionResult>;
 
 // @public
 export function assertHostedToolNames(hostedTools: readonly HostedTool[], localNames: Iterable<string>): void;
@@ -832,46 +823,6 @@ export interface BudgetSpent {
     // (undocumented)
     totalTokens: number;
 }
-
-// @public (undocumented)
-function buildReadTool(store: TodoStore): DefinedTool<z.ZodObject<{}, "strip", z.ZodTypeAny, {}, {}>, TodoListResult, TodoListResult>;
-
-// @public (undocumented)
-function buildWriteTool(store: TodoStore, onChange: TodoToolsOptions['onChange']): DefinedTool<z.ZodObject<{
-    todos: z.ZodEffects<z.ZodArray<z.ZodObject<{
-        id: z.ZodOptional<z.ZodString>;
-        content: z.ZodString;
-        status: z.ZodEnum<["pending", "in_progress", "completed"]>;
-    }, "strip", z.ZodTypeAny, {
-        content: string;
-        status: "pending" | "in_progress" | "completed";
-        id?: string | undefined;
-    }, {
-        content: string;
-        status: "pending" | "in_progress" | "completed";
-        id?: string | undefined;
-    }>, "many">, {
-        content: string;
-        status: "pending" | "in_progress" | "completed";
-        id?: string | undefined;
-    }[], {
-        content: string;
-        status: "pending" | "in_progress" | "completed";
-        id?: string | undefined;
-    }[]>;
-}, "strip", z.ZodTypeAny, {
-    todos: {
-        content: string;
-        status: "pending" | "in_progress" | "completed";
-        id?: string | undefined;
-    }[];
-}, {
-    todos: {
-        content: string;
-        status: "pending" | "in_progress" | "completed";
-        id?: string | undefined;
-    }[];
-}>, TodoListResult, TodoListResult>;
 
 // @public
 export interface CalledToolOptions {
@@ -1519,7 +1470,9 @@ export function createTestRunCheck(repoPath: string, options?: CommandCheckOptio
 export function createTodoTools(options?: TodoToolsOptions): TodoTools;
 
 // @public
-export function createWebFetchTool(options?: WebFetchToolOptions): DefinedTool<typeof webFetchInput, WebFetchResult>;
+export function createWebFetchTool(options?: WebFetchToolOptions): DefinedTool<StandardSchemaV1<{
+    url: string;
+}>, WebFetchResult>;
 
 // @public (undocumented)
 export interface CredentialBroker {
@@ -1855,24 +1808,6 @@ export interface DriftEntry {
     // (undocumented)
     field: 'tools' | 'args' | 'steps' | 'finishReason' | 'tokens';
 }
-
-// @public (undocumented)
-const editFileInput: z.ZodObject<{
-    path: z.ZodString;
-    old_string: z.ZodString;
-    new_string: z.ZodString;
-    replace_all: z.ZodOptional<z.ZodBoolean>;
-}, "strip", z.ZodTypeAny, {
-    path: string;
-    old_string: string;
-    new_string: string;
-    replace_all?: boolean | undefined;
-}, {
-    path: string;
-    old_string: string;
-    new_string: string;
-    replace_all?: boolean | undefined;
-}>;
 
 // @public
 type EditorShapeStep = StepNode | SequenceNode | ParallelNode | OneOfNode | ForEachNode | EvaluatorNode | BestOfAllNode | ToolNode | UIComponentNode | ConditionNode | LoopNode;
@@ -2590,17 +2525,39 @@ export type FsToolApprovals = {
 // @public
 export interface FsToolArgs {
     // (undocumented)
-    edit_file: z.output<typeof editFileInput>;
+    edit_file: {
+        path: string;
+        old_string: string;
+        new_string: string;
+        replace_all?: boolean;
+    };
     // (undocumented)
-    glob: z.output<typeof globInput>;
+    glob: {
+        pattern: string;
+        path?: string;
+    };
     // (undocumented)
-    grep: z.output<typeof grepInput>;
+    grep: {
+        pattern: string;
+        path?: string;
+        glob?: string;
+        ignore_case?: boolean;
+    };
     // (undocumented)
-    list_dir: z.output<typeof listDirInput>;
+    list_dir: {
+        path?: string;
+    };
     // (undocumented)
-    read_file: z.output<typeof readFileInput>;
+    read_file: {
+        path: string;
+        offset?: number;
+        limit?: number;
+    };
     // (undocumented)
-    write_file: z.output<typeof writeFileInput>;
+    write_file: {
+        path: string;
+        content: string;
+    };
 }
 
 // @public
@@ -2802,36 +2759,6 @@ export interface GitHubTarget {
 
 // @public
 export type GitHubTriggers = readonly string[] | ((commenter: GitHubCommenter) => boolean | Promise<boolean>);
-
-// @public (undocumented)
-const globInput: z.ZodObject<{
-    pattern: z.ZodString;
-    path: z.ZodOptional<z.ZodString>;
-}, "strip", z.ZodTypeAny, {
-    pattern: string;
-    path?: string | undefined;
-}, {
-    pattern: string;
-    path?: string | undefined;
-}>;
-
-// @public (undocumented)
-const grepInput: z.ZodObject<{
-    pattern: z.ZodString;
-    path: z.ZodOptional<z.ZodString>;
-    glob: z.ZodOptional<z.ZodString>;
-    ignore_case: z.ZodOptional<z.ZodBoolean>;
-}, "strip", z.ZodTypeAny, {
-    pattern: string;
-    path?: string | undefined;
-    glob?: string | undefined;
-    ignore_case?: boolean | undefined;
-}, {
-    pattern: string;
-    path?: string | undefined;
-    glob?: string | undefined;
-    ignore_case?: boolean | undefined;
-}>;
 
 // @public
 export interface GroupDecision {
@@ -3251,75 +3178,6 @@ export function isTodoListResult(value: unknown): value is TodoListResult;
 export function isToolEvent(event: AgentEvent): event is ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | ToolErrorEvent;
 
 // @public
-const ItemSchema: z.ZodObject<{
-    name: z.ZodString;
-    type: z.ZodEnum<["tool", "skill", "channel", "schedule", "memory", "kit"]>;
-    description: z.ZodString;
-    files: z.ZodArray<z.ZodObject<{
-        path: z.ZodString;
-        content: z.ZodString;
-    }, "strip", z.ZodTypeAny, {
-        path: string;
-        content: string;
-    }, {
-        path: string;
-        content: string;
-    }>, "many">;
-    permissions: z.ZodDefault<z.ZodObject<{
-        network: z.ZodOptional<z.ZodArray<z.ZodEffects<z.ZodString, string, string>, "many">>;
-        env: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
-        filesystem: z.ZodOptional<z.ZodEnum<["none", "read", "write"]>>;
-        exec: z.ZodOptional<z.ZodBoolean>;
-        needsApproval: z.ZodOptional<z.ZodBoolean>;
-    }, "strip", z.ZodTypeAny, {
-        env?: string[] | undefined;
-        needsApproval?: boolean | undefined;
-        network?: string[] | undefined;
-        filesystem?: "none" | "read" | "write" | undefined;
-        exec?: boolean | undefined;
-    }, {
-        env?: string[] | undefined;
-        needsApproval?: boolean | undefined;
-        network?: string[] | undefined;
-        filesystem?: "none" | "read" | "write" | undefined;
-        exec?: boolean | undefined;
-    }>>;
-    dependencies: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
-}, "strip", z.ZodTypeAny, {
-    type: "tool" | "schedule" | "memory" | "skill" | "channel" | "kit";
-    name: string;
-    description: string;
-    permissions: {
-        env?: string[] | undefined;
-        needsApproval?: boolean | undefined;
-        network?: string[] | undefined;
-        filesystem?: "none" | "read" | "write" | undefined;
-        exec?: boolean | undefined;
-    };
-    files: {
-        path: string;
-        content: string;
-    }[];
-    dependencies?: string[] | undefined;
-}, {
-    type: "tool" | "schedule" | "memory" | "skill" | "channel" | "kit";
-    name: string;
-    description: string;
-    files: {
-        path: string;
-        content: string;
-    }[];
-    permissions?: {
-        env?: string[] | undefined;
-        needsApproval?: boolean | undefined;
-        network?: string[] | undefined;
-        filesystem?: "none" | "read" | "write" | undefined;
-        exec?: boolean | undefined;
-    } | undefined;
-    dependencies?: string[] | undefined;
-}>;
-
-// @public
 export interface IToolRegistry {
     // (undocumented)
     clear(): void;
@@ -3365,15 +3223,6 @@ export function listAdapters(): string[];
 
 // @public
 export function listCheckpoints(checkpoints: Iterable<readonly [string, Checkpoint]>, options?: CheckpointListOptions): CheckpointListEntry[];
-
-// @public (undocumented)
-const listDirInput: z.ZodObject<{
-    path: z.ZodOptional<z.ZodString>;
-}, "strip", z.ZodTypeAny, {
-    path?: string | undefined;
-}, {
-    path?: string | undefined;
-}>;
 
 // @public
 export function listRemoteTools(client: McpClientLike, options?: {
@@ -4994,21 +4843,6 @@ export interface RawMcpTool {
 }
 
 // @public
-const readFileInput: z.ZodObject<{
-    path: z.ZodString;
-    offset: z.ZodOptional<z.ZodNumber>;
-    limit: z.ZodOptional<z.ZodNumber>;
-}, "strip", z.ZodTypeAny, {
-    path: string;
-    limit?: number | undefined;
-    offset?: number | undefined;
-}, {
-    path: string;
-    limit?: number | undefined;
-    offset?: number | undefined;
-}>;
-
-// @public
 export interface ReasoningBlock {
     // (undocumented)
     redactedData?: string;
@@ -5090,8 +4924,30 @@ export function registerAdapter(name: string, adapter: DeploymentAdapter): void;
 // @public
 export function registerModel(info: ModelInfo): void;
 
-// @public (undocumented)
-type RegistryItem = z.infer<typeof ItemSchema>;
+// @public
+interface RegistryItem {
+    // (undocumented)
+    dependencies?: string[];
+    // (undocumented)
+    description: string;
+    // (undocumented)
+    files: Array<{
+        path: string;
+        content: string;
+    }>;
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    permissions: {
+        network?: string[];
+        env?: string[];
+        filesystem?: 'none' | 'read' | 'write';
+        exec?: boolean;
+        needsApproval?: boolean;
+    };
+    // (undocumented)
+    type: RegistryItemType;
+}
 
 // @public
 export interface RegistryItemStatus {
@@ -5105,6 +4961,9 @@ export interface RegistryItemStatus {
     // (undocumented)
     type: ReceiptEntry['type'];
 }
+
+// @public (undocumented)
+type RegistryItemType = 'tool' | 'skill' | 'channel' | 'schedule' | 'memory' | 'kit';
 
 // @public
 export interface RegistryStatus {
@@ -6482,6 +6341,16 @@ export interface Todo {
 }
 
 // @public
+interface TodoItemInput {
+    // (undocumented)
+    content: string;
+    // (undocumented)
+    id?: string;
+    // (undocumented)
+    status: TodoStatus;
+}
+
+// @public
 export interface TodoListResult {
     // (undocumented)
     counts: Record<TodoStatus, number> & {
@@ -6492,7 +6361,7 @@ export interface TodoListResult {
 }
 
 // @public (undocumented)
-type TodoReadTool = ReturnType<typeof buildReadTool>;
+type TodoReadTool = DefinedTool<StandardSchemaV1<Record<string, never>>, TodoListResult>;
 
 // @public
 export type TodoStatus = 'pending' | 'in_progress' | 'completed';
@@ -6531,7 +6400,9 @@ export interface TodoUpdatedEvent extends AgentEventBase<'todo.updated'> {
 }
 
 // @public (undocumented)
-type TodoWriteTool = ReturnType<typeof buildWriteTool>;
+type TodoWriteTool = DefinedTool<StandardSchemaV1<{
+    todos: TodoItemInput[];
+}>, TodoListResult>;
 
 // @public
 export function toHistoryEntry(checkpoint: Checkpoint, savedAt?: Date): CheckpointHistoryEntry;
@@ -7036,15 +6907,6 @@ export const VERSION = "1.0.0-alpha.19";
 // @public
 export function warnUnknownContextWindow(feature: string, model: string | undefined, assumed: number): void;
 
-// @public (undocumented)
-const webFetchInput: z.ZodObject<{
-    url: z.ZodString;
-}, "strip", z.ZodTypeAny, {
-    url: string;
-}, {
-    url: string;
-}>;
-
 // @public
 export interface WebFetchResult {
     content: string;
@@ -7058,9 +6920,7 @@ export interface WebFetchResult {
 }
 
 // @public
-export const webFetchTool: DefinedTool<z.ZodObject<{
-    url: z.ZodString;
-}, "strip", z.ZodTypeAny, {
+export const webFetchTool: DefinedTool<StandardSchemaV1<{
     url: string;
 }, {
     url: string;
@@ -7254,18 +7114,6 @@ export interface WorkspaceStat {
     // (undocumented)
     type: WorkspaceEntryType;
 }
-
-// @public (undocumented)
-const writeFileInput: z.ZodObject<{
-    path: z.ZodString;
-    content: z.ZodString;
-}, "strip", z.ZodTypeAny, {
-    path: string;
-    content: string;
-}, {
-    path: string;
-    content: string;
-}>;
 
 // (No @packageDocumentation comment for this package)
 

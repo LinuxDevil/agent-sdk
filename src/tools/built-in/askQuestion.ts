@@ -14,6 +14,7 @@ import { ASK_QUESTION_TOOL_NAME } from '../../execution/ApprovalGate';
 import type { ToolDescriptor } from '../../types';
 import { toolFailure } from './toolFailure';
 import { allowInPlanMode } from '../../execution/permissions';
+import type { StandardSchemaV1 } from '../../utils/zodCompat';
 
 const askQuestionInput = z.object({
   question: z.string().trim().min(1).describe('The question to ask, in one or two sentences.'),
@@ -29,7 +30,11 @@ const askQuestionInput = z.object({
 });
 
 /** The arguments of an `ask_question` call. */
-export type AskQuestionInput = z.output<typeof askQuestionInput>;
+export interface AskQuestionInput {
+  question: string;
+  options?: string[];
+  allowFreeText?: boolean;
+}
 
 /** What `ask_question` returns to the model once the user answered. */
 export interface AskQuestionResult {
@@ -49,7 +54,7 @@ export interface AskQuestionResult {
  * const agent = createAgent({ prompt: 'Plan the trip.', provider, tools: [askQuestionTool()] });
  * ```
  */
-export function askQuestionTool(): DefinedTool<typeof askQuestionInput, AskQuestionResult> {
+export function askQuestionTool(): DefinedTool<StandardSchemaV1<AskQuestionInput>, AskQuestionResult> {
   // N4: asking changes nothing, so plan mode lets it through (it still pauses for the answer).
   return allowInPlanMode(defineTool({
     name: ASK_QUESTION_TOOL_NAME,

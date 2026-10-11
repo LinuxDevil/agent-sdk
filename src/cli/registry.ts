@@ -10,6 +10,7 @@ import { SDKError } from '../execution/errors';
 import { isHostPattern } from '../security/hostPattern';
 import { closestMatch } from '../utils/closestMatch';
 import { issueMessage, issuePath, type SafeParser } from '../utils/zodCompat';
+import { VERSION } from '../version';
 
 const FETCH_TIMEOUT_MS = 15_000;
 /** The most a registry document may be, in characters; each file and each item have their own caps in addWrite.ts. */
@@ -30,10 +31,11 @@ export const DEFAULT_REGISTRY = 'https://registry.lousho.com/index.json';
 /**
  * Where the default registry is read from when `DEFAULT_REGISTRY` cannot be
  * reached: the same committed `registry/dist/` folder, served raw from the
- * repository's main branch. Only the default falls back; an explicit
- * `--registry` or `LOUSHO_REGISTRY` never does.
+ * release tag of the installed SDK version (not a moving branch, so what is
+ * installed is what was released with it). Only the default falls back; an
+ * explicit `--registry` or `LOUSHO_REGISTRY` never does.
  */
-export const DEFAULT_REGISTRY_FALLBACK = 'https://raw.githubusercontent.com/LinuxDevil/agent-sdk/main/registry/dist/index.json';
+export const DEFAULT_REGISTRY_FALLBACK = `https://raw.githubusercontent.com/LinuxDevil/agent-sdk/v${VERSION}/registry/dist/index.json`;
 
 /** The registry index document; also what `scripts/build-registry.ts` writes as `registry/dist/index.json`. */
 export const IndexSchema = z.object({
@@ -68,8 +70,35 @@ export const ItemSchema = z.object({
   dependencies: z.array(z.string()).optional(),
 });
 
-export type RegistryIndex = z.infer<typeof IndexSchema>;
-export type RegistryItem = z.infer<typeof ItemSchema>;
+type RegistryItemType = 'tool' | 'skill' | 'channel' | 'schedule' | 'memory' | 'kit';
+
+/**
+ * A parsed registry index. This and {@link RegistryItem} are spelled out
+ * rather than inferred from the schemas, so the published declarations name
+ * no zod-major-specific types; the `satisfies` checks keep them in step.
+ */
+export interface RegistryIndex {
+  items: Array<{ name: string; type: RegistryItemType; description: string; url?: string; path?: string }>;
+}
+
+/** A parsed registry item document. */
+export interface RegistryItem {
+  name: string;
+  type: RegistryItemType;
+  description: string;
+  files: Array<{ path: string; content: string }>;
+  permissions: {
+    network?: string[];
+    env?: string[];
+    filesystem?: 'none' | 'read' | 'write';
+    exec?: boolean;
+    needsApproval?: boolean;
+  };
+  dependencies?: string[];
+}
+
+IndexSchema satisfies SafeParser<RegistryIndex>;
+ItemSchema satisfies SafeParser<RegistryItem>;
 
 export interface RegistryOptions {
   /** `--registry`; the `LOUSHO_REGISTRY` environment variable when absent. */

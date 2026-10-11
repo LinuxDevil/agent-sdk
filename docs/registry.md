@@ -14,8 +14,9 @@ while adding it.
 reads the default registry at `https://registry.lousho.com/index.json`, which
 is the `registry/dist/` folder of the SDK's repository served as static JSON.
 When that host cannot be reached, `lousho add` reads the same committed folder
-from the repository's `main` branch instead
-(`https://raw.githubusercontent.com/LinuxDevil/agent-sdk/main/registry/dist/index.json`);
+from the release tag of the installed SDK version instead
+(`https://raw.githubusercontent.com/LinuxDevil/agent-sdk/v<version>/registry/dist/index.json`,
+for example `v1.0.0-alpha.19`);
 only the default falls back, never a registry you named.
 `--registry` and `LOUSHO_REGISTRY` point it at another registry, and the value
 `none` (in either place) disables the registry entirely — `lousho add` then
