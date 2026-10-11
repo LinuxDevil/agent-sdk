@@ -35,6 +35,7 @@ import {
   loadTsup,
   sdkRuntimePlugin,
   workerBuiltinImportersPlugin,
+  workerMissingPeerPlugin,
   workerNodeShimPlugin,
   workerSandboxShimPlugin,
   workerUnsupportedPeerPlugin,
@@ -373,6 +374,7 @@ export const CloudflareWorkerAdapter: DeploymentAdapter = {
         workerNodeShimPlugin(),
         sdkRuntimePlugin({ sdkEntry: 'worker' }),
         workerUnsupportedPeerPlugin(),
+        workerMissingPeerPlugin(),
         workerBuiltinImportersPlugin(builtinImporters),
       ],
       // Keep `node:` prefixes: the shim plugin matches them (and the leak check below reports any left).

@@ -10,3 +10,19 @@ export function instanceOfBranded(cls: object, base: object, brand: symbol, valu
   }
   return Function.prototype[Symbol.hasInstance].call(cls, value);
 }
+
+/**
+ * A WeakSet every loaded copy of the SDK in this realm shares, registered on
+ * `globalThis` under `Symbol.for(key)`: a brand set by one copy (e.g. the ESM
+ * build a user's tool file imports) is seen by another (e.g. the CJS build
+ * that loads the agent directory). Use it for module-level "made by
+ * defineX()" sets that user values cross copies with.
+ */
+export function sharedWeakSet(key: string): WeakSet<object> {
+  const slot = Symbol.for(key);
+  const existing = (globalThis as Record<symbol, unknown>)[slot];
+  if (existing instanceof WeakSet) return existing as WeakSet<object>;
+  const set = new WeakSet<object>();
+  Object.defineProperty(globalThis, slot, { value: set, configurable: false, enumerable: false, writable: false });
+  return set;
+}

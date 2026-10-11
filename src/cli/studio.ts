@@ -50,6 +50,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { parseCommand, portValue, stringValue, usageError, type CommandSpec } from './args';
 import { ConfigurationError } from '../execution/errors';
+import { findSdkRoot } from '../deploy/bundle';
 
 export type StudioMode = 'auto' | 'dev' | 'prod';
 
@@ -117,7 +118,16 @@ function distServerEntry(appDir: string): string {
 
 function resolveMode(appDir: string, requested: StudioMode): 'dev' | 'prod' {
   if (requested === 'dev' || requested === 'prod') return requested;
-  return fs.existsSync(distServerEntry(appDir)) ? 'prod' : 'dev';
+  if (fs.existsSync(distServerEntry(appDir))) return 'prod';
+  if (!fs.existsSync(path.join(appDir, 'server', 'index.ts'))) {
+    // Neither the build nor the source: a package packed without Agent Forge (a local `npm pack`).
+    throw new ConfigurationError(
+      `lousho studio: this copy of @lousho/build-ai-agent has no Agent Forge build ('${distServerEntry(appDir)}' is missing). ` +
+        "It was packed without it: install a published release, or in the SDK checkout run 'npm run build:studio' before 'npm pack'.",
+      'studio'
+    );
+  }
+  return 'dev';
 }
 
 /**
@@ -130,8 +140,7 @@ function resolveMode(appDir: string, requested: StudioMode): 'dev' | 'prod' {
  */
 export function startStudio(options: StudioOptions = {}): StudioHandle {
   const { repoRoot = process.cwd(), apiPort = 4750, apiHost = '127.0.0.1', mode: requested = 'auto' } = options;
-  // dist/cli/studio.js and src/cli/studio.ts both sit two levels below the package root.
-  const packageRoot = options.packageRoot ?? path.join(__dirname, '..', '..');
+  const packageRoot = options.packageRoot ?? findSdkRoot();
   const appDir = resolveAgentForgeDir(repoRoot, packageRoot);
 
   if (!appDir) throw agentForgeNotFound(repoRoot, packageRoot);

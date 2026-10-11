@@ -27,6 +27,8 @@ import { handleChatRequest, sendJson, sendText, type ChatRoutesContext } from '.
 import { continueChannelSignIn } from '../channels/mountChannels';
 import { fileTraceExporter } from '../traces';
 import { DEFAULT_TRACE_DIR } from '../traces/format';
+import { findSdkRoot } from '../deploy/bundle';
+import { moduleDir } from '../utils/moduleDir';
 import { parseCommand, portValue, stringValue, takeOptionalValueFlag, usageError, type CommandSpec } from './args';
 import { detectTarget, hasOwnStore, startReloader, type DevOptions, type DevState } from './devReload';
 
@@ -38,9 +40,14 @@ export interface DevServerHandle {
   close: () => Promise<void>;
 }
 
+/** src/cli/dev-ui next to the source, or dist/cli/dev-ui (copied there by the build) for a bundled chunk anywhere under dist/. */
+function devUiPath(): string {
+  const beside = path.join(moduleDir(), 'dev-ui', 'index.html');
+  return fs.existsSync(beside) ? beside : path.join(findSdkRoot(), 'dist', 'cli', 'dev-ui', 'index.html');
+}
+
 function serveChatUi(res: http.ServerResponse): void {
-  const uiPath = path.join(__dirname, 'dev-ui', 'index.html');
-  const html = fs.readFileSync(uiPath, 'utf8');
+  const html = fs.readFileSync(devUiPath(), 'utf8');
   res.writeHead(200, { 'Content-Type': 'text/html' });
   res.end(html);
 }
@@ -168,6 +175,19 @@ export async function startDevServer(
 
 const USAGE = 'Usage: lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--no-schedules] [--traces[=dir]]';
 
+const HELP = `${USAGE}
+
+Serves an agent with a local chat UI (GET /) and HTTP API, and reloads it when its files change.
+The path is a spec file (.yaml/.yml/.json), an agent directory, or a .ts/.js module exporting an agent or createAgent() options.
+./.env is loaded when it exists (variables already set win).
+
+Options:
+  --port N          port to listen on (default 3737)
+  --host H          interface to bind (default 127.0.0.1; 0.0.0.0 exposes the agent, unauthenticated, to your network)
+  --no-schedules    do not start an agent directory's schedules
+  --traces[=dir]    write local trace files (default .lousho/traces); view them with lousho traces
+  -h, --help        show this help`;
+
 const SPEC: CommandSpec = {
   command: 'dev',
   usage: USAGE,
@@ -197,12 +217,21 @@ export function parseDevArgs(rest: string[]): DevCliArgs {
   return { path: positionals[0], port: portValue(SPEC, values.port, 3737), host: stringValue(values.host) ?? '127.0.0.1', noSchedules, traces };
 }
 
+/** Hosts that only this machine can reach: no warning for these. */
+const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
+
+/** The warning `lousho dev --host <h>` prints for a host other machines can reach (the dev server has no auth). */
+export function exposureWarning(host: string, port: number): string | undefined {
+  if (LOCAL_HOSTS.has(host)) return undefined;
+  return `lousho dev: warning: the dev server has no authentication, so anyone who can reach ${host}:${port} can use this agent and its tools.`;
+}
+
 /** Runs `lousho dev` with the arguments after `dev`; resolves with the exit code once the server listens. */
 export async function runDev(rest: string[]): Promise<number> {
   try {
     const args = parseDevArgs(rest);
     if (args.help) {
-      console.log(USAGE);
+      console.log(HELP);
       return 0;
     }
     const options: DevOptions = { schedules: !args.noSchedules };
@@ -213,6 +242,8 @@ export async function runDev(rest: string[]): Promise<number> {
     }
     const handle = await startDevServer(path.resolve(args.path), args.port, args.host, options);
     console.log(`lousho dev: listening on http://${args.host}:${handle.port}`);
+    const warning = exposureWarning(args.host, handle.port);
+    if (warning) console.warn(warning);
     return 0;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

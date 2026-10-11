@@ -27,6 +27,14 @@ export interface SdkManifest {
   peerDependencies?: Record<string, string>;
 }
 
+/** What the doctor reports about a loaded agent directory. */
+export interface AgentDirSummary {
+  name: string;
+  /** The config's `provider/model` string; undefined when `agent.ts` sets a provider instance. */
+  model?: string;
+  tools: string[];
+}
+
 /**
  * Everything `runDoctor` needs from the outside world. The real
  * implementation lives in doctor.ts; tests inject plain objects.
@@ -40,6 +48,10 @@ export interface DoctorEnvironment {
   resolvePackageVersion(name: string): string | null;
   /** Agent spec path given on the command line, if any. */
   specPath?: string;
+  /** True when `path` is a directory: an agent directory instead of a spec file. Absent: always a spec file. */
+  isDirectory?(path: string): boolean;
+  /** Loads an agent directory like `lousho dev` does (no provider is created); throws with the file at fault. */
+  loadAgentDir?(dir: string): Promise<AgentDirSummary>;
   /** Loads and validates a spec (the SDK's own loader); throws with field paths on invalid input. */
   loadSpec(path: string): AgentSpec;
   /** Resolves a built-in tool name; throws if unknown. */

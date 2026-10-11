@@ -13,6 +13,16 @@ import { buildAgent } from './chat';
 
 const USAGE = 'Usage: lousho acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]';
 
+const HELP = `${USAGE}
+
+Serves an agent to an editor (Zed and other ACP clients) over the Agent Client Protocol on stdio.
+The path is a spec file (.yaml/.yml/.json), an agent directory, or a .ts/.js module exporting an agent or createAgent() options.
+./.env is loaded when it exists (variables already set win).
+
+Options:
+  --model provider/model   use another model
+  -h, --help               show this help`;
+
 const SPEC: CommandSpec = { command: 'acp', usage: USAGE, positionals: 1, options: { model: { type: 'string' } } };
 
 /** Parses the arguments after `acp`; throws `LOUSHO_CONFIG_INVALID` for a missing path, an unknown flag or a flag without its value. */
@@ -47,7 +57,7 @@ export async function runAcp(args: string[], io: AcpIo = { stdin: process.stdin,
   try {
     const parsed = parseAcpArgs(args);
     if (parsed.help) {
-      io.stdout.write(`${USAGE}\n`);
+      io.stdout.write(`${HELP}\n`);
       return 0;
     }
     const agent = await buildAgent(parsed.path, io, parsed.model, 'acp');

@@ -9,6 +9,7 @@
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { findSdkRoot } from '../deploy/bundle';
 import { detectProviderFromEnv, listProviders } from '../providers/providerSpec';
 import {
   INIT_USAGE,
@@ -22,7 +23,8 @@ import {
   type PackageManager,
   type Template,
 } from './init/options';
-import { askMissing, type InitAnswers } from './init/prompts';
+import { askMissing, type AskInput, type InitAnswers } from './init/prompts';
+import { MissingPeerDependencyError } from '../providers/optionalPeer';
 import { assertWritable, packageNameFor, writeFiles } from './init/scaffold';
 import { resolveSdkDependency, type SdkManifest } from './init/sdkDependency';
 import { renderProject } from './init/templates';
@@ -43,8 +45,7 @@ export interface InitEnvironment {
 const DEFAULT_DIR = 'my-agent';
 
 function readSdkManifest(): SdkManifest {
-  // dist/cli/init.js and src/cli/init.ts both sit two levels below the package root.
-  return JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8'));
+  return JSON.parse(fs.readFileSync(path.join(findSdkRoot(), 'package.json'), 'utf8'));
 }
 
 function exec(command: string, args: string[], cwd: string): Promise<number> {
@@ -81,6 +82,24 @@ function validateFlags(options: InitOptions): void {
   if (options.packageManager !== undefined) expectOneOf('--package-manager', options.packageManager, PACKAGE_MANAGERS);
 }
 
+/**
+ * The prompts, or the flags and defaults when the optional `prompts` peer is
+ * missing (e.g. `npx @lousho/build-ai-agent init` installs only the SDK):
+ * there is nothing to install in an npx run, so say how to choose instead.
+ */
+async function askOrDefault(input: AskInput, environment: InitEnvironment): Promise<InitAnswers> {
+  try {
+    return await askMissing(input);
+  } catch (error) {
+    if (!(error instanceof MissingPeerDependencyError)) throw error;
+    environment.writeError(
+      "lousho init: interactive prompts need the optional 'prompts' package, which is not installed; using your flags and the defaults. " +
+        'Choose with a directory argument, --provider and --template, or run `npm create lousho-agent`, which includes the prompts.\n'
+    );
+    return { ...input.defaults, ...input.known };
+  }
+}
+
 /** Flags, then prompts (when a terminal is attached and `--yes` is absent), then defaults. */
 async function resolveChoices(options: InitOptions, environment: InitEnvironment): Promise<Choices> {
   const defaults: InitAnswers = {
@@ -93,7 +112,7 @@ async function resolveChoices(options: InitOptions, environment: InitEnvironment
   const answers =
     options.yes || !environment.interactive
       ? { ...defaults, ...defined }
-      : await askMissing({ known: defined, defaults });
+      : await askOrDefault({ known: defined, defaults }, environment);
   return {
     ...answers,
     packageManager: (options.packageManager as PackageManager | undefined) ?? detectPackageManager(environment.env),
