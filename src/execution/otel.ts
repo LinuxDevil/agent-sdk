@@ -91,6 +91,16 @@ export interface OtelTraceExporterOptions {
    * spans (`fileTraceExporter`, custom exporters) are unaffected.
    */
   legacyAttributes?: boolean;
+  /**
+   * Set the run's total `gen_ai.usage.input_tokens` / `output_tokens` on
+   * `invoke_agent` spans. Default `true`. Those totals repeat the tokens of
+   * the run's `chat` spans (and a lead's total repeats its sub-agents'), so a
+   * backend that sums `gen_ai.usage.*` over every span of a trace counts each
+   * token two or more times; `false` leaves the usage attributes on `chat`
+   * spans only. The run's cost (`lousho.cost_usd`) and the token metric are
+   * unaffected.
+   */
+  agentUsageTotals?: boolean;
 }
 
 /** How many ended spans of still-open trees an exporter keeps for parenting late children. */
@@ -139,7 +149,7 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
   // Span (matched by parentId) can be started as a child of the right
   // OTel context instead of the ambient one.
   const recordMetrics = resolveMetricsRecorder(options);
-  const skipLegacy = options.legacyAttributes === false;
+  const skip = skippedKeys(options);
 
   // Entries outlive their span: a queued background sub-agent can start after
   // its `execute_tool task` parent ended, and must still join that trace
@@ -178,7 +188,7 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
       // Seed OTel span attributes with whatever this SDK already knew at
       // span-start time (e.g. model, toolName). onSpanEnd below adds
       // whatever was filled in afterwards (token counts, results, ...).
-      setAttributes(otelSpan, span.attributes, skipLegacy);
+      setAttributes(otelSpan, span.attributes, skip(span));
 
       const ctx = trace.setSpan(parentContext, otelSpan);
       otelSpansById.set(span.id, { span: otelSpan, ctx, rootId: parentEntry ? parentEntry.rootId : span.id });
@@ -193,7 +203,7 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
         return;
       }
 
-      setAttributes(entry.span, span.attributes, skipLegacy);
+      setAttributes(entry.span, span.attributes, skip(span));
       if (span.status?.code === 'error') {
         entry.span.setStatus({ code: SpanStatusCode.ERROR, message: span.status.message });
       }
@@ -273,9 +283,21 @@ function recordTokens(histogram: Histogram, span: Span, attributes: Attributes):
   }
 }
 
-function setAttributes(otelSpan: OtelSpan, attributes: Record<string, unknown>, skipLegacy: boolean): void {
+const AGENT_USAGE_KEYS: ReadonlySet<string> = new Set([GenAiAttr.USAGE_INPUT_TOKENS, GenAiAttr.USAGE_OUTPUT_TOKENS]);
+
+/** The attribute names `options` leaves out of a span's OTel attributes. */
+function skippedKeys(options: OtelTraceExporterOptions): (span: Span) => (key: string) => boolean {
+  const skipLegacy = options.legacyAttributes === false;
+  const skipAgentUsage = options.agentUsageTotals === false;
+  return (span) => {
+    const agentUsage = skipAgentUsage && span.attributes[GenAiAttr.OPERATION_NAME] === GenAiOperation.INVOKE_AGENT;
+    return (key) => (skipLegacy && LEGACY_KEYS.has(key)) || (agentUsage && AGENT_USAGE_KEYS.has(key));
+  };
+}
+
+function setAttributes(otelSpan: OtelSpan, attributes: Record<string, unknown>, skip: (key: string) => boolean): void {
   for (const [key, value] of Object.entries(attributes)) {
-    if (value !== undefined && !(skipLegacy && LEGACY_KEYS.has(key))) {
+    if (value !== undefined && !skip(key)) {
       otelSpan.setAttribute(key, toOtelAttributeValue(value));
     }
   }

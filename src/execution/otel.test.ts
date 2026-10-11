@@ -222,6 +222,18 @@ describe('createOtelTraceExporter', () => {
     expect(fake.startedSpans[0].span.attributes).toEqual({ 'gen_ai.request.model': 'gpt-4', 'gen_ai.usage.input_tokens': 3 });
   });
 
+  it('leaves the run totals off invoke_agent spans with agentUsageTotals: false (chat spans keep theirs)', () => {
+    const exporter = createOtelTraceExporter({ tracer: fake.tracer, metrics: false, agentUsageTotals: false });
+    const agent = { 'gen_ai.operation.name': 'invoke_agent', 'gen_ai.usage.input_tokens': 40, 'gen_ai.usage.output_tokens': 21, 'lousho.cost_usd': 0.1 };
+    const chat = { 'gen_ai.operation.name': 'chat', 'gen_ai.usage.input_tokens': 40, 'gen_ai.usage.output_tokens': 21 };
+    exporter.onSpanStart(makeSpan({ id: 'run', attributes: {} }));
+    exporter.onSpanStart(makeSpan({ id: 'chat', parentId: 'run', attributes: chat }));
+    exporter.onSpanEnd(makeSpan({ id: 'chat', parentId: 'run', attributes: chat, endTime: 1500 }));
+    exporter.onSpanEnd(makeSpan({ id: 'run', attributes: agent, endTime: 2000 }));
+    expect(fake.startedSpans[0].span.attributes).toEqual({ 'gen_ai.operation.name': 'invoke_agent', 'lousho.cost_usd': 0.1 });
+    expect(fake.startedSpans[1].span.attributes).toEqual(chat);
+  });
+
   it('defaults to a tracer resolved via trace.getTracer when no tracer option is passed', async () => {
     const otelApi = await import('@opentelemetry/api');
     const getTracerSpy = vi.spyOn(otelApi.trace, 'getTracer');
