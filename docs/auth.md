@@ -297,7 +297,9 @@ permission rules and sub-agents see it too: see
 - **Errors.** The session routes send an error's `name` and `code` with a
   generic message. The full error (a provider's response body, a chat template)
   goes to the server log (`console.error`) and to `onEvent`. Pass
-  `exposeErrors: true` to send the raw message, as `lousho dev` does.
+  `exposeErrors: true` to send the raw message, as `lousho dev` does. A
+  missing provider package (`LOUSHO_PEER_MISSING`) always sends its message:
+  the SDK's own `npm install` command.
 - `basic()` only over HTTPS; a bearer token is a password too, so terminate TLS
   in front of any server that is not on localhost.
 - Keep `issuer` and `audience` set for `jwt()`: a token minted for another of

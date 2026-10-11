@@ -7,6 +7,7 @@ import { APICallError, LoadAPIKeyError, RetryError } from 'ai';
 import type { ErrorCode } from '../utils/errorCodes';
 import type { ApprovalKind } from './ApprovalGate';
 import { SDKError, type SDKErrorOptions } from '../utils/sdkError';
+import { brandClass } from '../utils/brand';
 
 // SDKError is defined in src/utils/sdkError.ts (no `ai` import, so browser code can use it).
 export { SDKError, type SDKErrorOptions };
@@ -24,6 +25,7 @@ export class AgentExecutionError extends SDKError {
     this.name = 'AgentExecutionError';
   }
 }
+brandClass(AgentExecutionError, 'AgentExecutionError');
 
 /**
  * Tool execution error
@@ -39,6 +41,7 @@ export class ToolExecutionError extends SDKError {
     this.name = 'ToolExecutionError';
   }
 }
+brandClass(ToolExecutionError, 'ToolExecutionError');
 
 /**
  * LLM provider error
@@ -55,6 +58,7 @@ export class LLMProviderError extends SDKError {
     this.name = 'LLMProviderError';
   }
 }
+brandClass(LLMProviderError, 'LLMProviderError');
 
 /**
  * LOU-U8: thrown by `AgentExecutor.execute()` when its `sessionId` names a
@@ -89,6 +93,7 @@ export class SessionAwaitingApprovalError extends SDKError {
     this.name = 'SessionAwaitingApprovalError';
   }
 }
+brandClass(SessionAwaitingApprovalError, 'SessionAwaitingApprovalError');
 
 /**
  * Flow execution error
@@ -104,6 +109,7 @@ export class FlowExecutionError extends SDKError {
     this.name = 'FlowExecutionError';
   }
 }
+brandClass(FlowExecutionError, 'FlowExecutionError');
 
 /**
  * Configuration error
@@ -114,6 +120,7 @@ export class ConfigurationError extends SDKError {
     this.name = 'ConfigurationError';
   }
 }
+brandClass(ConfigurationError, 'ConfigurationError');
 
 /**
  * Validation error
@@ -128,6 +135,7 @@ export class ValidationError extends SDKError {
     this.name = 'ValidationError';
   }
 }
+brandClass(ValidationError, 'ValidationError');
 
 /**
  * Timeout error
@@ -142,6 +150,7 @@ export class TimeoutError extends SDKError {
     this.name = 'TimeoutError';
   }
 }
+brandClass(TimeoutError, 'TimeoutError');
 
 /**
  * Rate limit error
@@ -156,6 +165,7 @@ export class RateLimitError extends SDKError {
     this.name = 'RateLimitError';
   }
 }
+brandClass(RateLimitError, 'RateLimitError');
 
 /**
  * Check if error is retryable
@@ -708,6 +718,9 @@ export function isModelActionableProviderErrorCategory(
   );
 }
 
+/** Codes of a provider's own refusal before any request, which {@link CompactedLLMProviderError} keeps. */
+const OWN_PROVIDER_CODES: readonly ErrorCode[] = ['LOUSHO_PROVIDER_MISSING_API_KEY', 'LOUSHO_PEER_MISSING'];
+
 /**
  * The error AgentExecutor.execute() rejects with for a provider.generate()
  * failure that is NOT surfaced into `messages` (see
@@ -727,10 +740,11 @@ export function isModelActionableProviderErrorCategory(
 export class CompactedLLMProviderError extends LLMProviderError {
   constructor(public readonly compacted: CompactedProviderError, cause?: Error) {
     // A throttled call (`rate-limit`, e.g. a 429) has its own code, as does a provider that refused to call without
-    // an API key (it says so before any request); every other failure is a failed request.
-    const missingKey = cause instanceof SDKError && cause.code === 'LOUSHO_PROVIDER_MISSING_API_KEY';
-    const code: ErrorCode = missingKey ? 'LOUSHO_PROVIDER_MISSING_API_KEY' : compacted.category === 'rate-limit' ? 'LOUSHO_PROVIDER_RATE_LIMITED' : 'LOUSHO_PROVIDER_REQUEST_FAILED';
+    // an API key, or whose package is not installed (it says so before any request); every other failure is a failed request.
+    const ownCode = cause instanceof SDKError ? OWN_PROVIDER_CODES.find((c) => c === cause.code) : undefined;
+    const code: ErrorCode = ownCode ?? (compacted.category === 'rate-limit' ? 'LOUSHO_PROVIDER_RATE_LIMITED' : 'LOUSHO_PROVIDER_REQUEST_FAILED');
     super(compacted.error, compacted.providerName, compacted.statusCode, cause, code);
     this.name = 'CompactedLLMProviderError';
   }
 }
+brandClass(CompactedLLMProviderError, 'CompactedLLMProviderError');

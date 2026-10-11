@@ -236,6 +236,11 @@ is `quota-exceeded`, so `LOUSHO_PROVIDER_REQUEST_FAILED`).
 **Means:** a feature needs an optional package that is not installed
 (`MissingPeerDependencyError`, or a provider's SDK such as `@ai-sdk/openai`).
 
+A model call whose provider package is missing fails with this code (a
+`CompactedLLMProviderError` whose `cause` is the `MissingPeerDependencyError`),
+not `LOUSHO_PROVIDER_REQUEST_FAILED`, and the server routes send its message
+(the install command) to the client instead of the generic one.
+
 **Fix:** run the `npm install` command in the message (also on
 `error.installCommand`). See [Installation](./installation.md).
 
