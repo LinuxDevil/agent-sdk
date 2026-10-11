@@ -15332,10 +15332,13 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   `agent.fork('<id>.turn-<n>', { fromStep })` can fork those; older turns'
   histories are deleted as new turns commit (each history entry holds a copy of
   the whole transcript, so keeping every turn's would grow the store with the
-  square of the conversation's length). History outside the window that is
-  already in the store - kept by an earlier release, or under a larger
-  `turnHistoryLimit` - is deleted over the next commits too, up to 32 turns per
-  commit. `session.fork()` works from the transcript and is not limited by it.
+  square of the conversation's length), also when every turn uses a new store
+  object or process. History outside the window that is already in the store -
+  kept by an earlier release, or under a larger `turnHistoryLimit` - is deleted
+  over the next commits too, up to 32 turns per commit, oldest first; a process
+  that commits only one turn gets through the oldest 32, and
+  `fileStore(dir).prune()` / `SqliteStore.prune()` delete the rest.
+  `session.fork()` works from the transcript and is not limited by it.
 - While a turn runs, it holds a run lease on its checkpoint (see
   [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases)): a `send()` on the same
   session from another process, replica or store object fails with
@@ -15493,7 +15496,7 @@ For many processes sharing a store, `SqliteStore` is the sturdier choice.
 checkpoint history files, plus expired pending OAuth sign-ins. A run paused on
 a pending approval is kept, however old (its checkpoint, its history and its
 session's transcript), and so are pending approvals and OAuth tokens. It
-resolves with the counts, `{ sessions, checkpoints, oauthPending }`:
+resolves with the counts, `{ sessions, checkpoints, checkpointHistory, oauthPending }`:
 
 ```ts
 import { fileStore } from '@lousho/build-ai-agent';

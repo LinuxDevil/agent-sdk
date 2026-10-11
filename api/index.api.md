@@ -2324,6 +2324,7 @@ export interface FileStorePruneOptions {
 
 // @public
 export interface FileStorePruneResult {
+    checkpointHistory: number;
     checkpoints: number;
     oauthPending: number;
     sessions: number;
