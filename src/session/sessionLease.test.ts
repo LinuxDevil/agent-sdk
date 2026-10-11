@@ -196,7 +196,7 @@ describe('run ids and session checkpoint keys', () => {
     const store = memoryStore();
     const agent = createAgent({ provider: mockModel(['ok'], { onExhausted: 'repeat-last' }), store });
     await agent.session({ id: 'victim' }).send('my pin is 1234');
-    for (const sessionId of ['victim.turn-2', 'victim.paused', '', '../x', 'café']) {
+    for (const sessionId of ['victim.turn-2', 'victim.paused', 'schedule-daily-2026-10-10T030000Z.fire', '', '../x', 'café']) {
       await expect(agent.send('ATTACKER', { sessionId })).rejects.toMatchObject({ code: 'LOUSHO_SESSION_ID_INVALID' });
     }
     // A fork of a session turn is a run of its own and stays allowed.
