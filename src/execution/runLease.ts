@@ -77,7 +77,7 @@ function newOwner(): string {
 }
 
 /** The error a run gets when another live run holds its id. */
-export function runBusyError(id: string, reason = 'is running elsewhere'): SDKError {
+function runBusyError(id: string, reason = 'is running elsewhere'): SDKError {
   return new SDKError(
     `The run checkpointed as '${id}' ${reason} (another process, replica or store object holds its run lease), ` +
       `so it was not started or resumed here and nothing ran. Wait for that run to finish and try again; ` +
