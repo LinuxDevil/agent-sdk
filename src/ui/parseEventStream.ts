@@ -48,42 +48,56 @@ const SSE_FIELD = /^(?::|event:|id:|retry:|event$|id$|retry$)/;
 export async function* parseEventStream(response: { body: ReadableStream<Uint8Array> | null }): AsyncGenerator<AgentEvent> {
   if (!response.body) return;
   const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  /** The `data:` lines of the SSE event being read. */
-  let data: string[] = [];
+  const framer = new EventFramer();
   try {
-    for (;;) {
-      const { value, done } = await reader.read();
-      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
-      const lines = buffer.split(/\r?\n/);
-      buffer = done ? '' : (lines.pop() ?? '');
-      for (const line of lines) {
-        if (line.startsWith('data:')) {
-          // Per the SSE spec an event's data lines are joined with `\n`, so a JSON payload may span several;
-          // it is yielded as soon as it is complete rather than at the blank line.
-          data.push(line.slice(line.startsWith('data: ') ? 6 : 5));
-          const event = parseJson(data.join('\n'));
-          if (event) {
-            data = [];
-            yield event;
-          }
-          continue;
-        }
-        if (line === '' || !SSE_FIELD.test(line)) {
-          // A blank line ends the SSE event; any other line is NDJSON (and ends a stray unterminated SSE event too).
-          yield* parseLeftover(data);
-          data = [];
-          const event = line === '' ? undefined : parseJson(line);
-          if (event) yield event;
-        }
-      }
-      if (done) {
-        yield* parseLeftover(data);
-        return;
-      }
-    }
+    for await (const line of linesOf(reader)) yield* framer.line(line);
+    yield* framer.end();
   } finally {
     reader.cancel().catch(() => undefined);
+  }
+}
+
+/** The lines of a byte stream (`\n` or `\r\n` separated), decoded as UTF-8; the last one may lack its newline. */
+async function* linesOf(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<string> {
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+    const lines = buffer.split(/\r?\n/);
+    buffer = done ? '' : (lines.pop() ?? '');
+    yield* lines;
+    if (done) return;
+  }
+}
+
+/** Turns lines into events: SSE `data:` lines (an event's joined with `\n`) or NDJSON lines. */
+class EventFramer {
+  /** The `data:` lines of the SSE event being read. */
+  private data: string[] = [];
+
+  *line(line: string): Generator<AgentEvent> {
+    if (line.startsWith('data:')) {
+      // Per the SSE spec an event's data lines are joined with `\n`, so a JSON payload may span several;
+      // it is yielded as soon as it is complete rather than at the blank line.
+      this.data.push(line.slice(line.startsWith('data: ') ? 6 : 5));
+      const event = parseJson(this.data.join('\n'));
+      if (event) {
+        this.data = [];
+        yield event;
+      }
+      return;
+    }
+    if (line !== '' && SSE_FIELD.test(line)) return;
+    // A blank line ends the SSE event; any other line is NDJSON (and ends a stray unterminated SSE event too).
+    yield* this.end();
+    const event = line === '' ? undefined : parseJson(line);
+    if (event) yield event;
+  }
+
+  /** The leftover `data:` lines that never joined into one event. */
+  *end(): Generator<AgentEvent> {
+    yield* parseLeftover(this.data);
+    this.data = [];
   }
 }

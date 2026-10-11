@@ -73,7 +73,6 @@ export default defineConfig({
         '**/*.spec.ts',
         '**/*.test-d.ts',
         '**/*.eval.ts',
-        '**/*.testkit.ts',
         '**/__fixtures__/**',
         'dist/**',
         'node_modules/**',
