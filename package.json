@@ -14,104 +14,265 @@
   },
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.mjs",
-      "require": "./dist/index.js"
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
     },
     "./executor": {
-      "types": "./dist/executor/index.d.ts",
-      "import": "./dist/executor/index.mjs",
-      "require": "./dist/executor/index.js"
+      "import": {
+        "types": "./dist/executor/index.d.mts",
+        "default": "./dist/executor/index.mjs"
+      },
+      "require": {
+        "types": "./dist/executor/index.d.ts",
+        "default": "./dist/executor/index.js"
+      }
     },
     "./tools": {
-      "types": "./dist/tools/index.d.ts",
-      "import": "./dist/tools/index.mjs",
-      "require": "./dist/tools/index.js"
+      "import": {
+        "types": "./dist/tools/index.d.mts",
+        "default": "./dist/tools/index.mjs"
+      },
+      "require": {
+        "types": "./dist/tools/index.d.ts",
+        "default": "./dist/tools/index.js"
+      }
     },
     "./flows": {
-      "types": "./dist/flows/index.d.ts",
-      "import": "./dist/flows/index.mjs",
-      "require": "./dist/flows/index.js"
+      "import": {
+        "types": "./dist/flows/index.d.mts",
+        "default": "./dist/flows/index.mjs"
+      },
+      "require": {
+        "types": "./dist/flows/index.d.ts",
+        "default": "./dist/flows/index.js"
+      }
     },
     "./integrations": {
-      "types": "./dist/integrations/index.d.ts",
-      "import": "./dist/integrations/index.mjs",
-      "require": "./dist/integrations/index.js"
+      "import": {
+        "types": "./dist/integrations/index.d.mts",
+        "default": "./dist/integrations/index.mjs"
+      },
+      "require": {
+        "types": "./dist/integrations/index.d.ts",
+        "default": "./dist/integrations/index.js"
+      }
     },
     "./utils": {
-      "types": "./dist/utils/index.d.ts",
-      "import": "./dist/utils/index.mjs",
-      "require": "./dist/utils/index.js"
+      "import": {
+        "types": "./dist/utils/index.d.mts",
+        "default": "./dist/utils/index.mjs"
+      },
+      "require": {
+        "types": "./dist/utils/index.d.ts",
+        "default": "./dist/utils/index.js"
+      }
     },
     "./mcp": {
-      "types": "./dist/tools/mcp/index.d.ts",
-      "import": "./dist/tools/mcp/index.mjs",
-      "require": "./dist/tools/mcp/index.js"
+      "import": {
+        "types": "./dist/tools/mcp/index.d.mts",
+        "default": "./dist/tools/mcp/index.mjs"
+      },
+      "require": {
+        "types": "./dist/tools/mcp/index.d.ts",
+        "default": "./dist/tools/mcp/index.js"
+      }
     },
     "./types": {
-      "types": "./dist/types/index.d.ts",
-      "import": "./dist/types/index.mjs",
-      "require": "./dist/types/index.js"
+      "import": {
+        "types": "./dist/types/index.d.mts",
+        "default": "./dist/types/index.mjs"
+      },
+      "require": {
+        "types": "./dist/types/index.d.ts",
+        "default": "./dist/types/index.js"
+      }
     },
     "./testing": {
-      "types": "./dist/testing/index.d.ts",
-      "import": "./dist/testing/index.mjs",
-      "require": "./dist/testing/index.js"
+      "import": {
+        "types": "./dist/testing/index.d.mts",
+        "default": "./dist/testing/index.mjs"
+      },
+      "require": {
+        "types": "./dist/testing/index.d.ts",
+        "default": "./dist/testing/index.js"
+      }
     },
     "./otel": {
-      "types": "./dist/execution/otel.d.ts",
-      "import": "./dist/execution/otel.mjs",
-      "require": "./dist/execution/otel.js"
+      "import": {
+        "types": "./dist/execution/otel.d.mts",
+        "default": "./dist/execution/otel.mjs"
+      },
+      "require": {
+        "types": "./dist/execution/otel.d.ts",
+        "default": "./dist/execution/otel.js"
+      }
     },
     "./hooks": {
-      "types": "./dist/execution/hooks.d.ts",
-      "import": "./dist/execution/hooks.mjs",
-      "require": "./dist/execution/hooks.js"
+      "import": {
+        "types": "./dist/execution/hooks.d.mts",
+        "default": "./dist/execution/hooks.mjs"
+      },
+      "require": {
+        "types": "./dist/execution/hooks.d.ts",
+        "default": "./dist/execution/hooks.js"
+      }
     },
     "./sqlite": {
-      "types": "./dist/storage/sqlite/index.d.ts",
-      "import": "./dist/storage/sqlite/index.mjs",
-      "require": "./dist/storage/sqlite/index.js"
+      "import": {
+        "types": "./dist/storage/sqlite/index.d.mts",
+        "default": "./dist/storage/sqlite/index.mjs"
+      },
+      "require": {
+        "types": "./dist/storage/sqlite/index.d.ts",
+        "default": "./dist/storage/sqlite/index.js"
+      }
     },
     "./auth": {
-      "types": "./dist/auth/index.d.ts",
-      "import": "./dist/auth/index.mjs",
-      "require": "./dist/auth/index.js"
+      "import": {
+        "types": "./dist/auth/index.d.mts",
+        "default": "./dist/auth/index.mjs"
+      },
+      "require": {
+        "types": "./dist/auth/index.d.ts",
+        "default": "./dist/auth/index.js"
+      }
     },
     "./kv": {
-      "types": "./dist/deploy/kv.d.ts",
-      "import": "./dist/deploy/kv.mjs",
-      "require": "./dist/deploy/kv.js"
+      "import": {
+        "types": "./dist/deploy/kv.d.mts",
+        "default": "./dist/deploy/kv.mjs"
+      },
+      "require": {
+        "types": "./dist/deploy/kv.d.ts",
+        "default": "./dist/deploy/kv.js"
+      }
     },
     "./worker": {
-      "types": "./dist/deploy/worker.d.ts",
-      "import": "./dist/deploy/worker.mjs",
-      "require": "./dist/deploy/worker.js"
+      "import": {
+        "types": "./dist/deploy/worker.d.mts",
+        "default": "./dist/deploy/worker.mjs"
+      },
+      "require": {
+        "types": "./dist/deploy/worker.d.ts",
+        "default": "./dist/deploy/worker.js"
+      }
     },
     "./traces": {
-      "types": "./dist/traces/index.d.ts",
-      "import": "./dist/traces/index.mjs",
-      "require": "./dist/traces/index.js"
+      "import": {
+        "types": "./dist/traces/index.d.mts",
+        "default": "./dist/traces/index.mjs"
+      },
+      "require": {
+        "types": "./dist/traces/index.d.ts",
+        "default": "./dist/traces/index.js"
+      }
     },
     "./triggers": {
-      "types": "./dist/triggers/index.d.ts",
-      "import": "./dist/triggers/index.mjs",
-      "require": "./dist/triggers/index.js"
+      "import": {
+        "types": "./dist/triggers/index.d.mts",
+        "default": "./dist/triggers/index.mjs"
+      },
+      "require": {
+        "types": "./dist/triggers/index.d.ts",
+        "default": "./dist/triggers/index.js"
+      }
     },
     "./react": {
-      "types": "./dist/react/index.d.ts",
-      "import": "./dist/react/index.mjs",
-      "require": "./dist/react/index.js"
+      "import": {
+        "types": "./dist/react/index.d.mts",
+        "default": "./dist/react/index.mjs"
+      },
+      "require": {
+        "types": "./dist/react/index.d.ts",
+        "default": "./dist/react/index.js"
+      }
     },
     "./vue": {
-      "types": "./dist/vue/index.d.ts",
-      "import": "./dist/vue/index.mjs",
-      "require": "./dist/vue/index.js"
+      "import": {
+        "types": "./dist/vue/index.d.mts",
+        "default": "./dist/vue/index.mjs"
+      },
+      "require": {
+        "types": "./dist/vue/index.d.ts",
+        "default": "./dist/vue/index.js"
+      }
     },
     "./svelte": {
-      "types": "./dist/svelte/index.d.ts",
-      "import": "./dist/svelte/index.mjs",
-      "require": "./dist/svelte/index.js"
+      "import": {
+        "types": "./dist/svelte/index.d.mts",
+        "default": "./dist/svelte/index.mjs"
+      },
+      "require": {
+        "types": "./dist/svelte/index.d.ts",
+        "default": "./dist/svelte/index.js"
+      }
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "executor": [
+        "dist/executor/index.d.ts"
+      ],
+      "tools": [
+        "dist/tools/index.d.ts"
+      ],
+      "flows": [
+        "dist/flows/index.d.ts"
+      ],
+      "integrations": [
+        "dist/integrations/index.d.ts"
+      ],
+      "utils": [
+        "dist/utils/index.d.ts"
+      ],
+      "mcp": [
+        "dist/tools/mcp/index.d.ts"
+      ],
+      "types": [
+        "dist/types/index.d.ts"
+      ],
+      "testing": [
+        "dist/testing/index.d.ts"
+      ],
+      "otel": [
+        "dist/execution/otel.d.ts"
+      ],
+      "hooks": [
+        "dist/execution/hooks.d.ts"
+      ],
+      "sqlite": [
+        "dist/storage/sqlite/index.d.ts"
+      ],
+      "auth": [
+        "dist/auth/index.d.ts"
+      ],
+      "kv": [
+        "dist/deploy/kv.d.ts"
+      ],
+      "worker": [
+        "dist/deploy/worker.d.ts"
+      ],
+      "traces": [
+        "dist/traces/index.d.ts"
+      ],
+      "triggers": [
+        "dist/triggers/index.d.ts"
+      ],
+      "react": [
+        "dist/react/index.d.ts"
+      ],
+      "vue": [
+        "dist/vue/index.d.ts"
+      ],
+      "svelte": [
+        "dist/svelte/index.d.ts"
+      ]
     }
   },
   "files": [
@@ -138,10 +299,10 @@
     "CONTRIBUTING.md"
   ],
   "sideEffects": [
-    "./src/providers/mock.ts",
-    "./src/providers/mock.js",
     "./src/providers/index.ts",
-    "./src/providers/index.js"
+    "./src/providers/index.js",
+    "./dist/index.js",
+    "./dist/index.mjs"
   ],
   "scripts": {
     "build": "node --max-old-space-size=12288 node_modules/tsup/dist/cli-default.js",
@@ -181,6 +342,7 @@
     "build:studio": "npm run build:studio --workspace apps/agent-forge",
     "test:e2e:studio": "npm run test:e2e:studio --workspace apps/agent-forge",
     "prepublishOnly": "npm run build && npm run build:studio",
+    "prepack": "node scripts/prepack-check.mjs",
     "docs:build": "typedoc",
     "docs:ratchet": "tsx scripts/typedoc-ratchet.ts",
     "docs:ratchet:update": "tsx scripts/typedoc-ratchet.ts --update",
