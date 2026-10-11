@@ -5,50 +5,83 @@
  * same data) that tries to run or resume the same id while the lease is live
  * fails with `LOUSHO_SESSION_BUSY` before anything runs, instead of re-running
  * the live run's tool calls. A lease whose holder died expires after
- * {@link RUN_LEASE_TTL_MS} (the file and SQLite stores also take over at once
- * when the holder's process is gone from the same host), so a crashed run can
- * still be resumed.
+ * {@link RUN_LEASE_TTL_MS} (the file and SQLite stores wait one more period for
+ * clock skew, and take over at once when the holder is provably gone, see
+ * `leaseRecord.ts`), so a crashed run can still be resumed.
  *
  * Taking a lease is the store's own compare-and-swap
  * (`CheckpointStore.acquireLease`); a store without it (a custom store) runs
- * without leases, as before. No Node builtins: Worker code runs it too.
+ * without leases, as before. The owner id is the fencing token: a heartbeat
+ * only renews a lease its owner still holds (`renewLease`), and the run's
+ * checkpoints are saved only while it does (`saveIfLeased`), so a run that
+ * stalled past its lease cannot overwrite the new holder's progress.
+ * No Node builtins: Worker code runs it too.
  */
 
-import type { CheckpointStore } from './checkpoint';
+import type { Checkpoint, CheckpointStore } from './checkpoint';
 import { SDKError } from './errors';
 
 /** How long a run lease lasts without a heartbeat, in ms; a live run renews it every third of that. */
 const RUN_LEASE_TTL_MS = 30_000;
 
-/** Lease owners held by live runs of this process - a store asks, to tell a crashed run of this process from a live one. */
-const liveOwners = new Set<string>();
+/** Lease state of one JS realm (a thread), shared by every copy of this module loaded in it. */
+interface LeaseRealm {
+  /** A random id of the realm, part of every lease owner it takes. */
+  readonly instance: string;
+  /** Lease owners held by live runs of the realm - a store asks, to tell a crashed run of this realm from a live one. */
+  readonly live: Set<string>;
+}
 
-/** Whether `owner` is a lease held by a run that is still running in this process. */
+const REALM_KEY = Symbol.for('lousho.runLeaseRealm');
+
+function leaseRealm(): LeaseRealm {
+  const holder = globalThis as { [REALM_KEY]?: LeaseRealm };
+  holder[REALM_KEY] ??= { instance: globalThis.crypto.randomUUID(), live: new Set() };
+  return holder[REALM_KEY];
+}
+
+/** Whether `owner` is a lease held by a run that is still running in this realm. */
 export function isLiveLeaseOwner(owner: string): boolean {
-  return liveOwners.has(owner);
+  return leaseRealm().live.has(owner);
+}
+
+/** The realm id of the leases this realm takes. */
+export function localLeaseInstance(): string {
+  return leaseRealm().instance;
+}
+
+/** The realm id in a run lease owner (`<pid>:<realm>:<uuid>`); `undefined` for any other owner (a claim, an older owner). */
+export function leaseOwnerInstance(owner: string): string | undefined {
+  return /^(?:\d+|worker):([0-9a-f-]{36}):[0-9a-f-]{36}$/.exec(owner)?.[1];
 }
 
 /** A held run lease. */
 export interface RunLease {
   readonly id: string;
   readonly owner: string;
-  /** Set when a heartbeat found the lease taken over (it expired, e.g. after the process stalled): the run must stop writing. */
+  /** Set once the lease was found taken over or gone (it expired, e.g. after the process stalled): the run must stop writing. */
   readonly lost: boolean;
+  /**
+   * Saves `checkpoint` as the run's checkpoint, only while this lease still
+   * holds the id (atomically with the store's `saveIfLeased`); otherwise
+   * rejects with `LOUSHO_SESSION_BUSY` and saves nothing.
+   */
+  save(checkpoint: Checkpoint): Promise<void>;
   release(): Promise<void>;
 }
 
-/** A unique owner id: the process (when there is one) and a random part. */
+/** A unique owner id: the process (when there is one), the realm and a random part. */
 function newOwner(): string {
   const pid = (globalThis as { process?: { pid?: number } }).process?.pid;
-  return `${pid ?? 'worker'}:${globalThis.crypto.randomUUID()}`;
+  return `${pid ?? 'worker'}:${localLeaseInstance()}:${globalThis.crypto.randomUUID()}`;
 }
 
 /** The error a run gets when another live run holds its id. */
-export function runBusyError(id: string, reason = 'is running elsewhere'): SDKError {
+function runBusyError(id: string, reason = 'is running elsewhere'): SDKError {
   return new SDKError(
     `The run checkpointed as '${id}' ${reason} (another process, replica or store object holds its run lease), ` +
       `so it was not started or resumed here and nothing ran. Wait for that run to finish and try again; ` +
-      `a lease left by a process that died expires after ${RUN_LEASE_TTL_MS / 1000} s.`,
+      `a lease left by a process that died expires after ${(2 * RUN_LEASE_TTL_MS) / 1000} s at most.`,
     'LOUSHO_SESSION_BUSY'
   );
 }
@@ -59,19 +92,23 @@ export function runBusyError(id: string, reason = 'is running elsewhere'): SDKEr
  * lease renews itself until `release()`.
  */
 export async function acquireRunLease(store: CheckpointStore, id: string, ttlMs = RUN_LEASE_TTL_MS): Promise<RunLease | undefined> {
-  if (!store.acquireLease) return undefined;
+  const acquire = store.acquireLease?.bind(store);
+  if (!acquire) return undefined;
+  const { live } = leaseRealm();
   const owner = newOwner();
-  liveOwners.add(owner);
+  live.add(owner);
   let taken = false;
   try {
-    taken = await store.acquireLease(id, owner, ttlMs);
+    taken = await acquire(id, owner, ttlMs);
   } finally {
-    if (!taken) liveOwners.delete(owner);
+    if (!taken) live.delete(owner);
   }
   if (!taken) throw runBusyError(id);
   let lost = false;
+  // A lease that is gone (released by a new holder that finished, swept) is not taken again: only its owner's own is renewed.
+  const renew = (): Promise<boolean> => (store.renewLease ? store.renewLease(id, owner, ttlMs) : acquire(id, owner, ttlMs));
   const heartbeat = setInterval(() => {
-    store.acquireLease?.(id, owner, ttlMs).then(
+    renew().then(
       (renewed) => {
         if (!renewed) lost = true;
       },
@@ -79,6 +116,10 @@ export async function acquireRunLease(store: CheckpointStore, id: string, ttlMs 
     );
   }, Math.max(10, Math.floor(ttlMs / 3)));
   (heartbeat as { unref?: () => void }).unref?.();
+  const lostError = () => {
+    lost = true;
+    return runBusyError(id, 'was taken over by another process after this run lost its lease (it stalled)');
+  };
   let released = false;
   return {
     id,
@@ -86,14 +127,42 @@ export async function acquireRunLease(store: CheckpointStore, id: string, ttlMs 
     get lost() {
       return lost;
     },
+    async save(checkpoint) {
+      if (lost) throw lostError();
+      if (store.saveIfLeased) {
+        if (!(await store.saveIfLeased(id, checkpoint, owner))) throw lostError();
+        return;
+      }
+      // A store without a fenced save: the lease is renewed (still ours) right before the save.
+      if (!(await renew())) throw lostError();
+      await store.save(id, checkpoint);
+    },
     async release() {
       if (released) return;
       released = true;
       clearInterval(heartbeat);
-      liveOwners.delete(owner);
+      live.delete(owner);
       await store.releaseLease?.(id, owner).catch(() => undefined);
     },
   };
+}
+
+/**
+ * `store` with its saves of the lease's id fenced by `lease` (see
+ * {@link RunLease.save}); everything else goes to `store` as it is.
+ */
+export function fencedCheckpointStore(store: CheckpointStore, lease: RunLease | undefined): CheckpointStore;
+export function fencedCheckpointStore(store: CheckpointStore | undefined, lease: RunLease | undefined): CheckpointStore | undefined;
+export function fencedCheckpointStore(store: CheckpointStore | undefined, lease: RunLease | undefined): CheckpointStore | undefined {
+  if (!store || !lease) return store;
+  const save = (id: string, checkpoint: Checkpoint) => (id === lease.id ? lease.save(checkpoint) : store.save(id, checkpoint));
+  return new Proxy(store, {
+    get(target, key) {
+      if (key === 'save') return save;
+      const value: unknown = Reflect.get(target, key, target);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
 }
 
 /**

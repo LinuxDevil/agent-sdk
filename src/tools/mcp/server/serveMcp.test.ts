@@ -340,6 +340,71 @@ describe('serveMcp over HTTP', () => {
     expect(results.map((result) => result.result.content[0].text)).toEqual(['done', 'done']);
   });
 
+  /** An agent whose runs take `ms` unless aborted; `signals` holds each run's signal, in start order. */
+  function slowAgent(ms: number) {
+    const signals: AbortSignal[] = [];
+    const agent = {
+      send: vi.fn((_message: string, options?: { signal?: AbortSignal }) => {
+        signals.push(options!.signal!);
+        return new Promise((resolve) => {
+          const timer = setTimeout(() => resolve({ text: 'done', finishReason: 'stop', messages: [], toolCalls: [], steps: 0, usage: {} }), ms);
+          options?.signal?.addEventListener('abort', () => {
+            clearTimeout(timer);
+            resolve({ text: '', finishReason: 'aborted', messages: [], toolCalls: [], steps: 0, usage: {} });
+          });
+        });
+      }),
+    };
+    return { agent: agent as unknown as SimpleAgent, signals };
+  }
+
+  it('hands out an Mcp-Session-Id on initialize, so a cancel from one of two identical clients stops only its own run', async () => {
+    const { agent: slow, signals } = slowAgent(600);
+    const server = await serveMcp({ agent: slow, name: 'slow', transport: { type: 'http', port: 0 }, warn: () => {} });
+    closers.push(server.close);
+    const clients = [new Client({ name: 'c', version: '1' }), new Client({ name: 'c', version: '1' })];
+    const transports = clients.map(() => new StreamableHTTPClientTransport(new URL(server.url!)));
+    for (const [i, client] of clients.entries()) {
+      await client.connect(transports[i]);
+      closers.push(() => client.close());
+    }
+    expect(transports[0].sessionId).toEqual(expect.any(String));
+    expect(transports[0].sessionId).not.toBe(transports[1].sessionId);
+    // Both clients send the same JSON-RPC ids, from the same address and User-Agent.
+    const full = clients[0].callTool({ name: 'slow', arguments: { message: 'a' } });
+    await vi.waitFor(() => expect(signals).toHaveLength(1));
+    await expect(clients[1].callTool({ name: 'slow', arguments: { message: 'b' } }, undefined, { timeout: 100 })).rejects.toThrow(/timed out/i);
+    await vi.waitFor(() => expect(signals[1]?.aborted).toBe(true));
+    expect(textOf(await full)).toBe('done');
+    expect(signals[0].aborted).toBe(false);
+  });
+
+  it("a late cancel from another session does not stop a request with the same id, and a cancelled request is answered", async () => {
+    const { agent: slow, signals } = slowAgent(400);
+    const server = await serveMcp({ agent: slow, name: 'slow', transport: { type: 'http', port: 0 }, warn: () => {} });
+    closers.push(server.close);
+    const headers = (session: string) => ({ 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'Mcp-Session-Id': session });
+    const call = (session: string) =>
+      fetch(server.url!, { method: 'POST', headers: headers(session), body: JSON.stringify({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'slow', arguments: { message: 'x' } } }) });
+    const cancel = (session: string) =>
+      fetch(server.url!, { method: 'POST', headers: headers(session), body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 7 } }) });
+
+    const a = call('session-a');
+    await vi.waitFor(() => expect(signals).toHaveLength(1));
+    // session-b has nothing in flight under id 7: its (late) cancel must not reach session-a.
+    await cancel('session-b');
+    expect(signals[0].aborted).toBe(false);
+    expect((await (await a).json()).result.content[0].text).toBe('done');
+
+    const b = call('session-b');
+    await vi.waitFor(() => expect(signals).toHaveLength(2));
+    await cancel('session-b');
+    const answer = await b;
+    expect(signals[1].aborted).toBe(true);
+    expect(answer.status).toBe(200);
+    expect(await answer.json()).toEqual({ jsonrpc: '2.0', id: 7, error: { code: -32800, message: 'Request cancelled' } });
+  });
+
   it('rejects missing or wrong bearer tokens with 401 and accepts the right one', async () => {
     const server = await start({ auth: true });
     expect((await post(server.url!)).status).toBe(401);

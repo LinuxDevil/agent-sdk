@@ -4,6 +4,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    // A per-run TMPDIR, removed when the run ends (scripts/vitestTmpdir.ts).
+    globalSetup: ['./scripts/vitestTmpdir.ts'],
     // Adds '**/*.eval.ts' (LOU-G2) alongside vitest's own default
     // '**/*.{test,spec}.?(c|m)[jt]s?(x)' pattern (there was no explicit
     // `include` before this, so the default test/spec pattern is spelled

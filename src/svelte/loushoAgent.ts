@@ -34,8 +34,9 @@ export type LoushoAgentStore = {
  * shows up as `pendingApproval` until `approve()` or `reject()`. The run in
  * flight is aborted by `stop()` and when the last subscriber unsubscribes
  * (a component using `$agent` is destroyed); a transient read that subscribes
- * and unsubscribes in the same turn (`get(store)`) does not abort it. See
- * docs/svelte.md.
+ * and unsubscribes in the same turn (`get(store)`) does not abort it, and
+ * neither does a component mounted and destroyed within one microtask turn,
+ * which looks the same: call `stop()` for that. See docs/svelte.md.
  *
  * @example
  * ```ts

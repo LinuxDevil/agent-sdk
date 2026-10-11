@@ -48,7 +48,14 @@ const parse = <T>(row: { payload?: unknown } | undefined): T | undefined =>
 /** A `leases` row as a lease record; `undefined` without a row. */
 function leaseOfRow(row: Record<string, unknown> | undefined): LeaseRecord | undefined {
   if (row === undefined) return undefined;
-  return { owner: String(row.owner), expiresAt: Number(row.expires_at), ...(typeof row.host === 'string' && { host: row.host }) };
+  return {
+    owner: String(row.owner),
+    expiresAt: Number(row.expires_at),
+    ...(typeof row.host === 'string' && { host: row.host }),
+    ...(typeof row.pid_space === 'string' && { pidSpace: row.pid_space }),
+    ...(typeof row.pid_start === 'string' && { pidStart: row.pid_start }),
+    ...(row.ttl_ms !== null && row.ttl_ms !== undefined && { ttlMs: Number(row.ttl_ms) }),
+  };
 }
 
 /** A transcript row, or `LOUSHO_SESSION_FILE_CORRUPT` when it is not a JSON array of messages. */
@@ -126,21 +133,24 @@ export class SqliteCheckpointStore implements CheckpointStore {
 
   async save(sessionId: string, checkpoint: Checkpoint): Promise<void> {
     assertCheckpointId(sessionId);
-    const now = Date.now();
     const payload = JSON.stringify(checkpoint, encodeBytes);
-    await this.connection.transactionAsync(() => {
-      this.sql.get(upsert('checkpoints', 'session_id')).run(sessionId, payload, now, now);
-      if (this.historyLimit === 0) return;
-      this.sql
-        .get('INSERT INTO checkpoint_history (session_id, step, status, saved_at, payload) VALUES (?, ?, ?, ?, ?)')
-        .run(sessionId, checkpoint.stepIndex, checkpoint.status ?? 'in-progress', now, payload);
-      this.sql
-        .get(
-          `DELETE FROM checkpoint_history WHERE session_id = ? AND id NOT IN
-           (SELECT id FROM checkpoint_history WHERE session_id = ? ORDER BY id DESC LIMIT ?)`
-        )
-        .run(sessionId, sessionId, this.historyLimit);
-    });
+    await this.connection.transactionAsync(() => this.writeCheckpoint(sessionId, checkpoint, payload));
+  }
+
+  /** The writes of a save, inside the caller's transaction. */
+  private writeCheckpoint(sessionId: string, checkpoint: Checkpoint, payload: string): void {
+    const now = Date.now();
+    this.sql.get(upsert('checkpoints', 'session_id')).run(sessionId, payload, now, now);
+    if (this.historyLimit === 0) return;
+    this.sql
+      .get('INSERT INTO checkpoint_history (session_id, step, status, saved_at, payload) VALUES (?, ?, ?, ?, ?)')
+      .run(sessionId, checkpoint.stepIndex, checkpoint.status ?? 'in-progress', now, payload);
+    this.sql
+      .get(
+        `DELETE FROM checkpoint_history WHERE session_id = ? AND id NOT IN
+         (SELECT id FROM checkpoint_history WHERE session_id = ? ORDER BY id DESC LIMIT ?)`
+      )
+      .run(sessionId, sessionId, this.historyLimit);
   }
 
   async load(sessionId: string): Promise<Checkpoint | null> {
@@ -183,15 +193,47 @@ export class SqliteCheckpointStore implements CheckpointStore {
   async acquireLease(sessionId: string, owner: string, ttlMs: number): Promise<boolean> {
     assertCheckpointId(sessionId);
     return this.connection.transactionAsync(() => {
-      const held = leaseOfRow(this.sql.get('SELECT owner, expires_at, host FROM leases WHERE id = ?').get(sessionId));
-      if (!leaseAvailable(held, owner)) return false;
-      const lease = newLeaseRecord(owner, ttlMs);
-      this.sql
-        .get('INSERT INTO leases (id, owner, expires_at, host) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET owner = excluded.owner, expires_at = excluded.expires_at, host = excluded.host')
-        .run(sessionId, owner, lease.expiresAt, lease.host);
+      if (!leaseAvailable(this.leaseOf(sessionId), owner)) return false;
+      this.writeLease(sessionId, owner, ttlMs);
       this.sql.get('DELETE FROM leases WHERE expires_at < ?').run(Date.now() - LEASE_SWEEP_AGE_MS);
       return true;
     });
+  }
+
+  /** Renews `owner`'s own lease in one transaction; a lease that is gone or another owner's is not taken. */
+  async renewLease(sessionId: string, owner: string, ttlMs: number): Promise<boolean> {
+    assertCheckpointId(sessionId);
+    return this.connection.transactionAsync(() => {
+      if (this.leaseOf(sessionId)?.owner !== owner) return false;
+      this.writeLease(sessionId, owner, ttlMs);
+      return true;
+    });
+  }
+
+  /** Saves in the transaction that checks `owner` still holds the lease. */
+  async saveIfLeased(sessionId: string, checkpoint: Checkpoint, owner: string): Promise<boolean> {
+    assertCheckpointId(sessionId);
+    const payload = JSON.stringify(checkpoint, encodeBytes);
+    return this.connection.transactionAsync(() => {
+      if (this.leaseOf(sessionId)?.owner !== owner) return false;
+      this.writeCheckpoint(sessionId, checkpoint, payload);
+      return true;
+    });
+  }
+
+  private leaseOf(sessionId: string): LeaseRecord | undefined {
+    return leaseOfRow(this.sql.get('SELECT owner, expires_at, host, pid_space, pid_start, ttl_ms FROM leases WHERE id = ?').get(sessionId));
+  }
+
+  private writeLease(sessionId: string, owner: string, ttlMs: number): void {
+    const lease = newLeaseRecord(owner, ttlMs);
+    this.sql
+      .get(
+        `INSERT INTO leases (id, owner, expires_at, host, pid_space, pid_start, ttl_ms) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET owner = excluded.owner, expires_at = excluded.expires_at, host = excluded.host,
+         pid_space = excluded.pid_space, pid_start = excluded.pid_start, ttl_ms = excluded.ttl_ms`
+      )
+      .run(sessionId, owner, lease.expiresAt, lease.host, lease.pidSpace ?? null, lease.pidStart ?? null, ttlMs);
   }
 
   async releaseLease(sessionId: string, owner: string): Promise<void> {

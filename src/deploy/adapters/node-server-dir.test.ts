@@ -4,7 +4,7 @@
  * mounts the directory's channels and reports its schedules. Only the LLM is
  * the SDK's mock provider.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -72,6 +72,9 @@ describe('NodeServerAdapter with an agent directory', () => {
     await NodeServerAdapter.scaffold(agentDir, outDir);
     await withBuildLock(() => NodeServerAdapter.build(outDir));
   }, 120_000);
+  afterAll(() => {
+    if (agentDir) fs.rmSync(path.dirname(agentDir), { recursive: true, force: true });
+  });
 
   it('generates an entry that resolves the directory and passes its schedules and channels to the server', () => {
     const server = fs.readFileSync(path.join(outDir, 'server.ts'), 'utf8');
@@ -101,8 +104,8 @@ describe('NodeServerAdapter with an agent directory', () => {
       expect(await chat({})).toBe(401);
       expect(await chat({ Authorization: 'Bearer wrong' })).toBe(401);
       expect(await chat({ Authorization: 'Bearer dir-token' })).toBe(200);
-      // the session belongs to the first principal that used it (the token); another principal gets 403
-      expect(await chat({ Authorization: `Basic ${btoa('ops:pw')}` })).toBe(403);
+      // a read claims nothing (only a turn does), so another principal can still read the unused id
+      expect(await chat({ Authorization: `Basic ${btoa('ops:pw')}` })).toBe(200);
     } finally {
       stop();
     }

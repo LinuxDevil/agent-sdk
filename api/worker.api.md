@@ -825,7 +825,9 @@ interface CheckpointStore {
     list?(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
     load(sessionId: string): Promise<Checkpoint | null>;
     releaseLease?(sessionId: string, owner: string): Promise<void>;
+    renewLease?(sessionId: string, owner: string, ttlMs: number): Promise<boolean>;
     save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
+    saveIfLeased?(sessionId: string, checkpoint: Checkpoint, owner: string): Promise<boolean>;
 }
 
 // @public
@@ -1931,8 +1933,10 @@ export class KVCheckpointStore implements CheckpointStore {
     // (undocumented)
     load(sessionId: string): Promise<Checkpoint | null>;
     releaseLease(sessionId: string, owner: string): Promise<void>;
+    renewLease(sessionId: string, owner: string, ttlMs: number): Promise<boolean>;
     // (undocumented)
     save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
+    saveIfLeased(sessionId: string, checkpoint: Checkpoint, owner: string): Promise<boolean>;
 }
 
 // @public

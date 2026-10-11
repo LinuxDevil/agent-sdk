@@ -11,6 +11,7 @@ import { createAgent } from './createAgent';
 import { defineTool } from './tools/defineTool';
 import { InMemoryApprovalStore } from './execution/InMemoryApprovalStore';
 import { mockModel } from './testing';
+import { ask, MAX_APPROVAL_TTL_MS } from './execution/permissions';
 import type { Message } from './providers';
 import { fileStore } from './storage/fileStore';
 import { memoryStore, type AgentStore } from './storage/agentStore';
@@ -352,6 +353,15 @@ describe('createAgent approvals: expiry (TTL)', () => {
   it('rejects a non-positive approvalTtlMs at createAgent()', () => {
     expect(() => createAgent({ provider: mockModel(['x']), approvalTtlMs: 0 })).toThrow(/approvalTtlMs/);
     expect(() => createAgent({ provider: mockModel(['x']), approvalTtlMs: Number.NaN })).toThrow(/approvalTtlMs/);
+  });
+
+  it('rejects an absurdly long approval deadline (a typo would otherwise mean "never expires")', async () => {
+    expect(() => createAgent({ provider: mockModel(['x']), approvalTtlMs: 1e20 })).toThrow(expect.objectContaining({ code: 'LOUSHO_CONFIG_INVALID' }));
+    expect(() => createAgent({ provider: mockModel(['x']), approvalTtlMs: MAX_APPROVAL_TTL_MS + 1 })).toThrow(/at most 100 years/);
+    expect(() => createAgent({ provider: mockModel(['x']), approvalTtlMs: MAX_APPROVAL_TTL_MS })).not.toThrow();
+    expect(() => ask('deploy', { ttlMs: 1e20 })).toThrow(expect.objectContaining({ code: 'LOUSHO_CONFIG_INVALID' }));
+    const agent = createAgent({ provider: mockModel(['x']) });
+    await expect(agent.send('hi', { approvalTtlMs: 1e20 })).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_INVALID' });
   });
 });
 

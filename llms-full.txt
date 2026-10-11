@@ -2727,6 +2727,9 @@ const agent = createAgent({
 - An `approve` callback that is still waiting at the deadline is cut off: the
   `send()` / session turn resumes with the denial.
 - `send(message, { approvalTtlMs })` overrides it for one run.
+- A deadline is a positive number of milliseconds of at most 100 years;
+  anything else, `1e20` included, throws
+  `LOUSHO_CONFIG_INVALID`. Leave it out for pauses that never expire.
 - A permission rule's `ttlMs` bounds only that rule's pauses and wins over
   the agent default: `{ tool: 'deploy', action: 'ask', ttlMs: 30_000 }`, or
   `ask('deploy', { ttlMs: 30_000 })`.
@@ -3199,13 +3202,14 @@ permission rules and sub-agents see it too: see
 
 ## Security notes
 
-- **Sessions belong to their first caller by default.** Once route auth
-  accepted a caller, a session id is bound to the first principal that reads
-  or continues it, and any other principal gets `403`
-  (`LOUSHO_SESSION_FORBIDDEN`). That record lives in memory, per process (or
-  Worker isolate): a restart or a second replica forgets it, and the first
-  caller after that claims the session. With more than one instance, pass
-  `authorizeSession` that checks ownership against your own data. See
+- **Sessions belong to the caller that started them by default.** Once route
+  auth accepted a caller, a session id is bound to the first principal that
+  sends it a turn (reading an id claims nothing), and any other principal gets
+  `403` (`LOUSHO_SESSION_FORBIDDEN`). That record lives in memory, per agent:
+  a restart, a second replica or the generated Worker (which builds its agent
+  per request) forgets it, and the next caller to send a turn claims the
+  session. With more than one instance, pass `authorizeSession` that checks
+  ownership against your own data. See
   [Who may use a session](#who-may-use-a-session).
 - **Cookies need CSRF protection, which the routes give by default.** A POST
   must be JSON (`415` otherwise) and must not come from another site's page
@@ -3336,16 +3340,20 @@ belongs to that caller is used only for that caller's calls, whoever approves.
 ### Who may use a session
 
 By default, once route auth accepted a caller, a session belongs to the first
-principal that reads it or sends it a turn (principals are compared by `id`,
-`type`, `authenticator` and `issuer`). Another principal gets `403`
+principal that sends it a turn (principals are compared by `id`, `type`,
+`authenticator` and `issuer`). Another principal gets `403`
 (`LOUSHO_SESSION_FORBIDDEN`) on `GET /chat/:id`, `POST /chat`, `POST
 <basePath>` and the `useChat` endpoint; decisions on its approvals are left to
-`authorizeApproval` (below). A route without auth checks nothing. All callers
-of one `apiToken()` are one principal, so they share every session.
+`authorizeApproval` (below). Reading an id nobody has sent a turn to yet
+claims nothing, so a caller cannot lock a user out of a predictable id
+(`user-42`) by reading it first. A route without auth checks nothing. All
+callers of one `apiToken()` are one principal, so they share every session.
 
-The owner is remembered in memory, per agent: a restart, a second replica or
-a Worker isolate that is recycled forgets it, and the next caller claims the
-session. So for anything that runs on more than one instance, check ownership
+The owner is remembered in memory, per agent object, for the 100,000 most
+recently used sessions: a restart, a second replica, a session unused for
+longer, or the generated Cloudflare Worker (which builds its agent per
+request) forgets it, and the next caller to send a turn claims the session.
+So for anything that runs on more than one instance, check ownership
 yourself.
 
 `createRouteHandler()` and `createDeployedServer()` take `authorizeSession`,
@@ -3377,21 +3385,37 @@ A browser sends cookies with requests that another site's page makes, so with
 cookie-based auth a page on `evil.example` could otherwise start a turn or
 approve a call as your user. The session routes refuse that by default:
 
-- a POST whose `Origin` is not the server's own (its `Host`, or the
-  `X-Forwarded-Host` a proxy in front sets) and not in `allowedOrigins`, or
-  that the browser marked `Sec-Fetch-Site: cross-site`, is `403`
-  (`LOUSHO_REQUEST_FORBIDDEN`). Requests without an `Origin` (curl, a server,
-  another agent) are not affected;
+- a POST whose `Origin` is not the server's own (its `Host`, or the host a
+  proxy in front reports in `X-Forwarded-Host` or `Forwarded: host=`) and not
+  in `allowedOrigins`, or that the browser marked `Sec-Fetch-Site:
+  cross-site`, is `403` (`LOUSHO_REQUEST_FORBIDDEN`). Requests without an
+  `Origin` (curl, a server, another agent) are not affected;
 - a POST body must be `Content-Type: application/json` (`415`,
   `LOUSHO_UNSUPPORTED_MEDIA_TYPE` otherwise): forms and `text/plain` are what
   another site can send without a CORS preflight.
 
 A front end on another origin is listed in `allowedOrigins` (it also needs
 CORS headers, which your host adds); `allowedOrigins: ['*']` turns the origin
-check off and `requireJsonBody: false` the content-type one. `allowedHosts`
-(off by default) refuses any request whose `Host` is not listed, against DNS
-rebinding of a server on a private address. All three work on
-`createRouteHandler()` and `createDeployedServer()`.
+check off and `requireJsonBody: false` the content-type one. Entries are
+compared as origins: case, a trailing slash and a default port
+(`https://app.example:443`) do not matter. `allowedHosts` (off by default)
+refuses any request whose `Host` is not listed, against DNS rebinding of a
+server on a private address. All three work on `createRouteHandler()` and
+`createDeployedServer()`; the generated node server and Cloudflare Worker read
+them from `LOUSHO_ALLOWED_ORIGINS` and `LOUSHO_ALLOWED_HOSTS` (comma-separated)
+and `LOUSHO_REQUIRE_JSON_BODY=false`.
+
+Behind a reverse proxy:
+
+- The proxy must tell the server the public host, or a browser's same-site
+  POST is `403`: keep the original `Host` (nginx `proxy_set_header Host
+  $host;`), or set `X-Forwarded-Host` (`proxy_set_header X-Forwarded-Host
+  $host;`) or `Forwarded: host=...`. A default port in it
+  (`agent.example:443`) matches an `https://agent.example` page. Otherwise
+  list the public origin in `allowedOrigins`.
+- `allowedHosts` checks only the `Host` header the server receives, never the
+  forwarded ones (a page that rebinds DNS can set those). Behind a proxy that
+  rewrites `Host`, list the upstream name the proxy sends, not the public one.
 
 ```ts
 import { createAgent, createRouteHandler } from '@lousho/build-ai-agent';
@@ -3420,8 +3444,8 @@ their own call, and cannot decide another user's. A run without a principal,
 or a route without auth, accepts any caller.
 
 When `needsApproval` means that someone else must approve, say who. Here a
-customer can no longer approve their own refund, and a supervisor can decide in
-any session:
+customer can no longer approve their own refund, and a supervisor can read any
+session (to see what they are approving) and decide in it:
 
 ```ts
 import { createAgent, createRouteHandler, memoryStore } from '@lousho/build-ai-agent';
@@ -3432,9 +3456,9 @@ const isSupervisor = (principal?: { claims?: Readonly<Record<string, unknown>> }
 
 export const { GET, POST } = createRouteHandler(agent, {
   auth: jwt({ secret: process.env.JWT_SECRET!, issuer: 'https://auth.example.com', audience: 'agent-api' }),
-  // Customers use their own sessions (ids that start with their id); supervisors may decide in any session.
+  // Customers use their own sessions (ids that start with their id); supervisors may read and decide in any session.
   authorizeSession: ({ principal, sessionId, action }) =>
-    sessionId.startsWith(`${principal?.id}-`) || (action === 'approve' && isSupervisor(principal)),
+    sessionId.startsWith(`${principal?.id}-`) || (action !== 'chat' && isSupervisor(principal)),
   authorizeApproval: ({ principal }) => isSupervisor(principal),
 });
 ```
@@ -3821,7 +3845,7 @@ server.listen(3000);
 ```
 
 ```bash
-curl -s localhost:3000/channels/http -d '{"sessionKey":"user-42","input":"Hi, I am Ali"}'
+curl -s localhost:3000/channels/http -H 'Content-Type: application/json' -d '{"sessionKey":"user-42","input":"Hi, I am Ali"}'
 # {"sessionId":"http_user-42-...","text":"...","finishReason":"stop"}
 ```
 
@@ -3836,7 +3860,7 @@ can mount it next to your own routes.
 | Field | Description |
 | ----- | ----------- |
 | `name` | Route segment: `POST <basePath>/<name>`. Letters, digits, `_` and `-`. |
-| `verify(req)` | Optional. Authenticate the request (a signature, a token). Return `true`/`false` or `{ ok, reason? }`; `false` answers `401 {"error":"Unauthorized"}` before anything is parsed or run. |
+| `verify(req)` | Optional. Authenticate the request (a signature, a token). Return `true`/`false` or `{ ok, reason? }`; `false` answers `401 {"error":"Unauthorized"}` before anything is parsed or run. Without it, a browser request from another site (an `Origin` that is not the request's host, or `Sec-Fetch-Site: cross-site`) is refused with `403` (`LOUSHO_REQUEST_FORBIDDEN`), and `lousho dev` checks its `Host` like its own routes (against DNS rebinding); a webhook sender or a server sends no `Origin` and is not affected. |
 | `parse(req, respond, ctx)` | The message: `{ sessionKey, input, metadata?, principal?, replyTo, event? }`; `{ decision: { id, approved?, note?, answer? } }` to resolve a pause this channel's turn stopped on (a button click); or `null` to acknowledge the request without a turn (a bot's own message, a retry). Call `respond(status, body)` to answer before the turn runs (a surface with a short timeout, a handshake). |
 | `reply(ctx)` | Deliver the reply: `ctx.text`, plus `inbound`, `sessionId`, `result`, `events`, `approval`, and `respond(status, body)` while the request is still open. |
 | `onApproval(ctx)` | Optional. Render a pause (buttons, a form). Default: `reply` with a text prompt in `ctx.text` and the request in `ctx.approval` (`ctx.approvals`: every pending call, when the step paused on several). |
@@ -3975,7 +3999,7 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 
 | Channel | Request | Response |
 | ------- | ------- | -------- |
-| `httpChannel({ name?, verify? })` | JSON `{ sessionKey, input }` (`input` a string or content parts); anything else is a 400 | `200 { sessionId, text, finishReason }`; when paused, `approval` too and `text` is the prompt |
+| `httpChannel({ name?, verify? })` | JSON `{ sessionKey, input }` (`input` a string or content parts); anything else is a 400. Without `verify`, a body sent without `Content-Type: application/json` is a `415` (`LOUSHO_UNSUPPORTED_MEDIA_TYPE`), so a web page cannot post a form to it | `200 { sessionId, text, finishReason }`; when paused, `approval` too and `text` is the prompt |
 | `webhookChannel({ secret?, auth?, name?, principal? })` | The JSON body's `input` string, or the whole body; a one-shot session unless the body has a `sessionKey` | `200` with the turn's `ExecutionResult`, as `WebhookTriggerAdapter` answers |
 | `slackChannel({ signingSecret, botToken, name?, fetch?, approvers?, onError? })` | Slack Events API and interactivity requests (see [Slack](#slack)) | `200` at once; replies are posted in the Slack thread |
 | `discordChannel({ publicKey, applicationId, botToken?, name?, fetch?, approvers?, onError? })` | Discord slash-command and button interactions (see [Discord](#discord)) | Deferred ack at once; the reply edits the original response |
@@ -4788,11 +4812,13 @@ Directories and modules are your code and run with your permissions; only run
   errors, so it then prints a warning.
 - `--allowed-hosts a,b` - extra host names the `Host` header may carry. To
   stop DNS rebinding (a web page re-pointing its own domain at your machine),
-  every route but `/health` and `/channels/*` answers `403`
-  (`LOUSHO_REQUEST_FORBIDDEN`) unless `Host` is `localhost`, a `127.x.x.x`
-  address or `[::1]`; off loopback, IP addresses and the `--host` name are
-  accepted too. Given, the list replaces that rule (loopback names stay
-  accepted); `*` accepts any host.
+  every route but `/health` and the channels that `verify` their requests
+  answers `403` (`LOUSHO_REQUEST_FORBIDDEN`) unless `Host` is `localhost`, a
+  `127.x.x.x` address or `[::1]`; off loopback, IP addresses and the `--host`
+  name are accepted too. The list adds to that rule (a tunnel's name, e.g.);
+  `*` accepts any host. A channel without `verify` (`httpChannel()` with no
+  `verify`) is checked like the dev routes, so reach it through a tunnel only
+  with its name in the list.
 - POST bodies must be `Content-Type: application/json` (`415` otherwise), and
   a browser POST from another origin is `403`, as on the deployed server
   ([Cross-site requests](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#cross-site-requests)).
@@ -4954,8 +4980,11 @@ source declares cron triggers) and bundles it as a
 browser-platform ES module; the build fails if any `node:` import ends up in
 `dist/worker.js`. `wrangler.toml` points `main` at `dist/worker.js` with
 `no_bundle = true`, so exactly the verified bundle is uploaded. Its
-`compatibility_date` defaults to a date pinned per SDK version; change it in
-the generated `wrangler.toml` and later builds keep your date. It builds and
+`compatibility_date` defaults to a date pinned per SDK version (`2026-09-01`).
+The first build writes the whole file; later builds only update the keys the
+build owns (`name`, `main`, `no_bundle` and `[triggers] crons`) and keep
+everything else you changed or added: your `compatibility_date`, `[vars]`, a
+filled-in `[[kv_namespaces]]` block, routes and comments. It builds and
 runs with `ai` v4 (the default install) or `ai` v7 (with
 `@ai-sdk/openai`/`@ai-sdk/anthropic` v4) installed, with no compatibility
 flag (no `nodejs_compat`):
@@ -5051,8 +5080,9 @@ add their own routes under `/channels` (see above). Its bindings:
 
 | Binding | Kind | What it does |
 | ------- | ---- | ------------ |
-| `LOUSHO_API_TOKEN` | secret (`npx wrangler secret put LOUSHO_API_TOKEN`) | Makes every route except `/health` require `Authorization: Bearer <token>` (constant-time compare, `401` JSON otherwise). Without it the Worker is open to anyone who has its URL, so **set it before you deploy** (`lousho build` reminds you). Without it, `GET /chat/:sessionId` answers `403` (`LOUSHO_REQUEST_FORBIDDEN`) rather than hand any session's transcript to whoever knows its id. |
-| `LOUSHO_ALLOW_OPEN_TRANSCRIPTS` | variable (`[vars]` in `wrangler.toml`) | `"true"` serves `GET /chat/:sessionId` on a Worker without `LOUSHO_API_TOKEN`, to anyone. Leave it unset outside a throwaway demo. |
+| `LOUSHO_API_TOKEN` | secret (`npx wrangler secret put LOUSHO_API_TOKEN`) | Makes every route except `/health` require `Authorization: Bearer <token>` (constant-time compare, `401` JSON otherwise). **Set it before you deploy** (`lousho build` reminds you): without it every `/chat` route (a turn, a transcript, an approval decision) answers `403` (`LOUSHO_REQUEST_FORBIDDEN`), since anyone with the URL could otherwise chat on your provider key and read, continue or approve any session by its id. `/health`, the OAuth callback and `channels/` (which verify their own requests) stay open. |
+| `LOUSHO_ALLOW_OPEN_SESSIONS` | variable (`[vars]` in `wrangler.toml`, or `.dev.vars` for `wrangler dev`) | `"true"` serves the `/chat` routes on a Worker without `LOUSHO_API_TOKEN`, to anyone. Leave it unset outside a throwaway demo. Its earlier name, `LOUSHO_ALLOW_OPEN_TRANSCRIPTS`, still works. |
+| `LOUSHO_ALLOWED_ORIGINS`, `LOUSHO_ALLOWED_HOSTS`, `LOUSHO_REQUIRE_JSON_BODY` | variables | The routes' `allowedOrigins` and `allowedHosts` (comma-separated) and, with `"false"`, `requireJsonBody: false`: for a front end on another origin, or a proxy in front. See [Cross-site requests](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#cross-site-requests). |
 | `AGENT_CHECKPOINTS` | KV namespace | Holds sessions, checkpoints, paused approvals and `kvMemory()` items, in one namespace, as `KVStore` (below). Without it they live in the memory of one isolate, which Cloudflare recycles at will: fine for trying a deploy out, not for production. |
 | `LOUSHO_HTTP_ALLOW` | variable (`[vars]` in `wrangler.toml`) | The host names the `http` tool may reach, comma-separated: `api.github.com`, or `*.example.com` for subdomains only. Unset or empty, every `http` request is refused. See [Providers and tools](#providers-and-tools). |
 
@@ -6051,6 +6081,7 @@ an invalid entry fails with the entry name in the message, e.g.
 `'mcpServers.files': missing 'command' (stdio server) or 'url' (HTTP server)`.
 An optional `approval` (`always`, the default, `annotations` or `never`) says which of the server's tools ask for approval; see [Approval for MCP tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#approval-for-mcp-tools).
 An optional `deferLoading: true` withholds the server's tools from the model until it finds them with `tool_search`; see [Tool search](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tool-search.md).
+An optional `optional: true` leaves out a server that cannot connect (with a warning) instead of failing every send; see [Use MCP servers in an agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#use-mcp-servers-in-an-agent).
 An HTTP entry may set `oauth` (`redirectUri`, optional `clientId`, `clientSecret`, `scopes` and `clientName`) to sign in to the server with OAuth instead of a static `Authorization` header; see [MCP servers with OAuth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#mcp-servers-with-oauth).
 `lousho doctor` checks each stdio `command` is resolvable.
 
@@ -6805,9 +6836,15 @@ Programmatically, `adapter.scaffold(agentPath, outDir, { auth: { token } })`
 bakes a token into the built `node-server` or `docker` server for when the
 variable is not set. The variable wins, and a baked token is readable in
 `dist/server.js`, so prefer the variable. The Worker reads the token from its
-`LOUSHO_API_TOKEN` binding only; without one it refuses `GET /chat/:sessionId`
-unless the `LOUSHO_ALLOW_OPEN_TRANSCRIPTS` var is `"true"`
+`LOUSHO_API_TOKEN` binding only; without one it refuses every `/chat` route
+unless the `LOUSHO_ALLOW_OPEN_SESSIONS` var is `"true"`
 ([Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md)).
+
+Behind a proxy, or for a front end on another origin, the generated
+`node-server` and Worker read the routes' request checks from
+`LOUSHO_ALLOWED_ORIGINS` and `LOUSHO_ALLOWED_HOSTS` (comma-separated) and
+`LOUSHO_REQUIRE_JSON_BODY=false`: see
+[Cross-site requests](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#cross-site-requests).
 
 For JWT, OpenID Connect or Basic auth, and to know who is calling, the
 `node-server` and `docker` targets take an ordered auth list from an agent
@@ -7113,20 +7150,59 @@ before any tool runs or any model is called (a resolved approval stays
 pending). Two replicas behind a load balancer therefore never run one turn's
 tool calls twice.
 
-A lease whose holder died is taken over once it expires. The file and SQLite
-stores also take it over at once when the holder was a process on the same host
-that is gone, so the usual "restart and resume" path does not wait. If a run
-stalls for longer than its lease (the event loop blocked for 30 seconds) and
-another process takes over, the stalled run stops with `LOUSHO_SESSION_BUSY` at
-its next checkpoint instead of overwriting the new holder's progress.
+A lease whose holder died is taken over once it expires. Expiry is judged by
+the clock of the process that wants the lease against the expiry the holder
+wrote with its own clock, so the file and SQLite stores wait one more lease
+period (30 seconds) past it: a run left by a crashed process on another
+machine is taken over 30 to 60 seconds after its last heartbeat, and replicas
+whose clocks disagree by less than about 50 seconds never take over each
+other's live runs. Keep replica clocks in sync (NTP); a larger skew can let
+two replicas run one turn.
+
+The file and SQLite stores take a lease over at once, without waiting, only
+when its holder is provably gone:
+
+- a run of the same process (the same thread and SDK instance) that no longer
+  runs, so the usual "restart and resume" path does not wait;
+- on Linux, a process that has exited, on the same host, the same boot and the
+  same PID namespace (the lease records the boot id, the PID namespace and the
+  process start time, so a reused process id does not count as alive or dead
+  by mistake);
+- on macOS and Windows, a process id of the same host that no longer exists.
+
+A run of another worker thread of the same process, or of another container
+with the same hostname on a shared volume (or a process restarted in a new
+container), is never taken over early: it waits for the expiry.
+
+The run's lease owner id is a fencing token. The heartbeat renews the lease
+only while the run still holds it (it never takes back a lease another process
+took, or one released after another process finished the run), and every
+checkpoint the run saves is written only if the run still holds the lease,
+atomically with that check in the file, SQLite and in-memory stores. So if a
+run stalls for longer than its lease (the process was paused, or the event loop
+blocked) and another process takes over, the stalled run stops with
+`LOUSHO_SESSION_BUSY` at its next checkpoint instead of overwriting the new
+holder's progress, and a session turn's late result is not added to the
+transcript. A tool call the stalled run was already making when it lost the
+lease is not undone: keep tools idempotent where a stall is possible.
 
 The file, SQLite and in-memory stores take leases atomically. KV has no
 compare-and-swap: `KVStore` writes the lease, waits 50 ms and reads it back,
 which serializes requests at one location but not across edge locations within
-KV's propagation delay. A custom `CheckpointStore` takes part by implementing
-`acquireLease(id, owner, ttlMs)` (an atomic "take or renew unless another owner
-holds an unexpired lease", resolving `true` when taken) and
-`releaseLease(id, owner)`; without them runs execute without leases.
+KV's propagation delay; its fenced saves are a read then a write. A custom
+`CheckpointStore` takes part by implementing `acquireLease(id, owner, ttlMs)`
+(an atomic "take or renew unless another owner holds an unexpired lease",
+resolving `true` when taken) and `releaseLease(id, owner)`; without them runs
+execute without leases. It can add `renewLease(id, owner, ttlMs)` (renew only
+the owner's own lease) and `saveIfLeased(id, checkpoint, owner)` (save only
+while the owner holds the lease, atomically); without them a run renews its
+lease with `acquireLease` right before each save, which leaves a short window.
+
+During a rolling upgrade from a release without run leases, the old replicas
+neither take nor respect leases, so a turn can still run on an old and a new
+replica at once until every replica runs the new release. A SQLite database
+opened by this release is migrated (the `leases` table) and is then refused by
+older releases; roll back by restoring a copy of the file.
 
 Schedules use the same mechanism: `fireSchedule()` (and so `startSchedules()`)
 claims each schedule's fire time in the agent's checkpoint store first, so
@@ -8061,8 +8137,10 @@ approval stays pending.
 
 **Fix:** await the turn's `send()` (or abort it), then call again. After a `send()` that failed
 this way, send again: the session reads the current transcript at the start of every call. A
-lease left by a process that died is taken over once it expires (30 s), or at once by the
-file and SQLite stores when that process is gone from the same host.
+lease left by a process that died is taken over once it expires (30 s, plus up to 30 s of
+clock-skew grace on the file and SQLite stores), or at once when that process provably exited
+on the same host and PID namespace. A run that stalled past its lease fails with this code at
+its next checkpoint instead of overwriting the run that took over.
 
 ### LOUSHO_SESSION_TURN_PENDING
 
@@ -11001,8 +11079,13 @@ await server.close();
   (`agent.send(message, { signal })`). Over HTTP the run is also aborted when
   the client disconnects, and when a client timeout sends
   `notifications/cancelled` in a later `POST`: that cancel is matched to the
-  request by its id and the client (remote address, `Authorization`,
-  `User-Agent`), and ignored when several requests in flight match.
+  request by its id and the client. The server keeps no session state, but it
+  answers `initialize` with an `Mcp-Session-Id` header, which Streamable HTTP
+  clients (`connectMcp()`, the MCP SDK) send back, so two clients behind one
+  address and token are told apart. A client that sends no session id is known
+  by its remote address, `Authorization` and `User-Agent`, and its cancel is
+  ignored when several requests in flight match. The cancelled request is
+  answered with a JSON-RPC error (`-32800`, `Request cancelled`).
 - **Errors.** An agent failure comes back as an MCP result with `isError: true`.
 - **Approvals.** Approval-gated tools cannot be approved over MCP. A run that
   pauses for approval returns `isError: true` with a message saying so, and
@@ -11854,8 +11937,8 @@ accepted, and a request outside the base path is a 404).
 
 Sessions are kept by the agent's `store` (`createAgent({ store })`), so give
 the agent one that outlives a serverless invocation when you use sessions.
-With `auth`, a session id is bound to the first principal that reads or
-continues it, and a different principal gets `403`
+With `auth`, a session id is bound to the first principal that sends it a
+turn (reading an id claims nothing), and a different principal gets `403`
 (`LOUSHO_SESSION_FORBIDDEN`). That binding is kept in memory, so a new
 serverless instance forgets it: for an app with more than one user, pass
 `authorizeSession` as well, e.g. with ids derived from the caller
@@ -11874,19 +11957,25 @@ cannot decide another user's call, so a single-user app that prompts its own
 user needs nothing. That also means a user can approve their own refund. If an
 approval must come from someone else, pass `authorizeApproval`. This is a
 two-person rule: a supervisor decides, and never on a call that runs for
-themselves:
+themselves. The supervisor also needs `authorizeSession` to read the
+customer's session (`GET /chat/:id`, to show what they are approving) and to
+decide in it; by default the session belongs to the customer alone:
 
 ```ts
 import { createAgent, createRouteHandler, memoryStore } from '@lousho/build-ai-agent';
 import { jwt } from '@lousho/build-ai-agent/auth';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', store: memoryStore() });
+const isSupervisor = (principal?: { claims?: Readonly<Record<string, unknown>> }) => principal?.claims?.role === 'supervisor';
 
 export const { GET, POST } = createRouteHandler(agent, {
   auth: jwt({ secret: process.env.JWT_SECRET!, issuer: 'https://auth.example.com', audience: 'agent-api' }),
+  // Customers use their own sessions (ids that start with their id); supervisors may read and decide in any session.
+  authorizeSession: ({ principal, sessionId, action }) =>
+    sessionId.startsWith(`${principal?.id}-`) || (action !== 'chat' && isSupervisor(principal)),
   authorizeApproval: ({ principal, approval }) =>
-    principal?.claims?.role === 'supervisor' &&
-    !(principal.id === approval.principal?.id && principal.issuer === approval.principal?.issuer),
+    isSupervisor(principal) &&
+    !(principal?.id === approval.principal?.id && principal?.issuer === approval.principal?.issuer),
 });
 ```
 
@@ -12462,7 +12551,9 @@ const agent = createAgent({
 });
 ```
 
-Any object with `onSpanStart` and `onSpanEnd` is an exporter.
+Any object with `onSpanStart` and `onSpanEnd` is an exporter. The run does not
+wait for them: a hook that throws, or an `async` one whose promise rejects, is
+reported once per exporter with `console.warn` and otherwise ignored.
 
 #### Advanced: the executor API
 
@@ -12544,12 +12635,28 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `gen_ai.provider.name` | The provider's `name` |
 | `gen_ai.request.model` | The agent's model (`settings.model`, else the provider's default), when known |
 | `gen_ai.conversation.id` | `sessionId`, when set |
-| `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` | The run's total tokens: every model call, including those of delegated child runs; absent when no call reported usage. The `gen_ai.client.token.usage` metric still counts each model call once |
+| `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` | The run's total tokens: every model call, including those of delegated child runs; absent when no call reported usage. These repeat the `chat` spans' tokens: see [Summing token usage over spans](#summing-token-usage-over-spans). The `gen_ai.client.token.usage` metric still counts each model call once |
 | `lousho.cost_usd` | Cumulative estimated USD of the run (every model call and delegated child run, including a background child that finishes before the run ends); absent when any model used has no known price |
 | `lousho.usage.estimated` | `true` when any of the run's tokens were estimated |
 | `lousho.subagent.name` | On a sub-agent's run: the name the lead knows it by (the `task` tool's `agent`) |
 | `lousho.subagent.depth` | On a sub-agent's run: `1` for a sub-agent of the top-level run, `2` for its sub-agent, and so on |
 | `lousho.task.id` | On a sub-agent's run started by `task`: the task's `taskId` |
+
+#### Summing token usage over spans
+
+The totals on `invoke_agent` spans count tokens that the run's `chat` spans
+already carry, and a lead run's total also counts its sub-agents' runs. A
+backend that adds up `gen_ai.usage.*` over every span of a trace (some
+OpenTelemetry LLM cost dashboards do) therefore counts each token at least
+twice, and once more per level of sub-agent nesting: a lead with one sub-agent
+whose model calls used 33 + 7 input tokens shows 40 on the `chat` spans, 7 on
+the sub-agent's `invoke_agent` span and 40 on the lead's, 87 in all.
+
+To get the true total, sum `chat` spans only (`gen_ai.operation.name = chat`),
+read the top-level `invoke_agent` span alone, or use the
+`gen_ai.client.token.usage` metric. If the backend cannot filter, pass
+`createOtelTraceExporter({ agentUsageTotals: false })`: the usage attributes
+then stay on `chat` spans only (`lousho.cost_usd` stays on every span).
 
 ### Model call: `chat {model}` (CLIENT)
 
@@ -14060,7 +14167,7 @@ on the server.
 | `toolCalls[i]` | `{ id, name, args, status, result?, error?, partial? }`, `status` being `'running'`, `'awaiting-approval'`, `'done'`, `'error'` or `'rejected'`. `partial` is the latest `tool.partial` snapshot of a running [streaming tool](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#streaming-partial-results), removed when the call settles or pauses. |
 | `status` | `'idle'`, `'streaming'`, `'awaiting-approval'` or `'error'`. |
 | `pendingApproval` | `{ id, toolCallId, toolName, args }` of the tool call the run paused on, else `null`. For an `ask_question` call it also has `kind: 'question'` and `question: { text, options?, allowFreeText? }`; a tool waiting on an OAuth sign-in has `kind: 'sign-in'` and `signIn: { provider, displayName?, url }` (see [What the user sees](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#what-the-user-sees)). |
-| `error` | `{ name, message }` of the last `error` event or a failed request, else `null`. A remote stream that ends before its `run.done` (a proxy timeout, a server restart) sets `status: 'error'` with an error named `StreamEndedError`. |
+| `error` | `{ name, message }` of the last `error` event or a failed request, else `null`. A remote stream that ends before its `run.done` (a proxy timeout, a server restart) sets `status: 'error'` with an error named `StreamEndedError`, or keeps the server's `error` event when one came first. |
 | `usage` | Token usage of the last finished run (from `run.done`), else `null`. |
 | `finishReason` | How the last run ended (`run.done`): `'stop'`, `'max-steps'`, `'output-invalid'`, `'budget-exceeded'`, `'guardrail'`, ...; `null` before the first run ends. The four named after `stop` also set `status: 'error'` and an `error` named `RunEndedError` (unless an `error` event already did), so the chat does not look like it finished normally. |
 | `todos` | The agent's todo list (`{ id, content, status }[]`), set by each `todo.updated` event of the [todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#todo-tools); `[]` until the first one. It carries across turns; see [Todos](#todos). |
@@ -15210,8 +15317,10 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   `agent.fork('<id>.turn-<n>', { fromStep })` can fork those; older turns'
   histories are deleted as new turns commit (each history entry holds a copy of
   the whole transcript, so keeping every turn's would grow the store with the
-  square of the conversation's length). `session.fork()` works from the
-  transcript and is not limited by it.
+  square of the conversation's length). History outside the window that is
+  already in the store - kept by an earlier release, or under a larger
+  `turnHistoryLimit` - is deleted over the next commits too, up to 32 turns per
+  commit. `session.fork()` works from the transcript and is not limited by it.
 - While a turn runs, it holds a run lease on its checkpoint (see
   [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases)): a `send()` on the same
   session from another process, replica or store object fails with
@@ -15363,6 +15472,20 @@ a minute); a session commits its turns with a compare-and-swap under a lock file
 (`sessions/<id>.json.lock`), and a running checkpointed run holds its run lease
 in `leases/<id>.json` (see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases)).
 For many processes sharing a store, `SqliteStore` is the sturdier choice.
+
+`fileStore(dir).prune({ olderThanMs })` deletes what was last written more than
+`olderThanMs` ago, like `SqliteStore.prune()`: transcripts, checkpoints and
+checkpoint history files, plus expired pending OAuth sign-ins. A run paused on
+a pending approval is kept, however old (its checkpoint, its history and its
+session's transcript), and so are pending approvals and OAuth tokens. It
+resolves with the counts, `{ sessions, checkpoints, oauthPending }`:
+
+```ts
+import { fileStore } from '@lousho/build-ai-agent';
+
+const store = fileStore('./.lousho');
+await store.prune({ olderThanMs: 30 * 24 * 60 * 60 * 1000 }); // a month
+```
 
 Any object with the three methods of a part works there too: a Redis
 `SessionStore`, or a KV-backed `CheckpointStore` on Cloudflare Workers (the
@@ -17143,8 +17266,12 @@ snippets here):
   destroyed). There is no `destroy()`: this is how Svelte stores stop their
   work. A transient read that subscribes and unsubscribes in the same turn,
   like `get(agent)` from `svelte/store`, does not count, so it never aborts a
-  run. A store nobody subscribes to still runs a turn you started with
-  `send()`; call `stop()` yourself if you drop it.
+  run. The store cannot tell such a read from a component that is mounted and
+  destroyed within the same microtask turn (for example created and torn down
+  in one synchronous block, or by a `{#if}` that flips back before the next
+  microtask): that component's leaving does not abort the run either. A store
+  nobody subscribes to still runs a turn you started with `send()`; call
+  `stop()` yourself if you drop it or if you unmount that quickly.
 
 The reducer and the stream parser are exported from this subpath too
 (`reduceAgentEvents`, `initialAgentUIState`, `parseEventStream`), the same
@@ -18656,14 +18783,15 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 
 | Change | Opt-out |
 | ------ | ------- |
-| With route auth and no `authorizeSession`, a session belongs to the first principal that reads or continues it; another principal gets `403 LOUSHO_SESSION_FORBIDDEN`. The owner is kept in memory per agent, so pass `authorizeSession` on more than one instance. See [Who may use a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-use-a-session). | `authorizeSession: () => true` |
+| With route auth and no `authorizeSession`, a session belongs to the first principal that sends it a turn (a read claims nothing); another principal gets `403 LOUSHO_SESSION_FORBIDDEN`. The owner is kept in memory per agent (the 100,000 most recently used sessions), so pass `authorizeSession` on more than one instance. See [Who may use a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-use-a-session). | `authorizeSession: () => true` |
 | The session routes (`createRouteHandler()`, `createDeployedServer()`, the Worker, `lousho dev`) refuse a cross-site POST (`403 LOUSHO_REQUEST_FORBIDDEN`) and a POST body that is not `Content-Type: application/json` (`415 LOUSHO_UNSUPPORTED_MEDIA_TYPE`). The new `allowedHosts` (off by default) refuses unlisted `Host` headers. See [Cross-site requests](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#cross-site-requests). | `allowedOrigins: ['*']`, `requireJsonBody: false` (or list the front end's origin in `allowedOrigins`) |
 | `POST /chat/:sessionId/approvals/:id` answers `404` unless the approval belongs to that session, and only the caller the paused run acts for may decide it. | `authorizeApproval` to let others (a supervisor) decide |
 | The routes send an error's `name` and `code` with a generic message instead of its raw text (in `error` events, `500` bodies and `provider.retry` / `provider.fallback` events); the full error goes to `console.error`. | `exposeErrors: true` (`lousho dev` sets it) |
 | A client that disconnects mid-turn no longer aborts the turn: it runs to its end and is saved. See [Next.js routes](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md#routes). | `onDisconnect: 'abort'` |
-| `lousho dev` answers `403` to a request whose `Host` is not a loopback name (or, off loopback, an IP address or the `--host` name), against DNS rebinding. | `--allowed-hosts a,b` |
+| `lousho dev` answers `403` to a request whose `Host` is not a loopback name (or, off loopback, an IP address or the `--host` name), against DNS rebinding; this covers `/channels/<name>` for a channel without `verify`. | `--allowed-hosts a,b` (adds to the defaults) |
+| A channel without `verify` refuses a browser request from another site (`403 LOUSHO_REQUEST_FORBIDDEN`), and `httpChannel()` without `verify` refuses a body that is not `Content-Type: application/json` (`415 LOUSHO_UNSUPPORTED_MEDIA_TYPE`). See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md). | give the channel a `verify` (send the JSON content type from scripts: `curl -H 'Content-Type: application/json'`) |
 | `WebhookTriggerAdapter` binds `127.0.0.1` (was `0.0.0.0`), throws `LOUSHO_TRIGGER_INVALID` for a non-loopback `host` without `auth`, and without `auth` refuses a foreign `Host` or a request with an `Origin`. See [Webhook authentication](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md#webhook-authentication). | `host: '0.0.0.0'` with `auth`, or `allowUnauthenticated: true` |
-| The Cloudflare Worker refuses `GET /chat/:sessionId` (`403`) when no `LOUSHO_API_TOKEN` secret is set. See [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md). | the `LOUSHO_ALLOW_OPEN_TRANSCRIPTS` var set to `"true"` |
+| The Cloudflare Worker refuses every `/chat` route (a turn, a transcript, an approval decision; `403`) when no `LOUSHO_API_TOKEN` secret is set. `/health`, the OAuth callback and channels stay open. See [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md). | the `LOUSHO_ALLOW_OPEN_SESSIONS` var (or the earlier `LOUSHO_ALLOW_OPEN_TRANSCRIPTS`) set to `"true"` |
 | `serveMcp()` over HTTP checks `Host` and `Origin` against DNS rebinding; loopback is exactly `localhost`, a `127.x.x.x` address or `::1` (also for `WebhookTriggerAdapter`). | `allowedHosts` / `allowedOrigins` on `serveMcp()`'s HTTP transport (`['*']` turns a check off) |
 | Agent Forge (`lousho studio`) sends no CORS headers, refuses a foreign `Origin` or non-loopback `Host`, and needs the per-launch token it prints. See [Access token](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md#access-token). | no opt-out |
 | `fromUIMessages()` (and so `POST <base>/ui`) drops client-sent `system` messages and any role other than `user` / `assistant`. | no opt-out |
@@ -18680,7 +18808,10 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | Resolving an approval whose run was deleted or replaced fails with `LOUSHO_APPROVAL_ORPHANED` and withdraws it (it used to overwrite the newer conversation). | no opt-out |
 | A session turn paused for approval locks the session id: a new turn on it throws `SessionAwaitingApprovalError` (`LOUSHO_SESSION_AWAITING_APPROVAL`). | decide the approval, or `session.discardPending()` |
 | Session turns keep the checkpoint history of the latest 10 committed turns. See [Durable sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#durable-sessions). | `agent.session({ id, turnHistoryLimit })` with a larger whole number |
-| `sessionId` must be 1-200 characters of `A-Za-z0-9_.-` on every store, and may not end in `.turn-<n>` or `.paused`; `''` is refused. | no opt-out |
+| `sessionId` must be 1-200 characters of `A-Za-z0-9_.-` on every store, and may not end in `.turn-<n>`, `.paused` or `.fire` (a schedule's fire claim); `''` is refused. | no opt-out |
+| A lease left by a process that died on another machine (or in another container with the same hostname) is taken over 30 to 60 seconds after its last heartbeat (a grace for clock skew), not at 30 seconds. See [Run leases](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases). | no opt-out |
+| During a rolling upgrade, replicas still on an earlier release neither take nor respect run leases, so a turn can run twice until every replica is upgraded. A SQLite database opened by this release is migrated and then refused by older releases. | upgrade all replicas together; keep a copy of the database to roll back |
+| `approvalTtlMs` (and an `ask` rule's `ttlMs`) above 100 years throws `LOUSHO_CONFIG_INVALID` instead of meaning "never expires". | leave it out for pauses that never expire |
 | A deterministic provider error records `lastError` on the turn's checkpoint, and later calls on that session fail fast with `LOUSHO_SESSION_TURN_FAILED`. | `session.discardPending()`, or fix the cause and `session.resume()` |
 | With a store, tools, `needsApproval`, permission rules and hooks get the session id as `ctx.sessionId`, not the turn checkpoint key `<id>.turn-<n>`. | no opt-out |
 | Several calls of one step that need approval pause once, on all of them (`result.approvalIds`); calls that need no approval run before the pause. See [Several calls in one step](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#several-calls-in-one-step). | no opt-out |

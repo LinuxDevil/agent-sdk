@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { agentSpecSchema, type AgentSpec } from './schema';
+import { agentSpecSchema, type AgentSpec, type McpHttpServerSpec, type McpStdioServerSpec } from './schema';
 
 const base = { name: 'bot', prompt: 'hi', provider: { type: 'mock', model: 'm' } };
 
@@ -71,6 +71,43 @@ describe('AgentSpec.mcpServers (LOU-D20)', () => {
     expect(issues({ fs: { command: 'npx', deferLoading: 'yes' } })).toEqual([
       "mcpServers.fs.deferLoading: AgentSpec validation failed: 'deferLoading' must be true or false",
     ]);
+  });
+
+  it("accepts 'optional' on both shapes and rejects a non-boolean, naming the entry", () => {
+    const mcpServers: AgentSpec['mcpServers'] = { fs: { command: 'npx', optional: true }, docs: { url: 'https://example.com/mcp', optional: false } };
+    expect(agentSpecSchema.parse({ ...base, mcpServers }).mcpServers).toEqual(mcpServers);
+    expect(issues({ fs: { command: 'npx', optional: 'yes' } })).toEqual([
+      "mcpServers.fs.optional: AgentSpec validation failed: 'optional' must be true or false",
+    ]);
+  });
+
+  it('keeps every McpServerSpec field (a field the schema does not know would be silently dropped)', () => {
+    // Required<...> makes this fail to type-check when a field is added to the type and not here.
+    const stdio: Required<McpStdioServerSpec> = {
+      command: 'npx',
+      args: ['-y', 'server-fs'],
+      env: { ROOT: '/tmp' },
+      cwd: '/srv',
+      stderr: 'capture',
+      approval: 'never',
+      deferLoading: true,
+      timeoutMs: 5000,
+      connectTimeoutMs: 1000,
+      tools: { include: ['read'] },
+      optional: true,
+    };
+    const http: Required<McpHttpServerSpec> = {
+      url: 'https://example.com/mcp',
+      headers: { Authorization: 'Bearer x' },
+      approval: 'annotations',
+      deferLoading: false,
+      timeoutMs: 100,
+      connectTimeoutMs: 200,
+      tools: { exclude: ['write'] },
+      oauth: { redirectUri: 'https://agent.example.com/oauth/callback', clientId: 'c', clientSecret: 's', scopes: ['read'], clientName: 'n' },
+      optional: true,
+    };
+    expect(agentSpecSchema.parse({ ...base, mcpServers: { stdio, http } }).mcpServers).toEqual({ stdio, http });
   });
 
   it('still validates specs without the field', () => {

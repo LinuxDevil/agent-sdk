@@ -219,7 +219,8 @@ function workerDirTs(hasSchedules: boolean): string {
    }
  *
  * Worker bindings (see wrangler.toml): the \`LOUSHO_API_TOKEN\` secret makes every
- * route except /health require 'Authorization: Bearer <token>'; the provider API
+ * route except /health require 'Authorization: Bearer <token>' (without it the
+ * /chat routes answer 403 unless the LOUSHO_ALLOW_OPEN_SESSIONS var is "true"); the provider API
  * key is a secret named <TYPE>_API_KEY (e.g. OPENAI_API_KEY); the
  * \`${CHECKPOINT_KV_BINDING}\` KV namespace keeps sessions, checkpoints, approvals and
  * kvMemory() slots between requests (without it they live in the memory of one isolate).

@@ -106,9 +106,15 @@ Programmatically, `adapter.scaffold(agentPath, outDir, { auth: { token } })`
 bakes a token into the built `node-server` or `docker` server for when the
 variable is not set. The variable wins, and a baked token is readable in
 `dist/server.js`, so prefer the variable. The Worker reads the token from its
-`LOUSHO_API_TOKEN` binding only; without one it refuses `GET /chat/:sessionId`
-unless the `LOUSHO_ALLOW_OPEN_TRANSCRIPTS` var is `"true"`
+`LOUSHO_API_TOKEN` binding only; without one it refuses every `/chat` route
+unless the `LOUSHO_ALLOW_OPEN_SESSIONS` var is `"true"`
 ([Cloudflare Workers](./cloudflare-workers.md)).
+
+Behind a proxy, or for a front end on another origin, the generated
+`node-server` and Worker read the routes' request checks from
+`LOUSHO_ALLOWED_ORIGINS` and `LOUSHO_ALLOWED_HOSTS` (comma-separated) and
+`LOUSHO_REQUIRE_JSON_BODY=false`: see
+[Cross-site requests](./auth.md#cross-site-requests).
 
 For JWT, OpenID Connect or Basic auth, and to know who is calling, the
 `node-server` and `docker` targets take an ordered auth list from an agent

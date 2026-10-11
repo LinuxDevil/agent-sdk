@@ -239,7 +239,13 @@ export function withDefaultStores(options: SessionOptions = {}, defaults: Partia
 const DEFAULT_TURN_HISTORY_LIMIT = 10;
 
 /** Most turns whose history one commit deletes (see `dropOldTurnHistory`). */
-const DROPPED_TURNS_PER_COMMIT = 4;
+const DROPPED_TURNS_PER_COMMIT = 32;
+
+/**
+ * Per checkpoint store and session id: the transcript index below which every
+ * turn's checkpoint history is known to be deleted (see `dropOldTurnHistory`).
+ */
+const droppedTurnHistory = new WeakMap<CheckpointStore, Map<string, number>>();
 
 /** `null` for a checkpoint that cannot be read (`LOUSHO_CHECKPOINT_CORRUPT`); any other error is rethrown. */
 function ignoreCorrupt(error: unknown): null {
@@ -1103,19 +1109,29 @@ export class AgentSession<TObject = unknown> {
    * Keeps the checkpoint history of only the last `turnHistoryLimit` committed
    * turns (each holds copies of the whole transcript, so keeping every turn's
    * grew the store quadratically). A turn's checkpoint id is `<id>.turn-<n>`,
-   * `n` being where its user message starts in the transcript, so the turns that
-   * just fell out of the window are found from the user messages before
-   * `start`, the turn just committed.
+   * `n` being where its user message starts in the transcript, so the turns
+   * outside the window are found from the user messages before `start`, the
+   * turn just committed. They are deleted oldest first, at most
+   * {@link DROPPED_TURNS_PER_COMMIT} per commit, from where earlier commits of
+   * this process got to - so history left by an earlier release, or by a larger
+   * limit, is cleaned up over the next commits too.
    */
   private async dropOldTurnHistory(transcript: readonly Message[], start: number): Promise<void> {
     const { checkpointStore } = this;
-    const keep = this.turnHistoryLimit;
-    if (!checkpointStore || keep === 0) return;
+    if (!checkpointStore) return;
     const starts: number[] = [];
     for (let i = 0; i < start && i < transcript.length; i++) if (transcript[i].role === 'user') starts.push(i);
-    // Turns older than the window: the latest few of them (a turn can hold more than one user message, e.g. queued input).
-    const dropped = starts.slice(0, Math.max(0, starts.length - (keep - 1))).slice(-DROPPED_TURNS_PER_COMMIT);
-    for (const n of dropped) await checkpointStore.delete(`${this.id}.turn-${n}`);
+    // A turn can hold more than one user message (queued input): every one of them outside the window is a candidate.
+    const outside = starts.slice(0, Math.max(0, starts.length - Math.max(0, this.turnHistoryLimit - 1)));
+    let cursors = droppedTurnHistory.get(checkpointStore);
+    if (!cursors) droppedTurnHistory.set(checkpointStore, (cursors = new Map()));
+    const known = cursors.get(this.id) ?? 0;
+    // A compaction (or clear()) shortened the transcript: start over.
+    const below = known > transcript.length ? 0 : known;
+    const pending = outside.filter((n) => n >= below);
+    const batch = pending.slice(0, DROPPED_TURNS_PER_COMMIT);
+    for (const n of batch) await checkpointStore.delete(`${this.id}.turn-${n}`);
+    if (batch.length > 0) cursors.set(this.id, pending.length > batch.length ? pending[batch.length] : batch[batch.length - 1] + 1);
   }
 
   /**

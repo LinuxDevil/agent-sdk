@@ -13,6 +13,7 @@ import { runEventsOf } from './agentRun';
 import type { ToolDescriptor } from '../types';
 import type { HostedTool } from '../tools/hosted';
 import { SDKError } from '../utils/sdkError';
+import { ConfigurationError } from './errors';
 import type { Principal } from '../auth/types';
 
 /** What a matching {@link PermissionRule} does with a tool call. */
@@ -294,11 +295,29 @@ export function deny(tools: PermissionToolMatcher, reason?: string): PermissionR
 }
 
 /**
+ * The longest approval deadline (`approvalTtlMs`, an `ask` rule's `ttlMs`): 100
+ * years. A longer one is a typo, not a deadline; leave it out for pauses that
+ * never expire.
+ */
+export const MAX_APPROVAL_TTL_MS = 100 * 365 * 24 * 60 * 60 * 1000;
+
+/** Whether `value` is a valid approval deadline: a positive number of milliseconds, at most {@link MAX_APPROVAL_TTL_MS}. */
+export function isApprovalTtl(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= MAX_APPROVAL_TTL_MS;
+}
+
+/** What a valid approval deadline is, for error messages: `... must be <this>, got ...`. */
+export const APPROVAL_TTL_RULE = `a positive number of milliseconds, at most 100 years (${MAX_APPROVAL_TTL_MS})`;
+
+/**
  * A rule that pauses the matching tools for approval, even when they do not
  * set `needsApproval`. `ttlMs` bounds the pause: undecided past it, the call
- * is denied ('approval expired').
+ * is denied ('approval expired'). An invalid `ttlMs` throws `LOUSHO_CONFIG_INVALID`.
  */
 export function ask(tools: PermissionToolMatcher, options?: { ttlMs?: number }): PermissionRule {
+  if (options?.ttlMs !== undefined && !isApprovalTtl(options.ttlMs)) {
+    throw new ConfigurationError(`ask: 'ttlMs' must be ${APPROVAL_TTL_RULE}, got ${String(options.ttlMs)}.`, 'ttlMs');
+  }
   return { tool: tools, action: 'ask', ...(options?.ttlMs !== undefined && { ttlMs: options.ttlMs }) };
 }
 

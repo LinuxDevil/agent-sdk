@@ -134,6 +134,22 @@ describe('CloudflareWorkerAdapter', () => {
     }
   });
 
+  it('keeps hand edits to wrangler.toml on rebuild and updates only the keys the build owns', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-cf-merge-'));
+    try {
+      const out = path.join(dir, 'out');
+      await CloudflareWorkerAdapter.scaffold(writeSpec(dir, SPEC), out);
+      const file = path.join(out, 'wrangler.toml');
+      const edited = `${fs.readFileSync(file, 'utf8')}\n[vars]\nFOO = "bar"\n\n[[kv_namespaces]]\nbinding = "AGENT_CHECKPOINTS"\nid = "abc"\n`;
+      fs.writeFileSync(file, edited);
+      await CloudflareWorkerAdapter.scaffold(writeSpec(dir, { ...SPEC, name: 'renamed' }), out);
+      const rebuilt = fs.readFileSync(file, 'utf8');
+      expect(rebuilt).toBe(edited.replace(/^name = ".*"$/m, 'name = "renamed"'));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('findNodeBuiltinReferences detects node: specifiers', () => {
     expect(findNodeBuiltinReferences(`import fs from "node:fs"; require('node:http')`)).toEqual([
       '"node:fs"',
@@ -232,9 +248,10 @@ describe('CloudflareWorkerAdapter', () => {
       }
     }, 120_000);
 
-    it('warns at build time that the Worker is open until the LOUSHO_API_TOKEN secret is set', () => {
+    it('warns at build time that the Worker refuses its session routes until the LOUSHO_API_TOKEN secret is set', () => {
       expect(buildWarnings).toContain('wrangler secret put LOUSHO_API_TOKEN');
-      expect(buildWarnings).toContain('LOUSHO_ALLOW_OPEN_TRANSCRIPTS');
+      expect(buildWarnings).toContain('refuses every /chat route');
+      expect(buildWarnings).toContain('LOUSHO_ALLOW_OPEN_SESSIONS');
     });
 
     it('scaffolds worker.ts (fetch handler, no Node builtins), agent.config.js and wrangler.toml', () => {
@@ -334,12 +351,12 @@ describe('CloudflareWorkerAdapter', () => {
 
       const chat = await handler.fetch(
         new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'hi' }) }),
-        {}
+        { LOUSHO_ALLOW_OPEN_SESSIONS: 'true' }
       );
       expect(chat.status).toBe(200);
       expect((await chat.json()).text).toBe('This is a mock response.');
 
-      const bad = await handler.fetch(new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }));
+      const bad = await handler.fetch(new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }), { LOUSHO_ALLOW_OPEN_SESSIONS: 'true' });
       expect(bad.status).toBe(400);
 
       const oversized = await handler.fetch(
@@ -347,7 +364,8 @@ describe('CloudflareWorkerAdapter', () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: 'x'.repeat(2 * 1024 * 1024) }),
-        })
+        }),
+        { LOUSHO_ALLOW_OPEN_SESSIONS: 'true' }
       );
       expect(oversized.status).toBe(413);
     });
@@ -502,7 +520,7 @@ describe('CloudflareWorkerAdapter', () => {
           const handler = mod.default as { fetch: (r: Request, env?: Record<string, unknown>) => Promise<Response> };
           const chat = await handler.fetch(
             new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'hi' }) }),
-            { [`${providerType.toUpperCase()}_API_KEY`]: 'sk-test-not-a-real-key' }
+            { [`${providerType.toUpperCase()}_API_KEY`]: 'sk-test-not-a-real-key', LOUSHO_ALLOW_OPEN_SESSIONS: 'true' }
           );
           const body = await chat.json();
           expect(chat.status).toBe(500);
@@ -584,7 +602,7 @@ describe('CloudflareWorkerAdapter', () => {
         const handler = mod.default as { fetch: (r: Request, env?: Record<string, unknown>) => Promise<Response> };
         const response = await handler.fetch(
           new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'fetch the data' }) }),
-          { OPENROUTER_API_KEY: 'sk-or-test-not-a-real-key', ...env }
+          { OPENROUTER_API_KEY: 'sk-or-test-not-a-real-key', LOUSHO_ALLOW_OPEN_SESSIONS: 'true', ...env }
         );
         const body = await response.json();
         expect([response.status, body.error]).toEqual([200, undefined]);

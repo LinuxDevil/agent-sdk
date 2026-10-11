@@ -68,7 +68,7 @@ import { listPendingRuns, type PendingRun } from './agentPending';
 import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from './createAgentApprovals';
 import { createAgentOAuth, type AgentOAuth } from './oauth/agentOAuth';
 import type { OAuthTokenStore } from './oauth/types';
-import { assertPermissionMode, type PermissionMode, type PermissionOptions } from './execution/permissions';
+import { APPROVAL_TTL_RULE, assertPermissionMode, isApprovalTtl, type PermissionMode, type PermissionOptions } from './execution/permissions';
 import { assertToolSearchOptions, type ToolSearchOptions } from './execution/toolSearch';
 import { assertOutputSchema, type OutputSpec } from './execution/structuredOutput';
 import { assertCodeModeOptions, codeModeOption, type CodeModeOptions } from './execution/codeMode';
@@ -1058,6 +1058,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     if (permissionMode !== undefined) assertPermissionMode(permissionMode, 'send');
     assertModelSettings(modelSettings, 'send');
     assertMaxSteps(maxSteps, 'send');
+    assertApprovalTtlMs(approvalTtlMs, 'send');
     if (instructions !== undefined && typeof instructions !== 'string') {
       throw new ConfigurationError(`send: 'instructions' must be a string, got ${instructions === null ? 'null' : typeof instructions}.`, 'instructions');
     }
@@ -1276,10 +1277,10 @@ function assertNoHandoffToolClash(handoffTools: string[], staticTools: RunTools 
   }
 }
 
-/** TTL: `approvalTtlMs` must be a positive, finite number of milliseconds. */
-function assertApprovalTtlMs(value: unknown): void {
-  if (value === undefined || (typeof value === 'number' && Number.isFinite(value) && value > 0)) return;
-  throw new ConfigurationError(`createAgent: 'approvalTtlMs' must be a positive number of milliseconds, got ${String(value)}.`, 'approvalTtlMs');
+/** TTL: `approvalTtlMs` must be a positive number of milliseconds, at most 100 years (a larger one is a typo). */
+function assertApprovalTtlMs(value: unknown, where = 'createAgent'): void {
+  if (value === undefined || isApprovalTtl(value)) return;
+  throw new ConfigurationError(`${where}: 'approvalTtlMs' must be ${APPROVAL_TTL_RULE}, got ${String(value)}.`, 'approvalTtlMs');
 }
 
 /** N6: `maxHandoffs` must be a whole number >= 0. */

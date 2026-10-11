@@ -298,6 +298,7 @@ const mcpServerSchema = z
         .enum(['forward', 'capture', 'inherit', 'ignore'], anyError(`${MCP_PREFIX} 'stderr' must be 'forward', 'capture', 'inherit' or 'ignore'`))
         .optional(),
       tools: mcpToolFilterSchema.optional(),
+      optional: z.boolean(typeErrors({ invalid: `${MCP_PREFIX} 'optional' must be true or false` })).optional(),
     },
     typeErrors({ invalid: `${MCP_PREFIX} each mcpServers entry must be an object with 'command' or 'url'` })
   )

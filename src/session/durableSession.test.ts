@@ -326,6 +326,32 @@ describe('checkpointed sessions (LOU-W9)', () => {
     expect(await store.checkpoints.history!('none.turn-0')).toEqual([]);
   });
 
+  it('cleans up turn history already outside the window (kept by an earlier release or a larger limit) over the next commits', async () => {
+    const model = mockModel([(r) => (r.messages.at(-1)?.role === 'tool' ? 'Noted.' : calling('lookup'))], { onExhausted: 'repeat-last' });
+    const store = memoryStore();
+    const kept = async (turns: number) => {
+      const found = [];
+      for (let n = 0; n < turns; n++) if ((await store.checkpoints.history!(`chat.turn-${4 * n}`)).length > 0) found.push(n);
+      return found;
+    };
+    // 40 turns that all kept their history (a limit as large as an earlier release's "keep everything").
+    const before = createAgent({ provider: model, tools: [tool('lookup', {})], store });
+    const all = before.session({ id: 'chat', turnHistoryLimit: 1000 });
+    for (let turn = 0; turn < 40; turn++) await all.send(`turn ${turn}`);
+    expect(await kept(40)).toHaveLength(40);
+
+    // A new process (another agent over the same store) with a window of 2: two commits clean all of it.
+    const after = createAgent({ provider: model, tools: [tool('lookup', {})], store: { ...store } });
+    const session = after.session({ id: 'chat', turnHistoryLimit: 2 });
+    await session.send('turn 40');
+    await session.send('turn 41');
+    expect(await kept(42)).toEqual([40, 41]);
+
+    // turnHistoryLimit 0 drops what an earlier window kept too.
+    await after.session({ id: 'chat', turnHistoryLimit: 0 }).send('turn 42');
+    expect(await kept(43)).toEqual([]);
+  });
+
   // Eve DUR-F8: clear() deleted only the current turn's checkpoint; every committed turn's checkpoint HISTORY (full
   // transcript copies) survived, and agent.fork('<id>.turn-<n>') revived the cleared conversation.
   it.each([

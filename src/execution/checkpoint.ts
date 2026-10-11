@@ -321,6 +321,23 @@ export interface CheckpointStore {
    * docs/durable-execution.md#run-leases.
    */
   acquireLease?(sessionId: string, owner: string, ttlMs: number): Promise<boolean>;
+  /**
+   * Run lease heartbeat (optional): extends `owner`'s lease on `sessionId` to
+   * `ttlMs` from now only when `owner` still holds it (expired or not, as long
+   * as no other owner took it); `false` when the lease is gone or another
+   * owner's. Unlike `acquireLease`, it never takes a lease that was released,
+   * so a run that stalled while another process finished the run notices.
+   * Without it the heartbeat calls `acquireLease`.
+   */
+  renewLease?(sessionId: string, owner: string, ttlMs: number): Promise<boolean>;
+  /**
+   * Fenced save (optional): `save(sessionId, checkpoint)`, atomically with a
+   * check that `owner` still holds the lease on `sessionId`; resolves `false`,
+   * saving nothing, when it does not. A run saves its checkpoints this way, so
+   * a run that lost its lease cannot overwrite the new holder's progress.
+   * Without it a run renews its lease (`renewLease`) right before each save.
+   */
+  saveIfLeased?(sessionId: string, checkpoint: Checkpoint, owner: string): Promise<boolean>;
   /** Releases `owner`'s lease on `sessionId`; a lease another owner holds is left alone. */
   releaseLease?(sessionId: string, owner: string): Promise<void>;
 }

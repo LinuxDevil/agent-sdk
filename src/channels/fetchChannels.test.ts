@@ -28,7 +28,7 @@ function recordingChannel(overrides: Partial<Channel> = {}) {
   return { channel, replies };
 }
 
-const post = (path: string, body: unknown) => new Request(`http://worker${path}`, { method: 'POST', body: JSON.stringify(body) });
+const post = (path: string, body: unknown) => new Request(`http://worker${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
 describe('mountFetchChannels (#298)', () => {
   it('resolves undefined for requests outside its routes', async () => {
@@ -154,7 +154,7 @@ describe('mountFetchChannels (#298)', () => {
 
   it('answers 400 for a bad JSON body and for an approvals body without a decision', async () => {
     const handler = mountFetchChannels(createAgent({ provider: mockModel(['hi']) }), [httpChannel()]);
-    const badJson = await handler(new Request('http://worker/channels/http', { method: 'POST', body: '{nope' }));
+    const badJson = await handler(new Request('http://worker/channels/http', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{nope' }));
     expect(badJson?.status).toBe(400);
     const noDecision = await handler(post('/channels/http/approvals/x', { unrelated: 1 }));
     expect(noDecision?.status).toBe(400);

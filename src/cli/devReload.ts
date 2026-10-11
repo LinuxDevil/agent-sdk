@@ -37,6 +37,8 @@ export interface DevState {
   store: ReturnType<typeof memoryStore>;
   /** The agent directory's channels, mounted under `/channels` (LOU-P8.2); undefined when it has none. Replaced on reload. */
   channels?: ChannelsHandler;
+  /** Names of the mounted channels that authenticate their requests (`verify`): the dev server's `Host` check skips them. */
+  verifiedChannels?: ReadonlySet<string>;
   /** Successful reloads since start. */
   reloads: number;
   /** The last failed reload's message; cleared by the next good one. */
@@ -185,6 +187,7 @@ async function loadDevTarget(target: DevTarget, options: DevOptions): Promise<Lo
 function activate(state: DevState, loaded: LoadedTarget, options: DevOptions): RunningSchedules | undefined {
   state.agent = loaded.agent;
   state.channels = loaded.channels.length > 0 ? mountChannels(loaded.agent, loaded.channels, { store: state.store }) : undefined;
+  state.verifiedChannels = new Set(loaded.channels.filter((channel) => channel.verify).map((channel) => channel.name));
   if (loaded.schedules.length === 0) return undefined;
   const names = loaded.schedules.map((s) => s.name).join(', ');
   if (options.schedules === false) return void log(`schedules not started (--no-schedules): ${names}`);

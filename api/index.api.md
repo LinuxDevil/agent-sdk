@@ -1126,7 +1126,9 @@ export interface CheckpointStore {
     list?(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
     load(sessionId: string): Promise<Checkpoint | null>;
     releaseLease?(sessionId: string, owner: string): Promise<void>;
+    renewLease?(sessionId: string, owner: string, ttlMs: number): Promise<boolean>;
     save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
+    saveIfLeased?(sessionId: string, checkpoint: Checkpoint, owner: string): Promise<boolean>;
 }
 
 // @public
@@ -2367,12 +2369,29 @@ export interface FileSessionStoreOptions {
 }
 
 // @public
-export function fileStore(dir: string, options?: FileStoreOptions): Required<AgentStore>;
+export type FileStore = Required<AgentStore> & {
+    prune(options: FileStorePruneOptions): Promise<FileStorePruneResult>;
+};
+
+// @public
+export function fileStore(dir: string, options?: FileStoreOptions): FileStore;
 
 // @public
 export interface FileStoreOptions {
     historyLimit?: number;
     tokenKey?: TokenKeyInput;
+}
+
+// @public
+export interface FileStorePruneOptions {
+    olderThanMs: number;
+}
+
+// @public
+export interface FileStorePruneResult {
+    checkpoints: number;
+    oauthPending: number;
+    sessions: number;
 }
 
 // @public

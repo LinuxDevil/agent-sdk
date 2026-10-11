@@ -547,8 +547,10 @@ approval stays pending.
 
 **Fix:** await the turn's `send()` (or abort it), then call again. After a `send()` that failed
 this way, send again: the session reads the current transcript at the start of every call. A
-lease left by a process that died is taken over once it expires (30 s), or at once by the
-file and SQLite stores when that process is gone from the same host.
+lease left by a process that died is taken over once it expires (30 s, plus up to 30 s of
+clock-skew grace on the file and SQLite stores), or at once when that process provably exited
+on the same host and PID namespace. A run that stalled past its lease fails with this code at
+its next checkpoint instead of overwriting the run that took over.
 
 ### LOUSHO_SESSION_TURN_PENDING
 
