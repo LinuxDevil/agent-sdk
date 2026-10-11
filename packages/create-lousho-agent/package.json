@@ -17,6 +17,9 @@
     "scaffold"
   ],
   "type": "commonjs",
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "bin": {
     "create-lousho-agent": "bin/cli.js"
   },

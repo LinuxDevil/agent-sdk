@@ -290,7 +290,7 @@ typo, with a suggestion.
 **Example:**
 
 ```text
-loadSpec: 'agent.yaml' failed validation - 'prompt': AgentSpec validation failed: missing required field 'prompt'; unknown field 'promt' (did you mean 'prompt'?)
+loadSpec: 'agent.yaml' failed validation - 'prompt': missing required field 'prompt'; unknown field 'promt' (did you mean 'prompt'?)
 ```
 
 ### LOUSHO_SPEC_UNKNOWN_FIELD

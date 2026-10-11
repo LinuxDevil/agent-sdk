@@ -118,7 +118,7 @@ function table(rows: string[][], paint: (row: number, col: number, cell: string)
 /** The table of recent traces. */
 function renderTraceList(traces: TraceSummary[], options: { now: number; color: boolean }): string {
   const s = style(options.color);
-  const header = ['TIME', 'AGENT', 'DURATION', 'MODEL', 'TOOLS', 'TOKENS IN/OUT', 'COST', 'STATUS', 'ID'];
+  const header = ['TIME', 'AGENT', 'DURATION', 'MODEL CALLS', 'TOOL CALLS', 'TOKENS IN/OUT', 'COST', 'STATUS', 'ID'];
   const rows = traces.map((trace) => [
     formatAgo(trace.startTime, options.now),
     trace.agent ?? trace.name,
@@ -258,7 +258,7 @@ function renderTraceTree(traceId: string, spans: Span[], options: { color: boole
 }
 
 function noTracesHint(dir: string): string {
-  return `No traces in ${dir}. Add exporter: fileTraceExporter() to createAgent().`;
+  return `No traces in ${dir}. Add exporter: fileTraceExporter() to createAgent() (import { fileTraceExporter } from '@lousho/build-ai-agent/traces'), or run lousho dev / chat with --traces.`;
 }
 
 async function showList(args: TracesArgs, dir: string, deps: Required<TracesDeps>): Promise<number> {
@@ -311,9 +311,8 @@ export async function runTraces(rest: string[], deps: TracesDeps = {}): Promise<
     const dir = path.resolve(resolved.cwd, args.dir);
     return args.traceId === undefined ? await showList(args, dir, resolved) : await showTrace(args, args.traceId, dir, resolved);
   } catch (error) {
-    const hint = (error as { hint?: string }).hint;
+    // A coded error's message already ends with its hint (the usage line): print it once.
     console.error(error instanceof Error ? error.message : String(error));
-    if (hint) console.error(hint);
     return 2;
   }
 }

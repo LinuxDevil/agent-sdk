@@ -8,6 +8,7 @@
  * Flags are parsed by the shared helper in args.ts, so `--target=stub` and
  * `--target stub` both work.
  */
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
   DeploymentAdapter,
@@ -26,7 +27,22 @@ export interface BuildArgs {
   help?: boolean;
 }
 
-const USAGE = 'Usage: lousho build <agent-dir|spec> --target=<name> [--out=<dir>]   (or --agent=<path>)';
+const USAGE = 'Usage: lousho build <agent-dir|spec> --target=<node-server|cloudflare-worker|docker> [--out=<dir>]   (or --agent=<path>)';
+
+const HELP = `${USAGE}
+
+Bundles an agent spec (agent.yaml / agent.json) or an agent directory for deployment.
+
+Targets:
+  node-server        a self-contained Node HTTP server (dist/server.js)
+  cloudflare-worker  a module Worker, wrangler.toml and dist/worker.js (needs tsup and wrangler)
+  docker             the node-server build plus a Dockerfile
+
+Options:
+  --target=<name>    the deployment target (required)
+  --out=<dir>        where to write the build (default: .lousho/build/<target>)
+  --agent=<path>     the spec file or agent directory (or pass it as the first argument)
+  -h, --help         show this help`;
 
 const SPEC: CommandSpec = {
   command: 'build',
@@ -43,7 +59,8 @@ export function parseBuildArgs(argv: string[]): BuildArgs {
 }
 
 /**
- * Test-only adapter registered under 'stub' at CLI startup: each lifecycle
+ * Test-only adapter, registered under 'stub' only when LOUSHO_BUILD_STUB_ADAPTER=1
+ * (the subprocess test sets it; in-process tests register it): each lifecycle
  * method records its own name in `stubAdapterCalls`, so tests can assert
  * the exact order runBuild() drives an adapter in. describe() also returns
  * the recorded order, which lets a subprocess smoke test (which can't see
@@ -65,7 +82,7 @@ export const stubAdapter: DeploymentAdapter = {
 };
 
 registerBuiltInAdapters();
-registerAdapter('stub', stubAdapter);
+if (process.env.LOUSHO_BUILD_STUB_ADAPTER === '1') registerAdapter('stub', stubAdapter);
 
 export interface BuildIO {
   stdout: (line: string) => void;
@@ -91,7 +108,7 @@ export async function runBuild(argv: string[], io: BuildIO = defaultIO): Promise
     return 1;
   }
   if (args.help) {
-    io.stdout(USAGE);
+    io.stdout(HELP);
     return 0;
   }
 
@@ -109,7 +126,7 @@ export async function runBuild(argv: string[], io: BuildIO = defaultIO): Promise
   }
 
   try {
-    io.stdout(await driveAdapter(adapter, args, args.target));
+    io.stdout(await driveAdapter(adapter, args, args.target, io));
     return 0;
   } catch (error) {
     io.stderr(`Error: ${(error as Error).message}`);
@@ -117,11 +134,23 @@ export async function runBuild(argv: string[], io: BuildIO = defaultIO): Promise
   }
 }
 
-/** Runs scaffold() -> build() -> describe() and returns describe()'s output. */
-async function driveAdapter(adapter: DeploymentAdapter, args: BuildArgs, target: string): Promise<string> {
+/** Runs scaffold() -> build() -> describe() and returns where it wrote plus describe()'s output (the command to run there). */
+async function driveAdapter(adapter: DeploymentAdapter, args: BuildArgs, target: string, io: BuildIO): Promise<string> {
   const agentPath = args.agent ? path.resolve(args.agent) : '';
   const outDir = path.resolve(args.out || path.join('.lousho', 'build', target));
+  if (args.out && isNonEmptyDir(outDir)) {
+    io.stderr(`Warning: --out ${args.out} is not empty; files the build writes replace the ones there.`);
+  }
   await adapter.scaffold(agentPath, outDir);
   await adapter.build(outDir);
-  return adapter.describe(outDir);
+  const shown = path.relative(process.cwd(), outDir) || '.';
+  return `Built ${target} in ${shown}. From there, run:\n${adapter.describe(outDir)}`;
+}
+
+function isNonEmptyDir(dir: string): boolean {
+  try {
+    return fs.readdirSync(dir).length > 0;
+  } catch {
+    return false;
+  }
 }

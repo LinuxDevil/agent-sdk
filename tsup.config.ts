@@ -105,7 +105,9 @@ export default defineConfig([
     target: 'es2022',
     dts: false,
     splitting: false,
-    sourcemap: true,
+    // No maps: this entry is pre-bundled with its dependencies, whose sources
+    // are not in the package, so a map would only add ~1.6 MB (both formats).
+    sourcemap: false,
     clean: false,
     treeshake: true,
     minify: false,
@@ -115,9 +117,5 @@ export default defineConfig([
     // otherwise externalize them first, like the adapter's own build).
     removeNodeProtocol: false,
     esbuildPlugins: workerEntryPlugins(),
-    esbuildOptions(options) {
-      // Same as the Node entries above: maps without `sourcesContent` (#191).
-      options.sourcesContent = false;
-    },
   },
 ]);

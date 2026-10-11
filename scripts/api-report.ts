@@ -47,12 +47,14 @@ interface EntryPoint {
 
 function entryPoints(): EntryPoint[] {
   const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
-  return Object.entries<{ types?: string }>(pkg.exports).map(([subpath, target]) => {
-    if (!target.types) throw new Error(`exports entry "${subpath}" has no "types"`);
+  // Each entry has per-condition types (`import` -> .d.mts, `require` -> .d.ts); the reports read the .d.ts.
+  return Object.entries<{ require?: { types?: string } }>(pkg.exports).map(([subpath, target]) => {
+    const types = target.require?.types;
+    if (!types) throw new Error(`exports entry "${subpath}" has no "require.types"`);
     return {
       subpath,
       name: subpath === '.' ? 'index' : subpath.replace(/^\.\//, ''),
-      typesPath: path.resolve(REPO_ROOT, target.types),
+      typesPath: path.resolve(REPO_ROOT, types),
     };
   });
 }

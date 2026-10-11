@@ -102,7 +102,7 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **Hooks, guardrails, sandboxing**: veto tool calls, gate a patch on fail-closed checks, run tools in Docker. [Guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md)
 - **Channels, flows and triggers**: `defineChannel()` / `mountChannels()` map a surface's messages to sessions and send replies and approvals back; fixed multi-step workflows; webhook, Slack and cron adapters. [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md), [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md), [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md)
 - **Tracing**: OpenTelemetry GenAI spans (`invoke_agent`, `chat`, `execute_tool`); content capture is opt-in. [Observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md)
-- **Trace viewer**: `createAgent({ exporter: fileTraceExporter() })` keeps each run as a local file; `npx lousho traces` lists runs and prints one as a tree with durations, tokens and cost. [Local traces](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md#local-traces)
+- **Trace viewer**: `createAgent({ exporter: fileTraceExporter() })` (from `@lousho/build-ai-agent/traces`) keeps each run as a local file; `npx lousho traces` lists runs and prints one as a tree with durations, tokens and cost. [Local traces](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md#local-traces)
 - **Testing and evals**: `mockModel`, `recordReplay` cassettes, `defineEval()` trajectory assertions, `lousho eval` with `--record` / `--replay` cassettes and `--drift` trajectory diffs. [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md), [Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md)
 - **CLI**: `init`, `doctor`, `dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `traces`, `build` and `studio`. [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md)
 - **Editors (ACP)**: `lousho acp ./my-agent` serves your agent to Zed and other Agent Client Protocol editors, with tool calls and permission prompts. [ACP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md)
@@ -552,8 +552,8 @@ provider's key variable, `.gitignore` and a README. It then installs the
 dependencies and runs `git init`.
 
 ```bash
-npx lousho init my-agent                 # or: npm create lousho-agent my-agent
-npx lousho init my-agent --yes --provider anthropic --template tools --no-install
+npm create lousho-agent my-agent         # or: npx @lousho/build-ai-agent init my-agent
+npx @lousho/build-ai-agent init my-agent --yes --provider anthropic --template tools --no-install
 ```
 
 | Flag | Meaning |
@@ -653,18 +653,20 @@ agent, an example tool, an offline test, a `.env.example` for your provider),
 installs its dependencies and runs `git init`:
 
 ```bash
-npx lousho init my-agent
+npm create lousho-agent my-agent
 cd my-agent
 # copy .env.example to .env (cp on macOS/Linux, copy on Windows), then put your API key in it
 npm run dev              # chat with your agent in the terminal
 npm test                 # offline tests: no API key needed
 ```
 
-`npm create lousho-agent my-agent` is equivalent, and so is
-`npx @lousho/build-ai-agent init my-agent` when the SDK is not installed yet
-(a bare `npx lousho` only finds the `lousho` command once the SDK is in your
-`node_modules`). Without arguments, `init` asks for the directory, provider and
-template; `lousho init --help` lists every flag.
+`npx @lousho/build-ai-agent init my-agent` is equivalent (pass `--provider`
+and `--template`, since it runs without the interactive prompts). Inside a
+project that already has the SDK installed, `npx lousho init` works too: the
+`lousho` command comes from the SDK package, so a bare `npx lousho` outside such
+a project finds nothing to run. Without arguments, `init` asks for the
+directory, provider and template; `npx @lousho/build-ai-agent init --help`
+lists every flag.
 
 Prefer to add the SDK to an existing project? Install it by hand (see
 [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md)):
@@ -4536,7 +4538,7 @@ Run it with `npx lousho <command>` inside a project that has the SDK installed.
 | Command | What it does | Details |
 | ------- | ------------ | ------- |
 | `lousho init [dir]` | Scaffold a project: an agent with an example tool, an offline test, `.env.example`; installs dependencies and runs `git init`. | [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#scaffolding-a-new-project) |
-| `lousho doctor [spec] [--json] [--ping]` | Check Node, peer packages, provider keys, and optionally a spec file; `--ping` also checks each configured provider endpoint answers. Prints a fix for every problem. | [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#troubleshooting-lousho-doctor) |
+| `lousho doctor [spec\|agent-dir] [--json] [--ping]` | Check Node, peer packages, provider keys, and optionally a spec file or agent directory; `--ping` also checks each configured provider endpoint answers. Prints a fix for every problem. | [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#troubleshooting-lousho-doctor) |
 | `lousho dev <path>` | Local dev server for a spec file, an agent directory or a TS agent: chat UI with a session per tab and streamed events, hot reload on save. | [Below](#lousho-dev) |
 | `lousho chat <path>` | Terminal REPL for a spec file, an agent directory or a TS agent: streams replies, shows tool calls, asks for approvals and questions. | [Below](#lousho-chat) |
 | `lousho acp <path>` | Serve a spec file, an agent directory or a TS agent to an editor (Zed and other ACP clients) over the Agent Client Protocol on stdio. | [ACP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md) |
@@ -4558,10 +4560,10 @@ lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--no-
 lousho chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>] [--traces[=dir]]
 lousho acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]
 lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allow <list>] [--overwrite] [--dry-run]    (or --list)
-lousho build <agent-dir|spec> --target=<name> [--out=<dir>]    (or --agent=<path>)
+lousho build <agent-dir|spec> --target=<node-server|cloudflare-worker|docker> [--out=<dir>]    (or --agent=<path>)
 lousho studio [--port N] [--host H] [--prod|--dev]
 lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]
-lousho doctor [agent.yaml|json] [--json] [--ping]
+lousho doctor [agent.yaml|json|agent-dir] [--json] [--ping]
 lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
 lousho --version
@@ -4576,6 +4578,16 @@ never takes the next flag as its value) or an extra argument fails with
 the `=` form: `--model=-x`. `--traces` is the one flag whose value is optional:
 it takes it only in the `=` form (`--traces=./t`), so `--traces agent.yaml` is
 still the flag followed by the path.
+
+A usage error exits 1, except for `lousho eval` and `lousho traces`, which
+exit 2 for it because 1 is their "something failed" verdict (a gate failure,
+no matching trace). `lousho build` prints where it wrote the build (default
+`.lousho/build/<target>`) and the command to run there.
+
+**`.env`.** The commands that run an agent (`dev`, `chat`, `acp`, `mcp`) and
+`doctor` load `./.env` from the working directory when it exists, like
+`node --env-file-if-exists=.env`: a variable already set in the environment
+wins over the file.
 
 `lousho init` is the exception: it parses its own flags, and a bad flag or
 value fails with `InitUsageError` — its message printed as-is, exit code 1 —
@@ -5925,7 +5937,7 @@ optional `args` and `env`) or an HTTP server (`url`, optional `headers`).
 Each entry sets exactly one of `command` / `url`; `args`/`env` apply only to
 stdio and `headers` only to HTTP. The field is validated by `loadSpec()`, and
 an invalid entry fails with the entry name in the message, e.g.
-`'mcpServers.files': AgentSpec validation failed: missing 'command' (stdio server) or 'url' (HTTP server)`.
+`'mcpServers.files': missing 'command' (stdio server) or 'url' (HTTP server)`.
 An optional `approval` (`always`, the default, `annotations` or `never`) says which of the server's tools ask for approval; see [Approval for MCP tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#approval-for-mcp-tools).
 An optional `deferLoading: true` withholds the server's tools from the model until it finds them with `tool_search`; see [Tool search](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tool-search.md).
 An HTTP entry may set `oauth` (`redirectUri`, optional `clientId`, `clientSecret`, `scopes` and `clientName`) to sign in to the server with OAuth instead of a static `Authorization` header; see [MCP servers with OAuth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#mcp-servers-with-oauth).
@@ -6706,8 +6718,11 @@ environment variables as everywhere else (`OPENAI_API_KEY`, ...).
 
 Reuses the `node-server` scaffold and bundle and adds a `Dockerfile` based
 on `node:22-slim` that copies `dist/` and runs `node dist/server.js` on port
-3000. The image sets `HOST=0.0.0.0` - inside a container the server has to
-listen on all interfaces for `docker run -p` to reach it. Pass provider
+3000 as the image's unprivileged `node` user. The image sets `HOST=0.0.0.0` -
+inside a container the server has to listen on all interfaces for
+`docker run -p` to reach it. For a reproducible image, run
+`npm install --package-lock-only` in the output directory once and keep the
+`package-lock.json`: the Dockerfile then installs with `npm ci`. Pass provider
 credentials at run time:
 
 ```bash
@@ -7587,7 +7602,7 @@ typo, with a suggestion.
 **Example:**
 
 ```text
-loadSpec: 'agent.yaml' failed validation - 'prompt': AgentSpec validation failed: missing required field 'prompt'; unknown field 'promt' (did you mean 'prompt'?)
+loadSpec: 'agent.yaml' failed validation - 'prompt': missing required field 'prompt'; unknown field 'promt' (did you mean 'prompt'?)
 ```
 
 ### LOUSHO_SPEC_UNKNOWN_FIELD
@@ -12396,8 +12411,8 @@ npx lousho traces 3f2a --content  # also the captured messages and tool argument
 ```
 
 ```
-TIME    AGENT    DURATION  MODEL  TOOLS  TOKENS IN/OUT  COST       STATUS  ID
-2h ago  weather  1.65s     2      1      159/32         $0.000043  ok      3f2a9c1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f
+TIME    AGENT    DURATION  MODEL CALLS  TOOL CALLS  TOKENS IN/OUT  COST       STATUS  ID
+2h ago  weather  1.65s     2            1           159/32         $0.000043  ok      3f2a9c1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f
 
 Trace 3f2a9c1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f  4 spans, 1.65s
 invoke_agent weather         |████████████████████████|     1.65s  $0.000043
@@ -18036,7 +18051,8 @@ Source: docs/upgrading.md
 ## Who needs this page
 
 Anyone with code written against `1.0.0-alpha.8` or an earlier `1.0.0-alpha.*`
-release. Between the last alphas and `1.0.0-rc.0` the package's public surface
+release. Between those alphas and the 1.0 line (the changes listed under
+`1.0.0-rc.0` in the changelog, published in the later `1.0.0-alpha.*` releases) the package's public surface
 was reorganized: imports moved to subpaths, dead or superseded APIs were
 removed, and the patch guardrails were renamed patch checks. `createAgent()`
 and its options did not change - an agent that only does
@@ -18044,7 +18060,7 @@ and its options did not change - an agent that only does
 changing nothing but the version.
 
 ```bash
-npm install @lousho/build-ai-agent@^1.0.0-rc.0
+npm install @lousho/build-ai-agent@^1.0.0-alpha.19
 ```
 
 ## Import paths that moved
