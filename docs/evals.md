@@ -257,13 +257,14 @@ lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judg
 | `--drift` | re-record into a temp directory and report how each case's trajectory changed (`--drift-usage` also compares tokens) |
 
 It spawns the vitest installed in your project (vitest is *your* dependency; if
-it is missing the command prints `npm install --save-dev vitest` and exits 2),
+it is missing the command prints `npm install --save-dev vitest` and exits 1),
 then prints one row per case with its scores and duration, totals, and the gate
 failures and soft failures listed separately.
 
 **Exit code:** `1` on any gate failure (or soft failure with `--strict`, or when
-vitest itself fails, for example a file that does not load), `2` when it cannot
-run at all (bad arguments, vitest missing), otherwise `0`.
+vitest itself fails, for example a file that does not load, or is not installed,
+or a `--junit`/`--json` report cannot be written), `2` for a usage error (bad
+arguments), otherwise `0`.
 
 How results are collected: each case appends one JSON line to a file named by
 the `LOUSHO_EVAL_RESULTS` environment variable, which `lousho eval` sets and

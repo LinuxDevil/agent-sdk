@@ -53,7 +53,7 @@ still the flag followed by the path.
 (an agent that cannot load, a build error, `lousho eval`'s gate failure, no
 matching trace, `lousho add` refusing an item without `--yes`), and 2 for a
 usage error: an unknown command, an unknown flag, a missing or invalid
-value, an extra argument, or a missing `--target`. `lousho build` prints where it wrote the build (default
+value, an extra argument, or a missing `--target` or agent path. `lousho build` prints where it wrote the build (default
 `.lousho/build/<target>`) and the command to run there.
 
 **`.env`.** The commands that run an agent (`dev`, `chat`, `acp`, `mcp`),

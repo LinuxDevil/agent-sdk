@@ -120,10 +120,20 @@ const gateResult = result({
 });
 
 describe('runEval with a fake vitest', () => {
-  it('exits 2 and prints the install command when vitest is not installed', async () => {
+  it('exits 1 (not a usage error) and prints the install command when vitest is not installed', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect(await runEval([], { resolveVitest: () => undefined })).toBe(2);
+    expect(await runEval([], { resolveVitest: () => undefined })).toBe(1);
     expect(error.mock.calls[0][0]).toContain('npm install --save-dev vitest');
+  });
+
+  it('exits 1, not 2, when a report cannot be written after a passing run', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-eval-junit-'));
+    fs.writeFileSync(path.join(dir, 'afile'), '');
+    const junit = path.join(dir, 'afile', 'x.xml');
+    expect(await runEval(['--junit', junit], { resolveVitest: () => 'v', spawnVitest: fakeVitest([result({})]).spawnVitest, log: () => {} })).toBe(1);
+    expect(error).toHaveBeenCalled();
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 
   it('exits 2 for bad arguments', async () => {
