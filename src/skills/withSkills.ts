@@ -119,7 +119,8 @@ function createReadSkillFileTool(skills: readonly Skill[]) {
   });
 }
 
-function assertUsable(skills: readonly Skill[], agent: AgentConfig, registry?: ToolRegistry): void {
+/** Throws `LOUSHO_SKILL_INVALID` when the agent already has a tool the skills register, or two skills share a name. */
+export function assertUsable(skills: readonly Skill[], agent: AgentConfig, registry?: ToolRegistry): void {
   const reserved = skills.some((s) => s.directory) ? [LOAD_SKILL_TOOL, READ_SKILL_FILE_TOOL] : [LOAD_SKILL_TOOL];
   for (const tool of reserved) {
     if (registry?.has(tool) || agent.tools?.[tool]) {

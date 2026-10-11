@@ -12,7 +12,7 @@ import type { ApprovalKind } from './ApprovalGate';
 import { checkAgentDrift, fingerprintOf, type AgentFingerprint } from './agentFingerprint';
 import { runEventsOf } from './agentRun';
 import { baseAgentOf } from './subagentRuntime';
-import { CompactedLLMProviderError, SessionAwaitingApprovalError } from './errors';
+import { CompactedLLMProviderError, ConfigurationError, SessionAwaitingApprovalError } from './errors';
 import { inputMessages, insertToolResult, newSessionMessages, splitPendingTurn } from './transcript';
 import type { CallUsage, RunUsage, StepUsage } from '../models/usage';
 import { emptyRunUsage, recordStepUsage, restoreRunUsage } from './runUsage';
@@ -123,6 +123,10 @@ function buildMessages(
   // includes one (e.g. resume.ts rebuilding from an ExecutionSnapshot), or
   // `input` already starts with it - a `result.messages` fed back into
   // `send()` (Eve CORE-F4).
+  // An empty message list would send a request with no user turn, which providers reject or answer from nothing.
+  if (Array.isArray(input) && input.length === 0 && !skipSystemPromptInjection) {
+    throw new ConfigurationError("The run's input is an empty message list. Pass a string or at least one message, e.g. send('Hello').", 'input');
+  }
   const messages = inputMessages(input);
   const first = messages[0];
   const hasPrompt = first?.role === 'system' && first.content === agent.prompt;

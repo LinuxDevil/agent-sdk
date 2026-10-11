@@ -48,9 +48,10 @@ export class LLMProviderError extends SDKError {
     message: string,
     public readonly providerName?: string,
     public readonly statusCode?: number,
-    public readonly cause?: Error
+    public readonly cause?: Error,
+    code: ErrorCode = 'LOUSHO_PROVIDER_REQUEST_FAILED'
   ) {
-    super(message, 'LOUSHO_PROVIDER_REQUEST_FAILED', { appendHelp: false });
+    super(message, code, { appendHelp: false });
     this.name = 'LLMProviderError';
   }
 }
@@ -349,8 +350,8 @@ function headerValue(headers: Record<string, string> | undefined, name: string):
  * then `Retry-After` (seconds or an HTTP-date). */
 function extractRetryAfterMs(err: APICallError): number | undefined {
   const ms = Number(headerValue(err.responseHeaders, 'retry-after-ms'));
-  if (headerValue(err.responseHeaders, 'retry-after-ms') && Number.isFinite(ms) && ms >= 0) {
-    return ms;
+  if (headerValue(err.responseHeaders, 'retry-after-ms') && Number.isFinite(ms)) {
+    return Math.max(0, ms);
   }
   const header = headerValue(err.responseHeaders, 'retry-after');
   if (!header) {
@@ -358,7 +359,8 @@ function extractRetryAfterMs(err: APICallError): number | undefined {
   }
   const seconds = Number(header);
   if (Number.isFinite(seconds)) {
-    return seconds * 1000;
+    // A negative hint (a clock-skewed or broken server) means "now", never a negative wait.
+    return Math.max(0, seconds * 1000);
   }
   const dateMs = Date.parse(header);
   return Number.isNaN(dateMs) ? undefined : Math.max(0, dateMs - Date.now());
@@ -386,6 +388,19 @@ function categorizeMessage(message: string): {
     return { category: 'timeout', retryable: true };
   }
   return undefined;
+}
+
+/**
+ * Whether a category read from an error's text agrees with its HTTP status:
+ * "authentication" in a 5xx body ("authentication service unavailable") is a
+ * server failure, not a bad key, and "aborted" in a 4xx body does not make a
+ * rejected request a transient timeout.
+ */
+function messageFitsStatus(category: CompactedProviderErrorCategory, status: number | undefined): boolean {
+  if (status === undefined) return true;
+  if (category === 'auth-failure') return status < 500;
+  if (category === 'timeout') return status >= 500;
+  return true;
 }
 
 function categorizeApiCallError(err: APICallError): {
@@ -417,7 +432,7 @@ function categorizeApiCallError(err: APICallError): {
   }
 
   const byMessage = categorizeMessage(text);
-  if (byMessage) {
+  if (byMessage && messageFitsStatus(byMessage.category, status)) {
     return byMessage;
   }
 
@@ -553,6 +568,11 @@ export function compactProviderError(
   let cause: unknown = error;
   if (RetryError.isInstance(cause) && cause.lastError !== undefined) {
     cause = cause.lastError;
+  }
+  // `@ai-sdk/provider-utils` 4+ wraps a failure while reading a 200 response's body ("Failed to process
+  // successful response", status 200) around the real one - such as the in-response failure providerFetch raises.
+  while (APICallError.isInstance(cause) && (cause.statusCode ?? 0) < 400 && APICallError.isInstance(cause.cause)) {
+    cause = cause.cause;
   }
 
   // A connection failure (refused, DNS, reset, headers timeout) keeps its code
@@ -700,7 +720,9 @@ export function isModelActionableProviderErrorCategory(
  */
 export class CompactedLLMProviderError extends LLMProviderError {
   constructor(public readonly compacted: CompactedProviderError, cause?: Error) {
-    super(compacted.error, compacted.providerName, compacted.statusCode, cause);
+    // A throttled call (`rate-limit`, e.g. a 429) has its own code; every other failure is a failed request.
+    const code: ErrorCode = compacted.category === 'rate-limit' ? 'LOUSHO_PROVIDER_RATE_LIMITED' : 'LOUSHO_PROVIDER_REQUEST_FAILED';
+    super(compacted.error, compacted.providerName, compacted.statusCode, cause, code);
     this.name = 'CompactedLLMProviderError';
   }
 }

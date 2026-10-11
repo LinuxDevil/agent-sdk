@@ -111,15 +111,17 @@ describe('skills wiring (createAgent)', () => {
     expect(model.calls[0].tools ?? []).toEqual([]);
   });
 
-  it('throws when the user already registered load_skill', () => {
+  it('throws at createAgent() when the user already registered load_skill (like a `task` clash)', () => {
     const own = defineTool({ name: 'load_skill', description: 'mine', input: z.object({}), execute: () => 1 });
-    const agent = createAgent({ prompt: 'p', provider: mockModel(['x']), tools: [own], skills: [changelog] });
-    return expect(agent.send('x')).rejects.toThrow(/'load_skill' is already registered/);
+    expect(() => createAgent({ prompt: 'p', provider: mockModel(['x']), tools: [own], skills: [changelog] })).toThrow(
+      /'load_skill' is already registered/
+    );
   });
 
-  it('throws on duplicate skill names', async () => {
-    const agent = createAgent({ prompt: 'p', provider: mockModel(['x']), skills: [changelog, changelog] });
-    await expect(agent.send('x')).rejects.toThrow(/duplicate skill name 'changelog'/);
+  it('throws at createAgent() on duplicate skill names', () => {
+    expect(() => createAgent({ prompt: 'p', provider: mockModel(['x']), skills: [changelog, changelog] })).toThrow(
+      /duplicate skill name 'changelog'/
+    );
   });
 });
 

@@ -27,6 +27,7 @@ import { ToolRegistry } from './tools/ToolRegistry';
 import { ToolDescriptor } from './types';
 import { modelFromEnv, resolveProviderSpec } from './providers/providerSpec';
 import { withFallback, withRetry, type WithRetryOptions } from './providers/resilience';
+import { defaultAgentRetries } from './providers/aiSdkProvider';
 import { RateLimiter, type RateLimitOptions } from './providers/rateLimit';
 import { isDefinedTool } from './tools/defineTool';
 import { assertHostedToolNames, isHostedTool, type HostedTool } from './tools/hosted';
@@ -35,6 +36,7 @@ import { toolEntries, type ToolsOption } from './tools/toolEntries';
 import { ToolConcurrency, assertToolConcurrency } from './execution/toolBatch';
 import { assertMaxToolResultChars } from './execution/toolResult';
 import type { Skill } from './skills/defineSkill';
+import { assertUsable as assertSkillsUsable } from './skills/withSkills';
 import type { Message, ModelSettings } from './providers/llm';
 import type { PromptCachingOption } from './providers/promptCaching';
 import type { ReasoningOption } from './providers/reasoning';
@@ -471,12 +473,12 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    * limits, timeouts, network errors and 5xx responses, with exponential
    * backoff. Defaults to `{ maxRetries: 2 }` for every model given as a
    * `provider/model` string (resolved with the `ai` SDK's own retries off, so
-   * this is the only retry layer); `false` turns retries off. A `provider`
-   * instance you pass is wrapped only when you set `retry`: then the wrapper
-   * is the only retry layer too (a built-in provider's calls go out with the
-   * `ai` SDK's own retries off), and `false` sends each call once. Left
-   * unset, a built-in provider instance keeps the `ai` SDK's own retries
-   * (its config's `maxRetries`, default 2). A streamed step is also retried
+   * this is the only retry layer); `false` turns retries off. A built-in
+   * provider instance or a `fromAiSdk()` provider is wrapped the same way,
+   * with its own `maxRetries` (default 2) when `retry` is unset; the wrapper
+   * is then the only retry layer (the `ai` SDK's own retries are off), and
+   * `false` sends each call once. Any other `provider` instance is wrapped
+   * only when you set `retry`. A streamed step is also retried
    * when it fails before any text or tool call (reasoning chunks don't count).
    * `stream()` reports each retry as a `provider.retry` event.
    *
@@ -963,6 +965,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   const specs = agentSpecs(config, toolsFor, runOptions);
   const staticSpec = specs.static;
   if (staticSpec && config.subagents) assertNoTaskTool(staticSpec.agent, staticSpec.toolRegistry);
+  // Like `task`: a tool named `load_skill` clashes with `skills` here, not at the first send().
+  if (staticSpec && config.skills?.length) assertSkillsUsable(config.skills, staticSpec.agent, staticSpec.toolRegistry);
   // N6: a handoff tool may not share a tool's name (a per-run `tools` function is checked when the run starts).
   assertNoHandoffToolClash(handoffTools, specs.staticTools);
   // LOU-Z4: MCP tools join the registry and the agent's tools once connected.
@@ -1597,7 +1601,14 @@ function resolveModelSource(config: CreateAgentConfig, model: string | undefined
   let primary: LLMProvider;
   if (config.provider) {
     // C2: `false` sends each call once - a 0-retry withRetry() turns the 'ai' SDK's own retries off too.
-    primary = retry === undefined ? config.provider : withRetry(config.provider, retry || { maxRetries: 0 });
+    // Without `retry`, an 'ai'-SDK-backed instance retries like a string model (its own maxRetries, default 2).
+    const instanceRetries = retry === undefined ? defaultAgentRetries(config.provider) : undefined;
+    primary =
+      retry === undefined
+        ? instanceRetries === undefined
+          ? config.provider
+          : withRetry(config.provider, { maxRetries: instanceRetries })
+        : withRetry(config.provider, retry || { maxRetries: 0 });
   } else {
     primary = resolve(model ?? modelFromEnv('createAgent'));
   }

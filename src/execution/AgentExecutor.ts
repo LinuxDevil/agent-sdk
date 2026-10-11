@@ -982,7 +982,7 @@ export class AgentExecutor {
     // Execution loop with tool calling. LOU-V1: the signal is checked
     // before every model call (here) and every tool call (runToolCalls()).
     while (state.steps < maxSteps) {
-      const stopped = this.stopBeforeStep(options, state, agentSpanId);
+      const stopped = this.stopBeforeStep(options, state, agentSpanId, tools);
       if (stopped) {
         return stopped;
       }
@@ -1011,11 +1011,11 @@ export class AgentExecutor {
       }
     }
 
-    return this.outOfSteps(options, state, agentSpanId);
+    return this.outOfSteps(options, state, agentSpanId, tools);
   }
 
   /** The run's end once the loop left without a result: aborted, or out of steps. */
-  private static async outOfSteps(options: ExecuteOptions, state: AgentRunState, agentSpanId: string): Promise<ExecutionResult> {
+  private static async outOfSteps(options: ExecuteOptions, state: AgentRunState, agentSpanId: string, tools: ToolDefinition[]): Promise<ExecutionResult> {
     if (options.signal?.aborted) {
       return this.abortRun(options, state);
     }
@@ -1023,7 +1023,7 @@ export class AgentExecutor {
     // lets the model answer from what it gathered instead of returning
     // nothing.
     if (options.output) {
-      const output = await this.forcedAnswer(options, state, agentSpanId);
+      const output = await this.forcedAnswer(options, state, agentSpanId, tools);
       if (output && 'finishReason' in output) return output;
       if (state.finishReason !== 'output-invalid') state.finishReason = 'max-steps';
       return this.finishRun(options, state, output);
@@ -1038,7 +1038,8 @@ export class AgentExecutor {
   /**
    * The salvage call when `maxSteps` ran out with an `output` schema still
    * unanswered (audit log-incident F21): one more model call, no tools
-   * offered, asking the model to answer from what it gathered. Its reply is
+   * offered (a transcript with tool calls sends the run's tools with
+   * `toolChoice: 'none'`), asking the model to answer from what it gathered. Its reply is
    * validated like a normal final reply - a valid object ends the run
    * 'max-steps' with `object` set, an invalid one 'output-invalid' (no
    * repair: the step budget is spent). Returns the call's own terminal
@@ -1050,7 +1051,8 @@ export class AgentExecutor {
   private static async forcedAnswer(
     options: ExecuteOptions,
     state: AgentRunState,
-    agentSpanId: string
+    agentSpanId: string,
+    tools: ToolDefinition[]
   ): Promise<ExecutionResult | { object: unknown } | { outputError: OutputError } | undefined> {
     if (state.budget?.check(state.usage, state.steps, true)) return undefined;
     const prompt: Message = {
@@ -1059,7 +1061,12 @@ export class AgentExecutor {
     };
     state.messages.push(prompt);
     markRequestOnly(state, prompt);
-    const generatedStep = await this.generateOrSurfaceError({ ...options, hostedTools: undefined }, state, [], agentSpanId);
+    // A transcript with tool calls needs the tool definitions (Anthropic rejects tool blocks without them), so they go along with `toolChoice: 'none'`.
+    const sendTools = tools.length > 0 && state.messages.some((message) => message.role === 'tool');
+    const forced: ExecuteOptions = sendTools
+      ? { ...options, hostedTools: undefined, modelSettings: { ...options.modelSettings, toolChoice: 'none' } }
+      : { ...options, hostedTools: undefined };
+    const generatedStep = await this.generateOrSurfaceError(forced, state, sendTools ? tools : [], agentSpanId);
     if (!generatedStep || generatedStep === 'steered') return undefined;
     if (!('generated' in generatedStep)) return generatedStep;
     const { generated, measured } = generatedStep;
@@ -1109,11 +1116,11 @@ export class AgentExecutor {
   }
 
   /** The run's end when it must stop before the next model call: aborted (LOU-V1) or over budget (LOU-V6). */
-  private static stopBeforeStep(options: ExecuteOptions, state: AgentRunState, agentSpanId: string): Promise<ExecutionResult> | undefined {
+  private static stopBeforeStep(options: ExecuteOptions, state: AgentRunState, agentSpanId: string, tools: ToolDefinition[]): Promise<ExecutionResult> | undefined {
     if (options.signal?.aborted) return this.abortRun(options, state);
     const exceeded = state.budget?.check(state.usage, state.steps);
     if (exceeded?.limit === 'maxSteps' && options.output && state.budget?.mode(exceeded) !== 'throw') {
-      return this.stepLimitAnswer(options, state, exceeded, agentSpanId);
+      return this.stepLimitAnswer(options, state, exceeded, agentSpanId, tools);
     }
     return exceeded && this.stopForBudget(options, state, exceeded);
   }
@@ -1129,10 +1136,11 @@ export class AgentExecutor {
     options: ExecuteOptions,
     state: AgentRunState,
     budget: BudgetExceeded,
-    agentSpanId: string
+    agentSpanId: string,
+    tools: ToolDefinition[]
   ): Promise<ExecutionResult> {
     runEventsOf(options)?.budgetExceeded(budget);
-    const output = await this.forcedAnswer(options, state, agentSpanId);
+    const output = await this.forcedAnswer(options, state, agentSpanId, tools);
     if (output && 'finishReason' in output) return output;
     if (state.finishReason !== 'output-invalid') state.finishReason = 'budget-exceeded';
     return { ...(await this.finishRun(options, state, output)), budget };
@@ -1236,7 +1244,11 @@ export class AgentExecutor {
     if (typeof text !== 'string') return text;
     // F13: `functions.read_file` runs `read_file` when that is a known tool.
     const known = new Set([...tools.map((tool) => tool.function.name), ...(options.toolRegistry?.list() ?? [])]);
-    const result = { ...generated, text, toolCalls: resolveToolCallNames(generated.toolCalls, known), finishReason: modelFinishReason(generated.finishReason) };
+    const toolCalls = resolveToolCallNames(generated.toolCalls, known);
+    // A reply that ends 'tool_calls' without any call (no tool runs) ended like any final reply.
+    const reason = modelFinishReason(generated.finishReason);
+    const finishReason = reason === 'tool_calls' && !toolCalls?.length ? 'stop' : reason;
+    const result = { ...generated, text, toolCalls, finishReason };
     noteReasoning(state, result.reasoning);
 
     // Handle text response
@@ -1876,12 +1888,14 @@ export class AgentExecutor {
     state.finishReason = 'aborted';
     options.inputQueue?.close();
     await saveStepCheckpoint(options, state);
-    if (state.interruptedText) {
-      state.messages.push({ role: 'assistant', content: state.interruptedText, metadata: { interrupted: true } });
+    // The text the aborted call streamed is the result's text too (its tokens are already in `usage`).
+    const interrupted = state.interruptedText;
+    if (interrupted) {
+      state.messages.push({ role: 'assistant', content: interrupted, metadata: { interrupted: true } });
       state.interruptedText = undefined;
     }
 
-    return { ...toExecutionResult(state, state.finalText, 'aborted'), abortReason: abortReasonOf(options.signal) };
+    return { ...toExecutionResult(state, interrupted || state.finalText, 'aborted'), abortReason: abortReasonOf(options.signal) };
   }
 
   /**
