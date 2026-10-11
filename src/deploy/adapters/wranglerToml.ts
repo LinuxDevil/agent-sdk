@@ -82,24 +82,31 @@ function setKey(lines: string[], owned: OwnedTomlKey): void {
   const entries = entriesOf(lines);
   const found = entries.find((entry) => entry.kind === 'key' && entry.table === owned.table && entry.key === owned.key);
   if (found) {
-    if (owned.keepExisting) return;
-    lines.splice(found.start, found.end - found.start, ...(owned.value === undefined ? [] : [`${owned.key} = ${owned.value}`]));
-    if (owned.value === undefined && owned.table !== undefined) dropEmptyTable(lines, owned.table);
-    return;
+    if (!owned.keepExisting) replaceKey(lines, found, owned);
+  } else if (owned.value !== undefined) {
+    insertKey(lines, entries, owned.table, `${owned.key} = ${owned.value}`);
   }
-  if (owned.value === undefined) return;
-  const line = `${owned.key} = ${owned.value}`;
-  const inTable = entries.filter((entry) => entry.table === owned.table && entry.kind !== 'other');
+}
+
+function replaceKey(lines: string[], found: Entry, owned: OwnedTomlKey): void {
+  lines.splice(found.start, found.end - found.start, ...(owned.value === undefined ? [] : [`${owned.key} = ${owned.value}`]));
+  if (owned.value === undefined && owned.table !== undefined) dropEmptyTable(lines, owned.table);
+}
+
+/** Adds `line` after the last key of `table` (top-level keys before the first table), or as a new table at the end. */
+function insertKey(lines: string[], entries: Entry[], table: string | undefined, line: string): void {
+  const inTable = entries.filter((entry) => entry.table === table && entry.kind !== 'other');
   if (inTable.length > 0) {
     lines.splice(inTable[inTable.length - 1].end, 0, line);
-  } else if (owned.table === undefined) {
-    // Top-level keys must come before the first table.
+    return;
+  }
+  if (table === undefined) {
     const firstHeader = entries.find((entry) => entry.kind === 'header');
     lines.splice(firstHeader ? firstHeader.start : lines.length, 0, line);
-  } else {
-    if (lines.length > 0 && lines[lines.length - 1].trim() !== '') lines.push('');
-    lines.push(`[${owned.table}]`, line);
+    return;
   }
+  if (lines.length > 0 && lines[lines.length - 1].trim() !== '') lines.push('');
+  lines.push(`[${table}]`, line);
 }
 
 /** Removes `[table]`'s header when nothing but blank lines and comments is left in it. */
