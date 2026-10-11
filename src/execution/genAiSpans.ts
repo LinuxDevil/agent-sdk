@@ -163,6 +163,7 @@ export function agentRunSpanInit(
       [SdkAttr.TASK_ID]: subagent?.taskId,
       [GenAiAttr.AGENT_ID]: agent.id,
       [GenAiAttr.PROVIDER_NAME]: provider?.name,
+      [GenAiAttr.REQUEST_MODEL]: agent.settings?.model || provider?.defaultModel || undefined,
       [GenAiAttr.CONVERSATION_ID]: sessionId,
       ...(!keepLegacyContent(content) ? {} : { [LegacyAttr.INPUT]: text }),
       [GenAiAttr.INPUT_MESSAGES]:
@@ -201,6 +202,15 @@ function genAiFinishReason(reason: GenerateResult['finishReason']): string {
 /** The fields of a provider's raw response that may name the model that answered. */
 type RawResponseModel = { response?: { modelId?: unknown }; modelId?: unknown; model?: unknown };
 
+/** The fields of a provider's raw response that may carry the response id (AI SDK `response.id`, OpenAI-style `id`). */
+type RawResponseId = { response?: { id?: unknown }; id?: unknown };
+
+function responseId(generated: GenerateResult): string | undefined {
+  const raw = generated.rawResponse as RawResponseId | null | undefined;
+  const id = raw?.response?.id ?? raw?.id;
+  return typeof id === 'string' && id ? id : undefined;
+}
+
 function responseModel(generated: GenerateResult): string | undefined {
   const raw = generated.rawResponse as RawResponseModel | null | undefined;
   const model = raw?.response?.modelId ?? raw?.modelId ?? raw?.model;
@@ -230,6 +240,7 @@ export function recordLlmResult(
     ...span.attributes,
     ...defined({
       [GenAiAttr.RESPONSE_MODEL]: responseModel(generated),
+      [GenAiAttr.RESPONSE_ID]: responseId(generated),
       [GenAiAttr.RESPONSE_FINISH_REASONS]: [genAiFinishReason(generated.finishReason)],
       [GenAiAttr.USAGE_INPUT_TOKENS]: usage?.inputTokens,
       [GenAiAttr.USAGE_OUTPUT_TOKENS]: usage?.outputTokens,

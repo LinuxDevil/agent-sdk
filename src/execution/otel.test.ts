@@ -6,7 +6,7 @@ import * as otelApi from '@opentelemetry/api';
 import type { Tracer, Span as OtelSpan, Context, Meter } from '@opentelemetry/api';
 import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
 import { AggregationTemporality, InMemoryMetricExporter, MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { createOtelTraceExporter } from './otel';
+import { createOtelTraceExporter, MAX_TRACKED_SPANS } from './otel';
 import { AgentExecutor } from './AgentExecutor';
 import { Span, TraceExporter } from './tracing';
 import { ToolRegistry, defineTool } from '../tools';
@@ -173,6 +173,22 @@ describe('createOtelTraceExporter', () => {
     exporter.onSpanEnd(makeSpan({ id: 'root', endTime: 1700 }));
     exporter.onSpanStart(makeSpan({ id: 'late', parentId: 'task' }));
     expect(otelApi.trace.getSpan(fake.startedSpans[3].parentContext as Context)).toBeUndefined();
+  });
+
+  it('tracks at most MAX_TRACKED_SPANS spans, dropping the oldest (a root that never ends does not leak)', () => {
+    const exporter = createOtelTraceExporter({ tracer: fake.tracer, metrics: false });
+    exporter.onSpanStart(makeSpan({ id: 'abandoned' }));
+    for (let i = 0; i < MAX_TRACKED_SPANS; i++) exporter.onSpanStart(makeSpan({ id: `open${i}`, attributes: {} }));
+    exporter.onSpanStart(makeSpan({ id: 'late-child', parentId: 'abandoned' }));
+    expect(otelApi.trace.getSpan(fake.startedSpans.at(-1)!.parentContext as Context)).toBeUndefined();
+  });
+
+  it('leaves out the deprecated attribute names with legacyAttributes: false', () => {
+    const exporter = createOtelTraceExporter({ tracer: fake.tracer, metrics: false, legacyAttributes: false });
+    const attributes = { 'gen_ai.request.model': 'gpt-4', model: 'gpt-4', promptTokens: 3, 'gen_ai.usage.input_tokens': 3, toolName: 't', latencyMs: 4 };
+    exporter.onSpanStart(makeSpan({ id: 's1', attributes }));
+    exporter.onSpanEnd(makeSpan({ id: 's1', attributes, endTime: 2000 }));
+    expect(fake.startedSpans[0].span.attributes).toEqual({ 'gen_ai.request.model': 'gpt-4', 'gen_ai.usage.input_tokens': 3 });
   });
 
   it('defaults to a tracer resolved via trace.getTracer when no tracer option is passed', async () => {

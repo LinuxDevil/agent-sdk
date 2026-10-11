@@ -11,7 +11,7 @@
  */
 
 import { newId } from '../utils/id';
-import { ErrorAttr, GenAiAttr, LegacyAttr, SdkAttr } from './semconv';
+import { ErrorAttr, GenAiAttr, GenAiOperation, LegacyAttr, SdkAttr } from './semconv';
 
 /** OpenTelemetry span kind, for the kinds this SDK emits. */
 export type SpanKind = 'internal' | 'client';
@@ -60,6 +60,9 @@ interface UsageRollup {
   /** A finished child had token usage but no known price. */
   unpriced: boolean;
   estimated: boolean;
+  /** Tokens of the finished descendant model calls; `undefined` while none reported any. */
+  inputTokens?: number;
+  outputTokens?: number;
 }
 
 /**
@@ -130,16 +133,31 @@ function rollUpUsage(span: Span, own: UsageRollup): void {
     parent.unpriced = true;
   }
   if (span.attributes[SdkAttr.USAGE_ESTIMATED] === true) parent.estimated = true;
+  // A model call's own tokens, else (a tool or agent span) what its descendants added up to.
+  const input = span.attributes[GenAiAttr.USAGE_INPUT_TOKENS];
+  const output = span.attributes[GenAiAttr.USAGE_OUTPUT_TOKENS];
+  parent.inputTokens = addTokens(parent.inputTokens, typeof input === 'number' ? input : own.inputTokens);
+  parent.outputTokens = addTokens(parent.outputTokens, typeof output === 'number' ? output : own.outputTokens);
 }
 
-/** Stamps the cumulative cost (and estimated flag) of a span's children onto it. */
+function addTokens(total: number | undefined, tokens: number | undefined): number | undefined {
+  return tokens === undefined ? total : (total ?? 0) + tokens;
+}
+
+/**
+ * Stamps the cumulative cost (and estimated flag) of a span's children onto
+ * it, and on an `invoke_agent` span the run's total `gen_ai.usage.*` tokens.
+ */
 function applyRollup(span: Span, own: UsageRollup): void {
   const priced = own.priced && !own.unpriced;
-  if (!priced && !own.estimated) return;
+  const agentTokens = span.attributes[GenAiAttr.OPERATION_NAME] === GenAiOperation.INVOKE_AGENT;
+  if (!priced && !own.estimated && !(agentTokens && (own.inputTokens !== undefined || own.outputTokens !== undefined))) return;
   span.attributes = {
     ...span.attributes,
     ...(priced ? { [SdkAttr.COST_USD]: own.costUsd } : {}),
     ...(own.estimated ? { [SdkAttr.USAGE_ESTIMATED]: true } : {}),
+    ...(agentTokens && own.inputTokens !== undefined ? { [GenAiAttr.USAGE_INPUT_TOKENS]: own.inputTokens } : {}),
+    ...(agentTokens && own.outputTokens !== undefined ? { [GenAiAttr.USAGE_OUTPUT_TOKENS]: own.outputTokens } : {}),
   };
 }
 
