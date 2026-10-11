@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { PROVIDER_NAMES, TEMPLATES, type Template } from './options';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { loadSpec } from '../../spec/loadSpec';
 import { renderProject, type ProjectConfig } from './templates';
 
 const SDK = { version: '1.0.0-alpha.8', peerDependencies: { ai: '^4.3.19', zod: '^3.25.76' } };
@@ -109,6 +113,30 @@ describe('renderProject', () => {
     expect(files['agent.yaml']).toContain('type: anthropic');
     expect(JSON.parse(files['package.json']!).scripts.dev).toBe('lousho dev agent.yaml');
     expect(files['src/agent.ts']).toBeUndefined();
+  });
+
+  it('the yaml template test imports only public SDK entry points', () => {
+    const test = renderProject(config('openai', 'yaml'))['src/agent.test.ts']!;
+    const specifiers = [...test.matchAll(/from '([^']+)'/g)].map((m) => m[1]);
+    expect(specifiers.filter((s) => s!.startsWith('.'))).toEqual([]);
+  });
+
+  it.each(['123', 'true', 'null'])('quotes a YAML-special project name (%s) so it stays a string', (name) => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'lousho-yaml-name-'));
+    try {
+      const file = path.join(dir, 'agent.yaml');
+      writeFileSync(file, renderProject({ ...config('openai', 'yaml'), name })['agent.yaml']!);
+      expect(loadSpec(file).name).toBe(name);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('the terminal chat survives a provider error and reports a startup error without a stack', () => {
+    const index = renderProject(config('openai', 'minimal'))['src/index.ts']!;
+    expect(index).toMatch(/try \{\n  agent = buildAgent\(\);/);
+    expect(index).toMatch(/try \{\n    console\.log\(`agent> /);
+    expect(index).toContain("console.error(`error: ${errorText(error)}`);");
   });
 
   it('uses the chosen package manager in the README commands', () => {

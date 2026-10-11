@@ -47,6 +47,8 @@ describe('parseCommand', () => {
   it('takes a value that starts with - only in the = form, and ends the flags at --', () => {
     expect(parseCommand(SPEC, ['--name=-x']).values.name).toBe('-x');
     expect(() => parseCommand(SPEC, ['--name', '-x'])).toThrowError(/--name needs a value/);
+    // A negative number is the likely intent: say how to pass it.
+    expect(() => parseCommand(SPEC, ['--name', '-1'])).toThrowError(/--name needs a value; a value that starts with '-' needs the = form: --name=-1\./);
     const parsed = parseCommand(SPEC, ['--name', 'a', '--', '--all']);
     expect(parsed.positionals).toEqual(['--all']);
     expect(parsed.values.all).toBeUndefined();
@@ -178,6 +180,8 @@ describe('--traces[=dir] (#282)', () => {
     expect(parseChatArgs(['a.yaml', '--traces=./t']).traces).toBe('./t');
     expect(parseDevArgs(['a.yaml', '--traces', '--port', '4000'])).toMatchObject({ path: 'a.yaml', port: 4000, traces: true });
     expect(parseDevArgs(['a.yaml', '--traces=out/t']).traces).toBe('out/t');
+    expect(parseDevArgs(['a.yaml', '--allowed-hosts', 'devbox.local, agent.test']).allowedHosts).toEqual(['devbox.local', 'agent.test']);
+    expect(parseDevArgs(['a.yaml']).allowedHosts).toBeUndefined();
   });
 
   it('rejects an empty directory and leaves what follows -- alone', () => {

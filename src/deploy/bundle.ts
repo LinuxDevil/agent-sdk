@@ -12,8 +12,9 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { builtinModules } from 'node:module';
-import type { OnResolveResult, Plugin, ResolveResult } from 'esbuild';
+import type { OnResolveArgs, OnResolveResult, Plugin, PluginBuild, ResolveResult } from 'esbuild';
 import { SDKError } from '../execution/errors';
+import { moduleDir } from '../utils/moduleDir';
 
 export const RUNTIME_SPECIFIER = '@lousho/build-ai-agent/deploy-runtime';
 export const WORKER_RUNTIME_SPECIFIER = '@lousho/build-ai-agent/deploy-runtime-worker';
@@ -23,7 +24,7 @@ export const WORKER_RUNTIME_SPECIFIER = '@lousho/build-ai-agent/deploy-runtime-w
  * package root. Works both from source (src/deploy/) and from the bundled
  * CLI (dist/cli/build.js), in a checkout or an installed node_modules copy.
  */
-export function findSdkRoot(startDir: string = __dirname): string {
+export function findSdkRoot(startDir: string = moduleDir()): string {
   let dir = startDir;
   for (;;) {
     if (isSdkPackageRoot(dir)) return dir;
@@ -114,7 +115,7 @@ export function workerSandboxShimPlugin(): Plugin {
  * what `createAgent()` reaches. A Node builtin imported anywhere else (a
  * provider, a tool) is not shimmed, so the build's `node:` leak check fails it.
  */
-export const NODE_SHIMMED_IMPORTERS = ['createAgent', 'session/sessionStore', 'storage/fileNames', 'session/AgentSession', 'projectInstructions', 'tools/mcp/connect', 'skills/withSkills', 'storage/fsRetry'];
+export const NODE_SHIMMED_IMPORTERS = ['createAgent', 'session/sessionStore', 'storage/fileNames', 'session/AgentSession', 'projectInstructions', 'tools/mcp/connect', 'skills/withSkills', 'storage/fsRetry', 'storage/atomicFile', 'storage/fileLock'];
 
 /**
  * esbuild plugin (cloudflare-worker target only) that redirects the `node:*`
@@ -246,18 +247,23 @@ export function workerBuiltinImportersPlugin(importers: Map<string, Set<string>>
     setup(build) {
       build.onResolve({ filter: builtin }, async (args) => {
         if (isBuiltinCheck(args.pluginData)) return undefined;
-        const resolved = await build.resolve(args.path, {
-          kind: args.kind,
-          importer: args.importer,
-          resolveDir: args.resolveDir,
-          pluginData: { [SKIP_BUILTIN_CHECK]: true },
-        });
+        const resolved = await resolveNormally(build, args);
         if (resolved.errors.length === 0) return resolvedAs(resolved);
         record(args.path, args.importer);
         return { path: args.path, external: true };
       });
     },
   };
+}
+
+/** esbuild's own resolution of `args`, marked so the calling plugin skips its nested call. */
+function resolveNormally(build: PluginBuild, args: OnResolveArgs): Promise<ResolveResult> {
+  return build.resolve(args.path, {
+    kind: args.kind,
+    importer: args.importer,
+    resolveDir: args.resolveDir,
+    pluginData: { [SKIP_BUILTIN_CHECK]: true },
+  });
 }
 
 /** True for the plugin's own nested `build.resolve()` call. */
@@ -268,6 +274,38 @@ function isBuiltinCheck(pluginData: unknown): boolean {
 /** An onResolve result that keeps what esbuild's own resolution found. */
 function resolvedAs({ path: file, external, namespace, sideEffects, suffix, pluginData }: ResolveResult): OnResolveResult {
   return { path: file, external, namespace, sideEffects, suffix, pluginData };
+}
+
+const MISSING_PEER_NAMESPACE = 'lousho-missing-peer';
+
+/**
+ * esbuild plugin (cloudflare-worker target only) for the optional peers a
+ * Worker agent may use - the provider packages and the MCP SDK (remote
+ * servers) - when they are not installed: each one the SDK reaches (every
+ * built-in provider module is imported, used or not) becomes a module that
+ * throws "Cannot find package" when imported. The SDK imports them lazily
+ * through `loadOptionalPeer()`, so a Worker that never uses one never fails,
+ * and one that does gets the coded missing-peer error at run time instead
+ * of a build that asks for every provider package one at a time. An
+ * installed peer resolves and is bundled as before.
+ */
+export function workerMissingPeerPlugin(): Plugin {
+  const filter = /^(?:@ai-sdk\/(?:openai|anthropic)|@modelcontextprotocol\/sdk)(?:\/.*)?$/;
+  return {
+    name: 'lousho-worker-missing-peer',
+    setup(build) {
+      build.onResolve({ filter }, async (args) => {
+        if (isBuiltinCheck(args.pluginData)) return undefined;
+        const resolved = await resolveNormally(build, args);
+        if (resolved.errors.length === 0) return resolvedAs(resolved);
+        return { path: args.path, namespace: MISSING_PEER_NAMESPACE };
+      });
+      build.onLoad({ filter: /.*/, namespace: MISSING_PEER_NAMESPACE }, (args) => ({
+        contents: `throw Object.assign(new Error(${JSON.stringify(`Cannot find package '${args.path}': it was not installed when this Worker was built`)}), { code: 'ERR_MODULE_NOT_FOUND' });\n`,
+        loader: 'js',
+      }));
+    },
+  };
 }
 
 /**

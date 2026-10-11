@@ -30,6 +30,21 @@ export interface ChatArgs {
   help?: boolean;
 }
 
+const HELP = `${USAGE}
+
+Chats with an agent in the terminal: streams replies, shows tool calls, asks for approvals.
+The path is a spec file (.yaml/.yml/.json), an agent directory, or a .ts/.js module exporting an agent or createAgent() options.
+./.env is loaded when it exists (variables already set win).
+
+Options:
+  --model provider/model   use another model (e.g. openai/gpt-4o-mini)
+  --session id             resume or name the session
+  --store sqlite:<file>    keep sessions in a SQLite file (default: in memory)
+  --traces[=dir]           write local trace files (default .lousho/traces)
+  -h, --help               show this help
+
+Commands in the chat: /new, /compact, /clear, /model <provider/model>, /history, /quit.`;
+
 const SPEC: CommandSpec = {
   command: 'chat',
   usage: USAGE,
@@ -86,7 +101,7 @@ export async function runChat(
   try {
     const parsed = parseChatArgs(args);
     if (parsed.help) {
-      io.stdout.write(`${USAGE}
+      io.stdout.write(`${HELP}
 `);
       return 0;
     }

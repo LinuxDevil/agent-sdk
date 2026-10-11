@@ -7,28 +7,34 @@
  *   `<dir>/checkpoints/<id>.json`          the latest checkpoint of a run
  *   `<dir>/checkpoint-history/<id>.json`   its bounded history, oldest first
  *   `<dir>/approvals/<id>.json`            a pending approval and its snapshot
+ *   `<dir>/leases/<id>.json`               the run lease of a checkpointed run while it executes
  *   `<dir>/oauth/tokens/<sha256>.json`     an OAuth token or client, encrypted (`{ key, payload }`)
  *   `<dir>/oauth/pending/<state>.json`     a pending sign-in, encrypted (`{ expiresAt, payload }`)
  *
  * Ids are written case-safe (`Alice` -> `^alice`, see `fileNames.ts`), so ids
  * that differ only in case never share a file on Windows or macOS; files
- * written before that encoding are still read.
+ * written before that encoding are still read. An id too long for a file name
+ * once case-safe, or a Windows device name, is stored under `~<prefix>~<hash>`
+ * (see `atomicFile.ts`).
  *
- * Every write goes to a temp file and is renamed into place, so a crash never
- * leaves half a file. No lock files: a crashed writer cannot block anyone.
- * Two processes saving one session's checkpoint at the same time can lose one
- * history entry (the ring is a read-modify-write); resolving an approval is
- * safe across processes (see `FileApprovalStore`).
+ * Every write goes to a temp file, is flushed to disk and renamed into place,
+ * so neither a crash nor a power loss leaves half a file. Lock files guard only
+ * the compare-and-swaps (a session's `saveIf`, a run lease), and a lock left by
+ * a crashed writer is taken over. Two processes saving one session's checkpoint
+ * at the same time can lose one history entry (the ring is a read-modify-write),
+ * but the run lease keeps two processes from running one checkpointed run at
+ * once; resolving an approval is safe across processes (see `FileApprovalStore`).
  */
 
-import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
-import { readFileWithRetry, renameWithRetry } from './fsRetry';
-import { dirname, join, resolve } from 'node:path';
-import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 import { oldestFirst, type ApprovalStore, type ExecutionSnapshot, type PendingApproval, type ResolvedApproval } from '../execution/ApprovalGate';
 import {
   appendToRing,
   listCheckpoints,
+  listedCheckpoint,
+  parseCheckpoint,
   newestFirst,
   resolveHistoryLimit,
   toHistoryEntry,
@@ -44,6 +50,10 @@ import { ConfigurationError } from '../execution/errors';
 import { decodeBytes, encodeBytes, FileSessionStore } from '../session/sessionStore';
 import type { AgentStore } from './agentStore';
 import { caseSafeName, findLegacyFile, idFromCaseSafeName, removeLegacyFile } from './fileNames';
+import { fileNameOf, HASHED_NAME_MARK, readTextFile, writeFileAtomic } from './atomicFile';
+import { withFileLock } from './fileLock';
+import { LEASE_SWEEP_AGE_MS, leaseAvailable, newLeaseRecord, parseLeaseRecord } from './leaseRecord';
+import { assertCheckpointId, isCheckpointId } from '../session/checkpointId';
 import { SealedTokenStore, type SealedRecordBackend } from '../oauth/sealedTokenStore';
 import type { TokenKeyInput } from '../oauth/tokenCipher';
 
@@ -59,13 +69,6 @@ export interface FileStoreOptions {
   tokenKey?: TokenKeyInput;
 }
 
-/**
- * Checkpoint ids are session ids plus the `.turn-<n>` / `.fork-<n>` suffixes
- * the SDK appends, so a `.` is allowed, but not first (no `.`, `..` or hidden
- * files) and never a path separator.
- */
-const CHECKPOINT_ID_PATTERN = /^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,199}$/;
-
 /** Approval ids arrive from HTTP input and become file names. */
 const APPROVAL_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
@@ -79,57 +82,38 @@ function isMissing(error: unknown): boolean {
   return (error as NodeJS.ErrnoException).code === 'ENOENT';
 }
 
-/** `undefined` when `file` does not exist. */
-async function readText(file: string): Promise<string | undefined> {
-  try {
-    return await readFileWithRetry(file);
-  } catch (error) {
-    if (isMissing(error)) return undefined;
-    throw error;
-  }
-}
+const readText = readTextFile;
 
-/** Read `<id>.json` in `dir` under its case-safe name, or under its legacy name (the id itself) when only that exists. */
+/** Read `<id>.json` in `dir` under its file name, or under its legacy name (the id itself) when only that exists. */
 async function readById(dir: string, id: string): Promise<string | undefined> {
-  const raw = await readText(join(dir, `${caseSafeName(id)}.json`));
+  const raw = await readText(join(dir, `${fileNameOf(id)}.json`));
   if (raw !== undefined) return raw;
-  const legacy = await findLegacyFile(dir, caseSafeName(id), id);
+  const legacy = await findLegacyFile(dir, fileNameOf(id), id);
   return legacy === undefined ? undefined : readText(legacy);
 }
 
-/** Write to a unique temp file next to `file` and rename it over `file`; creates the directory when it is missing. */
+/** Write `value` as JSON to `file`, atomically and durably (see `writeFileAtomic`). */
 async function writeAtomic(file: string, value: unknown): Promise<void> {
-  const temp = `${file}.${process.pid}.${randomUUID()}.tmp`;
-  const content = JSON.stringify(value, encodeBytes);
-  try {
-    try {
-      await writeFile(temp, content, 'utf8');
-    } catch (error) {
-      if (!isMissing(error)) throw error;
-      await mkdir(dirname(file), { recursive: true });
-      await writeFile(temp, content, 'utf8');
-    }
-    await renameWithRetry(temp, file);
-  } catch (error) {
-    await rm(temp, { force: true });
-    throw error;
-  }
+  await writeFileAtomic(file, JSON.stringify(value, encodeBytes));
 }
 
 /**
  * Claim `file` with an exclusive create of `<file>.claim` (atomic on POSIX and
  * NTFS), read it, delete it and release the claim: of two callers, in one
  * process or two, exactly one gets the content. `undefined` when another
- * caller holds the claim or there is no file.
+ * caller holds the claim or there is no file. A claim older than
+ * `staleClaimMs` whose file is still there was left by a caller that crashed
+ * before deleting it: it is taken over (by one caller only, see `withFileLock`).
  */
-async function takeFile(file: string): Promise<string | undefined> {
+async function takeFile(file: string, staleClaimMs = STALE_CLAIM_MS): Promise<string | undefined> {
   const claim = `${file}.claim`;
   try {
     await writeFile(claim, String(process.pid), { flag: 'wx' });
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
-    if (code === 'EEXIST' || code === 'ENOENT') return undefined; // another caller has it, or nothing was ever saved
-    throw error;
+    if (code === 'ENOENT') return undefined; // nothing was ever saved
+    if (code !== 'EEXIST') throw error;
+    return takeOverStaleClaim(file, claim, staleClaimMs);
   }
   try {
     const raw = await readText(file);
@@ -140,26 +124,59 @@ async function takeFile(file: string): Promise<string | undefined> {
   }
 }
 
-/** Checkpoints and their history as JSON files; created on first write. */
+/** How old a `.claim` file must be (ms) to count as left by a crashed resolver. */
+const STALE_CLAIM_MS = 60_000;
+
+/** {@link takeFile} when a claim file is there: `undefined` unless it is stale and this caller takes it over. */
+async function takeOverStaleClaim(file: string, claim: string, staleClaimMs: number): Promise<string | undefined> {
+  const age = await stat(claim).then(
+    (held) => Date.now() - held.mtimeMs,
+    () => undefined
+  );
+  if (age === undefined || age <= staleClaimMs) return undefined;
+  // One caller at a time decides on the stale claim; it reads the file under the lock and deletes it with the claim.
+  return withFileLock(
+    `${file}.reclaim`,
+    async () => {
+      const still = await stat(claim).then(
+        (held) => Date.now() - held.mtimeMs > staleClaimMs,
+        () => false
+      );
+      if (!still) return undefined;
+      const raw = await readText(file);
+      if (raw !== undefined) await rm(file, { force: true });
+      await rm(claim, { force: true });
+      return raw;
+    },
+    { timeoutMs: 1_000, staleMs: staleClaimMs }
+  ).catch(() => undefined);
+}
+
+/** Field holding the id in a checkpoint file whose name is shortened (`fileNameOf`), so `list()` can name it. */
+const ID_FIELD = '$checkpointId';
+
+/** Checkpoints and their history as JSON files; created on first write. Run leases live in `leaseDir`. */
 class FileCheckpointStore implements CheckpointStore {
   private readonly historyLimit: number;
+  private lastSweep = 0;
 
   constructor(
     private readonly checkpointDir: string,
     private readonly historyDir: string,
+    private readonly leaseDir: string,
     options: FileStoreOptions
   ) {
     this.historyLimit = resolveHistoryLimit(options.historyLimit);
   }
 
   private fileFor(dir: string, sessionId: string): string {
-    assertId(sessionId, CHECKPOINT_ID_PATTERN, 'session id');
-    return join(dir, `${caseSafeName(sessionId)}.json`);
+    assertCheckpointId(sessionId);
+    return join(dir, `${fileNameOf(sessionId)}.json`);
   }
 
   /** The oldest-first ring; a missing or unreadable (half-written) file counts as empty. */
   private async readRing(sessionId: string): Promise<CheckpointHistoryEntry[]> {
-    assertId(sessionId, CHECKPOINT_ID_PATTERN, 'session id');
+    assertCheckpointId(sessionId);
     const raw = await readById(this.historyDir, sessionId);
     if (raw === undefined) return [];
     try {
@@ -172,52 +189,111 @@ class FileCheckpointStore implements CheckpointStore {
 
   async save(sessionId: string, checkpoint: Checkpoint): Promise<void> {
     const file = this.fileFor(this.checkpointDir, sessionId);
-    await writeAtomic(file, checkpoint);
-    await removeLegacyFile(this.checkpointDir, caseSafeName(sessionId), sessionId);
+    const name = fileNameOf(sessionId);
+    await writeAtomic(file, name.includes(HASHED_NAME_MARK) ? { ...checkpoint, [ID_FIELD]: sessionId } : checkpoint);
+    await removeLegacyFile(this.checkpointDir, name, sessionId);
     if (this.historyLimit === 0) return;
     const ring = appendToRing(await this.readRing(sessionId), toHistoryEntry(checkpoint), this.historyLimit);
     await writeAtomic(this.fileFor(this.historyDir, sessionId), ring);
-    await removeLegacyFile(this.historyDir, caseSafeName(sessionId), sessionId);
+    await removeLegacyFile(this.historyDir, name, sessionId);
   }
 
   async load(sessionId: string): Promise<Checkpoint | null> {
-    assertId(sessionId, CHECKPOINT_ID_PATTERN, 'session id');
+    assertCheckpointId(sessionId);
     const raw = await readById(this.checkpointDir, sessionId);
-    return raw === undefined ? null : (JSON.parse(raw, decodeBytes) as Checkpoint);
+    if (raw === undefined) return null;
+    const checkpoint = parseCheckpoint(raw, sessionId, `${this.checkpointDir}/${fileNameOf(sessionId)}.json`, decodeBytes);
+    delete (checkpoint as Checkpoint & { [ID_FIELD]?: string })[ID_FIELD];
+    return checkpoint;
   }
 
   async delete(sessionId: string, options: CheckpointDeleteOptions = {}): Promise<void> {
+    const name = fileNameOf(sessionId);
     await rm(this.fileFor(this.checkpointDir, sessionId), { force: true });
-    await removeLegacyFile(this.checkpointDir, caseSafeName(sessionId), sessionId);
+    await removeLegacyFile(this.checkpointDir, name, sessionId);
     if (options.keepHistory) return;
     await rm(this.fileFor(this.historyDir, sessionId), { force: true });
-    await removeLegacyFile(this.historyDir, caseSafeName(sessionId), sessionId);
+    await removeLegacyFile(this.historyDir, name, sessionId);
   }
 
   async history(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]> {
     return newestFirst(await this.readRing(sessionId), options);
   }
 
-  /** Eve DUR-F15: the latest checkpoint of every id in the directory, by id; a half-written file is skipped. */
+  /**
+   * Eve DUR-F15: the latest checkpoint of every id in the directory, by id. A
+   * file that cannot be read as a checkpoint is listed as an `'in-progress'` run
+   * whose `lastError` is `LOUSHO_CHECKPOINT_CORRUPT`, as `load()` reports it.
+   */
   async list(options?: CheckpointListOptions): Promise<CheckpointListEntry[]> {
     const files = new Map<string, string>();
+    const shortened: string[] = [];
     for (const name of await jsonFiles(this.checkpointDir)) {
+      if (name.includes(HASHED_NAME_MARK)) {
+        shortened.push(name);
+        continue;
+      }
       const id = idFromCaseSafeName(name);
-      if (!CHECKPOINT_ID_PATTERN.test(id)) continue;
+      if (!isCheckpointId(id)) continue;
       // A legacy file (named by the id itself) counts only when its case-safe file is missing.
       if (name === caseSafeName(id) || !files.has(id)) files.set(id, name);
     }
-    const found: Array<[string, Checkpoint]> = [];
+    const found: Array<readonly [string, Checkpoint]> = [];
     for (const [id, name] of files) {
       const raw = await readText(join(this.checkpointDir, `${name}.json`));
-      if (raw === undefined) continue;
-      try {
-        found.push([id, JSON.parse(raw, decodeBytes) as Checkpoint]);
-      } catch {
-        // half-written
-      }
+      if (raw !== undefined) found.push(listedCheckpoint(id, () => parseCheckpoint(raw, id, `${this.checkpointDir}/${name}.json`, decodeBytes)));
+    }
+    for (const name of shortened) {
+      const entry = await this.readShortened(name);
+      if (entry) found.push(entry);
     }
     return listCheckpoints(found, options);
+  }
+
+  /** A checkpoint under a shortened name, with the id it holds; `undefined` when it cannot be read (nor named). */
+  private async readShortened(name: string): Promise<[string, Checkpoint] | undefined> {
+    const raw = await readText(join(this.checkpointDir, `${name}.json`));
+    const parsed = raw === undefined ? undefined : parseJson<Checkpoint & { [ID_FIELD]?: unknown }>(raw, decodeBytes);
+    const id = parsed?.[ID_FIELD];
+    if (typeof id !== 'string' || !Array.isArray(parsed?.messages)) return undefined;
+    delete parsed[ID_FIELD];
+    return [id, parsed];
+  }
+
+  private leaseFile(sessionId: string): string {
+    return this.fileFor(this.leaseDir, sessionId);
+  }
+
+  /** Run lease: a compare-and-swap of `leases/<id>.json` under its lock file. */
+  async acquireLease(sessionId: string, owner: string, ttlMs: number): Promise<boolean> {
+    const file = this.leaseFile(sessionId);
+    await mkdir(this.leaseDir, { recursive: true });
+    await this.sweepLeases();
+    return withFileLock(`${file}.lock`, async () => {
+      if (!leaseAvailable(parseLeaseRecord(await readText(file)), owner)) return false;
+      await writeAtomic(file, newLeaseRecord(owner, ttlMs));
+      return true;
+    });
+  }
+
+  async releaseLease(sessionId: string, owner: string): Promise<void> {
+    const file = this.leaseFile(sessionId);
+    if ((await readText(file)) === undefined) return;
+    await withFileLock(`${file}.lock`, async () => {
+      if (parseLeaseRecord(await readText(file))?.owner === owner) await rm(file, { force: true });
+    });
+  }
+
+  /** Removes leases (and one-off claims) that expired long ago, at most once a minute. */
+  private async sweepLeases(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastSweep < 60_000) return;
+    this.lastSweep = now;
+    for (const name of await jsonFiles(this.leaseDir)) {
+      const file = join(this.leaseDir, `${name}.json`);
+      const record = parseLeaseRecord(await readText(file));
+      if (record && record.expiresAt < now - LEASE_SWEEP_AGE_MS) await rm(file, { force: true });
+    }
   }
 }
 
@@ -234,12 +310,12 @@ class FileApprovalStore implements ApprovalStore {
 
   private fileFor(id: string): string {
     assertId(id, APPROVAL_ID_PATTERN, 'approval id');
-    return join(this.dir, `${caseSafeName(id)}.json`);
+    return join(this.dir, `${fileNameOf(id)}.json`);
   }
 
   /** The file of `id` written before case-safe names, when there is one. */
   private legacyFile(id: string): Promise<string | undefined> {
-    return findLegacyFile(this.dir, caseSafeName(id), id);
+    return findLegacyFile(this.dir, fileNameOf(id), id);
   }
 
   async save(pending: PendingApproval, snapshot: ExecutionSnapshot): Promise<void> {
@@ -247,7 +323,7 @@ class FileApprovalStore implements ApprovalStore {
     const record: ResolvedApproval = { pending, snapshot };
     await writeAtomic(file, record);
     await rm(`${file}.claim`, { force: true });
-    await removeLegacyFile(this.dir, caseSafeName(pending.id), pending.id);
+    await removeLegacyFile(this.dir, fileNameOf(pending.id), pending.id);
   }
 
   async resolve(id: string): Promise<ResolvedApproval | null> {
@@ -301,9 +377,9 @@ async function jsonFiles(dir: string): Promise<string[]> {
 }
 
 /** `undefined` for text that is not JSON (a half-written file). */
-function parseJson<T>(raw: string): T | undefined {
+function parseJson<T>(raw: string, reviver?: (key: string, value: unknown) => unknown): T | undefined {
   try {
-    return JSON.parse(raw) as T;
+    return JSON.parse(raw, reviver) as T;
   } catch {
     return undefined;
   }
@@ -396,7 +472,7 @@ export function fileStore(dir: string, options: FileStoreOptions = {}): Required
   const root = resolve(dir);
   return {
     sessions: new FileSessionStore(join(root, 'sessions')),
-    checkpoints: new FileCheckpointStore(join(root, 'checkpoints'), join(root, 'checkpoint-history'), options),
+    checkpoints: new FileCheckpointStore(join(root, 'checkpoints'), join(root, 'checkpoint-history'), join(root, 'leases'), options),
     approvals: new FileApprovalStore(join(root, 'approvals')),
     tokens: new SealedTokenStore(new FileTokenBackend(join(root, 'oauth', 'tokens'), join(root, 'oauth', 'pending')), 'fileStore', {
       tokenKey: options.tokenKey,

@@ -186,6 +186,14 @@ class ApprovalSession extends AgentSession {
     this.binds?.(approvalId);
   }
 
+  /** Set by createAgentApprovals(): withdraws approvals from the agent's approval store. */
+  withdraws?: (approvalIds: string[]) => Promise<void>;
+
+  /** A paused turn `discardPending()` dropped: its approvals are withdrawn, so they are neither listed nor decided. */
+  protected override async pendingTurnDiscarded(approvalIds: string[]): Promise<void> {
+    await this.withdraws?.(approvalIds);
+  }
+
   /**
    * Eve DUR-F6: a checkpointed session turn paused at `pausedAt`
    * (`<id>.turn-<n>`) can only be continued while its checkpoint exists - it
@@ -293,6 +301,8 @@ export function createAgentApprovals(options: {
       sessionIds.delete(id);
       return record;
     },
+    // Read without claiming: a resumed run binds its memory to the scope the paused one had.
+    ...(options.store.load && { load: (id: string) => options.store.load!(id) }),
   };
 
   /**
@@ -418,7 +428,13 @@ export function createAgentApprovals(options: {
   /** Eve DUR-F6: fails with `LOUSHO_APPROVAL_ORPHANED` when the session turn the pause belongs to is gone. */
   async function turnKept(approvalId: string, session: ApprovalSession): Promise<void> {
     const record = await options.store.load?.(approvalId);
-    await session.assertTurnKept(approvalId, record?.snapshot.sessionId);
+    try {
+      await session.assertTurnKept(approvalId, record?.snapshot.sessionId);
+    } catch (error) {
+      // The turn is gone for good: withdraw the approval, so it is no longer listed and every later resolve() is not refused again.
+      if (error instanceof SDKError && error.code === 'LOUSHO_APPROVAL_ORPHANED') await store.resolve(approvalId);
+      throw error;
+    }
   }
 
   // N10b: `principal` is the approver of this decision only; the `approve` callback's later decisions have none.
@@ -566,6 +582,9 @@ export function createAgentApprovals(options: {
         spawn ?? ((forkOptions) => this.session(run, stream, forkOptions))
       );
       session.binds = (approvalId) => bind(approvalId, session);
+      session.withdraws = async (approvalIds) => {
+        for (const id of approvalIds) await store.resolve(id);
+      };
       return session;
     },
   };

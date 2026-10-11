@@ -543,3 +543,49 @@ describe('report, rendering and exit codes', () => {
     expect(JSON.parse(renderJson(report))).toEqual(report);
   });
 });
+
+describe('agent directory', () => {
+  const dirEnv = (overrides: Partial<DoctorEnvironment> = {}) =>
+    makeEnv({
+      specPath: '/p/ck',
+      isDirectory: () => true,
+      loadAgentDir: async () => ({ name: 'ck', model: 'anthropic/claude-x', tools: ['read_file', 'edit_file'] }),
+      ...overrides,
+    });
+
+  it('loads the directory instead of reading it as a spec file (no EISDIR)', async () => {
+    const loadSpec = vi.fn();
+    const env = dirEnv({ loadSpec });
+    expect(await check(env, 'spec')).toMatchObject({ status: 'ok', title: 'Agent directory', finding: "'ck' loads (2 tool(s): read_file, edit_file)" });
+    expect(await check(env, 'spec.provider')).toMatchObject({ status: 'ok' });
+    expect(loadSpec).not.toHaveBeenCalled();
+    // The model's provider drives the API key check.
+    expect(await check(env, 'env.anthropic')).toMatchObject({ status: 'fail' });
+  });
+
+  it('reports a directory that fails to load, with the loader message', async () => {
+    const env = dirEnv({
+      loadAgentDir: async () => {
+        throw new Error('loadAgentDir: /p/ck/tools/x.ts: it exports nothing');
+      },
+    });
+    expect(await check(env, 'spec')).toMatchObject({ status: 'fail', finding: expect.stringContaining('tools/x.ts'), fix: 'Fix the file named above in /p/ck.' });
+  });
+
+  it('flags an unknown provider in the model string', async () => {
+    const env = dirEnv({ loadAgentDir: async () => ({ name: 'ck', model: 'gemini/pro', tools: [] }) });
+    expect(await check(env, 'spec.provider')).toMatchObject({ status: 'fail', fix: expect.stringMatching(/^Set the config's model/) });
+  });
+});
+
+describe('spec load failure fix text', () => {
+  it('a missing spec says to check the path, not to fix fields', async () => {
+    const env = makeEnv({
+      specPath: 'nope.yaml',
+      loadSpec: () => {
+        throw Object.assign(new Error('spec not found'), { code: 'LOUSHO_SPEC_NOT_FOUND' });
+      },
+    });
+    expect((await check(env, 'spec')).fix).toMatch(/^Check the path: nope\.yaml does not exist/);
+  });
+});

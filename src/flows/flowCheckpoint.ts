@@ -12,6 +12,7 @@
 import type { ProviderUsage } from '../providers';
 import type { Checkpoint, CheckpointStatus, CheckpointStore, FlowCheckpointState, FlowPendingApproval } from '../execution/checkpoint';
 import { ConfigurationError, SDKError } from '../execution/errors';
+import { cyrb53 } from '../utils/cyrb53';
 
 /** The run's usage and completed-step count so far, as FlowExecutor reports them. */
 export interface FlowRunProgress {
@@ -94,7 +95,9 @@ export class FlowRun {
     readonly runId: string,
     private readonly code: string,
     private readonly variables: Record<string, unknown>,
-    saved?: FlowCheckpointState
+    saved?: FlowCheckpointState,
+    /** The flow's {@link flowStructure}, saved so a resume with a changed flow is refused. */
+    private readonly structure?: string
   ) {
     this.completed = new Map(Object.entries(saved?.nodeResults ?? {}));
     this.choices = new Map(Object.entries(saved?.choices ?? {}));
@@ -165,6 +168,7 @@ export class FlowRun {
     // A copy, so a store that keeps the object is not changed by later steps.
     const flow: FlowCheckpointState = structuredClone({
       code: this.code,
+      ...(this.structure !== undefined && { structure: this.structure }),
       variables: this.variables,
       completedNodeIds: [...this.completed.keys()],
       nodeResults: Object.fromEntries(this.completed),
@@ -187,8 +191,46 @@ export class FlowRun {
   }
 }
 
-/** The flow state of a run's checkpoint, checked against the flow resuming it. */
-export function flowStateOf(checkpoint: Checkpoint | null, runId: string, code: string): FlowCheckpointState {
+/**
+ * The structure of a flow's node tree: each node's `type`, `id`, the tool or
+ * agent it runs, and its children, in order. Completed nodes are saved by their
+ * place in this tree, so a resume is refused when it differs (a step added,
+ * removed or moved would map saved results onto the wrong steps). Prompts,
+ * conditions and other settings are left out: editing them keeps the places.
+ * Returned as a short hash.
+ */
+export function flowStructure(root: unknown): string {
+  return cyrb53(JSON.stringify(shapeOf(root)));
+}
+
+/** The structural fields of a node and, recursively, the nodes under it. */
+function shapeOf(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(shapeOf).filter((entry) => entry !== undefined);
+  if (typeof value !== 'object' || value === null) return undefined;
+  const record = value as Record<string, unknown>;
+  const children = Object.keys(record)
+    .sort()
+    .flatMap((key) => {
+      const child = record[key];
+      if (typeof child !== 'object' || child === null) return [];
+      const shape = shapeOf(child);
+      return containsNode(shape) ? [[key, shape]] : [];
+    });
+  if (typeof record.type !== 'string') return children.length > 0 ? children : undefined;
+  return { type: record.type, ...pick(record, ['id', 'tool', 'agent']), ...(children.length > 0 && { children }) };
+}
+
+function containsNode(shape: unknown): boolean {
+  if (Array.isArray(shape)) return shape.some(containsNode);
+  return typeof shape === 'object' && shape !== null;
+}
+
+function pick(record: Record<string, unknown>, keys: string[]): Record<string, unknown> {
+  return Object.fromEntries(keys.filter((key) => typeof record[key] === 'string').map((key) => [key, record[key]]));
+}
+
+/** The flow state of a run's checkpoint, checked against the flow resuming it (its `code`, and its structure when saved). */
+export function flowStateOf(checkpoint: Checkpoint | null, runId: string, code: string, structure?: string): FlowCheckpointState {
   if (!checkpoint) {
     throw new SDKError(
       `FlowExecutor.resume: no checkpoint for run '${runId}'. Start the run with FlowExecutor.execute(flow, { ...context, checkpointStore, runId }).`,
@@ -203,6 +245,14 @@ export function flowStateOf(checkpoint: Checkpoint | null, runId: string, code: 
     throw new ConfigurationError(
       `FlowExecutor.resume: run '${runId}' belongs to flow '${checkpoint.flow.code}', not '${code}'. Resume it with the flow that started it.`,
       'runId'
+    );
+  }
+  const saved = checkpoint.flow.structure;
+  if (saved !== undefined && structure !== undefined && saved !== structure) {
+    throw new SDKError(
+      `FlowExecutor.resume: flow '${code}' changed its steps (added, removed or moved) since run '${runId}' was saved, ` +
+        "so the saved results would map onto the wrong steps. Resume the run with the flow version that started it, or start a new run.",
+      'LOUSHO_FLOW_CHANGED'
     );
   }
   return checkpoint.flow;

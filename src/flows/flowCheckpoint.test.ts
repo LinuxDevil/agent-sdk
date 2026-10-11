@@ -88,6 +88,26 @@ describe('FlowExecutor durability (DUR-F17)', () => {
     expect((await store.load('run-1'))?.status).toBe('finished');
   });
 
+  it('refuses to resume with a flow whose steps changed, but not one whose prompts did', async () => {
+    const ask: EditorStep = { type: 'llmCall', prompt: 'about {{topic}}', outputVariable: 'first' };
+    const steps: EditorStep[] = [ask, { type: 'toolCall', tool: 'flaky', arguments: {} }];
+    expect((await FlowExecutor.execute(flowOf({ type: 'sequence', steps }), context)).success).toBe(false);
+    const { variables: _ignored, ...rest } = context;
+    const resumeWith = (root: EditorStep) => FlowExecutor.resume(flowOf(root), { ...rest, checkpointStore: store, runId: 'run-1' });
+
+    // A step put in front would take the saved result of the step that is now second.
+    await expect(resumeWith({ type: 'sequence', steps: [{ type: 'llmCall', prompt: 'audit', outputVariable: 'audit' }, ...steps] })).rejects.toMatchObject({
+      code: 'LOUSHO_FLOW_CHANGED',
+    });
+    await expect(resumeWith({ type: 'sequence', steps: [steps[1], steps[0]] })).rejects.toMatchObject({ code: 'LOUSHO_FLOW_CHANGED' });
+    expect(flakyCalls).toBe(1);
+
+    failFlaky = false;
+    const edited = await resumeWith({ type: 'sequence', steps: [{ type: 'llmCall', prompt: 'all about {{topic}}', outputVariable: 'first' }, steps[1]] });
+    expect(edited.success).toBe(true);
+    expect(provider.generate).toHaveBeenCalledTimes(1);
+  });
+
   it('takes the same oneOf branch on resume, even if the variables changed since', async () => {
     const flow = flowOf({
       type: 'sequence',

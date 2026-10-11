@@ -8,7 +8,8 @@ import { issueMessage, issuePath, type SchemaIssue } from '../utils/zodCompat';
 
 function formatZodError(filePath: string, error: { issues: readonly SchemaIssue[] }, typos: string[]): string {
   const details = error.issues
-    .map((issue) => `'${issuePath(issue)}': ${issueMessage(issue)}`)
+    // The schema's messages start with this prefix for other callers; here the line already says it failed validation.
+    .map((issue) => `'${issuePath(issue)}': ${issueMessage(issue).replace(/^AgentSpec validation failed: /, '')}`)
     .concat(typos)
     .join('; ');
   return `loadSpec: '${filePath}' failed validation - ${details}`;
@@ -18,7 +19,10 @@ function formatZodError(filePath: string, error: { issues: readonly SchemaIssue[
 function unknownFieldTypos(data: unknown): string[] {
   if (typeof data !== 'object' || data === null || Array.isArray(data)) return [];
   const known = Object.keys(agentSpecSchema.shape);
+  // `createAgent({ model: 'openai/gpt-4o-mini' })` and agent directories take a top-level model; a spec does not.
+  const modelHint = 'provider' in data ? [] : [`unknown field 'model' (a spec sets the model under provider: { type: openai, model: gpt-4o-mini })`];
   return Object.keys(data).flatMap((field) => {
+    if (field === 'model') return modelHint;
     const suggestion = known.includes(field) ? undefined : closestMatch(field, known);
     return suggestion ? [`unknown field '${field}' (did you mean '${suggestion}'?)`] : [];
   });
@@ -26,8 +30,18 @@ function unknownFieldTypos(data: unknown): string[] {
 
 /** Parses raw spec file text as YAML or JSON, chosen by (lowercased) extension. */
 function parseSpecData(raw: string, ext: string, filePath: string): unknown {
-  if (ext === '.yaml' || ext === '.yml') return parseYaml(raw);
-  if (ext === '.json') return JSON.parse(raw);
+  const format = ext === '.yaml' || ext === '.yml' ? 'YAML' : ext === '.json' ? 'JSON' : undefined;
+  if (format !== undefined) {
+    try {
+      return format === 'YAML' ? parseYaml(raw) : JSON.parse(raw);
+    } catch (error) {
+      throw new ValidationError(
+        `loadSpec: '${filePath}' is not valid ${format}: ${error instanceof Error ? error.message : String(error)}`,
+        undefined,
+        'LOUSHO_SPEC_INVALID'
+      );
+    }
+  }
   throw new ConfigurationError(
     `loadSpec: unsupported extension '${ext}' for '${filePath}'. Use .yaml, .yml or .json`,
     undefined,

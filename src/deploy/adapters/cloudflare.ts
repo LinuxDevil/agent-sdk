@@ -35,6 +35,7 @@ import {
   loadTsup,
   sdkRuntimePlugin,
   workerBuiltinImportersPlugin,
+  workerMissingPeerPlugin,
   workerNodeShimPlugin,
   workerSandboxShimPlugin,
   workerUnsupportedPeerPlugin,
@@ -395,6 +396,7 @@ export const CloudflareWorkerAdapter: DeploymentAdapter = {
         workerNodeShimPlugin(),
         sdkRuntimePlugin({ sdkEntry: 'worker' }),
         workerUnsupportedPeerPlugin(),
+        workerMissingPeerPlugin(),
         workerBuiltinImportersPlugin(builtinImporters),
       ],
       // Keep `node:` prefixes: the shim plugin matches them (and the leak check below reports any left).
@@ -423,6 +425,12 @@ export const CloudflareWorkerAdapter: DeploymentAdapter = {
     // describe() is later called. A warning (not a thrown error) because
     // Cloudflare's limits vary by plan and have changed over time - a build
     // that's over budget for one plan may still be deployable on another.
+    // The API token is a Worker secret, set after the build: say what an unset one means.
+    console.warn(
+      'lousho build: set the LOUSHO_API_TOKEN secret before you deploy (npx wrangler secret put LOUSHO_API_TOKEN). ' +
+        'Without it anyone can chat with the Worker, and GET /chat/:sessionId is refused unless the ' +
+        'LOUSHO_ALLOW_OPEN_TRANSCRIPTS var is "true".'
+    );
     const sizeReport = measureBundleSize(bundlePath);
     if (sizeReport.overLimit) {
       console.warn(

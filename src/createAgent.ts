@@ -55,7 +55,7 @@ import type { Subagents } from './subagents/types';
 import type { SubagentOptions } from './subagents/backgroundTasks';
 import { assertMaxSubagentDepth, assertNoTaskTool, assertSubagents, registerSubagent, subagentsWithOptions, type SubagentCaller } from './subagents/withSubagents';
 import type { SubagentSpec } from './execution/delegation';
-import type { ApprovalDecision, ApprovalStore, ResolvedApproval } from './execution/ApprovalGate';
+import type { ApprovalDecision, ApprovalStore, ExecutionSnapshot, ResolvedApproval } from './execution/ApprovalGate';
 import { InMemoryApprovalStore } from './execution/InMemoryApprovalStore';
 import { resumeRequest, type ResumeRequest } from './execution/resume';
 import { RUN_CONFIG_KEY, type CheckpointStore, type ForkOptions, type ForkResult } from './execution/checkpoint';
@@ -77,7 +77,8 @@ import { HookRegistry, type AgentHook } from './execution/hooks';
 import { toMessages, type AgentInput } from './providers/content';
 import { compactionHookFor, type AgentCompaction } from './context/agentCompaction';
 import type { MemorySlot } from './memory/defineMemory';
-import { agentMemory } from './memory/withMemory';
+import { agentMemory, type AgentMemory } from './memory/withMemory';
+import { assertCheckpointId, assertRunId } from './session/checkpointId';
 import { assertMaxSteps, type RunLimits } from './execution/budget';
 import type { AgentGuardrails } from './execution/ioGuardrails';
 import type { Principal } from './auth/types';
@@ -1016,6 +1017,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     checkpoints,
     tokens,
     tracing,
+    memory,
   });
   const approvals = createAgentApprovals({
     store: approvalStoreOf(config),
@@ -1047,6 +1049,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     return { sessionId, checkpointStore: checkpoints };
   };
   const callTurn = ({ sessionId, reasoning, modelSettings, maxSteps, instructions, permissionMode, approvalTtlMs, parentSpanId, onEvent }: SendOptions): RunTurn => {
+    // One id rule for every store, and never a session's own checkpoint keys (`<id>.turn-<n>`, `<id>.paused`).
+    if (sessionId !== undefined) assertRunId(sessionId, 'send: sessionId');
     if (permissionMode !== undefined) assertPermissionMode(permissionMode, 'send');
     assertModelSettings(modelSettings, 'send');
     assertMaxSteps(maxSteps, 'send');
@@ -1124,7 +1128,9 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
    * The run's options once MCP servers are connected, with its spec resolved for `ctx` (LOU-V15). A dynamic run
    * restarted from its checkpoint resolves with the `ctx` and model it began with (LOU-V15.2).
    */
-  const prepare = async (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: RunTurn, inSession = false) => {
+  const prepare = async (input: Message[], callCtx: RunConfigContext, signal?: AbortSignal, turn?: RunTurn, inSession = false) => {
+    // A resumed run binds its memory to the metadata and principal it was saved with when the call gives none.
+    const ctx = memory ? await savedRunContext(callCtx, turn) : callCtx;
     await mcp.ready();
     if (handoffs.has()) return prepareHandoffs(input, ctx, signal, turn, inSession);
     if (staticSpec) return executeOptions(staticSpec, input, ctx, signal, turn);
@@ -1136,7 +1142,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   const run = async (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: RunTurn, inSession = false) =>
     AgentExecutor.execute(await prepare(input, ctx, signal, turn, inSession));
   const stream = (input: Message[], ctx: RunConfigContext, signal?: AbortSignal, turn?: RunTurn, inSession = false): AgentRun => {
-    if (!staticSpec || handoffs.has()) return streamPrepared(() => prepare(input, ctx, signal, turn, inSession), signal, turn?.inputQueue);
+    if (!staticSpec || handoffs.has() || (memory && turn?.sessionId)) return streamPrepared(() => prepare(input, ctx, signal, turn, inSession), signal, turn?.inputQueue);
     const options = executeOptions(staticSpec, input, ctx, signal, turn);
     return hasMcp ? streamAfter(mcp.ready, options) : AgentExecutor.stream(options);
   };
@@ -1192,6 +1198,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     },
     session,
     async resume(sessionId: string, { signal } = {}): Promise<ExecutionResult<Typed> | null> {
+      assertCheckpointId(sessionId, 'resume: sessionId');
       const checkpoint = await checkpoints?.load(sessionId);
       // No run under this id: it names a session, whose turns are checkpointed under `<id>.turn-<n>`.
       if (!checkpoint) return session({ id: sessionId }).resume({ signal }) as Promise<ExecutionResult<Typed> | null>;
@@ -1199,7 +1206,15 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       return approvals.settle(await run([], { sessionId, input: [] }, signal, durable(sessionId)), signal) as Promise<ExecutionResult<Typed>>;
     },
     // durable() throws LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE without `store.checkpoints`.
-    fork: async (sessionId, options) => AgentExecutor.fork({ ...options, ...(durable(sessionId) as SessionTurnCheckpoint) }),
+    fork: async (sessionId, options) => {
+      assertCheckpointId(sessionId, 'fork: sessionId');
+      // A session's paused-turn pointer holds no transcript: fork the turn it points to (`<id>.turn-<n>`).
+      if (sessionId.endsWith('.paused')) {
+        throw new ConfigurationError(`fork: '${sessionId}' is a session's paused-turn pointer, not a run; fork '<id>.turn-<n>' instead.`, 'sessionId', 'LOUSHO_SESSION_ID_INVALID');
+      }
+      if (options.newSessionId !== undefined) assertRunId(options.newSessionId, 'fork: newSessionId');
+      return AgentExecutor.fork({ ...options, ...(durable(sessionId) as SessionTurnCheckpoint) });
+    },
     pending: () => listPendingRuns(checkpoints),
     approvals: approvals.approvals,
     oauth: createAgentOAuth(tokens, approvals.store, mcp.oauth),
@@ -1342,6 +1357,21 @@ function mergedAgentEvent(
   };
 }
 
+/**
+ * `ctx` with the metadata and principal the unfinished run checkpointed for
+ * `turn` was saved with, where the call gives none (a `resume()`, or a `send()`
+ * that resumes a pending turn first), so memory scoped by them binds the same
+ * slots and the run's pending memory calls find their tools.
+ */
+async function savedRunContext(ctx: RunConfigContext, turn: SessionTurnOptions | undefined): Promise<RunConfigContext> {
+  if (!turn?.sessionId || !turn.checkpointStore || (ctx.metadata !== undefined && ctx.principal !== undefined)) return ctx;
+  const checkpoint = await turn.checkpointStore.load(turn.sessionId);
+  if (!checkpoint || checkpoint.status === 'finished') return ctx;
+  const metadata = ctx.metadata ?? checkpoint.metadata;
+  const principal = ctx.principal ?? checkpoint.principal;
+  return { ...ctx, ...(metadata !== undefined && { metadata }), ...(principal !== undefined && { principal }) };
+}
+
 /** The `ctx` and model of the unfinished run checkpointed for `turn` (LOU-V15.2), if there is one. */
 async function checkpointedRunConfig(turn: SessionTurnOptions | undefined): Promise<PinnedRunConfig | undefined> {
   if (!turn?.sessionId || !turn.checkpointStore) return undefined;
@@ -1424,8 +1454,9 @@ function resumeRequester(deps: {
   checkpoints: CheckpointStore | undefined;
   tokens: OAuthTokenStore | undefined;
   tracing: Pick<ExecuteOptions, 'exporter' | 'captureContent' | 'redactContent'>;
+  memory: AgentMemory | undefined;
 }) {
-  const { specs, handoffs, runOptions, config, hooks, checkpoints, tokens, tracing } = deps;
+  const { specs, handoffs, runOptions, config, hooks, checkpoints, tokens, tracing, memory } = deps;
   return async (
     approvalStore: ApprovalStore,
     decision: ApprovalDecision,
@@ -1437,7 +1468,9 @@ function resumeRequester(deps: {
   ): Promise<ResumeRequest> => {
     // N6: a run paused after a handoff continues as the agent it handed off to.
     const paused = await pausedRun(specs, approvalStore, decision.id, handoffs.has() ? handoffs : undefined);
-    const { agent: pausedAgent, provider, toolRegistry, hostedTools, ...pausedOptions } = paused.spec;
+    const { agent: pausedAgent, provider, hostedTools, ...pausedOptions } = paused.spec;
+    const bound = await pausedMemory(memory, paused, approvalStore, decision.id, hooks);
+    const { toolRegistry } = bound;
     return {
       decision,
       approvalStore: paused.store,
@@ -1449,7 +1482,7 @@ function resumeRequester(deps: {
         // N4: a paused session turn continues under the session's mode (read at each call), else the agent's.
         ...(permissionMode !== undefined && { permissionMode }),
         output: config.output,
-        hooks,
+        hooks: bound.hooks,
         approvalStore: paused.store,
         signal,
         currentAgent: pausedAgent,
@@ -1467,6 +1500,19 @@ function resumeRequester(deps: {
       checkpointStore: checkpointStore ?? checkpoints,
     };
   };
+}
+
+/** The tools and hooks a paused run continues with: the memory tools and recall it had, bound to the scope keys it paused with. */
+async function pausedMemory(
+  memory: AgentMemory | undefined,
+  paused: { spec: SubagentSpec; snapshot?: ExecutionSnapshot },
+  approvalStore: ApprovalStore,
+  approvalId: string,
+  hooks: HookRegistry | undefined
+): Promise<{ toolRegistry: ToolRegistry | undefined; hooks: HookRegistry | undefined }> {
+  const snapshot = memory && (paused.snapshot ?? (await approvalStore.load?.(approvalId))?.snapshot);
+  if (!memory || !snapshot) return { toolRegistry: paused.spec.toolRegistry, hooks };
+  return memory.forRun({ sessionId: snapshot.contextSessionId ?? snapshot.sessionId, metadata: snapshot.metadata, principal: snapshot.principal }, paused.spec.toolRegistry, hooks);
 }
 
 /** LOU-W9: a checkpointed session's turn runs under its own sessionId + checkpointStore. */
@@ -1517,7 +1563,7 @@ async function pausedRun(
   store: ApprovalStore,
   id: string,
   handoffs?: ReturnType<typeof handoffRunner>
-): Promise<{ spec: SubagentSpec; store: ApprovalStore; handoffs?: ResolvedHandoffs }> {
+): Promise<{ spec: SubagentSpec; store: ApprovalStore; handoffs?: ResolvedHandoffs; snapshot?: ExecutionSnapshot }> {
   if (specs.static && !handoffs) return { spec: specs.static, store };
   const record = await store.resolve(id);
   if (!record) {
@@ -1538,7 +1584,7 @@ async function pausedRun(
       return once;
     },
   };
-  return { spec, store: replayStore, ...(resolved && { handoffs: resolved.handoffs }) };
+  return { spec, store: replayStore, snapshot, ...(resolved && { handoffs: resolved.handoffs }) };
 }
 
 type ResolvedHandoffs = ExecuteOptions['handoffs'];

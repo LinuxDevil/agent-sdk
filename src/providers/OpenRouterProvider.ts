@@ -24,6 +24,20 @@ export interface OpenRouterProviderConfig extends AiSdkProviderConfig {
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1';
 
+/**
+ * The API key OpenRouter is called with: `config.apiKey`, else
+ * `OPENROUTER_API_KEY`. Never `OPENAI_API_KEY`, which `@ai-sdk/openai` would
+ * otherwise read and send to openrouter.ai.
+ */
+function openRouterApiKey(config: OpenRouterProviderConfig): string {
+  const key = config.apiKey || (typeof process === 'undefined' ? undefined : process.env?.OPENROUTER_API_KEY);
+  if (key) return key;
+  throw new SDKError(
+    'OpenRouterProvider: no API key. Pass `apiKey`, or set OPENROUTER_API_KEY (on a Cloudflare Worker: npx wrangler secret put OPENROUTER_API_KEY).',
+    'LOUSHO_PROVIDER_MISSING_API_KEY'
+  );
+}
+
 /** One entry of OpenRouter's GET /models catalog: its `id`, plus the other fields as sent (pricing, context length, ...). */
 export interface OpenRouterModel {
   id: string;
@@ -417,7 +431,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
     const base: typeof fetch = (input, init) => (this.config.fetch ?? globalThis.fetch)(input, init);
     const inner: typeof fetch = changes ? withRequestChanges(changes, base) : base;
     return (await this.loadFactory())({
-      apiKey: this.config.apiKey,
+      apiKey: openRouterApiKey(this.config),
       baseURL: OPENROUTER_API_URL,
       headers: buildHeaders(this.config),
       fetch: withErrorMessage(inner),
@@ -594,7 +608,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
   private async fetchModelCatalog(what: string): Promise<OpenRouterModel[] | undefined> {
     const response = await fetch(`${OPENROUTER_API_URL}/models`, {
       headers: {
-        'Authorization': `Bearer ${this.config.apiKey}`,
+        'Authorization': `Bearer ${openRouterApiKey(this.config)}`,
       },
     });
 

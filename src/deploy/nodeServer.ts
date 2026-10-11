@@ -31,7 +31,7 @@ const API_TOKEN_ENV = 'LOUSHO_API_TOKEN';
 /** Environment variable choosing where sessions live: `memory` (default) or `sqlite:<path>`. */
 const STORE_ENV = 'LOUSHO_STORE';
 
-/** A1: `authorizeSession`, `authorizeApproval` and `exposeErrors` work as on `createRouteHandler()` (docs/auth.md); B4: so do `onDisconnect` and `waitUntil`. */
+/** A1: `authorizeSession`, `authorizeApproval` and `exposeErrors` work as on `createRouteHandler()` (docs/auth.md); B4: so do `onDisconnect` and `waitUntil`, and `allowedOrigins`, `requireJsonBody` and `allowedHosts`. */
 export interface DeployedServerOptions extends ChatRoutesAccess {
   /**
    * `{ token }` (the build options' `auth.token`): the bearer token when
@@ -123,11 +123,14 @@ export function createDeployedServer(agent: SimpleAgent, options: DeployedServer
     void settled.then(() => inFlight.delete(settled));
   };
   // N9b: a channel turn paused on a sign-in continues on its surface once the callback stored the token.
-  const { authorizeSession, authorizeApproval, exposeErrors, onDisconnect, waitUntil } = options;
+  const { authorizeSession, authorizeApproval, exposeErrors, onDisconnect, waitUntil, allowedOrigins, requireJsonBody, allowedHosts } = options;
   const chat: ChatRoutesContext = {
     name: 'lousho server',
     agent: () => agent,
     afterSignIn: (result) => continueChannelSignIn(channels, result),
+    allowedOrigins,
+    requireJsonBody,
+    allowedHosts,
     authorizeSession,
     authorizeApproval,
     exposeErrors,

@@ -8,7 +8,7 @@ Run it with `npx lousho <command>` inside a project that has the SDK installed.
 | Command | What it does | Details |
 | ------- | ------------ | ------- |
 | `lousho init [dir]` | Scaffold a project: an agent with an example tool, an offline test, `.env.example`; installs dependencies and runs `git init`. | [Installation](./installation.md#scaffolding-a-new-project) |
-| `lousho doctor [spec] [--json] [--ping]` | Check Node, peer packages, provider keys, and optionally a spec file; `--ping` also checks each configured provider endpoint answers. Prints a fix for every problem. | [Installation](./installation.md#troubleshooting-lousho-doctor) |
+| `lousho doctor [spec\|agent-dir] [--json] [--ping]` | Check Node, peer packages, provider keys, and optionally a spec file or agent directory; `--ping` also checks each configured provider endpoint answers. Prints a fix for every problem. | [Installation](./installation.md#troubleshooting-lousho-doctor) |
 | `lousho dev <path>` | Local dev server for a spec file, an agent directory or a TS agent: chat UI with a session per tab and streamed events, hot reload on save. | [Below](#lousho-dev) |
 | `lousho chat <path>` | Terminal REPL for a spec file, an agent directory or a TS agent: streams replies, shows tool calls, asks for approvals and questions. | [Below](#lousho-chat) |
 | `lousho acp <path>` | Serve a spec file, an agent directory or a TS agent to an editor (Zed and other ACP clients) over the Agent Client Protocol on stdio. | [ACP](./acp.md) |
@@ -26,14 +26,14 @@ Every command that takes a `<spec>` reads an agent spec file (`.yaml`,
 
 ```text
 lousho init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force] [--sdk-path <dir|tgz>]
-lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--no-schedules] [--traces[=dir]]
+lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--allowed-hosts a,b] [--no-schedules] [--traces[=dir]]
 lousho chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>] [--traces[=dir]]
 lousho acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]
 lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allow <list>] [--overwrite] [--dry-run]    (or --list)
-lousho build <agent-dir|spec> --target=<name> [--out=<dir>]    (or --agent=<path>)
+lousho build <agent-dir|spec> --target=<node-server|cloudflare-worker|docker> [--out=<dir>]    (or --agent=<path>)
 lousho studio [--port N] [--host H] [--prod|--dev]
 lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]
-lousho doctor [agent.yaml|json] [--json] [--ping]
+lousho doctor [agent.yaml|json|agent-dir] [--json] [--ping]
 lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
 lousho --version
@@ -48,6 +48,16 @@ never takes the next flag as its value) or an extra argument fails with
 the `=` form: `--model=-x`. `--traces` is the one flag whose value is optional:
 it takes it only in the `=` form (`--traces=./t`), so `--traces agent.yaml` is
 still the flag followed by the path.
+
+A usage error exits 1, except for `lousho eval` and `lousho traces`, which
+exit 2 for it because 1 is their "something failed" verdict (a gate failure,
+no matching trace). `lousho build` prints where it wrote the build (default
+`.lousho/build/<target>`) and the command to run there.
+
+**`.env`.** The commands that run an agent (`dev`, `chat`, `acp`, `mcp`) and
+`doctor` load `./.env` from the working directory when it exists, like
+`node --env-file-if-exists=.env`: a variable already set in the environment
+wins over the file.
 
 `lousho init` is the exception: it parses its own flags, and a bad flag or
 value fails with `InitUsageError` — its message printed as-is, exit code 1 —
@@ -151,7 +161,18 @@ Directories and modules are your code and run with your permissions; only run
 
 - `--port` - default `3737`.
 - `--host` - default `127.0.0.1` (localhost only). Pass e.g. `--host=0.0.0.0`
-  to opt in to LAN access.
+  to opt in to LAN access; `lousho dev` has no auth and shows raw provider
+  errors, so it then prints a warning.
+- `--allowed-hosts a,b` - extra host names the `Host` header may carry. To
+  stop DNS rebinding (a web page re-pointing its own domain at your machine),
+  every route but `/health` and `/channels/*` answers `403`
+  (`LOUSHO_REQUEST_FORBIDDEN`) unless `Host` is `localhost`, a `127.x.x.x`
+  address or `[::1]`; off loopback, IP addresses and the `--host` name are
+  accepted too. Given, the list replaces that rule (loopback names stay
+  accepted); `*` accepts any host.
+- POST bodies must be `Content-Type: application/json` (`415` otherwise), and
+  a browser POST from another origin is `403`, as on the deployed server
+  ([Cross-site requests](./auth.md#cross-site-requests)).
 
 ## `lousho chat`
 

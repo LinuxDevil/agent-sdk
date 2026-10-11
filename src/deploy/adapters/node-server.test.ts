@@ -118,7 +118,7 @@ describe('NodeServerAdapter', () => {
         expect(json.text).toBe('This is a mock response.');
         expect(json.finishReason).toBeDefined();
 
-        const bad = await fetch(`${base}/chat`, { method: 'POST', body: '{}' });
+        const bad = await fetch(`${base}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
         expect(bad.status).toBe(400);
 
         const oversized = await fetch(`${base}/chat`, {
@@ -169,11 +169,11 @@ describe('NodeServerAdapter', () => {
       try {
         const base = `http://127.0.0.1:${port}`;
         expect((await fetch(`${base}/health`)).status).toBe(200);
-        const denied = await fetch(`${base}/chat`, { method: 'POST', body: JSON.stringify({ message: 'hi' }) });
+        const denied = await fetch(`${base}/chat`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'hi' }) });
         expect(denied.status).toBe(401);
         const ok = await fetch(`${base}/chat`, {
           method: 'POST',
-          headers: { Authorization: 'Bearer deploy-secret' },
+          headers: { Authorization: 'Bearer deploy-secret', 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: 'hi' }),
         });
         expect((await ok.json()).text).toBe('This is a mock response.');

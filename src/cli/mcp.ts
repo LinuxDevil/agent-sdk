@@ -23,6 +23,18 @@ export interface McpCliArgs {
   help?: boolean;
 }
 
+const HELP = `${USAGE}
+
+Serves an agent as an MCP server: one tool that sends the agent a message.
+The path is a spec file (.yaml/.yml/.json), an agent directory, or a .ts/.js module exporting an agent or createAgent() options.
+./.env is loaded when it exists (variables already set win).
+
+Options:
+  --http      serve MCP over HTTP instead of stdio
+  --port N    HTTP port (default 3920)
+  --host H    HTTP interface (default 127.0.0.1)
+  -h, --help  show this help`;
+
 const SPEC: CommandSpec = {
   command: 'mcp',
   usage: USAGE,
@@ -64,7 +76,7 @@ export async function runMcp(rest: string[]): Promise<number> {
   try {
     const args = parseMcpArgs(rest);
     if (args.help) {
-      console.log(USAGE);
+      console.log(HELP);
       return 0;
     }
     const server = await startMcpServer(args);

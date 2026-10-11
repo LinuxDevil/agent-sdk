@@ -12,12 +12,21 @@
 const SLACK_TOLERANCE_SECONDS = 300;
 const SLACK_SIGNATURE_PATTERN = /^v0=[0-9a-f]{64}$/i;
 
-/** Whether a Unix timestamp (seconds, or milliseconds) is within `toleranceSeconds` of `nowMs`. */
-export function isFresh(timestamp: string, toleranceSeconds: number, nowMs: number): boolean {
+/** How far ahead of local time a signed timestamp may be (clock skew); a timestamp further ahead could be replayed for longer than the window. */
+const MAX_FUTURE_SKEW_SECONDS = 60;
+
+/**
+ * Whether a Unix timestamp is at most `toleranceSeconds` old and at most a
+ * minute (or `toleranceSeconds`, if smaller) ahead of `nowMs`. `unit` is
+ * `'seconds'` (Slack, Discord), or `'auto'`: milliseconds when the value is
+ * past 1e12.
+ */
+export function isFresh(timestamp: string, toleranceSeconds: number, nowMs: number, unit: 'seconds' | 'auto' = 'seconds'): boolean {
   const parsed = Number(timestamp);
   if (!Number.isFinite(parsed)) return false;
-  const seconds = parsed > 1e12 ? parsed / 1000 : parsed;
-  return Math.abs(nowMs / 1000 - seconds) <= toleranceSeconds;
+  const seconds = unit === 'auto' && parsed > 1e12 ? parsed / 1000 : parsed;
+  const age = nowMs / 1000 - seconds;
+  return age <= toleranceSeconds && age >= -Math.min(toleranceSeconds, MAX_FUTURE_SKEW_SECONDS);
 }
 
 /** The checks that need no HMAC: a short reason (no secret or signature in it) when they fail. */

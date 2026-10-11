@@ -130,7 +130,7 @@ describe('handleWorkerRequest', () => {
   const spec = { name: 'Edge Agent', prompt: 'You are an edge agent.', provider: { type: 'mock', model: 'mock-1' }, tools: ['current-date'] };
   const call = (env: Record<string, unknown>, route: string, body?: unknown, headers: Record<string, string> = {}) =>
     handleWorkerRequest(
-      new Request(`http://worker${route}`, { method: body === undefined ? 'GET' : 'POST', headers, body: body === undefined ? undefined : JSON.stringify(body) }),
+      new Request(`http://worker${route}`, { method: body === undefined ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: body === undefined ? undefined : JSON.stringify(body) }),
       env,
       spec
     );
@@ -155,8 +155,21 @@ describe('handleWorkerRequest', () => {
     expect(kv.data.has('checkpoints/legacy-1')).toBe(true);
   });
 
+  it('without LOUSHO_API_TOKEN, refuses transcript reads unless LOUSHO_ALLOW_OPEN_TRANSCRIPTS is "true"', async () => {
+    const env = { AGENT_CHECKPOINTS: fakeKV() };
+    await (await call(env, '/chat', { sessionId: 'open-1', input: 'hi' })).text();
+    const refused = await call(env, '/chat/open-1');
+    expect(refused.status).toBe(403);
+    const body = await refused.json();
+    expect(body).toMatchObject({ code: 'LOUSHO_REQUEST_FORBIDDEN' });
+    expect(body.error).toContain('LOUSHO_API_TOKEN');
+    expect(JSON.stringify(body)).not.toContain('mock response');
+    const opted = await call({ ...env, LOUSHO_ALLOW_OPEN_TRANSCRIPTS: 'true' }, '/chat/open-1');
+    expect((await opted.json()).messages).toHaveLength(2);
+  });
+
   it('falls back to the memory of this isolate without a (valid) KV binding', async () => {
-    for (const [id, env] of [['mem-1', {}], ['mem-2', { AGENT_CHECKPOINTS: 'not a namespace' }]] as const) {
+    for (const [id, env] of [['mem-1', { LOUSHO_ALLOW_OPEN_TRANSCRIPTS: 'true' }], ['mem-2', { AGENT_CHECKPOINTS: 'not a namespace', LOUSHO_ALLOW_OPEN_TRANSCRIPTS: 'true' }]] as const) {
       expect(workerStore(env)).toBe(workerStore({}));
       await (await call(env, '/chat', { sessionId: id, input: 'hi' })).text();
       expect((await (await call(env, `/chat/${id}`)).json()).messages).toHaveLength(2);

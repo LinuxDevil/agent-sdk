@@ -313,8 +313,8 @@ npx lousho traces 3f2a --content  # also the captured messages and tool argument
 ```
 
 ```
-TIME    AGENT    DURATION  MODEL  TOOLS  TOKENS IN/OUT  COST       STATUS  ID
-2h ago  weather  1.65s     2      1      159/32         $0.000043  ok      3f2a9c1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f
+TIME    AGENT    DURATION  MODEL CALLS  TOOL CALLS  TOKENS IN/OUT  COST       STATUS  ID
+2h ago  weather  1.65s     2            1           159/32         $0.000043  ok      3f2a9c1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f
 
 Trace 3f2a9c1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f  4 spans, 1.65s
 invoke_agent weather         |████████████████████████|     1.65s  $0.000043

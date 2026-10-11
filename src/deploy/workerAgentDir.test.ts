@@ -242,7 +242,7 @@ describe('the Worker runtime of an agent directory (M3b)', () => {
   it('handleWorkerAgentDirRequest serves /chat with the directory tools and skills', async () => {
     const agentDir = dir({ skills: [{ name: 'notes', description: 'Release notes', content: '# Notes' }], config: { model: 'mock/test', maxSteps: 3, toolConcurrency: 1 } });
     const response = await handleWorkerAgentDirRequest(
-      new Request('http://worker/chat', { method: 'POST', body: JSON.stringify({ message: 'echo it' }) }),
+      new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'echo it' }) }),
       {},
       agentDir
     );
@@ -254,7 +254,7 @@ describe('the Worker runtime of an agent directory (M3b)', () => {
 
 describe('the Worker runtime of an agent directory: subagents, channels, memory, schedules (#298)', () => {
   const chat = (agentDir: WorkerAgentDir, body: unknown, env: Record<string, unknown> = {}) =>
-    handleWorkerAgentDirRequest(new Request('http://worker/chat', { method: 'POST', body: JSON.stringify(body) }), env, agentDir);
+    handleWorkerAgentDirRequest(new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), env, agentDir);
 
   it('adds a delegate_to_<name> tool per sub-agent, which runs the sub-agent with the inherited model', async () => {
     const agentDir = dir({

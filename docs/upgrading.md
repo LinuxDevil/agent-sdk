@@ -3,7 +3,8 @@
 ## Who needs this page
 
 Anyone with code written against `1.0.0-alpha.8` or an earlier `1.0.0-alpha.*`
-release. Between the last alphas and `1.0.0-rc.0` the package's public surface
+release. Between those alphas and the 1.0 line (the changes listed under
+`1.0.0-rc.0` in the changelog, published in the later `1.0.0-alpha.*` releases) the package's public surface
 was reorganized: imports moved to subpaths, dead or superseded APIs were
 removed, and the patch guardrails were renamed patch checks. `createAgent()`
 and its options did not change - an agent that only does
@@ -11,7 +12,7 @@ and its options did not change - an agent that only does
 changing nothing but the version.
 
 ```bash
-npm install @lousho/build-ai-agent@^1.0.0-rc.0
+npm install @lousho/build-ai-agent@^1.0.0-alpha.19
 ```
 
 ## Import paths that moved

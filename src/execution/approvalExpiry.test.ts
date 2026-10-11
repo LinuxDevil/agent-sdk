@@ -88,6 +88,14 @@ describe('Execution - approval expiry (TTL)', () => {
     expect(resumed.finishReason).toBe('stop');
   });
 
+  it('a TTL too large for a Date (1e20 ms) means no deadline, not a RangeError when the run pauses', async () => {
+    const approvalStore = createInMemoryApprovalStore();
+    const provider = createMockProvider({ name: 'mock', responses: ['Charging now', 'All done'] });
+    const paused = await AgentExecutor.execute({ agent: agent(), input: 'Please call chargeCard now', provider, toolRegistry, approvalStore, approvalTtlMs: 1e20 });
+    expect(paused.finishReason).toBe('awaiting-approval');
+    expect((await approvalStore.load?.(paused.approvalId!))?.pending.expiresAt).toBeUndefined();
+  });
+
   it('denies a decision that arrives after expiresAt - even approved: true', async () => {
     const approvalStore = createInMemoryApprovalStore();
     const provider = createMockProvider({ name: 'mock', responses: ['Charging now', 'All done'] });

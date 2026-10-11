@@ -83,6 +83,10 @@ import {
   saveStepCheckpoint,
   toExecutionResult,
 } from './agentRunState';
+import { acquireRunLease, HELD_RUN_LEASE, type RunLeaseOptions } from './runLease';
+
+/** The largest time a `Date` can hold, in epoch ms. */
+const MAX_DATE_MS = 8.64e15;
 import { AgentRun, RUN_EVENTS, StreamingExecuteOptions, modelFinishReason, observeRun, partialSink, runEventsOf, startAgentRun } from './agentRun';
 import type { AgentEvent } from './agentEvents';
 import { withSteerSignal, type InputQueue } from './inputQueue';
@@ -911,13 +915,21 @@ export class AgentExecutor {
     // N1a: the provider must be able to send every hosted tool.
     assertHostedToolsSupported(options.hostedTools, agent, options.provider);
 
-    const state = await loadRunState(options);
+    // A checkpointed run holds its id's run lease while it runs, so another process cannot resume it meanwhile.
+    const held = (options as RunLeaseOptions)[HELD_RUN_LEASE];
+    const lease = held ?? (options.sessionId && options.checkpointStore ? await acquireRunLease(options.checkpointStore, options.sessionId) : undefined);
     try {
-      return await this.runLoadedAgentLoop(options, state, tools, agentSpanId, budget);
-    } catch (error) {
-      // Eve MA-F1: a lead that ran this as a sub-agent still counts what it spent before failing.
-      attachRunUsage(error, state.usage);
-      throw error;
+      const state = await loadRunState(options);
+      state.lease = lease;
+      try {
+        return await this.runLoadedAgentLoop(options, state, tools, agentSpanId, budget);
+      } catch (error) {
+        // Eve MA-F1: a lead that ran this as a sub-agent still counts what it spent before failing.
+        attachRunUsage(error, state.usage);
+        throw error;
+      }
+    } finally {
+      if (!held) await lease?.release();
     }
   }
 
@@ -1801,7 +1813,8 @@ export class AgentExecutor {
         args: toolResult.args || {},
         agentId: agent.id,
         createdAt,
-        ...(typeof ttlMs === 'number' && Number.isFinite(ttlMs) && { expiresAt: new Date(Date.now() + ttlMs).toISOString() }),
+        // A deadline past the last date a Date can hold (e.g. `1e20`) is no deadline at all.
+        ...(typeof ttlMs === 'number' && Number.isFinite(ttlMs) && Date.now() + ttlMs <= MAX_DATE_MS && { expiresAt: new Date(Date.now() + ttlMs).toISOString() }),
         // N10b: whose call it is, for `approve` and channel `approvers`.
         ...(principal && { principal }),
         // N9b: a tool that needs sign-in pauses with the link to open.

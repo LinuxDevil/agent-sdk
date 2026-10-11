@@ -204,8 +204,8 @@ provider's key variable, `.gitignore` and a README. It then installs the
 dependencies and runs `git init`.
 
 ```bash
-npx lousho init my-agent                 # or: npm create lousho-agent my-agent
-npx lousho init my-agent --yes --provider anthropic --template tools --no-install
+npm create lousho-agent my-agent         # or: npx @lousho/build-ai-agent init my-agent
+npx @lousho/build-ai-agent init my-agent --yes --provider anthropic --template tools --no-install
 ```
 
 | Flag | Meaning |
