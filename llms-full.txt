@@ -4954,8 +4954,11 @@ source declares cron triggers) and bundles it as a
 browser-platform ES module; the build fails if any `node:` import ends up in
 `dist/worker.js`. `wrangler.toml` points `main` at `dist/worker.js` with
 `no_bundle = true`, so exactly the verified bundle is uploaded. Its
-`compatibility_date` defaults to a date pinned per SDK version; change it in
-the generated `wrangler.toml` and later builds keep your date. It builds and
+`compatibility_date` defaults to a date pinned per SDK version (`2026-09-01`).
+The first build writes the whole file; later builds only update the keys the
+build owns (`name`, `main`, `no_bundle` and `[triggers] crons`) and keep
+everything else you changed or added: your `compatibility_date`, `[vars]`, a
+filled-in `[[kv_namespaces]]` block, routes and comments. It builds and
 runs with `ai` v4 (the default install) or `ai` v7 (with
 `@ai-sdk/openai`/`@ai-sdk/anthropic` v4) installed, with no compatibility
 flag (no `nodejs_compat`):
@@ -6051,6 +6054,7 @@ an invalid entry fails with the entry name in the message, e.g.
 `'mcpServers.files': missing 'command' (stdio server) or 'url' (HTTP server)`.
 An optional `approval` (`always`, the default, `annotations` or `never`) says which of the server's tools ask for approval; see [Approval for MCP tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#approval-for-mcp-tools).
 An optional `deferLoading: true` withholds the server's tools from the model until it finds them with `tool_search`; see [Tool search](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tool-search.md).
+An optional `optional: true` leaves out a server that cannot connect (with a warning) instead of failing every send; see [Use MCP servers in an agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#use-mcp-servers-in-an-agent).
 An HTTP entry may set `oauth` (`redirectUri`, optional `clientId`, `clientSecret`, `scopes` and `clientName`) to sign in to the server with OAuth instead of a static `Authorization` header; see [MCP servers with OAuth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#mcp-servers-with-oauth).
 `lousho doctor` checks each stdio `command` is resolvable.
 
@@ -11002,8 +11006,13 @@ await server.close();
   (`agent.send(message, { signal })`). Over HTTP the run is also aborted when
   the client disconnects, and when a client timeout sends
   `notifications/cancelled` in a later `POST`: that cancel is matched to the
-  request by its id and the client (remote address, `Authorization`,
-  `User-Agent`), and ignored when several requests in flight match.
+  request by its id and the client. The server keeps no session state, but it
+  answers `initialize` with an `Mcp-Session-Id` header, which Streamable HTTP
+  clients (`connectMcp()`, the MCP SDK) send back, so two clients behind one
+  address and token are told apart. A client that sends no session id is known
+  by its remote address, `Authorization` and `User-Agent`, and its cancel is
+  ignored when several requests in flight match. The cancelled request is
+  answered with a JSON-RPC error (`-32800`, `Request cancelled`).
 - **Errors.** An agent failure comes back as an MCP result with `isError: true`.
 - **Approvals.** Approval-gated tools cannot be approved over MCP. A run that
   pauses for approval returns `isError: true` with a message saying so, and
@@ -12463,7 +12472,9 @@ const agent = createAgent({
 });
 ```
 
-Any object with `onSpanStart` and `onSpanEnd` is an exporter.
+Any object with `onSpanStart` and `onSpanEnd` is an exporter. The run does not
+wait for them: a hook that throws, or an `async` one whose promise rejects, is
+reported once per exporter with `console.warn` and otherwise ignored.
 
 #### Advanced: the executor API
 
@@ -12545,12 +12556,28 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `gen_ai.provider.name` | The provider's `name` |
 | `gen_ai.request.model` | The agent's model (`settings.model`, else the provider's default), when known |
 | `gen_ai.conversation.id` | `sessionId`, when set |
-| `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` | The run's total tokens: every model call, including those of delegated child runs; absent when no call reported usage. The `gen_ai.client.token.usage` metric still counts each model call once |
+| `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` | The run's total tokens: every model call, including those of delegated child runs; absent when no call reported usage. These repeat the `chat` spans' tokens: see [Summing token usage over spans](#summing-token-usage-over-spans). The `gen_ai.client.token.usage` metric still counts each model call once |
 | `lousho.cost_usd` | Cumulative estimated USD of the run (every model call and delegated child run, including a background child that finishes before the run ends); absent when any model used has no known price |
 | `lousho.usage.estimated` | `true` when any of the run's tokens were estimated |
 | `lousho.subagent.name` | On a sub-agent's run: the name the lead knows it by (the `task` tool's `agent`) |
 | `lousho.subagent.depth` | On a sub-agent's run: `1` for a sub-agent of the top-level run, `2` for its sub-agent, and so on |
 | `lousho.task.id` | On a sub-agent's run started by `task`: the task's `taskId` |
+
+#### Summing token usage over spans
+
+The totals on `invoke_agent` spans count tokens that the run's `chat` spans
+already carry, and a lead run's total also counts its sub-agents' runs. A
+backend that adds up `gen_ai.usage.*` over every span of a trace (some
+OpenTelemetry LLM cost dashboards do) therefore counts each token at least
+twice, and once more per level of sub-agent nesting: a lead with one sub-agent
+whose model calls used 33 + 7 input tokens shows 40 on the `chat` spans, 7 on
+the sub-agent's `invoke_agent` span and 40 on the lead's, 87 in all.
+
+To get the true total, sum `chat` spans only (`gen_ai.operation.name = chat`),
+read the top-level `invoke_agent` span alone, or use the
+`gen_ai.client.token.usage` metric. If the backend cannot filter, pass
+`createOtelTraceExporter({ agentUsageTotals: false })`: the usage attributes
+then stay on `chat` spans only (`lousho.cost_usd` stays on every span).
 
 ### Model call: `chat {model}` (CLIENT)
 
@@ -14051,7 +14078,7 @@ on the server.
 | `toolCalls[i]` | `{ id, name, args, status, result?, error?, partial? }`, `status` being `'running'`, `'awaiting-approval'`, `'done'`, `'error'` or `'rejected'`. `partial` is the latest `tool.partial` snapshot of a running [streaming tool](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#streaming-partial-results), removed when the call settles or pauses. |
 | `status` | `'idle'`, `'streaming'`, `'awaiting-approval'` or `'error'`. |
 | `pendingApproval` | `{ id, toolCallId, toolName, args }` of the tool call the run paused on, else `null`. For an `ask_question` call it also has `kind: 'question'` and `question: { text, options?, allowFreeText? }`; a tool waiting on an OAuth sign-in has `kind: 'sign-in'` and `signIn: { provider, displayName?, url }` (see [What the user sees](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/oauth.md#what-the-user-sees)). |
-| `error` | `{ name, message }` of the last `error` event or a failed request, else `null`. A remote stream that ends before its `run.done` (a proxy timeout, a server restart) sets `status: 'error'` with an error named `StreamEndedError`. |
+| `error` | `{ name, message }` of the last `error` event or a failed request, else `null`. A remote stream that ends before its `run.done` (a proxy timeout, a server restart) sets `status: 'error'` with an error named `StreamEndedError`, or keeps the server's `error` event when one came first. |
 | `usage` | Token usage of the last finished run (from `run.done`), else `null`. |
 | `finishReason` | How the last run ended (`run.done`): `'stop'`, `'max-steps'`, `'output-invalid'`, `'budget-exceeded'`, `'guardrail'`, ...; `null` before the first run ends. The four named after `stop` also set `status: 'error'` and an `error` named `RunEndedError` (unless an `error` event already did), so the chat does not look like it finished normally. |
 | `todos` | The agent's todo list (`{ id, content, status }[]`), set by each `todo.updated` event of the [todo tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#todo-tools); `[]` until the first one. It carries across turns; see [Todos](#todos). |
@@ -17134,8 +17161,12 @@ snippets here):
   destroyed). There is no `destroy()`: this is how Svelte stores stop their
   work. A transient read that subscribes and unsubscribes in the same turn,
   like `get(agent)` from `svelte/store`, does not count, so it never aborts a
-  run. A store nobody subscribes to still runs a turn you started with
-  `send()`; call `stop()` yourself if you drop it.
+  run. The store cannot tell such a read from a component that is mounted and
+  destroyed within the same microtask turn (for example created and torn down
+  in one synchronous block, or by a `{#if}` that flips back before the next
+  microtask): that component's leaving does not abort the run either. A store
+  nobody subscribes to still runs a turn you started with `send()`; call
+  `stop()` yourself if you drop it or if you unmount that quickly.
 
 The reducer and the stream parser are exported from this subpath too
 (`reduceAgentEvents`, `initialAgentUIState`, `parseEventStream`), the same
