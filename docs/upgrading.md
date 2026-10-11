@@ -11,6 +11,10 @@ and its options did not change - an agent that only does
 `createAgent({ model, instructions, tools })` and `agent.send()` upgrades by
 changing nothing but the version.
 
+Already on `1.0.0-alpha.19`? Skip to
+[Upgrading from alpha.19](#upgrading-from-alpha19) for what changed on `main`
+since.
+
 ```bash
 npm install @lousho/build-ai-agent@^1.0.0-alpha.19
 ```
@@ -182,6 +186,93 @@ runtime behavior or types your code may rely on, one line each:
 - The published package is smaller: test-only files no longer ship, and
   source maps no longer embed `sourcesContent` (their `sources` still resolve
   to the shipped `src/`). No API change.
+
+## Upgrading from alpha.19
+
+`1.0.0-alpha.19` is the latest release on npm. The changes on `main` since
+then (the `[Unreleased]` section of the [CHANGELOG](../CHANGELOG.md)) are
+mostly fixes and additions, but some change a default or a behavior your code
+may rely on. Each is listed below with the way back to the old behavior, where
+there is one. A change marked "no opt-out" closed a security or data-loss bug.
+
+### HTTP routes, servers and channels
+
+| Change | Opt-out |
+| ------ | ------- |
+| With route auth and no `authorizeSession`, a session belongs to the first principal that reads or continues it; another principal gets `403 LOUSHO_SESSION_FORBIDDEN`. The owner is kept in memory per agent, so pass `authorizeSession` on more than one instance. See [Who may use a session](./auth.md#who-may-use-a-session). | `authorizeSession: () => true` |
+| The session routes (`createRouteHandler()`, `createDeployedServer()`, the Worker, `lousho dev`) refuse a cross-site POST (`403 LOUSHO_REQUEST_FORBIDDEN`) and a POST body that is not `Content-Type: application/json` (`415 LOUSHO_UNSUPPORTED_MEDIA_TYPE`). The new `allowedHosts` (off by default) refuses unlisted `Host` headers. See [Cross-site requests](./auth.md#cross-site-requests). | `allowedOrigins: ['*']`, `requireJsonBody: false` (or list the front end's origin in `allowedOrigins`) |
+| `POST /chat/:sessionId/approvals/:id` answers `404` unless the approval belongs to that session, and only the caller the paused run acts for may decide it. | `authorizeApproval` to let others (a supervisor) decide |
+| The routes send an error's `name` and `code` with a generic message instead of its raw text (in `error` events, `500` bodies and `provider.retry` / `provider.fallback` events); the full error goes to `console.error`. | `exposeErrors: true` (`lousho dev` sets it) |
+| A client that disconnects mid-turn no longer aborts the turn: it runs to its end and is saved. See [Next.js routes](./nextjs.md#routes). | `onDisconnect: 'abort'` |
+| `lousho dev` answers `403` to a request whose `Host` is not a loopback name (or, off loopback, an IP address or the `--host` name), against DNS rebinding. | `--allowed-hosts a,b` |
+| `WebhookTriggerAdapter` binds `127.0.0.1` (was `0.0.0.0`), throws `LOUSHO_TRIGGER_INVALID` for a non-loopback `host` without `auth`, and without `auth` refuses a foreign `Host` or a request with an `Origin`. See [Webhook authentication](./triggers.md#webhook-authentication). | `host: '0.0.0.0'` with `auth`, or `allowUnauthenticated: true` |
+| The Cloudflare Worker refuses `GET /chat/:sessionId` (`403`) when no `LOUSHO_API_TOKEN` secret is set. See [Cloudflare Workers](./cloudflare-workers.md). | the `LOUSHO_ALLOW_OPEN_TRANSCRIPTS` var set to `"true"` |
+| `serveMcp()` over HTTP checks `Host` and `Origin` against DNS rebinding; loopback is exactly `localhost`, a `127.x.x.x` address or `::1` (also for `WebhookTriggerAdapter`). | `allowedHosts` / `allowedOrigins` on `serveMcp()`'s HTTP transport (`['*']` turns a check off) |
+| Agent Forge (`lousho studio`) sends no CORS headers, refuses a foreign `Origin` or non-loopback `Host`, and needs the per-launch token it prints. See [Access token](./agent-forge.md#access-token). | no opt-out |
+| `fromUIMessages()` (and so `POST <base>/ui`) drops client-sent `system` messages and any role other than `user` / `assistant`. | no opt-out |
+| Slack and Discord signature checks accept a timestamp at most a minute ahead (was five minutes either way), read in seconds. | no opt-out |
+| `telegramChannel` and `teamsChannel` no longer post an OAuth sign-in link in a group chat. | no opt-out |
+| Channels without a `store` keep their transcripts in the agent's `createAgent({ store })` when it has `sessions`. | pass the channel its own `store` |
+
+### Sessions, approvals and durability
+
+| Change | Opt-out |
+| ------ | ------- |
+| A checkpointed run holds a run lease while it executes: a second process, replica or store object that sends to the same session, resumes it or resolves one of its approvals fails with `LOUSHO_SESSION_BUSY` instead of running its tool calls a second time. See [Run leases](./durable-execution.md#run-leases). | no opt-out (a custom `CheckpointStore` without `acquireLease()` gets no lease) |
+| Approvals run at most once: deciding one re-saves the turn as `'in-progress'` with the call in `Checkpoint.startedToolCallIds`; after a crash mid-call, resuming gives that call a `kind: 'interrupted'` tool error instead of running it again. See [Guarantees](./durable-execution.md#guarantees). | no opt-out |
+| Resolving an approval whose run was deleted or replaced fails with `LOUSHO_APPROVAL_ORPHANED` and withdraws it (it used to overwrite the newer conversation). | no opt-out |
+| A session turn paused for approval locks the session id: a new turn on it throws `SessionAwaitingApprovalError` (`LOUSHO_SESSION_AWAITING_APPROVAL`). | decide the approval, or `session.discardPending()` |
+| Session turns keep the checkpoint history of the latest 10 committed turns. See [Durable sessions](./sessions.md#durable-sessions). | `agent.session({ id, turnHistoryLimit })` with a larger whole number |
+| `sessionId` must be 1-200 characters of `A-Za-z0-9_.-` on every store, and may not end in `.turn-<n>` or `.paused`; `''` is refused. | no opt-out |
+| A deterministic provider error records `lastError` on the turn's checkpoint, and later calls on that session fail fast with `LOUSHO_SESSION_TURN_FAILED`. | `session.discardPending()`, or fix the cause and `session.resume()` |
+| With a store, tools, `needsApproval`, permission rules and hooks get the session id as `ctx.sessionId`, not the turn checkpoint key `<id>.turn-<n>`. | no opt-out |
+| Several calls of one step that need approval pause once, on all of them (`result.approvalIds`); calls that need no approval run before the pause. See [Several calls in one step](./approvals.md#several-calls-in-one-step). | no opt-out |
+| `once()` no longer remembers a yes from a `createAgent({ approve })` callback, and an approval note that is exactly `'defer'` defers. | no opt-out |
+| A corrupt checkpoint fails with `LOUSHO_CHECKPOINT_CORRUPT` (it threw a raw `SyntaxError`). | no opt-out |
+| Memory slots store items under `<slot name>#<scope key>`; items written by alpha.19 are not read. | run `migrateMemoryKeys(slot)` once per slot ([Memory](./memory.md#items-from-before-slot-name-keys)) |
+| Keyword recall (`inMemoryMemory`, `fileMemory`, `sqliteMemory`, worker memory) matches whole words instead of substrings. | no opt-out |
+| A prompt schedule runs every fire in its own session, `schedule-<name>-<fire time>`. See [Prompt schedules and sessions](./schedules.md#prompt-schedules-and-sessions). | `defineSchedule({ sharedSession: true })` |
+| `FlowExecutor.resume()` refuses a flow whose steps changed since the run was saved (`LOUSHO_FLOW_CHANGED`). | no opt-out |
+
+### Providers and model calls
+
+| Change | Opt-out |
+| ------ | ------- |
+| `createAgent({ provider })` with a built-in provider instance or a `fromAiSdk()` provider and no `retry` wraps it in `withRetry()` with the provider's `maxRetries` (default 2): retries emit `provider.retry`, and `fromAiSdk()` retries (it made none). See [Provider retries and fallback](./configuration.md#provider-retries-and-fallback). | `retry: false` |
+| A rate-limited call (a 429) has the code `LOUSHO_PROVIDER_RATE_LIMITED` instead of `LOUSHO_PROVIDER_REQUEST_FAILED`. An out-of-credit account (`insufficient_quota`, a 402) is the non-retryable category `quota-exceeded`. | no opt-out: match both codes |
+| The built-in providers' `timeout` is applied: 10 minutes by default, for the wait for a response to start and between two chunks. See [Request timeout](./providers.md#request-timeout). | `timeout: 0` (or `Infinity`) |
+| `OpenAIProvider` sends `store: false` on the Responses API. See [OpenAI response storage](./providers.md#openai-response-storage-store). | `store: true` |
+| A user file part the provider cannot send rejects the call with `LOUSHO_UNSUPPORTED_CONTENT` instead of a `[file ... not sent]` note. See [Multimodal input](./providers.md#multimodal-input). | `unsupportedFiles: 'text-note'` |
+| `LLMProviderConfig` has no index signature: a misspelled option is a type error. | extend the interface for a custom provider's own fields |
+| A 200 response that carries a failure (`finish_reason: "error"`, an `error` chunk) fails the call with a retryable error instead of succeeding with truncated text; an unknown finish reason is `'other'`, and `ExecutionFinishReason` is a closed union. | no opt-out |
+| An aborted run ends `finishReason: 'aborted'` at once, even when the provider ignores the signal. See [Cancellation](./runs.md#cancellation). | no opt-out |
+| The `openrouter` provider created without `apiKey` reads `OPENROUTER_API_KEY` (it sent `OPENAI_API_KEY`). | pass `apiKey` |
+| The `@modelcontextprotocol/sdk` peer range is `^1.31.0`. | no opt-out |
+
+### Tools, MCP and tracing
+
+| Change | Opt-out |
+| ------ | ------- |
+| MCP tools ask for approval by default (`approval: 'always'`); an MCP tool whose name equals a local tool's is refused. See [Approval for MCP tools](./mcp.md#approval-for-mcp-tools). | `approval: 'annotations'` on servers you trust |
+| Tool results are capped at 50,000 characters (head and tail kept). | `maxToolResultChars: Infinity` |
+| `defineTool()` throws `LOUSHO_CONFIG_INVALID` for a non-object `input` root or a `z.date()` / `z.bigint()` field; tool-call arguments that are not valid JSON reach the model as `LOUSHO_TOOL_ARGS_INVALID` instead of running the tool with `{}`. | no opt-out |
+| A flow `toolCall` step passes the agent's gate (`permissions`, `permissionMode`, approval) and validates its arguments; a call that needs approval fails with `LOUSHO_FLOW_TOOL_DENIED` without `approve`. See [Flows](./flows.md#tool-calls). | pass `approve` in the flow context |
+| `createShellTool` `allow` string patterns refuse arguments that leave the workspace (`..`, `~`, absolute paths), also through quotes. | an `allow` `CommandRule` with an `args` check |
+| `SubprocessSandbox` writes only under `root` and runs containers as `1000:1000` with all capabilities dropped. See [Sandboxed tools](./guardrails.md#sandboxed-tools). | `root`, `user: 'root'` |
+| An MCP result made only of text reaches the model as `{ "text": ... }`. | no opt-out |
+| `redactContent` defaults to `true`: the deprecated `input` / `prompt` / `args` / `result` span attributes are left out, so `fileTraceExporter()` files hold no content. See [Observability](./observability.md#message-and-argument-content-is-opt-in). | `redactContent: false` (or `captureContent: true` for the `gen_ai.*` content) |
+| `agent.stream()` rethrows the run's error after the `error` and `run.done` events. See [Streaming](./streaming.md). | `stream(input, { throwOnError: false })` |
+| `send([])` throws `LOUSHO_CONFIG_INVALID`. | no opt-out |
+
+### CLI, evals and Agent Forge
+
+| Change | Opt-out |
+| ------ | ------- |
+| `lousho dev`, `chat`, `acp`, `mcp` and `doctor` load `./.env` when it exists; variables already set win. See [CLI](./cli.md). | remove or rename `.env` |
+| `t.maxCostUsd(n)` fails when a run reports no cost (the model has no known price). See [Evals](./evals.md). | `t.maxCostUsd(n, { unknownCost: 'skip' })` |
+| `lousho eval` gives each live, `--record` and `--drift` case 10 minutes instead of vitest's 5 s. See [Time limits](./evals.md#time-limits). | `--timeout <ms>` or `defineEval({ timeoutMs })` |
+| Agent Forge fails a run on a real provider with no API key (`LOUSHO_PROVIDER_MISSING_API_KEY`) instead of silently using the mock provider. | switch the agent's provider to `mock` |
+| The npm package no longer ships `llms-full.txt` (it stays in the repository; `llms.txt` ships). | fetch `llms-full.txt` from the repository |
 
 ## What 1.0 promises
 
