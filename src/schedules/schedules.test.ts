@@ -259,6 +259,33 @@ describe('fireSchedule', () => {
     expect(run).toHaveBeenCalledWith({ agent, firedAt, name: 'tick' });
   });
 
+  it('fires a tick once across replicas that share the store: the others skip it', async () => {
+    const sent: string[] = [];
+    const page = defineTool({ name: 'page', description: 'page', input: z.object({}), execute: async (_args, ctx) => (sent.push(ctx.toolCallId), 'paged') });
+    const store = memoryStore();
+    const replica = (name: string) =>
+      createAgent({ provider: mockModel([{ toolCalls: [{ name: 'page', id: `call-${name}` }] }, 'done'], { onExhausted: 'repeat-last' }), tools: [page], store });
+    const nightly = defineSchedule({ name: 'nightly', cron: '0 3 * * *', prompt: 'Page if needed.' });
+    const firedAt = new Date('2026-10-10T03:00:00Z');
+    const run = vi.fn(async () => undefined);
+    const report = defineSchedule({ name: 'report', cron: '0 3 * * *', run });
+
+    await Promise.all([fireSchedule(replica('A'), nightly, { firedAt }), fireSchedule(replica('B'), nightly, { firedAt })]);
+    await Promise.all([fireSchedule(replica('A'), report, { firedAt }), fireSchedule(replica('B'), report, { firedAt })]);
+
+    expect(sent).toHaveLength(1);
+    expect(run).toHaveBeenCalledTimes(1);
+    // The next tick fires again.
+    await fireSchedule(replica('C'), nightly, { firedAt: new Date('2026-10-11T03:00:00Z') });
+    expect(sent).toHaveLength(2);
+    // Two schedules whose names differ only in characters an id cannot hold are claimed apart.
+    const spaced = vi.fn(async () => undefined);
+    const dashed = vi.fn(async () => undefined);
+    await fireSchedule(replica('D'), defineSchedule({ name: 'daily report', cron: '0 3 * * *', run: spaced }), { firedAt });
+    await fireSchedule(replica('D'), defineSchedule({ name: 'daily-report', cron: '0 3 * * *', run: dashed }), { firedAt });
+    expect([spaced.mock.calls.length, dashed.mock.calls.length]).toEqual([1, 1]);
+  });
+
   it('rejects with LOUSHO_SCHEDULE_RUN_INCOMPLETE when the turn does not stop', async () => {
     const agent = createAgent({ provider: mockModel(['a', 'b']), output: z.object({ ok: z.boolean() }) });
     await expect(fireSchedule(agent, defineSchedule({ ...every5, name: 'n', prompt: 'p' }))).rejects.toMatchObject({ code: 'LOUSHO_SCHEDULE_RUN_INCOMPLETE' });
