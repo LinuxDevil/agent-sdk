@@ -9,6 +9,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { loadOptionalPeer } from '../../../providers/optionalPeer';
 import { checkWebhookAuth } from '../../../triggers/webhookAuth';
 import { ConfigurationError } from '../../../execution/errors';
+import { hostHeaderAllowed, isLoopbackHost } from '../../../server/hostCheck';
 
 /** Options of the `{ type: 'http' }` transport. */
 export interface McpHttpTransportOptions {
@@ -33,7 +34,7 @@ export interface McpHttpTransportOptions {
    * Host names (or `host:port`) the `Host` header may carry; other requests
    * get `403`. This guards against DNS rebinding, where a web page re-points
    * its own domain at your machine. Defaults to loopback names (`localhost`,
-   * `127.x.x.x`, `[::1]`) when `host` is loopback, and to no check otherwise.
+   * `127.x.x.x` addresses, `[::1]`; never a name such as `127.example.com`) when `host` is loopback, and to no check otherwise.
    * `['*']` disables the check.
    *
    * @example
@@ -61,26 +62,9 @@ interface HttpListener {
 
 const MAX_BODY_BYTES = 4 * 1024 * 1024;
 
-function isLoopbackHost(host: string): boolean {
-  return host === 'localhost' || host === '::1' || host === '[::1]' || /^127\./.test(host);
-}
-
-/** The lowercased host name of a `Host` header value, without the port (IPv6 keeps its brackets). */
-function hostnameOf(hostHeader: string): string | undefined {
-  try {
-    return new URL(`http://${hostHeader}`).hostname.toLowerCase();
-  } catch {
-    return undefined;
-  }
-}
-
-/** Whether the request's lowercased `Host` header is acceptable for a listener bound to `boundHost`. */
+/** Whether the request's `Host` header is acceptable for a listener bound to `boundHost`: no check on a non-loopback bind without `allowedHosts`. */
 function hostAllowed(hostHeader: string, boundHost: string, allowedHosts: string[] | undefined): boolean {
-  if (allowedHosts?.includes('*')) return true;
-  const hostname = hostnameOf(hostHeader);
-  return allowedHosts
-    ? hostname !== undefined && (allowedHosts.includes(hostname) || allowedHosts.includes(hostHeader))
-    : !isLoopbackHost(boundHost) || (hostname !== undefined && isLoopbackHost(hostname));
+  return hostHeaderAllowed(hostHeader, boundHost, allowedHosts ?? (isLoopbackHost(boundHost) ? undefined : ['*']));
 }
 
 /** The lowercased `host` of an `Origin` header value, or `undefined` when it does not parse. */
@@ -99,8 +83,7 @@ function rebindingRefusal(
   options: Pick<McpHttpTransportOptions, 'allowedHosts' | 'allowedOrigins'>
 ): string | undefined {
   const hostHeader = (req.headers.host ?? '').toLowerCase();
-  const allowedHosts = options.allowedHosts?.map((entry) => entry.toLowerCase());
-  if (!hostAllowed(hostHeader, boundHost, allowedHosts)) {
+  if (!hostAllowed(hostHeader, boundHost, options.allowedHosts)) {
     return `Forbidden: Host "${hostHeader}" is not allowed. Add it to transport.allowedHosts.`;
   }
   const origin = req.headers.origin;

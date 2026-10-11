@@ -330,6 +330,9 @@ describe('serveMcp over HTTP', () => {
     const port = server.port!;
     expect(await rawPost(port, { Host: `evil.example:${port}`, Origin: `http://evil.example:${port}` })).toBe(403);
     expect(await rawPost(port, { Host: `evil.example:${port}` })).toBe(403);
+    // A name that merely starts with `127.` resolves wherever its owner wants.
+    expect(await rawPost(port, { Host: `127.attacker.example:${port}` })).toBe(403);
+    expect(await rawPost(port, { Host: `127.0.0.1.attacker.example:${port}` })).toBe(403);
     expect(await rawPost(port, { Host: `127.0.0.1:${port}`, Origin: 'http://evil.example' })).toBe(403);
     expect(await rawPost(port, { Host: `localhost:${port}`, Origin: `http://localhost:${port}` })).toBe(200);
     expect(await rawPost(port, { Host: `127.0.0.1:${port}` })).toBe(200);

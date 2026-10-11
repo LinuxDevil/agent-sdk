@@ -267,7 +267,8 @@ await server.close();
   to require an `Authorization: Bearer` header; binding a non-loopback host
   without `auth` logs a warning. To block DNS rebinding (a web page re-pointing
   its own domain at your machine), a loopback bind answers `403` unless the
-  `Host` header is `localhost`, `127.x.x.x` or `[::1]`, and any request whose
+  `Host` header is `localhost`, a `127.x.x.x` address or `[::1]` (never a
+  name such as `127.attacker.example`), and any request whose
   `Origin` header is not same-origin with `Host` gets `403`. Set
   `allowedHosts: ['mcp.internal']` to accept other names (it replaces the
   loopback default; on a non-loopback bind there is no Host check unless you

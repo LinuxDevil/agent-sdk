@@ -202,6 +202,18 @@ describe('WebhookTriggerAdapter auth', () => {
     });
   });
 
+  describe('open loopback listener', () => {
+    it('refuses a foreign Host (DNS rebinding) and a browser Origin, and serves a local caller', async () => {
+      const port = await start({});
+      expect((await post(port, '{"input":"x"}', { host: `127.attacker.example:${port}` })).status).toBe(403);
+      expect((await post(port, '{"input":"x"}', { host: `evil.example:${port}` })).status).toBe(403);
+      expect((await post(port, '{"input":"x"}', { origin: 'https://evil.example' })).status).toBe(403);
+      expect(onEvent).not.toHaveBeenCalled();
+      expect((await post(port, '{"input":"x"}', { 'content-type': 'application/json' })).status).toBe(200);
+      expect(onEvent).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('configuration', () => {
     it('rejects empty secrets/tokens and toleranceSeconds without timestampHeader', () => {
       expect(() => new WebhookTriggerAdapter({ auth: { type: 'hmac', secret: '' } })).toThrow(/secret/);
@@ -212,9 +224,18 @@ describe('WebhookTriggerAdapter auth', () => {
       expect(() => new WebhookTriggerAdapter({ auth: { type: 'nope' } as never })).toThrow(/auth\.type/);
     });
 
-    it('warns once when listening on a non-loopback host without auth', async () => {
+    it('binds 127.0.0.1 by default and refuses a non-loopback host without auth', async () => {
+      expect(() => new WebhookTriggerAdapter({ host: '0.0.0.0' })).toThrow(/allowUnauthenticated/);
+      // A name that only starts with `127.` is not loopback.
+      expect(() => new WebhookTriggerAdapter({ host: '127.attacker.example' })).toThrow(/LOUSHO_TRIGGER_INVALID|without `auth`/);
+      const local = new WebhookTriggerAdapter().listen(noopAgent, onEvent);
+      expect(await waitForPort(local)).toBeGreaterThan(0);
+      await local.stop();
+    });
+
+    it('warns once when listening on a non-loopback host without auth (allowUnauthenticated)', async () => {
       const logger = makeLogger();
-      const adapter = new WebhookTriggerAdapter({ host: '0.0.0.0', logger });
+      const adapter = new WebhookTriggerAdapter({ host: '0.0.0.0', logger, allowUnauthenticated: true });
       const first = adapter.listen(noopAgent, onEvent);
       const second = adapter.listen(noopAgent, onEvent);
       expect(logger.warn).toHaveBeenCalledTimes(1);
