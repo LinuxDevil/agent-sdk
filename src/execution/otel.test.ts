@@ -8,8 +8,9 @@ import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
 import { AggregationTemporality, InMemoryMetricExporter, MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { createOtelTraceExporter } from './otel';
 
-/** The exporter's cap on tracked spans (MAX_TRACKED_SPANS in otel.ts). */
-const MAX_TRACKED_SPANS = 10_000;
+/** The exporter's caps on tracked spans (MAX_ENDED_SPANS / MAX_OPEN_SPANS in otel.ts). */
+const MAX_ENDED_SPANS = 10_000;
+const MAX_OPEN_SPANS = 100_000;
 import { AgentExecutor } from './AgentExecutor';
 import { Span, TraceExporter } from './tracing';
 import { ToolRegistry, defineTool } from '../tools';
@@ -178,10 +179,37 @@ describe('createOtelTraceExporter', () => {
     expect(otelApi.trace.getSpan(fake.startedSpans[3].parentContext as Context)).toBeUndefined();
   });
 
-  it('tracks at most MAX_TRACKED_SPANS spans, dropping the oldest (a root that never ends does not leak)', () => {
+  it('never evicts an open root past the cap: more than MAX_ENDED_SPANS ended spans keep the root and its parenting', () => {
+    const exporter = createOtelTraceExporter({ tracer: fake.tracer, metrics: false });
+    exporter.onSpanStart(makeSpan({ id: 'root' }));
+    exporter.onSpanStart(makeSpan({ id: 'child', parentId: 'root' }));
+    for (let i = 0; i < MAX_ENDED_SPANS + 50; i++) {
+      exporter.onSpanStart(makeSpan({ id: `s${i}`, parentId: 'root', attributes: {} }));
+      exporter.onSpanEnd(makeSpan({ id: `s${i}`, parentId: 'root', attributes: {}, endTime: 1100 }));
+    }
+    // The oldest ended spans went, the open ones stayed.
+    exporter.onSpanStart(makeSpan({ id: 'late-of-ended', parentId: 's0' }));
+    expect(otelApi.trace.getSpan(fake.startedSpans.at(-1)!.parentContext as Context)).toBeUndefined();
+    exporter.onSpanStart(makeSpan({ id: 'late-of-root', parentId: 'root' }));
+    expect(otelApi.trace.getSpan(fake.startedSpans.at(-1)!.parentContext as Context)).toBe(fake.startedSpans[0].span);
+    exporter.onSpanStart(makeSpan({ id: 'late-of-child', parentId: 'child' }));
+    expect(otelApi.trace.getSpan(fake.startedSpans.at(-1)!.parentContext as Context)).toBe(fake.startedSpans[1].span);
+
+    exporter.onSpanEnd(makeSpan({ id: 'child', parentId: 'root', endTime: 1800 }));
+    exporter.onSpanEnd(makeSpan({ id: 'root', endTime: 1900 }));
+    expect(fake.startedSpans[0].span.ended).toBe(true);
+    expect(fake.startedSpans[0].span.endTime).toBe(1900);
+    expect(fake.startedSpans[1].span.ended).toBe(true);
+  });
+
+  it('ends and releases the oldest open span past MAX_OPEN_SPANS (a root that never ends does not leak)', () => {
     const exporter = createOtelTraceExporter({ tracer: fake.tracer, metrics: false });
     exporter.onSpanStart(makeSpan({ id: 'abandoned' }));
-    for (let i = 0; i < MAX_TRACKED_SPANS; i++) exporter.onSpanStart(makeSpan({ id: `open${i}`, attributes: {} }));
+    for (let i = 0; i < MAX_OPEN_SPANS; i++) exporter.onSpanStart(makeSpan({ id: `open${i}`, attributes: {} }));
+    const abandoned = fake.startedSpans[0].span;
+    expect(abandoned.ended).toBe(true);
+    expect(abandoned.attributes['lousho.span.evicted']).toBe(true);
+    expect(fake.startedSpans[1].span.ended).toBe(false);
     exporter.onSpanStart(makeSpan({ id: 'late-child', parentId: 'abandoned' }));
     expect(otelApi.trace.getSpan(fake.startedSpans.at(-1)!.parentContext as Context)).toBeUndefined();
   });

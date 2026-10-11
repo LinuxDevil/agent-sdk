@@ -93,8 +93,15 @@ export interface OtelTraceExporterOptions {
   legacyAttributes?: boolean;
 }
 
-/** How many spans an exporter tracks at most for parenting (open ones, and ended ones of a tree still open). */
-const MAX_TRACKED_SPANS = 10_000;
+/** How many ended spans of still-open trees an exporter keeps for parenting late children. */
+const MAX_ENDED_SPANS = 10_000;
+
+/**
+ * How many open spans an exporter tracks at most. Past it, the oldest open span (in practice one of a run
+ * abandoned mid-approval, whose root never ends) is ended and exported as-is, with `lousho.span.evicted`, and
+ * released.
+ */
+const MAX_OPEN_SPANS = 100_000;
 
 const LEGACY_KEYS: ReadonlySet<string> = new Set(Object.values(LegacyAttr));
 
@@ -138,6 +145,24 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
   // its `execute_tool task` parent ended, and must still join that trace
   // (Eve MA-F3). A whole tree's entries are dropped when its root span ends.
   const otelSpansById = new Map<string, { span: OtelSpan; ctx: Context; rootId: string }>();
+  // The ids of ended (non-root) spans still in the map, oldest end first: only these are evicted past the
+  // cap, so an open span (a long run's root) is never lost.
+  const endedIds = new Set<string>();
+
+  const release = (id: string) => {
+    otelSpansById.delete(id);
+    endedIds.delete(id);
+  };
+
+  const evictOldestOpen = () => {
+    for (const [id, entry] of otelSpansById) {
+      if (endedIds.has(id)) continue;
+      entry.span.setAttribute('lousho.span.evicted', true);
+      entry.span.end();
+      release(id);
+      return;
+    }
+  };
 
   return {
     onSpanStart(span: Span) {
@@ -158,11 +183,8 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
       const ctx = trace.setSpan(parentContext, otelSpan);
       otelSpansById.set(span.id, { span: otelSpan, ctx, rootId: parentEntry ? parentEntry.rootId : span.id });
       // A tree whose root never ends (a run abandoned mid-approval, a process that stopped awaiting it) would keep
-      // its entries forever: past the cap the oldest go, which in practice are those of such abandoned trees.
-      if (otelSpansById.size > MAX_TRACKED_SPANS) {
-        const oldest = otelSpansById.keys().next().value;
-        if (oldest !== undefined) otelSpansById.delete(oldest);
-      }
+      // its open spans forever: past a much larger cap the oldest open one is ended and released.
+      if (otelSpansById.size - endedIds.size > MAX_OPEN_SPANS) evictOldestOpen();
     },
 
     onSpanEnd(span: Span) {
@@ -178,7 +200,13 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
       entry.span.end(span.endTime);
       if (entry.rootId === span.id) {
         for (const [id, other] of otelSpansById) {
-          if (other.rootId === span.id) otelSpansById.delete(id);
+          if (other.rootId === span.id) release(id);
+        }
+      } else {
+        endedIds.add(span.id);
+        if (endedIds.size > MAX_ENDED_SPANS) {
+          const oldest = endedIds.values().next().value;
+          if (oldest !== undefined) release(oldest);
         }
       }
       recordMetrics(span);
