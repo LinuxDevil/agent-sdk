@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { APICallError } from 'ai';
-import { chatCompletionFailure, chatCompletionWatch, providerFetch, uniqueToolCallIds } from './providerFetch';
+import { chatCompletionAsStream, chatCompletionFailure, chatCompletionWatch, providerFetch, uniqueToolCallIds } from './providerFetch';
 
 const sse = (...payloads: unknown[]) => payloads.map((p) => `data: ${typeof p === 'string' ? p : JSON.stringify(p)}\n\n`).join('');
 
@@ -29,16 +29,48 @@ function sendOf(body: string, { gapMs = 0, chunks = [body] }: { gapMs?: number; 
 describe('chatCompletionFailure', () => {
   it("reads finish_reason 'error' and an error object; leaves normal chunks and Responses API events alone", () => {
     expect(chatCompletionFailure(JSON.stringify({ choices: [{ finish_reason: 'error' }] }))).toMatchObject({ status: 502 });
-    expect(chatCompletionFailure(JSON.stringify({ error: { code: 429, message: 'slow down' }, choices: [] }))).toEqual({
-      status: 429,
-      message: 'The provider reported an error mid-response: slow down',
-    });
+    const chunk = JSON.stringify({ error: { code: 429, message: 'slow down' }, choices: [] });
+    expect(chatCompletionFailure(chunk)).toEqual({ status: 429, message: 'The provider reported an error mid-response: slow down', body: chunk });
     expect(chatCompletionFailure(JSON.stringify({ choices: [{ finish_reason: 'stop', delta: { content: 'the "error" word' } }] }))).toBeUndefined();
     expect(chatCompletionFailure(JSON.stringify({ type: 'error', message: 'x', error: { message: 'x' } }))).toBeUndefined();
   });
 });
 
+describe('chatCompletionAsStream', () => {
+  const payloads = (events: string) => events.split('\n\n').filter(Boolean).map((line) => line.slice('data: '.length));
+
+  it('replays a completion as chunks: message, finish reason, usage, then [DONE]', () => {
+    const call = { id: 'c1', type: 'function', function: { name: 'add', arguments: '{"a":1}' } };
+    const completion = { id: 'x', object: 'chat.completion', model: 'm', choices: [{ index: 0, message: { role: 'assistant', content: null, tool_calls: [call] }, finish_reason: 'tool_calls' }], usage: { prompt_tokens: 1 } };
+    const [first, second, third, done] = payloads(chatCompletionAsStream(JSON.stringify(completion)) ?? '');
+
+    expect(JSON.parse(first)).toEqual({ id: 'x', object: 'chat.completion.chunk', model: 'm', choices: [{ index: 0, delta: { role: 'assistant', content: null, tool_calls: [{ index: 0, ...call }] }, finish_reason: null }] });
+    expect(JSON.parse(second)).toMatchObject({ choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] });
+    expect(JSON.parse(third)).toMatchObject({ choices: [], usage: { prompt_tokens: 1 } });
+    expect(done).toBe('[DONE]');
+  });
+
+  it('leaves anything but a chat completion alone', () => {
+    expect(chatCompletionAsStream(JSON.stringify({ object: 'response', output: [] }))).toBeUndefined();
+    expect(chatCompletionAsStream(JSON.stringify({ error: { message: 'x' } }))).toBeUndefined();
+    expect(chatCompletionAsStream(JSON.stringify({ choices: [{ delta: { content: 'x' } }] }))).toBeUndefined();
+    expect(chatCompletionAsStream('not json')).toBeUndefined();
+  });
+});
+
 describe('providerFetch', () => {
+  it('replays a JSON reply to a streaming request as an event stream; a non-streaming request keeps its JSON', async () => {
+    const completion = JSON.stringify({ object: 'chat.completion', choices: [{ index: 0, message: { content: 'hi' }, finish_reason: 'stop' }] });
+    const fetch = providerFetch({ send: sendOf(completion), watch: chatCompletionWatch });
+
+    const streamed = await fetch('https://x/v1/chat/completions', { method: 'POST', body: JSON.stringify({ stream: true }) });
+    expect(streamed.headers.get('content-type')).toBe('text/event-stream');
+    expect(await streamed.text()).toBe(chatCompletionAsStream(completion));
+
+    const plain = await fetch('https://x/v1/chat/completions', { method: 'POST', body: JSON.stringify({ stream: false }) });
+    expect(await plain.text()).toBe(completion);
+  });
+
   it("turns a JSON reply with finish_reason 'error' into a 502 error response", async () => {
     const fetch = providerFetch({ send: sendOf(JSON.stringify({ choices: [{ finish_reason: 'error', message: { content: 'cut' } }] })), watch: chatCompletionWatch });
     const response = await fetch('https://x/v1/chat/completions');

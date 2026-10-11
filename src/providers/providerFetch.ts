@@ -15,6 +15,8 @@ export const DEFAULT_REQUEST_TIMEOUT_MS = 600_000;
 export interface UpstreamFailure {
   status: number;
   message: string;
+  /** The payload that reported it, kept as the error's `responseBody` for a failure mid-stream. */
+  body?: string;
 }
 
 /** What reads a response body as it passes. */
@@ -25,6 +27,8 @@ export interface ResponseWatch {
   rewrite?(text: string): string | undefined;
   /** Once, when the body was read to its end (`complete`) or failed or was cancelled. */
   end?(complete: boolean): void;
+  /** A JSON body answering a streaming request (a server that ignores `stream: true`): the event stream it stands for, if it can tell. */
+  asStream?(text: string): string | undefined;
 }
 
 export interface ProviderFetchOptions {
@@ -106,7 +110,7 @@ function failureError(failure: UpstreamFailure, url: string): APICallError {
     url,
     requestBodyValues: {},
     statusCode: failure.status,
-    responseBody: failureBody(failure),
+    responseBody: failure.body ?? failureBody(failure),
     isRetryable: isRetryableStatus(failure.status),
   });
 }
@@ -205,8 +209,13 @@ export function providerFetch({ send, timeoutMs, watch }: ProviderFetchOptions):
     const response = await within(send()(input, { ...init, signal }), idleMs, controller);
     const watching = response.ok ? watch?.() : undefined;
     if (!response.body || (!watching && idleMs === undefined)) return response;
-    return watchedResponse(response, response.body, { idleMs, watching, url: requestUrl(input) });
+    return watchedResponse(response, response.body, { idleMs, watching, url: requestUrl(input), streaming: isStreamingRequest(init) });
   };
+}
+
+/** Whether a request body asks for an event stream (`"stream": true`, as every OpenAI-compatible API spells it). */
+function isStreamingRequest(init: RequestInit | undefined): boolean {
+  return typeof init?.body === 'string' && /"stream"\s*:\s*true/.test(init.body);
 }
 
 /** The URL a `fetch` input names. */
@@ -219,16 +228,25 @@ function requestUrl(input: Parameters<typeof globalThis.fetch>[0]): string {
 async function watchedResponse(
   response: Response,
   body: ReadableStream<Uint8Array>,
-  { idleMs, watching, url }: { idleMs?: number; watching?: ResponseWatch; url: string }
+  { idleMs, watching, url, streaming }: { idleMs?: number; watching?: ResponseWatch; url: string; streaming: boolean }
 ): Promise<Response> {
   const init = { status: response.status, statusText: response.statusText, headers: response.headers };
   const sse = (response.headers.get('content-type') ?? '').includes('text/event-stream');
-  if (sse || !watching?.data) return new Response(watchedBody(body, { idleMs, watch: watching, sse, url }), init);
+  const replays = !sse && streaming && watching?.asStream !== undefined;
+  if (sse || !(watching?.data || replays)) return new Response(watchedBody(body, { idleMs, watch: watching, sse, url }), init);
   // A JSON body: read whole (within the timeout), checked once, and handed on as text.
   const read = await new Response(watchedBody(body, { idleMs, sse: false, url })).text();
-  const text = watching.rewrite?.(read) ?? read;
-  const failure = watching.data(text);
-  watching.end?.(true);
+  // A whole JSON reply to a streaming request would parse as an empty stream: replay it as the stream it stands for.
+  const events = replays ? watching?.asStream?.(read) : undefined;
+  if (events !== undefined) {
+    const headers = new Headers(response.headers);
+    headers.set('content-type', 'text/event-stream');
+    const replayed = new Response(events).body as ReadableStream<Uint8Array>;
+    return new Response(watchedBody(replayed, { watch: watching, sse: true, url }), { ...init, headers });
+  }
+  const text = watching?.rewrite?.(read) ?? read;
+  const failure = watching?.data?.(text);
+  watching?.end?.(true);
   if (failure) return new Response(failureBody(failure), { status: failure.status, headers: { 'content-type': 'application/json' } });
   return new Response(text, init);
 }
@@ -266,12 +284,17 @@ export function chatCompletionFailure(text: string): UpstreamFailure | undefined
   const { error } = payload;
   if (error && (typeof error === 'string' || typeof error === 'object')) {
     const message = typeof error === 'string' ? error : typeof error.message === 'string' ? error.message : JSON.stringify(error);
-    return { status: typeof error === 'string' ? 502 : errorStatus(error.code), message: `The provider reported an error mid-response: ${message}` };
+    return {
+      status: typeof error === 'string' ? 502 : errorStatus(error.code),
+      message: `The provider reported an error mid-response: ${message}`,
+      body: text,
+    };
   }
   if (payload.choices?.some((choice) => choice?.finish_reason === 'error')) {
     return {
       status: 502,
       message: "The provider ended the response with finish reason 'error' (an upstream failure after the response started); the text is incomplete.",
+      body: text,
     };
   }
   return undefined;
@@ -344,7 +367,42 @@ class ToolCallIds {
   }
 }
 
-/** The watch of one OpenAI-compatible chat completion response: unique tool-call ids and in-response failures. */
+/** A chat completion as far as {@link chatCompletionAsStream} reads it. */
+interface ChatCompletion {
+  object?: unknown;
+  usage?: unknown;
+  choices?: Array<{ index?: unknown; finish_reason?: unknown; message?: Record<string, unknown> & { tool_calls?: unknown } }>;
+}
+
+/**
+ * A whole chat completion (choices with a `message`) as the event stream
+ * of chunks that carries the same message, finish reason and usage; any
+ * other body is `undefined`. For servers that answer `stream: true` with JSON.
+ */
+export function chatCompletionAsStream(text: string): string | undefined {
+  let completion: ChatCompletion;
+  try {
+    completion = JSON.parse(text) as ChatCompletion;
+  } catch {
+    return undefined;
+  }
+  if (completion?.object !== 'chat.completion' && completion?.object !== undefined) return undefined;
+  const { choices, usage, object: _object, ...meta } = completion ?? {};
+  if (!Array.isArray(choices) || choices.length === 0 || !choices.every((choice) => typeof choice?.message === 'object' && choice.message !== null)) return undefined;
+  const chunk = (rest: Record<string, unknown>) => `data: ${JSON.stringify({ ...meta, object: 'chat.completion.chunk', ...rest })}\n\n`;
+  let events = '';
+  for (const [n, choice] of choices.entries()) {
+    const index = choice.index ?? n;
+    const { tool_calls: calls, ...message } = choice.message ?? {};
+    const toolCalls = Array.isArray(calls) ? (calls as Array<Record<string, unknown>>).map((call, i) => ({ index: i, ...call })) : undefined;
+    events += chunk({ choices: [{ index, delta: { ...message, ...(toolCalls && { tool_calls: toolCalls }) }, finish_reason: null }] });
+    events += chunk({ choices: [{ index, delta: {}, finish_reason: choice.finish_reason ?? null }] });
+  }
+  if (usage !== undefined) events += chunk({ choices: [], usage });
+  return `${events}data: [DONE]\n\n`;
+}
+
+/** The watch of one OpenAI-compatible chat completion response: unique tool-call ids, in-response failures, and a JSON reply to a stream request. */
 export function chatCompletionWatch(): ResponseWatch {
-  return { rewrite: uniqueToolCallIds(), data: chatCompletionFailure };
+  return { rewrite: uniqueToolCallIds(), data: chatCompletionFailure, asStream: chatCompletionAsStream };
 }

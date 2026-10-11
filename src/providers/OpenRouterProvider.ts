@@ -189,6 +189,7 @@ function observingWatch(observe: RequestChanges['observe']): ResponseWatch {
   observe(new Promise((resolve) => (settle = resolve)));
   return {
     rewrite: chat.rewrite,
+    asStream: chat.asStream,
     data(text) {
       try {
         scanResponseBody(JSON.parse(text) as ResponseBody, found);
