@@ -530,6 +530,20 @@ function apiCallErrorMessage(err: APICallError): string {
 }
 
 /**
+ * The real failure under the 'ai' SDK's wrappers: a `RetryError`'s last error,
+ * and the failure inside `@ai-sdk/provider-utils` 4+'s "Failed to process
+ * successful response" (status 200) around a body-read error - such as the
+ * in-response failure providerFetch raises.
+ */
+function underlyingFailure(error: unknown): unknown {
+  let cause: unknown = RetryError.isInstance(error) && error.lastError !== undefined ? error.lastError : error;
+  while (APICallError.isInstance(cause) && (cause.statusCode ?? 0) < 400 && APICallError.isInstance(cause.cause)) {
+    cause = cause.cause;
+  }
+  return cause;
+}
+
+/**
  * Compact ANY error thrown by `LLMProvider.generate()` into a small,
  * five-category `CompactedProviderError`.
  *
@@ -565,15 +579,7 @@ export function compactProviderError(
   // Unwrap the 'ai' SDK's own internal-retry-loop-exhausted wrapper to the
   // real failure underneath, so callers see (e.g.) 'rate-limit' instead of
   // an opaque 'unknown' RetryError.
-  let cause: unknown = error;
-  if (RetryError.isInstance(cause) && cause.lastError !== undefined) {
-    cause = cause.lastError;
-  }
-  // `@ai-sdk/provider-utils` 4+ wraps a failure while reading a 200 response's body ("Failed to process
-  // successful response", status 200) around the real one - such as the in-response failure providerFetch raises.
-  while (APICallError.isInstance(cause) && (cause.statusCode ?? 0) < 400 && APICallError.isInstance(cause.cause)) {
-    cause = cause.cause;
-  }
+  const cause = underlyingFailure(error);
 
   // A connection failure (refused, DNS, reset, headers timeout) keeps its code
   // in the `cause` chain: name it and the URL. Transient like a timeout.

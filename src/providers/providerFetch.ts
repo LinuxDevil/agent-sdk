@@ -54,9 +54,66 @@ function failureBody(failure: UpstreamFailure): string {
   return JSON.stringify({ error: { message: failure.message, type: 'upstream_error', param: null, code: null } });
 }
 
+/** `reader.read()`, rejected with a `TimeoutError` when the next chunk takes longer than `idleMs`. */
+async function readWithin(reader: ReadableStreamDefaultReader<Uint8Array>, idleMs: number | undefined): Promise<ReadableStreamReadResult<Uint8Array>> {
+  if (idleMs === undefined) return reader.read();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const idle = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => reject(timeoutError(idleMs)), idleMs);
+  });
+  try {
+    return await Promise.race([reader.read(), idle]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** One SSE line as it goes on: rewritten by the watch when it is a `data:` payload, and the failure it reports. */
+function watchLine(line: string, watch: ResponseWatch): { sent: string; failure?: UpstreamFailure } {
+  const trimmed = line.trim();
+  const payload = trimmed.startsWith('data:') ? trimmed.slice(5).trim() : '';
+  if (!payload || payload === '[DONE]') return { sent: `${line}\n` };
+  const rewritten = watch.rewrite?.(payload) ?? payload;
+  const sent = rewritten === payload ? `${line}\n` : `data: ${rewritten}\n`;
+  return { sent, failure: watch.data?.(rewritten) };
+}
+
+/** Splits an event stream into lines for its watch, keeping a partial line until the rest of it arrives. */
+class LineScanner {
+  private buffer = '';
+  constructor(private readonly watch: ResponseWatch) {}
+
+  /** The complete lines in `text` (after what is buffered): the first failure, and the text before it. */
+  scan(text: string, last: boolean): { failure?: UpstreamFailure; before: string } {
+    const lines = (this.buffer + text).split('\n');
+    const rest = lines.pop() ?? '';
+    this.buffer = last ? '' : rest;
+    if (last && rest) lines.push(rest);
+    let before = '';
+    for (const line of lines) {
+      const { sent, failure } = watchLine(line, this.watch);
+      if (failure) return { failure, before };
+      before += sent;
+    }
+    return { before };
+  }
+}
+
+/** The retryable `APICallError` an in-response failure fails the stream with. */
+function failureError(failure: UpstreamFailure, url: string): APICallError {
+  return new APICallError({
+    message: failure.message,
+    url,
+    requestBodyValues: {},
+    statusCode: failure.status,
+    responseBody: failureBody(failure),
+    isRetryable: isRetryableStatus(failure.status),
+  });
+}
+
 /**
  * `body` read through: each pull waits at most `idleMs` for the next chunk,
- * SSE `data:` lines (or, for a JSON body, the whole text) go to `watch.data`,
+ * SSE `data:` lines go to the watch (complete lines only go on, re-encoded),
  * and a failure it returns errors the stream with a retryable `APICallError`
  * after the lines before it.
  */
@@ -67,92 +124,46 @@ function watchedBody(
   const reader = body.getReader();
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
-  let buffer = '';
+  const scanner = sse && watch?.data ? new LineScanner(watch) : undefined;
   let ended = false;
   const end = (complete: boolean) => {
-    if (ended) return;
+    if (!ended) watch?.end?.(complete);
     ended = true;
-    watch?.end?.(complete);
   };
-  const read = async (): Promise<ReadableStreamReadResult<Uint8Array>> => {
-    if (idleMs === undefined) return reader.read();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const idle = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => reject(timeoutError(idleMs)), idleMs);
-    });
-    try {
-      return await Promise.race([reader.read(), idle]);
-    } finally {
-      clearTimeout(timer);
-    }
-  };
-  /** The complete lines in `text` (after what is buffered): the first failure, and the text before it. */
-  const scan = (text: string, last: boolean): { failure?: UpstreamFailure; before: string } => {
-    buffer += text;
-    const lines = buffer.split('\n');
-    const rest = lines.pop() ?? '';
-    buffer = last ? '' : rest;
-    if (last && rest) lines.push(rest);
-    let before = '';
-    for (const line of lines) {
-      const trimmed = line.trim();
-      const payload = trimmed.startsWith('data:') ? trimmed.slice(5).trim() : '';
-      const sent = payload && payload !== '[DONE]' ? (watch?.rewrite?.(payload) ?? payload) : payload;
-      const failure = sent && sent !== '[DONE]' ? watch?.data?.(sent) : undefined;
-      if (failure) return { failure, before };
-      before += sent === payload ? `${line}\n` : `data: ${sent}\n`;
-    }
-    return { before };
-  };
-  const fail = (controller: ReadableStreamDefaultController<Uint8Array>, failure: UpstreamFailure, before: string) => {
+  /** Passes on what `text` completes; true when something went on or the stream ended. */
+  const emit = (controller: ReadableStreamDefaultController<Uint8Array>, text: string, last: boolean): boolean => {
+    const { failure, before } = (scanner as LineScanner).scan(text, last);
     if (before) controller.enqueue(encoder.encode(before));
-    controller.error(
-      new APICallError({
-        message: failure.message,
-        url,
-        requestBodyValues: {},
-        statusCode: failure.status,
-        responseBody: failureBody(failure),
-        isRetryable: isRetryableStatus(failure.status),
-      })
-    );
+    if (!failure) return before !== '';
+    controller.error(failureError(failure, url));
     end(false);
     reader.cancel().catch(() => undefined);
+    return true;
+  };
+  /** One read: true when something went on (a pull that enqueues nothing would leave the reader waiting). */
+  const step = async (controller: ReadableStreamDefaultController<Uint8Array>): Promise<boolean> => {
+    const result = await readWithin(reader, idleMs);
+    if (result.done) {
+      if (!scanner || !emit(controller, decoder.decode(), true) || !ended) {
+        end(true);
+        controller.close();
+      }
+      return true;
+    }
+    if (!scanner) {
+      controller.enqueue(result.value);
+      return true;
+    }
+    return emit(controller, decoder.decode(result.value, { stream: true }), false);
   };
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
-      // Reads until something goes on (a pull that enqueues nothing would leave the reader waiting).
-      for (;;) {
-        let result: ReadableStreamReadResult<Uint8Array>;
-        try {
-          result = await read();
-        } catch (error) {
-          end(false);
-          reader.cancel(error).catch(() => undefined);
-          controller.error(error);
-          return;
-        }
-        if (result.done) {
-          if (sse && watch?.data) {
-            const { failure, before } = scan(decoder.decode(), true);
-            if (failure) return fail(controller, failure, before);
-            if (before) controller.enqueue(encoder.encode(before));
-          }
-          end(true);
-          controller.close();
-          return;
-        }
-        if (!sse || !watch?.data) {
-          controller.enqueue(result.value);
-          return;
-        }
-        // Complete lines only go on (re-encoded); a partial line waits for the rest of it.
-        const { failure, before } = scan(decoder.decode(result.value, { stream: true }), false);
-        if (failure) return fail(controller, failure, before);
-        if (before) {
-          controller.enqueue(encoder.encode(before));
-          return;
-        }
+      try {
+        while (!(await step(controller)));
+      } catch (error) {
+        end(false);
+        reader.cancel(error).catch(() => undefined);
+        controller.error(error);
       }
     },
     cancel(reason) {
@@ -194,22 +205,32 @@ export function providerFetch({ send, timeoutMs, watch }: ProviderFetchOptions):
     const response = await within(send()(input, { ...init, signal }), idleMs, controller);
     const watching = response.ok ? watch?.() : undefined;
     if (!response.body || (!watching && idleMs === undefined)) return response;
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    const sse = (response.headers.get('content-type') ?? '').includes('text/event-stream');
-    if (sse || !watching?.data) {
-      const body = watchedBody(response.body, { idleMs, watch: watching, sse, url });
-      return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
-    }
-    // A JSON body: read whole (within the timeout), checked once, and handed on as text.
-    const read = await new Response(watchedBody(response.body, { idleMs, sse: false, url })).text();
-    const text = watching.rewrite?.(read) ?? read;
-    const failure = watching.data(text);
-    watching.end?.(true);
-    if (failure) {
-      return new Response(failureBody(failure), { status: failure.status, headers: { 'content-type': 'application/json' } });
-    }
-    return new Response(text, { status: response.status, statusText: response.statusText, headers: response.headers });
+    return watchedResponse(response, response.body, { idleMs, watching, url: requestUrl(input) });
   };
+}
+
+/** The URL a `fetch` input names. */
+function requestUrl(input: Parameters<typeof globalThis.fetch>[0]): string {
+  if (typeof input === 'string') return input;
+  return input instanceof URL ? input.href : input.url;
+}
+
+/** `response` with its body read through its watch and the idle timeout (see providerFetch). */
+async function watchedResponse(
+  response: Response,
+  body: ReadableStream<Uint8Array>,
+  { idleMs, watching, url }: { idleMs?: number; watching?: ResponseWatch; url: string }
+): Promise<Response> {
+  const init = { status: response.status, statusText: response.statusText, headers: response.headers };
+  const sse = (response.headers.get('content-type') ?? '').includes('text/event-stream');
+  if (sse || !watching?.data) return new Response(watchedBody(body, { idleMs, watch: watching, sse, url }), init);
+  // A JSON body: read whole (within the timeout), checked once, and handed on as text.
+  const read = await new Response(watchedBody(body, { idleMs, sse: false, url })).text();
+  const text = watching.rewrite?.(read) ?? read;
+  const failure = watching.data(text);
+  watching.end?.(true);
+  if (failure) return new Response(failureBody(failure), { status: failure.status, headers: { 'content-type': 'application/json' } });
+  return new Response(text, init);
 }
 
 /** One choice of an OpenAI-compatible chat completion or chunk, as far as read here. */
@@ -270,40 +291,57 @@ interface ChatToolCall {
  * a call's id on each of its deltas keeps the id it was given first.
  */
 export function uniqueToolCallIds(): (text: string) => string | undefined {
-  const used = new Set<string>();
-  const byIndex = new Map<string, { original: string; assigned: string }>();
-  const unique = (id: string): string => {
-    let assigned = id;
-    for (let n = 2; used.has(assigned); n++) assigned = `${id}_${n}`;
-    used.add(assigned);
-    return assigned;
-  };
+  const ids = new ToolCallIds();
   return (text) => {
     if (!text.includes('"tool_calls"')) return undefined;
-    let payload: { choices?: Array<{ index?: unknown; message?: { tool_calls?: unknown }; delta?: { tool_calls?: unknown } }> };
+    let payload: ToolCallPayload;
     try {
-      payload = JSON.parse(text) as typeof payload;
+      payload = JSON.parse(text) as ToolCallPayload;
     } catch {
       return undefined;
     }
     let changed = false;
-    for (const choice of payload?.choices ?? []) {
-      const delta = choice?.delta !== undefined;
-      const calls = choice?.message?.tool_calls ?? choice?.delta?.tool_calls;
-      for (const call of Array.isArray(calls) ? (calls as ChatToolCall[]) : []) {
-        if (typeof call?.id !== 'string' || call.id === '') continue;
-        const key = delta && call.index !== undefined ? `${String(choice.index)}:${String(call.index)}` : undefined;
-        const known = key === undefined ? undefined : byIndex.get(key);
-        const assigned = known && known.original === call.id ? known.assigned : unique(call.id);
-        if (key !== undefined) byIndex.set(key, { original: call.id, assigned });
-        if (assigned !== call.id) {
-          call.id = assigned;
-          changed = true;
-        }
-      }
-    }
+    for (const choice of payload?.choices ?? []) changed = ids.assign(choice) || changed;
     return changed ? JSON.stringify(payload) : undefined;
   };
+}
+
+/** A chat completion (or chunk) as far as its tool calls are read. */
+interface ToolCallPayload {
+  choices?: Array<{ index?: unknown; message?: { tool_calls?: unknown }; delta?: { tool_calls?: unknown } }>;
+}
+
+/** The tool-call ids of one response: each one used, and a stream call's id by its index. */
+class ToolCallIds {
+  private readonly used = new Set<string>();
+  private readonly byIndex = new Map<string, { original: string; assigned: string }>();
+
+  /** Gives each call of `choice` its own id; true when one changed. */
+  assign(choice: NonNullable<ToolCallPayload['choices']>[number]): boolean {
+    const calls = choice?.message?.tool_calls ?? choice?.delta?.tool_calls;
+    let changed = false;
+    for (const call of Array.isArray(calls) ? (calls as ChatToolCall[]) : []) {
+      if (typeof call?.id !== 'string' || call.id === '') continue;
+      const key = choice.delta !== undefined && call.index !== undefined ? `${String(choice.index)}:${String(call.index)}` : undefined;
+      const assigned = this.idFor(call.id, key);
+      if (assigned !== call.id) {
+        call.id = assigned;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  /** `id`, or a suffixed one when an earlier call had it; a stream call (`key`) keeps the one it was given first. */
+  private idFor(id: string, key: string | undefined): string {
+    const known = key === undefined ? undefined : this.byIndex.get(key);
+    if (known && known.original === id) return known.assigned;
+    let assigned = id;
+    for (let n = 2; this.used.has(assigned); n++) assigned = `${id}_${n}`;
+    this.used.add(assigned);
+    if (key !== undefined) this.byIndex.set(key, { original: id, assigned });
+    return assigned;
+  }
 }
 
 /** The watch of one OpenAI-compatible chat completion response: unique tool-call ids and in-response failures. */
