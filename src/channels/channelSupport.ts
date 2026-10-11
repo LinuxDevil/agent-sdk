@@ -95,6 +95,25 @@ export function deliveryLog(options: { ttlMs?: number; max?: number } = {}): (id
   };
 }
 
+/**
+ * Where a channel records the webhook delivery ids it already took, so a
+ * redelivery does not run its turn twice. The default is in memory (one
+ * process, one hour); give a shared, durable one (Redis `SET NX EX`, a
+ * database row with a unique key) when the channel runs on more than one
+ * replica or must survive a restart.
+ *
+ * @example
+ * ```ts
+ * const deliveries: DeliveryStore = {
+ *   seen: async (id) => (await redis.set(`gh-delivery:${id}`, '1', { NX: true, EX: 3600 })) === null,
+ * };
+ * ```
+ */
+export interface DeliveryStore {
+  /** Records `id` and resolves whether it had been recorded before (a redelivery, which is then not run). */
+  seen(id: string): boolean | Promise<boolean>;
+}
+
 /** Eve CH-F6: what a client sees of a channel 500, as on the session routes (A1); the detail goes to `onError`. */
 const PUBLIC_ERROR_MESSAGE = 'The request failed. The server log has the details.';
 

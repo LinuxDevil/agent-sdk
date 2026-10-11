@@ -62,6 +62,10 @@ describe('SlackTriggerAdapter signature verification', () => {
     ['a tampered body', (b) => ({ headers: signedHeaders(b), rawBody: b.replace('hello', 'HELLO') })],
     ['a stale timestamp', (b) => ({ headers: staleHeaders(b, -301), rawBody: b })],
     ['a future timestamp', (b) => ({ headers: staleHeaders(b, 301), rawBody: b })],
+    // A timestamp far ahead of local time would stay replayable for longer than the window.
+    ['a timestamp more than a minute ahead', (b) => ({ headers: staleHeaders(b, 61), rawBody: b })],
+    // Slack sends seconds: a milliseconds value is not read as "now".
+    ['a timestamp in milliseconds', (b) => ({ headers: staleHeaders(b, NOW_SECONDS * 999), rawBody: b })],
     ['a missing signature header', (b) => ({ headers: signedHeaders(b, { 'x-slack-signature': undefined }), rawBody: b })],
     ['a missing timestamp header', (b) => ({ headers: signedHeaders(b, { 'x-slack-request-timestamp': undefined }), rawBody: b })],
     ['a signature of the wrong length', (b) => ({ headers: signedHeaders(b, { 'x-slack-signature': sign(b).slice(0, -2) }), rawBody: b })],
@@ -78,6 +82,13 @@ describe('SlackTriggerAdapter signature verification', () => {
     const logged = JSON.stringify(logger.warn.mock.calls);
     expect(logged).not.toContain(SECRET);
     expect(logged).not.toContain('v0=');
+  });
+
+  it('accepts a timestamp a little ahead of local time (clock skew)', async () => {
+    const { adapter, onEvent } = setup({ signingSecret: SECRET });
+    const res = await adapter.handleRequest({ headers: staleHeaders(messageBody, 30), rawBody: Buffer.from(messageBody) });
+    expect(res.status).toBe(200);
+    expect(onEvent).toHaveBeenCalled();
   });
 
   it('answers a signed url_verification challenge', async () => {
