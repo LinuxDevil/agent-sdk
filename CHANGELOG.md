@@ -64,6 +64,7 @@ This section lists what is on `main` and not yet on npm.
 - Structured output: when `maxSteps` runs out while the model is still calling tools, a run with `output` set now makes one last model call with no tools offered ("answer now") and validates its reply - the result carries `object` (still `finishReason: 'max-steps'`) or `outputError` (`'output-invalid'`) instead of neither. The extra call is skipped when another budget limit (tokens, cost, duration) is already spent. See [Structured output](docs/structured-output.md).
 
 ### Fixed
+- Svelte `loushoAgent()`: a transient subscribe/unsubscribe in one turn (`get(store)` from `svelte/store`) no longer aborts the run in flight; only a subscriber that outlived its turn (a component's `$agent`) stops the run when it leaves last.
 - React / Vue / Svelte remote mode: a stream that ends before its `run.done` (proxy timeout, server restart, truncated body) now ends with `status: 'error'` and a `StreamEndedError` instead of staying `'streaming'` forever; `parseEventStream()` joins an SSE event's multi-line `data:` fields as the SSE spec says.
 - A trace exporter whose `onSpanStart` / `onSpanEnd` throws no longer fails the run: the error is reported once per exporter with `console.warn` and ignored.
 - `defineTool` under zod 4.1+: a `z.preprocess(..., z.date())` field is no longer rejected as an unwritable `z.date()` (zod 4.1+ renders a preprocess pipe's output schema), matching zod 3, where a preprocessed field is skipped (MAIN-HEALTH)

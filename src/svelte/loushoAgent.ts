@@ -33,7 +33,9 @@ export type LoushoAgentStore = {
  * run's events arrive, `status` drives the composer, and a paused tool call
  * shows up as `pendingApproval` until `approve()` or `reject()`. The run in
  * flight is aborted by `stop()` and when the last subscriber unsubscribes
- * (a component using `$agent` is destroyed). See docs/svelte.md.
+ * (a component using `$agent` is destroyed); a transient read that subscribes
+ * and unsubscribes in the same turn (`get(store)`) does not abort it. See
+ * docs/svelte.md.
  *
  * @example
  * ```ts
@@ -44,6 +46,8 @@ export type LoushoAgentStore = {
 export function loushoAgent(source: LoushoAgentSource, options: LoushoAgentStoreOptions = {}): LoushoAgentStore {
   let state = initialAgentUIState;
   const subscribers = new Set<(state: AgentUIState) => void>();
+  /** Subscribers that outlived the turn they subscribed in; only their leaving stops the run. */
+  const lasting = new Set<(state: AgentUIState) => void>();
   const runner = createAgentRunner({
     source: () => source,
     options: () => options,
@@ -60,10 +64,16 @@ export function loushoAgent(source: LoushoAgentSource, options: LoushoAgentStore
     ...runner,
     subscribe(run) {
       subscribers.add(run);
+      // A subscriber still there after this synchronous turn is a real one (a component's `$agent`), not a
+      // transient read such as `get(store)`, which subscribes and unsubscribes at once.
+      queueMicrotask(() => {
+        if (subscribers.has(run)) lasting.add(run);
+      });
       run(state);
       return () => {
         subscribers.delete(run);
-        if (subscribers.size === 0) runner.stop();
+        const wasLasting = lasting.delete(run);
+        if (subscribers.size === 0 && wasLasting) runner.stop();
       };
     },
   };
