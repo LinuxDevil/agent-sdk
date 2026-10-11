@@ -369,6 +369,70 @@ describe('agent directories and TS modules (LOU-D31)', () => {
     quiet.mockRestore();
   });
 
+  it('reloads an edited CommonJS tool file, and reports a broken one instead of keeping the cached copy', async () => {
+    const dir = copyFixture('dev-agent');
+    const cjsTool = path.join(dir, 'tools', 'pong.cjs');
+    const helper = path.join(dir, 'tools', 'helpers', 'name.cjs');
+    fs.mkdirSync(path.dirname(helper));
+    fs.writeFileSync(helper, "module.exports = 'pong';\n");
+    // Plain `require` cannot load the SDK's TypeScript source, so the tool file gets defineTool from the test.
+    (globalThis as Record<string, unknown>).__loushoDevTestDefineTool = defineTool;
+    const source = (name: string) =>
+      "const { z } = require('zod');\nconst defineTool = globalThis.__loushoDevTestDefineTool;\n" +
+      `module.exports = defineTool({ name: ${name}, description: 'Pong', input: z.object({}), execute: () => 'ping' });\n`;
+    fs.writeFileSync(cjsTool, source("require('./helpers/name.cjs')"));
+    const provider = mockModel(['ok', 'ok', 'ok', 'ok']);
+    handle = await startDevServer(dir, 0, '127.0.0.1', { overrides: { provider }, debounceMs: 20 });
+    await chat(handle);
+    expect(provider.calls[0].tools?.map((t) => t.function.name).sort()).toEqual(['ping', 'pong']);
+
+    fs.writeFileSync(cjsTool, source("'pong_v2'"));
+    await waitFor(async () => (await status(handle!)).reloads >= 1);
+    await chat(handle);
+    expect(provider.calls[1].tools?.map((t) => t.function.name).sort()).toEqual(['ping', 'pong_v2']);
+
+    // A required CommonJS helper is re-read too.
+    fs.writeFileSync(cjsTool, source("require('./helpers/name.cjs')"));
+    await waitFor(async () => (await status(handle!)).reloads >= 2);
+    fs.writeFileSync(helper, "module.exports = 'pong_v3';\n");
+    await waitFor(async () => (await status(handle!)).reloads >= 3);
+    await chat(handle);
+    expect(provider.calls[2].tools?.map((t) => t.function.name).sort()).toEqual(['ping', 'pong_v3']);
+
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    fs.appendFileSync(cjsTool, 'module.exports = (;\n');
+    await waitFor(async () => (await status(handle!)).error !== null);
+    expect((await status(handle)).reloads).toBe(3);
+    expect(quiet).toHaveBeenCalledWith(expect.stringContaining('keeping the previous agent'));
+    quiet.mockRestore();
+    delete (globalThis as Record<string, unknown>).__loushoDevTestDefineTool;
+  });
+
+  it('keeps reloading a tool file an editor replaces on save, and watches folders created later', async () => {
+    const dir = copyFixture('dev-agent');
+    const provider = mockModel(['ok', 'ok', 'ok']);
+    handle = await startDevServer(dir, 0, '127.0.0.1', { overrides: { provider }, debounceMs: 20 });
+    const toolFile = path.join(dir, 'tools', 'ping.ts');
+    const original = fs.readFileSync(toolFile, 'utf8');
+    // Write a temp file, then rename it over the original (what "safe write" editors do).
+    const replace = (name: string) => {
+      fs.writeFileSync(`${toolFile}.tmp`, original.replace("'ping'", `'${name}'`));
+      fs.renameSync(`${toolFile}.tmp`, toolFile);
+    };
+    replace('ping_a');
+    await waitFor(async () => (await status(handle!)).reloads >= 1);
+    replace('ping_b');
+    await waitFor(async () => (await status(handle!)).reloads >= 2);
+    await chat(handle);
+    expect(provider.calls[0].tools?.map((t) => t.function.name)).toEqual(['ping_b']);
+
+    fs.mkdirSync(path.join(dir, 'skills'));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const before = (await status(handle)).reloads;
+    fs.writeFileSync(path.join(dir, 'skills', 'notes.md'), '---\nname: notes\ndescription: Notes\n---\nTake notes.\n');
+    await waitFor(async () => (await status(handle!)).reloads > before);
+  });
+
   it('reloads a module when it or a local import changes', async () => {
     const dir = copyFixture('dev-module');
     const file = path.join(dir, 'agent.ts');

@@ -16,7 +16,7 @@ import type { Channel } from '../channels/defineChannel';
 import { mountChannels, type ChannelsHandler } from '../channels/mountChannels';
 import type { DefinedSchedule } from '../schedules/defineSchedule';
 import { startSchedules, type RunningSchedules, type StartSchedulesOptions } from '../schedules/startSchedules';
-import { explainImportError, withFreshImports } from '../agentDir/importModule';
+import { explainImportError, forgetCommonJsModules, withFreshImports } from '../agentDir/importModule';
 import { memoryStore } from '../storage/agentStore';
 import { loadSpec } from '../spec/loadSpec';
 import { specToAgent } from '../spec/specToAgent';
@@ -224,27 +224,60 @@ export function collectLocalImports(entry: string): string[] {
 
 const IGNORED_SEGMENT = /(^|[\\/])(node_modules|\.git)([\\/]|$)/;
 
+/**
+ * Watches every directory of an agent directory, one non-recursive watcher
+ * each (subdirectories created later included). Not `recursive: true`: on
+ * Linux that watches each file, and a file an editor replaces on save (write
+ * to a temp file, then rename) is no longer watched after its first save.
+ */
+function watchTree(root: string, onChange: (name: string) => void): () => void {
+  const watchers = new Map<string, fs.FSWatcher>();
+  const watchDir = (dir: string): void => {
+    if (watchers.has(dir) || IGNORED_SEGMENT.test(path.relative(root, dir))) return;
+    let watcher: fs.FSWatcher;
+    try {
+      watcher = fs.watch(dir, { persistent: false }, (_event, name) => {
+        const changed = path.join(dir, name ?? '');
+        if (name !== null && fs.statSync(changed, { throwIfNoEntry: false })?.isDirectory()) watchDir(changed);
+        onChange(path.relative(root, changed));
+      });
+    } catch {
+      return; // removed before it could be watched
+    }
+    // A removed directory's watcher errors; the parent's watcher reports the removal.
+    watcher.on('error', () => {
+      watcher.close();
+      watchers.delete(dir);
+    });
+    watchers.set(dir, watcher);
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      // removed meanwhile; its watcher errors and is dropped
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) watchDir(path.join(dir, entry.name));
+    }
+  };
+  watchDir(root);
+  return () => watchers.forEach((w) => w.close());
+}
+
 /** Watches the target's sources; calls `onChange` with the name that changed (relative to the target's folder). */
 function watchTarget(target: DevTarget, onChange: (name: string) => void): () => void {
+  if (target.kind === 'dir') return watchTree(target.path, onChange);
+  // Watch parent directories: editors replace files on save, which kills a per-file watcher.
   const watchers: fs.FSWatcher[] = [];
-  if (target.kind === 'dir') {
+  const files = target.kind === 'module' ? collectLocalImports(target.path) : [target.path];
+  const wanted = new Set(files);
+  const root = path.dirname(target.path);
+  for (const dir of new Set(files.map((f) => path.dirname(f)))) {
     watchers.push(
-      fs.watch(target.path, { recursive: true, persistent: false }, (_event, name) => {
-        if (name === null || !IGNORED_SEGMENT.test(name)) onChange(name ?? '');
+      fs.watch(dir, { persistent: false }, (_event, name) => {
+        if (name === null || wanted.has(path.join(dir, name))) onChange(path.relative(root, path.join(dir, name ?? '')));
       })
     );
-  } else {
-    // Watch parent directories: editors replace files on save, which kills a per-file watcher.
-    const files = target.kind === 'module' ? collectLocalImports(target.path) : [target.path];
-    const wanted = new Set(files);
-    const root = path.dirname(target.path);
-    for (const dir of new Set(files.map((f) => path.dirname(f)))) {
-      watchers.push(
-        fs.watch(dir, { persistent: false }, (_event, name) => {
-          if (name === null || wanted.has(path.join(dir, name))) onChange(path.relative(root, path.join(dir, name ?? '')));
-        })
-      );
-    }
   }
   return () => watchers.forEach((w) => w.close());
 }
@@ -273,6 +306,9 @@ export async function startReloader(target: DevTarget, options: DevOptions = {})
 
   async function reload(): Promise<void> {
     const what = [...changed].filter(Boolean).join(', ') || name;
+    // A changed CommonJS helper that a tool file requires is cached by Node apart from the tool file itself.
+    const root = target.kind === 'dir' ? target.path : path.dirname(target.path);
+    forgetCommonJsModules([...changed].filter(Boolean).map((file) => path.resolve(root, file)));
     changed.clear();
     try {
       const next = await loadDevTarget(target, options);
