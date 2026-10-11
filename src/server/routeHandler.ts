@@ -7,7 +7,7 @@
  */
 import type { SimpleAgent } from '../createAgent';
 import { newId } from '../utils/id';
-import { callbackPrincipal, disconnectAborts, handleChatFetch, outliveClient, publicEvents, sessionForbidden, type ChatRoutesAccess, type ChatRoutesContext } from './fetchRoutes';
+import { callbackPrincipal, claimOnCommit, disconnectAborts, handleChatFetch, outliveClient, publicEvents, sessionForbidden, type ChatRoutesAccess, type ChatRoutesContext } from './fetchRoutes';
 import { AuthError, type AuthFn, type Principal } from '../auth/types';
 import { routeAuth } from '../auth/routeAuth';
 import { apiToken } from '../auth/basic';
@@ -99,11 +99,13 @@ async function uiChat(agent: SimpleAgent, request: Request, principal: Principal
   } catch (error) {
     return json(400, { error: (error as Error).message });
   }
-  const forbidden = await sessionForbidden(ctx, principal, id, 'chat');
-  if (forbidden) return forbidden;
   const input = fromUIMessages(body.messages, { lastUserOnly: true });
+  if (input.length === 0) return json(400, { error: "Request body's 'messages' have no user message to send" });
+  const session = agent.session({ id });
+  const forbidden = await sessionForbidden(ctx, principal, id, 'chat', session);
+  if (forbidden) return forbidden;
   // B4: a session turn outlives its client unless `onDisconnect: 'abort'`.
-  const run = agent.session({ id }).stream(input, { ...(disconnectAborts(ctx) && { signal: request.signal }), principal });
+  const run = claimOnCommit(ctx, principal, session, session.stream(input, { ...(disconnectAborts(ctx) && { signal: request.signal }), principal }));
   return toUIMessageStreamResponse(publicEvents(ctx, outliveClient(ctx, run)));
 }
 
@@ -148,7 +150,9 @@ async function hookRoute(agent: SimpleAgent, request: Request, path: string): Pr
 export function createRouteHandler(agent: SimpleAgent, options: RouteHandlerOptions = {}): RouteHandlers {
   const base = (options.basePath ?? '/api/agent').replace(/\/+$/, '');
   const { authorizeSession, authorizeApproval, exposeErrors, onDisconnect, waitUntil, allowedOrigins, requireJsonBody, allowedHosts } = options;
-  const ctx: ChatRoutesContext = { name: 'route', agent: () => agent, authorizeSession, authorizeApproval, exposeErrors, onDisconnect, waitUntil, allowedOrigins, requireJsonBody, allowedHosts };
+  // One bearer token is one caller: every session is that caller's, so the default owner check has nothing to do.
+  const everySession = typeof options.auth === 'string' ? () => true : undefined;
+  const ctx: ChatRoutesContext = { name: 'route', agent: () => agent, authorizeSession: authorizeSession ?? everySession, authorizeApproval, exposeErrors, onDisconnect, waitUntil, allowedOrigins, requireJsonBody, allowedHosts };
   const auth = authList(options.auth);
   if (!auth) warnOpenInProduction();
   const handler: RouteHandler = async (request) => {

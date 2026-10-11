@@ -10,7 +10,7 @@ import { mockModel } from '../testing';
 import { memoryStore } from '../storage/agentStore';
 import { createRouteHandler, type RouteHandlerOptions } from './routeHandler';
 import { serveFetch } from './fetchRoutes';
-import { MAX_SESSION_OWNERS, sessionOwnership } from './requestGuard';
+import { claimSession, MAX_SESSION_OWNERS, releaseSession, sessionOwner, setSessionOwnerLimit } from './requestGuard';
 import type { AuthFn } from '../auth';
 
 const deploy = defineTool({ name: 'deploy', description: 'Deploys', input: z.object({}), needsApproval: true, execute: () => 'shipped' });
@@ -160,15 +160,101 @@ describe('default session owner', () => {
   it(`keeps at most ${MAX_SESSION_OWNERS} owners per agent, forgetting the least recently used`, () => {
     const agent = {};
     const user = (id: string) => ({ id, type: 'user' as const, authenticator: 'custom' });
-    expect(sessionOwnership(agent, user('alice'), 'first', true)).toBe('owner');
-    expect(sessionOwnership(agent, user('bob'), 'second', true)).toBe('owner');
-    for (let i = 0; i < MAX_SESSION_OWNERS - 2; i++) sessionOwnership(agent, user('carol'), `s${i}`, true);
-    // A read never claims; using 'first' again makes 'second' the least recently used.
-    expect(sessionOwnership(agent, user('bob'), 'unused', false)).toBe('unclaimed');
-    expect(sessionOwnership(agent, user('alice'), 'first', false)).toBe('owner');
-    sessionOwnership(agent, user('carol'), 'one-more', true);
-    expect(sessionOwnership(agent, user('bob'), 'first', false)).toBe('other');
-    expect(sessionOwnership(agent, user('alice'), 'second', false)).toBe('unclaimed');
+    const previous = setSessionOwnerLimit(3);
+    try {
+      claimSession(agent, 'first', user('alice'));
+      claimSession(agent, 'second', user('bob'));
+      claimSession(agent, 'third', user('carol'));
+      // Using 'first' again makes 'second' the least recently used.
+      expect(sessionOwner(agent, 'first')).toMatchObject({ id: 'alice' });
+      claimSession(agent, 'fourth', user('carol'));
+      expect(sessionOwner(agent, 'second')).toBeUndefined();
+      expect(sessionOwner(agent, 'first')).toMatchObject({ id: 'alice' });
+      // A claim never replaces an owner, and a release drops only the releasing principal's own claim.
+      claimSession(agent, 'first', user('bob'));
+      releaseSession(agent, 'first', user('bob'));
+      expect(sessionOwner(agent, 'first')).toMatchObject({ id: 'alice' });
+      releaseSession(agent, 'first', user('alice'));
+      expect(sessionOwner(agent, 'first')).toBeUndefined();
+    } finally {
+      setSessionOwnerLimit(previous);
+    }
+  });
+
+  it('evicting an owner past the cap opens the session to nobody, and an empty turn claims nothing', async () => {
+    const previous = setSessionOwnerLimit(5);
+    try {
+      const model = mockModel(['Alice secret: 4242'], { onExhausted: 'repeat-last' });
+      const agent = createAgent({ provider: model, store: memoryStore() });
+      const { handler } = createRouteHandler(agent, { auth: [cookieAuth], uiMessageStream: true });
+      const bob = { cookie: 'user=bob' };
+      const uiTurn = (id: string, text?: string) => json({ id, messages: text === undefined ? [] : [{ id: 'm1', role: 'user', parts: [{ type: 'text', text }] }] });
+      await (await handler(post('/chat', json({ sessionId: 'alice-1', input: 'my secret' }), { ...alice, ...asJson }))).text();
+      expect((await handler(new Request('http://app.test/api/agent/chat/alice-1', { headers: bob }))).status).toBe(403);
+
+      // An empty turn is refused before anything is claimed or run, so it cannot flood the owner record for free.
+      for (let i = 0; i < 20; i++) {
+        expect((await handler(post('/chat', json({ sessionId: `empty-${i}`, input: [] }), { ...bob, ...asJson }))).status).toBe(400);
+        expect((await handler(post('/ui', uiTurn(`ui-${i}`), { ...bob, ...asJson }))).status).toBe(400);
+      }
+      expect(model.calls).toHaveLength(1);
+      expect(sessionOwner(agent, 'alice-1')).toMatchObject({ id: 'alice' });
+
+      // Real turns past the cap do evict alice's record...
+      for (let i = 0; i < 10; i++) await (await handler(post('/chat', json({ sessionId: `flood-${i}`, input: 'x' }), { ...bob, ...asJson }))).text();
+      expect(sessionOwner(agent, 'alice-1')).toBeUndefined();
+
+      // ...but a stored session without an owner on record is nobody's to take.
+      const read = await handler(new Request('http://app.test/api/agent/chat/alice-1', { headers: bob }));
+      expect(read.status).toBe(403);
+      expect(await read.text()).not.toContain('secret');
+      expect((await handler(post('/chat', json({ sessionId: 'alice-1', input: 'mine now' }), { ...bob, ...asJson }))).status).toBe(403);
+      expect((await handler(post('/ui', uiTurn('alice-1', 'mine now'), { ...bob, ...asJson }))).status).toBe(403);
+      // It fails closed for alice too: past the cap, ownership needs authorizeSession.
+      expect((await handler(new Request('http://app.test/api/agent/chat/alice-1', { headers: alice }))).status).toBe(403);
+      expect(sessionOwner(agent, 'alice-1')).toBeUndefined();
+      expect(model.calls).toHaveLength(11);
+    } finally {
+      setSessionOwnerLimit(previous);
+    }
+  });
+
+  it('a turn that stores nothing leaves the session unclaimed', async () => {
+    const model = mockModel([{ error: new Error('provider down') }, 'Hi Alice.']);
+    const agent = createAgent({ provider: model, store: memoryStore() });
+    const { handler } = createRouteHandler(agent, { auth: [cookieAuth] });
+    const bob = { cookie: 'user=bob' };
+    const failed = await handler(post('/chat', json({ sessionId: 'alice-3', input: 'hi' }), { ...bob, ...asJson }));
+    expect(await failed.text()).toContain('"type":"error"');
+    expect(sessionOwner(agent, 'alice-3')).toBeUndefined();
+    await (await handler(post('/chat', json({ sessionId: 'alice-3', input: 'hi' }), { ...alice, ...asJson }))).text();
+    expect(sessionOwner(agent, 'alice-3')).toMatchObject({ id: 'alice' });
+    expect((await handler(new Request('http://app.test/api/agent/chat/alice-3', { headers: bob }))).status).toBe(403);
+  });
+
+  it('after a restart a stored session is refused until authorizeSession says whose it is; one bearer token is one caller', async () => {
+    const store = memoryStore();
+    const bob = { cookie: 'user=bob' };
+    const serve = (options: RouteHandlerOptions) => createRouteHandler(createAgent({ provider: mockModel(['Hi.'], { onExhausted: 'repeat-last' }), store }), options).handler;
+    await (await serve({ auth: [cookieAuth] })(post('/chat', json({ sessionId: 'kept', input: 'hi' }), { ...alice, ...asJson }))).text();
+
+    const restarted = serve({ auth: [cookieAuth] });
+    expect((await restarted(new Request('http://app.test/api/agent/chat/kept', { headers: alice }))).status).toBe(403);
+    expect((await restarted(new Request('http://app.test/api/agent/chat/kept', { headers: bob }))).status).toBe(403);
+    expect((await restarted(post('/chat', json({ sessionId: 'kept', input: 'hi' }), { ...bob, ...asJson }))).status).toBe(403);
+
+    const owned = serve({ auth: [cookieAuth], authorizeSession: ({ principal, sessionId }) => sessionId !== 'kept' || principal?.id === 'alice' });
+    expect((await owned(new Request('http://app.test/api/agent/chat/kept', { headers: alice }))).status).toBe(200);
+    expect((await owned(new Request('http://app.test/api/agent/chat/kept', { headers: bob }))).status).toBe(403);
+
+    const bearer = { authorization: 'Bearer tok' };
+    await (await serve({ auth: 'tok' })(post('/chat', json({ sessionId: 'svc', input: 'hi' }), { ...bearer, ...asJson }))).text();
+    expect((await serve({ auth: 'tok' })(new Request('http://app.test/api/agent/chat/svc', { headers: bearer }))).status).toBe(200);
+    // The generated Worker builds its agent per request: serveFetch() with one token is one caller too.
+    const worker = (request: Request) => serveFetch(request, { name: 'worker', agent: () => createAgent({ provider: mockModel(['Hi.']), store }) }, 'tok');
+    const read = await worker(new Request('http://app.test/chat/kept', { headers: bearer }));
+    expect(read.status).toBe(200);
+    expect(await read.json()).toMatchObject({ messages: [{ role: 'user', content: 'hi' }, { role: 'assistant' }] });
   });
 
   it('a route without auth checks no owner', async () => {
