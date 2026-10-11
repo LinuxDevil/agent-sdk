@@ -13,7 +13,7 @@ const INSTALLED: Record<string, string> = {
   '@ai-sdk/anthropic': '0.0.42',
   'ollama-ai-provider': '1.2.0',
   dockerode: '5.0.1',
-  '@modelcontextprotocol/sdk': '1.30.1',
+  '@modelcontextprotocol/sdk': '1.31.0',
   prompts: '2.4.2',
 };
 
@@ -30,7 +30,7 @@ function makeEnv(overrides: Partial<DoctorEnvironment> = {}): DoctorEnvironment 
         '@ai-sdk/anthropic': '^0.0.42',
         'ollama-ai-provider': '^1.2.0',
         dockerode: '^5.0.1',
-        '@modelcontextprotocol/sdk': '^1.30.1',
+        '@modelcontextprotocol/sdk': '^1.31.0',
         prompts: '^2.4.2',
       },
     },
@@ -191,7 +191,7 @@ describe('optional feature peers (LOU-D40)', () => {
 
   it.each([
     ['dockerode', 'npm install dockerode@^5.0.1'],
-    ['@modelcontextprotocol/sdk', 'npm install @modelcontextprotocol/sdk@^1.30.1'],
+    ['@modelcontextprotocol/sdk', 'npm install @modelcontextprotocol/sdk@^1.31.0'],
     ['prompts', 'npm install prompts@^2.4.2'],
   ])('%s: warn with the exact install command when missing', async (name, fix) => {
     const result = await check(makeEnv({ resolvePackageVersion: without(name) }), `optional-peer.${name}`);
@@ -514,7 +514,7 @@ describe('report, rendering and exit codes', () => {
       [warn] Provider package @earendil-works/pi-ai: not installed (optional)
              fix: npm install @earendil-works/pi-ai@^1.0.3
       [ ok ] Optional package dockerode: 5.0.1 installed - enables Docker sandboxing (SubprocessSandbox)
-      [ ok ] Optional package @modelcontextprotocol/sdk: 1.30.1 installed - enables MCP (serveMcp, \`lousho mcp\` and MCP client connections)
+      [ ok ] Optional package @modelcontextprotocol/sdk: 1.31.0 installed - enables MCP (serveMcp, \`lousho mcp\` and MCP client connections)
       [ ok ] Optional package prompts: 2.4.2 installed - enables the interactive prompts of \`lousho init\` (pass --yes to skip them)
       [warn] Optional package quickjs-emscripten: not installed (optional) - enables code mode (\`createAgent({ codeMode })\`)
              fix: npm install quickjs-emscripten@^0.32.0
