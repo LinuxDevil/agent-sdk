@@ -29,6 +29,7 @@ import type { AuthFn, Principal } from '../auth/types';
 import { routeAuth } from '../auth/routeAuth';
 import { apiToken } from '../auth/basic';
 import type { OAuthCompleteResult } from '../oauth/signIn';
+import { firstCallerOwns, hostRefusal, postRefusal } from './requestGuard';
 
 /** A1: what a caller wants to do with a session: read its transcript, send it a turn, or decide one of its approvals. */
 export type SessionAction = 'read' | 'chat' | 'approve';
@@ -56,9 +57,14 @@ export interface ChatRoutesAccess {
   /**
    * Whether `principal` may `action` session `sessionId` (read it, send it a
    * turn, decide one of its approvals). Return `false` for a `403`
-   * (`LOUSHO_SESSION_FORBIDDEN`). Default: every caller route auth accepted
-   * may use every session, so give sessions ids that cannot be guessed, or
-   * check ownership here (docs/auth.md).
+   * (`LOUSHO_SESSION_FORBIDDEN`). Default: once route auth accepted a caller,
+   * a session belongs to the first principal that reads or continues it, and
+   * every other principal gets the `403` (a decision is left to
+   * `authorizeApproval`, which by default lets only the caller the paused run
+   * acts for decide). That record is kept in memory (per process, or
+   * per Worker isolate), so a restart or another replica forgets it: for more
+   * than one instance, check ownership here (docs/auth.md). A route without
+   * auth checks nothing. `() => true` lets every caller use every session.
    */
   authorizeSession?: (request: SessionAccessRequest) => boolean | Promise<boolean>;
   /**
@@ -95,6 +101,29 @@ export interface ChatRoutesAccess {
    * server needs none.
    */
   waitUntil?: (promise: Promise<unknown>) => void;
+  /**
+   * Origins (`'https://app.example'`) besides the server's own that a browser
+   * may POST from (a front end on another domain; it also needs CORS headers
+   * from your host). A POST whose `Origin` is neither gets `403`
+   * (`LOUSHO_REQUEST_FORBIDDEN`), as does one marked `Sec-Fetch-Site:
+   * cross-site`, so a page on another site cannot start a turn or decide an
+   * approval with the user's cookies. Requests without `Origin` (curl, a
+   * server) are not affected. `['*']` turns the check off.
+   */
+  allowedOrigins?: readonly string[];
+  /**
+   * Require `Content-Type: application/json` on POST routes (default `true`);
+   * another type gets `415` (`LOUSHO_UNSUPPORTED_MEDIA_TYPE`). A form or
+   * `text/plain` body is what another site can send without a CORS preflight.
+   */
+  requireJsonBody?: boolean;
+  /**
+   * Host names (or `host:port`) the `Host` header may carry; other requests
+   * get `403` (`LOUSHO_REQUEST_FORBIDDEN`). Guards a server on a private
+   * address against DNS rebinding. Default: no check (`lousho dev` checks for
+   * loopback names). `/health` and the OAuth callback are not checked.
+   */
+  allowedHosts?: readonly string[];
 }
 
 /**
@@ -288,9 +317,11 @@ function failureResponse(ctx: ChatRoutesContext, error: unknown): Response {
 
 const ACTION_WORDS: Record<SessionAction, string> = { read: 'read', chat: 'continue', approve: 'decide approvals of' };
 
-/** A1: the `403` for a caller `authorizeSession` refuses; `undefined` when it may go on. */
-export async function sessionForbidden(access: ChatRoutesAccess, principal: Principal | undefined, sessionId: string, action: SessionAction): Promise<Response | undefined> {
-  if (!access.authorizeSession || (await access.authorizeSession({ principal, sessionId, action }))) return undefined;
+/** A1: the `403` for a caller `authorizeSession` (by default, the session's first principal) refuses; `undefined` when it may go on. */
+export async function sessionForbidden(ctx: ChatRoutesContext, principal: Principal | undefined, sessionId: string, action: SessionAction): Promise<Response | undefined> {
+  // Without `authorizeSession`, a decision is left to `authorizeApproval`: by default only the caller the paused run acts for.
+  const allowed = ctx.authorizeSession ? await ctx.authorizeSession({ principal, sessionId, action }) : action === 'approve' || firstCallerOwns(ctx.agent(), principal, sessionId);
+  if (allowed) return undefined;
   return jsonResponse(403, { error: `Not allowed to ${ACTION_WORDS[action]} this session`, code: 'LOUSHO_SESSION_FORBIDDEN' });
 }
 
@@ -509,6 +540,8 @@ export async function handleChatFetch(request: Request, ctx: ChatRoutesContext, 
   for (const [method, pattern, handler] of ROUTES) {
     const match = method === request.method ? pattern.exec(pathname) : null;
     if (!match) continue;
+    const refused = handler === runOAuthCallback ? undefined : (hostRefusal(request, ctx) ?? (method === 'POST' ? postRefusal(request, ctx) : undefined));
+    if (refused) return refused;
     try {
       return await handler(request, ctx, match.slice(1).map(decodeURIComponent), principal);
     } catch (error) {

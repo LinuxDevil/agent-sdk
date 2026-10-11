@@ -16,7 +16,7 @@ export function assertSessionId(id: string): void {
   if (typeof id !== 'string' || !SESSION_ID_PATTERN.test(id)) {
     throw new ConfigurationError(
       `Invalid session id ${JSON.stringify(id)}: use 1-128 characters from A-Z, a-z, 0-9, '_' and '-' ` +
-        "(e.g. 'user-42'). Omit the id to get a generated one.",
+        "(e.g. a random 'chat-9f2c4e7a1b'). Omit the id to get a generated one.",
       'id',
       'LOUSHO_SESSION_ID_INVALID'
     );
