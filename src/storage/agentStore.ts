@@ -106,6 +106,21 @@ class MemoryCheckpointStore implements CheckpointStore {
     return true;
   }
 
+  /** Renews `owner`'s own lease; a lease that is gone or another owner's is not taken. */
+  async renewLease(sessionId: string, owner: string, ttlMs: number): Promise<boolean> {
+    const held = this.leases.get(sessionId);
+    if (held?.owner !== owner) return false;
+    held.expiresAt = Date.now() + ttlMs;
+    return true;
+  }
+
+  /** Saves while `owner` holds the lease. */
+  async saveIfLeased(sessionId: string, checkpoint: Checkpoint, owner: string): Promise<boolean> {
+    if (this.leases.get(sessionId)?.owner !== owner) return false;
+    await this.save(sessionId, checkpoint);
+    return true;
+  }
+
   async releaseLease(sessionId: string, owner: string): Promise<void> {
     if (this.leases.get(sessionId)?.owner === owner) this.leases.delete(sessionId);
   }

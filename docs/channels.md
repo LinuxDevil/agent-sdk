@@ -57,7 +57,7 @@ server.listen(3000);
 ```
 
 ```bash
-curl -s localhost:3000/channels/http -d '{"sessionKey":"user-42","input":"Hi, I am Ali"}'
+curl -s localhost:3000/channels/http -H 'Content-Type: application/json' -d '{"sessionKey":"user-42","input":"Hi, I am Ali"}'
 # {"sessionId":"http_user-42-...","text":"...","finishReason":"stop"}
 ```
 
@@ -72,7 +72,7 @@ can mount it next to your own routes.
 | Field | Description |
 | ----- | ----------- |
 | `name` | Route segment: `POST <basePath>/<name>`. Letters, digits, `_` and `-`. |
-| `verify(req)` | Optional. Authenticate the request (a signature, a token). Return `true`/`false` or `{ ok, reason? }`; `false` answers `401 {"error":"Unauthorized"}` before anything is parsed or run. |
+| `verify(req)` | Optional. Authenticate the request (a signature, a token). Return `true`/`false` or `{ ok, reason? }`; `false` answers `401 {"error":"Unauthorized"}` before anything is parsed or run. Without it, a browser request from another site (an `Origin` that is not the request's host, or `Sec-Fetch-Site: cross-site`) is refused with `403` (`LOUSHO_REQUEST_FORBIDDEN`), and `lousho dev` checks its `Host` like its own routes (against DNS rebinding); a webhook sender or a server sends no `Origin` and is not affected. |
 | `parse(req, respond, ctx)` | The message: `{ sessionKey, input, metadata?, principal?, replyTo, event? }`; `{ decision: { id, approved?, note?, answer? } }` to resolve a pause this channel's turn stopped on (a button click); or `null` to acknowledge the request without a turn (a bot's own message, a retry). Call `respond(status, body)` to answer before the turn runs (a surface with a short timeout, a handshake). |
 | `reply(ctx)` | Deliver the reply: `ctx.text`, plus `inbound`, `sessionId`, `result`, `events`, `approval`, and `respond(status, body)` while the request is still open. |
 | `onApproval(ctx)` | Optional. Render a pause (buttons, a form). Default: `reply` with a text prompt in `ctx.text` and the request in `ctx.approval` (`ctx.approvals`: every pending call, when the step paused on several). |
@@ -211,7 +211,7 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 
 | Channel | Request | Response |
 | ------- | ------- | -------- |
-| `httpChannel({ name?, verify? })` | JSON `{ sessionKey, input }` (`input` a string or content parts); anything else is a 400 | `200 { sessionId, text, finishReason }`; when paused, `approval` too and `text` is the prompt |
+| `httpChannel({ name?, verify? })` | JSON `{ sessionKey, input }` (`input` a string or content parts); anything else is a 400. Without `verify`, a body sent without `Content-Type: application/json` is a `415` (`LOUSHO_UNSUPPORTED_MEDIA_TYPE`), so a web page cannot post a form to it | `200 { sessionId, text, finishReason }`; when paused, `approval` too and `text` is the prompt |
 | `webhookChannel({ secret?, auth?, name?, principal? })` | The JSON body's `input` string, or the whole body; a one-shot session unless the body has a `sessionKey` | `200` with the turn's `ExecutionResult`, as `WebhookTriggerAdapter` answers |
 | `slackChannel({ signingSecret, botToken, name?, fetch?, approvers?, onError? })` | Slack Events API and interactivity requests (see [Slack](#slack)) | `200` at once; replies are posted in the Slack thread |
 | `discordChannel({ publicKey, applicationId, botToken?, name?, fetch?, approvers?, onError? })` | Discord slash-command and button interactions (see [Discord](#discord)) | Deferred ack at once; the reply edits the original response |

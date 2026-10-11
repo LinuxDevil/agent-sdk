@@ -203,6 +203,8 @@ export function mountFetchChannels(
       const rawBody = await readRequestBytes(request);
       const headers: Record<string, string> = {};
       request.headers.forEach((value, name) => (headers[name] = value));
+      // The request's own host when the runtime left `Host` out of the headers: a channel's cross-site check compares `Origin` with it.
+      headers.host ??= new URL(request.url).host;
       const req: ChannelRequest = {
         method: request.method,
         url: pathname + search,

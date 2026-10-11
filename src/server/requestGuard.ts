@@ -15,47 +15,115 @@ export interface RequestGuardOptions {
   requireJsonBody?: boolean;
 }
 
+/** Environment variables of the generated servers (node-server, Cloudflare Worker) that set {@link RequestGuardOptions}. */
+const REQUEST_GUARD_ENV = {
+  allowedOrigins: 'LOUSHO_ALLOWED_ORIGINS',
+  allowedHosts: 'LOUSHO_ALLOWED_HOSTS',
+  requireJsonBody: 'LOUSHO_REQUIRE_JSON_BODY',
+} as const;
+
+/** A comma-separated list variable, or `undefined` when it is unset or empty. */
+function listVar(value: unknown): string[] | undefined {
+  const entries = typeof value === 'string' ? value.split(',').map((entry) => entry.trim()).filter(Boolean) : [];
+  return entries.length > 0 ? entries : undefined;
+}
+
+/**
+ * The {@link RequestGuardOptions} the environment sets (`env` is
+ * `process.env`, or a Worker's bindings): `LOUSHO_ALLOWED_ORIGINS` and
+ * `LOUSHO_ALLOWED_HOSTS` (comma-separated), and `LOUSHO_REQUIRE_JSON_BODY`
+ * (`"false"` turns the JSON check off). Unset ones are left out.
+ */
+export function requestGuardFromEnv(env: Record<string, unknown>): RequestGuardOptions {
+  const allowedOrigins = listVar(env[REQUEST_GUARD_ENV.allowedOrigins]);
+  const allowedHosts = listVar(env[REQUEST_GUARD_ENV.allowedHosts]);
+  const json = env[REQUEST_GUARD_ENV.requireJsonBody];
+  const requireJsonBody = typeof json === 'string' && /^(false|0|no)$/i.test(json.trim()) ? false : undefined;
+  return { ...(allowedOrigins && { allowedOrigins }), ...(allowedHosts && { allowedHosts }), ...(requireJsonBody === false && { requireJsonBody }) };
+}
+
 function refusal(status: number, error: string, code: string): Response {
   return new Response(JSON.stringify({ error, code }), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-/** The `host` (name and port) of an `Origin` header value, lowercased; `undefined` for `null` or anything that does not parse. */
-function originHost(origin: string): string | undefined {
+/** `value` as a URL's origin (`https://app.example`: lowercased, no default port, no path), or `undefined` for `null` or anything that is not an http(s) URL. */
+function originOf(value: string): URL | undefined {
   try {
-    const url = new URL(origin);
-    return url.protocol === 'http:' || url.protocol === 'https:' ? url.host.toLowerCase() : undefined;
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url : undefined;
   } catch {
     return undefined;
   }
 }
 
-/** The hosts this request was sent to: its `Host` header (or URL), and `X-Forwarded-Host` set by a proxy in front. */
-function requestHosts(request: Request): string[] {
-  const forwarded = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim();
-  return [request.headers.get('host') ?? new URL(request.url).host, ...(forwarded ? [forwarded] : [])].map((host) => host.toLowerCase());
+/** The `host` of the first entry of an RFC 7239 `Forwarded` header (`for=1.2.3.4;host=agent.example;proto=https`). */
+function forwardedHost(header: string | null): string | undefined {
+  const first = header?.split(',')[0] ?? '';
+  for (const pair of first.split(';')) {
+    const [name, ...rest] = pair.split('=');
+    if (name.trim().toLowerCase() === 'host') return rest.join('=').trim().replace(/^"(.*)"$/, '$1') || undefined;
+  }
+  return undefined;
+}
+
+/** What the guards read of a request's headers (header names lowercased). */
+type HeaderSource = { get(name: string): string | null };
+
+/**
+ * The hosts a request was sent to: its `Host` header (else `fallbackHost`, the
+ * URL's), and what a proxy in front reports: `X-Forwarded-Host` and the `host`
+ * of a standard `Forwarded` header.
+ */
+function requestHosts(headers: HeaderSource, fallbackHost: string | undefined): string[] {
+  const hosts = [headers.get('host') ?? fallbackHost, headers.get('x-forwarded-host')?.split(',')[0]?.trim(), forwardedHost(headers.get('forwarded'))];
+  return hosts.filter((host): host is string => Boolean(host));
+}
+
+/** Whether `host` (a `Host`-style `name[:port]`) names the same host as `origin`, the port compared after the origin's scheme default is dropped (`agent.example:443` is `https://agent.example`). */
+function sameHost(origin: URL, host: string): boolean {
+  try {
+    return new URL(`${origin.protocol}//${host}`).host === origin.host;
+  } catch {
+    return false;
+  }
+}
+
+/** Whether `origin` is listed in `allowedOrigins`, each entry compared as an origin (case, a trailing slash and a default port do not matter). */
+function originListed(origin: URL | undefined, raw: string, allowedOrigins: readonly string[] | undefined): boolean {
+  return (allowedOrigins ?? []).some((allowed) => {
+    const entry = originOf(allowed);
+    return entry && origin ? entry.origin === origin.origin : allowed.toLowerCase() === raw.toLowerCase();
+  });
 }
 
 /**
- * Whether a state-changing request comes from another site: an `Origin` that
- * is not this server's own and not in `allowedOrigins`, or `Sec-Fetch-Site:
- * cross-site` without such an `Origin`. A request without either header (curl,
- * a server) is not a browser's cross-site request.
+ * Whether a request comes from a web page on another site: an `Origin` that
+ * is not the one the request was sent to and not in `allowedOrigins`, or
+ * `Sec-Fetch-Site: cross-site` without such an `Origin`. A request without
+ * either header (curl, a server, a webhook sender) is not a browser's
+ * cross-site request. Also used by the channels (`headers` of a `node:http`
+ * request).
  */
-function crossSite(request: Request, allowedOrigins: readonly string[] | undefined): boolean {
+export function crossSiteRequest(headers: HeaderSource, fallbackHost: string | undefined, allowedOrigins?: readonly string[]): boolean {
   if (allowedOrigins?.includes('*')) return false;
-  const origin = request.headers.get('origin');
-  if (origin !== null) {
-    if (allowedOrigins?.some((allowed) => allowed.toLowerCase() === origin.toLowerCase())) return false;
-    const host = originHost(origin);
-    return host === undefined || !requestHosts(request).includes(host);
+  const raw = headers.get('origin');
+  if (raw !== null) {
+    const origin = originOf(raw);
+    if (originListed(origin, raw, allowedOrigins)) return false;
+    return origin === undefined || !requestHosts(headers, fallbackHost).some((host) => sameHost(origin, host));
   }
-  return request.headers.get('sec-fetch-site') === 'cross-site';
+  return headers.get('sec-fetch-site') === 'cross-site';
 }
 
-/** Whether the `Content-Type` is JSON (`application/json`, or a `+json` type), parameters aside. */
-function isJson(request: Request): boolean {
-  const type = request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() ?? '';
-  return type === 'application/json' || /^application\/[a-z0-9.+-]+\+json$/.test(type);
+/**
+ * Whether the `Content-Type` is JSON (`application/json`, or a `+json` type),
+ * parameters aside. A header sent twice with the same JSON type (a client that
+ * added `content-type` next to the default `Content-Type`) arrives joined with
+ * `,`: every listed type must be JSON.
+ */
+export function isJsonContentType(header: string | null | undefined): boolean {
+  const types = (header ?? '').split(',').map((part) => part.split(';')[0].trim().toLowerCase());
+  return types.length > 0 && types.every((type) => type === 'application/json' || /^application\/[a-z0-9.+-]+\+json$/.test(type));
 }
 
 /**
@@ -78,32 +146,43 @@ export function hostRefusal(request: Request, options: RequestGuardOptions): Res
  * go on.
  */
 export function postRefusal(request: Request, options: RequestGuardOptions): Response | undefined {
-  if (crossSite(request, options.allowedOrigins)) {
+  if (crossSiteRequest(request.headers, new URL(request.url).host, options.allowedOrigins)) {
     return refusal(403, 'Cross-site request refused. Add the calling page\'s origin to allowedOrigins.', 'LOUSHO_REQUEST_FORBIDDEN');
   }
-  if (options.requireJsonBody !== false && !isJson(request)) {
+  if (options.requireJsonBody !== false && !isJsonContentType(request.headers.get('content-type'))) {
     return refusal(415, "Request body must be JSON: send 'Content-Type: application/json'.", 'LOUSHO_UNSUPPORTED_MEDIA_TYPE');
   }
   return undefined;
 }
 
-/** Per agent: each session id and the principal that first used it. */
+/** How many session owners {@link sessionOwnership} keeps per agent before it forgets the least recently used one. */
+export const MAX_SESSION_OWNERS = 100_000;
+
+/** Per agent: each session id and the principal that started it, least recently used first. */
 const owners = new WeakMap<object, Map<string, Principal>>();
 
 /**
- * The default `authorizeSession` once route auth accepted a caller: a session
- * belongs to the first principal that uses it, and any other principal is
- * refused. Kept in memory per agent (so per process, or per Worker isolate):
- * a restart or another replica forgets who owned which session.
+ * The default `authorizeSession`'s record, once route auth accepted a caller:
+ * `'owner'` when `principal` owns session `sessionId`, `'other'` when another
+ * principal does, `'unclaimed'` when nobody does yet. Only a turn (`claim`)
+ * records an owner: a read never does, so a caller cannot squat an id by
+ * reading it before its user starts it. Kept in memory per agent object for
+ * at most {@link MAX_SESSION_OWNERS} sessions: a restart, another replica, a
+ * new agent object, or a session unused for that long is forgotten.
  */
-export function firstCallerOwns(agent: object, principal: Principal | undefined, sessionId: string): boolean {
-  if (principal === undefined) return true;
+export function sessionOwnership(agent: object, principal: Principal, sessionId: string, claim: boolean): 'owner' | 'other' | 'unclaimed' {
   let sessions = owners.get(agent);
   if (!sessions) owners.set(agent, (sessions = new Map()));
   const owner = sessions.get(sessionId);
   if (owner === undefined) {
+    if (!claim) return 'unclaimed';
     sessions.set(sessionId, principal);
-    return true;
+    // A Map iterates in insertion order: the first key is the least recently used one.
+    if (sessions.size > MAX_SESSION_OWNERS) sessions.delete(sessions.keys().next().value as string);
+    return 'owner';
   }
-  return samePrincipal(owner, principal);
+  if (!samePrincipal(owner, principal)) return 'other';
+  sessions.delete(sessionId);
+  sessions.set(sessionId, owner);
+  return 'owner';
 }

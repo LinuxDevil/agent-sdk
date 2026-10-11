@@ -143,7 +143,7 @@ describe('approvalTtlMs and permission-rule ttlMs', () => {
   });
 
   it('rejects a non-positive, non-finite or non-numeric approvalTtlMs', () => {
-    for (const value of [0, -5, Number.NaN, Number.POSITIVE_INFINITY, '60000', null, true]) {
+    for (const value of [0, -5, Number.NaN, Number.POSITIVE_INFINITY, 1e20, '60000', null, true]) {
       expect(invalidConfig({ approvalTtlMs: value }).message, String(value)).toContain(
         "'approvalTtlMs' must be a positive number of milliseconds"
       );
@@ -168,7 +168,7 @@ describe('approvalTtlMs and permission-rule ttlMs', () => {
     expect(invalidConfig({ permissions: [{ tool: 'x', action: 'allow', ttlMs: 1000 }] }).message).toContain(
       "only applies to 'ask' rules"
     );
-    for (const value of [0, -1, Number.NaN, '60000']) {
+    for (const value of [0, -1, Number.NaN, 1e20, '60000']) {
       expect(invalidConfig({ permissions: [{ tool: 'x', action: 'ask', ttlMs: value }] }).message, String(value)).toContain(
         "'permissions[0]'.ttlMs must be a positive number of milliseconds"
       );

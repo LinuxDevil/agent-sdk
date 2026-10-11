@@ -3,12 +3,18 @@
  */
 import type { AgentInput } from '../providers/content';
 import { defineChannel, type Channel, type ChannelRequest } from './defineChannel';
+import { isJsonContentType } from '../server/requestGuard';
 
 /** Options of {@link httpChannel}. */
 export interface HttpChannelOptions {
   /** Route segment. Default `http`. */
   name?: string;
-  /** Authenticates each request (e.g. checks a bearer token). Default: accept every request. */
+  /**
+   * Authenticates each request (e.g. checks a bearer token). Default: accept
+   * every request that is not a browser's cross-site one (`403`) and has a
+   * JSON `Content-Type` (else `415`), so a web page cannot post to it with a
+   * form; under `lousho dev` its `Host` is checked like the dev routes'.
+   */
   verify?: (req: ChannelRequest) => Promise<boolean>;
 }
 
@@ -31,7 +37,12 @@ export function httpChannel(options: HttpChannelOptions = {}): Channel {
   return defineChannel({
     name: options.name ?? 'http',
     verify: options.verify,
-    async parse(req) {
+    async parse(req, respond) {
+      // Without `verify`, nothing but the body type tells this from a form or `text/plain` post another site's page can send.
+      if (!options.verify && !isJsonContentType(typeof req.headers['content-type'] === 'string' ? req.headers['content-type'] : undefined)) {
+        respond(415, { error: "Request body must be JSON: send 'Content-Type: application/json'.", code: 'LOUSHO_UNSUPPORTED_MEDIA_TYPE' });
+        return null;
+      }
       const { sessionKey, input } = (JSON.parse(req.text || '{}') ?? {}) as Record<string, unknown>;
       if (typeof sessionKey !== 'string' || !sessionKey || (typeof input !== 'string' && !Array.isArray(input))) {
         throw new SyntaxError("Request body must be JSON with a 'sessionKey' string and an 'input' (a string or content parts)");

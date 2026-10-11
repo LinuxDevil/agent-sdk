@@ -359,6 +359,9 @@ const agent = createAgent({
 - An `approve` callback that is still waiting at the deadline is cut off: the
   `send()` / session turn resumes with the denial.
 - `send(message, { approvalTtlMs })` overrides it for one run.
+- A deadline is a positive number of milliseconds of at most 100 years;
+  anything else, `1e20` included, throws
+  `LOUSHO_CONFIG_INVALID`. Leave it out for pauses that never expire.
 - A permission rule's `ttlMs` bounds only that rule's pauses and wins over
   the agent default: `{ tool: 'deploy', action: 'ask', ttlMs: 30_000 }`, or
   `ask('deploy', { ttlMs: 30_000 })`.

@@ -83,7 +83,7 @@ describe('cloudflare-worker target: agent directories (M3b, #298)', () => {
     it("runs a /chat turn that calls the directory's echo tool, with the skill in the system prompt", async () => {
       const response = await handler.fetch(
         new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'Please echo this' }) }),
-        {}
+        { LOUSHO_ALLOW_OPEN_SESSIONS: 'true' }
       );
       expect(response.status).toBe(200);
       const result = (await response.json()) as {
@@ -152,7 +152,7 @@ describe('cloudflare-worker target: agent directories (M3b, #298)', () => {
     it('delegates to the sub-agent through delegate_to_reviewer, with the AGENTS.md in the system prompt', async () => {
       const response = await handler.fetch(
         new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'use delegate_to_reviewer' }) }),
-        {}
+        { LOUSHO_ALLOW_OPEN_SESSIONS: 'true' }
       );
       expect(response.status).toBe(200);
       const result = (await response.json()) as {
@@ -167,7 +167,7 @@ describe('cloudflare-worker target: agent directories (M3b, #298)', () => {
 
     it('serves the channels/ channel under /channels/<name>', async () => {
       const response = await handler.fetch(
-        new Request('http://worker/channels/api', { method: 'POST', body: JSON.stringify({ sessionKey: 'u1', input: 'ping' }) }),
+        new Request('http://worker/channels/api', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionKey: 'u1', input: 'ping' }) }),
         {}
       );
       expect(response?.status).toBe(200);
@@ -204,7 +204,7 @@ describe('cloudflare-worker target: agent directories (M3b, #298)', () => {
       };
       const response = await handler.fetch(
         new Request('http://worker/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'use recall_notes' }) }),
-        { AGENT_CHECKPOINTS: binding }
+        { AGENT_CHECKPOINTS: binding, LOUSHO_ALLOW_OPEN_SESSIONS: 'true' }
       );
       expect(response.status).toBe(200);
       const result = (await response.json()) as { toolCalls: Array<{ function: { name: string } }>; messages: Array<{ role: string; content: unknown }> };

@@ -24,6 +24,9 @@ const CHECKPOINT_ID_PATTERN = /^[A-Za-z0-9_-](?:[A-Za-z0-9_.-]{0,198}[A-Za-z0-9_
  */
 const SESSION_KEY_SUFFIX = /\.(?:turn-\d+|paused)$/;
 
+/** Schedule fire claims (`schedule-<name>-<fire time>.fire`) share the run lease ids: a run id may not end like one. */
+const FIRE_CLAIM_SUFFIX = /\.fire$/;
+
 /** Whether `id` is a valid checkpoint id (see {@link assertCheckpointId}). */
 export function isCheckpointId(id: unknown): id is string {
   return typeof id === 'string' && CHECKPOINT_ID_PATTERN.test(id);
@@ -43,10 +46,18 @@ export function assertCheckpointId(id: unknown, what = 'session id'): asserts id
 /**
  * {@link assertCheckpointId} for an id a caller names a run by (`agent.send()` /
  * `agent.stream()`'s `sessionId`, a fork's `newSessionId`): it also may not end
- * with a session's own checkpoint keys (`.turn-<n>`, `.paused`).
+ * with a session's own checkpoint keys (`.turn-<n>`, `.paused`), nor with
+ * `.fire` (a schedule's fire claim, which a run's lease could otherwise hold).
  */
 export function assertRunId(id: unknown, what = 'sessionId'): asserts id is string {
   assertCheckpointId(id, what);
+  if (FIRE_CLAIM_SUFFIX.test(id)) {
+    throw new ConfigurationError(
+      `Invalid ${what} ${JSON.stringify(id)}: ids ending in '.fire' are reserved for schedule fire claims. Pick a run id without that ending.`,
+      'sessionId',
+      'LOUSHO_SESSION_ID_INVALID'
+    );
+  }
   if (!SESSION_KEY_SUFFIX.test(id)) return;
   throw new ConfigurationError(
     `Invalid ${what} ${JSON.stringify(id)}: ids ending in '.turn-<n>' or '.paused' are a session's own checkpoint keys. ` +

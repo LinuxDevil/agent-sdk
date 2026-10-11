@@ -25,13 +25,20 @@ import { SqliteStore } from '../storage/sqlite';
 import { SDKError } from '../execution/errors';
 import type { AuthFn } from '../auth/types';
 import { apiToken } from '../auth/basic';
+import { requestGuardFromEnv } from '../server/requestGuard';
 
 /** Environment variable holding the bearer token; wins over a token baked in at build time. */
 const API_TOKEN_ENV = 'LOUSHO_API_TOKEN';
 /** Environment variable choosing where sessions live: `memory` (default) or `sqlite:<path>`. */
 const STORE_ENV = 'LOUSHO_STORE';
 
-/** A1: `authorizeSession`, `authorizeApproval` and `exposeErrors` work as on `createRouteHandler()` (docs/auth.md); B4: so do `onDisconnect` and `waitUntil`, and `allowedOrigins`, `requireJsonBody` and `allowedHosts`. */
+/**
+ * A1: `authorizeSession`, `authorizeApproval` and `exposeErrors` work as on
+ * `createRouteHandler()` (docs/auth.md); B4: so do `onDisconnect` and
+ * `waitUntil`, and `allowedOrigins`, `requireJsonBody` and `allowedHosts`
+ * (when unset, read from `LOUSHO_ALLOWED_ORIGINS`, `LOUSHO_REQUIRE_JSON_BODY`
+ * and `LOUSHO_ALLOWED_HOSTS` in `env`).
+ */
 export interface DeployedServerOptions extends ChatRoutesAccess {
   /**
    * `{ token }` (the build options' `auth.token`): the bearer token when
@@ -84,6 +91,11 @@ function serverAuth(options: DeployedServerOptions): readonly AuthFn[] | undefin
   return envToken === undefined ? entries : [...entries, apiToken(envToken)];
 }
 
+/** `values` without its `undefined` entries. */
+function definedOnly<T extends Record<string, unknown>>(values: T): Partial<T> {
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined)) as Partial<T>;
+}
+
 /** Default bound of {@link DeployedServer.shutdown}'s wait for in-flight turns; `LOUSHO_SHUTDOWN_TIMEOUT_MS` overrides it in the generated server. */
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -123,7 +135,10 @@ export function createDeployedServer(agent: SimpleAgent, options: DeployedServer
     void settled.then(() => inFlight.delete(settled));
   };
   // N9b: a channel turn paused on a sign-in continues on its surface once the callback stored the token.
-  const { authorizeSession, authorizeApproval, exposeErrors, onDisconnect, waitUntil, allowedOrigins, requireJsonBody, allowedHosts } = options;
+  const { authorizeSession, authorizeApproval, exposeErrors, onDisconnect, waitUntil } = options;
+  // LOUSHO_ALLOWED_ORIGINS, LOUSHO_ALLOWED_HOSTS and LOUSHO_REQUIRE_JSON_BODY, where the options leave them unset.
+  const guard = { ...requestGuardFromEnv(options.env ?? process.env), ...definedOnly({ allowedOrigins: options.allowedOrigins, allowedHosts: options.allowedHosts, requireJsonBody: options.requireJsonBody }) };
+  const { allowedOrigins, requireJsonBody, allowedHosts } = guard;
   const chat: ChatRoutesContext = {
     name: 'lousho server',
     agent: () => agent,

@@ -32,6 +32,7 @@ import { createHash } from 'node:crypto';
 import { oldestFirst, type ApprovalStore, type ExecutionSnapshot, type PendingApproval, type ResolvedApproval } from '../execution/ApprovalGate';
 import {
   appendToRing,
+  pausedApprovalIds,
   listCheckpoints,
   listedCheckpoint,
   parseCheckpoint,
@@ -46,11 +47,11 @@ import {
   type CheckpointListOptions,
   type CheckpointStore,
 } from '../execution/checkpoint';
-import { ConfigurationError } from '../execution/errors';
+import { ConfigurationError, SDKError } from '../execution/errors';
 import { decodeBytes, encodeBytes, FileSessionStore } from '../session/sessionStore';
 import type { AgentStore } from './agentStore';
 import { caseSafeName, findLegacyFile, idFromCaseSafeName, removeLegacyFile } from './fileNames';
-import { fileNameOf, HASHED_NAME_MARK, readTextFile, writeFileAtomic } from './atomicFile';
+import { fileNameOf, HASHED_NAME_MARK, legacyNamesOf, readTextFile, writeFileAtomic } from './atomicFile';
 import { withFileLock } from './fileLock';
 import { LEASE_SWEEP_AGE_MS, leaseAvailable, newLeaseRecord, parseLeaseRecord } from './leaseRecord';
 import { assertCheckpointId, isCheckpointId } from '../session/checkpointId';
@@ -88,7 +89,7 @@ const readText = readTextFile;
 async function readById(dir: string, id: string): Promise<string | undefined> {
   const raw = await readText(join(dir, `${fileNameOf(id)}.json`));
   if (raw !== undefined) return raw;
-  const legacy = await findLegacyFile(dir, fileNameOf(id), id);
+  const legacy = await findLegacyFile(dir, fileNameOf(id), legacyNamesOf(id));
   return legacy === undefined ? undefined : readText(legacy);
 }
 
@@ -191,11 +192,11 @@ class FileCheckpointStore implements CheckpointStore {
     const file = this.fileFor(this.checkpointDir, sessionId);
     const name = fileNameOf(sessionId);
     await writeAtomic(file, name.includes(HASHED_NAME_MARK) ? { ...checkpoint, [ID_FIELD]: sessionId } : checkpoint);
-    await removeLegacyFile(this.checkpointDir, name, sessionId);
+    await removeLegacyFile(this.checkpointDir, name, legacyNamesOf(sessionId));
     if (this.historyLimit === 0) return;
     const ring = appendToRing(await this.readRing(sessionId), toHistoryEntry(checkpoint), this.historyLimit);
     await writeAtomic(this.fileFor(this.historyDir, sessionId), ring);
-    await removeLegacyFile(this.historyDir, name, sessionId);
+    await removeLegacyFile(this.historyDir, name, legacyNamesOf(sessionId));
   }
 
   async load(sessionId: string): Promise<Checkpoint | null> {
@@ -210,10 +211,10 @@ class FileCheckpointStore implements CheckpointStore {
   async delete(sessionId: string, options: CheckpointDeleteOptions = {}): Promise<void> {
     const name = fileNameOf(sessionId);
     await rm(this.fileFor(this.checkpointDir, sessionId), { force: true });
-    await removeLegacyFile(this.checkpointDir, name, sessionId);
+    await removeLegacyFile(this.checkpointDir, name, legacyNamesOf(sessionId));
     if (options.keepHistory) return;
     await rm(this.fileFor(this.historyDir, sessionId), { force: true });
-    await removeLegacyFile(this.historyDir, name, sessionId);
+    await removeLegacyFile(this.historyDir, name, legacyNamesOf(sessionId));
   }
 
   async history(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]> {
@@ -276,6 +277,27 @@ class FileCheckpointStore implements CheckpointStore {
     });
   }
 
+  /** Renews `owner`'s own lease under its lock file; a lease that is gone or another owner's is not taken. */
+  async renewLease(sessionId: string, owner: string, ttlMs: number): Promise<boolean> {
+    return this.underOwnLease(sessionId, owner, (file) => writeAtomic(file, newLeaseRecord(owner, ttlMs)));
+  }
+
+  /** Saves under the lease's lock file, only while `owner` holds the lease. */
+  async saveIfLeased(sessionId: string, checkpoint: Checkpoint, owner: string): Promise<boolean> {
+    return this.underOwnLease(sessionId, owner, () => this.save(sessionId, checkpoint));
+  }
+
+  /** Runs `task` under the lease's lock when `owner` holds the lease on `sessionId`; `false` (nothing run) otherwise. */
+  private async underOwnLease(sessionId: string, owner: string, task: (file: string) => Promise<void>): Promise<boolean> {
+    const file = this.leaseFile(sessionId);
+    if ((await readText(file)) === undefined) return false;
+    return withFileLock(`${file}.lock`, async () => {
+      if (parseLeaseRecord(await readText(file))?.owner !== owner) return false;
+      await task(file);
+      return true;
+    });
+  }
+
   async releaseLease(sessionId: string, owner: string): Promise<void> {
     const file = this.leaseFile(sessionId);
     if ((await readText(file)) === undefined) return;
@@ -315,7 +337,7 @@ class FileApprovalStore implements ApprovalStore {
 
   /** The file of `id` written before case-safe names, when there is one. */
   private legacyFile(id: string): Promise<string | undefined> {
-    return findLegacyFile(this.dir, fileNameOf(id), id);
+    return findLegacyFile(this.dir, fileNameOf(id), legacyNamesOf(id));
   }
 
   async save(pending: PendingApproval, snapshot: ExecutionSnapshot): Promise<void> {
@@ -323,7 +345,7 @@ class FileApprovalStore implements ApprovalStore {
     const record: ResolvedApproval = { pending, snapshot };
     await writeAtomic(file, record);
     await rm(`${file}.claim`, { force: true });
-    await removeLegacyFile(this.dir, fileNameOf(pending.id), pending.id);
+    await removeLegacyFile(this.dir, fileNameOf(pending.id), legacyNamesOf(pending.id));
   }
 
   async resolve(id: string): Promise<ResolvedApproval | null> {
@@ -438,14 +460,19 @@ class FileTokenBackend implements SealedRecordBackend {
     await rm(`${file}.claim`, { force: true });
   }
 
-  /** Sign-ins nobody completed would otherwise stay forever: drop the expired ones on each new one. */
-  private async removeExpiredPending(): Promise<void> {
+  /** Sign-ins nobody completed would otherwise stay forever: drop the expired ones on each new one. Returns how many. */
+  async removeExpiredPending(): Promise<number> {
     const now = Date.now();
+    let removed = 0;
     for (const name of await jsonFiles(this.pendingDir)) {
       const file = join(this.pendingDir, `${name}.json`);
       const record = await readJson<{ expiresAt?: unknown }>(file);
-      if (typeof record?.expiresAt === 'number' && record.expiresAt <= now) await rm(file, { force: true });
+      if (typeof record?.expiresAt === 'number' && record.expiresAt <= now) {
+        await rm(file, { force: true });
+        removed += 1;
+      }
     }
+    return removed;
   }
 
   async takePending(state: string): Promise<string | undefined> {
@@ -453,6 +480,88 @@ class FileTokenBackend implements SealedRecordBackend {
     const payload = raw === undefined ? undefined : parseJson<{ payload?: unknown }>(raw)?.payload;
     return typeof payload === 'string' ? payload : undefined;
   }
+}
+
+/** Options of {@link FileStore.prune}. */
+export interface FileStorePruneOptions {
+  /** Delete files last written more than this many milliseconds ago. */
+  olderThanMs: number;
+}
+
+/** How many files {@link FileStore.prune} deleted, per kind. */
+export interface FileStorePruneResult {
+  /** Transcripts. */
+  sessions: number;
+  /** Latest checkpoints (their history files go too, and old history files of other ids; not counted). */
+  checkpoints: number;
+  /** Expired pending OAuth sign-ins (deleted whatever `olderThanMs` is). */
+  oauthPending: number;
+}
+
+/** The store {@link fileStore} returns: an {@link AgentStore} with every part, and `prune()`. */
+export type FileStore = Required<AgentStore> & {
+  /**
+   * Deletes transcripts, checkpoints and checkpoint history files last written
+   * more than `olderThanMs` ago, and expired pending OAuth sign-ins, like
+   * `SqliteStore.prune()`. Pending approvals and OAuth tokens are kept, and so
+   * is a run paused on a pending approval, however old: its checkpoint (and
+   * history) and its session's transcript. Old turn history a session no
+   * longer keeps (an earlier release kept every turn's) goes too.
+   */
+  prune(options: FileStorePruneOptions): Promise<FileStorePruneResult>;
+};
+
+/** A session turn's checkpoint id, `<session id>.turn-<n>`, or its paused-turn pointer `<session id>.paused`. */
+const SESSION_KEY = /^(.+)\.(?:turn-\d+|paused)$/;
+
+/** The file names (without `.json`) `ids` are or were stored under. */
+function namesOf(ids: Iterable<string>): Set<string> {
+  const names = new Set<string>();
+  for (const id of ids) for (const name of [fileNameOf(id), ...legacyNamesOf(id)]) names.add(name);
+  return names;
+}
+
+/** Deletes the `.json` files in `dir` last written before `cutoff` whose name is not in `keep`; returns how many. */
+async function removeStale(dir: string, cutoff: number, keep: Set<string>): Promise<number> {
+  let removed = 0;
+  for (const name of await jsonFiles(dir)) {
+    if (keep.has(name)) continue;
+    const file = join(dir, `${name}.json`);
+    const written = await stat(file).then(
+      (found) => found.mtimeMs,
+      () => undefined
+    );
+    if (written === undefined || written >= cutoff) continue;
+    await rm(file, { force: true });
+    removed += 1;
+  }
+  return removed;
+}
+
+/**
+ * The ids a paused run needs (see {@link FileStore.prune}): the run each
+ * pending approval's snapshot names, every checkpoint that waits on a pending
+ * approval, and the sessions of those that are session turns.
+ */
+async function pausedRuns(root: string): Promise<{ runs: Set<string>; sessions: Set<string> }> {
+  const approvals = new Set<string>();
+  const runs = new Set<string>();
+  const approvalDir = join(root, 'approvals');
+  for (const name of await jsonFiles(approvalDir)) {
+    const record = await readJson<Partial<ResolvedApproval>>(join(approvalDir, `${name}.json`));
+    if (typeof record?.pending?.id === 'string') approvals.add(record.pending.id);
+    const run = record?.snapshot?.sessionId;
+    if (typeof run === 'string' && run !== '') runs.add(run);
+  }
+  const checkpointDir = join(root, 'checkpoints');
+  for (const name of await jsonFiles(checkpointDir)) {
+    const checkpoint = await readJson<Partial<Checkpoint> & { [ID_FIELD]?: unknown }>(join(checkpointDir, `${name}.json`));
+    if (!checkpoint || !pausedApprovalIds(checkpoint).some((id) => approvals.has(id))) continue;
+    const id = name.includes(HASHED_NAME_MARK) ? checkpoint[ID_FIELD] : idFromCaseSafeName(name);
+    if (typeof id === 'string') runs.add(id);
+  }
+  const sessions = new Set([...runs].map((run) => SESSION_KEY.exec(run)?.[1] ?? run));
+  return { runs, sessions };
 }
 
 /**
@@ -468,14 +577,27 @@ class FileTokenBackend implements SealedRecordBackend {
  * await agent.session({ id: 'user-42' }).send('Hello');
  * ```
  */
-export function fileStore(dir: string, options: FileStoreOptions = {}): Required<AgentStore> {
+export function fileStore(dir: string, options: FileStoreOptions = {}): FileStore {
   const root = resolve(dir);
+  const tokenBackend = new FileTokenBackend(join(root, 'oauth', 'tokens'), join(root, 'oauth', 'pending'));
   return {
     sessions: new FileSessionStore(join(root, 'sessions')),
     checkpoints: new FileCheckpointStore(join(root, 'checkpoints'), join(root, 'checkpoint-history'), join(root, 'leases'), options),
     approvals: new FileApprovalStore(join(root, 'approvals')),
-    tokens: new SealedTokenStore(new FileTokenBackend(join(root, 'oauth', 'tokens'), join(root, 'oauth', 'pending')), 'fileStore', {
-      tokenKey: options.tokenKey,
-    }),
+    tokens: new SealedTokenStore(tokenBackend, 'fileStore', { tokenKey: options.tokenKey }),
+    async prune({ olderThanMs }) {
+      if (!Number.isFinite(olderThanMs) || olderThanMs < 0) {
+        throw new SDKError(`prune: olderThanMs must be a non-negative number of milliseconds, got ${olderThanMs}.`, 'LOUSHO_CONFIG_INVALID');
+      }
+      const cutoff = Date.now() - olderThanMs;
+      const paused = await pausedRuns(root);
+      const keepRuns = namesOf(paused.runs);
+      await removeStale(join(root, 'checkpoint-history'), cutoff, keepRuns);
+      return {
+        sessions: await removeStale(join(root, 'sessions'), cutoff, namesOf(paused.sessions)),
+        checkpoints: await removeStale(join(root, 'checkpoints'), cutoff, keepRuns),
+        oauthPending: await tokenBackend.removeExpiredPending(),
+      };
+    },
   };
 }

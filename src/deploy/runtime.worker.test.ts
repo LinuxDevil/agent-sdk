@@ -150,26 +150,47 @@ describe('handleWorkerRequest', () => {
 
   it('checkpoints the deprecated { message, sessionId } run under checkpoints/<sessionId>', async () => {
     const kv = fakeKV();
-    const response = await call({ AGENT_CHECKPOINTS: kv }, '/chat', { message: 'hi', sessionId: 'legacy-1' });
+    const response = await call({ AGENT_CHECKPOINTS: kv, LOUSHO_ALLOW_OPEN_SESSIONS: 'true' }, '/chat', { message: 'hi', sessionId: 'legacy-1' });
     expect((await response.json()).text).toBe('This is a mock response.');
     expect(kv.data.has('checkpoints/legacy-1')).toBe(true);
   });
 
-  it('without LOUSHO_API_TOKEN, refuses transcript reads unless LOUSHO_ALLOW_OPEN_TRANSCRIPTS is "true"', async () => {
-    const env = { AGENT_CHECKPOINTS: fakeKV() };
-    await (await call(env, '/chat', { sessionId: 'open-1', input: 'hi' })).text();
-    const refused = await call(env, '/chat/open-1');
-    expect(refused.status).toBe(403);
-    const body = await refused.json();
-    expect(body).toMatchObject({ code: 'LOUSHO_REQUEST_FORBIDDEN' });
-    expect(body.error).toContain('LOUSHO_API_TOKEN');
-    expect(JSON.stringify(body)).not.toContain('mock response');
-    const opted = await call({ ...env, LOUSHO_ALLOW_OPEN_TRANSCRIPTS: 'true' }, '/chat/open-1');
-    expect((await opted.json()).messages).toHaveLength(2);
+  it('without LOUSHO_API_TOKEN, refuses every session route unless LOUSHO_ALLOW_OPEN_SESSIONS is "true"', async () => {
+    const kv = fakeKV();
+    const env = { AGENT_CHECKPOINTS: kv };
+    for (const [route, body] of [['/chat', { sessionId: 'open-1', input: 'hi' }], ['/chat', { message: 'hi' }], ['/chat/open-1', undefined], ['/chat/open-1/approvals/a1', { approved: true }]] as const) {
+      const refused = await call(env, route, body);
+      expect(refused.status).toBe(403);
+      const json = await refused.json();
+      expect(json).toMatchObject({ code: 'LOUSHO_REQUEST_FORBIDDEN' });
+      expect(json.error).toContain('LOUSHO_API_TOKEN');
+      expect(json.error).toContain('LOUSHO_ALLOW_OPEN_SESSIONS');
+    }
+    expect(kv.data.size).toBe(0);
+    expect(await (await call(env, '/health')).text()).toBe('ok');
+
+    const open = { ...env, LOUSHO_ALLOW_OPEN_SESSIONS: 'true' };
+    expect(await (await call(open, '/chat', { sessionId: 'open-1', input: 'hi' })).text()).toContain('This is a mock response.');
+    expect((await (await call(open, '/chat/open-1')).json()).messages).toHaveLength(2);
+    // The earlier name of the var still opens them.
+    expect((await (await call({ ...env, LOUSHO_ALLOW_OPEN_TRANSCRIPTS: 'true' }, '/chat/open-1')).json()).messages).toHaveLength(2);
+  });
+
+  it('reads allowedOrigins, allowedHosts and requireJsonBody from LOUSHO_ALLOWED_ORIGINS, LOUSHO_ALLOWED_HOSTS and LOUSHO_REQUIRE_JSON_BODY', async () => {
+    const env = { AGENT_CHECKPOINTS: fakeKV(), LOUSHO_API_TOKEN: 'tok' };
+    const bearer = { Authorization: 'Bearer tok' };
+    const fromApp = { ...bearer, Origin: 'https://app.example' };
+    expect((await call(env, '/chat', { sessionId: 'g1', input: 'hi' }, fromApp)).status).toBe(403);
+    expect((await call({ ...env, LOUSHO_ALLOWED_ORIGINS: 'https://other.example, https://app.example/' }, '/chat', { sessionId: 'g1', input: 'hi' }, fromApp)).status).toBe(200);
+    expect((await call({ ...env, LOUSHO_ALLOWED_HOSTS: 'agent.example' }, '/chat/g1', undefined, bearer)).status).toBe(403);
+    expect((await call({ ...env, LOUSHO_ALLOWED_HOSTS: 'agent.example,worker' }, '/chat/g1', undefined, bearer)).status).toBe(200);
+    const plain = { ...bearer, 'Content-Type': 'text/plain' };
+    expect((await call(env, '/chat', { sessionId: 'g2', input: 'hi' }, plain)).status).toBe(415);
+    expect((await call({ ...env, LOUSHO_REQUIRE_JSON_BODY: 'false' }, '/chat', { sessionId: 'g2', input: 'hi' }, plain)).status).toBe(200);
   });
 
   it('falls back to the memory of this isolate without a (valid) KV binding', async () => {
-    for (const [id, env] of [['mem-1', { LOUSHO_ALLOW_OPEN_TRANSCRIPTS: 'true' }], ['mem-2', { AGENT_CHECKPOINTS: 'not a namespace', LOUSHO_ALLOW_OPEN_TRANSCRIPTS: 'true' }]] as const) {
+    for (const [id, env] of [['mem-1', { LOUSHO_ALLOW_OPEN_SESSIONS: 'true' }], ['mem-2', { AGENT_CHECKPOINTS: 'not a namespace', LOUSHO_ALLOW_OPEN_SESSIONS: 'true' }]] as const) {
       expect(workerStore(env)).toBe(workerStore({}));
       await (await call(env, '/chat', { sessionId: id, input: 'hi' })).text();
       expect((await (await call(env, `/chat/${id}`)).json()).messages).toHaveLength(2);

@@ -12,7 +12,7 @@ import type { AgentHook } from '../execution/hooks';
 import type { AgentCompaction } from '../context/agentCompaction';
 import type { RunLimits } from '../execution/budget';
 import type { ApproveToolCall } from '../createAgentApprovals';
-import type { PermissionAction, PermissionMode, PermissionRule } from '../execution/permissions';
+import { APPROVAL_TTL_RULE, isApprovalTtl, type PermissionAction, type PermissionMode, type PermissionRule } from '../execution/permissions';
 import type { AgentStore } from '../storage/agentStore';
 import type { TokenKeyInput } from '../oauth/tokenCipher';
 
@@ -316,8 +316,8 @@ function assertRuleTtl(file: string, where: string, rule: Record<string, unknown
   if (rule.action !== 'ask') {
     fail(file, `${where}.ttlMs only applies to 'ask' rules (it is how long the pause waits for a decision), but the action is '${rule.action}'.`);
   }
-  if (typeof rule.ttlMs !== 'number' || !Number.isFinite(rule.ttlMs) || rule.ttlMs <= 0) {
-    fail(file, `${where}.ttlMs must be a positive number of milliseconds, got ${describeValue(rule.ttlMs)}.`);
+  if (!isApprovalTtl(rule.ttlMs)) {
+    fail(file, `${where}.ttlMs must be ${APPROVAL_TTL_RULE}, got ${describeValue(rule.ttlMs)}.`);
   }
 }
 
@@ -376,8 +376,8 @@ function assertApprove(file: string, value: unknown): void {
 }
 
 function assertApprovalTtlMs(file: string, value: unknown): void {
-  if (value !== undefined && !(typeof value === 'number' && Number.isFinite(value) && value > 0)) {
-    fail(file, `'approvalTtlMs' must be a positive number of milliseconds, got ${describeValue(value)}.`);
+  if (value !== undefined && !isApprovalTtl(value)) {
+    fail(file, `'approvalTtlMs' must be ${APPROVAL_TTL_RULE}, got ${describeValue(value)}.`);
   }
 }
 
