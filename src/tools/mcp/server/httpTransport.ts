@@ -141,20 +141,78 @@ function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
   });
 }
 
+/**
+ * The requests in flight on a listener, so a `notifications/cancelled` (which,
+ * the transport being stateless, arrives in another POST and so at another
+ * `McpServer`) can stop the run it names. A request is known by its JSON-RPC
+ * id and the client that sent it (remote address, `Authorization` and
+ * `User-Agent`); a cancel that matches several requests is ambiguous and is
+ * ignored.
+ */
+type InFlight = Map<string, Set<() => void>>;
+
+interface JsonRpcMessage {
+  id?: unknown;
+  method?: unknown;
+  params?: { requestId?: unknown };
+}
+
+function messagesOf(body: unknown): JsonRpcMessage[] {
+  const list = Array.isArray(body) ? body : [body];
+  return list.filter((message): message is JsonRpcMessage => typeof message === 'object' && message !== null);
+}
+
+function requestKey(req: http.IncomingMessage, id: unknown): string {
+  return JSON.stringify([req.socket.remoteAddress ?? '', req.headers.authorization ?? '', req.headers['user-agent'] ?? '', id]);
+}
+
+/** Stops the run of each request a `notifications/cancelled` in `body` names, when exactly one matches. */
+function relayCancels(inFlight: InFlight, req: http.IncomingMessage, body: unknown): void {
+  for (const message of messagesOf(body)) {
+    if (message.method !== 'notifications/cancelled' || message.params?.requestId === undefined) continue;
+    const cancels = inFlight.get(requestKey(req, message.params.requestId));
+    if (cancels?.size === 1) for (const cancel of cancels) cancel();
+  }
+}
+
+/** Registers `cancel` for the requests in `body`; returns the function that unregisters them. */
+function track(inFlight: InFlight, req: http.IncomingMessage, body: unknown, cancel: () => void): () => void {
+  const keys = messagesOf(body)
+    .filter((message) => typeof message.method === 'string' && (typeof message.id === 'string' || typeof message.id === 'number'))
+    .map((message) => requestKey(req, message.id));
+  for (const key of keys) inFlight.set(key, (inFlight.get(key) ?? new Set()).add(cancel));
+  return () => {
+    for (const key of keys) {
+      const cancels = inFlight.get(key);
+      cancels?.delete(cancel);
+      if (cancels?.size === 0) inFlight.delete(key);
+    }
+  };
+}
+
 async function serveRequest(
   createServer: () => Promise<McpServer>,
+  inFlight: InFlight,
   req: http.IncomingMessage,
   res: http.ServerResponse
 ): Promise<void> {
   const body = await readJsonBody(req);
+  relayCancels(inFlight, req, body);
   const mcp = await createServer();
   const { StreamableHTTPServerTransport } = await loadOptionalPeer('@modelcontextprotocol/sdk', () =>
     import('@modelcontextprotocol/sdk/server/streamableHttp.js')
   );
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
-  res.on('close', () => {
+  // Closing the server aborts its in-flight handlers' signals, which cancels the agent run. That happens when the
+  // client disconnects, and when a later POST cancels this request (`notifications/cancelled`).
+  const close = () => {
     void transport.close();
     void mcp.close();
+  };
+  const untrack = track(inFlight, req, body, close);
+  res.on('close', () => {
+    untrack();
+    close();
   });
   await mcp.connect(transport);
   await transport.handleRequest(req, res, body);
@@ -162,6 +220,7 @@ async function serveRequest(
 
 async function handle(
   createServer: () => Promise<McpServer>,
+  inFlight: InFlight,
   path: string,
   options: McpHttpTransportOptions & { host: string },
   req: http.IncomingMessage,
@@ -182,7 +241,7 @@ async function handle(
     return jsonRpcError(res, 405, 'Method not allowed: this server is stateless, use POST.', { Allow: 'POST' });
   }
   try {
-    await serveRequest(createServer, req, res);
+    await serveRequest(createServer, inFlight, req, res);
   } catch (error) {
     if (!res.headersSent) jsonRpcError(res, 400, error instanceof Error ? error.message : String(error));
   }
@@ -212,8 +271,9 @@ export function listenHttp(
         "Set transport.auth ({ type: 'bearer', token }) or bind 127.0.0.1."
     );
   }
+  const inFlight: InFlight = new Map();
   const server = http.createServer((req, res) => {
-    void handle(createServer, path, { ...options, host }, req, res);
+    void handle(createServer, inFlight, path, { ...options, host }, req, res);
   });
   return new Promise((resolve, reject) => {
     server.once('error', reject);

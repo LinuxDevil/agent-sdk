@@ -256,10 +256,16 @@ await server.close();
 
 - **Stateless.** Every call to the agent tool is a fresh conversation.
 - **Cancellation.** Cancelling the MCP request aborts the agent run
-  (`agent.send(message, { signal })`).
+  (`agent.send(message, { signal })`). Over HTTP the run is also aborted when
+  the client disconnects, and when a client timeout sends
+  `notifications/cancelled` in a later `POST`: that cancel is matched to the
+  request by its id and the client (remote address, `Authorization`,
+  `User-Agent`), and ignored when several requests in flight match.
 - **Errors.** An agent failure comes back as an MCP result with `isError: true`.
 - **Approvals.** Approval-gated tools cannot be approved over MCP. A run that
-  pauses for approval returns `isError: true` with a message saying so. Tools
+  pauses for approval returns `isError: true` with a message saying so, and
+  its pending approvals are rejected without continuing the run, so they do not
+  pile up in the agent's approval store. Tools
   flagged `needsApproval` are not exposed directly unless you pass
   `allowApprovalTools: true`; if you do, clients run them with **no human gate**.
 - **stdio.** Nothing but the MCP protocol is written to stdout; warnings go to stderr.

@@ -138,6 +138,16 @@ describe('serveMcp agent tool', () => {
     expect(textOf(result)).toMatch(/needs human approval.*cannot be approved over MCP/s);
   });
 
+  it('does not leave the paused approvals of an MCP call pending, nor call the model again', async () => {
+    const model = mockModel([{ toolCalls: [{ name: 'delete_all', id: 'c1' }, { name: 'delete_all', id: 'c2' }] }]);
+    const agent = createAgent({ prompt: 'p', provider: model, tools: [deleteAll] });
+    const client = await connect(spec(agent));
+    const result = await client.callTool({ name: 'support-bot', arguments: { message: 'wipe' } });
+    expect(textOf(result)).toMatch(/needs human approval/);
+    expect(await agent.approvals.list()).toEqual([]);
+    expect(model.calls).toHaveLength(1);
+  });
+
   it('reports an aborted run as an error', async () => {
     const agent = {
       send: vi.fn().mockResolvedValue({ text: '', finishReason: 'aborted', messages: [], toolCalls: [], steps: 0, usage: {} }),
@@ -282,6 +292,52 @@ describe('serveMcp over HTTP', () => {
     closers.push(() => client.close());
     const result = await client.callTool({ name: 'support-bot', arguments: { message: 'ping' } });
     expect(textOf(result)).toBe('pong');
+  });
+
+  it('a client timeout (notifications/cancelled in another POST) aborts the agent run', async () => {
+    let seen: AbortSignal | undefined;
+    const slow = {
+      send: vi.fn((_message: string, options?: { signal?: AbortSignal }) => {
+        seen = options?.signal;
+        return new Promise((resolve) => {
+          const timer = setTimeout(() => resolve({ text: 'late', finishReason: 'stop', messages: [], toolCalls: [], steps: 0, usage: {} }), 5000);
+          options?.signal?.addEventListener('abort', () => {
+            clearTimeout(timer);
+            resolve({ text: '', finishReason: 'aborted', messages: [], toolCalls: [], steps: 0, usage: {} });
+          });
+        });
+      }),
+    };
+    const server = await serveMcp({ agent: slow as unknown as SimpleAgent, name: 'slow', transport: { type: 'http', port: 0 }, warn: () => {} });
+    closers.push(server.close);
+    const client = new Client({ name: 'c', version: '1' });
+    await client.connect(new StreamableHTTPClientTransport(new URL(server.url!)));
+    closers.push(() => client.close());
+    await expect(client.callTool({ name: 'slow', arguments: { message: 'x' } }, undefined, { timeout: 200 })).rejects.toThrow(/timed out/i);
+    await vi.waitFor(() => expect(seen?.aborted).toBe(true));
+  });
+
+  it('a cancel naming a request id two clients have in flight is ignored', async () => {
+    const signals: AbortSignal[] = [];
+    let started = 0;
+    const slow = {
+      send: vi.fn((_message: string, options?: { signal?: AbortSignal }) => {
+        signals.push(options!.signal!);
+        started += 1;
+        return new Promise((resolve) => setTimeout(() => resolve({ text: 'done', finishReason: 'stop', messages: [], toolCalls: [], steps: 0, usage: {} }), 300));
+      }),
+    };
+    const server = await serveMcp({ agent: slow as unknown as SimpleAgent, name: 'slow', transport: { type: 'http', port: 0 }, warn: () => {} });
+    closers.push(server.close);
+    const headers = { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' };
+    const call = () =>
+      fetch(server.url!, { method: 'POST', headers, body: JSON.stringify({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'slow', arguments: { message: 'x' } } }) });
+    const calls = [call(), call()];
+    await vi.waitFor(() => expect(started).toBe(2));
+    await fetch(server.url!, { method: 'POST', headers, body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 7 } }) });
+    const results = await Promise.all(calls.map(async (response) => (await response).json()));
+    expect(signals.map((signal) => signal.aborted)).toEqual([false, false]);
+    expect(results.map((result) => result.result.content[0].text)).toEqual(['done', 'done']);
   });
 
   it('rejects missing or wrong bearer tokens with 401 and accepts the right one', async () => {
