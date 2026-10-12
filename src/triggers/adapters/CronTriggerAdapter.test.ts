@@ -26,6 +26,21 @@ describe('CronTriggerAdapter', () => {
     vi.useRealTimers();
   });
 
+  it('skips a tick while the previous run is still going (reported to onResult), so runs never overlap', async () => {
+    let finish: (() => void) | undefined;
+    const onEvent = vi.fn(() => new Promise<ExecutionResult>((done) => (finish = () => done(fakeResult('slow')))));
+    const onResult = vi.fn();
+    const handle = new CronTriggerAdapter({ intervalMs: 100, input: 'scheduled', onResult }).listen(noopAgent, onEvent);
+    await vi.advanceTimersByTimeAsync(350);
+    expect(onEvent).toHaveBeenCalledTimes(1);
+    expect(onResult).toHaveBeenCalledTimes(2);
+    expect(onResult.mock.calls.every(([result, error]) => result === undefined && String(error).includes('previous run is still going'))).toBe(true);
+    finish!();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(onEvent).toHaveBeenCalledTimes(2);
+    handle.stop();
+  });
+
   it('has type "cron"', () => {
     expect(new CronTriggerAdapter({ intervalMs: 1000, input: 'x', onResult: vi.fn() }).type).toBe('cron');
   });

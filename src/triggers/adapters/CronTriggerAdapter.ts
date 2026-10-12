@@ -99,7 +99,10 @@ function unref(timer: NodeJS.Timeout): void {
 }
 
 /**
- * Runs an agent on a fixed interval or a cron expression.
+ * Runs an agent on a fixed interval or a cron expression. A tick that comes
+ * while the previous run is still going is skipped (reported to `onResult`
+ * as an error). Ticks are not claimed across replicas: every process that
+ * listens fires; `startSchedules()` claims each fire once.
  *
  * @deprecated Use defineSchedule() with startSchedules(); see docs/schedules.md. Will be removed in a future major version.
  */
@@ -118,12 +121,24 @@ export class CronTriggerAdapter implements TriggerAdapter {
   ): TriggerHandle {
     void agent;
     let tickCount = 0;
+    let running = false;
 
     const fire = () => {
       const context: TriggerContext = { firedAt: new Date().toISOString(), tick: tickCount++ };
+      // Like startSchedules(): a tick never overlaps the previous, still running, one.
+      if (running) {
+        try {
+          this.options.onResult(undefined, new Error(`cron trigger tick ${context.tick} skipped: the previous run is still going`), context);
+        } catch {
+          // a throwing sink must not end the schedule
+        }
+        return;
+      }
+      running = true;
       onEvent(this.options.input, context)
         .then((result) => this.options.onResult(result, undefined, context))
-        .catch((error: unknown) => this.options.onResult(undefined, error, context));
+        .catch((error: unknown) => this.options.onResult(undefined, error, context))
+        .finally(() => (running = false));
     };
 
     if (this.options.fireImmediately) {
