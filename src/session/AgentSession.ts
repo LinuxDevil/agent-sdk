@@ -11,7 +11,8 @@ import { toMessages, type AgentInput } from '../providers/content';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import { startAgentRun, type AgentRun } from '../execution/agentRun';
 import { InputQueue } from '../execution/inputQueue';
-import { getCheckpointHistory, isCheckpointCorrupt, pausedApprovalIds, type Checkpoint, type CheckpointError, type CheckpointStore } from '../execution/checkpoint';
+import { getCheckpointHistory, isCheckpointCorrupt, pausedApprovalIds, type Checkpoint, type CheckpointError, type CheckpointListEntry, type CheckpointStore } from '../execution/checkpoint';
+import { acquireRunLease, HELD_RUN_LEASE, type RunLease, type RunLeaseOptions } from '../execution/runLease';
 import type { ApprovalKind } from '../execution/ApprovalGate';
 import { CompactedLLMProviderError, ConfigurationError, SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 import { streamSessionTurn } from './sessionStream';
@@ -273,14 +274,46 @@ function pausedTurnKey(id: string): string {
  * Eve EVE-0: the session's turn that waits on an approval, found through its
  * {@link pausedTurnKey} pointer, or `null`. A pointer whose turn no longer
  * waits (decided, finished or discarded elsewhere) is deleted.
+ * Eve2-F3: without a live pointer, the turn checkpoints themselves are scanned
+ * (see {@link pausedTurnScan}) - `markPaused()` writes the pointer AFTER the
+ * executor saved the paused checkpoint, so a crash between the two writes (or a
+ * send that slipped into the gap) leaves the pause with no pointer, permanently.
  */
 export async function pausedSessionTurn(checkpointStore: CheckpointStore, id: string): Promise<Checkpoint | null> {
   const pointer = await checkpointStore.load(pausedTurnKey(id));
-  if (!pointer) return null;
-  const turn = await checkpointStore.load(pointer.sessionId);
-  if (turn?.status === 'awaiting-approval') return turn;
-  await checkpointStore.delete(pausedTurnKey(id));
-  return null;
+  if (pointer) {
+    const turn = await checkpointStore.load(pointer.sessionId);
+    if (turn?.status === 'awaiting-approval') return turn;
+    await checkpointStore.delete(pausedTurnKey(id));
+  }
+  return pausedTurnScan(checkpointStore, id);
+}
+
+/**
+ * Eve2-F3: the newest `<id>.turn-<n>` checkpoint that still waits on an approval,
+ * or `null` - the fallback when the {@link pausedTurnKey} pointer is missing
+ * (see {@link pausedSessionTurn}). A store that cannot `list()` keeps the
+ * pointer's behavior.
+ */
+async function pausedTurnScan(checkpointStore: CheckpointStore, id: string): Promise<Checkpoint | null> {
+  if (!checkpointStore.list) return null;
+  let listed: CheckpointListEntry[];
+  try {
+    listed = await checkpointStore.list({ status: 'awaiting-approval' });
+  } catch {
+    return null; // A store whose list() is unavailable (e.g. a KV binding without it) keeps the pointer's behavior.
+  }
+  const prefix = `${id}.turn-`;
+  let paused: Checkpoint | null = null;
+  let latest = -1;
+  for (const entry of listed) {
+    if (!entry.sessionId.startsWith(prefix)) continue;
+    const n = Number(entry.sessionId.slice(prefix.length));
+    if (!Number.isInteger(n) || n <= latest) continue;
+    latest = n;
+    paused = entry.checkpoint;
+  }
+  return paused;
 }
 
 /**
@@ -439,6 +472,8 @@ export class AgentSession<TObject = unknown> {
   }
   /** The turn running (or about to run) and the queue its run takes input from (LOU-V9). */
   private running: { inputs: InputQueue; result: Promise<ExecutionResult> } | undefined;
+  /** The run lease this session's turn holds on its checkpoint id, from before the run starts until its `record()` is done (Eve2-F2). */
+  private turnLease: RunLease | undefined;
   private turnStartedAt = 0;
   private transcript: Message[] = [];
   /** Whether `transcript` was read in the queued call running now (each call reads it again, Eve DUR-F3). */
@@ -576,9 +611,15 @@ export class AgentSession<TObject = unknown> {
             await this.beforeTurn(signal);
             const call = { input, metadata: options.metadata, principal: options.principal };
             const messages = toMessages(input);
-            const run = streamRun([...this.transcript, ...messages], signal, this.turnOptions(inputs), call);
-            started(run);
-            return this.record(await this.attempt(() => run.result), messages);
+            const turn = this.turnOptions(inputs);
+            await this.holdRunLease(turn);
+            try {
+              const run = streamRun([...this.transcript, ...messages], signal, turn, call);
+              started(run);
+              return this.record(await this.attempt(() => run.result), messages);
+            } finally {
+              await this.releaseRunLease();
+            }
           },
           inputs,
           (joined) => started(startAgentRun(() => joined))
@@ -899,7 +940,13 @@ export class AgentSession<TObject = unknown> {
   private async turn(call: SessionTurnCall, inputs: InputQueue, signal?: AbortSignal): Promise<ExecutionResult> {
     await this.beforeTurn(signal);
     const input = toMessages(call.input);
-    return this.record(await this.attempt(() => this.run([...this.transcript, ...input], signal, this.turnOptions(inputs), call)), input);
+    const options = this.turnOptions(inputs);
+    await this.holdRunLease(options);
+    try {
+      return this.record(await this.attempt(() => this.run([...this.transcript, ...input], signal, options, call)), input);
+    } finally {
+      await this.releaseRunLease();
+    }
   }
 
   /**
@@ -916,13 +963,44 @@ export class AgentSession<TObject = unknown> {
     }
   }
 
+  /**
+   * Eve2-F2: takes the turn's run lease before the run starts and hands it to the
+   * run (`HELD_RUN_LEASE`, so the executor saves under it instead of taking its
+   * own). The session keeps it until `record()` is done, so `recordFailure()`
+   * can write through `RunLease.save` - fenced: a run that lost its lease (it
+   * stalled past it and another process took the turn over) cannot stamp its
+   * failure on the checkpoint the new holder owns.
+   */
+  private async holdRunLease(options: SessionTurnOptions | undefined): Promise<void> {
+    const { sessionId, checkpointStore } = options ?? {};
+    if (!sessionId || !checkpointStore) return;
+    const lease = await acquireRunLease(checkpointStore, sessionId);
+    if (!lease) return;
+    this.turnLease = lease;
+    (options as SessionTurnOptions & RunLeaseOptions)[HELD_RUN_LEASE] = lease;
+  }
+
+  /** Releases the lease `holdRunLease` took; the turn's own `releaseLease` leaves another holder's alone. */
+  private async releaseRunLease(): Promise<void> {
+    const lease = this.turnLease;
+    this.turnLease = undefined;
+    await lease?.release().catch(() => undefined);
+  }
+
   private async recordFailure(error: unknown): Promise<void> {
     // A turn refused because another process runs it (its run lease) did not run: the checkpoint is that process's.
     if (error instanceof SDKError && error.code === 'LOUSHO_SESSION_BUSY') return;
     const turn = this.turnCheckpoint();
     const checkpoint = turn && (await turn.checkpointStore.load(turn.sessionId));
     if (!turn || !checkpoint || (checkpoint.status ?? 'in-progress') !== 'in-progress') return;
-    await turn.checkpointStore.save(turn.sessionId, { ...checkpoint, lastError: checkpointError(error), attempts: (checkpoint.attempts ?? 0) + 1 });
+    const failed = { ...checkpoint, lastError: checkpointError(error), attempts: (checkpoint.attempts ?? 0) + 1 };
+    // Eve2-F2: under the turn's own lease the write is fenced - it throws LOUSHO_SESSION_BUSY, writing
+    // nothing, when the run lost the lease and the checkpoint now belongs to the run that took it over.
+    if (this.turnLease?.id === turn.sessionId) {
+      await this.turnLease.save(failed);
+      return;
+    }
+    await turn.checkpointStore.save(turn.sessionId, failed);
   }
 
   /**
@@ -1038,7 +1116,13 @@ export class AgentSession<TObject = unknown> {
         'LOUSHO_SESSION_TURN_FAILED'
       );
     }
-    return this.record(await this.attempt(() => this.run([], signal, this.turnOptions())));
+    const options = this.turnOptions();
+    await this.holdRunLease(options);
+    try {
+      return this.record(await this.attempt(() => this.run([], signal, options)));
+    } finally {
+      await this.releaseRunLease();
+    }
   }
 
   /**
