@@ -1,0 +1,11 @@
+import { createAgent } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+import { z } from 'zod';
+const schema = z.object({ city: z.string(), pop: z.number() });
+let m = mockModel(['{"city":"Oslo"}', '{"city":"Oslo","pop":"lots"}', 'unused']);
+let r: any = await createAgent({ provider: m, output: schema }).send('x');
+console.log('invalid x2:', r.finishReason, JSON.stringify(r.outputError).slice(0, 200), '| calls', m.calls.length, '| responseFormat on calls:', m.calls.map((c: any) => c.responseFormat?.type));
+console.log('repair msg:', String(m.calls[1].messages.at(-1)?.content).slice(0, 160));
+m = mockModel(['{"city":"Oslo","pop":7}']);
+r = await createAgent({ provider: m, output: schema }).send('x');
+console.log('valid:', r.finishReason, JSON.stringify(r.object), r.text);

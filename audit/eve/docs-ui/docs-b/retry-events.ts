@@ -1,0 +1,10 @@
+import { createAgent, withFallback } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+const m = mockModel([{ error: new Error('429 Too Many Requests') }, 'recovered']);
+const run = createAgent({ provider: m, retry: { maxRetries: 2, backoff: { initialMs: 10 } } }).stream('x');
+for await (const e of run) if (e.type.startsWith('provider.')) console.log(JSON.stringify(e).slice(0, 300));
+console.log('text', (await run.result).text);
+const fa = mockModel([{ error: new Error('boom') }]); const fb = mockModel(['from-b']);
+const run2 = createAgent({ provider: withFallback([fa, fb]) }).stream('x');
+for await (const e of run2) if (e.type.startsWith('provider.')) console.log(JSON.stringify(e).slice(0, 300));
+console.log('text2', (await run2.result).text, JSON.stringify((await run2.result).usage?.byModel));

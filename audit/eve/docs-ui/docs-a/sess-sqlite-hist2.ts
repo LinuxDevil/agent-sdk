@@ -1,0 +1,15 @@
+import { createAgent } from '@lousho/build-ai-agent';
+import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+import { DatabaseSync } from 'node:sqlite';
+import { rmSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+const d = join(process.cwd(), 'eve/docs-ui/docs-a/.tmp-sq'); rmSync(d, { recursive: true, force: true }); mkdirSync(d, { recursive: true });
+const dbp = join(d, 'agent.db'); const store = new SqliteStore(dbp);
+const a2 = createAgent({ provider: mockModel(Array.from({ length: 20 }, (_, i) => `r${i}`)), store });
+const s2 = a2.session({ id: 'u7' }); for (let i = 0; i < 5; i++) await s2.send(`SECRET-${i}`); await s2.clear();
+const count = () => { const db = new DatabaseSync(dbp); const r = db.prepare('select session_id, count(*) c from checkpoint_history group by session_id').all(); const any = JSON.stringify(db.prepare('select * from checkpoint_history').all()).includes('SECRET-'); db.close(); return { r, any }; };
+console.log('after clear():', JSON.stringify(count()));
+console.log('prune(7d):', JSON.stringify(store.prune({ olderThanMs: 7 * 864e5 })), JSON.stringify(count()));
+console.log('prune(0):', JSON.stringify(store.prune({ olderThanMs: 0 })), JSON.stringify(count()));
+store.close();
