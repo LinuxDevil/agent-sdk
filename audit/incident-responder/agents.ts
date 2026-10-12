@@ -14,7 +14,7 @@
  *     ├─ tools: restart_service (needsApproval -> pauses the run)
  *     └─ handoffs: report-writer (writes incidents/<id>.md)
  */
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
@@ -102,6 +102,15 @@ const FIXTURES: Record<string, { logs: unknown; metrics: unknown; deploys: unkno
     },
   },
 };
+
+/* INCIDENT_TELEMETRY=<file.json> replaces the canned fixtures with real     */
+/* telemetry — the file maps service -> { logs, metrics, deploys }, same     */
+/* shape as FIXTURES above.                                                 */
+if (process.env.INCIDENT_TELEMETRY) {
+  const real = JSON.parse(readFileSync(process.env.INCIDENT_TELEMETRY, 'utf8')) as typeof FIXTURES;
+  for (const key of Object.keys(FIXTURES)) delete FIXTURES[key];
+  Object.assign(FIXTURES, real);
+}
 
 function fixture(service: string, kind: 'logs' | 'metrics' | 'deploys'): unknown {
   const f = FIXTURES[service] ?? {

@@ -33,7 +33,12 @@ import {
 } from '@lousho/build-ai-agent';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const fixture = path.join(here, 'fixture-repo');
+// REPO_FIXTURE=<dir> reviews a real checkout: the dir must hold the repo at
+// the PR head plus `pr-N.diff` files at its root (the webhook payload's PR
+// number N selects which diff). Defaults to the canned cart-service fixture.
+const fixture = process.env.REPO_FIXTURE
+  ? path.resolve(process.env.REPO_FIXTURE)
+  : path.join(here, 'fixture-repo');
 const argv = process.argv.slice(2);
 const arg = (name: string) => argv.includes(name);
 const argValue = (name: string, dflt: number) => Number(argv[argv.indexOf(name) + 1]) || dflt;
@@ -378,9 +383,20 @@ console.log('\n== Phase B: pull_request.opened -> live review -> approval gate -
     const review = cont.object;
     check('B4 structured output parsed (result.object)', Boolean(review && review.verdict), `verdict=${review?.verdict} issues=${review?.issues?.length} confidence=${review?.confidence}`);
     if (review) {
-      const flagsBug = review.issues.some((i) => /cart\.js/.test(i.file) && /coupon|length|bound|undefined|off.by.one|index/i.test(i.message))
-        || review.issues.some((i) => /greet|checkout/.test(i.file) && /null|undefined|guest|email/i.test(i.message));
-      check('B5 review flags the planted bug(s)', review.verdict === 'request_changes' && flagsBug, `verdict=${review.verdict} issues=${review.issues.map((i) => `${i.severity}:${i.file}`).join('|')}`);
+      if (process.env.REPO_FIXTURE) {
+        // Real mode: no planted bugs — a sound review on a real diff just has
+        // to produce a verdict with file-referenced issues (or none).
+        check(
+          'B5 review is coherent on the real diff',
+          ['approve', 'request_changes', 'comment'].includes(review.verdict) &&
+            review.issues.every((i) => typeof i.file === 'string' && i.file.length > 0),
+          `verdict=${review.verdict} issues=${review.issues.map((i) => `${i.severity}:${i.file}`).join('|') || 'none'}`
+        );
+      } else {
+        const flagsBug = review.issues.some((i) => /cart\.js/.test(i.file) && /coupon|length|bound|undefined|off.by.one|index/i.test(i.message))
+          || review.issues.some((i) => /greet|checkout/.test(i.file) && /null|undefined|guest|email/i.test(i.message));
+        check('B5 review flags the planted bug(s)', review.verdict === 'request_changes' && flagsBug, `verdict=${review.verdict} issues=${review.issues.map((i) => `${i.severity}:${i.file}`).join('|')}`);
+      }
     }
   }
 

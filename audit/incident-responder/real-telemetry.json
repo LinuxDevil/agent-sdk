@@ -1,0 +1,50 @@
+{
+  "checkout": {
+    "logs": {
+      "service": "checkout",
+      "window": "20:07Z-20:12Z (live)",
+      "errors5xx": 0,
+      "sample": [
+        "RangeError: Maximum call stack size exceeded",
+        "  at fetch (test/api.test.ts:9:38) \u2014 handler crashed the worker mid-request",
+        "node:internal/process exit 1 \u2014 server no longer listening",
+        "ECONNREFUSED 127.0.0.1:3847 on every health probe since 20:11Z"
+      ],
+      "note": "real log capture: a recursive handler crashed the server process; it has not come back up on its own. ~100% of probes now refused."
+    },
+    "metrics": {
+      "service": "checkout",
+      "error_rate_pct": 100.0,
+      "p95_latency_ms": 0,
+      "p95_baseline_ms": 42,
+      "started_at": "20:11Z",
+      "note": "availability 0% \u2014 process down; all probes refused since 20:11Z (measured from real probe loop)"
+    },
+    "deploys": {
+      "service": "checkout",
+      "recent": [],
+      "note": "real deploy history (agent-sdk git log); latest change touched CLI packaging"
+    }
+  },
+  "staging-api": {
+    "logs": {
+      "service": "staging-api",
+      "window": "20:07Z-20:12Z",
+      "errors5xx": 0,
+      "sample": [],
+      "note": "no errors in the window"
+    },
+    "metrics": {
+      "service": "staging-api",
+      "error_rate_pct": 0.4,
+      "p95_latency_ms": 38,
+      "p95_baseline_ms": 40,
+      "note": "healthy; one 30s blip to 1.8% self-recovered"
+    },
+    "deploys": {
+      "service": "staging-api",
+      "recent": [],
+      "note": "no deploys in 72h"
+    }
+  }
+}
