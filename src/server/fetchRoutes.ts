@@ -366,8 +366,9 @@ async function ownsSession(ctx: ChatRoutesContext, principal: Principal, session
   const owner = sessionOwner(agent, sessionId);
   if (owner !== undefined) return samePrincipal(owner, principal);
   if (await sessionStored(ctx, sessionId, session)) return false;
-  if (claim) claimSession(agent, sessionId, principal);
-  return true;
+  // Another request may have claimed it while this one checked the store: the first claim wins.
+  const now = claim ? claimSession(agent, sessionId, principal) : sessionOwner(agent, sessionId);
+  return now === undefined || samePrincipal(now, principal);
 }
 
 /**

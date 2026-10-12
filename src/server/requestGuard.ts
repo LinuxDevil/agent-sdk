@@ -187,16 +187,23 @@ export function sessionOwner(agent: object, sessionId: string): Principal | unde
   return owner;
 }
 
-/** Records `principal` as the owner of session `sessionId` of `agent`, unless it has one. */
-export function claimSession(agent: object, sessionId: string, principal: Principal): void {
+/**
+ * Records `principal` as the owner of session `sessionId` of `agent`, unless it
+ * has one, and returns the owner on record: `principal`, or whoever claimed it
+ * first. The check and the claim are one synchronous step, so of two requests
+ * that both found the session unowned, only the first gets it.
+ */
+export function claimSession(agent: object, sessionId: string, principal: Principal): Principal {
   let sessions = owners.get(agent);
   if (!sessions) owners.set(agent, (sessions = new Map()));
-  if (sessions.has(sessionId)) return;
+  const owner = sessions.get(sessionId);
+  if (owner !== undefined) return owner;
   sessions.set(sessionId, principal);
   for (const oldest of sessions.keys()) {
     if (sessions.size <= ownerLimit) break;
     sessions.delete(oldest);
   }
+  return principal;
 }
 
 /** Forgets `principal`'s claim on session `sessionId` of `agent` (a turn that stored nothing); another principal's claim is kept. */

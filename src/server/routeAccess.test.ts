@@ -190,6 +190,25 @@ describe('authorizeSession (A1, F6)', () => {
   });
 });
 
+describe('the default session check under concurrency', () => {
+  it('of two callers starting the same new session at once, only the first gets in; the other never sees its turn', async () => {
+    const model = mockModel([(request) => `I can see: ${request.messages.filter((m) => m.role === 'user').map((m) => String(m.content)).join(' + ')}`], { onExhausted: 'repeat-last' });
+    const agent = createAgent({ provider: model, store: memoryStore() });
+    const { handler } = createRouteHandler(agent, { basePath: '/api', auth: [auth] });
+    const [alice, bob] = await Promise.all([
+      handler(call('POST', '/chat', 'alice', { sessionId: 'new-shared-id', input: 'my card is 4111-alice' })),
+      handler(call('POST', '/chat', 'bob', { sessionId: 'new-shared-id', input: 'hi from bob' })),
+    ]);
+    expect(alice.status).toBe(200);
+    expect(bob.status).toBe(403);
+    expect(await bob.text()).not.toContain('4111');
+    await alice.text();
+    const transcript = await (await handler(call('GET', '/chat/new-shared-id', 'alice'))).text();
+    expect(transcript).not.toContain('hi from bob');
+    expect((await handler(call('GET', '/chat/new-shared-id', 'bob'))).status).toBe(403);
+  });
+});
+
 describe('concurrent decisions (A1, F10)', () => {
   it('the request that loses the race for an approval gets a 409, a later one a 404', async () => {
     const { handler, ledger } = refundDesk(refundTurn);
