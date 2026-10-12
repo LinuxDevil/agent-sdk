@@ -24,6 +24,7 @@ import {
 } from './ApprovalGate';
 import { validateToolArguments } from './toolArgsValidation';
 import { TOOL_ABORT_GRACE_MS } from './toolBatch';
+import { abortable } from './abortable';
 import { AgentExecutor, ExecuteOptions, ExecutionResult, extendRunOptions } from './AgentExecutor';
 import { observeRun, partialSink, runEventsOf, streamResumed, type AgentRun, type ToolSettled } from './agentRun';
 import { Checkpoint, CheckpointStore, RUN_CONFIG_KEY, pausedApprovalIds } from './checkpoint';
@@ -1473,29 +1474,6 @@ interface SettledCall {
 }
 
 /**
- * Eve2-F5: like `abortable()` (a tool that ignores the signal does not hold
- * the run open forever), except a settlement landing while the run unwinds
- * still wins - the abort side drains for TOOL_ABORT_GRACE_MS first, so a
- * tool released just as the run aborted keeps its real result (B4), exactly
- * like ToolBatch.settled()'s drained wait.
- */
-function abortableToolCall<T>(call: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
-  if (!signal) return call;
-  return new Promise<T>((resolve, reject) => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const onAbort = () => {
-      timer = setTimeout(() => reject(signal.reason), TOOL_ABORT_GRACE_MS);
-    };
-    signal.addEventListener('abort', onAbort, { once: true });
-    if (signal.aborted) onAbort();
-    call.then(resolve, reject).finally(() => {
-      signal.removeEventListener('abort', onAbort);
-      clearTimeout(timer);
-    });
-  });
-}
-
-/**
  * Executes the approved tool itself. The try/catch here handles ONLY the
  * tool's own execution failure - NOT the postToolCall hook call that
  * follows it in runApprovedToolCall(). This split (rather than the previous
@@ -1530,7 +1508,7 @@ async function executeApprovedTool(
       // would otherwise hold the resume open forever. The rejection lands
       // in the catch below like the tool's own abort error (the tool keeps
       // running, documented for ExecuteOptions.signal).
-      result: await abortableToolCall(
+      result: await abortable(
         executeToolWithSandboxGuard(
           pending.toolName,
           toolDesc,
@@ -1540,7 +1518,8 @@ async function executeApprovedTool(
           { toolCallId: pending.toolCallId, messages, approval, sessionId, principal: executeOptions.principal, tokens: executeOptions.tokens, onPartial: partialsOf(pending, executeOptions) },
           scope
         ),
-        executeOptions.signal
+        executeOptions.signal,
+        TOOL_ABORT_GRACE_MS
       ),
     };
   } catch (error) {

@@ -35,6 +35,7 @@ import { settleHostedFinish } from './hostedToolCalls';
 import { hostedToolsInMode, permissionModeOf } from './permissions';
 import type { ParallelInputCheck } from './ioGuardrails';
 import { deferralOf, visibleTools, type ToolDeferral } from './toolDeferral';
+import { abortable } from './abortable';
 
 /** A legacy `.tool`'s description when it is a string (always, on `ai` v4). */
 function legacyDescription(description: unknown): string | undefined {
@@ -226,21 +227,6 @@ function reloadTools(request: GenerateOptions, tools: ToolDefinition[], messages
 export interface GeneratedStep {
   generated: GenerateResult;
   measured: CallUsage;
-}
-
-/**
- * LOU-V10: `call`, or its rejection with `signal`'s reason as soon as
- * `signal` aborts - a provider that ignores the signal is not waited for.
- * `call` keeps running either way.
- */
-function abortable<T>(call: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
-  if (!signal) return call;
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => reject(signal.reason);
-    signal.addEventListener('abort', onAbort, { once: true });
-    if (signal.aborted) onAbort();
-    call.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
-  });
 }
 
 /** The signal that aborts when either does (`undefined` when neither is set). */
