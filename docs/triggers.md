@@ -256,3 +256,6 @@ Around daylight-saving changes, a fixed-hour job whose time does not exist
 gap (03:00) instead of being skipped for the day, and a time that happens twice (fall back) fires once;
 an every-hour schedule keeps firing hourly. The timer is re-armed after each
 run from the scheduled time (no drift, no double fire), and `stop()` clears it.
+A tick that comes while the previous run is still going is skipped and
+reported to `onResult` as an error. Ticks are not claimed across replicas:
+every process that listens fires (`startSchedules()` claims each fire once).

@@ -691,12 +691,12 @@ interface ProviderUsage {
 
 // @public
 export interface PruneOptions {
+    expiredApprovals?: boolean;
     olderThanMs: number;
 }
 
 // @public
 export interface PruneResult {
-    // (undocumented)
     approvals: number;
     // (undocumented)
     checkpoints: number;

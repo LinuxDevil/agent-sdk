@@ -227,14 +227,29 @@ container), is never taken over early: it waits for the expiry.
 The run's lease owner id is a fencing token. The heartbeat renews the lease
 only while the run still holds it (it never takes back a lease another process
 took, or one released after another process finished the run), and every
-checkpoint the run saves is written only if the run still holds the lease,
-atomically with that check in the file, SQLite and in-memory stores. So if a
+checkpoint the run saves is written only if the run still holds the lease:
+atomically with that check in the SQLite and in-memory stores, and in the file
+store by checking again, under the lease's lock file, right before each written
+file is renamed into place (a stalled writer whose lock was taken over writes
+nothing; only a stall between that check and the rename itself, a few system
+calls, is not covered). So if a
 run stalls for longer than its lease (the process was paused, or the event loop
 blocked) and another process takes over, the stalled run stops with
 `LOUSHO_SESSION_BUSY` at its next checkpoint instead of overwriting the new
 holder's progress, and a session turn's late result is not added to the
 transcript. A tool call the stalled run was already making when it lost the
 lease is not undone: keep tools idempotent where a stall is possible.
+
+Resolving an approval takes the paused run's lease before it claims the
+approval, and holds it until the decided call has run. If the resolver fails
+before the decided call starts (a storage error, a lost lease), the approval is
+put back and can be decided again. If its process dies after the claim and
+before it marked the run, the run is left waiting on an approval that no longer
+exists; once the lease expires, `agent.resume(id)`, `session.resume()` or the
+next `send()` on it pauses the run again under a new approval id (the lost
+decision is not applied, and the call it decided did not run). This needs an
+approval store that can read a record without claiming it (`load`, which every
+built-in store has).
 
 The file, SQLite and in-memory stores take leases atomically. KV has no
 compare-and-swap: `KVStore` writes the lease, waits 50 ms and reads it back,

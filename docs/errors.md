@@ -413,7 +413,10 @@ with a `needsApproval` tool.
 is not pending: unknown, or already resolved.
 
 **Fix:** resolve an id from `agent.approvals.list()` (or the `approvalId` of the
-paused result); each approval resolves once.
+paused result); each approval resolves once. A run that still shows the id as
+pending (`pending()`) lost it to a resolver that died mid-resolve: once its run
+lease expires, `agent.resume(id)` or `session.resume()` pauses it again under a
+new approval id.
 
 **Example:** calling `agent.approvals.resolve({ id, approved: true })` twice.
 
@@ -955,7 +958,7 @@ file-based store), and create a new store after closing one.
 
 ### LOUSHO_STORAGE_BUSY
 
-**Means:** a `SqliteStore` write could not get the database's write lock because another connection or process (a second replica, a backup, a long transaction) holds it. The driver waits only briefly (50 ms) so the event loop is not frozen; the stores' transactional writes (checkpoint and approval saves, `resolve()`, `saveIf()`, OAuth sign-in claims, SQLite memory updates) then retry with backoff for about 5 seconds before they give up with this error. `prune()` does not retry. The original driver error is the `cause`.
+**Means:** a `SqliteStore` write could not get the database's write lock because another connection or process (a second replica, a backup, a long transaction) holds it. The driver waits only briefly (50 ms) so the event loop is not frozen; the stores' transactional writes (checkpoint and approval saves, `resolve()`, `saveIf()`, OAuth sign-in claims, SQLite memory updates) then retry with backoff for about 30 seconds before they give up with this error. `prune()` does not retry. The original driver error is the `cause`.
 
 **Fix:** retry the call. If it keeps happening, find what holds the lock for long.
 

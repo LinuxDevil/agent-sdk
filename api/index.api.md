@@ -301,6 +301,7 @@ export class AgentSession<TObject = unknown> {
     get messages(): readonly Message[];
     on(listener: (event: AgentEvent) => void): () => void;
     protected pausedTurnFound(_approvalId: string): void;
+    protected pauseOrphaned(_checkpoint: Checkpoint): Promise<boolean>;
     pending(): Promise<PendingTurn | null>;
     protected pendingTurnDiscarded(_approvalIds: string[]): Promise<void>;
     get permissionMode(): PermissionMode;
@@ -1419,6 +1420,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
     toolConcurrency?: ToolConcurrency;
     tools?: PerRun<AgentToolsOption>;
     toolSearch?: false | ToolSearchOptions;
+    turnHistoryLimit?: number;
 }
 
 // @public
@@ -2335,15 +2337,18 @@ export interface FileStoreOptions {
 
 // @public
 export interface FileStorePruneOptions {
+    expiredApprovals?: boolean;
     olderThanMs: number;
 }
 
 // @public
 export interface FileStorePruneResult {
+    approvals: number;
     checkpointHistory: number;
     checkpoints: number;
     oauthPending: number;
     sessions: number;
+    tempFiles: number;
 }
 
 // @public

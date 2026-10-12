@@ -218,17 +218,21 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   The turn id is only the checkpoint key: tools, `needsApproval`, permission
   rules and tool-call hooks still get the session's own id as `ctx.sessionId`.
   The turn's checkpoint history is kept for the latest `turnHistoryLimit`
-  committed turns (default 10, `agent.session({ id, turnHistoryLimit })`), so
+  committed turns (default 10, `agent.session({ id, turnHistoryLimit })`, or
+  `createAgent({ turnHistoryLimit })` for every session of the agent, including
+  those the session routes, `lousho dev`, the deployed server and channels open), so
   `agent.fork('<id>.turn-<n>', { fromStep })` can fork those; older turns'
   histories are deleted as new turns commit (each history entry holds a copy of
   the whole transcript, so keeping every turn's would grow the store with the
   square of the conversation's length), also when every turn uses a new store
   object or process. History outside the window that is already in the store -
   kept by an earlier release, or under a larger `turnHistoryLimit` - is deleted
-  over the next commits too, up to 32 turns per commit, oldest first; a process
-  that commits only one turn gets through the oldest 32, and
-  `fileStore(dir).prune()` / `SqliteStore.prune()` delete the rest.
-  `session.fork()` works from the transcript and is not limited by it.
+  over the next commits too, up to 32 turns per commit, oldest first (a commit
+  in a new store object or process finds where earlier commits got to in the
+  store). After `session.compact()` shortens the transcript, the history of the
+  turns whose ids the next turns reuse (`<id>.turn-<new length>` up to the old
+  length) is deleted. `session.fork()` works from the transcript and is not
+  limited by it.
 - While a turn runs, it holds a run lease on its checkpoint (see
   [Durable execution](./durable-execution.md#run-leases)): a `send()` on the same
   session from another process, replica or store object fails with
@@ -383,10 +387,15 @@ For many processes sharing a store, `SqliteStore` is the sturdier choice.
 
 `fileStore(dir).prune({ olderThanMs })` deletes what was last written more than
 `olderThanMs` ago, like `SqliteStore.prune()`: transcripts, checkpoints and
-checkpoint history files, plus expired pending OAuth sign-ins. A run paused on
-a pending approval is kept, however old (its checkpoint, its history and its
-session's transcript), and so are pending approvals and OAuth tokens. It
-resolves with the counts, `{ sessions, checkpoints, checkpointHistory, oauthPending }`:
+checkpoint history files, plus expired pending OAuth sign-ins and temp files
+a writer killed mid-write left (older than a minute). A run paused on a pending
+approval is kept, however old (its checkpoint, its history and its session's
+transcript), and so are pending approvals and OAuth tokens. A run that is
+running (its run lease is live, or its checkpoint was written after the cutoff)
+keeps its session's transcript too. `expiredApprovals: true` also deletes
+pending approvals past their `approvalTtlMs` deadline, so their old paused runs
+go like any other. It resolves with the counts,
+`{ sessions, checkpoints, checkpointHistory, oauthPending, approvals, tempFiles }`:
 
 ```ts
 import { fileStore } from '@lousho/build-ai-agent';
@@ -421,15 +430,18 @@ With the executor directly, pass `store.checkpoints` as `checkpointStore` and
 - The directory is created if missing. The schema is versioned with
   `PRAGMA user_version` and migrated on open; a database written by a newer
   release is refused.
-- WAL mode and a 5 s busy timeout let two processes share the file. An approval
-  can be resolved by only one of them.
+- WAL mode and a busy retry (a write waits about 30 s for another process's
+  lock) let several processes share the file. An approval can be resolved by
+  only one of them.
 - Checkpoints and approval snapshots are stored as opaque JSON, so new fields
   round-trip unchanged.
 - `prune()` removes sessions and checkpoints not updated within `olderThanMs`,
   approvals resolved that long ago and expired pending OAuth sign-ins;
   unresolved approvals and OAuth tokens are kept, and so is a turn paused on
   an unresolved approval (its checkpoint and the session's transcript),
-  however old. Resolving an approval whose paused turn was deleted anyway
+  however old, and a session whose turn is running (a live run lease, or a
+  checkpoint saved after the cutoff). `expiredApprovals: true` also deletes
+  unresolved approvals past their deadline. Resolving an approval whose paused turn was deleted anyway
   fails with [`LOUSHO_APPROVAL_ORPHANED`](./errors.md#lousho_approval_orphaned)
   without running the tool.
 - A file that is not a SQLite database fails with an error naming the path;

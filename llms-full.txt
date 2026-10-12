@@ -6351,6 +6351,7 @@ createAgent({ model: 'openai/gpt-4o-mini', subagents: { researcher }, rateLimit:
 | `rateLimit` | `{ requestsPerMinute?, tokensPerMinute?, maxConcurrent? }` (or a `createRateLimiter()`): queue the agent's model calls, and its sub-agents' and handoff targets', under one budget. See [Rate limits](#rate-limits). |
 | `hooks`    | `AgentHook[]` run around every model call and tool call, in order, before the compaction hook (see [Hooks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hooks.md)). |
 | `compaction` | `true` (prune old tool results above 90% of the context window) or `{ strategy?, thresholdPercent?, contextWindow?, protectedTokens?, reserveOutputTokens?, onCompaction?, summarizer? }`; `summarizer` (`'provider/model'` or an `LLMProvider`) selects the two-phase strategy. `stream()` reports `compaction.start` / `compaction.done`. See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md#compacting-an-agent). |
+| `turnHistoryLimit` | The default `turnHistoryLimit` of the agent's sessions (also those the session routes, `lousho dev`, the deployed server and channels open): how many latest committed turns keep their checkpoint history for `agent.fork()` (default 10, `0` keeps none). See [Durable sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#durable-sessions). |
 | `mcpServers` | MCP servers to connect, keyed by name (stdio `{ command, args?, env? }` or HTTP `{ url, headers? }`); their tools are named `<server>__<tool>` and ask for approval by default. `optional: true` leaves out a server that cannot connect. See [MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#use-mcp-servers-in-an-agent). |
 | `subagentOptions` | Background sub-agent options: `maxConcurrent` (default 3), `awaitBackgroundOnFinish` (default `false`) and `background: false` to offer only the `task` tool. See [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md). |
 | `codeMode` | `true` or `CodeModeOptions`: adds a `run_code` tool that lets the model call the agent's tools from one short script in a QuickJS sandbox. See [Code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md). |
@@ -7211,14 +7212,29 @@ container), is never taken over early: it waits for the expiry.
 The run's lease owner id is a fencing token. The heartbeat renews the lease
 only while the run still holds it (it never takes back a lease another process
 took, or one released after another process finished the run), and every
-checkpoint the run saves is written only if the run still holds the lease,
-atomically with that check in the file, SQLite and in-memory stores. So if a
+checkpoint the run saves is written only if the run still holds the lease:
+atomically with that check in the SQLite and in-memory stores, and in the file
+store by checking again, under the lease's lock file, right before each written
+file is renamed into place (a stalled writer whose lock was taken over writes
+nothing; only a stall between that check and the rename itself, a few system
+calls, is not covered). So if a
 run stalls for longer than its lease (the process was paused, or the event loop
 blocked) and another process takes over, the stalled run stops with
 `LOUSHO_SESSION_BUSY` at its next checkpoint instead of overwriting the new
 holder's progress, and a session turn's late result is not added to the
 transcript. A tool call the stalled run was already making when it lost the
 lease is not undone: keep tools idempotent where a stall is possible.
+
+Resolving an approval takes the paused run's lease before it claims the
+approval, and holds it until the decided call has run. If the resolver fails
+before the decided call starts (a storage error, a lost lease), the approval is
+put back and can be decided again. If its process dies after the claim and
+before it marked the run, the run is left waiting on an approval that no longer
+exists; once the lease expires, `agent.resume(id)`, `session.resume()` or the
+next `send()` on it pauses the run again under a new approval id (the lost
+decision is not applied, and the call it decided did not run). This needs an
+approval store that can read a record without claiming it (`load`, which every
+built-in store has).
 
 The file, SQLite and in-memory stores take leases atomically. KV has no
 compare-and-swap: `KVStore` writes the lease, waits 50 ms and reads it back,
@@ -8037,7 +8053,10 @@ with a `needsApproval` tool.
 is not pending: unknown, or already resolved.
 
 **Fix:** resolve an id from `agent.approvals.list()` (or the `approvalId` of the
-paused result); each approval resolves once.
+paused result); each approval resolves once. A run that still shows the id as
+pending (`pending()`) lost it to a resolver that died mid-resolve: once its run
+lease expires, `agent.resume(id)` or `session.resume()` pauses it again under a
+new approval id.
 
 **Example:** calling `agent.approvals.resolve({ id, approved: true })` twice.
 
@@ -8579,7 +8598,7 @@ file-based store), and create a new store after closing one.
 
 ### LOUSHO_STORAGE_BUSY
 
-**Means:** a `SqliteStore` write could not get the database's write lock because another connection or process (a second replica, a backup, a long transaction) holds it. The driver waits only briefly (50 ms) so the event loop is not frozen; the stores' transactional writes (checkpoint and approval saves, `resolve()`, `saveIf()`, OAuth sign-in claims, SQLite memory updates) then retry with backoff for about 5 seconds before they give up with this error. `prune()` does not retry. The original driver error is the `cause`.
+**Means:** a `SqliteStore` write could not get the database's write lock because another connection or process (a second replica, a backup, a long transaction) holds it. The driver waits only briefly (50 ms) so the event loop is not frozen; the stores' transactional writes (checkpoint and approval saves, `resolve()`, `saveIf()`, OAuth sign-in claims, SQLite memory updates) then retry with backoff for about 30 seconds before they give up with this error. `prune()` does not retry. The original driver error is the `cause`.
 
 **Fix:** retry the call. If it keeps happening, find what holds the lock for long.
 
@@ -15363,17 +15382,21 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   The turn id is only the checkpoint key: tools, `needsApproval`, permission
   rules and tool-call hooks still get the session's own id as `ctx.sessionId`.
   The turn's checkpoint history is kept for the latest `turnHistoryLimit`
-  committed turns (default 10, `agent.session({ id, turnHistoryLimit })`), so
+  committed turns (default 10, `agent.session({ id, turnHistoryLimit })`, or
+  `createAgent({ turnHistoryLimit })` for every session of the agent, including
+  those the session routes, `lousho dev`, the deployed server and channels open), so
   `agent.fork('<id>.turn-<n>', { fromStep })` can fork those; older turns'
   histories are deleted as new turns commit (each history entry holds a copy of
   the whole transcript, so keeping every turn's would grow the store with the
   square of the conversation's length), also when every turn uses a new store
   object or process. History outside the window that is already in the store -
   kept by an earlier release, or under a larger `turnHistoryLimit` - is deleted
-  over the next commits too, up to 32 turns per commit, oldest first; a process
-  that commits only one turn gets through the oldest 32, and
-  `fileStore(dir).prune()` / `SqliteStore.prune()` delete the rest.
-  `session.fork()` works from the transcript and is not limited by it.
+  over the next commits too, up to 32 turns per commit, oldest first (a commit
+  in a new store object or process finds where earlier commits got to in the
+  store). After `session.compact()` shortens the transcript, the history of the
+  turns whose ids the next turns reuse (`<id>.turn-<new length>` up to the old
+  length) is deleted. `session.fork()` works from the transcript and is not
+  limited by it.
 - While a turn runs, it holds a run lease on its checkpoint (see
   [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases)): a `send()` on the same
   session from another process, replica or store object fails with
@@ -15528,10 +15551,15 @@ For many processes sharing a store, `SqliteStore` is the sturdier choice.
 
 `fileStore(dir).prune({ olderThanMs })` deletes what was last written more than
 `olderThanMs` ago, like `SqliteStore.prune()`: transcripts, checkpoints and
-checkpoint history files, plus expired pending OAuth sign-ins. A run paused on
-a pending approval is kept, however old (its checkpoint, its history and its
-session's transcript), and so are pending approvals and OAuth tokens. It
-resolves with the counts, `{ sessions, checkpoints, checkpointHistory, oauthPending }`:
+checkpoint history files, plus expired pending OAuth sign-ins and temp files
+a writer killed mid-write left (older than a minute). A run paused on a pending
+approval is kept, however old (its checkpoint, its history and its session's
+transcript), and so are pending approvals and OAuth tokens. A run that is
+running (its run lease is live, or its checkpoint was written after the cutoff)
+keeps its session's transcript too. `expiredApprovals: true` also deletes
+pending approvals past their `approvalTtlMs` deadline, so their old paused runs
+go like any other. It resolves with the counts,
+`{ sessions, checkpoints, checkpointHistory, oauthPending, approvals, tempFiles }`:
 
 ```ts
 import { fileStore } from '@lousho/build-ai-agent';
@@ -15566,15 +15594,18 @@ With the executor directly, pass `store.checkpoints` as `checkpointStore` and
 - The directory is created if missing. The schema is versioned with
   `PRAGMA user_version` and migrated on open; a database written by a newer
   release is refused.
-- WAL mode and a 5 s busy timeout let two processes share the file. An approval
-  can be resolved by only one of them.
+- WAL mode and a busy retry (a write waits about 30 s for another process's
+  lock) let several processes share the file. An approval can be resolved by
+  only one of them.
 - Checkpoints and approval snapshots are stored as opaque JSON, so new fields
   round-trip unchanged.
 - `prune()` removes sessions and checkpoints not updated within `olderThanMs`,
   approvals resolved that long ago and expired pending OAuth sign-ins;
   unresolved approvals and OAuth tokens are kept, and so is a turn paused on
   an unresolved approval (its checkpoint and the session's transcript),
-  however old. Resolving an approval whose paused turn was deleted anyway
+  however old, and a session whose turn is running (a live run lease, or a
+  checkpoint saved after the cutoff). `expiredApprovals: true` also deletes
+  unresolved approvals past their deadline. Resolving an approval whose paused turn was deleted anyway
   fails with [`LOUSHO_APPROVAL_ORPHANED`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_approval_orphaned)
   without running the tool.
 - A file that is not a SQLite database fails with an error naming the path;
@@ -18483,6 +18514,9 @@ Around daylight-saving changes, a fixed-hour job whose time does not exist
 gap (03:00) instead of being skipped for the day, and a time that happens twice (fall back) fires once;
 an every-hour schedule keeps firing hourly. The timer is re-armed after each
 run from the scheduled time (no drift, no double fire), and `stop()` clears it.
+A tick that comes while the previous run is still going is skipped and
+reported to `onResult` as an error. Ticks are not claimed across replicas:
+every process that listens fires (`startSchedules()` claims each fire once).
 
 # Troubleshooting
 
@@ -18860,7 +18894,7 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | Approvals run at most once: deciding one re-saves the turn as `'in-progress'` with the call in `Checkpoint.startedToolCallIds`; after a crash mid-call, resuming gives that call a `kind: 'interrupted'` tool error instead of running it again. See [Guarantees](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#guarantees). | no opt-out |
 | Resolving an approval whose run was deleted or replaced fails with `LOUSHO_APPROVAL_ORPHANED` and withdraws it (it used to overwrite the newer conversation). | no opt-out |
 | A session turn paused for approval locks the session id: a new turn on it throws `SessionAwaitingApprovalError` (`LOUSHO_SESSION_AWAITING_APPROVAL`). | decide the approval, or `session.discardPending()` |
-| Session turns keep the checkpoint history of the latest 10 committed turns. See [Durable sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#durable-sessions). | `agent.session({ id, turnHistoryLimit })` with a larger whole number |
+| Session turns keep the checkpoint history of the latest 10 committed turns. See [Durable sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#durable-sessions). | `createAgent({ turnHistoryLimit })` (every session of the agent, including the session routes, `lousho dev`, the deployed server and channels) or `agent.session({ id, turnHistoryLimit })`, with a larger whole number |
 | `sessionId` must be 1-200 characters of `A-Za-z0-9_.-` on every store, and may not end in `.turn-<n>`, `.paused` or `.fire` (a schedule's fire claim); `''` is refused. | no opt-out |
 | A lease left by a process that died on another machine (or in another container with the same hostname) is taken over 30 to 60 seconds after its last heartbeat (a grace for clock skew), not at 30 seconds. See [Run leases](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases). | no opt-out |
 | During a rolling upgrade, replicas still on an earlier release neither take nor respect run leases, so a turn can run twice until every replica is upgraded. A SQLite database opened by this release is migrated and then refused by older releases. | upgrade all replicas together; keep a copy of the database to roll back |
