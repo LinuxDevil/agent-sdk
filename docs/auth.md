@@ -278,10 +278,11 @@ permission rules and sub-agents see it too: see
 - **Sessions belong to the caller that started them by default.** Once route
   auth accepted a caller, a session id is bound to the first principal that
   sends it a turn (reading an id claims nothing), and any other principal gets
-  `403` (`LOUSHO_SESSION_FORBIDDEN`). That record lives in memory, per agent:
-  a restart, a second replica or the generated Worker (which builds its agent
-  per request) forgets it, and the next caller to send a turn claims the
-  session. With more than one instance, pass `authorizeSession` that checks
+  `403` (`LOUSHO_SESSION_FORBIDDEN`). That record lives in memory, per agent,
+  for the 100,000 most recently used sessions. A stored session whose owner is
+  not on record (after a restart, on a second replica, past that cap) is
+  refused to every principal, its owner too. With more than one instance, or a
+  store that outlives the process, pass `authorizeSession` that checks
   ownership against your own data. See
   [Who may use a session](#who-may-use-a-session).
 - **Cookies need CSRF protection, which the routes give by default.** A POST
@@ -419,15 +420,22 @@ principal that sends it a turn (principals are compared by `id`, `type`,
 <basePath>` and the `useChat` endpoint; decisions on its approvals are left to
 `authorizeApproval` (below). Reading an id nobody has sent a turn to yet
 claims nothing, so a caller cannot lock a user out of a predictable id
-(`user-42`) by reading it first. A route without auth checks nothing. All
-callers of one `apiToken()` are one principal, so they share every session.
+(`user-42`) by reading it first. A turn with an empty `input` is a `400` and
+claims nothing, and a turn that stores nothing (it failed before saving) drops
+its claim. A route without auth checks nothing. All callers of one
+`apiToken()` are one principal, so they share every session; a route guarded
+by one bearer token (`auth: '<token>'`, the node server or the Worker with
+only `LOUSHO_API_TOKEN`) checks no owner at all.
 
 The owner is remembered in memory, per agent object, for the 100,000 most
-recently used sessions: a restart, a second replica, a session unused for
-longer, or the generated Cloudflare Worker (which builds its agent per
-request) forgets it, and the next caller to send a turn claims the session.
-So for anything that runs on more than one instance, check ownership
-yourself.
+recently used sessions. A restart, a second replica, a session unused for
+longer, or a host that builds its agent per request forgets it. The default
+then fails closed: a session that is already stored (it has a transcript or an
+unfinished turn) but has no owner on record is refused to every principal,
+including the one that started it, so nobody can take over a session by
+getting its owner forgotten. Only a session that was never stored can be
+claimed again. So for anything that runs on more than one instance, or keeps
+sessions across restarts, check ownership yourself with `authorizeSession`.
 
 `createRouteHandler()` and `createDeployedServer()` take `authorizeSession`,
 which replaces that default. It is asked before a caller reads a session
@@ -441,11 +449,14 @@ import { createAgent, createRouteHandler, memoryStore } from '@lousho/build-ai-a
 import { jwt } from '@lousho/build-ai-agent/auth';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', store: memoryStore() });
+// The user id a session id starts with: everything before its last `-`. A prefix match would let
+// `alice` reach `alice-x`'s sessions, so the suffix has no `-` (e.g. `crypto.randomUUID().replaceAll('-', '')`).
+const ownerOf = (sessionId: string) => sessionId.slice(0, Math.max(sessionId.lastIndexOf('-'), 0));
 
 export const { GET, POST } = createRouteHandler(agent, {
   auth: jwt({ secret: process.env.JWT_SECRET!, issuer: 'https://auth.example.com', audience: 'agent-api' }),
-  // Session ids are `<user id>-<anything>`: a user can only reach their own.
-  authorizeSession: ({ principal, sessionId }) => sessionId.startsWith(`${principal?.id}-`),
+  // Session ids are `<user id>-<suffix without '-'>`: a user can only reach their own.
+  authorizeSession: ({ principal, sessionId }) => principal !== undefined && ownerOf(sessionId) === principal.id,
 });
 ```
 
@@ -526,12 +537,14 @@ import { jwt } from '@lousho/build-ai-agent/auth';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', store: memoryStore() });
 const isSupervisor = (principal?: { claims?: Readonly<Record<string, unknown>> }) => principal?.claims?.role === 'supervisor';
+// Session ids are `<user id>-<suffix without '-'>`; the owner is everything before the last `-`.
+const ownerOf = (sessionId: string) => sessionId.slice(0, Math.max(sessionId.lastIndexOf('-'), 0));
 
 export const { GET, POST } = createRouteHandler(agent, {
   auth: jwt({ secret: process.env.JWT_SECRET!, issuer: 'https://auth.example.com', audience: 'agent-api' }),
-  // Customers use their own sessions (ids that start with their id); supervisors may read and decide in any session.
+  // Customers use their own sessions; supervisors may read and decide in any session.
   authorizeSession: ({ principal, sessionId, action }) =>
-    sessionId.startsWith(`${principal?.id}-`) || (action !== 'chat' && isSupervisor(principal)),
+    (principal !== undefined && ownerOf(sessionId) === principal.id) || (action !== 'chat' && isSupervisor(principal)),
   authorizeApproval: ({ principal }) => isSupervisor(principal),
 });
 ```

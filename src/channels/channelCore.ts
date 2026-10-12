@@ -356,7 +356,10 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
       answered.add(tracked);
       respond(status, body);
     };
-    if (crossSiteToOpenChannel(channel, req)) return tracked(403, { error: 'Cross-site request refused', code: 'LOUSHO_REQUEST_FORBIDDEN' });
+    if (crossSiteToOpenChannel(channel, req)) {
+      const error = `Cross-site request refused: channel '${channel.name}' has no verify. To accept a page on another site, add a verify that authenticates its requests (e.g. a bearer token).`;
+      return tracked(403, { error, code: 'LOUSHO_REQUEST_FORBIDDEN' });
+    }
     if (!(await isAuthorized(channel, req))) return tracked(401, { error: 'Unauthorized' });
     if (approvalId === undefined) {
       const inbound = await channel.parse(req, tracked, contextFor(channel));

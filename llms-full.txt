@@ -3217,10 +3217,11 @@ permission rules and sub-agents see it too: see
 - **Sessions belong to the caller that started them by default.** Once route
   auth accepted a caller, a session id is bound to the first principal that
   sends it a turn (reading an id claims nothing), and any other principal gets
-  `403` (`LOUSHO_SESSION_FORBIDDEN`). That record lives in memory, per agent:
-  a restart, a second replica or the generated Worker (which builds its agent
-  per request) forgets it, and the next caller to send a turn claims the
-  session. With more than one instance, pass `authorizeSession` that checks
+  `403` (`LOUSHO_SESSION_FORBIDDEN`). That record lives in memory, per agent,
+  for the 100,000 most recently used sessions. A stored session whose owner is
+  not on record (after a restart, on a second replica, past that cap) is
+  refused to every principal, its owner too. With more than one instance, or a
+  store that outlives the process, pass `authorizeSession` that checks
   ownership against your own data. See
   [Who may use a session](#who-may-use-a-session).
 - **Cookies need CSRF protection, which the routes give by default.** A POST
@@ -3358,15 +3359,22 @@ principal that sends it a turn (principals are compared by `id`, `type`,
 <basePath>` and the `useChat` endpoint; decisions on its approvals are left to
 `authorizeApproval` (below). Reading an id nobody has sent a turn to yet
 claims nothing, so a caller cannot lock a user out of a predictable id
-(`user-42`) by reading it first. A route without auth checks nothing. All
-callers of one `apiToken()` are one principal, so they share every session.
+(`user-42`) by reading it first. A turn with an empty `input` is a `400` and
+claims nothing, and a turn that stores nothing (it failed before saving) drops
+its claim. A route without auth checks nothing. All callers of one
+`apiToken()` are one principal, so they share every session; a route guarded
+by one bearer token (`auth: '<token>'`, the node server or the Worker with
+only `LOUSHO_API_TOKEN`) checks no owner at all.
 
 The owner is remembered in memory, per agent object, for the 100,000 most
-recently used sessions: a restart, a second replica, a session unused for
-longer, or the generated Cloudflare Worker (which builds its agent per
-request) forgets it, and the next caller to send a turn claims the session.
-So for anything that runs on more than one instance, check ownership
-yourself.
+recently used sessions. A restart, a second replica, a session unused for
+longer, or a host that builds its agent per request forgets it. The default
+then fails closed: a session that is already stored (it has a transcript or an
+unfinished turn) but has no owner on record is refused to every principal,
+including the one that started it, so nobody can take over a session by
+getting its owner forgotten. Only a session that was never stored can be
+claimed again. So for anything that runs on more than one instance, or keeps
+sessions across restarts, check ownership yourself with `authorizeSession`.
 
 `createRouteHandler()` and `createDeployedServer()` take `authorizeSession`,
 which replaces that default. It is asked before a caller reads a session
@@ -3380,11 +3388,14 @@ import { createAgent, createRouteHandler, memoryStore } from '@lousho/build-ai-a
 import { jwt } from '@lousho/build-ai-agent/auth';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', store: memoryStore() });
+// The user id a session id starts with: everything before its last `-`. A prefix match would let
+// `alice` reach `alice-x`'s sessions, so the suffix has no `-` (e.g. `crypto.randomUUID().replaceAll('-', '')`).
+const ownerOf = (sessionId: string) => sessionId.slice(0, Math.max(sessionId.lastIndexOf('-'), 0));
 
 export const { GET, POST } = createRouteHandler(agent, {
   auth: jwt({ secret: process.env.JWT_SECRET!, issuer: 'https://auth.example.com', audience: 'agent-api' }),
-  // Session ids are `<user id>-<anything>`: a user can only reach their own.
-  authorizeSession: ({ principal, sessionId }) => sessionId.startsWith(`${principal?.id}-`),
+  // Session ids are `<user id>-<suffix without '-'>`: a user can only reach their own.
+  authorizeSession: ({ principal, sessionId }) => principal !== undefined && ownerOf(sessionId) === principal.id,
 });
 ```
 
@@ -3465,12 +3476,14 @@ import { jwt } from '@lousho/build-ai-agent/auth';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', store: memoryStore() });
 const isSupervisor = (principal?: { claims?: Readonly<Record<string, unknown>> }) => principal?.claims?.role === 'supervisor';
+// Session ids are `<user id>-<suffix without '-'>`; the owner is everything before the last `-`.
+const ownerOf = (sessionId: string) => sessionId.slice(0, Math.max(sessionId.lastIndexOf('-'), 0));
 
 export const { GET, POST } = createRouteHandler(agent, {
   auth: jwt({ secret: process.env.JWT_SECRET!, issuer: 'https://auth.example.com', audience: 'agent-api' }),
-  // Customers use their own sessions (ids that start with their id); supervisors may read and decide in any session.
+  // Customers use their own sessions; supervisors may read and decide in any session.
   authorizeSession: ({ principal, sessionId, action }) =>
-    sessionId.startsWith(`${principal?.id}-`) || (action !== 'chat' && isSupervisor(principal)),
+    (principal !== undefined && ownerOf(sessionId) === principal.id) || (action !== 'chat' && isSupervisor(principal)),
   authorizeApproval: ({ principal }) => isSupervisor(principal),
 });
 ```
@@ -3872,7 +3885,7 @@ can mount it next to your own routes.
 | Field | Description |
 | ----- | ----------- |
 | `name` | Route segment: `POST <basePath>/<name>`. Letters, digits, `_` and `-`. |
-| `verify(req)` | Optional. Authenticate the request (a signature, a token). Return `true`/`false` or `{ ok, reason? }`; `false` answers `401 {"error":"Unauthorized"}` before anything is parsed or run. Without it, a browser request from another site (an `Origin` that is not the request's host, or `Sec-Fetch-Site: cross-site`) is refused with `403` (`LOUSHO_REQUEST_FORBIDDEN`), and `lousho dev` checks its `Host` like its own routes (against DNS rebinding); a webhook sender or a server sends no `Origin` and is not affected. |
+| `verify(req)` | Optional. Authenticate the request (a signature, a token). Return `true`/`false` or `{ ok, reason? }`; `false` answers `401 {"error":"Unauthorized"}` before anything is parsed or run. Without it, a browser request from another site (an `Origin` that is not the request's host, or `Sec-Fetch-Site: cross-site`) is refused with `403` (`LOUSHO_REQUEST_FORBIDDEN`; to accept a page on another site, add a `verify` that authenticates its requests), and `lousho dev` checks its `Host` like its own routes (against DNS rebinding); a webhook sender or a server sends no `Origin` and is not affected. |
 | `parse(req, respond, ctx)` | The message: `{ sessionKey, input, metadata?, principal?, replyTo, event? }`; `{ decision: { id, approved?, note?, answer? } }` to resolve a pause this channel's turn stopped on (a button click); or `null` to acknowledge the request without a turn (a bot's own message, a retry). Call `respond(status, body)` to answer before the turn runs (a surface with a short timeout, a handshake). |
 | `reply(ctx)` | Deliver the reply: `ctx.text`, plus `inbound`, `sessionId`, `result`, `events`, `approval`, and `respond(status, body)` while the request is still open. |
 | `onApproval(ctx)` | Optional. Render a pause (buttons, a form). Default: `reply` with a text prompt in `ctx.text` and the request in `ctx.approval` (`ctx.approvals`: every pending call, when the step paused on several). |
@@ -6823,8 +6836,11 @@ Bodies over 1MB get `413`, invalid JSON `400`. A POST must send
 `Content-Type: application/json` (anything else is `415`,
 `LOUSHO_UNSUPPORTED_MEDIA_TYPE`), and a browser POST from another origin is
 `403` (`LOUSHO_REQUEST_FORBIDDEN`): see
-[Cross-site requests](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#cross-site-requests). Once auth accepts a
-caller, a session belongs to the first principal that uses it
+[Cross-site requests](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#cross-site-requests). An empty `input` is
+`400`. With an auth list, a session belongs to the first principal that sends
+it a turn, and a stored session whose owner the server no longer remembers
+(after a restart) is refused to everyone until `authorizeSession` says whose
+it is; with only `LOUSHO_API_TOKEN` there is one caller and no owner check
 ([Who may use a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-use-a-session)).
 
 ```bash
@@ -11954,9 +11970,10 @@ the agent one that outlives a serverless invocation when you use sessions.
 With `auth`, a session id is bound to the first principal that sends it a
 turn (reading an id claims nothing), and a different principal gets `403`
 (`LOUSHO_SESSION_FORBIDDEN`). That binding is kept in memory, so a new
-serverless instance forgets it: for an app with more than one user, pass
+serverless instance forgets it, and then refuses the stored session to every
+user, its owner too: for an app with more than one user, pass
 `authorizeSession` as well, e.g. with ids derived from the caller
-(`${userId}-<anything>`). See
+(`${userId}-<suffix without '-'>`, as below). See
 [Who may use a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-use-a-session).
 
 POST routes take JSON only (`Content-Type: application/json`, which
@@ -11981,12 +11998,15 @@ import { jwt } from '@lousho/build-ai-agent/auth';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', store: memoryStore() });
 const isSupervisor = (principal?: { claims?: Readonly<Record<string, unknown>> }) => principal?.claims?.role === 'supervisor';
+// Session ids are `<user id>-<suffix without '-'>`; the owner is everything before the last `-`
+// (a prefix match would let `alice` reach `alice-x`'s sessions).
+const ownerOf = (sessionId: string) => sessionId.slice(0, Math.max(sessionId.lastIndexOf('-'), 0));
 
 export const { GET, POST } = createRouteHandler(agent, {
   auth: jwt({ secret: process.env.JWT_SECRET!, issuer: 'https://auth.example.com', audience: 'agent-api' }),
-  // Customers use their own sessions (ids that start with their id); supervisors may read and decide in any session.
+  // Customers use their own sessions; supervisors may read and decide in any session.
   authorizeSession: ({ principal, sessionId, action }) =>
-    sessionId.startsWith(`${principal?.id}-`) || (action !== 'chat' && isSupervisor(principal)),
+    (principal !== undefined && ownerOf(sessionId) === principal.id) || (action !== 'chat' && isSupervisor(principal)),
   authorizeApproval: ({ principal, approval }) =>
     isSupervisor(principal) &&
     !(principal?.id === approval.principal?.id && principal?.issuer === approval.principal?.issuer),
@@ -13678,6 +13698,11 @@ own credentials. A factory can take its own config type, an interface that
 extends `LLMProviderConfig` (for example `BedrockConfig` with a `region`):
 `register('bedrock', (config: BedrockConfig) => new BedrockProvider(config))`,
 then `LLMProviderRegistry.create('bedrock', { region: 'eu-west-1' })`.
+A built-in name (`'openai'`, `'anthropic'`, `'openrouter'`, `'ollama'`, `'pi'`,
+`'mock'`) takes that provider's own config type (`BuiltinProviderConfigs`), so
+`create('openai', { baseUrl: '...' })` is a type error; if you registered your
+own factory under a built-in name, pass its config type:
+`create<MyOpenAIConfig>('openai', ...)`.
 
 ### Request timeout
 
@@ -18801,7 +18826,7 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 
 | Change | Opt-out |
 | ------ | ------- |
-| With route auth and no `authorizeSession`, a session belongs to the first principal that sends it a turn (a read claims nothing); another principal gets `403 LOUSHO_SESSION_FORBIDDEN`. The owner is kept in memory per agent (the 100,000 most recently used sessions), so pass `authorizeSession` on more than one instance. See [Who may use a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-use-a-session). | `authorizeSession: () => true` |
+| With route auth and no `authorizeSession`, a session belongs to the first principal that sends it a turn (a read claims nothing); another principal gets `403 LOUSHO_SESSION_FORBIDDEN`. The owner is kept in memory per agent (the 100,000 most recently used sessions); a stored session whose owner is not on record (after a restart, past that cap) is refused to everyone, so pass `authorizeSession` on more than one instance or with a store that outlives the process. One bearer token is one caller and checks no owner. See [Who may use a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-use-a-session). | `authorizeSession: () => true` |
 | The session routes (`createRouteHandler()`, `createDeployedServer()`, the Worker, `lousho dev`) refuse a cross-site POST (`403 LOUSHO_REQUEST_FORBIDDEN`) and a POST body that is not `Content-Type: application/json` (`415 LOUSHO_UNSUPPORTED_MEDIA_TYPE`). The new `allowedHosts` (off by default) refuses unlisted `Host` headers. See [Cross-site requests](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#cross-site-requests). | `allowedOrigins: ['*']`, `requireJsonBody: false` (or list the front end's origin in `allowedOrigins`) |
 | `POST /chat/:sessionId/approvals/:id` answers `404` unless the approval belongs to that session, and only the caller the paused run acts for may decide it. | `authorizeApproval` to let others (a supervisor) decide |
 | The routes send an error's `name` and `code` with a generic message instead of its raw text (in `error` events, `500` bodies and `provider.retry` / `provider.fallback` events); the full error goes to `console.error`. | `exposeErrors: true` (`lousho dev` sets it) |

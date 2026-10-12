@@ -127,7 +127,10 @@ describe('defineChannel / mountChannels (LOU-P7)', () => {
     const body = { sessionKey: 'u1', input: 'ping' };
     const local = { host: 'localhost:3737' };
 
-    expect(await post(handler, '/channels/http', body, { ...local, origin: 'https://evil.example' })).toMatchObject({ status: 403, json: { code: 'LOUSHO_REQUEST_FORBIDDEN' } });
+    const refused = await post(handler, '/channels/http', body, { ...local, origin: 'https://evil.example' });
+    expect(refused).toMatchObject({ status: 403, json: { code: 'LOUSHO_REQUEST_FORBIDDEN' } });
+    // The refusal says how to accept such a page: authenticate it with `verify`.
+    expect((refused.json as { error: string }).error).toMatch(/channel 'http' has no verify.*add a verify/);
     expect((await post(handler, '/channels/http', body, { ...local, 'sec-fetch-site': 'cross-site' })).status).toBe(403);
     expect((await post(handler, '/channels/http/approvals/a1', { approved: true }, { ...local, origin: 'null' })).status).toBe(403);
     for (const type of ['text/plain', 'application/x-www-form-urlencoded']) {
