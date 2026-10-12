@@ -65,6 +65,53 @@ describe('approval resume durability', () => {
     await expect(agent.approvals.resolve({ id: paused.approvalId!, approved: true })).rejects.toMatchObject({ code: 'LOUSHO_APPROVAL_NOT_FOUND' });
   });
 
+  it("a resumed run that pauses again on a step's several calls records every pending approval id (Eve2-F6)", async () => {
+    const store = memoryStore();
+    const log: string[] = [];
+    const make = (name: string) =>
+      defineTool({
+        name,
+        description: name,
+        input: z.object({ n: z.number() }),
+        needsApproval: true,
+        execute: async ({ n }) => {
+          log.push(`${name}(${n})`);
+          return 'ok';
+        },
+      });
+    const first = {
+      toolCalls: [
+        { name: 'wire_money', args: { n: 1 }, id: 'call_wire' },
+        { name: 'delete_db', args: { n: 2 }, id: 'call_delete' },
+      ],
+    };
+    const second = {
+      toolCalls: [
+        { name: 'wire_money', args: { n: 3 }, id: 'call_wire2' },
+        { name: 'delete_db', args: { n: 4 }, id: 'call_delete2' },
+      ],
+    };
+    const worker = createAgent({ provider: mockModel([first, second, 'worker done']), tools: [make('wire_money'), make('delete_db')], description: 'Does risky things' });
+    const lead = createAgent({
+      provider: mockModel([{ toolCalls: [{ name: 'task', args: { agent: 'worker', prompt: 'do it', description: 'risky' }, id: 'call_task' }] }, 'lead done']),
+      subagents: { worker },
+      store,
+    });
+    const session = lead.session({ id: 's1' });
+    const paused = await session.send('go');
+    expect(paused.approvalIds).toHaveLength(2);
+
+    await lead.approvals.resolve({ id: paused.approvalIds![0], approved: true });
+    const repaused = await lead.approvals.resolve({ id: paused.approvalIds![1], approved: true });
+
+    // The sub-agent's next step paused on two calls too: the durable reader sees both, not just the first.
+    expect(repaused.finishReason).toBe('awaiting-approval');
+    expect(repaused.approvalIds).toHaveLength(2);
+    const pending = await session.pending();
+    expect(pending).toMatchObject({ status: 'awaiting-approval', approvalId: repaused.approvalIds![0], approvalIds: repaused.approvalIds });
+    expect(log).toEqual(['wire_money(1)', 'delete_db(2)']);
+  });
+
   it("discardPending() withdraws the dropped turn's approvals", async () => {
     const store = memoryStore();
     const refund = defineTool({ name: 'refund', description: 'refund', input: z.object({}), needsApproval: true, execute: async () => 'refunded' });

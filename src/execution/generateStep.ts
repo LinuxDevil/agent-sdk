@@ -231,6 +231,7 @@ export interface GeneratedStep {
 /**
  * LOU-V10: `call`, or its rejection with `signal`'s reason as soon as
  * `signal` aborts - a provider that ignores the signal is not waited for.
+ * `call` keeps running either way.
  */
 function abortable<T>(call: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
   if (!signal) return call;
