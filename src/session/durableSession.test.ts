@@ -3,6 +3,9 @@
  * turn interrupted mid-way (a crash, a failed checkpoint write) is finished
  * by `session.resume()` in a fresh agent, without re-running finished steps.
  */
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
 import { createAgent } from '../createAgent';
@@ -13,6 +16,7 @@ import { InMemoryApprovalStore } from '../execution/InMemoryApprovalStore';
 import { KVCheckpointStore } from '../deploy/kvCheckpointStore';
 import { SqliteStore } from '../storage/sqlite';
 import { memoryStore } from '../storage/agentStore';
+import { fileStore } from '../storage/fileStore';
 import { mockModel, type MockStaticTurn } from '../testing';
 import { MemorySessionStore } from './index';
 import type { AgentRun } from '../execution/agentRun';
@@ -351,6 +355,32 @@ describe('checkpointed sessions (LOU-W9)', () => {
     await after.session({ id: 'chat', turnHistoryLimit: 0 }).send('turn 42');
     expect(await kept(43)).toEqual([]);
   });
+
+  // A store object per turn (serverless, CLI runs, restarts): what earlier commits deleted is not known in memory,
+  // and the turn that just left the window must go anyway.
+  it.each([
+    ['fileStore(dir)', (dir: string) => fileStore(dir)],
+    ['SqliteStore(file)', (dir: string) => new SqliteStore(join(dir, 'agent.db'))],
+  ])('keeps turn history at turnHistoryLimit when every turn uses a new store object (%s)', async (_name, makeStore) => {
+    const dir = mkdtempSync(join(tmpdir(), 'lousho-turn-history-'));
+    try {
+      const turns = 85;
+      for (let turn = 0; turn < turns; turn++) {
+        const store = makeStore(dir);
+        const agent = createAgent({ provider: mockModel(['ok']), store });
+        await agent.session({ id: 'chat' }).send(`turn ${turn}`);
+        if ('close' in store) store.close();
+      }
+      const store = makeStore(dir);
+      // Each turn adds two messages: turn n is checkpointed as chat.turn-<2n>.
+      const kept = [];
+      for (let n = 0; n < turns; n++) if ((await store.checkpoints.history!(`chat.turn-${2 * n}`)).length > 0) kept.push(n);
+      if ('close' in store) store.close();
+      expect(kept).toEqual(Array.from({ length: 10 }, (_, i) => turns - 10 + i));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
 
   // Eve DUR-F8: clear() deleted only the current turn's checkpoint; every committed turn's checkpoint HISTORY (full
   // transcript copies) survived, and agent.fork('<id>.turn-<n>') revived the cleared conversation.

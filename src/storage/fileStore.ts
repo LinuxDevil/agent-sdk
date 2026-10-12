@@ -492,8 +492,10 @@ export interface FileStorePruneOptions {
 export interface FileStorePruneResult {
   /** Transcripts. */
   sessions: number;
-  /** Latest checkpoints (their history files go too, and old history files of other ids; not counted). */
+  /** Latest checkpoints. */
   checkpoints: number;
+  /** Checkpoint history files (of the deleted checkpoints, and old turn history a session no longer keeps). */
+  checkpointHistory: number;
   /** Expired pending OAuth sign-ins (deleted whatever `olderThanMs` is). */
   oauthPending: number;
 }
@@ -592,10 +594,11 @@ export function fileStore(dir: string, options: FileStoreOptions = {}): FileStor
       const cutoff = Date.now() - olderThanMs;
       const paused = await pausedRuns(root);
       const keepRuns = namesOf(paused.runs);
-      await removeStale(join(root, 'checkpoint-history'), cutoff, keepRuns);
+      const checkpointHistory = await removeStale(join(root, 'checkpoint-history'), cutoff, keepRuns);
       return {
         sessions: await removeStale(join(root, 'sessions'), cutoff, namesOf(paused.sessions)),
         checkpoints: await removeStale(join(root, 'checkpoints'), cutoff, keepRuns),
+        checkpointHistory,
         oauthPending: await tokenBackend.removeExpiredPending(),
       };
     },
