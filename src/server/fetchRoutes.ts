@@ -359,15 +359,18 @@ export async function sessionForbidden(
 /**
  * The default session check: the owner on record decides; without one, a
  * session that is already stored is nobody's to take (its owner may only have
- * been forgotten), and a new one is claimed by a turn (`claim`).
+ * been forgotten), and a new one is claimed by a turn (`claim`) - atomically,
+ * so of two concurrent first touches only the caller whose claim holds may go on.
  */
 async function ownsSession(ctx: ChatRoutesContext, principal: Principal, sessionId: string, claim: boolean, session: AgentSession | undefined): Promise<boolean> {
   const agent = ctx.agent();
   const owner = sessionOwner(agent, sessionId);
   if (owner !== undefined) return samePrincipal(owner, principal);
   if (await sessionStored(ctx, sessionId, session)) return false;
-  if (claim) claimSession(agent, sessionId, principal);
-  return true;
+  // Eve2-F1: the claim itself decides the race - it is atomic with the record,
+  // so a concurrent first touch that registered another owner first is refused
+  // here instead of streaming a turn inside that principal's session.
+  return !claim || claimSession(agent, sessionId, principal);
 }
 
 /**
@@ -399,8 +402,18 @@ export function claimOnCommit(ctx: ChatRoutesContext, principal: Principal | und
       yield* run;
     } finally {
       const agent = ctx.agent();
-      if (await sessionStored(ctx, session.id, session)) claimSession(agent, session.id, principal);
-      else releaseSession(agent, session.id, principal);
+      if (await sessionStored(ctx, session.id, session)) {
+        // Eve2-F1: the claim taken before the turn can have been forgotten past
+        // the owner cap and taken by another principal while it ran; this
+        // turn's transcript is then readable as theirs, so a lost re-claim
+        // clears it again and the stream ends on a coded error, never a clean `done`.
+        if (!claimSession(agent, session.id, principal)) {
+          await session.clear().catch(() => undefined);
+          throw new SDKError(`Session '${session.id}' was claimed by another principal while this turn ran; the transcript it stored was cleared.`, 'LOUSHO_SESSION_FORBIDDEN');
+        }
+      } else {
+        releaseSession(agent, session.id, principal);
+      }
     }
   })();
 }
