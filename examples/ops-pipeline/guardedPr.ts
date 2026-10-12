@@ -25,8 +25,8 @@ import {
   createDiffSizeCheck,
   runPatchChecks,
   secretScanCheck,
-} from '../../src/execution/patchChecks';
-import { ToolDescriptor } from '../../src/types';
+} from '@lousho/build-ai-agent';
+import { ToolDescriptor } from '@lousho/build-ai-agent';
 
 export interface FixerPatchContext {
   /** The REAL LOU-E13/E14-hardened GitHub tool's PR-creation ToolDescriptor. */

@@ -298,7 +298,7 @@ files. Every option is passed on to the agent, including the ones no file
 declares (`guardrails`, `onEvent`, `retry`, `reasoning`, `redactContent`,
 `output`, ...). Use it to swap the model in tests:
 
-```ts
+```ts no-run
 import { loadAgentDir } from '@lousho/build-ai-agent';
 import { mockModel } from '@lousho/build-ai-agent/testing';
 

@@ -7,9 +7,9 @@
  *
  * Run with: tsx examples/support-bot/index.ts
  */
-import { createAgent } from '../../src/createAgent';
-import { createMockProvider } from '../../src/providers/mock';
-import { resolveProvider } from '../../src/providers/resolveProvider';
+import { createAgent } from '@lousho/build-ai-agent';
+import { createMockProvider } from '@lousho/build-ai-agent';
+import { resolveProvider } from '@lousho/build-ai-agent';
 
 const provider = process.env.OPENAI_API_KEY
   ? resolveProvider('openai/gpt-4o-mini')

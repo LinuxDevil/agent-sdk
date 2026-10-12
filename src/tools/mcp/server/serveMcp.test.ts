@@ -324,7 +324,9 @@ describe('serveMcp over HTTP', () => {
       send: vi.fn((_message: string, options?: { signal?: AbortSignal }) => {
         signals.push(options!.signal!);
         started += 1;
-        return new Promise((resolve) => setTimeout(() => resolve({ text: 'done', finishReason: 'stop', messages: [], toolCalls: [], steps: 0, usage: {} }), 300));
+        // Long enough that both runs are still in flight when the cancel lands on a slow runner: once one has
+        // finished, the id names a single request and the cancel rightly stops it.
+        return new Promise((resolve) => setTimeout(() => resolve({ text: 'done', finishReason: 'stop', messages: [], toolCalls: [], steps: 0, usage: {} }), 2000));
       }),
     };
     const server = await serveMcp({ agent: slow as unknown as SimpleAgent, name: 'slow', transport: { type: 'http', port: 0 }, warn: () => {} });

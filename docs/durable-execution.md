@@ -631,8 +631,11 @@ if (original && replayed) {
   leases, the last save wins.
 - A run id (`sessionId` of `send()` / `stream()`) is 1-200 characters of
   letters, digits, `_`, `-` and `.`, not starting or ending with `.`, on every
-  store, and may not end with `.turn-<n>` or `.paused`: those are a session's
-  own checkpoint keys. Anything else fails with `LOUSHO_SESSION_ID_INVALID`.
+  store, and may not end with `.turn-<n>` or `.paused` (a session's own
+  checkpoint keys) or `.fire` (a schedule's fire claim). Anything else fails
+  with `LOUSHO_SESSION_ID_INVALID`. A session id (`agent.session({ id })`, the
+  routes' `sessionId`) has a stricter rule: 1-128 characters of
+  `A-Za-z0-9_-`, with no `.`.
 - If you call `resumeAfterApproval()` (the function behind
   `agent.approvals.resolve()`) without the `checkpointStore`, the session
   keeps its `'awaiting-approval'` mark and later `send()` (or `execute()`)

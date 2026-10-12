@@ -29,7 +29,7 @@ import {
   ConsoleSpanExporter,
   SimpleSpanProcessor,
 } from '@opentelemetry/sdk-trace-node';
-import { createOtelTraceExporter } from '../../src/execution/otel';
+import { createOtelTraceExporter } from '@lousho/build-ai-agent/otel';
 import { runWeatherScenario } from './weather-scenario';
 
 async function main() {

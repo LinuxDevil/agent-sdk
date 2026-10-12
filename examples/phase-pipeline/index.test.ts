@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { defineTool } from '../../src';
-import { ToolRegistry } from '../../src/tools';
-import { mockModel } from '../../src/testing';
+import { defineTool } from '@lousho/build-ai-agent';
+import { ToolRegistry } from '@lousho/build-ai-agent/executor';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 import { z } from 'zod';
 import { buildPhaseFlow, runPhasePipeline, scriptedPhases } from './index';
 

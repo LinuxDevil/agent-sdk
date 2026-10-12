@@ -74,7 +74,7 @@ handle.stop();
 
 **Deprecated.** `WebhookTriggerAdapter` is replaced by `webhookChannel()` mounted with `mountChannels()` (see [Channels](./channels.md)), which takes the same `auth` option and adds sessions and approvals. The `WebhookAuth` shapes below stay and are the reference for `webhookChannel({ auth })`.
 
-```ts
+```ts no-run
 import { createAgent, createMockProvider, mountChannels, webhookChannel } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
@@ -95,7 +95,7 @@ through `options.logger`. Without `auth` on loopback, a request whose `Host`
 is not a loopback name (DNS rebinding) or that carries an `Origin` header (a
 web page) gets `403`.
 
-```ts
+```ts no-run
 import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
 import { WebhookTriggerAdapter } from '@lousho/build-ai-agent/triggers';
 
@@ -144,7 +144,7 @@ tokens and payloads are not sent in clear text.
 
 **Deprecated.** `SlackTriggerAdapter` is replaced by `slackChannel()` mounted with `mountChannels()` (see [Slack in Channels](./channels.md#slack)): one session per Slack thread, approval buttons, and the signature check built in. `verifySlackSignature()` stays and is not deprecated.
 
-```ts
+```ts no-run
 import { createAgent, createMockProvider, mountChannels, slackChannel } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
@@ -171,7 +171,7 @@ rejected (the timestamp is in seconds, as Slack sends it). Failures get a generi
 logged at `warn` level. The signed `url_verification` handshake is answered
 after verification.
 
-```ts
+```ts no-run
 import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
 import { SlackTriggerAdapter, verifySlackSignature } from '@lousho/build-ai-agent/triggers';
 import * as http from 'node:http';

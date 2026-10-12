@@ -26,10 +26,10 @@
  *    ran, in what order, without inventing a fake single-result shape.
  */
 import { describe, it, expect } from 'vitest';
-import { defineEval } from '../../src/evals/defineEval';
-import { toolCallOrder } from '../../src/evals/scorers';
-import { ToolRegistry } from '../../src/tools';
-import { secretScanCheck, createDiffSizeCheck } from '../../src/execution/patchChecks';
+import { defineEval } from '@lousho/build-ai-agent';
+import { toolCallOrder } from '@lousho/build-ai-agent';
+import { ToolRegistry } from '@lousho/build-ai-agent/executor';
+import { secretScanCheck, createDiffSizeCheck } from '@lousho/build-ai-agent';
 import { startOpsPipeline } from './index';
 import { createDemoProvider } from './demoProvider';
 import { createFixerTool, buildFixerAgent } from './fixer';

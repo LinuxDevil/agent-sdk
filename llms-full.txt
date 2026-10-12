@@ -1765,7 +1765,7 @@ files. Every option is passed on to the agent, including the ones no file
 declares (`guardrails`, `onEvent`, `retry`, `reasoning`, `redactContent`,
 `output`, ...). Use it to swap the model in tests:
 
-```ts
+```ts no-run
 import { loadAgentDir } from '@lousho/build-ai-agent';
 import { mockModel } from '@lousho/build-ai-agent/testing';
 
@@ -3194,7 +3194,7 @@ const notes = defineMemory({
 });
 
 const agent = createAgent({
-  provider: mockModel(['Hi!']),
+  provider: mockModel(['Hi!', 'Hi again!']), // one scripted reply per turn below
   model: ({ principal }) => (principal?.claims?.plan === 'pro' ? 'openai/gpt-4o' : 'openai/gpt-4o-mini'),
   instructions: ({ principal }) => (principal?.type === 'service' ? 'Answer in JSON.' : 'Be friendly.'),
   memory: [notes],
@@ -3858,7 +3858,7 @@ const channels = mountFetchChannels(agent, [slack], { waitUntil: (turn) => void 
 
 `httpChannel()` is the reference channel: `{ sessionKey, input }` in, JSON out.
 
-```ts
+```ts no-run
 import * as http from 'node:http';
 import { createAgent, createMockProvider, httpChannel, mountChannels } from '@lousho/build-ai-agent';
 
@@ -7614,8 +7614,11 @@ if (original && replayed) {
   leases, the last save wins.
 - A run id (`sessionId` of `send()` / `stream()`) is 1-200 characters of
   letters, digits, `_`, `-` and `.`, not starting or ending with `.`, on every
-  store, and may not end with `.turn-<n>` or `.paused`: those are a session's
-  own checkpoint keys. Anything else fails with `LOUSHO_SESSION_ID_INVALID`.
+  store, and may not end with `.turn-<n>` or `.paused` (a session's own
+  checkpoint keys) or `.fire` (a schedule's fire claim). Anything else fails
+  with `LOUSHO_SESSION_ID_INVALID`. A session id (`agent.session({ id })`, the
+  routes' `sessionId`) has a stricter rule: 1-128 characters of
+  `A-Za-z0-9_-`, with no `.`.
 - If you call `resumeAfterApproval()` (the function behind
   `agent.approvals.resolve()`) without the `checkpointStore`, the session
   keeps its `'awaiting-approval'` mark and later `send()` (or `execute()`)
@@ -8141,7 +8144,9 @@ paused on an approval (`error.approvalId`), so it cannot take new input yet.
 not 1-200 characters of letters, digits, `_`, `-` and `.` (not starting or
 ending with `.`), the same rule on every store; or it ends with `.turn-<n>` or
 `.paused`, which are a session's own checkpoint keys (a run under
-`'victim.turn-2'` would write into session `victim`'s turn).
+`'victim.turn-2'` would write into session `victim`'s turn), or `.fire` (a
+schedule's fire claim). The message says which of the two rules applies: an id
+with a `.` or over 128 characters is a valid run id but not a valid session id.
 
 **Fix:** use an id such as `'chat-9f2c4e7a1b'`, or omit it to get a generated one. On a
 route that serves several users, do not make ids guessable from a user's name or number
@@ -8904,7 +8909,7 @@ agent's provider makes the eval deterministic: no network, no API key, no
 flakiness. **This is the default way to write an eval**; use a real model only
 for the [judge evals](#judge-evals) below.
 
-```ts
+```ts no-run
 // refund.eval.ts
 import { z } from 'zod';
 import { createAgent, defineEval, defineTool, includes } from '@lousho/build-ai-agent';
@@ -9044,7 +9049,7 @@ its own cassette. `timeoutMs` covers all runs of a case, so raise it with `repea
 Pass `cases` and `test` runs once per case, each reported separately. A case is
 any object; its `label` (or `name`, or its `input`) names it.
 
-```ts
+```ts no-run
 import { z } from 'zod';
 import { createAgent, defineEval, defineTool } from '@lousho/build-ai-agent';
 import { mockModel } from '@lousho/build-ai-agent/testing';
@@ -9088,7 +9093,7 @@ model runs out of turns on the second case.
 configured one: without `judge`, `t.judge()` throws an error saying how to fix
 it.
 
-```ts
+```ts no-run
 // tone.judge.eval.ts: run with `lousho eval --judge`
 import { createAgent, defineEval, atLeast } from '@lousho/build-ai-agent';
 import { mockModel } from '@lousho/build-ai-agent/testing';
@@ -13531,7 +13536,7 @@ const custom = LLMProviderRegistry.create('openai', {
    `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `OLLAMA_BASE_URL` that is
    present. With none set it throws an error listing the fixes.
 
-```ts
+```ts no-run
 import { createAgent, createMockProvider, resolveProvider } from '@lousho/build-ai-agent';
 
 const fromString = createAgent({ model: 'anthropic/claude-sonnet-5-5' });
@@ -14995,7 +15000,7 @@ The timers are unref'd: they never keep a process alive on their own, so a
 server or a test exits normally. A script that does nothing but run schedules
 would therefore exit straight away; pass `keepAlive: true` for that:
 
-```ts
+```ts no-run
 import { createAgent, createMockProvider, defineSchedule, startSchedules } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider() });
@@ -18304,7 +18309,7 @@ handle.stop();
 
 **Deprecated.** `WebhookTriggerAdapter` is replaced by `webhookChannel()` mounted with `mountChannels()` (see [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md)), which takes the same `auth` option and adds sessions and approvals. The `WebhookAuth` shapes below stay and are the reference for `webhookChannel({ auth })`.
 
-```ts
+```ts no-run
 import { createAgent, createMockProvider, mountChannels, webhookChannel } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
@@ -18325,7 +18330,7 @@ through `options.logger`. Without `auth` on loopback, a request whose `Host`
 is not a loopback name (DNS rebinding) or that carries an `Origin` header (a
 web page) gets `403`.
 
-```ts
+```ts no-run
 import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
 import { WebhookTriggerAdapter } from '@lousho/build-ai-agent/triggers';
 
@@ -18374,7 +18379,7 @@ tokens and payloads are not sent in clear text.
 
 **Deprecated.** `SlackTriggerAdapter` is replaced by `slackChannel()` mounted with `mountChannels()` (see [Slack in Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md#slack)): one session per Slack thread, approval buttons, and the signature check built in. `verifySlackSignature()` stays and is not deprecated.
 
-```ts
+```ts no-run
 import { createAgent, createMockProvider, mountChannels, slackChannel } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
@@ -18401,7 +18406,7 @@ rejected (the timestamp is in seconds, as Slack sends it). Failures get a generi
 logged at `warn` level. The signed `url_verification` handshake is answered
 after verification.
 
-```ts
+```ts no-run
 import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
 import { SlackTriggerAdapter, verifySlackSignature } from '@lousho/build-ai-agent/triggers';
 import * as http from 'node:http';
@@ -18644,8 +18649,8 @@ Source: docs/upgrading.md
 
 Anyone with code written against `1.0.0-alpha.8` or an earlier `1.0.0-alpha.*`
 release. Between those alphas and the 1.0 line (the changes listed under
-`1.0.0-rc.0` in the changelog, published in the later `1.0.0-alpha.*` releases) the package's public surface
-was reorganized: imports moved to subpaths, dead or superseded APIs were
+`1.0.0-alpha.19` in the changelog, first published in `1.0.0-alpha.15`) the
+package's public surface was reorganized: imports moved to subpaths, dead or superseded APIs were
 removed, and the patch guardrails were renamed patch checks. `createAgent()`
 and its options did not change - an agent that only does
 `createAgent({ model, instructions, tools })` and `agent.send()` upgrades by
@@ -18864,7 +18869,7 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | Resolving an approval whose run was deleted or replaced fails with `LOUSHO_APPROVAL_ORPHANED` and withdraws it (it used to overwrite the newer conversation). | no opt-out |
 | A session turn paused for approval locks the session id: a new turn on it throws `SessionAwaitingApprovalError` (`LOUSHO_SESSION_AWAITING_APPROVAL`). | decide the approval, or `session.discardPending()` |
 | Session turns keep the checkpoint history of the latest 10 committed turns. See [Durable sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#durable-sessions). | `agent.session({ id, turnHistoryLimit })` with a larger whole number |
-| `sessionId` must be 1-200 characters of `A-Za-z0-9_.-` on every store, and may not end in `.turn-<n>`, `.paused` or `.fire` (a schedule's fire claim); `''` is refused. | no opt-out |
+| A run id (`agent.send()` / `agent.stream()`'s `sessionId`, a fork's `newSessionId`) must be 1-200 characters of `A-Za-z0-9_.-`, not starting or ending with `.`, on every store, and may not end in `.turn-<n>`, `.paused` or `.fire` (a schedule's fire claim); `''` is refused. This is not the session id rule: a session id (`agent.session({ id })`, the routes' and `lousho dev`'s `sessionId`, `lousho chat --session`) is still 1-128 characters of `A-Za-z0-9_-`, with no `.`. Both fail with `LOUSHO_SESSION_ID_INVALID`. | no opt-out |
 | A lease left by a process that died on another machine (or in another container with the same hostname) is taken over 30 to 60 seconds after its last heartbeat (a grace for clock skew), not at 30 seconds. See [Run leases](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases). | no opt-out |
 | During a rolling upgrade, replicas still on an earlier release neither take nor respect run leases, so a turn can run twice until every replica is upgraded. A SQLite database opened by this release is migrated and then refused by older releases. | upgrade all replicas together; keep a copy of the database to roll back |
 | `approvalTtlMs` (and an `ask` rule's `ttlMs`) above 100 years throws `LOUSHO_CONFIG_INVALID` instead of meaning "never expires". | leave it out for pauses that never expire |
@@ -19383,6 +19388,9 @@ refused command is never offered for approval:
   returns `true` for the rest of the line (`''` when there is none):
 
   ```ts
+  import { createShellTool, NodeWorkspace } from '@lousho/build-ai-agent';
+
+  const workspace = new NodeWorkspace({ root: '.' });
   createShellTool(workspace, {
     needsApproval: false,
     allow: [

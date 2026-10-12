@@ -41,7 +41,7 @@ const channels = mountFetchChannels(agent, [slack], { waitUntil: (turn) => void 
 
 `httpChannel()` is the reference channel: `{ sessionKey, input }` in, JSON out.
 
-```ts
+```ts no-run
 import * as http from 'node:http';
 import { createAgent, createMockProvider, httpChannel, mountChannels } from '@lousho/build-ai-agent';
 

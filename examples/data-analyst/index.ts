@@ -25,12 +25,12 @@
  *     database credentials - the demo seeds an in-memory database, which
  *     must be writable while it is seeded.
  *
- * The database is Node's built-in `node:sqlite` (`DatabaseSync`), loaded
- * through the SDK's lazy driver (`src/storage/sqlite/driver.ts`): engines
- * requires Node >= 22.19, well past the 22.13 release that shipped
- * `node:sqlite` without a flag, and the lazy load keeps `@types/node` 20
- * (which has no `node:sqlite` typings) and Vite's builtin resolution happy.
- * On a Node without it, `main()` prints the driver's error and exits.
+ * The database is Node's built-in `node:sqlite` (`DatabaseSync`, Node >=
+ * 22.13), loaded lazily with `process.getBuiltinModule` and typed with the
+ * few methods the demo uses (`SqlDatabase` below): that keeps `@types/node`
+ * 20 (which has no `node:sqlite` typings) and Vite's builtin resolution
+ * happy. In your own app, `import { DatabaseSync } from 'node:sqlite'` works
+ * just as well. On a Node without it, `main()` prints the error and exits.
  *
  * Offline (the default) a scripted mock model walks the loop; with
  * OPENROUTER_API_KEY set it runs for real on openrouter/openai/gpt-4o-mini.
@@ -40,9 +40,8 @@
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { allow, createAgent, defineTool, type AgentHook, type LLMProvider } from '../../src';
-import { loadDatabaseSync, type SqlDatabase } from '../../src/storage/sqlite/driver';
-import { mockModel } from '../../src/testing';
+import { allow, createAgent, defineTool, type AgentHook, type LLMProvider } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 
 export const LIVE_MODEL = 'openrouter/openai/gpt-4o-mini';
 
@@ -76,6 +75,26 @@ export const MAX_ROWS = 100;
 // ── The demo database ───────────────────────────────────────────────────────
 // Two tables a question like QUESTION needs a join across. October's revenue
 // is led by silver; November's ("last month", per the demo clock) by gold.
+
+/** The parts of `node:sqlite`'s `DatabaseSync` the demo uses. */
+export interface SqlDatabase {
+  exec(sql: string): void;
+  prepare(sql: string): {
+    get(): Record<string, unknown> | undefined;
+    all(): Record<string, unknown>[];
+  };
+  close(): void;
+}
+
+function loadDatabaseSync(): new (path: string) => SqlDatabase {
+  const sqlite = process.getBuiltinModule?.('node:sqlite') as
+    | { DatabaseSync?: new (path: string) => SqlDatabase }
+    | undefined;
+  if (!sqlite?.DatabaseSync) {
+    throw new Error(`The built-in 'node:sqlite' module needs Node >= 22.13 (this is Node ${process.versions.node}).`);
+  }
+  return sqlite.DatabaseSync;
+}
 
 export function seedDatabase(): SqlDatabase {
   const DatabaseSync = loadDatabaseSync();

@@ -664,6 +664,9 @@ export interface SendOptions {
    * result, and `agent.resume(sessionId)` finishes it after a crash. Calling
    * again with the same id continues the conversation. Needs
    * `createAgent({ store })` with `checkpoints`. See `ExecuteOptions.sessionId`.
+   * This is a run id: 1-200 characters of `A-Za-z0-9_.-`, not starting or
+   * ending with `.`, and not ending in `.turn-<n>`, `.paused` or `.fire`. A
+   * session id (`agent.session({ id })`) is stricter: 1-128 characters, no `.`.
    *
    * @example
    * ```ts

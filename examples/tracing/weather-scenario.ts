@@ -7,11 +7,11 @@
 
 import { tool } from 'ai';
 import { z } from 'zod';
-import { AgentExecutor } from '../../src/execution/AgentExecutor';
-import { AgentBuilder } from '../../src/core';
-import { ToolRegistry } from '../../src/tools';
-import { LLMProvider, GenerateOptions, GenerateResult } from '../../src/providers';
-import type { TraceExporter } from '../../src/execution/tracing';
+import { AgentExecutor } from '@lousho/build-ai-agent/executor';
+import { AgentBuilder } from '@lousho/build-ai-agent/executor';
+import { ToolRegistry } from '@lousho/build-ai-agent/executor';
+import { LLMProvider, GenerateOptions, GenerateResult } from '@lousho/build-ai-agent';
+import type { TraceExporter } from '@lousho/build-ai-agent';
 
 /** A tiny mock provider: one tool call, then a final answer. */
 class MockProvider implements LLMProvider {

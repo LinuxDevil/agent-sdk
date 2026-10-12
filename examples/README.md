@@ -5,6 +5,12 @@ is runnable directly (see its own README for exact instructions); most use
 `tsx` and a free mock provider by default, so nothing here needs an API key
 to try.
 
+The examples import the SDK by its package name and public subpaths
+(`@lousho/build-ai-agent`, `@lousho/build-ai-agent/testing`, ...), exactly as
+your app would, so you can copy a file out as it is. Inside this repo the
+`paths` in `tsconfig.json` (and a resolver in `vitest.config.ts`) point those
+imports at `src/`, so nothing needs building first.
+
 ## [agent-dir](./agent-dir)
 
 An agent defined as a directory (`instructions.md`, `tools/`, `skills/`, `agent.json`) and loaded with `loadAgentDir()`; runs offline with a mock model (LOU-Y5).

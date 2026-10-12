@@ -1,9 +1,9 @@
 /**
  * verify-docs-snippets (LOU-I7)
  *
- * Extracts every ```ts / ```typescript / ```tsx fenced code block from the Quick
- * Start docs (or the markdown files passed as arguments) and proves each
- * one type-checks AND runs without error against the LOCALLY BUILT package
+ * Extracts every ```ts / ```typescript / ```tsx fenced code block from the
+ * docs (or the markdown files passed as arguments) and proves the runnable
+ * ones (stage B below) type-check AND run without error against the LOCALLY BUILT package
  * - exactly what a reader copy-pasting it into a fresh project would get.
  *
  * How (mirrors LOU-H4's create-lousho-agent approach for its generated
@@ -29,9 +29,15 @@
  *      `exports`, so a docs example can never drift from the code (wrong
  *      argument order, methods that do not exist, ...). Types only; nothing
  *      is executed.
- *   B. PACKED RUN - the quick-start docs (the "paste it and it works" path)
- *      are additionally type-checked AND run against the packed tarball, as
- *      described above.
+ *   B. PACKED RUN - every quick-start snippet (the "paste it and it works"
+ *      path) and every other snippet that builds its own mock provider
+ *      (`mockModel(...)`, `createMockProvider(...)`; see isRunnableByDefault)
+ *      is additionally type-checked AND run against the packed tarball, as
+ *      described above. These get no placeholder preamble, so they must be
+ *      self-contained.
+ *
+ * Fences indented under a list item are extracted too (the indentation is
+ * stripped).
  *
  * Intentionally partial snippets (they use `agent`, `provider`, `storage`...
  * without defining them) do NOT need an opt-out: stage A prepends an
@@ -55,7 +61,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 
 const REPO_ROOT = path.resolve(__dirname, '..');
-/** Docs that are type-checked AND executed against the packed tarball (stage B). */
+/** Docs whose every snippet is type-checked AND executed against the packed tarball (stage B); see isRunnableByDefault. */
 const RUNNABLE_DOCS = [path.join(REPO_ROOT, 'docs', 'quick-start.md')];
 /** Ambient names (typed against the SDK where possible) that intentionally-partial snippets may use without defining. */
 const SDK = "import('@lousho/build-ai-agent')";
@@ -94,24 +100,42 @@ export interface Snippet {
 /** Index of the closing fence at or after `from`, or lines.length when the block is unterminated. */
 function findFenceEnd(lines: string[], from: number): number {
   let end = from;
-  while (end < lines.length && !/^```\s*$/.test(lines[end])) end++;
+  while (end < lines.length && !/^\s*```\s*$/.test(lines[end])) end++;
   return end;
 }
 
+/**
+ * Extracts the ts/tsx fences of a markdown page, including fences indented
+ * under a list item (their indentation is stripped from every line).
+ */
 export function extractSnippets(markdown: string, file: string): Snippet[] {
   const snippets: Snippet[] = [];
   const lines = markdown.split(/\r?\n/);
   for (let i = 0; i < lines.length; i++) {
-    const open = lines[i].match(/^```(tsx|ts|typescript)\b(.*)$/);
+    const open = lines[i].match(/^(\s*)```(tsx|ts|typescript)\b(.*)$/);
     if (!open) continue;
+    const [, indent, lang, info] = open;
     const end = findFenceEnd(lines, i + 1);
-    if (!open[2].includes('no-verify')) {
-      const source = lines.slice(i + 1, end).join('\n') + '\n';
-      snippets.push({ file, line: i + 1, source, noRun: open[2].includes('no-run'), ext: open[1] === 'tsx' ? 'tsx' : 'ts' });
+    if (!info.includes('no-verify')) {
+      const body = lines.slice(i + 1, end).map((l) => (l.startsWith(indent) ? l.slice(indent.length) : l.trimStart()));
+      const source = body.join('\n') + '\n';
+      snippets.push({ file, line: i + 1, source, noRun: info.includes('no-run'), ext: lang === 'tsx' ? 'tsx' : 'ts' });
     }
     i = end;
   }
   return snippets;
+}
+
+/**
+ * Whether stage B runs a snippet by default: every snippet of the quick start,
+ * plus any other ```ts snippet that builds its own mock provider
+ * (`mockModel(...)` / `createMockProvider(...)`) and so claims to run as
+ * pasted. `no-run` opts a snippet out.
+ */
+export function isRunnableByDefault(snippet: Snippet): boolean {
+  if (snippet.ext !== 'ts' || snippet.noRun) return false;
+  if (RUNNABLE_DOCS.includes(path.join(REPO_ROOT, snippet.file))) return true;
+  return /\b(mockModel|createMockProvider)\(/.test(snippet.source);
 }
 
 const isWindows = process.platform === 'win32';
@@ -399,7 +423,9 @@ function orDefault(explicit: string[], fallback: () => string[]): string[] {
 function loadSnippetSets(docs: string[]): { sourceSnippets: Snippet[]; runnableSnippets: Snippet[] } {
   const sourceSnippets = loadSnippets(orDefault(docs, allDocFiles));
   // ```tsx blocks are JSX: stage A type-checks them against src/, but they never ship in the packed run.
-  const runnableSnippets = loadSnippets(orDefault(docs, () => RUNNABLE_DOCS)).filter((snippet) => snippet.ext === 'ts');
+  // Explicit file arguments run every ```ts snippet in them (no-run ones are skipped later).
+  const runnableSnippets =
+    docs.length > 0 ? sourceSnippets.filter((snippet) => snippet.ext === 'ts') : sourceSnippets.filter(isRunnableByDefault);
   if (Math.min(sourceSnippets.length, runnableSnippets.length) === 0) {
     console.error('verify-docs-snippets: no ```ts snippets found');
     process.exit(1);

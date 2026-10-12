@@ -12,6 +12,7 @@ import { PropagatingToolError } from '../execution/AgentExecutor';
 import { mockModel, type MockRequest } from '../testing';
 import { FileSessionStore, MemorySessionStore, type SessionStore } from './index';
 import { AgentSession, providerValidPrefix } from './AgentSession';
+import { memoryStore } from '../storage/agentStore';
 import type { Message, ToolCall } from '../providers/llm';
 
 const convo = (call: Pick<MockRequest, 'messages'> | undefined): MockRequest['messages'] =>
@@ -271,6 +272,17 @@ describe('AgentSession', () => {
       expect(() => agent.session({ id })).toThrow(expect.objectContaining({ code: 'LOUSHO_SESSION_ID_INVALID' }));
     }
     expect(() => agent.session({ id: 'user_42-A' })).not.toThrow();
+  });
+
+  it('says which id rule applies: session ids allow no dot, run ids do', async () => {
+    const agent = createAgent({ provider: mockModel(['ok']), store: memoryStore() });
+    // Valid as a run id, refused as a session id: the message names the session rule.
+    expect(() => agent.session({ id: 'order.42' })).toThrow(/a session id \(agent\.session\(\{ id \}\).*1-128 characters.*no '\.'/);
+    await expect(agent.send('hi', { sessionId: 'order.42' })).resolves.toBeDefined();
+    // A bad run id points at the stricter session rule too, so the two are not confused.
+    await expect(agent.send('hi', { sessionId: 'x'.repeat(201) })).rejects.toThrow(
+      /a run or checkpoint id is 1-200 characters.*A session id for agent\.session\(\{ id \}\) is stricter/
+    );
   });
 
   describe('FileSessionStore', () => {

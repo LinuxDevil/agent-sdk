@@ -19,7 +19,7 @@ agent's provider makes the eval deterministic: no network, no API key, no
 flakiness. **This is the default way to write an eval**; use a real model only
 for the [judge evals](#judge-evals) below.
 
-```ts
+```ts no-run
 // refund.eval.ts
 import { z } from 'zod';
 import { createAgent, defineEval, defineTool, includes } from '@lousho/build-ai-agent';
@@ -159,7 +159,7 @@ its own cassette. `timeoutMs` covers all runs of a case, so raise it with `repea
 Pass `cases` and `test` runs once per case, each reported separately. A case is
 any object; its `label` (or `name`, or its `input`) names it.
 
-```ts
+```ts no-run
 import { z } from 'zod';
 import { createAgent, defineEval, defineTool } from '@lousho/build-ai-agent';
 import { mockModel } from '@lousho/build-ai-agent/testing';
@@ -203,7 +203,7 @@ model runs out of turns on the second case.
 configured one: without `judge`, `t.judge()` throws an error saying how to fix
 it.
 
-```ts
+```ts no-run
 // tone.judge.eval.ts: run with `lousho eval --judge`
 import { createAgent, defineEval, atLeast } from '@lousho/build-ai-agent';
 import { mockModel } from '@lousho/build-ai-agent/testing';

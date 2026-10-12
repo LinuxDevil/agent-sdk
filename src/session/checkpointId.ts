@@ -36,8 +36,9 @@ export function isCheckpointId(id: unknown): id is string {
 export function assertCheckpointId(id: unknown, what = 'session id'): asserts id is string {
   if (isCheckpointId(id)) return;
   throw new ConfigurationError(
-    `Invalid ${what} ${JSON.stringify(id)}: use 1-200 characters from A-Z, a-z, 0-9, '_', '-' and '.', ` +
-      "not starting or ending with '.' (e.g. 'order-42').",
+    `Invalid ${what} ${JSON.stringify(id)}: a run or checkpoint id is 1-200 characters from A-Z, a-z, 0-9, '_', '-' and '.', ` +
+      "not starting or ending with '.' (e.g. 'order-42'). A session id for agent.session({ id }) is stricter: " +
+      "1-128 characters, no '.'.",
     'sessionId',
     'LOUSHO_SESSION_ID_INVALID'
   );

@@ -28,10 +28,10 @@
 import * as http from 'node:http';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { ToolDescriptor } from '../../src/types';
-import { ToolRegistry } from '../../src/tools';
-import { verifySlackSignature } from '../../src/triggers';
-import { LLMProvider } from '../../src/providers/llm';
+import { ToolDescriptor } from '@lousho/build-ai-agent';
+import { ToolRegistry } from '@lousho/build-ai-agent/executor';
+import { verifySlackSignature } from '@lousho/build-ai-agent/triggers';
+import { LLMProvider } from '@lousho/build-ai-agent';
 import { startMonitorServer, MonitorServerHandle, StartMonitorServerOptions } from './monitor';
 import { createFixerTool, buildFixerAgent } from './fixer';
 import { handleFixerPatch } from './guardedPr';
@@ -43,13 +43,13 @@ import {
   readBody,
 } from './slackInteractions';
 import { closeServer, listenOn, sendJson, sendNotFound } from './httpHelpers';
-import { ApprovalStore } from '../../src/execution/ApprovalGate';
-import { ExecutionResult } from '../../src/execution/AgentExecutor';
-import { PatchCheck } from '../../src/execution/patchChecks';
+import { ApprovalStore } from '@lousho/build-ai-agent';
+import { ExecutionResult } from '@lousho/build-ai-agent';
+import { PatchCheck } from '@lousho/build-ai-agent';
 import { createDemoProvider } from './demoProvider';
 import { createMockGithubTool } from './mocks/mockGithubTool';
 import { createMockSlackTool } from './mocks/mockSlackTool';
-import { textOf } from '../../src/providers/content';
+import { textOf } from '@lousho/build-ai-agent';
 
 const DELEGATE_TOOL_NAME = 'delegate_to_fixer';
 const DEFAULT_CHANNEL = '#incidents';

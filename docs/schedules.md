@@ -57,7 +57,7 @@ The timers are unref'd: they never keep a process alive on their own, so a
 server or a test exits normally. A script that does nothing but run schedules
 would therefore exit straight away; pass `keepAlive: true` for that:
 
-```ts
+```ts no-run
 import { createAgent, createMockProvider, defineSchedule, startSchedules } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider() });

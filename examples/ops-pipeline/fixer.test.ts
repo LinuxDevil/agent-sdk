@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { runFixer, extractDiffBlock, EmptyPatchError, FixRequest, createFixerTool } from './fixer';
-import { LLMProvider, GenerateResult } from '../../src/providers';
+import { LLMProvider, GenerateResult } from '@lousho/build-ai-agent';
 
 function makeScriptedProvider(text: string): LLMProvider {
   const result: GenerateResult = {

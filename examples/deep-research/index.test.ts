@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { toolResultText } from '../../src';
-import { testToolContext } from '../../src/testing';
+import { toolResultText } from '@lousho/build-ai-agent';
+import { testToolContext } from '@lousho/build-ai-agent/testing';
 import {
   CORPUS,
   createDeepResearch,

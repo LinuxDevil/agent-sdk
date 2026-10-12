@@ -4,8 +4,8 @@
 
 Anyone with code written against `1.0.0-alpha.8` or an earlier `1.0.0-alpha.*`
 release. Between those alphas and the 1.0 line (the changes listed under
-`1.0.0-rc.0` in the changelog, published in the later `1.0.0-alpha.*` releases) the package's public surface
-was reorganized: imports moved to subpaths, dead or superseded APIs were
+`1.0.0-alpha.19` in the changelog, first published in `1.0.0-alpha.15`) the
+package's public surface was reorganized: imports moved to subpaths, dead or superseded APIs were
 removed, and the patch guardrails were renamed patch checks. `createAgent()`
 and its options did not change - an agent that only does
 `createAgent({ model, instructions, tools })` and `agent.send()` upgrades by
@@ -224,7 +224,7 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | Resolving an approval whose run was deleted or replaced fails with `LOUSHO_APPROVAL_ORPHANED` and withdraws it (it used to overwrite the newer conversation). | no opt-out |
 | A session turn paused for approval locks the session id: a new turn on it throws `SessionAwaitingApprovalError` (`LOUSHO_SESSION_AWAITING_APPROVAL`). | decide the approval, or `session.discardPending()` |
 | Session turns keep the checkpoint history of the latest 10 committed turns. See [Durable sessions](./sessions.md#durable-sessions). | `agent.session({ id, turnHistoryLimit })` with a larger whole number |
-| `sessionId` must be 1-200 characters of `A-Za-z0-9_.-` on every store, and may not end in `.turn-<n>`, `.paused` or `.fire` (a schedule's fire claim); `''` is refused. | no opt-out |
+| A run id (`agent.send()` / `agent.stream()`'s `sessionId`, a fork's `newSessionId`) must be 1-200 characters of `A-Za-z0-9_.-`, not starting or ending with `.`, on every store, and may not end in `.turn-<n>`, `.paused` or `.fire` (a schedule's fire claim); `''` is refused. This is not the session id rule: a session id (`agent.session({ id })`, the routes' and `lousho dev`'s `sessionId`, `lousho chat --session`) is still 1-128 characters of `A-Za-z0-9_-`, with no `.`. Both fail with `LOUSHO_SESSION_ID_INVALID`. | no opt-out |
 | A lease left by a process that died on another machine (or in another container with the same hostname) is taken over 30 to 60 seconds after its last heartbeat (a grace for clock skew), not at 30 seconds. See [Run leases](./durable-execution.md#run-leases). | no opt-out |
 | During a rolling upgrade, replicas still on an earlier release neither take nor respect run leases, so a turn can run twice until every replica is upgraded. A SQLite database opened by this release is migrated and then refused by older releases. | upgrade all replicas together; keep a copy of the database to roll back |
 | `approvalTtlMs` (and an `ask` rule's `ttlMs`) above 100 years throws `LOUSHO_CONFIG_INVALID` instead of meaning "never expires". | leave it out for pauses that never expire |

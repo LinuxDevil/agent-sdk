@@ -19,7 +19,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { createAgent, defineTool, resolveProvider } from '../src';
+import { createAgent, defineTool, resolveProvider } from '@lousho/build-ai-agent';
 import { createDeepResearch } from './deep-research';
 import { createSupportDesk } from './support-desk';
 import { runEvaluatorLoop } from './evaluator-loop';

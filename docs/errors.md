@@ -517,7 +517,9 @@ paused on an approval (`error.approvalId`), so it cannot take new input yet.
 not 1-200 characters of letters, digits, `_`, `-` and `.` (not starting or
 ending with `.`), the same rule on every store; or it ends with `.turn-<n>` or
 `.paused`, which are a session's own checkpoint keys (a run under
-`'victim.turn-2'` would write into session `victim`'s turn).
+`'victim.turn-2'` would write into session `victim`'s turn), or `.fire` (a
+schedule's fire claim). The message says which of the two rules applies: an id
+with a `.` or over 128 characters is a valid run id but not a valid session id.
 
 **Fix:** use an id such as `'chat-9f2c4e7a1b'`, or omit it to get a generated one. On a
 route that serves several users, do not make ids guessable from a user's name or number
