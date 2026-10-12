@@ -15,6 +15,12 @@ import { ensureBuiltinProviders } from './builtinProviders';
 import type { ReasoningOption } from './reasoning';
 import type { HostedTool, HostedToolType } from '../tools/hosted';
 import type { StandardSchemaV1 } from '../utils/zodCompat';
+import type { OpenAIProviderConfig } from './OpenAIProvider';
+import type { AnthropicProviderConfig } from './AnthropicProvider';
+import type { OpenRouterProviderConfig } from './OpenRouterProvider';
+import type { OllamaProviderConfig } from './OllamaProvider';
+import type { PiProviderConfig } from './pi/PiProvider';
+import type { MockProviderConfig } from './mock';
 
 /**
  * Message role types
@@ -435,6 +441,29 @@ export interface LLMProviderConfig {
  */
 export type ProviderFactory<C extends LLMProviderConfig = LLMProviderConfig> = (config: C) => LLMProvider;
 
+/** A provider's config with `apiKey` optional, as the registry's factories fall back to the provider's environment variable. */
+export type RegistryProviderConfig<T extends LLMProviderConfig> = Omit<T, 'apiKey'> & { apiKey?: string };
+
+/**
+ * The config each built-in provider name takes in
+ * {@link LLMProviderRegistry.create}, so an option typo there is a type error.
+ */
+export interface BuiltinProviderConfigs {
+  openai: RegistryProviderConfig<OpenAIProviderConfig>;
+  anthropic: RegistryProviderConfig<AnthropicProviderConfig>;
+  openrouter: RegistryProviderConfig<OpenRouterProviderConfig>;
+  ollama: OllamaProviderConfig;
+  pi: PiProviderConfig;
+  mock: MockProviderConfig;
+}
+
+/**
+ * The config `create(name, config)` takes: the built-in provider's own for a
+ * built-in name (any case), else `C` (the custom provider's config).
+ */
+export type ProviderCreateConfig<N extends string, C extends object = LLMProviderConfig> =
+  Lowercase<N> extends keyof BuiltinProviderConfigs ? BuiltinProviderConfigs[Lowercase<N>] : C & LLMProviderConfig;
+
 /**
  * Provider registry
  */
@@ -451,10 +480,12 @@ export class LLMProviderRegistry {
   }
 
   /**
-   * Create provider instance. `config` may carry the provider's own options
-   * (e.g. `{ apiKey, region }` for a registered custom provider).
+   * Create provider instance. A built-in name takes that provider's config
+   * (`create('openai', ...)` checks {@link OpenAIProviderConfig}); any other
+   * name takes the custom provider's own options (e.g. `{ apiKey, region }`),
+   * typed by `C` when given (`create<BedrockConfig>('bedrock', ...)`).
    */
-  static create<C extends object = LLMProviderConfig>(name: string, config: C & LLMProviderConfig): LLMProvider {
+  static create<C extends object = LLMProviderConfig, N extends string = string>(name: N, config: ProviderCreateConfig<N, C>): LLMProvider {
     // On a miss, register the built-ins first (LOU-R1): entry points that
     // never load src/index.ts - deep imports, `lousho dev`/`chat`/`acp`,
     // generated deploy servers - otherwise saw only 'mock'. Only missing
@@ -464,7 +495,7 @@ export class LLMProviderRegistry {
     if (!factory) {
       throw new SDKError(`Provider '${name}' not found. Available: ${Array.from(this.providers.keys()).join(', ')}`, 'LOUSHO_PROVIDER_UNKNOWN');
     }
-    return factory(config);
+    return factory(config as LLMProviderConfig);
   }
 
   /**

@@ -292,13 +292,25 @@ function toolOutput(result: unknown, isError: boolean | undefined) {
   return { type: isError ? 'error-json' : 'json', value: result ?? null };
 }
 
+/** `@ai-sdk/openai`'s model classes, which `@ai-sdk/azure` and `createOpenAI({ name })` reuse under other provider names. */
+const OPENAI_MODEL_CLASS = /^OpenAI(Chat|Responses|Completion)LanguageModel$/;
+
 /**
  * Whether `model` sends tool errors as plain results. `@ai-sdk/openai` 4
  * wraps an error output in `{"error": ...}`, and ours already say they are
  * errors (`{"error": "ToolNotFoundError", ...}`), so the model got them
- * wrapped twice; OpenAI's API has no error flag for it to lose.
+ * wrapped twice; OpenAI's API has no error flag for it to lose. Decided by
+ * the model's class, as the provider name can be anything (`groq.chat`,
+ * `azure.responses`); the `openai` name is the fallback for wrapped or
+ * minified models. `@ai-sdk/openai-compatible` and the other wire-compatible
+ * packages do not wrap, so they keep the error outputs.
  */
 function sendsPlainToolErrors(model: unknown): boolean {
+  let proto: unknown = typeof model === 'object' && model !== null ? Object.getPrototypeOf(model) : null;
+  for (; proto && proto !== Object.prototype; proto = Object.getPrototypeOf(proto)) {
+    const name = (proto as { constructor?: { name?: unknown } }).constructor?.name;
+    if (typeof name === 'string' && OPENAI_MODEL_CLASS.test(name)) return true;
+  }
   const provider = (model as { provider?: unknown } | null)?.provider;
   return typeof provider === 'string' && /^openai(\.|$)/.test(provider);
 }
