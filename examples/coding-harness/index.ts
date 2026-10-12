@@ -32,8 +32,8 @@ import {
   type AgentHook,
   type LLMProvider,
   type Message,
-} from '../../src';
-import { mockModel } from '../../src/testing';
+} from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 
 /** The project the harness works on: `add()` subtracts, so its test fails. */
 export const FIXTURE: Record<string, string> = {

@@ -9,10 +9,10 @@
  *
  * Run with: tsx examples/research-assistant/index.ts
  */
-import { createAgent } from '../../src/createAgent';
-import { createMockProvider } from '../../src/providers/mock';
-import { resolveProvider } from '../../src/providers/resolveProvider';
-import { httpTool } from '../../src/tools/built-in/http';
+import { createAgent } from '@lousho/build-ai-agent';
+import { createMockProvider } from '@lousho/build-ai-agent';
+import { resolveProvider } from '@lousho/build-ai-agent';
+import { httpTool } from '@lousho/build-ai-agent';
 
 const provider = process.env.ANTHROPIC_API_KEY
   ? resolveProvider('anthropic/claude-3-5-sonnet-latest')

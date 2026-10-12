@@ -5,7 +5,7 @@
  * Never makes a real network call, so the ops-pipeline demo runs with zero
  * external network access.
  */
-import { ToolDescriptor } from '../../../src/types';
+import { ToolDescriptor } from '@lousho/build-ai-agent';
 
 export interface MockCreatedPullRequest {
   title: string;

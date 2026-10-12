@@ -11,10 +11,10 @@
  *
  * Run with: npx tsx examples/plan-mode/index.ts
  */
-import { createAgent } from '../../src';
-import { createFsTools } from '../../src/tools/workspace/fsTools';
-import { MemoryWorkspace } from '../../src/tools/workspace/MemoryWorkspace';
-import { mockModel } from '../../src/testing';
+import { createAgent } from '@lousho/build-ai-agent';
+import { createFsTools } from '@lousho/build-ai-agent';
+import { MemoryWorkspace } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 
 const workspace = new MemoryWorkspace({
   files: { 'greet.ts': "export function greet(name: string) {\n  return 'Hello ' + name;\n}\n" },

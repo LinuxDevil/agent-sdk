@@ -9,8 +9,8 @@
  * you trust. Run with: npx tsx examples/agent-dir/index.ts
  */
 import path from 'node:path';
-import { loadAgentDir } from '../../src';
-import { mockModel } from '../../src/testing';
+import { loadAgentDir } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 
 const provider = mockModel([
   {

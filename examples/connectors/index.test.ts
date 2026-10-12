@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createAgent } from '../../src';
-import { mockModel } from '../../src/testing';
+import { createAgent } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
 import { connectorSpecs } from './index';
 
 // The test spawns the real mock-connectors stdio server - the honest check

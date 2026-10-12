@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineTool } from '../../../src/index.js';
+import { defineTool } from '@lousho/build-ai-agent';
 
 export default defineTool({
   name: 'word_count',

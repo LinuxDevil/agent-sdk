@@ -1,6 +1,33 @@
-import { defineConfig } from 'vitest/config';
+import * as path from 'node:path';
+import { defineConfig, type Plugin } from 'vitest/config';
+import pkg from './package.json';
+
+/**
+ * Examples import the SDK by its package name, like a reader's app would.
+ * Under vitest those imports resolve to src/ (the same mapping as the
+ * tsconfig.json `paths`), so the examples' tests need no build and never mix
+ * dist/ classes with src/ ones. Scoped to examples/: other tests that import
+ * the package name keep resolving to the built dist/.
+ */
+function examplesSelfImports(): Plugin {
+  const examplesDir = path.join(__dirname, 'examples') + path.sep;
+  const targets = new Map(
+    Object.entries(pkg.exports).map(([subpath, entry]) => [
+      subpath === '.' ? pkg.name : `${pkg.name}/${subpath.slice(2)}`,
+      path.join(__dirname, entry.require.types.replace(/^\.\/dist\//, 'src/').replace(/\.d\.ts$/, '.ts')),
+    ])
+  );
+  return {
+    name: 'examples-self-imports',
+    enforce: 'pre',
+    resolveId(id, importer) {
+      return importer?.startsWith(examplesDir) ? (targets.get(id) ?? null) : null;
+    },
+  };
+}
 
 export default defineConfig({
+  plugins: [examplesSelfImports()],
   test: {
     globals: true,
     environment: 'node',
