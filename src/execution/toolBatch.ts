@@ -19,6 +19,16 @@ export type ToolConcurrency = number | 'unbounded';
  * Throws a descriptive error unless `value` is a valid {@link ToolConcurrency}
  * (`undefined` means "use the default" and is accepted).
  */
+/**
+ * Eve2-F5: how long an aborted run still waits for calls already running.
+ * A tool that finishes while the run unwinds keeps its real result in the
+ * transcript (B4: calls that ran stay); anything still running after the
+ * grace is abandoned and settles 'cancelled' - a tool ignoring the signal
+ * never holds the run open. 500ms is well past a settling tool's tail and
+ * well under any caller-visible abort latency.
+ */
+export const TOOL_ABORT_GRACE_MS = 500;
+
 export function assertToolConcurrency(value: unknown, caller: string): void {
   if (value === undefined || value === 'unbounded') {
     return;
@@ -166,12 +176,12 @@ class ToolBatch {
       await all;
       return;
     }
-    // A settlement already landing when the signal fires still records: the
-    // abort side yields one event-loop turn first, so a tool released just
-    // as the run aborted keeps its result - only a call still running then
-    // is left behind (Eve2-F5).
+    // A settlement landing while the run unwinds still records: the abort
+    // side drains for TOOL_ABORT_GRACE_MS first, so a tool released just as
+    // the run aborted keeps its result (B4) - only a call still running
+    // past the grace is left behind (Eve2-F5).
     const drained = new Promise<'aborted'>((resolve) => {
-      const onAbort = () => setTimeout(() => resolve('aborted'), 0);
+      const onAbort = () => setTimeout(() => resolve('aborted'), TOOL_ABORT_GRACE_MS);
       runSignal.addEventListener('abort', onAbort, { once: true });
       if (runSignal.aborted) onAbort();
     });
