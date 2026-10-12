@@ -241,18 +241,26 @@ function testTitles(result: EvalResult): string[] {
  * then show that case failing instead of a green case plus a vitest row.
  */
 function failLateCases(results: EvalResult[], vitestReport: unknown): void {
-  for (const file of (vitestReport as VitestJsonReport | undefined)?.testResults ?? []) {
-    for (const test of file.assertionResults ?? []) {
-      if (test.status !== 'failed') continue;
-      const title = test.title ?? test.fullName;
-      for (const result of results) {
-        if (!result.passed || !result.file || !sameFile(result.file, file.name) || !testTitles(result).includes(title ?? '')) continue;
-        result.passed = false;
-        const message = test.failureMessages?.[0]?.split('\n')[0] ?? 'vitest failed this test after the case recorded a pass';
-        result.error = /timed out/i.test(message) ? `${message} Raise the limit with defineEval({ timeoutMs }) or lousho eval --timeout <ms>.` : message;
-      }
+  for (const { file, test } of failedTests(vitestReport)) {
+    const title = test.title ?? test.fullName ?? '';
+    const late = results.filter((result) => result.passed && result.file && sameFile(result.file, file) && testTitles(result).includes(title));
+    for (const result of late) {
+      result.passed = false;
+      result.error = lateFailureMessage(test.failureMessages?.[0]);
     }
   }
+}
+
+/** Every test vitest marked failed, with the file it is in. */
+function failedTests(vitestReport: unknown) {
+  return ((vitestReport as VitestJsonReport | undefined)?.testResults ?? []).flatMap((file) =>
+    (file.assertionResults ?? []).filter((test) => test.status === 'failed').map((test) => ({ file: file.name, test }))
+  );
+}
+
+function lateFailureMessage(failure: string | undefined): string {
+  const message = failure?.split('\n')[0] ?? 'vitest failed this test after the case recorded a pass';
+  return /timed out/i.test(message) ? `${message} Raise the limit with defineEval({ timeoutMs }) or lousho eval --timeout <ms>.` : message;
 }
 
 export function vitestError(label: string, message: string): EvalResult {
