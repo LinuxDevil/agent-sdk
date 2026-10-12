@@ -142,6 +142,16 @@ async function handleWebhookRequest(
   await respondWithAgentResult(runtime, req, res);
 }
 
+/** Refuses a non-loopback bind without `auth`, unless the caller explicitly allows it. */
+function assertAuthenticatedBind(options: WebhookTriggerAdapterOptions, host: string): void {
+  if (options.auth || options.allowUnauthenticated || isLoopbackHost(host)) return;
+  throw new SDKError(
+    `WebhookTriggerAdapter: refusing to listen on ${host} without \`auth\`: anyone who can reach it could run your agent. ` +
+      "Configure options.auth (hmac, bearer or custom), bind '127.0.0.1', or pass allowUnauthenticated: true.",
+    'LOUSHO_TRIGGER_INVALID'
+  );
+}
+
 /**
  * Runs an agent on each HTTP request to its own server and answers with the result.
  *
@@ -155,14 +165,7 @@ export class WebhookTriggerAdapter implements TriggerAdapter<http.ServerResponse
   private readonly channel: WebhookChannel;
 
   constructor(private readonly options: WebhookTriggerAdapterOptions = {}) {
-    const host = options.host ?? DEFAULT_HOST;
-    if (!options.auth && !options.allowUnauthenticated && !isLoopbackHost(host)) {
-      throw new SDKError(
-        `WebhookTriggerAdapter: refusing to listen on ${host} without \`auth\`: anyone who can reach it could run your agent. ` +
-          "Configure options.auth (hmac, bearer or custom), bind '127.0.0.1', or pass allowUnauthenticated: true.",
-        'LOUSHO_TRIGGER_INVALID'
-      );
-    }
+    assertAuthenticatedBind(options, options.host ?? DEFAULT_HOST);
     this.channel = webhookChannel({ auth: options.auth });
   }
 
