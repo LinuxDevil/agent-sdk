@@ -189,6 +189,47 @@ describe.each(stallable)('a run that stalled past its lease, over %s', (_name, b
     const transcript = await b.session({ id: 's1' }).load();
     expect(transcript.map((message) => `${message.role}:${typeof message.content === 'string' ? message.content : ''}`)).toEqual(['user:go', 'assistant:', 'tool:"by B"', 'assistant:done by B']);
   });
+
+  it("a stalled run that fails after losing its lease does not stamp its failure on the new holder's checkpoint (Eve2-F2)", async () => {
+    const { open, stall } = backend();
+    let releaseA!: () => void;
+    const gateA = new Promise<void>((resolve) => (releaseA = resolve));
+    let secondCall!: () => void;
+    const waiting = new Promise<void>((resolve) => (secondCall = resolve));
+    const overflow = () => Object.assign(new Error('400 context_length_exceeded: maximum context length is 128000 tokens'), { status: 400 });
+    const work = defineTool({ name: 'work', description: 'work', input: z.object({}), execute: async () => 'done' });
+    // A's turn runs its tool, then stalls inside the next model call - long enough to lose its lease.
+    const a = createAgent({
+      provider: mockModel([
+        { toolCalls: [{ name: 'work', id: 'call_1' }] },
+        async () => {
+          secondCall();
+          await gateA;
+          return { error: overflow() };
+        },
+      ]),
+      tools: [work],
+      store: open(),
+      retry: false,
+    });
+    const bStore = open();
+    const unavailable = Object.assign(new Error('503 service unavailable'), { status: 503 });
+    const b = createAgent({ provider: mockModel([{ error: unavailable }]), tools: [work], store: bStore, retry: false });
+
+    const first = a.session({ id: 's1' }).send('go');
+    await waiting; // A's turn is checkpointed in-progress and stalled in its second model call.
+    stall('s1.turn-0');
+    // B takes the turn over, and its attempt fails retryably: the checkpoint records it (attempts: 1, retryable).
+    await expect(b.session({ id: 's1' }).resume()).rejects.toThrow('503');
+    releaseA();
+    // A wakes and fails for good - but the checkpoint is B's now, so A's recordFailure must write nothing on it.
+    await expect(first).rejects.toThrow('context_length_exceeded');
+
+    expect(await bStore.checkpoints!.load('s1.turn-0')).toMatchObject({ attempts: 1, lastError: { retryable: true } });
+    // The turn stays resumable (no LOUSHO_SESSION_TURN_FAILED bricking).
+    const c = createAgent({ provider: mockModel(['finished']), tools: [work], store: open(), retry: false });
+    expect((await c.session({ id: 's1' }).resume())?.text).toBe('finished');
+  });
 });
 
 describe('run ids and session checkpoint keys', () => {

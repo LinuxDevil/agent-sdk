@@ -80,6 +80,28 @@ describe('a paused session turn locks the session (Eve EVE-0 follow-up)', () => 
     expect((await durable.send('something else')).text).toBe('fresh');
   });
 
+  it('a missing .paused marker still locks the session: the turn checkpoint itself says it waits (Eve2-F3)', async () => {
+    const store = memoryStore();
+    const model = mockModel([calling('restart'), 'resumed']);
+    const agent = createAgent({ provider: model, tools: [restart({ n: 0 })], store });
+    const paused = await agent.session({ id: 'chat', store: new MemorySessionStore() }).send('restart it');
+    expect(paused.finishReason).toBe('awaiting-approval');
+    // A crash between the executor's awaiting-approval checkpoint and markPaused() leaves no pointer, permanently.
+    await store.checkpoints.delete('chat.paused');
+    expect(await store.checkpoints.load('chat.paused')).toBeNull();
+
+    await expect(agent.send('unrelated work', { sessionId: 'chat' })).rejects.toMatchObject({
+      name: 'SessionAwaitingApprovalError',
+      code: 'LOUSHO_SESSION_AWAITING_APPROVAL',
+      approvalId: paused.approvalId,
+      sessionId: 'chat.turn-0',
+    });
+    const durable = agent.session({ id: 'chat' });
+    expect(await durable.pending()).toMatchObject({ status: 'awaiting-approval', approvalId: paused.approvalId });
+    await expect(durable.send('more work')).rejects.toMatchObject({ code: 'LOUSHO_SESSION_AWAITING_APPROVAL' });
+    expect(model.calls).toHaveLength(1);
+  });
+
   it('once the approval is decided the session takes new turns again', async () => {
     const store = memoryStore();
     const runs = { n: 0 };
