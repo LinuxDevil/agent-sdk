@@ -71,6 +71,20 @@ describe('providerFetch', () => {
     expect(await plain.text()).toBe(completion);
   });
 
+  it('decides streaming by the parsed top-level `stream` field: a nested `"stream":true` or a malformed body keeps its JSON reply', async () => {
+    const completion = JSON.stringify({ object: 'chat.completion', choices: [{ index: 0, message: { content: 'hi' }, finish_reason: 'stop' }] });
+    const fetch = providerFetch({ send: sendOf(completion), watch: chatCompletionWatch });
+
+    // A nested flag (providerOptions passthrough, tool args) is not the request's own `stream`.
+    const nested = await fetch('https://x/v1/chat/completions', { method: 'POST', body: JSON.stringify({ providerOptions: { gateway: { stream: true } } }) });
+    expect(nested.headers.get('content-type')).toBe('application/json');
+    expect(await nested.text()).toBe(completion);
+
+    const malformed = await fetch('https://x/v1/chat/completions', { method: 'POST', body: '{"stream":true' });
+    expect(malformed.headers.get('content-type')).toBe('application/json');
+    expect(await malformed.text()).toBe(completion);
+  });
+
   it("turns a JSON reply with finish_reason 'error' into a 502 error response", async () => {
     const fetch = providerFetch({ send: sendOf(JSON.stringify({ choices: [{ finish_reason: 'error', message: { content: 'cut' } }] })), watch: chatCompletionWatch });
     const response = await fetch('https://x/v1/chat/completions');
@@ -123,5 +137,28 @@ describe('uniqueToolCallIds', () => {
     expect(stream(delta(0, 'c'))).toBeUndefined(); // the same call repeating its id
     expect(JSON.parse(stream(delta(1, 'c'))!).choices[0].delta.tool_calls[0].id).toBe('c_2');
     expect(JSON.parse(stream(delta(1, 'c'))!).choices[0].delta.tool_calls[0].id).toBe('c_2');
+  });
+
+  it("keeps a stream call's id across deltas that repeat it without `index`; a new id at the same slot stays its own call", () => {
+    const stream = uniqueToolCallIds();
+    const delta = (id: string) => JSON.stringify({ choices: [{ index: 0, delta: { tool_calls: [{ id, function: { arguments: 'x' } }] } }] });
+    const idOf = (text: string, at = 0) => (JSON.parse(text) as { choices: [{ delta: { tool_calls: Array<{ id: string }> } }] }).choices[0].delta.tool_calls[at].id;
+
+    // The same call repeating its id on each delta, with `index` omitted (quirky OpenAI-compatible / Gemini-proxy servers).
+    expect(stream(delta('call_1'))).toBeUndefined();
+    expect(stream(delta('call_1'))).toBeUndefined();
+    expect(stream(delta('call_1'))).toBeUndefined();
+
+    // A distinct raw id is a distinct call, index or not.
+    expect(stream(delta('call_2'))).toBeUndefined();
+
+    // A repeated id inside one delta is still two calls (its array slot stands in for `index`).
+    const pair = uniqueToolCallIds();
+    const two = JSON.stringify({ choices: [{ index: 0, delta: { tool_calls: [{ id: 'x' }, { id: 'x' }] } }] });
+    const rewritten = pair(two)!;
+    expect([idOf(rewritten, 0), idOf(rewritten, 1)]).toEqual(['x', 'x_2']);
+    // ...and a later delta's unindexed slot-0 `x` is the first of them again, not a third.
+    const next = JSON.stringify({ choices: [{ index: 0, delta: { tool_calls: [{ id: 'x' }] } }] });
+    expect(pair(next)).toBeUndefined();
   });
 });

@@ -213,9 +213,14 @@ export function providerFetch({ send, timeoutMs, watch }: ProviderFetchOptions):
   };
 }
 
-/** Whether a request body asks for an event stream (`"stream": true`, as every OpenAI-compatible API spells it). */
+/** Whether a request body asks for an event stream (a top-level `"stream": true`, as every OpenAI-compatible API spells it). */
 function isStreamingRequest(init: RequestInit | undefined): boolean {
-  return typeof init?.body === 'string' && /"stream"\s*:\s*true/.test(init.body);
+  if (typeof init?.body !== 'string') return false;
+  try {
+    return (JSON.parse(init.body) as { stream?: unknown } | null)?.stream === true;
+  } catch {
+    return false;
+  }
 }
 
 /** The URL a `fetch` input names. */
@@ -334,7 +339,7 @@ interface ToolCallPayload {
   choices?: Array<{ index?: unknown; message?: { tool_calls?: unknown }; delta?: { tool_calls?: unknown } }>;
 }
 
-/** The tool-call ids of one response: each one used, and a stream call's id by its index. */
+/** The tool-call ids of one response: each one used, and a stream call's id by its `index` (or its slot in the delta's `tool_calls` when `index` is omitted). */
 class ToolCallIds {
   private readonly used = new Set<string>();
   private readonly byIndex = new Map<string, { original: string; assigned: string }>();
@@ -343,9 +348,13 @@ class ToolCallIds {
   assign(choice: NonNullable<ToolCallPayload['choices']>[number]): boolean {
     const calls = choice?.message?.tool_calls ?? choice?.delta?.tool_calls;
     let changed = false;
-    for (const call of Array.isArray(calls) ? (calls as ChatToolCall[]) : []) {
+    const list = Array.isArray(calls) ? (calls as ChatToolCall[]) : [];
+    for (const [position, call] of list.entries()) {
       if (typeof call?.id !== 'string' || call.id === '') continue;
-      const key = choice.delta !== undefined && call.index !== undefined ? `${String(choice.index)}:${String(call.index)}` : undefined;
+      // A stream call is keyed by its choice and its `index`; a delta that omits
+      // `index` still repeats the call at the same slot of its tool_calls, so
+      // the array position stands in for it.
+      const key = choice.delta !== undefined ? `${String(choice.index)}:${String(call.index ?? position)}` : undefined;
       const assigned = this.idFor(call.id, key);
       if (assigned !== call.id) {
         call.id = assigned;
