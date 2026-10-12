@@ -9,7 +9,7 @@ import type { StepUsage } from '../models/usage';
 import type { CheckpointUsage } from './runUsage';
 import type { AgentFingerprint } from './agentFingerprint';
 import { ConfigurationError, SDKError } from './errors';
-import type { ApprovalKind } from './ApprovalGate';
+import type { ApprovalKind, ApprovalStore } from './ApprovalGate';
 import type { Principal } from '../auth/types';
 
 /** Key of `AgentConfig.metadata` holding a dynamic run's `ctx` and model (LOU-V15): saved in approval snapshots and checkpoints. */
@@ -176,6 +176,27 @@ export interface Checkpoint {
 export function pausedApprovalIds(checkpoint: Pick<Checkpoint, 'approvalId' | 'approvalIds'>): string[] {
   if (checkpoint.approvalIds && checkpoint.approvalIds.length > 0) return [...checkpoint.approvalIds];
   return checkpoint.approvalId === undefined ? [] : [checkpoint.approvalId];
+}
+
+/**
+ * A built-in checkpoint store's cheap check whether an id has checkpoint
+ * history, without reading it (internal; other stores are asked for one entry).
+ */
+export const HAS_CHECKPOINT_HISTORY = Symbol.for('lousho.hasCheckpointHistory');
+
+/**
+ * Whether `checkpoint` waits on approvals none of which `approvalStore` holds
+ * unclaimed any more: a resolver claimed them and died before it marked the
+ * run (or they were deleted). Such a pause can never be decided, so a resume
+ * of the run under its lease pauses it again instead. `false` when the store
+ * cannot read a record without claiming it (no `load`).
+ */
+export async function orphanedPause(checkpoint: Pick<Checkpoint, 'status' | 'approvalId' | 'approvalIds'>, approvalStore: ApprovalStore | undefined): Promise<boolean> {
+  if (checkpoint.status !== 'awaiting-approval' || !approvalStore?.load) return false;
+  const ids = pausedApprovalIds(checkpoint);
+  if (ids.length === 0) return false;
+  for (const id of ids) if (await approvalStore.load(id)) return false;
+  return true;
 }
 
 /** Eve DUR-F17: a flow run's state in its {@link Checkpoint} (`checkpoint.flow`). */

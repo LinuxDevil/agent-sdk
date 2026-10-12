@@ -225,6 +225,43 @@ describe('SqliteStore.prune', () => {
     expect(store.prune({ olderThanMs: 60 * 1000 })).toEqual({ sessions: 0, checkpoints: 0, approvals: 0, oauthPending: 0 });
   });
 
+  it("keeps a session whose turn is running (a live run lease, or a checkpoint saved after the cutoff), however old its transcript", async () => {
+    const file = join(tempDir(), 'prune-live.db');
+    const store = open(file);
+    for (const id of ['alice', 'bob', 'carol']) {
+      await store.sessions.save(id, [{ role: 'user', content: 'hi' }]);
+      await store.checkpoints.save(`${id}.turn-1`, makeCheckpoint({ sessionId: `${id}.turn-1` }));
+    }
+    expect(await store.checkpoints.acquireLease!('alice.turn-1', 'claim:running', 60_000)).toBe(true);
+    const raw = new DatabaseSync(file);
+    const age = 2 * 60 * 60 * 1000;
+    raw.prepare('UPDATE sessions SET updated_at = updated_at - ?').run(age);
+    raw.prepare("UPDATE checkpoints SET updated_at = updated_at - ? WHERE session_id != 'bob.turn-1'").run(age);
+    raw.prepare('UPDATE checkpoint_history SET saved_at = saved_at - ?').run(age);
+    raw.close();
+
+    expect(store.prune({ olderThanMs: 60 * 60 * 1000 })).toMatchObject({ sessions: 1, checkpoints: 1 });
+    expect(await store.sessions.load('alice')).toHaveLength(1);
+    expect(await store.checkpoints.load('alice.turn-1')).not.toBeNull();
+    expect(await store.sessions.load('bob')).toHaveLength(1);
+    expect(await store.sessions.load('carol')).toBeUndefined();
+  });
+
+  it('expiredApprovals: true deletes unresolved approvals past their deadline, and their old paused runs go too', async () => {
+    const store = open(':memory:');
+    const expired = { ...makePending('expired'), expiresAt: new Date(Date.now() - 1000).toISOString() };
+    const live = { ...makePending('live'), expiresAt: new Date(Date.now() + 60_000).toISOString() };
+    await store.approvals.save(expired, { ...makeSnapshot(expired), sessionId: 'run-expired' });
+    await store.approvals.save(live, makeSnapshot(live));
+    await store.checkpoints.save('run-expired', { ...makeCheckpoint({ sessionId: 'run-expired' }), status: 'awaiting-approval', approvalId: 'expired' });
+    await new Promise((done) => setTimeout(done, 5));
+
+    expect(store.prune({ olderThanMs: 0 })).toMatchObject({ checkpoints: 0, approvals: 0 });
+    expect(store.prune({ olderThanMs: 0, expiredApprovals: true })).toMatchObject({ checkpoints: 1, approvals: 1 });
+    expect((await store.approvals.list!()).map((pending) => pending.id)).toEqual(['live']);
+    expect(await store.checkpoints.load('run-expired')).toBeNull();
+  });
+
   it('rejects a negative or non-finite age', () => {
     const store = open(':memory:');
     expect(() => store.prune({ olderThanMs: -1 })).toThrow(/olderThanMs/);

@@ -15,7 +15,7 @@
  * removes its own lock file when it releases.
  */
 
-import { open, rm, stat, utimes } from 'node:fs/promises';
+import { open, readFile, rm, stat, utimes } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { SDKError } from '../execution/errors';
 import { withFsRetry } from './fsRetry';
@@ -90,7 +90,7 @@ async function breakStaleLock(lockPath: string, seen: { ino: number; mtimeMs: nu
  * Takes the lock file `lockPath`, waiting (with a short backoff) while another
  * writer holds it, and returns its release function. The directory must exist.
  */
-async function acquireFileLock(lockPath: string, timeoutMs: number, staleMs: number, busyCode: string): Promise<() => Promise<void>> {
+async function acquireFileLock(lockPath: string, timeoutMs: number, staleMs: number, busyCode: string): Promise<{ release: () => Promise<void>; held: () => Promise<boolean> }> {
   const token = `${process.pid}:${randomUUID()}`;
   const deadline = Date.now() + timeoutMs;
   for (let delay = 2; ; delay = Math.min(delay * 2, 50)) {
@@ -115,13 +115,16 @@ async function acquireFileLock(lockPath: string, timeoutMs: number, staleMs: num
     utimes(lockPath, now, now).catch(() => undefined);
   }, Math.max(10, Math.floor(staleMs / 3)));
   (heartbeat as { unref?: () => void }).unref?.();
-  return async () => {
+  const release = async () => {
     clearInterval(heartbeat);
     // Only our own lock file: one taken over after all (and re-created by another writer) is not ours to remove.
     const now = await identityOf(lockPath);
     if (!now || (mine && now.ino !== mine.ino)) return;
     await withFsRetry(`unlock ${lockPath}`, () => rm(lockPath, { force: true })).catch(() => undefined);
   };
+  // Still ours: a holder that stalled past `staleMs` (a suspended process: its heartbeat did not run) may have lost it.
+  const held = async () => (await readFile(lockPath, 'utf8').catch(() => undefined)) === token;
+  return { release, held };
 }
 
 /**
@@ -129,15 +132,17 @@ async function acquireFileLock(lockPath: string, timeoutMs: number, staleMs: num
  * backoff) while another writer holds it. The directory must exist. A lock
  * file older than `staleMs` is removed and taken over (see the module
  * comment). Throws `LOUSHO_STORAGE_FAILED` when the lock stays taken for `timeoutMs`.
+ * `task` gets `held()`: whether the lock is still this caller's, for a task
+ * that must not commit a write once a stall let another writer take it over.
  */
 export async function withFileLock<T>(
   lockPath: string,
-  task: () => Promise<T>,
+  task: (held: () => Promise<boolean>) => Promise<T>,
   { timeoutMs = 10_000, staleMs = 30_000, busyCode = 'LOUSHO_STORAGE_FAILED' }: FileLockOptions & LockFailure = {}
 ): Promise<T> {
-  const release = await acquireFileLock(lockPath, timeoutMs, staleMs, busyCode);
+  const { release, held } = await acquireFileLock(lockPath, timeoutMs, staleMs, busyCode);
   try {
-    return await task();
+    return await task(held);
   } finally {
     await release();
   }

@@ -84,12 +84,26 @@ async function writeSynced(temp: string, content: string): Promise<void> {
   }
 }
 
+/** A write of a file whose content is on disk in a temp file, not in place yet (see {@link stageFileAtomic}). */
+export interface StagedFile {
+  /** Renames the temp file over the target and flushes the directory. */
+  commit(): Promise<void>;
+  /** Removes the temp file; the target is left as it was. */
+  discard(): Promise<void>;
+}
+
+/** The suffix of a temp file {@link writeFileAtomic} writes, `.<pid>.<uuid>.tmp`, after the target's name. */
+export const TEMP_FILE_SUFFIX = /\.\d+\.[0-9a-f-]{36}\.tmp$/;
+
 /**
- * Writes `content` to `file` atomically and durably (see the module comment);
- * creates the directory when it is missing.
+ * Writes and flushes `content` to a temp file next to `file` (creating the
+ * directory when it is missing), to be renamed into place by `commit()`: a
+ * caller can check, between the slow write and the rename, that it may still
+ * write (a fenced save).
  */
-export async function writeFileAtomic(file: string, content: string): Promise<void> {
+export async function stageFileAtomic(file: string, content: string): Promise<StagedFile> {
   const temp = `${file}.${process.pid}.${randomUUID()}.tmp`;
+  const discard = () => rm(temp, { force: true });
   try {
     try {
       await writeSynced(temp, content);
@@ -98,10 +112,28 @@ export async function writeFileAtomic(file: string, content: string): Promise<vo
       await mkdir(dirname(file), { recursive: true });
       await writeSynced(temp, content);
     }
-    await renameWithRetry(temp, file);
   } catch (error) {
-    await rm(temp, { force: true });
+    await discard();
     throw error;
   }
-  await syncDirectory(dirname(file));
+  return {
+    async commit() {
+      try {
+        await renameWithRetry(temp, file);
+      } catch (error) {
+        await discard();
+        throw error;
+      }
+      await syncDirectory(dirname(file));
+    },
+    discard,
+  };
+}
+
+/**
+ * Writes `content` to `file` atomically and durably (see the module comment);
+ * creates the directory when it is missing.
+ */
+export async function writeFileAtomic(file: string, content: string): Promise<void> {
+  await (await stageFileAtomic(file, content)).commit();
 }

@@ -4,7 +4,7 @@
  * approvals, id validation, a corrupt history file, and two agents on one dir.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -190,6 +190,38 @@ describe('fileStore(dir) (R2)', () => {
     expect(await fileStore(dir).checkpoints.acquireLease!('run-1', 'claim:third', 60_000)).toBe(false);
   });
 
+  it('a fenced save that stalled while another process took the lock and the lease over puts nothing in place', async () => {
+    const dir = tempDir();
+    const store = fileStore(dir);
+    expect(await store.checkpoints.acquireLease!('big', 'claim:A', 60_000)).toBe(true);
+    const leaseFile = join(dir, 'leases', 'big.json');
+    const theirs = makeCheckpoint({ sessionId: 'big', stepIndex: 9 });
+    // While A writes its (large) checkpoint, it is suspended long enough for B to break its lock, take the lease and finish.
+    const stalled = {
+      ...makeCheckpoint({ sessionId: 'big', stepIndex: 3 }),
+      businessState: {
+        toJSON: () => {
+          rmSync(`${leaseFile}.lock`, { force: true });
+          writeFileSync(`${leaseFile}.lock`, 'B-token');
+          writeFileSync(leaseFile, JSON.stringify({ owner: 'claim:B', expiresAt: Date.now() + 60_000 }));
+          writeFileSync(join(dir, 'checkpoints', 'big.json'), JSON.stringify(theirs));
+          return 'A';
+        },
+      },
+    };
+    await save(store, 'big', 1);
+
+    expect(await store.checkpoints.saveIfLeased!('big', stalled, 'claim:A')).toBe(false);
+    expect((await store.checkpoints.load('big'))?.stepIndex).toBe(9);
+    expect((await store.checkpoints.history!('big')).map((entry) => entry.step)).toEqual([1]);
+    expect(readdirSync(join(dir, 'checkpoints')).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+    // Nor does A's heartbeat or release touch B's lease.
+    rmSync(`${leaseFile}.lock`, { force: true });
+    expect(await store.checkpoints.renewLease!('big', 'claim:A', 60_000)).toBe(false);
+    await store.checkpoints.releaseLease!('big', 'claim:A');
+    expect(JSON.parse(readFileSync(leaseFile, 'utf8')).owner).toBe('claim:B');
+  });
+
   it('rejects session, checkpoint and approval ids that would escape the directory', async () => {
     const store = fileStore(tempDir());
     await expect(store.sessions.save('../evil', [])).rejects.toThrow(/Invalid session id/);
@@ -322,7 +354,7 @@ describe('fileStore(dir).prune()', () => {
     age(dir, ['old', 'waiting']);
 
     await expect(store.prune({ olderThanMs: -1 })).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_INVALID' });
-    expect(await store.prune({ olderThanMs: 60_000 })).toEqual({ sessions: 1, checkpoints: 1, checkpointHistory: 2, oauthPending: 0 });
+    expect(await store.prune({ olderThanMs: 60_000 })).toEqual({ sessions: 1, checkpoints: 1, checkpointHistory: 2, oauthPending: 0, approvals: 0, tempFiles: 0 });
     expect(readdirSync(join(dir, 'sessions'))).toEqual(['recent.json']);
     expect(readdirSync(join(dir, 'checkpoints')).filter((name) => name.startsWith('waiting')).sort()).toEqual(['waiting.paused.json', 'waiting.turn-0.json']);
     expect(readdirSync(join(dir, 'checkpoint-history')).some((name) => name.startsWith('old'))).toBe(false);
@@ -331,8 +363,76 @@ describe('fileStore(dir).prune()', () => {
     const done = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
     expect(done.text).toBe('ok');
     // Once decided, the old paused-turn pointer is stale and goes.
-    expect(await store.prune({ olderThanMs: 60_000 })).toEqual({ sessions: 0, checkpoints: 1, checkpointHistory: 1, oauthPending: 0 });
+    expect(await store.prune({ olderThanMs: 60_000 })).toEqual({ sessions: 0, checkpoints: 1, checkpointHistory: 1, oauthPending: 0, approvals: 0, tempFiles: 0 });
     expect(readdirSync(join(dir, 'sessions')).sort()).toEqual(['recent.json', 'waiting.json']);
+  });
+});
+
+describe('fileStore(dir).prune(): live runs, expired approvals, temp files', () => {
+  const backdate = (file: string, ms: number) => {
+    const old = new Date(Date.now() - ms);
+    utimesSync(file, old, old);
+  };
+
+  it('keeps the transcript of a session whose turn is running now, however old the transcript is', async () => {
+    const dir = tempDir();
+    const store = fileStore(dir);
+    let prune: Promise<unknown> | undefined;
+    const work = defineTool({
+      name: 'work',
+      description: 'work',
+      input: z.object({}),
+      execute: async () => {
+        prune = store.prune({ olderThanMs: 60 * 60_000 });
+        await prune;
+        return 'ok';
+      },
+    });
+    const model = mockModel([(request) => (request.messages.at(-1)?.content === 'do some work' ? { toolCalls: [{ name: 'work', id: 'call_work' }] } : 'answer')], {
+      onExhausted: 'repeat-last',
+    });
+    const agent = createAgent({ provider: model, tools: [work], store });
+    const session = agent.session({ id: 'alice' });
+    await session.send('one');
+    await session.send('two');
+    for (const name of readdirSync(join(dir, 'sessions'))) backdate(join(dir, 'sessions', name), 2 * 60 * 60_000);
+    for (const name of readdirSync(join(dir, 'checkpoint-history'))) backdate(join(dir, 'checkpoint-history', name), 2 * 60 * 60_000);
+
+    const result = await session.send('do some work');
+    expect(result.text).toBe('answer');
+    expect(await prune).toMatchObject({ sessions: 0 });
+    expect((await agent.session({ id: 'alice' }).load()).map((message) => message.content)).toEqual(['one', 'answer', 'two', 'answer', 'do some work', '', '"ok"', 'answer']);
+  });
+
+  it('expiredApprovals: true deletes pending approvals past their deadline, and their old paused runs go too', async () => {
+    const dir = tempDir();
+    const store = fileStore(dir);
+    const deploy = defineTool({ name: 'deploy', description: 'deploy', input: z.object({}), needsApproval: true, execute: async () => 'deployed' });
+    const agent = createAgent({ provider: mockModel([{ toolCalls: [{ name: 'deploy', id: 'call_1' }] }]), tools: [deploy], store, approvalTtlMs: 1 });
+    const paused = await agent.send('deploy', { sessionId: 'run-1' });
+    await new Promise((done) => setTimeout(done, 5));
+
+    expect(await store.prune({ olderThanMs: 0 })).toMatchObject({ checkpoints: 0, approvals: 0 });
+    expect((await agent.approvals.list()).map((approval) => approval.id)).toEqual([paused.approvalId]);
+    expect(await store.prune({ olderThanMs: 0, expiredApprovals: true })).toMatchObject({ checkpoints: 1, approvals: 1 });
+    expect(await agent.approvals.list()).toEqual([]);
+    expect(await store.checkpoints.load('run-1')).toBeNull();
+  });
+
+  it('deletes temp files a writer killed mid-write left behind, once they are older than the cutoff and a minute', async () => {
+    const dir = tempDir();
+    const store = fileStore(dir);
+    await save(store, 'big', 1);
+    const left = join(dir, 'checkpoints', `big.json.4242.${'0'.repeat(8)}-0000-4000-8000-${'0'.repeat(12)}.tmp`);
+    const fresh = join(dir, 'sessions', `s.json.4243.${'1'.repeat(8)}-0000-4000-8000-${'0'.repeat(12)}.tmp`);
+    mkdirSync(join(dir, 'sessions'), { recursive: true });
+    writeFileSync(left, '{"half":');
+    writeFileSync(fresh, '{"half":');
+    backdate(left, 2 * 60_000);
+
+    expect(await store.prune({ olderThanMs: 0 })).toMatchObject({ tempFiles: 1 });
+    expect(readdirSync(join(dir, 'checkpoints')).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+    expect(readdirSync(join(dir, 'sessions'))).toHaveLength(1);
   });
 });
 

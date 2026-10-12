@@ -67,4 +67,12 @@ describe("SqliteStore writes wait out another connection's lock (Eve E14)", () =
     expect(resolved?.pending.id).toBe('ap-1');
     expect(await store.checkpoints.load('s')).toBeNull();
   });
+
+  it('checkpoints.releaseLease (a lease left behind would block the run elsewhere for a minute)', async () => {
+    const { store, path } = openStore();
+    expect(await store.checkpoints.acquireLease!('s', 'owner-1', 30_000)).toBe(true);
+    lockFor200ms(path);
+    await store.checkpoints.releaseLease!('s', 'owner-1');
+    expect(await new SqliteStore(path).checkpoints.acquireLease!('s', 'claim:other', 30_000)).toBe(true);
+  });
 });

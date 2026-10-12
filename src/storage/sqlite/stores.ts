@@ -1,5 +1,6 @@
 import type { Message } from '../../providers/llm';
 import {
+  HAS_CHECKPOINT_HISTORY,
   listCheckpoints,
   listedCheckpoint,
   parseCheckpoint,
@@ -46,7 +47,7 @@ const parse = <T>(row: { payload?: unknown } | undefined): T | undefined =>
   row === undefined ? undefined : (JSON.parse(String(row.payload), decodeBytes) as T);
 
 /** A `leases` row as a lease record; `undefined` without a row. */
-function leaseOfRow(row: Record<string, unknown> | undefined): LeaseRecord | undefined {
+export function leaseOfRow(row: Record<string, unknown> | undefined): LeaseRecord | undefined {
   if (row === undefined) return undefined;
   return {
     owner: String(row.owner),
@@ -179,6 +180,11 @@ export class SqliteCheckpointStore implements CheckpointStore {
       checkpoint: JSON.parse(String(row.payload), decodeBytes) as Checkpoint,
     }));
   }
+  /** Whether `sessionId` has checkpoint history, without reading it. */
+  async [HAS_CHECKPOINT_HISTORY](sessionId: string): Promise<boolean> {
+    return this.sql.get('SELECT 1 FROM checkpoint_history WHERE session_id = ? LIMIT 1').get(sessionId) !== undefined;
+  }
+
   /** Eve DUR-F15: the latest checkpoint of every id, by id. */
   async list(options?: CheckpointListOptions): Promise<CheckpointListEntry[]> {
     const rows = this.sql.get('SELECT session_id, payload FROM checkpoints ORDER BY session_id').all();
@@ -236,8 +242,11 @@ export class SqliteCheckpointStore implements CheckpointStore {
       .run(sessionId, owner, lease.expiresAt, lease.host, lease.pidSpace ?? null, lease.pidStart ?? null, ttlMs);
   }
 
+  /** Like the other lease operations, waits out a busy database instead of failing (a lease left behind blocks the run for a minute). */
   async releaseLease(sessionId: string, owner: string): Promise<void> {
-    this.sql.get('DELETE FROM leases WHERE id = ? AND owner = ?').run(sessionId, owner);
+    await this.connection.transactionAsync(() => {
+      this.sql.get('DELETE FROM leases WHERE id = ? AND owner = ?').run(sessionId, owner);
+    });
   }
 }
 

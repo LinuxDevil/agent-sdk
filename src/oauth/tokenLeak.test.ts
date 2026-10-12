@@ -118,6 +118,12 @@ async function runWith(dir: string, readKey: string) {
     checkpoints.push(structuredClone(checkpoint));
     await save(id, checkpoint);
   };
+  // A run's own saves are fenced by its lease.
+  const saveIfLeased = store.checkpoints.saveIfLeased!.bind(store.checkpoints);
+  store.checkpoints.saveIfLeased = async (id, checkpoint, owner) => {
+    checkpoints.push(structuredClone(checkpoint));
+    return saveIfLeased(id, checkpoint, owner);
+  };
   const events: AgentEvent[] = [];
   const cassette = join(dir, 'cassette.json');
   const provider = recordReplay(

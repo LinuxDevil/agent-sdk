@@ -11,8 +11,14 @@ import { SDKError } from '../../execution/errors';
  */
 const BUSY_TIMEOUT_MS = 50;
 
-/** Attempts and first backoff of {@link Connection.transactionAsync}; the backoff doubles (about 5 s in all). */
-const ASYNC_RETRY_ATTEMPTS = 10;
+/**
+ * How long {@link Connection.transactionAsync} keeps retrying a locked
+ * database, and its first and longest backoff (the backoff doubles, with
+ * jitter). Several processes writing large checkpoints to one file can hold
+ * the lock in turn for seconds; giving up sooner failed calls whose work
+ * other calls then committed.
+ */
+const ASYNC_RETRY_TOTAL_MS = 30_000;
 const ASYNC_RETRY_BASE_MS = 10;
 const ASYNC_RETRY_MAX_MS = 1000;
 
@@ -100,17 +106,19 @@ export class Connection {
   /**
    * Like {@link transaction}, but when the database is locked it waits with
    * exponential backoff on the event loop (timers keep firing) instead of
-   * blocking it, and gives up with `LOUSHO_STORAGE_BUSY` after about 5 s.
+   * blocking it, and gives up with `LOUSHO_STORAGE_BUSY` after about 30 s.
    * `work` re-runs on each attempt, so it must be safe to repeat.
    */
   async transactionAsync<T>(work: () => T): Promise<T> {
+    const deadline = Date.now() + ASYNC_RETRY_TOTAL_MS;
     let delay = ASYNC_RETRY_BASE_MS;
-    for (let attempt = 1; ; attempt++) {
+    for (;;) {
       try {
         return this.transaction(work);
       } catch (error) {
-        if (!(error instanceof SDKError) || error.code !== 'LOUSHO_STORAGE_BUSY' || attempt >= ASYNC_RETRY_ATTEMPTS) throw error;
-        await new Promise<void>((done) => setTimeout(done, delay));
+        if (!(error instanceof SDKError) || error.code !== 'LOUSHO_STORAGE_BUSY' || Date.now() >= deadline) throw error;
+        // Jitter, so processes that collided do not retry in lockstep.
+        await new Promise<void>((done) => setTimeout(done, delay / 2 + Math.random() * (delay / 2)));
         delay = Math.min(delay * 2, ASYNC_RETRY_MAX_MS);
       }
     }
