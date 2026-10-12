@@ -89,7 +89,8 @@ const CASES: Case[] = [
   { command: 'chat', parse: parseChatArgs, base: ['a.yaml'], flag: ['--session', 'session', 's1'], positionals: 1, run: (a) => runChat(a, { stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough() }) },
   { command: 'dev', parse: parseDevArgs, base: ['a.yaml'], flag: ['--host', 'host', '0.0.0.0'], positionals: 1, run: runDev },
   { command: 'build', parse: parseBuildArgs, base: [], flag: ['--target', 'target', 'stub'], positionals: 0, run: (a) => runBuild(a, { stdout: () => {}, stderr: () => {} }) },
-  { command: 'mcp', parse: parseMcpArgs, base: ['a.yaml'], flag: ['--host', 'host', '0.0.0.0'], positionals: 1, run: runMcp },
+  // --host and --port need --http (stdio has neither).
+  { command: 'mcp', parse: parseMcpArgs, base: ['a.yaml', '--http'], flag: ['--host', 'host', '0.0.0.0'], positionals: 1, run: runMcp },
   { command: 'studio', parse: parseStudioArgs, base: [], flag: ['--host', 'apiHost', '0.0.0.0'], positionals: 0, run: runStudio },
   { command: 'doctor', parse: parseDoctorArgs, base: [], positionals: 1, run: (a) => runDoctorCommand(a, undefined, () => {}) },
 ];
@@ -176,8 +177,9 @@ describe('usage errors exit 2 in every command', () => {
 describe('lousho mcp, dev and studio ports', () => {
   it('reject a port that is not an integer from 0 to 65535 and accept --port=N', () => {
     for (const parse of [parseMcpArgs, parseDevArgs, parseStudioArgs]) {
-      expect(() => parse([...(parse === parseStudioArgs ? [] : ['a.yaml']), '--port', 'abc'])).toThrowError(/--port must be an integer between 0 and 65535/);
-      expect(parse([...(parse === parseStudioArgs ? [] : ['a.yaml']), '--port=4000'])).toMatchObject({ [parse === parseStudioArgs ? 'apiPort' : 'port']: 4000 });
+      const base = parse === parseStudioArgs ? [] : parse === parseMcpArgs ? ['a.yaml', '--http'] : ['a.yaml'];
+      expect(() => parse([...base, '--port', 'abc'])).toThrowError(/--port must be an integer between 0 and 65535/);
+      expect(parse([...base, '--port=4000'])).toMatchObject({ [parse === parseStudioArgs ? 'apiPort' : 'port']: 4000 });
     }
   });
 

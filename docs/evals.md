@@ -263,8 +263,10 @@ failures and soft failures listed separately.
 
 **Exit code:** `1` on any gate failure (or soft failure with `--strict`, or when
 vitest itself fails, for example a file that does not load, or is not installed,
-or a `--junit`/`--json` report cannot be written), `2` for a usage error (bad
-arguments), otherwise `0`.
+or a `--junit`/`--json` report cannot be written, or when no case ran at all:
+no eval file matched, or a `--tag` matched no case), `2` for a usage error (bad
+arguments), otherwise `0`. A case that vitest fails after the case itself
+finished (it ran past its time limit) is reported as that case failing.
 
 How results are collected: each case appends one JSON line to a file named by
 the `LOUSHO_EVAL_RESULTS` environment variable, which `lousho eval` sets and

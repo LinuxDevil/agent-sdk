@@ -120,6 +120,15 @@ const gateResult = result({
 });
 
 describe('runEval with a fake vitest', () => {
+  it('--help describes every flag', async () => {
+    const log = vi.fn();
+    expect(await runEval(['--help'], { log })).toBe(0);
+    const help = String(log.mock.calls[0][0]);
+    for (const flag of ['--tag', '--junit', '--json', '--strict', '--judge', '--record', '--replay', '--drift', '--drift-usage', '--url', '--token', '--config', '--timeout']) {
+      expect(help).toMatch(new RegExp(`\\n  ${flag}\\b[^\\n]* {2,}\\S`));
+    }
+  });
+
   it('exits 1 (not a usage error) and prints the install command when vitest is not installed', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(await runEval([], { resolveVitest: () => undefined })).toBe(1);
@@ -174,10 +183,12 @@ describe('runEval with a fake vitest', () => {
     expect(log.mock.calls[0][0]).not.toContain('1 failed');
   });
 
-  it('says so when no results were recorded', async () => {
+  it('says so and exits 1 when no results were recorded, naming the --tag that matched nothing', async () => {
     const log = vi.fn();
-    await runEval([], { resolveVitest: () => 'v', spawnVitest: fakeVitest([]).spawnVitest, log });
+    expect(await runEval([], { resolveVitest: () => 'v', spawnVitest: fakeVitest([]).spawnVitest, log })).toBe(1);
     expect(log.mock.calls[0][0]).toContain('no eval results were recorded');
+    expect(await runEval(['--tag', 'smok'], { resolveVitest: () => 'v', spawnVitest: fakeVitest([]).spawnVitest, log })).toBe(1);
+    expect(log.mock.calls[1][0]).toContain('no eval results were recorded (no eval case has the tag smok)');
   });
 
   it('passes --judge through as the judge env var and uses the user config with --config', async () => {
@@ -379,6 +390,35 @@ describe('unreportedFailures (docs-qa F2)', () => {
       ['vitest', 'plain.eval.ts', 'raw test: boom'],
     ]);
     expect(renderJunit(extra, false)).toContain('<error message="fixture failed to load" type="EvalError">');
+  });
+
+  it('fails a case vitest failed after it recorded a pass (a late timeout) instead of adding a vitest row', () => {
+    const timedOut = { status: 'failed', failureMessages: ['Error: Test timed out in 1ms.'] };
+    const report = {
+      testResults: [
+        {
+          name: file('refund.eval.ts'),
+          status: 'failed',
+          message: '',
+          assertionResults: [
+            { ...timedOut, title: 'refund flow', fullName: 'refund flow' },
+            { ...timedOut, title: 'cases [b]', fullName: 'suite cases [b]' },
+            { status: 'passed', title: 'cases [a]' },
+            { ...timedOut, title: 'repeated' },
+          ],
+        },
+      ],
+    };
+    const results = [
+      result({ name: 'refund flow', file: file('refund.eval.ts') }),
+      result({ name: 'cases', case: 'a', file: file('refund.eval.ts') }),
+      result({ name: 'cases', case: 'b', file: file('refund.eval.ts') }),
+      result({ name: 'repeated', case: 'repeated #1', file: file('refund.eval.ts') }),
+      result({ name: 'refund flow', file: file('other.eval.ts') }),
+    ];
+    expect(unreportedFailures(results, report, 1, options)).toEqual([]);
+    expect(results.map((r) => r.passed)).toEqual([false, true, false, false, true]);
+    expect(results[0]?.error).toMatch(/^Error: Test timed out in 1ms\. Raise the limit with defineEval/);
   });
 
   it('falls back to one error for the run when vitest failed with nothing failing and no report', () => {

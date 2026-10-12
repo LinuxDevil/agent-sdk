@@ -89,6 +89,12 @@ async function add(args: string[], options: { stdin?: string; tty?: boolean; fet
 const withRegistry = (...rest: string[]) => [...rest, '--registry', registry, '--dir', 'agent'];
 
 describe('lousho add', () => {
+  it('--help describes every flag', async () => {
+    const { code, out } = await add(['--help']);
+    expect(code).toBe(0);
+    for (const flag of ['--registry', '--dir', '--yes', '--allow', '--overwrite', '--dry-run', '--list']) expect(out).toMatch(new RegExp(`\\n  ${flag}\\b.* {2,}\\S`));
+  });
+
   it('parses its flags and needs a name or --list', () => {
     expect(parseAddArgs(['x', '--yes', '--dry-run', '--overwrite']).dryRun).toBe(true);
     expect(parseAddArgs(['--list']).list).toBe(true);

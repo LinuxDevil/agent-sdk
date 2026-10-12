@@ -35,8 +35,10 @@ describe('parseMcpArgs', () => {
   });
 
   it('explains how to fix a missing path or bad port', () => {
-    expect(() => parseMcpArgs([])).toThrow(/spec file path is required/);
-    expect(() => parseMcpArgs(['a.json', '--port', 'abc'])).toThrow(/--port must be an integer/);
+    expect(() => parseMcpArgs([])).toThrow(/an agent path is required \(a spec file, an agent directory or a \.ts\/\.js module\)/);
+    expect(() => parseMcpArgs(['a.json', '--http', '--port', 'abc'])).toThrow(/--port must be an integer/);
+    // stdio has no port: a --port without --http is a usage error, not silently ignored.
+    expect(() => parseMcpArgs(['a.json', '--port', '5'])).toThrow(/--port and --host need --http/);
   });
 });
 

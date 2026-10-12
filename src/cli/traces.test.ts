@@ -106,6 +106,8 @@ describe('lousho traces (M5a)', () => {
 
   it('--help prints the usage; a bad flag or --limit exits 2', async () => {
     expect((await run(['--help'])).out).toContain('Usage: lousho traces');
+    // Every flag is described, not just listed in the usage line.
+    expect((await run(['--help'])).out).toMatch(/--content +with a trace id/);
     expect((await run(['--nope'])).code).toBe(2);
     expect((await run(['--limit', '0'])).code).toBe(2);
     expect(() => parseTracesArgs(['a', 'b'])).toThrow(/unexpected argument 'b'/);

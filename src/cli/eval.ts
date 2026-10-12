@@ -63,6 +63,31 @@ export interface EvalCliArgs {
   help?: boolean;
 }
 
+const HELP = `${USAGE}
+
+Runs *.eval.ts files (defineEval()) under the vitest installed in your project and prints one row
+per case, with totals and the gate and soft failures. Exit code 1 on a gate failure, a vitest
+failure or when no case ran; 2 for a usage error.
+
+Options:
+  globs...              eval files to run (default **/*.eval.ts, or **/*.judge.eval.ts with --judge)
+  --tag t               only cases with this tag (repeat, or comma-separate, for several)
+  --junit path          write a JUnit XML report
+  --json path           write the summary and every result as JSON
+  --strict              soft failures fail the run too
+  --judge               run the *.judge.eval.ts files (llmJudge(); they call a real model)
+  --record              run against the real provider and write one cassette per case
+  --replay              run every case from its cassette, offline; a missing cassette fails the case
+  --drift               re-record into a temp directory and report how each trajectory changed
+  --drift-usage         with --drift: compare token usage too
+  --url <base>          run the cases against the agent deployed at <base> instead of in-process
+  --token <bearer>      with --url: the bearer token (default LOUSHO_EVAL_TOKEN)
+  --config <file>       use your own vitest config instead of the generated one
+  --timeout <ms>        time limit per case (0 = none; live runs default to 10 minutes)
+  -h, --help            show this help
+
+See docs/evals.md.`;
+
 const SPEC: CommandSpec = {
   command: 'eval',
   usage: USAGE,
@@ -338,13 +363,16 @@ async function runAndReport(args: EvalCliArgs, deps: Required<EvalDeps>, vitestB
       results.push(...unreportedFailures(results, vitestReport, vitestCode, { cwd: deps.cwd, strict: args.strict }));
     }
     const drift = args.drift ? applyDrift(results, args, invocation.env[DRIFT_DIR_ENV] as string) : undefined;
-    if (!noFiles) deps.log(results.length > 0 ? `\n${renderTable(results, args.strict)}` : '\nlousho eval: no eval results were recorded.');
+    // Nothing recorded verifies nothing: like a glob that matches no file, it fails (a mistyped --tag skips every case).
+    const nothingRan = !noFiles && results.length === 0;
+    const skipped = args.tags.length > 0 ? ` (no eval case has the tag ${args.tags.join(' or ')})` : '';
+    if (!noFiles) deps.log(results.length > 0 ? `\n${renderTable(results, args.strict)}` : `\nlousho eval: no eval results were recorded${skipped}.`);
     if (drift) deps.log(`\n${renderDriftTable(drift)}`);
     if (args.junit) writeReport(args.junit, renderJunit(results, args.strict));
     if (args.json) writeReport(args.json, renderJson(results, args.strict));
     // A non-zero vitest code with no recorded failure (a file that failed to
     // load, an ordinary test failing) must not read as success.
-    return results.some((r) => failsRun(r, args.strict)) || vitestCode !== 0 ? 1 : 0;
+    return results.some((r) => failsRun(r, args.strict)) || vitestCode !== 0 || nothingRan ? 1 : 0;
   } finally {
     fs.rmSync(workDir, { recursive: true, force: true });
   }
@@ -370,7 +398,7 @@ export async function runEval(rest: string[], deps: EvalDeps = {}): Promise<numb
     return USAGE_EXIT_CODE;
   }
   if (args.help) {
-    resolved.log(USAGE);
+    resolved.log(HELP);
     return 0;
   }
   try {

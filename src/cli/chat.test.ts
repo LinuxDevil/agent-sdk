@@ -300,6 +300,12 @@ describe('lousho chat command', () => {
     expect(out).toBe('');
   });
 
+  it('names lousho chat, not lousho dev, for a module that exports no agent', async () => {
+    const { code, err } = await run([path.join(fixtures, 'dev-module', 'bad.ts')], ['hi'], undefined);
+    expect(code).toBe(1);
+    expect(err).toMatch(/^lousho chat: .*bad\.ts must export a SimpleAgent/);
+  });
+
   it('fails with LOUSHO_SPEC_NOT_FOUND for a missing spec file (no raw ENOENT)', async () => {
     const { code, err } = await run([path.join(fixtures, 'nope.yaml')], ['hi'], undefined);
     expect(code).toBe(1);
