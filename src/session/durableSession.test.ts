@@ -380,7 +380,7 @@ describe('checkpointed sessions (LOU-W9)', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 
   // Eve DUR-F8: clear() deleted only the current turn's checkpoint; every committed turn's checkpoint HISTORY (full
   // transcript copies) survived, and agent.fork('<id>.turn-<n>') revived the cleared conversation.

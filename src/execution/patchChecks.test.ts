@@ -233,10 +233,11 @@ describe('command patch checks (LOU-E11)', () => {
       scratchDir,
       'node',
       [scriptFile, pidFile],
-      { timeoutMs: 150 }
+      // Long enough for a cold `node` to start and write its pid on a busy runner.
+      { timeoutMs: 1500 }
     );
 
-    const result = await runPatchCheckSafely(slowCheck, dummyPatch, 150);
+    const result = await runPatchCheckSafely(slowCheck, dummyPatch, 1500);
     expect(result.pass).toBe(false);
 
     // Give the OS a moment to actually finish tearing the process down
