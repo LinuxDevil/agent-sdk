@@ -10,6 +10,9 @@ import { mockModel } from '../../../testing';
 import { buildServer, sanitizeToolName, type ServerSpec } from './buildServer';
 import { serveMcp, type ServeMcpHandle } from './serveMcp';
 
+/** Busy CI runners can take seconds to start a run or deliver a cancel; vi.waitFor's 1 s default is too tight. */
+const SLOW_RUNNER = { timeout: 5000 };
+
 const searchDocs = defineTool({
   name: 'search_docs',
   description: 'Search the docs',
@@ -183,7 +186,7 @@ describe('serveMcp agent tool', () => {
     await startedPromise;
     controller.abort();
     await expect(call).rejects.toBeDefined();
-    await vi.waitFor(() => expect(seen?.aborted).toBe(true));
+    await vi.waitFor(() => expect(seen?.aborted).toBe(true), SLOW_RUNNER);
   });
 });
 
@@ -316,7 +319,7 @@ describe('serveMcp over HTTP', () => {
     // The timeout must fire after the run has started (a cancel for a request not yet in flight matches
     // nothing), which a cold CI runner can take well over 200 ms to reach; the run itself lasts 5 s.
     await expect(client.callTool({ name: 'slow', arguments: { message: 'x' } }, undefined, { timeout: 1500 })).rejects.toThrow(/timed out/i);
-    await vi.waitFor(() => expect(seen?.aborted).toBe(true), { timeout: 3000 });
+    await vi.waitFor(() => expect(seen?.aborted).toBe(true), SLOW_RUNNER);
   });
 
   it('a cancel naming a request id two clients have in flight is ignored', async () => {
@@ -337,7 +340,7 @@ describe('serveMcp over HTTP', () => {
     const call = () =>
       fetch(server.url!, { method: 'POST', headers, body: JSON.stringify({ jsonrpc: '2.0', id: 7, method: 'tools/call', params: { name: 'slow', arguments: { message: 'x' } } }) });
     const calls = [call(), call()];
-    await vi.waitFor(() => expect(started).toBe(2));
+    await vi.waitFor(() => expect(started).toBe(2), SLOW_RUNNER);
     await fetch(server.url!, { method: 'POST', headers, body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 7 } }) });
     const results = await Promise.all(calls.map(async (response) => (await response).json()));
     expect(signals.map((signal) => signal.aborted)).toEqual([false, false]);
@@ -376,21 +379,21 @@ describe('serveMcp over HTTP', () => {
     expect(transports[0].sessionId).not.toBe(transports[1].sessionId);
     // Both clients send the same JSON-RPC ids, from the same address and User-Agent.
     const full = clients[0].callTool({ name: 'slow', arguments: { message: 'a' } });
-    await vi.waitFor(() => expect(signals).toHaveLength(1));
+    await vi.waitFor(() => expect(signals).toHaveLength(1), SLOW_RUNNER);
     // Cancel only once the second run has started: a fixed client timeout can fire before the
     // server registers the request on a busy runner, and then there is nothing to abort yet.
     const cancel = new AbortController();
     const second = clients[1].callTool({ name: 'slow', arguments: { message: 'b' } }, undefined, { signal: cancel.signal });
-    await vi.waitFor(() => expect(signals).toHaveLength(2));
+    await vi.waitFor(() => expect(signals).toHaveLength(2), SLOW_RUNNER);
     cancel.abort();
     await expect(second).rejects.toThrow();
-    await vi.waitFor(() => expect(signals[1]?.aborted).toBe(true));
+    await vi.waitFor(() => expect(signals[1]?.aborted).toBe(true), SLOW_RUNNER);
     expect(textOf(await full)).toBe('done');
     expect(signals[0].aborted).toBe(false);
   });
 
   it("a late cancel from another session does not stop a request with the same id, and a cancelled request is answered", async () => {
-    const { agent: slow, signals } = slowAgent(400);
+    const { agent: slow, signals } = slowAgent(2000);
     const server = await serveMcp({ agent: slow, name: 'slow', transport: { type: 'http', port: 0 }, warn: () => {} });
     closers.push(server.close);
     const headers = (session: string) => ({ 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'Mcp-Session-Id': session });
@@ -400,14 +403,14 @@ describe('serveMcp over HTTP', () => {
       fetch(server.url!, { method: 'POST', headers: headers(session), body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: 7 } }) });
 
     const a = call('session-a');
-    await vi.waitFor(() => expect(signals).toHaveLength(1));
+    await vi.waitFor(() => expect(signals).toHaveLength(1), SLOW_RUNNER);
     // session-b has nothing in flight under id 7: its (late) cancel must not reach session-a.
     await cancel('session-b');
     expect(signals[0].aborted).toBe(false);
     expect((await (await a).json()).result.content[0].text).toBe('done');
 
     const b = call('session-b');
-    await vi.waitFor(() => expect(signals).toHaveLength(2));
+    await vi.waitFor(() => expect(signals).toHaveLength(2), SLOW_RUNNER);
     await cancel('session-b');
     const answer = await b;
     expect(signals[1].aborted).toBe(true);
