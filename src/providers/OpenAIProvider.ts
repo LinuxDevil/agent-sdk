@@ -62,10 +62,14 @@ export interface OpenAIProviderConfig extends AiSdkProviderConfig {
   store?: boolean;
 }
 
-/** `LOUSHO_OPENAI_API`, where there is a `process.env` (not in a browser or Worker). */
+/** `process.env`, where there is one (not in a browser or Worker). */
+function processEnv(): Record<string, string | undefined> | undefined {
+  return (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+}
+
+/** `LOUSHO_OPENAI_API`, where there is a `process.env`. */
 function envApi(): string | undefined {
-  const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
-  return env?.LOUSHO_OPENAI_API?.trim().toLowerCase();
+  return processEnv()?.LOUSHO_OPENAI_API?.trim().toLowerCase();
 }
 
 /**
@@ -79,7 +83,9 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
   /** Loads `@ai-sdk/openai` on first use (it is an optional peer). */
   private readonly loadProvider = lazyValue(async () => {
     const { createOpenAI } = await loadOptionalPeer('@ai-sdk/openai', () => import('@ai-sdk/openai'), aiMajorOf(this.ai));
-    return createOpenAI({ ...this.clientOptions(), organization: this.config.organization });
+    // `@ai-sdk/openai` 2+ reads OPENAI_BASE_URL itself; 0.x/1.x (the ai 4 line) does not, so it is passed explicitly.
+    const baseURL = this.config.baseURL ?? (processEnv()?.OPENAI_BASE_URL || undefined);
+    return createOpenAI({ ...this.clientOptions(), baseURL, organization: this.config.organization });
   });
 
   /** PDF file parts go to the model on ai 6 and 7; older peers have no file parts. */

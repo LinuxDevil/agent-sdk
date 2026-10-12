@@ -169,7 +169,7 @@ export function checkOptionalPeers(env: DoctorEnvironment, needs: SpecNeeds): Do
   return [...providers, ...features].map(([name, peer]) => checkOptionalPeer(env, name, peer));
 }
 
-/** The env variable the provider package reads for a custom endpoint (a local or OpenAI-compatible server). */
+/** The env variable the provider reads for a custom endpoint (a local or OpenAI-compatible server), on every provider-package major. */
 const BASE_URL_ENV: Record<string, string> = { openai: 'OPENAI_BASE_URL', anthropic: 'ANTHROPIC_BASE_URL' };
 
 /** `; base URL <url> (from <VAR>)` when the provider's base-URL variable is set; credentials and query are left out. */
@@ -239,7 +239,7 @@ function displayUrl(raw: string): string | null {
   }
 }
 
-/** OPENAI_BASE_URL (read by `@ai-sdk/openai`, so `openai/<model>` calls it); only shown when set. */
+/** OPENAI_BASE_URL (passed to `@ai-sdk/openai` by OpenAIProvider, so `openai/<model>` calls it); only shown when set. */
 export function checkOpenAIBaseUrl(env: DoctorEnvironment): DoctorCheck | null {
   const raw = env.env.OPENAI_BASE_URL;
   if (!raw) return null;

@@ -428,8 +428,9 @@ const agent = createAgent({
   `registerModel({ id, provider: 'openai', contextWindow })` once (see
   [Local and unknown models](./compaction.md#local-and-unknown-models)).
 
-**The `openai/<model>` string with `OPENAI_BASE_URL`.** `@ai-sdk/openai` reads
-`OPENAI_BASE_URL`, so `createAgent({ model: 'openai/qwen3-8b' })` with
+**The `openai/<model>` string with `OPENAI_BASE_URL`.** `OpenAIProvider` passes
+`OPENAI_BASE_URL` to `@ai-sdk/openai` when no `baseURL` is configured (on every
+major, including the 1.x line that pairs with `ai` 4), so `createAgent({ model: 'openai/qwen3-8b' })` with
 `OPENAI_BASE_URL=http://localhost:1234/v1` and a dummy `OPENAI_API_KEY=any`
 calls the local server without code changes. That route uses the Responses
 API unless `LOUSHO_OPENAI_API=chat` is set too, which selects Chat Completions

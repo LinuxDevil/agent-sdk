@@ -83,6 +83,22 @@ describe('OpenAIProvider', () => {
       await expect(local.generate({ messages: [{ role: 'user', content: 'hi' }], model: 'qwen3' })).rejects.toThrow();
       expect(String(fetchMock.mock.calls[0][0])).toBe('http://localhost:1234/v1/chat/completions');
     });
+
+    // `@ai-sdk/openai` 1.x (the ai 4 line) does not read OPENAI_BASE_URL itself; the provider passes it.
+    it('calls OPENAI_BASE_URL when no baseURL is configured, on every @ai-sdk/openai major', async () => {
+      const fetchMock = vi.fn().mockImplementation(
+        async () => new Response(JSON.stringify({ error: { message: 'stub' } }), { status: 400 })
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      vi.stubEnv('OPENAI_BASE_URL', 'http://127.0.0.1:4999/v1');
+      try {
+        const local = new OpenAIProvider({ name: 'openai', apiKey: 'any', api: 'chat', maxRetries: 0 });
+        await expect(local.generate({ messages: [{ role: 'user', content: 'hi' }], model: 'qwen3' })).rejects.toThrow();
+        expect(String(fetchMock.mock.calls[0][0])).toBe('http://127.0.0.1:4999/v1/chat/completions');
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
   });
 
   // Note: Actual API calls are not tested to avoid external dependencies

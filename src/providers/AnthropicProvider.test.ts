@@ -192,6 +192,21 @@ describe('AnthropicProvider', () => {
     });
   });
 
+  // `@ai-sdk/anthropic` 0.x/1.x (the ai 4 line) does not read ANTHROPIC_BASE_URL itself; the provider passes it.
+  it('builds its model against ANTHROPIC_BASE_URL when no baseURL is configured', async () => {
+    vi.stubEnv('ANTHROPIC_BASE_URL', 'http://127.0.0.1:4998/v1');
+    try {
+      const local = new AnthropicProvider({ name: 'anthropic', apiKey: 'any' });
+      type Built = { config: { baseURL?: string; url?: (o: { path: string }) => string } };
+      const model = await (local as unknown as { createModel(id: string): Promise<Built> }).createModel('claude-sonnet-4-5');
+      // 0.x keeps `baseURL` on the model config; newer majors keep a `url()` builder.
+      const url = model.config.baseURL ?? model.config.url?.({ path: '/messages' });
+      expect(url).toContain('http://127.0.0.1:4998/v1');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   describe('registry', () => {
     it('is retrievable via LLMProviderRegistry.create under the name "anthropic"', () => {
       expect(LLMProviderRegistry.has('anthropic')).toBe(true);
