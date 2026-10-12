@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { runBuild, parseBuildArgs, stubAdapter, stubAdapterCalls, BuildIO } from './build';
 import { registerAdapter } from '../deploy';
+import { missingProviderPeerWarning } from './buildPeers';
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const BIN = path.join(REPO_ROOT, 'bin', 'lousho.js');
@@ -52,7 +53,7 @@ describe('runBuild', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-build-out-'));
     fs.writeFileSync(path.join(dir, 'keep.txt'), 'x');
     const io = captureIO();
-    expect(await runBuild(['--target=stub', `--out=${dir}`], io)).toBe(0);
+    expect(await runBuild(['--target=stub', '--agent=agent.yaml', `--out=${dir}`], io)).toBe(0);
     expect(io.err.join('\n')).toMatch(/^Warning: --out .* is not empty/);
   });
 
@@ -72,11 +73,15 @@ describe('runBuild', () => {
     expect(stubAdapterCalls).toEqual([]);
   });
 
-  it('exits 2 (usage error) when --target is missing or a flag is unknown', async () => {
+  it('exits 2 (usage error) when --target or the agent path is missing, or a flag is unknown', async () => {
     const io = captureIO();
     expect(await runBuild([], io)).toBe(2);
     expect(io.err.join('\n')).toContain('--target is required');
     expect(await runBuild(['--target=stub', '--bogus'], captureIO())).toBe(2);
+    const noAgent = captureIO();
+    expect(await runBuild(['--target=stub'], noAgent)).toBe(2);
+    expect(noAgent.err.join('\n')).toContain('an agent path is required. Usage: lousho build <agent-dir|spec> --target=');
+    expect(stubAdapterCalls).toEqual([]);
   });
 
   it("warns when the provider package of the spec's provider is not installed, and builds anyway", async () => {
@@ -103,6 +108,19 @@ describe('runBuild', () => {
     const mock = { ...captureIO(), resolveFrom: dir };
     await runBuild(['--target=stub', `--agent=${spec}`], mock);
     expect(mock.err).toEqual([]);
+  });
+
+  it('words the peer warning for the target: node-server and docker builds list the package in their package.json', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-build-peer-'));
+    const spec = path.join(dir, 'agent.yaml');
+    fs.writeFileSync(spec, 'name: a\nprompt: p\nprovider:\n  type: openai\n  model: gpt-4o-mini\n');
+    const worker = missingProviderPeerWarning(spec, dir, 'cloudflare-worker');
+    expect(worker).toMatch(/would fail every request[\s\S]*Install it before building/);
+    const server = missingProviderPeerWarning(spec, dir, 'node-server');
+    expect(server).toContain("The build's package.json lists it");
+    expect(server).toContain('run `npm install` in the build folder before `node dist/server.js`');
+    expect(server).not.toContain('would fail every request');
+    expect(missingProviderPeerWarning(spec, dir, 'docker')).toContain('the Docker image installs it');
   });
 });
 

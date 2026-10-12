@@ -11,6 +11,7 @@
  * Fetch-runtime safe: no `node:*` import.
  */
 import { ConfigurationError, SDKError } from '../execution/errors';
+import { brandClass } from '../utils/brand';
 import { markPropagating } from '../execution/propagatingToolError';
 import type { Principal } from '../auth/types';
 import { isOAuthProvider, registeredOAuthProvider, type OAuthProvider } from './defineOAuthProvider';
@@ -57,6 +58,7 @@ export class SignInPendingError extends SDKError {
     this.name = 'SignInPendingError';
   }
 }
+brandClass(SignInPendingError, 'SignInPendingError');
 
 /**
  * The user credential a sign-in pause of a run acting for `principal` waits on.

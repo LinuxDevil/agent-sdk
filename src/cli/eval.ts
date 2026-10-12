@@ -21,7 +21,7 @@ import { RESULTS_ENV, TAGS_ENV } from '../evals/recorder';
 import { REMOTE_TOKEN_ENV, REMOTE_URL_ENV } from '../evals/remoteTarget';
 import { SDKError } from '../execution/errors';
 import { readCassette } from '../testing/cassette';
-import { parseCommand, stringValue, usageError, type CommandSpec } from './args';
+import { USAGE_EXIT_CODE, parseCommand, stringValue, usageError, type CommandSpec } from './args';
 import { failsRun, parseResults, renderDriftTable, renderJson, renderJunit, renderTable, unreportedFailures, vitestError, type DriftRow } from './evalReport';
 
 const USAGE =
@@ -352,8 +352,8 @@ async function runAndReport(args: EvalCliArgs, deps: Required<EvalDeps>, vitestB
 
 /**
  * CLI entry point. Resolves with the exit code: 0 all good, 1 a gate failure
- * (or soft failure with `--strict`, or vitest itself failing), 2 the command
- * could not run (bad arguments, vitest missing).
+ * (or soft failure with `--strict`, vitest missing or failing, a report that
+ * cannot be written), 2 a usage error (bad arguments).
  */
 export async function runEval(rest: string[], deps: EvalDeps = {}): Promise<number> {
   const resolved: Required<EvalDeps> = {
@@ -362,20 +362,26 @@ export async function runEval(rest: string[], deps: EvalDeps = {}): Promise<numb
     cwd: deps.cwd ?? process.cwd(),
     log: deps.log ?? ((message) => console.log(message)),
   };
+  let args: EvalCliArgs;
   try {
-    const args = parseEvalArgs(rest);
-    if (args.help) {
-      resolved.log(USAGE);
-      return 0;
-    }
+    args = parseEvalArgs(rest);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return USAGE_EXIT_CODE;
+  }
+  if (args.help) {
+    resolved.log(USAGE);
+    return 0;
+  }
+  try {
     const vitestBin = resolved.resolveVitest(resolved.cwd);
     if (!vitestBin) {
       console.error('lousho eval: vitest is not installed in this project. Install it with:\n  npm install --save-dev vitest');
-      return 2;
+      return 1;
     }
     return await runAndReport(args, resolved, vitestBin);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
-    return 2;
+    return 1;
   }
 }

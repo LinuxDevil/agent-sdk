@@ -6,7 +6,7 @@
  */
 
 import { errorHelp, type ErrorCode } from './errorCodes';
-import { instanceOfBranded } from './brand';
+import { brandClass, instanceOfOwnBrand } from './brand';
 
 const SDK_ERROR_BRAND = Symbol.for('lousho.SDKError');
 
@@ -46,9 +46,12 @@ function withHelp(message: string, code: string, hint?: string, docs?: string): 
  * ```
  */
 export class SDKError extends Error {
-  /** `instanceof SDKError` also holds for errors from another loaded copy of the SDK (LOU-D42). */
+  /**
+   * `instanceof SDKError` also holds for errors from another loaded copy of the SDK (LOU-D42), and so does
+   * `instanceof` of each subclass the SDK exports (`ValidationError`, `TimeoutError`, ...).
+   */
   static [Symbol.hasInstance](value: unknown): boolean {
-    return instanceOfBranded(this, SDKError, SDK_ERROR_BRAND, value);
+    return instanceOfOwnBrand(this, value);
   }
 
   get [SDK_ERROR_BRAND](): true {
@@ -80,3 +83,6 @@ export class SDKError extends Error {
     return `${this.name}: ${withHelp(this.detail, this.code, this.hint, this.docs)}`;
   }
 }
+
+// The same brand as the getter above (`lousho.SDKError`), registered for instanceOfOwnBrand().
+brandClass(SDKError, 'SDKError');

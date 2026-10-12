@@ -1,7 +1,8 @@
 /**
  * `lousho build`: warns when the provider package the agent's own provider
  * needs is not installed. The build itself succeeds without it (optional
- * peers stay lazy), but the built server would then fail every request.
+ * peers stay lazy), but the built agent fails every request until the
+ * package is installed where it runs (or, for a Worker, before building).
  */
 import * as fs from 'node:fs';
 import { createRequire } from 'node:module';
@@ -75,9 +76,11 @@ function aiMajor(req: NodeJS.Require): AiMajor {
 /**
  * A warning when the agent at `agentPath` uses a built-in provider whose
  * package does not resolve from `resolveFrom` (the SDK's folder, where the
- * bundler resolves it), else undefined.
+ * bundler resolves it), else undefined. `target` picks the advice: a
+ * node-server or docker build declares the package in its own package.json,
+ * a Worker bundles it at build time.
  */
-export function missingProviderPeerWarning(agentPath: string, resolveFrom: string): string | undefined {
+export function missingProviderPeerWarning(agentPath: string, resolveFrom: string, target?: string): string | undefined {
   const name = agentProviderName(agentPath)?.toLowerCase();
   const info = listProviders().find((provider) => provider.name === name);
   if (!info) return undefined;
@@ -85,8 +88,15 @@ export function missingProviderPeerWarning(agentPath: string, resolveFrom: strin
   const major = aiMajor(req);
   const peer = info.peers[major].name;
   if (canResolve(req, peer)) return undefined;
+  const missing = `Warning: the agent uses the '${info.name}' provider, but its package ${peer} is not installed here.`;
+  if (target === 'docker') {
+    return `${missing} The build's package.json lists it and the Docker image installs it; dist/server.js run without that install fails every request (LOUSHO_PEER_MISSING).`;
+  }
+  if (target === 'node-server') {
+    return `${missing} The build's package.json lists it: run \`npm install\` in the build folder before \`node dist/server.js\`, or every request fails (LOUSHO_PEER_MISSING).`;
+  }
   return (
-    `Warning: the agent uses the '${info.name}' provider, but its package ${peer} is not installed, so the built ` +
-    `agent would fail every request (LOUSHO_PEER_MISSING). Install it before building, or wherever the build runs: ${peerInstallCommand(peer, major)}`
+    `${missing} The built agent would fail every request (LOUSHO_PEER_MISSING). ` +
+    `Install it before building, or wherever the build runs: ${peerInstallCommand(peer, major)}`
   );
 }

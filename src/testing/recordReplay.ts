@@ -26,6 +26,7 @@ import {
 } from './cassette';
 import { createSanitizer, firstDifference, sortTools, stableStringify, type Sanitizer } from './fingerprint';
 import { SDKError } from '../execution/errors';
+import { brandClass } from '../utils/brand';
 import { markPropagating } from '../execution/propagatingToolError';
 import type { HostedToolType } from '../tools/hosted';
 import type { HostedToolCall } from '../providers/llm';
@@ -115,6 +116,7 @@ export class CassetteMismatchError extends SDKError {
     markPropagating(this);
   }
 }
+brandClass(CassetteMismatchError, 'CassetteMismatchError');
 
 function toCassetteError(error: unknown, sanitizer: Sanitizer): CassetteError {
   const err = error instanceof Error ? error : new Error(String(error));

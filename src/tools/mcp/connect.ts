@@ -15,6 +15,7 @@ import type { NamedToolDescriptor } from '../../types';
 import type { OAuthTokenStore } from '../../oauth/types';
 import { noopLogger, type Logger } from '../../execution/logger';
 import { SDKError } from '../../utils/sdkError';
+import { brandClass } from '../../utils/brand';
 import { loadOptionalPeer, MissingPeerDependencyError } from '../../providers/optionalPeer';
 import { loadMcpTools, type McpClientLike } from './McpToolLoader';
 import { assertMcpOAuth, hasMcpOAuth, isMcpAuthError, mcpAuthRequired, mcpFetch, mcpStoreMissing, storeOAuthProvider } from './mcpOAuth';
@@ -109,6 +110,7 @@ export class McpStartError extends SDKError {
     this.stderr = details.stderr;
   }
 }
+brandClass(McpStartError, 'McpStartError');
 
 /** What a stdio server's process did while starting: its stderr tail and how it exited. */
 interface StdioWatch {

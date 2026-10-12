@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
+import { MissingPeerDependencyError } from '../providers/optionalPeer';
 import { memoryStore, type AgentStore } from '../storage/agentStore';
 import { createRouteHandler, type RouteHandlerOptions } from './routeHandler';
 import { serveFetch } from './fetchRoutes';
@@ -251,6 +252,26 @@ describe('error redaction (A1, F11)', () => {
     const agent = createAgent({ provider: mockModel([{ error: failing() }]), store: memoryStore() });
     const request = () => new Request('http://x/chat', { method: 'POST', body: JSON.stringify({ sessionId: 's', input: 'hi' }) });
     expect(await (await serveFetch(request(), { name: 'server', agent: () => agent })).text()).not.toContain('raise_exception');
+  });
+
+  it("shows a missing provider package's code and install command, which hold no provider text", async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const missing = new MissingPeerDependencyError('@ai-sdk/openai', 'npm install @ai-sdk/openai@^4.0.0');
+    const agent = () => createAgent({ provider: mockModel([{ error: missing }]), store: memoryStore() });
+    const request = (body: unknown) =>
+      new Request('http://x/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const expected = { code: 'LOUSHO_PEER_MISSING', message: expect.stringContaining('npm install @ai-sdk/openai@^4.0.0') };
+    const error = (await (await serveFetch(request({ sessionId: 's', input: 'hi' }), { name: 'server', agent })).text())
+      .split('\n')
+      .filter((line) => line.startsWith('data: '))
+      .map((line) => JSON.parse(line.slice(6)))
+      .find((event) => event.type === 'error');
+    expect(error.error).toMatchObject(expected);
+
+    // The non-streamed { message } body answers 500 with the same code and command.
+    const legacy = await serveFetch(request({ message: 'hi' }), { name: 'server', agent });
+    expect(legacy.status).toBe(500);
+    expect(await legacy.json()).toMatchObject({ code: expected.code, error: expected.message });
   });
 });
 

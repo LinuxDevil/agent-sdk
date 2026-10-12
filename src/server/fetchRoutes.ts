@@ -190,8 +190,19 @@ const DONE_FRAME = 'event: done\ndata: {}\n\n';
 /** A1: what a client sees of an error unless `exposeErrors` is set. */
 const PUBLIC_ERROR_MESSAGE = 'The request failed. The server log has the details.';
 
-function publicError({ name, code }: AgentEventError): AgentEventError {
-  return { name, message: PUBLIC_ERROR_MESSAGE, ...(code !== undefined && { code }) };
+/**
+ * Codes whose message is the SDK's own setup advice (no provider text, no
+ * secrets), so a client sees it: a missing provider package names the
+ * `npm install` command the server needs.
+ */
+const SETUP_ERROR_CODES = new Set(['LOUSHO_PEER_MISSING']);
+
+function publicMessage(code: unknown, message: string): string {
+  return typeof code === 'string' && SETUP_ERROR_CODES.has(code) ? message : PUBLIC_ERROR_MESSAGE;
+}
+
+function publicError({ name, message, code }: AgentEventError): AgentEventError {
+  return { name, message: publicMessage(code, message), ...(code !== undefined && { code }) };
 }
 
 /**
@@ -316,7 +327,7 @@ function failureResponse(ctx: ChatRoutesContext, error: unknown): Response {
   if (status !== 500 || ctx.exposeErrors) return jsonResponse(status, { error: (error as Error).message });
   console.error(`[${ctx.name}] request failed:`, error);
   const code = (error as { code?: unknown } | null)?.code;
-  return jsonResponse(500, { error: PUBLIC_ERROR_MESSAGE, ...(typeof code === 'string' && code && { code }) });
+  return jsonResponse(500, { error: publicMessage(code, String((error as Error | null)?.message)), ...(typeof code === 'string' && code && { code }) });
 }
 
 const ACTION_WORDS: Record<SessionAction, string> = { read: 'read', chat: 'continue', approve: 'decide approvals of' };

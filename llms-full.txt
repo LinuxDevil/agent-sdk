@@ -493,9 +493,11 @@ as `HookRegistry`, `SDKError` or `globalToolRegistry` is the same object whichev
 entry that exports it you import it from, within one module format (`globalToolRegistry`
 is exported by `./executor` and `./tools`, not by the root). An ESM `import` and a CJS `require`
 of the package in one process still load two separate copies (Node's dual-package
-hazard), so a class from one is not `===` the other. `instanceof SDKError` and
-`instanceof HookRegistry` are safe across the two copies (they check a
-`Symbol.for` brand); for other classes, use one module format per process.
+hazard), so a class from one is not `===` the other. `instanceof SDKError`, of
+each `SDKError` subclass the SDK exports (`ValidationError`, `TimeoutError`,
+`RateLimitError`, `LLMProviderError`, `MissingPeerDependencyError`, ...) and of
+`HookRegistry` are safe across the two copies (they check a `Symbol.for`
+brand); for other classes, use one module format per process.
 
 The entries `exports` declares, and what each one holds:
 
@@ -3237,7 +3239,9 @@ permission rules and sub-agents see it too: see
 - **Errors.** The session routes send an error's `name` and `code` with a
   generic message. The full error (a provider's response body, a chat template)
   goes to the server log (`console.error`) and to `onEvent`. Pass
-  `exposeErrors: true` to send the raw message, as `lousho dev` does.
+  `exposeErrors: true` to send the raw message, as `lousho dev` does. A
+  missing provider package (`LOUSHO_PEER_MISSING`) always sends its message:
+  the SDK's own `npm install` command.
 - `basic()` only over HTTPS; a bearer token is a password too, so terminate TLS
   in front of any server that is not on localhost.
 - Keep `issuer` and `audience` set for `jwt()`: a token minted for another of
@@ -4725,7 +4729,7 @@ still the flag followed by the path.
 (an agent that cannot load, a build error, `lousho eval`'s gate failure, no
 matching trace, `lousho add` refusing an item without `--yes`), and 2 for a
 usage error: an unknown command, an unknown flag, a missing or invalid
-value, an extra argument, or a missing `--target`. `lousho build` prints where it wrote the build (default
+value, an extra argument, or a missing `--target` or agent path. `lousho build` prints where it wrote the build (default
 `.lousho/build/<target>`) and the command to run there.
 
 **`.env`.** The commands that run an agent (`dev`, `chat`, `acp`, `mcp`),
@@ -7856,6 +7860,11 @@ is `quota-exceeded`, so `LOUSHO_PROVIDER_REQUEST_FAILED`).
 **Means:** a feature needs an optional package that is not installed
 (`MissingPeerDependencyError`, or a provider's SDK such as `@ai-sdk/openai`).
 
+A model call whose provider package is missing fails with this code (a
+`CompactedLLMProviderError` whose `cause` is the `MissingPeerDependencyError`),
+not `LOUSHO_PROVIDER_REQUEST_FAILED`, and the server routes send its message
+(the install command) to the client instead of the generic one.
+
 **Fix:** run the `npm install` command in the message (also on
 `error.installCommand`). See [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md).
 
@@ -9133,13 +9142,14 @@ lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judg
 | `--drift` | re-record into a temp directory and report how each case's trajectory changed (`--drift-usage` also compares tokens) |
 
 It spawns the vitest installed in your project (vitest is *your* dependency; if
-it is missing the command prints `npm install --save-dev vitest` and exits 2),
+it is missing the command prints `npm install --save-dev vitest` and exits 1),
 then prints one row per case with its scores and duration, totals, and the gate
 failures and soft failures listed separately.
 
 **Exit code:** `1` on any gate failure (or soft failure with `--strict`, or when
-vitest itself fails, for example a file that does not load), `2` when it cannot
-run at all (bad arguments, vitest missing), otherwise `0`.
+vitest itself fails, for example a file that does not load, or is not installed,
+or a `--junit`/`--json` report cannot be written), `2` for a usage error (bad
+arguments), otherwise `0`.
 
 How results are collected: each case appends one JSON line to a file named by
 the `LOUSHO_EVAL_RESULTS` environment variable, which `lousho eval` sets and

@@ -234,37 +234,72 @@ const IGNORED_SEGMENT = /(^|[\\/])(node_modules|\.git)([\\/]|$)/;
  * to a temp file, then rename) is no longer watched after its first save.
  */
 function watchTree(root: string, onChange: (name: string) => void): () => void {
-  const watchers = new Map<string, fs.FSWatcher>();
-  const watchDir = (dir: string): void => {
-    if (watchers.has(dir) || IGNORED_SEGMENT.test(path.relative(root, dir))) return;
-    let watcher: fs.FSWatcher;
-    try {
-      watcher = fs.watch(dir, { persistent: false }, (_event, name) => {
-        const changed = path.join(dir, name ?? '');
-        if (name !== null && fs.statSync(changed, { throwIfNoEntry: false })?.isDirectory()) watchDir(changed);
-        onChange(path.relative(root, changed));
-      });
-    } catch {
-      return; // removed before it could be watched
-    }
-    // A removed directory's watcher errors; the parent's watcher reports the removal.
-    watcher.on('error', () => {
-      watcher.close();
-      watchers.delete(dir);
-    });
-    watchers.set(dir, watcher);
-    let entries: fs.Dirent[] = [];
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      // removed meanwhile; its watcher errors and is dropped
-    }
-    for (const entry of entries) {
-      if (entry.isDirectory()) watchDir(path.join(dir, entry.name));
+  const watchers = new Map<string, { watcher: fs.FSWatcher; ino: number }>();
+  /** Stops watching `dir` and everything below it. */
+  const unwatch = (dir: string): void => {
+    for (const [watched, { watcher }] of watchers) {
+      if (watched === dir || watched.startsWith(dir + path.sep)) {
+        watcher.close();
+        watchers.delete(watched);
+      }
     }
   };
+  /** Closes `watcher`, and stops watching `dir` when it is still the one watching it. */
+  const drop = (dir: string, watcher: fs.FSWatcher): void => {
+    if (watchers.get(dir)?.watcher === watcher) unwatch(dir);
+    else watcher.close();
+  };
+  /** Whether `dir` is still the very directory `watcher` was opened on (not removed, not replaced by a new one). */
+  const isCurrent = (dir: string, watcher: fs.FSWatcher): boolean => {
+    const entry = watchers.get(dir);
+    return entry?.watcher === watcher && fs.statSync(dir, { throwIfNoEntry: false })?.ino === entry.ino;
+  };
+  /**
+   * `dir`'s stats when it is a directory not watched yet. A directory removed and created again
+   * (git checkout, a regenerated folder) is a new one: its old watcher is dead (on Linux it gets a
+   * 'rename' event, not an error), so it is dropped.
+   */
+  const unwatched = (dir: string): fs.Stats | undefined => {
+    const stat = fs.statSync(dir, { throwIfNoEntry: false });
+    if (!stat?.isDirectory() || watchers.get(dir)?.ino === stat.ino) return undefined;
+    unwatch(dir);
+    return stat;
+  };
+  const onEvent = (dir: string, watcher: fs.FSWatcher, name: string | null): void => {
+    // The directory itself went away: its parent's watcher reports the removal.
+    if (!isCurrent(dir, watcher)) return drop(dir, watcher);
+    const changed = path.join(dir, name ?? '');
+    // A changed entry that is a directory (new, or created again) is watched; anything else is no longer.
+    if (fs.statSync(changed, { throwIfNoEntry: false })?.isDirectory()) watchDir(changed);
+    else unwatch(changed);
+    onChange(path.relative(root, changed));
+  };
+  const open = (dir: string): fs.FSWatcher | undefined => {
+    try {
+      const watcher: fs.FSWatcher = fs.watch(dir, { persistent: false }, (_event, name) => onEvent(dir, watcher, name));
+      watcher.on('error', () => drop(dir, watcher));
+      return watcher;
+    } catch {
+      return undefined; // removed before it could be watched
+    }
+  };
+  const subdirectories = (dir: string): string[] => {
+    try {
+      return fs.readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => path.join(dir, e.name));
+    } catch {
+      return []; // removed meanwhile; its watcher is dropped on its next event
+    }
+  };
+  function watchDir(dir: string): void {
+    if (IGNORED_SEGMENT.test(path.relative(root, dir))) return;
+    const stat = unwatched(dir);
+    const watcher = stat && open(dir);
+    if (!stat || !watcher) return;
+    watchers.set(dir, { watcher, ino: stat.ino });
+    subdirectories(dir).forEach(watchDir);
+  }
   watchDir(root);
-  return () => watchers.forEach((w) => w.close());
+  return () => watchers.forEach(({ watcher }) => watcher.close());
 }
 
 /** Watches the target's sources; calls `onChange` with the name that changed (relative to the target's folder). */

@@ -12,6 +12,7 @@ import { resolveProvider } from '../providers/resolveProvider';
 import type { ExecuteOptions } from './AgentExecutor';
 import { runEventsOf } from './agentRun';
 import { SDKError } from './errors';
+import { brandClass } from '../utils/brand';
 import { SECRET_PATTERNS } from './secretPatterns';
 
 /** What a guardrail checks: the new user input, the assistant text, or a tool call's arguments. */
@@ -100,6 +101,7 @@ export class GuardrailError extends SDKError {
     this.name = 'GuardrailError';
   }
 }
+brandClass(GuardrailError, 'GuardrailError');
 
 /** The run options guardrails read (a sub-agent's tool call sees the inherited ones). */
 type GuardrailRuntime = Pick<ExecuteOptions, 'guardrails' | 'signal'>;

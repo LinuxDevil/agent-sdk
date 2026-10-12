@@ -48,7 +48,7 @@ const SPEC_EXTENSIONS = new Set(['.yaml', '.yml', '.json']);
  */
 export function loadAgentSpecForDeploy(agentPath: string): AgentSpec {
   if (!agentPath) {
-    throw new SDKError('--agent=<path> is required (an AgentSpec .yaml/.yml/.json file)', 'LOUSHO_DEPLOY_FAILED');
+    throw new SDKError('an agent path is required (an AgentSpec .yaml/.yml/.json file): lousho build <agent-dir|spec> --target=<name>', 'LOUSHO_DEPLOY_FAILED');
   }
   if (!fs.existsSync(agentPath)) {
     throw new SDKError(`agent config not found: ${agentPath}`, 'LOUSHO_DEPLOY_FAILED');

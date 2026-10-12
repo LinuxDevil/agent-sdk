@@ -64,7 +64,7 @@ describe('NodeServerAdapter', () => {
     const tsPath = path.join(dir, 'agent.ts');
     fs.writeFileSync(tsPath, 'export {}');
     expect(() => loadAgentSpecForDeploy(tsPath)).toThrow(/expected an AgentSpec .yaml\/.yml\/.json/);
-    expect(() => loadAgentSpecForDeploy('')).toThrow(/--agent=<path> is required/);
+    expect(() => loadAgentSpecForDeploy('')).toThrow(/an agent path is required/);
     const bad = writeSpec(dir, { name: 'x', provider: { type: 'mock', model: 'm' } });
     expect(() => loadAgentSpecForDeploy(bad)).toThrow(/'prompt'/);
   });

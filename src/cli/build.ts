@@ -130,6 +130,11 @@ export async function runBuild(argv: string[], io: BuildIO = defaultIO): Promise
     return USAGE_EXIT_CODE;
   }
 
+  if (!args.agent) {
+    io.stderr(`Error: an agent path is required. ${USAGE}`);
+    return USAGE_EXIT_CODE;
+  }
+
   try {
     io.stdout(await driveAdapter(adapter, args, args.target, io));
     return 0;
@@ -141,12 +146,12 @@ export async function runBuild(argv: string[], io: BuildIO = defaultIO): Promise
 
 /** Runs scaffold() -> build() -> describe() and returns where it wrote plus describe()'s output (the command to run there). */
 async function driveAdapter(adapter: DeploymentAdapter, args: BuildArgs, target: string, io: BuildIO): Promise<string> {
-  const agentPath = args.agent ? path.resolve(args.agent) : '';
+  const agentPath = path.resolve(args.agent ?? '');
   const outDir = path.resolve(args.out || path.join('.lousho', 'build', target));
   if (args.out && isNonEmptyDir(outDir)) {
     io.stderr(`Warning: --out ${args.out} is not empty; files the build writes replace the ones there.`);
   }
-  const peerWarning = agentPath ? missingProviderPeerWarning(agentPath, io.resolveFrom ?? findSdkRoot()) : undefined;
+  const peerWarning = missingProviderPeerWarning(agentPath, io.resolveFrom ?? findSdkRoot(), target);
   if (peerWarning) io.stderr(peerWarning);
   await adapter.scaffold(agentPath, outDir);
   await adapter.build(outDir);
