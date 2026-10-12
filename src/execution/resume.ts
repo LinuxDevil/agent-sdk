@@ -167,31 +167,50 @@ async function resumeObserved(
   observed: ResumeExecuteOptions,
   checkpointStore?: CheckpointStore
 ): Promise<ExecutionResult> {
-  const claimed = await approvalStore.resolve(decision.id);
-  if (!claimed) {
-    throw new SDKError(`No pending approval found for id '${decision.id}' (unknown or already resolved)`, 'LOUSHO_APPROVAL_NOT_FOUND');
-  }
-  // Eve TOOLS-F12: a call of a step paused on several - the step runs once the last of them is decided.
-  const grouped = (claimed.snapshot.approvalGroup?.length ?? 0) > 1;
-  const claim = await recordToResume(claimed, decision, approvalStore, toolRegistry, observed, checkpointStore, grouped);
-  if ('paused' in claim) return claim.paused;
-  const { record } = claim;
-
-  const { snapshot } = record;
-  // N10b: the run goes on as the caller that paused it, whoever resumes it (an old snapshot: no principal).
-  const { approver, ...rest } = observed;
-  const executeOptions = resumedOptions(rest, snapshot);
-  const decided = await effectiveDecision(record, decision, approvalStore, executeOptions, grouped);
-  const drift = await checkApprovalDrift(record, decided, { approvalStore, toolRegistry, provider, executeOptions }, grouped ? claimed : record);
-
-  const { lease, staleCheckpoint } = await holdPausedRun(record, decided, approvalStore, checkpointStore, grouped ? claimed : record, executeOptions.businessState);
+  // The paused run's lease is held from before the claim, so a crash between the claim and marking the run leaves
+  // a run whose lease expires and that `resume()` then pauses again (see `orphanedPause`), and a live resolver is never raced.
+  const early = await leaseBeforeClaim(decision.id, approvalStore, checkpointStore);
   try {
-    // Every save of the paused run's checkpoint from here on is fenced by its lease.
-    const fenced = fencedCheckpointStore(checkpointStore, lease);
-    return await continueDecided({ decided, record, claimed, drift, staleCheckpoint, lease, approvalStore, toolRegistry, provider, executeOptions, approver, checkpointStore: fenced });
+    const claimed = await approvalStore.resolve(decision.id);
+    if (!claimed) {
+      throw new SDKError(`No pending approval found for id '${decision.id}' (unknown or already resolved)`, 'LOUSHO_APPROVAL_NOT_FOUND');
+    }
+    // Eve TOOLS-F12: a call of a step paused on several - the step runs once the last of them is decided.
+    const grouped = (claimed.snapshot.approvalGroup?.length ?? 0) > 1;
+    const claim = await recordToResume(claimed, decision, approvalStore, toolRegistry, observed, checkpointStore, grouped);
+    if ('paused' in claim) return claim.paused;
+    const { record } = claim;
+
+    const { snapshot } = record;
+    // N10b: the run goes on as the caller that paused it, whoever resumes it (an old snapshot: no principal).
+    const { approver, ...rest } = observed;
+    const executeOptions = resumedOptions(rest, snapshot);
+    const decided = await effectiveDecision(record, decision, approvalStore, executeOptions, grouped);
+    const drift = await checkApprovalDrift(record, decided, { approvalStore, toolRegistry, provider, executeOptions }, grouped ? claimed : record);
+
+    const putBack = grouped ? claimed : record;
+    const { lease, staleCheckpoint } = await holdPausedRun(record, decided, approvalStore, checkpointStore, putBack, executeOptions.businessState, early);
+    try {
+      // Every save of the paused run's checkpoint from here on is fenced by its lease.
+      const fenced = fencedCheckpointStore(checkpointStore, lease);
+      return await continueDecided({ decided, record, claimed, drift, staleCheckpoint, lease, approvalStore, toolRegistry, provider, executeOptions, approver, checkpointStore: fenced });
+    } finally {
+      await lease?.release();
+    }
   } finally {
-    await lease?.release();
+    await early?.release();
   }
+}
+
+/**
+ * The run lease of the run approval `id` paused, taken before the approval is
+ * claimed (`LOUSHO_SESSION_BUSY` leaves it pending); `undefined` when the run
+ * is not checkpointed or the approval store cannot read a record unclaimed.
+ */
+async function leaseBeforeClaim(id: string, approvalStore: ApprovalStore, checkpointStore: CheckpointStore | undefined): Promise<RunLease | undefined> {
+  if (!checkpointStore?.acquireLease || !approvalStore.load) return undefined;
+  const sessionId = (await approvalStore.load(id))?.snapshot.sessionId;
+  return sessionId ? acquireRunLease(checkpointStore, sessionId) : undefined;
 }
 
 /** What {@link continueDecided} needs: a resume whose decision is settled and whose paused run is held. */
@@ -1125,8 +1144,9 @@ async function approvedCodeMode(ctx: ResumeContext, scope: ToolCallScope): Promi
  * checkpointed (`snapshot.sessionId` + `checkpointStore`):
  *
  * - takes its run lease (see `runLease.ts`), so no other process resumes the
- *   checkpoint while the decided call runs; on `LOUSHO_SESSION_BUSY` the claimed
- *   record is put back, so the approval stays decidable;
+ *   checkpoint while the decided call runs; on `LOUSHO_SESSION_BUSY` (or any
+ *   other failure before the decided call starts, such as a storage error) the
+ *   claimed record is put back, so the approval stays decidable;
  * - refuses a stale approval with `LOUSHO_APPROVAL_ORPHANED` (the record stays
  *   consumed): the checkpoint must still be the pause this approval belongs to.
  *   A pause whose checkpoint was deleted (`checkpoints.delete(id)`,
@@ -1149,47 +1169,61 @@ async function holdPausedRun(
   approvalStore: ApprovalStore,
   checkpointStore: CheckpointStore | undefined,
   putBack: ResolvedApproval,
-  businessState: unknown
+  businessState: unknown,
+  held?: RunLease
 ): Promise<{ lease?: RunLease; staleCheckpoint: Checkpoint | null | undefined }> {
-  const { snapshot, pending } = record;
-  const sessionId = snapshot.sessionId;
+  const sessionId = record.snapshot.sessionId;
   if (!sessionId || !checkpointStore) return { staleCheckpoint: undefined };
   let lease: RunLease | undefined;
   try {
-    lease = await acquireRunLease(checkpointStore, sessionId);
+    lease = held?.id === sessionId ? held : await acquireRunLease(checkpointStore, sessionId);
   } catch (error) {
     await approvalStore.save(putBack.pending, putBack.snapshot);
     throw error;
   }
   try {
     const staleCheckpoint = await checkpointStore.load(sessionId);
-    const ids = new Set([pending.id, ...(snapshot.approvalGroup ?? []).map((member) => member.pending.id)]);
-    const pausedHere = staleCheckpoint?.status === 'awaiting-approval' && pausedApprovalIds(staleCheckpoint).some((id) => ids.has(id));
-    if (!pausedHere) {
-      throw new SDKError(
-        `Approval '${pending.id}' belongs to the run checkpointed as '${sessionId}', but that run no longer waits on it ` +
-          `(its checkpoint was ${staleCheckpoint ? 'replaced by a newer run' : 'deleted'}), so it cannot be continued and the tool was not run. ` +
-          'The approval is consumed.',
-        'LOUSHO_APPROVAL_ORPHANED'
-      );
-    }
-    const started = snapshot.subagent ? [] : approvedCallIds(record, decided);
-    const marked: Checkpoint = {
-      ...staleCheckpoint,
-      status: 'in-progress',
-      // LOU-T1: an explicit businessState of the resuming call wins, as on the continuation's own saves.
-      ...(businessState !== undefined && { businessState }),
-      ...(started.length > 0 && { startedToolCallIds: started }),
-    };
-    delete marked.approvalId;
-    delete marked.approvalIds;
-    delete marked.approvalKind;
+    const marked = markedInProgress(record, decided, staleCheckpoint, businessState);
     await (lease ? lease.save(marked) : checkpointStore.save(sessionId, marked));
     return { lease, staleCheckpoint };
   } catch (error) {
+    // Nothing ran: unless the approval is orphaned, a failure here (a storage error, a lost lease) leaves it decidable.
+    if (!(error instanceof SDKError && error.code === 'LOUSHO_APPROVAL_ORPHANED')) {
+      await approvalStore.save(putBack.pending, putBack.snapshot).catch(() => undefined);
+    }
     await lease?.release();
     throw error;
   }
+}
+
+/**
+ * The paused run's checkpoint re-saved as `'in-progress'` with the approved
+ * calls marked as started; `LOUSHO_APPROVAL_ORPHANED` when the checkpoint no
+ * longer waits on this approval (see {@link holdPausedRun}).
+ */
+function markedInProgress(record: ResolvedApproval, decided: ApprovalDecision, staleCheckpoint: Checkpoint | null, businessState: unknown): Checkpoint {
+  const { snapshot, pending } = record;
+  const ids = new Set([pending.id, ...(snapshot.approvalGroup ?? []).map((member) => member.pending.id)]);
+  if (staleCheckpoint?.status !== 'awaiting-approval' || !pausedApprovalIds(staleCheckpoint).some((id) => ids.has(id))) {
+    throw new SDKError(
+      `Approval '${pending.id}' belongs to the run checkpointed as '${snapshot.sessionId}', but that run no longer waits on it ` +
+        `(its checkpoint was ${staleCheckpoint ? 'replaced by a newer run' : 'deleted'}), so it cannot be continued and the tool was not run. ` +
+        'The approval is consumed.',
+      'LOUSHO_APPROVAL_ORPHANED'
+    );
+  }
+  const started = snapshot.subagent ? [] : approvedCallIds(record, decided);
+  const marked: Checkpoint = {
+    ...staleCheckpoint,
+    status: 'in-progress',
+    // LOU-T1: an explicit businessState of the resuming call wins, as on the continuation's own saves.
+    ...(businessState !== undefined && { businessState }),
+    ...(started.length > 0 && { startedToolCallIds: started }),
+  };
+  delete marked.approvalId;
+  delete marked.approvalIds;
+  delete marked.approvalKind;
+  return marked;
 }
 
 /** The tool call ids of the calls a decision approves: the decided call, or a decided group's approved calls. */

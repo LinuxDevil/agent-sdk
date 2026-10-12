@@ -7,7 +7,7 @@
 
 import { GenerateResult, Message, ReasoningBlock, ToolCall, ToolDefinition } from '../providers';
 import { AgentConfig } from '../types';
-import { Checkpoint, CheckpointStatus, RUN_CONFIG_KEY } from './checkpoint';
+import { Checkpoint, CheckpointStatus, orphanedPause, RUN_CONFIG_KEY } from './checkpoint';
 import type { ApprovalKind } from './ApprovalGate';
 import { checkAgentDrift, fingerprintOf, type AgentFingerprint } from './agentFingerprint';
 import { runEventsOf } from './agentRun';
@@ -203,7 +203,7 @@ async function checkpointToContinue(options: ExecuteOptions): Promise<Checkpoint
  */
 export async function loadRunState(options: ExecuteOptions): Promise<AgentRunState> {
   const { sessionId, checkpointStore } = options;
-  const checkpoint = await checkpointToContinue(options);
+  const checkpoint = await pausedAgainIfOrphaned(await checkpointToContinue(options), options);
   if (sessionId && checkpoint?.status === 'awaiting-approval') {
     throw new SessionAwaitingApprovalError(sessionId, checkpoint.approvalId, checkpoint.approvalKind);
   }
@@ -237,6 +237,22 @@ export async function loadRunState(options: ExecuteOptions): Promise<AgentRunSta
     ...(principal && { principal }),
     ...(metadata !== undefined && { metadata }),
   };
+}
+
+/**
+ * A paused checkpoint whose approvals are gone (see `orphanedPause`: a resolver
+ * claimed them and died before marking the run, whose lease this run now
+ * holds) continues as an unfinished run: its undecided calls run through the
+ * normal path again, so a call that needs approval pauses the run anew under a
+ * new approval id. The lost decision is not applied and nothing it approved ran.
+ */
+async function pausedAgainIfOrphaned(checkpoint: Checkpoint | null, options: ExecuteOptions): Promise<Checkpoint | null> {
+  if (!checkpoint || !(await orphanedPause(checkpoint, options.approvalStore))) return checkpoint;
+  const unfinished: Checkpoint = { ...checkpoint, status: 'in-progress' };
+  delete unfinished.approvalId;
+  delete unfinished.approvalIds;
+  delete unfinished.approvalKind;
+  return unfinished;
 }
 
 /**

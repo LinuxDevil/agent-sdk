@@ -4,6 +4,10 @@ import { acquireRunLease, fencedCheckpointStore } from './runLease';
 import { memoryStore } from '../storage/agentStore';
 import { makeCheckpoint } from '../storage/sqlite/__fixtures__/storeContracts';
 import type { CheckpointStore } from './checkpoint';
+import { z } from 'zod';
+import { createAgent } from '../createAgent';
+import { defineTool } from '../tools/defineTool';
+import { mockModel } from '../testing';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -68,5 +72,37 @@ describe('run lease fencing', () => {
     await lease.release();
     await expect(fenced.save('job', makeCheckpoint({ sessionId: 'job', stepIndex: 1 }))).rejects.toMatchObject({ code: 'LOUSHO_SESSION_BUSY' });
     expect(fencedCheckpointStore(store, undefined)).toBe(store);
+  });
+});
+
+describe('a run that lost its lease', () => {
+  it('stops at its next save once the heartbeat found the lease taken over: no further tool or model call runs', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const base = memoryStore();
+    let takenOver = false;
+    const checkpoints = Object.assign(Object.create(Object.getPrototypeOf(base.checkpoints)) as CheckpointStore, base.checkpoints, {
+      renewLease: async (id: string, owner: string, ttlMs: number) => !takenOver && base.checkpoints.renewLease!(id, owner, ttlMs),
+    });
+    const ran: string[] = [];
+    const step = (name: string, stall = false) =>
+      defineTool({
+        name,
+        description: name,
+        input: z.object({}),
+        execute: async () => {
+          ran.push(name);
+          if (stall) {
+            // The process stalls here; meanwhile another one takes the run over, and the heartbeat finds out.
+            takenOver = true;
+            await vi.advanceTimersByTimeAsync(11_000);
+          }
+          return 'ok';
+        },
+      });
+    const model = mockModel([{ toolCalls: [{ name: 'first', id: 'c1' }, { name: 'second', id: 'c2' }] }, 'done']);
+    const agent = createAgent({ provider: model, tools: [step('first', true), step('second')], store: { ...base, checkpoints }, toolConcurrency: 1 });
+    await expect(agent.send('go', { sessionId: 'job' })).rejects.toMatchObject({ code: 'LOUSHO_SESSION_BUSY' });
+    expect(ran).toEqual(['first']);
+    expect(model.calls).toHaveLength(1);
   });
 });

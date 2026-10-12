@@ -10,7 +10,7 @@ import { approvalExpired, describeApproval, markAutomaticDecision, oldestFirst, 
 import type { ExecutionResult } from './execution/AgentExecutor';
 import type { AgentEvent } from './execution/agentEvents';
 import type { AgentRun } from './execution/agentRun';
-import type { CheckpointStore } from './execution/checkpoint';
+import { orphanedPause, type Checkpoint, type CheckpointStore } from './execution/checkpoint';
 import { ConfigurationError, SDKError, SessionAwaitingApprovalError } from './execution/errors';
 import type { InputQueue } from './execution/inputQueue';
 import { streamSessionTurn } from './session/sessionStream';
@@ -184,6 +184,13 @@ class ApprovalSession extends AgentSession {
    */
   protected override pausedTurnFound(approvalId: string): void {
     this.binds?.(approvalId);
+  }
+
+  /** Set by createAgentApprovals(): the agent's approval store, to tell a paused turn whose approvals are gone. */
+  approvalStore?: ApprovalStore;
+
+  protected override pauseOrphaned(checkpoint: Checkpoint): Promise<boolean> {
+    return orphanedPause(checkpoint, this.approvalStore);
   }
 
   /** Set by createAgentApprovals(): withdraws approvals from the agent's approval store. */
@@ -582,6 +589,7 @@ export function createAgentApprovals(options: {
         spawn ?? ((forkOptions) => this.session(run, stream, forkOptions))
       );
       session.binds = (approvalId) => bind(approvalId, session);
+      session.approvalStore = store;
       session.withdraws = async (approvalIds) => {
         for (const id of approvalIds) await store.resolve(id);
       };

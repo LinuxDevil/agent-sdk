@@ -11,7 +11,7 @@ import { toMessages, type AgentInput } from '../providers/content';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import { startAgentRun, type AgentRun } from '../execution/agentRun';
 import { InputQueue } from '../execution/inputQueue';
-import { getCheckpointHistory, isCheckpointCorrupt, pausedApprovalIds, type Checkpoint, type CheckpointError, type CheckpointStore } from '../execution/checkpoint';
+import { getCheckpointHistory, HAS_CHECKPOINT_HISTORY, isCheckpointCorrupt, pausedApprovalIds, type Checkpoint, type CheckpointError, type CheckpointStore } from '../execution/checkpoint';
 import type { ApprovalKind } from '../execution/ApprovalGate';
 import { CompactedLLMProviderError, ConfigurationError, SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 import { streamSessionTurn } from './sessionStream';
@@ -253,6 +253,41 @@ const LEFT_WINDOW_PER_COMMIT = 8;
  * turn's checkpoint history is known to be deleted (see `dropOldTurnHistory`).
  */
 const droppedTurnHistory = new WeakMap<CheckpointStore, Map<string, number>>();
+
+/** Whether `id` has checkpoint history: the store's cheap check when it has one, else one entry read. */
+async function hasTurnHistory(checkpointStore: CheckpointStore, id: string): Promise<boolean> {
+  const check = (checkpointStore as { [HAS_CHECKPOINT_HISTORY]?: (id: string) => Promise<boolean> })[HAS_CHECKPOINT_HISTORY];
+  if (typeof check === 'function') return check.call(checkpointStore, id);
+  return ((await getCheckpointHistory(checkpointStore, id, { limit: 1 })) ?? []).length > 0;
+}
+
+/**
+ * Where among the turn starts `candidates` (ascending) the backlog of turn
+ * history begins: earlier commits delete it oldest first, so the first
+ * candidate with history (a candidate that is no turn's start never has any,
+ * so the next two are looked at with it) is found by a galloping, then binary,
+ * search. `Infinity` when none of them has history any more.
+ */
+async function firstKeptTurn(checkpointStore: CheckpointStore, id: string, candidates: number[]): Promise<number> {
+  const kept = async (i: number) => {
+    for (const n of candidates.slice(i, i + 3)) if (await hasTurnHistory(checkpointStore, `${id}.turn-${n}`)) return true;
+    return false;
+  };
+  if (candidates.length === 0 || (await kept(0))) return candidates[0] ?? Infinity;
+  let gone = 0;
+  let step = 1;
+  while (gone + step < candidates.length && !(await kept(gone + step))) {
+    gone += step;
+    step *= 2;
+  }
+  let found = Math.min(gone + step, candidates.length);
+  while (found - gone > 1) {
+    const mid = Math.floor((gone + found) / 2);
+    if (await kept(mid)) found = mid;
+    else gone = mid;
+  }
+  return candidates[found] ?? Infinity;
+}
 
 /** `null` for a checkpoint that cannot be read (`LOUSHO_CHECKPOINT_CORRUPT`); any other error is rethrown. */
 function ignoreCorrupt(error: unknown): null {
@@ -652,6 +687,11 @@ export class AgentSession<TObject = unknown> {
     await checkpointStore.delete(pausedTurnKey(this.id));
   }
 
+  /** Whether the paused turn `checkpoint` waits only on approvals that are gone (see `orphanedPause`); `createAgent()` asks its approval store. */
+  protected async pauseOrphaned(_checkpoint: Checkpoint): Promise<boolean> {
+    return false;
+  }
+
   /** Called with the approvals of a paused turn `discardPending()` dropped; `createAgent()` withdraws them from its approval store. */
   protected async pendingTurnDiscarded(_approvalIds: string[]): Promise<void> {}
 
@@ -702,6 +742,7 @@ export class AgentSession<TObject = unknown> {
       if (JSON.stringify(messages) !== JSON.stringify(before)) {
         await this.store.save(this.id, messages);
         this.transcript = messages;
+        await this.dropReusedTurnIds(messages.length, before.length);
       }
       return result;
     });
@@ -1025,7 +1066,8 @@ export class AgentSession<TObject = unknown> {
   private async resumePending(signal?: AbortSignal, retryFailed = false): Promise<ExecutionResult | null> {
     const pending = await this.pendingCheckpoint();
     if (!pending) return null;
-    if (pending.status === 'awaiting-approval') {
+    // A turn whose approvals were claimed by a resolver that died before marking it runs again (and pauses anew).
+    if (pending.status === 'awaiting-approval' && !(pending.sessionId === this.turnCheckpoint()?.sessionId && (await this.pauseOrphaned(pending)))) {
       this.foundPaused(pending);
       throw this.awaitingApproval(pending);
     }
@@ -1106,10 +1148,29 @@ export class AgentSession<TObject = unknown> {
     const turn = this.turnCheckpoint();
     const start = this.transcript.length;
     this.transcript = next;
-    if (turn) {
+    if (!turn) return;
+    try {
       await turn.checkpointStore.delete(turn.sessionId, { keepHistory: this.turnHistoryLimit > 0 });
+      // A turn that shortened the transcript (compacted it): later turns start at ids this one or older ones used.
+      if (next.length <= start) await this.dropReusedTurnIds(next.length, start);
       await this.dropOldTurnHistory(next, start);
+    } catch {
+      // The turn is committed: a failed clean-up must not report it as failed (a caller would send it again).
+      // Its leftover checkpoint is keyed by where the turn started, behind the transcript, so it is not picked up again.
     }
+  }
+
+  /**
+   * Deletes the checkpoint and history of turns `<id>.turn-<from>` to
+   * `<id>.turn-<to>`, after the transcript shrank from `to` to `from`
+   * messages: the session's next turns are keyed by the new length, and must
+   * not add to (or adopt) the checkpoint history of the turns that used those
+   * ids before.
+   */
+  private async dropReusedTurnIds(from: number, to: number): Promise<void> {
+    const { checkpointStore } = this;
+    if (!checkpointStore) return;
+    for (let n = from; n <= to; n++) await checkpointStore.delete(`${this.id}.turn-${n}`);
   }
 
   /**
@@ -1137,9 +1198,11 @@ export class AgentSession<TObject = unknown> {
     const backlogEnd = left[0] ?? 0;
     let cursors = droppedTurnHistory.get(checkpointStore);
     if (!cursors) droppedTurnHistory.set(checkpointStore, (cursors = new Map()));
-    const known = cursors.get(this.id) ?? 0;
-    // A compaction (or clear()) shortened the transcript: start over.
-    const below = known > transcript.length ? 0 : known;
+    const known = cursors.get(this.id);
+    // A compaction (or clear()) shortened the transcript: start over. Unknown here (a new store object or process):
+    // found in the store, so the backlog keeps shrinking when every commit uses a new store object.
+    const below =
+      known === undefined ? await firstKeptTurn(checkpointStore, this.id, outside.filter((n) => n < backlogEnd)) : known > transcript.length ? 0 : known;
     const backlog = outside.filter((n) => n >= below && n < backlogEnd);
     const batch = backlog.slice(0, DROPPED_TURNS_PER_COMMIT);
     for (const n of batch) await checkpointStore.delete(`${this.id}.turn-${n}`);

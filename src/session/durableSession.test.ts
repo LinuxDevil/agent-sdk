@@ -382,6 +382,78 @@ describe('checkpointed sessions (LOU-W9)', () => {
     }
   }, 60_000);
 
+  it.each([
+    ['fileStore(dir)', (dir: string) => fileStore(dir)],
+    ['SqliteStore(file)', (dir: string) => new SqliteStore(join(dir, 'agent.db'))],
+  ])('a lowered turnHistoryLimit drops the whole backlog when every turn uses a new store object (%s)', async (_name, makeStore) => {
+    const dir = mkdtempSync(join(tmpdir(), 'lousho-turn-history-'));
+    const turn = async (text: string, turnHistoryLimit: number) => {
+      const store = makeStore(dir);
+      await createAgent({ provider: mockModel(['ok']), store }).session({ id: 'chat', turnHistoryLimit }).send(text);
+      if ('close' in store) store.close();
+    };
+    try {
+      for (let n = 0; n < 70; n++) await turn(`turn ${n}`, 60);
+      for (let n = 70; n < 80; n++) await turn(`turn ${n}`, 3);
+      const store = makeStore(dir);
+      const kept = [];
+      for (let n = 0; n < 80; n++) if ((await store.checkpoints.history!(`chat.turn-${2 * n}`)).length > 0) kept.push(n);
+      if ('close' in store) store.close();
+      expect(kept).toEqual([77, 78, 79]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  it('the turns after session.compact() do not add to the checkpoint history of the turns that used their ids before', async () => {
+    const store = memoryStore();
+    const agent = createAgent({ provider: mockModel([(request) => `reply to ${String(request.messages.at(-1)?.content)}`], { onExhausted: 'repeat-last' }), store });
+    const session = agent.session({ id: 'bob' });
+    for (let n = 0; n < 6; n++) await session.send(`OLD-${n}`);
+    const keepLastTwo = { name: 'keep-last-2', compact: (input: { messages: Message[] }) => ({ messages: input.messages.slice(-2), tokensBefore: 1, tokensAfter: 1, prunedToolCallIds: [] }) };
+    expect(await session.compact({ strategy: keepLastTwo as never })).toMatchObject({ messagesBefore: 12, messagesAfter: 2 });
+    for (let n = 2; n <= 12; n++) expect(await store.checkpoints.history!(`bob.turn-${n}`)).toEqual([]);
+
+    await session.send('NEW');
+    const users = (await store.checkpoints.history!('bob.turn-2')).map((entry) => entry.checkpoint.messages.filter((m) => m.role === 'user').map((m) => m.content));
+    expect(users.length).toBeGreaterThan(0);
+    for (const seen of users) expect(seen).toEqual(['OLD-5', 'NEW']);
+  });
+
+  it('a committed turn whose checkpoint clean-up fails still resolves (its transcript is saved)', async () => {
+    const base = memoryStore();
+    const checkpoints = base.checkpoints;
+    let failDeletes = false;
+    const flaky = Object.assign(Object.create(Object.getPrototypeOf(checkpoints)) as typeof checkpoints, checkpoints, {
+      delete: async (id: string, options?: { keepHistory?: boolean }) => {
+        if (failDeletes) throw Object.assign(new Error('database is locked'), { code: 'LOUSHO_STORAGE_BUSY' });
+        return checkpoints.delete(id, options);
+      },
+    });
+    const store = { ...base, checkpoints: flaky };
+    const agent = createAgent({ provider: mockModel(['first', 'second'], { onExhausted: 'repeat-last' }), store });
+    await agent.session({ id: 's' }).send('one');
+    failDeletes = true;
+    const result = await agent.session({ id: 's' }).send('two');
+    failDeletes = false;
+    expect(result.text).toBe('second');
+    expect((await agent.session({ id: 's' }).load()).map((message) => message.content)).toEqual(['one', 'first', 'two', 'second']);
+    expect(await agent.session({ id: 's' }).pending()).toBeNull();
+  });
+
+  it('createAgent({ turnHistoryLimit }) sets the default of every session of the agent (routes, channels, lousho dev)', async () => {
+    const store = memoryStore();
+    const agent = createAgent({ provider: mockModel(['ok'], { onExhausted: 'repeat-last' }), store, turnHistoryLimit: 1 });
+    for (let n = 0; n < 3; n++) await agent.session({ id: 'chat' }).send(`turn ${n}`);
+    const kept = [];
+    for (let n = 0; n < 3; n++) if ((await store.checkpoints.history!(`chat.turn-${2 * n}`)).length > 0) kept.push(n);
+    expect(kept).toEqual([2]);
+    // A session's own option wins.
+    for (let n = 0; n < 3; n++) await agent.session({ id: 'all', turnHistoryLimit: 10 }).send(`turn ${n}`);
+    expect((await store.checkpoints.history!('all.turn-0')).length).toBeGreaterThan(0);
+    expect(() => createAgent({ provider: mockModel(['ok']), turnHistoryLimit: -1 })).toThrow(/turnHistoryLimit/);
+  });
+
   // Eve DUR-F8: clear() deleted only the current turn's checkpoint; every committed turn's checkpoint HISTORY (full
   // transcript copies) survived, and agent.fork('<id>.turn-<n>') revived the cleared conversation.
   it.each([
@@ -429,7 +501,9 @@ describe('checkpointed sessions (LOU-W9)', () => {
     await session.send('four');
     const turnIds = Array.from({ length: 13 }, (_, n) => `p.turn-${n}`);
     const kept = async () => (await Promise.all(turnIds.map(async (id) => (await store.checkpoints.history!(id)).length))).reduce((a, b) => a + b, 0);
-    expect((await store.checkpoints.history!('p.turn-8')).length).toBeGreaterThan(0);
+    expect((await store.checkpoints.history!('p.turn-0')).length).toBeGreaterThan(0);
+    // compact() dropped the history of the turns whose ids the session's next turns use (p.turn-2 to p.turn-12).
+    expect((await store.checkpoints.history!('p.turn-8')).length).toBe(0);
     expect(session.messages).toHaveLength(6);
 
     await session.clear();

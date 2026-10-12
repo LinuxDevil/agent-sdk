@@ -562,6 +562,20 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    */
   compaction?: AgentCompaction;
   /**
+   * The default `turnHistoryLimit` of this agent's sessions (`agent.session()`,
+   * and so the routes, `lousho dev`, the deployed server and channels, which
+   * open sessions without options): how many of a checkpointed session's latest
+   * committed turns keep their checkpoint history, so
+   * `agent.fork('<id>.turn-<n>', { fromStep })` can fork them. Default 10;
+   * `0` keeps none. A session's own `turnHistoryLimit` wins.
+   *
+   * @example
+   * ```ts
+   * createAgent({ provider, store: fileStore('./.lousho'), turnHistoryLimit: 50 });
+   * ```
+   */
+  turnHistoryLimit?: number;
+  /**
    * Long-term memory slots (LOU-W6), from `defineMemory()`. On the first
    * model call of each run, a slot recalls its newest items into the system
    * prompt (a `<memory name="...">` block), and the model gets
@@ -914,6 +928,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   assertMaxSubagentDepth(config.maxSubagentDepth, 'createAgent');
   assertSubagents(config.subagents, 'createAgent');
   assertApprovalTtlMs(config.approvalTtlMs);
+  assertTurnHistoryLimit(config.turnHistoryLimit);
   if (typeof config.permissionMode === 'string') assertPermissionMode(config.permissionMode, 'createAgent');
   assertMaxHandoffs(config.maxHandoffs);
   assertToolSearchOptions(config.toolSearch, 'createAgent');
@@ -1283,6 +1298,12 @@ function assertApprovalTtlMs(value: unknown, where = 'createAgent'): void {
   throw new ConfigurationError(`${where}: 'approvalTtlMs' must be ${APPROVAL_TTL_RULE}, got ${String(value)}.`, 'approvalTtlMs');
 }
 
+/** `turnHistoryLimit` must be a whole number >= 0. */
+function assertTurnHistoryLimit(value: unknown): void {
+  if (value === undefined || (typeof value === 'number' && Number.isInteger(value) && value >= 0)) return;
+  throw new ConfigurationError(`createAgent: 'turnHistoryLimit' must be a whole number >= 0, got ${String(value)}.`, 'turnHistoryLimit');
+}
+
 /** N6: `maxHandoffs` must be a whole number >= 0. */
 function assertMaxHandoffs(value: unknown): void {
   if (value === undefined || (typeof value === 'number' && Number.isInteger(value) && value >= 0)) return;
@@ -1547,6 +1568,7 @@ function agentSession<Typed>(
           compaction: options.compaction ?? config.compaction,
           permissionMode: options.permissionMode ?? config.permissionMode,
           onPermissionModeChange: options.onPermissionModeChange ?? config.onPermissionModeChange,
+          turnHistoryLimit: options.turnHistoryLimit ?? config.turnHistoryLimit,
           id: sessionId,
         },
         config.store
@@ -1587,6 +1609,11 @@ async function pausedRun(
       const once = replay;
       replay = undefined;
       return once;
+    },
+    // So the resume takes the run's lease before it claims the replayed record (see resume.ts, leaseBeforeClaim).
+    async load(loadId) {
+      if (replay?.pending.id === loadId) return replay;
+      return store.load ? store.load(loadId) : null;
     },
   };
   return { spec, store: replayStore, snapshot, ...(resolved && { handoffs: resolved.handoffs }) };
