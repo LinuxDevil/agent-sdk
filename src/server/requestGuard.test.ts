@@ -9,9 +9,11 @@ import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
 import { memoryStore } from '../storage/agentStore';
 import { createRouteHandler, type RouteHandlerOptions } from './routeHandler';
-import { serveFetch } from './fetchRoutes';
+import { handleChatFetch, serveFetch } from './fetchRoutes';
 import { claimSession, MAX_SESSION_OWNERS, releaseSession, sessionOwner, setSessionOwnerLimit } from './requestGuard';
-import type { AuthFn } from '../auth';
+import { MemorySessionStore } from '../session/sessionStore';
+import { textOf } from '../providers/content';
+import type { AuthFn, Principal } from '../auth';
 
 const deploy = defineTool({ name: 'deploy', description: 'Deploys', input: z.object({}), needsApproval: true, execute: () => 'shipped' });
 
@@ -214,6 +216,89 @@ describe('default session owner', () => {
       expect((await handler(new Request('http://app.test/api/agent/chat/alice-1', { headers: alice }))).status).toBe(403);
       expect(sessionOwner(agent, 'alice-1')).toBeUndefined();
       expect(model.calls).toHaveLength(11);
+    } finally {
+      setSessionOwnerLimit(previous);
+    }
+  });
+
+  it('a concurrent first touch on an unowned session loses the claim: refused, and none of its input is streamed or stored (Eve2-F1)', async () => {
+    // The first transcript load is delayed so both owner checks observe the
+    // session as unowned and unstored before either claim runs; the claim
+    // itself must then decide the race - one caller wins, the other must be
+    // refused rather than stream a turn inside the winner's session.
+    let delayed = false;
+    const sessions = new class extends MemorySessionStore {
+      override async load(id: string) {
+        if (!delayed) {
+          delayed = true;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        return super.load(id);
+      }
+    }();
+    const store = memoryStore();
+    store.sessions = sessions;
+    const agent = createAgent({
+      provider: mockModel([(req) => `echo:${req.messages.filter((m) => m.role === 'user').map((m) => textOf(m)).join('|')}`]),
+      store,
+    });
+    const ctx = { name: 'test', agent: () => agent };
+    const post = (input: string) => new Request('http://srv/chat', { method: 'POST', headers: asJson, body: json({ sessionId: 'race-1', input }) });
+    const caller = (id: string): Principal => ({ id, type: 'user', authenticator: 'custom' });
+    const [aliceRes, malloryRes] = await Promise.all([
+      handleChatFetch(post('ALICE_MARKER'), ctx, caller('alice')),
+      handleChatFetch(post('MALLORY_MARKER'), ctx, caller('mallory')),
+    ]);
+    // Exactly one caller may win the claim; the other gets the session 403, not a stream.
+    expect([aliceRes?.status, malloryRes?.status].sort()).toEqual([200, 403]);
+    const aliceWon = aliceRes?.status === 200;
+    const winner = aliceWon ? aliceRes! : malloryRes!;
+    const loser = aliceWon ? malloryRes! : aliceRes!;
+    const loserMarker = aliceWon ? 'MALLORY_MARKER' : 'ALICE_MARKER';
+    expect(await loser.json()).toMatchObject({ code: 'LOUSHO_SESSION_FORBIDDEN' });
+    // The loser never ran a turn: none of its input is in the winner's stream or in the stored transcript.
+    expect(await winner.text()).not.toContain(loserMarker);
+    expect(JSON.stringify(await sessions.load('race-1'))).not.toContain(loserMarker);
+    expect(sessionOwner(agent, 'race-1')).toMatchObject({ id: aliceWon ? 'alice' : 'mallory' });
+    // And after the race the loser is still a stranger, exactly as in the sequential case.
+    const retry = await handleChatFetch(post('late-attempt'), ctx, caller(aliceWon ? 'mallory' : 'alice'));
+    expect(retry?.status).toBe(403);
+  });
+
+  it('a claim lost while a turn ran clears what it stored and ends the stream on a coded error (Eve2-F1)', async () => {
+    // With the owner cap at one, a claim on another session evicts 's' while
+    // alice's turn is still running; mallory then takes the unowned, still
+    // unstored id through the session-less { message } route. Alice's commit
+    // must not leave her transcript under mallory's claim.
+    const previous = setSessionOwnerLimit(1);
+    try {
+      let openGate!: () => void;
+      const gate = new Promise<void>((resolve) => (openGate = resolve));
+      const sessions = new MemorySessionStore();
+      const store = memoryStore();
+      store.sessions = sessions;
+      const agent = createAgent({
+        provider: mockModel([(req) => (textOf(req.messages.at(-1)!) === 'alice-secret' ? gate.then(() => 'alice-turn') : 'other-turn')], { onExhausted: 'repeat-last' }),
+        store,
+      });
+      const ctx = { name: 'test', agent: () => agent };
+      const caller = (id: string): Principal => ({ id, type: 'user', authenticator: 'custom' });
+      const post = (body: unknown) => new Request('http://srv/chat', { method: 'POST', headers: asJson, body: json(body) });
+
+      const aliceRes = (await handleChatFetch(post({ sessionId: 's', input: 'alice-secret' }), ctx, caller('alice')))!;
+      expect(aliceRes.status).toBe(200);
+      const aliceBody = aliceRes.text(); // consuming the SSE is what runs the turn
+      await (await handleChatFetch(post({ sessionId: 'x', input: 'evict' }), ctx, caller('alice')))!.text(); // claims 'x', forgetting 's'
+      expect(sessionOwner(agent, 's')).toBeUndefined();
+      const malloryRes = await handleChatFetch(post({ sessionId: 's', message: 'mallory was here' }), ctx, caller('mallory'));
+      expect(malloryRes?.status).toBe(200);
+      expect(sessionOwner(agent, 's')).toMatchObject({ id: 'mallory' });
+
+      openGate();
+      const body = await aliceBody;
+      expect(body).toContain('LOUSHO_SESSION_FORBIDDEN');
+      expect(JSON.stringify((await sessions.load('s')) ?? [])).not.toContain('alice-secret');
+      expect(sessionOwner(agent, 's')).toMatchObject({ id: 'mallory' });
     } finally {
       setSessionOwnerLimit(previous);
     }

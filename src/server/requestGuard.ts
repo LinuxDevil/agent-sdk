@@ -187,16 +187,25 @@ export function sessionOwner(agent: object, sessionId: string): Principal | unde
   return owner;
 }
 
-/** Records `principal` as the owner of session `sessionId` of `agent`, unless it has one. */
-export function claimSession(agent: object, sessionId: string, principal: Principal): void {
+/**
+ * Records `principal` as the owner of session `sessionId` of `agent` when it
+ * has none, and answers whether `principal` holds the claim afterward: `true`
+ * when it was just taken (or was `principal`'s already), `false` when another
+ * principal owns it. Eve2-F1: the check-and-set is one synchronous step, so a
+ * `false` answer means a concurrent first touch won the id and this caller
+ * must be refused - never streamed a turn inside that principal's session.
+ */
+export function claimSession(agent: object, sessionId: string, principal: Principal): boolean {
   let sessions = owners.get(agent);
   if (!sessions) owners.set(agent, (sessions = new Map()));
-  if (sessions.has(sessionId)) return;
+  const owner = sessions.get(sessionId);
+  if (owner !== undefined) return samePrincipal(owner, principal);
   sessions.set(sessionId, principal);
   for (const oldest of sessions.keys()) {
     if (sessions.size <= ownerLimit) break;
     sessions.delete(oldest);
   }
+  return true;
 }
 
 /** Forgets `principal`'s claim on session `sessionId` of `agent` (a turn that stored nothing); another principal's claim is kept. */
