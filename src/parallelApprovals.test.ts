@@ -229,6 +229,40 @@ describe('Eve TOOLS-F12: parallel approvals', () => {
     expect(result.text).toBe('lead done');
     expect(log).toEqual(['wire_money(1)']);
   });
+
+  it("edited args on a sub-agent's grouped approval are validated before its calls run (Eve2-F4)", async () => {
+    const log: string[] = [];
+    const worker = createAgent({ provider: mockModel([twoApprovals, 'worker done']), tools: tools(log), description: 'Does risky things' });
+    const task = { name: 'task', args: { agent: 'worker', prompt: 'do it', description: 'risky' } };
+    const lead = createAgent({ provider: mockModel([{ toolCalls: [task] }, 'lead done']), subagents: { worker } });
+
+    const paused = await lead.send('go');
+    const [wire, del] = paused.approvalIds!;
+    await lead.approvals.resolve({ id: del, approved: true });
+    // { n: 'x' } fails the tool's zod schema: it must not reach execute().
+    const result = await lead.approvals.resolve({ id: wire, approved: true, args: { n: 'x' } });
+
+    expect(log).toEqual([]);
+    expect(result.text).toBe('lead done');
+    const taskResult = result.messages.find((m) => m.role === 'tool' && m.toolName === 'task');
+    expect(taskResult?.isError).toBe(true);
+    expect(String(taskResult?.content)).toContain("Invalid arguments for tool 'wire_money'");
+  });
+
+  it("valid edited args on a sub-agent's grouped approval run the call with them (Eve2-F4)", async () => {
+    const log: string[] = [];
+    const worker = createAgent({ provider: mockModel([twoApprovals, 'worker done']), tools: tools(log), description: 'Does risky things' });
+    const task = { name: 'task', args: { agent: 'worker', prompt: 'do it', description: 'risky' } };
+    const lead = createAgent({ provider: mockModel([{ toolCalls: [task] }, 'lead done']), subagents: { worker } });
+
+    const paused = await lead.send('go');
+    const [wire, del] = paused.approvalIds!;
+    await lead.approvals.resolve({ id: del, approved: true });
+    const result = await lead.approvals.resolve({ id: wire, approved: true, args: { n: 10 } });
+
+    expect(result.text).toBe('lead done');
+    expect(log).toEqual(['wire_money(10)', 'delete_db(2)']);
+  });
 });
 
 describe('Eve TOOLS-F12: parallel approvals with durable stores', () => {

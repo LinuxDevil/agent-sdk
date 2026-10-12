@@ -1537,7 +1537,9 @@ export class AgentExecutor {
         persist: () => saveStepCheckpoint(options, state),
       },
       // LOU-V10: a steer stops the batch from starting more calls; running ones finish.
-      withSteerSignal(options.signal, options.inputQueue?.startBatch())
+      // Eve2-F5: the run's signal also ends the wait for a tool that ignores it.
+      withSteerSignal(options.signal, options.inputQueue?.startBatch()),
+      options.signal
     );
     options.inputQueue?.endPhase();
 

@@ -125,13 +125,16 @@ class ToolBatch {
   private readonly running: Array<Promise<void>> = [];
   private readonly recorded = new Set<number>();
   private halted = false;
+  /** Eve2-F5: the run's signal aborted while a tool ignored it - the batch stopped waiting; late settlements are dropped. */
+  private abandoned = false;
   private persisting: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly toolCalls: ToolCall[],
     concurrency: ToolConcurrency,
     private readonly callbacks: ToolBatchCallbacks,
-    private readonly signal: AbortSignal | undefined
+    private readonly signal: AbortSignal | undefined,
+    private readonly runSignal: AbortSignal | undefined
   ) {
     this.slots = toolCalls.map(() => ({ status: 'not-started' }));
     this.limiter = new Limiter(concurrency === 'unbounded' ? Infinity : concurrency);
@@ -144,8 +147,35 @@ class ToolBatch {
       }
       await this.launch(index, toolCall);
     }
-    await Promise.all(this.running);
+    await this.settled();
     return this.result();
+  }
+
+  /**
+   * Every started call settled - or the run's signal aborted: waiting ends
+   * there, a tool that ignores the signal must not hold the run open
+   * forever (it keeps running, documented for ExecuteOptions.signal; the
+   * batch reports its call as unrecorded, which the run settles like the
+   * calls an abort kept from starting). `signal` alone is not raced: a
+   * steer stops new starts but lets running calls finish.
+   */
+  private async settled(): Promise<void> {
+    const { runSignal } = this;
+    const all = Promise.all(this.running);
+    if (!runSignal) {
+      await all;
+      return;
+    }
+    // A settlement already landing when the signal fires still records: the
+    // abort side yields one event-loop turn first, so a tool released just
+    // as the run aborted keeps its result - only a call still running then
+    // is left behind (Eve2-F5).
+    const drained = new Promise<'aborted'>((resolve) => {
+      const onAbort = () => setTimeout(() => resolve('aborted'), 0);
+      runSignal.addEventListener('abort', onAbort, { once: true });
+      if (runSignal.aborted) onAbort();
+    });
+    if ((await Promise.race([all.then(() => 'done' as const), drained])) === 'aborted') this.abandoned = true;
   }
 
   private stopped(): boolean {
@@ -182,6 +212,9 @@ class ToolBatch {
   private async track(index: number, done: Promise<ToolCallOutcome>): Promise<void> {
     try {
       const outcome = await done;
+      // The run aborted and ended while this tool ignored the signal: its
+      // call already has a cancelled result - a late settlement records nothing more.
+      if (this.abandoned) return;
       this.slots[index] = { status: 'completed', outcome };
       // N9b: a call paused for sign-in has no result yet, like one awaiting approval.
       if (!outcome.requiresApproval && !outcome.signIn) {
@@ -225,12 +258,17 @@ class ToolBatch {
   }
 }
 
-/** Runs one turn's tool calls - see {@link ToolBatch}. */
+/**
+ * Runs one turn's tool calls - see {@link ToolBatch}. `signal` stops new
+ * starts (abort or steer); `runSignal` is the run's own signal, whose abort
+ * also ends the wait for calls still running (Eve2-F5).
+ */
 export function runToolBatch(
   toolCalls: ToolCall[],
   concurrency: ToolConcurrency,
   callbacks: ToolBatchCallbacks,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  runSignal?: AbortSignal
 ): Promise<ToolBatchResult> {
-  return new ToolBatch(toolCalls, concurrency, callbacks, signal).run();
+  return new ToolBatch(toolCalls, concurrency, callbacks, signal, runSignal).run();
 }
