@@ -66,9 +66,10 @@ the agent one that outlives a serverless invocation when you use sessions.
 With `auth`, a session id is bound to the first principal that sends it a
 turn (reading an id claims nothing), and a different principal gets `403`
 (`LOUSHO_SESSION_FORBIDDEN`). That binding is kept in memory, so a new
-serverless instance forgets it: for an app with more than one user, pass
+serverless instance forgets it, and then refuses the stored session to every
+user, its owner too: for an app with more than one user, pass
 `authorizeSession` as well, e.g. with ids derived from the caller
-(`${userId}-<anything>`). See
+(`${userId}-<suffix without '-'>`, as below). See
 [Who may use a session](./auth.md#who-may-use-a-session).
 
 POST routes take JSON only (`Content-Type: application/json`, which
@@ -93,12 +94,15 @@ import { jwt } from '@lousho/build-ai-agent/auth';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', store: memoryStore() });
 const isSupervisor = (principal?: { claims?: Readonly<Record<string, unknown>> }) => principal?.claims?.role === 'supervisor';
+// Session ids are `<user id>-<suffix without '-'>`; the owner is everything before the last `-`
+// (a prefix match would let `alice` reach `alice-x`'s sessions).
+const ownerOf = (sessionId: string) => sessionId.slice(0, Math.max(sessionId.lastIndexOf('-'), 0));
 
 export const { GET, POST } = createRouteHandler(agent, {
   auth: jwt({ secret: process.env.JWT_SECRET!, issuer: 'https://auth.example.com', audience: 'agent-api' }),
-  // Customers use their own sessions (ids that start with their id); supervisors may read and decide in any session.
+  // Customers use their own sessions; supervisors may read and decide in any session.
   authorizeSession: ({ principal, sessionId, action }) =>
-    sessionId.startsWith(`${principal?.id}-`) || (action !== 'chat' && isSupervisor(principal)),
+    (principal !== undefined && ownerOf(sessionId) === principal.id) || (action !== 'chat' && isSupervisor(principal)),
   authorizeApproval: ({ principal, approval }) =>
     isSupervisor(principal) &&
     !(principal?.id === approval.principal?.id && principal?.issuer === approval.principal?.issuer),

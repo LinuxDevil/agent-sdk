@@ -155,34 +155,53 @@ export function postRefusal(request: Request, options: RequestGuardOptions): Res
   return undefined;
 }
 
-/** How many session owners {@link sessionOwnership} keeps per agent before it forgets the least recently used one. */
+/** How many session owners the default session check keeps per agent before it forgets the least recently used one. */
 export const MAX_SESSION_OWNERS = 100_000;
+
+let ownerLimit = MAX_SESSION_OWNERS;
+
+/** @internal Sets the owner cap ({@link MAX_SESSION_OWNERS} by default) and returns the previous one; for tests. */
+export function setSessionOwnerLimit(limit: number): number {
+  const previous = ownerLimit;
+  ownerLimit = limit;
+  return previous;
+}
 
 /** Per agent: each session id and the principal that started it, least recently used first. */
 const owners = new WeakMap<object, Map<string, Principal>>();
 
 /**
- * The default `authorizeSession`'s record, once route auth accepted a caller:
- * `'owner'` when `principal` owns session `sessionId`, `'other'` when another
- * principal does, `'unclaimed'` when nobody does yet. Only a turn (`claim`)
- * records an owner: a read never does, so a caller cannot squat an id by
- * reading it before its user starts it. Kept in memory per agent object for
- * at most {@link MAX_SESSION_OWNERS} sessions: a restart, another replica, a
- * new agent object, or a session unused for that long is forgotten.
+ * The principal recorded as the owner of session `sessionId` of `agent`, or
+ * `undefined` when none is (never claimed, or forgotten: the record is kept in
+ * memory per agent object for at most {@link MAX_SESSION_OWNERS} sessions).
+ * Marks the session as recently used.
  */
-export function sessionOwnership(agent: object, principal: Principal, sessionId: string, claim: boolean): 'owner' | 'other' | 'unclaimed' {
+export function sessionOwner(agent: object, sessionId: string): Principal | undefined {
+  const sessions = owners.get(agent);
+  const owner = sessions?.get(sessionId);
+  if (sessions && owner !== undefined) {
+    // A Map iterates in insertion order: re-inserting moves the id to the most recently used end.
+    sessions.delete(sessionId);
+    sessions.set(sessionId, owner);
+  }
+  return owner;
+}
+
+/** Records `principal` as the owner of session `sessionId` of `agent`, unless it has one. */
+export function claimSession(agent: object, sessionId: string, principal: Principal): void {
   let sessions = owners.get(agent);
   if (!sessions) owners.set(agent, (sessions = new Map()));
-  const owner = sessions.get(sessionId);
-  if (owner === undefined) {
-    if (!claim) return 'unclaimed';
-    sessions.set(sessionId, principal);
-    // A Map iterates in insertion order: the first key is the least recently used one.
-    if (sessions.size > MAX_SESSION_OWNERS) sessions.delete(sessions.keys().next().value as string);
-    return 'owner';
+  if (sessions.has(sessionId)) return;
+  sessions.set(sessionId, principal);
+  for (const oldest of sessions.keys()) {
+    if (sessions.size <= ownerLimit) break;
+    sessions.delete(oldest);
   }
-  if (!samePrincipal(owner, principal)) return 'other';
-  sessions.delete(sessionId);
-  sessions.set(sessionId, owner);
-  return 'owner';
+}
+
+/** Forgets `principal`'s claim on session `sessionId` of `agent` (a turn that stored nothing); another principal's claim is kept. */
+export function releaseSession(agent: object, sessionId: string, principal: Principal): void {
+  const sessions = owners.get(agent);
+  const owner = sessions?.get(sessionId);
+  if (owner !== undefined && samePrincipal(owner, principal)) sessions?.delete(sessionId);
 }
