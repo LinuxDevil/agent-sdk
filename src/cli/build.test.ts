@@ -80,7 +80,7 @@ describe('runBuild', () => {
     expect(await runBuild(['--target=stub', '--bogus'], captureIO())).toBe(2);
     const noAgent = captureIO();
     expect(await runBuild(['--target=stub'], noAgent)).toBe(2);
-    expect(noAgent.err.join('\n')).toContain('an agent path is required. Usage: lousho build <agent-dir|spec> --target=');
+    expect(noAgent.err.join('\n')).toContain('an agent path is required. Usage: lousho build <agent-dir|spec|agent.ts> --target=');
     expect(stubAdapterCalls).toEqual([]);
   });
 
@@ -169,7 +169,7 @@ describe('bin/lousho.js build (subprocess smoke test)', () => {
     expect(stdout).toContain('--traces[=dir]');
     expect(stdout).toContain('--drift');
     expect(stdout).toContain('--sdk-path');
-    expect(stdout).toContain('lousho build <agent-dir|spec> --target=<node-server|cloudflare-worker|docker>');
+    expect(stdout).toContain('lousho build <agent-dir|spec|agent.ts> --target=<node-server|cloudflare-worker|docker>');
   });
 
   it('dispatches `lousho build --target=stub` and runs scaffold, build, describe in order', () => {

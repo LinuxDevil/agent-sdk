@@ -1,7 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`renderProject > snapshot: anthropic / minimal agent.ts 1`] = `
-"import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -18,19 +18,24 @@ const instructions = 'You are a helpful assistant. Use your tools when they help
 const tools = [currentTime];
 
 /**
+ * The agent's options. The default export is what \`lousho dev src/agent.ts\`
+ * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
+ */
+const config: CreateAgentConfig = { model: 'anthropic/claude-sonnet-4-5', instructions, tools };
+export default config;
+
+/**
  * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider
-    ? createAgent({ provider, instructions, tools })
-    : createAgent({ model: 'anthropic/claude-sonnet-4-5', instructions, tools });
+  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
 }
 "
 `;
 
 exports[`renderProject > snapshot: anthropic / tools agent.ts 1`] = `
-"import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -63,13 +68,18 @@ const instructions = 'You are a helpful assistant. Use your tools when they help
 const tools = [currentTime, rollDie, wordCount];
 
 /**
+ * The agent's options. The default export is what \`lousho dev src/agent.ts\`
+ * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
+ */
+const config: CreateAgentConfig = { model: 'anthropic/claude-sonnet-4-5', instructions, tools };
+export default config;
+
+/**
  * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider
-    ? createAgent({ provider, instructions, tools })
-    : createAgent({ model: 'anthropic/claude-sonnet-4-5', instructions, tools });
+  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
 }
 "
 `;
@@ -82,9 +92,11 @@ exports[`renderProject > snapshot: minimal package.json 1`] = `
   "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",
+    "dev:ui": "lousho dev src/agent.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "doctor": "lousho doctor"
+    "doctor": "lousho doctor",
+    "build": "lousho build src/agent.ts --target=node-server"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.0",
@@ -94,8 +106,10 @@ exports[`renderProject > snapshot: minimal package.json 1`] = `
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
+    "vite": "^8.0.0",
     "vitest": "^5.0.3"
   },
   "engines": {
@@ -106,7 +120,7 @@ exports[`renderProject > snapshot: minimal package.json 1`] = `
 `;
 
 exports[`renderProject > snapshot: ollama / minimal agent.ts 1`] = `
-"import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -123,19 +137,24 @@ const instructions = 'You are a helpful assistant. Use your tools when they help
 const tools = [currentTime];
 
 /**
+ * The agent's options. The default export is what \`lousho dev src/agent.ts\`
+ * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
+ */
+const config: CreateAgentConfig = { model: 'ollama/llama3', instructions, tools };
+export default config;
+
+/**
  * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider
-    ? createAgent({ provider, instructions, tools })
-    : createAgent({ model: 'ollama/llama3', instructions, tools });
+  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
 }
 "
 `;
 
 exports[`renderProject > snapshot: ollama / tools agent.ts 1`] = `
-"import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -168,19 +187,24 @@ const instructions = 'You are a helpful assistant. Use your tools when they help
 const tools = [currentTime, rollDie, wordCount];
 
 /**
+ * The agent's options. The default export is what \`lousho dev src/agent.ts\`
+ * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
+ */
+const config: CreateAgentConfig = { model: 'ollama/llama3', instructions, tools };
+export default config;
+
+/**
  * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider
-    ? createAgent({ provider, instructions, tools })
-    : createAgent({ model: 'ollama/llama3', instructions, tools });
+  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
 }
 "
 `;
 
 exports[`renderProject > snapshot: openai / minimal agent.ts 1`] = `
-"import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -197,19 +221,24 @@ const instructions = 'You are a helpful assistant. Use your tools when they help
 const tools = [currentTime];
 
 /**
+ * The agent's options. The default export is what \`lousho dev src/agent.ts\`
+ * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
+ */
+const config: CreateAgentConfig = { model: 'openai/gpt-4o-mini', instructions, tools };
+export default config;
+
+/**
  * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider
-    ? createAgent({ provider, instructions, tools })
-    : createAgent({ model: 'openai/gpt-4o-mini', instructions, tools });
+  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
 }
 "
 `;
 
 exports[`renderProject > snapshot: openai / tools agent.ts 1`] = `
-"import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -242,19 +271,24 @@ const instructions = 'You are a helpful assistant. Use your tools when they help
 const tools = [currentTime, rollDie, wordCount];
 
 /**
+ * The agent's options. The default export is what \`lousho dev src/agent.ts\`
+ * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
+ */
+const config: CreateAgentConfig = { model: 'openai/gpt-4o-mini', instructions, tools };
+export default config;
+
+/**
  * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider
-    ? createAgent({ provider, instructions, tools })
-    : createAgent({ model: 'openai/gpt-4o-mini', instructions, tools });
+  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
 }
 "
 `;
 
 exports[`renderProject > snapshot: openrouter / minimal agent.ts 1`] = `
-"import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -271,19 +305,24 @@ const instructions = 'You are a helpful assistant. Use your tools when they help
 const tools = [currentTime];
 
 /**
+ * The agent's options. The default export is what \`lousho dev src/agent.ts\`
+ * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
+ */
+const config: CreateAgentConfig = { model: 'openrouter/openai/gpt-4o-mini', instructions, tools };
+export default config;
+
+/**
  * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider
-    ? createAgent({ provider, instructions, tools })
-    : createAgent({ model: 'openrouter/openai/gpt-4o-mini', instructions, tools });
+  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
 }
 "
 `;
 
 exports[`renderProject > snapshot: openrouter / tools agent.ts 1`] = `
-"import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -316,19 +355,24 @@ const instructions = 'You are a helpful assistant. Use your tools when they help
 const tools = [currentTime, rollDie, wordCount];
 
 /**
+ * The agent's options. The default export is what \`lousho dev src/agent.ts\`
+ * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
+ */
+const config: CreateAgentConfig = { model: 'openrouter/openai/gpt-4o-mini', instructions, tools };
+export default config;
+
+/**
  * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider
-    ? createAgent({ provider, instructions, tools })
-    : createAgent({ model: 'openrouter/openai/gpt-4o-mini', instructions, tools });
+  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
 }
 "
 `;
 
 exports[`renderProject > snapshot: pi / minimal agent.ts 1`] = `
-"import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -345,19 +389,24 @@ const instructions = 'You are a helpful assistant. Use your tools when they help
 const tools = [currentTime];
 
 /**
+ * The agent's options. The default export is what \`lousho dev src/agent.ts\`
+ * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
+ */
+const config: CreateAgentConfig = { model: 'pi/openrouter/openai/gpt-4o-mini', instructions, tools };
+export default config;
+
+/**
  * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider
-    ? createAgent({ provider, instructions, tools })
-    : createAgent({ model: 'pi/openrouter/openai/gpt-4o-mini', instructions, tools });
+  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
 }
 "
 `;
 
 exports[`renderProject > snapshot: pi / tools agent.ts 1`] = `
-"import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -390,13 +439,18 @@ const instructions = 'You are a helpful assistant. Use your tools when they help
 const tools = [currentTime, rollDie, wordCount];
 
 /**
+ * The agent's options. The default export is what \`lousho dev src/agent.ts\`
+ * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
+ */
+const config: CreateAgentConfig = { model: 'pi/openrouter/openai/gpt-4o-mini', instructions, tools };
+export default config;
+
+/**
  * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider
-    ? createAgent({ provider, instructions, tools })
-    : createAgent({ model: 'pi/openrouter/openai/gpt-4o-mini', instructions, tools });
+  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
 }
 "
 `;
@@ -409,9 +463,11 @@ exports[`renderProject > snapshot: tools package.json 1`] = `
   "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",
+    "dev:ui": "lousho dev src/agent.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "doctor": "lousho doctor"
+    "doctor": "lousho doctor",
+    "build": "lousho build src/agent.ts --target=node-server"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.0",
@@ -421,8 +477,10 @@ exports[`renderProject > snapshot: tools package.json 1`] = `
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
+    "vite": "^8.0.0",
     "vitest": "^5.0.3"
   },
   "engines": {
@@ -442,7 +500,8 @@ exports[`renderProject > snapshot: yaml package.json 1`] = `
     "dev": "lousho dev agent.yaml",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "doctor": "lousho doctor agent.yaml"
+    "doctor": "lousho doctor agent.yaml",
+    "build": "lousho build agent.yaml --target=node-server"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.0",
@@ -452,8 +511,10 @@ exports[`renderProject > snapshot: yaml package.json 1`] = `
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
+    "vite": "^8.0.0",
     "vitest": "^5.0.3"
   },
   "engines": {

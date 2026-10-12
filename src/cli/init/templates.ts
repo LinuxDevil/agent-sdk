@@ -66,9 +66,13 @@ function packageJson(config: ProjectConfig): string {
     scripts: {
       // `lousho dev` loads .env itself, and so does src/index.ts (tsx --env-file-if-exists prints "not found" twice).
       dev: yaml ? 'lousho dev agent.yaml' : 'tsx src/index.ts',
+      // The chat UI with hot reload; it serves src/agent.ts's default export.
+      ...(yaml ? {} : { 'dev:ui': 'lousho dev src/agent.ts' }),
       test: 'vitest run',
       typecheck: 'tsc --noEmit',
       doctor: yaml ? 'lousho doctor agent.yaml' : 'lousho doctor',
+      // A self-contained HTTP server in .lousho/build/node-server (--target=docker adds a Dockerfile).
+      build: `lousho build ${yaml ? 'agent.yaml' : 'src/agent.ts'} --target=node-server`,
     },
     dependencies: sortKeys({
       '@lousho/build-ai-agent': config.sdkDependency,
@@ -77,8 +81,12 @@ function packageJson(config: ProjectConfig): string {
     }),
     devDependencies: {
       '@types/node': '^22.0.0',
+      // `lousho build` bundles with tsup.
+      tsup: '^8.0.0',
       tsx: '^4.19.0',
       typescript: '^5.6.0',
+      // vitest's peer: yarn 1 does not install peers, so it is listed.
+      vite: '^8.0.0',
       vitest: '^5.0.3',
     },
     engines: { node: '>=22.19.0' },
@@ -140,7 +148,7 @@ function toolNames(template: Template): string[] {
 function agentSource(config: ProjectConfig): string {
   const info = providerInfo(config.provider);
   const extra = config.template === 'tools' ? EXTRA_TOOLS : '';
-  return `import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';
+  return `import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
 
 ${TIME_TOOL}${extra}
@@ -149,13 +157,18 @@ const instructions = 'You are a helpful assistant. Use your tools when they help
 const tools = [${toolNames(config.template).join(', ')}];
 
 /**
+ * The agent's options. The default export is what \`lousho dev src/agent.ts\`
+ * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
+ */
+const config: CreateAgentConfig = { model: '${config.provider}/${info.defaultModel}', instructions, tools };
+export default config;
+
+/**
  * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider
-    ? createAgent({ provider, instructions, tools })
-    : createAgent({ model: '${config.provider}/${info.defaultModel}', instructions, tools });
+  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
 }
 `;
 }
@@ -292,9 +305,10 @@ function readme(config: ProjectConfig): string {
   const pm = config.packageManager;
   const info = providerInfo(config.provider);
   const yaml = config.template === 'yaml';
+  const tools = config.template === 'tools' ? 'three example tools' : 'an example tool';
   const files = yaml
     ? '- `agent.yaml` - the agent: prompt, provider and tools\n- `src/agent.test.ts` - checks the spec loads, offline'
-    : '- `src/agent.ts` - the agent and an example tool\n- `src/agent.test.ts` - tests with a scripted model, offline\n- `src/index.ts` - a tiny terminal chat';
+    : `- \`src/agent.ts\` - the agent and ${tools}\n- \`src/agent.test.ts\` - tests with a scripted model, offline\n- \`src/index.ts\` - a tiny terminal chat`;
   return `# ${config.name}
 
 An agent built with [@lousho/build-ai-agent](https://github.com/LinuxDevil/agent-sdk).
@@ -305,7 +319,10 @@ An agent built with [@lousho/build-ai-agent](https://github.com/LinuxDevil/agent
 # copy .env.example to .env (cp on macOS/Linux, copy on Windows), then put your ${info.envKey} in it${yaml ? ' (or export it)' : ''}
 ${run(pm, 'dev')}${yaml ? '          # chat UI with hot reload' : '          # chat with the agent in your terminal'}
 ${run(pm, 'test')}         # offline tests, no API key needed
+${yaml ? `${run(pm, 'build')}        # a deployable server in .lousho/build/node-server` : `${run(pm, 'dev:ui')}       # chat UI with hot reload (lousho dev)`}
 \`\`\`
+
+\`${run(pm, 'build')}\` bundles the agent into a self-contained HTTP server (\`node .lousho/build/node-server/dist/server.js\`); \`lousho build ${yaml ? 'agent.yaml' : 'src/agent.ts'} --target=docker\` adds a Dockerfile.
 
 Run \`${run(pm, 'doctor')}\` if something does not work: it checks Node, packages and API keys.
 
