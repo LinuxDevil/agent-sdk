@@ -359,7 +359,7 @@ describe('serveMcp over HTTP', () => {
   }
 
   it('hands out an Mcp-Session-Id on initialize, so a cancel from one of two identical clients stops only its own run', async () => {
-    const { agent: slow, signals } = slowAgent(600);
+    const { agent: slow, signals } = slowAgent(2000);
     const server = await serveMcp({ agent: slow, name: 'slow', transport: { type: 'http', port: 0 }, warn: () => {} });
     closers.push(server.close);
     const clients = [new Client({ name: 'c', version: '1' }), new Client({ name: 'c', version: '1' })];
@@ -373,7 +373,13 @@ describe('serveMcp over HTTP', () => {
     // Both clients send the same JSON-RPC ids, from the same address and User-Agent.
     const full = clients[0].callTool({ name: 'slow', arguments: { message: 'a' } });
     await vi.waitFor(() => expect(signals).toHaveLength(1));
-    await expect(clients[1].callTool({ name: 'slow', arguments: { message: 'b' } }, undefined, { timeout: 100 })).rejects.toThrow(/timed out/i);
+    // Cancel only once the second run has started: a fixed client timeout can fire before the
+    // server registers the request on a busy runner, and then there is nothing to abort yet.
+    const cancel = new AbortController();
+    const second = clients[1].callTool({ name: 'slow', arguments: { message: 'b' } }, undefined, { signal: cancel.signal });
+    await vi.waitFor(() => expect(signals).toHaveLength(2));
+    cancel.abort();
+    await expect(second).rejects.toThrow();
     await vi.waitFor(() => expect(signals[1]?.aborted).toBe(true));
     expect(textOf(await full)).toBe('done');
     expect(signals[0].aborted).toBe(false);
