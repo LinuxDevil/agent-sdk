@@ -1376,6 +1376,7 @@ interface McpToolAnnotations {
 
 // @public
 export class McpToolError extends Error {
+    static [Symbol.hasInstance](value: unknown): boolean;
     constructor(message: string);
     readonly toolErrorKind: "mcp";
 }
@@ -2864,6 +2865,7 @@ export type WorkspaceEntryType = 'file' | 'directory' | 'symlink' | 'other';
 
 // @public
 export class WorkspaceError extends Error {
+    static [Symbol.hasInstance](value: unknown): boolean;
     constructor(message: string);
 }
 

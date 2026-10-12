@@ -1,3 +1,5 @@
+import { brandClass, instanceOfOwnBrand, sharedWeakSet } from '../utils/brand';
+
 /**
  * Base class for tool errors that must NOT be swallowed by
  * executeToolCall()'s catch-all and converted into a conversational
@@ -15,9 +17,16 @@
  * its public home) so the executor's tool-call path and the delegation
  * core can both use it without a circular import.
  */
-export class PropagatingToolError extends Error {}
+export class PropagatingToolError extends Error {
+  /** `instanceof` also holds for one thrown by another loaded copy of the SDK (a `.cjs` tool next to the ESM CLI). */
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return instanceOfOwnBrand(this, value);
+  }
+}
+brandClass(PropagatingToolError, 'PropagatingToolError');
 
-const propagatingErrors = new WeakSet<object>();
+/** Shared by every loaded copy of the SDK, like the class brand. */
+const propagatingErrors = sharedWeakSet('lousho.propagatingErrors');
 
 /**
  * Makes an error that is not a {@link PropagatingToolError} propagate like

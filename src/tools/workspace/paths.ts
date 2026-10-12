@@ -1,6 +1,7 @@
 /**
  * Workspace path validation shared by every provider and tool (LOU-X6).
  */
+import { brandClass, instanceOfOwnBrand } from '../../utils/brand';
 
 /**
  * A workspace operation was refused or failed (path outside the workspace,
@@ -9,11 +10,17 @@
  * (`{ error: 'WorkspaceError', toolName, message }`) instead of aborting the run.
  */
 export class WorkspaceError extends Error {
+  /** `instanceof` also holds for one thrown by another loaded copy of the SDK. */
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return instanceOfOwnBrand(this, value);
+  }
+
   constructor(message: string) {
     super(message);
     this.name = 'WorkspaceError';
   }
 }
+brandClass(WorkspaceError, 'WorkspaceError');
 
 /** Windows reserved device names (`CON`, `NUL`, `COM1`, ...), with or without an extension. */
 const WINDOWS_DEVICE_NAME = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\..*)?$/i;

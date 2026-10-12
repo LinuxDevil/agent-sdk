@@ -11,6 +11,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { SDKError, ValidationError } from '../execution/errors';
 import { HookRegistry } from '../execution/hooks';
+import { isPropagatingToolError, PropagatingToolError } from '../execution/propagatingToolError';
+import { SubagentApprovalPause } from '../execution/subagentRuntime';
+import { McpToolError } from '../tools/mcp/result';
+import { WorkspaceError } from '../tools/workspace/paths';
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const dist = (file: string) => JSON.stringify(path.join(REPO_ROOT, 'dist', file));
@@ -60,8 +64,20 @@ describe('shared chunks across package entries (LOU-D42)', () => {
           .filter((name) => !(Reflect.construct(esmRoot[name], ['x', 'y']) instanceof cjsRoot[name])),
         inherited: new esmRoot.CompactedLLMProviderError({ error: 'x', category: 'unknown', retryable: false }) instanceof cjsRoot.LLMProviderError,
         siblingNotConfused: new esmRoot.TimeoutError('x') instanceof cjsRoot.RateLimitError === false,
+        // Tool errors outside the SDKError family: a CJS tool's "do not retry" must stop the ESM executor's run.
+        toolErrors: ['PropagatingToolError', 'McpToolError', 'WorkspaceError']
+          .filter((name) => !(new cjsRoot[name]('x') instanceof esmRoot[name]) || new Error('x') instanceof esmRoot[name]),
       };`);
-    expect(result).toEqual({ distinctCopies: true, sdkError: true, hookRegistry: true, subclassNotConfused: true, subclasses: [], inherited: true, siblingNotConfused: true });
+    expect(result).toEqual({
+      distinctCopies: true,
+      sdkError: true,
+      hookRegistry: true,
+      subclassNotConfused: true,
+      subclasses: [],
+      inherited: true,
+      siblingNotConfused: true,
+      toolErrors: [],
+    });
   });
 
   it('brands answer instanceof for foreign-copy objects but not for unrelated ones', () => {
@@ -76,6 +92,12 @@ describe('shared chunks across package entries (LOU-D42)', () => {
     class MyValidationError extends ValidationError {}
     expect(new ValidationError('x')).not.toBeInstanceOf(MyValidationError);
     expect(new MyValidationError('x')).toBeInstanceOf(ValidationError);
+    expect(Object.create({ [Symbol.for('lousho.PropagatingToolError')]: true })).toBeInstanceOf(PropagatingToolError);
+    expect(isPropagatingToolError(Object.create({ [Symbol.for('lousho.PropagatingToolError')]: true }))).toBe(true);
+    expect(Object.create({ [Symbol.for('lousho.McpToolError')]: true })).toBeInstanceOf(McpToolError);
+    expect(Object.create({ [Symbol.for('lousho.WorkspaceError')]: true })).toBeInstanceOf(WorkspaceError);
+    expect(new Error('x')).not.toBeInstanceOf(PropagatingToolError);
+    expect(new PropagatingToolError('x')).not.toBeInstanceOf(SubagentApprovalPause);
   });
 
   it('every package.json exports target exists in dist/', () => {
