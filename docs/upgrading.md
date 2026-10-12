@@ -278,6 +278,10 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | `lousho eval` gives each live, `--record` and `--drift` case 10 minutes instead of vitest's 5 s. See [Time limits](./evals.md#time-limits). | `--timeout <ms>` or `defineEval({ timeoutMs })` |
 | Agent Forge fails a run on a real provider with no API key (`LOUSHO_PROVIDER_MISSING_API_KEY`) instead of silently using the mock provider. | switch the agent's provider to `mock` |
 | The npm package no longer ships `llms-full.txt` (it stays in the repository; `llms.txt` ships). | fetch `llms-full.txt` from the repository |
+| `lousho eval` exits 1 when no case ran (every case skipped by `--tag`, or no `defineEval()` in the files). | pass the tags or globs that select cases |
+| `lousho mcp --port N` or `--host H` without `--http` is a usage error (exit 2); stdio has no port. | drop the flags, or add `--http` |
+| The `package.json` of a node-server or docker build no longer lists `@lousho/build-ai-agent` (the bundle contains it). | add it yourself if other code next to the build imports the SDK |
+| The npm package no longer ships `dist/cli/*.js` (the CommonJS CLI build) or `dist/cli/*.d.ts`; `bin/lousho.js` never loaded them. | run the CLI through `bin/lousho.js` (`npx lousho`) |
 
 ## What 1.0 promises
 

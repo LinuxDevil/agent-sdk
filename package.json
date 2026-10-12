@@ -277,6 +277,8 @@
   },
   "files": [
     "dist",
+    "!dist/cli/*.js",
+    "!dist/cli/*.js.map",
     "src",
     "!src/**/*.test.ts",
     "!src/**/*.test-d.ts",
