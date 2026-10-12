@@ -102,3 +102,20 @@ All harnesses re-run against a freshly packed `1.0.0-alpha.19` built from `main`
 
 - `companion/index.ts`: memory dumps listed the raw scope key while items live under `memoryKey(slot)` (`<slot>#<scope>`); switched to `memoryKey()` so store/separation/isolation checks read real buckets.
 - `incident-responder/index.ts`: the resume-refusal check now logs the actual thrown error (or resolved value) for diagnosis instead of a bare `unexpected`.
+
+## Eve-2 adversarial round — findings fixed and verified
+
+A second adversarial pass audited the code the first round's fixes introduced (run leases, session paused markers, session-ownership claims, multi-approval pauses, streamed tool-call rewrites). Two independent audit agents plus repro scripts under `audit/eve2/repro/` confirmed **8 defects** (1 critical, 4 high, 3 medium); all are fixed on `main` and re-verified against the packed `1.0.0-alpha.19` tarball built at `edcf1ac4`.
+
+| Finding | Severity | Fix PR | Packed-build re-verification |
+|---|---|---|---|
+| F1 session-ownership claim TOCTOU (two concurrent first-touch turns could both win an unowned session; a loser could stream inside a foreign session — cross-principal data exposure) | critical | #616 | `f1-session-squat-toctou.ts`: loser gets `403 LOUSHO_SESSION_FORBIDDEN`; post-claim read `400` — no leak |
+| F2 `recordFailure()` poisoning a foreign checkpoint after lease loss | high | #617 | `f2-recordfailure-poisons-foreign-checkpoint.ts`: victim checkpoint untouched, `LOUSHO_PROVIDER_REQUEST_FAILED` intact |
+| F3 paused-turn invisible when the `.paused` marker was never written (crash / ordering gap) | high | #617 | `f3-paused-marker-gap.ts`: `SessionAwaitingApprovalError` via checkpoint scan fallback |
+| F4 edited args on a sub-agent's grouped approval skipped schema validation | high | #618 | `subagentGroupEditedArgs.ts`: invalid edit rejected, approval stays pending |
+| F5 abort during a tool that ignores `AbortSignal` hung `send()`/`stream()`/`approvals.resolve()` forever | high | #618 | `abortDuringToolExecution.ts` and `abortDuringResumedTool.ts`: `finish=aborted` at ~670ms (150ms abort + bounded grace); near-complete tool results still kept |
+| F6 re-paused grouped approval persisted only 1 of N approval ids | medium | #618 | `rePausedSubagentCheckpointIds.ts`: all pending ids in checkpoint |
+| F7 streamed tool-call deltas repeating `id` without `index` fragmented one call into phantom calls | medium | #615 | `streamToolCallIdRewrite.ts`: repeated unindexed id stays one call |
+| F8 any `"stream": true` substring in the request body (e.g. tool arguments) rewrote the JSON reply into SSE | medium | #615 | `streamRegexFalsePositive.ts`: JSON response preserved |
+
+Triage of the round-1 corpus against current `main`: **142 of 166 findings verified fixed**; 15 remain open (mostly medium/low, documented per-cluster in `audit/eve/`); 9 reclassified. Live OpenRouter verification of the remaining harnesses is pending a valid key (the provided key returns `401 "API key expired"` — a credential issue, not an SDK defect: the request reaches `openrouter.ai/api/v1` correctly).
