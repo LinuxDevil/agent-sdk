@@ -301,6 +301,9 @@ refused command is never offered for approval:
   returns `true` for the rest of the line (`''` when there is none):
 
   ```ts
+  import { createShellTool, NodeWorkspace } from '@lousho/build-ai-agent';
+
+  const workspace = new NodeWorkspace({ root: '.' });
   createShellTool(workspace, {
     needsApproval: false,
     allow: [

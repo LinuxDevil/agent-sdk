@@ -253,7 +253,7 @@ const notes = defineMemory({
 });
 
 const agent = createAgent({
-  provider: mockModel(['Hi!']),
+  provider: mockModel(['Hi!', 'Hi again!']), // one scripted reply per turn below
   model: ({ principal }) => (principal?.claims?.plan === 'pro' ? 'openai/gpt-4o' : 'openai/gpt-4o-mini'),
   instructions: ({ principal }) => (principal?.type === 'service' ? 'Answer in JSON.' : 'Be friendly.'),
   memory: [notes],

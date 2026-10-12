@@ -41,7 +41,7 @@ const custom = LLMProviderRegistry.create('openai', {
    `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `OLLAMA_BASE_URL` that is
    present. With none set it throws an error listing the fixes.
 
-```ts
+```ts no-run
 import { createAgent, createMockProvider, resolveProvider } from '@lousho/build-ai-agent';
 
 const fromString = createAgent({ model: 'anthropic/claude-sonnet-5-5' });

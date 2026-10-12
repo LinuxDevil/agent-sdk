@@ -1765,7 +1765,7 @@ files. Every option is passed on to the agent, including the ones no file
 declares (`guardrails`, `onEvent`, `retry`, `reasoning`, `redactContent`,
 `output`, ...). Use it to swap the model in tests:
 
-```ts
+```ts no-run
 import { loadAgentDir } from '@lousho/build-ai-agent';
 import { mockModel } from '@lousho/build-ai-agent/testing';
 
@@ -3194,7 +3194,7 @@ const notes = defineMemory({
 });
 
 const agent = createAgent({
-  provider: mockModel(['Hi!']),
+  provider: mockModel(['Hi!', 'Hi again!']), // one scripted reply per turn below
   model: ({ principal }) => (principal?.claims?.plan === 'pro' ? 'openai/gpt-4o' : 'openai/gpt-4o-mini'),
   instructions: ({ principal }) => (principal?.type === 'service' ? 'Answer in JSON.' : 'Be friendly.'),
   memory: [notes],
@@ -3858,7 +3858,7 @@ const channels = mountFetchChannels(agent, [slack], { waitUntil: (turn) => void 
 
 `httpChannel()` is the reference channel: `{ sessionKey, input }` in, JSON out.
 
-```ts
+```ts no-run
 import * as http from 'node:http';
 import { createAgent, createMockProvider, httpChannel, mountChannels } from '@lousho/build-ai-agent';
 
@@ -8904,7 +8904,7 @@ agent's provider makes the eval deterministic: no network, no API key, no
 flakiness. **This is the default way to write an eval**; use a real model only
 for the [judge evals](#judge-evals) below.
 
-```ts
+```ts no-run
 // refund.eval.ts
 import { z } from 'zod';
 import { createAgent, defineEval, defineTool, includes } from '@lousho/build-ai-agent';
@@ -9044,7 +9044,7 @@ its own cassette. `timeoutMs` covers all runs of a case, so raise it with `repea
 Pass `cases` and `test` runs once per case, each reported separately. A case is
 any object; its `label` (or `name`, or its `input`) names it.
 
-```ts
+```ts no-run
 import { z } from 'zod';
 import { createAgent, defineEval, defineTool } from '@lousho/build-ai-agent';
 import { mockModel } from '@lousho/build-ai-agent/testing';
@@ -9088,7 +9088,7 @@ model runs out of turns on the second case.
 configured one: without `judge`, `t.judge()` throws an error saying how to fix
 it.
 
-```ts
+```ts no-run
 // tone.judge.eval.ts: run with `lousho eval --judge`
 import { createAgent, defineEval, atLeast } from '@lousho/build-ai-agent';
 import { mockModel } from '@lousho/build-ai-agent/testing';
@@ -13531,7 +13531,7 @@ const custom = LLMProviderRegistry.create('openai', {
    `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `OLLAMA_BASE_URL` that is
    present. With none set it throws an error listing the fixes.
 
-```ts
+```ts no-run
 import { createAgent, createMockProvider, resolveProvider } from '@lousho/build-ai-agent';
 
 const fromString = createAgent({ model: 'anthropic/claude-sonnet-5-5' });
@@ -14995,7 +14995,7 @@ The timers are unref'd: they never keep a process alive on their own, so a
 server or a test exits normally. A script that does nothing but run schedules
 would therefore exit straight away; pass `keepAlive: true` for that:
 
-```ts
+```ts no-run
 import { createAgent, createMockProvider, defineSchedule, startSchedules } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider() });
@@ -18304,7 +18304,7 @@ handle.stop();
 
 **Deprecated.** `WebhookTriggerAdapter` is replaced by `webhookChannel()` mounted with `mountChannels()` (see [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md)), which takes the same `auth` option and adds sessions and approvals. The `WebhookAuth` shapes below stay and are the reference for `webhookChannel({ auth })`.
 
-```ts
+```ts no-run
 import { createAgent, createMockProvider, mountChannels, webhookChannel } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
@@ -18325,7 +18325,7 @@ through `options.logger`. Without `auth` on loopback, a request whose `Host`
 is not a loopback name (DNS rebinding) or that carries an `Origin` header (a
 web page) gets `403`.
 
-```ts
+```ts no-run
 import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
 import { WebhookTriggerAdapter } from '@lousho/build-ai-agent/triggers';
 
@@ -18374,7 +18374,7 @@ tokens and payloads are not sent in clear text.
 
 **Deprecated.** `SlackTriggerAdapter` is replaced by `slackChannel()` mounted with `mountChannels()` (see [Slack in Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md#slack)): one session per Slack thread, approval buttons, and the signature check built in. `verifySlackSignature()` stays and is not deprecated.
 
-```ts
+```ts no-run
 import { createAgent, createMockProvider, mountChannels, slackChannel } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
@@ -18401,7 +18401,7 @@ rejected (the timestamp is in seconds, as Slack sends it). Failures get a generi
 logged at `warn` level. The signed `url_verification` handshake is answered
 after verification.
 
-```ts
+```ts no-run
 import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
 import { SlackTriggerAdapter, verifySlackSignature } from '@lousho/build-ai-agent/triggers';
 import * as http from 'node:http';
@@ -19383,6 +19383,9 @@ refused command is never offered for approval:
   returns `true` for the rest of the line (`''` when there is none):
 
   ```ts
+  import { createShellTool, NodeWorkspace } from '@lousho/build-ai-agent';
+
+  const workspace = new NodeWorkspace({ root: '.' });
   createShellTool(workspace, {
     needsApproval: false,
     allow: [
