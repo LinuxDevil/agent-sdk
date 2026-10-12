@@ -32,7 +32,7 @@ import {
 } from '@lousho/build-ai-agent';
 import { fileTraceExporter, listTraces, readTrace } from '@lousho/build-ai-agent/traces';
 import { hasLiveKey, LIVE_MODEL, report } from '../_shared/env.js';
-import { CORPUS, searchCorpus, searchStats, servedIds } from './corpus.js';
+import { CORPUS, loadCorpusDir, searchCorpus, searchStats, servedIds } from './corpus.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const traceDir = path.join(here, 'traces');
@@ -43,6 +43,12 @@ const exporter = fileTraceExporter({ dir: traceDir });
 const QUESTION =
   process.argv.slice(2).join(' ') ||
   'What breaks first when a Node.js app is under memory pressure?';
+// CORPUS_DIR=<dir> researches real .md/.txt/.mdx documents instead of the
+// canned Node.js memory corpus (real-task mode).
+if (process.env.CORPUS_DIR) {
+  const n = loadCorpusDir(path.resolve(process.env.CORPUS_DIR));
+  console.log(`CORPUS_DIR mode: loaded ${n} real document(s)`);
+}
 const MAX_WAVES = 2;
 /** Canary planted only in the coordinator's instructions; it must never leak into a sub-agent's brief. */
 const CANARY = 'ZEBRA-7717';
@@ -75,7 +81,7 @@ type Report = z.infer<typeof REPORT>;
 const knowledgeSearch = defineTool({
   name: 'knowledge_search',
   description:
-    'Search a curated corpus of Node.js memory-internals notes. Returns matching entries with citation ids (C1..C8), title, url and text.',
+    'Search the research corpus. Returns matching entries with citation ids (e.g. C3 / D2), title, url and text.',
   input: z.object({ query: z.string().describe('Keywords describing what to look up') }),
   execute: async ({ query }) => {
     searchStats.calls++;
@@ -96,9 +102,9 @@ const knowledgeSearch = defineTool({
 const researcher = createAgent({
   name: 'researcher',
   description:
-    'Researches one slice of a Node.js internals question using the knowledge_search corpus; returns a compact cited brief.',
+    'Researches one slice of the research question using the knowledge_search corpus; returns a compact cited brief.',
   instructions:
-    'You are a Node.js internals researcher. You get one self-contained research slice. ' +
+    'You are a researcher. You get one self-contained research slice. ' +
     'ALWAYS call knowledge_search at least once before answering (use 1-2 queries). ' +
     'Answer with 3-6 tight findings; every finding must end with the [C#] id(s) of the corpus entries that support it. ' +
     'Cite only ids the tool actually returned. No preamble, no caveats.',
@@ -374,10 +380,11 @@ async function main(): Promise<void> {
       input: a.input + r.usage.inputTokens,
       output: a.output + r.usage.outputTokens,
       total: a.total + r.usage.totalTokens,
+      cached: a.cached + (r.usage.cachedInputTokens ?? 0),
       calls: a.calls + r.usage.modelCalls,
       cost: a.cost + (r.usage.costUsd ?? 0),
     }),
-    { input: 0, output: 0, total: 0, calls: 0, cost: 0 }
+    { input: 0, output: 0, total: 0, cached: 0, calls: 0, cost: 0 }
   );
   const priced = ledger.every((r) => typeof r.usage.costUsd === 'number');
   console.log('\nper-run usage:');
@@ -406,13 +413,24 @@ async function main(): Promise<void> {
       invariants += ` ${r.label}:stepUsage(${r.ownModelCalls})+delegated(${r.usage.delegated?.modelCalls ?? 0})!=modelCalls(${r.usage.modelCalls})`;
     }
   }
-  const manualCost = estimateCost({ inputTokens: sum.input, outputTokens: sum.output }, MODEL_ID);
+  // OpenRouter bills per call (`usage.cost`) with prompt-cache discounts and
+  // its own pricing granularity, so billed total won't bit-match a fresh
+  // registry estimate. Re-estimate with the recorded cached-input tokens and
+  // allow a 15% band; equality is still required when nothing was billed.
+  const manualCost = estimateCost(
+    { inputTokens: sum.input, outputTokens: sum.output, cachedInputTokens: sum.cached },
+    MODEL_ID
+  );
+  const billedEverywhere = ledger.every((r) => r.usage.modelCalls === 0 || typeof r.usage.costUsd === 'number');
   const costMatch =
-    manualCost !== undefined && Math.abs(manualCost - sum.cost) < 1e-9;
+    manualCost !== undefined &&
+    (billedEverywhere
+      ? Math.abs(manualCost - sum.cost) <= Math.max(manualCost * 0.15, 1e-6)
+      : Math.abs(manualCost - sum.cost) < 1e-9);
   report(
     'usage + cost accounting',
     priced && invariantOk && costMatch,
-    `total ${sum.input}in/${sum.output}out across ${sum.calls} model calls; ` +
+    `total ${sum.input}in/${sum.output}out (${sum.cached} cached) across ${sum.calls} model calls; ` +
       `sum(costUsd)=$${sum.cost.toFixed(6)} vs estimateCost=$${manualCost?.toFixed(6) ?? 'unknown'}; byModel sums match=${invariantOk}${invariants}`
   );
 

@@ -9,7 +9,8 @@
     "companion": "tsx companion/index.ts",
     "incident": "tsx incident-responder/index.ts",
     "repo": "tsx repo-maintainer/index.ts",
-    "research": "tsx research-analyst/index.ts"
+    "research": "tsx research-analyst/index.ts",
+    "products": "tsx products-admin/index.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.0",

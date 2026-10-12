@@ -6,6 +6,9 @@
  * a search call during the run (the tool records what it served).
  */
 
+import { readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
+
 export interface CorpusEntry {
   id: string;
   title: string;
@@ -99,6 +102,33 @@ export function searchCorpus(query: string, limit = 4): CorpusEntry[] {
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
     .map(({ entry }) => entry);
+}
+
+/**
+ * Real-corpus mode: replace the canned entries with real documents from a
+ * directory (`.md`/`.txt`). Each file becomes one entry — id `D<n>`, title
+ * from its first `#` heading or filename, text capped at 4000 chars. Used by
+ * `CORPUS_DIR=<dir>` in index.ts to research real documentation.
+ */
+export function loadCorpusDir(dir: string): number {
+  const files = readdirSync(dir)
+    .filter((f) => /\.(md|txt|mdx)$/i.test(f))
+    .sort();
+  const entries: CorpusEntry[] = files.map((f, i) => {
+    const raw = readFileSync(path.join(dir, f), 'utf8');
+    const heading = raw.match(/^#\s+(.+)$/m)?.[1]?.trim();
+    const text = raw.replace(/^---[\s\S]*?---/m, '').slice(0, 4000);
+    return {
+      id: `D${i + 1}`,
+      title: heading || f.replace(/\.(md|txt|mdx)$/i, ''),
+      url: path.join(dir, f),
+      text,
+      keywords: [...new Set(termsOf(text))].slice(0, 40),
+    };
+  });
+  CORPUS.length = 0;
+  CORPUS.push(...entries);
+  return entries.length;
 }
 
 /** Ids the search tool actually served this run - the set a citation may legitimately point at. */

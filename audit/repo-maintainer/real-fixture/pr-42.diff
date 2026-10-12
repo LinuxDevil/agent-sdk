@@ -1,0 +1,188 @@
+diff --git a/src/server/fetchRoutes.ts b/src/server/fetchRoutes.ts
+index d965ac5a..63efd3ec 100644
+--- a/src/server/fetchRoutes.ts
++++ b/src/server/fetchRoutes.ts
+@@ -359,15 +359,18 @@ export async function sessionForbidden(
+ /**
+  * The default session check: the owner on record decides; without one, a
+  * session that is already stored is nobody's to take (its owner may only have
+- * been forgotten), and a new one is claimed by a turn (`claim`).
++ * been forgotten), and a new one is claimed by a turn (`claim`) - atomically,
++ * so of two concurrent first touches only the caller whose claim holds may go on.
+  */
+ async function ownsSession(ctx: ChatRoutesContext, principal: Principal, sessionId: string, claim: boolean, session: AgentSession | undefined): Promise<boolean> {
+   const agent = ctx.agent();
+   const owner = sessionOwner(agent, sessionId);
+   if (owner !== undefined) return samePrincipal(owner, principal);
+   if (await sessionStored(ctx, sessionId, session)) return false;
+-  if (claim) claimSession(agent, sessionId, principal);
+-  return true;
++  // Eve2-F1: the claim itself decides the race - it is atomic with the record,
++  // so a concurrent first touch that registered another owner first is refused
++  // here instead of streaming a turn inside that principal's session.
++  return !claim || claimSession(agent, sessionId, principal);
+ }
+ 
+ /**
+@@ -399,8 +402,18 @@ export function claimOnCommit(ctx: ChatRoutesContext, principal: Principal | und
+       yield* run;
+     } finally {
+       const agent = ctx.agent();
+-      if (await sessionStored(ctx, session.id, session)) claimSession(agent, session.id, principal);
+-      else releaseSession(agent, session.id, principal);
++      if (await sessionStored(ctx, session.id, session)) {
++        // Eve2-F1: the claim taken before the turn can have been forgotten past
++        // the owner cap and taken by another principal while it ran; this
++        // turn's transcript is then readable as theirs, so a lost re-claim
++        // clears it again and the stream ends on a coded error, never a clean `done`.
++        if (!claimSession(agent, session.id, principal)) {
++          await session.clear().catch(() => undefined);
++          throw new SDKError(`Session '${session.id}' was claimed by another principal while this turn ran; the transcript it stored was cleared.`, 'LOUSHO_SESSION_FORBIDDEN');
++        }
++      } else {
++        releaseSession(agent, session.id, principal);
++      }
+     }
+   })();
+ }
+diff --git a/src/server/requestGuard.test.ts b/src/server/requestGuard.test.ts
+index 3441fd49..ec640291 100644
+--- a/src/server/requestGuard.test.ts
++++ b/src/server/requestGuard.test.ts
+@@ -9,9 +9,11 @@ import { defineTool } from '../tools/defineTool';
+ import { mockModel } from '../testing';
+ import { memoryStore } from '../storage/agentStore';
+ import { createRouteHandler, type RouteHandlerOptions } from './routeHandler';
+-import { serveFetch } from './fetchRoutes';
++import { handleChatFetch, serveFetch } from './fetchRoutes';
+ import { claimSession, MAX_SESSION_OWNERS, releaseSession, sessionOwner, setSessionOwnerLimit } from './requestGuard';
+-import type { AuthFn } from '../auth';
++import { MemorySessionStore } from '../session/sessionStore';
++import { textOf } from '../providers/content';
++import type { AuthFn, Principal } from '../auth';
+ 
+ const deploy = defineTool({ name: 'deploy', description: 'Deploys', input: z.object({}), needsApproval: true, execute: () => 'shipped' });
+ 
+@@ -219,6 +221,89 @@ describe('default session owner', () => {
+     }
+   });
+ 
++  it('a concurrent first touch on an unowned session loses the claim: refused, and none of its input is streamed or stored (Eve2-F1)', async () => {
++    // The first transcript load is delayed so both owner checks observe the
++    // session as unowned and unstored before either claim runs; the claim
++    // itself must then decide the race - one caller wins, the other must be
++    // refused rather than stream a turn inside the winner's session.
++    let delayed = false;
++    const sessions = new class extends MemorySessionStore {
++      override async load(id: string) {
++        if (!delayed) {
++          delayed = true;
++          await new Promise((resolve) => setTimeout(resolve, 100));
++        }
++        return super.load(id);
++      }
++    }();
++    const store = memoryStore();
++    store.sessions = sessions;
++    const agent = createAgent({
++      provider: mockModel([(req) => `echo:${req.messages.filter((m) => m.role === 'user').map((m) => textOf(m)).join('|')}`]),
++      store,
++    });
++    const ctx = { name: 'test', agent: () => agent };
++    const post = (input: string) => new Request('http://srv/chat', { method: 'POST', headers: asJson, body: json({ sessionId: 'race-1', input }) });
++    const caller = (id: string): Principal => ({ id, type: 'user', authenticator: 'custom' });
++    const [aliceRes, malloryRes] = await Promise.all([
++      handleChatFetch(post('ALICE_MARKER'), ctx, caller('alice')),
++      handleChatFetch(post('MALLORY_MARKER'), ctx, caller('mallory')),
++    ]);
++    // Exactly one caller may win the claim; the other gets the session 403, not a stream.
++    expect([aliceRes?.status, malloryRes?.status].sort()).toEqual([200, 403]);
++    const aliceWon = aliceRes?.status === 200;
++    const winner = aliceWon ? aliceRes! : malloryRes!;
++    const loser = aliceWon ? malloryRes! : aliceRes!;
++    const loserMarker = aliceWon ? 'MALLORY_MARKER' : 'ALICE_MARKER';
++    expect(await loser.json()).toMatchObject({ code: 'LOUSHO_SESSION_FORBIDDEN' });
++    // The loser never ran a turn: none of its input is in the winner's stream or in the stored transcript.
++    expect(await winner.text()).not.toContain(loserMarker);
++    expect(JSON.stringify(await sessions.load('race-1'))).not.toContain(loserMarker);
++    expect(sessionOwner(agent, 'race-1')).toMatchObject({ id: aliceWon ? 'alice' : 'mallory' });
++    // And after the race the loser is still a stranger, exactly as in the sequential case.
++    const retry = await handleChatFetch(post('late-attempt'), ctx, caller(aliceWon ? 'mallory' : 'alice'));
++    expect(retry?.status).toBe(403);
++  });
++
++  it('a claim lost while a turn ran clears what it stored and ends the stream on a coded error (Eve2-F1)', async () => {
++    // With the owner cap at one, a claim on another session evicts 's' while
++    // alice's turn is still running; mallory then takes the unowned, still
++    // unstored id through the session-less { message } route. Alice's commit
++    // must not leave her transcript under mallory's claim.
++    const previous = setSessionOwnerLimit(1);
++    try {
++      let openGate!: () => void;
++      const gate = new Promise<void>((resolve) => (openGate = resolve));
++      const sessions = new MemorySessionStore();
++      const store = memoryStore();
++      store.sessions = sessions;
++      const agent = createAgent({
++        provider: mockModel([(req) => (textOf(req.messages.at(-1)!) === 'alice-secret' ? gate.then(() => 'alice-turn') : 'other-turn')], { onExhausted: 'repeat-last' }),
++        store,
++      });
++      const ctx = { name: 'test', agent: () => agent };
++      const caller = (id: string): Principal => ({ id, type: 'user', authenticator: 'custom' });
++      const post = (body: unknown) => new Request('http://srv/chat', { method: 'POST', headers: asJson, body: json(body) });
++
++      const aliceRes = (await handleChatFetch(post({ sessionId: 's', input: 'alice-secret' }), ctx, caller('alice')))!;
++      expect(aliceRes.status).toBe(200);
++      const aliceBody = aliceRes.text(); // consuming the SSE is what runs the turn
++      await (await handleChatFetch(post({ sessionId: 'x', input: 'evict' }), ctx, caller('alice')))!.text(); // claims 'x', forgetting 's'
++      expect(sessionOwner(agent, 's')).toBeUndefined();
++      const malloryRes = await handleChatFetch(post({ sessionId: 's', message: 'mallory was here' }), ctx, caller('mallory'));
++      expect(malloryRes?.status).toBe(200);
++      expect(sessionOwner(agent, 's')).toMatchObject({ id: 'mallory' });
++
++      openGate();
++      const body = await aliceBody;
++      expect(body).toContain('LOUSHO_SESSION_FORBIDDEN');
++      expect(JSON.stringify((await sessions.load('s')) ?? [])).not.toContain('alice-secret');
++      expect(sessionOwner(agent, 's')).toMatchObject({ id: 'mallory' });
++    } finally {
++      setSessionOwnerLimit(previous);
++    }
++  });
++
+   it('a turn that stores nothing leaves the session unclaimed', async () => {
+     const model = mockModel([{ error: new Error('provider down') }, 'Hi Alice.']);
+     const agent = createAgent({ provider: model, store: memoryStore() });
+diff --git a/src/server/requestGuard.ts b/src/server/requestGuard.ts
+index f038bb61..9999aa46 100644
+--- a/src/server/requestGuard.ts
++++ b/src/server/requestGuard.ts
+@@ -187,16 +187,25 @@ export function sessionOwner(agent: object, sessionId: string): Principal | unde
+   return owner;
+ }
+ 
+-/** Records `principal` as the owner of session `sessionId` of `agent`, unless it has one. */
+-export function claimSession(agent: object, sessionId: string, principal: Principal): void {
++/**
++ * Records `principal` as the owner of session `sessionId` of `agent` when it
++ * has none, and answers whether `principal` holds the claim afterward: `true`
++ * when it was just taken (or was `principal`'s already), `false` when another
++ * principal owns it. Eve2-F1: the check-and-set is one synchronous step, so a
++ * `false` answer means a concurrent first touch won the id and this caller
++ * must be refused - never streamed a turn inside that principal's session.
++ */
++export function claimSession(agent: object, sessionId: string, principal: Principal): boolean {
+   let sessions = owners.get(agent);
+   if (!sessions) owners.set(agent, (sessions = new Map()));
+-  if (sessions.has(sessionId)) return;
++  const owner = sessions.get(sessionId);
++  if (owner !== undefined) return samePrincipal(owner, principal);
+   sessions.set(sessionId, principal);
+   for (const oldest of sessions.keys()) {
+     if (sessions.size <= ownerLimit) break;
+     sessions.delete(oldest);
+   }
++  return true;
+ }
+ 
+ /** Forgets `principal`'s claim on session `sessionId` of `agent` (a turn that stored nothing); another principal's claim is kept. */
