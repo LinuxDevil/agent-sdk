@@ -1,0 +1,132 @@
+{
+ "desktop": {
+  "title": "Agent Forge",
+  "landmarks": [],
+  "h1": [],
+  "unnamed": [],
+  "noLabel": [
+   "<select><option value=\"\">Past conversations (0)</option></select>",
+   "<textarea class=\"chat-input\" rows=\"1\" placeholder=\"Message this agent...\" style=\"\"></textarea>"
+  ],
+  "lowContrast": [
+   "2.77 (rgb(138, 143, 163) on rgb(236,238,243), 10px) \"idle\"",
+   "3.92 (rgb(217, 45, 32) on rgb(251,226,223), 12.5px) \"Stop\"",
+   "2.82 (rgb(22, 163, 74) on rgb(220,243,228), 12.5px) \"Run\"",
+   "3.21 (rgb(138, 143, 163) on rgb(255,255,255), 10.5px) \"Workspace\"",
+   "2.82 (rgb(22, 163, 74) on rgb(220,243,228), 10px) \"unsaved\"",
+   "2.95 (rgb(23, 26, 33) on rgb(76,78,232), 9px) \"🧠\"",
+   "3.21 (rgb(138, 143, 163) on rgb(255,255,255), 10.5px) \"Inspector\"",
+   "3.21 (rgb(138, 143, 163) on rgb(255,255,255), 12.5px) \"Send a message to start chatting with th\""
+  ],
+  "overflowX": false,
+  "scrollW": 1440,
+  "offscreen": [],
+  "smallTargets": []
+ },
+ "tabWalk": [
+  "BUTTON \"Debug\" ring=true",
+  "BUTTON \"Run\" ring=true",
+  "BUTTON \"Import\" ring=true",
+  "BUTTON \"Export\" ring=true",
+  "BUTTON \"Save\" ring=true",
+  "BUTTON \"Agents\" ring=true",
+  "BUTTON \"Nodes\" ring=true",
+  "BUTTON \"+ New agent\" ring=true",
+  "BUTTON \"Auto layout\" ring=true",
+  "BUTTON \"Fit view\" ring=true",
+  "g[group] \"Edge from llm-0 to output-1\" ring=false",
+  "DIV[group] \"🧠\nuntitled-agent\nprovider\nmoc\" ring=false",
+  "DIV[group] \"→\nOutput\" ring=true",
+  "BUTTON \"Zoom In\" ring=true",
+  "BUTTON \"Zoom Out\" ring=true",
+  "BUTTON \"Fit View\" ring=true",
+  "BUTTON \"Chat\" ring=true",
+  "BUTTON \"Logs\" ring=true",
+  "BUTTON \"Trace\" ring=true",
+  "BUTTON \"Output\" ring=true",
+  "BUTTON \"History\" ring=true",
+  "BUTTON \"Settings\" ring=true",
+  "SELECT \"Past conversations (0)\" ring=true",
+  "BUTTON \"New chat\" ring=true",
+  "TEXTAREA \"Message this agent...\" ring=true",
+  "BODY \"Agent Forge\nAgents\n/\nuntitled-\" ring=false",
+  "BUTTON \"Debug\" ring=true",
+  "BUTTON \"Run\" ring=true",
+  "BUTTON \"Import\" ring=true",
+  "BUTTON \"Export\" ring=true",
+  "BUTTON \"Save\" ring=true",
+  "BUTTON \"Agents\" ring=true",
+  "BUTTON \"Nodes\" ring=true",
+  "BUTTON \"+ New agent\" ring=true",
+  "BUTTON \"Auto layout\" ring=true",
+  "BUTTON \"Fit view\" ring=true",
+  "g[group] \"Edge from llm-0 to output-1\" ring=false",
+  "DIV[group] \"🧠\nuntitled-agent\nprovider\nmoc\" ring=false",
+  "DIV[group] \"→\nOutput\" ring=true",
+  "BUTTON \"Zoom In\" ring=true",
+  "BUTTON \"Zoom Out\" ring=true",
+  "BUTTON \"Fit View\" ring=true",
+  "BUTTON \"Chat\" ring=true",
+  "BUTTON \"Logs\" ring=true",
+  "BUTTON \"Trace\" ring=true"
+ ],
+ "tablet": {
+  "title": "Agent Forge",
+  "landmarks": [],
+  "h1": [],
+  "unnamed": [],
+  "noLabel": [
+   "<select><option value=\"\">Past conversations (0)</option></select>",
+   "<textarea class=\"chat-input\" rows=\"1\" placeholder=\"Message this agent...\" style=\"\"></textarea>"
+  ],
+  "lowContrast": [
+   "2.77 (rgb(138, 143, 163) on rgb(236,238,243), 10px) \"idle\"",
+   "3.92 (rgb(217, 45, 32) on rgb(251,226,223), 12.5px) \"Stop\"",
+   "2.82 (rgb(22, 163, 74) on rgb(220,243,228), 12.5px) \"Run\"",
+   "2.95 (rgb(23, 26, 33) on rgb(76,78,232), 9px) \"🧠\"",
+   "3.21 (rgb(138, 143, 163) on rgb(255,255,255), 12.5px) \"Send a message to start chatting with th\""
+  ],
+  "overflowX": true,
+  "scrollW": 826,
+  "offscreen": [
+   "Save",
+   "Zoom In",
+   "Zoom Out",
+   "Fit View",
+   "Send"
+  ],
+  "smallTargets": []
+ },
+ "mobile": {
+  "title": "Agent Forge",
+  "landmarks": [],
+  "h1": [],
+  "unnamed": [],
+  "noLabel": [
+   "<select><option value=\"\">Past conversations (0)</option></select>",
+   "<textarea class=\"chat-input\" rows=\"1\" placeholder=\"Message this agent...\" style=\"\"></textarea>"
+  ],
+  "lowContrast": [
+   "2.77 (rgb(138, 143, 163) on rgb(236,238,243), 10px) \"idle\"",
+   "3.92 (rgb(217, 45, 32) on rgb(251,226,223), 12.5px) \"Stop\"",
+   "2.82 (rgb(22, 163, 74) on rgb(220,243,228), 12.5px) \"Run\"",
+   "2.95 (rgb(23, 26, 33) on rgb(76,78,232), 9px) \"🧠\"",
+   "3.21 (rgb(138, 143, 163) on rgb(255,255,255), 12.5px) \"Send a message to start chatting with th\""
+  ],
+  "overflowX": true,
+  "scrollW": 826,
+  "offscreen": [
+   "Toggle step-through debug mode",
+   "Stop",
+   "Run",
+   "Import",
+   "Export",
+   "Save",
+   "Zoom In",
+   "Zoom Out",
+   "Fit View",
+   "Send"
+  ],
+  "smallTargets": []
+ }
+}
