@@ -313,8 +313,10 @@ describe('serveMcp over HTTP', () => {
     const client = new Client({ name: 'c', version: '1' });
     await client.connect(new StreamableHTTPClientTransport(new URL(server.url!)));
     closers.push(() => client.close());
-    await expect(client.callTool({ name: 'slow', arguments: { message: 'x' } }, undefined, { timeout: 200 })).rejects.toThrow(/timed out/i);
-    await vi.waitFor(() => expect(seen?.aborted).toBe(true));
+    // The timeout must fire after the run has started (a cancel for a request not yet in flight matches
+    // nothing), which a cold CI runner can take well over 200 ms to reach; the run itself lasts 5 s.
+    await expect(client.callTool({ name: 'slow', arguments: { message: 'x' } }, undefined, { timeout: 1500 })).rejects.toThrow(/timed out/i);
+    await vi.waitFor(() => expect(seen?.aborted).toBe(true), { timeout: 3000 });
   });
 
   it('a cancel naming a request id two clients have in flight is ignored', async () => {
