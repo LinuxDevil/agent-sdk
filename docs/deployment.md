@@ -79,8 +79,11 @@ Bodies over 1MB get `413`, invalid JSON `400`. A POST must send
 `Content-Type: application/json` (anything else is `415`,
 `LOUSHO_UNSUPPORTED_MEDIA_TYPE`), and a browser POST from another origin is
 `403` (`LOUSHO_REQUEST_FORBIDDEN`): see
-[Cross-site requests](./auth.md#cross-site-requests). Once auth accepts a
-caller, a session belongs to the first principal that uses it
+[Cross-site requests](./auth.md#cross-site-requests). An empty `input` is
+`400`. With an auth list, a session belongs to the first principal that sends
+it a turn, and a stored session whose owner the server no longer remembers
+(after a restart) is refused to everyone until `authorizeSession` says whose
+it is; with only `LOUSHO_API_TOKEN` there is one caller and no owner check
 ([Who may use a session](./auth.md#who-may-use-a-session)).
 
 ```bash

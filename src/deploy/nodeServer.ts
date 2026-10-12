@@ -13,7 +13,7 @@
 import * as http from 'node:http';
 import type { SimpleAgent } from '../createAgent';
 import { relayFetch } from '../server/chatRoutes';
-import { serveFetch, type ChatRoutesAccess, type ChatRoutesContext } from '../server/fetchRoutes';
+import { serveFetch, type ChatRoutesAccess, type ChatRoutesContext, type ServeAuth } from '../server/fetchRoutes';
 import { startSchedules, type StartSchedulesOptions } from '../schedules/startSchedules';
 import type { DefinedSchedule } from '../schedules/defineSchedule';
 import type { Channel } from '../channels/defineChannel';
@@ -79,13 +79,12 @@ function replyUnhandled(res: http.ServerResponse, error: unknown): void {
   res.end();
 }
 
-/** The auth list of the server: the configured entries, then the env token; `undefined` when nothing is configured. */
-function serverAuth(options: DeployedServerOptions): readonly AuthFn[] | undefined {
+/** The auth of the server: the token alone, or the configured entries then the env token; `undefined` when nothing is configured. */
+function serverAuth(options: DeployedServerOptions): ServeAuth | undefined {
   const envToken = (options.env ?? process.env)[API_TOKEN_ENV] || undefined;
   const { auth } = options;
   if (auth === undefined || (typeof auth === 'object' && !Array.isArray(auth))) {
-    const token = envToken ?? ((auth as { token?: string } | undefined)?.token || undefined);
-    return token === undefined ? undefined : [apiToken(token)];
+    return envToken ?? ((auth as { token?: string } | undefined)?.token || undefined);
   }
   const entries: readonly AuthFn[] = Array.isArray(auth) ? auth : [auth as AuthFn];
   return envToken === undefined ? entries : [...entries, apiToken(envToken)];

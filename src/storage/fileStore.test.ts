@@ -322,7 +322,7 @@ describe('fileStore(dir).prune()', () => {
     age(dir, ['old', 'waiting']);
 
     await expect(store.prune({ olderThanMs: -1 })).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_INVALID' });
-    expect(await store.prune({ olderThanMs: 60_000 })).toEqual({ sessions: 1, checkpoints: 1, oauthPending: 0 });
+    expect(await store.prune({ olderThanMs: 60_000 })).toEqual({ sessions: 1, checkpoints: 1, checkpointHistory: 2, oauthPending: 0 });
     expect(readdirSync(join(dir, 'sessions'))).toEqual(['recent.json']);
     expect(readdirSync(join(dir, 'checkpoints')).filter((name) => name.startsWith('waiting')).sort()).toEqual(['waiting.paused.json', 'waiting.turn-0.json']);
     expect(readdirSync(join(dir, 'checkpoint-history')).some((name) => name.startsWith('old'))).toBe(false);
@@ -331,7 +331,7 @@ describe('fileStore(dir).prune()', () => {
     const done = await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
     expect(done.text).toBe('ok');
     // Once decided, the old paused-turn pointer is stale and goes.
-    expect(await store.prune({ olderThanMs: 60_000 })).toEqual({ sessions: 0, checkpoints: 1, oauthPending: 0 });
+    expect(await store.prune({ olderThanMs: 60_000 })).toEqual({ sessions: 0, checkpoints: 1, checkpointHistory: 1, oauthPending: 0 });
     expect(readdirSync(join(dir, 'sessions')).sort()).toEqual(['recent.json', 'waiting.json']);
   });
 });

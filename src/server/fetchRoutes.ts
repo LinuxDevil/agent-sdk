@@ -20,7 +20,6 @@ import type { AgentInput } from '../providers/content';
 import type { AgentEvent, AgentEventError } from '../execution/agentEvents';
 import type { PendingApproval } from '../execution/ApprovalGate';
 import { samePrincipal } from '../execution/runPrincipal';
-import type { SimpleAgent } from '../createAgent';
 import { assertSessionId } from '../session/sessionStore';
 import type { AgentSession } from '../session/AgentSession';
 import { SDKError, SessionAwaitingApprovalError } from '../execution/errors';
@@ -29,7 +28,8 @@ import type { AuthFn, Principal } from '../auth/types';
 import { routeAuth } from '../auth/routeAuth';
 import { apiToken } from '../auth/basic';
 import type { OAuthCompleteResult } from '../oauth/signIn';
-import { hostRefusal, postRefusal, sessionOwnership } from './requestGuard';
+import { createAgentConfigOf, type SimpleAgent } from '../createAgent';
+import { claimSession, hostRefusal, postRefusal, releaseSession, sessionOwner } from './requestGuard';
 
 /** A1: what a caller wants to do with a session: read its transcript, send it a turn, or decide one of its approvals. */
 export type SessionAction = 'read' | 'chat' | 'approve';
@@ -63,10 +63,12 @@ export interface ChatRoutesAccess {
    * squat an id before its user starts it. A decision is left to
    * `authorizeApproval`, which by default lets only the caller the paused run
    * acts for decide. That record is kept in memory per agent object, for the
-   * 100 000 most recently used sessions, so a restart, another replica or a
-   * host that builds its agent per request (the generated Worker) forgets it:
-   * there, check ownership here (docs/auth.md). A route without auth checks
-   * nothing. `() => true` lets every caller use every session.
+   * 100 000 most recently used sessions; a session that has a stored
+   * transcript (or an unfinished turn) but no owner on record (after a
+   * restart, on another replica, past that cap) is refused to every
+   * principal, so for anything that outlives one process check ownership here
+   * (docs/auth.md). A route without auth, or guarded by one bearer token (one
+   * caller), checks nothing. `() => true` lets every caller use every session.
    */
   authorizeSession?: (request: SessionAccessRequest) => boolean | Promise<boolean>;
   /**
@@ -335,14 +337,72 @@ const ACTION_WORDS: Record<SessionAction, string> = { read: 'read', chat: 'conti
  * may go on. Without `authorizeSession` (and once route auth accepted a
  * caller), a turn claims an unclaimed session for its caller, and only that
  * caller may read or continue it after; a read claims nothing, so reading an
- * id cannot lock its user out. A decision is left to `authorizeApproval`.
+ * id cannot lock its user out. A session that is stored but has no owner on
+ * record (forgotten) is refused to everyone. A decision is left to
+ * `authorizeApproval`. `session` is the session the route opened (omitted
+ * for the deprecated `{ message, sessionId }` run).
  */
-export async function sessionForbidden(ctx: ChatRoutesContext, principal: Principal | undefined, sessionId: string, action: SessionAction): Promise<Response | undefined> {
+export async function sessionForbidden(
+  ctx: ChatRoutesContext,
+  principal: Principal | undefined,
+  sessionId: string,
+  action: SessionAction,
+  session?: AgentSession
+): Promise<Response | undefined> {
   const allowed = ctx.authorizeSession
     ? await ctx.authorizeSession({ principal, sessionId, action })
-    : action === 'approve' || principal === undefined || sessionOwnership(ctx.agent(), principal, sessionId, action === 'chat') !== 'other';
+    : action === 'approve' || principal === undefined || (await ownsSession(ctx, principal, sessionId, action === 'chat', session));
   if (allowed) return undefined;
   return jsonResponse(403, { error: `Not allowed to ${ACTION_WORDS[action]} this session`, code: 'LOUSHO_SESSION_FORBIDDEN' });
+}
+
+/**
+ * The default session check: the owner on record decides; without one, a
+ * session that is already stored is nobody's to take (its owner may only have
+ * been forgotten), and a new one is claimed by a turn (`claim`).
+ */
+async function ownsSession(ctx: ChatRoutesContext, principal: Principal, sessionId: string, claim: boolean, session: AgentSession | undefined): Promise<boolean> {
+  const agent = ctx.agent();
+  const owner = sessionOwner(agent, sessionId);
+  if (owner !== undefined) return samePrincipal(owner, principal);
+  if (await sessionStored(ctx, sessionId, session)) return false;
+  if (claim) claimSession(agent, sessionId, principal);
+  return true;
+}
+
+/**
+ * Whether session `sessionId` has anything stored: a transcript or an
+ * unfinished turn, or, for the deprecated durable `{ message, sessionId }`
+ * run, a checkpoint. A store that cannot say counts as stored.
+ */
+async function sessionStored(ctx: ChatRoutesContext, sessionId: string, session: AgentSession | undefined): Promise<boolean> {
+  try {
+    if (session) return (await session.load()).length > 0 || (await session.pending()) !== null;
+    if (!ctx.durableMessage) return false;
+    const checkpoints = createAgentConfigOf(ctx.agent())?.store?.checkpoints;
+    return checkpoints !== undefined && (await checkpoints.load(sessionId)) !== null;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * `run`, a turn of `session` the default session check let `principal` start:
+ * once it ends, a claim whose turn stored nothing (it failed before saving) is
+ * dropped, so only a stored session keeps an owner. With `authorizeSession`,
+ * or without a principal, `run` itself.
+ */
+export function claimOnCommit(ctx: ChatRoutesContext, principal: Principal | undefined, session: AgentSession, run: AsyncIterable<AgentEvent>): AsyncIterable<AgentEvent> {
+  if (ctx.authorizeSession || principal === undefined) return run;
+  return (async function* () {
+    try {
+      yield* run;
+    } finally {
+      const agent = ctx.agent();
+      if (await sessionStored(ctx, session.id, session)) claimSession(agent, session.id, principal);
+      else releaseSession(agent, session.id, principal);
+    }
+  })();
 }
 
 /** Session `sessionId` of the live agent, or the 400 response for an invalid id. */
@@ -360,11 +420,12 @@ type RouteHandler = (request: Request, ctx: ChatRoutesContext, params: string[],
 
 const runChat: RouteHandler = async (request, ctx, _params, principal) => {
   const { sessionId, input, message } = await readJson(request);
+  if (typeof sessionId === 'string' && Array.isArray(input) && input.length === 0) return jsonResponse(400, { error: "Request body's 'input' is empty: send the user's message" });
   if (typeof sessionId === 'string' && (typeof input === 'string' ? input : Array.isArray(input))) {
     const session = openSession(ctx, sessionId);
     if (session instanceof Response) return session;
-    const forbidden = await sessionForbidden(ctx, principal, sessionId, 'chat');
-    return forbidden ?? sseResponse(request, ctx, (signal) => session.stream(input as AgentInput, { signal, principal }));
+    const forbidden = await sessionForbidden(ctx, principal, sessionId, 'chat', session);
+    return forbidden ?? sseResponse(request, ctx, (signal) => claimOnCommit(ctx, principal, session, session.stream(input as AgentInput, { signal, principal })));
   }
   if (typeof message === 'string' && message) {
     if (sessionId !== undefined && typeof sessionId !== 'string') return jsonResponse(400, { error: "Request body's 'sessionId', if present, must be a string" });
@@ -446,7 +507,7 @@ const runApproval: RouteHandler = async (request, ctx, [sessionId, id], principa
   if (typeof answer !== 'string' && typeof approved !== 'boolean') {
     return jsonResponse(400, { error: "Request body must be JSON with 'approved' (and optional 'note') or 'answer'" });
   }
-  const forbidden = await sessionForbidden(ctx, principal, sessionId, 'approve');
+  const forbidden = await sessionForbidden(ctx, principal, sessionId, 'approve', session);
   if (forbidden) return forbidden;
   const agent = ctx.agent();
   // A1: only an approval of the session in the URL; another session's is as unknown as a decided one.
@@ -517,7 +578,7 @@ const runOAuthCallback: RouteHandler = async (request, ctx, _params, principal) 
 const runTranscript: RouteHandler = async (_request, ctx, [sessionId], principal) => {
   const session = openSession(ctx, sessionId);
   if (session instanceof Response) return session;
-  return (await sessionForbidden(ctx, principal, sessionId, 'read')) ?? jsonResponse(200, { sessionId, messages: await session.load(), pending: await session.pending() });
+  return (await sessionForbidden(ctx, principal, sessionId, 'read', session)) ?? jsonResponse(200, { sessionId, messages: await session.load(), pending: await session.pending() });
 };
 
 /** N9b: the sign-in callback, under any prefix (a proxy may mount the API below a path). */
@@ -592,5 +653,7 @@ export async function serveFetch(request: Request, ctx: ChatRoutesContext, auth?
     if (!outcome.ok) return outcome.response;
     principal = outcome.principal;
   }
-  return (await handleChatFetch(request, ctx, principal)) ?? textResponse(404, 'not found');
+  // One bearer token is one caller: every session is that caller's, so the default owner check has nothing to do.
+  const routes = typeof auth === 'string' && !ctx.authorizeSession ? { ...ctx, authorizeSession: () => true } : ctx;
+  return (await handleChatFetch(request, routes, principal)) ?? textResponse(404, 'not found');
 }
