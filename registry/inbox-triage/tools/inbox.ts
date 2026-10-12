@@ -6,7 +6,7 @@
  */
 import { z } from 'zod';
 import { defineTool } from '@lousho/build-ai-agent';
-import { getMessage, listMessages, updateMessage, type MessageStatus } from '../lib/mailstore';
+import { getMessage, listMessages, updateMessage, type MessageStatus } from '../lib/mailstore.ts';
 
 const STATUS = z.enum(['new', 'triaged', 'replied', 'processed', 'trashed']);
 

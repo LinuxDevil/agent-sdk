@@ -1,5 +1,5 @@
 import type { ApproveToolCall } from '@lousho/build-ai-agent';
-import { autoApproveSenders, findDraft, getMessage } from './lib/mailstore';
+import { autoApproveSenders, findDraft, getMessage } from './lib/mailstore.ts';
 
 /**
  * An OPTIONAL standing-policy approver, deliberately NOT wired into

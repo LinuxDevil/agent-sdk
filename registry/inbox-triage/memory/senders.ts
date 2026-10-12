@@ -13,7 +13,7 @@
  */
 import path from 'node:path';
 import { defineMemory, fileMemory, type MemoryProvider } from '@lousho/build-ai-agent';
-import { home } from '../lib/mailstore';
+import { home } from '../lib/mailstore.ts';
 
 const backing = (): MemoryProvider => fileMemory({ dir: path.join(home(), 'memory') });
 

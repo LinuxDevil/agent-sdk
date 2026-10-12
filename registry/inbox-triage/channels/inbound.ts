@@ -12,7 +12,7 @@
  * `POST /channels/inbound/approvals/<id>` like every channel.
  */
 import { defineChannel } from '@lousho/build-ai-agent';
-import { addMessage } from '../lib/mailstore';
+import { addMessage } from '../lib/mailstore.ts';
 
 export default defineChannel({
   name: 'inbound',

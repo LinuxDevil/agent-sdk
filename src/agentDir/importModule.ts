@@ -1,8 +1,9 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { realpathSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
+import * as nodeModule from 'node:module';
 import { createRequire } from 'node:module';
 import * as path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { SDKError } from '../utils/sdkError';
 
 const cacheBust = new AsyncLocalStorage<string>();
@@ -10,13 +11,65 @@ const cacheBust = new AsyncLocalStorage<string>();
 /**
  * Runs `fn` so every file `importModule()` loads inside it is imported with a
  * `?t=<token>` query: a fresh module instance instead of the cached one
- * (`lousho dev` hot reload, LOU-D31). Only the file itself is re-evaluated;
- * modules it imports stay cached by the runtime. A CommonJS file (`.cjs`, or
- * `.js` in a package without `"type": "module"`) is cached by file name, which
- * ignores the query, so it is also dropped from `require.cache` first.
+ * (`lousho dev` hot reload, LOU-D31). A resolve hook (see
+ * {@link freshImportGraph}) passes the query on to the local files such a file
+ * imports by relative specifier, so an edited helper is re-evaluated too;
+ * packages under node_modules stay cached. A CommonJS file (`.cjs`, or `.js` in
+ * a package without `"type": "module"`) is cached by file name, which ignores
+ * the query, so it is also dropped from `require.cache` first.
  */
 export function withFreshImports<T>(token: string, fn: () => Promise<T>): Promise<T> {
+  freshImportGraph();
   return cacheBust.run(token, fn);
+}
+
+/** The `t` query a cache-busted import carries (the tokens `lousho dev` issues are `<digits>-<digits>`). */
+const FRESH_QUERY = /[?&]t=(\d+-\d+)(?:[&#]|$)/;
+
+interface ResolveResult {
+  url: string;
+  format?: string | null;
+  shortCircuit?: boolean;
+}
+type RegisterHooks = (hooks: {
+  resolve: (
+    specifier: string,
+    context: { parentURL?: string; conditions?: readonly string[] },
+    nextResolve: (specifier: string, context?: unknown) => ResolveResult
+  ) => ResolveResult;
+}) => unknown;
+
+let graphHook: boolean | undefined;
+
+/**
+ * Installs (once) a synchronous resolve hook: an ESM `import` of a relative
+ * specifier from a module loaded with `?t=<token>` resolves with the same
+ * query, so the whole local import graph of a reloaded file is evaluated
+ * afresh. Returns false when this Node has no `module.registerHooks` (before
+ * 22.15), where only the file itself is re-evaluated.
+ */
+function freshImportGraph(): boolean {
+  if (graphHook !== undefined) return graphHook;
+  const registerHooks = (nodeModule as unknown as { registerHooks?: RegisterHooks }).registerHooks;
+  if (typeof registerHooks !== 'function') return (graphHook = false);
+  registerHooks({
+    resolve(specifier, context, nextResolve) {
+      const result = nextResolve(specifier, context);
+      const token = FRESH_QUERY.exec(context.parentURL ?? '')?.[1];
+      if (
+        token === undefined ||
+        !/^\.{1,2}\//.test(specifier) ||
+        !(context.conditions ?? []).includes('import') ||
+        !result.url.startsWith('file:') ||
+        result.url.includes('?') ||
+        result.url.includes('/node_modules/')
+      ) {
+        return result;
+      }
+      return { ...result, url: `${result.url}?t=${token}` };
+    },
+  });
+  return (graphHook = true);
 }
 
 /** Node error codes that mean "this process cannot load a TypeScript file". */
@@ -44,6 +97,7 @@ export function explainImportError(file: string, error: unknown): Error {
   if (TS_FILE.test(file) && cause.code !== undefined && NO_TS_LOADER_CODES.has(cause.code)) {
     return new Error(
       `loadAgentDir: cannot import ${file}: this process cannot load TypeScript files (${cause.code}). ` +
+        nodeTooOld() +
         "Run your script under a TypeScript loader, e.g. 'npx tsx your-script.ts' (also works with " +
         "ts-node, bun, deno, or Node's --experimental-strip-types), or compile the agent directory to " +
         'JavaScript first and load the compiled output. Alternatively write this file as .js/.mjs, or ' +
@@ -63,7 +117,46 @@ export function explainImportError(file: string, error: unknown): Error {
         `Install it in the project that contains the agent directory (npm install ${missing}), or move the agent directory inside a project that has it installed.`,
     });
   }
+  const extension = missingExtension(file, cause);
+  if (extension !== undefined) {
+    return new SDKError(message, 'LOUSHO_AGENT_DIR_INVALID', {
+      cause: error,
+      hint:
+        `Node resolves relative imports only with the file extension: write '${extension.fixed}' instead of '${extension.written}'. ` +
+        'Bundlers and tsx add it for you; the lousho CLI loads TypeScript with Node itself.',
+    });
+  }
   return new SDKError(message, 'LOUSHO_AGENT_DIR_INVALID', { cause: error });
+}
+
+/** The Node version note for a process with no built-in type stripping (before Node 22.18), or ''. */
+function nodeTooOld(): string {
+  const [major, minor] = process.versions.node.split('.').map(Number);
+  if (major > 22 || (major === 22 && minor >= 18)) return '';
+  return `The lousho CLI loads .ts files with Node's built-in type stripping, which needs Node 22.19 or newer (this is Node ${process.versions.node}): upgrade Node. `;
+}
+
+const SOURCE_EXT = ['.ts', '.mts', '.cts', '.js', '.mjs', '.cjs'];
+
+/**
+ * For a relative import written without its extension (`./lib/store` for
+ * `./lib/store.ts`), the specifier as written and as it should be; undefined
+ * when the error is about something else or no such file exists.
+ */
+function missingExtension(file: string, cause: NodeJS.ErrnoException): { written: string; fixed: string } | undefined {
+  if (cause.code !== 'ERR_MODULE_NOT_FOUND' && cause.code !== 'MODULE_NOT_FOUND') return undefined;
+  const match = /Cannot find module '([^']+)'(?: imported from (.+?)\s*$)?/m.exec(cause.message ?? '');
+  const specifier = match?.[1];
+  if (specifier === undefined || !/^(?:\.{1,2}[\\/]|\/|[A-Za-z]:[\\/]|file:)/.test(specifier)) return undefined;
+  const from = match?.[2]?.replace(/\?.*$/, '');
+  const importer = from === undefined ? file : from.startsWith('file:') ? fileURLToPath(from) : from;
+  const target = specifier.startsWith('file:') ? fileURLToPath(specifier) : path.resolve(path.dirname(importer), specifier);
+  const relative = path.relative(path.dirname(importer), target).split(path.sep).join('/');
+  const written = relative.startsWith('.') ? relative : `./${relative}`;
+  const ext = SOURCE_EXT.find((e) => existsSync(target + e));
+  if (ext !== undefined) return { written, fixed: written + ext };
+  const index = SOURCE_EXT.find((e) => existsSync(path.join(target, `index${e}`)));
+  return index === undefined ? undefined : { written, fixed: `${written}/index${index}` };
 }
 
 /** The bare package name a "module not found" import error is about, or undefined (also for a missing relative file). */

@@ -30,7 +30,7 @@ lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--all
 lousho chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>] [--traces[=dir]]
 lousho acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]
 lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allow <list>] [--overwrite] [--dry-run]    (or --list)
-lousho build <agent-dir|spec> --target=<node-server|cloudflare-worker|docker> [--out=<dir>]    (or --agent=<path>)
+lousho build <agent-dir|spec|agent.ts> --target=<node-server|cloudflare-worker|docker> [--out=<dir>]    (or --agent=<path>)
 lousho studio [--port N] [--host H] [--prod|--dev]
 lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]
 lousho doctor [agent.yaml|json|agent-dir] [--json] [--ping]
@@ -41,8 +41,8 @@ lousho --version
 
 Every command parses its flags the same way (Node's `parseArgs`, strict):
 `--flag value` and `--flag=value` both work, the last of a repeated flag wins
-(`--tag` accumulates), `--` ends the flags, and `-h` / `--help` prints the
-command's usage and exits 0. An unknown flag, a flag without its value (it
+(`--tag` accumulates), `--` ends the flags, and `-h` / `--help` (or `lousho help
+<command>`) prints the command's usage and flags and exits 0. An unknown flag, a flag without its value (it
 never takes the next flag as its value) or an extra argument fails with
 `LOUSHO_CONFIG_INVALID` and the usage line. A value that starts with `-` needs
 the `=` form: `--model=-x`. `--traces` is the one flag whose value is optional:
@@ -147,8 +147,10 @@ without restarting the server or dropping the port:
   `require` specifiers, found once at startup; no bundler).
 
 Directory and module files are imported with a `?t=<time>` cache-busting query,
-so an edited tool or agent file is re-evaluated. A file *imported by* that file
-(a shared helper) stays cached by Node: restart `lousho dev` after editing one.
+so an edited tool or agent file is re-evaluated, and so are the local files it
+imports by relative specifier (a shared `./lib/helper.ts`): the query is passed
+on to them. Packages under `node_modules` stay cached; restart `lousho dev`
+after changing one.
 The console logs what reloaded. The new agent is built (and `ready()`, so MCP
 servers connect) before it replaces the old one, and the old one is then
 `close()`d. If the rebuild fails, the last good agent keeps answering, the error
@@ -242,6 +244,7 @@ scripted lines and a `mockModel` agent and no terminal.
 ```bash
 npx lousho build --target=node-server --agent=agent.yaml        # or docker / cloudflare-worker
 npx lousho build ./my-agent --target=node-server                # an agent directory (node-server, docker)
+npx lousho build src/agent.ts --target=node-server              # an agent module (node-server, docker)
 ```
 
 Writes the artifact to `--out` (default `.lousho/build/<target>`) and prints
