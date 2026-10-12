@@ -213,9 +213,14 @@ export function providerFetch({ send, timeoutMs, watch }: ProviderFetchOptions):
   };
 }
 
-/** Whether a request body asks for an event stream (`"stream": true`, as every OpenAI-compatible API spells it). */
+/** Whether a request body asks for an event stream (a top-level `"stream": true`, as every OpenAI-compatible API spells it). */
 function isStreamingRequest(init: RequestInit | undefined): boolean {
-  return typeof init?.body === 'string' && /"stream"\s*:\s*true/.test(init.body);
+  if (typeof init?.body !== 'string') return false;
+  try {
+    return (JSON.parse(init.body) as { stream?: unknown } | null)?.stream === true;
+  } catch {
+    return false;
+  }
 }
 
 /** The URL a `fetch` input names. */

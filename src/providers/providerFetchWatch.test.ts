@@ -71,6 +71,20 @@ describe('providerFetch', () => {
     expect(await plain.text()).toBe(completion);
   });
 
+  it('decides streaming by the parsed top-level `stream` field: a nested `"stream":true` or a malformed body keeps its JSON reply', async () => {
+    const completion = JSON.stringify({ object: 'chat.completion', choices: [{ index: 0, message: { content: 'hi' }, finish_reason: 'stop' }] });
+    const fetch = providerFetch({ send: sendOf(completion), watch: chatCompletionWatch });
+
+    // A nested flag (providerOptions passthrough, tool args) is not the request's own `stream`.
+    const nested = await fetch('https://x/v1/chat/completions', { method: 'POST', body: JSON.stringify({ providerOptions: { gateway: { stream: true } } }) });
+    expect(nested.headers.get('content-type')).toBe('application/json');
+    expect(await nested.text()).toBe(completion);
+
+    const malformed = await fetch('https://x/v1/chat/completions', { method: 'POST', body: '{"stream":true' });
+    expect(malformed.headers.get('content-type')).toBe('application/json');
+    expect(await malformed.text()).toBe(completion);
+  });
+
   it("turns a JSON reply with finish_reason 'error' into a 502 error response", async () => {
     const fetch = providerFetch({ send: sendOf(JSON.stringify({ choices: [{ finish_reason: 'error', message: { content: 'cut' } }] })), watch: chatCompletionWatch });
     const response = await fetch('https://x/v1/chat/completions');
