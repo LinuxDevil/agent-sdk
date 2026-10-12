@@ -14,6 +14,18 @@ import { parseCommand, stringValue, usageError, type CommandSpec } from './args'
 const USAGE =
   'Usage: lousho traces [--dir D] [--limit N] [--json]\n       lousho traces <traceId|prefix> [--dir D] [--json] [--content]';
 
+const HELP = `${USAGE}
+
+Lists the runs fileTraceExporter() (or --traces on dev, chat) saved, newest first; with a trace id
+or a unique prefix of one, prints that run as a tree of spans.
+
+Options:
+  --dir D      the trace directory (default ${DEFAULT_TRACE_DIR})
+  --limit N    how many runs to list (default 20)
+  --json       print JSON instead of a table or tree
+  --content    with a trace id: also print prompts, replies and tool arguments
+  -h, --help   show this help`;
+
 const SPEC: CommandSpec = {
   command: 'traces',
   usage: USAGE,
@@ -305,7 +317,7 @@ export async function runTraces(rest: string[], deps: TracesDeps = {}): Promise<
   try {
     const args = parseTracesArgs(rest);
     if (args.help) {
-      resolved.log(USAGE);
+      resolved.log(HELP);
       return 0;
     }
     const dir = path.resolve(resolved.cwd, args.dir);

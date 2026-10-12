@@ -71,7 +71,9 @@ export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
       () => import('@ai-sdk/anthropic'),
       aiMajorOf(this.ai)
     );
-    return createAnthropic(this.clientOptions());
+    // `@ai-sdk/anthropic` 2+ reads ANTHROPIC_BASE_URL itself; 0.x/1.x (the ai 4 line) does not, so it is passed explicitly.
+    const env = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+    return createAnthropic({ ...this.clientOptions(), baseURL: this.config.baseURL ?? (env?.ANTHROPIC_BASE_URL || undefined) });
   });
 
   /** PDF file parts go to the model on ai 6 and 7; older peers have no file parts. */

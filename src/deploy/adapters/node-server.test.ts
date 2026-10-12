@@ -63,7 +63,10 @@ describe('NodeServerAdapter', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-node-server-bad-'));
     const tsPath = path.join(dir, 'agent.ts');
     fs.writeFileSync(tsPath, 'export {}');
-    expect(() => loadAgentSpecForDeploy(tsPath)).toThrow(/expected an AgentSpec .yaml\/.yml\/.json/);
+    expect(() => loadAgentSpecForDeploy(tsPath)).toThrow(/builds an AgentSpec .yaml\/.yml\/.json file or an agent directory/);
+    const txtPath = path.join(dir, 'agent.txt');
+    fs.writeFileSync(txtPath, '');
+    expect(() => loadAgentSpecForDeploy(txtPath)).toThrow(/expected an AgentSpec .yaml\/.yml\/.json file/);
     expect(() => loadAgentSpecForDeploy('')).toThrow(/an agent path is required/);
     const bad = writeSpec(dir, { name: 'x', provider: { type: 'mock', model: 'm' } });
     expect(() => loadAgentSpecForDeploy(bad)).toThrow(/'prompt'/);

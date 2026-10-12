@@ -23,6 +23,24 @@ import { loadItem, openRegistry, type RegistryIndex, type RegistryItem, type Reg
 
 const USAGE = 'Usage: lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allow exec,fs-write,network,env] [--overwrite] [--dry-run]\n       lousho add --list [--registry <url-or-path>]';
 
+const HELP = `${USAGE}
+
+Installs a tool, skill, channel, schedule, memory slot or kit from a registry into an agent directory,
+as source you own. It prints the item's permissions and files and asks first; nothing from the
+registry is executed, and its npm dependencies are only printed as an install command.
+
+Options:
+  --registry <url-or-path>  the registry index (default: LOUSHO_REGISTRY, else the public registry)
+  --dir <agent-dir>         the agent directory to install into (default: .)
+  --yes                     do not ask; elevated permissions still need --allow
+  --allow <list>            with --yes, grant these elevated permissions: exec, fs-write, network, env
+  --overwrite               replace files that already exist
+  --dry-run                 print what would be written, write nothing
+  --list                    print the registry's items
+  -h, --help                show this help
+
+See docs/registry.md.`;
+
 const SPEC: CommandSpec = {
   command: 'add',
   usage: USAGE,
@@ -255,7 +273,7 @@ export async function runAdd(args: string[], io: AddIo = { stdin: process.stdin,
   try {
     const parsed = parseAddArgs(args);
     if (parsed.help) {
-      io.stdout.write(`${USAGE}\n`);
+      io.stdout.write(`${HELP}\n`);
       return 0;
     }
     return await runParsed(parsed, io);

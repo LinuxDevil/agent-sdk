@@ -1,8 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { startStudio, resolveAgentForgeDir, studioUrl } from './studio';
+import { runStudio, startStudio, resolveAgentForgeDir, studioUrl } from './studio';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-studio-test-'));
 
@@ -147,4 +147,17 @@ describe('startStudio', () => {
   // apps/agent-forge/server/__tests__/*.test.ts instead - this file only
   // covers startStudio()'s own pure logic (the apps/agent-forge lookup and
   // dev/prod/auto mode resolution).
+});
+
+describe('lousho studio --help', () => {
+  it('describes every flag', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      expect(await runStudio(['--help'])).toBe(0);
+      const help = String(log.mock.calls[0]?.[0]);
+      for (const flag of ['--port', '--host', '--prod', '--dev']) expect(help).toMatch(new RegExp(`\\n  ${flag}\\b[^\\n]* {2,}\\S`));
+    } finally {
+      log.mockRestore();
+    }
+  });
 });

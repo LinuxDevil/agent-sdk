@@ -1,5 +1,5 @@
 import type { AgentHook } from '@lousho/build-ai-agent';
-import { findDraft } from './lib/mailstore';
+import { findDraft } from './lib/mailstore.ts';
 
 /**
  * The kit's hooks (pointed at by `agent.json`'s `hooks`):

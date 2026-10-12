@@ -28,7 +28,7 @@ import { askMissing, type AskInput, type InitAnswers } from './init/prompts';
 import { USAGE_EXIT_CODE } from './args';
 import { MissingPeerDependencyError } from '../providers/optionalPeer';
 import { assertWritable, packageNameFor, writeFiles } from './init/scaffold';
-import { resolveSdkDependency, type SdkManifest } from './init/sdkDependency';
+import { resolveSdkDependency, sdkPathProblem, type SdkManifest } from './init/sdkDependency';
 import { renderProject } from './init/templates';
 
 /** Everything `runInit` touches outside the project directory, so tests can fake it. */
@@ -82,6 +82,9 @@ function validateFlags(options: InitOptions): void {
   if (options.provider !== undefined) expectOneOf('--provider', options.provider, PROVIDER_NAMES);
   if (options.template !== undefined) expectOneOf('--template', options.template, TEMPLATES);
   if (options.packageManager !== undefined) expectOneOf('--package-manager', options.packageManager, PACKAGE_MANAGERS);
+  // A bad --sdk-path is a usage error (exit 2), like a bad --provider.
+  const sdkPath = options.sdkPath === undefined ? undefined : sdkPathProblem(options.sdkPath);
+  if (sdkPath !== undefined) throw new InitUsageError(sdkPath);
 }
 
 /**

@@ -77,6 +77,8 @@ const FORBIDDEN_PATHS = [
   /(^|\/)node_modules\//,
   /^apps\/agent-forge\/dist-server\/.*\.map$/,
   /^dist\/deploy\/worker\.m?js\.map$/,
+  // bin/lousho.js loads only the ESM CLI build (dist/cli/*.mjs); the CJS one is not shipped.
+  /^dist\/cli\/[^/]+\.js(\.map)?$/,
   /\.pem$/,
   /\.key$/,
 ];
@@ -89,6 +91,7 @@ const FORBIDDEN_PATHS = [
  */
 const REQUIRED_PATHS = [
   'src/index.ts',
+  'dist/cli/dev.mjs',
   'src/deploy/runtime.worker.ts',
   'src/deploy/shims/node.worker.ts',
   'apps/agent-forge/dist-server/index.cjs',

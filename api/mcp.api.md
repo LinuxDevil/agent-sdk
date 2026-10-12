@@ -1128,6 +1128,7 @@ interface McpToolAnnotations {
 
 // @public
 export class McpToolError extends Error {
+    static [Symbol.hasInstance](value: unknown): boolean;
     constructor(message: string);
     readonly toolErrorKind: "mcp";
 }

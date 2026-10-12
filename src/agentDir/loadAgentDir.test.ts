@@ -637,6 +637,37 @@ describe('helpers', () => {
     expect(plain.hint).not.toContain('npm install');
   });
 
+  it('hints at the missing file extension of a relative import that type stripping cannot resolve', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'lousho-ext-hint-'));
+    mkdirSync(path.join(dir, 'lib'));
+    writeFileSync(path.join(dir, 'lib', 'store.ts'), 'export {};');
+    const hooks = path.join(dir, 'hooks.ts');
+    const esm = Object.assign(new Error(`Cannot find module '${path.join(dir, 'lib', 'store')}' imported from ${hooks}`), {
+      code: 'ERR_MODULE_NOT_FOUND',
+    });
+    const error = explainImportError(hooks, esm) as SDKError;
+    expect(error.code).toBe('LOUSHO_AGENT_DIR_INVALID');
+    expect(error.hint).toContain("write './lib/store.ts' instead of './lib/store'");
+    const cjs = Object.assign(new Error("Cannot find module './lib/store'\nRequire stack:\n- x"), { code: 'MODULE_NOT_FOUND' });
+    expect((explainImportError(hooks, cjs) as SDKError).hint).toContain("'./lib/store.ts'");
+    // No such file with any extension: no extension hint.
+    const gone = Object.assign(new Error("Cannot find module './lib/nope'"), { code: 'MODULE_NOT_FOUND' });
+    expect((explainImportError(hooks, gone) as SDKError).hint ?? '').not.toContain('instead of');
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('names the Node version when it has no built-in type stripping', () => {
+    const cause = Object.assign(new Error('Unknown file extension ".ts"'), { code: 'ERR_UNKNOWN_FILE_EXTENSION' });
+    const node = Object.getOwnPropertyDescriptor(process.versions, 'node');
+    Object.defineProperty(process.versions, 'node', { value: '20.20.0', configurable: true });
+    try {
+      expect(explainImportError('/x/tools/a.ts', cause).message).toContain('needs Node 22.19 or newer (this is Node 20.20.0)');
+    } finally {
+      Object.defineProperty(process.versions, 'node', node as PropertyDescriptor);
+    }
+    expect(explainImportError('/x/tools/a.ts', cause).message).not.toContain('this is Node');
+  });
+
   it('suggests close keys and nothing for distant ones', () => {
     expect(closest('maxStep', ['maxSteps', 'name'])).toBe('maxSteps');
     expect(closest('prompt', ['instructions', 'name'])).toBe('instructions');

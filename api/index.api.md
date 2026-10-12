@@ -3711,6 +3711,7 @@ export interface McpToolAnnotations {
 
 // @public
 export class McpToolError extends Error {
+    static [Symbol.hasInstance](value: unknown): boolean;
     constructor(message: string);
     readonly toolErrorKind: "mcp";
 }
@@ -4769,6 +4770,7 @@ export interface PromptScheduleInput extends ScheduleBase {
 
 // @public
 export class PropagatingToolError extends Error {
+    static [Symbol.hasInstance](value: unknown): boolean;
 }
 
 // @public
@@ -7137,6 +7139,7 @@ export type WorkspaceEntryType = 'file' | 'directory' | 'symlink' | 'other';
 
 // @public
 export class WorkspaceError extends Error {
+    static [Symbol.hasInstance](value: unknown): boolean;
     constructor(message: string);
 }
 

@@ -21,6 +21,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { PassThrough, Writable } from 'node:stream';
 import { resolveAgentDir } from '@lousho/build-ai-agent';
 import { runAdd } from './add';
@@ -118,4 +119,31 @@ describe('default registry (registry/dist)', () => {
       else process.env.WEBHOOK_SECRET = secret;
     }
   });
+
+  // The CLI loads agent directories with Node's own type stripping, which needs the
+  // `.ts` extension on relative imports; vitest and tsup resolve `./lib/x` anyway, so
+  // only a plain `node` process catches a kit that `lousho dev`/`chat` cannot load.
+  it('installs every kit and each loads under plain node, as the CLI loads it', async () => {
+    const index = IndexSchema.parse(JSON.parse(fs.readFileSync(INDEX, 'utf8')));
+    const kits = index.items.filter((entry) => entry.type === 'kit');
+    expect(kits.length).toBeGreaterThan(0);
+    const loader =
+      "const { resolveAgentDir } = await import('@lousho/build-ai-agent');" +
+      'const { manifest } = await resolveAgentDir(process.argv[1]);' +
+      'console.log(JSON.stringify({ tools: manifest.tools.length }));';
+    // Dummy keys and secrets: the kits are only loaded, never run.
+    const env = { ...process.env, NODE_OPTIONS: '', OPENROUTER_API_KEY: 'x', OPENAI_API_KEY: 'x', ANTHROPIC_API_KEY: 'x', WEBHOOK_SECRET: 'x', INBOUND_TOKEN: 'x' };
+    for (const entry of kits) {
+      const result = await add([entry.name, '--registry', INDEX, '--dir', entry.name, '--yes', '--allow', 'exec,fs-write,network,env']);
+      expect(result.err, entry.name).toBe('');
+      expect(result.code, entry.name).toBe(0);
+      const run = spawnSync(process.execPath, ['--input-type=module', '-e', loader, path.join(root, entry.name)], {
+        cwd: root,
+        encoding: 'utf8',
+        env: { ...env, INBOX_TRIAGE_HOME: path.join(root, `${entry.name}-home`) },
+      });
+      expect(run.status, `${entry.name}: ${run.stderr}`).toBe(0);
+      expect(JSON.parse(run.stdout.trim().split('\n').pop() as string).tools, entry.name).toBeGreaterThan(0);
+    }
+  }, 120_000);
 });

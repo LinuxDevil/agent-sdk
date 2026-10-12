@@ -189,6 +189,9 @@ const PROVIDER_NAMES = Object.keys(PROVIDERS);
 /** The built-in test provider: registered like the others, but needs no key and no peer, so it has no entry above. */
 const MOCK_PROVIDER = 'mock';
 
+/** Every prefix a `<provider>/<model>` spec takes, as error messages list them (the scripted `mock` one included). */
+const SPEC_PREFIXES = [...PROVIDER_NAMES, MOCK_PROVIDER].join(', ');
+
 /** Env var that overrides the automatic provider choice, e.g. `LOUSHO_MODEL=anthropic/claude-sonnet-4-5`. */
 const MODEL_ENV_VAR = 'LOUSHO_MODEL';
 
@@ -196,7 +199,7 @@ function unknownProviderError(caller: string, providerName: string, spec: string
   const suggestion = closestMatch(providerName, PROVIDER_NAMES);
   return new ConfigurationError(
     `${caller}: unrecognized provider '${providerName}' in spec '${spec}'. ` +
-      `Supported prefixes: ${PROVIDER_NAMES.join(', ')}.` +
+      `Supported prefixes: ${SPEC_PREFIXES}.` +
       (suggestion ? ` Did you mean '${suggestion}/${spec.slice(providerName.length + 1)}'?` : ''),
     'model',
     'LOUSHO_PROVIDER_UNKNOWN'
@@ -300,7 +303,7 @@ export function resolveProviderSpec(spec: string, caller: string, registry: Prov
   if (separatorIndex <= 0 || separatorIndex === spec.length - 1) {
     throw new ConfigurationError(
       `${caller}: expected a "<provider>/<model>" spec, got '${spec}'. ` +
-        `Example: 'openai/gpt-4o-mini'. Supported prefixes: ${PROVIDER_NAMES.join(', ')}.`,
+        `Example: 'openai/gpt-4o-mini'. Supported prefixes: ${SPEC_PREFIXES}.`,
       'model',
       'LOUSHO_PROVIDER_SPEC_INVALID'
     );

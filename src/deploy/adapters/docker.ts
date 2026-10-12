@@ -32,12 +32,18 @@ USER node
 ENV HOST=0.0.0.0
 ENV PORT=3000
 EXPOSE 3000
+# The slim image has no curl: Node's fetch probes GET /health.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \\
+  CMD ["node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
 CMD ["node", "dist/server.js"]
 `;
 
 const DOCKERIGNORE = `node_modules
 server.ts
 agent.config.js
+.env
+.env.*
+*.tgz
 `;
 
 export const DockerAdapter: DeploymentAdapter = {

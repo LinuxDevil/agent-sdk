@@ -9,12 +9,14 @@
  *                        GET /health plus the `lousho dev` /chat API (sessions,
  *                        SSE, approvals; LOU-D14), bearer auth via LOUSHO_API_TOKEN
  *     - package.json     manifest with a `start` script and the runtime
- *                        dependencies the built server needs (the SDK, the
- *                        spec's provider peer, the MCP SDK when mcpServers
- *                        are configured) - the docker image's `npm install`
+ *                        dependencies the built server needs (the spec's
+ *                        provider peer, the MCP SDK when mcpServers are
+ *                        configured) - the docker image's `npm install`
  *   An agent directory (LOU-P8.2, see node-server-dir.ts) is accepted in place
  *   of a spec: server.ts then resolves it with resolveAgentDir() and starts
- *   its schedules and mounts its channels.
+ *   its schedules and mounts its channels. So is a .ts/.js module whose
+ *   default (or `agent`) export is a createAgent() config or a built agent,
+ *   the same module `lousho dev` serves: server.ts imports it.
  * build():    bundles server.ts (+ agent.config.js + the SDK runtime) with
  *             tsup into a single self-contained dist/server.js.
  * describe(): 'node dist/server.js'.
@@ -39,25 +41,40 @@ import { RUNTIME_SPECIFIER, buildBundle, bundleExternals, findSdkRoot, loadTsup,
 import { agentDirEntries, copyAgentDirAssets, isAgentDir, scaffoldedAgentDir, writeAgentDirPointer } from './node-server-dir';
 
 const SPEC_EXTENSIONS = new Set(['.yaml', '.yml', '.json']);
+const MODULE_EXTENSIONS = new Set(['.ts', '.mts', '.cts', '.js', '.mjs', '.cjs']);
+
+/** Records the agent module a scaffold imports, so `build(outDir)` bundles it as ESM (`build` only receives `outDir`). */
+const AGENT_MODULE_POINTER = 'agent-module.json';
+
+/** Whether `agentPath` is a .ts/.js file (an agent module, not a spec). */
+function isAgentModule(agentPath: string): boolean {
+  return MODULE_EXTENSIONS.has(path.extname(agentPath).toLowerCase()) && fs.existsSync(agentPath) && fs.statSync(agentPath).isFile();
+}
 
 /**
- * Loads the agent config for a deployment target. Only declarative AgentSpec
- * files are supported: the repo's other agent "configs" (examples/*\/index.ts,
- * create-lousho-agent's src/agent.ts) are runnable scripts that call
- * createAgent() and immediately send a message, not importable configs.
+ * Loads the AgentSpec file a deployment target builds. Agent directories and
+ * (node-server, docker) agent modules are handled before this is called; a
+ * target that gets a .ts/.js file here does not build modules, and says which do.
  */
 export function loadAgentSpecForDeploy(agentPath: string): AgentSpec {
   if (!agentPath) {
-    throw new SDKError('an agent path is required (an AgentSpec .yaml/.yml/.json file): lousho build <agent-dir|spec> --target=<name>', 'LOUSHO_DEPLOY_FAILED');
+    throw new SDKError('an agent path is required (an AgentSpec .yaml/.yml/.json file, an agent directory or an agent module): lousho build <agent-dir|spec|agent.ts> --target=<name>', 'LOUSHO_DEPLOY_FAILED');
   }
   if (!fs.existsSync(agentPath)) {
     throw new SDKError(`agent config not found: ${agentPath}`, 'LOUSHO_DEPLOY_FAILED');
   }
   const ext = path.extname(agentPath).toLowerCase();
+  if (MODULE_EXTENSIONS.has(ext)) {
+    throw new SDKError(
+      `unsupported agent config '${agentPath}': this target builds an AgentSpec .yaml/.yml/.json file or an agent directory, ` +
+        'not a .ts/.js module. --target=node-server and --target=docker build an agent module.',
+      'LOUSHO_DEPLOY_FAILED'
+    );
+  }
   if (!SPEC_EXTENSIONS.has(ext)) {
     throw new SDKError(
-      `unsupported agent config '${agentPath}': expected an AgentSpec .yaml/.yml/.json file ` +
-        `(the same format \`lousho dev\` loads)`,
+      `unsupported agent config '${agentPath}': expected an AgentSpec .yaml/.yml/.json file, an agent directory ` +
+        `or (node-server, docker) a .ts/.js agent module, as \`lousho dev\` loads`,
       'LOUSHO_DEPLOY_FAILED'
     );
   }
@@ -109,6 +126,31 @@ import { createAgent, createDeployedServer, resolveAgentDir, storeFromEnv } from
     options: `{ ...${JSON.stringify(options)}, ...(resolved.auth ? { auth: resolved.auth } : {}), schedules: resolved.schedules, channels: resolved.channels }`,
     report: `console.log('lousho server: schedules: ' + (resolved.manifest.schedules.join(', ') || 'none') + '; channels: ' + (resolved.manifest.channels.join(', ') || 'none'));`,
   };
+}
+
+/** A .ts/.js module (what `lousho dev <file>` serves): its default or `agent` export, a createAgent() config or a built agent. */
+function agentModuleVariant(agentPath: string, options: DeployOptions): ServerVariant {
+  const file = JSON.stringify(agentPath.split(path.sep).join('/'));
+  return {
+    imports: `import { createAgent, createDeployedServer, storeFromEnv } from '${RUNTIME_SPECIFIER}';
+import * as agentModule from ${file};`,
+    boot: `const exported: any = (agentModule as any).default ?? (agentModule as any).agent;
+  if (typeof exported !== 'object' || exported === null) {
+    console.error('[lousho server] ' + ${file} + ' must export a createAgent() config or an agent as its default export (or as agent).');
+    process.exit(1);
+  }
+  // A config's own 'store' wins over the LOUSHO_STORE default; an explicit LOUSHO_STORE still wins. A built agent keeps its own.
+  const store = process.env.LOUSHO_STORE === undefined ? (exported.store ?? storeFromEnv()) : storeFromEnv();
+  const agent = typeof exported.send === 'function' ? exported : createAgent({ ...exported, store });
+  await agent.ready();`,
+    options: JSON.stringify(options),
+    report: '',
+  };
+}
+
+/** The first literal `model: '<provider>/<id>'` in a module's source (a guess at its provider, for the build's package.json). */
+function agentModuleModel(agentPath: string): string | undefined {
+  return /\bmodel\s*:\s*['"`]([a-z][\w-]*\/[^'"`]+)['"`]/.exec(fs.readFileSync(agentPath, 'utf8'))?.[1];
 }
 
 /** The generated server.ts: flags and listening here, the routes in the SDK runtime (src/deploy/nodeServer.ts). */
@@ -220,27 +262,21 @@ async function agentDirModel(dir: string): Promise<string | undefined> {
 
 /**
  * The runtime dependencies a built server needs (LOU-R20): `dist/server.js`
- * bundles the SDK and its required dependencies, but the SDK's optional peers
- * stay external (see bundleExternals()), so `npm install` where the server
- * runs - the docker image's `npm install --omit=dev` - must install the ones
- * the agent actually uses. That is the SDK itself (pinned to the version that
- * built it, which also pulls its required peers such as `ai`), the provider
- * package `providerType` resolves to (at the range pairing with the build's
- * `ai` major), and `@modelcontextprotocol/sdk` when the agent uses MCP
- * servers. An unknown provider type (e.g. a registered test provider) adds no
- * dependency.
+ * bundles the SDK and its required dependencies (`ai`, `zod`, ...), but the
+ * SDK's optional peers stay external (see bundleExternals()), so `npm install`
+ * where the server runs - the docker image's `npm install --omit=dev` - must
+ * install the ones the agent actually uses: the provider package
+ * `providerType` resolves to (at the range pairing with the build's `ai`
+ * major) and `@modelcontextprotocol/sdk` when the agent uses MCP servers. The
+ * SDK itself is not listed: the bundle never loads an installed copy. An
+ * unknown provider type (e.g. a registered test provider) adds no dependency.
  */
 export function deployDependencies(providerType?: string, hasMcpServers = false): Record<string, string> {
   const sdkRoot = findSdkRoot();
   const pkg = JSON.parse(fs.readFileSync(path.join(sdkRoot, 'package.json'), 'utf8')) as {
-    version: string;
     peerDependencies?: Record<string, string>;
   };
-  // `^` so a scaffold made from an unpublished development version resolves to
-  // the nearest published release (`npm install` inside the image cannot
-  // install a version that was never pushed to the registry), the same
-  // convention sync-version.mjs uses for the create-lousho-agent pin.
-  const dependencies: Record<string, string> = { '@lousho/build-ai-agent': `^${pkg.version}` };
+  const dependencies: Record<string, string> = {};
   const info = listProviders().find((p) => p.name === providerType);
   if (info) {
     const peer = info.peers[bundledAiMajor(sdkRoot)];
@@ -271,7 +307,36 @@ function packageJsonSource(agentName: string, dependencies: Record<string, strin
   );
 }
 
+/** The `name` of the nearest package.json above `file`, if any. */
+function projectName(file: string): string | undefined {
+  for (let dir = path.dirname(file); ; dir = path.dirname(dir)) {
+    try {
+      const name = (JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')) as { name?: unknown }).name;
+      if (typeof name === 'string') return name;
+    } catch {
+      // no (readable) package.json here
+    }
+    if (path.dirname(dir) === dir) return undefined;
+  }
+}
+
+/** Records `agentPath` as the agent module the scaffold imports, or (undefined) removes an earlier record. */
+function writeAgentModulePointer(outDir: string, agentPath: string | undefined): void {
+  const pointer = path.join(outDir, AGENT_MODULE_POINTER);
+  if (agentPath === undefined) return fs.rmSync(pointer, { force: true });
+  writeFile(pointer, JSON.stringify({ source: agentPath }) + '\n');
+}
+
+function scaffoldAgentModule(agentPath: string, outDir: string, options: DeployOptions): void {
+  writeAgentDirPointer(outDir, undefined);
+  writeAgentModulePointer(outDir, agentPath);
+  writeFile(path.join(outDir, 'server.ts'), serverSource(agentModuleVariant(agentPath, options)));
+  const name = projectName(agentPath) ?? path.basename(agentPath, path.extname(agentPath));
+  writeFile(path.join(outDir, 'package.json'), packageJsonSource(name, deployDependencies(providerTypeOf(agentModuleModel(agentPath)))));
+}
+
 async function scaffoldAgentDir(agentPath: string, outDir: string, options: DeployOptions): Promise<void> {
+  writeAgentModulePointer(outDir, undefined);
   writeAgentDirPointer(outDir, agentPath);
   writeFile(path.join(outDir, 'server.ts'), serverSource(agentDirVariant(options)));
   // A code config can name any provider; a data config's `model` ('openai/...') tells us the peer to ship.
@@ -282,6 +347,7 @@ async function scaffoldAgentDir(agentPath: string, outDir: string, options: Depl
 export const NodeServerAdapter: DeploymentAdapter = {
   async scaffold(agentPath: string, outDir: string, options: DeployOptions = {}): Promise<void> {
     if (isAgentDir(agentPath)) return scaffoldAgentDir(agentPath, outDir, options);
+    if (isAgentModule(agentPath)) return scaffoldAgentModule(agentPath, outDir, options);
     const spec = loadAgentSpecForDeploy(agentPath);
     // Fail at build time, not at first request, on an unresolvable tool name.
     for (const tool of spec.tools || []) resolveSpecTool(tool);
@@ -289,6 +355,7 @@ export const NodeServerAdapter: DeploymentAdapter = {
     specSchedules(spec.triggers);
 
     writeAgentDirPointer(outDir, undefined);
+    writeAgentModulePointer(outDir, undefined);
     writeFile(path.join(outDir, 'agent.config.js'), agentConfigModuleSource(spec));
     writeFile(path.join(outDir, 'server.ts'), serverSource(specVariant(options)));
     writeFile(
@@ -301,15 +368,17 @@ export const NodeServerAdapter: DeploymentAdapter = {
     const { build } = await loadTsup();
     const source = scaffoldedAgentDir(outDir);
     const entry = { server: path.join(outDir, 'server.ts'), ...(source ? await agentDirEntries(source) : {}) };
+    // An agent module may use ESM-only syntax (top-level await, import.meta), so it is bundled as ESM like a directory.
+    const esm = source !== undefined || fs.existsSync(path.join(outDir, AGENT_MODULE_POINTER));
     await buildBundle(build, {
       config: false,
       entry,
       outDir: path.join(outDir, 'dist'),
       // An agent directory is one ESM build with shared chunks (node-server-dir.ts); a spec is a single CJS file.
-      format: [source ? 'esm' : 'cjs'],
-      shims: source !== undefined,
+      format: [esm ? 'esm' : 'cjs'],
+      shims: esm,
       // Bundled CommonJS dependencies (yaml, ...) call require() on node built-ins.
-      banner: source ? { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" } : {},
+      banner: esm ? { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" } : {},
       splitting: source !== undefined,
       platform: 'node',
       target: 'node18',
@@ -326,6 +395,8 @@ export const NodeServerAdapter: DeploymentAdapter = {
       silent: !process.env.LOUSHO_BUILD_VERBOSE,
     }, outDir);
     if (source) copyAgentDirAssets(source, outDir);
+    // An ESM dist/server.js needs "type": "module" next to it (a directory build's copy step writes it too).
+    else if (esm) writeFile(path.join(outDir, 'dist', 'package.json'), '{ "type": "module" }\n');
   },
 
   describe(): string {

@@ -29,11 +29,12 @@ export interface BuildArgs {
   help?: boolean;
 }
 
-const USAGE = 'Usage: lousho build <agent-dir|spec> --target=<node-server|cloudflare-worker|docker> [--out=<dir>]   (or --agent=<path>)';
+const USAGE = 'Usage: lousho build <agent-dir|spec|agent.ts> --target=<node-server|cloudflare-worker|docker> [--out=<dir>]   (or --agent=<path>)';
 
 const HELP = `${USAGE}
 
-Bundles an agent spec (agent.yaml / agent.json) or an agent directory for deployment.
+Bundles an agent spec (agent.yaml / agent.json), an agent directory or (node-server, docker) a .ts/.js
+module exporting createAgent() options or an agent, for deployment.
 
 Targets:
   node-server        a self-contained Node HTTP server (dist/server.js)
@@ -43,7 +44,7 @@ Targets:
 Options:
   --target=<name>    the deployment target (required)
   --out=<dir>        where to write the build (default: .lousho/build/<target>)
-  --agent=<path>     the spec file or agent directory (or pass it as the first argument)
+  --agent=<path>     the spec file, agent directory or module (or pass it as the first argument)
   -h, --help         show this help`;
 
 const SPEC: CommandSpec = {

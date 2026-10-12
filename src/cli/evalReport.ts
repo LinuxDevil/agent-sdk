@@ -227,6 +227,42 @@ function sameFile(a: string, b: string): boolean {
   return norm(a) === norm(b);
 }
 
+/** The vitest test titles `result` can come from: `name`, `name [case]`, and for a repeat run (`<case> #n`) the case's own title. */
+function testTitles(result: EvalResult): string[] {
+  const titleFor = (label: string | undefined) => (label === undefined || label === result.name ? result.name : `${result.name} [${label}]`);
+  const repeated = result.case === undefined ? undefined : /^(.*) #\d+$/.exec(result.case)?.[1];
+  return [titleFor(result.case), ...(repeated === undefined ? [] : [titleFor(repeated)])];
+}
+
+/**
+ * A case that recorded a pass but whose vitest test failed - it finished after
+ * vitest's timeout fired (or after vitest found it ran past it), or a hook of
+ * that test failed - is failed with vitest's message, in place: the reports
+ * then show that case failing instead of a green case plus a vitest row.
+ */
+function failLateCases(results: EvalResult[], vitestReport: unknown): void {
+  for (const { file, test } of failedTests(vitestReport)) {
+    const title = test.title ?? test.fullName ?? '';
+    const late = results.filter((result) => result.passed && result.file && sameFile(result.file, file) && testTitles(result).includes(title));
+    for (const result of late) {
+      result.passed = false;
+      result.error = lateFailureMessage(test.failureMessages?.[0]);
+    }
+  }
+}
+
+/** Every test vitest marked failed, with the file it is in. */
+function failedTests(vitestReport: unknown) {
+  return ((vitestReport as VitestJsonReport | undefined)?.testResults ?? []).flatMap((file) =>
+    (file.assertionResults ?? []).filter((test) => test.status === 'failed').map((test) => ({ file: file.name, test }))
+  );
+}
+
+function lateFailureMessage(failure: string | undefined): string {
+  const message = failure?.split('\n')[0] ?? 'vitest failed this test after the case recorded a pass';
+  return /timed out/i.test(message) ? `${message} Raise the limit with defineEval({ timeoutMs }) or lousho eval --timeout <ms>.` : message;
+}
+
 export function vitestError(label: string, message: string): EvalResult {
   return { name: 'vitest', case: label, tags: [], passed: false, assertions: [], durationMs: 0, steps: 0, toolCalls: [], error: message };
 }
@@ -239,11 +275,12 @@ export function vitestError(label: string, message: string): EvalResult {
  * empty (green-looking) JUnit and JSON reports.
  */
 export function unreportedFailures(
-  results: readonly EvalResult[],
+  results: EvalResult[],
   vitestReport: unknown,
   vitestCode: number,
   options: { cwd: string; strict: boolean }
 ): EvalResult[] {
+  failLateCases(results, vitestReport);
   const failingFiles = results.filter((r) => failsRun(r, options.strict) && r.file).map((r) => r.file as string);
   const extra: EvalResult[] = [];
   for (const file of (vitestReport as VitestJsonReport | undefined)?.testResults ?? []) {

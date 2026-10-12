@@ -46,7 +46,8 @@ const SPEC: CommandSpec = {
 export function parseMcpArgs(rest: string[]): McpCliArgs {
   const { values, positionals, help } = parseCommand(SPEC, rest);
   if (help) return { configPath: '', http: false, port: 3920, host: '127.0.0.1', help };
-  if (positionals.length === 0) throw usageError(SPEC, 'an agent spec file path is required.');
+  if (positionals.length === 0) throw usageError(SPEC, 'an agent path is required (a spec file, an agent directory or a .ts/.js module).');
+  if (values.http !== true && (values.port !== undefined || values.host !== undefined)) throw usageError(SPEC, '--port and --host need --http (stdio is the default).');
   return { configPath: positionals[0], http: values.http === true, port: portValue(SPEC, values.port, 3920), host: stringValue(values.host) ?? '127.0.0.1' };
 }
 
@@ -60,7 +61,7 @@ export async function startMcpServer(args: McpCliArgs): Promise<ServeMcpHandle> 
     agent = specToAgent(spec);
     name = spec.name;
   } else {
-    agent = await loadTarget(target);
+    agent = await loadTarget(target, { command: 'mcp' });
     name = path.basename(target.path, path.extname(target.path));
   }
   return serveMcp({

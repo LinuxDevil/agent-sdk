@@ -32,6 +32,26 @@ describe('bin/lousho.js', () => {
     expect(banner).toContain('2 usage error');
   });
 
+  it('exits 2 for `version` with an argument instead of ignoring it', () => {
+    const res = lousho('version', 'extra');
+    expect(res.status).toBe(2);
+    expect(res.stderr).toContain("'version' takes no arguments; got 'extra'");
+  });
+
+  it('`help <unknown>` is an unknown command', () => {
+    expect(lousho('help', 'bogus').status).toBe(2);
+  });
+
+  it.skipIf(!fs.existsSync(path.resolve(__dirname, '..', '..', 'dist', 'cli', 'traces.mjs')))(
+    '`help <command>` prints that command\'s help, as `<command> --help` does (needs npm run build)',
+    () => {
+      const res = lousho('help', 'traces');
+      expect(res.status).toBe(0);
+      expect(res.stdout).toBe(lousho('traces', '--help').stdout);
+      expect(res.stdout).toContain('lousho traces');
+    }
+  );
+
   it('exits 2 for an unknown command, like every command does for a usage error', () => {
     const res = lousho('bogus');
     expect(res.status).toBe(2);

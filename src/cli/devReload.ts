@@ -54,6 +54,8 @@ export interface DevOptions {
   schedules?: boolean;
   /** Overrides for the scheduler (clock, timers, error sink); mainly for tests. */
   scheduler?: StartSchedulesOptions;
+  /** The `lousho` command loading the target, named in its errors. Default 'dev'. */
+  command?: string;
   /** `--allowed-hosts`: host names the `Host` header may carry besides loopback ones (and, off loopback, IP addresses); `'*'` for any. */
   allowedHosts?: string[];
 }
@@ -109,7 +111,7 @@ function isAgentConfig(value: unknown): value is CreateAgentConfig {
   return typeof value === 'object' && value !== null && ('instructions' in value || 'prompt' in value);
 }
 
-async function loadModuleAgent(file: string, token: string, overrides: CreateAgentConfig): Promise<SimpleAgent> {
+async function loadModuleAgent(file: string, token: string, overrides: CreateAgentConfig, command = 'dev'): Promise<SimpleAgent> {
   let mod: Record<string, unknown>;
   try {
     mod = (await import(`${pathToFileURL(file).href}?t=${token}`)) as Record<string, unknown>;
@@ -141,7 +143,7 @@ async function loadModuleAgent(file: string, token: string, overrides: CreateAge
     return agent;
   }
   throw new SDKError(
-    `lousho dev: ${file} must export a SimpleAgent or a createAgent() config as its default export (or as 'agent').`,
+    `lousho ${command}: ${file} must export a SimpleAgent or a createAgent() config as its default export (or as 'agent').`,
     'LOUSHO_CONFIG_INVALID',
     { hint: "Add 'export default createAgent({ ... })', or export the createAgent() options object." }
   );
@@ -170,7 +172,7 @@ async function loadDevTarget(target: DevTarget, options: DevOptions): Promise<Lo
   const loaded = await withFreshImports(token, async () =>
     target.kind === 'dir'
       ? loadDirTarget(target.path, overrides)
-      : { agent: await loadModuleAgent(target.path, token, overrides), schedules: [], channels: [] }
+      : { agent: await loadModuleAgent(target.path, token, overrides, options.command), schedules: [], channels: [] }
   );
   const { agent } = loaded;
   if (overrides.store) storeOwners.add(agent);
@@ -343,9 +345,10 @@ export async function startReloader(target: DevTarget, options: DevOptions = {})
   let closed = false;
 
   async function reload(): Promise<void> {
-    const what = [...changed].filter(Boolean).join(', ') || name;
-    // A changed CommonJS helper that a tool file requires is cached by Node apart from the tool file itself.
     const root = target.kind === 'dir' ? target.path : path.dirname(target.path);
+    // An editor's or sed's temp file (written, then renamed over the real one) is gone by now: not worth naming.
+    const what = [...changed].filter((file) => file && (path.extname(file) !== '' || fs.existsSync(path.resolve(root, file)))).join(', ') || name;
+    // A changed CommonJS helper that a tool file requires is cached by Node apart from the tool file itself.
     forgetCommonJsModules([...changed].filter(Boolean).map((file) => path.resolve(root, file)));
     changed.clear();
     try {

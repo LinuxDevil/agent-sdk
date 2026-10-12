@@ -76,7 +76,14 @@ describe('renderProject', () => {
     '%s / %s: agent.ts uses createAgent + defineTool and the test uses mockModel',
     (provider, template) => {
       const files = renderProject(config(provider, template));
-      expect(files['src/agent.ts']).toContain("import { createAgent, defineTool, type LLMProvider } from '@lousho/build-ai-agent';");
+      expect(files['src/agent.ts']).toContain(
+        "import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';"
+      );
+      // The default export is what `lousho dev|chat|mcp|acp|build src/agent.ts` load.
+      expect(files['src/agent.ts']).toContain('export default config;');
+      const pkg = JSON.parse(files['package.json']!);
+      expect(pkg.scripts['dev:ui']).toBe('lousho dev src/agent.ts');
+      expect(pkg.scripts.build).toBe('lousho build src/agent.ts --target=node-server');
       expect(files['src/agent.ts']).toMatch(new RegExp(`model: '${provider}/[^']+'`));
       expect(files['src/agent.ts']).toContain('instructions');
       expect(files['src/agent.test.ts']).toContain("import { mockModel } from '@lousho/build-ai-agent/testing';");
@@ -113,6 +120,22 @@ describe('renderProject', () => {
     expect(files['agent.yaml']).toContain('type: anthropic');
     expect(JSON.parse(files['package.json']!).scripts.dev).toBe('lousho dev agent.yaml');
     expect(files['src/agent.ts']).toBeUndefined();
+  });
+
+  it.each(TEMPLATES)('the %s template can build (tsup) and test under yarn 1, which skips peers (vite)', (template) => {
+    const pkg = JSON.parse(renderProject(config('openai', template))['package.json']!);
+    expect(pkg.devDependencies).toMatchObject({ tsup: expect.any(String), vite: expect.any(String) });
+    expect(pkg.scripts.build).toMatch(/^lousho build \S+ --target=node-server$/);
+  });
+
+  it('the README lists three next commands and counts the tools', () => {
+    for (const template of TEMPLATES) {
+      const readme = renderProject(config('openai', template))['README.md']!;
+      const block = /## Next 3 commands\n\n```bash\n([\s\S]*?)```/.exec(readme)![1]!;
+      expect(block.split('\n').filter((line) => /^npm run /.test(line))).toHaveLength(3);
+    }
+    expect(renderProject(config('openai', 'tools'))['README.md']).toContain('the agent and three example tools');
+    expect(renderProject(config('openai', 'minimal'))['README.md']).toContain('the agent and an example tool');
   });
 
   it('the yaml template test imports only public SDK entry points', () => {

@@ -164,6 +164,7 @@ describe('runInit guards', () => {
     [['--template', 'huge'], /invalid --template 'huge'.*minimal, tools, yaml/],
     [['--package-manager', 'deno'], /invalid --package-manager 'deno'.*npm, pnpm, yarn, bun/],
     [['--wat'], /--wat/],
+    [['--sdk-path', '/nonexistent/lousho-sdk'], /--sdk-path '\/nonexistent\/lousho-sdk' does not exist/],
   ])('rejects bad flags %j with a clear message', async (flags, message) => {
     const h = harness();
     expect(await runInit(['x', '--yes', ...flags], h.environment)).toBe(2);

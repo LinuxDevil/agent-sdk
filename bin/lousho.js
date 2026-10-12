@@ -18,7 +18,7 @@ const USAGE = [
   '      Serve an agent over the Agent Client Protocol on stdio (for editors).',
   '  lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allow <list>] [--overwrite] [--dry-run] | --list',
   '      Install a tool, skill, channel, schedule or kit from a registry into an agent directory.',
-  '  lousho build <agent-dir|spec> --target=<node-server|cloudflare-worker|docker> [--out=<dir>]   (or --agent=<path>)',
+  '  lousho build <agent-dir|spec|agent.ts> --target=<node-server|cloudflare-worker|docker> [--out=<dir>]   (or --agent=<path>)',
   '      Bundle an agent for deployment (default output: .lousho/build/<target>).',
   '  lousho studio [--port N] [--host H] [--prod|--dev]',
   '      Open Agent Forge, the visual agent builder.',
@@ -83,12 +83,17 @@ function loadDotEnv() {
 }
 
 // `lousho --version` / `-v` / `version` print the package version (kept in sync with VERSION by scripts/sync-version.mjs).
-function runVersion() {
+function runVersion(rest) {
+  if (rest.length > 0) return usageError(`'version' takes no arguments; got '${rest[0]}'.`);
   console.log(require(path.join(__dirname, '..', 'package.json')).version);
 }
 
-function runHelp() {
-  console.log(USAGE);
+// `lousho help <command>` is `lousho <command> --help`.
+function runHelp(rest) {
+  if (rest.length === 0) return console.log(USAGE);
+  const entry = COMMANDS.get(rest[0]);
+  if (!entry) return unknownCommand(rest[0]);
+  return runCommand(entry, ['--help']);
 }
 
 // `lousho --help` / `-h` / `help` print the usage and succeed (a bare `lousho` is still an error).
@@ -104,9 +109,13 @@ const BUILTINS = new Map([
 /** The exit code for a usage error, as every command returns it (src/cli/args.ts USAGE_EXIT_CODE). */
 const USAGE_EXIT_CODE = 2;
 
-function unknownCommand(command) {
-  console.error(`lousho: unknown command '${command ?? ''}'.\n${USAGE}`);
+function usageError(message) {
+  console.error(`lousho: ${message}\n${USAGE}`);
   process.exitCode = USAGE_EXIT_CODE;
+}
+
+function unknownCommand(command) {
+  usageError(`unknown command '${command ?? ''}'.`);
 }
 
 /**
@@ -135,7 +144,7 @@ async function runCommand(entry, rest) {
 async function main() {
   const [command, ...rest] = process.argv.slice(2);
   const builtin = BUILTINS.get(command);
-  if (builtin) return builtin();
+  if (builtin) return builtin(rest);
   const entry = COMMANDS.get(command);
   return entry ? runCommand(entry, rest) : unknownCommand(command);
 }

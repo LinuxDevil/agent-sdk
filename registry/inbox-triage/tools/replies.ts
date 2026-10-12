@@ -6,7 +6,7 @@
  */
 import { z } from 'zod';
 import { defineTool } from '@lousho/build-ai-agent';
-import { appendOutbox, findDraft, getMessage, listDrafts, addDraft, updateDraft, updateMessage } from '../lib/mailstore';
+import { appendOutbox, findDraft, getMessage, listDrafts, addDraft, updateDraft, updateMessage } from '../lib/mailstore.ts';
 
 const list = defineTool({
   name: 'list_drafts',

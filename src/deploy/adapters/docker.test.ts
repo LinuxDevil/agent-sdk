@@ -56,6 +56,8 @@ describe('DockerAdapter', () => {
     // ...plus the Dockerfile.
     const dockerfile = fs.readFileSync(path.join(outDir, 'Dockerfile'), 'utf8');
     expect(dockerfile).toBe(DOCKERFILE);
+    // A local .env or a packed SDK tarball in the build folder (--out=.) never reaches the image.
+    expect(fs.readFileSync(path.join(outDir, '.dockerignore'), 'utf8').split('\n')).toEqual(expect.arrayContaining(['.env', '.env.*', '*.tgz']));
     const lines = dockerfile.split('\n');
     expect(lines).toContain('FROM node:22-slim');
     expect(lines).toContain('WORKDIR /app');
@@ -67,6 +69,8 @@ describe('DockerAdapter', () => {
     expect(lines).toContain('USER node');
     expect(lines).toContain('EXPOSE 3000');
     expect(lines).toContain('CMD ["node", "dist/server.js"]');
+    // The slim image has no curl: the health check probes /health with Node.
+    expect(DOCKERFILE).toMatch(/^HEALTHCHECK .*\\\n\s+CMD \["node", "-e", "fetch\('http:\/\/127\.0\.0\.1:' \+ \(process\.env\.PORT \|\| 3000\) \+ '\/health'\)/m);
     // Container needs an explicit all-interfaces opt-in to be reachable via -p.
     expect(lines).toContain('ENV HOST=0.0.0.0');
   });
@@ -83,21 +87,20 @@ describe('DockerAdapter', () => {
 
     const manifest = JSON.parse(fs.readFileSync(path.join(outDir, 'package.json'), 'utf8'));
     const sdk = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
-    // The image's `npm install --omit=dev` must install what the bundle left
-    // external; `^` lets a scaffold from an unpublished dev version resolve.
-    expect(manifest.dependencies['@lousho/build-ai-agent']).toBe(`^${sdk.version}`);
+    // The image's `npm install --omit=dev` installs only what the bundle left
+    // external: not the SDK, which dist/server.js bundles.
+    expect(manifest.dependencies['@lousho/build-ai-agent']).toBeUndefined();
     expect(manifest.dependencies['@ai-sdk/openai']).toBeDefined();
     expect(manifest.dependencies['@modelcontextprotocol/sdk']).toBe(sdk.peerDependencies['@modelcontextprotocol/sdk']);
     expect(manifest.scripts.start).toBe('node dist/server.js');
   });
 
-  it('a mock-provider spec ships only the SDK dependency', async () => {
+  it('a mock-provider spec ships no dependency', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-docker-'));
     const outDir = path.join(dir, 'out');
     await DockerAdapter.scaffold(writeSpec(dir), outDir);
     const manifest = JSON.parse(fs.readFileSync(path.join(outDir, 'package.json'), 'utf8'));
-    const sdk = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
-    expect(manifest.dependencies).toEqual({ '@lousho/build-ai-agent': `^${sdk.version}` });
+    expect(manifest.dependencies).toEqual({});
   });
 
   it('an agent directory ships the provider peer its data config names', async () => {
@@ -118,7 +121,7 @@ describe('DockerAdapter', () => {
     expect(deps['@modelcontextprotocol/sdk']).toBeUndefined();
     expect(deployDependencies('nope')).toEqual(deployDependencies());
     const ollamaMcp = deployDependencies('ollama', true);
-    expect(Object.keys(ollamaMcp)).toHaveLength(3);
+    expect(Object.keys(ollamaMcp)).toHaveLength(2);
     expect(Object.keys(ollamaMcp).some((k) => k.startsWith('ollama-ai-provider'))).toBe(true);
     expect(ollamaMcp['@modelcontextprotocol/sdk']).toBeDefined();
   });

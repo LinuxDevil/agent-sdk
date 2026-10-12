@@ -6,6 +6,7 @@
  * path reports it), otherwise a JSON-serializable result that keeps every
  * content part.
  */
+import { brandClass, instanceOfOwnBrand } from '../../utils/brand';
 
 /** A content part of an MCP tool result, in a typed, JSON-serializable form. */
 export type McpContentPart =
@@ -54,6 +55,11 @@ export interface McpStructuredToolResult {
  * where `message` is the server's text content.
  */
 export class McpToolError extends Error {
+  /** `instanceof` also holds for one thrown by another loaded copy of the SDK. */
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return instanceOfOwnBrand(this, value);
+  }
+
   /** Read by the executor's shared tool-error shape (LOU-U14). */
   readonly toolErrorKind = 'mcp' as const;
 
@@ -62,6 +68,7 @@ export class McpToolError extends Error {
     this.name = 'McpToolError';
   }
 }
+brandClass(McpToolError, 'McpToolError');
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);

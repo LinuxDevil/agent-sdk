@@ -29,17 +29,23 @@ function packSdk(sdkRoot: string, dest: string): string {
   return output.trim().split(/\r?\n/).pop()!.trim();
 }
 
+/** Why `sdkPath` cannot be an `--sdk-path` (missing, or a file that is not a .tgz), or undefined when it can. */
+export function sdkPathProblem(sdkPath: string): string | undefined {
+  const resolved = path.resolve(sdkPath);
+  if (!fs.existsSync(resolved)) return `lousho init: --sdk-path '${sdkPath}' does not exist. Pass an SDK checkout directory or a packed .tgz file.`;
+  if (!fs.statSync(resolved).isDirectory() && !isTarball(resolved)) {
+    return `lousho init: --sdk-path '${sdkPath}' is a file but not a .tgz tarball. Pass a checkout directory or a packed .tgz file.`;
+  }
+  return undefined;
+}
+
 /** Puts a tarball of the SDK at `sdkPath` (a checkout or a .tgz) into `projectDir`; returns its file name. */
 function vendorSdk(sdkPath: string, projectDir: string): string {
   const resolved = path.resolve(sdkPath);
-  if (!fs.existsSync(resolved)) {
-    throw new ConfigurationError(`lousho init: --sdk-path '${sdkPath}' does not exist. Pass an SDK checkout directory or a packed .tgz file.`, 'sdk-path');
-  }
+  const problem = sdkPathProblem(sdkPath);
+  if (problem !== undefined) throw new ConfigurationError(problem, 'sdk-path');
   fs.mkdirSync(projectDir, { recursive: true });
   if (fs.statSync(resolved).isDirectory()) return packSdk(resolved, projectDir);
-  if (!isTarball(resolved)) {
-    throw new ConfigurationError(`lousho init: --sdk-path '${sdkPath}' is a file but not a .tgz tarball. Pass a checkout directory or a packed .tgz file.`, 'sdk-path');
-  }
   fs.copyFileSync(resolved, path.join(projectDir, path.basename(resolved)));
   return path.basename(resolved);
 }

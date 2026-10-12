@@ -287,6 +287,20 @@ function startDevStudio(appDir: string, repoRoot: string, apiPort: number, apiHo
 
 const USAGE = 'Usage: lousho studio [--port N] [--host H] [--prod|--dev]';
 
+const HELP = `${USAGE}
+
+Opens Agent Forge, the visual agent builder. It prints a URL with a per-launch token; every
+API and WebSocket request needs that token.
+
+Options:
+  --port N    the studio's port (default 4750)
+  --host H    the interface to listen on (default 127.0.0.1)
+  --prod      serve the built UI from one process (needs the studio build)
+  --dev       run the API and the Vite dev server (a checkout of the SDK repository)
+  -h, --help  show this help
+
+Without --prod or --dev it serves the built UI when there is one, else the dev servers.`;
+
 const SPEC: CommandSpec = {
   command: 'studio',
   usage: USAGE,
@@ -306,7 +320,7 @@ export async function runStudio(rest: string[]): Promise<number> {
   try {
     const { help, ...options } = parseStudioArgs(rest);
     if (help) {
-      console.log(USAGE);
+      console.log(HELP);
       return 0;
     }
     startStudio({ ...options, repoRoot: process.cwd() });

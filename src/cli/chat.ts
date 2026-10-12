@@ -84,7 +84,7 @@ export async function buildAgent(path: string, io: Pick<ChatIo, 'overrides'>, mo
     ...io.overrides,
     ...(model && { model, provider: undefined }),
   } as CreateAgentConfig;
-  return loadTarget(target, { overrides });
+  return loadTarget(target, { overrides, command });
 }
 
 /** Runs `lousho chat` with the arguments after `chat`. */

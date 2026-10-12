@@ -60,6 +60,26 @@ only a Worker-safe part of `@lousho/build-ai-agent`
 npx lousho build ./my-agent --target=cloudflare-worker
 ```
 
+## Agent modules
+
+The `node-server` and `docker` targets also build a `.ts`/`.js` module whose
+default (or `agent`) export is `createAgent()` options or a built agent: the
+same file `lousho dev src/agent.ts` serves, and what the minimal and tools
+scaffolds have (their `npm run build` runs this):
+
+```bash
+npx lousho build src/agent.ts --target=node-server
+node .lousho/build/node-server/dist/server.js
+```
+
+The generated `server.ts` imports the module, so tsup bundles it with its local
+imports and the SDK into an ESM `dist/server.js`. With an options export the
+server builds the agent with `LOUSHO_STORE` (unless the options name a
+`store`); an exported agent keeps its own. The build's `package.json` names
+the provider package when the module has a literal `model: '<provider>/...'`;
+add any other optional peer it needs yourself. The `cloudflare-worker` target
+does not build a module: use a spec or an agent directory.
+
 ## HTTP API
 
 Every target serves the same `/chat` protocol as `lousho dev`
@@ -203,10 +223,10 @@ browser-platform ES module; the build fails if any `node:` import ends up in the
 `dist/server.js` bundles the SDK but leaves its optional peers (the `peerDependenciesMeta`
 entries of its package.json: provider packages, `dockerode`, the MCP SDK, `prompts`, ...) external, so a build
 never needs one you do not use. The generated `package.json` already lists the
-ones the agent needs where the server runs - `@lousho/build-ai-agent` (at
-`^` the version that built it, a caret range, not an exact pin), the provider package the spec names (at the
+ones the agent needs where the server runs - the provider package the spec names (at the
 range pairing with the build's `ai` major, e.g. `@ai-sdk/openai` for an OpenAI
-agent) and `@modelcontextprotocol/sdk` when the spec has `mcpServers` - so the
+agent) and `@modelcontextprotocol/sdk` when the spec has `mcpServers` - and
+nothing else: `@lousho/build-ai-agent`, `ai` and `zod` are inside the bundle, so the
 docker image's `npm install --omit=dev` or a `npm install` next to the
 node-server output installs them. Anything else (an agent directory's own
 imports, `dockerode` for sandboxed tools) you add yourself; a code path that

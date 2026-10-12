@@ -70,7 +70,9 @@ export default defineConfig([
     // deletes all of dist's *.d.* at the start of its own (parallel) dts
     // run - the two dts builds would race. The dts pass needs no shims:
     // type-only imports emit no code.
-    dts: { entry: { ...entry, 'deploy/worker': 'src/deploy/worker.ts' } },
+    // The CLI entries get none: bin/lousho.js runs their ESM build and nothing imports them as a library
+    // (their CJS build, which shares this build's chunks, is left out of the package: see "files").
+    dts: { entry: { ...Object.fromEntries(Object.entries(entry).filter(([name]) => !name.startsWith('cli/'))), 'deploy/worker': 'src/deploy/worker.ts' } },
     splitting: true,
     sourcemap: true,
     clean: true,
