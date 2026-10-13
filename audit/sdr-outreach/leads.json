@@ -1,0 +1,61 @@
+[
+  {
+    "id": "lead-1",
+    "name": "Priya Nair",
+    "role": "Engineering Manager",
+    "company": "Nimbus Health",
+    "industry": "healthtech SaaS",
+    "size": 220,
+    "signal": "Hiring 6 backend engineers; team is fully remote across 4 time zones",
+    "status": "new",
+    "activities": [
+      { "at": "2025-01-06T09:12:00Z", "type": "imported", "note": "Inbound from SaaStr conference list" }
+    ]
+  },
+  {
+    "id": "lead-2",
+    "name": "Marcus Feld",
+    "role": "VP of Engineering",
+    "company": "Cartloop",
+    "industry": "e-commerce SaaS",
+    "size": 140,
+    "signal": "Just raised an $18M Series B; doubling the engineering org this year",
+    "status": "new",
+    "activities": [
+      { "at": "2025-01-07T14:40:00Z", "type": "imported", "note": "Sourced from funding-announcement feed" }
+    ]
+  },
+  {
+    "id": "lead-3",
+    "name": "Sofia Tran",
+    "role": "Director of Platform Engineering",
+    "company": "Ledgerly",
+    "industry": "fintech",
+    "size": 380,
+    "signal": "Remote-first engineering org; posted publicly about daily standups eating maker time",
+    "status": "new",
+    "activities": []
+  },
+  {
+    "id": "lead-4",
+    "name": "Dan Okafor",
+    "role": "CTO",
+    "company": "Petal & Stem",
+    "industry": "florist retail",
+    "size": 12,
+    "signal": "Two-person dev team; evaluating cheaper project management tools",
+    "status": "new",
+    "activities": []
+  },
+  {
+    "id": "lead-5",
+    "name": "Alex Rivera",
+    "role": "Student",
+    "company": "State University Hack Club",
+    "industry": "education",
+    "size": 3,
+    "signal": "Building a class project; wants a free tool for a 3-person student team",
+    "status": "new",
+    "activities": []
+  }
+]
