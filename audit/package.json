@@ -10,7 +10,10 @@
     "incident": "tsx incident-responder/index.ts",
     "repo": "tsx repo-maintainer/index.ts",
     "research": "tsx research-analyst/index.ts",
-    "products": "tsx products-admin/index.ts"
+    "products": "tsx products-admin/index.ts",
+    "analyst": "tsx data-analyst/index.ts",
+    "sdr": "tsx sdr-outreach/index.ts",
+    "eval-loop": "tsx eval-loop/index.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.0",

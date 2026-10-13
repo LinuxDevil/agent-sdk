@@ -151,3 +151,20 @@ The coding-agent machinery (plan mode, approval-gated fs+shell, durable store, l
 
 `research-analyst` usage check demanded `sum(costUsd) === estimateCost(aggregate)` exactly. With a provider that bills per call (OpenRouter `usage.cost` applies prompt-cache discounts), the equality is wrong-headed: the billed sum is *better* than a fresh estimate. The check now re-estimates with `cachedInputTokens` included and allows a 15% band for billed runs (exact equality still required when nothing was billed). Verified live: `sum=$0.018895` vs `estimate=$0.018895` on the real-docs run (1152 cached input tokens).
 
+## Replicated real-world harness patterns — live OpenRouter
+
+A survey of what teams actually ship (G2/Salesforce/OpenAI/Google Cloud agent reports + reference implementations — see `TRENDS.md`) produced three new harnesses replicating the dominant production patterns:
+
+| Harness | Replicates | Result |
+|---|---|---|
+| `sdr-outreach/` | AI-SDR "drafts-as-pull-requests" (Arvexi/Reply.io/Mesh Pilot): enrichment → personalized draft → **durable approval queue** → reject-with-feedback redraft → separate sender principal (per-agent tool allowlists) → CRM log + audit trail | **8/8 PASS** on gpt-4o-mini — 27 approval pauses resolved, only approved drafts sent |
+| `data-analyst/` | "Talk to your data" text-to-SQL (OpenAI cookbook + pi-sql-analytics): sqlite SaaS warehouse, schema tools, `run_query` behind a **deterministic SELECT-only guard outside the model**, metric definitions + durable corrections, query audit log | **8/8 PASS** on claude-haiku-4.5 (see finding below) |
+| `eval-loop/` | Generator↔evaluator harness pattern: builder + hostile reviewer with **disjoint sessions**, 5-predicate contract + typed rubric, deterministic 4-round control loop (continue/stop/escalate) | **6/6 PASS** on gpt-4o-mini — converged round 2, canary isolation clean |
+
+**Findings from the replication runs:**
+
+- **Model tier matters for analytic tasks too** (extends the products-admin finding): gpt-4o-mini answered "$3,599" for a $4,673 MRR question (took the top plan's slice as the total) and cited account IDs instead of names; claude-haiku-4.5 produced correct, fully-cited answers. Bounded flows (sdr, eval-loop) pass on mini; anything requiring correct multi-step SQL/joins wants a stronger model.
+- **Harness enhancement made**: `data-analyst` initially relied on an instruction ("describe_table before querying") that both models ignored. Following the replicated pattern's own principle — *deterministic enforcement outside the model, not prompt instruction* — `run_query` now refuses (advisory verdict) statements referencing undescribed tables. Both models were then bounced correctly (`advised-aways=3` on haiku; the pattern, not the prompt, enforces order).
+
+No SDK defects surfaced in this round — approvals, durability, sub-agent isolation, structured output, and tool-gating all behaved correctly across 27+ approval pauses and ~40 tool calls.
+
