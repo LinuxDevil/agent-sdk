@@ -138,14 +138,17 @@ function resolveModel(options: ExecuteOptions): string | undefined {
 /**
  * Builds the next provider.generate() request and runs the onLLMRequest
  * callback and preGenerate hooks for it. Errors thrown here are NOT
- * provider failures and are never compacted.
+ * provider failures and are never compacted. `answerOnly` (the
+ * structured-output repair step) sends the `output` schema as
+ * `responseFormat` even when the call offers tools.
  */
 export async function prepareGenerateRequest(
   options: ExecuteOptions,
   messages: Message[],
   tools: ToolDefinition[],
   callSignal?: AbortSignal,
-  generate?: GenerateHookContext['generate']
+  generate?: GenerateHookContext['generate'],
+  answerOnly = false
 ): Promise<GenerateOptions> {
   const { temperature, maxTokens, onLLMRequest, hooks } = options;
   // The agent's / call's settings, then the run's own `temperature` / `maxTokens`; an unset key is not sent at all.
@@ -157,6 +160,9 @@ export async function prepareGenerateRequest(
   // The tools of this call, from the transcript as it is now (deferred tools load through `tool_search`).
   const deferral = deferralOf(options);
   const sent = visibleTools(tools, messages, deferral);
+  // Tools the model may call on this call: function tools not disabled by `toolChoice: 'none'`, or hosted ones.
+  const offersTools = !answerOnly && ((sent.length > 0 && settings.toolChoice !== 'none') || Boolean(hostedTools?.length));
+  const responseFormat = options.output ? outputResponseFormat(options.output, offersTools) : undefined;
 
   const generateRequest: GenerateOptions = {
     // agent.settings.model > the model the provider was configured with >
@@ -167,8 +173,9 @@ export async function prepareGenerateRequest(
     tools: sent.length > 0 ? sent : undefined,
     // The provider's own tools, sent with every call of the run (plan mode: read-only ones only).
     ...(hostedTools?.length && { hostedTools }),
-    // A JSON-mode hint for runs with an `output` schema.
-    ...(options.output ? { responseFormat: outputResponseFormat(options.output) } : {}),
+    // A JSON-mode hint for runs with an `output` schema - by default only on calls that offer no tools
+    // (a strict response format next to tools makes some models call tools forever instead of answering).
+    ...(responseFormat && { responseFormat }),
     // The providers send it only to models that accept it.
     ...(options.reasoning !== undefined && { reasoning: options.reasoning }),
     // The providers mark Anthropic cache breakpoints unless it is `false`.
@@ -293,7 +300,7 @@ export function generateInSpan(
       const request = recordingRetries(generateRequest, llmSpan);
       const generated = settleHostedFinish(
         await abortable(
-          runEvents ? runEvents.generate(provider, request, onOutput, hold, partial && ((text) => (partial.text += text))) : provider.generate(request),
+          runEvents ? runEvents.generate(provider, request, onOutput, hold, partial && ((text) => (partial.text += text)), Boolean(options.output)) : provider.generate(request),
           // The run's signal too, so a provider that ignores it does not hold an aborted run.
           anySignal(callSignal, options.signal)
         )

@@ -37,10 +37,12 @@ opt-out.
 - `lousho doctor --ping` checks OpenRouter at `/api/v1/key`, which needs the key (its `/models` answers without one, so a wrong key passed); a key the provider rejects is now a failure, and a ping of a custom `OPENAI_BASE_URL` says it shows reachability only.
 - `lousho doctor` fix lines use PowerShell syntax (`$env:NAME="<your key>"`) on Windows.
 - The `lousho eval` table shows the scores of passing scored gates (such as `t.check('words', n, atLeast(3))`), not only in `--json`.
+- **Behavior change.** An agent with `output` and tools no longer sends the strict `responseFormat` schema on calls that offer tools: `openai/gpt-4o-mini` via OpenRouter then called tools on every step until `maxSteps` and never answered. `responseFormat` now goes only on calls without tools (an agent without tools, the "answer now" call at `maxSteps`, the repair step); tool-offering calls answer from the schema in the prompt, with the existing parse and repair. `output: { schema, responseFormat: 'always' }` restores the old behavior, and is the default with `promptSchema: false`. `object.delta` events still stream on every step of an `output` run. See [Structured output](docs/structured-output.md#how-it-works).
 
 ### Documentation
 
 - Tool idempotency: `toolCallId` and `ctx.approval.id` identify one call; after a crash the model may retry with a new call, so side effects that must happen once need a key from your own data. New guidance for ending a run after a rejected approval, and for extract-then-approve-then-act with structured output.
+- [Durable execution](docs/durable-execution.md#recovering-after-a-crash): `agent.resume()` resolves with a result, not a stream (stream a resumed run with `agent.stream([], { sessionId })`), and `agent.pending()` also lists runs still active in another process. [Installation](docs/installation.md#typescript-settings): TypeScript 6+ projects need `"types": ["node"]` for the SDK's declarations.
 
 ## [1.0.0-alpha.23] - 2026-10-16
 

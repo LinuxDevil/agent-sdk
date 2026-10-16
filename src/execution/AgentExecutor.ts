@@ -1204,6 +1204,7 @@ export class AgentExecutor {
       const prompt = outputRepairMessage(options.output, checked);
       state.messages.push(prompt);
       markRequestOnly(state, prompt);
+      state.outputRepair = true;
       if (rejected?.role === 'assistant' && !rejected.toolCalls?.length && state.finalText && rejected.content === state.finalText) {
         markRequestOnly(state, rejected);
       }
@@ -1365,7 +1366,10 @@ export class AgentExecutor {
     try {
       // A hook's side calls (the compaction summarizer) count in the run's usage and budgets.
       const sideGenerate = sideGenerator(options, agentSpanId, (measured) => recordStepUsage(state.usage, measured));
-      const generateRequest = await prepareGenerateRequest(options, state.messages, tools, callSignal, sideGenerate);
+      // The repair step's call carries the `output` schema as `responseFormat` even when it offers tools.
+      const answerOnly = state.outputRepair === true;
+      state.outputRepair = undefined;
+      const generateRequest = await prepareGenerateRequest(options, state.messages, tools, callSignal, sideGenerate, answerOnly);
       callSignal?.throwIfAborted();
       called = true;
       const generated = await generateInSpan(options, generateRequest, state.messages, agentSpanId, callSignal, inputCheck, partial);

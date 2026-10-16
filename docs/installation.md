@@ -183,6 +183,21 @@ code import those types (error TS1479 inside the SDK's declarations). Use
 add `"type": "module"`, or keep `skipLibCheck: true` (what `lousho init`
 projects use).
 
+The root entry's declarations use Node types (`Buffer`, and imports from
+`node:crypto`, `node:http` and `node:net`), so install `@types/node`.
+TypeScript 6 no longer loads every `@types` package by default (`types`
+defaults to `[]`), so on TypeScript 6+ also list it in `tsconfig.json`,
+or `skipLibCheck: false` reports `Cannot find name 'Buffer'` and
+`Cannot find module 'node:http'` inside the SDK's declarations:
+
+```json
+{
+  "compilerOptions": {
+    "types": ["node"]
+  }
+}
+```
+
 ## Installing from a local build
 
 To try an unreleased commit, build and pack the SDK from a checkout of this

@@ -176,10 +176,18 @@ console.log(object?.note); // typed: string | undefined
 
 1. The system prompt gets an `## Output format` section asking for the final
    answer as only a JSON object matching the schema, rendered as JSON Schema.
-2. Every model call carries `responseFormat: { type: 'json', schema }` on
-   `GenerateOptions`. It is a hint: the built-in `ai`-SDK providers turn on
-   the model's JSON mode (with the schema, for models that support structured
-   outputs); a custom provider may use it or ignore it.
+2. Model calls that offer no tools carry `responseFormat: { type: 'json',
+   schema }` on `GenerateOptions`: every call of an agent without tools, the
+   "answer now" call when steps run out (see below), and the repair step. It
+   is a hint: the built-in `ai`-SDK providers turn on the model's JSON mode
+   (with the schema, for models that support structured outputs; OpenRouter
+   and the `pi` provider send a strict `json_schema` response format); a
+   custom provider may use it or ignore it. A call that offers tools goes
+   without it, and the model answers from the schema in the prompt: with a
+   strict response format next to tools, some models (`openai/gpt-4o-mini`
+   via OpenRouter) keep calling tools until `maxSteps` instead of answering.
+   `toolChoice: 'none'` counts as no tools offered. To send it on every
+   call anyway, pass `output: { schema, responseFormat: 'always' }`.
 3. When the model replies without tool calls, the reply is parsed as JSON (a
    ```` ```json ```` code fence around it is tolerated) and validated with
    the schema. A near miss is read without a repair call: when the whole
@@ -221,13 +229,15 @@ call only and is not kept in `result.messages` or the session transcript.
 
 ## The schema in the prompt
 
-Steps 1 and 2 send the schema twice: once inside the `## Output format`
-system-prompt block, and once on `responseFormat`. When the provider enforces
-`responseFormat` (OpenAI structured outputs, OpenRouter, the `pi` provider)
-the prompt copy is redundant - on a large schema it costs around a thousand
-tokens per call. Pass `output` as `{ schema, promptSchema: false }` to leave
-the schema out of the prompt; the JSON-only ask stays and `responseFormat` is
-sent unchanged:
+Steps 1 and 2 send the schema twice on a call without tools: once inside the
+`## Output format` system-prompt block, and once on `responseFormat`. When the
+provider enforces `responseFormat` (OpenAI structured outputs, OpenRouter, the
+`pi` provider) the prompt copy is redundant - on a large schema it costs
+around a thousand tokens per call. Pass `output` as `{ schema, promptSchema:
+false }` to leave the schema out of the prompt; the JSON-only ask stays, and
+since `responseFormat` is then the only copy of the schema it goes on every
+call, tool-offering ones included (`responseFormat` defaults to `'always'`
+here; set `'final'` to keep it off those calls):
 
 ```ts
 import { z } from 'zod';
@@ -245,6 +255,15 @@ provider - or model - treats `responseFormat` as a JSON-mode hint only (the
 built-in `ai`-SDK providers drop the schema for models without
 structured-outputs support; a custom provider may ignore it entirely). The
 prompt copy is then the only place the model sees the shape to answer with.
+Keep it too for an agent with tools: its tool-offering calls carry no
+`responseFormat` by default, so the prompt copy is what they answer from.
+
+| `output` | Schema in the prompt | `responseFormat` on calls offering tools | on calls without tools |
+| --- | --- | --- | --- |
+| `schema` or `{ schema }` | yes | no | yes |
+| `{ schema, responseFormat: 'always' }` | yes | yes | yes |
+| `{ schema, promptSchema: false }` | no | yes | yes |
+| `{ schema, promptSchema: false, responseFormat: 'final' }` | no | no | yes |
 
 ## Repaired output and business rules
 

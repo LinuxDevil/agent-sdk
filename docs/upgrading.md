@@ -258,6 +258,7 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | An aborted run ends `finishReason: 'aborted'` at once, even when the provider ignores the signal. See [Cancellation](./runs.md#cancellation). | no opt-out |
 | The `openrouter` provider created without `apiKey` reads `OPENROUTER_API_KEY` (it sent `OPENAI_API_KEY`). | pass `apiKey` |
 | The `@modelcontextprotocol/sdk` peer range is `^1.31.0`. | no opt-out |
+| With `output`, `responseFormat` is sent only on model calls that offer no tools (an agent without tools, the "answer now" call at `maxSteps`, the repair step); a call that offers tools relies on the schema in the prompt. A strict `json_schema` next to tools made `openai/gpt-4o-mini` via OpenRouter call tools until `maxSteps`. See [How it works](./structured-output.md#how-it-works). | `output: { schema, responseFormat: 'always' }` (already the default with `promptSchema: false`) |
 
 ### Tools, MCP and tracing
 

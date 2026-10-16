@@ -542,6 +542,21 @@ code import those types (error TS1479 inside the SDK's declarations). Use
 add `"type": "module"`, or keep `skipLibCheck: true` (what `lousho init`
 projects use).
 
+The root entry's declarations use Node types (`Buffer`, and imports from
+`node:crypto`, `node:http` and `node:net`), so install `@types/node`.
+TypeScript 6 no longer loads every `@types` package by default (`types`
+defaults to `[]`), so on TypeScript 6+ also list it in `tsconfig.json`,
+or `skipLibCheck: false` reports `Cannot find name 'Buffer'` and
+`Cannot find module 'node:http'` inside the SDK's declarations:
+
+```json
+{
+  "compilerOptions": {
+    "types": ["node"]
+  }
+}
+```
+
 ## Installing from a local build
 
 To try an unreleased commit, build and pack the SDK from a checkout of this
@@ -7388,6 +7403,19 @@ for (const run of await agent.pending()) {
   }
 }
 ```
+
+`agent.resume()` resolves with the finished `ExecutionResult` (or `null` when
+nothing was pending); it does not return a stream. To watch a resumed run's
+events, stream it instead: `agent.stream([], { sessionId })` resumes an
+unfinished `kind: 'run'` checkpoint without new input (see
+[above](#what-happens-when-you-send-again-with-the-same-sessionid)) and
+returns the usual `AgentRun`. A paused run streams with
+`agent.approvals.streamResolve()`.
+
+`pending()` reads the shared checkpoint store, so it also lists runs that
+are still running right now in another process or replica (as
+`'in-progress'`, without `lastError`) - not only crashed ones. See below for
+why resuming one of those is safe.
 
 Each entry is `{ sessionId, kind, checkpointId, status, approvalId?,
 approvalKind?, step, lastError?, attempts? }`:
@@ -17317,10 +17345,18 @@ console.log(object?.note); // typed: string | undefined
 
 1. The system prompt gets an `## Output format` section asking for the final
    answer as only a JSON object matching the schema, rendered as JSON Schema.
-2. Every model call carries `responseFormat: { type: 'json', schema }` on
-   `GenerateOptions`. It is a hint: the built-in `ai`-SDK providers turn on
-   the model's JSON mode (with the schema, for models that support structured
-   outputs); a custom provider may use it or ignore it.
+2. Model calls that offer no tools carry `responseFormat: { type: 'json',
+   schema }` on `GenerateOptions`: every call of an agent without tools, the
+   "answer now" call when steps run out (see below), and the repair step. It
+   is a hint: the built-in `ai`-SDK providers turn on the model's JSON mode
+   (with the schema, for models that support structured outputs; OpenRouter
+   and the `pi` provider send a strict `json_schema` response format); a
+   custom provider may use it or ignore it. A call that offers tools goes
+   without it, and the model answers from the schema in the prompt: with a
+   strict response format next to tools, some models (`openai/gpt-4o-mini`
+   via OpenRouter) keep calling tools until `maxSteps` instead of answering.
+   `toolChoice: 'none'` counts as no tools offered. To send it on every
+   call anyway, pass `output: { schema, responseFormat: 'always' }`.
 3. When the model replies without tool calls, the reply is parsed as JSON (a
    ```` ```json ```` code fence around it is tolerated) and validated with
    the schema. A near miss is read without a repair call: when the whole
@@ -17362,13 +17398,15 @@ call only and is not kept in `result.messages` or the session transcript.
 
 ## The schema in the prompt
 
-Steps 1 and 2 send the schema twice: once inside the `## Output format`
-system-prompt block, and once on `responseFormat`. When the provider enforces
-`responseFormat` (OpenAI structured outputs, OpenRouter, the `pi` provider)
-the prompt copy is redundant - on a large schema it costs around a thousand
-tokens per call. Pass `output` as `{ schema, promptSchema: false }` to leave
-the schema out of the prompt; the JSON-only ask stays and `responseFormat` is
-sent unchanged:
+Steps 1 and 2 send the schema twice on a call without tools: once inside the
+`## Output format` system-prompt block, and once on `responseFormat`. When the
+provider enforces `responseFormat` (OpenAI structured outputs, OpenRouter, the
+`pi` provider) the prompt copy is redundant - on a large schema it costs
+around a thousand tokens per call. Pass `output` as `{ schema, promptSchema:
+false }` to leave the schema out of the prompt; the JSON-only ask stays, and
+since `responseFormat` is then the only copy of the schema it goes on every
+call, tool-offering ones included (`responseFormat` defaults to `'always'`
+here; set `'final'` to keep it off those calls):
 
 ```ts
 import { z } from 'zod';
@@ -17386,6 +17424,15 @@ provider - or model - treats `responseFormat` as a JSON-mode hint only (the
 built-in `ai`-SDK providers drop the schema for models without
 structured-outputs support; a custom provider may ignore it entirely). The
 prompt copy is then the only place the model sees the shape to answer with.
+Keep it too for an agent with tools: its tool-offering calls carry no
+`responseFormat` by default, so the prompt copy is what they answer from.
+
+| `output` | Schema in the prompt | `responseFormat` on calls offering tools | on calls without tools |
+| --- | --- | --- | --- |
+| `schema` or `{ schema }` | yes | no | yes |
+| `{ schema, responseFormat: 'always' }` | yes | yes | yes |
+| `{ schema, promptSchema: false }` | no | yes | yes |
+| `{ schema, promptSchema: false, responseFormat: 'final' }` | no | no | yes |
 
 ## Repaired output and business rules
 
@@ -19677,6 +19724,7 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | An aborted run ends `finishReason: 'aborted'` at once, even when the provider ignores the signal. See [Cancellation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/runs.md#cancellation). | no opt-out |
 | The `openrouter` provider created without `apiKey` reads `OPENROUTER_API_KEY` (it sent `OPENAI_API_KEY`). | pass `apiKey` |
 | The `@modelcontextprotocol/sdk` peer range is `^1.31.0`. | no opt-out |
+| With `output`, `responseFormat` is sent only on model calls that offer no tools (an agent without tools, the "answer now" call at `maxSteps`, the repair step); a call that offers tools relies on the schema in the prompt. A strict `json_schema` next to tools made `openai/gpt-4o-mini` via OpenRouter call tools until `maxSteps`. See [How it works](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md#how-it-works). | `output: { schema, responseFormat: 'always' }` (already the default with `promptSchema: false`) |
 
 ### Tools, MCP and tracing
 

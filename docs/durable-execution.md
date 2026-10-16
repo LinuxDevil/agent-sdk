@@ -174,6 +174,19 @@ for (const run of await agent.pending()) {
 }
 ```
 
+`agent.resume()` resolves with the finished `ExecutionResult` (or `null` when
+nothing was pending); it does not return a stream. To watch a resumed run's
+events, stream it instead: `agent.stream([], { sessionId })` resumes an
+unfinished `kind: 'run'` checkpoint without new input (see
+[above](#what-happens-when-you-send-again-with-the-same-sessionid)) and
+returns the usual `AgentRun`. A paused run streams with
+`agent.approvals.streamResolve()`.
+
+`pending()` reads the shared checkpoint store, so it also lists runs that
+are still running right now in another process or replica (as
+`'in-progress'`, without `lastError`) - not only crashed ones. See below for
+why resuming one of those is safe.
+
 Each entry is `{ sessionId, kind, checkpointId, status, approvalId?,
 approvalKind?, step, lastError?, attempts? }`:
 

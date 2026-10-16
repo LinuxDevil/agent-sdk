@@ -4442,6 +4442,7 @@ export interface OutputError {
 // @public
 export interface OutputSpec<TSchema extends StandardSchemaV1 = StandardSchemaV1> {
     promptSchema?: boolean;
+    responseFormat?: 'final' | 'always';
     schema: TSchema;
 }
 
