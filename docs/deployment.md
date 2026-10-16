@@ -41,10 +41,15 @@ directory's [schedules](./schedules.md) when it listens, mounts its
 routes keep the bearer token), and logs `schedules: ...; channels: ...`.
 The directory's code files are pre-bundled with the build's tsup step into
 `dist/agent/**.js` (one ESM build sharing one copy of the SDK, so a `from
-'@lousho/build-ai-agent'` import in a tool is the SDK the server runs), and the
-rest of the directory is copied; nothing needs a TypeScript loader at run time.
-`dist/` is then ESM (`dist/package.json` says so). The Docker image copies it as
-before. The optional `dockerode` sandbox is not bundled (it loads lazily), so a
+'@lousho/build-ai-agent'` import in a tool is the SDK the server runs), and
+only the files the server reads as data are copied: `instructions.md`,
+`instructions/`, `skills/`, a JSON/YAML config, and the same in each
+`subagents/<name>/`. Nothing else in the directory reaches `dist/`: not `.env`
+files, not the `.lousho/` session store or a config's `store.dir`, not notes or
+data files. `dist/` is emptied before each build, so sessions a previous build's
+server wrote under it do not carry over. Nothing needs a TypeScript loader at
+run time. `dist/` is then ESM (`dist/package.json` says so). The Docker image
+copies it as before. The optional `dockerode` sandbox is not bundled (it loads lazily), so a
 directory that uses `SubprocessSandbox` must install it where it runs.
 
 The Cloudflare Worker target builds a directory's config, `instructions.md`,

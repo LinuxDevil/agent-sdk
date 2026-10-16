@@ -360,9 +360,10 @@ The agent directory is the unit of deployment: the built server loads it with
 `channels/` under `/channels`, guards its chat routes with `auth.ts` when there
 is one ([Route auth and principals](auth.md)), and prints which it found. The code files (the
 config, `auth.ts`, a root `hooks.*` / `approve.*` file, `tools/`, `schedules/`, `channels/`, `memory/`, and the same in each
-sub-agent) are bundled to `dist/agent/**.js`, and `instructions.md` (with `instructions/<family>.md`), `skills/`
-and JSON/YAML config are copied next to them, so the server needs no TypeScript
-loader, sources or `node_modules`. See [Deployment](deployment.md#agent-directories).
+sub-agent) are bundled to `dist/agent/**.js`, and only `instructions.md` (with `instructions/<family>.md`), `skills/`
+and a JSON/YAML config (the same in each sub-agent) are copied next to them, so the server needs no TypeScript
+loader, sources or `node_modules`. Nothing else is copied: `.env` files, the `.lousho/` session store
+(or the config's `store.dir`) and any other file stay out of the build and its Docker image. See [Deployment](deployment.md#agent-directories).
 The Cloudflare Worker target builds a directory too, embedding every folder: `subagents/` become `delegate_to_` tools, `schedules/` become cron triggers, `channels/` are mounted under `/channels` and `memory/` slots run on `kvMemory()` ([Cloudflare Workers](cloudflare-workers.md#build-and-deploy)).
 
 ## What is not covered
