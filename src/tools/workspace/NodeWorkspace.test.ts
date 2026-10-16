@@ -65,7 +65,8 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  fs.rmSync(tmp, { recursive: true, force: true });
+  // On Windows taskkill ends a killed command's grandchildren asynchronously; one can still hold root/ as its cwd here.
+  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 });
 
 describe('NodeWorkspace file system (LOU-X6)', () => {

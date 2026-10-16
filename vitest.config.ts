@@ -10,11 +10,17 @@ import pkg from './package.json';
  * the package name keep resolving to the built dist/.
  */
 function examplesSelfImports(): Plugin {
-  const examplesDir = path.join(__dirname, 'examples') + path.sep;
+  // Vite hands resolveId importers with forward slashes on every platform, so
+  // the prefix is compared in that form; with path.sep this never matched on
+  // Windows and examples silently ran against dist/.
+  const examplesDir = path.join(__dirname, 'examples').split(path.sep).join('/') + '/';
   const targets = new Map(
     Object.entries(pkg.exports).map(([subpath, entry]) => [
       subpath === '.' ? pkg.name : `${pkg.name}/${subpath.slice(2)}`,
-      path.join(__dirname, entry.require.types.replace(/^\.\/dist\//, 'src/').replace(/\.d\.ts$/, '.ts')),
+      path
+        .join(__dirname, entry.require.types.replace(/^\.\/dist\//, 'src/').replace(/\.d\.ts$/, '.ts'))
+        .split(path.sep)
+        .join('/'),
     ])
   );
   return {

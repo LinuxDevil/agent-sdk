@@ -9,6 +9,7 @@ import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 let dir: string;
 
@@ -36,7 +37,7 @@ describe('withFreshImports', () => {
     const helper = path.join(agent, 'lib', 'helper.ts');
     const script = `
       import * as fs from 'node:fs';
-      import { importModule, withFreshImports } from ${JSON.stringify(path.join(dir, 'importModule.mjs'))};
+      import { importModule, withFreshImports } from ${JSON.stringify(pathToFileURL(path.join(dir, 'importModule.mjs')).href)};
       const seen = [];
       for (const [i, v] of ['v1', 'v2', 'v3'].entries()) {
         fs.writeFileSync(${JSON.stringify(helper)}, 'export const version: string = ' + JSON.stringify(v) + ';\\n');
