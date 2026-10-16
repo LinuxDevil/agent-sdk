@@ -3,7 +3,7 @@
  * Custom error types for SDK operations
  */
 
-import { APICallError, LoadAPIKeyError, RetryError } from 'ai';
+import { APICallError, JSONParseError, LoadAPIKeyError, RetryError, TypeValidationError } from 'ai';
 import type { ErrorCode } from '../utils/errorCodes';
 import type { ApprovalKind } from './ApprovalGate';
 import { SDKError, type SDKErrorOptions } from '../utils/sdkError';
@@ -481,6 +481,29 @@ function findNetworkCode(error: unknown, depth = 0): string | undefined {
   return findNetworkCode(cause, depth + 1);
 }
 
+/** Messages of a dropped connection that carry no `code` (undici's bare `TypeError: terminated`, "other side closed"). */
+const TRANSPORT_DROP_PATTERN = /^terminated$|socket (?:hang up|closed)|other side closed|premature close/i;
+
+/** Whether `error` or anything on its `cause` chain is a dropped connection by message alone. */
+function isTransportDrop(error: unknown, depth = 0): boolean {
+  if (depth > 6 || typeof error !== 'object' || error === null) return false;
+  const { message, cause } = error as { message?: unknown; cause?: unknown };
+  return (typeof message === 'string' && TRANSPORT_DROP_PATTERN.test(message.trim())) || isTransportDrop(cause, depth + 1);
+}
+
+/**
+ * Whether `error` or its `cause` chain is the 'ai' SDK failing to parse or
+ * validate a provider's response (garbage or truncated SSE JSON): the
+ * response was malformed, not the request. Matches by `name` too, so an error
+ * from another copy of the SDK still counts.
+ */
+function isMalformedResponse(error: unknown, depth = 0): boolean {
+  if (depth > 6 || typeof error !== 'object' || error === null) return false;
+  if (JSONParseError.isInstance(error) || TypeValidationError.isInstance(error)) return true;
+  const { name, cause } = error as { name?: unknown; cause?: unknown };
+  return name === 'AI_JSONParseError' || name === 'AI_TypeValidationError' || isMalformedResponse(cause, depth + 1);
+}
+
 /** The request URL without query string or credentials (a key may ride in `?key=`). */
 function safeUrl(url: string | undefined): string | undefined {
   if (!url) return undefined;
@@ -614,6 +637,18 @@ export function compactProviderError(
       providerName,
       statusCode: cause.statusCode,
       retryAfterMs: category === 'rate-limit' || cause.statusCode === 503 ? extractRetryAfterMs(cause) : undefined,
+    };
+  }
+
+  // A response cut off by the connection, or garbage the SDK could not parse:
+  // transient, the next attempt gets a fresh response. (withRetry() retries a
+  // stream only while nothing has been emitted.)
+  if (isTransportDrop(cause) || isMalformedResponse(cause)) {
+    return {
+      error: truncateMessage(describeThrown(cause)),
+      category: 'unknown',
+      retryable: true,
+      providerName,
     };
   }
 

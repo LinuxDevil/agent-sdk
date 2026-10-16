@@ -3,7 +3,7 @@
  * resilientProvider.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { APICallError } from 'ai';
+import { APICallError, JSONParseError, TypeValidationError } from 'ai';
 import type { GenerateOptions, LLMProvider, StreamChunk } from './llm';
 import { MockLLMProvider } from './mock';
 import { retriesOwned } from './providerEvents';
@@ -226,6 +226,75 @@ describe('withRetry', () => {
       compactProviderError(new Error('maximum context length exceeded'))
     );
     expect(isRetryableProviderError(contextLength)).toBe(false);
+  });
+
+  it('classifies a malformed or cut-off provider response as retryable, bare or wrapped in a cause', () => {
+    const parse = new JSONParseError({ text: '{"id":"x', cause: new SyntaxError('Unterminated string in JSON at position 8') });
+    const validation = new TypeValidationError({ value: { bad: 1 }, cause: new Error('invalid chunk') });
+    const socket = Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' });
+    const terminated = new TypeError('terminated', { cause: socket });
+    const bareTerminated = new TypeError('terminated');
+    const wrap = (cause: unknown) => new Error('stream failed', { cause });
+
+    for (const error of [parse, validation, socket, terminated, bareTerminated, new Error('Premature close')]) {
+      expect(isRetryableProviderError(error)).toBe(true);
+      expect(isRetryableProviderError(wrap(error))).toBe(true);
+    }
+    expect(isRetryableProviderError(Object.assign(new Error('x'), { name: 'AI_JSONParseError' }))).toBe(true);
+    expect(isRetryableProviderError(Object.assign(new Error('x'), { code: 'ECONNRESET' }))).toBe(true);
+    expect(isRetryableProviderError(new Error('boom', { cause: new Error('nope') }))).toBe(false);
+  });
+
+  it('retries a stream whose first chunk is garbage or whose socket drops, but not after text', async () => {
+    const parse = new JSONParseError({ text: '{"id":"x', cause: new SyntaxError('Unterminated string in JSON') });
+    const dropped = new TypeError('terminated', { cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' }) });
+    const onRetry = vi.fn();
+    const attempts: Array<() => AsyncGenerator<StreamChunk>> = [
+      async function* () {
+        throw parse;
+      },
+      async function* () {
+        throw dropped;
+      },
+      async function* () {
+        yield { type: 'text-delta', textDelta: 'ok' };
+        yield { type: 'finish', finishReason: 'stop' };
+      },
+    ];
+    let call = 0;
+    const provider: LLMProvider = {
+      name: 'garbled',
+      defaultModel: 'm',
+      generate: async () => {
+        throw new Error('unused');
+      },
+      stream: async () => ({ fullStream: attempts[call++]!() } as never),
+    };
+    const result = await withRetry(provider, { ...fast, onRetry }).stream(request);
+    const chunks: StreamChunk[] = [];
+    for await (const chunk of result.fullStream) chunks.push(chunk);
+    expect(chunks.map((chunk) => chunk.textDelta ?? chunk.type)).toEqual(['ok', 'finish']);
+    expect(onRetry).toHaveBeenCalledTimes(2);
+
+    call = 0;
+    const afterText: LLMProvider = {
+      ...provider,
+      stream: async () =>
+        ({
+          fullStream: (async function* () {
+            call++;
+            yield { type: 'text-delta', textDelta: 'partial' } as StreamChunk;
+            throw parse;
+          })(),
+        }) as never,
+    };
+    const second = await withRetry(afterText, { ...fast, onRetry }).stream(request);
+    await expect(
+      (async () => {
+        for await (const _ of second.fullStream) void _;
+      })()
+    ).rejects.toBe(parse);
+    expect(call).toBe(1);
   });
 
   it('does not retry a llama.cpp/LM Studio context overflow, whether it arrives as a 500 or a stream error', () => {
