@@ -15,6 +15,7 @@ import type { HostedTool } from '../tools/hosted';
 import { SDKError } from '../utils/sdkError';
 import { ConfigurationError } from './errors';
 import type { Principal } from '../auth/types';
+import { closestMatch } from '../utils/closestMatch';
 
 /** What a matching {@link PermissionRule} does with a tool call. */
 export type PermissionAction = 'allow' | 'deny' | 'ask';
@@ -319,6 +320,54 @@ export function ask(tools: PermissionToolMatcher, options?: { ttlMs?: number }):
     throw new ConfigurationError(`ask: 'ttlMs' must be ${APPROVAL_TTL_RULE}, got ${String(options.ttlMs)}.`, 'ttlMs');
   }
   return { tool: tools, action: 'ask', ...(options?.ttlMs !== undefined && { ttlMs: options.ttlMs }) };
+}
+
+/** A rule whose tool name matches no registered tool (see {@link unknownPermissionTools}). */
+export interface UnknownPermissionTool {
+  /** The rule's position in `permissions`. */
+  index: number;
+  /** The tool name the rule gives. */
+  tool: string;
+  /** The registered tool it is probably a typo of. */
+  suggestion?: string;
+}
+
+/** Whether a rule's tool name is a literal name (not `'*'` or a glob such as `'read_*'`). */
+function isLiteralToolName(name: string): boolean {
+  return name !== '' && !/[*?[\]{}]/.test(name);
+}
+
+/**
+ * The permission rules that name a tool no registered tool has, such as a
+ * `deny` for `write_flie`: the rule never matches, so its guard is silently off.
+ * Only literal names are checked (not `'*'`, globs or a RegExp). With
+ * `lenient` (tools that arrive later - MCP servers, tool search, sub-agents,
+ * per-run tools - may be named) a name is reported only when it is close to a
+ * registered tool's, i.e. a probable typo.
+ */
+export function unknownPermissionTools(
+  rules: readonly PermissionRule[] | undefined,
+  registered: Iterable<string>,
+  options: { lenient?: boolean } = {}
+): UnknownPermissionTool[] {
+  const known = new Set(registered);
+  const candidates = [...known];
+  const found: UnknownPermissionTool[] = [];
+  for (const [index, rule] of (rules ?? []).entries()) {
+    const names = typeof rule.tool === 'string' ? [rule.tool] : Array.isArray(rule.tool) ? (rule.tool as readonly string[]) : [];
+    for (const tool of names) {
+      if (typeof tool !== 'string' || !isLiteralToolName(tool) || known.has(tool)) continue;
+      const suggestion = closestMatch(tool, candidates);
+      if (suggestion === undefined && options.lenient) continue;
+      found.push({ index, tool, ...(suggestion !== undefined && { suggestion }) });
+    }
+  }
+  return found;
+}
+
+/** One line for an {@link UnknownPermissionTool}: which rule, and the "did you mean". */
+export function unknownPermissionToolMessage({ index, tool, suggestion }: UnknownPermissionTool): string {
+  return `permissions[${index}] names the tool '${tool}', which no tool of the agent has, so the rule never applies.${suggestion ? ` Did you mean '${suggestion}'?` : ''}`;
 }
 
 function matchesTool(matcher: PermissionToolMatcher, toolName: string): boolean {

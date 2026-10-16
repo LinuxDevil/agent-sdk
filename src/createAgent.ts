@@ -68,7 +68,15 @@ import { listPendingRuns, type PendingRun } from './agentPending';
 import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from './createAgentApprovals';
 import { createAgentOAuth, type AgentOAuth } from './oauth/agentOAuth';
 import type { OAuthTokenStore } from './oauth/types';
-import { APPROVAL_TTL_RULE, assertPermissionMode, isApprovalTtl, type PermissionMode, type PermissionOptions } from './execution/permissions';
+import {
+  APPROVAL_TTL_RULE,
+  assertPermissionMode,
+  isApprovalTtl,
+  unknownPermissionToolMessage,
+  unknownPermissionTools,
+  type PermissionMode,
+  type PermissionOptions,
+} from './execution/permissions';
 import { assertToolSearchOptions, type ToolSearchOptions } from './execution/toolSearch';
 import { assertOutputSchema, type OutputSpec } from './execution/structuredOutput';
 import { assertCodeModeOptions, codeModeOption, type CodeModeOptions } from './execution/codeMode';
@@ -973,6 +981,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   if (staticSpec && config.skills?.length) assertSkillsUsable(config.skills, staticSpec.agent, staticSpec.toolRegistry);
   // N6: a handoff tool may not share a tool's name (a per-run `tools` function is checked when the run starts).
   assertNoHandoffToolClash(handoffTools, specs.staticTools);
+  warnUnknownPermissionTools(config, handoffTools, specs.staticTools);
   // LOU-Z4: MCP tools join the registry and the agent's tools once connected.
   const mcp = agentMcp(
     config.mcpServers,
@@ -1270,6 +1279,21 @@ function approvalStoreOf(config: CreateAgentConfig): ApprovalStore {
 function subagentOptionsOf(config: CreateAgentConfig) {
   const sessions = config.store?.sessions;
   return sessions ? { sessions, ...config.subagentOptions } : config.subagentOptions;
+}
+
+/**
+ * A `permissions` rule that names a tool the agent does not have (a typo such as
+ * `write_flie`) never matches, so a `deny` is silently off: warn at creation.
+ * Tools that arrive later (MCP, tool search, sub-agents, per-run `tools`) make
+ * the check report only probable typos.
+ */
+function warnUnknownPermissionTools(config: CreateAgentConfig, handoffTools: string[], staticTools: RunTools | undefined): void {
+  if (!config.permissions?.length) return;
+  const lenient = !staticTools || Object.keys(config.mcpServers ?? {}).length > 0 || !!config.toolSearch || !!config.subagents || !!config.codeMode;
+  const registered = [...Object.keys(staticTools?.toolsConfig ?? {}), ...handoffTools, 'task', 'load_skill'];
+  for (const issue of unknownPermissionTools(config.permissions, registered, { lenient })) {
+    console.warn(`[lousho] createAgent: ${unknownPermissionToolMessage(issue)}`);
+  }
 }
 
 /** N6: a handoff tool may not share a tool's name (a per-run `tools` function is checked when the run starts). */

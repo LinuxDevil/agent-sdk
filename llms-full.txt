@@ -9285,7 +9285,7 @@ lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judg
 It spawns the vitest installed in your project (vitest is *your* dependency; if
 it is missing the command prints `npm install --save-dev vitest` and exits 1),
 then prints one row per case with its scores and duration, totals, and the gate
-failures and soft failures listed separately.
+failures and soft failures listed separately. The "with soft failures" total (`softFailed` in the JSON summary) counts every case with a failed soft assertion, including cases that also failed a gate.
 
 **Exit code:** `1` on any gate failure (or soft failure with `--strict`, or when
 vitest itself fails, for example a file that does not load, or is not installed,
@@ -9330,7 +9330,7 @@ summary and in the JUnit and JSON reports.
 The report is standard JUnit: one `testsuite` per eval, one `testcase` per case.
 A failed gate is a `<failure message="...">` carrying the diagnostic message; a
 case that threw or timed out is an `<error>`; soft failures are `<system-out>`
-notes (or failures under `--strict`). When vitest fails something no eval case
+notes (or failures under `--strict`), also on a case that failed a gate. When vitest fails something no eval case
 reported - an eval file that does not load, a plain `test()` that fails - the
 report gets an `<error>` testcase for it under a `vitest` suite, one per file
 (or one for the whole run when `--config` is used and vitest names no file), so
