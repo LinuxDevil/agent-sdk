@@ -670,6 +670,18 @@ function releasing(run: AsyncIterable<AgentEvent>, release: () => void): AsyncIt
 
 type RouteHandler = (request: Request, ctx: ChatRoutesContext, params: string[], principal: Principal | undefined) => Promise<Response>;
 
+/** A `{ sessionId, input }` turn whose input passed the body checks: the session checks, then the turn streamed. */
+async function sessionTurn(request: Request, ctx: ChatRoutesContext, principal: Principal | undefined, sessionId: string, input: AgentInput): Promise<Response> {
+  const key = request.headers.get('idempotency-key');
+  if (key !== null && !IDEMPOTENCY_KEY.test(key)) return badRequest("The 'Idempotency-Key' header must be 1-255 visible ASCII characters");
+  const session = openSession(ctx, sessionId);
+  if (session instanceof Response) return session;
+  const forbidden = await sessionForbidden(ctx, principal, sessionId, 'chat', session);
+  if (forbidden) return forbidden;
+  if (key !== null) return idempotentTurn(request, ctx, principal, session, input, key);
+  return (await awaitingApproval(session)) ?? sseResponse(request, ctx, (signal) => claimOnCommit(ctx, principal, session, session.stream(input, { signal, principal })));
+}
+
 const runChat: RouteHandler = async (request, ctx, _params, principal) => {
   const { sessionId, input, message } = await readJson(request);
   if (typeof sessionId === 'string' && Array.isArray(input) && input.length === 0) return badRequest("Request body's 'input' is empty: send the user's message");
@@ -685,14 +697,7 @@ const runChat: RouteHandler = async (request, ctx, _params, principal) => {
     if (Array.isArray(messages) && messages.length === 0) {
       return badRequest("Request body's 'input' must contain at least one 'user' message");
     }
-    const key = request.headers.get('idempotency-key');
-    if (key !== null && !IDEMPOTENCY_KEY.test(key)) return badRequest("The 'Idempotency-Key' header must be 1-255 visible ASCII characters");
-    const session = openSession(ctx, sessionId);
-    if (session instanceof Response) return session;
-    const forbidden = await sessionForbidden(ctx, principal, sessionId, 'chat', session);
-    if (forbidden) return forbidden;
-    if (key !== null) return idempotentTurn(request, ctx, principal, session, messages as AgentInput, key);
-    return (await awaitingApproval(session)) ?? sseResponse(request, ctx, (signal) => claimOnCommit(ctx, principal, session, session.stream(messages as AgentInput, { signal, principal })));
+    return sessionTurn(request, ctx, principal, sessionId, messages as AgentInput);
   }
   if (typeof message === 'string' && message) {
     if (sessionId !== undefined && typeof sessionId !== 'string') return badRequest("Request body's 'sessionId', if present, must be a string");
