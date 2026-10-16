@@ -41,7 +41,8 @@ import { createAgent, formatUsage } from '@lousho/build-ai-agent';
 const result = await createAgent({ provider, instructions: 'You compare cities.' }).send('Compare 3 cities');
 
 result.usage.inputTokens; // all model calls of the run, delegated children included
-result.usage.costUsd; // number, or undefined if any model used has no known price
+result.usage.costUsd; // sum of the calls with a known cost; undefined if none has one
+result.usage.costPartial; // true when some call had no known price and is not in costUsd
 result.usage.estimated; // true if some call reported no usage and was estimated
 result.usage.byModel['gpt-4o-mini']; // { inputTokens, outputTokens, costUsd?, calls }
 result.stepUsage?.[0]; // { step, model, usage, estimated, costUsd? } per model call
@@ -49,12 +50,12 @@ console.log(formatUsage(result.usage)); // 1,234 in / 567 out tokens · $0.0042 
 ```
 
 - **Reported vs estimated.** Providers report `promptTokens`/`completionTokens`; the built-in providers also pass on `cachedInputTokens`/`cacheWriteTokens`/`reasoningTokens` when the provider reports them (`usage.cachedInputTokens`, `usage.cacheWriteTokens` and `usage.reasoningTokens` only appear then). `inputTokens` always counts the cached and cache-written tokens too. A backend that reports nothing gives `undefined` usage, never zeros. For that step the executor falls back to `estimateTokens` and sets `usage.estimated` (a leading `~` in `formatUsage`). A custom provider should leave `GenerateResult.usage` unset rather than fill in zeros.
-- **Cost.** `costUsd` is the sum of the per-call costs: the cost the provider reported (OpenRouter returns `usage.cost` for every model, priced or not), else `estimateCost` for the model. It is `undefined`, never a misleading partial sum, as soon as any model used has unknown pricing; `byModel` shows which ones are priced. In `formatUsage` the cost prints with 4 decimals under $1 (2 at $1 or more), so a run under $0.00005 reads `$0.0000`.
+- **Cost.** `costUsd` is the sum of the per-call costs: the cost the provider reported (OpenRouter returns `usage.cost` for every model, priced or not), else `estimateCost` for the model. A call with no known price (a model missing from the registry whose provider reported no cost) is left out of the sum and sets `usage.costPartial: true`, so the total is a lower bound rather than being discarded; `byModel` shows which models are priced (`byModel[model].costPartial` marks a model with both priced and unpriced calls, and `usage.delegated.costPartial` does the same for children). `costUsd` is `undefined` only when no call has a known cost. `limits.maxCostUsd` is checked against the partial total. In `formatUsage` the cost prints with 4 decimals under $1 (2 at $1 or more), so a run under $0.00005 reads `$0.0000`.
 - **Hosted tools.** `usage.hostedToolCalls` counts the calls the provider ran for [hosted tools](./hosted-tools.md) per tool name (e.g. `{ web_search: 2 }`). Their per-call fees are billed by the provider and are not in `costUsd`.
 - **Delegation.** A delegated child's usage is added to the parent's totals and `byModel`, and is also shown on its own as `usage.delegated` (`{ inputTokens, outputTokens, totalTokens, costUsd, modelCalls, estimated, runs }`). A [remote sub-agent](./sub-agents.md#remote-sub-agents)'s usage is what the remote agent reports, filed under `byModel['remote:<name>']` with the remote's own `costUsd`.
 - **Resume.** A run resumed from a checkpoint, or after an approval, continues from the saved totals instead of restarting at zero. Checkpoints written by older versions start from their saved token counts with an unknown cost.
 - **Events and traces.** The `finish` event (and every lifecycle event that carried `usage`) now carries the running totals; `text-complete` also has `stepUsage`, and `onLLMResponse` receives the call's usage as a third argument. The `chat` span's `gen_ai.usage.*` attributes use the same numbers, with `lousho.usage.estimated` set to `true` when they are estimates.
-- **Streaming.** `agent.stream()` events carry the same accounting: `step.done` and `run.done` have `usage` with `inputTokens`, `outputTokens`, `estimated` and `costUsd` (run-level also `modelCalls`), alongside the older `promptTokens`/`completionTokens`.
+- **Streaming.** `agent.stream()` events carry the same accounting: `step.done` and `run.done` have `usage` with `inputTokens`, `outputTokens`, `estimated` `costUsd` and `costPartial` when partial (run-level also `modelCalls`), alongside the older `promptTokens`/`completionTokens`.
 - `promptTokens` and `completionTokens` on `usage` remain as deprecated aliases of `inputTokens` and `outputTokens`.
 
 Prices come from the model registry above, so to get a cost for a custom or fine-tuned model, register it under the id you pass as the model:

@@ -215,7 +215,7 @@ for await (const event of agent.stream('Hello!')) {
   every call starts with the primary model.
 - `stream()` and `session.stream()` report each retry as a `provider.retry`
   event and each switch as `provider.fallback`; its `from` and `to` are provider
-  names (such as `openai`), not model ids (see
+  names (such as `openai`) and `fromModel` / `toModel` the model ids (see
   [Streaming](./stream-events.md#event-schema-version-1)). `send()` returns the
   final result as before.
 

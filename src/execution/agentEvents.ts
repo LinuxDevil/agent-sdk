@@ -37,6 +37,8 @@ export interface AgentEventUsage {
   estimated: boolean;
   /** USD, or absent when a model used has unknown pricing (see `registerModel`). */
   costUsd?: number;
+  /** `true` when `costUsd` is a lower bound: some model call had no known price and is not in it. */
+  costPartial?: boolean;
   /** On `run.done`: model calls of the whole run. */
   modelCalls?: number;
   /** N1a, on `run.done`: hosted tool calls the provider ran, per tool name; absent when none. Their fees are not in `costUsd`. */
@@ -319,6 +321,10 @@ export interface ProviderFallbackEvent extends AgentEventBase<'provider.fallback
   from: string;
   /** Name of the provider that takes over. */
   to: string;
+  /** Model id the failed provider was called with (tells apart two providers of the same name, e.g. two OpenRouter models). */
+  fromModel?: string;
+  /** Model id the provider that takes over is called with. */
+  toModel?: string;
   error: { message: string };
 }
 

@@ -234,6 +234,7 @@ export class DecryptionError extends Error {
 
 // @public
 interface DelegatedUsage {
+    costPartial?: boolean;
     costUsd: number | undefined;
     // (undocumented)
     estimated: boolean;
@@ -572,6 +573,7 @@ type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 // @public
 interface ModelUsage {
     calls: number;
+    costPartial?: boolean;
     costUsd?: number;
     // (undocumented)
     inputTokens: number;
@@ -731,6 +733,7 @@ interface RunUsage {
     cacheWriteTokens?: number;
     // @deprecated (undocumented)
     completionTokens: number;
+    costPartial?: boolean;
     costUsd: number | undefined;
     delegated?: DelegatedUsage;
     estimated: boolean;

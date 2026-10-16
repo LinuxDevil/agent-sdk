@@ -31,6 +31,8 @@ export interface ModelUsage {
   outputTokens: number;
   /** USD for these tokens; `undefined` when the model's price is unknown (see `registerModel`). */
   costUsd?: number;
+  /** `true` when `costUsd` is a partial sum: some of this model's calls had no known price and are not in it. */
+  costPartial?: boolean;
   /** Number of model calls made with this model. */
   calls: number;
 }
@@ -40,8 +42,10 @@ export interface DelegatedUsage {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
-  /** `undefined` when any contributing model has unknown pricing. */
+  /** The priced share of the children's cost; `undefined` when none of it is priced. See `costPartial`. */
   costUsd: number | undefined;
+  /** `true` when some contributing calls had no known price and are not in `costUsd`. */
+  costPartial?: boolean;
   modelCalls: number;
   estimated: boolean;
   /** Number of child runs. */
@@ -69,11 +73,19 @@ export interface RunUsage {
   /** Sum of `reasoningTokens` over the calls that reported it; absent when none did. */
   reasoningTokens?: number;
   /**
-   * Estimated USD for the whole run. `undefined` (never a partial sum) when
-   * any contributing model has unknown pricing; the per-model figures in
-   * `byModel` still show which models are priced.
+   * USD for the whole run: the sum of the calls with a known cost (the
+   * provider's billed cost, else the registry's estimate). A call with no
+   * known price is left out of the sum and sets `costPartial`; `undefined`
+   * only when no call has a known cost. `limits.maxCostUsd` is checked
+   * against this figure.
    */
   costUsd: number | undefined;
+  /**
+   * `true` when `costUsd` is a lower bound: at least one model call had no
+   * known price (an unregistered model whose provider reported no cost), so
+   * it is not in the sum. Absent otherwise; `byModel` shows which models.
+   */
+  costPartial?: boolean;
   /** Model calls made, including those of delegated children. */
   modelCalls: number;
   /** `true` when at least one call reported no usage and its tokens were estimated with `estimateTokens`. */

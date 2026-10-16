@@ -11,6 +11,7 @@ import { isRetryableProviderError, resilientProvider, withFallback, withRetry } 
 import { CompactedLLMProviderError, compactProviderError } from '../execution/errors';
 import { createAgent } from '../createAgent';
 import { estimateCost } from '../models';
+import type { AgentEvent } from '../execution/agentEvents';
 
 function apiError(statusCode: number, headers?: Record<string, string>): APICallError {
   return new APICallError({
@@ -614,7 +615,7 @@ describe('withFallback', () => {
     const result = await provider.generate({ ...request, model: provider.defaultModel });
 
     expect(result.text).toBe('backup ok');
-    expect(onFallback).toHaveBeenCalledWith({ from: 'primary', to: 'backup', error: primaryError });
+    expect(onFallback).toHaveBeenCalledWith({ from: 'primary', to: 'backup', fromModel: 'primary-model', toModel: 'backup-model', error: primaryError });
     expect(result.servedBy).toEqual({ provider: 'backup', model: 'backup-model' });
     // the wrapper itself keeps reporting the first provider
     expect(provider.name).toBe('primary');
@@ -691,7 +692,7 @@ describe('withFallback', () => {
     expect(stream.servedBy).toEqual({ provider: 'backup', model: 'backup-model' });
     expect(primary.calls).toHaveLength(1);
     expect(backup.calls).toHaveLength(1);
-    expect(onFallback).toHaveBeenCalledWith({ from: 'primary', to: 'backup', error: expect.objectContaining({ statusCode: 503 }) });
+    expect(onFallback).toHaveBeenCalledWith({ from: 'primary', to: 'backup', fromModel: 'primary-model', toModel: 'backup-model', error: expect.objectContaining({ statusCode: 503 }) });
   });
 
   it('composes with withRetry: in-stream failures are retried, then the next provider serves (LOU-R6)', async () => {
@@ -707,6 +708,29 @@ describe('withFallback', () => {
     expect(a.calls).toHaveLength(3);
     expect(b.calls).toHaveLength(2);
     expect(onFallback).toHaveBeenCalledWith(expect.objectContaining({ from: 'a', to: 'b' }));
+  });
+
+  it('reports the model ids of the failing and the taking-over provider, so same-named providers can be told apart', async () => {
+    const make = (defaultModel: string, fail: boolean): LLMProvider => ({
+      name: 'openrouter',
+      defaultModel,
+      generate: async () => {
+        if (fail) throw apiError(503);
+        return { text: 'ok', finishReason: 'stop' };
+      },
+      stream: async () => Promise.reject(new Error('n/a')),
+      supportsTools: () => true,
+      supportsStreaming: () => false,
+      getModels: async () => [defaultModel],
+    });
+    const onFallback = vi.fn();
+    const provider = withFallback([make('openai/gpt-4o-mini', true), make('anthropic/claude-3.5-haiku', false)], { onFallback });
+    const heard: AgentEvent[] = [];
+    await createAgent({ provider, instructions: 'x', retry: false, onEvent: (e) => heard.push(e) }).send('hi');
+
+    const expected = { from: 'openrouter', to: 'openrouter', fromModel: 'openai/gpt-4o-mini', toModel: 'anthropic/claude-3.5-haiku' };
+    expect(onFallback).toHaveBeenCalledWith(expect.objectContaining(expected));
+    expect(heard.find((e) => e.type === 'provider.fallback')).toMatchObject(expected);
   });
 
   it('needs at least one provider', () => {
