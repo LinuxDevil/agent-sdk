@@ -1263,19 +1263,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     ready: mcp.ready,
     close: mcp.close,
   };
-  // As a sub-agent, a dynamic agent resolves its config with the task prompt as `input`, and
-  // (Eve CORE-F7) the lead run's sessionId, metadata and principal.
-  // LOU-V4.2: a sub-agent answers with its own `output` object, never the lead's schema.
-  // H3-2: and it gets its own memory (recall and tools), bound to the scope keys of the lead run's session, metadata and principal.
-  const subagentSpec = async (prompt: string, caller: SubagentCaller): Promise<SubagentSpec> => {
-    const spec = { ...(staticSpec ?? (await specs.resolve({ ...caller, input: prompt }))), output: config.output };
-    if (!memory) return spec;
-    return { ...spec, ...memory.forRun({ sessionId: caller.sessionId, metadata: caller.metadata, principal: caller.principal }, spec.toolRegistry, undefined) };
-  };
-  registerSubagent(simpleAgent, {
-    spec: staticSpec && !memory ? { ...staticSpec, output: config.output } : subagentSpec,
-    description: config.description,
-  });
+  registerSubagent(simpleAgent, { spec: subagentRunSpec(staticSpec, (ctx) => specs.resolve(ctx), config.output, memory), description: config.description });
   // N6: as a handoff target, the agent runs with its own config (its `output` is not used: the run's lead types the result).
   registerHandoffAgent(simpleAgent, {
     name: config.name,
@@ -1293,6 +1281,26 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   // (`--traces`' exporter) when a module exports the built agent itself.
   builtConfigs.set(simpleAgent, config);
   return simpleAgent;
+}
+
+/**
+ * How the agent runs as a sub-agent. A dynamic agent resolves its config with the task prompt as `input`, and
+ * (Eve CORE-F7) the lead run's sessionId, metadata and principal. LOU-V4.2: it answers with its own `output`
+ * object, never the lead's schema. H3-2: it gets its own memory (recall and tools), bound to the scope keys of
+ * the lead run's session, metadata and principal.
+ */
+function subagentRunSpec(
+  staticSpec: SubagentSpec | undefined,
+  resolve: (ctx: RunConfigContext) => Promise<SubagentSpec>,
+  output: CreateAgentConfig['output'],
+  memory: AgentMemory | undefined
+): SubagentSpec | ((prompt: string, caller: SubagentCaller) => Promise<SubagentSpec>) {
+  if (staticSpec && !memory) return { ...staticSpec, output };
+  return async (prompt, caller) => {
+    const spec = { ...(staticSpec ?? (await resolve({ ...caller, input: prompt }))), output };
+    if (!memory) return spec;
+    return { ...spec, ...memory.forRun({ sessionId: caller.sessionId, metadata: caller.metadata, principal: caller.principal }, spec.toolRegistry, undefined) };
+  };
 }
 
 /** The entry agent's run-level options (N6): names a handoff target can never own. */
