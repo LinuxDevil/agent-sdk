@@ -141,7 +141,7 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     configField: 'apiKey',
     envRequired: true,
     peers: aiSdkPeer('@ai-sdk/openai'),
-    envDefaultModel: 'gpt-4o-mini',
+    envDefaultModel: 'gpt-4.1-mini',
   },
   anthropic: {
     envKey: 'ANTHROPIC_API_KEY',
@@ -155,7 +155,7 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     configField: 'apiKey',
     envRequired: true,
     peers: aiSdkPeer('@ai-sdk/openai'),
-    envDefaultModel: 'openai/gpt-4o-mini',
+    envDefaultModel: 'openai/gpt-4.1-mini',
   },
   ollama: {
     envKey: 'OLLAMA_BASE_URL',
@@ -180,7 +180,7 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     envForInfoOnly: true,
     envRequired: false,
     peers: PI_PEERS,
-    envDefaultModel: 'openrouter/openai/gpt-4o-mini',
+    envDefaultModel: 'openrouter/openai/gpt-4.1-mini',
   },
 };
 
@@ -303,7 +303,7 @@ export function resolveProviderSpec(spec: string, caller: string, registry: Prov
   if (separatorIndex <= 0 || separatorIndex === spec.length - 1) {
     throw new ConfigurationError(
       `${caller}: expected a "<provider>/<model>" spec, got '${spec}'. ` +
-        `Example: 'openai/gpt-4o-mini'. Supported prefixes: ${SPEC_PREFIXES}.`,
+        `Example: 'openai/gpt-4.1-mini'. Supported prefixes: ${SPEC_PREFIXES}.`,
       'model',
       'LOUSHO_PROVIDER_SPEC_INVALID'
     );
@@ -353,9 +353,9 @@ export function modelFromEnv(caller: string, env: Record<string, string | undefi
   const envKeys = Object.values(PROVIDERS).map((p) => p.envKey);
   throw new ConfigurationError(
     `${caller}: no model configured. Do one of the following: ` +
-      "(1) pass a model: createAgent({ model: 'openai/gpt-4o-mini' }); " +
+      "(1) pass a model: createAgent({ model: 'openai/gpt-4.1-mini' }); " +
       '(2) pass a provider instance: createAgent({ provider: ... }); ' +
-      `(3) set ${MODEL_ENV_VAR} (e.g. ${MODEL_ENV_VAR}=openai/gpt-4o-mini); ` +
+      `(3) set ${MODEL_ENV_VAR} (e.g. ${MODEL_ENV_VAR}=openai/gpt-4.1-mini); ` +
       `(4) set one of ${envKeys.join(', ')} (checked in that order).`,
     'model',
     'LOUSHO_CONFIG_MISSING_PROVIDER'

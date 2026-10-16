@@ -153,7 +153,7 @@ describe('resolveProvider errors (LOU-D1)', () => {
   });
 
   it('shows an example for a spec without a provider prefix', () => {
-    expect(() => resolveProvider('gpt-4o')).toThrow(/Example: 'openai\/gpt-4o-mini'/);
+    expect(() => resolveProvider('gpt-4o')).toThrow(/Example: 'openai\/gpt-4.1-mini'/);
   });
 
   it.each([

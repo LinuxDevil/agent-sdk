@@ -215,7 +215,7 @@ function checkDefaultProvider(env: DoctorEnvironment): DoctorCheck {
       ...base,
       status: 'warn',
       finding: 'none configured (createAgent() needs a model, a provider instance, or an env var)',
-      fix: 'Set LOUSHO_MODEL (e.g. openai/gpt-4o-mini) or one of the API key variables above.',
+      fix: 'Set LOUSHO_MODEL (e.g. openai/gpt-4.1-mini) or one of the API key variables above.',
     };
   }
 }

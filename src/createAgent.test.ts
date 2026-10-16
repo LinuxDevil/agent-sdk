@@ -106,7 +106,7 @@ describe('createAgent', () => {
 
     it('throws an error listing every fix when nothing is configured', () => {
       expect(() => createAgent({ instructions: 'x' })).toThrow(
-        /createAgent: no model configured.*model: 'openai\/gpt-4o-mini'.*provider: \.\.\..*LOUSHO_MODEL.*OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OLLAMA_BASE_URL/
+        /createAgent: no model configured.*model: 'openai\/gpt-4.1-mini'.*provider: \.\.\..*LOUSHO_MODEL.*OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OLLAMA_BASE_URL/
       );
       expect(() => createAgent({ instructions: 'x' })).toThrow(
         expect.objectContaining({ code: 'LOUSHO_CONFIG_MISSING_PROVIDER', hint: expect.stringContaining('createAgent') })

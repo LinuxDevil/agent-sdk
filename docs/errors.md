@@ -18,7 +18,7 @@ error tells you what to do:
 
 ```text
 ConfigurationError: createAgent: no model configured. Do one of the following: (1) pass a model: ...
-[LOUSHO_CONFIG_MISSING_PROVIDER] Pass a model string such as createAgent({ model: 'openai/gpt-4o-mini' }), a provider instance, or set LOUSHO_MODEL or a provider API key. (https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_config_missing_provider)
+[LOUSHO_CONFIG_MISSING_PROVIDER] Pass a model string such as createAgent({ model: 'openai/gpt-4.1-mini' }), a provider instance, or set LOUSHO_MODEL or a provider API key. (https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_config_missing_provider)
 ```
 
 `error.detail` is the message without that line. Tool and provider errors
@@ -103,11 +103,11 @@ and `lousho studio` without Agent Forge's files are the same code.
 `provider` and found nothing in the environment, or `AgentExecutor.execute()` /
 `stream()` got no `provider`.
 
-**Fix:** pass `model: 'openai/gpt-4o-mini'` (any `<provider>/<model>`), pass a
+**Fix:** pass `model: 'openai/gpt-4.1-mini'` (any `<provider>/<model>`), pass a
 `provider` instance, or set `LOUSHO_MODEL` or a provider key such as
 `OPENAI_API_KEY`. The `vendor/` model prefix chooses the provider; with
 OpenRouter use `openrouter/<vendor>/<model>` (e.g.
-`openrouter/openai/gpt-4o-mini`). See [Providers](./providers.md).
+`openrouter/openai/gpt-4.1-mini`). See [Providers](./providers.md).
 
 **Example:** `createAgent({ instructions: 'x' })` with no provider env var set.
 
@@ -167,7 +167,7 @@ names the option and `error.cause` is what the function threw.
 
 **Means:** a model string is not `<provider>/<model>`.
 
-**Fix:** write both parts, e.g. `'openai/gpt-4o-mini'` or
+**Fix:** write both parts, e.g. `'openai/gpt-4.1-mini'` or
 `'anthropic/claude-sonnet-4-5'`.
 
 **Example:** `resolveProvider('gpt-4o')`.
@@ -189,7 +189,7 @@ or pass your own `provider` instance.
 
 **Fix:** set it, or pass a configured provider instance.
 
-**Example:** `createAgent({ model: 'openai/gpt-4o-mini' })` without `OPENAI_API_KEY`.
+**Example:** `createAgent({ model: 'openai/gpt-4.1-mini' })` without `OPENAI_API_KEY`.
 
 ### LOUSHO_PROVIDER_REQUEST_FAILED
 
