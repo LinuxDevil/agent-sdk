@@ -11,6 +11,7 @@ import { createAgent } from '../../../createAgent';
 import { defineEval } from '../../../evals';
 import { defineTool } from '../../../tools/defineTool';
 import { mockModel } from '../../../testing';
+import { notMock } from '../../../testing/notMock';
 
 const lookupOrder = defineTool({
   name: 'lookup_order',
@@ -19,13 +20,16 @@ const lookupOrder = defineTool({
   execute: ({ orderId }) => ({ orderId, status: 'shipped' }),
 });
 
-const realProvider = () =>
+const scripted = () =>
   process.env.FIXTURE_PROVIDER === 'offline'
     ? mockModel([])
     : mockModel([
         { toolCalls: [{ name: 'lookup_order', args: { orderId: process.env.FIXTURE_ORDER_ID ?? '42' } }] },
         { text: 'Refunds are possible within 30 days.' },
       ]);
+
+// FIXTURE_MOCK=1 leaves it a plain mockModel(), which cassette modes skip; otherwise it stands in for a network provider.
+const realProvider = () => (process.env.FIXTURE_MOCK === '1' ? scripted() : notMock(scripted()));
 
 defineEval({
   name: 'recorded refund',

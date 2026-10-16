@@ -3,6 +3,7 @@
  * Executes agents with streaming support and tool calling
  */
 
+import { isMockProvider } from '../providers/mockMarker';
 import type { Skill } from '../skills/defineSkill';
 import { withSkills } from '../skills/withSkills';
 import type { Subagents } from '../subagents/types';
@@ -831,7 +832,7 @@ export class AgentExecutor {
     let run = options;
     let end: { result?: ExecutionResult; error?: unknown } = {};
     // LOU-V6: a `maxDurationMs` budget aborts the run's signal.
-    const budget = startBudget(options.limits, options.sessionBudget, options.signal);
+    const budget = startBudget(options.limits, options.sessionBudget, options.signal, isMockProvider(options.provider));
     try {
       run = await extendRunOptions(budget ? { ...options, signal: budget.signal } : options);
       const result = await this.runAgentLoop(run, agentSpanId, budget);

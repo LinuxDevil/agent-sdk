@@ -5,9 +5,13 @@ import * as path from 'node:path';
 import { z } from 'zod';
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
-import { mockModel } from '../testing';
+import { mockModel as scriptedModel } from '../testing';
+import { notMock } from '../testing/notMock';
 import { CASSETTES_ENV, CONFIG_ENV, DRIFT_DIR_ENV, cassettePath, driftCassettePath, legacyCassettePath, withEvalCassettes } from './cassettes';
 import type { EvalResult } from './evalResult';
+
+/** These tests use a scripted model as the real network provider; a plain mockModel() is skipped by design. */
+const mockModel: typeof scriptedModel = (script, options) => notMock(scriptedModel(script, options));
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -77,6 +81,17 @@ describe('withEvalCassettes', () => {
     await expect(runCase(file, mockModel(['x']))).rejects.toThrow(/no cassette for "Refund flow \[Order #42\]".*npx lousho eval --record/);
     vi.stubEnv(CASSETTES_ENV, 'auto');
     expect((await runCase(file, mockModel(['live']))).reply).toBe('live');
+  });
+
+  it('skips a plain mockModel(): no cassette is needed to replay, none is written to record', async () => {
+    const file = evalFile();
+    vi.stubEnv(CASSETTES_ENV, 'replay');
+    const replayed = await runCase(file, scriptedModel(['offline']));
+    expect(replayed.reply).toBe('offline');
+    expect(replayed.result.cassettes).toBeUndefined();
+    vi.stubEnv(CASSETTES_ENV, 'record');
+    expect((await runCase(file, scriptedModel(['again']))).result.cassettes).toBeUndefined();
+    expect(fs.existsSync(path.join(path.dirname(file), '__cassettes__'))).toBe(false);
   });
 
   it('records into the drift dir instead of over the committed cassette', async () => {

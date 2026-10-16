@@ -97,6 +97,11 @@ const agent = createAgent({ provider: mockModel(['Hello!']), memory: [userFacts]
 await agent.send('Hi again!', { metadata: { userId: 'u-42' } });
 ```
 
+`lousho dev` and `lousho chat` cannot pass run `metadata`, so a scope function that
+reads `metadata.userId` is off there. To try per-user memory in the terminal, derive the
+scope from `sessionId` as well (for example `` `user:${metadata?.userId ?? sessionId}` ``, with
+`lousho chat --session <id>` as the "user"), or exercise it from a script with `send(..., { metadata })`.
+
 When a run has no scope key (a `'session'` slot in a `send()` without a
 `sessionId`, or a scope function that returns `undefined` or `null`), the slot is off
 for that run: nothing is recalled and its tools are not offered.

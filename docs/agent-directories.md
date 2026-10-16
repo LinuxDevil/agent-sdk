@@ -267,6 +267,21 @@ const { manifest } = await resolveAgentDir('./my-agent', {
 console.log(manifest.memory); // names found in memory/
 ```
 
+A relative `dir` in a `memory/*.ts` file resolves against the process working directory, not the agent directory (unlike `store.dir` in `agent.ts`, which is relative to the agent directory). A bare `./.lousho/memory` therefore puts memory in a different tree from the sessions, and it moves when you start the agent from another directory or from a build. Anchor it to the module instead, so it always lands next to the agent's other state:
+
+```ts
+// memory/notes.ts
+import { fileURLToPath } from 'node:url';
+import { fileMemory } from '@lousho/build-ai-agent';
+
+export default {
+  scope: 'global',
+  provider: fileMemory({ dir: fileURLToPath(new URL('../.lousho/memory', import.meta.url)) }),
+};
+```
+
+The path follows the module: a copied or bundled build keeps its memory next to the build, so point it at a fixed absolute path (or a database provider) if memory must survive redeploys.
+
 ## How it maps to `createAgent()`
 
 | Directory | `createAgent()` option |
@@ -365,7 +380,7 @@ and JSON/YAML config are copied next to them, so the server needs no TypeScript
 loader, sources or `node_modules`. See [Deployment](deployment.md#agent-directories).
 The Cloudflare Worker target builds a directory too, embedding every folder: `subagents/` become `delegate_to_` tools, `schedules/` become cron triggers, `channels/` are mounted under `/channels` and `memory/` slots run on `kvMemory()` ([Cloudflare Workers](cloudflare-workers.md#build-and-deploy)).
 
-## What is not covered
+## Serving over MCP
 
-`lousho mcp` still takes an agent spec file ([Configuration](configuration.md)),
-not a directory.
+`lousho mcp` takes an agent directory as well as a spec file ([Configuration](configuration.md)):
+`lousho mcp ./my-agent` serves it as an MCP server ([MCP](mcp.md#serve-an-agent-over-mcp)).

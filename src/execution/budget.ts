@@ -120,7 +120,8 @@ export interface RunBudget {
 }
 
 /** Starts the run's budget; `undefined` without limits. */
-export function startBudget(limits?: RunLimits, session?: SessionBudget, signal?: AbortSignal): RunBudget | undefined {
+/** `quietUnknownCost` (a scripted mock provider, which has no price) skips the unknown-cost warning. */
+export function startBudget(limits?: RunLimits, session?: SessionBudget, signal?: AbortSignal, quietUnknownCost = false): RunBudget | undefined {
   const scopes = [
     ...(limits ? [{ scope: 'run' as const, limits, spent: NOTHING_SPENT }] : []),
     ...(session ? [{ scope: 'session' as const, ...session }] : []),
@@ -134,7 +135,7 @@ export function startBudget(limits?: RunLimits, session?: SessionBudget, signal?
       for (const [limit, key] of Object.entries(SPENT_KEYS) as Array<[BudgetLimit, keyof BudgetSpent]>) {
         const value = total[key];
         const cap = max[limit];
-        if (cap !== undefined && value === undefined && limit === 'maxCostUsd') warnUnknownCost();
+        if (cap !== undefined && value === undefined && limit === 'maxCostUsd' && !quietUnknownCost) warnUnknownCost();
         if (cap === undefined || value === undefined || (afterModelCall && limit === 'maxSteps')) continue;
         if (value >= cap) return { limit, value, max: cap, scope };
       }
