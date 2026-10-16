@@ -6,13 +6,16 @@
  * each sub-agent) are compiled by the adapter's own tsup/esbuild step into
  * `dist/agent/**.js` next to `dist/server.js`, in one ESM build with shared
  * chunks (so tools, channels and the server use one copy of the SDK), and the
- * rest (instructions.md, skills, JSON/YAML config) is copied. The built server
+ * files `resolveAgentDir()` reads as data (instructions.md, instructions/,
+ * skills/, a JSON/YAML config) are copied - an allowlist, so `.env` files and
+ * the `.lousho` session store never reach the build. The built server
  * then runs `resolveAgentDir('dist/agent')` on plain JavaScript: no TypeScript
  * loader, no node_modules and no sources are needed where it runs.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { listSorted } from '../../agentDir/fsUtil';
+import { findConfigFile, isCodeConfigFile, readConfig } from '../../agentDir/readConfig';
 import { writeFile } from '../bundle';
 import { SDKError } from '../../execution/errors';
 import { RECEIPT_FILE } from '../../cli/addReceipt';
@@ -75,19 +78,61 @@ export async function agentDirEntries(source: string): Promise<Record<string, st
   return entries;
 }
 
+/** A data config file: copied as is (an `agent.ts` / `.js` config is bundled instead). */
+const DATA_CONFIG_FILE = /^agent\.(?:json|ya?ml)$/;
+/** The folders of an agent directory copied whole (minus code files and {@link neverCopied} names). */
+const COPIED_FOLDERS = new Set(['instructions', 'skills']);
+
 /**
- * Copies the non-code files of `source` (instructions, skills, JSON/YAML
- * config) to `dist/agent` and marks `dist` as ESM. The install receipt is
- * left behind on purpose: its hashes name the `.ts` sources `lousho add`
- * wrote, which the bundle compiles to `.js`, so copied over it would only
- * report its own items as modified.
+ * Names never copied, at any depth: `.env` files (secrets), `.lousho` (the
+ * default file store, real user transcripts), `.git`, `node_modules`, and the
+ * install receipt (its hashes name the `.ts` sources `lousho add` wrote, which
+ * the bundle compiles to `.js`, so copied it would only report its own items
+ * as modified).
  */
-export function copyAgentDirAssets(source: string, outDir: string): void {
-  fs.cpSync(source, path.join(outDir, 'dist', 'agent'), {
-    recursive: true,
-    filter: (file) =>
-      !SKIPPED.has(path.basename(file)) && path.basename(file) !== RECEIPT_FILE && !(fs.statSync(file).isFile() && CODE.test(file)),
-  });
+function neverCopied(name: string): boolean {
+  return SKIPPED.has(name) || name === '.lousho' || /^\.env(?:\.|$)/.test(name) || name === RECEIPT_FILE;
+}
+
+/** The absolute `store.dir` a JSON/YAML config declares (a code config's is only known when it runs). */
+async function dataConfigStoreDir(dir: string): Promise<string | undefined> {
+  const file = await findConfigFile(dir);
+  if (file === undefined || isCodeConfigFile(file)) return undefined;
+  const store = (await readConfig(dir)).config.store as { dir?: unknown } | undefined;
+  return typeof store?.dir === 'string' ? path.resolve(dir, store.dir) : undefined;
+}
+
+/** Copies `dir`'s allowlisted assets to `dest`: the data config, instructions.md, instructions/, skills/ and the same in each sub-agent. */
+async function copyAssets(dir: string, dest: string): Promise<void> {
+  const storeDir = await dataConfigStoreDir(dir);
+  const keep = (file: string) =>
+    !neverCopied(path.basename(file)) && path.resolve(file) !== storeDir && !(fs.statSync(file).isFile() && CODE.test(file));
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const from = path.join(dir, entry.name);
+    if (!keep(from)) continue;
+    if (entry.isFile() && (entry.name === 'instructions.md' || DATA_CONFIG_FILE.test(entry.name))) {
+      fs.mkdirSync(dest, { recursive: true });
+      fs.copyFileSync(from, path.join(dest, entry.name));
+    } else if (entry.isDirectory() && COPIED_FOLDERS.has(entry.name)) {
+      fs.cpSync(from, path.join(dest, entry.name), { recursive: true, filter: keep });
+    } else if (entry.isDirectory() && entry.name === 'subagents') {
+      for (const name of await listSorted(from, (e) => e.isDirectory && !e.name.startsWith('.'))) {
+        await copyAssets(path.join(from, name), path.join(dest, 'subagents', name));
+      }
+    }
+  }
+}
+
+/**
+ * Copies the non-code files `resolveAgentDir()` reads from `source`
+ * (instructions.md, instructions/, skills/, a JSON/YAML config, and the same
+ * in each sub-agent) to `dist/agent` and marks `dist` as ESM. It is an
+ * allowlist: anything else in the directory (`.env`, the `.lousho` session
+ * store or the config's `store.dir`, notes, data files) stays out of the
+ * build and so out of a Docker image.
+ */
+export async function copyAgentDirAssets(source: string, outDir: string): Promise<void> {
+  await copyAssets(source, path.join(outDir, 'dist', 'agent'));
   // server.js and the bundled agent files use import/export.
   writeFile(path.join(outDir, 'dist', 'package.json'), '{ "type": "module" }\n');
 }

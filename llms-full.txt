@@ -1830,9 +1830,10 @@ The agent directory is the unit of deployment: the built server loads it with
 `channels/` under `/channels`, guards its chat routes with `auth.ts` when there
 is one ([Route auth and principals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md)), and prints which it found. The code files (the
 config, `auth.ts`, a root `hooks.*` / `approve.*` file, `tools/`, `schedules/`, `channels/`, `memory/`, and the same in each
-sub-agent) are bundled to `dist/agent/**.js`, and `instructions.md` (with `instructions/<family>.md`), `skills/`
-and JSON/YAML config are copied next to them, so the server needs no TypeScript
-loader, sources or `node_modules`. See [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#agent-directories).
+sub-agent) are bundled to `dist/agent/**.js`, and only `instructions.md` (with `instructions/<family>.md`), `skills/`
+and a JSON/YAML config (the same in each sub-agent) are copied next to them, so the server needs no TypeScript
+loader, sources or `node_modules`. Nothing else is copied: `.env` files, the `.lousho/` session store
+(or the config's `store.dir`) and any other file stay out of the build and its Docker image. See [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#agent-directories).
 The Cloudflare Worker target builds a directory too, embedding every folder: `subagents/` become `delegate_to_` tools, `schedules/` become cron triggers, `channels/` are mounted under `/channels` and `memory/` slots run on `kvMemory()` ([Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md#build-and-deploy)).
 
 ## What is not covered
@@ -6862,10 +6863,15 @@ directory's [schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/s
 routes keep the bearer token), and logs `schedules: ...; channels: ...`.
 The directory's code files are pre-bundled with the build's tsup step into
 `dist/agent/**.js` (one ESM build sharing one copy of the SDK, so a `from
-'@lousho/build-ai-agent'` import in a tool is the SDK the server runs), and the
-rest of the directory is copied; nothing needs a TypeScript loader at run time.
-`dist/` is then ESM (`dist/package.json` says so). The Docker image copies it as
-before. The optional `dockerode` sandbox is not bundled (it loads lazily), so a
+'@lousho/build-ai-agent'` import in a tool is the SDK the server runs), and
+only the files the server reads as data are copied: `instructions.md`,
+`instructions/`, `skills/`, a JSON/YAML config, and the same in each
+`subagents/<name>/`. Nothing else in the directory reaches `dist/`: not `.env`
+files, not the `.lousho/` session store or a config's `store.dir`, not notes or
+data files. `dist/` is emptied before each build, so sessions a previous build's
+server wrote under it do not carry over. Nothing needs a TypeScript loader at
+run time. `dist/` is then ESM (`dist/package.json` says so). The Docker image
+copies it as before. The optional `dockerode` sandbox is not bundled (it loads lazily), so a
 directory that uses `SubprocessSandbox` must install it where it runs.
 
 The Cloudflare Worker target builds a directory's config, `instructions.md`,

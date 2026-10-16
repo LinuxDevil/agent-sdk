@@ -57,7 +57,7 @@ describe('DockerAdapter', () => {
     const dockerfile = fs.readFileSync(path.join(outDir, 'Dockerfile'), 'utf8');
     expect(dockerfile).toBe(DOCKERFILE);
     // A local .env or a packed SDK tarball in the build folder (--out=.) never reaches the image.
-    expect(fs.readFileSync(path.join(outDir, '.dockerignore'), 'utf8').split('\n')).toEqual(expect.arrayContaining(['.env', '.env.*', '*.tgz']));
+    expect(fs.readFileSync(path.join(outDir, '.dockerignore'), 'utf8').split('\n')).toEqual(expect.arrayContaining(['.env', '.env.*', '**/.env', '**/.env.*', '**/.lousho', '*.tgz']));
     const lines = dockerfile.split('\n');
     expect(lines).toContain('FROM node:22-slim');
     expect(lines).toContain('WORKDIR /app');

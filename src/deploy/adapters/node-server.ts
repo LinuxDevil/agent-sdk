@@ -406,6 +406,9 @@ export const NodeServerAdapter: DeploymentAdapter = {
     const entry = { server: path.join(outDir, 'server.ts'), ...(source ? await agentDirEntries(source) : {}) };
     // An agent module may use ESM-only syntax (top-level await, import.meta), so it is bundled as ESM like a directory.
     const esm = source !== undefined || fs.existsSync(path.join(outDir, AGENT_MODULE_POINTER));
+    // Start from an empty dist/: a store a previous build's server wrote under dist/agent (or a file
+    // since dropped from the directory) must not survive into this build.
+    fs.rmSync(path.join(outDir, 'dist'), { recursive: true, force: true });
     await buildBundle(build, {
       config: false,
       entry,
@@ -430,7 +433,7 @@ export const NodeServerAdapter: DeploymentAdapter = {
       // Set LOUSHO_BUILD_VERBOSE=1 to see tsup's own build log (and full bundling errors).
       silent: !process.env.LOUSHO_BUILD_VERBOSE,
     }, outDir);
-    if (source) copyAgentDirAssets(source, outDir);
+    if (source) await copyAgentDirAssets(source, outDir);
     // An ESM dist/server.js needs "type": "module" next to it (a directory build's copy step writes it too).
     else if (esm) writeFile(path.join(outDir, 'dist', 'package.json'), '{ "type": "module" }\n');
   },

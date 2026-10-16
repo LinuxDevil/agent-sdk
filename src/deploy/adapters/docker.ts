@@ -43,6 +43,9 @@ server.ts
 agent.config.js
 .env
 .env.*
+**/.env
+**/.env.*
+**/.lousho
 *.tgz
 `;
 
