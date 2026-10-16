@@ -2407,6 +2407,7 @@ interface SubagentSpec {
     agent: AgentConfig;
     approvalTtlMs?: number;
     guardrails?: AgentGuardrails;
+    hooks?: HookRegistry;
     hostedTools?: readonly HostedTool[];
     // (undocumented)
     maxSteps?: number;

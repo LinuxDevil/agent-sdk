@@ -255,6 +255,38 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
     expect(result.text).toBe('ok');
   });
 
+  it('subagentOptions.continuation: false leaves taskId and mode out of the task tool and the prompt (H3-4)', async () => {
+    const researcherModel = mockModel(['first', 'second']);
+    const researcher = createAgent({ provider: researcherModel, description: 'Researches' });
+    const leadModel = mockModel([{ toolCalls: [task('researcher', 'go')] }, { toolCalls: [task('researcher', 'again')] }, 'ok']);
+    const lead = createAgent({ provider: leadModel, subagents: { researcher }, subagentOptions: { continuation: false } });
+
+    const result = await lead.send('go');
+
+    const request = leadModel.calls[0];
+    const taskTool = request.tools?.find((t) => t.function.name === 'task');
+    const args = Object.keys((taskTool?.function.parameters as unknown as { shape: object }).shape);
+    expect(args).toEqual(expect.arrayContaining(['agent', 'prompt', 'background']));
+    expect(args).not.toContain('taskId');
+    expect(args).not.toContain('mode');
+    expect(taskTool?.function.description).not.toContain('taskId');
+    expect(request.messages[0].content).toContain('Available sub-agents');
+    expect(request.messages[0].content).not.toContain('taskId');
+    // Each call is a new task: the second child run does not see the first.
+    expect(researcherModel.calls[1].messages.map((m) => m.content)).not.toContain('go');
+    expect(toolMessages(result.messages).map((m) => m.content)).toEqual([expect.stringContaining("taskId 'task_1'"), expect.stringContaining("taskId 'task_2'")]);
+  });
+
+  it('offers taskId and mode on the task tool by default (LOU-Y6)', async () => {
+    const researcher = createAgent({ provider: mockModel(['found']), description: 'Researches' });
+    const leadModel = mockModel(['ok']);
+    await createAgent({ provider: leadModel, subagents: { researcher } }).send('go');
+
+    const taskTool = leadModel.calls[0].tools?.find((t) => t.function.name === 'task');
+    expect(Object.keys((taskTool?.function.parameters as unknown as { shape: object }).shape)).toEqual(expect.arrayContaining(['taskId', 'mode']));
+    expect(leadModel.calls[0].messages[0].content).toContain('Omit `taskId` to start a new task.');
+  });
+
   it('accepts a task call without a description (Eve MA-F14)', async () => {
     const researcher = createAgent({ provider: mockModel(['found it']), description: 'Researches' });
     const leadModel = mockModel([{ toolCalls: [{ name: 'task', args: { agent: 'researcher', prompt: 'go' } }] }, 'ok']);

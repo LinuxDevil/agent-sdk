@@ -94,6 +94,8 @@ describe('resumable sub-agent tasks (LOU-Y6)', () => {
     expect(unknown).toContain("Unknown taskId 'task_9'");
     expect(unknown).toContain('LOUSHO_SUBAGENT_TASK_NOT_FOUND');
     expect(foreign).toContain("belongs to sub-agent 'researcher'");
+    // H3-4: a lead that reused another sub-agent's taskId for a new task is told to omit it.
+    expect(foreign).toContain("To start a new task for 'writer', omit taskId");
     expect(foreign).toContain('LOUSHO_SUBAGENT_TASK_NOT_FOUND');
     expect(noId).toContain("mode 'fork' needs the taskId");
   });

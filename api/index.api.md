@@ -6102,6 +6102,7 @@ export interface SubagentInfo {
 export interface SubagentOptions {
     awaitBackgroundOnFinish?: boolean;
     background?: boolean;
+    continuation?: boolean;
     maxConcurrent?: number;
     sessions?: SessionStore;
 }
@@ -6115,6 +6116,7 @@ interface SubagentSpec {
     agent: AgentConfig;
     approvalTtlMs?: number;
     guardrails?: AgentGuardrails;
+    hooks?: HookRegistry;
     hostedTools?: readonly HostedTool[];
     // (undocumented)
     maxSteps?: number;

@@ -1266,11 +1266,16 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   // As a sub-agent, a dynamic agent resolves its config with the task prompt as `input`, and
   // (Eve CORE-F7) the lead run's sessionId, metadata and principal.
   // LOU-V4.2: a sub-agent answers with its own `output` object, never the lead's schema.
-  const subagentSpec = async (prompt: string, caller: SubagentCaller): Promise<SubagentSpec> => ({
-    ...(await specs.resolve({ ...caller, input: prompt })),
-    output: config.output,
+  // H3-2: and it gets its own memory (recall and tools), bound to the scope keys of the lead run's session, metadata and principal.
+  const subagentSpec = async (prompt: string, caller: SubagentCaller): Promise<SubagentSpec> => {
+    const spec = { ...(staticSpec ?? (await specs.resolve({ ...caller, input: prompt }))), output: config.output };
+    if (!memory) return spec;
+    return { ...spec, ...memory.forRun({ sessionId: caller.sessionId, metadata: caller.metadata, principal: caller.principal }, spec.toolRegistry, undefined) };
+  };
+  registerSubagent(simpleAgent, {
+    spec: staticSpec && !memory ? { ...staticSpec, output: config.output } : subagentSpec,
+    description: config.description,
   });
-  registerSubagent(simpleAgent, { spec: staticSpec ? { ...staticSpec, output: config.output } : subagentSpec, description: config.description });
   // N6: as a handoff target, the agent runs with its own config (its `output` is not used: the run's lead types the result).
   registerHandoffAgent(simpleAgent, {
     name: config.name,

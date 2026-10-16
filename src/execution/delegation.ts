@@ -67,6 +67,12 @@ export interface SubagentSpec {
   toolSearch?: false | ToolSearchOptions;
   /** TTL: the sub-agent's own approval deadline; absent, it inherits the lead run's `approvalTtlMs`. */
   approvalTtlMs?: number;
+  /**
+   * The sub-agent's own hooks (its memory recall, H3-2), run before the ones
+   * it inherits from the lead run, on its own model and tool calls (where
+   * `ctx.subagent` is not set yet); the sub-agents it starts inherit them.
+   */
+  hooks?: HookRegistry;
 }
 
 /** One child run requested by a parent tool call. */
@@ -240,10 +246,27 @@ function childOptions(
     hostedTools: spec.hostedTools,
     // N2: its own deferred tools and tuning; it never sees what the lead loaded (its transcript is its own).
     toolSearch: spec.toolSearch,
+    hooks: childHooks(spec.hooks, runtime.hooks && hooksForSubagent(runtime.hooks, info), info.name),
   };
 }
 
-/** Tracing, content capture, hooks and events, as inherited from the parent run. */
+/**
+ * The child's hooks: its own first (they see its calls untagged), then the ones it inherits. An own hook named
+ * like an inherited one (the lead's and the child's `memory-recall`) is renamed, so neither replaces the other.
+ */
+function childHooks(own: HookRegistry | undefined, inherited: HookRegistry | undefined, name: string): HookRegistry | undefined {
+  if (!own || !inherited) return own ?? inherited;
+  const hooks = new HookRegistry();
+  for (const hook of own.list()) {
+    let unique = hook.name;
+    while (inherited.has(unique) || hooks.has(unique)) unique = `${unique} (${name})`;
+    hooks.register(unique === hook.name ? hook : (Object.create(hook, { name: { value: unique, enumerable: true } }) as AgentHook));
+  }
+  hooks.registerMany(inherited.list());
+  return hooks;
+}
+
+/** Tracing, content capture and events, as inherited from the parent run. */
 function inheritedObservability(
   scope: ToolCallScope | undefined,
   info: SubagentInfo
@@ -257,7 +280,6 @@ function inheritedObservability(
     parentSpanId: scope?.spanId,
     captureContent: runtime.captureContent,
     redactContent: runtime.redactContent,
-    hooks: runtime.hooks && hooksForSubagent(runtime.hooks, info),
   };
 }
 

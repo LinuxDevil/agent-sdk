@@ -3593,6 +3593,7 @@ interface SubagentInfo {
 interface SubagentOptions {
     awaitBackgroundOnFinish?: boolean;
     background?: boolean;
+    continuation?: boolean;
     maxConcurrent?: number;
     sessions?: SessionStore;
 }
