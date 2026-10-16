@@ -9,7 +9,7 @@ import { createAgentConfigOf, type SimpleAgent } from '../createAgent';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import type { AgentEvent } from '../execution/agentEvents';
 import { MemorySessionStore, type SessionStore } from '../session/sessionStore';
-import { withDefaultStores, type SessionStores } from '../session/AgentSession';
+import { withDefaultStores, type AgentSession, type PendingTurn, type SessionStores } from '../session/AgentSession';
 import {
   approvalPrompt,
   channelSessionId,
@@ -25,7 +25,7 @@ import {
 } from './defineChannel';
 import { reportChannelError } from './channelSupport';
 import type { Principal } from '../auth/types';
-import type { PendingApproval } from '../execution/ApprovalGate';
+import { describeApproval, type ApprovalStore, type PendingApproval, type ResolvedApproval } from '../execution/ApprovalGate';
 import { SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 import { crossSiteRequest } from '../server/requestGuard';
 
@@ -131,6 +131,21 @@ function agentSessionStores(agent: Pick<SimpleAgent, 'session' | 'approvals'>): 
   return store?.sessions ? { sessions: store.sessions, checkpoints: store.checkpoints } : undefined;
 }
 
+/** The agent's approval store, for the snapshot a stored pause was saved with (its session binding). */
+function agentApprovalStore(agent: Pick<SimpleAgent, 'session' | 'approvals'>): ApprovalStore | undefined {
+  const config = createAgentConfigOf(agent as SimpleAgent);
+  return config?.approvalStore ?? config?.store?.approvals;
+}
+
+/** The session a stored pause belongs to: `snapshot.contextSessionId`, or `snapshot.sessionId` (`<id>.turn-<n>` spells a checkpointed turn of `<id>`). */
+function pausedSessionId(record: ResolvedApproval | null | undefined): string | undefined {
+  const snapshot = record?.snapshot;
+  if (!snapshot) return undefined;
+  if (snapshot.contextSessionId !== undefined) return snapshot.contextSessionId;
+  const sessionId = snapshot.sessionId;
+  return sessionId === undefined ? undefined : (/^([A-Za-z0-9_-]{1,128})\.turn-\d+$/.exec(sessionId)?.[1] ?? sessionId);
+}
+
 /**
  * The channel logic of `mountChannels()`: `handle` serves one inbound request
  * of `channel` (a turn, or a decision when `approvalId` is set); the host
@@ -152,6 +167,8 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
   const sessions = stores.store as SessionStore | undefined;
   /** #279: `store` has checkpoints, so a session tells which pause its turn waits on, also after a restart. */
   const checkpointed = stores.checkpointStore !== undefined;
+  /** the durable approval store, whose snapshots bind a pause to the session it paused in. */
+  const approvalStore = agentApprovalStore(agent);
 
   /** What `channel.parse` may ask: the agent's pending approvals and saved sessions. */
   function contextFor(channel: Channel): ChannelContext {
@@ -263,18 +280,36 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
    * kind (a button decides a tool call, an answer a question); `resume()` then binds the pause to
    * the session (`SessionAwaitingApprovalError`), so the continuation joins its transcript. Anything
    * else - another conversation, a replay, a forged id - is refused before the approval is touched.
-   * Without a checkpoint store the session cannot tell, and the approval store alone decides (as before).
+   * Without a checkpoint store the session cannot tell, so the pause's stored
+   * snapshot must: it names the session the paused turn ran in, and only a decision that
+   * names that same conversation may bind. A `sessionKey` that maps to another session -
+   * or to no session the pause knows - is refused, as is a kind mismatch.
    */
-  async function bindToSession(sessionId: string, decision: ChannelApprovalDecision): Promise<boolean> {
-    const session = agent.session({ id: sessionId, store });
-    const pending = await session.pending();
-    if (!pending) return !checkpointed;
-    const isAnswer = typeof decision.answer === 'string';
+  /** `true` when `decision`'s field suits `kind` (an answer decides a question, a click a tool call; a sign-in completes itself). */
+  function kindMatches(decision: ChannelApprovalDecision, kind: string): boolean {
+    return (typeof decision.answer === 'string') === (kind === 'question') && kind !== 'sign-in';
+  }
+
+  /**
+   * #279: no live pending turn - a checkpointed session cannot tell whose pause this
+   * was, so only a stored snapshot naming `sessionId` may bind (see `bindToSession`).
+   */
+  async function bindStored(sessionId: string, decision: ChannelApprovalDecision): Promise<boolean> {
+    if (checkpointed) return false;
+    const record = await approvalStore?.load?.(decision.id);
+    const bound = pausedSessionId(record) ?? (await agent.approvals.get?.(decision.id))?.sessionId;
+    if (bound !== sessionId) return false;
+    return kindMatches(decision, (record ? describeApproval(record.pending).kind : undefined) ?? 'tool');
+  }
+
+  /** Binds `decision` to the pending turn `session` waits on, resuming it so the continuation joins its transcript. */
+  async function bindPending(session: AgentSession, pending: PendingTurn, decision: ChannelApprovalDecision): Promise<boolean> {
     // A turn paused on several calls of one step waits on each of them.
     const ids = pending.approvalIds ?? (pending.approvalId === undefined ? [] : [pending.approvalId]);
     if (pending.status !== 'awaiting-approval' || !ids.includes(decision.id)) return false;
-    const kind = (decision.id === pending.approvalId ? pending.approvalKind : (await agent.approvals.get(decision.id))?.kind) ?? 'tool';
-    if (isAnswer !== (kind === 'question') || kind === 'sign-in') return false;
+    const approval = decision.id === pending.approvalId ? undefined : await agent.approvals.get(decision.id);
+    const kind = (decision.id === pending.approvalId ? pending.approvalKind : approval ? describeApproval(approval).kind : undefined) ?? 'tool';
+    if (!kindMatches(decision, kind)) return false;
     try {
       await session.resume();
     } catch (error) {
@@ -282,6 +317,12 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
       throw error;
     }
     return false;
+  }
+
+  async function bindToSession(sessionId: string, decision: ChannelApprovalDecision): Promise<boolean> {
+    const session = agent.session({ id: sessionId, store });
+    const pending = await session.pending();
+    return pending ? bindPending(session, pending, decision) : bindStored(sessionId, decision);
   }
 
   /** #279: a decision that names no pending turn of this conversation: 404 while the request is open, else a failure (`onError`). */

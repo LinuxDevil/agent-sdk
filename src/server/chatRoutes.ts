@@ -7,7 +7,7 @@
  */
 import type * as http from 'node:http';
 import { Readable } from 'node:stream';
-import { handleChatFetch, type ChatRoutesContext } from './fetchRoutes';
+import { handleChatFetch, PayloadTooLargeError, type ChatRoutesContext } from './fetchRoutes';
 
 export type { ChatRoutesContext } from './fetchRoutes';
 
@@ -74,8 +74,6 @@ export function handleChatRequest(req: http.IncomingMessage, res: http.ServerRes
 
 /** Body-size cap for raw-body routes (channels), matching the Fetch routes' 1MB limit. */
 const MAX_BODY_BYTES = 1024 * 1024; // 1MB
-
-export class PayloadTooLargeError extends Error {}
 
 /**
  * The request body's exact bytes (signatures are checked over these), at

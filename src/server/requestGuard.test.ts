@@ -10,7 +10,7 @@ import { mockModel } from '../testing';
 import { memoryStore } from '../storage/agentStore';
 import { createRouteHandler, type RouteHandlerOptions } from './routeHandler';
 import { handleChatFetch, serveFetch } from './fetchRoutes';
-import { claimSession, MAX_SESSION_OWNERS, releaseSession, sessionOwner, setSessionOwnerLimit } from './requestGuard';
+import { claimSession, MAX_SESSION_OWNERS, releaseSession, sessionOwner, setSessionOwnerLimit, setSessionPrincipalLimit } from './requestGuard';
 import { MemorySessionStore } from '../session/sessionStore';
 import { textOf } from '../providers/content';
 import type { AuthFn, Principal } from '../auth';
@@ -60,24 +60,24 @@ describe('cross-site requests (CSRF)', () => {
     expect((await handler(post('', json({ input: 'hi' }), evil))).status).toBe(403);
   });
 
-  it('accepts the server\'s own origin, a proxied one, a listed one, and callers that send no Origin', async () => {
+  it('accepts the server\'s own origin, a listed one, and callers that send no Origin', async () => {
     const { handler } = routes(['a', 'b', 'c', 'd'], { allowedOrigins: ['https://app.example'] });
     expect((await handler(post('/chat', json({ sessionId: 'o1', input: 'hi' }), { ...alice, ...asJson, origin: 'http://app.test', 'sec-fetch-site': 'same-origin' }))).status).toBe(200);
-    expect((await handler(post('/chat', json({ sessionId: 'o2', input: 'hi' }), { ...alice, ...asJson, host: 'internal:3000', 'x-forwarded-host': 'agent.example', origin: 'https://agent.example' }))).status).toBe(200);
+    // A proxied public origin is listed, not derived from a header the client can send.
+    expect((await handler(post('/chat', json({ sessionId: 'o2', input: 'hi' }), { ...alice, ...asJson, host: 'internal:3000', origin: 'https://app.example' }))).status).toBe(200);
     expect((await handler(post('/chat', json({ sessionId: 'o3', input: 'hi' }), { ...alice, ...asJson, origin: 'https://app.example', 'sec-fetch-site': 'cross-site' }))).status).toBe(200);
     expect((await handler(post('/chat', json({ sessionId: 'o4', input: 'hi' }), { ...alice, ...asJson }))).status).toBe(200);
   });
 
-  it('matches a proxied host with its default port, the standard Forwarded header, and allowedOrigins with a trailing slash', async () => {
+  it('never treats client-sent forwarding headers as the request\'s own host', async () => {
     const { handler } = routes(['a', 'b', 'c', 'd'], { allowedOrigins: ['https://App.example/'] });
     const proxied = { ...alice, ...asJson, host: 'internal:3000' };
-    expect((await handler(post('/chat', json({ sessionId: 'p1', input: 'hi' }), { ...proxied, 'x-forwarded-host': 'agent.example:443', origin: 'https://agent.example' }))).status).toBe(200);
-    expect((await handler(post('/chat', json({ sessionId: 'p2', input: 'hi' }), { ...proxied, forwarded: 'for=10.0.0.1;host="agent.example";proto=https', origin: 'https://agent.example' }))).status).toBe(200);
+    // X-Forwarded-Host / Forwarded name attacker-controlled values, so they do not whitelist an Origin.
+    expect((await handler(post('/chat', json({ sessionId: 'p1', input: 'hi' }), { ...proxied, 'x-forwarded-host': 'evil.example', origin: 'https://evil.example' }))).status).toBe(403);
+    expect((await handler(post('/chat', json({ sessionId: 'p2', input: 'hi' }), { ...proxied, forwarded: 'for=10.0.0.1;host="evil.example";proto=https', origin: 'https://evil.example' }))).status).toBe(403);
+    // A proxied deployment lists its public origin in allowedOrigins (matched as an origin).
     expect((await handler(post('/chat', json({ sessionId: 'p3', input: 'hi' }), { ...alice, ...asJson, origin: 'https://app.example' }))).status).toBe(200);
     expect((await handler(post('/chat', json({ sessionId: 'p4', input: 'hi' }), { ...alice, ...asJson, host: 'app.test:80', origin: 'http://app.test' }))).status).toBe(200);
-    // A port that is not the scheme's default still has to match.
-    expect((await handler(post('/chat', json({ sessionId: 'p5', input: 'hi' }), { ...proxied, 'x-forwarded-host': 'agent.example:8443', origin: 'https://agent.example' }))).status).toBe(403);
-    expect((await handler(post('/chat', json({ sessionId: 'p6', input: 'hi' }), { ...proxied, forwarded: 'host=evil.example', origin: 'https://agent.example' }))).status).toBe(403);
   });
 
   it("allowedOrigins: ['*'] turns the origin check off", async () => {
@@ -180,6 +180,33 @@ describe('default session owner', () => {
       expect(sessionOwner(agent, 'first')).toBeUndefined();
     } finally {
       setSessionOwnerLimit(previous);
+    }
+  });
+
+  it('one principal cannot hold every owner slot: past its cap new claims are refused, others are unaffected', () => {
+    const agent = {};
+    const user = (id: string) => ({ id, type: 'user' as const, authenticator: 'custom' });
+    const previousOwner = setSessionOwnerLimit(5);
+    const previousPrincipal = setSessionPrincipalLimit(2);
+    try {
+      // A principal cannot flood the owner map to evict everyone else's records.
+      expect(claimSession(agent, 'm1', user('mallory'))).toBe(true);
+      expect(claimSession(agent, 'm2', user('mallory'))).toBe(true);
+      expect(claimSession(agent, 'm3', user('mallory'))).toBe(false);
+      expect(sessionOwner(agent, 'm3')).toBeUndefined();
+      expect(claimSession(agent, 'v1', user('alice'))).toBe(true);
+      // A released slot is claimable again, and an eviction frees the evicted owner's count too.
+      releaseSession(agent, 'm1', user('mallory'));
+      expect(claimSession(agent, 'm3', user('mallory'))).toBe(true);
+      claimSession(agent, 'v2', user('bob'));
+      claimSession(agent, 'v3', user('carol'));
+      // The sixth claim evicts 'm2' (least recently used), freeing one of mallory's slots.
+      expect(claimSession(agent, 'v4', user('dave'))).toBe(true);
+      expect(sessionOwner(agent, 'm2')).toBeUndefined();
+      expect(claimSession(agent, 'm4', user('mallory'))).toBe(true);
+    } finally {
+      setSessionOwnerLimit(previousOwner);
+      setSessionPrincipalLimit(previousPrincipal);
     }
   });
 

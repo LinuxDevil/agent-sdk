@@ -7,7 +7,7 @@
  */
 import type { SimpleAgent } from '../createAgent';
 import { newId } from '../utils/id';
-import { callbackPrincipal, claimOnCommit, disconnectAborts, handleChatFetch, outliveClient, publicEvents, sessionForbidden, type ChatRoutesAccess, type ChatRoutesContext } from './fetchRoutes';
+import { callbackPrincipal, claimOnCommit, disconnectAborts, handleChatFetch, outliveClient, PayloadTooLargeError, publicEvents, readBody, sessionForbidden, type ChatRoutesAccess, type ChatRoutesContext } from './fetchRoutes';
 import { AuthError, type AuthFn, type Principal } from '../auth/types';
 import { routeAuth } from '../auth/routeAuth';
 import { apiToken } from '../auth/basic';
@@ -86,10 +86,23 @@ function warnOpenInProduction(): void {
   console.warn('[lousho] createRouteHandler() has no `auth`: anyone who can reach this route can use the agent. See docs/auth.md.');
 }
 
+/** The body's JSON when it parses under the POST size cap; `PayloadTooLargeError` itself past it, `undefined` for anything else. */
+async function jsonBody(request: Request): Promise<Record<string, unknown> | PayloadTooLargeError | undefined> {
+  const text = await readBody(request).catch((error: unknown) => error);
+  if (text instanceof Error) return text;
+  try {
+    return (JSON.parse(typeof text === 'string' ? text : '{}') ?? {}) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
 async function uiChat(agent: SimpleAgent, request: Request, principal: Principal | undefined, ctx: ChatRoutesContext): Promise<Response> {
   const refused = hostRefusal(request, ctx) ?? postRefusal(request, ctx);
   if (refused) return refused;
-  const body = (await request.json().catch(() => undefined)) as { messages?: UIMessageLike[]; id?: unknown } | undefined;
+  // `request.json()` buffers without limit - every POST route caps at MAX_BODY_BYTES.
+  const body = (await jsonBody(request)) as { messages?: UIMessageLike[]; id?: unknown } | PayloadTooLargeError | undefined;
+  if (body instanceof PayloadTooLargeError) return json(413, { error: body.message });
   if (!Array.isArray(body?.messages)) return json(400, { error: "Request body must be JSON with a 'messages' array" });
   const { id } = body;
   if (typeof id !== 'string' || !id) return toUIMessageStreamResponse(publicEvents(ctx, agent.stream(fromUIMessages(body.messages), { principal, throwOnError: false })));
@@ -130,7 +143,10 @@ async function hookRoute(agent: SimpleAgent, request: Request, path: string): Pr
     return { path: `/chat/${encodeURIComponent(sessionId ?? 'hook')}/approvals/${approval[1]}` };
   }
   if (path !== '/') return { path };
-  const body = ((await request.json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
+  // capped like every POST route; `PayloadTooLargeError` propagates to the handler's 413.
+  const parsed = await jsonBody(request);
+  if (parsed instanceof PayloadTooLargeError) throw parsed;
+  const body = parsed ?? {};
   return { path: '/chat', body: JSON.stringify({ ...body, sessionId: body.sessionId ?? newId() }) };
 }
 
@@ -155,20 +171,21 @@ export function createRouteHandler(agent: SimpleAgent, options: RouteHandlerOpti
   const ctx: ChatRoutesContext = { name: 'route', agent: () => agent, authorizeSession: authorizeSession ?? everySession, authorizeApproval, exposeErrors, onDisconnect, waitUntil, allowedOrigins, requireJsonBody, allowedHosts };
   const auth = authList(options.auth);
   if (!auth) warnOpenInProduction();
+  // The request's caller, or the auth failure's response. The oauth callback
+  // skips the token: the provider's redirect carries the single-use `state`.
+  const routeCaller = async (request: Request, path: string): Promise<Principal | undefined | Response> => {
+    if (request.method === 'GET' && path === '/oauth/callback') return callbackPrincipal(request, auth);
+    if (!auth) return undefined;
+    const outcome = await routeAuth(request, auth);
+    return outcome.ok ? outcome.principal : outcome.response;
+  };
   const handler: RouteHandler = async (request) => {
     const url = new URL(request.url);
     const path = stripBase(url.pathname, base);
     if (path === undefined) return text(404, 'not found');
     if (request.method === 'GET' && path === '/health') return text(200, 'ok');
-    let principal: Principal | undefined;
-    if (request.method === 'GET' && path === '/oauth/callback') {
-      // The provider's redirect carries no API token; the single-use `state` protects it.
-      principal = await callbackPrincipal(request, auth);
-    } else if (auth) {
-      const outcome = await routeAuth(request, auth);
-      if (!outcome.ok) return outcome.response;
-      principal = outcome.principal;
-    }
+    const principal = await routeCaller(request, path);
+    if (principal instanceof Response) return principal;
     if (options.uiMessageStream && request.method === 'POST' && path === '/ui') {
       return uiChat(agent, request, principal, ctx).catch((error) => {
         if (exposeErrors) return json(500, { error: (error as Error).message });
@@ -176,7 +193,13 @@ export function createRouteHandler(agent: SimpleAgent, options: RouteHandlerOpti
         return json(500, { error: 'The request failed. The server log has the details.' });
       });
     }
-    const routed = request.method === 'POST' ? await hookRoute(agent, request.clone(), path) : { path };
+    let routed: { path: string; body?: string };
+    try {
+      routed = request.method === 'POST' ? await hookRoute(agent, request.clone(), path) : { path };
+    } catch (error) {
+      if (error instanceof PayloadTooLargeError) return json(413, { error: error.message });
+      throw error;
+    }
     url.pathname = routed.path;
     const forwarded = routed.body === undefined ? new Request(url, request) : new Request(url, { method: 'POST', headers: request.headers, body: routed.body });
     return (await handleChatFetch(forwarded, ctx, principal)) ?? text(404, 'not found');
