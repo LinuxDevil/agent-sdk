@@ -40,8 +40,14 @@ await agent.close();
 ```
 
 stdio entries are spawned with `command` and `args` (in `cwd`, when set); `env`
-is added to the default environment (`PATH` and the like), not a replacement for
-it. A server that does not start fails with
+is merged onto the MCP SDK's default allow-list (`PATH`, `HOME`, `USER`, `SHELL`, `TERM`
+and `LOGNAME` on POSIX; `PATH`, `SYSTEMROOT`, `APPDATA`, `TEMP`, `USERPROFILE` and a few
+more on Windows), not onto `process.env`. This holds with or without `env`, so
+any other variable the server needs (an API key, `NODE_ENV`, a proxy setting)
+is not inherited unless you list it: `env: { GITHUB_TOKEN: process.env.GITHUB_TOKEN }`. A failed
+tool call (the server exited, timed out or answered with a protocol error)
+rejects with [`LOUSHO_MCP_CALL_FAILED`](./errors.md#lousho_mcp_call_failed), naming
+`<server>__<tool>`. A server that does not start fails with
 [`LOUSHO_MCP_START_FAILED`](./errors.md#lousho_mcp_start_failed), whose message
 has the exit code and the last lines the process wrote to stderr.
 `stderr: 'forward'` (default) also copies the process's stderr to this one's,

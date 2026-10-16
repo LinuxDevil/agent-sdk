@@ -15,6 +15,10 @@ opt-out.
 - `fromAiSdkTools(record)` converts Vercel AI SDK tools (`tool({ ... })` or plain `{ description, inputSchema | parameters, execute, needsApproval? }` objects) into Lousho tools, keyed by name: zod and Standard Schemas are kept, `jsonSchema()` wrappers and plain JSON Schemas are converted (their own `validate` still runs), `needsApproval` (boolean or function) pauses the run for approval, and `execute` gets the call id and the run's abort signal. It imports nothing from `ai`, so tools built on `ai` 4 to 7 work with any installed version. New guide: [Migrating from the AI SDK](docs/migrating-from-ai-sdk.md).
 - `lousho eval` without vitest installed now says it runs `*.eval.ts` files through vitest, the directory it searched from, and the install command; [Evals](docs/evals.md) states the requirement up front.
 
+### Fixed
+- MCP tool schemas with OpenAPI's `nullable: true` (any type) now accept `null`; the model's valid `null` was rejected with `ToolArgumentsValidationError`.
+- A failed MCP tool call (server exited, timeout, protocol error) now rejects with `LOUSHO_MCP_CALL_FAILED`, naming `<server>__<tool>` with the MCP error as `cause`, instead of a bare `MCP error -32000: Connection closed`. [MCP](docs/mcp.md) now says stdio `env` is merged onto the MCP SDK's default allow-list, not `process.env`.
+
 ## [1.0.0-alpha.23] - 2026-10-16
 
 The same tree as 1.0.0-alpha.21; no code changes. create-lousho-agent

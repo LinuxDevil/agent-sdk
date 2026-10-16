@@ -7,6 +7,7 @@
  */
 
 import type { McpToolAnnotations, NamedToolDescriptor, ToolDescriptor } from '../../types';
+import { SDKError } from '../../utils/sdkError';
 import { noopLogger, type Logger } from '../../execution/logger';
 import { handleCallToolResult } from './result';
 import { z, type ZodTypeAny } from 'zod';
@@ -285,10 +286,26 @@ function buildDescriptor(
     needsApproval: needsApproval(approval, rawTool.name, rawTool.annotations),
     // Plan mode trusts the server's `readOnlyHint` only when `approval` does.
     metadata: { mcp: { annotations: rawTool.annotations, server, tool: rawTool.name, ...(approval !== 'annotations' && { annotationsTrusted: false }) } },
-    execute: async (args, ctx) =>
-      handleCallToolResult(
-        await client.callTool({ name: rawTool.name, arguments: args }, undefined, callOptions(ctx?.abortSignal, timeoutMs)),
-        rawTool.name
-      ),
+    execute: async (args, ctx) => {
+      let result: unknown;
+      try {
+        result = await client.callTool({ name: rawTool.name, arguments: args }, undefined, callOptions(ctx?.abortSignal, timeoutMs));
+      } catch (error) {
+        throw callFailure(error, server, rawTool.name, ctx?.abortSignal);
+      }
+      return handleCallToolResult(result, rawTool.name);
+    },
   });
+}
+
+/**
+ * A failed `tools/call` as an `LOUSHO_MCP_CALL_FAILED` error that names the
+ * `<server>__<tool>` (the MCP SDK's own error says only `MCP error -32000:
+ * Connection closed`) and keeps the original as `cause`. SDK errors (a
+ * sign-in request, a start failure) and an abort pass through unchanged.
+ */
+function callFailure(error: unknown, server: string, tool: string, signal: AbortSignal | undefined): unknown {
+  if (error instanceof SDKError || signal?.aborted) return error;
+  const reason = error instanceof Error ? error.message : String(error);
+  return new SDKError(`MCP tool '${server}__${tool}' failed: ${reason}`, 'LOUSHO_MCP_CALL_FAILED', { cause: error });
 }
