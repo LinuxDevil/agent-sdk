@@ -122,6 +122,7 @@ interface ExecutionResult<TObject = unknown> {
     text: string;
     // (undocumented)
     toolCalls: ToolCall[];
+    toolErrors?: number;
     usage: RunUsage;
 }
 
@@ -312,6 +313,7 @@ interface RunLimits {
     maxOutputTokens?: number;
     maxSteps?: number;
     maxTokens?: number;
+    maxToolErrors?: number;
     onExceeded?: 'stop' | 'throw';
 }
 

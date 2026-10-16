@@ -316,6 +316,7 @@ interface Checkpoint {
     approvalKind?: ApprovalKind;
     attempts?: number;
     businessState?: unknown;
+    delegatedInFlight?: CheckpointUsage[];
     // (undocumented)
     finishReason?: string;
     flow?: FlowCheckpointState;
@@ -752,6 +753,7 @@ interface ExecutionResult<TObject = unknown> {
     text: string;
     // (undocumented)
     toolCalls: ToolCall[];
+    toolErrors?: number;
     usage: RunUsage;
 }
 
@@ -1749,6 +1751,7 @@ interface PendingRun {
     approvalId?: string;
     approvalIds?: string[];
     approvalKind?: ApprovalKind;
+    attempts?: number;
     checkpointId: string;
     kind: 'session' | 'run';
     lastError?: CheckpointError;
@@ -2030,6 +2033,7 @@ interface RunLimits {
     maxOutputTokens?: number;
     maxSteps?: number;
     maxTokens?: number;
+    maxToolErrors?: number;
     onExceeded?: 'stop' | 'throw';
 }
 
@@ -2140,6 +2144,7 @@ class SDKError extends Error {
     readonly hint?: string;
     // (undocumented)
     toString(): string;
+    usage?: RunUsage;
 }
 
 // @public

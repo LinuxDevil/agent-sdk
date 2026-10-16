@@ -1024,6 +1024,7 @@ export interface Checkpoint {
     approvalKind?: ApprovalKind;
     attempts?: number;
     businessState?: unknown;
+    delegatedInFlight?: CheckpointUsage[];
     // (undocumented)
     finishReason?: string;
     flow?: FlowCheckpointState;
@@ -2200,6 +2201,7 @@ export interface ExecutionResult<TObject = unknown> {
     text: string;
     // (undocumented)
     toolCalls: ToolCall[];
+    toolErrors?: number;
     usage: RunUsage;
 }
 
@@ -4484,6 +4486,7 @@ export interface PendingRun {
     approvalId?: string;
     approvalIds?: string[];
     approvalKind?: ApprovalKind;
+    attempts?: number;
     checkpointId: string;
     kind: 'session' | 'run';
     lastError?: CheckpointError;
@@ -4786,6 +4789,7 @@ export interface PromptScheduleInput extends ScheduleBase {
 // @public
 export class PropagatingToolError extends Error {
     static [Symbol.hasInstance](value: unknown): boolean;
+    usage?: RunUsage;
 }
 
 // @public
@@ -5250,6 +5254,7 @@ export interface RunLimits {
     maxOutputTokens?: number;
     maxSteps?: number;
     maxTokens?: number;
+    maxToolErrors?: number;
     onExceeded?: 'stop' | 'throw';
 }
 
@@ -5500,6 +5505,7 @@ export class SDKError extends Error {
     readonly hint?: string;
     // (undocumented)
     toString(): string;
+    usage?: RunUsage;
 }
 
 // @public

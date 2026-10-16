@@ -158,7 +158,17 @@ const failedRunUsage = new WeakMap<object, RunUsage>();
  * error records last (its usage includes its children's).
  */
 export function attachRunUsage(error: unknown, usage: RunUsage): void {
-  if (typeof error === 'object' && error !== null) failedRunUsage.set(error, structuredClone(usage));
+  if (typeof error !== 'object' || error === null) return;
+  const hadOwn = Object.prototype.hasOwnProperty.call(error, 'usage') && !failedRunUsage.has(error);
+  const spent = structuredClone(usage);
+  failedRunUsage.set(error, spent);
+  // H3-6: and as `error.usage` (SDKError, PropagatingToolError, any error) - unless the error has a `usage` of its own.
+  if (hadOwn) return;
+  try {
+    Object.defineProperty(error, 'usage', { value: spent, writable: true, configurable: true, enumerable: false });
+  } catch {
+    // A frozen error keeps only the internal record.
+  }
 }
 
 /** What the run that threw `error` had spent, when {@link attachRunUsage} recorded it. */

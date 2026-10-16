@@ -7,6 +7,7 @@
 
 import { errorHelp, type ErrorCode } from './errorCodes';
 import { brandClass, instanceOfOwnBrand } from './brand';
+import type { RunUsage } from '../models/usage';
 
 const SDK_ERROR_BRAND = Symbol.for('lousho.SDKError');
 
@@ -63,6 +64,13 @@ export class SDKError extends Error {
   readonly docs?: string;
   /** The message without the appended `[code] hint (docs)` line. */
   readonly detail: string;
+  /**
+   * H3-6: on an error a run rejected with (`agent.send()`, `execute()`, a
+   * session turn), what the run had spent until it failed - its model calls
+   * and its sub-agents', like `result.usage`. Absent when it failed before
+   * spending anything it could count, and on errors not thrown out of a run.
+   */
+  declare usage?: RunUsage;
 
   constructor(message: string, code: ErrorCode | (string & {}) = 'LOUSHO_GENERIC_ERROR', options: SDKErrorOptions = {}) {
     const help = errorHelp(code);

@@ -11,14 +11,15 @@ import { toMessages, type AgentInput } from '../providers/content';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import { startAgentRun, type AgentRun } from '../execution/agentRun';
 import { InputQueue } from '../execution/inputQueue';
-import { getCheckpointHistory, isCheckpointCorrupt, pausedApprovalIds, type Checkpoint, type CheckpointError, type CheckpointListEntry, type CheckpointStore } from '../execution/checkpoint';
+import { getCheckpointHistory, isCheckpointCorrupt, pausedApprovalIds, type Checkpoint, type CheckpointListEntry, type CheckpointStore } from '../execution/checkpoint';
 import { acquireRunLease, HELD_RUN_LEASE, REPLACES_CHECKPOINT, type RunLease, type RunLeaseOptions } from '../execution/runLease';
 import type { ApprovalKind } from '../execution/ApprovalGate';
-import { CompactedLLMProviderError, ConfigurationError, LLMProviderError, SDKError, SessionAwaitingApprovalError } from '../execution/errors';
+import { ConfigurationError, LLMProviderError, SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 import { streamSessionTurn } from './sessionStream';
 import { MemorySessionStore, assertSessionId, encodeBytes, transcriptRevision, type SessionStore } from './sessionStore';
 import { addSpent, runSpent, sessionSpent, type BudgetSpent, type RunLimits, type SessionBudget } from '../execution/budget';
 import { restoreRunUsage } from '../execution/runUsage';
+import { checkpointError } from '../execution/runFailure';
 import { AGENT_EVENT_SCHEMA_VERSION, type AgentEvent, type AgentEventPayload } from '../execution/agentEvents';
 import { manualCompactionOptions, type AgentCompaction } from '../context/agentCompaction';
 import { compactTranscript, type SessionCompactOptions, type SessionCompactResult } from './sessionCompact';
@@ -369,27 +370,6 @@ function notRun(message: Message): boolean {
   } catch {
     return false;
   }
-}
-
-/**
- * Eve DUR-F11: what a failed attempt at a checkpointed turn records. Only a provider error known not to go away is
- * not retryable: a context-length or auth failure, or another 4xx response (not 408 / 409 / 429). A crash, a network
- * error, a 5xx or an unclassified failure stays retryable, so the next `send()` resumes the turn as before.
- */
-function checkpointError(error: unknown): CheckpointError {
-  const compacted = error instanceof CompactedLLMProviderError ? error.compacted : undefined;
-  const code = error instanceof SDKError ? error.code : undefined;
-  const cause = error instanceof Error ? (error.cause as { status?: unknown; statusCode?: unknown } | undefined) : undefined;
-  const status = Number(compacted?.statusCode ?? cause?.statusCode ?? cause?.status);
-  const clientError = status >= 400 && status < 500 && ![408, 409, 429].includes(status);
-  const permanent = compacted !== undefined && !compacted.retryable && (compacted.category === 'context-length-exceeded' || compacted.category === 'auth-failure' || clientError);
-  return {
-    message: error instanceof Error ? error.message : String(error),
-    ...(code && { code }),
-    ...(compacted && { category: compacted.category }),
-    retryable: !permanent,
-    at: new Date().toISOString(),
-  };
 }
 
 /**

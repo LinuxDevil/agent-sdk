@@ -6127,7 +6127,7 @@ which read the raw policy.
 | ------------------ | --------------------------------------------- | ----------- |
 | `requiresApproval` | `permissions` ([`ask`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md))       | `true`: every tool call pauses for approval. A list: only those tools pause. |
 | `guardrails`       | `guardrails` (input and output)               | Built-in guardrail names, or `{ name, ...options }` (table below). |
-| `limits`           | `limits` ([budgets](#budgets))                | `maxTokens`, `maxInputTokens`, `maxOutputTokens`, `maxCostUsd`, `maxDurationMs`, `maxSteps`, `onExceeded`. |
+| `limits`           | `limits` ([budgets](#budgets))                | `maxTokens`, `maxInputTokens`, `maxOutputTokens`, `maxCostUsd`, `maxDurationMs`, `maxSteps`, `maxToolErrors`, `onExceeded`. |
 | `askQuestion`      | `askQuestion`                                 | `true` adds the built-in `ask_question` tool. |
 | `compaction`       | `compaction`                                  | `true`, or `{ thresholdPercent: 0.8 }` (a fraction of the context window, above 0 up to 1). |
 
@@ -6415,7 +6415,7 @@ createAgent({ model: 'openai/gpt-4o-mini', subagents: { researcher }, rateLimit:
 | `description` | What the agent does, in a sentence. Required when it is used as a sub-agent. |
 | `maxSteps` | Passed through to `AgentExecutor.execute()`. A whole number >= 1; anything else throws `LOUSHO_CONFIG_INVALID`. |
 | `modelSettings` | Sampling settings sent on every model call: `{ maxTokens?, temperature?, topP?, frequencyPenalty?, presencePenalty?, stop?, seed?, toolChoice? }`. A `send()` / `stream()` call's own `modelSettings` win key by key. See [Model settings](#model-settings). |
-| `limits`   | Budgets of each run: `{ maxTokens?, maxInputTokens?, maxOutputTokens?, maxCostUsd?, maxDurationMs?, maxSteps?, onExceeded? }`. A tripped limit ends the run with `finishReason: 'budget-exceeded'`. See [Budgets](#budgets). |
+| `limits`   | Budgets of each run: `{ maxTokens?, maxInputTokens?, maxOutputTokens?, maxCostUsd?, maxDurationMs?, maxSteps?, maxToolErrors?, onExceeded? }`. A tripped limit ends the run with `finishReason: 'budget-exceeded'`. See [Budgets](#budgets). |
 | `toolConcurrency` | How many tool calls of one model turn run at once: a positive integer or `'unbounded'` (default). See [Parallel tool calls](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/runs.md#parallel-tool-calls). |
 | `skills`   | Skills from `defineSkill()` / `loadSkills()`; see [Skills](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/skills.md). |
 | `subagents`, `maxSubagentDepth` | Named sub-agents behind one `task` tool, and how deep they may nest (default 1); see [Sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md). |
@@ -6541,6 +6541,7 @@ agent) or on `AgentExecutor.execute()` / `stream()`:
 | `maxOutputTokens` | Completion tokens (`usage.outputTokens`). |
 | `maxCostUsd`      | USD (`usage.costUsd`): the cost the provider reported for each call (OpenRouter's `usage.cost`), else the [price table](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/models-and-cost.md#models-and-the-price-table) estimate. Not checked while a model used has unknown pricing (`costUsd` is `undefined`); a warning is logged once. |
 | `maxDurationMs`   | Wall-clock time of the `execute()` / `stream()` call. |
+| `maxToolErrors`   | Tool calls that ended in an error result (`result.toolErrors`, see [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#failed-calls-in-the-result)). The run stops before its next model call once that many have failed. Counted per run, also on `agent.session({ limits })` (each turn's own). |
 | `maxSteps`        | Model steps. An alias of the `maxSteps` option: when both are set the stricter wins (the option's tie reports `'max-steps'`); alone, it replaces the default of 10. With `output` set, running out of it makes the same forced answer call as `maxSteps` ([Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md#out-of-steps)); the run still ends `'budget-exceeded'`, with `object` when the answer validated. |
 
 Limits are checked before every model call (so after every tool batch) and
@@ -7161,7 +7162,18 @@ A checkpoint is the run's whole transcript plus its step count, usage,
 
 A run that rejects (a provider error, a throwing hook, a
 `PropagatingToolError`, a process crash) keeps its last `'in-progress'`
-checkpoint.
+checkpoint. When it rejects (rather than crashes), the checkpoint also gets the
+error as `lastError` and the count of failed attempts as `attempts`, so
+[`agent.pending()`](#recovering-after-a-crash) can tell a run that
+keeps failing from one a crash interrupted. The next checkpoint the run saves
+(it made progress) drops both.
+
+While a [sub-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md) runs, what it has spent so far is saved on
+the lead's checkpoint after each of its model calls and tool results
+(`delegatedInFlight`). A sub-agent is not checkpointed itself: when the lead
+crashes mid-sub-agent and is resumed, the `task` call runs again and the
+sub-agent starts over, but the model calls of the interrupted attempt stay in
+the resumed run's `usage` (as one more delegated run).
 
 ## What happens when you send again with the same `sessionId`
 
@@ -7273,7 +7285,7 @@ for (const run of await agent.pending()) {
 ```
 
 Each entry is `{ sessionId, kind, checkpointId, status, approvalId?,
-approvalKind?, step, lastError? }`:
+approvalKind?, step, lastError?, attempts? }`:
 
 - `sessionId` is what `agent.resume()` takes: the `agent.session()` id for a
   session turn (`kind: 'session'`, checkpointed as `<id>.turn-<n>`), or the
@@ -7281,10 +7293,13 @@ approvalKind?, step, lastError? }`:
 - `status` is `'in-progress'` (interrupted) or `'awaiting-approval'` (decide
   `approvalId` with `agent.approvals.resolve()`; `agent.approvals.list()`
   shows the call).
-- `lastError` is set when the last attempt at a session turn failed. With
-  `retryable: false` (a 400 from the provider, for example) the same turn
-  will fail again: fix the cause before `agent.resume()`, or drop the turn
-  with `agent.session({ id }).discardPending()`.
+- `lastError` is set when the last attempt at a session turn, or at a
+  `send(msg, { sessionId })` run (`kind: 'run'`), failed; `attempts` counts
+  the attempts that failed in a row. With `retryable: false` (a 400 from the
+  provider, for example) it will fail again: fix the cause before
+  `agent.resume()`, or drop it with `agent.session({ id }).discardPending()`
+  (a run: `store.checkpoints.delete(id)`). An `'in-progress'` entry without
+  `lastError` was interrupted (a crash), or is still running.
 
 A run that is still running in some process is listed as `'in-progress'`
 too. Resuming it is safe: the run holds a lease (see [Run leases](#run-leases)),
@@ -7861,6 +7876,13 @@ if (original && replayed) {
   delete the checkpoint). `agent.approvals.resolve()` passes it for you.
 - Workers KV is eventually consistent across locations - see
   [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) for the caveat.
+- The spend of a sub-agent still running when its lead crashed is kept for
+  in-process sub-agents only, as of its last model call or tool result: a
+  [remote sub-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md#remote-sub-agents) reports its usage
+  when it ends, so an interrupted one's calls are not counted, and a
+  background sub-agent still running after the lead paused or finished does
+  not write the lead's checkpoint. Their limits are checked against a
+  sub-agent's usage only once it returns.
 
 # Errors
 
@@ -7881,6 +7903,27 @@ error tells you what to do:
 ```text
 ConfigurationError: createAgent: no model configured. Do one of the following: (1) pass a model: ...
 [LOUSHO_CONFIG_MISSING_PROVIDER] Pass a model string such as createAgent({ model: 'openai/gpt-4.1-mini' }), a provider instance, or set LOUSHO_MODEL or a provider API key. (https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_config_missing_provider)
+```
+
+A run that rejects (`send()`, `stream()`'s `result`, a session turn,
+`AgentExecutor.execute()`) puts what it had spent on the error as
+`error.usage`, a `RunUsage` like `result.usage` (its sub-agents included), so
+a failed run's tokens and cost are not lost. It is set on any error the run
+rejects with - an `SDKError`, a `PropagatingToolError` or your own - unless the
+error has a `usage` property of its own, and it is not enumerable (logging or
+serialising the error is unchanged). It is absent when the run failed before
+it started.
+
+```ts
+import { createAgent, type RunUsage } from '@lousho/build-ai-agent';
+
+try {
+  await createAgent({ provider }).send('Go');
+} catch (error) {
+  const spent = (error as { usage?: RunUsage }).usage;
+  if (spent) console.error(`failed after ${spent.modelCalls} model calls, $${spent.costUsd ?? '?'}`);
+  throw error;
+}
 ```
 
 `error.detail` is the message without that line. Tool and provider errors
@@ -18419,6 +18462,28 @@ skipped, because there is no valid call. The model gets a `validation` result it
 result; use it in your own tool wrappers so they match. A thrown error can pick
 its kind by carrying a `toolErrorKind` property. An error extending
 `PropagatingToolError` is not a result: it aborts the run.
+
+### Failed calls in the result
+
+The model sees each failed call and may still answer as if it had worked,
+ending the run with `finishReason: 'stop'`. `result.toolErrors` counts the
+run's tool calls whose result is an error (any `kind` above except `not-run`);
+it is absent when none failed. Check it before trusting `text`, or cap it with
+`limits.maxToolErrors`: once that many calls have failed, the run stops before
+its next model call with `finishReason: 'budget-exceeded'` and
+`result.budget.limit` `'maxToolErrors'` (or rejects with `BudgetExceededError`
+under `onExceeded: 'throw'`, see [Budgets](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets)).
+
+```ts
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+const stats = defineTool({ name: 'stats', description: 'Weekly stats', input: z.object({}), execute: async () => (await fetch('https://stats.example.com/week')).json() });
+const agent = createAgent({ provider, tools: [stats], limits: { maxToolErrors: 3 } });
+const result = await agent.send('Summarise this week');
+if (result.budget?.limit === 'maxToolErrors') throw new Error('The stats tool keeps failing.');
+if (result.toolErrors) console.warn(`${result.toolErrors} tool call(s) failed; the answer may be incomplete.`);
+```
 
 ## Built-in tools
 

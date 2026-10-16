@@ -629,6 +629,7 @@ interface RunLimits {
     maxOutputTokens?: number;
     maxSteps?: number;
     maxTokens?: number;
+    maxToolErrors?: number;
     onExceeded?: 'stop' | 'throw';
 }
 

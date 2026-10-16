@@ -57,7 +57,7 @@ which read the raw policy.
 | ------------------ | --------------------------------------------- | ----------- |
 | `requiresApproval` | `permissions` ([`ask`](./guardrails.md))       | `true`: every tool call pauses for approval. A list: only those tools pause. |
 | `guardrails`       | `guardrails` (input and output)               | Built-in guardrail names, or `{ name, ...options }` (table below). |
-| `limits`           | `limits` ([budgets](#budgets))                | `maxTokens`, `maxInputTokens`, `maxOutputTokens`, `maxCostUsd`, `maxDurationMs`, `maxSteps`, `onExceeded`. |
+| `limits`           | `limits` ([budgets](#budgets))                | `maxTokens`, `maxInputTokens`, `maxOutputTokens`, `maxCostUsd`, `maxDurationMs`, `maxSteps`, `maxToolErrors`, `onExceeded`. |
 | `askQuestion`      | `askQuestion`                                 | `true` adds the built-in `ask_question` tool. |
 | `compaction`       | `compaction`                                  | `true`, or `{ thresholdPercent: 0.8 }` (a fraction of the context window, above 0 up to 1). |
 
@@ -345,7 +345,7 @@ createAgent({ model: 'openai/gpt-4o-mini', subagents: { researcher }, rateLimit:
 | `description` | What the agent does, in a sentence. Required when it is used as a sub-agent. |
 | `maxSteps` | Passed through to `AgentExecutor.execute()`. A whole number >= 1; anything else throws `LOUSHO_CONFIG_INVALID`. |
 | `modelSettings` | Sampling settings sent on every model call: `{ maxTokens?, temperature?, topP?, frequencyPenalty?, presencePenalty?, stop?, seed?, toolChoice? }`. A `send()` / `stream()` call's own `modelSettings` win key by key. See [Model settings](#model-settings). |
-| `limits`   | Budgets of each run: `{ maxTokens?, maxInputTokens?, maxOutputTokens?, maxCostUsd?, maxDurationMs?, maxSteps?, onExceeded? }`. A tripped limit ends the run with `finishReason: 'budget-exceeded'`. See [Budgets](#budgets). |
+| `limits`   | Budgets of each run: `{ maxTokens?, maxInputTokens?, maxOutputTokens?, maxCostUsd?, maxDurationMs?, maxSteps?, maxToolErrors?, onExceeded? }`. A tripped limit ends the run with `finishReason: 'budget-exceeded'`. See [Budgets](#budgets). |
 | `toolConcurrency` | How many tool calls of one model turn run at once: a positive integer or `'unbounded'` (default). See [Parallel tool calls](./runs.md#parallel-tool-calls). |
 | `skills`   | Skills from `defineSkill()` / `loadSkills()`; see [Skills](./skills.md). |
 | `subagents`, `maxSubagentDepth` | Named sub-agents behind one `task` tool, and how deep they may nest (default 1); see [Sub-agents](./sub-agents.md). |
@@ -471,6 +471,7 @@ agent) or on `AgentExecutor.execute()` / `stream()`:
 | `maxOutputTokens` | Completion tokens (`usage.outputTokens`). |
 | `maxCostUsd`      | USD (`usage.costUsd`): the cost the provider reported for each call (OpenRouter's `usage.cost`), else the [price table](./models-and-cost.md#models-and-the-price-table) estimate. Not checked while a model used has unknown pricing (`costUsd` is `undefined`); a warning is logged once. |
 | `maxDurationMs`   | Wall-clock time of the `execute()` / `stream()` call. |
+| `maxToolErrors`   | Tool calls that ended in an error result (`result.toolErrors`, see [Tools](./tools.md#failed-calls-in-the-result)). The run stops before its next model call once that many have failed. Counted per run, also on `agent.session({ limits })` (each turn's own). |
 | `maxSteps`        | Model steps. An alias of the `maxSteps` option: when both are set the stricter wins (the option's tie reports `'max-steps'`); alone, it replaces the default of 10. With `output` set, running out of it makes the same forced answer call as `maxSteps` ([Structured output](./structured-output.md#out-of-steps)); the run still ends `'budget-exceeded'`, with `object` when the answer validated. |
 
 Limits are checked before every model call (so after every tool batch) and

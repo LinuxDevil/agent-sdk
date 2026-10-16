@@ -34,8 +34,14 @@ export interface PendingRun {
   approvalKind?: ApprovalKind;
   /** The checkpoint's `stepIndex`: how far the run got. */
   step: number;
-  /** Why the last attempt at a session turn failed, when it did (`retryable: false`: fix the cause before resuming, or `discardPending()` the turn). */
+  /**
+   * Why the last attempt at the run failed, when it did - a session turn, or (H1-3) a `send(msg, { sessionId })` /
+   * `agent.resume()` run that rejected (`retryable: false`: fix the cause before resuming, or `discardPending()` the
+   * turn). Absent on a run a crash interrupted, and once the run saved progress after the failure.
+   */
   lastError?: CheckpointError;
+  /** With `lastError`: how many attempts failed in a row since the run last saved progress. */
+  attempts?: number;
 }
 
 const SESSION_TURN = /^(.+)\.turn-\d+$/;
@@ -83,6 +89,7 @@ export async function listPendingRuns(checkpoints: CheckpointStore | undefined):
       ...(checkpoint.approvalKind !== undefined && status === 'awaiting-approval' && { approvalKind: checkpoint.approvalKind }),
       step: checkpoint.stepIndex,
       ...(checkpoint.lastError && { lastError: checkpoint.lastError }),
+      ...(checkpoint.lastError && checkpoint.attempts !== undefined && { attempts: checkpoint.attempts }),
     });
   }
   return runs;

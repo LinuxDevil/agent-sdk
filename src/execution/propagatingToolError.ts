@@ -1,4 +1,5 @@
 import { brandClass, instanceOfOwnBrand, sharedWeakSet } from '../utils/brand';
+import type { RunUsage } from '../models/usage';
 
 /**
  * Base class for tool errors that must NOT be swallowed by
@@ -18,6 +19,9 @@ import { brandClass, instanceOfOwnBrand, sharedWeakSet } from '../utils/brand';
  * core can both use it without a circular import.
  */
 export class PropagatingToolError extends Error {
+  /** H3-6: once it ended a run, what the run had spent until then (see `SDKError.usage`). */
+  declare usage?: RunUsage;
+
   /** `instanceof` also holds for one thrown by another loaded copy of the SDK (a `.cjs` tool next to the ESM CLI). */
   static [Symbol.hasInstance](value: unknown): boolean {
     return instanceOfOwnBrand(this, value);

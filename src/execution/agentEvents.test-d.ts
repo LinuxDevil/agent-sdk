@@ -89,7 +89,7 @@ describe('AgentEvent types', () => {
   it('narrows budget.exceeded on event.type (LOU-V6)', () => {
     if (event.type === 'budget.exceeded') {
       expectTypeOf(event.limit).toEqualTypeOf<
-        'maxTokens' | 'maxInputTokens' | 'maxOutputTokens' | 'maxCostUsd' | 'maxDurationMs' | 'maxSteps'
+        'maxTokens' | 'maxInputTokens' | 'maxOutputTokens' | 'maxCostUsd' | 'maxDurationMs' | 'maxSteps' | 'maxToolErrors'
       >();
       expectTypeOf(event.scope).toEqualTypeOf<'run' | 'session'>();
     }

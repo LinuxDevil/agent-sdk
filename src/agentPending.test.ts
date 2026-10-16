@@ -101,6 +101,7 @@ describe('agent.pending() (Eve DUR-F15)', () => {
           status: 'in-progress',
           step: expect.any(Number),
           lastError: expect.objectContaining({ message: 'process died', retryable: true }),
+          attempts: 1,
         },
         {
           sessionId: 'bob',
@@ -127,7 +128,18 @@ describe('agent.pending() (Eve DUR-F15)', () => {
     const runs: Record<string, number> = {};
     const agent = createAgent({ provider: mockModel([calling('work'), 'finished']), tools: tools(runs), store });
     await expect(agent.send('do work', { sessionId: 'job-7' })).rejects.toThrow('process died');
-    expect(await agent.pending()).toEqual([{ sessionId: 'job-7', kind: 'run', checkpointId: 'job-7', status: 'in-progress', step: expect.any(Number) }]);
+    // H1-3: the rejected run records why, like a session turn.
+    expect(await agent.pending()).toEqual([
+      {
+        sessionId: 'job-7',
+        kind: 'run',
+        checkpointId: 'job-7',
+        status: 'in-progress',
+        step: expect.any(Number),
+        lastError: expect.objectContaining({ message: 'process died', retryable: true }),
+        attempts: 1,
+      },
+    ]);
     expect((await agent.resume('job-7'))?.text).toBe('finished');
     expect(await agent.pending()).toEqual([]);
   });

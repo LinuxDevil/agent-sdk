@@ -171,6 +171,28 @@ result; use it in your own tool wrappers so they match. A thrown error can pick
 its kind by carrying a `toolErrorKind` property. An error extending
 `PropagatingToolError` is not a result: it aborts the run.
 
+### Failed calls in the result
+
+The model sees each failed call and may still answer as if it had worked,
+ending the run with `finishReason: 'stop'`. `result.toolErrors` counts the
+run's tool calls whose result is an error (any `kind` above except `not-run`);
+it is absent when none failed. Check it before trusting `text`, or cap it with
+`limits.maxToolErrors`: once that many calls have failed, the run stops before
+its next model call with `finishReason: 'budget-exceeded'` and
+`result.budget.limit` `'maxToolErrors'` (or rejects with `BudgetExceededError`
+under `onExceeded: 'throw'`, see [Budgets](./configuration.md#budgets)).
+
+```ts
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+const stats = defineTool({ name: 'stats', description: 'Weekly stats', input: z.object({}), execute: async () => (await fetch('https://stats.example.com/week')).json() });
+const agent = createAgent({ provider, tools: [stats], limits: { maxToolErrors: 3 } });
+const result = await agent.send('Summarise this week');
+if (result.budget?.limit === 'maxToolErrors') throw new Error('The stats tool keeps failing.');
+if (result.toolErrors) console.warn(`${result.toolErrors} tool call(s) failed; the answer may be incomplete.`);
+```
+
 ## Built-in tools
 
 | Export | Tool |
