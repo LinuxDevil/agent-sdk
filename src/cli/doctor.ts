@@ -112,7 +112,7 @@ function readSdkManifest(): SdkManifest {
 }
 
 /** The names of a createAgent() `tools` option: tools, arrays and records of them (nested); none for a function of the run. */
-function toolNames(tools: unknown): string[] {
+export function toolNames(tools: unknown): string[] {
   if (Array.isArray(tools)) return tools.flatMap(toolNames);
   if (typeof tools !== 'object' || tools === null) return [];
   const { name } = tools as { name?: unknown };

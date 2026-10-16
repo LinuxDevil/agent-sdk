@@ -37,13 +37,13 @@ jobs:
       # this test always failed once it actually got a chance to run.
       - run: npm run build
         # The dual-entry build's DTS pass (worker + executor entries) exceeds
-        # the default heap, like the peers job's build below.
+        # the default heap, like the compat job's build below.
         env:
           NODE_OPTIONS: --max-old-space-size=12288
       # API surface gate: every exports entry has a checked-in api/*.api.md
       # report; a public-API change fails here until `npm run api:update` is run
       # and the diff committed. Runs only in the main job so the report reflects
-      # the default peers, not the `peers` matrix's ai/zod pairings.
+      # the default peers, not the compat job's ai/zod pairing.
       - run: npm run api:check
       # packages/create-lousho-agent's own tests execFileSync its bin/cli.js,
       # which requires ITS dist/index.js to exist too - build it before the
@@ -74,35 +74,26 @@ jobs:
       # Bare `fallow` fails on any finding. Runs after the coverage step because
       # its CRAP scores read coverage/coverage-final.json.
       - run: npm run fallow || (npx fallow health; npx fallow dupes; exit 1)
-  # Every `ai` and zod pairing the peer ranges accept, installed for real on top of the
-  # default install (`npm ci`; `--no-save` leaves the lockfile alone). The default dev install is
-  # `ai` 4 with zod 3 and runs in `ci`. `ollama-ai-provider-v2` peers on zod 4, so only the zod 4
-  # entries install it; ollamaV2.contract.test.ts runs against the real package in those two.
-  # `flags` for those two: ollama-ai-provider-v2 is an optional peer of this package, which npm does not
-  # install by name unless `--save-prod` (in-memory only with --no-save) makes it a dependency, and the dev
-  # install's ollama-ai-provider (v1, zod 3 peer) conflicts with zod 4, hence `--legacy-peer-deps`.
-  # The v4-only tests are gated by itOnAiV4/describeOnAiV4; Worker bundle tests run on all.
-  peers:
-    name: peers (${{ matrix.name }})
+      # What `npm pack` produces must install and work in a fresh project: builds, packs the SDK and
+      # create-lousho-agent, `npm publish --dry-run` (never a real publish), installs the tarballs plus
+      # peers in a fresh project, loads every export in ESM and CJS, a mock-model turn, the bin and tsc.
+      - run: npm run pack-smoke
+        env:
+          NODE_OPTIONS: --max-old-space-size=12288
+      # Hello-world bundle and tarball unpacked size against scripts/size-budget.json (after pack-smoke's builds).
+      - run: npm run size-check
+      # Source and tests also type-check against zod 4 (last: it changes node_modules).
+      - run: npm install --no-save zod@4
+      - run: npx tsc --noEmit
+      - run: npm run typecheck:tests
+  # The newest peers the ranges accept (`ai` 7, `@ai-sdk/*` 4, `ollama-ai-provider-v2` 4, zod 4), installed
+  # on top of the default `ai` 4 / zod 3 install (`--no-save` leaves the lockfile alone; `--save-prod
+  # --legacy-peer-deps` because ollama-ai-provider-v2 is an optional peer and the dev install's v1 conflicts
+  # with zod 4). Then the sandbox egress, credential broker and docker deploy image against the runner's
+  # real Docker Engine (`*.docker.test.ts`, which fail instead of skipping with LOUSHO_DOCKER_TESTS=1).
+  compat:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: ai4-zod4
-            install: zod@4
-            typecheck-tests: true
-          - name: ai6-zod3
-            install: ai@6 @ai-sdk/openai@3 @ai-sdk/anthropic@3
-          - name: ai6-zod4
-            install: ai@6 @ai-sdk/openai@3 @ai-sdk/anthropic@3 ollama-ai-provider-v2@3 zod@4
-            flags: --save-prod --legacy-peer-deps
-          - name: ai7-zod3
-            install: ai@7 @ai-sdk/openai@4 @ai-sdk/anthropic@4
-          - name: ai7-zod4
-            install: ai@7 @ai-sdk/openai@4 @ai-sdk/anthropic@4 ollama-ai-provider-v2@4 zod@4
-            flags: --save-prod --legacy-peer-deps
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -110,36 +101,15 @@ jobs:
           node-version: '22.19.0'
           cache: 'npm'
       - run: npm ci
-      - run: npm install --no-save ${{ matrix.flags }} ${{ matrix.install }}
+      - run: npm install --no-save --save-prod --legacy-peer-deps ai@7 @ai-sdk/openai@4 @ai-sdk/anthropic@4 ollama-ai-provider-v2@4 zod@4
       - run: npx tsc --noEmit
-      # The tests are written against `ai` 4's types (v4-shaped Tool, MockLanguageModelV1), so they only
-      # type-check there; ai4-zod4 is the zod 4 entry (it was the old typecheck-zod4 job).
-      - run: npm run typecheck:tests
-        if: matrix.typecheck-tests
       - run: npm run test:types
-      # The DTS build of the ai7-zod4 install runs out of the default heap (seen on #322, #335).
       - run: npm run build
         env:
           NODE_OPTIONS: --max-old-space-size=12288
       - run: npm run build --workspace=packages/create-lousho-agent
       - run: npx vitest run
-  # What `npm pack` produces must install and work in a fresh project. The script
-  # builds, packs the SDK and create-lousho-agent, runs `npm publish --dry-run` (never a real
-  # publish), installs the tarballs plus peers from the registry, and loads every export in
-  # ESM and CJS, runs a mock-model turn, the lousho bin and tsc (bundler and node16).
-  pack-smoke:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22.19.0'
-          cache: 'npm'
-      - run: npm ci
-      - run: npm run pack-smoke
-        # pack-smoke runs `npm run build` itself, which needs the same heap.
+      - run: docker pull curlimages/curl:8.10.1 && docker pull node:20-alpine && docker pull node:22-slim
+      - run: npm run test:docker
         env:
-          NODE_OPTIONS: --max-old-space-size=12288
-      # Hello-world bundle and tarball unpacked size against scripts/size-budget.json.
-      # pack-smoke above leaves the SDK and Agent Forge builds in place, so the tarball figure is the real one.
-      - run: npm run size-check
+          LOUSHO_DOCKER_TESTS: '1'

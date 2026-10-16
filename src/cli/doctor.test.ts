@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import * as os from 'node:os';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { buildEnvironment, parseDoctorArgs, runDoctorCommand } from './doctor';
+import { buildEnvironment, parseDoctorArgs, runDoctorCommand, toolNames } from './doctor';
 import { satisfiesRange } from './versionRange';
 
 describe('satisfiesRange', () => {
@@ -97,5 +97,14 @@ describe('runDoctorCommand', () => {
       console.log = original;
     }
     expect(String(lines[0])).toContain('lousho doctor');
+  });
+});
+
+describe('toolNames', () => {
+  it('collects names from tools, nested arrays and records; none for a function or a nameless value', () => {
+    expect(toolNames([{ name: 'a' }, [{ name: 'b' }], { group: { name: 'c' }, other: [{ name: 'd' }] }])).toEqual(['a', 'b', 'c', 'd']);
+    expect(toolNames(() => [])).toEqual([]);
+    expect(toolNames(null)).toEqual([]);
+    expect(toolNames({ name: 42 })).toEqual([]);
   });
 });

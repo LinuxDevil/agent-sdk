@@ -84,15 +84,25 @@ const BYTE_ORDER_MARK = 0xfeff;
  * silently missing.
  */
 function loadDotEnv() {
+  const text = readDotEnv();
+  if (text === undefined) return;
+  for (const [name, value] of Object.entries(parseEnv(withoutByteOrderMark(text)))) {
+    if (process.env[name] === undefined) process.env[name] = value;
+  }
+}
+
+/** ./.env's text, or undefined when there is none (any other read error is reported). */
+function readDotEnv() {
   try {
-    const text = fs.readFileSync(path.resolve('.env'), 'utf8');
-    const vars = parseEnv(text.charCodeAt(0) === BYTE_ORDER_MARK ? text.slice(1) : text);
-    for (const [name, value] of Object.entries(vars)) {
-      if (process.env[name] === undefined) process.env[name] = value;
-    }
+    return fs.readFileSync(path.resolve('.env'), 'utf8');
   } catch (error) {
     if (error.code !== 'ENOENT') console.error(`lousho: could not load .env: ${error.message}`);
+    return undefined;
   }
+}
+
+function withoutByteOrderMark(text) {
+  return text.charCodeAt(0) === BYTE_ORDER_MARK ? text.slice(1) : text;
 }
 
 // `lousho --version` / `-v` / `version` print the package version (kept in sync with VERSION by scripts/sync-version.mjs).
