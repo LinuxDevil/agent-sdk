@@ -7045,7 +7045,7 @@ export interface WebhookChannel extends Channel {
     // (undocumented)
     parse(req: ChannelRequest): Promise<ChannelInbound>;
     // (undocumented)
-    verify(req: ChannelRequest): Promise<ChannelAuthResult>;
+    verify?(req: ChannelRequest): Promise<ChannelAuthResult>;
 }
 
 // @public
