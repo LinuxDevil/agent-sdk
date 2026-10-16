@@ -909,6 +909,7 @@ export type FsToolName = keyof FsToolArgs;
 // @public
 export interface FsToolsOptions {
     checkpoints?: WorkspaceCheckpoints;
+    deny?: readonly string[];
     grepTimeoutMs?: number;
     ignore?: readonly string[];
     maxFilesScanned?: number;

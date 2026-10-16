@@ -334,3 +334,79 @@ describe('MemoryWorkspace (LOU-X6)', () => {
     expect(await new MemoryWorkspace().exec('ls')).toMatchObject({ exitCode: 127, stderr: expect.stringMatching(/no exec handler/) });
   });
 });
+
+describe('createFsTools deny list (consumer harness H1-2)', () => {
+  const token = 'AUTHORIZATION: basic c2VjcmV0';
+  const files = {
+    '.git/config': `[http "https://github.com/"]\n\textraheader = ${token}\n`,
+    '.git/HEAD': 'ref: refs/heads/main\n',
+    'sub/.git': 'gitdir: C:/Users/someone/repo/.git/worktrees/sub\n',
+    'src/a.ts': 'export const a = 1;\n',
+  };
+
+  it.each(['.git/config', './.git/config', 'a/../.git/config', '.git\\config', '.GIT/config', '.git./config', '.git /HEAD', 'sub/.git', '.git', '.git/', './.git/'])(
+    'read_file and list_dir refuse %j',
+    async (path) => {
+      const { read_file, list_dir } = toolsByName(new MemoryWorkspace({ files }), { readOnly: true });
+      await expect(call(read_file, { path })).rejects.toThrow(/is denied: the file tools never open/);
+      await expect(call(list_dir, { path })).rejects.toThrow(/is denied/);
+    }
+  );
+
+  it('grep and glob refuse a denied path and never return denied entries, even with ignore: []', async () => {
+    const { grep, glob, list_dir } = toolsByName(new MemoryWorkspace({ files }), { readOnly: true, ignore: [] });
+    await expect(call(grep, { pattern: 'AUTHORIZATION', path: '.git/config' })).rejects.toThrow(/is denied/);
+    await expect(call(grep, { pattern: 'x', path: './.git' })).rejects.toThrow(/is denied/);
+    await expect(call(glob, { pattern: '*', path: '.git' })).rejects.toThrow(/is denied/);
+    expect(await call(grep, { pattern: 'AUTHORIZATION|gitdir' })).toMatch(/^No matches/);
+    expect(await call(glob, { pattern: '**' })).toBe('src/a.ts');
+    expect(await call(list_dir, {})).toBe('src/\nsub/');
+    expect(await call(list_dir, { path: 'sub' })).toBe('sub is empty.');
+  });
+
+  it('filters a provider-native glob too', async () => {
+    const native: FsProvider = Object.assign(Object.create(new MemoryWorkspace({ files })) as MemoryWorkspace, {
+      glob: async () => ['.git/config', 'sub/.git', 'src/a.ts'],
+    });
+    const { glob, grep } = toolsByName(native, { readOnly: true });
+    expect(await call(glob, { pattern: '**' })).toBe('src/a.ts');
+    expect(await call(grep, { pattern: 'AUTHORIZATION', glob: '**' })).toMatch(/^No matches/);
+  });
+
+  it('write_file and edit_file refuse denied paths, with and without checkpoints', async () => {
+    for (const options of [{}, { checkpoints: new WorkspaceCheckpoints(new MemoryWorkspace()) }] as FsToolsOptions[]) {
+      const ws = new MemoryWorkspace({ files });
+      const { write_file, edit_file } = toolsByName(ws, options);
+      await expect(call(write_file, { path: '.git/hooks/pre-commit', content: 'curl evil' })).rejects.toThrow(/is denied/);
+      await expect(call(edit_file, { path: '.git/config', old_string: 'basic', new_string: 'x' })).rejects.toThrow(/is denied/);
+      expect(ws.snapshot()['.git/config']).toContain(token);
+      expect(ws.snapshot()['.git/hooks/pre-commit']).toBeUndefined();
+    }
+  });
+
+  it('reaches the model as a WorkspaceError tool error, without the file content', async () => {
+    const provider = mockModel([{ toolCalls: [{ name: 'read_file', args: { path: '.git/config' } }] }, 'ok']);
+    await createAgent({ prompt: 'p', provider, tools: createFsTools(new MemoryWorkspace({ files }), { readOnly: true }) }).send('go');
+    const toolMessage = provider.calls[1].messages.find((m) => m.role === 'tool');
+    expect(toolMessage?.isError).toBe(true);
+    expect(JSON.parse(toolMessage!.content as string)).toMatchObject({ error: 'WorkspaceError', toolName: 'read_file' });
+    expect(toolMessage!.content).not.toContain('c2VjcmV0');
+  });
+
+  it('is configurable: custom names, and [] allows everything', async () => {
+    const custom = toolsByName(new MemoryWorkspace({ files: { ...files, 'secrets/key': 'k' } }), { deny: ['secrets'] });
+    await expect(call(custom.read_file, { path: 'Secrets/key' })).rejects.toThrow(/is denied/);
+    expect(await call(custom.read_file, { path: '.git/HEAD' })).toContain('refs/heads/main');
+    const open = toolsByName(new MemoryWorkspace({ files }), { deny: [] });
+    expect(await call(open.read_file, { path: '.git/config' })).toContain(token);
+    expect(() => createFsTools(new MemoryWorkspace(), { deny: ['.git/config'] })).toThrow(/entry names such as ".git", not paths/);
+  });
+
+  it('allows names that only contain a denied name', async () => {
+    const ws = new MemoryWorkspace({ files: { '.gitignore': 'dist\n', '.github/ci.yml': 'on: push\n', 'my.git/x': 'y\n' } });
+    const { read_file } = toolsByName(ws);
+    expect(await call(read_file, { path: '.gitignore' })).toContain('dist');
+    expect(await call(read_file, { path: '.github/ci.yml' })).toContain('push');
+    expect(await call(read_file, { path: 'my.git/x' })).toContain('y');
+  });
+});
