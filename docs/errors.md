@@ -482,10 +482,10 @@ decide it (see [Route auth](./auth.md#who-may-decide-an-approval)).
 
 ### LOUSHO_APPROVAL_KIND_MISMATCH
 
-**Means:** a `400` from the approvals route: the decision's field does not
-match what the pause waits on. A pause on a question takes `answer`, a
-tool-call pause takes `approved` (a sign-in pause completes itself once the
-user signs in — deciding it is a `409`).
+**Means:** a `400` from the approvals route: `answer` was sent to a pause
+that is not a question. A question pause takes `answer` — or `approved` with
+the answer as `note` (and `approved: false` to decline); a tool-call pause
+takes `approved`; a sign-in pause completes itself once the user signs in.
 
 **Fix:** send the field for the pause's kind; `GET /chat/:sessionId` shows a
 pending pause's `approvalKind`.

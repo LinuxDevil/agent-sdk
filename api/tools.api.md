@@ -676,6 +676,7 @@ const ERROR_CODES: {
     readonly LOUSHO_APPROVAL_ORPHANED: "The paused run (or session turn) was deleted or replaced by a newer one; the approval is withdrawn and cannot be continued - start a new turn instead.";
     readonly LOUSHO_APPROVAL_CONFLICT: "Another request decided this approval at the same time; read the session to see the outcome instead of deciding again.";
     readonly LOUSHO_APPROVAL_FORBIDDEN: "Decide the approval as a caller the route's authorizeApproval accepts (by default, the caller the run acts for).";
+    readonly LOUSHO_APPROVAL_KIND_MISMATCH: "A question pause takes 'answer', a tool-call pause 'approved' (a sign-in completes itself); send the field for the pause's kind.";
     readonly LOUSHO_SESSION_FORBIDDEN: "Use a session the route's authorizeSession lets this caller read, continue or decide approvals in.";
     readonly LOUSHO_REQUEST_FORBIDDEN: "Call from the server's own origin (or add the page's origin to allowedOrigins) and use a Host the server allows (allowedHosts).";
     readonly LOUSHO_UNSUPPORTED_MEDIA_TYPE: "Send the request body as JSON with the header 'Content-Type: application/json'.";
