@@ -85,6 +85,28 @@ describe('providerFetch', () => {
     expect(await malformed.text()).toBe(completion);
   });
 
+  it('fails a 200 reply to a streaming request whose body is not valid JSON as a retryable 502, instead of an empty stream', async () => {
+    const fetch = providerFetch({ send: sendOf('{"choices": [ {"oops'), watch: chatCompletionWatch });
+    const response = await fetch('https://x/v1/chat/completions', { method: 'POST', body: JSON.stringify({ stream: true }) });
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ error: { message: expect.stringContaining('malformed response') } });
+
+    const empty = await providerFetch({ send: sendOf(''), watch: chatCompletionWatch })('https://x/v1/chat/completions', { method: 'POST', body: JSON.stringify({ stream: true }) });
+    expect(empty.status).toBe(502);
+  });
+
+  it('leaves a non-streaming request with an unparseable body, and valid non-completion JSON, as they are', async () => {
+    const garbled = providerFetch({ send: sendOf('{"choices": [ {"oops'), watch: chatCompletionWatch });
+    const plain = await garbled('https://x/v1/chat/completions', { method: 'POST', body: JSON.stringify({ stream: false }) });
+    expect(plain.status).toBe(200);
+    expect(await plain.text()).toBe('{"choices": [ {"oops');
+
+    const other = JSON.stringify({ object: 'response', output: [] });
+    const passed = await providerFetch({ send: sendOf(other), watch: chatCompletionWatch })('https://x/v1/chat/completions', { method: 'POST', body: JSON.stringify({ stream: true }) });
+    expect(passed.status).toBe(200);
+    expect(await passed.text()).toBe(other);
+  });
+
   it("turns a JSON reply with finish_reason 'error' into a 502 error response", async () => {
     const fetch = providerFetch({ send: sendOf(JSON.stringify({ choices: [{ finish_reason: 'error', message: { content: 'cut' } }] })), watch: chatCompletionWatch });
     const response = await fetch('https://x/v1/chat/completions');

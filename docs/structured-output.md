@@ -70,6 +70,34 @@ for (const comment of result.object?.comments ?? []) {
 }
 ```
 
+For extract, then approve, then act, keep the three steps apart. The agent
+only extracts into `output` (no side-effect tool). Your code shows the
+validated object to a person, and acts only on a yes, with an idempotency key
+from the data (a claim id), because a rerun of the whole flow extracts again:
+
+```ts
+import { z } from 'zod';
+import { createAgent } from '@lousho/build-ai-agent';
+
+declare function askReviewer(claim: { claimId: string; amountCents: number }): Promise<boolean>;
+declare const claims: { file(claim: { claimId: string; amountCents: number }, opts: { idempotencyKey: string }): Promise<void> };
+
+const extractor = createAgent({
+  model: 'openai/gpt-4o-mini',
+  instructions: 'Extract the claim from the email. Do not file it.',
+  output: z.object({ claimId: z.string(), amountCents: z.number() }),
+});
+
+const { object: claim } = await extractor.send('Email: ...');
+if (claim && (await askReviewer(claim))) {
+  await claims.file(claim, { idempotencyKey: `claim:${claim.claimId}` });
+}
+```
+
+If the model has to call the tool itself, gate it with `needsApproval` and see
+[Approvals](./approvals.md#ending-the-run-after-a-rejection) for stopping the
+run on a rejection.
+
 ## Sessions
 
 `agent.session()` on an agent with `output` returns a session whose
