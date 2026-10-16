@@ -35,7 +35,6 @@ describe('isUserDoc', () => {
     expect(isUserDoc('docs/research/x.md')).toBe(false);
     expect(isUserDoc('docs/plan/tickets.md')).toBe(false);
     expect(isUserDoc('docs/api/index.html')).toBe(false);
-    expect(isUserDoc('docs/eslint-baseline-followup.md')).toBe(false);
     expect(isUserDoc('docs/docs-links.test.ts')).toBe(false);
   });
 });

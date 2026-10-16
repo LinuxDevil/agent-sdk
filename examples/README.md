@@ -13,7 +13,7 @@ imports at `src/`, so nothing needs building first.
 
 ## [agent-dir](./agent-dir)
 
-An agent defined as a directory (`instructions.md`, `tools/`, `skills/`, `agent.json`) and loaded with `loadAgentDir()`; runs offline with a mock model (LOU-Y5).
+An agent defined as a directory (`instructions.md`, `tools/`, `skills/`, `agent.json`) and loaded with `loadAgentDir()`; runs offline with a mock model.
 
 ## [coding-harness](./coding-harness)
 
@@ -37,7 +37,7 @@ The deep-research archetype (Anthropic's multi-agent research shape): a coordina
 
 ## [doc-qa](./doc-qa)
 
-A question-answering agent scoped to a single fixed document (LOU-H10).
+A question-answering agent scoped to a single fixed document.
 
 ## [evaluator-loop](./evaluator-loop)
 
@@ -49,13 +49,13 @@ Deploy an agent to a real Hostinger VPS: verify the VM via the Hostinger API, `l
 
 ## [openrouter](./openrouter)
 
-Runnable snippets showing `OpenRouterProvider` usage: generation, streaming, tool calling, model listing and more (LOU-B6). Needs `OPENROUTER_API_KEY`.
+Runnable snippets showing `OpenRouterProvider` usage: generation, streaming, tool calling, model listing and more. Needs `OPENROUTER_API_KEY`.
 
 ## [ops-pipeline](./ops-pipeline)
 
 A flagship end-to-end pipeline: a Grafana/Datadog monitor delegates a fix (behind a real
 human approval gate, with a Slack "Fix it" button) to a fixer agent, whose patch is
-guardrail-gated before a GitHub PR is opened (LOU-J4-J9).
+guardrail-gated before a GitHub PR is opened.
 
 ## [phase-pipeline](./phase-pipeline)
 
@@ -67,15 +67,15 @@ Plan first, then edit: a coding agent in `plan` mode reads and proposes, then `s
 
 ## [research-assistant](./research-assistant)
 
-A research agent with the built-in `http` tool wired up (LOU-H10).
+A research agent with the built-in `http` tool wired up.
 
 ## [slack-notifier](./slack-notifier)
 
-Turns a raw event description into a short, Slack-ready notification (LOU-H10).
+Turns a raw event description into a short, Slack-ready notification.
 
 ## [support-bot](./support-bot)
 
-A minimal, empathetic customer-support agent (LOU-H10).
+A minimal, empathetic customer-support agent.
 
 ## [support-desk](./support-desk)
 
@@ -83,7 +83,7 @@ The production support archetype: a triage agent classifies the request and `han
 
 ## [tracing](./tracing)
 
-Runnable examples of `AgentExecutor.execute()` wired to console and OpenTelemetry trace exporters (LOU-E6).
+Runnable examples of `AgentExecutor.execute()` wired to console and OpenTelemetry trace exporters.
 
 ## [waves](./waves)
 
@@ -91,4 +91,4 @@ Waves — Workers · Aggregate · Verify · Extend: bounded parallel workers in 
 
 ## [workflow-router](./workflow-router)
 
-An agent that classifies an incoming request into a fixed set of categories (LOU-H10).
+An agent that classifies an incoming request into a fixed set of categories.

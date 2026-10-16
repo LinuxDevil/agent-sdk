@@ -1,7 +1,0 @@
-name: support-bot
-prompt: You are a friendly support agent.
-provider:
-  type: mock
-  model: mock-1
-tools:
-  - current-date

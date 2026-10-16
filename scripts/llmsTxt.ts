@@ -37,7 +37,7 @@ const OPTIONAL_PAGES = new Set(['docs/prompting-techniques.md', 'docs/migrating-
 /** Pages that always come first in llms-full.txt, in this order. */
 const READING_ORDER = ['docs/installation.md', 'docs/quick-start.md', 'docs/api-overview.md'];
 /** docs/*.md pages that are maintainer notes, not user documentation. */
-const EXCLUDED_DOCS = new Set(['docs/eslint-baseline-followup.md']);
+const EXCLUDED_DOCS = new Set<string>();
 
 export function normalizeNewlines(text: string): string {
   return text.replace(/\r\n?/g, '\n');

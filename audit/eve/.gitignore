@@ -1,9 +1,0 @@
-# Eve audit run debris — repro scripts and findings are committed, runtime output is not.
-*.log
-*.db
-*.sqlite*
-.tmp*/
-out-*/
-dist/
-node_modules/
-.runs/
