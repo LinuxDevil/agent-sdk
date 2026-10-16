@@ -172,9 +172,26 @@ describe('ai / provider package pairing', () => {
     expect(result.fix).toMatch(/npm install ollama-ai-provider-v2@\^4\.0\.0 \(note: .*zod 4/);
   });
 
+  it('ai 5 fails with an upgrade hint that names the supported majors and the provider packages to move', async () => {
+    const result = await check(envWith({ ai: '5.0.60' }), 'peer.ai');
+    expect(result).toMatchObject({
+      status: 'fail',
+      finding: '5.0.60 installed, but AI SDK v5 is not supported (the SDK runs on ai 4.3.19+, 6 or 7)',
+    });
+    expect(result.fix).toBe(
+      'npm install ai@^7.0.0 (upgrade to ai 6 or 7, and move each @ai-sdk/* provider package to the matching major: 3.x for ai 6, 4.x for ai 7)'
+    );
+  });
+
+  it('checks @ai-sdk/google against the installed ai major', async () => {
+    expect((await check(envWith({ '@ai-sdk/google': '1.2.22' }), 'optional-peer.@ai-sdk/google')).status).toBe('ok');
+    const result = await check(envWith({ ai: '7.0.0', '@ai-sdk/google': '1.2.22' }), 'optional-peer.@ai-sdk/google');
+    expect(result).toMatchObject({ status: 'warn', finding: '1.2.22 installed, but ai 7 needs ^4.0.0', fix: 'npm install @ai-sdk/google@^4.0.0' });
+  });
+
   it('a missing or unsupported ai gets one installable range, and provider hints for ai 7', async () => {
     for (const ai of [null, '5.0.0']) {
-      expect((await check(envWith({ ai }), 'peer.ai')).fix).toBe('npm install ai@^7.0.0');
+      expect((await check(envWith({ ai }), 'peer.ai')).fix).toMatch(/^npm install ai@\^7\.0\.0($| )/);
       expect((await check(envWith({ ai, '@ai-sdk/openai': null }), 'optional-peers.unused')).fix).toContain(
         'npm install @ai-sdk/openai@^4.0.0'
       );
@@ -480,6 +497,14 @@ describe('OpenAI base URL and --ping', () => {
     expect(report.checks.find((c) => c.id === 'ping.openai')?.finding).toBe('reachable (HTTP 200; reachability only, the key is not checked)');
   });
 
+  it('--ping GETs the Gemini models endpoint with GOOGLE_GENERATIVE_AI_API_KEY as a header, never in the URL', async () => {
+    const fetch = vi.fn(async (_url: string, _init: { signal: AbortSignal; headers?: Record<string, string> }) => ({ ok: true, status: 200 }));
+    const report = await runDoctor(makeEnv({ env: { GOOGLE_GENERATIVE_AI_API_KEY: SECRET }, fetch }), { ping: true });
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual(['https://generativelanguage.googleapis.com/v1beta/models']);
+    expect(fetch.mock.calls[0][1].headers).toEqual({ 'x-goog-api-key': SECRET });
+    expect(report.checks.find((c) => c.id === 'ping.google')).toMatchObject({ status: 'ok', finding: 'reachable (HTTP 200)' });
+  });
+
   it('--ping with no provider configured says so', async () => {
     const report = await runDoctor(makeEnv(), { ping: true });
     expect(report.checks.find((c) => c.id === 'ping')).toMatchObject({ status: 'ok', finding: expect.stringContaining('nothing to ping') });
@@ -535,18 +560,20 @@ describe('report, rendering and exit codes', () => {
       [ ok ] Optional package dockerode: 5.0.1 installed - enables Docker sandboxing (SubprocessSandbox)
       [ ok ] Optional package @modelcontextprotocol/sdk: 1.31.0 installed - enables MCP (serveMcp, \`lousho mcp\` and MCP client connections)
       [ ok ] Optional package prompts: 2.4.2 installed - enables the interactive prompts of \`lousho init\` (pass --yes to skip them)
-      [ ok ] Optional packages not installed: 3 not needed by this agent (ollama-ai-provider, @earendil-works/pi-ai, quickjs-emscripten); install one only if you use its feature
+      [ ok ] Optional packages not installed: 4 not needed by this agent (@ai-sdk/google, ollama-ai-provider, @earendil-works/pi-ai, quickjs-emscripten); install one only if you use its feature
       [ ok ] openai (OPENAI_API_KEY): set
       [warn] anthropic (ANTHROPIC_API_KEY): not set
              fix: Set ANTHROPIC_API_KEY in your environment, e.g. export ANTHROPIC_API_KEY=<your key>
       [warn] openrouter (OPENROUTER_API_KEY): not set
              fix: Set OPENROUTER_API_KEY in your environment, e.g. export OPENROUTER_API_KEY=<your key>
+      [warn] google (GOOGLE_GENERATIVE_AI_API_KEY): not set
+             fix: Set GOOGLE_GENERATIVE_AI_API_KEY in your environment, e.g. export GOOGLE_GENERATIVE_AI_API_KEY=<your key>
       [ ok ] ollama (OLLAMA_BASE_URL): not set (optional; the provider default endpoint is used)
       [ ok ] pi (OPENROUTER_API_KEY): not set (only needed by the matching nested provider; each pi provider reads its own env key)
       [ ok ] Default provider for createAgent(): would use 'openai/gpt-4.1-mini'
       [ ok ] Docker: daemon not reachable (only needed for sandboxed tools; none configured)
 
-      13 ok, 2 warnings, 1 failure"
+      13 ok, 3 warnings, 1 failure"
     `);
     expect(text).not.toMatch(/[^\x20-\x7e\n]/);
   });

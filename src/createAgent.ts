@@ -620,7 +620,7 @@ export type CreateAgentInstructions =
  * 3. Neither - resolved from the environment: `LOUSHO_MODEL` (a
  *    `provider/model` string) if set, otherwise the first provider whose key
  *    is set, checked in the order OPENAI_API_KEY, ANTHROPIC_API_KEY,
- *    OPENROUTER_API_KEY, OLLAMA_BASE_URL. Throws, listing the fixes, when
+ *    OPENROUTER_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, OLLAMA_BASE_URL. Throws, listing the fixes, when
  *    none is set.
  *
  * `model` may be a function of the run (see `PerRun`) returning

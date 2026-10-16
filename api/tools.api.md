@@ -634,7 +634,7 @@ const ERROR_CODES: {
     readonly LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE: "Pass createAgent({ store }) with `checkpoints` (e.g. memoryStore() or a SqliteStore), or drop `sessionId`.";
     readonly LOUSHO_CONFIG_RESOLVER_FAILED: "Fix the createAgent() option function named in the message; its own error is the `cause`.";
     readonly LOUSHO_PROVIDER_SPEC_INVALID: "Write the model as '<provider>/<model>', e.g. 'openai/gpt-4.1-mini'.";
-    readonly LOUSHO_PROVIDER_UNKNOWN: "Use one of the supported provider prefixes listed in the message.";
+    readonly LOUSHO_PROVIDER_UNKNOWN: "Use one of the supported provider prefixes listed in the message; reach any other vendor through openrouter/<vendor>/<model>, pi/<vendor>/<model> or fromAiSdk().";
     readonly LOUSHO_PROVIDER_MISSING_API_KEY: "Set the environment variable named in the message, or pass a provider instance.";
     readonly LOUSHO_PROVIDER_REQUEST_FAILED: "Check the provider status, your API key and the request; retryable failures are retried by withRetry().";
     readonly LOUSHO_PROVIDER_RATE_LIMITED: "Wait and retry (withRetry() honours Retry-After), or lower the request rate.";

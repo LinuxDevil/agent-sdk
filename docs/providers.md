@@ -1,7 +1,7 @@
 # Providers
 
 An `LLMProvider` is what an agent generates with. The SDK ships OpenAI,
-Anthropic, OpenRouter, Ollama and `pi` providers (each backed by an optional
+Anthropic, Google (Gemini), OpenRouter, Ollama and `pi` providers (each backed by an optional
 peer package, see [Installation](./installation.md#provider-packages)) and a
 deterministic mock for tests. Name one with a `provider/model` string, or pass
 a provider instance. The `vendor/` model prefix chooses the provider; with
@@ -14,6 +14,7 @@ import { resolveProvider, LLMProviderRegistry } from '@lousho/build-ai-agent';
 // The convenient way — reads the credential from the environment
 const openai = resolveProvider('openai/gpt-4o-mini');       // OPENAI_API_KEY
 const anthropic = resolveProvider('anthropic/claude-sonnet-5-5'); // ANTHROPIC_API_KEY
+const google = resolveProvider('google/gemini-2.5-flash');   // GOOGLE_GENERATIVE_AI_API_KEY
 const openrouter = resolveProvider('openrouter/openai/gpt-4o-mini'); // OPENROUTER_API_KEY
 const ollama = resolveProvider('ollama/llama3.1');           // OLLAMA_BASE_URL
 // pi runs one catalog through `pi/<pi-provider>/<model>` (nested slashes ok):
@@ -25,6 +26,26 @@ const custom = LLMProviderRegistry.create('openai', {
   defaultModel: 'gpt-4o-mini',
 });
 ```
+
+The `google/` prefix needs the optional `@ai-sdk/google` package (`^1.2.0` with
+`ai` 4, `^3.0.0` with `ai` 6, `^4.0.0` with `ai` 7) and reads
+`GOOGLE_GENERATIVE_AI_API_KEY`, the variable `@ai-sdk/google` itself uses.
+
+### Vendors without a prefix
+
+A prefix the SDK does not know fails with
+[`LOUSHO_PROVIDER_UNKNOWN`](./errors.md#lousho_provider_unknown). A near-miss
+(`anthopic/...`) gets a "did you mean"; any other vendor gets the ways to reach
+it anyway:
+
+- `openrouter/<vendor>/<model>`: OpenRouter serves most vendors with one
+  `OPENROUTER_API_KEY` (e.g. `openrouter/mistralai/mistral-large`; OpenRouter's
+  own vendor names can differ from the AI SDK's).
+- `pi/<vendor>/<model>`, when pi serves that vendor (`xai`, `groq`, `mistral`,
+  `deepseek`, `amazon-bedrock`, `azure`, ...); see [the `pi` provider](#the-pi-provider).
+- the vendor's own AI SDK package with
+  [`fromAiSdk()`](#any-ai-sdk-model-fromaisdk), e.g.
+  `createAgent({ provider: fromAiSdk(mistral('mistral-large-latest')) })`.
 
 ## Choosing the provider in `createAgent()`
 
@@ -148,6 +169,7 @@ console.log(textOf(messages[0]), '->', result.text);
   | -------- | ------ | ---------- |
   | `openai` | none | `application/pdf` |
   | `anthropic` | none | `application/pdf`, `text/plain` |
+  | `google` | none | `application/pdf`, `text/plain` |
   | `openrouter` | none | `application/pdf` |
   | `ollama` | none | none |
   | `pi` | none (always a text note) | none (always a text note; pi has no file part) |
@@ -201,7 +223,7 @@ console.log(result.text);
 | ------ | ----------- |
 | `resolveProvider('p/model')` | Build a real provider from environment credentials. |
 | `LLMProviderRegistry` | Registry of provider factories: `create(type, config)`, `register(type, factory)`, `has(type)`. |
-| `OpenAIProvider`, `AnthropicProvider`, `OllamaProvider`, `OpenRouterProvider`, `PiProvider` | The provider classes. See [examples/openrouter](../examples/openrouter) for OpenRouter-specific features. `PiProvider` is the `pi/...` adapter below. |
+| `OpenAIProvider`, `AnthropicProvider`, `GoogleProvider`, `OllamaProvider`, `OpenRouterProvider`, `PiProvider` | The provider classes. See [examples/openrouter](../examples/openrouter) for OpenRouter-specific features. `PiProvider` is the `pi/...` adapter below. |
 | `createMockProvider()`, `MockLLMProvider` | Canned responses for demos; simulates a tool call when the message names a tool. |
 | `mockModel(script)` | Scripted, asserting provider for tests (from `/testing`); see [Testing](./testing.md). |
 | `withRetry()`, `withFallback()` | Retry transient failures with backoff and fall back to the next provider; see [Provider retries and fallback](./configuration.md#provider-retries-and-fallback). |
@@ -218,7 +240,7 @@ own credentials. A factory can take its own config type, an interface that
 extends `LLMProviderConfig` (for example `BedrockConfig` with a `region`):
 `register('bedrock', (config: BedrockConfig) => new BedrockProvider(config))`,
 then `LLMProviderRegistry.create('bedrock', { region: 'eu-west-1' })`.
-A built-in name (`'openai'`, `'anthropic'`, `'openrouter'`, `'ollama'`, `'pi'`,
+A built-in name (`'openai'`, `'anthropic'`, `'google'`, `'openrouter'`, `'ollama'`, `'pi'`,
 `'mock'`) takes that provider's own config type (`BuiltinProviderConfigs`), so
 `create('openai', { baseUrl: '...' })` is a type error; if you registered your
 own factory under a built-in name, pass its config type:
@@ -491,11 +513,11 @@ on each major today:
 The peer ranges accept all three majors. Pair each with its
 provider packages:
 
-| `ai` | `@ai-sdk/openai`, `@ai-sdk/anthropic` | Ollama package |
-| ---- | ------------------------------------- | -------------- |
-| `^4.3.19` | `^0.0.42` or `^1.0.0` | `ollama-ai-provider@^1.2.0` |
-| `^6.0.0` | `^3.0.0` | `ollama-ai-provider-v2@^3.0.0` |
-| `^7.0.0` | `^4.0.0` | `ollama-ai-provider-v2@^4.0.0` |
+| `ai` | `@ai-sdk/openai`, `@ai-sdk/anthropic` | `@ai-sdk/google` | Ollama package |
+| ---- | ------------------------------------- | ---------------- | -------------- |
+| `^4.3.19` | `^0.0.42` or `^1.0.0` | `^1.0.0` | `ollama-ai-provider@^1.2.0` |
+| `^6.0.0` | `^3.0.0` | `^3.0.0` | `ollama-ai-provider-v2@^3.0.0` |
+| `^7.0.0` | `^4.0.0` | `^4.0.0` | `ollama-ai-provider-v2@^4.0.0` |
 
 The install hint of a missing provider package and `lousho doctor` name the
 version for the `ai` you have installed, and `lousho doctor` flags a mismatched
@@ -506,7 +528,7 @@ a mismatch before the first call. `OllamaProvider` loads
 `ollama-ai-provider` on `ai` 4 and `ollama-ai-provider-v2` on `ai` 6/7; the v2
 package peers on zod 4, which the SDK accepts, so install zod 4
 with it (zod 3 projects use Ollama with `ai` 4). `lousho init` scaffolds `ai@^7.0.0` with `@ai-sdk/*@^4.0.0` for
-OpenAI, Anthropic and OpenRouter, and `ai@^7.0.0` with `ollama-ai-provider-v2@^4.0.0` and zod 4 for Ollama.
+OpenAI, Anthropic, Google and OpenRouter, and `ai@^7.0.0` with `ollama-ai-provider-v2@^4.0.0` and zod 4 for Ollama.
 
 CI installs and tests `ai` 4, 6 and 7, each with zod 3 and zod 4 (six pairings;
 `ai` 4 with zod 4 is the one pairing the provider packages do not declare), with
@@ -553,11 +575,13 @@ or `StreamResult`:
 On v6/v7 the model must come from a provider package for that major (the
 table above); the `0.0.x`/`1.x` packages produce models `ai` v7 rejects. Image
 parts are sent as `file` parts with an image media type (the shape `ai` v6/v7
-takes for images, so there is no deprecation warning). `ai` v5 is not supported.
+takes for images, so there is no deprecation warning). `ai` v5 is not supported:
+`lousho doctor` fails an installed `ai` 5 with an upgrade hint (move to `ai` 6
+or 7 and the matching `@ai-sdk/*` major).
 
 ## Where each provider runs
 
 All providers run on Node. The `cloudflare-worker` deploy target supports
 `mock`, `openai`, `anthropic` and `openrouter` (key from the
-`OPENROUTER_API_KEY` binding); `ollama` and `pi` need the `node-server` or
+`OPENROUTER_API_KEY` binding); `google`, `ollama` and `pi` need the `node-server` or
 `docker` target (see [Cloudflare Workers](./cloudflare-workers.md)).

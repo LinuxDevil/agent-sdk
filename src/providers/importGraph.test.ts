@@ -15,6 +15,7 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const NEVER_LOADED_AT_IMPORT = [
   '@ai-sdk/openai',
   '@ai-sdk/anthropic',
+  '@ai-sdk/google',
   'ollama-ai-provider',
   'undici',
   'dockerode',

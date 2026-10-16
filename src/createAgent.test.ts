@@ -106,7 +106,7 @@ describe('createAgent', () => {
 
     it('throws an error listing every fix when nothing is configured', () => {
       expect(() => createAgent({ instructions: 'x' })).toThrow(
-        /createAgent: no model configured.*model: 'openai\/gpt-4.1-mini'.*provider: \.\.\..*LOUSHO_MODEL.*OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OLLAMA_BASE_URL/
+        /createAgent: no model configured.*model: 'openai\/gpt-4.1-mini'.*provider: \.\.\..*LOUSHO_MODEL.*OPENAI_API_KEY, ANTHROPIC_API_KEY, OPENROUTER_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, OLLAMA_BASE_URL/
       );
       expect(() => createAgent({ instructions: 'x' })).toThrow(
         expect.objectContaining({ code: 'LOUSHO_CONFIG_MISSING_PROVIDER', hint: expect.stringContaining('createAgent') })
@@ -144,7 +144,7 @@ describe('createAgent', () => {
 
     it('lists supported prefixes and suggests the closest for an unknown provider', () => {
       expect(() => createAgent({ model: 'opnai/gpt-4o' })).toThrow(
-        /createAgent: unrecognized provider 'opnai'.*Supported prefixes: openai, anthropic, openrouter, ollama, pi, mock\. Did you mean 'openai\/gpt-4o'\?/
+        /createAgent: unrecognized provider 'opnai'.*Supported prefixes: openai, anthropic, openrouter, google, ollama, pi, mock\. Did you mean 'openai\/gpt-4o'\?/
       );
     });
 

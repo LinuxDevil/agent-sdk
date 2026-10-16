@@ -160,7 +160,7 @@ describe('runInit guards', () => {
   });
 
   it.each([
-    [['--provider', 'gemini'], /invalid --provider 'gemini'.*openai, anthropic, openrouter, ollama/],
+    [['--provider', 'gemini'], /invalid --provider 'gemini'.*openai, anthropic, openrouter, google, ollama/],
     [['--template', 'huge'], /invalid --template 'huge'.*minimal, tools, yaml/],
     [['--package-manager', 'deno'], /invalid --package-manager 'deno'.*npm, pnpm, yarn, bun/],
     [['--wat'], /--wat/],

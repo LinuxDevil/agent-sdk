@@ -152,6 +152,7 @@ import * as agentModule from ${file};`,
 const PROVIDER_CLASSES: Record<string, string> = {
   OpenAIProvider: 'openai',
   AnthropicProvider: 'anthropic',
+  GoogleProvider: 'google',
   OpenRouterProvider: 'openrouter',
   OllamaProvider: 'ollama',
   PiProvider: 'pi',

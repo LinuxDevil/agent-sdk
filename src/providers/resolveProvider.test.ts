@@ -51,6 +51,21 @@ describe('resolveProvider', () => {
     });
   });
 
+  it('resolves "google/<model>" using GOOGLE_GENERATIVE_AI_API_KEY', () => {
+    vi.stubEnv('GOOGLE_GENERATIVE_AI_API_KEY', 'test-google-key');
+    const createSpy = vi.spyOn(LLMProviderRegistry, 'create').mockReturnValue(fakeProvider('google'));
+
+    resolveProvider('google/gemini-2.5-flash');
+
+    expect(createSpy).toHaveBeenCalledWith('google', { defaultModel: 'gemini-2.5-flash', apiKey: 'test-google-key' });
+  });
+
+  it('requires GOOGLE_GENERATIVE_AI_API_KEY for "google/<model>"', () => {
+    vi.stubEnv('GOOGLE_GENERATIVE_AI_API_KEY', '');
+    expect(() => resolveProvider('google/gemini-2.5-flash')).toThrow(withCode('LOUSHO_PROVIDER_MISSING_API_KEY'));
+    expect(() => resolveProvider('google/gemini-2.5-flash')).toThrow('GOOGLE_GENERATIVE_AI_API_KEY is not set');
+  });
+
   it('resolves "ollama/<model>" into baseURL (not apiKey), since Ollama has no API key concept', () => {
     vi.stubEnv('OLLAMA_BASE_URL', 'http://localhost:11434');
     const createSpy = vi
@@ -144,12 +159,49 @@ describe('resolveProvider errors', () => {
 
   it('lists supported prefixes and suggests the closest match for a typo', () => {
     expect(() => resolveProvider('anthopic/claude-3')).toThrow(
-      "unrecognized provider 'anthopic' in spec 'anthopic/claude-3'. Supported prefixes: openai, anthropic, openrouter, ollama, pi, mock. Did you mean 'anthropic/claude-3'?"
+      "unrecognized provider 'anthopic' in spec 'anthopic/claude-3'. Supported prefixes: openai, anthropic, openrouter, google, ollama, pi, mock. Did you mean 'anthropic/claude-3'?"
     );
+    expect(() => resolveProvider('anthopic/claude-3')).not.toThrow(/openrouter\/anthopic/);
   });
 
-  it('lists supported prefixes without a suggestion when nothing is close', () => {
-    expect(() => resolveProvider('zzzzzzzzzz/m')).toThrow(/Supported prefixes: openai, anthropic, openrouter, ollama, pi, mock\.$/m);
+  it('suggests OpenRouter and fromAiSdk() for a prefix that is not close to a supported one', () => {
+    expect(() => resolveProvider('zzzzzzzzzz/m')).toThrow(
+      "Supported prefixes: openai, anthropic, openrouter, google, ollama, pi, mock. To use 'zzzzzzzzzz' anyway: " +
+        "'openrouter/zzzzzzzzzz/m' (OpenRouter serves most vendors; needs OPENROUTER_API_KEY), " +
+        "or createAgent({ provider: fromAiSdk(zzzzzzzzzz('m')) }) with the vendor's own AI SDK provider package."
+    );
+    expect(() => resolveProvider('zzzzzzzzzz/m')).not.toThrow(/'pi\//);
+  });
+
+  it('also suggests pi for a vendor pi serves, and never mistakes it for a typo of a built-in prefix', () => {
+    // 'xai' is two edits from 'pi', but it is a vendor of its own.
+    const error = (() => {
+      try {
+        resolveProvider('xai/grok-4');
+        return undefined;
+      } catch (e) {
+        return e as Error & { code: string };
+      }
+    })();
+    expect(error?.code).toBe('LOUSHO_PROVIDER_UNKNOWN');
+    expect(error?.message).not.toContain('Did you mean');
+    expect(error?.message).toContain(
+      "To use 'xai' anyway: 'openrouter/xai/grok-4' (OpenRouter serves most vendors; needs OPENROUTER_API_KEY), " +
+        "'pi/xai/grok-4' (through @earendil-works/pi-ai), or createAgent({ provider: fromAiSdk(xai('grok-4')) })"
+    );
+    // The appended help line links the error code's docs section.
+    expect(error?.message).toMatch(/\[LOUSHO_PROVIDER_UNKNOWN\].*docs\/errors\.md#lousho_provider_unknown/);
+  });
+
+  it('turns a dashed vendor into a valid AI SDK factory name', () => {
+    expect(() => resolveProvider('amazon-bedrock/claude')).toThrow("fromAiSdk(amazonBedrock('claude'))");
+  });
+
+  it('every vendor it suggests through pi is one pi-ai serves', async () => {
+    const { PI_NESTED_VENDORS } = await import('./providerSpec');
+    const { getProviders } = await import('@earendil-works/pi-ai/compat');
+    const known = new Set<string>(getProviders());
+    expect(PI_NESTED_VENDORS.filter((vendor) => !known.has(vendor))).toEqual([]);
   });
 
   it('shows an example for a spec without a provider prefix', () => {
@@ -166,6 +218,11 @@ describe('resolveProvider errors', () => {
       'openrouter/some-model',
       'OPENROUTER_API_KEY',
       'npm install @ai-sdk/openai@^0.0.42 (ai 4); npm install @ai-sdk/openai@^3.0.0 (ai 6); npm install @ai-sdk/openai@^4.0.0 (ai 7)',
+    ],
+    [
+      'google/gemini-2.5-flash',
+      'GOOGLE_GENERATIVE_AI_API_KEY',
+      'npm install @ai-sdk/google@^1.2.0 (ai 4); npm install @ai-sdk/google@^3.0.0 (ai 6); npm install @ai-sdk/google@^4.0.0 (ai 7)',
     ],
     [
       'ollama/llama3',
