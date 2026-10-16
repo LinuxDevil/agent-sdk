@@ -26,9 +26,9 @@ export interface WebhookChannelOptions {
   principal?: (body: unknown, req: ChannelRequest) => Principal | undefined;
 }
 
-/** A webhook channel: `verify` always resolves a `ChannelAuthResult`. */
+/** A webhook channel: `verify` (set when `secret` or `auth` is) resolves a `ChannelAuthResult`. */
 export interface WebhookChannel extends Channel {
-  verify(req: ChannelRequest): Promise<ChannelAuthResult>;
+  verify?(req: ChannelRequest): Promise<ChannelAuthResult>;
   parse(req: ChannelRequest): Promise<ChannelInbound>;
 }
 
@@ -89,7 +89,10 @@ export function webhookChannel(options: WebhookChannelOptions = {}): WebhookChan
   if (auth) assertValidWebhookAuth(auth);
   const channel: WebhookChannel = {
     name: options.name ?? 'webhook',
-    verify: (req) => verifyWebhook(auth, req),
+    // Eve3-S3: a `verify` that cannot reject is no verify - without `secret`/`auth`
+    // the channel is open, and `mountChannels` must see it so (its cross-site
+    // guard only covers channels with no verify).
+    ...(auth && { verify: (req: ChannelRequest) => verifyWebhook(auth, req) }),
     async parse(req) {
       const { input, sessionKey, body } = parseWebhookInput(req.text);
       const principal = options.principal?.(body, req);

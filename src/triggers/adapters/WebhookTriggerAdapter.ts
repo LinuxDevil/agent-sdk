@@ -103,7 +103,7 @@ async function respondWithAgentResult(
 ): Promise<void> {
   try {
     const request = toChannelRequest(req, await readRawBody(req));
-    const { ok, reason } = await runtime.channel.verify(request);
+    const { ok, reason } = (await runtime.channel.verify?.(request)) ?? { ok: true };
     if (!ok) {
       runtime.logger.warn('webhook request rejected: authentication failed', { reason, remoteAddress: req.socket.remoteAddress });
       writeJson(res, 401, { error: 'Unauthorized' });

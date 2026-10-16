@@ -42,6 +42,20 @@ export function requestGuardFromEnv(env: Record<string, unknown>): RequestGuardO
   return { ...(allowedOrigins && { allowedOrigins }), ...(allowedHosts && { allowedHosts }), ...(requireJsonBody === false && { requireJsonBody }) };
 }
 
+/**
+ * `decodeURIComponent` for a route parameter, translating malformed
+ * percent-encoding into a `SyntaxError`: the failure mappers of the session
+ * routes and channel mounts answer a `SyntaxError` with 400, where a
+ * `URIError` (`%zz`) would be reported as a 500.
+ */
+export function decodeParam(param: string): string {
+  try {
+    return decodeURIComponent(param);
+  } catch (error) {
+    throw new SyntaxError(`Malformed percent-encoding in the request path: ${(error as Error).message}`);
+  }
+}
+
 function refusal(status: number, error: string, code: string): Response {
   return new Response(JSON.stringify({ error, code }), { status, headers: { 'Content-Type': 'application/json' } });
 }
@@ -56,27 +70,19 @@ function originOf(value: string): URL | undefined {
   }
 }
 
-/** The `host` of the first entry of an RFC 7239 `Forwarded` header (`for=1.2.3.4;host=agent.example;proto=https`). */
-function forwardedHost(header: string | null): string | undefined {
-  const first = header?.split(',')[0] ?? '';
-  for (const pair of first.split(';')) {
-    const [name, ...rest] = pair.split('=');
-    if (name.trim().toLowerCase() === 'host') return rest.join('=').trim().replace(/^"(.*)"$/, '$1') || undefined;
-  }
-  return undefined;
-}
-
 /** What the guards read of a request's headers (header names lowercased). */
 type HeaderSource = { get(name: string): string | null };
 
 /**
- * The hosts a request was sent to: its `Host` header (else `fallbackHost`, the
- * URL's), and what a proxy in front reports: `X-Forwarded-Host` and the `host`
- * of a standard `Forwarded` header.
+ * The hosts a request was sent to: its `Host` header, else `fallbackHost`
+ * (the URL's). `X-Forwarded-Host` and `Forwarded` are *not* read: a client
+ * can send them, so they would let a cross-site `Origin` name itself as the
+ * request's own host. A proxy that rewrites `Host` is covered by listing the
+ * public origin in `allowedOrigins`.
  */
 function requestHosts(headers: HeaderSource, fallbackHost: string | undefined): string[] {
-  const hosts = [headers.get('host') ?? fallbackHost, headers.get('x-forwarded-host')?.split(',')[0]?.trim(), forwardedHost(headers.get('forwarded'))];
-  return hosts.filter((host): host is string => Boolean(host));
+  const host = headers.get('host') ?? fallbackHost;
+  return host === undefined ? [] : [host];
 }
 
 /** Whether `host` (a `Host`-style `name[:port]`) names the same host as `origin`, the port compared after the origin's scheme default is dropped (`agent.example:443` is `https://agent.example`). */
@@ -98,11 +104,11 @@ function originListed(origin: URL | undefined, raw: string, allowedOrigins: read
 
 /**
  * Whether a request comes from a web page on another site: an `Origin` that
- * is not the one the request was sent to and not in `allowedOrigins`, or
- * `Sec-Fetch-Site: cross-site` without such an `Origin`. A request without
- * either header (curl, a server, a webhook sender) is not a browser's
- * cross-site request. Also used by the channels (`headers` of a `node:http`
- * request).
+ * is not the one the request was sent to (its `Host`; never a forwarded
+ * header a client can set) and not in `allowedOrigins`, or `Sec-Fetch-Site:
+ * cross-site` without such an `Origin`. A request without either header
+ * (curl, a server, a webhook sender) is not a browser's cross-site request.
+ * Also used by the channels (`headers` of a `node:http` request).
  */
 export function crossSiteRequest(headers: HeaderSource, fallbackHost: string | undefined, allowedOrigins?: readonly string[]): boolean {
   if (allowedOrigins?.includes('*')) return false;
@@ -167,8 +173,38 @@ export function setSessionOwnerLimit(limit: number): number {
   return previous;
 }
 
+/** How many session records one principal may own per agent. Eve3-S4: a single caller could otherwise POST fresh session ids until every other owner's record was evicted past {@link MAX_SESSION_OWNERS}, locking each of them out of their stored sessions. */
+export const MAX_OWNERS_PER_PRINCIPAL = 1024;
+
+let perPrincipalLimit = MAX_OWNERS_PER_PRINCIPAL;
+
+/** @internal Sets the per-principal owner cap ({@link MAX_OWNERS_PER_PRINCIPAL} by default) and returns the previous one; for tests. */
+export function setSessionPrincipalLimit(limit: number): number {
+  const previous = perPrincipalLimit;
+  perPrincipalLimit = limit;
+  return previous;
+}
+
+/** A principal as a map key: the fields {@link samePrincipal} compares. */
+function principalKey(principal: Principal): string {
+  return `${principal.type}\u0000${principal.authenticator}\u0000${principal.issuer ?? ''}\u0000${principal.id}`;
+}
+
 /** Per agent: each session id and the principal that started it, least recently used first. */
 const owners = new WeakMap<object, Map<string, Principal>>();
+
+/** Per agent: {@link principalKey} -> how many session ids that principal currently owns. */
+const ownerCounts = new WeakMap<object, Map<string, number>>();
+
+function countClaim(agent: object, principal: Principal, delta: 1 | -1): number {
+  let counts = ownerCounts.get(agent);
+  if (!counts) ownerCounts.set(agent, (counts = new Map()));
+  const key = principalKey(principal);
+  const next = (counts.get(key) ?? 0) + delta;
+  if (next <= 0) counts.delete(key);
+  else counts.set(key, next);
+  return next;
+}
 
 /**
  * The principal recorded as the owner of session `sessionId` of `agent`, or
@@ -194,16 +230,22 @@ export function sessionOwner(agent: object, sessionId: string): Principal | unde
  * principal owns it. Eve2-F1: the check-and-set is one synchronous step, so a
  * `false` answer means a concurrent first touch won the id and this caller
  * must be refused - never streamed a turn inside that principal's session.
+ * `false` too when `principal` already owns {@link MAX_OWNERS_PER_PRINCIPAL}
+ * sessions: one caller cannot evict every other owner by flooding new ids.
  */
 export function claimSession(agent: object, sessionId: string, principal: Principal): boolean {
   let sessions = owners.get(agent);
   if (!sessions) owners.set(agent, (sessions = new Map()));
   const owner = sessions.get(sessionId);
   if (owner !== undefined) return samePrincipal(owner, principal);
+  if ((ownerCounts.get(agent)?.get(principalKey(principal)) ?? 0) >= perPrincipalLimit) return false;
   sessions.set(sessionId, principal);
+  countClaim(agent, principal, 1);
   for (const oldest of sessions.keys()) {
     if (sessions.size <= ownerLimit) break;
+    const evicted = sessions.get(oldest);
     sessions.delete(oldest);
+    if (evicted !== undefined) countClaim(agent, evicted, -1);
   }
   return true;
 }
@@ -212,5 +254,8 @@ export function claimSession(agent: object, sessionId: string, principal: Princi
 export function releaseSession(agent: object, sessionId: string, principal: Principal): void {
   const sessions = owners.get(agent);
   const owner = sessions?.get(sessionId);
-  if (owner !== undefined && samePrincipal(owner, principal)) sessions?.delete(sessionId);
+  if (owner !== undefined && samePrincipal(owner, principal)) {
+    sessions?.delete(sessionId);
+    countClaim(agent, owner, -1);
+  }
 }

@@ -21,6 +21,7 @@ import {
 } from './defineChannel';
 import { channelFailureBody, reportChannelError } from './channelSupport';
 import { channelCore } from './channelCore';
+import { decodeParam } from '../server/requestGuard';
 import { SDKError } from '../execution/errors';
 
 /** Options of {@link mountFetchChannels} (the `MountChannelsOptions` of `mountChannels()`). */
@@ -213,7 +214,8 @@ export function mountFetchChannels(
         text: new TextDecoder().decode(rawBody),
         native: request,
       };
-      turn = core.handle(channel, isApproval ? decodeURIComponent(route[2]) : undefined, req, respond);
+      // Eve3-S7: malformed percent-encoding in the approval id is a 400, not a 500.
+      turn = core.handle(channel, isApproval ? decodeParam(route[2]) : undefined, req, respond);
     } catch (error) {
       return failureResponse(error, report);
     }
