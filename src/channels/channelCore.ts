@@ -9,7 +9,7 @@ import { createAgentConfigOf, type SimpleAgent } from '../createAgent';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import type { AgentEvent } from '../execution/agentEvents';
 import { MemorySessionStore, type SessionStore } from '../session/sessionStore';
-import { withDefaultStores, type SessionStores } from '../session/AgentSession';
+import { withDefaultStores, type AgentSession, type PendingTurn, type SessionStores } from '../session/AgentSession';
 import {
   approvalPrompt,
   channelSessionId,
@@ -285,24 +285,31 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
    * names that same conversation may bind. A `sessionKey` that maps to another session -
    * or to no session the pause knows - is refused, as is a kind mismatch.
    */
-  async function bindToSession(sessionId: string, decision: ChannelApprovalDecision): Promise<boolean> {
-    const session = agent.session({ id: sessionId, store });
-    const pending = await session.pending();
-    const isAnswer = typeof decision.answer === 'string';
-    if (!pending) {
-      if (checkpointed) return false;
-      const record = await approvalStore?.load?.(decision.id);
-      const bound = pausedSessionId(record) ?? (await agent.approvals.get?.(decision.id))?.sessionId;
-      if (bound !== sessionId) return false;
-      const kind = record ? describeApproval(record.pending).kind ?? 'tool' : 'tool';
-      return isAnswer === (kind === 'question') && kind !== 'sign-in';
-    }
+  /** `true` when `decision`'s field suits `kind` (an answer decides a question, a click a tool call; a sign-in completes itself). */
+  function kindMatches(decision: ChannelApprovalDecision, kind: string): boolean {
+    return (typeof decision.answer === 'string') === (kind === 'question') && kind !== 'sign-in';
+  }
+
+  /**
+   * #279: no live pending turn - a checkpointed session cannot tell whose pause this
+   * was, so only a stored snapshot naming `sessionId` may bind (see `bindToSession`).
+   */
+  async function bindStored(sessionId: string, decision: ChannelApprovalDecision): Promise<boolean> {
+    if (checkpointed) return false;
+    const record = await approvalStore?.load?.(decision.id);
+    const bound = pausedSessionId(record) ?? (await agent.approvals.get?.(decision.id))?.sessionId;
+    if (bound !== sessionId) return false;
+    return kindMatches(decision, (record ? describeApproval(record.pending).kind : undefined) ?? 'tool');
+  }
+
+  /** Binds `decision` to the pending turn `session` waits on, resuming it so the continuation joins its transcript. */
+  async function bindPending(session: AgentSession, pending: PendingTurn, decision: ChannelApprovalDecision): Promise<boolean> {
     // A turn paused on several calls of one step waits on each of them.
     const ids = pending.approvalIds ?? (pending.approvalId === undefined ? [] : [pending.approvalId]);
     if (pending.status !== 'awaiting-approval' || !ids.includes(decision.id)) return false;
     const approval = decision.id === pending.approvalId ? undefined : await agent.approvals.get(decision.id);
     const kind = (decision.id === pending.approvalId ? pending.approvalKind : approval ? describeApproval(approval).kind : undefined) ?? 'tool';
-    if (isAnswer !== (kind === 'question') || kind === 'sign-in') return false;
+    if (!kindMatches(decision, kind)) return false;
     try {
       await session.resume();
     } catch (error) {
@@ -310,6 +317,12 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
       throw error;
     }
     return false;
+  }
+
+  async function bindToSession(sessionId: string, decision: ChannelApprovalDecision): Promise<boolean> {
+    const session = agent.session({ id: sessionId, store });
+    const pending = await session.pending();
+    return pending ? bindPending(session, pending, decision) : bindStored(sessionId, decision);
   }
 
   /** #279: a decision that names no pending turn of this conversation: 404 while the request is open, else a failure (`onError`). */
