@@ -165,10 +165,10 @@ async function hookRoute(agent: SimpleAgent, request: Request, path: string): Pr
  */
 export function createRouteHandler(agent: SimpleAgent, options: RouteHandlerOptions = {}): RouteHandlers {
   const base = (options.basePath ?? '/api/agent').replace(/\/+$/, '');
-  const { authorizeSession, authorizeApproval, exposeErrors, onDisconnect, waitUntil, allowedOrigins, requireJsonBody, allowedHosts } = options;
+  const { authorizeSession, authorizeApproval, exposeErrors, onDisconnect, waitUntil, allowedOrigins, requireJsonBody, allowedHosts, heartbeatMs } = options;
   // One bearer token is one caller: every session is that caller's, so the default owner check has nothing to do.
   const everySession = typeof options.auth === 'string' ? () => true : undefined;
-  const ctx: ChatRoutesContext = { name: 'route', agent: () => agent, authorizeSession: authorizeSession ?? everySession, authorizeApproval, exposeErrors, onDisconnect, waitUntil, allowedOrigins, requireJsonBody, allowedHosts };
+  const ctx: ChatRoutesContext = { name: 'route', agent: () => agent, authorizeSession: authorizeSession ?? everySession, authorizeApproval, exposeErrors, onDisconnect, waitUntil, allowedOrigins, requireJsonBody, allowedHosts, heartbeatMs };
   const auth = authList(options.auth);
   if (!auth) warnOpenInProduction();
   // The request's caller, or the auth failure's response. The oauth callback
