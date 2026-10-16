@@ -113,14 +113,7 @@ invalid session id is `LOUSHO_SESSION_ID_INVALID`). Every error body is JSON
 `409` with `code: 'LOUSHO_SESSION_AWAITING_APPROVAL'`, `approvalId` and
 `approvalIds` (every approval still to decide): decide them through the
 approvals route, which streams the paused turn's continuation, then send the
-new turn.
-
-While a turn streams, the server writes an SSE comment line (`: ping`) after
-every 15 seconds without an event, so a proxy (nginx closes an idle upstream
-after 60s) or a client (Node's `fetch` gives up after 300s without a byte)
-keeps the connection while a model or a tool is slow. SSE parsers ignore
-comment lines. `createRouteHandler(agent, { heartbeatMs })` changes the
-interval; `0` turns it off. With an auth list, a session belongs to the first principal that sends
+new turn. With an auth list, a session belongs to the first principal that sends
 it a turn, and a stored session whose owner the server no longer remembers
 (after a restart) is refused to everyone until `authorizeSession` says whose
 it is; with only `LOUSHO_API_TOKEN` there is one caller and no owner check
@@ -131,10 +124,49 @@ otherwise. In an agent directory, export `authorizeSession` and
 a manager decide other users' approvals): see
 [Who may decide an approval](./auth.md#who-may-decide-an-approval).
 
+While a turn streams, the server writes an SSE comment line (`: ping`) after
+every 15 seconds without an event, so a proxy (nginx closes an idle upstream
+after 60s) or a client (Node's `fetch` gives up after 300s without a byte)
+keeps the connection while a model or a tool is slow. SSE parsers ignore
+comment lines. `createRouteHandler(agent, { heartbeatMs })` changes the
+interval; `0` turns it off.
+
 ```bash
 curl -N http://127.0.0.1:3000/chat \
   -H 'Authorization: Bearer '"$LOUSHO_API_TOKEN" -H 'Content-Type: application/json' \
   -d '{ "sessionId": "alice", "input": "Hello" }'
+```
+
+### Resending a turn
+
+A `POST /chat` that the client sends again (a retry after a dropped
+connection or a timeout, a double click, a client that restarted) is, without
+more, a new turn: the user message is appended again and the model may call
+the same tools again. Send an `Idempotency-Key` header (1-255 visible ASCII
+characters, e.g. a UUID the client makes per message) and resend with the
+same key:
+
+| The turn of that key in that session | The resend gets |
+| ------------------------------------ | --------------- |
+| finished (it is in the transcript) | `200` SSE with one `run.done` carrying that turn's final reply (`text`, `finishReason`), and the header `Idempotent-Replayed: true`. Nothing runs. Read `GET /chat/:sessionId` for the whole turn. |
+| still running on this server process | `409` (`LOUSHO_SESSION_BUSY`). Retry later and get the replay. |
+| interrupted by a crash (a checkpointed turn left `in-progress`) | the turn resumed from its last checkpoint (`session.resume()`: finished steps and tool calls are not run again), streamed as SSE. |
+| none | a new turn, as without the header; its user message keeps the key (`metadata.idempotencyKey`). |
+
+A session paused on an approval answers `409`
+(`LOUSHO_SESSION_AWAITING_APPROVAL`) to a resend as to any turn. The key is
+stored with the turn in the session store (the transcript, or the turn's
+checkpoint until it finishes), so a replay works after a restart and on another
+replica that shares the store; `session.pending()` reports an interrupted
+turn's key as `idempotencyKey`. A key is looked up only in its own session,
+and only while its turn is in the transcript (a compaction that summarizes it
+away forgets it). The `409` for a running turn holds within one process; two
+replicas that receive the same key at the same instant can both run it.
+
+```bash
+curl -N http://127.0.0.1:3000/chat -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: 6f1c2b0e-7d4a-4c8e-9a51-2f0d3b6e8c11' \
+  -d '{ "sessionId": "alice", "input": "Refund order B-1" }'
 ```
 
 ### Auth
