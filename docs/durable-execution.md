@@ -299,6 +299,43 @@ filtering and ordering for you. Without it `agent.pending()` throws
   touching the newer run. `discardPending()` withdraws the dropped turn's
   approvals at once.
 
+## Run a job once (webhook redelivery)
+
+A webhook or queue delivers at least once, so the same payload can arrive
+twice. Sending it again with the same `sessionId` is **not** a no-op: once
+the first run is `'finished'`, the second `send()` is a new turn of that
+conversation and calls the model again (in a consumer test it re-ran seven
+model calls). To run a job once, derive the `sessionId` from the delivery id
+and look at the checkpoint before sending:
+
+```ts
+import { createAgent, memoryStore } from '@lousho/build-ai-agent';
+
+const store = memoryStore();
+const agent = createAgent({ provider, store });
+
+export async function handleDelivery(deliveryId: string, payload: string) {
+  const sessionId = `job-${deliveryId}`;
+  const checkpoint = await store.checkpoints?.load(sessionId);
+
+  if (checkpoint?.status === 'finished') return; // already done: acknowledge the redelivery
+  if (checkpoint?.status === 'awaiting-approval') return; // paused: resolve it with agent.approvals.resolve()
+  if (checkpoint) {
+    await agent.resume(sessionId); // 'in-progress': a crash left it half done; finish it
+    return;
+  }
+  await agent.send(payload, { sessionId });
+}
+```
+
+The check-then-send is not atomic: two concurrent deliveries can both see no
+checkpoint. Serialise deliveries per id (a queue keyed by `deliveryId`, or a
+unique-insert in your own database) and keep the run lease on (see
+[Run leases](#run-leases)) so a second process fails with
+`LOUSHO_SESSION_BUSY` instead of running the job twice. Tools that run again
+on resume must still be idempotent, so also pass the call's `toolCallId` as
+the idempotency key of every side effect (see the next section).
+
 ## At-least-once tools: make side effects idempotent
 
 A tool that was **running** when the process died has no recorded result,

@@ -288,6 +288,28 @@ const agent = createAgent({
 });
 ```
 
+### A custom `fetch` for proxies and tests
+
+Besides longer timeouts, `fetch` is the hook for a corporate proxy, for
+logging every request, or for fault injection in tests. `OpenAIProvider`,
+`AnthropicProvider`, `OpenRouterProvider` and `OllamaProvider` all take it
+the same way, and `OpenRouterProvider` and `OllamaProvider` also use it for
+their model-catalog requests. Their error handling and request changes wrap
+your function, so a failure you return from it is classified as it would be
+from the real network:
+
+```ts
+import { OpenRouterProvider } from '@lousho/build-ai-agent';
+
+let failures = 1;
+const provider = new OpenRouterProvider({
+  apiKey: 'test-key',
+  // Fail the first request with a 503, then pass through (to exercise retries).
+  fetch: async (input, init) =>
+    failures-- > 0 ? new Response('upstream down', { status: 503 }) : fetch(input, init),
+});
+```
+
 ### Any AI SDK model: fromAiSdk()
 
 `fromAiSdk(model)` turns a language model from any AI SDK provider package
