@@ -18,6 +18,9 @@ opt-out.
 ### Fixed
 - MCP tool schemas with OpenAPI's `nullable: true` (any type) now accept `null`; the model's valid `null` was rejected with `ToolArgumentsValidationError`.
 - A failed MCP tool call (server exited, timeout, protocol error) now rejects with `LOUSHO_MCP_CALL_FAILED`, naming `<server>__<tool>` with the MCP error as `cause`, instead of a bare `MCP error -32000: Connection closed`. [MCP](docs/mcp.md) now says stdio `env` is merged onto the MCP SDK's default allow-list, not `process.env`.
+- Flows (consumer harness): a `{{variable}}` holding an object (a `toolCall` result, an MCP result) no longer reaches a prompt as `[object Object]`: an object whose only field is `text` (an MCP tool result) is that text, a raw MCP `{ content }` result its text parts, and any other object or array its JSON. Placeholders take dotted paths (`{{res.user.name}}`, `{{list.0}}`, own properties only), also as whole tool-argument values. An `evaluator` step stores its result in `outputVariable`. See [Template values](docs/flows.md#template-values).
+- Flows: a durable run is saved before its first step, so a run whose first step failed can be `resume()`d instead of failing with `LOUSHO_CHECKPOINT_NOT_FOUND`, whose hint for a flow run now points at `FlowExecutor.execute()` rather than forking session history. A step's checkpoint is saved before its `step-complete` event, so a crash in between no longer re-runs a step reported complete.
+- Flows: an `llmCall` whose model request fails rejects with the same compacted `CompactedLLMProviderError` as an agent run (`LOUSHO_PROVIDER_*` code, `compacted.category`), not the provider SDK's raw `APICallError`, and its `retry` no longer retries a failure marked `retryable: false` (a 401, an exhausted quota, a too-long prompt).
 
 ## [1.0.0-alpha.23] - 2026-10-16
 

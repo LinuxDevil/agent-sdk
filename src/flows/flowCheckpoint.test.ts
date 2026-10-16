@@ -88,6 +88,64 @@ describe('FlowExecutor durability', () => {
     expect((await store.load('run-1'))?.status).toBe('finished');
   });
 
+  it('resumes a run whose first step failed', async () => {
+    const flow = flowOf({
+      type: 'sequence',
+      steps: [
+        { type: 'toolCall', tool: 'flaky', arguments: {}, outputVariable: 'fetched' },
+        { type: 'llmCall', prompt: 'about {{topic}} after {{fetched}}', outputVariable: 'first' },
+      ],
+    });
+
+    const first = await FlowExecutor.execute(flow, context);
+    expect(first.success).toBe(false);
+    const checkpoint = await store.load('run-1');
+    expect(checkpoint?.status).toBe('in-progress');
+    expect(checkpoint?.flow?.completedNodeIds).toEqual([]);
+    expect(checkpoint?.flow?.variables).toEqual({ topic: 'cats' });
+
+    failFlaky = false;
+    const { variables: _ignored, ...rest } = context;
+    const resumed = await FlowExecutor.resume(flow, { ...rest, checkpointStore: store, runId: 'run-1' });
+    expect(resumed.success).toBe(true);
+    expect(resumed.variables).toEqual({ topic: 'cats', fetched: 'ok', first: 'one' });
+    expect(resumed.steps).toBe(3);
+  });
+
+  it('saves no checkpoint when the inputs are invalid, and a resume of an unknown run names execute(), not forking', async () => {
+    const flow: AgentFlow = { ...flowOf({ type: 'return', value: 'x' }), inputs: [{ name: 'order', type: 'shortText', required: true }] };
+    expect((await FlowExecutor.execute(flow, context)).success).toBe(false);
+    expect(await store.load('run-1')).toBeNull();
+
+    const { variables: _ignored, ...rest } = context;
+    const error = await FlowExecutor.resume(flow, { ...rest, checkpointStore: store, runId: 'run-1' }).catch((e: unknown) => e);
+    expect(error).toMatchObject({ code: 'LOUSHO_CHECKPOINT_NOT_FOUND' });
+    const { hint } = error as { hint?: string };
+    expect(hint).toMatch(/FlowExecutor\.execute/);
+    expect(hint).not.toMatch(/fork/i);
+  });
+
+  it('saves a completed step before announcing it', async () => {
+    const flow = flowOf({ type: 'sequence', steps: [{ type: 'llmCall', prompt: 'about {{topic}}', outputVariable: 'first' }] });
+    const saves: string[][] = [];
+    // A store without leases, so every save goes through save().
+    const recording: CheckpointStore = {
+      load: (id) => store.load(id),
+      delete: (id) => store.delete(id),
+      save: async (id, checkpoint) => {
+        await store.save(id, checkpoint);
+        saves.push(checkpoint.flow?.completedNodeIds ?? []);
+      },
+    };
+    const savedAtEvent: Array<string[] | undefined> = [];
+    const result = await FlowExecutor.execute(flow, { ...context, checkpointStore: recording }, (event) => {
+      if (event.type === 'step-complete') savedAtEvent.push(saves.at(-1));
+    });
+    expect(result.success).toBe(true);
+    // Each step-complete finds its own node already saved: the llmCall, then the sequence.
+    expect(savedAtEvent).toEqual([['0.0'], ['0']]);
+  });
+
   it('refuses to resume with a flow whose steps changed, but not one whose prompts did', async () => {
     const ask: EditorStep = { type: 'llmCall', prompt: 'about {{topic}}', outputVariable: 'first' };
     const steps: EditorStep[] = [ask, { type: 'toolCall', tool: 'flaky', arguments: {} }];

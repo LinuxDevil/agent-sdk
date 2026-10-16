@@ -37,7 +37,16 @@ import {
   toolSpanInit,
 } from '../execution/genAiSpans';
 import { FLOW_NODE_SPAN_NAME, FlowAttr, GenAiAttr, GenAiOperation } from '../execution/semconv';
-import { ConfigurationError, SDKError, TimeoutError, ValidationError } from '../execution/errors';
+import {
+  CompactedLLMProviderError,
+  ConfigurationError,
+  SDKError,
+  TimeoutError,
+  ValidationError,
+  isAbortError,
+  isCassetteError,
+} from '../execution/errors';
+import { compactGenerateError } from '../execution/generateStep';
 import type { PermissionOptions } from '../execution/permissions';
 import type { ApproveToolCall } from '../createAgentApprovals';
 import { gateFlowToolCall } from './flowToolGate';
@@ -293,6 +302,64 @@ function emitEvent(
 
 function isObjectLike(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object';
+}
+
+/** A `{{name}}` or `{{a.b.c}}` template placeholder. */
+const TEMPLATE_PLACEHOLDER = /\{\{(\w+(?:\.\w+)*)\}\}/g;
+/** A string that is one placeholder, `{{a.b}}` or `$name`, and nothing else. */
+const WHOLE_PLACEHOLDER = /^(?:\{\{(\w+(?:\.\w+)*)\}\}|\$(\w+))$/;
+
+/**
+ * The value at a dotted `path` in a scope: the first segment is a variable
+ * (an enclosing loop scope's too), each later one an own property of the
+ * value before it (an array index is one), so `{{res.constructor}}` reads
+ * nothing. `undefined` when any segment is missing.
+ */
+function readPath(variables: Record<string, unknown>, path: string): unknown {
+  const [head, ...rest] = path.split('.');
+  // A read follows loop scopes' prototypes, but an inherited Object.prototype member is no variable.
+  let value: unknown = variables[head];
+  if (head === '__proto__' || (head in Object.prototype && value === (Object.prototype as Record<string, unknown>)[head])) return undefined;
+  for (const key of rest) {
+    if (!isObjectLike(value) || !Object.hasOwn(value, key)) return undefined;
+    value = value[key];
+  }
+  return value;
+}
+
+/** The text parts of an MCP content array (`[{ type: 'text', text }]`), joined; `undefined` for anything else. */
+function mcpContentText(content: unknown): string | undefined {
+  if (!Array.isArray(content) || content.length === 0) return undefined;
+  const texts = content.flatMap((part: unknown) =>
+    isObjectLike(part) && part.type === 'text' && typeof part.text === 'string' ? [part.text] : []
+  );
+  return texts.length > 0 ? texts.join('\n') : undefined;
+}
+
+/**
+ * The text a value takes in a template: a string as is; nothing for
+ * null/undefined; an object whose only keys are `text` (and `content`, as an
+ * MCP tool result has) its `text`; a raw MCP result (`{ content: [...] }`)
+ * its text parts; any other object or array its JSON; anything else `String(value)`.
+ */
+function templateText(value: unknown): string {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value;
+  if (!isObjectLike(value)) return String(value);
+  const keys = Object.keys(value);
+  if (typeof value.text === 'string' && keys.every((key) => key === 'text' || key === 'content')) {
+    return value.text;
+  }
+  if (keys.length === 1 && keys[0] === 'content') {
+    const text = mcpContentText(value.content);
+    if (text !== undefined) return text;
+  }
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    // A cycle (or a BigInt) cannot be JSON.
+    return String(value);
+  }
 }
 
 /** The node shapes FlowExecutor runs (the executor-side `oneOf` / `forEach` / `evaluator`). */
@@ -596,7 +663,7 @@ export class FlowExecutor {
     const variables = context.variables;
     if (run) {
       flowRuns.set(events, run);
-      run.progress = () => ({ usage: sumUsage(events), steps: this.countCompletedSteps(events) });
+      run.usage = () => sumUsage(events);
     }
     // The totals include a resumed run's earlier attempts.
     const totals = () => run?.totals() ?? { usage: sumUsage(events), steps: this.countCompletedSteps(events) };
@@ -611,6 +678,8 @@ export class FlowExecutor {
     try {
       // The flow's declared inputs (required ones, and their types) are checked before any step runs.
       this.assertValidInputs(flow, variables);
+      // A durable run is saved before its first node, so a failed first step can be resumed.
+      await run?.start();
 
       // Execute the flow
       // A flow without a root node fails in executeNode with a TypeError, reported as a flow-error.
@@ -686,7 +755,7 @@ export class FlowExecutor {
     parallel: (node, context, events, onEvent) => this.executeParallel(node, context, events, onEvent),
     oneOf: (node, context, events, onEvent) => this.executeOneOf(node, context, events, onEvent),
     forEach: (node, context, events, onEvent) => this.executeForEach(node, context, events, onEvent),
-    evaluator: (node, context) => this.executeEvaluator(node, context),
+    evaluator: (node, context, events, onEvent) => this.executeEvaluator(node, context, events, onEvent),
     llmCall: (node, context, events, onEvent) => this.executeLLMCall(node, context, events, onEvent),
     toolCall: (node, context, events, onEvent) => this.executeToolCall(node, context, events, onEvent),
     setVariable: (node, context, events, onEvent) => this.executeSetVariable(node, context, events, onEvent),
@@ -808,6 +877,10 @@ export class FlowExecutor {
       const output = options ? this.runWithRetry(node, stepId, options, context, events, onEvent) : this.dispatchNode(node, context, events, onEvent);
       const result = output instanceof Promise ? await output : output;
 
+      // A durable run saves its state after every completed node - before
+      // announcing it, so a crash in between never re-runs a step reported complete.
+      await flowRuns.get(events)?.complete(nodePath(context), result);
+
       // Emit step complete event
       emitEvent(events, onEvent, {
         type: 'step-complete',
@@ -816,9 +889,6 @@ export class FlowExecutor {
         stepType: node.type,
         data: result,
       });
-
-      // A durable run saves its state after every completed node.
-      await flowRuns.get(events)?.complete(nodePath(context), result);
 
       return result;
     } catch (error) {
@@ -874,7 +944,9 @@ export class FlowExecutor {
       try {
         return await this.runAttempt(node, stepId, options.timeoutMs, context, events, onEvent);
       } catch (error) {
-        if (attempt >= options.maxAttempts || context.signal?.aborted || error instanceof FlowApprovalPause) {
+        // A provider failure retrying cannot fix (a 401, an exhausted quota, a too-long prompt) fails at once.
+        const notRetryable = error instanceof CompactedLLMProviderError && !error.compacted.retryable;
+        if (attempt >= options.maxAttempts || context.signal?.aborted || error instanceof FlowApprovalPause || notRetryable) {
           throw error;
         }
         const delayMs = options.backoffMs * 2 ** (attempt - 1);
@@ -1113,10 +1185,14 @@ export class FlowExecutor {
    */
   private static async executeEvaluator(
     node: ExpressionEvaluatorNode,
-    context: FlowExecutionContext
+    context: FlowExecutionContext,
+    events: FlowExecutionEvent[],
+    onEvent?: (event: FlowExecutionEvent) => void
   ): Promise<unknown> {
     const expression = node.expression || '';
-    return this.evaluateExpression(expression, context.variables);
+    const value = this.evaluateExpression(expression, context.variables);
+    this.storeOutputVariable(node, value, context, events, onEvent);
+    return value;
   }
 
   /**
@@ -1204,7 +1280,9 @@ export class FlowExecutor {
       init.name,
       init.attributes,
       async (llmSpan) => {
-        const generated = await context.provider.generate(request);
+        const generated = await context.provider.generate(request).catch((error: unknown) => {
+          throw this.compactLLMCallError(error, context);
+        });
         recordLlmResult(llmSpan, generated, captureContent);
         return generated;
       },
@@ -1223,6 +1301,23 @@ export class FlowExecutor {
     this.storeOutputVariable(node, result.text, context, events, onEvent);
 
     return result.text;
+  }
+
+  /**
+   * What an `llmCall` step fails with when `provider.generate()` throws: the
+   * same compacted `CompactedLLMProviderError` an agent run rejects with
+   * (`LOUSHO_PROVIDER_*` code, `compacted.category`, `retryable`), not the
+   * adapter's raw error. A cancellation, a cassette failure and content the
+   * provider cannot send pass through as they are, as in an agent run.
+   */
+  private static compactLLMCallError(error: unknown, context: FlowExecutionContext): unknown {
+    if (context.signal?.aborted || isAbortError(error) || isCassetteError(error)) {
+      return error;
+    }
+    if (error instanceof SDKError && error.code === 'LOUSHO_UNSUPPORTED_CONTENT') {
+      return error;
+    }
+    return compactGenerateError(error, context.provider.name).error;
   }
 
   private static requireToolRegistry(context: FlowExecutionContext): ToolRegistry {
@@ -1386,28 +1481,28 @@ export class FlowExecutor {
   }
 
   /**
-   * Interpolate string with variables
+   * Interpolate string with variables. `{{name}}` or a dotted path
+   * (`{{res.user.name}}`, `{{list.0}}`) is replaced by the value's text
+   * (see {@link templateText}); a missing variable or path is empty.
    */
   private static interpolate(template: string, variables: Record<string, unknown>): string {
-    return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
-      // Every value but null/undefined has toString() (or throws, as before, for a null-prototype object).
-      const value = variables[key] as { toString(): string } | null | undefined;
-      return value?.toString() || '';
-    });
+    return template.replace(TEMPLATE_PLACEHOLDER, (_, path: string) => templateText(readPath(variables, path)));
   }
 
   /**
    * Interpolate object with variables. A string that is exactly one
-   * `{{name}}` (or `$name`) of a defined variable is that variable's value,
+   * `{{name}}` / `{{a.b}}` (or `$name`) of a defined value is that value,
    * not its text, so `{ n: '{{n}}' }` passes a number to a `z.number()` tool;
    * any other string is interpolated as text.
    */
   private static interpolateObject(obj: unknown, variables: Record<string, unknown>): unknown {
     if (typeof obj === 'string') {
-      const whole = /^(?:\{\{(\w+)\}\}|\$(\w+))$/.exec(obj);
-      const name = whole?.[1] ?? whole?.[2];
-      if (name !== undefined && Object.hasOwn(variables, name) && variables[name] !== undefined) {
-        return variables[name];
+      const whole = WHOLE_PLACEHOLDER.exec(obj);
+      const path = whole?.[1] ?? whole?.[2];
+      const head = path?.split('.')[0];
+      if (path !== undefined && head !== undefined && Object.hasOwn(variables, head)) {
+        const value = readPath(variables, path);
+        if (value !== undefined) return value;
       }
       return this.interpolate(obj, variables);
     }
