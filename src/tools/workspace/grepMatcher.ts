@@ -1,5 +1,5 @@
 /**
- * Eve TOOLS-F6: the `grep` tool runs a regex the model wrote. A pattern that
+ * The `grep` tool runs a regex the model wrote. A pattern that
  * backtracks catastrophically (`^(a+)+$`) would block the event loop for
  * seconds or forever, and an abort could not stop it. So the pattern is
  * checked for nested unbounded quantifiers, each line is tested on at most

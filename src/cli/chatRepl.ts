@@ -1,5 +1,5 @@
 /**
- * The REPL behind `lousho chat` (LOU-D33): reads lines, streams each turn's
+ * The REPL behind `lousho chat`: reads lines, streams each turn's
  * events, asks for approvals and questions, and runs the slash commands. It
  * takes its input, output and agent factory as arguments, so tests drive it
  * with scripted lines and a `mockModel` agent; src/cli/chat.ts wires readline.
@@ -96,7 +96,7 @@ export async function runChatRepl(options: ChatReplOptions): Promise<number> {
       lineOpen = event.text !== '' && !event.text.endsWith('\n');
     },
     'text.done': endLine,
-    // LOU-V13: reasoning, dimmed, before the reply.
+    // Reasoning, dimmed, before the reply.
     'reasoning.delta': (event) => {
       if (event.subagent) return;
       output.write(dim(event.text));
@@ -148,7 +148,7 @@ export async function runChatRepl(options: ChatReplOptions): Promise<number> {
     return undefined;
   }
 
-  /** N9b: shows the sign-in link and continues once the user signed in (asks again while they have not), or cancels. */
+  /** Shows the sign-in link and continues once the user signed in (asks again while they have not), or cancels. */
   async function signIn(request: PendingApproval): Promise<AsyncIterable<AgentEvent>> {
     const { id, signIn: link } = request;
     say(`Sign in to ${link?.displayName ?? link?.provider} to continue: ${link?.url}`);

@@ -1,5 +1,5 @@
 /**
- * An agent directory inside a Cloudflare Worker bundle (M3b, and #298 for
+ * An agent directory inside a Cloudflare Worker bundle (and #298 for
  * `subagents/` / `schedules/` / `channels/` / `memory/` / `projectInstructions`).
  *
  * `resolveAgentDir()` reads the directory from disk and imports its files at
@@ -111,7 +111,7 @@ export interface ResolvedWorkerAgentDir {
   permissions?: readonly PermissionRule[];
   compaction?: AgentCompaction;
   limits?: RunLimits;
-  /** `createAgent`'s `modelSettings` (C6). */
+  /** `createAgent`'s `modelSettings`. */
   modelSettings?: ModelSettings;
   /** `createAgent`'s `approvalTtlMs`: how long a pause for approval stays decidable, in milliseconds. */
   approvalTtlMs?: number;

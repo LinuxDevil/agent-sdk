@@ -1,5 +1,5 @@
 /**
- * LOU-V2: the typed, versioned event schema of `agent.stream()` /
+ * The typed, versioned event schema of `agent.stream()` /
  * `AgentExecutor.stream()`. Every event is a plain JSON value (no `Error`
  * instances, no functions, no `undefined` fields), so it can be sent over
  * SSE or a WebSocket unchanged and parsed back to the same object.
@@ -41,7 +41,7 @@ export interface AgentEventUsage {
   costPartial?: boolean;
   /** On `run.done`: model calls of the whole run. */
   modelCalls?: number;
-  /** N1a, on `run.done`: hosted tool calls the provider ran, per tool name; absent when none. Their fees are not in `costUsd`. */
+  /** On `run.done`: hosted tool calls the provider ran, per tool name; absent when none. Their fees are not in `costUsd`. */
   hostedToolCalls?: Partial<Record<string, number>>;
 }
 
@@ -49,7 +49,7 @@ export interface AgentEventUsage {
 export interface AgentEventError {
   name: string;
   message: string;
-  /** A1: the error's `code` (e.g. `'LOUSHO_APPROVAL_NOT_FOUND'`), when it has a string one. */
+  /** The error's `code` (e.g. `'LOUSHO_APPROVAL_NOT_FOUND'`), when it has a string one. */
   code?: string;
 }
 
@@ -66,7 +66,7 @@ export interface AgentEventBase<TType extends string> {
   /** Schema version, always {@link AGENT_EVENT_SCHEMA_VERSION}. */
   v: typeof AGENT_EVENT_SCHEMA_VERSION;
   /**
-   * LOU-Y1: set on events of a sub-agent's run (started by the `task` tool):
+   * Set on events of a sub-agent's run (started by the `task` tool):
    * which sub-agent, and the tool call of this run that started it. Absent on the top-level run's own events, and never
    * set on `run.start`/`run.done` (they mark the top-level run only). The step
    * ordering guarantees hold for the top-level events and, separately, for
@@ -93,7 +93,7 @@ export interface TextDeltaEvent extends AgentEventBase<'text.delta'> {
 }
 
 /**
- * Eve CORE-F13: for an agent with an `output` schema, the reply parsed so far
+ * For an agent with an `output` schema, the reply parsed so far
  * - a best-effort partial object (an unfinished string value is cut where the
  * text is; an unfinished key or number is left out). Emitted after a
  * `text.delta` that changes it. Not validated against the schema: the
@@ -110,19 +110,19 @@ export interface TextDoneEvent extends AgentEventBase<'text.done'> {
 }
 
 /**
- * LOU-V13: the model starts reasoning (thinking) in this step. Its
+ * The model starts reasoning (thinking) in this step. Its
  * `reasoning.delta`s and `reasoning.done` follow, before the step's first
  * `text.delta` or `tool.start`. Only models given the `reasoning` option
  * (and some that always reason) emit them.
  */
 export type ReasoningStartEvent = AgentEventBase<'reasoning.start'>;
 
-/** LOU-V13: a chunk of reasoning text (or of its summary), as it arrives. Never part of `text`. */
+/** A chunk of reasoning text (or of its summary), as it arrives. Never part of `text`. */
 export interface ReasoningDeltaEvent extends AgentEventBase<'reasoning.delta'> {
   text: string;
 }
 
-/** LOU-V13: the reasoning ended; `text` is the concatenation of its `reasoning.delta`s. */
+/** The reasoning ended; `text` is the concatenation of its `reasoning.delta`s. */
 export interface ReasoningDoneEvent extends AgentEventBase<'reasoning.done'> {
   text: string;
   /** Reasoning tokens, when the provider reported them by the time the reasoning ended. */
@@ -145,12 +145,12 @@ export interface ToolStartEvent extends AgentEventBase<'tool.start'> {
    */
   rawArgs?: string;
   /**
-   * N1a: `'provider'` for a hosted tool (`webSearch()`, ...) the provider ran
+   * `'provider'` for a hosted tool (`webSearch()`, ...) the provider ran
    * inside the model call; absent for a tool the SDK ran. A provider-run call
    * passed no permission rule, guardrail, approval or hook.
    */
   executedBy?: 'provider';
-  /** N14: set on a call a `run_code` script made: the `run_code` call's id. */
+  /** Set on a call a `run_code` script made: the `run_code` call's id. */
   parentToolCallId?: string;
 }
 
@@ -172,7 +172,7 @@ export interface ToolResumeEvent extends AgentEventBase<'tool.resume'> {
 }
 
 /**
- * N13b: a snapshot of a running tool's output - a tool whose `execute` is an
+ * A snapshot of a running tool's output - a tool whose `execute` is an
  * `async function*` yields one per `yield`. Each snapshot is complete and
  * replaces the previous one; the last one is also the result in `tool.done`.
  * Snapshots are not sent to the model, not added to the transcript and not
@@ -186,7 +186,7 @@ export interface ToolPartialEvent extends AgentEventBase<'tool.partial'> {
   output: unknown;
   /** Counts this call's snapshots from 0 (from 0 again when the call runs again, e.g. after a sign-in). */
   index: number;
-  /** N14: set on a call a `run_code` script made: the `run_code` call's id. */
+  /** Set on a call a `run_code` script made: the `run_code` call's id. */
   parentToolCallId?: string;
 }
 
@@ -198,11 +198,11 @@ export interface ToolDoneEvent extends AgentEventBase<'tool.done'> {
   result: unknown;
   /** Milliseconds since this call's `tool.start`. */
   durationMs: number;
-  /** LOU-X3: the hook whose `{ result }` outcome replaced (or stood in for) the tool's result. */
+  /** The hook whose `{ result }` outcome replaced (or stood in for) the tool's result. */
   replacedByHook?: string;
-  /** N1a: `'provider'` for a hosted tool's call (see `tool.start`); `result` is capped at 20,000 characters of JSON. */
+  /** `'provider'` for a hosted tool's call (see `tool.start`); `result` is capped at 20,000 characters of JSON. */
   executedBy?: 'provider';
-  /** N14: set on a call a `run_code` script made: the `run_code` call's id. */
+  /** Set on a call a `run_code` script made: the `run_code` call's id. */
   parentToolCallId?: string;
 }
 
@@ -229,9 +229,9 @@ export interface ToolErrorEvent extends AgentEventBase<'tool.error'> {
   error: AgentEventError;
   /** Milliseconds since this call's `tool.start`. */
   durationMs: number;
-  /** N1a: `'provider'` for a hosted tool's call the provider reported as failed (see `tool.start`). */
+  /** `'provider'` for a hosted tool's call the provider reported as failed (see `tool.start`). */
   executedBy?: 'provider';
-  /** N14: set on a call a `run_code` script made: the `run_code` call's id. */
+  /** Set on a call a `run_code` script made: the `run_code` call's id. */
   parentToolCallId?: string;
 }
 
@@ -245,12 +245,12 @@ export interface ApprovalRequestedEvent extends AgentEventBase<'approval.request
   toolCallId: string;
   toolName: string;
   args: Record<string, unknown>;
-  /** LOU-X9: `'question'` when an `ask_question` call waits for the user's answer; N9b: `'sign-in'` when a tool waits for an OAuth sign-in; absent for a tool approval. */
+  /** `'question'` when an `ask_question` call waits for the user's answer; `'sign-in'` when a tool waits for an OAuth sign-in; absent for a tool approval. */
   kind?: ApprovalKind;
-  /** LOU-X9: the question's text and options, when `kind` is `'question'`. */
+  /** The question's text and options, when `kind` is `'question'`. */
   question?: ApprovalQuestion;
   /**
-   * N9b: where the user signs in, when `kind` is `'sign-in'`: a tool needs an
+   * Where the user signs in, when `kind` is `'sign-in'`: a tool needs an
    * OAuth token the user has not granted yet. Show `url`; once the provider
    * redirected back, continue with `approved: true` ("I've signed in").
    */
@@ -264,7 +264,7 @@ export interface ApprovalRequestedEvent extends AgentEventBase<'approval.request
 }
 
 /**
- * LOU-X2: how a tool call's permission was decided - by the first matching
+ * How a tool call's permission was decided - by the first matching
  * rule of `permissions` (`allow`, `deny`, `ask`) or `'default'` when none
  * matched. Emitted after `tool.start` when the run sets `permissions` or
  * `onPermissionDecision`; carries the same audit entry `onPermissionDecision` gets.
@@ -276,7 +276,7 @@ export interface StepDoneEvent extends AgentEventBase<'step.done'> {
   step: number;
   /**
    * The model's finish reason for this step (`'stop'`, `'tool_calls'`, ...),
-   * or `'awaiting-approval'`, `'aborted'`, `'steered'` (LOU-V10: its model call
+   * or `'awaiting-approval'`, `'aborted'`, `'steered'` (its model call
    * was aborted by `run.steer()`) or `'error'` when the step ended that way.
    */
   finishReason: ExecutionFinishReason | 'steered';
@@ -295,7 +295,7 @@ export interface AgentErrorEvent extends AgentEventBase<'error'> {
 
 /**
  * A model call failed and a `withRetry()` wrapper (e.g. `createAgent({ retry })`)
- * retries it after `delayMs` (LOU-V7.2). Emitted inside the step, before
+ * retries it after `delayMs`. Emitted inside the step, before
  * the retried call.
  */
 export interface ProviderRetryEvent extends AgentEventBase<'provider.retry'> {
@@ -314,7 +314,7 @@ export interface ProviderRetryEvent extends AgentEventBase<'provider.retry'> {
 /**
  * A model call failed (after its retries) and the next provider of a
  * `withFallback()` wrapper (e.g. `createAgent({ fallbackModels })`) takes
- * over the call (LOU-V7.2). Emitted inside the step.
+ * over the call. Emitted inside the step.
  */
 export interface ProviderFallbackEvent extends AgentEventBase<'provider.fallback'> {
   /** Name of the provider that failed. */
@@ -330,8 +330,8 @@ export interface ProviderFallbackEvent extends AgentEventBase<'provider.fallback
 
 /**
  * The compaction hook (`createAgent({ compaction })`, `createCompactionHook()`)
- * found the next model request above its threshold and starts compacting it
- * (LOU-W3.2). Emitted inside the step, before the model call; exactly one
+ * found the next model request above its threshold and starts compacting it.
+ * Emitted inside the step, before the model call; exactly one
  * `compaction.done` follows.
  */
 export interface CompactionStartEvent extends AgentEventBase<'compaction.start'> {
@@ -343,12 +343,12 @@ export interface CompactionStartEvent extends AgentEventBase<'compaction.start'>
   contextWindow: number;
   /** The size (`thresholdPercent` of the window) the request is compared with. */
   thresholdTokens: number;
-  /** `'manual'` for `session.compact()` (LOU-W8); absent for the hook's automatic compaction. */
+  /** `'manual'` for `session.compact()`; absent for the hook's automatic compaction. */
   trigger?: 'manual';
 }
 
 /**
- * A compaction ended (LOU-W3.2). `tokensAfter` equals `tokensBefore` when
+ * A compaction ended. `tokensAfter` equals `tokensBefore` when
  * nothing could be compacted. `error` is set when the strategy failed or fell
  * back (e.g. the summarizer failed and only tool results were pruned); the
  * run continues either way.
@@ -369,18 +369,18 @@ export interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
   summary?: boolean;
   error?: { message: string };
   /**
-   * `true` when the strategy could not change anything (Eve MEM-F14). The
+   * `true` when the strategy could not change anything. The
    * hook then compacts that transcript quietly: no events until an attempt
    * changes something, so a run stuck over the threshold does not report a
    * start/done pair on every step.
    */
   unchanged?: boolean;
-  /** `'manual'` for `session.compact()` (LOU-W8); absent for the hook's automatic compaction. */
+  /** `'manual'` for `session.compact()`; absent for the hook's automatic compaction. */
   trigger?: 'manual';
 }
 
 /**
- * `session.clear()` emptied a session's transcript (LOU-W8). Delivered to
+ * `session.clear()` emptied a session's transcript. Delivered to
  * `session.on()` listeners, not to a run's stream; `runId` is `session:<id>`.
  */
 export interface ContextClearedEvent extends AgentEventBase<'context.cleared'> {
@@ -390,13 +390,13 @@ export interface ContextClearedEvent extends AgentEventBase<'context.cleared'> {
 }
 
 /**
- * A `limits` budget tripped (LOU-V6): which limit, what was spent and its
+ * A `limits` budget tripped: which limit, what was spent and its
  * maximum. `run.done { finishReason: 'budget-exceeded' }` follows (or, with
  * `onExceeded: 'throw'`, `error` and `run.done { finishReason: 'error' }`).
  */
 export interface BudgetExceededEvent extends AgentEventBase<'budget.exceeded'>, BudgetExceeded {}
 
-/** LOU-V9: `run.enqueue()` took an input; `input.applied` follows when it joins the transcript. */
+/** `run.enqueue()` took an input; `input.applied` follows when it joins the transcript. */
 export interface InputQueuedEvent extends AgentEventBase<'input.queued'> {
   /** `EnqueueResult.id`. */
   id: string;
@@ -405,7 +405,7 @@ export interface InputQueuedEvent extends AgentEventBase<'input.queued'> {
 }
 
 /**
- * LOU-V10: `run.steer()` took an input. `mode` is `'immediate'` when the
+ * `run.steer()` took an input. `mode` is `'immediate'` when the
  * in-flight model call was aborted for it (that step ends with `step.done`
  * `'steered'`), `'queued'` when it waits for the next safe point.
  * `input.applied` follows when it joins the transcript.
@@ -417,24 +417,24 @@ export interface InputSteeredEvent extends AgentEventBase<'input.steered'> {
   mode: 'immediate' | 'queued';
 }
 
-/** LOU-V9: a queued input joined the transcript, right before the model call of `step` (whose `step.start` follows). */
+/** A queued input joined the transcript, right before the model call of `step` (whose `step.start` follows). */
 export interface InputAppliedEvent extends AgentEventBase<'input.applied'> {
   id: string;
   step: number;
 }
 
 /**
- * An input, output or tool guardrail blocked (LOU-X4).
+ * An input, output or tool guardrail blocked.
  * `run.done { finishReason: 'guardrail' }` follows (or, with
  * `onTripped: 'throw'`, `error` and `run.done { finishReason: 'error' }`).
  */
 export interface GuardrailTrippedEvent extends AgentEventBase<'guardrail.tripped'>, GuardrailTrip {}
 
-/** A guardrail rewrote the input, the output (before its `text.done`) or a tool call's arguments (LOU-X4). */
+/** A guardrail rewrote the input, the output (before its `text.done`) or a tool call's arguments. */
 export interface GuardrailRewroteEvent extends AgentEventBase<'guardrail.rewrote'>, GuardrailTrip {}
 
 /**
- * LOU-W9.2: a checkpointed or approval-paused run is being continued by an
+ * A checkpointed or approval-paused run is being continued by an
  * agent that differs from the one that saved it, and `onAgentDrift` is
  * `'warn'` (the default). The run continues; with `'error'` it is refused
  * with `LOUSHO_AGENT_DRIFT` instead and this event is not emitted.
@@ -442,7 +442,7 @@ export interface GuardrailRewroteEvent extends AgentEventBase<'guardrail.rewrote
 export interface AgentDriftEvent extends AgentEventBase<'agent.drift'>, AgentDrift {}
 
 /**
- * N6: the run handed the conversation to another agent (`createAgent({ handoffs })`):
+ * The run handed the conversation to another agent (`createAgent({ handoffs })`):
  * after the handoff call's `tool.start` / `tool.done`, before the target's
  * first `step.start`. From here on the run's steps are the target's. See docs/handoffs.md.
  */
@@ -466,7 +466,7 @@ export interface RunDoneEvent extends AgentEventBase<'run.done'> {
   text: string;
   /** Total tokens of the run; absent when the run failed. */
   usage?: AgentEventUsage;
-  /** LOU-V4: `ExecutionResult.object` (the validated `output`), JSON-encoded; absent when there is none. */
+  /** `ExecutionResult.object` (the validated `output`), JSON-encoded; absent when there is none. */
   object?: unknown;
 }
 

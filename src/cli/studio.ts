@@ -2,9 +2,9 @@
  * `lousho studio` - launches Agent Forge, the visual dashboard for building,
  * running and debugging agents built with this SDK.
  *
- * Two modes (S1, LOU-S):
+ * Two modes:
  *
- *   - **prod** (single process, single port): the LOU-N runtime control
+ *   - **prod** (single process, single port): the runtime control
  *     server (`apps/agent-forge/server`, bundled to plain JS by
  *     `apps/agent-forge/server/tsup.config.ts` into `dist-server/index.cjs`)
  *     serves both its own REST/WS API *and* the pre-built client
@@ -16,7 +16,7 @@
  *     built (`build:studio` - see the root `package.json`'s
  *     `prepublishOnly`, which always runs it before `npm publish`).
  *
- *   - **dev** (two sibling processes, LOU-N's original shape): the LOU-N API
+ *   - **dev** (two sibling processes, original shape): the API
  *     server run via `tsx` straight off its TypeScript source, plus
  *     `apps/agent-forge`'s own Vite dev server (HMR) proxying `/agents/**`
  *     to it. Only usable from inside a source checkout that has
@@ -57,9 +57,9 @@ export type StudioMode = 'auto' | 'dev' | 'prod';
 export interface StudioOptions {
   /** Repo root containing `apps/agent-forge`. Defaults to process.cwd(). */
   repoRoot?: string;
-  /** Port for the LOU-N API server (env `PORT` for the child process). Default 4750. */
+  /** Port for the API server (env `PORT` for the child process). Default 4750. */
   apiPort?: number;
-  /** Host for the LOU-N API server. Default 127.0.0.1. */
+  /** Host for the API server. Default 127.0.0.1. */
   apiHost?: string;
   /**
    * 'prod' | 'dev' force a mode (and throw if what it needs isn't present);
@@ -76,7 +76,7 @@ export interface StudioOptions {
 }
 
 /**
- * Eve DUI-F1: env var carrying the per-launch API token to the studio server
+ * Env var carrying the per-launch API token to the studio server
  * (and, in dev mode, to Vite's proxy). Mirrors `STUDIO_TOKEN_ENV` in
  * `apps/agent-forge/server/auth.ts`.
  */
@@ -92,9 +92,9 @@ export function studioUrl(apiHost: string, apiPort: number, token: string): stri
 }
 
 export interface StudioHandle {
-  /** Eve DUI-F1: the per-launch token every API/WebSocket request must carry (it is in the printed URL). */
+  /** The per-launch token every API/WebSocket request must carry (it is in the printed URL). */
   token: string;
-  /** The LOU-N API server (prod: also serves the UI). Always present. */
+  /** The API server (prod: also serves the UI). Always present. */
   apiProcess: ChildProcess;
   /** The Vite dev server. Only present in dev mode. */
   viteProcess?: ChildProcess;
@@ -131,7 +131,7 @@ function resolveMode(appDir: string, requested: StudioMode): 'dev' | 'prod' {
 }
 
 /**
- * Starts Agent Forge: in prod mode, a single LOU-N API server process that
+ * Starts Agent Forge: in prod mode, a single API server process that
  * also serves the pre-built UI; in dev mode, that same API server (run from
  * TS source via `tsx`) alongside a sibling Vite dev server process. Both
  * inherit this process's stdio so their output (including each one's own

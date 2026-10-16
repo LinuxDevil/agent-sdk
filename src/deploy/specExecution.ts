@@ -1,6 +1,6 @@
 /**
  * Turns a validated AgentSpec into the per-request-invariant part of
- * AgentExecutor.execute()'s ExecuteOptions (LOU-I2/I3).
+ * AgentExecutor.execute()'s ExecuteOptions.
  *
  * Deliberately free of Node builtins (and of any provider/tool module):
  * the provider and tool resolvers are injected, so the Node runtime

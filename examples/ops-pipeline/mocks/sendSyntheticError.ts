@@ -1,6 +1,6 @@
 /**
  * Standalone script: POSTs a synthetic ErrorSignal at the running
- * ops-pipeline demo's /webhook endpoint (LOU-J8 README step).
+ * ops-pipeline demo's /webhook endpoint (README step).
  *
  * Usage: tsx examples/ops-pipeline/mocks/sendSyntheticError.ts [port]
  * (defaults to port 8787, matching index.ts's default monitor port)

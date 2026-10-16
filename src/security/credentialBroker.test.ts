@@ -73,7 +73,7 @@ function connect(b: CredentialBroker, target: string) {
   });
 }
 
-describe('createCredentialBroker (LOU-X12)', () => {
+describe('createCredentialBroker', () => {
   it('injects rule headers into plain-HTTP requests, replacing a client Authorization and dropping hop-by-hop headers', async () => {
     const b = await broker();
     const res = await viaProxy(b, `http://${upstreamHost}/repos?x=1`, {
@@ -168,7 +168,7 @@ describe('createCredentialBroker (LOU-X12)', () => {
     await expect(viaProxy(b, `http://${upstreamHost}/`)).rejects.toThrow(/ECONNREFUSED|ECONNRESET/);
   });
 
-  describe('listen() on another address for one subnet (LOU-X12.2)', () => {
+  describe('listen() on another address for one subnet', () => {
     /** Sends a plain-HTTP proxy request to `listenerUrl`; resolves with the status, or 'refused' when the connection is dropped. */
     function viaListener(listenerUrl: string, target: string) {
       const { hostname, port } = new URL(listenerUrl);

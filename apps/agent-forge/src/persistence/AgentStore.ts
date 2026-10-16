@@ -7,12 +7,12 @@ export interface AgentStoreEntry {
 }
 
 /**
- * Storage boundary for `AgentSpec`s (LOU-L3).
+ * Storage boundary for `AgentSpec`s.
  *
  * Two implementations: `createFsAgentStore()` (Node-only, the server's real
  * `.lousho/agents/*.yaml` files - persistence/fsAgentStore.ts) and
  * `HttpAgentStore` (the browser app's, which reads and writes that same
- * store over `GET/PUT/DELETE /agents` - Eve DUI-F2). The app's UI code only
+ * store over `GET/PUT/DELETE /agents`). The app's UI code only
  * ever depends on `AgentStore`, never on `localStorage` or `node:fs`.
  */
 export interface AgentStore {

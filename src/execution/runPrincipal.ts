@@ -1,5 +1,5 @@
 /**
- * N10b: the run's principal (N10a, docs/auth.md) as tools, approval policies,
+ * The run's principal (docs/auth.md) as tools, approval policies,
  * permission rules and sub-agents see it. One run has one principal: fixed
  * when it starts, stored with its checkpoints and approval snapshots, and kept
  * on resume whoever resumes it. A caller that decides an approval is the
@@ -50,7 +50,7 @@ export function samePrincipal(a: Principal, b: Principal): boolean {
 /**
  * The principal of a run continued from its unfinished checkpoint: the one it
  * was saved with (`undefined` for a run that had none, or a checkpoint written
- * before N10b). A call that passes no principal (`agent.resume()`, a
+ * before principals existed). A call that passes no principal (`agent.resume()`, a
  * session's pending turn) continues as that caller; a call that passes a
  * different one is refused, so its input never runs under another caller's
  * identity (`LOUSHO_CONFIG_INVALID`).

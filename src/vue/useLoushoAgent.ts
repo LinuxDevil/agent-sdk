@@ -1,5 +1,5 @@
 /**
- * LOU-P2: `useLoushoAgent()` for Vue 3, a composable over an agent's typed
+ * `useLoushoAgent()` for Vue 3, a composable over an agent's typed
  * event stream. Same state and actions as the React hook; the state logic
  * lives in the framework-neutral reducer and run logic (src/ui), this file
  * only holds the state in a `shallowRef`.

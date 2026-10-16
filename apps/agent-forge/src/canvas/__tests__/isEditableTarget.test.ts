@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { isEditableTarget } from '../isEditableTarget';
 
-/** Eve DUI-F10: Ctrl/Cmd+D inside a text field duplicated the selected node. */
-describe('isEditableTarget (Eve DUI-F10)', () => {
+/** Ctrl/Cmd+D inside a text field duplicated the selected node. */
+describe('isEditableTarget', () => {
   it('is true for fields and contenteditable (and anything inside them)', () => {
     document.body.innerHTML = `
       <input id="i" /><textarea id="t"></textarea><select id="s"></select>

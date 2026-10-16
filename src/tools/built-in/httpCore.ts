@@ -1,5 +1,5 @@
 /**
- * The Node-free core of the `http_request` tool (M3a), shared by the Node
+ * The Node-free core of the `http_request` tool, shared by the Node
  * tool (./http.ts) and the Cloudflare Worker tool (./workerHttp.ts): the
  * input schema, the request with its timeout and caller cancellation, the
  * manual redirect loop and the response reading.
@@ -124,7 +124,7 @@ async function readResponseBody(response: Response, httpError: (response: Respon
 }
 
 /**
- * Aborts `controller` when the caller's `signal` aborts (LOU-V1), so the
+ * Aborts `controller` when the caller's `signal` aborts, so the
  * run's cancellation reaches the in-flight fetch. Returns the unlink
  * function to call once the request settles.
  */
@@ -153,7 +153,7 @@ export interface HttpCoreRequest {
   method: HttpMethod;
   headers?: Record<string, string>;
   body?: string;
-  /** Cancels the request (LOU-V1). */
+  /** Cancels the request. */
   signal?: AbortSignal;
   timeoutMs: number;
   maxRedirects: number;

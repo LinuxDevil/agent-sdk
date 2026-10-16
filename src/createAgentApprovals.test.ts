@@ -1,5 +1,5 @@
 /**
- * LOU-D21: createAgent() agents pause for approval (in-memory store by
+ * CreateAgent() agents pause for approval (in-memory store by
  * default) and resume with `agent.approvals.resolve()` or an `approve` callback.
  */
 import { afterEach, describe, it, expect, vi } from 'vitest';
@@ -35,7 +35,7 @@ function toolResult(messages: readonly Message[]): Message | undefined {
   return messages.find((m) => m.role === 'tool' && m.toolCallId === 'call_email');
 }
 
-describe('createAgent approvals (LOU-D21)', () => {
+describe('createAgent approvals', () => {
   it('pauses on a needsApproval tool, then approving runs the tool and finishes', async () => {
     const { tool, execute } = emailTool();
     const agent = createAgent({ provider: mockModel([callEmail, 'Email sent.']), tools: [tool] });
@@ -196,7 +196,7 @@ describe('createAgent approvals (LOU-D21)', () => {
     const first = createAgent({ provider: mockModel([callEmail, 'Email sent.']), tools: [tool], approvalStore });
     const paused = await first.send('Email Sam');
 
-    // "after a restart": another agent over the same store lists the pause (Eve TOOLS-F13), and get() finds it
+    // "after a restart": another agent over the same store lists the pause, and get() finds it
     const second = createAgent({ provider: mockModel(['unused']), tools: [emailTool().tool], approvalStore });
     expect((await second.approvals.list()).map((entry) => entry.id)).toEqual([paused.approvalId]);
     expect(await second.approvals.get(paused.approvalId!)).toMatchObject({ id: paused.approvalId, toolName: 'send_email', args: { to: 'sam@example.com' } });
@@ -366,7 +366,7 @@ describe('createAgent approvals: expiry (TTL)', () => {
   });
 });
 
-describe('createAgent approvals: durable list and cross-process staleness (Eve TOOLS-F13, DUI-F15)', () => {
+describe('createAgent approvals: durable list and cross-process staleness', () => {
   const dirs: string[] = [];
   const opened: Array<{ close(): void }> = [];
   afterEach(() => {

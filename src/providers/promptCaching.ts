@@ -1,5 +1,5 @@
 /**
- * Eve PROV-F4: Anthropic prompt caching. Anthropic caches a request prefix
+ * Anthropic prompt caching. Anthropic caches a request prefix
  * only up to a `cache_control` breakpoint the request marks; OpenAI and most
  * others cache automatically. With `promptCaching: 'auto'` (the default) the
  * built-in Anthropic and OpenRouter providers mark, for Anthropic-family

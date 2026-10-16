@@ -1,5 +1,5 @@
 /**
- * N1b: hosted tools on the Anthropic provider, with a stubbed
+ * Hosted tools on the Anthropic provider, with a stubbed
  * `@ai-sdk/anthropic` whose `tools` object has the dated factories the test
  * chooses, and scripted `MockLanguageModelV4` results and streams on `ai` v7
  * (the `ai-v7` dev alias). Covers the factory choice (newest dated name

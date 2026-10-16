@@ -1,7 +1,7 @@
 import type { LogEntry } from '../../shared/wireTypes';
 
 /**
- * O1: client-side ring buffer cap. A real run can produce far more than the
+ * Client-side ring buffer cap. A real run can produce far more than the
  * mockup's static 8 log lines - this bounds memory/DOM growth instead of
  * letting `logs` grow unbounded for the lifetime of a long-running agent.
  */

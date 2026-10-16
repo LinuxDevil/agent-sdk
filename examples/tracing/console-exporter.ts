@@ -1,7 +1,7 @@
 /**
  * Console TraceExporter
  *
- * The simplest possible TraceExporter (LOU-E6): logs a line to the
+ * The simplest possible TraceExporter: logs a line to the
  * console when a span starts and another when it ends, indenting child
  * spans (matched via Span.parentId) under their parent for readability.
  * Useful for local development, or as a template for writing a bridge

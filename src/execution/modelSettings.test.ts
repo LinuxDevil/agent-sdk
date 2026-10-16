@@ -11,7 +11,7 @@ import { mergeModelSettings } from './modelSettings';
 const SETTING_KEYS = ['temperature', 'maxTokens', 'topP', 'frequencyPenalty', 'presencePenalty', 'stop', 'seed'];
 const sentSettings = (request: object) => SETTING_KEYS.filter((key) => key in request);
 
-describe('mergeModelSettings (C6)', () => {
+describe('mergeModelSettings', () => {
   it('merges layers key by key and leaves undefined keys out', () => {
     const merged = mergeModelSettings({ temperature: 0.5, maxTokens: 100 }, undefined, { maxTokens: 20, topP: undefined });
     expect(merged).toEqual({ temperature: 0.5, maxTokens: 20 });
@@ -19,7 +19,7 @@ describe('mergeModelSettings (C6)', () => {
   });
 });
 
-describe('createAgent modelSettings (C6, log F16, coding-local F11)', () => {
+describe('createAgent modelSettings', () => {
   it('sends no sampling keys at all when none is set', async () => {
     const model = mockModel(['Hi.']);
     await createAgent({ provider: model }).send('Hello');
@@ -82,7 +82,7 @@ describe('createAgent modelSettings (C6, log F16, coding-local F11)', () => {
   });
 });
 
-describe('AgentExecutor modelSettings (C6)', () => {
+describe('AgentExecutor modelSettings', () => {
   it('the run-level temperature / maxTokens win over modelSettings', async () => {
     const model = mockModel(['Hi.']);
     await AgentExecutor.execute({
@@ -98,7 +98,7 @@ describe('AgentExecutor modelSettings (C6)', () => {
   });
 });
 
-describe('modelSettings validation (Eve CORE-F13)', () => {
+describe('modelSettings validation', () => {
   const invalid = (error: unknown) => error as { code?: string; field?: string; message: string };
 
   it.each([

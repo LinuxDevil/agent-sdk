@@ -1,5 +1,5 @@
 /**
- * fileTraceExporter() (M5a): a TraceExporter that writes every finished span
+ * fileTraceExporter(): a TraceExporter that writes every finished span
  * as one JSON line to `<dir>/<YYYY-MM-DD>/<traceId>.jsonl`, for
  * `lousho traces` and anything else that reads the files. No backend, no
  * peer dependency.

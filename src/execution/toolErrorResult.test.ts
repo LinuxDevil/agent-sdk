@@ -63,7 +63,7 @@ function setup(execute: () => Promise<unknown>) {
   return { toolRegistry, agent };
 }
 
-describe('thrown tool errors reach the model (LOU-U12)', () => {
+describe('thrown tool errors reach the model', () => {
   it('sends a structured error, then the model recovers', async () => {
     let calls = 0;
     const { toolRegistry, agent } = setup(async () => {

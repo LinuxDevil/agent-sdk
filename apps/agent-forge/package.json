@@ -2,7 +2,7 @@
   "name": "@lousho/agent-forge",
   "version": "0.0.1",
   "private": true,
-  "description": "Agent Forge - visual dashboard for creating, running and debugging agents built with @lousho/build-ai-agent (LOU-L: app shell & data model).",
+  "description": "Agent Forge - visual dashboard for creating, running and debugging agents built with @lousho/build-ai-agent (app shell & data model).",
   "type": "module",
   "scripts": {
     "dev": "vite",

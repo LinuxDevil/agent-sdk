@@ -1,5 +1,5 @@
 /**
- * `web_fetch` (N13a): read one public web page as text.
+ * `web_fetch`: read one public web page as text.
  *
  * Node-only: it connects through an undici `Agent` whose `connect.lookup` is
  * the shared pinned lookup (src/security/privateAddress.ts), so every

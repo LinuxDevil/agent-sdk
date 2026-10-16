@@ -1,5 +1,5 @@
 /**
- * support-desk - Swarm-style customer support built on `createAgent({ handoffs })` (N6).
+ * support-desk - Swarm-style customer support built on `createAgent({ handoffs })`.
  *
  * The #1 production archetype for agent handoffs: a triage agent classifies the
  * request and hands the WHOLE conversation to a specialist, which replies to the

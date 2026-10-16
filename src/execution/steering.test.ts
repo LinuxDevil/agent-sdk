@@ -1,5 +1,5 @@
 /**
- * LOU-V10: steering - `run.steer()`, `InputQueue.steer()` and
+ * Steering - `run.steer()`, `InputQueue.steer()` and
  * `agent.session({ turnPolicy: 'steer' })`.
  */
 

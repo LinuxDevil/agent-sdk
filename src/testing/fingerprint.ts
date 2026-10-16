@@ -153,7 +153,7 @@ function canonicalize(value: unknown, depth = 0): unknown {
   if (Array.isArray(value)) return value.map((item) => canonicalize(item, depth + 1) ?? null);
   const zodDef = zodDefOf(value);
   if (zodDef) return zodFingerprint(zodDef, depth);
-  // A zod 4 schema (LOU-D29): the same fingerprint as zod 3's, so cassettes replay under either major.
+  // A zod 4 schema: the same fingerprint as zod 3's, so cassettes replay under either major.
   if (isZod4Schema(value)) return zod4Fingerprint(value, depth);
   const out: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value)) out[key] = canonicalize(child, depth + 1);
@@ -204,7 +204,7 @@ function digest(data: string | Uint8Array): string {
   return hash.toString(16).padStart(8, '0');
 }
 
-/** An image or file part (LOU-V11) as a short line: kind, type, name, and its URL or a digest of its data. */
+/** An image or file part as a short line: kind, type, name, and its URL or a digest of its data. */
 function describePart(part: ImageContentPart | FileContentPart): string {
   const data = part.type === 'image' ? part.image : part.data;
   const source = typeof data === 'string' && /^https?:\/\//i.test(data) ? data : `fnv1a:${digest(data)}`;

@@ -1,5 +1,5 @@
 /**
- * LOU-X8: `needsApproval` outcomes ('approve' | 'deny' | 'ask' | { deny })
+ * `needsApproval` outcomes ('approve' | 'deny' | 'ask' | { deny })
  * and the always() / never() / once() helpers.
  */
 
@@ -48,7 +48,7 @@ async function collect(run: AsyncIterable<AgentEvent>): Promise<AgentEvent[]> {
   return events;
 }
 
-describe('needsApproval outcomes (LOU-X8)', () => {
+describe('needsApproval outcomes', () => {
   it('a deny with a reason reaches the model as a denied tool error, and the run continues', async () => {
     const deploy = deployTool(async () => ({ deny: 'Deploys are frozen today' }));
     const model = mockModel([call('api'), 'I will not deploy.']);
@@ -91,7 +91,7 @@ describe('needsApproval outcomes (LOU-X8)', () => {
   });
 });
 
-describe('once() (LOU-X8)', () => {
+describe('once()', () => {
   it('asks the first time in a session, then approves later calls; a new session asks again', async () => {
     const deploy = deployTool(once());
     const agent = createAgent({ provider: mockModel([call('a'), 'one', call('b'), 'two', call('c')]), tools: [deploy.defined] });
@@ -162,7 +162,7 @@ describe('once() (LOU-X8)', () => {
   });
 });
 
-describe('precedence with permissions (LOU-X8)', () => {
+describe('precedence with permissions', () => {
   it('a permissions deny wins over an approving needsApproval', async () => {
     const deploy = deployTool(() => 'approve');
     const model = mockModel([call(), 'ok']);
@@ -184,7 +184,7 @@ describe('precedence with permissions (LOU-X8)', () => {
     expect(result.finishReason).toBe('awaiting-approval');
   });
 
-  it("a permissions allow or ask does not override the tool's own deny (LOU-X3 follow-up)", async () => {
+  it("a permissions allow or ask does not override the tool's own deny", async () => {
     for (const rule of [allow('deploy'), ask('deploy')]) {
       const deploy = deployTool(() => ({ deny: 'Frozen' }));
       const model = mockModel([call('a'), 'ok']);
@@ -205,7 +205,7 @@ describe('precedence with permissions (LOU-X8)', () => {
   });
 });
 
-describe('sub-agents (LOU-X8)', () => {
+describe('sub-agents', () => {
   const task = { toolCalls: [{ name: 'task', args: { agent: 'ops', prompt: 'deploy', description: 'deploy' } }] };
 
   it("a sub-agent's tool deny reaches the sub-agent's model", async () => {

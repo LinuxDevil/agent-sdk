@@ -7,11 +7,11 @@ import { startStudioServer, type StudioServerHandle } from '../index';
 import { allowedHostsFor, STUDIO_TOKEN_HEADER } from '../auth';
 
 /**
- * Eve DUI-F1: the studio API used to answer any origin
+ * The studio API used to answer any origin
  * (`Access-Control-Allow-Origin: *`) with no auth, while it stores provider
  * keys, starts runs and executes hook code.
  */
-describe('studio access control (Eve DUI-F1)', () => {
+describe('studio access control', () => {
   const TOKEN = 'test-token-0123456789';
   let baseDir: string;
   let staticDir: string;

@@ -49,14 +49,14 @@ function load(name) {
 
 /** Each command: the dist/cli module, its exported `run*` (resolves with the exit code), and whether it loads ./.env. */
 const COMMANDS = new Map([
-  // Scaffolds a new project (LOU-D3); see src/cli/init.ts. Also what `npm create lousho-agent` runs.
+  // Scaffolds a new project; see src/cli/init.ts. Also what `npm create lousho-agent` runs.
   ['init', { module: 'init', run: 'runInit' }],
   ['dev', { module: 'dev', run: 'runDev', env: true }],
-  // A terminal REPL for an agent (LOU-D33); see src/cli/chat.ts.
+  // A terminal REPL for an agent; see src/cli/chat.ts.
   ['chat', { module: 'chat', run: 'runChat', env: true }],
-  // Serves an agent over the Agent Client Protocol on stdio (LOU-Z6); see src/cli/acp.ts.
+  // Serves an agent over the Agent Client Protocol on stdio; see src/cli/acp.ts.
   ['acp', { module: 'acp', run: 'runAcp', env: true }],
-  // Installs a tool, skill, channel, schedule or memory slot from a JSON registry (LOU-D50); see src/cli/add.ts.
+  // Installs a tool, skill, channel, schedule or memory slot from a JSON registry; see src/cli/add.ts.
   ['add', { module: 'add', run: 'runAdd' }],
   ['build', { module: 'build', run: 'runBuild', env: true }],
   // Default 'auto': prod (single built server+UI) when apps/agent-forge has
@@ -69,7 +69,7 @@ const COMMANDS = new Map([
   ['doctor', { module: 'doctor', run: 'runDoctorCommand', env: true }],
   // Runs eval files under the project's vitest; the exit code is the verdict (see src/cli/eval.ts).
   ['eval', { module: 'eval', run: 'runEval', env: true }],
-  // Lists the runs fileTraceExporter() saved, or prints one as a span tree (M5a); see src/cli/traces.ts.
+  // Lists the runs fileTraceExporter() saved, or prints one as a span tree; see src/cli/traces.ts.
   ['traces', { module: 'traces', run: 'runTraces' }],
 ]);
 

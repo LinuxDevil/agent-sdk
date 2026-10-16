@@ -56,7 +56,7 @@ export interface HttpToolOptions {
 }
 
 /**
- * SSRF policy (N13a). IP-literal hosts are checked here, before any request:
+ * SSRF policy. IP-literal hosts are checked here, before any request:
  * a socket never resolves a literal, so nothing else would see it. Names are
  * checked by the transport at connection time with the shared pinned lookup
  * (src/security/privateAddress.ts): the one resolution of the name is the one
@@ -83,7 +83,7 @@ function ssrfFailure(host: string): Error {
 
 /**
  * Default transport: undici's `fetch` with a dedicated `Agent` (dispatcher)
- * whose `connect.lookup` is the pinned lookup (N13a), so every connection,
+ * whose `connect.lookup` is the pinned lookup, so every connection,
  * including each redirect target, resolves its host exactly once, refuses a
  * private address and connects to the address it checked. The same Agent
  * scopes `validateSSL: false` to this request rather than to the
@@ -94,7 +94,7 @@ function createDirectTransport(
   validateSSL: boolean,
   allowPrivate: readonly string[]
 ): { transport: HttpTransport; close: () => Promise<void> } {
-  // undici is loaded on first request, not at import time (LOU-D19).
+  // undici is loaded on first request, not at import time.
   let started = false;
   const load = lazyValue(async () => {
     const { Agent, fetch } = await loadOptionalPeer('undici', () => import('undici'));
@@ -115,13 +115,13 @@ function createDirectTransport(
 }
 
 /**
- * Transport that routes the request through a SandboxAdapter (LOU-K2) via
+ * Transport that routes the request through a SandboxAdapter via
  * sandboxHttpFetch() rather than calling undici's fetch directly - the
  * actual outbound network call happens inside `sandbox.run()` (a Node
  * subprocess under NoopSandbox; a real isolated command under e.g.
  * SubprocessSandbox) instead of in this process. The host is resolved and
  * checked here, once per hop, and the sandboxed process connects to that
- * checked address instead of resolving the name again (N13a).
+ * checked address instead of resolving the name again.
  */
 function createSandboxTransport(
   sandbox: SandboxAdapter,
@@ -146,7 +146,7 @@ interface HttpRequestArgs {
   headers?: Record<string, string>;
   body?: string;
   options?: HttpToolOptions;
-  /** Cancels the request (LOU-V1); it then rejects with an `AbortError`. */
+  /** Cancels the request; it then rejects with an `AbortError`. */
   signal?: AbortSignal;
 }
 
@@ -227,7 +227,7 @@ export async function makeHttpRequest(args: HttpRequestArgs): Promise<string> {
 
 /**
  * Same request/redirect/SSRF logic as makeHttpRequest(), but the actual
- * outbound fetch is performed through `sandbox` (LOU-K2) via
+ * outbound fetch is performed through `sandbox` via
  * sandboxHttpFetch() instead of calling undici's fetch directly in this
  * process. The sandboxed process connects to the address checked here.
  */
@@ -255,7 +255,7 @@ export function createHttpTool(options: HttpToolOptions = {}): ToolDescriptor {
       const signal = ctx?.abortSignal;
       return makeHttpRequest({ url, method, headers, body, options, signal });
     },
-    // LOU-K2: httpTool makes arbitrary, model-chosen outbound HTTP requests
+    // HttpTool makes arbitrary, model-chosen outbound HTTP requests
     // - the highest-risk built-in tool for a sandbox boundary to be
     // meaningful on. A caller going through executeToolWithSandboxGuard()
     // (AgentExecutor, resume.ts) gets the actual fetch routed through the

@@ -1,5 +1,5 @@
 /**
- * Pure aggregation and rendering for `lousho eval` (LOU-D8): the summary
+ * Pure aggregation and rendering for `lousho eval`: the summary
  * table, JUnit XML and JSON. No I/O, so every output is snapshot-testable.
  */
 import {
@@ -118,7 +118,7 @@ export function renderTable(results: readonly EvalResult[], strict: boolean): st
   ].join('\n');
 }
 
-/** One drifted field of one case (`lousho eval --drift`, LOU-D46). */
+/** One drifted field of one case (`lousho eval --drift`). */
 export interface DriftRow {
   result: EvalResult;
   /** A trajectory difference, or `cassette` when one side was never recorded. */

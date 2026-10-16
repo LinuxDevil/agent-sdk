@@ -1,5 +1,5 @@
 /**
- * Node runtime for generated deployment servers (LOU-I2/I4, LOU-D14).
+ * Node runtime for generated deployment servers.
  *
  * The server.ts that the node-server/docker adapters scaffold imports
  * `@lousho/build-ai-agent/deploy-runtime`; at build time that import is
@@ -8,7 +8,7 @@
  *
  * Provider/tool resolution is exactly specToAgent()'s (and so `lousho
  * dev`'s): real providers via resolveProvider() + env vars, 'mock' via
- * LLMProviderRegistry (create() registers the built-ins lazily, LOU-R1).
+ * LLMProviderRegistry (create() registers the built-ins lazily).
  */
 export { agentSpecSchema } from '../spec/schema';
 export type { AgentSpec } from '../spec/schema';

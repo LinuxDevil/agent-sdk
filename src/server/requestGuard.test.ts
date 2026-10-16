@@ -221,7 +221,7 @@ describe('default session owner', () => {
     }
   });
 
-  it('a concurrent first touch on an unowned session loses the claim: refused, and none of its input is streamed or stored (Eve2-F1)', async () => {
+  it('a concurrent first touch on an unowned session loses the claim: refused, and none of its input is streamed or stored', async () => {
     // The first transcript load is delayed so both owner checks observe the
     // session as unowned and unstored before either claim runs; the claim
     // itself must then decide the race - one caller wins, the other must be
@@ -265,7 +265,7 @@ describe('default session owner', () => {
     expect(retry?.status).toBe(403);
   });
 
-  it('a claim lost while a turn ran clears what it stored and ends the stream on a coded error (Eve2-F1)', async () => {
+  it('a claim lost while a turn ran clears what it stored and ends the stream on a coded error', async () => {
     // With the owner cap at one, a claim on another session evicts 's' while
     // alice's turn is still running; mallory then takes the unowned, still
     // unstored id through the session-less { message } route. Alice's commit

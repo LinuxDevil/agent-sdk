@@ -18,7 +18,7 @@ export interface FileMemoryOptions extends MemoryProviderOptions {
  * (temp file + rename). Each change holds a lock file (`<file>.lock`) while
  * it reads, changes and writes the key's file, so several `fileMemory`
  * providers - in this process or in other processes - can share `dir`
- * without losing each other's items (Eve MEM-F8). A lock left by a crashed
+ * without losing each other's items. A lock left by a crashed
  * process is taken over after 30 s. Windows' transient `EPERM` / `EACCES` /
  * `EBUSY` on read and rename are retried. The file name is the percent-encoded key with each
  * uppercase letter written as `^` and the lowercase letter, so keys that differ

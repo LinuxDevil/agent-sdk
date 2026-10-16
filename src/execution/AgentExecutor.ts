@@ -136,23 +136,23 @@ export { PropagatingToolError } from './propagatingToolError';
 
 /**
  * Why a run ended, as reported on `ExecutionResult.finishReason` and the
- * `finish` event. A closed union, so a typo does not compile (Eve CORE-F14).
+ * `finish` event. A closed union, so a typo does not compile.
  *
  * - `'stop'`, `'length'`, `'tool_calls'`, `'content_filter'`, `'error'`,
  *   `'other'`: the model's own finish reason for its last turn. A reason a
  *   provider reports outside this set is reported as `'other'`.
  * - `'awaiting-approval'`: paused on a tool call that needs a human
  *   decision (see `resumeAfterApproval()`).
- * - `'aborted'`: cancelled through `ExecuteOptions.signal` (LOU-V1).
+ * - `'aborted'`: cancelled through `ExecuteOptions.signal`.
  * - `'max-steps'`: the `maxSteps` budget ran out while the model still
- *   wanted to continue (LOU-U19). A run that finishes naturally within the
+ *   wanted to continue. A run that finishes naturally within the
  *   budget keeps the model's own reason (usually `'stop'`).
  * - `'output-invalid'`: the run has an `output` schema and the final reply
- *   was still not valid JSON matching it after one repair step (LOU-V4);
+ *   was still not valid JSON matching it after one repair step;
  *   see `ExecutionResult.outputError`.
- * - `'budget-exceeded'`: a `limits` budget tripped (LOU-V6); see
+ * - `'budget-exceeded'`: a `limits` budget tripped; see
  *   `ExecutionResult.budget`.
- * - `'guardrail'`: an input, output or tool guardrail blocked (LOU-X4); see
+ * - `'guardrail'`: an input, output or tool guardrail blocked; see
  *   `ExecutionResult.guardrail`.
  */
 export type ExecutionFinishReason =
@@ -174,7 +174,7 @@ export interface ExecuteOptions extends PermissionOptions {
   /** The tools the run may call. Omitted: the run has no tools. */
   toolRegistry?: ToolRegistry;
   /**
-   * N1a: tools the provider runs itself (`webSearch()`, `codeInterpreter()`,
+   * Tools the provider runs itself (`webSearch()`, `codeInterpreter()`,
    * `fileSearch()`, `hostedTool()`), sent with every model call of the run.
    * The run rejects with `LOUSHO_HOSTED_TOOL_UNSUPPORTED` when the provider
    * cannot send one (`provider.supportsHostedTool`). Their calls pass no
@@ -183,7 +183,7 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   hostedTools?: readonly HostedTool[];
   /**
-   * Skills (LOU-Y2): instructions the model loads on demand. Their names and
+   * Skills: instructions the model loads on demand. Their names and
    * descriptions are appended to the system prompt and a `load_skill` tool is
    * registered; bodies only enter the conversation when the model loads them.
    * Throws if a tool named `load_skill` is already registered.
@@ -193,7 +193,7 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   skills?: readonly Skill[];
   /**
-   * Sub-agents (LOU-Y3) this agent can delegate to: a record of
+   * Sub-agents this agent can delegate to: a record of
    * `createAgent()` agents keyed by name (each needs a `description`), or a
    * dynamic `{ list, resolve }` catalog (listed at the start of each run).
    * Registers ONE `task` tool (`{ agent, prompt, description }`) and lists the
@@ -207,14 +207,14 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   subagents?: Subagents;
   /**
-   * How deep sub-agents may nest (LOU-Y3). Defaults to 1: the lead agent can
+   * How deep sub-agents may nest. Defaults to 1: the lead agent can
    * call sub-agents, but they cannot call sub-agents of their own. A run at
    * the limit is simply not offered the `task` tool. The top-level run's
    * value applies to the whole tree.
    */
   maxSubagentDepth?: number;
   /**
-   * Span id to parent this run's `invoke_agent` span to (LOU-Y1). Set
+   * Span id to parent this run's `invoke_agent` span to. Set
    * automatically for a sub-agent, whose span becomes a child of the
    * parent's `execute_tool` span; set it yourself to nest a run inside your
    * own trace.
@@ -229,14 +229,14 @@ export interface ExecuteOptions extends PermissionOptions {
   /** The most model calls the run makes before it ends with `finishReason: 'max-steps'`. */
   maxSteps?: number;
   /**
-   * Eve CORE-F13: text appended to the system prompt of every model call of
+   * Text appended to the system prompt of every model call of
    * this run (`send(msg, { instructions })`), after the agent's own
    * instructions. Sent with each request, never written to the transcript, so
    * a continued `sessionId` run gets it too and a checkpoint never keeps it.
    */
   appendInstructions?: string;
   /**
-   * LOU-V6: token, cost, time and step budgets of this run, checked before
+   * Token, cost, time and step budgets of this run, checked before
    * every model call and after one that asks for tools; `maxDurationMs` also
    * aborts in-flight calls. A tripped limit ends the run with
    * `finishReason: 'budget-exceeded'` and `result.budget` (or throws
@@ -249,33 +249,33 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   limits?: RunLimits;
   /**
-   * LOU-X4: input, output and tool guardrails. A block ends the run with
+   * Input, output and tool guardrails. A block ends the run with
    * `finishReason: 'guardrail'` and `result.guardrail` (or throws
    * `GuardrailError` with `onTripped: 'throw'`); an input block makes no
    * model call. Sub-agents inherit them. See docs/guardrails.md.
    */
   guardrails?: AgentGuardrails;
-  /** LOU-V6: a session's `limits` and what its earlier turns spent; set by `agent.session({ limits })`. */
+  /** A session's `limits` and what its earlier turns spent; set by `agent.session({ limits })`. */
   sessionBudget?: SessionBudget;
   /** Sent on every model call; wins over the same key in {@link ExecuteOptions.modelSettings}. */
   temperature?: number;
   /** Sent on every model call; wins over the same key in {@link ExecuteOptions.modelSettings}. */
   maxTokens?: number;
   /**
-   * C6: sampling settings sent on every model call of the run (`maxTokens`,
+   * Sampling settings sent on every model call of the run (`maxTokens`,
    * `temperature`, `topP`, ...). A key left unset is not sent. Sub-agents
    * and handoff targets use their own. See docs/configuration.md#model-settings.
    */
   modelSettings?: ModelSettings;
   /**
-   * Eve PROV-F14: queues every model call of the run, its sub-agents and its
+   * Queues every model call of the run, its sub-agents and its
    * handoff targets under one budget (`createRateLimiter()`; `createAgent({ rateLimit })` sets it).
    */
   rateLimiter?: RateLimiter;
   /**
-   * LOU-D41: called with every {@link AgentEvent} of the run, synchronously
+   * Called with every {@link AgentEvent} of the run, synchronously
    * as it happens - the same events, in the same order, as `stream()`
-   * yields, on `execute()` too. M9: with a listener, `execute()` streams each
+   * yields, on `execute()` too. With a listener, `execute()` streams each
    * model call when the provider can, so a step's text arrives as several
    * `text.delta` events, as on `stream()` (see {@link ExecuteOptions.streamModelCalls}).
    * Sub-agents' events arrive tagged with `subagent`. See docs/streaming.md#listening-without-iterating.
@@ -287,7 +287,7 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   onAgentEvent?: (event: AgentEvent) => void;
   /**
-   * M9: whether a run with a listener (`onAgentEvent`) streams its
+   * Whether a run with a listener (`onAgentEvent`) streams its
    * model calls through `provider.stream()` when the provider can, so each
    * step's text reaches the listeners as several `text.delta` events.
    * Default `true`; `false` generates each step whole (one `text.delta` per
@@ -317,7 +317,7 @@ export interface ExecuteOptions extends PermissionOptions {
    * Durable execution: with `checkpointStore`, the run is checkpointed under
    * this id after every model response, as tool results are recorded, and
    * when it pauses, aborts or finishes. Calling `execute()` again with the
-   * same id (from any process) picks the session up (LOU-U8):
+   * same id (from any process) picks the session up:
    *
    * - Unfinished run (crashed or aborted): resumes it. Tool calls of its last
    *   model turn that have no result run first, without calling the model.
@@ -344,14 +344,14 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   sessionId?: string;
   /**
-   * Eve DUI-F5: the id tools, `needsApproval`, permission rules and tool-call
+   * The id tools, `needsApproval`, permission rules and tool-call
    * hooks see as `ctx.sessionId` when `sessionId` is only where the run is
    * checkpointed - a session turn's `<id>.turn-<n>` gets the session's `<id>`.
    * Default: `sessionId`. Kept in an approval's snapshot for the resumed run.
    */
   contextSessionId?: string;
   /**
-   * N10b: who the run acts for (docs/auth.md): handed, frozen, to tools
+   * Who the run acts for (docs/auth.md): handed, frozen, to tools
    * (`ctx.principal`), `needsApproval` policies, permission rules, tool-call
    * hooks and in-process sub-agents, and stored with checkpoints and approval
    * snapshots. Set it only from route auth or a channel's verified sender.
@@ -360,7 +360,7 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   principal?: Principal;
   /**
-   * LOU-R16: free-form per-run data (`createAgent`'s `send(x, { metadata })`)
+   * Free-form per-run data (`createAgent`'s `send(x, { metadata })`)
    * handed to every hook invocation as `ctx.metadata` - a correlation id, a
    * tenant, a request tag hooks read but the model never sees. In-process
    * sub-agents inherit it, and it is stored with checkpoints and approval
@@ -370,7 +370,7 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   metadata?: Record<string, unknown>;
   /**
-   * N9b: where tools' OAuth tokens live (`ctx.getToken()`, docs/oauth.md):
+   * Where tools' OAuth tokens live (`ctx.getToken()`, docs/oauth.md):
    * `createAgent()` passes its `store.tokens`. A tool that needs sign-in
    * pauses the run (`kind: 'sign-in'`); the pending sign-in is kept here too.
    */
@@ -399,13 +399,13 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   initialSteps?: number;
   /**
-   * Usage already spent by earlier work this run continues (LOU-V5), used
+   * Usage already spent by earlier work this run continues, used
    * when there is no checkpoint to rehydrate it from - e.g. resume.ts
    * resuming a run paused for approval. Ignored when a checkpoint is loaded.
    */
   initialUsage?: RunUsage;
   /**
-   * Tracing/observability hooks (LOU-E1/E2). These are invoked immediately
+   * Tracing/observability hooks. These are invoked immediately
    * before/after the underlying provider.generate() call and each tool
    * execution inside executeToolCall(). They are plain synchronous or
    * async callbacks - errors thrown from them are NOT swallowed and will
@@ -417,7 +417,7 @@ export interface ExecuteOptions extends PermissionOptions {
   /**
    * Invoked immediately after each provider.generate() call resolves,
    * with the elapsed wall-clock time in milliseconds and what the call
-   * spent (LOU-V5: reported usage, or an estimate flagged `estimated`).
+   * spent (reported usage, or an estimate flagged `estimated`).
    */
   onLLMResponse?: (
     response: GenerateResult,
@@ -445,9 +445,9 @@ export interface ExecuteOptions extends PermissionOptions {
     error?: unknown
   ) => void | Promise<void>;
   /**
-   * Trace exporter (LOU-E3/E4/E5). When provided, execute() wraps its run
-   * in a 3-level span tree following the OpenTelemetry GenAI conventions
-   * (LOU-D9): an `invoke_agent {name}` span, with a nested `chat {model}`
+   * Trace exporter. When provided, execute() wraps its run
+   * in a 3-level span tree following the OpenTelemetry GenAI conventions:
+   * an `invoke_agent {name}` span, with a nested `chat {model}`
    * span around each provider.generate() call and a nested
    * `execute_tool {tool}` span around each tool execution, both parented to
    * the agent span via Span.parentId. Omitted (or no exporter) means
@@ -474,7 +474,7 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   captureContent?: boolean;
   /**
-   * SandboxAdapter used for tools flagged `requiresSandbox` (LOU-F5). Since
+   * SandboxAdapter used for tools flagged `requiresSandbox`. Since
    * AgentExecutor is a static, instance-free API, this is read per-call
    * (`options.sandbox ?? NoopSandbox`) rather than held as construction
    * state. Defaults to NoopSandbox - the zero-isolation, trusted-host
@@ -482,7 +482,7 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   sandbox?: SandboxAdapter;
   /**
-   * Registered `AgentHook`s (LOU-Q1) to run at each pre/post tool-call and
+   * Registered `AgentHook`s to run at each pre/post tool-call and
    * pre/post generate point in the execution loop. Purely additive: when
    * omitted (the default), no hooks run and behavior is byte-for-byte
    * identical to before hooks existed. Hooks run in registration order
@@ -497,7 +497,7 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   hooks?: HookRegistry;
   /**
-   * LOU-T1: opaque, consumer-owned business/domain state (an order id, a
+   * Opaque, consumer-owned business/domain state (an order id, a
    * ticket id, a workflow stage, ...) written into every checkpoint record
    * alongside execution state, for the lifetime of this execute() call.
    * See `Checkpoint.businessState` (src/execution/checkpoint.ts) for the
@@ -509,7 +509,7 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   businessState?: unknown;
   /**
-   * LOU-T4: opt-in to Factor-9-style compaction of a `provider.generate()`
+   * Opt-in to Factor-9-style compaction of a `provider.generate()`
    * failure INTO the conversation (as a small `{error, category, ...}`
    * message the model itself sees on its next turn) for categories where
    * that's actually useful - 'rate-limit', 'timeout' and
@@ -524,7 +524,7 @@ export interface ExecuteOptions extends PermissionOptions {
    *   regardless of this flag): `execute()` rejects with a
    *   `CompactedLLMProviderError` (small message, no raw response
    *   body/stack, original error on `.cause`). This is a strict, ADDITIVE
-   *   improvement over the pre-LOU-T4 behavior of rejecting with whatever
+   *   improvement over the earlier behavior of rejecting with whatever
    *   raw error the specific provider adapter happened to throw - an
    *   existing `catch` block keeps working (still a rejected promise, still
    *   `instanceof LLMProviderError`, still has `.message`), it just sees a
@@ -546,7 +546,7 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   surfaceRetryableProviderErrors?: boolean;
   /**
-   * LOU-V1: cancels the run. The signal is checked before every model call
+   * Cancels the run. The signal is checked before every model call
    * and every tool call, and is forwarded to the provider (as
    * `GenerateOptions.signal`) and to each tool's
    * `execute(args, { abortSignal })` so in-flight work can stop early.
@@ -572,7 +572,7 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   signal?: AbortSignal;
   /**
-   * LOU-V9: input pushed while the run goes on (`inputQueue.push()`), so
+   * Input pushed while the run goes on (`inputQueue.push()`), so
    * a non-streaming caller can add to it like `run.enqueue()` does. Each
    * input joins the transcript at the next safe point - after the current
    * step's tool results, before the next model call - and a run whose model
@@ -582,7 +582,7 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   inputQueue?: InputQueue;
   /**
-   * LOU-V3: how many tool calls from ONE model turn may run at the same
+   * How many tool calls from ONE model turn may run at the same
    * time. Defaults to `'unbounded'` (every call of the turn runs
    * concurrently); `1` restores strictly sequential execution. Must be a
    * positive integer or `'unbounded'`.
@@ -600,7 +600,7 @@ export interface ExecuteOptions extends PermissionOptions {
    *   before it run (concurrently) and are recorded; the run then pauses
    *   on that call (`finishReason: 'awaiting-approval'`); calls after it
    *   never start in this run. `resumeAfterApproval()` records the paused
-   *   call's result and then runs the calls after it the same way (LOU-U7).
+   *   call's result and then runs the calls after it the same way.
    * - A failing tool does not affect its siblings - each gets its own error
    *   result. A propagating error (`PropagatingToolError`, a throwing hook)
    *   stops new calls from starting, waits for the running ones, then
@@ -619,7 +619,7 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   toolConcurrency?: ToolConcurrency;
   /**
-   * Eve TOOLS-F8: the most characters of one tool result the model gets (its
+   * The most characters of one tool result the model gets (its
    * JSON, as the `tool` message content). A longer result keeps its head and
    * tail with a marker saying how much was cut. Default 50_000 (about 12k
    * tokens); `Infinity` turns the cap off. `onToolResult`, hooks and
@@ -627,13 +627,13 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   maxToolResultChars?: number;
   /**
-   * LOU-V4: a zod schema the final reply must match, as JSON (tools can
+   * A zod schema the final reply must match, as JSON (tools can
    * still be called first). It is validated into `result.object`; an invalid
    * reply gets one repair step (counted against `maxSteps`), then the run
    * ends with `finishReason: 'output-invalid'` and `outputError`. See
    * docs/structured-output.md. As `{ schema, promptSchema: false }`, the
    * schema is sent only on `responseFormat`, not in the system prompt too
-   * (audit invoice F12).
+   *.
    *
    * @example
    * ```ts
@@ -642,14 +642,14 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   output?: StandardSchemaV1 | OutputSpec;
   /**
-   * LOU-Y4.2: called exactly once when this run ends, however it ends: with
+   * Called exactly once when this run ends, however it ends: with
    * `{ result }` when it resolves (any `finishReason`, including `'aborted'`,
    * `'awaiting-approval'` and `'max-steps'`) or `{ error }` when it rejects.
    * The run settles after it returns; an error it throws rejects the run.
    */
   onRunEnd?: (end: { result?: ExecutionResult; error?: unknown }) => void | Promise<void>;
   /**
-   * LOU-W9.2: what to do when a checkpointed run is resumed (`sessionId`
+   * What to do when a checkpointed run is resumed (`sessionId`
    * + `checkpointStore`, an unfinished run) or paused run is continued
    * (`resumeAfterApproval()`) by an agent that differs from the one that saved
    * it: a different model, tools with other names or input schemas, other
@@ -663,27 +663,27 @@ export interface ExecuteOptions extends PermissionOptions {
    */
   onAgentDrift?: AgentDriftMode;
   /**
-   * LOU-V13: how much the model reasons, sent on every model call of the run
+   * How much the model reasons, sent on every model call of the run
    * (`GenerateOptions.reasoning`). See docs/reasoning.md.
    */
   reasoning?: ReasoningOption;
   /**
-   * Eve PROV-F4: Anthropic prompt caching on every model call of the run
+   * Anthropic prompt caching on every model call of the run
    * (`GenerateOptions.promptCaching`); `'auto'` when unset. See docs/models-and-cost.md#prompt-caching.
    */
   promptCaching?: PromptCachingOption;
   /**
-   * N6: agents this run can hand the conversation to, one tool each. A call
+   * Agents this run can hand the conversation to, one tool each. A call
    * to one is not run as a tool: once the other calls of its step are done,
    * the run goes on with the target's configuration (`ResolvedHandoff.spec()`)
    * on the transcript its `inputFilter` returns. `createAgent({ handoffs })`
    * sets this; see docs/handoffs.md.
    */
   handoffs?: readonly ResolvedHandoff[];
-  /** N6: how many handoffs one run may make (default 5); a handoff call over it gets a tool error. */
+  /** How many handoffs one run may make (default 5); a handoff call over it gets a tool error. */
   maxHandoffs?: number;
   /**
-   * N2: tunes tool search. Tools marked `deferLoading` (by `defineTool()` or
+   * Tunes tool search. Tools marked `deferLoading` (by `defineTool()` or
    * an MCP server) are withheld from the model, which finds them with the
    * built-in `tool_search` tool, once their definitions reach
    * `thresholdPercent` (default 10%) of the context window. `false` sends
@@ -703,20 +703,20 @@ export interface ExecuteOptions extends PermissionOptions {
  */
 export interface ExecutionResult<TObject = unknown> {
   text: string;
-  /** LOU-V13: the model's reasoning text over the run's steps, when it reported any (never part of `text` or `messages` content). */
+  /** The model's reasoning text over the run's steps, when it reported any (never part of `text` or `messages` content). */
   reasoning?: string;
   messages: Message[];
   toolCalls: ToolCall[];
   /**
    * Tokens, cost and per-model breakdown of the whole run, including
-   * delegated children and steps before a resume (LOU-V5). See `formatUsage()`.
+   * delegated children and steps before a resume. See `formatUsage()`.
    */
   usage: RunUsage;
-  /** One entry per model call of this process's run, in order (LOU-V5). */
+  /** One entry per model call of this process's run, in order. */
   stepUsage?: StepUsage[];
   finishReason: ExecutionFinishReason;
   /**
-   * Eve CORE-F15: why a run that ended `'aborted'` was aborted - the
+   * Why a run that ended `'aborted'` was aborted - the
    * signal's `reason` as `{ name, message }`: `'TimeoutError'` for
    * `AbortSignal.timeout()`, `'AbortError'` for a plain
    * `controller.abort()`, an Error reason's own name and message, or
@@ -739,7 +739,7 @@ export interface ExecutionResult<TObject = unknown> {
   /** With `finishReason: 'awaiting-approval'`, the pending approval to decide (the first of `approvalIds`). */
   approvalId?: string;
   /**
-   * Eve TOOLS-F12: with `finishReason: 'awaiting-approval'`, every approval
+   * With `finishReason: 'awaiting-approval'`, every approval
    * the paused step waits on, in call order (`approvalId` is the first). When
    * one model step has several calls that need approval, the run pauses once
    * on all of them: decide each (`agent.approvals.resolve()`, in any order,
@@ -747,50 +747,50 @@ export interface ExecutionResult<TObject = unknown> {
    * is decided.
    */
   approvalIds?: string[];
-  /** LOU-V4: the final reply parsed and validated with `output`; absent unless it was valid. */
+  /** The final reply parsed and validated with `output`; absent unless it was valid. */
   object?: TObject;
-  /** LOU-V4: why the final reply did not match `output` (`finishReason: 'output-invalid'`). */
+  /** Why the final reply did not match `output` (`finishReason: 'output-invalid'`). */
   outputError?: OutputError;
   /**
-   * Audit invoice F6: `true` when `object` came from the repair step - the
+   * `true` when `object` came from the repair step - the
    * first reply did not validate, and the model answered again. The repair
    * may change values to satisfy the schema (a refinement such as
    * `total = subtotal + tax` can make it rewrite a total), so check business
    * rules on `object` yourself. Absent when the first reply validated.
    */
   outputRepaired?: true;
-  /** LOU-Y4.2: the run's background sub-agents and their final statuses; absent when it started none. */
+  /** The run's background sub-agents and their final statuses; absent when it started none. */
   backgroundTasks?: BackgroundTaskView[];
-  /** LOU-V6: the limit that ended the run (`finishReason: 'budget-exceeded'`). */
+  /** The limit that ended the run (`finishReason: 'budget-exceeded'`). */
   budget?: BudgetExceeded;
   /**
-   * H3-3: how many of the run's tool calls ended in an error result (the tool
+   * How many of the run's tool calls ended in an error result (the tool
    * threw, its arguments were invalid, it was unknown, denied or rejected).
    * Absent when none did. The model saw each error and may still have
    * answered (`finishReason: 'stop'`), so check this before trusting `text`;
    * `limits.maxToolErrors` stops the run instead (docs/tools.md#failed-calls-in-the-result).
    */
   toolErrors?: number;
-  /** LOU-X4: the guardrail that ended the run (`finishReason: 'guardrail'`). */
+  /** The guardrail that ended the run (`finishReason: 'guardrail'`). */
   guardrail?: GuardrailTrip;
-  /** N6: the agent that produced the final reply: the run's own, or the one it handed off to (docs/handoffs.md). */
+  /** The agent that produced the final reply: the run's own, or the one it handed off to (docs/handoffs.md). */
   agentName?: string;
 }
 
 /**
  * Applies `skills` and `subagents`: their prompt blocks and their tools.
  * Module-level (exported) so resume.ts runs the same extension for the
- * target of an approved handoff (N6) as execute() does for a fresh run.
+ * target of an approved handoff as execute() does for a fresh run.
  */
 export async function extendRunOptions(options: ExecuteOptions): Promise<ExecuteOptions> {
   const skilled = withSkills(options.agent, options.toolRegistry, options.skills);
   const subagented = await withSubagents(skilled.agent, skilled.toolRegistry, options.subagents, options);
-  // N2: the deferral is the active agent's own; set on every call, so a handoff target never keeps the lead's.
+  // The deferral is the active agent's own; set on every call, so a handoff target never keeps the lead's.
   const { deferral, ...searched } = withToolSearch(options, subagented.agent, subagented.toolRegistry);
-  // N14: `run_code` sees the run's tools as they are now (deferred ones are not callable by default).
+  // `run_code` sees the run's tools as they are now (deferred ones are not callable by default).
   const coded = await withCodeMode(options, searched.agent, searched.toolRegistry, deferral);
   const extended = { ...subagented, ...coded };
-  // N4: a run that starts in plan mode is told so. LOU-V4: the output instruction goes last in the system prompt.
+  // A run that starts in plan mode is told so. the output instruction goes last in the system prompt.
   const { agent } = extended;
   const blocks = [...(permissionModeOf(options) === 'plan' ? [PLAN_MODE_INSTRUCTION] : []), ...(options.output ? [outputInstruction(options.output)] : [])];
   if (blocks.length === 0) return withDeferral({ ...options, ...extended }, deferral);
@@ -805,7 +805,7 @@ export async function extendRunOptions(options: ExecuteOptions): Promise<Execute
 export class AgentExecutor {
   /**
    * Runs the agent to its result. With a listener (`onAgentEvent`), its
-   * model calls are streamed to it (M9; see
+   * model calls are streamed to it (see
    * {@link ExecuteOptions.streamModelCalls}).
    */
   static async execute(options: ExecuteOptions): Promise<ExecutionResult> {
@@ -817,9 +817,9 @@ export class AgentExecutor {
     // throwing because `provider` was never checked).
     this.validateExecuteOptions(options);
 
-    // LOU-D41: the run reports to its listeners through its event sink.
+    // The run reports to its listeners through its event sink.
     return observeRun(options, (observed) => {
-      // The entire run is wrapped in a top-level 'agent.run' span (LOU-E5),
+      // The entire run is wrapped in a top-level 'agent.run' span,
       // whose `id` is threaded as `parentId` into the nested 'llm.generate'
       // and 'tool.call' spans, giving the 3-level span tree its parent/child
       // relationships without any instance state.
@@ -839,11 +839,11 @@ export class AgentExecutor {
     });
   }
 
-  /** runAgentLoop() with `skills`/`subagents` applied, then `onRunEnd` once, however the run ends (LOU-Y4.2). */
+  /** runAgentLoop() with `skills`/`subagents` applied, then `onRunEnd` once, however the run ends. */
   private static async runWithEnd(options: ExecuteOptions, agentSpanId: string): Promise<ExecutionResult> {
     let run = options;
     let end: { result?: ExecutionResult; error?: unknown } = {};
-    // LOU-V6: a `maxDurationMs` budget aborts the run's signal.
+    // A `maxDurationMs` budget aborts the run's signal.
     const budget = startBudget(options.limits, options.sessionBudget, options.signal, isMockProvider(options.provider));
     try {
       run = await extendRunOptions(budget ? { ...options, signal: budget.signal } : options);
@@ -863,7 +863,7 @@ export class AgentExecutor {
   /**
    * Runs the agent like {@link AgentExecutor.execute} - same options, same
    * loop, same `ExecutionResult` - and streams the run as typed
-   * `AgentEvent`s (LOU-V2). Model output is streamed through
+   * `AgentEvent`s. Model output is streamed through
    * `provider.stream()` when the provider has it (one `text.delta` per
    * chunk); otherwise each step uses `generate()` and emits its text as a
    * single `text.delta`. `onAgentEvent` gets the same events; the other callbacks still fire.
@@ -892,7 +892,7 @@ export class AgentExecutor {
   }
 
   /**
-   * Forks a checkpointed run at an earlier step (LOU-D44): takes the newest
+   * Forks a checkpointed run at an earlier step: takes the newest
    * entry of `fromStep` in the session's checkpoint history, applies `patch`
    * (rewrite messages, replace a tool result, change `businessState`, queue
    * a user message) and saves it as the `'in-progress'` checkpoint of a new
@@ -912,7 +912,7 @@ export class AgentExecutor {
 
   /**
    * The actual execution loop, split out of execute() so the top-level
-   * 'agent.run' span (LOU-E5) can wrap it via withSpan() while still
+   * 'agent.run' span can wrap it via withSpan() while still
    * exposing execute() as the same static, instance-free entry point.
    */
   private static async runAgentLoop(
@@ -923,9 +923,9 @@ export class AgentExecutor {
     const { agent } = options;
     runEventsOf(options)?.runStart(agent);
 
-    // Build tools (N6: and one per handoff)
+    // Build tools (and one per handoff)
     const tools = runTools(options);
-    // N1a: the provider must be able to send every hosted tool.
+    // The provider must be able to send every hosted tool.
     assertHostedToolsSupported(options.hostedTools, agent, options.provider);
 
     // A checkpointed run holds its id's run lease while it runs, so another process cannot resume it meanwhile.
@@ -937,9 +937,9 @@ export class AgentExecutor {
       try {
         return await this.runLoadedAgentLoop(options, state, tools, agentSpanId, budget);
       } catch (error) {
-        // Eve MA-F1: a lead that ran this as a sub-agent still counts what it spent before failing.
+        // A lead that ran this as a sub-agent still counts what it spent before failing.
         attachRunUsage(error, state.usage);
-        // H1-3: the run's checkpoint says why it failed, so `agent.pending()` can tell it from a crash.
+        // The run's checkpoint says why it failed, so `agent.pending()` can tell it from a crash.
         await recordRunFailure(options, state, error).catch(() => undefined);
         throw error;
       }
@@ -956,30 +956,30 @@ export class AgentExecutor {
     agentSpanId: string,
     budget?: RunBudget
   ): Promise<ExecutionResult> {
-    // N10b: the run's principal, as loaded (an unfinished checkpoint's wins), frozen once. `options` is
+    // The run's principal, as loaded (an unfinished checkpoint's wins), frozen once. `options` is
     // this run's own copy (extendRunOptions() made it), and the scope every tool call hands on.
     options.principal = state.principal;
-    // LOU-R16: likewise the run's metadata (an unfinished checkpoint's fills in when this call set none).
+    // Likewise the run's metadata (an unfinished checkpoint's fills in when this call set none).
     options.metadata = state.metadata;
     await checkResumedAgent(options, state, tools);
     state.budget = budget;
-    // LOU-X4: the new input is checked before anything else runs.
+    // The new input is checked before anything else runs.
     const blocked = await checkInputGuardrails(options, [state.messages, state.queuedInput]);
     if (blocked) return this.stopForGuardrail(options, state, blocked);
-    // N5b: the `runInParallel` ones check the (possibly rewritten) input while the first model call runs.
+    // The `runInParallel` ones check the (possibly rewritten) input while the first model call runs.
     state.inputCheck = startParallelInputGuardrails(options, [...state.messages, ...state.queuedInput]);
 
     options.inputQueue?.listen((queued) => {
       runEventsOf(options)?.inputQueued(queued);
-      // LOU-V9: checkpointed at once, so a crash before it is applied does not lose it.
+      // Checkpointed at once, so a crash before it is applied does not lose it.
       saveStepCheckpoint(options, state).catch(() => undefined);
     });
 
-    // LOU-U7/U9: a resumed transcript may end with a model turn whose tool
+    // A resumed transcript may end with a model turn whose tool
     // calls (some of them) have no result yet - finish those first, without
     // calling the model again.
     if (state.pendingToolCalls.length > 0) {
-      // N5b: no tool runs before the parallel input guardrails passed.
+      // No tool runs before the parallel input guardrails passed.
       const blockedLate = await this.settleInputCheck(options, state);
       if (blockedLate) return blockedLate;
       const resumed = await this.runStepOrAbort(options, state, () =>
@@ -988,7 +988,7 @@ export class AgentExecutor {
       if (resumed !== 'continue') {
         return resumed;
       }
-      // N6: the resumed step handed off.
+      // The resumed step handed off.
       if (state.switched) return this.runSwitched(state, agentSpanId);
     }
 
@@ -1002,11 +1002,11 @@ export class AgentExecutor {
     tools: ToolDefinition[],
     agentSpanId: string
   ): Promise<ExecutionResult> {
-    // N6: counted across the agents of the run (a handoff keeps the run's maxSteps).
+    // Counted across the agents of the run (a handoff keeps the run's maxSteps).
     const maxSteps = maxStepsOf(options);
     let repaired = false;
 
-    // Execution loop with tool calling. LOU-V1: the signal is checked
+    // Execution loop with tool calling. the signal is checked
     // before every model call (here) and every tool call (runToolCalls()).
     while (state.steps < maxSteps) {
       const stopped = this.stopBeforeStep(options, state, agentSpanId, tools);
@@ -1019,7 +1019,7 @@ export class AgentExecutor {
       const outcome = await this.runStepOrAbort(options, state, () =>
         this.runStep(options, state, tools, agentSpanId)
       );
-      // N6: the step handed off; the run goes on as the target.
+      // The step handed off; the run goes on as the target.
       if (state.switched) return this.runSwitched(state, agentSpanId);
       if (await this.stepsOnForInput(options, state, outcome, maxSteps)) {
         continue;
@@ -1030,7 +1030,7 @@ export class AgentExecutor {
           repaired = true;
           continue;
         }
-        // Audit invoice F6: the object came from the repair step, which may have changed values to make it validate.
+        // The object came from the repair step, which may have changed values to make it validate.
         return this.finishRun(options, state, repaired && output && 'object' in output ? { ...output, outputRepaired: true } : output);
       }
       if (typeof outcome !== 'string') {
@@ -1046,7 +1046,7 @@ export class AgentExecutor {
     if (options.signal?.aborted) {
       return this.abortRun(options, state);
     }
-    // Audit log-incident F21: with `output` set, one last tool-less call
+    // With `output` set, one last tool-less call
     // lets the model answer from what it gathered instead of returning
     // nothing.
     if (options.output) {
@@ -1055,7 +1055,7 @@ export class AgentExecutor {
       if (state.finishReason !== 'output-invalid') state.finishReason = 'max-steps';
       return this.finishRun(options, state, output);
     }
-    // LOU-U19: every non-final turn 'continue's, so leaving the loop here
+    // Every non-final turn 'continue's, so leaving the loop here
     // means the step budget (counting `initialSteps` of a resumed run) is
     // spent while the model still wanted to go on.
     state.finishReason = 'max-steps';
@@ -1064,7 +1064,7 @@ export class AgentExecutor {
 
   /**
    * The salvage call when `maxSteps` ran out with an `output` schema still
-   * unanswered (audit log-incident F21): one more model call, no tools
+   * unanswered: one more model call, no tools
    * offered (a transcript with tool calls sends the run's tools with
    * `toolChoice: 'none'`), asking the model to answer from what it gathered. Its reply is
    * validated like a normal final reply - a valid object ends the run
@@ -1110,7 +1110,7 @@ export class AgentExecutor {
     return checked === 'repair' ? undefined : checked;
   }
 
-  /** N6: the rest of the run, as the agent the last step handed off to. */
+  /** The rest of the run, as the agent the last step handed off to. */
   private static runSwitched(state: AgentRunState, agentSpanId: string): Promise<ExecutionResult> {
     const { options, tools } = state.switched as NonNullable<AgentRunState['switched']>;
     state.switched = undefined;
@@ -1119,8 +1119,8 @@ export class AgentExecutor {
 
   /**
    * Whether the loop takes another step for waiting input: after a step a
-   * steer aborted (LOU-V10), or after a final reply with input queued during
-   * it (LOU-V9). It does once the checkpoint holding that input is written.
+   * steer aborted, or after a final reply with input queued during
+   * it. It does once the checkpoint holding that input is written.
    */
   private static async stepsOnForInput(
     options: ExecuteOptions,
@@ -1134,7 +1134,7 @@ export class AgentExecutor {
     return true;
   }
 
-  /** LOU-V9: appends the queued input to the transcript, for the model call of step `state.steps`. */
+  /** Appends the queued input to the transcript, for the model call of step `state.steps`. */
   private static applyQueuedInput(options: ExecuteOptions, state: AgentRunState): void {
     for (const queued of options.inputQueue?.take() ?? []) {
       state.messages.push(...queued.messages);
@@ -1142,7 +1142,7 @@ export class AgentExecutor {
     }
   }
 
-  /** The run's end when it must stop before the next model call: aborted (LOU-V1) or over budget (LOU-V6). */
+  /** The run's end when it must stop before the next model call: aborted or over budget. */
   private static stopBeforeStep(options: ExecuteOptions, state: AgentRunState, agentSpanId: string, tools: ToolDefinition[]): Promise<ExecutionResult> | undefined {
     if (options.signal?.aborted) return this.abortRun(options, state);
     const exceeded = state.budget?.check(state.usage, state.steps, false, countToolErrors(state));
@@ -1153,7 +1153,7 @@ export class AgentExecutor {
   }
 
   /**
-   * Eve CORE-F5: a `limits.maxSteps` that runs out with an `output` schema
+   * A `limits.maxSteps` that runs out with an `output` schema
    * still unanswered gets the same forced answer as `maxSteps`
    * ({@link forcedAnswer}). The run still ends 'budget-exceeded' with
    * `result.budget` - with `object` when the answer validated, or
@@ -1174,11 +1174,11 @@ export class AgentExecutor {
   }
 
   /**
-   * LOU-V4: with `output`, parses and validates the final reply. When it is
+   * With `output`, parses and validates the final reply. When it is
    * invalid and `canRepair`, queues the issues for one more step ('repair');
    * otherwise ends the run as 'output-invalid'. A reply cut off at the
    * `maxTokens` limit (`truncated`) gets no repair - it would be cut off the
-   * same way - and reports `outputError.kind: 'truncated'` (Eve CORE-F12).
+   * same way - and reports `outputError.kind: 'truncated'`.
    */
   private static async checkOutput(
     options: ExecuteOptions,
@@ -1194,7 +1194,7 @@ export class AgentExecutor {
       return { outputError: truncatedOutput(checked) };
     }
     if (canRepair) {
-      // Eve CORE-F3: the rejected reply and the repair prompt go to the next model call only.
+      // The rejected reply and the repair prompt go to the next model call only.
       const rejected = state.messages.at(-1);
       const prompt = outputRepairMessage(options.output, checked);
       state.messages.push(prompt);
@@ -1210,11 +1210,11 @@ export class AgentExecutor {
 
   /**
    * Runs one step (runStep(), or the resumed pending tool calls of the
-   * current step - LOU-U7/U9), bracketed by the stream's step events, with
+   * current step), bracketed by the stream's step events, with
    * a thrown error emitted as an `error` event and rethrown - unless the
    * run's signal was aborted, in which case the rejection is the abort
    * itself (e.g. the provider's AbortError) and the run ends as 'aborted'
-   * instead (LOU-V1).
+   * instead.
    */
   private static async runStepOrAbort<T extends string>(
     options: ExecuteOptions,
@@ -1262,14 +1262,14 @@ export class AgentExecutor {
     // happened was a provider failure" tracking no longer applies.
     state.lastSurfacedProviderError = undefined;
 
-    // Update usage (LOU-V5)
+    // Update usage
     const stepUsage = recordStep(state, measured);
-    // N1a: the provider already ran its hosted calls; they are counted, never run here.
+    // The provider already ran its hosted calls; they are counted, never run here.
     countHostedCalls(state.usage, generated.hostedToolCalls);
 
     const text = await this.guardOutput(options, state, generated);
     if (typeof text !== 'string') return text;
-    // F13: `functions.read_file` runs `read_file` when that is a known tool.
+    // `functions.read_file` runs `read_file` when that is a known tool.
     const known = new Set([...tools.map((tool) => tool.function.name), ...(options.toolRegistry?.list() ?? [])]);
     const toolCalls = resolveToolCallNames(generated.toolCalls, known);
     // A reply that ends 'tool_calls' without any call (no tool runs) ended like any final reply.
@@ -1286,7 +1286,7 @@ export class AgentExecutor {
 
     // Handle tool calls
     if (result.toolCalls && result.toolCalls.length > 0) {
-      // LOU-V6: a budget spent by this call stops the run before its tools run.
+      // A budget spent by this call stops the run before its tools run.
       const exceeded = state.budget?.check(state.usage, state.steps, true);
       if (exceeded) {
         state.toolCalls.push(...result.toolCalls);
@@ -1321,10 +1321,10 @@ export class AgentExecutor {
   }
 
   /**
-   * LOU-X4: the step's text after the output guardrails (they check the final
+   * The step's text after the output guardrails (they check the final
    * reply, and every step's text when the run is iterated - a `stream()` -
    * before it is emitted), or the blocked run's result. `send()` / `execute()`
-   * with listeners stream their model calls (M9) but are not iterated: only
+   * with listeners stream their model calls but are not iterated: only
    * the final reply is checked, as without listeners.
    */
   private static async guardOutput(
@@ -1340,9 +1340,9 @@ export class AgentExecutor {
   /**
    * Calls provider.generate() for the next turn. Resolves to `undefined`
    * when the failure was instead folded into the conversation for the
-   * model to react to (LOU-T4 `surfaceRetryableProviderErrors`), or
+   * model to react to (`surfaceRetryableProviderErrors`), or
    * `'steered'` when `run.steer()` aborted the call before it emitted
-   * anything (LOU-V10): its partial output is dropped.
+   * anything: its partial output is dropped.
    */
   private static async generateOrSurfaceError(
     options: ExecuteOptions,
@@ -1350,7 +1350,7 @@ export class AgentExecutor {
     tools: ToolDefinition[],
     agentSpanId: string
   ): Promise<GeneratedStep | 'steered' | ExecutionResult | undefined> {
-    // N5b: the first call runs alongside the parallel input guardrails; their trip aborts it alone.
+    // The first call runs alongside the parallel input guardrails; their trip aborts it alone.
     const inputCheck = state.inputCheck;
     state.inputCheck = undefined;
     const steerSignal = options.inputQueue?.startCall();
@@ -1358,14 +1358,14 @@ export class AgentExecutor {
     const partial = { text: '' };
     let called = false;
     try {
-      // Audit C4: a hook's side calls (the compaction summarizer) count in the run's usage and budgets.
+      // A hook's side calls (the compaction summarizer) count in the run's usage and budgets.
       const sideGenerate = sideGenerator(options, agentSpanId, (measured) => recordStepUsage(state.usage, measured));
       const generateRequest = await prepareGenerateRequest(options, state.messages, tools, callSignal, sideGenerate);
       callSignal?.throwIfAborted();
       called = true;
       const generated = await generateInSpan(options, generateRequest, state.messages, agentSpanId, callSignal, inputCheck, partial);
       callSignal?.throwIfAborted();
-      // Eve CORE-F15: a provider that ignored the signal still ends the run 'aborted', its late reply dropped.
+      // A provider that ignored the signal still ends the run 'aborted', its late reply dropped.
       if (options.signal?.aborted) {
         recordStep(state, generated.measured);
         called = false;
@@ -1373,10 +1373,10 @@ export class AgentExecutor {
       }
       return generated;
     } catch (generateError) {
-      // N5b: whatever else happened, a blocked input wins; nothing goes on before the checks settled.
+      // Whatever else happened, a blocked input wins; nothing goes on before the checks settled.
       const blocked = await this.settleInputCheck(options, state, inputCheck);
       if (blocked) return blocked;
-      // Eve CORE-F11: a call the run's signal stopped still costs its tokens, and keeps what it streamed.
+      // A call the run's signal stopped still costs its tokens, and keeps what it streamed.
       if (called && options.signal?.aborted) {
         recordStep(state, measureAbortedCall(options, state.messages, partial.text));
         if (partial.text) state.interruptedText = partial.text;
@@ -1391,7 +1391,7 @@ export class AgentExecutor {
    * The generate() failure path of {@link generateOrSurfaceError}: `'steered'`
    * when `run.steer()` aborted the call, `undefined` after the compacted
    * provider error was folded into the conversation for the model to react
-   * to (LOU-T4 `surfaceRetryableProviderErrors`), and a throw for every
+   * to (`surfaceRetryableProviderErrors`), and a throw for every
    * other outcome.
    */
   private static foldOrThrowGenerateError(
@@ -1404,14 +1404,14 @@ export class AgentExecutor {
       return 'steered';
     }
     // A cancellation is not a provider failure - never compact it or fold
-    // it into the conversation for a retry. With `signal` (LOU-V1) the
+    // it into the conversation for a retry. With `signal` the
     // loop turns it into an 'aborted' result; an AbortError thrown without
     // one (see isAbortError()) reaches the caller untouched.
     if (options.signal?.aborted || isAbortError(generateError)) {
       throw generateError;
     }
 
-    // LOU-R13: a cassette mismatch (or an unreadable cassette raised by the
+    // A cassette mismatch (or an unreadable cassette raised by the
     // interception seam) is a test-fixture failure, not a provider failure.
     // It reaches the caller typed - compacting it would hide the cassette
     // path, the call number and the re-record hint behind a generic
@@ -1434,7 +1434,7 @@ export class AgentExecutor {
     if (!shouldSurfaceToModel(options, compacted)) {
       // Non-actionable category ('auth-failure', 'unknown'), or the
       // opt-in flag is off: reject execute() cleanly, exactly like
-      // before LOU-T4 - just with the small compacted error instead of
+      // before - just with the small compacted error instead of
       // the raw provider error. runAgentLoop()'s catch block emits the
       // 'error' event for this, same as it does for every other thrown
       // error in the loop - no need to duplicate that here.
@@ -1451,7 +1451,7 @@ export class AgentExecutor {
   }
 
   /**
-   * N5b: waits for the parallel input guardrails (`check`, default the run's
+   * Waits for the parallel input guardrails (`check`, default the run's
    * pending ones) to settle. Resolves to the blocked run's result on a trip -
    * counting the cancelled call's usage only when the provider reported it -
    * or `undefined` when they passed or the run was aborted (the loop then ends
@@ -1474,7 +1474,7 @@ export class AgentExecutor {
 
   /**
    * Executes the tool calls of one assistant turn - concurrently up to
-   * `toolConcurrency` (LOU-V3, see that option for the ordering contract) -
+   * `toolConcurrency` (see that option for the ordering contract) -
    * appending the results to the conversation in call order and
    * checkpointing as they are recorded. Resolves to the ExecutionResult to
    * return when the run pauses for approval or is aborted.
@@ -1488,10 +1488,10 @@ export class AgentExecutor {
   ): Promise<ExecutionResult | undefined> {
     state.toolCalls.push(...toolCalls);
 
-    // Add assistant message with tool calls (and LOU-V13: its signed reasoning)
+    // Add assistant message with tool calls (and its signed reasoning)
     state.messages.push(turn);
 
-    // LOU-U9: checkpoint the model's turn before any tool runs, so a crash
+    // Checkpoint the model's turn before any tool runs, so a crash
     // from here on resumes by running the calls - never by asking the
     // model again.
     await saveStepCheckpoint(options, state);
@@ -1500,7 +1500,7 @@ export class AgentExecutor {
   }
 
   /**
-   * LOU-U7/U9: runs the tool calls of the last model turn that have no
+   * Runs the tool calls of the last model turn that have no
    * result yet (left by a crash, or by an approval pause mid-batch), then
    * appends any input queued behind them. Resolves to 'continue', or the
    * ExecutionResult when the run pauses again or is aborted.
@@ -1522,7 +1522,7 @@ export class AgentExecutor {
   }
 
   /**
-   * Runs one batch of tool calls through the LOU-V3 scheduler, recording
+   * Runs one batch of tool calls through the scheduler, recording
    * results in call order and checkpointing as they are recorded.
    */
   private static async runBatch(
@@ -1532,9 +1532,9 @@ export class AgentExecutor {
     agentSpanId: string
   ): Promise<ExecutionResult | undefined> {
     const runEvents = runEventsOf(options);
-    // N6: handoff calls are not run as tools; they are settled once the others are done.
+    // Handoff calls are not run as tools; they are settled once the others are done.
     const { calls: toolCalls, handoffCalls } = splitHandoffCalls(options, turnCalls);
-    // LOU-Y1: tool calls whose sub-agent paused for approval, in call order.
+    // Tool calls whose sub-agent paused for approval, in call order.
     const suspensions: SubagentSuspension[] = [];
     const batch = await runToolBatch(
       toolCalls,
@@ -1551,8 +1551,8 @@ export class AgentExecutor {
         },
         persist: () => saveStepCheckpoint(options, state),
       },
-      // LOU-V10: a steer stops the batch from starting more calls; running ones finish.
-      // Eve2-F5: the run's signal also ends the wait for a tool that ignores it.
+      // A steer stops the batch from starting more calls; running ones finish.
+      // The run's signal also ends the wait for a tool that ignores it.
       withSteerSignal(options.signal, options.inputQueue?.startBatch()),
       options.signal
     );
@@ -1569,7 +1569,7 @@ export class AgentExecutor {
   }
 
   /**
-   * N6: settles a step's handoff calls once its other calls are done. A call
+   * Settles a step's handoff calls once its other calls are done. A call
    * whose gate (validation, hooks, permission rules) denied it settles with a
    * tool error; an `ask` pauses the run for approval exactly like a tool's
    * `ask`; the first cleared call switches the run to its target (taken by
@@ -1580,7 +1580,7 @@ export class AgentExecutor {
     try {
       gate = await takeHandoffCalls(options, state, handoffCalls);
     } catch (error) {
-      // LOU-X4: a tool guardrail blocks a handoff call like any other call of the turn.
+      // A tool guardrail blocks a handoff call like any other call of the turn.
       if (error instanceof GuardrailError) return this.stopForGuardrail(options, state, error.guardrail);
       throw error;
     }
@@ -1600,7 +1600,7 @@ export class AgentExecutor {
     state.messages = switched.messages;
     state.agentName = switched.marker.to;
     state.handoffs = (state.handoffs ?? 0) + 1;
-    // LOU-W9.2: checkpoints and pauses from here on record the target, so a resume compares with it.
+    // Checkpoints and pauses from here on record the target, so a resume compares with it.
     state.fingerprint = undefined;
     if (next.sessionId && next.checkpointStore) await ensureFingerprint(next, state);
     const { toolCall } = honored;
@@ -1615,7 +1615,7 @@ export class AgentExecutor {
   /**
    * Turns a finished batch into the run's next move: abort (finished calls
    * keep their results, the rest are cancelled), reject with the first
-   * fatal error, pause for approval, or carry on (`undefined`). N6: the
+   * fatal error, pause for approval, or carry on (`undefined`). The
    * step's handoff calls are cancelled with the rest, or wait with the
    * calls left for after a pause.
    */
@@ -1631,7 +1631,7 @@ export class AgentExecutor {
       cancelHandoffCalls(state, handoffCalls, 'the run was aborted');
       return this.abortRun(options, state);
     }
-    // LOU-X4: a tool guardrail blocked a call before it ran; the rest of the batch did not start.
+    // A tool guardrail blocked a call before it ran; the rest of the batch did not start.
     if (batch.failure?.error instanceof GuardrailError) {
       pushAbortedBatchResults(state, batch.unrecorded, 'a guardrail stopped the run', options.maxToolResultChars);
       cancelHandoffCalls(state, handoffCalls, 'a guardrail stopped the run');
@@ -1640,25 +1640,25 @@ export class AgentExecutor {
     if (batch.failure) {
       throw batch.failure.error;
     }
-    // N9b: a tool that needs sign-in pauses the run first; it runs again once the user signed in.
+    // A tool that needs sign-in pauses the run first; it runs again once the user signed in.
     const signIn = batch.unrecorded.find((call) => call.outcome?.signIn);
     if (signIn) {
       return this.pauseForSignIn(options, state, batch.unrecorded, signIn, suspensions, handoffCalls);
     }
     const suspension = settleSuspensions(state.messages, suspensions, false);
     if (batch.approvals.length > 0) {
-      // Eve TOOLS-F12: the step pauses once, on every call that needs approval. Calls a steer kept from starting run after the decisions;
+      // The step pauses once, on every call that needs approval. Calls a steer kept from starting run after the decisions;
       // a sub-agent of the step that paused too pauses the run once they are decided.
       const waiting = new Set(batch.approvals.map(({ toolCall }) => toolCall));
       const remaining = batch.unrecorded.filter((call) => !waiting.has(call.toolCall)).map((call) => call.toolCall);
       return this.pauseForApproval(options, state, batch.approvals, [...remaining, ...handoffCalls], suspension);
     }
-    // LOU-V10: what is left of a batch a steer stopped was not run.
+    // What is left of a batch a steer stopped was not run.
     pushAbortedBatchResults(state, batch.unrecorded, 'the user steered the run to new input', options.maxToolResultChars);
     if (batch.unrecorded.length > 0) cancelHandoffCalls(state, handoffCalls, 'the user steered the run to new input');
     if (suspension) {
       const record = suspensionRecord(options, state, suspension);
-      // N6: a handoff call of the step is settled once the sub-agent's approval is decided.
+      // A handoff call of the step is settled once the sub-agent's approval is decided.
       if (handoffCalls.length > 0) record.snapshot.remainingToolCalls = handoffCalls;
       return this.savePause(options, state, record);
     }
@@ -1710,7 +1710,7 @@ export class AgentExecutor {
       redactContent,
       signal,
     } = options;
-    // Eve DUI-F5: the call's context gets the session's id, not a session turn's checkpoint key.
+    // The call's context gets the session's id, not a session turn's checkpoint key.
     const sessionId = options.contextSessionId ?? options.sessionId;
 
     const init = toolSpanInit({ id: toolCall.id, name: toolCall.function.name }, { agent, toolRegistry, sessionId: options.sessionId });
@@ -1720,14 +1720,14 @@ export class AgentExecutor {
       init.attributes,
       async (toolSpan) => {
         const toolCallStart = Date.now();
-        // LOU-Y1: a sub-agent started by this tool call inherits from this run.
+        // A sub-agent started by this tool call inherits from this run.
         const scope: ToolCallScope = {
           runtime: options,
           toolCallId: toolCall.id,
           spanId: toolSpan.id,
           execute: (childOptions) => AgentExecutor.executeDelegated(options, state, childOptions),
         };
-        // N14: a `run_code` call's script calls tools through this run's gate.
+        // A `run_code` call's script calls tools through this run's gate.
         if (toolCall.function.name === RUN_CODE_TOOL && codeModeOf(options)) {
           scope.callTool = nestedToolCaller({
             parentToolCallId: toolCall.id,
@@ -1752,7 +1752,7 @@ export class AgentExecutor {
           state.messages,
           signal,
           onPrepared,
-          // LOU-V5: a delegated child's usage is added to this run's totals.
+          // A delegated child's usage is added to this run's totals.
           (child) => mergeDelegatedUsage(state.usage, child),
           scope
         );
@@ -1778,7 +1778,7 @@ export class AgentExecutor {
   }
 
   /**
-   * Runs a sub-agent of this run (LOU-Y1). H3-6: while it runs, what it has
+   * Runs a sub-agent of this run. While it runs, what it has
    * spent so far is kept on this run's checkpoint (`delegatedInFlight`), so a
    * crash before it ends does not lose its model calls; once it ends, its
    * usage is the delegated usage its result (or error) reports.
@@ -1801,7 +1801,7 @@ export class AgentExecutor {
   }
 
   /**
-   * N9b: pauses on the first call of the batch that needs sign-in. Calls
+   * Pauses on the first call of the batch that needs sign-in. Calls
    * after it that finished are recorded; the ones that did not run (another
    * call needing sign-in, a call waiting on approval and what came after it)
    * run after the decision, like the rest of a turn paused on an approval.
@@ -1814,7 +1814,7 @@ export class AgentExecutor {
     suspensions: SubagentSuspension[],
     handoffCalls: ToolCall[]
   ): Promise<ExecutionResult> {
-    // N6: the step's handoff calls are settled after the decision, with the rest.
+    // The step's handoff calls are settled after the decision, with the rest.
     const remaining: ToolCall[] = [...handoffCalls];
     for (const call of unrecorded) {
       if (call === paused) continue;
@@ -1833,10 +1833,10 @@ export class AgentExecutor {
 
   /**
    * Persists the pending approvals (plus the snapshot resume.ts needs, with
-   * the turn's not-yet-run calls - LOU-U7) and ends this execute() call
+   * the turn's not-yet-run calls) and ends this execute() call
    * with an 'awaiting-approval' result. The checkpoint is marked
-   * 'awaiting-approval' (LOU-U8) so new input cannot bypass the decision.
-   * Eve TOOLS-F12: `calls` are every call of the step that waits on a
+   * 'awaiting-approval' so new input cannot bypass the decision.
+   * `calls` are every call of the step that waits on a
    * decision, in call order; several make one group (`approvalGroup`), each
    * with its own approval id, and run once all of them are decided.
    */
@@ -1873,9 +1873,9 @@ export class AgentExecutor {
         createdAt,
         // A deadline past the last date a Date can hold (e.g. `1e20`) is no deadline at all.
         ...(typeof ttlMs === 'number' && Number.isFinite(ttlMs) && Date.now() + ttlMs <= MAX_DATE_MS && { expiresAt: new Date(Date.now() + ttlMs).toISOString() }),
-        // N10b: whose call it is, for `approve` and channel `approvers`.
+        // Whose call it is, for `approve` and channel `approvers`.
         ...(principal && { principal }),
-        // N9b: a tool that needs sign-in pauses with the link to open.
+        // A tool that needs sign-in pauses with the link to open.
         ...(toolResult.signIn && { kind: 'sign-in' as const, signIn: await signInRequest(toolResult.signIn, options.tokens, { approvalId: id, sessionId }) }),
       });
     }
@@ -1890,9 +1890,9 @@ export class AgentExecutor {
       ...(options.contextSessionId !== undefined && { contextSessionId: options.contextSessionId }),
       remainingToolCalls,
       usage: structuredClone(state.usage),
-      // N10b: the resumed run acts for this caller, whoever decides.
+      // The resumed run acts for this caller, whoever decides.
       ...(principal && { principal }),
-      // LOU-R16: and its hooks keep seeing the run's metadata.
+      // And its hooks keep seeing the run's metadata.
       ...(options.metadata !== undefined && { metadata: options.metadata }),
       ...(group.length > 1 && { approvalGroup: group.map((pending) => ({ pending })) }),
       ...(heldSubagent && { heldSubagent }),
@@ -1901,9 +1901,9 @@ export class AgentExecutor {
   }
 
   /**
-   * Saves the approval record(s) of a pause (Eve TOOLS-F12: one per call of
+   * Saves the approval record(s) of a pause (one per call of
    * its group) and ends this execute() call with an 'awaiting-approval'
-   * result. The checkpoint is marked 'awaiting-approval' (LOU-U8) so new
+   * result. The checkpoint is marked 'awaiting-approval' so new
    * input cannot bypass the decision.
    */
   private static async savePause(
@@ -1934,7 +1934,7 @@ export class AgentExecutor {
   }
 
   /**
-   * Ends a run whose signal was aborted (LOU-V1): checkpoints the state so
+   * Ends a run whose signal was aborted: checkpoints the state so
    * far (when checkpointing is on, so the session can be resumed later)
    * and resolves with finishReason 'aborted'.
    */
@@ -1958,7 +1958,7 @@ export class AgentExecutor {
   }
 
   /**
-   * LOU-V6: ends a run whose budget tripped like `max-steps` (checkpointed
+   * Ends a run whose budget tripped like `max-steps` (checkpointed
    * as finished), after a `budget.exceeded` event; throws
    * `BudgetExceededError` under `onExceeded: 'throw'`.
    */
@@ -1976,7 +1976,7 @@ export class AgentExecutor {
     return { ...(await this.finishRun(options, state)), budget };
   }
 
-  /** LOU-X4: ends a blocked run like {@link stopForBudget}, after a `guardrail.tripped` event. */
+  /** Ends a blocked run like {@link stopForBudget}, after a `guardrail.tripped` event. */
   private static async stopForGuardrail(
     options: ExecuteOptions,
     state: AgentRunState,
@@ -2001,7 +2001,7 @@ export class AgentExecutor {
     state: AgentRunState,
     output?: Pick<ExecutionResult, 'object' | 'outputError' | 'outputRepaired'>
   ): Promise<ExecutionResult> {
-    // LOU-T4: `maxSteps` was exhausted, but the very last thing that
+    // `maxSteps` was exhausted, but the very last thing that
     // happened was a surfaced-to-the-model provider failure (not a genuine
     // model stop/tool-calls turn) - every retry the model got a chance to
     // take failed the same way. Reject with that last compacted error
@@ -2014,7 +2014,7 @@ export class AgentExecutor {
     }
 
     // The run has reached a terminal state (either the model stopped
-    // requesting tools, or maxSteps was exhausted). LOU-U8: keep the
+    // requesting tools, or maxSteps was exhausted). keep the
     // transcript, marked 'finished', so a later execute() call reusing this
     // sessionId continues the conversation with its new input instead of
     // resuming this run (or forgetting it).
@@ -2052,15 +2052,15 @@ export class AgentExecutor {
         sandbox,
         hooks,
         sessionId,
-        // N10b: the run's principal (the scope's runtime is the run's options).
+        // The run's principal (the scope's runtime is the run's options).
         principal: scope?.runtime.principal,
-        // LOU-R16: the run's metadata, for the pre/post tool-call hooks.
+        // The run's metadata, for the pre/post tool-call hooks.
         metadata: scope?.runtime.metadata,
         messages,
         signal,
         onDelegatedUsage,
         scope,
-        // N13b: a generator tool's snapshots reach the run's events (the scope's runtime is the run's options).
+        // A generator tool's snapshots reach the run's events (the scope's runtime is the run's options).
         onToolPartial: scope && partialSink(scope.runtime),
       },
       onPrepared

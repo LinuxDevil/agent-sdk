@@ -1,5 +1,5 @@
 /**
- * LOU-V8: `session.stream()` streams a session turn and persists it when the run is done.
+ * `session.stream()` streams a session turn and persists it when the run is done.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
@@ -121,7 +121,7 @@ describe('AgentSession.stream()', () => {
     await expect(collect(run)).rejects.toMatchObject({ code: 'LOUSHO_RUN_ALREADY_ITERATED' });
   });
 
-  it('keeps only the tool calls that ran when a stream is aborted by its signal (B4)', async () => {
+  it('keeps only the tool calls that ran when a stream is aborted by its signal', async () => {
     const controller = new AbortController();
     const slow = defineTool({
       name: 'slow',
@@ -148,7 +148,7 @@ describe('AgentSession.stream()', () => {
     expect(roles(model.calls[2].messages.filter((m) => m.role !== 'system'))).toEqual(['user', 'assistant', 'user', 'assistant', 'tool', 'tool', 'user']);
   });
 
-  it('keeps the tool call that ran when the loop is exited early (B4)', async () => {
+  it('keeps the tool call that ran when the loop is exited early', async () => {
     const wait = defineTool({
       name: 'wait',
       description: 'waits',

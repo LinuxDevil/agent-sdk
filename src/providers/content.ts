@@ -1,5 +1,5 @@
 /**
- * Helpers for multimodal message content (LOU-V11).
+ * Helpers for multimodal message content.
  */
 
 import type { ContentPart, Message, MessageRole } from './llm';
@@ -46,7 +46,7 @@ export function toolResultText(message: TextSource & { readonly role?: MessageRo
 }
 
 /**
- * What `send()` / `stream()` take (LOU-V12): a string or content parts become
+ * What `send()` / `stream()` take: a string or content parts become
  * one user message; a `Message[]` is passed through as it is.
  *
  * @example

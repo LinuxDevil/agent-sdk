@@ -1,11 +1,11 @@
 /**
- * Bundled, opt-in OpenTelemetry TraceExporter (LOU-K4).
+ * Bundled, opt-in OpenTelemetry TraceExporter.
  *
  * `tracing.ts` deliberately ships no bundled exporter - `withSpan()` /
  * `TraceExporter` are a bring-your-own-exporter abstraction so this SDK
  * never forces a tracing backend on every consumer. Historically, wiring
  * that up to real OpenTelemetry meant hand-rolling the adapter shown in
- * `examples/tracing/run-otel.ts` (LOU-E6) every time.
+ * `examples/tracing/run-otel.ts` every time.
  *
  * This module is the ready-made version of that adapter: import
  * `createOtelTraceExporter()` from the `@lousho/build-ai-agent/otel`
@@ -72,7 +72,7 @@ export interface OtelTraceExporterOptions {
   /**
    * Record the OpenTelemetry GenAI client metrics `gen_ai.client.token.usage`
    * and `gen_ai.client.operation.duration` (one record per model call, and a
-   * duration per tool call) alongside the spans (LOU-D48). Default `true`;
+   * duration per tool call) alongside the spans. Default `true`;
    * without a registered `MeterProvider` OTel's no-op meter discards them.
    * See docs/observability.md.
    */
@@ -152,8 +152,8 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
   const skip = skippedKeys(options);
 
   // Entries outlive their span: a queued background sub-agent can start after
-  // its `execute_tool task` parent ended, and must still join that trace
-  // (Eve MA-F3). A whole tree's entries are dropped when its root span ends.
+  // its `execute_tool task` parent ended, and must still join that trace.
+  // A whole tree's entries are dropped when its root span ends.
   const otelSpansById = new Map<string, { span: OtelSpan; ctx: Context; rootId: string }>();
   // The ids of ended (non-root) spans still in the map, oldest end first: only these are evicted past the
   // cap, so an open span (a long run's root) is never lost.

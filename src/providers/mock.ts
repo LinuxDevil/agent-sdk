@@ -77,7 +77,7 @@ export class MockLLMProvider implements LLMProvider {
    * Streams the same step `generate()` would return - the same text (in
    * word-sized `text-delta` chunks whose concatenation is that text), the
    * same tool calls, finish reason and usage - so a run gets the same result
-   * whether it generates or streams its model calls (M9).
+   * whether it generates or streams its model calls.
    */
   async stream(options: GenerateOptions): Promise<StreamResult> {
     options.signal?.throwIfAborted();
@@ -186,7 +186,7 @@ export function createMockProvider(config: MockProviderConfig = { name: 'mock' }
 
 // 'mock' is registered into LLMProviderRegistry centrally, alongside the
 // real providers, by ./builtinProviders.ts's ensureBuiltinProviders() -
-// which LLMProviderRegistry.create() calls on a miss (LOU-R1). That covers
+// which LLMProviderRegistry.create() calls on a miss. That covers
 // every entry point (specToAgent/`lousho dev`, deep imports, deploy
 // bundles) without this module needing a top-level side effect. Keeping a
 // module-scope register() here is not just redundant but unsafe: a

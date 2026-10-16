@@ -1,5 +1,5 @@
 /**
- * LOU-N runtime control server - agent id validation. The wire types live
+ * Runtime control server - agent id validation. The wire types live
  * in ../shared/wireTypes.ts (shared with the browser client).
  */
 

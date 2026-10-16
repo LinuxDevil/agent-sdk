@@ -1,5 +1,5 @@
 /**
- * M2: `fromAiSdk(model)` - an AI SDK language model as `createAgent`'s
+ * `fromAiSdk(model)` - an AI SDK language model as `createAgent`'s
  * provider. The installed `ai` 4 runs a `MockLanguageModelV1`; `ai` 7 (the
  * `ai-v7` dev alias, through the internal `createFromAiSdk()`) runs a
  * `MockLanguageModelV4`. Both script the same tool loop: a call to `add`,
@@ -149,7 +149,7 @@ async function sendAndStream(makeProvider: () => LLMProvider) {
   expect(streamed.runs).toEqual([{ a: 2, b: 3 }]);
 }
 
-describe('fromAiSdk() in createAgent (M2)', () => {
+describe('fromAiSdk() in createAgent', () => {
   itOnAiV4('ai 4: a MockLanguageModelV1 answers send() and stream(), with the tool loop', async () => {
     await sendAndStream(() => fromAiSdk(v4Model().model as LanguageModel));
   });
@@ -206,7 +206,7 @@ describe('fromAiSdk() raw finish reason, retries and reasoning', () => {
   });
 });
 
-describe('fromAiSdk() checks its model (M2)', () => {
+describe('fromAiSdk() checks its model', () => {
   it('a model id string throws LOUSHO_CONFIG_INVALID, naming the provider function to import', () => {
     // A string is not a LanguageModel: the cast exercises the runtime guard.
     expect(() => fromAiSdk('openai/gpt-4o' as unknown as LanguageModel)).toThrow(expect.objectContaining({ code: 'LOUSHO_CONFIG_INVALID' }));
@@ -252,7 +252,7 @@ describe('fromAiSdk() checks its model (M2)', () => {
   });
 });
 
-describe('fromAiSdk() options and metadata (M2)', () => {
+describe('fromAiSdk() options and metadata', () => {
   it("name defaults to the model's provider field, else 'ai-sdk'; the option wins", () => {
     expect(onV7(v7Model('google.generative-ai').model).name).toBe('google.generative-ai');
     expect(onV7({ specificationVersion: 'v4', modelId: 'm' }).name).toBe('ai-sdk');
@@ -291,7 +291,7 @@ describe('fromAiSdk() options and metadata (M2)', () => {
     expect(JSON.stringify(without.calls[0]!.prompt)).toContain('[file a.pdf (application/pdf) not sent]');
   });
 
-  it('under withFallback, a PDF the first model cannot take goes to the next model instead of being dropped (A9)', async () => {
+  it('under withFallback, a PDF the first model cannot take goes to the next model instead of being dropped', async () => {
     const input = [
       { type: 'text' as const, text: 'Extract the invoice.' },
       { type: 'file' as const, data: PDF, mimeType: 'application/pdf', filename: 'invoice.pdf' },

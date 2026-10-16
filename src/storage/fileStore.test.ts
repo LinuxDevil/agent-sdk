@@ -209,7 +209,7 @@ describe('fileStore(dir) (R2)', () => {
   });
 });
 
-describe('fileStore(dir): case-safe file names (Eve DUR-F7)', () => {
+describe('fileStore(dir): case-safe file names', () => {
   const hi: Message[] = [{ role: 'user', content: 'hi' }];
 
   it("writes each uppercase letter as '^' and the letter, so an all-lowercase id keeps its old name", async () => {
@@ -322,7 +322,7 @@ describe('fileStore(dir).prune()', () => {
     age(dir, ['old', 'waiting']);
 
     await expect(store.prune({ olderThanMs: -1 })).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_INVALID' });
-    // Eve3-S4: 'old' also leaves a turn-counter checkpoint and its history entry, pruned with it.
+    // 'old' also leaves a turn-counter checkpoint and its history entry, pruned with it.
     expect(await store.prune({ olderThanMs: 60_000 })).toEqual({ sessions: 1, checkpoints: 2, checkpointHistory: 3, oauthPending: 0 });
     expect(readdirSync(join(dir, 'sessions'))).toEqual(['recent.json']);
     expect(readdirSync(join(dir, 'checkpoints')).filter((name) => name.startsWith('waiting')).sort()).toEqual(['waiting.paused.json', 'waiting.turn-0.json']);

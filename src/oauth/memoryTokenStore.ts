@@ -1,5 +1,5 @@
 /**
- * The `tokens` part of `memoryStore()` (N9a): plain objects in Maps, copied
+ * The `tokens` part of `memoryStore()`: plain objects in Maps, copied
  * on the way in and out, for as long as the process lives. Not encrypted:
  * nothing is written anywhere. Pending sign-ins expire by their `ttlMs`.
  */

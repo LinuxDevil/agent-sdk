@@ -211,7 +211,7 @@ describe('runEval with a fake vitest', () => {
   });
 });
 
-describe('lousho eval --url (LOU-D47)', () => {
+describe('lousho eval --url', () => {
   it('parses --url and --token', () => {
     expect(parseEvalArgs(['--url', 'https://a.test', '--token=abc'])).toMatchObject({ url: 'https://a.test', token: 'abc' });
   });
@@ -353,7 +353,7 @@ describe('lousho eval --record / --replay / --drift (real vitest, mockModel as t
   }, 120_000);
 });
 
-describe('lousho eval time limits (docs-qa F1)', () => {
+describe('lousho eval time limits', () => {
   it('parses --timeout as whole milliseconds, 0 meaning no limit', () => {
     expect(parseEvalArgs(['--timeout', '120000'])).toMatchObject({ timeout: 120_000 });
     expect(parseEvalArgs(['--timeout=0'])).toMatchObject({ timeout: 0 });
@@ -378,7 +378,7 @@ describe('lousho eval time limits (docs-qa F1)', () => {
   });
 });
 
-describe('unreportedFailures (docs-qa F2)', () => {
+describe('unreportedFailures', () => {
   const options = { cwd: path.resolve('proj'), strict: false };
   const file = (name: string) => path.join(options.cwd, name);
 
@@ -472,7 +472,7 @@ describe('lousho eval failures vitest reports itself (real vitest)', () => {
   }, 60_000);
 });
 
-describe('lousho eval --record with labels that truncate alike (docs-qa F3)', () => {
+describe('lousho eval --record with labels that truncate alike', () => {
   const fixture = path.join(FIXTURES, 'collide.eval.ts');
   const cassettes = path.join(FIXTURES, '__cassettes__', 'slug-collision');
   const quietVitest = createVitestSpawner('ignore');

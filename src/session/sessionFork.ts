@@ -1,5 +1,5 @@
 /**
- * Session history and forks (N3a): the steps of a session's committed
+ * Session history and forks: the steps of a session's committed
  * transcript, and the transcript a fork from one of them keeps.
  */
 

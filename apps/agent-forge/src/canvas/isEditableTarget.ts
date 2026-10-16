@@ -1,5 +1,5 @@
 /**
- * Eve DUI-F10: true when a keyboard event's target is somewhere the user is
+ * True when a keyboard event's target is somewhere the user is
  * typing - an `<input>`, `<textarea>`, `<select>` or any contenteditable
  * element (the hook-code CodeMirror editor is one). Canvas shortcuts such as
  * Ctrl/Cmd+D (duplicate node) must leave those keystrokes alone.

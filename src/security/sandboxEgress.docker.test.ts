@@ -1,5 +1,5 @@
 /**
- * LOU-M6: SubprocessSandbox `network: { allow }` with a credential broker,
+ * SubprocessSandbox `network: { allow }` with a credential broker,
  * against a real Docker Engine on Linux (sandboxEgress.test.ts covers the same
  * code against a dockerode fake).
  *

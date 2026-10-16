@@ -1,7 +1,7 @@
 /**
- * LOU-H1 test: only imports createAgent() and a mock provider - zero other
+ * Test: only imports createAgent() and a mock provider - zero other
  * Lousho imports - to prove the one-liner surface is self-contained.
- * LOU-D1 additions: `model` strings, env fallback, `instructions` alias and
+ * Additions: `model` strings, env fallback, `instructions` alias and
  * error messages (no network: env is stubbed and the registry's create() is
  * the same boundary resolveProvider.test.ts mocks).
  */
@@ -48,7 +48,7 @@ describe('createAgent', () => {
       const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'Be brief.' });
       const { text } = await agent.send('Hello!');
 
-      // maxRetries: 0 - createAgent() retries in its own withRetry() wrapper (LOU-V7.2).
+      // maxRetries: 0 - createAgent() retries in its own withRetry() wrapper.
       expect(createSpy).toHaveBeenCalledWith('openai', { maxRetries: 0, defaultModel: 'gpt-4o-mini', apiKey: 'sk-test' });
       expect(text).toBe('Hi from the model');
     });

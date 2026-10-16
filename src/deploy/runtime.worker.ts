@@ -1,5 +1,5 @@
 /**
- * Cloudflare Worker runtime for generated workers (LOU-I3, LOU-K3).
+ * Cloudflare Worker runtime for generated workers.
  *
  * The worker.ts the cloudflare-worker adapter scaffolds imports
  * `@lousho/build-ai-agent/deploy-runtime-worker`, resolved at build time to
@@ -15,7 +15,7 @@
  *  - Providers are created via LLMProviderRegistry with the API key read
  *    from the Worker's `env` bindings (Workers have no process.env), not
  *    via resolveProvider(). Registered providers: 'mock', 'openai',
- *    'anthropic' (LOU-K3) and 'openrouter' (M3a). All three real providers
+ *    'anthropic' and 'openrouter'. All three real providers
  *    are implemented on top of the Vercel `ai` SDK's
  *    `generateText`/`streamText` plus `@ai-sdk/openai`/`@ai-sdk/anthropic`
  *    (OpenRouter is `@ai-sdk/openai` pointed at openrouter.ai): pure
@@ -24,11 +24,11 @@
  *    here: ollama-ai-provider defaults to a local http://localhost:11434
  *    endpoint unreachable from a Worker, so it remains node-server/docker-only.
  *  - Only the built-in tools that need no Node builtins are available:
- *    'current-date', 'day-name' and 'http' (M3a). The Node 'http' tool and
+ *    'current-date', 'day-name' and 'http'. The Node 'http' tool and
  *    'web-fetch' refuse private destinations through an undici Agent whose
  *    connect.lookup is the pinned lookup of src/security/privateAddress.ts
  *    (node:dns): it checks every address a host resolves to and the socket
- *    connects to the address it checked (N13a). Workers' fetch() resolves
+ *    connects to the address it checked. Workers' fetch() resolves
  *    names inside Cloudflare's network with no hook to see or pin the
  *    address, so the Worker 'http' is a different tool under the same name
  *    and input (src/tools/built-in/workerHttp.ts): it checks only the URL,
@@ -36,18 +36,18 @@
  *    `LOUSHO_HTTP_ALLOW` binding (none when unset: fail closed). It cannot
  *    guarantee where a listed name connects; the deployer vouches for the
  *    names they list. 'web-fetch' stays unsupported here.
- *  - LOU-T2, LOU-D51: sessions, durable execution (CheckpointStore-backed
+ *  - sessions, durable execution (CheckpointStore-backed
  *    pause/resume, see src/execution/checkpoint.ts) and paused approvals live
  *    in a Workers KV namespace bound as `AGENT_CHECKPOINTS` (./checkpointBinding)
  *    - the same "declare a binding, read it off `env`" pattern `providerEnvKey()`
  *    uses for provider API keys. See `workerStore()` below.
- *  - LOU-D51: the Worker serves the node server's `/chat` API (sessions, SSE,
+ *  - the Worker serves the node server's `/chat` API (sessions, SSE,
  *    approvals, bearer auth from the `LOUSHO_API_TOKEN` binding) through the
  *    Fetch-native src/server/fetchRoutes.ts. It runs the spec as a
  *    `createAgent()` agent, whose node-only imports (project instructions,
  *    file session store, MCP stdio) the adapter's build swaps for shims, see
  *    ./shims/node.worker.ts.
- *  - M3b: an agent directory is served by handleWorkerAgentDirRequest() from
+ *  - An agent directory is served by handleWorkerAgentDirRequest() from
  *    the WorkerAgentDir the build generated (./workerAgentDir.ts): its tools
  *    and an agent.ts config are bundled modules, the rest is embedded data.
  */
@@ -92,7 +92,7 @@ import {
 export { agentSpecSchema } from '../spec/schema';
 export type { WorkerAgentDir } from './workerAgentDir';
 
-// Registered directly here (rather than relying on lazy registration, LOU-R1)
+// Registered directly here (rather than relying on lazy registration)
 // so the providers Workers actually support show up in has()/getProviderNames()
 // from module load - see the module doc comment above. Anything not listed
 // here ('ollama') still resolves on a create() miss via ensureBuiltinProviders(),
@@ -106,7 +106,7 @@ LLMProviderRegistry.register('openrouter', (config) => new OpenRouterProvider(co
 const WORKER_TOOLS: Record<string, (env: WorkerEnv) => ToolDescriptor> = {
   'current-date': () => currentDateTool,
   'day-name': () => dayNameTool,
-  // M3a: only the hosts listed in the LOUSHO_HTTP_ALLOW binding; none when it is unset.
+  // Only the hosts listed in the LOUSHO_HTTP_ALLOW binding; none when it is unset.
   http: (env) => createWorkerHttpTool({ allow: parseHostAllowList(env[HTTP_ALLOW_BINDING]) }),
 };
 
@@ -232,7 +232,7 @@ const resolvedDirs = new WeakMap<WorkerAgentDir, ResolvedWorkerAgentDir>();
 
 /**
  * Validates an agent directory bundled by `lousho build --target=cloudflare-worker`
- * (M3b) and returns its `createAgent()` options; cached per directory. The
+ * and returns its `createAgent()` options; cached per directory. The
  * generated worker.ts calls it at module load, so a bad config or tool file
  * fails the Worker's startup instead of its first request.
  */
@@ -246,7 +246,7 @@ export function prepareWorkerAgentDir(dir: WorkerAgentDir): ResolvedWorkerAgentD
 }
 
 /**
- * Eve E14 (MA-F5 on Workers): the `subagents/` entries of `resolved` as
+ * On Workers: the `subagents/` entries of `resolved` as
  * native sub-agents, the way `loadAgentDir()` loads them: each is a
  * `createAgent()` agent with its description, run by the lead's `task` tool
  * and its `delegate_to_<name>` alias through `runSubagent()`, so the lead's
@@ -331,7 +331,7 @@ export function workerAgentFromDir(dir: WorkerAgentDir, env: WorkerEnv): SimpleA
 }
 
 /**
- * {@link handleWorkerRequest} for an agent directory (M3b): same routes and
+ * {@link handleWorkerRequest} for an agent directory: same routes and
  * bearer auth, the directory's agent - plus its `channels/` mounted under
  * `/channels` (they authenticate themselves, like the node server). `ctx` is
  * the Worker's ExecutionContext: a channel turn that outlives its
@@ -354,9 +354,9 @@ export async function handleWorkerAgentDirRequest(
     durableMessage: true,
     // LOUSHO_ALLOWED_ORIGINS, LOUSHO_ALLOWED_HOSTS and LOUSHO_REQUIRE_JSON_BODY.
     ...requestGuardFromEnv(env),
-    // B4: a turn whose client went away finishes (and is saved) inside `ctx.waitUntil`.
+    // A turn whose client went away finishes (and is saved) inside `ctx.waitUntil`.
     ...(ctx && { waitUntil: (promise: Promise<unknown>) => ctx.waitUntil(promise) }),
-    // N9b: a channel turn paused on a sign-in continues on its surface once the callback stored the token.
+    // A channel turn paused on a sign-in continues on its surface once the callback stored the token.
     ...(channels === undefined ? {} : { afterSignIn: (result: OAuthCompleteResult) => continueChannelSignIn(channels, result) }),
   };
   return (await channels?.(request, ctx)) ?? openSessionsRefusal(request, env) ?? serveFetch(request, chat, apiTokenOf(env));

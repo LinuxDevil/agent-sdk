@@ -1,4 +1,4 @@
-/** LOU-Y6: the `task` tool continues a sub-agent by taskId (resume), branches it (fork), or starts a new one. */
+/** The `task` tool continues a sub-agent by taskId (resume), branches it (fork), or starts a new one. */
 import { describe, it, expect } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -35,7 +35,7 @@ function researcher(turns: MockTurn[]) {
   return { model, agent: createAgent({ provider: model, instructions: 'You research.', description: 'Researches' }) };
 }
 
-describe('resumable sub-agent tasks (LOU-Y6)', () => {
+describe('resumable sub-agent tasks', () => {
   it('resume continues the child with its transcript and the new prompt as the next user turn', async () => {
     const child = researcher(['Paris.', 'About 2.1 million.']);
     const lead = createAgent({
@@ -94,7 +94,7 @@ describe('resumable sub-agent tasks (LOU-Y6)', () => {
     expect(unknown).toContain("Unknown taskId 'task_9'");
     expect(unknown).toContain('LOUSHO_SUBAGENT_TASK_NOT_FOUND');
     expect(foreign).toContain("belongs to sub-agent 'researcher'");
-    // H3-4: a lead that reused another sub-agent's taskId for a new task is told to omit it.
+    // A lead that reused another sub-agent's taskId for a new task is told to omit it.
     expect(foreign).toContain("To start a new task for 'writer', omit taskId");
     expect(foreign).toContain('LOUSHO_SUBAGENT_TASK_NOT_FOUND');
     expect(noId).toContain("mode 'fork' needs the taskId");
@@ -197,7 +197,7 @@ describe('resumable sub-agent tasks (LOU-Y6)', () => {
   });
 });
 
-describe('taskId allocation (Eve MA-F12)', () => {
+describe('taskId allocation', () => {
   it("never hands a failed task's id to a later task", async () => {
     const store = memoryStore();
     const child = researcher([{ error: Object.assign(new Error('400 bad'), { status: 400 }) }, 'second answer']);

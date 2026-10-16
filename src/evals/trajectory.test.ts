@@ -58,7 +58,7 @@ function failedMessages(result: EvalResult): string[] {
   return result.assertions.filter((a) => !a.passed).map((a) => a.message ?? '');
 }
 
-describe('t.send() with an AgentInput (LOU-V12)', () => {
+describe('t.send() with an AgentInput', () => {
   it('sends content parts to the agent as one user message', async () => {
     const model = mockModel(['It is a cat.']);
     const parts = [

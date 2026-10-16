@@ -34,7 +34,7 @@ const WINDOWS_HOST = {
   },
 };
 
-describe('commandEnv (LOU-X11)', () => {
+describe('commandEnv', () => {
   it('passes only the POSIX base by default, including LC_*', () => {
     expect(commandEnv({}, { host: POSIX_HOST })).toEqual({
       PATH: '/usr/bin',

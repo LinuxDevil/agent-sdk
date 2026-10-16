@@ -1,6 +1,6 @@
 /**
  * `lousho chat <path> [--model provider/model] [--session id] [--store sqlite:<file>]`
- * - a terminal REPL for an agent (LOU-D33). The path is what `lousho dev`
+ * - a terminal REPL for an agent. The path is what `lousho dev`
  * takes (spec file, agent directory or TS module); the loop itself lives in
  * chatRepl.ts. Returns the exit code.
  */

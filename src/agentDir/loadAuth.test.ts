@@ -1,4 +1,4 @@
-/** N10a: an agent directory's auth.ts. */
+/** An agent directory's auth.ts. */
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -15,7 +15,7 @@ function tempDir(files: Record<string, string>): string {
   return dir;
 }
 
-describe('agent directory auth.ts (N10a)', () => {
+describe('agent directory auth.ts', () => {
   it('resolveAgentDir() returns the default-exported list and marks the manifest', async () => {
     const { auth, manifest } = await resolveAgentDir(fixture('auth'), { provider: mockModel(['x']) });
     expect(manifest.auth).toBe(true);

@@ -5,7 +5,7 @@
  * and drives the shared generate()/stream() logic through concrete
  * providers: the call settings handed to the 'ai' SDK, finish-reason
  * mapping, tool conversion, and message conversion (shared by OpenRouter).
- * Runs on every `ai` major (LOU-D28f): where the call or result shape differs
+ * Runs on every `ai` major: where the call or result shape differs
  * (v4 `maxTokens`, `args`, `result`; v5+ `maxOutputTokens`, `input`, `output`)
  * the test asserts the installed major's shape, built with aiShapes.testkit.ts.
  */
@@ -48,7 +48,7 @@ describe('AiSdkProvider', () => {
     streamTextMock.mockReset();
   });
 
-  describe('every modelSettings key reaches the AI SDK call (Eve PROV-F9)', () => {
+  describe('every modelSettings key reaches the AI SDK call', () => {
     const wireName: Record<string, string> = { maxTokens: isV4 ? 'maxTokens' : 'maxOutputTokens', stop: 'stopSequences' };
     const values: Record<(typeof MODEL_SETTING_KEYS)[number], unknown> = {
       temperature: 0.3,
@@ -80,7 +80,7 @@ describe('AiSdkProvider', () => {
     });
   });
 
-  describe('Anthropic prompt-cache breakpoints (Eve PROV-F4)', () => {
+  describe('Anthropic prompt-cache breakpoints', () => {
     const tool = (name: string) => ({ type: 'function' as const, function: { name, description: name, parameters: { type: 'object', properties: {} } } });
     const request = {
       model: 'claude-haiku-4-5',
@@ -141,7 +141,7 @@ describe('AiSdkProvider', () => {
     expect(settings.messages).toEqual([{ role: 'user', content: 'hi' }]);
   });
 
-  it('LOU-V7.2: passes config.maxRetries (default 2) to the ai SDK calls', async () => {
+  it('passes config.maxRetries (default 2) to the ai SDK calls', async () => {
     generateTextMock.mockResolvedValue(textResult('stop'));
     streamTextMock.mockResolvedValue({ textStream: (async function* () {})(), text: '', usage, finishReason: 'stop', toolCalls: [] });
     const call = { model: '', messages: [] };
@@ -154,7 +154,7 @@ describe('AiSdkProvider', () => {
     expect(streamTextMock.mock.calls[0][0].maxRetries).toBe(0);
   });
 
-  it('C2: a call withRetry() retries goes out with the ai SDK retries off, whatever config.maxRetries says', async () => {
+  it('a call withRetry() retries goes out with the ai SDK retries off, whatever config.maxRetries says', async () => {
     generateTextMock.mockResolvedValue(textResult('stop'));
     streamTextMock.mockResolvedValue({ textStream: (async function* () {})(), text: '', usage, finishReason: 'stop', toolCalls: [] });
     const provider = withRetry(new OpenAIProvider({ apiKey: 'k', maxRetries: 5 }));
@@ -167,7 +167,7 @@ describe('AiSdkProvider', () => {
     expect(streamTextMock.mock.calls[0][0].maxRetries).toBe(0);
   });
 
-  it('LOU-V5: reports usage as-is, reads cache/reasoning tokens from provider metadata, and no usage when counts are NaN', async () => {
+  it('reports usage as-is, reads cache/reasoning tokens from provider metadata, and no usage when counts are NaN', async () => {
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
 
     // v4 reports cache tokens in the provider metadata, v5+ in the usage details.
@@ -181,7 +181,7 @@ describe('AiSdkProvider', () => {
       cachedInputTokens: 1,
     });
 
-    // Eve PROV-F4: Anthropic's cache reads and writes. v4's @ai-sdk/anthropic leaves both out of
+    // Anthropic's cache reads and writes. v4's @ai-sdk/anthropic leaves both out of
     // `promptTokens` (they are added back); v6/v7 count them in `inputTokens` already.
     generateTextMock.mockResolvedValue(
       isV4
@@ -216,7 +216,7 @@ describe('AiSdkProvider', () => {
     expect(generateTextMock.mock.calls[0][0].model.modelId).toBe('gpt-4.1-mini');
   });
 
-  it('LOU-V1: forwards GenerateOptions.signal to the ai SDK as abortSignal', async () => {
+  it('forwards GenerateOptions.signal to the ai SDK as abortSignal', async () => {
     generateTextMock.mockResolvedValue(textResult('stop'));
     streamTextMock.mockResolvedValue({
       textStream: (async function* () {})(),
@@ -235,7 +235,7 @@ describe('AiSdkProvider', () => {
     expect(streamTextMock.mock.calls[0][0].abortSignal).toBe(signal);
   });
 
-  it('LOU-V4: maps responseFormat to a JSON-mode experimental_output that leaves prompt and text alone', async () => {
+  it('maps responseFormat to a JSON-mode experimental_output that leaves prompt and text alone', async () => {
     generateTextMock.mockResolvedValue(textResult('stop'));
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
     const schema = { type: 'object', properties: { a: { type: 'number' } } };
@@ -278,7 +278,7 @@ describe('AiSdkProvider', () => {
     expect(result.toolCalls).toBeUndefined();
   });
 
-  it("throws a retryable provider error for finish reason 'error' instead of resolving truncated text (Eve PROV-F8)", async () => {
+  it("throws a retryable provider error for finish reason 'error' instead of resolving truncated text", async () => {
     generateTextMock.mockResolvedValue({ ...textResult('error'), text: 'The capital of Fr' });
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
 
@@ -311,7 +311,7 @@ describe('AiSdkProvider', () => {
     }
   });
 
-  itOnAiV4('sends a zod 4 tool schema to ai v4 as its JSON Schema (LOU-D29)', async () => {
+  itOnAiV4('sends a zod 4 tool schema to ai v4 as its JSON Schema', async () => {
     generateTextMock.mockResolvedValue(textResult('stop'));
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
     const parameters = z4.object({ q: z4.string() }) as unknown as Record<string, unknown>;
@@ -326,7 +326,7 @@ describe('AiSdkProvider', () => {
     expect(tools.search.parameters.jsonSchema).toMatchObject({ type: 'object', properties: { q: { type: 'string' } }, required: ['q'] });
   });
 
-  it('LOU-R4: wraps a plain JSON-Schema parameters object, not the zod converter path', async () => {
+  it('wraps a plain JSON-Schema parameters object, not the zod converter path', async () => {
     generateTextMock.mockResolvedValue(textResult('stop'));
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k' });
     // The examples/openrouter `tools` snippet: a raw JSON Schema, not a zod

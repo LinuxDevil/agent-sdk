@@ -1,5 +1,5 @@
 /**
- * The registry of stable SDK error codes (LOU-D2).
+ * The registry of stable SDK error codes.
  *
  * Every `SDKError` carries one of these as `code`, with the matching one-
  * sentence `hint` and a `docs` link to its section of docs/errors.md. A test

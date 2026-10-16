@@ -1,22 +1,22 @@
 /**
- * `lousho dev` - a local dev server for iterating on an agent (LOU-H6).
+ * `lousho dev` - a local dev server for iterating on an agent.
  *
  * Serves:
  *   GET  /health  -> 200 'ok'
- *   GET  /        -> the minimal chat UI (LOU-H7)
- *   /chat routes  -> sessions, SSE streaming and approvals (LOU-D32), shared with
+ *   GET  /        -> the minimal chat UI
+ *   /chat routes  -> sessions, SSE streaming and approvals, shared with
  *                    the deployed node server: see src/server/chatRoutes.ts
  *
- * Config loading (LOU-H9): configPath is a declarative agent spec file
+ * Config loading: configPath is a declarative agent spec file
  * (.yaml/.yml or .json - see src/spec/schema.ts's AgentSpec), loaded and
  * zod-validated via loadSpec() and turned into a live agent via
- * specToAgent(). This retrofits LOU-H6's original ad-hoc
- * {name, prompt, provider, tools} JSON loader now that LOU-H9 (the
- * designed-for successor) exists - the two shapes are compatible (a plain
+ * specToAgent(). This retrofits the original ad-hoc
+ * {name, prompt, provider, tools} JSON loader now that the
+ * designed-for successor exists - the two shapes are compatible (a plain
  * .json config in the old shape is a valid AgentSpec), so no existing
  * configs need to change.
  *
- * Targets (LOU-D31): the path may also be an agent directory (loadAgentDir)
+ * Targets: the path may also be an agent directory (loadAgentDir)
  * or a .ts/.js module exporting a SimpleAgent / createAgent() config; see
  * devReload.ts for detection, watching and the reload swap.
  */
@@ -54,7 +54,7 @@ function serveChatUi(res: http.ServerResponse): void {
 }
 
 /**
- * Mutable holder for the currently-loaded agent (LOU-H8), so /chat always
+ * Mutable holder for the currently-loaded agent, so /chat always
  * reads the latest reloaded version without restarting the HTTP server or
  * dropping connections.
  */
@@ -112,11 +112,11 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   const chat: ChatRoutesContext = {
     name: 'lousho dev',
     agent: () => holder.agent,
-    // A1: a local dev server shows the developer the provider's own error text.
+    // A local dev server shows the developer the provider's own error text.
     exposeErrors: true,
     // The dev store keeps sessions across reloads, unless the agent brought its own.
     session: (agent, id) => agent.session(hasOwnStore(agent) ? { id } : { id, store: holder.store }),
-    // N9b: a channel turn paused on a sign-in continues on its surface after the callback.
+    // A channel turn paused on a sign-in continues on its surface after the callback.
     afterSignIn: (result) => continueChannelSignIn(holder.channels, result),
   };
   if (!(await handleChatRequest(req, res, chat))) sendText(res, 404, 'not found');
@@ -166,7 +166,7 @@ function listenOnPort(server: http.Server, port: number, host: string): Promise<
  *
  * `configPath` is a spec file, an agent directory or a .ts/.js agent module
  * (detected by path type and extension, see `detectTarget`). Its sources are
- * watched (LOU-H8, LOU-D31): on a valid edit the live agent is swapped
+ * watched: on a valid edit the live agent is swapped
  * in-place through the mutable AgentHolder above and the previous agent is
  * closed; on an invalid edit the error is logged and shown in the chat UI,
  * and the previous working agent is kept - the server never crashes and never

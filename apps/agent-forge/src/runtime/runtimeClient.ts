@@ -1,5 +1,5 @@
 /**
- * Browser-side client for the LOU-N runtime control server
+ * Browser-side client for the runtime control server
  * (apps/agent-forge/server/**). Talks to it over plain `fetch` for
  * run/stop/status/approve and a `WebSocket` for the live status/event
  * stream - this is the app's only dependency on the server's wire shape,
@@ -35,7 +35,7 @@ const DEFAULT_BASE_URL = '';
 
 interface RuntimeClientOptions {
   baseUrl?: string;
-  /** Eve DUI-F1: the per-launch API token; defaults to the one in the page URL (see studioToken.ts). */
+  /** The per-launch API token; defaults to the one in the page URL (see studioToken.ts). */
   token?: string;
 }
 
@@ -53,7 +53,7 @@ export class RuntimeApiError extends Error {
   }
 }
 
-/** Eve DUI-F21: connection callbacks for `subscribe()` - `onLost` fires when the socket closes without the caller unsubscribing. */
+/** Connection callbacks for `subscribe()` - `onLost` fires when the socket closes without the caller unsubscribing. */
 export interface StreamConnectionHandlers {
   onOpen?: () => void;
   onLost?: () => void;
@@ -68,7 +68,7 @@ class RuntimeClient implements AgentApi {
     this.token = options.token ?? loadStudioToken();
   }
 
-  /** `fetch` against the studio API, carrying the per-launch token (Eve DUI-F1). */
+  /** `fetch` against the studio API, carrying the per-launch token. */
   private fetch(path: string, init?: RequestInit): Promise<Response> {
     const headers = new Headers(init?.headers);
     if (this.token) headers.set(STUDIO_TOKEN_HEADER, this.token);
@@ -95,12 +95,12 @@ class RuntimeClient implements AgentApi {
     return body as T;
   }
 
-  /** Eve DUI-F2: the saved agents in the studio's `.lousho/agents/`. */
+  /** The saved agents in the studio's `.lousho/agents/`. */
   async listAgents(): Promise<AgentStoreEntry[]> {
     return this.request('/agents', { method: 'GET' });
   }
 
-  /** Eve DUI-F2: one saved agent's spec, or undefined when there is none. */
+  /** One saved agent's spec, or undefined when there is none. */
   async loadAgent(agentId: string): Promise<AgentSpec | undefined> {
     try {
       return await this.request<AgentSpec>(`/agents/${encodeURIComponent(agentId)}`, { method: 'GET' });
@@ -110,7 +110,7 @@ class RuntimeClient implements AgentApi {
     }
   }
 
-  /** Eve DUI-F2: writes `.lousho/agents/<id>.yaml`. */
+  /** Writes `.lousho/agents/<id>.yaml`. */
   async saveAgent(agentId: string, spec: AgentSpec): Promise<void> {
     await this.request(`/agents/${encodeURIComponent(agentId)}`, { method: 'PUT', body: JSON.stringify(spec) });
   }
@@ -119,7 +119,7 @@ class RuntimeClient implements AgentApi {
     await this.request(`/agents/${encodeURIComponent(agentId)}`, { method: 'DELETE' });
   }
 
-  /** Eve DUI-F2: the directory the studio serves (`.lousho/` lives under it). */
+  /** The directory the studio serves (`.lousho/` lives under it). */
   async workspace(): Promise<{ baseDir: string }> {
     return this.request('/workspace', { method: 'GET' });
   }
@@ -151,7 +151,7 @@ class RuntimeClient implements AgentApi {
     });
   }
 
-  /** O3: current breakpoints + pause state for `agentId` (see debugController.ts). */
+  /** Current breakpoints + pause state for `agentId` (see debugController.ts). */
   async debugState(agentId: string): Promise<DebugStatePayload> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/debug`, { method: 'GET' });
   }
@@ -171,9 +171,9 @@ class RuntimeClient implements AgentApi {
     return this.request(`/agents/${encodeURIComponent(agentId)}/debug/step`, { method: 'POST' });
   }
 
-  /** P1: sends a chat message - continues the agent's conversation (or starts one), replying over the WS `subscribe()` stream as `{type:'chat'}`. */
+  /** Sends a chat message - continues the agent's conversation (or starts one), replying over the WS `subscribe()` stream as `{type:'chat'}`. */
   async sendMessage(agentId: string, message: string, spec?: AgentSpec): Promise<AgentRunStatusPayload> {
-    // Eve DUI-F7: send the canvas's current spec along, like run() does, so
+    // Send the canvas's current spec along, like run() does, so
     // chat never runs a stale (or missing) saved spec.
     return this.request(`/agents/${encodeURIComponent(agentId)}/message`, {
       method: 'POST',
@@ -181,34 +181,34 @@ class RuntimeClient implements AgentApi {
     });
   }
 
-  /** P1: REST snapshot of the current live chat transcript (mirrors the WS stream's initial `{type:'chat'}` push). */
+  /** REST snapshot of the current live chat transcript (mirrors the WS stream's initial `{type:'chat'}` push). */
   async getChat(agentId: string): Promise<ChatStatePayload> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/chat`, { method: 'GET' });
   }
 
-  /** P3: archives the current chat session and starts a fresh, empty one. */
+  /** Archives the current chat session and starts a fresh, empty one. */
   async newChat(agentId: string): Promise<ChatStatePayload> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/chat/new`, { method: 'POST' });
   }
 
-  /** P3: metadata for every past (and current) chat session for `agentId`, newest first. */
+  /** Metadata for every past (and current) chat session for `agentId`, newest first. */
   async listChats(agentId: string): Promise<ChatSessionMeta[]> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/chats`, { method: 'GET' });
   }
 
-  /** P3: a full past chat session's transcript. */
+  /** A full past chat session's transcript. */
   async loadChatSession(agentId: string, sessionId: string): Promise<ChatSessionRecord> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/chats/${encodeURIComponent(sessionId)}`, {
       method: 'GET',
     });
   }
 
-  /** LOU-D45: the steps of run `runId`'s checkpoint history (a run id is the agent id, or a fork's id). */
+  /** The steps of run `runId`'s checkpoint history (a run id is the agent id, or a fork's id). */
   async runHistory(runId: string): Promise<RunHistoryPayload> {
     return this.request(`/runs/${encodeURIComponent(runId)}/history`, { method: 'GET' });
   }
 
-  /** M5b: the agent's persisted traces (the files `lousho traces` reads), newest first. */
+  /** The agent's persisted traces (the files `lousho traces` reads), newest first. */
   async listTraces(agentId: string, limit?: number): Promise<TraceSummaryPayload[]> {
     const query = limit === undefined ? '' : `?${new URLSearchParams({ limit: String(limit) })}`;
     const body = await this.request<{ traces: TraceSummaryPayload[] }>(
@@ -218,7 +218,7 @@ class RuntimeClient implements AgentApi {
     return body.traces;
   }
 
-  /** M5b: the spans of one persisted trace. */
+  /** The spans of one persisted trace. */
   async readTrace(agentId: string, traceId: string): Promise<SpanEvent[]> {
     const body = await this.request<TraceDetailPayload>(
       `/agents/${encodeURIComponent(agentId)}/traces/${encodeURIComponent(traceId)}`,
@@ -227,23 +227,23 @@ class RuntimeClient implements AgentApi {
     return body.spans;
   }
 
-  /** LOU-D45: forks run `runId` at a step, patched, and starts the fork - its status streams on `subscribe(response.runId)`. */
+  /** Forks run `runId` at a step, patched, and starts the fork - its status streams on `subscribe(response.runId)`. */
   async forkRun(runId: string, body: ForkRunRequest): Promise<ForkRunResponse> {
     return this.request(`/runs/${encodeURIComponent(runId)}/fork`, { method: 'POST', body: JSON.stringify(body) });
   }
 
-  /** LOU-D45: `compareTrajectories()` of two runs, for the side-by-side view. */
+  /** `compareTrajectories()` of two runs, for the side-by-side view. */
   async compareRuns(a: string, b: string): Promise<RunComparisonPayload> {
     const query = new URLSearchParams({ a, b });
     return this.request(`/runs/compare?${query}`, { method: 'GET' });
   }
 
-  /** R1: masked status of every managed provider's stored key. */
+  /** Masked status of every managed provider's stored key. */
   async listProviderKeys(): Promise<ProviderKeyStatus[]> {
     return this.request('/settings/providers', { method: 'GET' });
   }
 
-  /** R1: stores (or replaces) `provider`'s API key. Resolves with the new masked status - never the real key. */
+  /** Stores (or replaces) `provider`'s API key. Resolves with the new masked status - never the real key. */
   async setProviderKey(provider: string, apiKey: string): Promise<ProviderKeyStatus> {
     return this.request(`/settings/providers/${encodeURIComponent(provider)}`, {
       method: 'PUT',
@@ -251,17 +251,17 @@ class RuntimeClient implements AgentApi {
     });
   }
 
-  /** R1: removes `provider`'s stored key, if any. */
+  /** Removes `provider`'s stored key, if any. */
   async removeProviderKey(provider: string): Promise<void> {
     await this.request(`/settings/providers/${encodeURIComponent(provider)}`, { method: 'DELETE' });
   }
 
-  /** R3: every settings profile + which one is active. */
+  /** Every settings profile + which one is active. */
   async listSettingsProfiles(): Promise<SettingsFile> {
     return this.request('/settings/profiles', { method: 'GET' });
   }
 
-  /** R3: creates or replaces a profile by id. */
+  /** Creates or replaces a profile by id. */
   async saveSettingsProfile(profile: SettingsProfile): Promise<SettingsFile> {
     return this.request(`/settings/profiles/${encodeURIComponent(profile.id)}`, {
       method: 'PUT',
@@ -269,7 +269,7 @@ class RuntimeClient implements AgentApi {
     });
   }
 
-  /** R3: switches the active profile. */
+  /** Switches the active profile. */
   async activateSettingsProfile(profileId: string): Promise<SettingsFile> {
     return this.request(`/settings/profiles/${encodeURIComponent(profileId)}/activate`, { method: 'POST' });
   }
@@ -320,7 +320,7 @@ class RuntimeClient implements AgentApi {
       }
     });
     if (onError) ws.addEventListener('error', onError);
-    // Eve DUI-F21: tell the caller when the stream opens, and when it drops
+    // Tell the caller when the stream opens, and when it drops
     // for any reason other than the caller's own unsubscribe.
     if (connection?.onOpen) ws.addEventListener('open', connection.onOpen);
     ws.addEventListener('close', () => {

@@ -1,6 +1,5 @@
 /**
- * Contract tests at the 'ai'-SDK boundary for tool-call conversations
- * (LOU-U2).
+ * Contract tests at the 'ai'-SDK boundary for tool-call conversations.
  *
  * Mocks the 'ai' SDK's generateText (no live API key required) and asserts
  * the exact `messages` payload every 'ai'-SDK-backed provider hands it for a
@@ -11,7 +10,7 @@
  * keys - so a payload that survives that parse unchanged is exactly what
  * 'ai' forwards to the provider.
  *
- * Runs on every `ai` major (LOU-D28f): the parts `ai` takes differ between
+ * Runs on every `ai` major: the parts `ai` takes differ between
  * v4 (`args`, `result`) and v5+ (`input`, a typed `output`), so the expected
  * payloads are built with aiShapes.testkit.ts, and the schema check uses the
  * installed major's own message schema.
@@ -59,7 +58,7 @@ function textResult(text = 'ok') {
 
 /**
  * `generateText` is mocked, so the model is never called. On `ai` 6/7 the Ollama package
- * (`ollama-ai-provider-v2`, zod 4 peer) is installed only in the zod 4 CI jobs (LOU-M8); without it
+ * (`ollama-ai-provider-v2`, zod 4 peer) is installed only in the zod 4 CI jobs; without it
  * the model is a stand-in.
  */
 function ollama(): LLMProvider {
@@ -277,7 +276,7 @@ describe('AgentExecutor -> provider: second step sees the first step tool calls'
       input: 'Weather in Paris and Rome?',
       provider: create(),
       toolRegistry,
-      // The wire payload without Eve PROV-F4's cache breakpoints (promptCaching.test.ts covers them).
+      // The wire payload without cache breakpoints (promptCaching.test.ts covers them).
       promptCaching: false,
     });
 

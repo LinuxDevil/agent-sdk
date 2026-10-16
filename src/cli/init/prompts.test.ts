@@ -34,7 +34,7 @@ describe('askMissing', () => {
   });
 });
 
-describe('askMissing without the optional prompts peer (LOU-D40)', () => {
+describe('askMissing without the optional prompts peer', () => {
   afterEach(() => {
     vi.doUnmock('prompts');
     vi.resetModules();

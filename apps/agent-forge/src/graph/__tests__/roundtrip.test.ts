@@ -69,7 +69,7 @@ describe('graph -> spec -> graph round trip', () => {
     expect(rebuiltGraph.edges).toHaveLength(graph.edges.length);
   });
 
-  describe('hooks (LOU-Q3)', () => {
+  describe('hooks', () => {
     it('serializes enabled hooks into spec.policy.hooks, keyed by node, and drops disabled ones', () => {
       const graph = specToGraph(minimalSpec);
       const llmNode = graph.nodes.find((n) => n.type === 'llm')!;

@@ -1,5 +1,5 @@
 /**
- * Trigger adapters module (LOU-T5)
+ * Trigger adapters module
  *
  * Public surface for `@lousho/build-ai-agent/triggers`: the TriggerAdapter
  * interface, TriggerRegistry, and the three built-in adapters

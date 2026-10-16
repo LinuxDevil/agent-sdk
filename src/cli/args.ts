@@ -1,5 +1,5 @@
 /**
- * The one flag parser every `lousho` command uses (LOU-U21): `node:util`'s
+ * The one flag parser every `lousho` command uses: `node:util`'s
  * `parseArgs` in strict mode, with errors in the CLI's coded style.
  *
  * - `--flag value` and `--flag=value` both work; a repeated flag keeps its last value

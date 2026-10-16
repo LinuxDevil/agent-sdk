@@ -1,5 +1,5 @@
 /**
- * LOU-V3: runs the tool calls of one assistant turn concurrently, up to a
+ * Runs the tool calls of one assistant turn concurrently, up to a
  * limit, while keeping everything the transcript and resumption depend on
  * deterministic. See `ExecuteOptions.toolConcurrency` for the public
  * contract; this module is the scheduler behind it.
@@ -20,9 +20,9 @@ export type ToolConcurrency = number | 'unbounded';
  * (`undefined` means "use the default" and is accepted).
  */
 /**
- * Eve2-F5: how long an aborted run still waits for calls already running.
+ * How long an aborted run still waits for calls already running.
  * A tool that finishes while the run unwinds keeps its real result in the
- * transcript (B4: calls that ran stay); anything still running after the
+ * transcript (calls that ran stay); anything still running after the
  * grace is abandoned and settles 'cancelled' - a tool ignoring the signal
  * never holds the run open. 500ms is well past a settling tool's tail and
  * well under any caller-visible abort latency.
@@ -57,7 +57,7 @@ export interface StartedToolCall {
 export interface ToolBatchCallbacks {
   /** Starts one call (emitting its `tool-call` event first). */
   start(toolCall: ToolCall): StartedToolCall;
-  /** A call finished (completion order); never called for the approval call or a call paused for sign-in (N9b). */
+  /** A call finished (completion order); never called for the approval call or a call paused for sign-in. */
   onComplete(outcome: ToolCallOutcome): void;
   /**
    * Records a result in the transcript; called as each call settles
@@ -82,7 +82,7 @@ export interface UnrecordedToolCall {
 /** What happened to a batch, once no call of it is running any more. */
 export interface ToolBatchResult {
   /**
-   * Eve TOOLS-F12: every call that needs approval, in call order. They wait
+   * Every call that needs approval, in call order. They wait
    * together; the batch's other calls ran (a step pauses once, on all of them).
    */
   approvals: Array<{ toolCall: ToolCall; outcome: ToolCallOutcome }>;
@@ -97,7 +97,7 @@ type Slot =
   | { status: 'completed'; outcome: ToolCallOutcome }
   | { status: 'failed'; error: unknown };
 
-/** Hands out at most `limit` slots; waiters are served first-come first-served. N14: also limits the inner calls of one `run_code` script. */
+/** Hands out at most `limit` slots; waiters are served first-come first-served. Also limits the inner calls of one `run_code` script. */
 export class Limiter {
   private active = 0;
   private readonly waiters: Array<() => void> = [];
@@ -126,7 +126,7 @@ export class Limiter {
  * Runs one turn's tool calls. Calls are started in call order, each one
  * only after the previous one passed its gate and a concurrency slot is
  * free. A call that needs approval does not run; the calls after it still
- * do (Eve TOOLS-F12: the step then pauses once, on every such call). Each result is recorded as its call settles; the transcript
+ * do (the step then pauses once, on every such call). Each result is recorded as its call settles; the transcript
  * keeps call order. Resolves only once every started call has settled.
  */
 class ToolBatch {
@@ -135,7 +135,7 @@ class ToolBatch {
   private readonly running: Array<Promise<void>> = [];
   private readonly recorded = new Set<number>();
   private halted = false;
-  /** Eve2-F5: the run's signal aborted while a tool ignored it - the batch stopped waiting; late settlements are dropped. */
+  /** The run's signal aborted while a tool ignored it - the batch stopped waiting; late settlements are dropped. */
   private abandoned = false;
   private persisting: Promise<void> = Promise.resolve();
 
@@ -178,8 +178,8 @@ class ToolBatch {
     }
     // A settlement landing while the run unwinds still records: the abort
     // side drains for TOOL_ABORT_GRACE_MS first, so a tool released just as
-    // the run aborted keeps its result (B4) - only a call still running
-    // past the grace is left behind (Eve2-F5).
+    // the run aborted keeps its result - only a call still running
+    // past the grace is left behind.
     const drained = new Promise<'aborted'>((resolve) => {
       const onAbort = () => setTimeout(() => resolve('aborted'), TOOL_ABORT_GRACE_MS);
       runSignal.addEventListener('abort', onAbort, { once: true });
@@ -226,7 +226,7 @@ class ToolBatch {
       // call already has a cancelled result - a late settlement records nothing more.
       if (this.abandoned) return;
       this.slots[index] = { status: 'completed', outcome };
-      // N9b: a call paused for sign-in has no result yet, like one awaiting approval.
+      // A call paused for sign-in has no result yet, like one awaiting approval.
       if (!outcome.requiresApproval && !outcome.signIn) {
         this.callbacks.onComplete(outcome);
         await this.record(index, outcome);
@@ -271,7 +271,7 @@ class ToolBatch {
 /**
  * Runs one turn's tool calls - see {@link ToolBatch}. `signal` stops new
  * starts (abort or steer); `runSignal` is the run's own signal, whose abort
- * also ends the wait for calls still running (Eve2-F5).
+ * also ends the wait for calls still running.
  */
 export function runToolBatch(
   toolCalls: ToolCall[],

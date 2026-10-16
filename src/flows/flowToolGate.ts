@@ -1,10 +1,10 @@
 /**
- * A8: the gate a flow's `toolCall` step passes before its tool runs - the
+ * The gate a flow's `toolCall` step passes before its tool runs - the
  * same checks an agent run applies to a model's tool call: argument
  * validation against the tool's schema, permission rules and modes, and the
  * tool's `needsApproval`. A call that needs approval is decided by the
  * context's `approve` callback. Without a decision it is refused (fail
- * closed), or, in a durable run (DUR-F17), the run pauses for it.
+ * closed), or, in a durable run, the run pauses for it.
  */
 
 import type { ToolCall } from '../providers';
@@ -18,7 +18,7 @@ import type { FlowExecutionContext } from './FlowExecutor';
 import { FlowApprovalPause, type FlowApprovalDecision } from './flowCheckpoint';
 
 /**
- * DUR-F17: a durable run's step: `nodeId` is where it pauses for approval, and
+ * A durable run's step: `nodeId` is where it pauses for approval, and
  * `decision` the decision a resume brought for it.
  */
 export interface FlowGateDurability {

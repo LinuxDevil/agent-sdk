@@ -1,5 +1,5 @@
 /**
- * `session.compact()` (LOU-W8): runs a compaction strategy over a session's
+ * `session.compact()`: runs a compaction strategy over a session's
  * transcript now, whatever its size, and reports it as `compaction.start` /
  * `compaction.done` events (`trigger: 'manual'`).
  */

@@ -1,5 +1,5 @@
 /**
- * MCP Tool Loader Module (LOU-K1)
+ * MCP Tool Loader Module
  *
  * Public surface for loading tools advertised by a connected MCP
  * (Model Context Protocol) server and turning them into ToolDescriptors

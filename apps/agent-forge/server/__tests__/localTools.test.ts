@@ -1,5 +1,5 @@
 /**
- * S3 (LOU-S): covers `buildAgent.ts`'s `demo-approval` local tool - the one
+ * S3: covers `buildAgent.ts`'s `demo-approval` local tool - the one
  * addition that makes a real human-in-the-loop approval gate reachable
  * through the actual app (create an agent, add a "Tool call" node named
  * `demo-approval`, run it) rather than only via a hand-built ToolDescriptor

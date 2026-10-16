@@ -1,5 +1,5 @@
 /**
- * N9c test helpers: one `node:http` server that is both an OAuth 2.1
+ * Test helpers: one `node:http` server that is both an OAuth 2.1
  * authorization server (RFC 8414 metadata, RFC 7591 registration, a token
  * endpoint that checks PKCE, the client, the redirect URI and the resource
  * indicator, and refreshes) and an MCP protected resource (RFC 9728

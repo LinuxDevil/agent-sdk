@@ -246,7 +246,7 @@ describe('retry and output', () => {
   });
 });
 
-describe('modelSettings (C6)', () => {
+describe('modelSettings', () => {
   it('accepts the known sampling settings', () => {
     const modelSettings = { maxTokens: 1024, temperature: 0.2, topP: 0.9, frequencyPenalty: 0, presencePenalty: 0.1, stop: ['END'], seed: 7 };
     expect(validateConfig(FILE, { modelSettings }).modelSettings).toEqual(modelSettings);

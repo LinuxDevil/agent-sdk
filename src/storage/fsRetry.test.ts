@@ -10,7 +10,7 @@ import { withFsRetry } from './fsRetry';
 
 const fsError = (code: string) => Object.assign(new Error(`${code}: operation not permitted, rename 'a' -> 'b'`), { code });
 
-describe('withFsRetry (Eve DUR-F13)', () => {
+describe('withFsRetry', () => {
   it('retries EPERM / EACCES / EBUSY and returns the result', async () => {
     const codes = ['EPERM', 'EACCES', 'EBUSY'];
     let calls = 0;
@@ -42,7 +42,7 @@ describe('withFsRetry (Eve DUR-F13)', () => {
   });
 });
 
-describe('fileStore under concurrent use (Eve DUR-F13)', () => {
+describe('fileStore under concurrent use', () => {
   const dirs: string[] = [];
   afterAll(async () => {
     for (const dir of dirs) await rm(dir, { recursive: true, force: true });

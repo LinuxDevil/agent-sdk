@@ -1,5 +1,5 @@
 /**
- * LOU-W9: checkpointed sessions. Every turn is checkpointed per step, so a
+ * Checkpointed sessions. Every turn is checkpointed per step, so a
  * turn interrupted mid-way (a crash, a failed checkpoint write) is finished
  * by `session.resume()` in a fresh agent, without re-running finished steps.
  */
@@ -63,14 +63,14 @@ const calling = (name: string): MockStaticTurn => ({ toolCalls: [{ name, id: `ca
 const roles = (messages: readonly { role: string }[]): string[] => messages.map((m) => m.role);
 const users = (messages: readonly Message[]): number => messages.filter((m) => m.role === 'user').length;
 const fullTurn = ['user', 'assistant', 'tool', 'assistant', 'tool', 'assistant'];
-/** Checkpoint keys except `<id>.turn-counter`, the bookkeeping record a commit leaves (Eve3-S4). */
+/** Checkpoint keys except `<id>.turn-counter`, the bookkeeping record a commit leaves. */
 const liveKeys = (data: Map<string, string>): string[] => [...data.keys()].filter((key) => !key.endsWith('.turn-counter'));
 
 async function drain(run: AgentRun): Promise<void> {
   for await (const event of run) void event;
 }
 
-describe('checkpointed sessions (LOU-W9)', () => {
+describe('checkpointed sessions', () => {
   it('resume() finishes a turn that crashed on its second step, in a fresh agent, without re-running finished steps', async () => {
     const runs: Runs = {};
     const tools = [tool('a', runs), tool('b', runs, { crashOnce: true })];
@@ -190,7 +190,7 @@ describe('checkpointed sessions (LOU-W9)', () => {
     store.close();
   });
 
-  it('clear() and compact() reject while a durable turn waits on an approval (LOU-W8)', async () => {
+  it('clear() and compact() reject while a durable turn waits on an approval', async () => {
     const tools = [tool('send_email', {}, { needsApproval: true })];
     const store = new SqliteStore(':memory:');
     const session = createAgent({ provider: mockModel([calling('send_email')]), tools, approvalStore: new InMemoryApprovalStore() }).session({ id: 'chat', store });
@@ -226,7 +226,7 @@ describe('checkpointed sessions (LOU-W9)', () => {
   });
 
   it('resolving a paused session turn from a fresh agent (session never opened) commits the turn', async () => {
-    // coding-agent F1: a restarted process had an empty `sessions` map, so
+    // A restarted process had an empty `sessions` map, so
     // resolve() resumed outside the session and the turn never joined the
     // transcript.
     const runs: Runs = {};
@@ -267,7 +267,7 @@ describe('checkpointed sessions (LOU-W9)', () => {
   });
 
   it('a continuation that fails after approval leaves a resumable turn holding the executed tool result', async () => {
-    // support-desk F4: the stale checkpoint was deleted before the continued
+    // The stale checkpoint was deleted before the continued
     // run, so a failure there erased the approved, already-executed call.
     const runs: Runs = {};
     const tools = [tool('refund', runs, { needsApproval: true })];
@@ -297,7 +297,7 @@ describe('checkpointed sessions (LOU-W9)', () => {
   });
 
   it('a finished turn keeps its checkpoint history, so the turn stays forkable', async () => {
-    // incident-responder F2: commit() deleted the turn's checkpoint AND its
+    // commit() deleted the turn's checkpoint AND its
     // history, leaving nothing for agent.fork() - unlike a send({ sessionId })
     // run, which keeps a 'finished' checkpoint.
     const store = memoryStore();
@@ -384,7 +384,7 @@ describe('checkpointed sessions (LOU-W9)', () => {
     }
   }, 60_000);
 
-  // Eve DUR-F8: clear() deleted only the current turn's checkpoint; every committed turn's checkpoint HISTORY (full
+  // Clear() deleted only the current turn's checkpoint; every committed turn's checkpoint HISTORY (full
   // transcript copies) survived, and agent.fork('<id>.turn-<n>') revived the cleared conversation.
   it.each([
     ['memoryStore()', memoryStore],
@@ -418,7 +418,7 @@ describe('checkpointed sessions (LOU-W9)', () => {
     (store as { close?: () => void }).close?.();
   });
 
-  it('clear() also deletes the checkpoints of turns from before a compaction shortened the transcript (Eve DUR-F8)', async () => {
+  it('clear() also deletes the checkpoints of turns from before a compaction shortened the transcript', async () => {
     const store = memoryStore();
     const runs: Runs = {};
     const model = mockModel([(r) => (r.messages.at(-1)?.role === 'tool' ? 'Noted.' : calling('lookup'))], { onExhausted: 'repeat-last' });
@@ -439,7 +439,7 @@ describe('checkpointed sessions (LOU-W9)', () => {
     expect(await kept()).toBe(0);
   });
 
-  // Eve3-S4: turn checkpoint ids numbered by transcript length collided after compact() - fork('p.turn-2') then
+  // turn checkpoint ids numbered by transcript length collided after compact() - fork('p.turn-2') then
   // silently resolved to a different turn. Turn numbers now only grow, kept by the <id>.turn-counter checkpoint.
   it('a compaction cannot collide a later turn checkpoint id with an earlier turn', async () => {
     const store = memoryStore();

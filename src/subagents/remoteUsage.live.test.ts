@@ -1,7 +1,7 @@
 /**
  * Live test (costs money, needs OPENROUTER_API_KEY; at most 0.03 USD): a lead on `mockModel` delegates once to a
  * remote agent served by the in-process `/chat` routes, whose model is `openrouter/openai/gpt-4o-mini`. Checks that
- * the lead's `result.usage` is its own plus what the remote reported on `run.done` (M10b). Run with
+ * the lead's `result.usage` is its own plus what the remote reported on `run.done`. Run with
  * `npm run test:live -- src/subagents`.
  */
 import { describe, expect, it } from 'vitest';
@@ -12,7 +12,7 @@ import { serveFetch } from '../server/fetchRoutes';
 import { mockModel } from '../testing';
 import { remoteAgent } from './remoteAgent';
 
-describe.skipIf(!process.env.OPENROUTER_API_KEY)('remote sub-agent usage live (M10b)', () => {
+describe.skipIf(!process.env.OPENROUTER_API_KEY)('remote sub-agent usage live', () => {
   it("adds the real remote run's reported usage to the lead's totals", async () => {
     const remoteAgentConfig = createAgent({ model: 'openrouter/openai/gpt-4o-mini', instructions: 'Answer in at most five words.', maxSteps: 1 });
     const reported: AgentEventUsage[] = [];

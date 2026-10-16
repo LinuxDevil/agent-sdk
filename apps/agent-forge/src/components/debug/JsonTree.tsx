@@ -89,7 +89,7 @@ function Branch({
 }
 
 /**
- * O4: hand-rolled, collapsible JSON tree - no dependency needed for this.
+ * Hand-rolled, collapsible JSON tree - no dependency needed for this.
  * `defaultExpandDepth` keeps the tree from dumping a giant `ExecutionResult`
  * fully expanded on first render.
  */

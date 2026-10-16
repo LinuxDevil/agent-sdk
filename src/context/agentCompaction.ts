@@ -1,5 +1,5 @@
 /**
- * `createAgent({ compaction })` (LOU-W3.2): turns the option into the
+ * `createAgent({ compaction })`: turns the option into the
  * compaction hook it installs.
  */
 
@@ -40,7 +40,7 @@ export function compactionHookFor(compaction: AgentCompaction | undefined): Agen
   });
 }
 
-/** The options `session.compact()` runs with for an agent's `compaction` (LOU-W8): its strategy (`summarizer` selects `twoPhaseStrategy()`) and sizes. */
+/** The options `session.compact()` runs with for an agent's `compaction`: its strategy (`summarizer` selects `twoPhaseStrategy()`) and sizes. */
 export function manualCompactionOptions(compaction: AgentCompaction | undefined): CompactMessagesOptions {
   if (!compaction || compaction === true) return {};
   const { summarizer, strategy, contextWindow, protectedTokens, reserveOutputTokens } = compaction;

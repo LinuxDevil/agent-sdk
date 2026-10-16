@@ -69,7 +69,7 @@ afterAll(() => {
   fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 });
 
-describe('NodeWorkspace file system (LOU-X6)', () => {
+describe('NodeWorkspace file system', () => {
   it('requires an existing root', () => {
     expect(() => new NodeWorkspace({ root: '' })).toThrow(/'root' is required/);
     expect(() => new NodeWorkspace({ root: path.join(tmp, 'missing') })).toThrow(/does not exist/);
@@ -112,7 +112,7 @@ describe('NodeWorkspace file system (LOU-X6)', () => {
     expect(await exec(tools.glob, { pattern: '**/*.txt' })).toBe('tool/x.txt');
   });
 
-  // Eve TOOLS-F7: decoding as UTF-8 and writing back replaced every non-UTF-8 byte with U+FFFD.
+  // Decoding as UTF-8 and writing back replaced every non-UTF-8 byte with U+FFFD.
   it('edit_file refuses a file that is not UTF-8 and leaves its bytes alone', async () => {
     const latin1 = Buffer.from([0x63, 0x61, 0x66, 0xe9, 0x20, 0x3d, 0x20, 0x31, 0x0a, 0x78, 0x20, 0x3d, 0x20, 0x32, 0x0a]);
     fs.writeFileSync(path.join(rootDir, 'legacy.ini'), latin1);
@@ -235,7 +235,7 @@ describe('NodeWorkspace file system (LOU-X6)', () => {
   });
 });
 
-describe('NodeWorkspace shell (LOU-X6)', () => {
+describe('NodeWorkspace shell', () => {
   it('returns stdout, stderr and the exit code', async () => {
     const result = await ws.exec(node("process.stdout.write('out');process.stderr.write('err');process.exit(3)"));
     expect(result).toEqual({ stdout: 'out', stderr: 'err', exitCode: 3, timedOut: false });
@@ -263,7 +263,7 @@ describe('NodeWorkspace shell (LOU-X6)', () => {
     }
   });
 
-  it('a command printing its environment sees only allowlisted names, never planted secrets (LOU-X11)', async () => {
+  it('a command printing its environment sees only allowlisted names, never planted secrets', async () => {
     const planted = { FAKE_SECRET_FOR_TEST: 'fake-secret-x11', FAKE_API_KEY_FOR_TEST: 'fake-key-x11' };
     Object.assign(process.env, planted, { FAKE_ALLOWED_FOR_TEST: 'allowed-x11' });
     try {

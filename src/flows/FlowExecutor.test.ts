@@ -559,7 +559,7 @@ describe('FlowExecutor', () => {
     });
   });
 
-  describe('A8: toolCall steps pass the agent gate', () => {
+  describe('ToolCall steps pass the agent gate', () => {
     const payFlow = (amount: string): AgentFlow => ({
       code: 'pay-flow',
       name: 'Pay flow',
@@ -664,7 +664,7 @@ describe('FlowExecutor', () => {
     });
   });
 
-  describe('A8: cancellation', () => {
+  describe('Cancellation', () => {
     it('starts no further step once the signal is aborted, and fails with its reason', async () => {
       const controller = new AbortController();
       const ran: string[] = [];
@@ -717,7 +717,7 @@ describe('FlowExecutor', () => {
     });
   });
 
-  describe('A8: step ids', () => {
+  describe('Step ids', () => {
     it('gives every step without an id a unique id within the run', async () => {
       const flow: AgentFlow = {
         code: 'ids',
@@ -740,7 +740,7 @@ describe('FlowExecutor', () => {
     });
   });
 
-  describe('A8: flow inputs', () => {
+  describe('Flow inputs', () => {
     const flowWithInput: AgentFlow = {
       code: 'needs-doc',
       name: 'Needs doc',
@@ -772,7 +772,7 @@ describe('FlowExecutor', () => {
     });
   });
 
-  describe('LOU-F fix: sandbox seam wiring in executeToolCall()', () => {
+  describe('fix: sandbox seam wiring in executeToolCall()', () => {
     it("routes a requiresSandbox:true tool with sandboxExecute() through the configured SandboxAdapter, never touching tool.execute()", async () => {
       const toolExecute = vi.fn().mockResolvedValue({ done: true });
       const sandboxExecute = vi.fn(async (args: unknown, sandbox: SandboxAdapter) => {
@@ -907,7 +907,7 @@ describe('FlowExecutor', () => {
     });
   });
 
-  describe('LOU-D4: defined tool compatibility', () => {
+  describe('defined tool compatibility', () => {
     it('produces the same event sequence as a built-in tool step', async () => {
       // Template: this mirrors "should execute tool" above (a single
       // toolCall step against a registered tool) exactly, except the tool
@@ -1102,7 +1102,7 @@ describe('FlowExecutor', () => {
     });
   });
 
-  describe('createAgent() agent rejection (LOU-R14)', () => {
+  describe('createAgent() agent rejection', () => {
     it('rejects a createAgent() agent with a coded error instead of silently dropping its instructions', async () => {
       const simpleAgent = createAgent({ provider: mockModel(['hi']) });
       const flow: AgentFlow = {
@@ -1143,7 +1143,7 @@ describe('FlowExecutor', () => {
   });
 });
 
-describe('FlowExecutor parallel failure (Eve DUR-F12 / MA-F11)', () => {
+describe('FlowExecutor parallel failure', () => {
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const flowOf = (root: EditorStep): AgentFlow => ({ code: 'f', name: 'f', flow: root });
 
@@ -1215,7 +1215,7 @@ describe('FlowExecutor parallel failure (Eve DUR-F12 / MA-F11)', () => {
   });
 });
 
-describe('FlowExecutor loop variable scoping (Eve DUR-F1)', () => {
+describe('FlowExecutor loop variable scoping', () => {
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   const flowOf = (root: EditorStep): AgentFlow => ({ code: 'f', name: 'f', flow: root });
   const chargeRegistry = () => {

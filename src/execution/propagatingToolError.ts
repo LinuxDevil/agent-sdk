@@ -19,7 +19,7 @@ import type { RunUsage } from '../models/usage';
  * core can both use it without a circular import.
  */
 export class PropagatingToolError extends Error {
-  /** H3-6: once it ended a run, what the run had spent until then (see `SDKError.usage`). */
+  /** Once it ended a run, what the run had spent until then (see `SDKError.usage`). */
   declare usage?: RunUsage;
 
   /** `instanceof` also holds for one thrown by another loaded copy of the SDK (a `.cjs` tool next to the ESM CLI). */
@@ -34,7 +34,7 @@ const propagatingErrors = sharedWeakSet('lousho.propagatingErrors');
 
 /**
  * Makes an error that is not a {@link PropagatingToolError} propagate like
- * one - used for a hook error thrown inside a sub-agent (LOU-Y1), which must
+ * one - used for a hook error thrown inside a sub-agent, which must
  * halt the whole run, not become the sub-agent tool's error result.
  */
 export function markPropagating(error: unknown): void {

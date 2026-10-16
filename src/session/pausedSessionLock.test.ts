@@ -1,5 +1,5 @@
 /**
- * Eve EVE-0 follow-up: a session turn paused for approval is a lock on the
+ * Follow-up: a session turn paused for approval is a lock on the
  * session. A new turn under its id - `agent.send(msg, { sessionId })`, or a
  * session whose transcript is a different length than the one the paused turn
  * started from - fails with `SessionAwaitingApprovalError` until the approval
@@ -29,7 +29,7 @@ function restart(runs: { n: number }) {
   });
 }
 
-describe('a paused session turn locks the session (Eve EVE-0 follow-up)', () => {
+describe('a paused session turn locks the session', () => {
   it('agent.send(msg, { sessionId }) refuses while a turn of that session awaits approval', async () => {
     const store = memoryStore();
     const model = mockModel([calling('restart'), 'second-turn-ok']);
@@ -56,7 +56,7 @@ describe('a paused session turn locks the session (Eve EVE-0 follow-up)', () => 
     const model = mockModel([calling('restart'), 'resumed', 'after']);
     const agent = createAgent({ provider: model, tools: [restart(runs)], store });
     const paused = await agent.session({ id: 'chat', store: new MemorySessionStore() }).send('restart it');
-    // Eve3-S4: turn numbering is monotonic - the earlier 'hi' turn took turn-0, so this pause is turn-2.
+    // turn numbering is monotonic - the earlier 'hi' turn took turn-0, so this pause is turn-2.
     expect(await store.checkpoints.load('chat.turn-2')).toMatchObject({ status: 'awaiting-approval' });
 
     const durable = agent.session({ id: 'chat' });
@@ -81,7 +81,7 @@ describe('a paused session turn locks the session (Eve EVE-0 follow-up)', () => 
     expect((await durable.send('something else')).text).toBe('fresh');
   });
 
-  it('a missing .paused marker still locks the session: the turn checkpoint itself says it waits (Eve2-F3)', async () => {
+  it('a missing .paused marker still locks the session: the turn checkpoint itself says it waits', async () => {
     const store = memoryStore();
     const model = mockModel([calling('restart'), 'resumed']);
     const agent = createAgent({ provider: model, tools: [restart({ n: 0 })], store });
@@ -117,7 +117,7 @@ describe('a paused session turn locks the session (Eve EVE-0 follow-up)', () => 
     expect((await session.send('and now?')).text).toBe('Next.');
   });
 
-  // Eve3-S1: without a checkpointStore the pause had no marker, so send()/compact() ran beside it and the resumed
+  // without a checkpointStore the pause had no marker, so send()/compact() ran beside it and the resumed
   // turn clobbered whatever they committed. An in-process marker on (store, id) closes that gap.
   it('a paused non-checkpointed turn refuses send() and compact(), and resolve() keeps both turns', async () => {
     const store = memoryStore();

@@ -12,7 +12,7 @@ const event = (inputTokens: number, outputTokens: number, extra: Partial<AgentEv
   ...extra,
 });
 
-describe('remote sub-agent usage helpers (M10b)', () => {
+describe('remote sub-agent usage helpers', () => {
   it('fromEventUsage files the totals under one remote entry, one call by default', () => {
     const usage = fromEventUsage(event(100, 50, { costUsd: 0.5, estimated: true }), remoteModelKey('researcher'));
     expect(usage).toEqual({
@@ -107,7 +107,7 @@ describe('remote sub-agent usage helpers (M10b)', () => {
   });
 });
 
-describe('provider-reported cost (Eve PROV-F3)', () => {
+describe('provider-reported cost', () => {
   const generated = (costUsd?: number) => ({ text: 'x', finishReason: 'stop' as const, usage: { promptTokens: 100, completionTokens: 10, totalTokens: 110, costUsd } });
 
   it('prefers the reported cost over the registry estimate, even for a priced model', () => {

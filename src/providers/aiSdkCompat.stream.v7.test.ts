@@ -1,5 +1,5 @@
 /**
- * The 'ai'-SDK providers' stream() on `ai` v7 (LOU-D27), through the real
+ * The 'ai'-SDK providers' stream() on `ai` v7, through the real
  * `ai` v7 (the `ai-v7` dev alias) and scripted `MockLanguageModelV4`
  * streams: a text reply, a tool call, an error mid-stream, and a tool loop
  * through `agent.stream()`, whose events are asserted with one helper on
@@ -162,7 +162,7 @@ const weatherTool = {
 
 const providerUsage = { promptTokens: 10, completionTokens: 5, totalTokens: 15, cachedInputTokens: 4, reasoningTokens: 2 };
 
-describe.each(providers)('%s provider on ai v7: stream() (LOU-D27)', (_name, make) => {
+describe.each(providers)('%s provider on ai v7: stream()', (_name, make) => {
   it('streams a text reply as text deltas, then the finish reason and usage', async () => {
     const provider = make();
     const calls = onV7(provider, [{ text: ['Hel', 'lo'], finish: 'stop', usage }]);
@@ -225,7 +225,7 @@ describe.each(providers)('%s provider on ai v7: stream() (LOU-D27)', (_name, mak
   });
 });
 
-describe('stream() on ai v7: edge cases (LOU-D27)', () => {
+describe('stream() on ai v7: edge cases', () => {
   it('assembles a tool call from streamed input the model never sent whole, and reports no usage when there is none', async () => {
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k', maxRetries: 0 });
     onV7(provider, [
@@ -250,7 +250,7 @@ describe('stream() on ai v7: edge cases (LOU-D27)', () => {
 
     const result = await provider.stream({ messages: [{ role: 'user', content: 'Weather?' }], tools: [weatherTool] });
 
-    // LOU-V13: reasoning is reported as reasoning chunks, never as text.
+    // Reasoning is reported as reasoning chunks, never as text.
     expect(await collect(result.fullStream)).toEqual([
       { type: 'reasoning-delta', textDelta: 'a thought' },
       { type: 'reasoning-end', reasoning: {} },
@@ -322,7 +322,7 @@ async function expectToolLoopRun(run: ReturnType<ReturnType<typeof createAgent>[
   expect((await run.result).usage).toMatchObject({ inputTokens: 30, outputTokens: 11, cachedInputTokens: 12, reasoningTokens: 2 });
 }
 
-describe('agent.stream() on both ai majors (LOU-D27)', () => {
+describe('agent.stream() on both ai majors', () => {
   it('runs a streamed tool loop on ai v7, and the second call sees the tool turn', async () => {
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k', maxRetries: 0 });
     const calls = onV7(provider, toolLoop);
@@ -341,7 +341,7 @@ describe('agent.stream() on both ai majors (LOU-D27)', () => {
     ]);
   });
 
-  // The installed `ai`: v4 with MockLanguageModelV1, v7 with MockLanguageModelV4 (LOU-D28f).
+  // The installed `ai`: v4 with MockLanguageModelV1, v7 with MockLanguageModelV4.
   it.skipIf(installedAiMajor === 6)('yields the same events on the installed ai', async () => {
     const provider = new OpenAIProvider({ name: 'openai', apiKey: 'k', maxRetries: 0 });
     onInstalled(provider, toolLoop);

@@ -1,5 +1,5 @@
 /**
- * N14: the `codeMode` option of createAgent(). The calls sit in a function
+ * The `codeMode` option of createAgent(). The calls sit in a function
  * that is never called: only their types are checked.
  */
 import { describe, it, expectTypeOf } from 'vitest';
@@ -7,7 +7,7 @@ import { createAgent } from '../createAgent';
 import { mockModel } from '../testing';
 import type { CodeModeOptions } from '../index';
 
-describe('codeMode (N14)', () => {
+describe('codeMode', () => {
   it('takes true, false or CodeModeOptions; unknown keys fail', () => {
     const typeOnly = () => {
       const provider = mockModel(['ok']);

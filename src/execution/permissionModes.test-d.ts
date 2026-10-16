@@ -1,5 +1,5 @@
 /**
- * N4: `permissionMode` is accepted by `createAgent()`, `send()` / `stream()`
+ * `permissionMode` is accepted by `createAgent()`, `send()` / `stream()`
  * and `agent.session()`, and switched with `session.setPermissionMode()`.
  * The calls sit in functions that are never called: only their types are checked.
  */
@@ -8,7 +8,7 @@ import { createAgent } from '../createAgent';
 import { mockModel } from '../testing';
 import type { PermissionMode, PermissionModeChange } from '../index';
 
-describe('permissionMode (N4)', () => {
+describe('permissionMode', () => {
   it('is accepted by createAgent(), as a mode or a function', () => {
     const typeOnly = () => {
       const provider = mockModel(['ok']);

@@ -15,10 +15,10 @@ import { isValidAgentId } from '../../shared/agentId';
  *
  * The studio server (server/index.ts) serves this store over
  * `GET/PUT/DELETE /agents`, and the browser app reads it through
- * `HttpAgentStore` (Eve DUI-F2) - so the agent list is exactly
+ * `HttpAgentStore` - so the agent list is exactly
  * `.lousho/agents/` of the directory `lousho studio` was started in.
  */
-/** Where `createFsAgentStore(baseDir)` reads/writes agent `id`'s spec - exposed (LOU-R2) so the runtime server's deploy route can hand `lousho build --agent=<path>` the exact file this store manages, without duplicating the `.lousho/agents/<id>.yaml` convention. */
+/** Where `createFsAgentStore(baseDir)` reads/writes agent `id`'s spec - exposed so the runtime server's deploy route can hand `lousho build --agent=<path>` the exact file this store manages, without duplicating the `.lousho/agents/<id>.yaml` convention. */
 export function agentSpecFilePath(baseDir: string, id: string): string {
   return path.join(baseDir, '.lousho', 'agents', `${id}.yaml`);
 }
@@ -41,7 +41,7 @@ export function createFsAgentStore(baseDir: string): AgentStore {
       const entries: AgentStoreEntry[] = [];
       for (const file of files) {
         const id = file.replace(/\.ya?ml$/, '');
-        // Eve DUI-F2: the studio lists this directory now, so one hand-edited
+        // The studio lists this directory now, so one hand-edited
         // file that no longer parses (or an id the API would reject) is
         // skipped instead of failing the whole list.
         if (!isValidAgentId(id)) continue;

@@ -18,7 +18,7 @@ async function approvalFor(tool: DefinedTool, command: string): Promise<boolean>
   return needs({ command });
 }
 
-describe('createShellTool (LOU-X6)', () => {
+describe('createShellTool', () => {
   it('needs approval by default, and pauses the run for it', async () => {
     const ws = new MemoryWorkspace({ exec: () => ({ stdout: 'hi' }) });
     const tool = createShellTool(ws);
@@ -132,7 +132,7 @@ describe('createShellTool (LOU-X6)', () => {
       await expect(run(tool, { command: 'git status; x' })).rejects.toThrow(/Chaining, pipes/);
     });
 
-    it('string patterns do not allow arguments that leave the workspace (F9)', async () => {
+    it('string patterns do not allow arguments that leave the workspace', async () => {
       const tool = createShellTool(ws, { allow: ['node --test', 'git diff', 'cat'], needsApproval: false });
       for (const command of [
         'node --test --test-reporter-destination=../escaped-report.txt',
@@ -153,7 +153,7 @@ describe('createShellTool (LOU-X6)', () => {
       expect(await run(rx, { command: 'git diff --output=../x' })).toMatchObject({ stdout: 'ran' });
     });
 
-    it('string patterns see through quotes, expansions and escapes (Eve TOOLS-F1)', async () => {
+    it('string patterns see through quotes, expansions and escapes', async () => {
       const exec = () => Promise.resolve({ stdout: 'ran', stderr: '', exitCode: 0, timedOut: false });
       const sh = createShellTool({ shell: 'C:/Program Files/Git/bin/sh.exe', exec }, { allow: ['cat'], needsApproval: false });
       for (const command of [

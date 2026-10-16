@@ -1,5 +1,5 @@
 /**
- * Workspace rewind (N7): `write_file` and `edit_file` back a file up before
+ * Workspace rewind: `write_file` and `edit_file` back a file up before
  * they change it, and `WorkspaceCheckpoints.rewind(toTurn)` puts every file
  * the agent changed in that turn or later back the way it was.
  *

@@ -48,7 +48,7 @@ describe('mountFetchChannels (#298)', () => {
     expect(replies[0].sessionId).toMatch(/^test_a-/);
   });
 
-  it('a 500 does not leak the internal error message; the detail goes to onError (Eve CH-F6)', async () => {
+  it('a 500 does not leak the internal error message; the detail goes to onError', async () => {
     const secret = 'connect ECONNREFUSED postgres://admin:hunter2@10.0.0.1:5432/prod';
     const onError = vi.fn();
     const { channel } = recordingChannel({
@@ -66,7 +66,7 @@ describe('mountFetchChannels (#298)', () => {
     expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: secret }), expect.objectContaining({ channel: 'test' }));
   });
 
-  it('keeps the 400 for a body that is not JSON (Eve CH-F6)', async () => {
+  it('keeps the 400 for a body that is not JSON', async () => {
     const { channel } = recordingChannel();
     const handler = mountFetchChannels(createAgent({ provider: mockModel(['hi']) }), [channel]);
     const response = await handler(new Request('http://worker/channels/test', { method: 'POST', body: '{nope' }));
@@ -107,7 +107,7 @@ describe('mountFetchChannels (#298)', () => {
     await waited[0];
   });
 
-  it('awaits the turn when no waitUntil is given, then returns the early respond, and warns once (Eve CH-F4)', async () => {
+  it('awaits the turn when no waitUntil is given, then returns the early respond, and warns once', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const { channel, replies } = recordingChannel({
       async parse(_req, respond) {
@@ -125,7 +125,7 @@ describe('mountFetchChannels (#298)', () => {
     warn.mockRestore();
   });
 
-  it('returns the early respond at once with the waitUntil option, for hosts that pass no ctx (Eve CH-F4)', async () => {
+  it('returns the early respond at once with the waitUntil option, for hosts that pass no ctx', async () => {
     let finish!: () => void;
     const gate = new Promise<void>((resolve) => (finish = resolve));
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);

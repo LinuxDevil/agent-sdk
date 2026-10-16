@@ -1,5 +1,5 @@
 /**
- * N9b test helpers: a fake OAuth token endpoint (a `fetch` fake), a provider
+ * Test helpers: a fake OAuth token endpoint (a `fetch` fake), a provider
  * that uses it, and a GitHub-like tool that asks for a token.
  */
 import { createHash } from 'node:crypto';

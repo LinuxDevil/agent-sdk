@@ -1,5 +1,5 @@
 /**
- * Wires memory slots into createAgent() runs (LOU-W6): each run resolves its
+ * Wires memory slots into createAgent() runs: each run resolves its
  * scope keys, gets a `memory` preGenerate hook that recalls into the system
  * prompt on the run's first model call, and gets the slots' tools bound to
  * those keys.
@@ -33,7 +33,7 @@ function toolNames({ name, expose }: MemorySlot): string[] {
 const ALL_ITEMS = 100_000;
 
 /**
- * Eve MEM-F2: stores `item` in place of `id` - with `provider.upsert`, or by
+ * Stores `item` in place of `id` - with `provider.upsert`, or by
  * `remove` then `add` for a provider without it.
  */
 async function replaceItem(provider: MemoryProvider, key: string, id: string, item: { text: string; metadata?: Record<string, unknown> }): Promise<MemoryItem> {
@@ -51,7 +51,7 @@ async function sameKey(slot: MemorySlot, key: string, args: Record<string, unkno
 }
 
 /**
- * Eve3-S2: serializes `remember_<slot>` calls per memory key, so an `itemKey`
+ * Serializes `remember_<slot>` calls per memory key, so an `itemKey`
  * check-and-replace cannot interleave — two parallel calls both listed before
  * either `add` landed and stored duplicate items (the toolConcurrency default
  * is 'unbounded'). Entries drain like `sessionQueues`.
@@ -71,7 +71,7 @@ function serializeRemember<T>(key: string, task: () => Promise<T>): Promise<T> {
 }
 
 /**
- * Eve3-S3: most characters a remembered item's `text` may hold, and most
+ * Most characters a remembered item's `text` may hold, and most
  * characters the injected `<memory>` block may take. An oversized item went
  * into the system prompt of every later run — past the context window or as a
  * permanent cost blowout — and compaction cannot remove a system message.
@@ -81,17 +81,17 @@ const MAX_BLOCK_CHARS = 20_000;
 /** A single item's line in the injected block (items longer than this are cut with an ellipsis). */
 const MAX_ITEM_LINE_CHARS = 4_000;
 
-/** Most items one `recall_<name>` call returns, whatever `limit` the model asks for (Eve MEM-F11). */
+/** Most items one `recall_<name>` call returns, whatever `limit` the model asks for. */
 const MAX_RECALL_LIMIT = 100;
 
-/** Eve MEM-F15: how long a remembered item lasts, by the slot's scope. */
+/** How long a remembered item lasts, by the slot's scope. */
 function persistence(slot: MemorySlot): string {
   if (slot.scope === 'session') return 'recalled later in this conversation';
   if (slot.scope === 'global') return 'recalled in later conversations';
   return 'recalled in later conversations with the same user or key';
 }
 
-/** What `recall_<name>` returns for an item: its `score` (vector providers) and, on a free-text slot, its other metadata (Eve MEM-F11). */
+/** What `recall_<name>` returns for an item: its `score` (vector providers) and, on a free-text slot, its other metadata. */
 function recalledItem(slot: MemorySlot, { id, text, createdAt, metadata }: MemoryItem) {
   const { score, ...rest } = metadata ?? {};
   return {
@@ -123,7 +123,7 @@ function memoryTools([slot, key]: BoundSlot): DefinedTool[] {
           return { remembered: null, reason: `The item is ${item.text.length} characters; the most a memory item holds is ${MAX_ITEM_CHARS}. Store a shorter summary.` };
         }
         if (slot.itemKey) {
-          // Eve MEM-F2: structured state upserts on its key fields.
+          // Structured state upserts on its key fields.
           const [old, ...stale] = await sameKey(slot, key, args as Record<string, unknown>);
           if (old) {
             for (const extra of stale) await slot.provider.remove(key, extra.id);
@@ -135,7 +135,7 @@ function memoryTools([slot, key]: BoundSlot): DefinedTool[] {
   });
   const recall = defineTool({
     name: `recall_${slot.name}`,
-    // N4: recalling changes nothing, so plan mode can use it.
+    // Recalling changes nothing, so plan mode can use it.
     annotations: { readOnlyHint: true, destructiveHint: false },
     description: `Search the "${slot.name}" memory${slot.provider.ranking === 'relevance' ? ' by meaning, most relevant first' : ', newest items first'}.${about}`,
     input: z.object({
@@ -169,10 +169,10 @@ function memoryTools([slot, key]: BoundSlot): DefinedTool[] {
 const BLOCK = /\n*<memory name="([^"]*)">[\s\S]*?<\/memory>/g;
 
 function block(slot: MemorySlot, items: readonly MemoryItem[]): string {
-  // Eve MEM-F16: an opening or closing memory tag inside an item would break
+  // An opening or closing memory tag inside an item would break
   // the block (and the replacement of blocks in a resumed transcript).
-  // Eve MEM-F2: with forget_<name>, each item shows its id, to forget it by.
-  // Eve3-S3: the block is capped at MAX_BLOCK_CHARS (each line at
+  // With forget_<name>, each item shows its id, to forget it by.
+  // The block is capped at MAX_BLOCK_CHARS (each line at
   // MAX_ITEM_LINE_CHARS); the items past the budget - the oldest or least
   // relevant, listed last - are dropped.
   const lines: string[] = [];
@@ -233,7 +233,7 @@ function recallHook(bound: readonly BoundSlot[]): AgentHook {
           try {
             items = await slot.provider.list(key, { limit: slot.recall.maxItems, query });
           } catch (error) {
-            // Eve MEM-F4: recall is an optimization; a corrupt file or a store
+            // Recall is an optimization; a corrupt file or a store
             // outage must not fail every run. The recall_ tool still reports it.
             warnRecallFailed(slot, error);
             return '';
@@ -271,7 +271,7 @@ export interface AgentMemory {
   /** Adds the slots' tool names to the agent's tools; throws when one is taken. */
   addTools(toolsConfig: Record<string, { tool: string }>): void;
   /**
-   * N6: the agent a run handed off to, with this run's memory tools added to
+   * The agent a run handed off to, with this run's memory tools added to
    * its tools and registry (bound to the same scope keys), so the lead's
    * memory stays on after a handoff.
    */

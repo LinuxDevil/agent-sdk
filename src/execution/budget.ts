@@ -1,5 +1,5 @@
 /**
- * Budgets (LOU-V6): `limits` on a run, and on a session's turns, checked by
+ * Budgets: `limits` on a run, and on a session's turns, checked by
  * the executor before every model call (so after every tool batch), after
  * a model call that asks for tools, and - for `maxDurationMs` - by a timer
  * that aborts the run's signal.
@@ -148,7 +148,7 @@ export function startBudget(limits?: RunLimits, session?: SessionBudget, signal?
   const check = (usage: Pick<RunUsage, 'inputTokens' | 'outputTokens' | 'totalTokens' | 'costUsd'>, steps: number, afterModelCall = false, toolErrors = 0) => {
     const now = runSpent(usage, steps, Date.now() - startedAt);
     for (const { scope, limits: max, spent } of scopes) {
-      // H3-3: failed tool calls count per run, also under a session's limits.
+      // Failed tool calls count per run, also under a session's limits.
       if (max.maxToolErrors !== undefined && toolErrors >= max.maxToolErrors) return { limit: 'maxToolErrors' as const, value: toolErrors, max: max.maxToolErrors, scope };
       const reached = spendLimitReached(max, addSpent(spent, now), afterModelCall, quietUnknownCost);
       if (reached) return { ...reached, scope };
@@ -175,7 +175,7 @@ export function startBudget(limits?: RunLimits, session?: SessionBudget, signal?
   };
 }
 
-/** Eve CORE-F5: throws `LOUSHO_CONFIG_INVALID` unless `maxSteps` is unset or a whole number >= 1. */
+/** Throws `LOUSHO_CONFIG_INVALID` unless `maxSteps` is unset or a whole number >= 1. */
 export function assertMaxSteps(value: unknown, caller: string): void {
   if (value === undefined || (typeof value === 'number' && Number.isInteger(value) && value >= 1)) return;
   throw new ConfigurationError(

@@ -1,5 +1,5 @@
 /**
- * LOU-W8: session.compact() and session.clear().
+ * Session.compact() and session.clear().
  */
 import { describe, it, expect } from 'vitest';
 import { createAgent } from '../createAgent';
@@ -101,7 +101,7 @@ describe('compaction strategy of a session', () => {
     expect(await store.load('s2')).toEqual(toolTurn('a'));
   });
 
-  it("agent.session() uses the agent's compaction setting (W8 follow-up)", async () => {
+  it("agent.session() uses the agent's compaction setting", async () => {
     const store = new MemorySessionStore();
     await store.save('s4', toolTurn('a'));
     const strategy: CompactionStrategy = {

@@ -27,7 +27,7 @@ interface AppState {
   store: AgentStore;
   agentId: string;
   /**
-   * The canonical, editable graph for the currently-loaded agent (LOU-M).
+   * The canonical, editable graph for the currently-loaded agent.
    * Every canvas mutation (add/remove/move node, connect/disconnect edge,
    * rename) goes through `setGraph`, never a ReactFlow-only, ephemeral
    * state that could drift from this.
@@ -59,14 +59,14 @@ interface AppState {
   switchAgent: (id: string) => Promise<void>;
   /** Creates a new agent from a seed template and switches to it. */
   createAgent: (id: string, template: TemplateId) => Promise<void>;
-  /** Eve DUI-F21: renames a saved agent (its spec moves to the new id; run history stays under the old one). */
+  /** Renames a saved agent (its spec moves to the new id; run history stays under the old one). */
   renameAgent: (fromId: string, toId: string) => Promise<void>;
-  /** Eve DUI-F21: deletes a saved agent via `DELETE /agents/:id`. */
+  /** Deletes a saved agent via `DELETE /agents/:id`. */
   deleteAgent: (id: string) => Promise<void>;
-  /** Eve DUI-F21: false after the live WebSocket closed (studio server down or restarted), until it reconnects. */
+  /** False after the live WebSocket closed (studio server down or restarted), until it reconnects. */
   connected: boolean;
   /**
-   * Live run status for the currently-loaded agent (LOU-N), pushed over
+   * Live run status for the currently-loaded agent, pushed over
    * `WS /agents/:id/stream` and mirrored here for the Topbar/LeftRail
    * status pills. `undefined` until the first status is known (e.g. before
    * the WS subscription's initial push arrives).
@@ -79,61 +79,61 @@ interface AppState {
   /** Resolves the run's current pending approval, if any, via `/agents/:id/approve`. */
   approveAgent: (approved: boolean, note?: string) => Promise<void>;
   /**
-   * Live run status for every saved agent (LOU-N), keyed by agent id -
-   * what the LeftRail's agent-list status pills render, replacing LOU-L/M's
+   * Live run status for every saved agent, keyed by agent id -
+   * what the LeftRail's agent-list status pills render, replacing the
    * static "active"/"idle" placeholder. An agent id absent from this map
    * has never reported a status (equivalent to 'idle').
    */
   agentStatuses: Record<string, AgentRunStatusPayload>;
 
   /**
-   * O1: this agent's live log feed (LOU-O), a capped ring buffer reset on
+   * This agent's live log feed, a capped ring buffer reset on
    * every agent switch and on every fresh `runAgent()` call (so an old
    * run's logs don't linger under a new one, matching the mockup's
    * per-run log panel).
    */
   logs: LogEntry[];
-  /** O2: this agent's live span list (LOU-O), reset the same way as `logs`. */
+  /** This agent's live span list, reset the same way as `logs`. */
   spans: SpanEvent[];
-  /** O3: this agent's live step-debugger state (LOU-O), or undefined before the first `/debug` fetch/push. */
+  /** This agent's live step-debugger state, or undefined before the first `/debug` fetch/push. */
   debugState: DebugStatePayload | undefined;
-  /** Topbar's "Debug" toggle (O3) - when true, the canvas/inspector expose breakpoint controls. */
+  /** Topbar's "Debug" toggle - when true, the canvas/inspector expose breakpoint controls. */
   debugMode: boolean;
   setDebugMode: (on: boolean) => void;
-  /** Replaces this agent's breakpoint set (O3) - see debugController.ts for the `llm:before`/`tool:<name>:before` key shape. */
+  /** Replaces this agent's breakpoint set - see debugController.ts for the `llm:before`/`tool:<name>:before` key shape. */
   setBreakpoints: (breakpoints: string[]) => Promise<void>;
   /** Resumes a run paused at a breakpoint. */
   continueDebug: () => Promise<void>;
   /** Resumes a run paused at a breakpoint, or arms a pause at the next LLM/tool boundary. */
   stepDebug: () => Promise<void>;
-  /** Node (on the canvas) currently highlighted because its log/span is selected in the drawer (O2). */
+  /** Node (on the canvas) currently highlighted because its log/span is selected in the drawer. */
   highlightedNodeId: string | undefined;
   setHighlightedNodeId: (nodeId: string | undefined) => void;
 
   /**
-   * P1/P2: this agent's live chat transcript - the server's real
+   * This agent's live chat transcript - the server's real
    * `Message[]` history (see runRegistry.ts/chatReconcile.ts), pushed over
    * `WS /agents/:id/stream` as `{type:'chat'}` and applied through the pure
    * `applyChatState()` reducer (chatReducer.ts).
    */
   chat: ChatState;
-  /** POSTs `text` to `/agents/:id/message` (P1) - see runRegistry.ts's sendMessage() doc comment for continuation semantics. */
+  /** POSTs `text` to `/agents/:id/message` - see runRegistry.ts's sendMessage() doc comment for continuation semantics. */
   sendChatMessage: (text: string) => Promise<void>;
   /** Set on a failed sendChatMessage()/startNewChat() call (e.g. already running, or paused awaiting approval) - cleared on the next attempt. */
   chatActionError: string | undefined;
-  /** P3: metadata for every past (and current) chat session for this agent, newest first. */
+  /** Metadata for every past (and current) chat session for this agent, newest first. */
   chatSessions: ChatSessionMeta[];
-  /** P3: archives the current chat session and starts a fresh, empty one. */
+  /** Archives the current chat session and starts a fresh, empty one. */
   startNewChat: () => Promise<void>;
-  /** P3: a past session's full transcript, loaded for read-only browsing (undefined = viewing the live session). */
+  /** A past session's full transcript, loaded for read-only browsing (undefined = viewing the live session). */
   viewedChatSession: ChatSessionRecord | undefined;
-  /** P3: loads a past session for read-only viewing in the Chat tab. */
+  /** Loads a past session for read-only viewing in the Chat tab. */
   viewChatSession: (sessionId: string) => Promise<void>;
-  /** P3: switches the Chat tab back to the live session. */
+  /** Switches the Chat tab back to the live session. */
   returnToLiveChat: () => void;
 
   /**
-   * R3: the currently-active settings profile (env/provider/deploy-adapter
+   * The currently-active settings profile (env/provider/deploy-adapter
    * bundle) - what the Topbar's env indicator now renders instead of the
    * old static "local · mock provider" label. `undefined` until the first
    * fetch resolves (e.g. runtime server not reachable yet).
@@ -146,7 +146,7 @@ interface AppState {
 const AppStateContext = createContext<AppState | undefined>(undefined);
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
-  // Eve DUI-F2: agents live in the server workspace (.lousho/agents/), not the browser.
+  // Agents live in the server workspace (.lousho/agents/), not the browser.
   const store = useMemo(() => new HttpAgentStore(runtimeClient), []);
   const [railTab, setRailTab] = useState<RailTab>('agents');
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('chat');

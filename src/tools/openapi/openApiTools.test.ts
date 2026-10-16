@@ -1,5 +1,5 @@
 /**
- * N8: openApiTools() against a local node:http server (127.0.0.1) and a
+ * OpenApiTools() against a local node:http server (127.0.0.1) and a
  * hand-written petstore document. Fully offline.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -75,7 +75,7 @@ beforeEach(() => {
   seen = [];
 });
 
-// These tests never exercise OAuth: getToken/requireAuth fail loudly if a tool asks for one (N9b fields of ToolExecutionContext).
+// These tests never exercise OAuth: getToken/requireAuth fail loudly if a tool asks for one (fields of ToolExecutionContext).
 const ctx: ToolExecutionContext = {
   toolCallId: 'call_1',
   messages: [],

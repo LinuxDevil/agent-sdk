@@ -63,11 +63,11 @@ class FakeServer implements AgentApi {
 }
 
 /**
- * Eve DUI-F2/F7: the agent list used to live in `localStorage` - shared by
+ * The agent list used to live in `localStorage` - shared by
  * every project opened in the browser, blind to `.lousho/agents/`, and
  * unknown to the server, so chat on a new agent failed until Run.
  */
-describe('HttpAgentStore (Eve DUI-F2)', () => {
+describe('HttpAgentStore', () => {
   let storage: MemoryStorage;
   beforeEach(() => {
     storage = new MemoryStorage();

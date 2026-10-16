@@ -1,4 +1,4 @@
-/** N10b: the principal's types in tools, approval policies, permission rules, hooks and approvals. */
+/** The principal's types in tools, approval policies, permission rules, hooks and approvals. */
 import { describe, expectTypeOf, it } from 'vitest';
 import { z } from 'zod';
 import {
@@ -17,7 +17,7 @@ import {
 } from '../index';
 import { createMockProvider } from '../providers/mock';
 
-describe('Principal types in tools and approvals (N10b)', () => {
+describe('Principal types in tools and approvals', () => {
   it('a tool reads ctx.principal and ctx.approval.by, read-only', () => {
     expectTypeOf<ToolExecutionContext['principal']>().toEqualTypeOf<Readonly<Principal> | undefined>();
     expectTypeOf<NonNullable<ToolExecutionContext['approval']>['by']>().toEqualTypeOf<Readonly<Principal> | undefined>();

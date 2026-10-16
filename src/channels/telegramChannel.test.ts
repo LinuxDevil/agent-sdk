@@ -1,5 +1,5 @@
 /**
- * N11a: `telegramChannel()` - the webhook secret token, private chats vs groups
+ * `telegramChannel()` - the webhook secret token, private chats vs groups
  * and forum topics, plain-text replies split at 4096 characters, approvals as
  * inline keyboards, and a pending question across a restart. A fake `fetch`
  * stands in for the Bot API: no network.
@@ -111,7 +111,7 @@ describe('secretsEqual', () => {
   });
 });
 
-describe('telegramChannel (N11a)', () => {
+describe('telegramChannel', () => {
   it('rejects a missing or wrong secret token with 401 and runs nothing', async () => {
     const t = setup(['never']);
 
@@ -125,7 +125,7 @@ describe('telegramChannel (N11a)', () => {
     expect(() => telegramChannel({ botToken: TOKEN, secretToken: '' })).toThrow(/secretToken/);
   });
 
-  it('runs a redelivered update (same update_id) once (Eve CH-F8)', async () => {
+  it('runs a redelivered update (same update_id) once', async () => {
     const t = setup(['Hi Sam', 'Second']);
     const update = message('hi');
 
@@ -137,7 +137,7 @@ describe('telegramChannel (N11a)', () => {
     expect(t.calls.filter((c) => c.method === 'sendMessage').map((c) => c.body.text)).toEqual(['Hi Sam', 'Second']);
   });
 
-  it('runs the turn with the sender as its principal, which a memory scope sees (N10a)', async () => {
+  it('runs the turn with the sender as its principal, which a memory scope sees', async () => {
     const scopes: MemoryScopeContext[] = [];
     const notes = defineMemory({ name: 'notes', scope: (ctx) => (scopes.push(ctx), ctx.principal && `telegram:${ctx.principal.id}`), provider: inMemoryMemory() });
     const t = setup(['Hi'], { memory: [notes] });
@@ -362,7 +362,7 @@ describe('telegramChannel (N11a)', () => {
     expect(JSON.stringify(t.model.calls[1].messages)).toContain('Lisbon');
   });
 
-  describe('after a restart: a second channel over the same durable stores (M10a)', () => {
+  describe('after a restart: a second channel over the same durable stores', () => {
     it('a pending ask_question survives a restart', async () => {
       const stores = durableStores();
       const agentOptions = { askQuestion: true, approvalStore: stores.approvalStore };
@@ -479,7 +479,7 @@ describe('telegramChannel (N11a)', () => {
 });
 
 
-describe('telegramChannel sign-in (Eve TOOLS-F3)', () => {
+describe('telegramChannel sign-in', () => {
   const signInSetup = () => {
     const { tool } = listReposTool(githubProvider(fakeOAuthServer()));
     return setup([{ toolCalls: [{ name: 'list_repos', id: 'call_1', args: {} }] }, 'done'], { tools: [tool], store: memoryStore() });

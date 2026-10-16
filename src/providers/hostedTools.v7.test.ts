@@ -1,5 +1,5 @@
 /**
- * N1a: hosted provider tools on `ai` v7 (the `ai-v7` dev alias), with a
+ * Hosted provider tools on `ai` v7 (the `ai-v7` dev alias), with a
  * stubbed `@ai-sdk/openai` whose `tools.webSearch()` / `codeInterpreter()` /
  * `fileSearch()` build provider tool objects, and scripted
  * `MockLanguageModelV4` results and streams. Covers the request (the

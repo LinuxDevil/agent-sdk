@@ -1,5 +1,5 @@
 /**
- * CI replay of the M2 live recording (`__fixtures__/cassettes/from-ai-sdk-openrouter.json`): an `@ai-sdk/openai` model
+ * CI replay of the live recording (`__fixtures__/cassettes/from-ai-sdk-openrouter.json`): an `@ai-sdk/openai` model
  * pointed at OpenRouter, wrapped with `fromAiSdk()`, ran a tool loop. No key, no network. Re-record with
  * `npx vitest run --config vitest.live.config.ts src/providers/fromAiSdk.live.test.ts`.
  */
@@ -12,7 +12,7 @@ import { defineTool } from '../tools/defineTool';
 
 const CASSETTE = join(__dirname, '__fixtures__', 'cassettes', 'from-ai-sdk-openrouter.json');
 
-describe('fromAiSdk() through OpenRouter, replayed from a real recording (M2)', () => {
+describe('fromAiSdk() through OpenRouter, replayed from a real recording', () => {
   it('runs the add tool once and answers 5', async () => {
     const provider = recordReplay(undefined, { cassette: CASSETTE, mode: 'replay' });
     const runs: Array<{ a: number; b: number }> = [];

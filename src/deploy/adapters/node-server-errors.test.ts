@@ -1,5 +1,5 @@
 /**
- * Eve CLI-F7: a bundling failure in `lousho build --target=node-server` is a coded,
+ * A bundling failure in `lousho build --target=node-server` is a coded,
  * actionable error, not raw esbuild output. tsup reports a failure by posting to its
  * parent worker port, which trips vitest's worker pool, so the build runs in a child process.
  */

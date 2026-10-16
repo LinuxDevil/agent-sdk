@@ -1,5 +1,5 @@
 /**
- * N2: tool search, offline with mockModel. Each test reads the tool names of
+ * Tool search, offline with mockModel. Each test reads the tool names of
  * every model call (`model.calls[i].tools`) to see what was offered when.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -45,7 +45,7 @@ function catalog(options: { approval?: boolean } = {}): DefinedTool[] {
 
 const always = { thresholdPercent: 0 };
 
-describe('tool search (N2): deferral', () => {
+describe('tool search: deferral', () => {
   it('withholds deferred tools and offers tool_search; the system prompt says how many and how to search', async () => {
     const model = mockModel(['Hi.']);
     const agent = createAgent({ provider: model, instructions: 'Be brief.', tools: catalog(), toolSearch: always });
@@ -199,7 +199,7 @@ describe('tool search (N2): deferral', () => {
   });
 });
 
-describe('tool search (N2): what is loaded persists through the transcript', () => {
+describe('tool search: what is loaded persists through the transcript', () => {
   it('a crash resume from a checkpoint taken after the search keeps the loaded tools, with no drift warning', async () => {
     const store = memoryStore();
     const crashed = mockModel([searchFor('weather'), { error: new Error('process died') }]);
@@ -271,7 +271,7 @@ describe('tool search (N2): what is loaded persists through the transcript', () 
   });
 });
 
-describe('tool search (N2): per agent', () => {
+describe('tool search: per agent', () => {
   it('a handoff target does not inherit what the lead loaded; it has its own deferral', async () => {
     const triageModel = mockModel([searchFor('currency'), { toolCalls: [{ name: 'transfer_to_billing', args: {}, id: 'call_handoff' }] }]);
     const billingModel = mockModel([searchFor('weather', 'call_billing_search'), 'Done.']);
@@ -309,7 +309,7 @@ describe('tool search (N2): per agent', () => {
   });
 });
 
-describe('tool search: unknown model context window (audit _cross X2)', () => {
+describe('tool search: unknown model context window', () => {
   it('warns once when the model is unknown to the registry; silent with an explicit contextWindow', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {

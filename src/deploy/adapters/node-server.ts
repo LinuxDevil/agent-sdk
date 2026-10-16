@@ -1,18 +1,18 @@
 /**
- * node-server deployment adapter (LOU-I2).
+ * node-server deployment adapter.
  *
  * scaffold(): loads + validates the agent spec at agentPath (the same
- *   .yaml/.yml/.json AgentSpec format `lousho dev` serves, via LOU-H9's
+ *   .yaml/.yml/.json AgentSpec format `lousho dev` serves, via the
  *   loadSpec()), then writes:
  *     - agent.config.js  the validated spec, as an ES module default export
  *     - server.ts        starts the SDK's node server (src/deploy/nodeServer.ts):
  *                        GET /health plus the `lousho dev` /chat API (sessions,
- *                        SSE, approvals; LOU-D14), bearer auth via LOUSHO_API_TOKEN
+ *                        SSE, approvals), bearer auth via LOUSHO_API_TOKEN
  *     - package.json     manifest with a `start` script and the runtime
  *                        dependencies the built server needs (the spec's
  *                        provider peer, the MCP SDK when mcpServers are
  *                        configured) - the docker image's `npm install`
- *   An agent directory (LOU-P8.2, see node-server-dir.ts) is accepted in place
+ *   An agent directory (see node-server-dir.ts) is accepted in place
  *   of a spec: server.ts then resolves it with resolveAgentDir() and starts
  *   its schedules and mounts its channels. So is a .ts/.js module whose
  *   default (or `agent`) export is a createAgent() config or a built agent,
@@ -122,7 +122,7 @@ import { createAgent, createDeployedServer, resolveAgentDir, storeFromEnv } from
   const store = process.env.LOUSHO_STORE === undefined ? (resolved.config.store ?? storeFromEnv()) : storeFromEnv();
   const agent = createAgent({ ...resolved.config, store });
   await agent.ready();`,
-    // An agent directory's auth.ts (N10a) replaces the baked token; LOUSHO_API_TOKEN is appended to it.
+    // An agent directory's auth.ts replaces the baked token; LOUSHO_API_TOKEN is appended to it.
     options: `{ ...${JSON.stringify(options)}, ...(resolved.auth ? { auth: resolved.auth } : {}), schedules: resolved.schedules, channels: resolved.channels }`,
     report: `console.log('lousho server: schedules: ' + (resolved.manifest.schedules.join(', ') || 'none') + '; channels: ' + (resolved.manifest.channels.join(', ') || 'none'));`,
   };
@@ -238,7 +238,7 @@ async function main(): Promise<void> {
     }
   });
 
-  // Eve DUR-F15: stop accepting, stop the schedules, let in-flight turns finish (bounded), then close the agent.
+  // Stop accepting, stop the schedules, let in-flight turns finish (bounded), then close the agent.
   const shutdownTimeoutMs = Number(process.env.LOUSHO_SHUTDOWN_TIMEOUT_MS) || undefined;
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {
@@ -291,7 +291,7 @@ async function agentDirModel(dir: string): Promise<string | undefined> {
 }
 
 /**
- * The runtime dependencies a built server needs (LOU-R20): `dist/server.js`
+ * The runtime dependencies a built server needs: `dist/server.js`
  * bundles the SDK and its required dependencies (`ai`, `zod`, ...), but the
  * SDK's optional peers stay external (see bundleExternals()), so `npm install`
  * where the server runs - the docker image's `npm install --omit=dev` - must

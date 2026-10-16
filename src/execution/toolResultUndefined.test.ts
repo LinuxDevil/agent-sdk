@@ -1,5 +1,5 @@
 /**
- * LOU-341: a tool that returns nothing has the result `null`, so the
+ * A tool that returns nothing has the result `null`, so the
  * transcript's `tool` message never has `content: undefined`.
  */
 import { describe, expect, it } from 'vitest';
@@ -30,7 +30,7 @@ const emptyGenerator = () =>
     },
   });
 
-describe('a tool that returns nothing (LOU-341)', () => {
+describe('a tool that returns nothing', () => {
   it('toolResultContent() is always a string', () => {
     expect(toolResultContent(undefined)).toBe('null');
     expect(toolResultContent(() => 1)).toBe('null');

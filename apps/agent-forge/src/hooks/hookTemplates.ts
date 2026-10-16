@@ -1,7 +1,7 @@
 import type { AgentNodeHookPhase, AgentNodeHookPoint } from '../graph/types';
 
 /**
- * Starter hook templates (LOU-Q2), matching `.design-ref/agent-forge-mockup.html`'s
+ * Starter hook templates, matching `.design-ref/agent-forge-mockup.html`'s
  * Inspector "Hooks" section examples (`redact-pii`, `rate-limit`,
  * `inject-context`, `audit-log`). Each is an editable starting point - the
  * Inspector's CodeMirror editor lets a user change `code` freely after

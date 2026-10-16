@@ -1,5 +1,5 @@
 /**
- * Structured eval results (LOU-D7).
+ * Structured eval results.
  *
  * Every eval case - the classic `score`/`threshold` form and the trajectory
  * `test(t)` form - produces one `EvalResult`. `lousho eval` collects them to

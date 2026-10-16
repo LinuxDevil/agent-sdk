@@ -1,5 +1,5 @@
 /**
- * llmJudge() / llmCritique() rubric grading helpers (LOU-G6)
+ * llmJudge() / llmCritique() rubric grading helpers
  *
  * Builds a grading prompt from a rubric and the agent run's output text,
  * sends it through the REAL LLMProvider interface's generate() method

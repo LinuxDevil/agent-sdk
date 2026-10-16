@@ -159,7 +159,7 @@
           "src/ui/agentRunner.ts"
         ],
         "maxCrap": 100,
-        "reason": "MAIN-HEALTH (after the Eve merges): the flagged functions are constructors and nested arrows that fallow cannot match to Istanbul's function map, so it scores them at the uncovered estimate; coverage-final.json shows their statements executed (all but two in channelSupport's dedupe). Ceiling exempts only the coverage term; cyclomatic/cognitive still gate."
+        "reason": "The flagged functions are constructors and nested arrows that fallow cannot match to Istanbul's function map, so it scores them at the uncovered estimate; coverage-final.json shows their statements executed (all but two in channelSupport's dedupe). Ceiling exempts only the coverage term; cyclomatic/cognitive still gate."
       },
       {
         "files": [

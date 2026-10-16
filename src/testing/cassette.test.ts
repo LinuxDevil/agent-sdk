@@ -7,7 +7,7 @@ import { newCassette } from './cassette';
 const thisDir = path.dirname(fileURLToPath(import.meta.url));
 
 describe('cassette header', () => {
-  it('stamps new cassettes with the SDK version read from package.json (LOU-R10)', () => {
+  it('stamps new cassettes with the SDK version read from package.json', () => {
     const manifest = JSON.parse(
       fs.readFileSync(path.resolve(thisDir, '..', '..', 'package.json'), 'utf8')
     ) as { version: string };

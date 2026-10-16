@@ -1,7 +1,7 @@
 import { test, expect, type Page, type WebSocketRoute } from '@playwright/test';
 
 /**
- * Eve DUI-F21: status, copy and naming match the docs - a finished run says
+ * Status, copy and naming match the docs - a finished run says
  * `done`, Run's prompt is labelled "Run input" in Chat, a new agent is named
  * what you typed, the open agent can be renamed and deleted, and a dropped
  * server connection is announced.
@@ -83,7 +83,7 @@ test('a dropped connection to the studio server shows a banner until it reconnec
   await expect(page.locator('.connection-banner')).toHaveCount(0, { timeout: 10_000 });
 });
 
-test('the Output node is drawn once and the minimap shows the graph (Eve DUI-F22)', async ({ page }) => {
+test('the Output node is drawn once and the minimap shows the graph', async ({ page }) => {
   const id = `ux-minimap-${Date.now()}`;
   await page.goto(`/?token=${TOKEN}`);
   await createAgent(page, id);

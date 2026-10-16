@@ -1,5 +1,5 @@
 /**
- * The webhook channel (LOU-P7): request handling and auth (LOU-D13) on the
+ * The webhook channel: request handling and auth on the
  * channel contract. Node-only: HMAC checks use `node:crypto`.
  */
 import type { IncomingMessage } from 'node:http';
@@ -17,7 +17,7 @@ export interface WebhookChannelOptions {
   /** Any `WebhookAuth` (hmac with options, bearer, custom). Wins over `secret`. */
   auth?: WebhookAuth;
   /**
-   * Who is calling, as the turn's `principal` (N10a: memory scopes, `model` /
+   * Who is calling, as the turn's `principal` (memory scopes, `model` /
    * `instructions` / `tools` functions) - e.g. which alerting system sent the
    * hook. `body` is the parsed JSON body (`undefined` when it is not JSON);
    * `req` carries the headers. Set it only from data `auth` vouched for.

@@ -1,6 +1,5 @@
 /**
- * `lousho init [dir] [options]` - scaffold a runnable project in one command
- * (LOU-D3).
+ * `lousho init [dir] [options]` - scaffold a runnable project in one command.
  *
  * This is the one generator. `npm create lousho-agent` (packages/create-lousho-agent)
  * is a thin wrapper that runs this command. See init/templates.ts for what is

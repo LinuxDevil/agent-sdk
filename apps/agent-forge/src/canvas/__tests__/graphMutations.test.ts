@@ -186,7 +186,7 @@ describe('removeEdge', () => {
   });
 });
 
-describe('node hooks (LOU-Q3)', () => {
+describe('node hooks', () => {
   const redactPii = HOOK_TEMPLATES.find((t) => t.id === 'redact-pii')!;
   const injectContext = HOOK_TEMPLATES.find((t) => t.id === 'inject-context')!;
 
@@ -246,7 +246,7 @@ describe('node hooks (LOU-Q3)', () => {
   });
 });
 
-describe('LOU-T3: updateEdgeCondition', () => {
+describe('updateEdgeCondition', () => {
   function graphWithEdge(): AgentGraphSpec {
     const g = baseGraph();
     return { ...g, edges: [...g.edges, { id: 'e-router', source: 'llm-1', target: 'tool-1' }] };

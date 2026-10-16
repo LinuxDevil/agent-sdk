@@ -1,5 +1,5 @@
 /**
- * Eve DUR-F13: Windows refuses to rename over, or read, a file that another
+ * Windows refuses to rename over, or read, a file that another
  * handle has open at that moment (a concurrent writer's rename, a reader, an
  * antivirus or indexer scan) with a transient `EPERM`, `EACCES` or `EBUSY`.
  * Two `fileStore()`s on one directory hit it under ordinary concurrency. The

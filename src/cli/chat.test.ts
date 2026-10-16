@@ -69,7 +69,7 @@ async function converse(lines: string[], turns: MockTurn[], extra: { askQuestion
 }
 
 
-/** N9b: a tool that needs a GitHub sign-in the user never completes (the chat surfaces run without a principal). */
+/** A tool that needs a GitHub sign-in the user never completes (the chat surfaces run without a principal). */
 function signInTool() {
   const github = githubProvider(fakeOAuthServer());
   return defineTool({
@@ -83,7 +83,7 @@ function signInTool() {
 }
 
 describe('lousho chat REPL', () => {
-  it('shows a sign-in link, asks again while not signed in, and cancels on n (N9b)', async () => {
+  it('shows a sign-in link, asks again while not signed in, and cancels on n', async () => {
     const out = sink();
     const model = mockModel([{ toolCalls: [{ name: 'list_repos', args: {} }] }, 'Okay, no repositories then.']);
     await runChatRepl({
@@ -134,7 +134,7 @@ describe('lousho chat REPL', () => {
     expect(out.text()).toContain('You are Ali.\n');
   });
 
-  it('prints reasoning dimmed on its own line before the reply (LOU-V13)', async () => {
+  it('prints reasoning dimmed on its own line before the reply', async () => {
     const out = sink();
     const model = mockModel(['Hi.']);
     const thinker = { ...model, generate: async (options: Parameters<typeof model.generate>[0]) => ({ ...(await model.generate(options)), reasoning: [{ text: 'Greet back.' }] }) };
@@ -258,7 +258,7 @@ describe('lousho chat REPL', () => {
     expect(out).toContain('Again.');
   });
 
-  it('streams the continuation after y, and asks again when it pauses a second time (LOU-D32.2)', async () => {
+  it('streams the continuation after y, and asks again when it pauses a second time', async () => {
     const { out } = await converse(['ping twice', 'y', 'y', '/quit'], [{ toolCalls: [{ name: 'ping' }] }, { toolCalls: [{ name: 'ping' }] }, 'Both done.']);
     expect(out.match(/Approve ping\(\{\}\)\? \[y\/N\] /g)).toHaveLength(2);
     expect(out).toContain('-> pong');
@@ -446,7 +446,7 @@ describe('lousho chat --traces (#282)', () => {
     }
   });
 
-  it('writes the runs of a module that exports an already-built agent (LOU-R19)', async () => {
+  it('writes the runs of a module that exports an already-built agent', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-chat-traces-'));
     const traces = path.join(dir, 'traces');
     try {

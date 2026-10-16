@@ -1,4 +1,4 @@
-/** N10a: routeAuth(), the ordered list. */
+/** RouteAuth(), the ordered list. */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { build, stop } from 'esbuild';
 import { join } from 'node:path';
@@ -15,7 +15,7 @@ const skip: AuthFn = () => null;
 
 afterEach(() => { vi.restoreAllMocks(); });
 
-describe('routeAuth (N10a)', () => {
+describe('routeAuth', () => {
   it('walks the list in order and the first principal wins', async () => {
     const calls: string[] = [];
     const entry = (name: string, result: Principal | null): AuthFn => () => (calls.push(name), result);
@@ -99,7 +99,7 @@ describe('routeAuth (N10a)', () => {
   });
 });
 
-describe('@lousho/build-ai-agent/auth (N10a)', () => {
+describe('@lousho/build-ai-agent/auth', () => {
   afterEach(() => stop());
 
   it('exports the helpers', () => {

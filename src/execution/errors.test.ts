@@ -33,7 +33,7 @@ describe('Error Classes', () => {
       expect(error.name).toBe('SDKError');
     });
 
-    it('appends [code] hint (docs) from the registry to message and toString() (LOU-D2)', () => {
+    it('appends [code] hint (docs) from the registry to message and toString()', () => {
       const error = new SDKError('Boom', 'LOUSHO_CONFIG_INVALID');
       const help =
         '[LOUSHO_CONFIG_INVALID] Fix the option named in the message. ' +
@@ -45,7 +45,7 @@ describe('Error Classes', () => {
       expect(new SDKError('x').code).toBe('LOUSHO_GENERIC_ERROR');
     });
 
-    it('keeps a model-facing message as given but still formats toString() (LOU-D2)', () => {
+    it('keeps a model-facing message as given but still formats toString()', () => {
       const error = new ToolExecutionError('Tool error', 'http');
       expect(error.message).toBe('Tool error');
       expect(error.code).toBe('LOUSHO_TOOL_EXECUTION_FAILED');
@@ -212,7 +212,7 @@ describe('Error Classes', () => {
     });
   });
 
-  describe('LOU-T4: compactProviderError', () => {
+  describe('compactProviderError', () => {
     // Realistic per-provider error shapes, grounded in what OpenAIProvider.ts
     // / AnthropicProvider.ts / OllamaProvider.ts / OpenRouterProvider.ts
     // actually produce (all four go through the same 'ai'-SDK
@@ -242,7 +242,7 @@ describe('Error Classes', () => {
     it.each([
       [429, '{"error":{"type":"insufficient_quota","code":"insufficient_quota","message":"You exceeded your current quota, please check your plan and billing details."}}'],
       [402, '{"error":{"message":"Insufficient credits. Add more using https://openrouter.ai/settings/credits","code":402}}'],
-    ])('maps a %i out-of-quota response to a non-retryable quota-exceeded (Eve PROV-F6)', (statusCode, responseBody) => {
+    ])('maps a %i out-of-quota response to a non-retryable quota-exceeded', (statusCode, responseBody) => {
       const raw = new APICallError({
         message: 'Provider returned error',
         url: 'https://api.example.com/v1/chat/completions',
@@ -332,8 +332,7 @@ describe('Error Classes', () => {
     });
 
     it('maps a llama.cpp/LM Studio context overflow (HTTP 500) to context-length-exceeded, not retryable', () => {
-      // The exact bodies llama.cpp / LM Studio answer with (audit _cross X1,
-      // log-incident F2): the overflow is wrapped in a 500, which used to
+      // The exact bodies llama.cpp / LM Studio answer with: the overflow is wrapped in a 500, which used to
       // fall through to `err.isRetryable` (true for a 5xx) - so withRetry()
       // retried a request that can never succeed.
       const raw = new APICallError({
@@ -373,7 +372,7 @@ describe('Error Classes', () => {
 
     it('classifies a streamed context-overflow error event the same way as a generate() one', () => {
       // LM Studio's streamed variant arrives as an SSE error event, surfaced
-      // as a plain Error, not an APICallError (log-incident F2).
+      // as a plain Error, not an APICallError.
       const streamed = compactProviderError(new Error('Context size has been exceeded.'), 'lmstudio');
       expect(streamed.category).toBe('context-length-exceeded');
       expect(streamed.retryable).toBe(false);
@@ -382,7 +381,7 @@ describe('Error Classes', () => {
     it("folds the upstream provider's message (OpenRouter error.metadata.raw) into the compacted error", () => {
       // What OpenRouter returns when the upstream provider rejects the call:
       // the generic "Provider returned error", the upstream body verbatim in
-      // error.metadata.raw (audit repo-maintainer F2).
+      // error.metadata.raw.
       const upstream =
         "Invalid schema for response_format 'r': 'required' is required to be supplied " +
         "and to be an array including every key in properties. Missing 's'.";
@@ -631,7 +630,7 @@ describe('Error Classes', () => {
       expect(compacted.error).toContain('UND_ERR_HEADERS_TIMEOUT');
     });
 
-    it('C2: maps a Headers Timeout Error without its cause (a stream error message) to timeout/retryable', () => {
+    it('maps a Headers Timeout Error without its cause (a stream error message) to timeout/retryable', () => {
       expect(compactProviderError(new Error('Cannot connect to API: Headers Timeout Error'))).toMatchObject({
         category: 'timeout',
         retryable: true,
@@ -639,7 +638,7 @@ describe('Error Classes', () => {
     });
   });
 
-  describe('LOU-T4: isModelActionableProviderErrorCategory', () => {
+  describe('isModelActionableProviderErrorCategory', () => {
     it('treats rate-limit, timeout and context-length-exceeded as model-actionable', () => {
       expect(isModelActionableProviderErrorCategory('rate-limit')).toBe(true);
       expect(isModelActionableProviderErrorCategory('timeout')).toBe(true);
@@ -652,7 +651,7 @@ describe('Error Classes', () => {
     });
   });
 
-  describe('LOU-T4: CompactedLLMProviderError', () => {
+  describe('CompactedLLMProviderError', () => {
     it('extends LLMProviderError so existing instanceof checks keep working', () => {
       const cause = new Error('raw provider failure');
       const error = new CompactedLLMProviderError(
@@ -676,10 +675,10 @@ describe('Error Classes', () => {
     });
   });
 
-  describe('LOU-R13: isCassetteError', () => {
+  describe('isCassetteError', () => {
     it('is true for a LOUSHO_CASSETTE_INVALID SDKError and anything named CassetteMismatchError', () => {
       expect(isCassetteError(new SDKError('no cassette', 'LOUSHO_CASSETTE_INVALID'))).toBe(true);
-      // A CassetteMismatchError from another loaded copy of the SDK (LOU-D42) fails instanceof - the name still matches.
+      // A CassetteMismatchError from another loaded copy of the SDK fails instanceof - the name still matches.
       expect(isCassetteError(Object.assign(new Error('mismatch'), { name: 'CassetteMismatchError' }))).toBe(true);
     });
 

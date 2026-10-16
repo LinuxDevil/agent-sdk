@@ -6,7 +6,7 @@ import { ConfigurationError } from '../execution/errors';
 // No provider-registration side-effect import is needed here:
 // LLMProviderRegistry.create() - reached below directly, and via
 // resolveProvider() for the real provider types - registers the built-in
-// providers lazily on a miss (LOU-R1), so 'mock', 'openai', 'anthropic',
+// providers lazily on a miss, so 'mock', 'openai', 'anthropic',
 // 'openrouter' and 'ollama' all resolve in CLI bundles like dist/cli/dev.js
 // that never load src/index.ts.
 import { httpTool } from '../tools/built-in/http';
@@ -20,11 +20,11 @@ const REAL_PROVIDER_TYPES = new Set(['openai', 'anthropic', 'ollama', 'openroute
 
 /**
  * Resolves a spec's provider config to an LLMProvider. Real provider types
- * go through LOU-F8's resolveProvider() (env-var driven credentials, as
+ * go through resolveProvider() (env-var driven credentials, as
  * usual). Any other registered type - notably 'mock', which intentionally
  * has no env var and is never part of resolveProvider()'s whitelist - is
  * created directly via LLMProviderRegistry. This is what lets `lousho dev`
- * (LOU-H6/H8) run end-to-end against a MockLLMProvider in tests without
+ * run end-to-end against a MockLLMProvider in tests without
  * real API credentials, while still reusing resolveProvider() verbatim for
  * every real provider type.
  */
@@ -56,7 +56,7 @@ const CREDENTIALED_TOOLS = new Set(['github', 'jira']);
 
 /**
  * Resolves one AgentSpec `tools` entry to its built-in ToolDescriptor.
- * Exported (LOU-I2) so generated deployment servers (src/deploy) resolve
+ * Exported so generated deployment servers (src/deploy) resolve
  * spec tools exactly the way specToAgent()/`lousho dev` do.
  */
 export function resolveSpecTool(name: string): ToolDescriptor {
@@ -87,17 +87,17 @@ export type SpecAgent = SimpleAgent & {
 };
 
 /**
- * Maps a validated AgentSpec to a live agent via createAgent() (LOU-H1),
+ * Maps a validated AgentSpec to a live agent via createAgent(),
  * resolving each spec tool name against the SDK's real built-in tools.
  *
  * `spec.policy` is compiled by `compilePolicy()` into `createAgent`'s `permissions`,
- * `guardrails`, `limits`, `askQuestion` and `compaction` (LOU-X5); an invalid
+ * `guardrails`, `limits`, `askQuestion` and `compaction`; an invalid
  * policy throws a `ValidationError`.
  *
- * `spec.mcpServers` go to `createAgent({ mcpServers })` (LOU-Z4): they connect
+ * `spec.mcpServers` go to `createAgent({ mcpServers })`: they connect
  * on `agent.ready()` or the first `send()` / `stream()`, and `agent.close()`
  * disconnects them. They stay readable as `agent.mcpServers`. `options.store`
- * is `createAgent({ store })` (sessions, checkpoints and approvals; LOU-D14).
+ * is `createAgent({ store })` (sessions, checkpoints and approvals).
  */
 export function specToAgent(spec: AgentSpec, options: Pick<CreateAgentConfig, 'store' | 'exporter'> = {}): SpecAgent {
   const provider = resolveSpecProvider(spec.provider.type, spec.provider.model);

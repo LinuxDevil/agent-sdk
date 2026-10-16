@@ -36,7 +36,7 @@ const registry = (): ToolRegistry => {
 
 const callEcho = { toolCalls: [{ name: 'echo' }] };
 
-describe('run usage (LOU-V5)', () => {
+describe('run usage', () => {
   it('accumulates tokens, calls and cost across steps of a priced model', async () => {
     const provider = mockModel(
       [
@@ -69,7 +69,7 @@ describe('run usage (LOU-V5)', () => {
     expect(formatUsage(result.usage)).toBe('2,500 in / 500 out tokens · $0.0007 (2 model calls)');
   });
 
-  it('Eve PROV-F4: sums cache reads and writes, and prices them at the cache rates', async () => {
+  it('sums cache reads and writes, and prices them at the cache rates', async () => {
     const provider = mockModel(
       [
         { ...callEcho, usage: { inputTokens: 5000, outputTokens: 10, cacheWriteTokens: 4800 } },
@@ -87,7 +87,7 @@ describe('run usage (LOU-V5)', () => {
     expect(result.stepUsage?.[1]).toMatchObject({ usage: { cachedInputTokens: 4800 }, costUsd: expect.closeTo((300 + 4800 * 0.1 + 50) / 1e6, 10) });
   });
 
-  it('formatUsage keeps significant digits for a tiny cost (Eve CORE-F17)', () => {
+  it('formatUsage keeps significant digits for a tiny cost', () => {
     const base = { inputTokens: 10, outputTokens: 5, modelCalls: 1, estimated: false };
     expect(formatUsage({ ...base, costUsd: 0.000042 })).toBe('10 in / 5 out tokens · $0.000042 (1 model call)');
     expect(formatUsage({ ...base, costUsd: 0.0042 })).toBe('10 in / 5 out tokens · $0.0042 (1 model call)');
@@ -345,7 +345,7 @@ describe('run usage (LOU-V5)', () => {
   });
 });
 
-describe('usage on the event stream (LOU-V5)', () => {
+describe('usage on the event stream', () => {
   it('puts per-step and run usage, cost and the estimated flag on step.done and run.done', async () => {
     const provider = mockModel(
       [

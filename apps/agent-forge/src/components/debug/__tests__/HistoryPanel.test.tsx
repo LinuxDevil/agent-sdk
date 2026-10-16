@@ -49,7 +49,7 @@ function render(element: ReactElement): HTMLElement {
   return container;
 }
 
-describe('HistoryList (LOU-D45)', () => {
+describe('HistoryList', () => {
   it('renders a row per step with status, finish reason, tool calls, tokens and cost', () => {
     const container = render(<HistoryList steps={STEPS} onReplay={() => undefined} />);
     const rows = [...container.querySelectorAll('tbody tr')].map((row) =>
@@ -71,7 +71,7 @@ describe('HistoryList (LOU-D45)', () => {
   });
 });
 
-describe('TrajectoryCompare (LOU-D45)', () => {
+describe('TrajectoryCompare', () => {
   it('shows both runs side by side, highlights the turn they diverged at and lists the drift', () => {
     const container = render(<TrajectoryCompare comparison={COMPARISON} a="weather" b="weather.fork-1" />);
     expect([...container.querySelectorAll('.traj-head b')].map((b) => b.textContent)).toEqual(['weather', 'weather.fork-1']);

@@ -1,5 +1,5 @@
 /**
- * N9b: a streamed approval decision that may fail at once with
+ * A streamed approval decision that may fail at once with
  * `LOUSHO_SIGNIN_PENDING` (a sign-in pause approved before the user signed
  * in). Surfaces that answer a decision before streaming it (the approvals
  * route answers 409, the chat REPL asks again) read the first event here.

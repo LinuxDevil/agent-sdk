@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * LOU-P3: the Svelte loushoAgent() store driven through its subscribe()
+ * The Svelte loushoAgent() store driven through its subscribe()
  * contract (no DOM needed), in process with mockModel and remote with a
  * scripted fetch.
  */
@@ -31,7 +31,7 @@ function emailAgent(...turns: Parameters<typeof mockModel>[0]) {
 
 const callEmail = { toolCalls: [{ name: 'send_email', args: { to: 'sam' }, id: 'call_email' }] };
 
-describe('loushoAgent for Svelte (LOU-P3)', () => {
+describe('loushoAgent for Svelte', () => {
   it('calls a subscriber at once with the initial state, and streams the reply into it', async () => {
     const store = loushoAgent({ agent: createAgent({ provider: mockModel([{ text: 'Hello there!', usage: { inputTokens: 5, outputTokens: 3 } }]) }) });
     const seen: string[] = [];
@@ -98,7 +98,7 @@ describe('loushoAgent for Svelte (LOU-P3)', () => {
   });
 });
 
-describe('loushoAgent for Svelte remote and abort (LOU-P3)', () => {
+describe('loushoAgent for Svelte remote and abort', () => {
   const base = { runId: 'r1', timestamp: new Date(0).toISOString(), v: AGENT_EVENT_SCHEMA_VERSION };
   const partial = `data: ${JSON.stringify({ ...base, seq: 0, type: 'text.delta', text: 'partial' })}\n\n`;
 
@@ -172,7 +172,7 @@ describe('loushoAgent for Svelte remote and abort (LOU-P3)', () => {
 
 });
 
-describe('loushoTodos (N12)', () => {
+describe('loushoTodos', () => {
   const todoWrite = { name: 'todo_write', args: { todos: [{ content: 'Plan', status: 'completed' }, { content: 'Build', status: 'in_progress' }, { content: 'Ship', status: 'pending' }] } };
   const base = { runId: 'r1', timestamp: new Date(0).toISOString(), v: AGENT_EVENT_SCHEMA_VERSION };
 

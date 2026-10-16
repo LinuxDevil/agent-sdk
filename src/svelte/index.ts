@@ -1,5 +1,5 @@
 /**
- * `@lousho/build-ai-agent/svelte` (LOU-P3): the `loushoAgent()` store, and the
+ * `@lousho/build-ai-agent/svelte`: the `loushoAgent()` store, and the
  * framework-neutral reducer and stream parser it is built on.
  */
 

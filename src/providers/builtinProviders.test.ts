@@ -1,11 +1,11 @@
 /**
- * LOU-R1 regression tests: the built-in providers must resolve from ANY
+ * Regression tests: the built-in providers must resolve from ANY
  * import path, not just after `src/index.ts` (or `src/providers/index.ts`)
  * has been imported for its side-effect registrations.
  *
  * This file deliberately imports only deep modules - './llm',
  * './resolveProvider', the provider classes - never a barrel. Before
- * LOU-R1 every assertion below failed with
+ * Every assertion below failed with
  * `Provider 'openrouter' not found. Available: mock`.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
@@ -19,7 +19,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe('LLMProviderRegistry.create() resolves the built-ins on a deep import (LOU-R1)', () => {
+describe('LLMProviderRegistry.create() resolves the built-ins on a deep import', () => {
   it.each(['openai', 'anthropic', 'openrouter', 'ollama', 'pi', 'mock'])(
     "create('%s', ...) does not throw and returns that provider",
     (name) => {
@@ -44,7 +44,7 @@ describe('LLMProviderRegistry.create() resolves the built-ins on a deep import (
   });
 });
 
-describe('resolveProvider() resolves a "<provider>/<model>" spec on a deep import (LOU-R1)', () => {
+describe('resolveProvider() resolves a "<provider>/<model>" spec on a deep import', () => {
   it("resolveProvider('openrouter/<model>') returns an OpenRouterProvider", () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'sk-or-dummy');
     const provider = resolveProvider('openrouter/some-model');
@@ -53,7 +53,7 @@ describe('resolveProvider() resolves a "<provider>/<model>" spec on a deep impor
   });
 });
 
-describe('specToAgent provider resolution (the `lousho dev`/`chat` path, LOU-R1)', () => {
+describe('specToAgent provider resolution (the `lousho dev`/`chat` path)', () => {
   it("resolveSpecProvider('mock', ...) returns a MockLLMProvider", () => {
     expect(resolveSpecProvider('mock', 'mock-model')).toBeInstanceOf(MockLLMProvider);
   });

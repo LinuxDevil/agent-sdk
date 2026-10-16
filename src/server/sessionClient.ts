@@ -1,5 +1,5 @@
 /**
- * LOU-D53: the one client for a deployed agent's session API (`POST <url>/chat`, SSE answer, bearer auth), and (LOU-Y7.3)
+ * The one client for a deployed agent's session API (`POST <url>/chat`, SSE answer, bearer auth), and
  * its approvals route (`POST <url>/chat/:sessionId/approvals/:id`, the continuation streamed). Fetch only, Worker-safe.
  */
 import type { AgentEvent, AgentEventOf, AgentEventUsage } from '../execution/agentEvents';
@@ -42,11 +42,11 @@ export interface SessionTurnSummary {
   approval?: PendingApproval;
   /** The remote run's error message, when it ended in an error. */
   error?: string;
-  /** LOU-Y7.3: the remote run's validated `output` object (`run.done`'s `object`), when its agent has an `output` schema. */
+  /** The remote run's validated `output` object (`run.done`'s `object`), when its agent has an `output` schema. */
   object?: unknown;
 }
 
-/** LOU-Y7.3: a decision on a remote run's pending approval; for an `ask_question` pause, `note` is the answer. */
+/** A decision on a remote run's pending approval; for an `ask_question` pause, `note` is the answer. */
 export interface RemoteApprovalDecision {
   sessionId: string;
   approvalId: string;
@@ -134,7 +134,7 @@ export function runRemoteTurn(options: SessionClientOptions, turn: SessionTurn):
 }
 
 /**
- * LOU-Y7.3: decides a remote run's pending approval (`POST <url>/chat/:sessionId/approvals/:id`) and reads the continuation
+ * Decides a remote run's pending approval (`POST <url>/chat/:sessionId/approvals/:id`) and reads the continuation
  * to its end, with the summary and coded errors of {@link runRemoteTurn} (an approval no longer pending is the remote's 404).
  */
 export function resolveRemoteApproval(options: SessionClientOptions, decision: RemoteApprovalDecision): Promise<SessionTurnSummary> {

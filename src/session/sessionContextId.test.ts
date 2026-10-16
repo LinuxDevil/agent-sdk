@@ -1,5 +1,5 @@
 /**
- * Eve DUI-F5: a checkpointed session's turn is checkpointed under
+ * A checkpointed session's turn is checkpointed under
  * `<id>.turn-<n>`, but tools, `needsApproval`, permission rules and tool-call
  * hooks see the session's own id as `ctx.sessionId` - as they do without a store.
  */
@@ -28,7 +28,7 @@ function probe(seen: Record<string, unknown>, gate = false) {
   });
 }
 
-describe('ctx.sessionId in a checkpointed session (Eve DUI-F5)', () => {
+describe('ctx.sessionId in a checkpointed session', () => {
   for (const durable of [false, true]) {
     it(`tools, needsApproval, permission rules and hooks see the session id (${durable ? 'durable' : 'in-memory'})`, async () => {
       const seen: Record<string, unknown> = {};

@@ -95,7 +95,7 @@ tools:
     expect(() => loadSpec(filePath)).toThrow(expect.objectContaining({ code: 'LOUSHO_SPEC_INVALID' }));
   });
 
-  it('suggests the spec field a top-level typo meant (LOU-D2)', () => {
+  it('suggests the spec field a top-level typo meant', () => {
     const typo = tmpFile(
       'typo.yaml',
       'name: a\nprompt: hi\nprovider:\n  type: mock\n  model: m\ntool:\n  - http\n'
@@ -119,7 +119,7 @@ tools:
     expect(loadSpec(unrelated).name).toBe('a');
   });
 
-  it('loads mcpServers from YAML (LOU-D20)', () => {
+  it('loads mcpServers from YAML', () => {
     const filePath = tmpFile(
       'mcp.yaml',
       `
@@ -148,7 +148,7 @@ mcpServers:
     });
   });
 
-  it('names the mcpServers entry in the error for a bad entry (LOU-D20)', () => {
+  it('names the mcpServers entry in the error for a bad entry', () => {
     const filePath = tmpFile(
       'bad-mcp.json',
       JSON.stringify({
@@ -169,7 +169,7 @@ mcpServers:
     expect(() => loadSpec(filePath)).toThrow(expect.objectContaining({ code: 'LOUSHO_SPEC_UNSUPPORTED_FORMAT' }));
   });
 
-  it('loads a spec with a policy block (LOU-X5)', () => {
+  it('loads a spec with a policy block', () => {
     const spec = loadSpec(path.join(__dirname, '__fixtures__', 'policy.yaml'));
     expect(spec.policy).toEqual({
       requiresApproval: ['http'],
@@ -181,7 +181,7 @@ mcpServers:
     });
   });
 
-  it('names an unknown policy guardrail with did-you-mean and the available names (LOU-X5)', () => {
+  it('names an unknown policy guardrail with did-you-mean and the available names', () => {
     const filePath = tmpFile(
       'agent.yaml',
       'name: a\nprompt: p\nprovider: { type: mock, model: m }\npolicy:\n  guardrails: [secretscan]\n'

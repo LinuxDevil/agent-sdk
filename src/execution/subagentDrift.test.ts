@@ -1,5 +1,5 @@
 /**
- * M10c: a run paused inside a sub-agent compares the sub-agent's saved
+ * A run paused inside a sub-agent compares the sub-agent's saved
  * fingerprint with its current definition on resume, under the lead's
  * `onAgentDrift`; a refused resume leaves the lead's approval (and session)
  * paused, so fixing the sub-agent and deciding again finishes the run.
@@ -73,7 +73,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe.each(stores)('resuming a run paused inside a sub-agent that changed (M10c): %s', (_name, makeStore) => {
+describe.each(stores)('resuming a run paused inside a sub-agent that changed: %s', (_name, makeStore) => {
   /** A lead whose sub-agent `mailer` paused on `send`. */
   async function paused(sessionId?: string) {
     const store = makeStore();

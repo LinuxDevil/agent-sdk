@@ -1,5 +1,5 @@
 /**
- * JSON for stored records that can hold image and file bytes (Eve DUR-F5): a
+ * JSON for stored records that can hold image and file bytes: a
  * `Uint8Array` is saved as `{ "$bytes": "<base64>" }`, the encoding of
  * `FileSessionStore`, so every store reads the others. It uses `btoa`/`atob`
  * rather than `Buffer`, so it also runs on Workers (KVStore) and in modules

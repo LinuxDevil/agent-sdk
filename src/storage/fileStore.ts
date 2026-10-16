@@ -222,7 +222,7 @@ class FileCheckpointStore implements CheckpointStore {
   }
 
   /**
-   * Eve DUR-F15: the latest checkpoint of every id in the directory, by id. A
+   * The latest checkpoint of every id in the directory, by id. A
    * file that cannot be read as a checkpoint is listed as an `'in-progress'` run
    * whose `lastError` is `LOUSHO_CHECKPOINT_CORRUPT`, as `load()` reports it.
    */
@@ -369,7 +369,7 @@ class FileApprovalStore implements ApprovalStore {
     return raw === undefined || claim !== undefined ? null : (JSON.parse(raw, decodeBytes) as ResolvedApproval);
   }
 
-  /** Eve TOOLS-F13: every unclaimed record in the directory, oldest first; a half-written file is skipped. */
+  /** Every unclaimed record in the directory, oldest first; a half-written file is skipped. */
   async list(): Promise<PendingApproval[]> {
     const found = new Map<string, PendingApproval>();
     for (const name of await jsonFiles(this.dir)) {
@@ -565,7 +565,7 @@ async function pausedRuns(root: string): Promise<{ runs: Set<string>; sessions: 
   const sessions = new Set(
     [...runs].map((run) => {
       const session = SESSION_KEY.exec(run)?.[1] ?? run;
-      // Eve3-S4: a kept session keeps its turn counter (the numbering the next turn needs).
+      // a kept session keeps its turn counter (the numbering the next turn needs).
       if (session !== run) runs.add(`${session}.turn-counter`);
       return session;
     })

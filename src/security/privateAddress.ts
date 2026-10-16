@@ -1,5 +1,5 @@
 /**
- * Private-address checks shared by the outbound-request code paths (N13a):
+ * Private-address checks shared by the outbound-request code paths:
  * the credential broker, the `http_request` tool and the `web_fetch` tool.
  *
  * Node-only (node:net, node:dns). The Worker bundle never imports it.

@@ -1,5 +1,5 @@
 /**
- * LOU-V14: resuming after an approval streams - `streamResumeAfterApproval()`
+ * Resuming after an approval streams - `streamResumeAfterApproval()`
  * and `agent.approvals.streamResolve()` / `streamAnswer()` return an AgentRun.
  */
 import { describe, it, expect, vi } from 'vitest';
@@ -44,7 +44,7 @@ async function collect(run: AgentRun): Promise<AgentEvent[]> {
 const kinds = (events: AgentEvent[]) => events.filter((e) => e.type !== 'text.delta').map((e) => e.type);
 const text = (events: AgentEvent[]) => events.flatMap((e) => (e.type === 'text.delta' ? [e.text] : [])).join('');
 
-describe('streamResumeAfterApproval (LOU-V14)', () => {
+describe('streamResumeAfterApproval', () => {
   it('streams the approved call and the continuation in order; the result equals resumeAfterApproval()', async () => {
     const streamed = await pausedRun([callEmail, 'Email sent.']);
     const plain = await pausedRun([callEmail, 'Email sent.']);
@@ -88,7 +88,7 @@ describe('streamResumeAfterApproval (LOU-V14)', () => {
   });
 });
 
-describe('agent.approvals.streamResolve / streamAnswer (LOU-V14)', () => {
+describe('agent.approvals.streamResolve / streamAnswer', () => {
   it('streams an ask_question answer', async () => {
     const asking: MockTurn = { toolCalls: [{ name: 'ask_question', args: { question: 'Where to?' }, id: 'call_q' }] };
     const agent = createAgent({ provider: mockModel([asking, 'Booking Lisbon.']), askQuestion: true });
@@ -161,7 +161,7 @@ describe('agent.approvals.streamResolve / streamAnswer (LOU-V14)', () => {
     expect(await store.checkpoints?.load('job')).toMatchObject({ status: 'finished' });
   });
 
-  it('LOU-R17: the approval flow emits exactly one tool.start for the decided call; the continuation reports tool.resume', async () => {
+  it('the approval flow emits exactly one tool.start for the decided call; the continuation reports tool.resume', async () => {
     const events: AgentEvent[] = [];
     const agent = createAgent({ provider: mockModel([callEmail, 'Email sent.']), tools: [emailTool()], onEvent: (event) => events.push(event) });
     const paused = await agent.send('Email Sam');

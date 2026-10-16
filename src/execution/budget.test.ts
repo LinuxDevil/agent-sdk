@@ -43,7 +43,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('limits (LOU-V6)', () => {
+describe('limits', () => {
   it.each([
     ['maxTokens', { maxTokens: 250 }, 300],
     ['maxInputTokens', { maxInputTokens: 150 }, 200],
@@ -169,7 +169,7 @@ describe('limits (LOU-V6)', () => {
   });
 });
 
-describe('session limits (LOU-V6)', () => {
+describe('session limits', () => {
   it('maxCostUsd holds across turns, from the persisted usage', async () => {
     // Each call: (1000 * 0.15 + 1000 * 0.6) / 1e6 = 0.00075
     const usage = { inputTokens: 1000, outputTokens: 1000 };
@@ -204,7 +204,7 @@ describe('session limits (LOU-V6)', () => {
   });
 });
 
-describe('unknown cost under maxCostUsd (Eve PROV-F3)', () => {
+describe('unknown cost under maxCostUsd', () => {
   it('warns once that the cost limit cannot be enforced', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const budget = startBudget({ maxCostUsd: 1 })!;

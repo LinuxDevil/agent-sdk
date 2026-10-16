@@ -19,7 +19,7 @@ import { defineTool } from '../tools/defineTool';
 import { fileTraceExporter } from './fileTraceExporter';
 import { listTraces } from './readTraces';
 
-describe.skipIf(!process.env.OPENROUTER_API_KEY)('fileTraceExporter live (M5a)', () => {
+describe.skipIf(!process.env.OPENROUTER_API_KEY)('fileTraceExporter live', () => {
   it('saves a real run with tokens and cost, and lousho traces prints it', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-live-traces-'));
     const getWeather = defineTool({

@@ -1,5 +1,5 @@
 /**
- * LOU-D15, LOU-P2: the framework-neutral run logic behind the UI bindings
+ * The framework-neutral run logic behind the UI bindings
  * (React, Vue, later Svelte): starts turns (in process or over HTTP), feeds
  * the events to a dispatch function and handles approvals and abort. A
  * binding only holds the state and hands the runner its latest inputs.
@@ -26,7 +26,7 @@ export interface LocalAgentSource {
  */
 export interface RemoteAgentSource {
   url: string;
-  /** Resume this server-side session instead of the generated chat id (Eve CORE-F1). */
+  /** Resume this server-side session instead of the generated chat id. */
   sessionId?: string;
   headers?: Record<string, string>;
   fetch?: typeof fetch;
@@ -51,7 +51,7 @@ export interface AgentCommands {
   stop(): void;
   approve(note?: string): Promise<void>;
   reject(note?: string): Promise<void>;
-  /** LOU-X9: answers the question in `pendingApproval` (`kind: 'question'`); same as `approve(text)`. */
+  /** Answers the question in `pendingApproval` (`kind: 'question'`); same as `approve(text)`. */
   answer(text: string): Promise<void>;
 }
 
@@ -70,7 +70,7 @@ function toEventError(error: unknown): AgentEventError {
   return error instanceof Error ? { name: error.name, message: error.message } : { name: 'Error', message: String(error) };
 }
 
-/** Eve CORE-F17: the `{ error }` message of a JSON error response (what `createRouteHandler` sends), else `undefined`. */
+/** The `{ error }` message of a JSON error response (what `createRouteHandler` sends), else `undefined`. */
 async function serverMessage(response: Response): Promise<string | undefined> {
   try {
     const body = (await response.json()) as { error?: unknown };
@@ -96,7 +96,7 @@ async function post(source: RemoteAgentSource, url: string, body: unknown, signa
   return response;
 }
 
-/** LOU-D32.2: the session API streams the continuation as SSE; an older server answers with an ApprovalOutcome JSON. */
+/** The session API streams the continuation as SSE; an older server answers with an ApprovalOutcome JSON. */
 async function relayContinuation(response: Response, emit: Emit): Promise<void> {
   if (!response.headers.get('content-type')?.includes('text/event-stream')) {
     return emit({ type: 'ui.resumed', outcome: (await response.json()) as ApprovalOutcome });
@@ -117,7 +117,7 @@ function settlesRun(action: AgentEvent | AgentUIAction): boolean {
 export function createAgentRunner(host: AgentRunnerHost): AgentCommands & { reset(): void } {
   let controller: AbortController | null = null;
   let cached: CachedSession | null = null;
-  /** Eve CORE-F1: the remote chat's session id; `reset()` starts a new one. */
+  /** The remote chat's session id; `reset()` starts a new one. */
   let chatId = newId();
 
   /** The agent, or its session `sessionId` (created once per agent and id, so it keeps the conversation). */

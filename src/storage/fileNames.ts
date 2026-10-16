@@ -1,5 +1,5 @@
 /**
- * Case-safe file names (Eve DUR-F7, MEM-F3), shared by every file-backed store
+ * Case-safe file names, shared by every file-backed store
  * (`FileSessionStore`, `fileStore()`'s checkpoints and approvals, `fileMemory`).
  *
  * The default filesystems of Windows and macOS ignore case, so ids such as
@@ -29,7 +29,7 @@ export function caseSafeName(name: string): string {
   return name.replace(UPPERCASE, (letter) => `^${letter.toLowerCase()}`);
 }
 
-/** Eve DUR-F15: the id a case-safe (or legacy) file name stands for: `^alice` -> `Alice`. */
+/** The id a case-safe (or legacy) file name stands for: `^alice` -> `Alice`. */
 export function idFromCaseSafeName(name: string): string {
   return name.replace(/\^([a-z])/g, (_, letter: string) => letter.toUpperCase());
 }

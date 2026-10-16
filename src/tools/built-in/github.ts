@@ -17,7 +17,7 @@
  *   .build();
  * ```
  *
- * ## Required token scope (LOU-E14)
+ * ## Required token scope
  *
  * The `config.token` this class is constructed with is expected to be
  * scoped to **PR creation and reading only**. Concretely, a fine-grained
@@ -41,7 +41,7 @@
  * or deleting a branch or a file (needs `Contents: Read and write`),
  * searching code, every issue-CRUD endpoint that isn't a PR comment
  * (needs `Issues: Read and write` used for something other than PR
- * comments), and **merging a PR** (LOU-E fix: `PUT pulls/{number}/merge`
+ * comments), and **merging a PR** (fix: `PUT pulls/{number}/merge`
  * requires GitHub's `Contents: Read and write` permission, NOT just
  * `Pull requests: write` - merging writes a merge commit to the base
  * branch's tree, which is a repository-content mutation, not a
@@ -110,7 +110,7 @@ export interface GitHubBranch {
 }
 
 // ============================================================================
-// GitHub REST API response shapes (LOU-E13)
+// GitHub REST API response shapes
 //
 // These intentionally capture only the fields this file actually reads
 // out of each response, not the full GitHub REST API schema.
@@ -336,7 +336,7 @@ export class GitHubTools extends ToolRegistry {
     'github_update_issue',
     'github_close_issue',
     'github_add_issue_comment',
-    // LOU-E fix: merging a PR (PUT pulls/{number}/merge) needs GitHub's
+    // Fix: merging a PR (PUT pulls/{number}/merge) needs GitHub's
     // "Contents: Read and write" permission, not just "Pull requests:
     // write" - see the scope documentation at the top of this file. A
     // PR-creation/reading-scoped token genuinely can't merge, so this is
@@ -391,7 +391,7 @@ export class GitHubTools extends ToolRegistry {
       return;
     }
 
-    // LOU-K2: every remaining GitHub tool's execute() makes a real outbound
+    // Every remaining GitHub tool's execute() makes a real outbound
     // HTTP call to the GitHub API via the ambient global `fetch`. Flag it
     // requiresSandbox and route sandboxExecute() through
     // withSandboxedFetch(), which swaps `fetch` for a SandboxAdapter-routed

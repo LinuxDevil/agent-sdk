@@ -1,5 +1,5 @@
 /**
- * Context compaction (LOU-W2, LOU-W3): keep a long run under its model's
+ * Context compaction: keep a long run under its model's
  * context window by pruning old tool results and, when that is not enough,
  * folding old turns into a model-written summary.
  *
@@ -84,12 +84,12 @@ export function isPinned(message: Message): boolean {
 const DEFAULT_PROTECTED_TOKENS = 40_000;
 const DEFAULT_THRESHOLD_PERCENT = 0.9;
 
-/** A pruned result: `[pruned: search result, 18234 chars]`, or since audit C4 with the call's arguments and a note. */
+/** A pruned result: `[pruned: search result, 18234 chars]`, or, in newer runs, with the call's arguments and a note. */
 const PRUNED_MARKER = /^\[pruned: [\s\S]* result, \d+ chars[\s\S]*\]$/;
 /** Longest arguments a pruned-result stub repeats. */
 const MAX_STUB_ARGS = 120;
 
-/** The strategy a marked (LOU-R11) transcript compacts with: prune only, never summarize. */
+/** The strategy a marked transcript compacts with: prune only, never summarize. */
 const PRUNE_ONLY = pruneToolResultsStrategy();
 
 const toError = (cause: unknown): Error => (cause instanceof Error ? cause : new Error(String(cause)));
@@ -357,7 +357,7 @@ export interface CompactMessagesOptions {
 const warnedProtected = new Set<string>();
 
 /**
- * Eve MEM-F5: a protected tail as large as the threshold protects the whole
+ * A protected tail as large as the threshold protects the whole
  * conversation, so compaction would change nothing however far over the
  * window it is (the default 40,000 on an 8K local model). The default is
  * capped at half the threshold; an explicit value at or above the threshold
@@ -379,7 +379,7 @@ function effectiveProtectedTokens(protectedTokens: number | undefined, limit: nu
   return cap;
 }
 
-/** The strategy and input {@link compactMessages} runs with (also used by `session.compact()`, LOU-W8). */
+/** The strategy and input {@link compactMessages} runs with (also used by `session.compact()`). */
 export function prepareCompaction(messages: Message[], options: CompactMessagesOptions, signal?: AbortSignal) {
   const { model, thresholdPercent = DEFAULT_THRESHOLD_PERCENT, reserveOutputTokens } = options;
   const strategy = options.strategy ?? pruneToolResultsStrategy();
@@ -446,18 +446,18 @@ export function createCompactionHook(options: CompactionHookOptions = {}): Agent
   if (!(thresholdPercent > 0 && thresholdPercent <= 1)) {
     throw new RangeError(`createCompactionHook: thresholdPercent must be in (0, 1], got ${thresholdPercent}`);
   }
-  // LOU-R11: transcripts whose summary was rejected, with their length at the
+  // Transcripts whose summary was rejected, with their length at the
   // rejection. Keyed on the run's transcript array (ctx.request.messages IS
   // it - it stays the same array through the in-place rewrite below and dies
   // with the run). A marked transcript prunes only until it has twice as many
-  // messages (audit C4), so a summarizer that cannot help costs a few calls
+  // messages, so a summarizer that cannot help costs a few calls
   // per run, not one per step, and one that failed on too little content gets
   // another chance.
   const rejected = new WeakMap<Message[], number>();
   // Per transcript: how many prompt tokens the provider reported for its last
   // call beyond the estimate (framing, hidden prompts, tokenizer differences).
   const underestimate = new WeakMap<Message[], number>();
-  // Eve MEM-F14: transcripts whose last compaction changed nothing. Their next
+  // Transcripts whose last compaction changed nothing. Their next
   // attempts run quietly: events only when one does change something.
   const unchanged = new WeakSet<Message[]>();
   return {
@@ -488,7 +488,7 @@ export function createCompactionHook(options: CompactionHookOptions = {}): Agent
       } catch (cause) {
         result = { messages, tokensBefore: tokens - overhead, tokensAfter: tokens - overhead, prunedToolCallIds: [], error: toError(cause) };
       }
-      // LOU-R11: a summary that does not shrink the conversation, or that
+      // A summary that does not shrink the conversation, or that
       // leaves it over the threshold, is rejected. Applied anyway it kept the
       // request over threshold, so the hook summarized again on every step
       // until max-steps. Fall back to pruning alone and mark the transcript,

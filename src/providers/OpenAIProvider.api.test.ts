@@ -1,5 +1,5 @@
 /**
- * `OpenAIProvider({ api })` (audit C5): `'responses'` (the default) builds the bare
+ * `OpenAIProvider({ api })`: `'responses'` (the default) builds the bare
  * `@ai-sdk/openai` model, the Responses API on @ai-sdk/openai 2+; `'chat'` builds
  * `.chat(id)`, the Chat Completions API that llama.cpp, vLLM and Ollama's `/v1`
  * implement. `@ai-sdk/openai` is stubbed so the two factories are told apart on

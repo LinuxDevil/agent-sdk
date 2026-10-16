@@ -1,5 +1,5 @@
 /**
- * How eval results leave the vitest worker (LOU-D8).
+ * How eval results leave the vitest worker.
  *
  * `lousho eval` sets `LOUSHO_EVAL_RESULTS` to a file path; every eval case
  * appends its `EvalResult` there as one JSON line. A file (rather than a

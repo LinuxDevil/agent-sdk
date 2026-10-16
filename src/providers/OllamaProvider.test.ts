@@ -65,7 +65,7 @@ describe('OllamaProvider', () => {
     });
   });
 
-  // LOU-D28f: both Ollama packages expect a base URL ending in `/api` (their default is
+  // Both Ollama packages expect a base URL ending in `/api` (their default is
   // http://localhost:11434/api); a bare host is completed, anything with a path is kept.
   describe('base URL', () => {
     afterEach(() => {

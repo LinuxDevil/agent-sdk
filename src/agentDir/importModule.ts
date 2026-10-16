@@ -11,7 +11,7 @@ const cacheBust = new AsyncLocalStorage<string>();
 /**
  * Runs `fn` so every file `importModule()` loads inside it is imported with a
  * `?t=<token>` query: a fresh module instance instead of the cached one
- * (`lousho dev` hot reload, LOU-D31). A resolve hook (see
+ * (`lousho dev` hot reload). A resolve hook (see
  * {@link freshImportGraph}) passes the query on to the local files such a file
  * imports by relative specifier, so an edited helper is re-evaluated too;
  * packages under node_modules stay cached. A CommonJS file (`.cjs`, or `.js` in

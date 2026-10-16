@@ -1,8 +1,8 @@
 /**
- * Input and output guardrails (LOU-X4): checks on a run's new user input,
+ * Input and output guardrails: checks on a run's new user input,
  * its assistant text and its tool arguments. A failed check either stops the
  * run (`finishReason: 'guardrail'`) or rewrites the text. Separate from the
- * diff/patch gates in patchChecks.ts (the "patch checks" of A5).
+ * diff/patch gates in patchChecks.ts (the "patch checks").
  */
 
 import type { GenerateResult, LLMProvider, Message } from '../providers';
@@ -30,14 +30,14 @@ export interface IoGuardrailContext {
   signal?: AbortSignal;
 }
 
-/** The kinds of personal data `piiGuardrail()` looks for (N5a). */
+/** The kinds of personal data `piiGuardrail()` looks for. */
 export type PiiType = 'email' | 'phone' | 'credit-card' | 'iban' | 'us-ssn' | 'ip-address';
 
-/** The categories `moderationGuardrail()` asks the model about (N5a). */
+/** The categories `moderationGuardrail()` asks the model about. */
 export type ModerationCategory = 'hate' | 'harassment' | 'self-harm' | 'sexual' | 'sexual-minors' | 'violence' | 'illicit';
 
 /**
- * What tripped, as data (N5a): types, labels and offsets into the checked
+ * What tripped, as data: types, labels and offsets into the checked
  * `text`, never the matched text itself, so events, traces and logs do not
  * copy the personal data or the secret. Your own guardrails use `'custom'`.
  */
@@ -61,7 +61,7 @@ export interface IoGuardrail {
   name: string;
   check(ctx: IoGuardrailContext): IoGuardrailResult | Promise<IoGuardrailResult>;
   /**
-   * N5b: on an `input` guardrail, run the check while the first model call is
+   * On an `input` guardrail, run the check while the first model call is
    * already in flight instead of before it. The call's streamed output is
    * held until every parallel check passes; a trip cancels the call and ends
    * the run as a blocking trip would. Such a check cannot rewrite: a
@@ -143,7 +143,7 @@ function newInput(lists: Message[][]): { entries: Array<{ list: Message[]; index
 
 /**
  * Input guardrails on the user messages that end the transcript (the new
- * input); rewrites them in place. N5b: `runInParallel` ones are left to
+ * input); rewrites them in place. `runInParallel` ones are left to
  * {@link startParallelInputGuardrails}.
  */
 export async function checkInputGuardrails(options: GuardrailRuntime, lists: Message[][]): Promise<GuardrailTrip | undefined> {
@@ -161,7 +161,7 @@ export async function checkInputGuardrails(options: GuardrailRuntime, lists: Mes
 }
 
 /**
- * N5b: the `runInParallel` input guardrails of a run, checking its new input
+ * The `runInParallel` input guardrails of a run, checking its new input
  * while the first model call is in flight. Internal.
  */
 export interface ParallelInputCheck {
@@ -177,7 +177,7 @@ export interface ParallelInputCheck {
   response?: { generated: GenerateResult; measured: CallUsage };
 }
 
-/** N5b: the abort reason of a model call a parallel input guardrail cancelled. */
+/** The abort reason of a model call a parallel input guardrail cancelled. */
 class ParallelInputTripped extends Error {
   constructor(readonly trip: GuardrailTrip) {
     super(`Guardrail '${trip.name}' blocked the input while the model call was in flight: ${trip.reason}`);
@@ -185,13 +185,13 @@ class ParallelInputTripped extends Error {
   }
 }
 
-/** N5b: the start of the reason a `runInParallel` guardrail's rewrite blocks with. */
+/** The start of the reason a `runInParallel` guardrail's rewrite blocks with. */
 export const PARALLEL_REWRITE_PREFIX = 'runInParallel guardrails cannot rewrite: ';
 
 type MutableCheck = { -readonly [K in keyof ParallelInputCheck]: ParallelInputCheck[K] };
 
 /**
- * N5b: starts the `runInParallel` input guardrails on the new input (the
+ * Starts the `runInParallel` input guardrails on the new input (the
  * user messages ending `messages`), all at once, on a snapshot: they never
  * change the transcript. `undefined` when there are none or there is no new
  * input. The first trip or throw aborts the returned signal (and the signal

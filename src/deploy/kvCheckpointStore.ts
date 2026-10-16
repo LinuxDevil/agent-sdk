@@ -1,5 +1,5 @@
 /**
- * Cloudflare Workers KV-backed `CheckpointStore` (LOU-T2).
+ * Cloudflare Workers KV-backed `CheckpointStore`.
  *
  * Why KV and not D1/Durable Objects: a Worker deployment already has `env`
  * bindings (see runtime.worker.ts's `providerEnvKey()`/`prepareWorkerSpec()`
@@ -40,7 +40,7 @@
  * store instead. See docs/deployment.md's `cloudflare-worker` section for
  * the consumer-facing version of this caveat.
  *
- * History (LOU-D43.2): next to the latest checkpoint (`<prefix><sessionId>`,
+ * History: next to the latest checkpoint (`<prefix><sessionId>`,
  * unchanged, so a store written before history existed still loads) each
  * session keeps an index key `<prefix><sessionId>#history` (an oldest-first
  * JSON list of entry ids) and one key per entry,
@@ -139,7 +139,7 @@ export class KVCheckpointStore implements CheckpointStore {
   constructor(
     private readonly kv: KVBinding,
     private readonly keyPrefix: string = DEFAULT_KV_KEY_PREFIX,
-    /** Seconds a saved checkpoint is kept (LOU-D51); omit to keep it until deleted. */
+    /** Seconds a saved checkpoint is kept; omit to keep it until deleted. */
     private readonly expirationTtl?: number,
     /** `historyLimit`: checkpoints kept per session in `history()` (default 50, `0` keeps none). */
     options: { historyLimit?: number } = {}
@@ -217,7 +217,7 @@ export class KVCheckpointStore implements CheckpointStore {
   }
 
   /**
-   * Eve DUR-F15: the latest checkpoint of every id under the prefix, by id;
+   * The latest checkpoint of every id under the prefix, by id;
    * `[]` when the binding has no `list`. KV is eventually consistent: a
    * checkpoint written elsewhere in the last ~60 seconds may be missing or stale.
    */

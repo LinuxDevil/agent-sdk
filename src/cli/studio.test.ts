@@ -122,7 +122,7 @@ describe('startStudio', () => {
     }
   });
 
-  it('mints a per-launch token, hands it to the child and puts it in the printed URL (Eve DUI-F1)', async () => {
+  it('mints a per-launch token, hands it to the child and puts it in the printed URL', async () => {
     const repoRoot = tmp();
     const packageRoot = tmp();
     const out = path.join(tmp(), 'token.txt');
@@ -142,7 +142,7 @@ describe('startStudio', () => {
   // (npm run server:dev / npm run dev in apps/agent-forge) is exercised
   // manually/in the real monorepo rather than here: it needs a full
   // `npm install` in apps/agent-forge and binds real ports, which would
-  // make this suite slow and environment-dependent. The LOU-N server's own
+  // make this suite slow and environment-dependent. The server's own
   // behavior (routes, run/stop/approve semantics) is covered directly by
   // apps/agent-forge/server/__tests__/*.test.ts instead - this file only
   // covers startStudio()'s own pure logic (the apps/agent-forge lookup and

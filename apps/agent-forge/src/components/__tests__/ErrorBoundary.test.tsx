@@ -10,7 +10,7 @@ function Boom(): never {
   throw new TypeError('n.filter is not a function');
 }
 
-describe('ErrorBoundary (Eve DUI-F3)', () => {
+describe('ErrorBoundary', () => {
   let root: Root | undefined;
   let container: HTMLDivElement | undefined;
 
@@ -37,7 +37,7 @@ describe('ErrorBoundary (Eve DUI-F3)', () => {
   });
 });
 
-describe('agentIdProblem (Eve DUI-F3)', () => {
+describe('agentIdProblem', () => {
   it('matches the server rule and explains a bad name', () => {
     expect(agentIdProblem('my-agent_1.v2')).toBeUndefined();
     expect(agentIdProblem('My Agent')).toMatch(/no spaces/);

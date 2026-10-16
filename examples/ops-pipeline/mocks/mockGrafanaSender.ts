@@ -1,5 +1,5 @@
 /**
- * Mock Grafana/Datadog webhook sender (LOU-J8) - same call shape as a real
+ * Mock Grafana/Datadog webhook sender - same call shape as a real
  * monitoring source: a plain HTTP POST of an ErrorSignal JSON body to the
  * pipeline's /webhook endpoint. Used by the demo's "post a synthetic
  * error" script; posts only to the demo's own localhost server, so this

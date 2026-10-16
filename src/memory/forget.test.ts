@@ -8,7 +8,7 @@ const systemOf = (call: MockRequest | undefined): string => String(call?.message
 const toolsOf = (call: MockRequest | undefined): string[] => (call?.tools ?? []).map((t) => t.function.name);
 const lastToolResult = (call: MockRequest): unknown => JSON.parse(String(call.messages.at(-1)?.content));
 
-describe('memory that can be corrected (Eve MEM-F2)', () => {
+describe('memory that can be corrected', () => {
   it('expose: { forget: true } adds forget_<name>, shows ids in the recalled block, and forgotten items are not recalled again', async () => {
     const provider = inMemoryMemory();
     const french = await provider.add('prefs#global', { text: 'The user wants answers in French.' });

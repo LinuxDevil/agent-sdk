@@ -1,5 +1,5 @@
 /**
- * LOU-I2: real integration test for the node-server adapter - scaffold +
+ * Real integration test for the node-server adapter - scaffold +
  * tsup build + start the actual built dist/server.js as a subprocess, then
  * hit GET /health and POST /chat over real HTTP. Nothing here is mocked
  * except the LLM itself (the spec's provider is the SDK's built-in 'mock').

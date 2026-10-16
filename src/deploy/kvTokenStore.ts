@@ -1,5 +1,5 @@
 /**
- * The `tokens` part of `KVStore` (N9a): sealed records in Workers KV.
+ * The `tokens` part of `KVStore`: sealed records in Workers KV.
  *
  *   `<prefix>oauth/tokens/<key>`     a token or a registered client (key: tokenStoreKey() or `<provider>|client`)
  *   `<prefix>oauth/pending/<state>`  a pending sign-in, written with `expirationTtl`

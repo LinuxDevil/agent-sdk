@@ -125,7 +125,7 @@ function addOutputNode(builder: GraphBuilder, hasPolicy: boolean, upstream: stri
 }
 
 /**
- * LOU-Q3: re-attach hooks serialized under spec.policy.hooks (see
+ * Re-attach hooks serialized under spec.policy.hooks (see
  * graphToSpec.ts) back onto whichever freshly-built node has a matching
  * `hookNodeKey()`. Best-effort by design: `spec.policy` is an open
  * passthrough record (see AgentSpecPolicy), so anything there that isn't
@@ -164,7 +164,7 @@ function reattachHooks(nodes: AgentGraphNode[], rawHooks: unknown): void {
  * in the same stage vertically.
  */
 /**
- * LOU-T3 known limitation: `spec.policy.flow` (the compiled `AgentFlow` a
+ * Known limitation: `spec.policy.flow` (the compiled `AgentFlow` a
  * router graph's `graphToSpec()` stashes there - see that file) is NOT
  * read back here. A saved branching graph still round-trips through its
  * `llm`/`tool`/`output`/etc. node data exactly like today, but reloading it

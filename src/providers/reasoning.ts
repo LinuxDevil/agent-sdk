@@ -1,5 +1,5 @@
 /**
- * LOU-V13: the `reasoning` option and how each built-in provider sends it.
+ * The `reasoning` option and how each built-in provider sends it.
  *
  * The option names were checked against the provider packages' sources:
  * `@ai-sdk/openai` 1.3 and 4.0 (`providerOptions.openai.reasoningEffort`,
@@ -58,7 +58,7 @@ const THINKING_BUDGETS: Record<Effort, number> = { minimal: 1024, low: 2048, med
 
 const warnedNotSent = new Set<string>();
 
-/** F10: warns (once per provider and model) that `reasoning` is set but is not sent, so it is not dropped silently. */
+/** Warns (once per provider and model) that `reasoning` is set but is not sent, so it is not dropped silently. */
 function warnNotSent(provider: string, modelId: string): void {
   const key = `${provider}/${modelId}`;
   if (warnedNotSent.has(key)) return;

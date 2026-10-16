@@ -1,5 +1,5 @@
 /**
- * The GitHub channel (N11b): `@<botName>` in an issue, pull-request or review
+ * The GitHub channel: `@<botName>` in an issue, pull-request or review
  * comment starts a turn and the agent answers in the same thread. Webhooks
  * (`X-Hub-Signature-256`), replies as comments, and approvals as `/approve` and
  * `/deny` comments. Only `fetch` and Web Crypto: no `node:*` import and no
@@ -259,7 +259,7 @@ export function githubChannel(options: GitHubChannelOptions): Channel<GitHubComm
   /** In-memory: the thread each approval prompt was posted in, and the pending `ask_question` of a thread. */
   const prompts = new Map<string, string>();
   const questions = new Map<string, string>();
-  /** Eve CH-F8: deliveries this channel already took. */
+  /** Deliveries this channel already took. */
   const delivered = deliveryCheck(options.deliveries);
   /** Approval ids this channel already passed on as a decision. */
   const decided = new Set<string>();
@@ -443,7 +443,7 @@ export function githubChannel(options: GitHubChannelOptions): Channel<GitHubComm
     },
     async parse(req: ChannelRequest, respond: ChannelRespond, ctx: ChannelContext) {
       respond(200, { ok: true }); // GitHub gives a webhook 10 seconds and does not retry
-      // Eve CH-F8: a redelivery ("Redeliver" in the app settings, or a timed-out delivery) keeps its delivery id: run it once.
+      // A redelivery ("Redeliver" in the app settings, or a timed-out delivery) keeps its delivery id: run it once.
       const delivery = req.headers['x-github-delivery'];
       if (typeof delivery === 'string' && (await delivered(delivery))) return null;
       const kind = req.headers['x-github-event'];
@@ -458,7 +458,7 @@ export function githubChannel(options: GitHubChannelOptions): Channel<GitHubComm
     reply: ({ inbound, text }) => post(inbound.replyTo as GitHubTarget, text),
     async onApproval({ inbound, approval }) {
       const target = inbound.replyTo as GitHubTarget;
-      // N9b: a thread is public, and whoever opens a sign-in link binds their own account to the asker's grant: no link here.
+      // A thread is public, and whoever opens a sign-in link binds their own account to the asker's grant: no link here.
       if (approval.kind === 'sign-in') {
         const name = approval.signIn?.displayName ?? approval.signIn?.provider ?? 'the provider';
         return post(target, `\`${approval.toolName}\` needs a sign-in to ${name}. Sign-in links are not posted in a public thread, so this request waits until it is signed in from the app (pending approval ${approval.id}).`);

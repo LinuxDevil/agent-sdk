@@ -1,5 +1,5 @@
 /**
- * LOU-Y6: the child conversations behind `task` calls, kept by `taskId` so
+ * The child conversations behind `task` calls, kept by `taskId` so
  * the lead can resume or fork one. Saved in the lead's session store under a
  * key hashed from the lead session and the taskId (so ids never collide
  * across lead sessions), or in memory for one lead run.
@@ -78,7 +78,7 @@ export class TaskSessions {
   }
 
   /**
-   * Eve MA-F12: the id after the session's last one, reserved in the store at
+   * The id after the session's last one, reserved in the store at
    * once, so a task that fails before saving its conversation never hands its
    * id to a later task, and a long session does not probe every earlier id.
    */

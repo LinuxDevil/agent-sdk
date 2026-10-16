@@ -1,5 +1,5 @@
 /**
- * N9a: the token cipher. AES-256-GCM via Web Crypto, a fresh IV per write,
+ * The token cipher. AES-256-GCM via Web Crypto, a fresh IV per write,
  * the record key as AAD, an application-supplied key and no default.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';

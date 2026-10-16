@@ -1,5 +1,5 @@
 /**
- * The `tokens` part of `SqliteStore` (N9a): sealed records in the
+ * The `tokens` part of `SqliteStore`: sealed records in the
  * `oauth_tokens` and `oauth_pending` tables. Encryption, validation and
  * expiry live in `SealedTokenStore`; this file only moves opaque strings.
  */

@@ -1,4 +1,4 @@
-/** Eve CORE-F14: `finishReason` is a closed union, so a typo does not compile. */
+/** `finishReason` is a closed union, so a typo does not compile. */
 import { describe, it, expectTypeOf } from 'vitest';
 import type { ExecutionFinishReason, ExecutionResult } from './AgentExecutor';
 

@@ -1,5 +1,5 @@
 /**
- * Shared-chunk test (LOU-D42): the built entries import shared chunks, so one class or singleton
+ * Shared-chunk test: the built entries import shared chunks, so one class or singleton
  * is one object across entries (ESM and CJS), and `instanceof SDKError` / `HookRegistry` also
  * holds across the ESM and CJS copies a mixed-format process loads (the dual-package hazard).
  *
@@ -36,7 +36,7 @@ const SAME_OBJECTS = `
     sdkErrorInstanceof: new root.AgentExecutionError('x') instanceof root.SDKError,
   };`;
 
-describe('shared chunks across package entries (LOU-D42)', () => {
+describe('shared chunks across package entries', () => {
   it('ESM entries share one copy of each module', () => {
     const result = inChild(
       `const [root, hooks, tools, mcp, executor] = await Promise.all([${['index.mjs', 'execution/hooks.mjs', 'tools/index.mjs', 'tools/mcp/index.mjs', 'executor/index.mjs'].map((f) => `esm(${dist(f)})`).join(',')}]); ${SAME_OBJECTS}`

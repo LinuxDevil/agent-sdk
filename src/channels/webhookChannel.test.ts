@@ -1,5 +1,5 @@
 /**
- * LOU-P7: `webhookChannel()` request authentication (the LOU-D13 test vectors).
+ * `webhookChannel()` request authentication (the test vectors).
  */
 import { describe, it, expect } from 'vitest';
 import type * as http from 'node:http';
@@ -60,7 +60,7 @@ async function viaChannel(channel: Channel, payload: string, headers: Record<str
   return { status: res.status, json: JSON.parse(res.text) as Record<string, unknown> };
 }
 
-describe('webhookChannel auth (LOU-P7, D13 vectors)', () => {
+describe('webhookChannel auth (test vectors)', () => {
   for (const vector of VECTORS) {
     it(`${vector.name}: ${vector.status}`, async () => {
       const payload = vector.body ?? body;
@@ -79,7 +79,7 @@ describe('webhookChannel auth (LOU-P7, D13 vectors)', () => {
     expect(() => webhookChannel({ auth: { type: 'hmac', secret: '' } })).toThrow(/secret/);
   });
 
-  it('runs the turn with the principal `principal` derives from the verified request (N10a)', async () => {
+  it('runs the turn with the principal `principal` derives from the verified request', async () => {
     const scopes: MemoryScopeContext[] = [];
     const seen: Array<RunConfigContext['principal']> = [];
     const notes = defineMemory({ name: 'notes', scope: (ctx) => (scopes.push(ctx), 'global'), provider: inMemoryMemory() });
@@ -133,7 +133,7 @@ describe('webhookChannel auth (LOU-P7, D13 vectors)', () => {
   });
 });
 
-describe('webhookChannel on a Fetch host (Eve E17 / F2)', () => {
+describe('webhookChannel on a Fetch host', () => {
   const fakeAgent = {
     session: () => ({
       stream: () => ({

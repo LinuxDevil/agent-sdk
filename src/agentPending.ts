@@ -1,5 +1,5 @@
 /**
- * Eve DUR-F15: `agent.pending()` - the runs a crash (or a pause) left
+ * `agent.pending()` - the runs a crash (or a pause) left
  * unfinished in the agent's checkpoint store, across all sessions, so an
  * operator can find and resume them after a restart.
  */
@@ -28,14 +28,14 @@ export interface PendingRun {
   status: 'in-progress' | 'awaiting-approval';
   /** With `status: 'awaiting-approval'`, the pending approval's id (`agent.approvals.get(approvalId)` shows the call). */
   approvalId?: string;
-  /** Eve TOOLS-F12: with `status: 'awaiting-approval'`, when the paused step waits on several calls: every one not decided yet (`approvalId` is the first). */
+  /** With `status: 'awaiting-approval'`, when the paused step waits on several calls: every one not decided yet (`approvalId` is the first). */
   approvalIds?: string[];
   /** `'question'` when the pause is an `ask_question` call. */
   approvalKind?: ApprovalKind;
   /** The checkpoint's `stepIndex`: how far the run got. */
   step: number;
   /**
-   * Why the last attempt at the run failed, when it did - a session turn, or (H1-3) a `send(msg, { sessionId })` /
+   * Why the last attempt at the run failed, when it did - a session turn, or a `send(msg, { sessionId })` /
    * `agent.resume()` run that rejected (`retryable: false`: fix the cause before resuming, or `discardPending()` the
    * turn). Absent on a run a crash interrupted, and once the run saved progress after the failure.
    */

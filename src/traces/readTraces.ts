@@ -1,5 +1,5 @@
 /**
- * Reading the files fileTraceExporter() writes (M5a): `listTraces()` for the
+ * Reading the files fileTraceExporter() writes: `listTraces()` for the
  * recent runs, `readTrace()` for one run's spans. Used by `lousho traces`.
  */
 import * as fs from 'node:fs';
@@ -115,8 +115,8 @@ function numberAttr(span: TraceLine, key: string): number {
 
 /**
  * The trace's cost: the sum of its chat spans' `lousho.cost_usd`, which also
- * counts a background sub-agent that finished after the root's rollup (Eve
- * MA-F2). Falls back to the root's rollup when a chat with token usage has no
+ * counts a background sub-agent that finished after the root's rollup.
+ * Falls back to the root's rollup when a chat with token usage has no
  * price, and is absent when nothing is priced.
  */
 function traceCost(root: TraceLine, chats: TraceLine[]): number | undefined {

@@ -50,7 +50,7 @@ export interface MockToolCall {
 }
 
 /**
- * N1a: a hosted tool call the mock "provider" ran this turn (as a real
+ * A hosted tool call the mock "provider" ran this turn (as a real
  * provider runs `webSearch()`): reported in events with `executedBy: 'provider'`,
  * never executed by the agent.
  *
@@ -90,7 +90,7 @@ export interface MockTurnObject {
   text?: string;
   /** Tool calls the model requests this turn. */
   toolCalls?: readonly MockToolCall[];
-  /** N1a: hosted tool calls the provider ran this turn (reported before the text; never run by the agent). */
+  /** Hosted tool calls the provider ran this turn (reported before the text; never run by the agent). */
   hostedToolCalls?: readonly MockHostedToolCall[];
   /** Make `generate()` / `stream()` reject with this error instead of replying. */
   error?: Error;
@@ -111,13 +111,13 @@ export interface MockTurnObject {
   /** Finish reason to report. Defaults to `'tool_calls'` when there are tool calls, else `'stop'`. */
   finishReason?: GenerateResult['finishReason'];
   /**
-   * Wait this many milliseconds before answering. Eve CORE-F15: the wait
+   * Wait this many milliseconds before answering. the wait
    * ends early, rejecting with the signal's reason, when the request's
    * `signal` aborts (unless `ignoreSignal`).
    */
   delayMs?: number;
   /**
-   * Eve CORE-F15: act like a provider without cancellation support: wait out
+   * Act like a provider without cancellation support: wait out
    * `delayMs` and answer even after the request's `signal` aborted.
    */
   ignoreSignal?: boolean;
@@ -184,7 +184,7 @@ interface ResolvedTurn {
   hostedToolCalls: HostedToolCall[];
   finishReason: GenerateResult['finishReason'];
   usage: GenerateResult['usage'];
-  /** Eve CORE-F15: the request's signal, which a stream checks between chunks (unset for an `ignoreSignal` turn). */
+  /** The request's signal, which a stream checks between chunks (unset for an `ignoreSignal` turn). */
   signal?: AbortSignal;
 }
 
@@ -313,7 +313,7 @@ class ScriptedMockModel implements MockModel {
     return true;
   }
 
-  /** N1a: the mock takes every hosted tool; a turn scripts the calls it "ran" (`hostedToolCalls`). */
+  /** The mock takes every hosted tool; a turn scripts the calls it "ran" (`hostedToolCalls`). */
   supportsHostedTool(): boolean {
     return true;
   }
@@ -326,7 +326,7 @@ class ScriptedMockModel implements MockModel {
     const request = snapshot(options);
     this.recorded.push(request);
     const turn = toStaticTurn(await this.nextTurn(request));
-    // Eve CORE-F15: a cancelled request rejects with the signal's reason, like a real provider's.
+    // A cancelled request rejects with the signal's reason, like a real provider's.
     const signal = turn.ignoreSignal ? undefined : options.signal;
     signal?.throwIfAborted();
     if (turn.delayMs) await abortableDelay(turn.delayMs, signal);

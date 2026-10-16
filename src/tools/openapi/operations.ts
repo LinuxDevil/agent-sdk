@@ -1,5 +1,5 @@
 /**
- * OpenAPI document -> list of operations (N8).
+ * OpenAPI document -> list of operations.
  *
  * Parses a 3.0 / 3.1 document once, resolves `$ref`s that point at
  * parameters, request bodies and path items' parameters, and describes each

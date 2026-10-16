@@ -1,5 +1,5 @@
 /**
- * openrouter - runnable snippets showing OpenRouterProvider usage (LOU-B6).
+ * openrouter - runnable snippets showing OpenRouterProvider usage.
  *
  * Requires OPENROUTER_API_KEY (get one at https://openrouter.ai/keys). Pick a
  * snippet by name, or run them all with no argument.

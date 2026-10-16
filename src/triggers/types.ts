@@ -1,5 +1,5 @@
 /**
- * Trigger adapters (LOU-T5).
+ * Trigger adapters.
  *
  * A TriggerAdapter is the inverse of a DeploymentAdapter
  * (src/deploy/types.ts): where a DeploymentAdapter turns an agent config

@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
 /**
- * Eve DUI-F8: below 860px the studio used to hide the rail and Inspector
+ * Below 860px the studio used to hide the rail and Inspector
  * outright and push Save, the zoom controls and Send off-screen (826px of
  * page at a 375px viewport). Now the rail and Inspector are slide-over
  * drawers toggled from the top bar and Debug/Import/Export/Save live in a

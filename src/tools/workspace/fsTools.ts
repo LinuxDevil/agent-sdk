@@ -1,5 +1,5 @@
 /**
- * createFsTools: file system tools over any FsProvider (LOU-X6).
+ * createFsTools: file system tools over any FsProvider.
  */
 import { z } from 'zod';
 import { defineTool, type DefinedTool } from '../defineTool';
@@ -109,7 +109,7 @@ export interface FsToolsOptions {
   deny?: readonly string[];
   /**
    * Back up every file `write_file` and `edit_file` change, so
-   * `checkpoints.rewind(turn)` can put it back (N7). Without it the tools do
+   * `checkpoints.rewind(turn)` can put it back. Without it the tools do
    * no extra reads before writing.
    */
   checkpoints?: WorkspaceCheckpoints;

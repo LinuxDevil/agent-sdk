@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { createDenyTest, normalizeAllowedPath, normalizeWorkspacePath, WorkspaceError } from './paths';
 import { globToRegExp } from './glob';
 
-describe('normalizeWorkspacePath (LOU-X6)', () => {
+describe('normalizeWorkspacePath', () => {
   it.each([
     ['src/a.ts', 'src/a.ts'],
     ['./src//a.ts', 'src/a.ts'],
@@ -57,7 +57,7 @@ describe('normalizeWorkspacePath (LOU-X6)', () => {
   });
 });
 
-describe('globToRegExp (LOU-X6)', () => {
+describe('globToRegExp', () => {
   it.each([
     ['*.ts', 'a.ts', true],
     ['*.ts', 'src/a.ts', false],

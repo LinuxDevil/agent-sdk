@@ -30,12 +30,12 @@ function defaultStorage(): Storage | undefined {
 }
 
 /**
- * Eve DUI-F2: the studio's `AgentStore`, backed by the server's
+ * The studio's `AgentStore`, backed by the server's
  * `GET/PUT/DELETE /agents` (`.lousho/agents/*.yaml` in the directory
  * `lousho studio` was started in). It replaces the old browser-only
  * `LocalStorageAgentStore`, whose list was shared by every project opened
  * in the same browser, never showed agents already on disk, and left a new
- * agent unknown to the server so chat failed until Run (DUI-F7).
+ * agent unknown to the server so chat failed until Run.
  *
  * `localStorage` is only a draft cache: a save that can't reach the server
  * is kept under a key that includes the server's workspace directory, and is

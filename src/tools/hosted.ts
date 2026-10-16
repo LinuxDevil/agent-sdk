@@ -1,5 +1,5 @@
 /**
- * N1a: hosted provider tools - tools the model provider runs inside the
+ * Hosted provider tools - tools the model provider runs inside the
  * request (OpenAI web search, code interpreter, file search), passed in the
  * agent's `tools` next to local tools. The SDK never executes them: it sends
  * them with each model call and reports the calls the provider made.

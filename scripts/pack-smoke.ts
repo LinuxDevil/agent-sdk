@@ -1,6 +1,6 @@
 // fallow-ignore-file complexity
 /**
- * pack-smoke (LOU-D49)
+ * pack-smoke
  *
  * Proves that what `npm pack` produces installs and works, in a fresh project
  * that has never seen this checkout:
@@ -47,19 +47,19 @@ const REPO_ROOT = path.resolve(__dirname, '..');
  * Unpacked raised to 18 MiB by the @lousho/build-ai-agent/worker entry (#289):
  * the pre-built, pre-shimmed entry and #298's Worker channel helpers bring the
  * tarball to 917 entries / ~16.4 MiB / ~4.3 MiB packed. Re-measured on
- * 1.0.0-rc.0 (A7): 948 entries / ~16.4 MiB / ~4.3 MiB. Re-measured on
+ * 1.0.0-rc.0: 948 entries / ~16.4 MiB / ~4.3 MiB. Re-measured on
  * 1.0.0-alpha.19 after the audit-fix merge (pi provider, kits, expanded
  * docs and llms-full.txt): 983 entries / ~18.0 MiB unpacked / ~4.75 MiB
  * packed - packed budget raised to 5 MiB. `llms-full.txt` (1 MB of docs as
- * text) then left the package (Eve F4), and the budgets were cut to 17 MiB
+ * text) then left the package, and the budgets were cut to 17 MiB
  * unpacked and 4.5 MiB packed on a measure of ~15.3 MiB / ~4.07 MiB. That
  * measure was not the published tarball: CI's pack-smoke had last measured
  * 18.6 MiB / 4.9 MiB (#500, with llms-full.txt), so the real figure was
  * ~17.6 MiB, already over the new budget, and the run on #566 itself never
- * got past the build. Re-measured by CI's pack-smoke on main after the Eve
- * fix series (MAIN-HEALTH): 1011 entries / 19,968,100 bytes (~19.0 MiB)
+ * got past the build. Re-measured by CI's pack-smoke on main after the
+ * fix series: 1011 entries / 19,968,100 bytes (~19.0 MiB)
  * unpacked / 5,199,937 bytes (~4.96 MiB) packed. Budgets: ~10% headroom.
- * C4: no source maps ship any more (dist/**.map was 3.7 MB), measured
+ * No source maps ship any more (dist/**.map was 3.7 MB), measured
  * 774 entries / 15,116,044 bytes (~14.4 MiB) unpacked / 4,307,099 bytes
  * (~4.1 MiB) packed; budgets cut to 16 MiB unpacked / 4.5 MiB packed.
  * scripts/size-check.ts holds the tighter, committed budget.

@@ -1,5 +1,5 @@
 /**
- * H3-1: a durable flow run holds a run lease on its runId, as an agent run
+ * A durable flow run holds a run lease on its runId, as an agent run
  * does: two concurrent execute()/resume() calls of one run never both run its
  * steps, and a lease left by a crashed holder can be taken over.
  */

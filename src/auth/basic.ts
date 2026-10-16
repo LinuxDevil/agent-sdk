@@ -1,5 +1,5 @@
 /**
- * N10a: `basic()` (HTTP Basic, RFC 7617) and `apiToken()` (one shared bearer
+ * `basic()` (HTTP Basic, RFC 7617) and `apiToken()` (one shared bearer
  * token, what `LOUSHO_API_TOKEN` has always been). Both compare in constant
  * time: every side is hashed to one length first, and `basic()` walks every
  * configured user, so an unknown user takes as long as a wrong password.

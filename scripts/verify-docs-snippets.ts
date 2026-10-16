@@ -1,12 +1,12 @@
 /**
- * verify-docs-snippets (LOU-I7)
+ * verify-docs-snippets
  *
  * Extracts every ```ts / ```typescript / ```tsx fenced code block from the
  * docs (or the markdown files passed as arguments) and proves the runnable
  * ones (stage B below) type-check AND run without error against the LOCALLY BUILT package
  * - exactly what a reader copy-pasting it into a fresh project would get.
  *
- * How (mirrors LOU-H4's create-lousho-agent approach for its generated
+ * How (mirrors create-lousho-agent approach for its generated
  * projects): build the SDK, `npm pack` it, install the tarball into a
  * throwaway temp project, write each snippet there as its own ES module
  * (`snippet-<n>.mts`), then
@@ -20,7 +20,7 @@
  *   --keep        keep the temp project (its path is printed) for debugging
  *   --source-only run stage A (type-check against src/) only; no build, pack or run
  *
- * Two stages (LOU-U5):
+ * Two stages:
  *
  *   A. SOURCE CHECK - every ```ts / ```typescript block in README.md and
  *      docs/*.md (all of them, not just the quick start) is type-checked
@@ -53,7 +53,7 @@
  * never make network calls. A fence whose info string contains
  * `no-verify` (e.g. ```ts no-verify) is skipped. One containing `no-run`
  * (e.g. ```ts no-run) is still type-checked by both stages but not executed,
- * for snippets that need a real API key to run (LOU-D1).
+ * for snippets that need a real API key to run.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
@@ -169,7 +169,7 @@ function setUpProject(projectDir: string, skipBuild: boolean): void {
   // Everything a reader installs per docs/installation.md: the SDK, its
   // required peers (ai, zod) and - because the root entry currently loads
   // every provider module - the optional provider packages too. `ai` and
-  // `@ai-sdk/*` peer on several majors (LOU-D28d): pin the pairing the repo
+  // `@ai-sdk/*` peer on several majors: pin the pairing the repo
   // develops against (its devDependencies), not whatever the widest range resolves to.
   const dependencies: Record<string, string> = {
     '@lousho/build-ai-agent': `file:./${tarball}`,

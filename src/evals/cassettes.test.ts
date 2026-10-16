@@ -39,7 +39,7 @@ describe('cassettePath', () => {
     expect(cassettePath('/p/a.eval.ts', 'e', undefined, 1)).toBe(path.join('/p', '__cassettes__', 'e', 'default.2.json'));
   });
 
-  it('hashes the full label, so labels that slug or truncate alike get their own cassette (docs-qa F3)', () => {
+  it('hashes the full label, so labels that slug or truncate alike get their own cassette', () => {
     const a = cassettePath('/p/a.eval.ts', 'e', 'How do I configure the retry policy and backoff for the OpenAI provider?');
     const b = cassettePath('/p/a.eval.ts', 'e', 'How do I configure the retry policy and backoff for the Anthropic provider?');
     expect(a).not.toBe(b);
@@ -158,7 +158,7 @@ describe('withEvalCassettes', () => {
   });
 });
 
-describe('cassette names (docs-qa F3, F14)', () => {
+describe('cassette names', () => {
   const caseResult = (label: string): EvalResult => ({ name: 'Refund flow', case: label, tags: [], passed: true, assertions: [], durationMs: 0, steps: 1, toolCalls: [] });
   const send = async (file: string, provider: ReturnType<typeof mockModel>, info: { label: string; key?: string; index?: number }) => {
     let reply = '';
@@ -232,7 +232,7 @@ describe('cassette names (docs-qa F3, F14)', () => {
   });
 });
 
-describe('parallel sub-agents (Eve MA-F7)', () => {
+describe('parallel sub-agents', () => {
   const noop = defineTool({ name: 'lookup', description: 'lookup', input: z.object({ q: z.string() }), execute: async ({ q }) => `data for ${q}` });
   const realWorker = () =>
     mockModel(

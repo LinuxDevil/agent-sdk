@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * LOU-D15: useLoushoAgent() rendered with react-test-renderer (no DOM
+ * UseLoushoAgent() rendered with react-test-renderer (no DOM
  * needed), in process with mockModel and remote with a scripted fetch.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -52,8 +52,8 @@ function emailAgent(...turns: Parameters<typeof mockModel>[0]) {
 
 const callEmail = { toolCalls: [{ name: 'send_email', args: { to: 'sam' }, id: 'call_email' }] };
 
-describe('useLoushoAgent in process (LOU-D15)', () => {
-  it('send(parts) sends one user message with the parts and shows their text and a marker (LOU-V12)', async () => {
+describe('useLoushoAgent in process', () => {
+  it('send(parts) sends one user message with the parts and shows their text and a marker', async () => {
     const model = mockModel(['A cat.']);
     mount({ agent: createAgent({ provider: model }) });
     const parts = [
@@ -70,7 +70,7 @@ describe('useLoushoAgent in process (LOU-D15)', () => {
     expect(model.calls[0].messages.filter((m) => m.role === 'user')).toEqual([{ role: 'user', content: parts }]);
   });
 
-  it('reset() clears the chat (Eve CORE-F17)', async () => {
+  it('reset() clears the chat', async () => {
     mount({ agent: createAgent({ provider: mockModel(['Hello']) }) });
     await act(() => hook.send('hi'));
     expect(hook.messages).toHaveLength(2);
@@ -126,7 +126,7 @@ describe('useLoushoAgent in process (LOU-D15)', () => {
     expect(hook.messages[1]).toMatchObject({ text: 'Email sent.', toolCalls: [{ name: 'send_email', status: 'done' }] });
   });
 
-  it("answer(text) answers an ask_question pause (LOU-X9)", async () => {
+  it("answer(text) answers an ask_question pause", async () => {
     const ask = { toolCalls: [{ name: 'ask_question', args: { question: 'Which city?', options: ['Porto', 'Lisbon'] }, id: 'call_q' }] };
     const model = mockModel([ask, 'Booking Lisbon.']);
     mount({ agent: createAgent({ provider: model, askQuestion: true }) });
@@ -187,7 +187,7 @@ function scriptedFetch(responses: { body: string; close?: boolean; status?: numb
   return { fetch: fetchMock as unknown as typeof fetch, fetchMock, signals };
 }
 
-describe('useLoushoAgent remote (LOU-D15)', () => {
+describe('useLoushoAgent remote', () => {
   it('POSTs { input } with headers and reads the SSE event stream', async () => {
     const remote = scriptedFetch([
       {
@@ -271,7 +271,7 @@ describe('useLoushoAgent remote (LOU-D15)', () => {
 
 });
 
-describe('useTodos (N12)', () => {
+describe('useTodos', () => {
   const todoWrite = { name: 'todo_write', args: { todos: [{ content: 'Plan', status: 'completed' }, { content: 'Build', status: 'in_progress' }, { content: 'Ship', status: 'pending' }] } };
 
   it('follows the todo list of an in-process run, with counts, the current item and progress', async () => {

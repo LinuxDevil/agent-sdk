@@ -1,5 +1,5 @@
 /**
- * N15: aiSdkEmbedder over a fake AI SDK embedding model, on the installed
+ * AiSdkEmbedder over a fake AI SDK embedding model, on the installed
  * `ai` and on the aliased `ai` 6 and 7 (each with the model spec version that
  * pairs with it).
  */

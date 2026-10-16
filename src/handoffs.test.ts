@@ -1,5 +1,5 @@
 /**
- * N6: handoffs. A triage agent hands the conversation to a specialist, which
+ * Handoffs. A triage agent hands the conversation to a specialist, which
  * answers in the same run and keeps the conversation in later session turns.
  * One mockModel per agent, so each test sees which agent made each model call.
  */
@@ -85,7 +85,7 @@ const handoffResult = (messages: readonly Message[]) => messages.find((m) => m.r
 
 afterEach(() => { vi.restoreAllMocks(); });
 
-describe('handoffs (N6): send() and stream()', () => {
+describe('handoffs: send() and stream()', () => {
   it('send(): the target answers in the same run with its own prompt, model and tools; result.agentName names it', async () => {
     const { triage, triageModel, billingModel } = setup([toBilling()], ['Your refund is on its way.']);
 
@@ -151,7 +151,7 @@ describe('handoffs (N6): send() and stream()', () => {
   });
 });
 
-describe('handoffs (N6): options', () => {
+describe('handoffs: options', () => {
   it('inputFilter gets the transcript without the system prompt, ending with the handoff call, its result and the routing note', async () => {
     let seen: HandoffInputData | undefined;
     const onHandoff = vi.fn();
@@ -299,7 +299,7 @@ describe('handoffs (N6): options', () => {
   });
 });
 
-describe('handoffs (N6): what stays the lead run\'s', () => {
+describe('handoffs: what stays the lead run\'s', () => {
   it('the lead\'s permission rules apply to the target\'s tools, before its own', async () => {
     const callRefund = { toolCalls: [{ name: 'refund', args: { amount: 5 }, id: 'call_refund' }] };
     const { triage, refund } = setup([toBilling()], [callRefund, 'No refund possible.'], { triage: { permissions: [deny('refund', 'refunds are off')] } });
@@ -357,7 +357,7 @@ describe('handoffs (N6): what stays the lead run\'s', () => {
   });
 });
 
-describe('handoffs (N6): sessions', () => {
+describe('handoffs: sessions', () => {
   it('after a handoff, the next session.send() runs the target', async () => {
     const { triage, triageModel, billingModel } = setup([toBilling()], ['Refund issued.', 'You are welcome.']);
     const session = triage.session();
@@ -408,7 +408,7 @@ describe('handoffs (N6): sessions', () => {
   });
 });
 
-describe('handoffs (N6): approvals and durable resume', () => {
+describe('handoffs: approvals and durable resume', () => {
   it('a target tool that needs approval pauses; approvals.resolve() continues in the target, with no drift warning', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const events: AgentEvent[] = [];
@@ -510,7 +510,7 @@ describe('handoffs (N6): approvals and durable resume', () => {
   });
 });
 
-describe('handoffs (N6): the transfer call passes the run\'s gate', () => {
+describe('handoffs: the transfer call passes the run\'s gate', () => {
   it('a deny rule on the transfer tool refuses the handoff with a model-visible error, audited', async () => {
     const onPermissionDecision = vi.fn();
     const events: AgentEvent[] = [];
@@ -665,7 +665,7 @@ describe('handoffs (N6): the transfer call passes the run\'s gate', () => {
   });
 });
 
-describe('handoffs (N6): configuration errors', () => {
+describe('handoffs: configuration errors', () => {
   const provider = () => mockModel([]);
 
   it('a target without a name or a description', () => {
@@ -700,7 +700,7 @@ describe('handoffs (N6): configuration errors', () => {
 /** Whether any message after the first non-system one is a system message (Qwen/Llama chat templates reject that). */
 const hasLateSystem = (messages: readonly Message[]) => messages.some((m, i) => m.role === 'system' && messages.slice(0, i).some((before) => before.role !== 'system'));
 
-describe('handoffs (N6): local-model chat templates (audit A7)', () => {
+describe('handoffs: local-model chat templates', () => {
   it('no model request carries a system message after a non-system one, in the handoff run or a later session turn', async () => {
     const billingHandoffs: Handoff[] = [];
     const billingModel = mockModel(['Refund issued.', { toolCalls: [{ name: 'transfer_to_triage', args: {}, id: 'call_back' }] }]);
@@ -723,7 +723,7 @@ describe('handoffs (N6): local-model chat templates (audit A7)', () => {
   });
 });
 
-describe('handoffs (N6): memory stays on after a handoff (audit A7)', () => {
+describe('handoffs: memory stays on after a handoff', () => {
   const principal = { id: 'C100', type: 'user' as const, authenticator: 'custom' };
 
   async function memorySetup(billingScript: Parameters<typeof mockModel>[0], billing: Partial<Parameters<typeof createAgent>[0]> = {}) {
@@ -767,7 +767,7 @@ describe('handoffs (N6): memory stays on after a handoff (audit A7)', () => {
   });
 });
 
-describe('handoffs (N6): the target\'s own tool search (Eve MA-F6)', () => {
+describe('handoffs: the target\'s own tool search', () => {
   const lookup = defineTool({ name: 'lookup_invoice', description: 'Look up an invoice', input: z.object({ id: z.string() }), deferLoading: true, execute: async () => 'inv' });
   const toolNames = (model: MockModel) => (model.calls[0]?.tools ?? []).map((tool) => tool.function.name);
 

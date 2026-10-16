@@ -1,5 +1,5 @@
 /**
- * `KVStore` (LOU-D51): an `AgentStore` on one Cloudflare Workers KV namespace,
+ * `KVStore`: an `AgentStore` on one Cloudflare Workers KV namespace,
  * so a deployed Worker keeps session transcripts, durable-execution
  * checkpoints and paused approvals between requests:
  *
@@ -33,7 +33,7 @@ export interface KVStoreOptions {
   prefix?: string;
   /** Seconds each kind of record is kept after its last write; KV accepts 60 or more. Omit to keep records until deleted. */
   ttl?: { sessions?: number; checkpoints?: number; approvals?: number };
-  /** Checkpoints kept per session in `checkpoints.history()` (default 50, `0` keeps none; LOU-D43.2). */
+  /** Checkpoints kept per session in `checkpoints.history()` (default 50, `0` keeps none). */
   historyLimit?: number;
   /**
    * Key of the OAuth tokens in `store.tokens`: 32 random bytes as base64
@@ -47,7 +47,7 @@ export interface KVStoreOptions {
 const putOptions = (expirationTtl?: number) => (expirationTtl ? { expirationTtl } : undefined);
 
 /**
- * Sessions on Workers KV. It has no `saveIf` (Eve DUR-F4): KV has no compare-and-swap and is eventually consistent,
+ * Sessions on Workers KV. It has no `saveIf`: KV has no compare-and-swap and is eventually consistent,
  * so a session's `LOUSHO_SESSION_BUSY` check here is best-effort: two Workers finishing a turn on the same session
  * at the same moment can still both commit, and one turn is lost. Route one session's traffic to one place (or keep
  * sessions in a Durable Object or D1) when that matters.
@@ -82,7 +82,7 @@ class KVSessionStore implements SessionStore {
 const CLAIM_TTL_SECONDS = 60;
 
 /**
- * Eve DUR-F9: KV has no compare-and-swap, so resolving claims the approval
+ * KV has no compare-and-swap, so resolving claims the approval
  * first: it writes a random token under `<id>#claim` (unless a claim is
  * already there), waits a short settle window (`KV_SETTLE_MS`), reads it back,
  * and only the request whose token survived (and that still finds the record)
@@ -133,7 +133,7 @@ class KVApprovalStore implements ApprovalStore {
   }
 
   /**
-   * Eve TOOLS-F13: every approval under the prefix, oldest first; `[]` when the
+   * Every approval under the prefix, oldest first; `[]` when the
    * binding has no `list`. KV is eventually consistent, so a pause saved or
    * resolved in the last ~60 seconds elsewhere may be missing or still listed.
    */

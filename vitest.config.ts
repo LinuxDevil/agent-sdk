@@ -39,18 +39,18 @@ export default defineConfig({
     environment: 'node',
     // A per-run TMPDIR, removed when the run ends (scripts/vitestTmpdir.ts).
     globalSetup: ['./scripts/vitestTmpdir.ts'],
-    // Adds '**/*.eval.ts' (LOU-G2) alongside vitest's own default
+    // Adds '**/*.eval.ts' alongside vitest's own default
     // '**/*.{test,spec}.?(c|m)[jt]s?(x)' pattern (there was no explicit
     // `include` before this, so the default test/spec pattern is spelled
     // out here too) so eval files defined via defineEval() run as part of
     // the normal `vitest run` / `npm test` path.
     include: ['**/*.{test,spec}.?(c|m)[jt]s?(x)', '**/*.eval.ts'],
-    // Excludes the LOU-E11 fixture repo's own test file - it's a plain
+    // Excludes the fixture repo's own test file - it's a plain
     // node:test suite meant to be run by the fixture's own `npm test`
     // (via createTestRunGuardrail() against a scratch copy of it), not
     // collected by vitest here.
     //
-    // Also excludes '**/*.judge.eval.ts' (LOU-G6): llmJudge()-based evals
+    // Also excludes '**/*.judge.eval.ts': llmJudge()-based evals
     // call out to a real LLM provider and must NEVER run in the default
     // `vitest run` path. Without this exclude, '**/*.eval.ts' above would
     // also match 'foo.judge.eval.ts' (it still ends in '.eval.ts'), so the
@@ -64,12 +64,12 @@ export default defineConfig({
       // Fixture evals that src/cli/eval.test.ts runs through `lousho eval`.
       'src/cli/__fixtures__/**',
       '**/*.judge.eval.ts',
-      // Real-daemon Docker tests (LOU-M6): run only via vitest.docker.config.ts /
+      // Real-daemon Docker tests: run only via vitest.docker.config.ts /
       // `npm run test:docker` (the Linux Docker CI job), never in the default run.
       '**/*.docker.test.ts',
       // Live-model tests (cost money): run with `npm run test:live`.
       '**/*.live.test.ts',
-      // apps/* are separate npm workspaces (LOU-L1) with their own Vite/
+      // apps/* are separate npm workspaces with their own Vite/
       // vitest config and browser-only test environment (jsdom) - without
       // this exclude, this root config's broad default include pattern
       // would also sweep up e.g. apps/agent-forge's tests and run them
@@ -90,8 +90,8 @@ export default defineConfig({
       // source was only ever showing up in this report as permanent 0%
       // dead weight - not a real coverage gap, just this config's report
       // counting lines it never had a chance to exercise. Left in as-is
-      // since LOU-L first added apps/agent-forge, this was latent until
-      // LOU-P's growth (new server/chat + ChatPanel/ApprovalCard code, all
+      // since first added apps/agent-forge, this was latent until
+      // Growth (new server/chat + ChatPanel/ApprovalCard code, all
       // covered by apps/agent-forge's own 49/49 + 74/74 suites) tipped the
       // denominator enough to trip the global threshold below.
       // Only the library source counts: scripts/, examples/ and

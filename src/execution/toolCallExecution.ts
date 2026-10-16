@@ -50,14 +50,14 @@ export interface ToolCallOutcome {
   requiresApproval?: boolean;
   args?: Record<string, unknown>;
   /**
-   * LOU-Y1: set when the tool started a sub-agent that paused for approval.
+   * Set when the tool started a sub-agent that paused for approval.
    * `result` is then a placeholder; the run pauses once the turn is done.
    */
   subagent?: SubagentSuspension;
-  /** LOU-X3: the hook whose `{ result }` outcome became this call's result. */
+  /** The hook whose `{ result }` outcome became this call's result. */
   replacedByHook?: string;
   /**
-   * N9b: set when the tool called `ctx.getToken()` without a usable token.
+   * Set when the tool called `ctx.getToken()` without a usable token.
    * The call has no result; the run pauses for sign-in (`kind: 'sign-in'`)
    * once the batch is done, and the call runs again after the user signed in.
    */
@@ -80,18 +80,18 @@ export interface ToolCallContext {
   sandbox: SandboxAdapter;
   hooks?: HookRegistry;
   sessionId?: string;
-  /** N10b: who the run acts for (frozen): reaches hooks, permission rules, `needsApproval` and the tool. */
+  /** Who the run acts for (frozen): reaches hooks, permission rules, `needsApproval` and the tool. */
   principal?: Readonly<Principal>;
-  /** LOU-R16: the run's `ExecuteOptions.metadata`, handed to hooks as `ctx.metadata`. */
+  /** The run's `ExecuteOptions.metadata`, handed to hooks as `ctx.metadata`. */
   metadata?: Record<string, unknown>;
   messages: Message[];
-  /** LOU-V1: the run's signal, handed to the tool as `abortSignal`. */
+  /** The run's signal, handed to the tool as `abortSignal`. */
   signal?: AbortSignal;
-  /** LOU-Y1: this call, as seen by a sub-agent the tool starts. */
+  /** This call, as seen by a sub-agent the tool starts. */
   scope?: ToolCallScope;
-  /** LOU-V5: where a delegated child's usage is reported (see ToolRunContext). */
+  /** Where a delegated child's usage is reported (see ToolRunContext). */
   onDelegatedUsage?: ToolRunContext['onDelegatedUsage'];
-  /** N13b: a snapshot a generator tool yielded (reported as `tool.partial`); never part of the result. */
+  /** A snapshot a generator tool yielded (reported as `tool.partial`); never part of the result. */
   onToolPartial?: (toolCallId: string, toolName: string, output: unknown) => void;
 }
 
@@ -122,7 +122,7 @@ export function toolHookContext(
 /**
  * A tool call that has passed its pre-execution gate - onToolCall, argument
  * validation, pre-tool hooks and the `needsApproval` check - but has not run.
- * LOU-V3: the executor gates the calls of a batch one at a time, in call
+ * The executor gates the calls of a batch one at a time, in call
  * order, so it knows whether a call needs approval before it starts the next.
  */
 export interface PreparedToolCall {
@@ -139,7 +139,7 @@ export interface PreparedToolCall {
 
 /**
  * Execute a tool call, wrapped in the onToolCall/onToolResult callbacks
- * and pre/post tool-call hooks. `onPrepared` (LOU-V3) is told the moment
+ * and pre/post tool-call hooks. `onPrepared` is told the moment
  * the call has passed its gate (see {@link PreparedToolCall}), before it runs.
  */
 export async function runToolCall(
@@ -153,12 +153,12 @@ export async function runToolCall(
 }
 
 /**
- * Runs a tool call's gate (LOU-X3 order): onToolCall, argument validation,
+ * Runs a tool call's gate: onToolCall, argument validation,
  * pre-tool hooks (and their outcomes), permission rules, tool guardrails and
  * the `needsApproval` check. Hooks run before the approval decision, so a
  * human approves the arguments a hook produced.
  *
- * Exported for N6: handoff calls pass the same gate (against a registry of
+ * Exported so handoff calls pass the same gate (against a registry of
  * the run's handoff tools) even though they are never executed.
  */
 export async function prepareToolCall(toolCall: ToolCall, ctx: ToolCallContext): Promise<PreparedToolCall> {
@@ -167,7 +167,7 @@ export async function prepareToolCall(toolCall: ToolCall, ctx: ToolCallContext):
   }
 
   // Parse args up front so hooks get a real object to inspect/mutate.
-  // LOU-U4: the args are then validated against the tool's schema FIRST, so
+  // The args are then validated against the tool's schema FIRST, so
   // pre-tool hooks, `needsApproval` and `execute` all see the parsed
   // (defaults/transforms applied) value. Invalid args (and arguments that
   // are not valid JSON) skip the pre-hooks and `execute`; the structured
@@ -179,7 +179,7 @@ export async function prepareToolCall(toolCall: ToolCall, ctx: ToolCallContext):
   }
 
   // A `preToolCall` hook (e.g. redact-pii) may mutate `args` in place or
-  // return an outcome (LOU-X3); the final args are what `needsApproval` and `execute` receive.
+  // return an outcome; the final args are what `needsApproval` and `execute` receive.
   const hooked = ctx.hooks
     ? await runPreToolHooks(ctx.hooks, toolHookContext(toolCall, ctx, checked.args), { toolRegistry: ctx.toolRegistry, runtime: ctx.scope?.runtime })
     : { args: checked.args };
@@ -195,31 +195,31 @@ const ENFORCED_APPROVAL_REASON = 'its install receipt requires approval';
 /**
  * Permission rules, tool guardrails and `needsApproval`, on the hook-processed args.
  *
- * Exported for A8: a flow's `toolCall` step passes the same gate.
+ * Exported so a flow's `toolCall` step passes the same gate.
  */
 export async function gateToolCall(toolCall: ToolCall, ctx: ToolCallContext, hookedArgs: Record<string, unknown>): Promise<PreparedToolCall> {
-  // N4: the mode is read once per call, so a switch applies from the next call.
+  // The mode is read once per call, so a switch applies from the next call.
   const mode = ctx.scope ? permissionModeOf(ctx.scope.runtime) : 'default';
-  // LOU-X2: a matching permission rule decides before `needsApproval` does.
+  // A matching permission rule decides before `needsApproval` does.
   const { entry, gate: ruled } = await checkPermissionRules(toolCall, ctx, hookedArgs, mode);
   let audit = entry;
   try {
     if (ruled?.rejection) {
       return { toolCall, args: hookedArgs, requiresApproval: false, rejection: ruled.rejection };
     }
-    // LOU-X4: tool guardrails run on calls that were not denied; a block throws GuardrailError.
+    // Tool guardrails run on calls that were not denied; a block throws GuardrailError.
     const args = ctx.scope
       ? await checkToolGuardrails(ctx.scope.runtime, { toolName: toolCall.function.name, args: hookedArgs, messages: ctx.messages })
       : hookedArgs;
-    // LOU-X8 follow-up: an `allow` / `ask` rule replaces the tool's own ask, not its deny.
+    // Follow-up: an `allow` / `ask` rule replaces the tool's own ask, not its deny.
     const own = await checkNeedsApproval(toolCall, ctx, args);
     // An enforced ask (an install receipt's exec / needsApproval item) is not replaced by an `allow` rule.
     const enforced = !own.rejection && own.requiresApproval && hasEnforcedApproval(ctx.toolRegistry && findExecutableTool(ctx.toolRegistry, toolCall.function.name));
     const { denied, ...gate } = own.rejection || (enforced && !ruled?.requiresApproval) ? own : (ruled ?? own);
-    // LOU-X8: the tool's own deny is audited like a rule's.
+    // The tool's own deny is audited like a rule's.
     if (denied && audit) audit = { ...audit, decision: 'deny', ...(denied.reason !== undefined && { reason: denied.reason }) };
     if (enforced && audit?.decision === 'allow') audit = { ...audit, decision: 'ask', reason: ENFORCED_APPROVAL_REASON };
-    // N4: the permission mode applies last, to a call nothing above denied: it never turns a deny into a run,
+    // The permission mode applies last, to a call nothing above denied: it never turns a deny into a run,
     // nor an enforced ask.
     const verdict = gate.rejection ? undefined : applyPermissionMode(mode, toolCall, ctx, gate.requiresApproval);
     const moded = enforced && verdict?.gate.rejection === undefined ? undefined : verdict;
@@ -231,7 +231,7 @@ export async function gateToolCall(toolCall: ToolCall, ctx: ToolCallContext, hoo
 }
 
 /**
- * N4: what the run's permission mode does with a call that was not denied
+ * What the run's permission mode does with a call that was not denied
  * (see `permissionModeVerdict()`): the new gate and the audit fields, or
  * undefined when the mode does not change the outcome.
  */
@@ -250,14 +250,14 @@ function applyPermissionMode(
   return { gate: { requiresApproval: false, rejection }, audit: { decision: 'deny', reason: verdict.deny, mode } };
 }
 
-/** The pre-tool hooks' verdict (LOU-X3): the final args, or the outcome that settles the call without running it. */
+/** The pre-tool hooks' verdict: the final args, or the outcome that settles the call without running it. */
 interface PreHookVerdict {
   args: Record<string, unknown>;
   outcome?: ToolCallOutcome;
 }
 
 /**
- * Runs the pre-tool hooks and applies their outcome (LOU-X3): a deny or a
+ * Runs the pre-tool hooks and applies their outcome: a deny or a
  * result settles the call; hook-supplied input is validated against the
  * tool's schema again. `approvedArgs` (a resumed, approved call) refuses
  * hook input that differs from what the human approved.
@@ -280,7 +280,7 @@ export async function runPreToolHooks(
     }
     final = checked.args;
   }
-  // LOU-X3.2: whether a hook supplied the input or changed `ctx.args` in place,
+  // Whether a hook supplied the input or changed `ctx.args` in place,
   // the call runs with what the human approved (key order does not matter).
   if (opts.approvedArgs && stableStringify(final) !== stableStringify(opts.approvedArgs)) {
     return { args, outcome: hookInputFailure(toolFailure(toolCall, 'validation', ''), inputBy, 'the call was approved with different input') };
@@ -288,7 +288,7 @@ export async function runPreToolHooks(
   return { args: final };
 }
 
-/** The outcome of a call a pre-tool hook denied or answered (LOU-X3). */
+/** The outcome of a call a pre-tool hook denied or answered. */
 function hookStopOutcome(hookCtx: ToolCallHookContext, stop: NonNullable<PreToolCallDecision['stop']>, runtime?: PermissionRuntime): ToolCallOutcome {
   const { toolCall, args, sessionId, principal } = hookCtx;
   if ('deny' in stop) {
@@ -298,18 +298,18 @@ function hookStopOutcome(hookCtx: ToolCallHookContext, stop: NonNullable<PreTool
   return { toolCallId: toolCall.id, toolName: toolCall.function.name, result: stop.result, replacedByHook: stop.hook };
 }
 
-/** A hook-caused validation error (LOU-X3): `failure`, with a message naming the hooks that supplied the input. */
+/** A hook-caused validation error: `failure`, with a message naming the hooks that supplied the input. */
 function hookInputFailure(failure: ToolCallOutcome, hooks: string[], why: string): ToolCallOutcome {
   const names = hooks.length > 0 ? `hook ${hooks.map((name) => `'${name}'`).join(', ')}` : 'a hook changing the arguments in place';
   const error = `Input from ${names} for tool '${failure.toolName}' was refused: ${why}`;
   return { ...failure, error, result: { ...(failure.result as object), message: error, hook: hooks.at(-1) } };
 }
 
-/** The gate part of a {@link PreparedToolCall}; `denied` when the tool's `needsApproval` denied it (LOU-X8). */
+/** The gate part of a {@link PreparedToolCall}; `denied` when the tool's `needsApproval` denied it. */
 type ToolGate = Pick<PreparedToolCall, 'rejection' | 'requiresApproval' | 'approvalTtlMs'> & { denied?: { reason?: string } };
 
 /**
- * Applies the run's permission rules (LOU-X2, read from `ctx.scope.runtime`).
+ * Applies the run's permission rules (read from `ctx.scope.runtime`).
  * `gate` is undefined when no rule decided the call; a throwing `when`
  * becomes the call's error outcome, like a throwing `needsApproval`. `entry`
  * is the audit entry to report once the call is decided.
@@ -372,7 +372,7 @@ async function checkNeedsApproval(
       ...(ctx.principal && { principal: ctx.principal }),
     };
     const outcome = await resolveNeedsApproval(toolDesc, args, check);
-    // Eve TOOLS-F19: a human approved this very call earlier in the session with `remember: 'session'`.
+    // A human approved this very call earlier in the session with `remember: 'session'`.
     if ((outcome === true || outcome === 'ask') && rememberedApproval(ctx.messages, toolCall.function.name, args)) return { requiresApproval: false };
     return approvalGate(toolCall, outcome);
   } catch (error) {
@@ -380,7 +380,7 @@ async function checkNeedsApproval(
   }
 }
 
-/** LOU-X8: what a `needsApproval` outcome does with the call. */
+/** What a `needsApproval` outcome does with the call. */
 function approvalGate(toolCall: ToolCall, outcome: ApprovalOutcome): ToolGate {
   if (outcome === 'deny' || (typeof outcome === 'object' && outcome !== null)) {
     return deniedGate(toolCall, 'its needsApproval policy', outcome === 'deny' ? undefined : outcome.deny);
@@ -392,7 +392,7 @@ function approvalGate(toolCall: ToolCall, outcome: ApprovalOutcome): ToolGate {
  * Runs a prepared tool call (or settles it as rejected / awaiting approval),
  * followed by the post-tool hooks and onToolResult.
  *
- * Exported for N6: a gated handoff call settles through this too (a rejection
+ * Exported so a gated handoff call settles through this too (a rejection
  * or an approval pause; a cleared call is never passed - it hands off).
  */
 export async function settleToolCall(
@@ -421,9 +421,9 @@ export async function settleToolCall(
   }
 }
 
-/** Runs the post-tool hooks; a `{ result }` outcome replaces a settled call's result (LOU-X3). */
+/** Runs the post-tool hooks; a `{ result }` outcome replaces a settled call's result. */
 async function runPostToolHooks(hooks: HookRegistry, hookCtx: ToolCallHookContext, outcome: ToolCallOutcome): Promise<ToolCallOutcome> {
-  // N9b: a call paused for sign-in is reported like one awaiting approval (no result yet).
+  // A call paused for sign-in is reported like one awaiting approval (no result yet).
   const payload = { result: outcome.result, error: outcome.error, requiresApproval: outcome.requiresApproval ?? (outcome.signIn ? true : undefined) };
   const hook = await hooks.runPostToolCall(hookCtx, payload);
   if (hook === undefined || outcome.requiresApproval || outcome.subagent || outcome.signIn) {
@@ -467,7 +467,7 @@ async function checkToolArguments(
     return { args: rawArgs as Record<string, unknown> };
   }
   if (!decoded.ok) {
-    // F7: unparseable arguments are an error the model can fix, never `{}`.
+    // Unparseable arguments are an error the model can fix, never `{}`.
     const error = new ToolArgumentsValidationError(toolName, [
       { path: '(root)', message: invalidJsonMessage(String(toolCall.function.arguments), decoded.error) },
     ]);
@@ -488,7 +488,7 @@ async function checkToolArguments(
 }
 
 /**
- * The error outcome for a tool call that could not produce a result (LOU-U14):
+ * The error outcome for a tool call that could not produce a result:
  * `error` keeps the plain message for events and hooks, `result` is the
  * structured {@link toolErrorResult} the model sees.
  */
@@ -545,7 +545,7 @@ function approvalOutcome(prepared: PreparedToolCall): ToolCallOutcome {
  * `PropagatingToolError` are rethrown by toolErrorMessage() so they
  * propagate out of execute() as a rejected promise instead of becoming a
  * conversational {error} tool-result.
- * LOU-U12: the model gets a structured error (not the string "null"),
+ * The model gets a structured error (not the string "null"),
  * while `outcome.error` keeps the plain message for events/hooks.
  */
 function thrownToolFailure(toolCall: ToolCall, error: unknown): ToolCallOutcome {
@@ -557,7 +557,7 @@ function thrownToolFailure(toolCall: ToolCall, error: unknown): ToolCallOutcome 
 
 /**
  * Actual tool-execution logic, split out from runToolCall() so the
- * onToolCall/onToolResult hooks (LOU-E2) can wrap it uniformly via
+ * onToolCall/onToolResult hooks can wrap it uniformly via
  * try/finally regardless of which branch below returns or throws.
  */
 async function doExecuteToolCall(
@@ -584,11 +584,11 @@ async function doExecuteToolCall(
     const args = overrideArgs ?? (decodedArgsOrThrow(toolCall) as Record<string, unknown>);
 
     // The 'ai' SDK tool.execute expects (args, context). Tools flagged
-    // `requiresSandbox` (LOU-F5) are routed through the configured
+    // `requiresSandbox` are routed through the configured
     // SandboxAdapter instead of being invoked directly here; a tool
     // WITHOUT the flag takes this exact, unchanged branch. This
     // branching now lives in the shared executeToolWithSandboxGuard()
-    // helper (LOU-F fix) so FlowExecutor.ts and resume.ts share the
+    // helper so FlowExecutor.ts and resume.ts share the
     // exact same fail-closed behavior instead of each reimplementing it.
     const result = await executeToolWithSandboxGuard(
       toolCall.function.name,
@@ -596,10 +596,10 @@ async function doExecuteToolCall(
       args,
       ctx.sandbox,
       ctx.signal,
-      // LOU-U9: `toolCallId` is the tool's idempotency key on a re-run.
-      // LOU-U15: `messages` is the run's transcript (the guard copies it).
-      // LOU-D23.2: and the run's `sessionId`, when it has one. N10b: and its principal. N9b: and the token store.
-      // N13b: and where a generator tool's snapshots go.
+      // `toolCallId` is the tool's idempotency key on a re-run.
+      // `messages` is the run's transcript (the guard copies it).
+      // And the run's `sessionId`, when it has one. And its principal. And the token store.
+      // And where a generator tool's snapshots go.
       {
         onDelegatedUsage: ctx.onDelegatedUsage,
         toolCallId: toolCall.id,
@@ -621,7 +621,7 @@ async function doExecuteToolCall(
     if (error instanceof SubagentApprovalPause) {
       return suspendedOutcome(toolCall, overrideArgs ?? {}, error);
     }
-    // N9b: checked by name before the error-to-result path, so the model never sees it as a tool error.
+    // Checked by name before the error-to-result path, so the model never sees it as a tool error.
     if (isSignInRequired(error)) {
       return signInOutcome(toolCall, overrideArgs ?? {}, error, ctx);
     }
@@ -629,13 +629,13 @@ async function doExecuteToolCall(
   }
 }
 
-/** N13b: `report` bound to one call. */
+/** `report` bound to one call. */
 function partialReporter(report: NonNullable<ToolCallContext['onToolPartial']>, toolCall: ToolCall): (output: unknown) => void {
   return (output) => report(toolCall.id, toolCall.function.name, output);
 }
 
 /**
- * N9b: a call whose tool needs the user to sign in: a pause (no result; the
+ * A call whose tool needs the user to sign in: a pause (no result; the
  * executor pauses the run for it), or - for the app's own credential - an error.
  */
 async function signInOutcome(toolCall: ToolCall, args: Record<string, unknown>, signal: SignInRequired, ctx: ToolCallContext): Promise<ToolCallOutcome> {

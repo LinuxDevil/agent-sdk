@@ -1,5 +1,5 @@
 /**
- * `ollama-ai-provider-v2` on `ai` 6/7, for real (LOU-M8): the first test that loads the actual
+ * `ollama-ai-provider-v2` on `ai` 6/7, for real: the first test that loads the actual
  * package. A local `node:http` server answers Ollama's `/api/chat` (one non-streamed reply, one
  * streamed NDJSON reply, one tool-call turn), and `OllamaProvider` is pointed at it. It runs only
  * where the package resolves (the `ai6-zod4` and `ai7-zod4` CI jobs; it needs zod 4) and skips

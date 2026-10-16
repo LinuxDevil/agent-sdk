@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * S3 (LOU-S): E2E smoke test config for the real, BUILT `lousho studio`
+ * S3: E2E smoke test config for the real, BUILT `lousho studio`
  * (production mode - see `src/cli/studio.ts` and `server/tsup.config.ts`),
  * not a dev-mode Vite server. `webServer` below runs the exact same
  * `node dist-server/index.cjs` entry point `lousho studio --prod` spawns,
@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-forge-e2e-'));
 const port = Number(process.env.LOUSHO_STUDIO_E2E_PORT ?? 4799);
-/** Eve DUI-F1: the API needs the per-launch token; pin one so the spec can open `/?token=...`. */
+/** The API needs the per-launch token; pin one so the spec can open `/?token=...`. */
 const E2E_STUDIO_TOKEN = 'e2e-studio-token';
 
 export default defineConfig({

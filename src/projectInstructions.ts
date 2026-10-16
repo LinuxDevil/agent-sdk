@@ -1,5 +1,5 @@
 /**
- * Project instructions (LOU-W7): find the nearest AGENTS.md / CLAUDE.md so an
+ * Project instructions: find the nearest AGENTS.md / CLAUDE.md so an
  * agent can follow a repository's own conventions.
  */
 

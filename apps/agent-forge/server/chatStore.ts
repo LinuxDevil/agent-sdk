@@ -1,5 +1,5 @@
 /**
- * P3: file-backed persistence for chat transcripts, one JSON file per
+ * File-backed persistence for chat transcripts, one JSON file per
  * (agentId, chat session) under
  * `<baseDir>/.lousho/agents/<agentId>/chats/<sessionId>.json` - sibling to
  * FileCheckpointStore.ts/FileApprovalStore.ts/fsAgentStore.ts, following the
@@ -10,7 +10,7 @@
  * Run resumes the same session (mirroring how `sessionId = agentId` resumes
  * the same AgentExecutor conversation via checkpoints, see runRegistry.ts),
  * and a session only ends when the user explicitly starts a new one
- * (RunManager.newChat()) - that's what "browse past conversations" (P3)
+ * (RunManager.newChat()) - that's what "browse past conversations"
  * browses.
  */
 import * as fs from 'node:fs';
@@ -63,7 +63,7 @@ export class FileChatStore {
   }
 }
 
-/** Truncated preview text of the first user message, for the session list (P3). */
+/** Truncated preview text of the first user message, for the session list. */
 export function previewFor(messages: ChatMessage[]): string {
   const firstUser = messages.find((m) => m.role === 'user');
   const text = firstUser?.content ?? '';

@@ -1,6 +1,6 @@
 /**
  * Runnable example: AgentExecutor.execute() wired to the console
- * TraceExporter (LOU-E6).
+ * TraceExporter.
  *
  * Run with:
  *   npm run example:tracing:console

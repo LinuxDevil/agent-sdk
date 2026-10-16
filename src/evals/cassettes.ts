@@ -1,5 +1,5 @@
 /**
- * Record/replay for `lousho eval` (LOU-D46). When the CLI sets
+ * Record/replay for `lousho eval`. When the CLI sets
  * `LOUSHO_EVAL_CASSETTES`, every model call an eval case makes goes through
  * `recordReplay()`, one cassette per case and provider, committed next to the
  * eval file at `__cassettes__/<eval>/<case>.json`.

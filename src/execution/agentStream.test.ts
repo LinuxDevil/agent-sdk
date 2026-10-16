@@ -1,5 +1,5 @@
 /**
- * LOU-V2: `agent.stream()` / `AgentExecutor.stream()` - the typed, versioned
+ * `agent.stream()` / `AgentExecutor.stream()` - the typed, versioned
  * event stream over the ordinary AgentExecutor loop.
  */
 
@@ -344,7 +344,7 @@ describe('agent.stream()', () => {
     await expect(run.result).rejects.toThrow(/model exploded/);
   });
 
-  it('rethrows the run error from the iterator after run.done, unless throwOnError is false (Eve CORE-F10)', async () => {
+  it('rethrows the run error from the iterator after run.done, unless throwOnError is false', async () => {
     const events: AgentEvent[] = [];
     const run = agentWith(mockModel([{ error: new Error('model exploded') }])).stream('hi');
     await expect(
@@ -357,7 +357,7 @@ describe('agent.stream()', () => {
     await expect(run.result).rejects.toThrow(/model exploded/);
   });
 
-  it('does not rethrow for a normal ending or an early break (Eve CORE-F10)', async () => {
+  it('does not rethrow for a normal ending or an early break', async () => {
     await expect(collect(agentWith(mockModel(['ok'])).stream('hi'))).resolves.toBeDefined();
     const run = agentWith(mockModel(['ok'])).stream('hi');
     for await (const event of run) if (event.type === 'run.start') break;
@@ -423,7 +423,7 @@ describe('agent.stream()', () => {
     expect(isAgentEvent('text.delta')).toBe(false);
   });
 
-  it('isAgentEvent accepts every event type, including agent.drift and todo.updated (N12)', () => {
+  it('isAgentEvent accepts every event type, including agent.drift and todo.updated', () => {
     for (const type of ['agent.drift', 'todo.updated', 'run.start', 'run.done']) expect(isAgentEvent({ type, v: 1, seq: 0 })).toBe(true);
     expect(isAgentEvent({ type: 'todo.removed', v: 1, seq: 0 })).toBe(false);
   });

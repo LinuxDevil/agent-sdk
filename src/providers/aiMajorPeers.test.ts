@@ -1,5 +1,5 @@
 /**
- * Provider packages follow the installed `ai` major (LOU-D28d): the peer
+ * Provider packages follow the installed `ai` major: the peer
  * ranges in package.json, the install hint of a missing provider package,
  * and which Ollama package OllamaProvider loads. The `ai` v6/v7 cases give a
  * provider the aliased real `ai-v6` / `ai-v7` module instead of the installed one.

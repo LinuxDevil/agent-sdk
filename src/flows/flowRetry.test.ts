@@ -1,5 +1,5 @@
 /**
- * Eve DUR-F17: per-node `retry` and `timeoutMs`.
+ * Per-node `retry` and `timeoutMs`.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -14,7 +14,7 @@ function flowOf(root: EditorStep): AgentFlow {
   return { code: 'retry', name: 'Retry', flow: root };
 }
 
-describe('FlowExecutor node retry and timeout (DUR-F17)', () => {
+describe('FlowExecutor node retry and timeout', () => {
   let toolRegistry: ToolRegistry;
   let context: FlowExecutionContext;
   let calls: number;

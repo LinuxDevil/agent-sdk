@@ -1,5 +1,5 @@
 /**
- * LOU-W5: SqliteStore - contract suites, persistence, migration, prune,
+ * SqliteStore - contract suites, persistence, migration, prune,
  * multi-instance access, error handling and an approval pause/resume that
  * crosses a close/reopen.
  */
@@ -164,7 +164,7 @@ describe('SqliteStore migrations', () => {
     await expect(store.sessions.load('s1')).rejects.toMatchObject({ code: 'LOUSHO_SESSION_FILE_CORRUPT' });
   });
 
-  it('opens a file written before the checkpoint history existed (LOU-D43)', async () => {
+  it('opens a file written before the checkpoint history existed', async () => {
     const file = join(tempDir(), 'old.db');
     const raw = new DatabaseSync(file);
     expect(migrate(raw, MIGRATIONS.slice(0, 1))).toBe(1);

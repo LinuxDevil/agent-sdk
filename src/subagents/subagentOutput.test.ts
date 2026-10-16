@@ -9,7 +9,7 @@ const weather = z.object({ city: z.string(), tempC: z.number() });
 const callTask = (prompt: string) => ({ name: 'task', args: { agent: 'reporter', prompt, description: 'weather' } });
 const toolContent = (messages: readonly Message[]): unknown => JSON.parse(messages.find((m) => m.role === 'tool')?.content as string);
 
-describe('structured output of sessions and sub-agents (LOU-V4.2)', () => {
+describe('structured output of sessions and sub-agents', () => {
   it('session.send() returns the validated object', async () => {
     const agent = createAgent({ provider: mockModel(['{"city":"Oslo","tempC":-3}']), output: weather });
     const result = await agent.session().send('Weather in Oslo?');

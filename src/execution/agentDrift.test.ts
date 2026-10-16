@@ -1,7 +1,7 @@
 /**
- * LOU-W9.2: checkpoints and approval snapshots carry an agent fingerprint, and a
+ * Checkpoints and approval snapshots carry an agent fingerprint, and a
  * resume by a changed agent warns, refuses or carries on (`onAgentDrift`).
- * LOU-V15.2: a crash resume of a dynamic agent re-resolves with the run's saved `ctx` and model.
+ * A crash resume of a dynamic agent re-resolves with the run's saved `ctx` and model.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -61,7 +61,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('agent fingerprint (LOU-W9.2)', () => {
+describe('agent fingerprint', () => {
   const registryOf = (tools: DefinedTool[]) => {
     const registry = new ToolRegistry();
     for (const tool of tools) registry.register(tool);
@@ -292,7 +292,7 @@ describe.each(stores)('resuming with a changed agent: %s', (_name, makeStore) =>
   });
 });
 
-describe.each(stores)('a dynamic agent resumes with the model and ctx it started with (LOU-V15.2): %s', (_name, makeStore) => {
+describe.each(stores)('a dynamic agent resumes with the model and ctx it started with: %s', (_name, makeStore) => {
   const dynamic = (store: AgentStore, provider: ReturnType<typeof mockModel>, tools: Tools) =>
     createAgent({
       provider,

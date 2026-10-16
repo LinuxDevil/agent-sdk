@@ -16,7 +16,7 @@ describe('AgentBuilder', () => {
     expect(agent.locale).toBe('en');
   });
 
-  it('names the missing field and shows a corrective snippet (LOU-H12)', () => {
+  it('names the missing field and shows a corrective snippet', () => {
     expect(() => {
       new AgentBuilder().build();
     }).toThrow(/Agent name is required\. Example: AgentBuilder\.create\(\)\.setName\('my-agent'\)/);

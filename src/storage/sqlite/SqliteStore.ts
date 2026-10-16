@@ -103,7 +103,7 @@ export class SqliteStore {
    * sign-ins. Unresolved approvals and OAuth tokens are kept, and so is a run
    * paused on an unresolved approval, however old: its checkpoint
    * (`<id>.turn-<n>` for a session turn), that checkpoint's history and the
-   * session's transcript (Eve DUR-F6).
+   * session's transcript.
    *
    * @example
    * ```ts
@@ -159,7 +159,7 @@ export class SqliteStore {
     const checkpoints = new Set(runs);
     const sessions = runs.map((run) => {
       const session = TURN_CHECKPOINT.exec(run)?.[1] ?? run;
-      // Eve3-S4: a kept session keeps its turn counter (the numbering the next turn needs).
+      // a kept session keeps its turn counter (the numbering the next turn needs).
       if (session !== run) checkpoints.add(`${session}.turn-counter`);
       return session;
     });

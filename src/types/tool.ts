@@ -1,4 +1,4 @@
-import type { Tool as AITool } from 'ai'; // legacy (.tool), removed in D26
+import type { Tool as AITool } from 'ai'; // legacy (.tool)
 import type { StandardSchemaV1 } from '../utils/zodCompat';
 import type { RunUsage } from '../models/usage';
 import type { Message } from '../providers/llm';
@@ -46,7 +46,7 @@ export interface ToolExecutionContext {
   /**
    * The model's id for this tool call. It stays the same when a call that
    * was running when the process died is re-run on resume, so a tool can use
-   * it as an idempotency key (LOU-U9).
+   * it as an idempotency key.
    */
   toolCallId: string;
   /** A read-only copy of the transcript the model had seen before it made this call. */
@@ -55,10 +55,10 @@ export interface ToolExecutionContext {
   abortSignal?: AbortSignal;
   /** The session the run belongs to, when it has one. */
   sessionId?: string;
-  /** Called by the delegation core (the `task` tool) with a finished child run's usage, so the parent run adds it to its totals (LOU-V5). */
+  /** Called by the delegation core (the `task` tool) with a finished child run's usage, so the parent run adds it to its totals. */
   onDelegatedUsage?: (usage: RunUsage) => void;
   /**
-   * N10b: who the run acts for - the caller route auth accepted, or a
+   * Who the run acts for - the caller route auth accepted, or a
    * channel's verified sender (docs/auth.md). Fixed for the whole run, also
    * after a pause or a crash; `undefined` for a run started without one.
    * Frozen: a tool cannot change it.
@@ -67,10 +67,10 @@ export interface ToolExecutionContext {
   /**
    * Set when the call runs because a human approved it (`resumeAfterApproval()`,
    * `agent.approvals.resolve()`): the decision's `note`. For the built-in
-   * `ask_question` tool it is the user's answer (LOU-X9). N10b: `by` is who
+   * `ask_question` tool it is the user's answer. `by` is who
    * decided, when the decision came with a principal (`resolve(decision, {
    * principal })`, the approvals route, a channel button); it is never the
-   * run's `principal`. Eve DUR-F9: `id` is the approval's id - the same for
+   * run's `principal`. `id` is the approval's id - the same for
    * every attempt to run this decided call - so a tool with a side effect
    * (a payment, an email) can pass it on as an idempotency key, in case a
    * store without an atomic claim (Workers KV) lets one approval resolve twice.
@@ -84,7 +84,7 @@ export interface ToolExecutionContext {
     by?: Readonly<Principal>;
   };
   /**
-   * N9b: an OAuth token for `provider` (docs/oauth.md): the run principal's
+   * An OAuth token for `provider` (docs/oauth.md): the run principal's
    * own (`credentialOwner: 'user'`) or the app's. A token that expires within
    * 60 seconds is refreshed first. Without one the run pauses (an approval of
    * `kind: 'sign-in'`) until the user signs in, and this call runs again from
@@ -98,7 +98,7 @@ export interface ToolExecutionContext {
    */
   getToken(provider: OAuthProvider): Promise<OAuthToken>;
   /**
-   * N9b: the API refused the token from `getToken()` (a 401): deletes it and
+   * The API refused the token from `getToken()` (a 401): deletes it and
    * pauses the run for a new sign-in, like `getToken()` without a token.
    */
   requireAuth(provider: OAuthProvider): never;
@@ -107,7 +107,7 @@ export interface ToolExecutionContext {
 /**
  * Tool descriptor with display name
  */
-/** An MCP server's `ToolAnnotations` for a tool: hints, not guarantees (LOU-Z5). */
+/** An MCP server's `ToolAnnotations` for a tool: hints, not guarantees. */
 export interface McpToolAnnotations {
   title?: string;
   /** The tool does not change its environment. */
@@ -118,44 +118,44 @@ export interface McpToolAnnotations {
   openWorldHint?: boolean;
 }
 
-/** Extra facts about a tool; `mcp` is set on tools loaded from an MCP server (LOU-Z5). */
+/** Extra facts about a tool; `mcp` is set on tools loaded from an MCP server. */
 export interface ToolMetadata {
   mcp?: {
     /** The server's raw annotations for this tool, when it sent any. */
     annotations?: McpToolAnnotations;
-    /** N2: the name of the server (the `<server>` of `<server>__<tool>`), when loaded by `loadMcpTools()` / `connectMcp()`. */
+    /** The name of the server (the `<server>` of `<server>__<tool>`), when loaded by `loadMcpTools()` / `connectMcp()`. */
     server?: string;
     /** The tool's own MCP name, which `<server>__<tool>` may have sanitized; calls go to the server under this name. */
     tool?: string;
     /**
-     * Eve TOOLS-F11: `false` when the annotations came from an MCP server whose
+     * `false` when the annotations came from an MCP server whose
      * `approval` is not `'annotations'`; plan mode then ignores its `readOnlyHint`.
      */
     annotationsTrusted?: boolean;
   };
   /**
-   * N4: the tool edits files in a workspace (`defineTool({ editsFiles })`):
+   * The tool edits files in a workspace (`defineTool({ editsFiles })`):
    * `permissionMode: 'acceptEdits'` runs its calls without asking.
    */
   editsFiles?: boolean;
 }
 
 /**
- * What a tool's `needsApproval` function decides for one call (LOU-X8):
+ * What a tool's `needsApproval` function decides for one call:
  * `'ask'` (or `true`) pauses for approval, `'approve'` (or `false`) runs the
  * call, `'deny'` or `{ deny: reason }` does not run it and gives the model a
  * `kind: 'denied'` tool error with the reason.
  */
 export type ApprovalOutcome = boolean | 'approve' | 'deny' | 'ask' | { deny: string };
 
-/** The second argument of a `needsApproval` function (LOU-X8): the call being checked. */
+/** The second argument of a `needsApproval` function: the call being checked. */
 export interface ApprovalCheckContext {
   toolName: string;
   toolCallId: string;
   sessionId?: string;
   /** The run's transcript so far, including earlier turns of a session. */
   messages: readonly Message[];
-  /** N10b: who the run acts for (see `ToolExecutionContext.principal`). */
+  /** Who the run acts for (see `ToolExecutionContext.principal`). */
   principal?: Readonly<Principal>;
 }
 
@@ -173,14 +173,14 @@ export interface ToolDescriptor {
   displayName: string;
   /**
    * Schema of the tool's arguments (zod 3, zod 4 or a Standard Schema that
-   * exposes its JSON Schema; LOU-D29). Canonical: when set, it is used
+   * exposes its JSON Schema). Canonical: when set, it is used
    * instead of `tool.parameters` for argument validation and the schema
-   * sent to the model (LOU-D22). {@link defineTool} sets it.
+   * sent to the model. {@link defineTool} sets it.
    */
   inputSchema?: StandardSchemaV1;
   /**
    * Runs the tool. Canonical: when set, it is called instead of
-   * `tool.execute` (LOU-D22). {@link defineTool} sets it.
+   * `tool.execute`. {@link defineTool} sets it.
    */
   execute?(args: unknown, ctx: ToolExecutionContext): unknown;
   /**
@@ -189,17 +189,17 @@ export interface ToolDescriptor {
    */
   tool: AITool;
   needsApproval?: boolean | ApprovalPredicate;
-  /** Where the tool came from, e.g. an MCP server's annotations (LOU-Z5). */
+  /** Where the tool came from, e.g. an MCP server's annotations. */
   metadata?: ToolMetadata;
   /**
-   * N2: withhold the tool's definition from the model until a `tool_search`
+   * Withhold the tool's definition from the model until a `tool_search`
    * call finds it (see docs/tool-search.md). Set by `defineTool({ deferLoading })`
    * and on every tool of an MCP server with `deferLoading: true`.
    */
   deferLoading?: boolean;
   /**
    * When true, AgentExecutor routes this tool's execution through the
-   * configured SandboxAdapter (see ExecuteOptions.sandbox, LOU-F5) instead
+   * configured SandboxAdapter (see ExecuteOptions.sandbox) instead
    * of calling `tool.execute()` directly. Defaults to false/undefined,
    * which is the exact pre-existing, unchanged execution path.
    */
@@ -215,7 +215,7 @@ export interface ToolDescriptor {
   transient?: boolean;
   /**
    * Explicit alternate execution path a tool author implements when they
-   * want their tool to be genuinely sandboxable (LOU-F fix). Receives the
+   * want their tool to be genuinely sandboxable. Receives the
    * configured SandboxAdapter and is responsible for using
    * `sandbox.run()`/`sandbox.writeFile()` itself to perform the tool's
    * real work (e.g. writing input to a file, running a command that does
@@ -229,7 +229,7 @@ export interface ToolDescriptor {
    * `tool.execute()`; if it is missing, AgentExecutor throws rather than
    * silently falling back to unsandboxed in-process execution.
    *
-   * LOU-U15: the third argument is the same execute context
+   * The third argument is the same execute context
    * `tool.execute()` receives (a {@link ToolExecutionContext}).
    * It is optional to declare: an implementation that takes only
    * `(args, sandbox)` keeps working.
@@ -244,7 +244,7 @@ export interface ToolDescriptor {
 /**
  * A {@link ToolDescriptor} that also carries the name it is registered and
  * called by - the tools `connectMcp()` loads are named `<server>__<tool>`,
- * so they work in `tools` arrays as well as records (LOU-R12).
+ * so they work in `tools` arrays as well as records.
  */
 export type NamedToolDescriptor = ToolDescriptor & { readonly name: string };
 

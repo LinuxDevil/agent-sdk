@@ -174,7 +174,7 @@ describe('validateGraph', () => {
     expect(result.errors.filter((e) => e.message.includes('found 2'))).toHaveLength(2);
   });
 
-  describe('hooks (LOU-Q3)', () => {
+  describe('hooks', () => {
     it('flags an enabled hook with empty code', () => {
       const g = graph({});
       g.nodes[0].hooks = [
@@ -196,7 +196,7 @@ describe('validateGraph', () => {
     });
   });
 
-  describe('LOU-T3: router branch checks', () => {
+  describe('router branch checks', () => {
     function routerGraph(edges: AgentGraphSpec['edges']): AgentGraphSpec {
       return graph({
         nodes: [

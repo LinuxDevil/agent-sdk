@@ -27,7 +27,7 @@ function hangingSandbox() {
   return { sandbox, run };
 }
 
-describe('sandboxHttpFetch cancellation (LOU-U17)', () => {
+describe('sandboxHttpFetch cancellation', () => {
   it('(a) an already-aborted signal rejects with an AbortError without running anything', async () => {
     const { sandbox, run } = hangingSandbox();
     const controller = new AbortController();

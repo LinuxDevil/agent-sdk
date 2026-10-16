@@ -42,7 +42,7 @@ function waitForStatus(
   });
 }
 
-describe('P1/P3 chat transport (RunManager)', () => {
+describe('chat transport (RunManager)', () => {
   let baseDir: string;
   let runManager: RunManager;
 
@@ -91,7 +91,7 @@ describe('P1/P3 chat transport (RunManager)', () => {
     expect(finalUserMsg!.id).toBe(optimisticUserId);
   });
 
-  it('ends a finished run as done, tags the Run input, and keeps typed messages untagged (Eve DUI-F21)', async () => {
+  it('ends a finished run as done, tags the Run input, and keeps typed messages untagged', async () => {
     await runManager.run('agent-run-input', 'Run the agent.', SPEC);
     const finished = await waitForStatus(runManager, 'agent-run-input', (s) => s.status !== 'running');
     expect(finished.status).toBe('done');
@@ -130,7 +130,7 @@ describe('P1/P3 chat transport (RunManager)', () => {
   });
 
   it('rejects sendMessage() while paused awaiting an approval decision', async () => {
-    // None of the LOU-N server's spec-resolvable tools set `needsApproval`
+    // None of the server's spec-resolvable tools set `needsApproval`
     // (see approvalFlow.test.ts's doc comment), so a spec alone can't drive
     // RunManager into a genuinely paused state here - seed the (private,
     // in-memory) entry directly instead, exactly mirroring the shape
@@ -188,7 +188,7 @@ describe('P1/P3 chat transport (RunManager)', () => {
   });
 });
 
-describe('P1/P3 chat transport (HTTP routes)', () => {
+describe('chat transport (HTTP routes)', () => {
   let baseDir: string;
   let app: ReturnType<typeof createApp>;
   let runManager: RunManager;

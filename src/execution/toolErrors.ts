@@ -1,5 +1,5 @@
 /**
- * LOU-U14: the one shape of a failed tool call. Every failure path (a thrown
+ * The one shape of a failed tool call. Every failure path (a thrown
  * error, invalid arguments, an unknown tool, a rejected approval, a call that
  * was never run, a call a permission rule denied, an MCP `isError` result, a
  * failed sandbox guard) hands the model the object {@link toolErrorResult} builds.

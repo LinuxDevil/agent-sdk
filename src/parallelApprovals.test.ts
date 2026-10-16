@@ -1,5 +1,5 @@
 /**
- * Eve TOOLS-F12: a model step with several calls that need approval pauses
+ * A model step with several calls that need approval pauses
  * once, on all of them (`approvalIds`); they can be decided in any order, and
  * the step's approved calls run only once every one of them is decided.
  */
@@ -41,7 +41,7 @@ const twoApprovals = {
 
 const toolMessages = (messages: readonly Message[]) => messages.filter((m) => m.role === 'tool');
 
-describe('Eve TOOLS-F12: parallel approvals', () => {
+describe('parallel approvals', () => {
   it('pauses once with every pending call; nothing runs until the last one is decided', async () => {
     const log: string[] = [];
     const model = mockModel([twoApprovals, 'done']);
@@ -230,7 +230,7 @@ describe('Eve TOOLS-F12: parallel approvals', () => {
     expect(log).toEqual(['wire_money(1)']);
   });
 
-  it("edited args on a sub-agent's grouped approval are validated before its calls run (Eve2-F4)", async () => {
+  it("edited args on a sub-agent's grouped approval are validated before its calls run", async () => {
     const log: string[] = [];
     const worker = createAgent({ provider: mockModel([twoApprovals, 'worker done']), tools: tools(log), description: 'Does risky things' });
     const task = { name: 'task', args: { agent: 'worker', prompt: 'do it', description: 'risky' } };
@@ -249,7 +249,7 @@ describe('Eve TOOLS-F12: parallel approvals', () => {
     expect(String(taskResult?.content)).toContain("Invalid arguments for tool 'wire_money'");
   });
 
-  it("valid edited args on a sub-agent's grouped approval run the call with them (Eve2-F4)", async () => {
+  it("valid edited args on a sub-agent's grouped approval run the call with them", async () => {
     const log: string[] = [];
     const worker = createAgent({ provider: mockModel([twoApprovals, 'worker done']), tools: tools(log), description: 'Does risky things' });
     const task = { name: 'task', args: { agent: 'worker', prompt: 'do it', description: 'risky' } };
@@ -265,7 +265,7 @@ describe('Eve TOOLS-F12: parallel approvals', () => {
   });
 });
 
-describe('Eve TOOLS-F12: parallel approvals with durable stores', () => {
+describe('parallel approvals with durable stores', () => {
   const dirs: string[] = [];
   const opened: Array<{ close(): void }> = [];
   afterEach(() => {

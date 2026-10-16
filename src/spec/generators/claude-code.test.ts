@@ -37,7 +37,7 @@ describe('generateClaudeCodeSkill', () => {
     expect(file.content).toContain('(none)');
   });
 
-  it('lists guardrails given as { name, ...options } objects by name (LOU-X5)', () => {
+  it('lists guardrails given as { name, ...options } objects by name', () => {
     const { content } = generateClaudeCodeSkill({
       ...exampleAgentSpec,
       policy: { requiresApproval: ['http'], guardrails: ['secret-scan', { name: 'deny-topics', topics: ['x'] }] },

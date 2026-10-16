@@ -1,5 +1,5 @@
 /**
- * LOU-T2: the `env` binding name a Worker deployment must declare (in
+ * The `env` binding name a Worker deployment must declare (in
  * `wrangler.toml`, see `adapters/cloudflare.ts`'s scaffolded config) to opt
  * in to durable execution - a KV namespace bound under this name lets a
  * paused run's Checkpoint survive across requests/isolates, the same way a

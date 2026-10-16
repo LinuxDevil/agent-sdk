@@ -1,5 +1,5 @@
 /**
- * LOU-R12: `tools` accepts a record (the `connectMcp().tools` shape), an array
+ * `tools` accepts a record (the `connectMcp().tools` shape), an array
  * of named tools (`defineTool()` / `openApiTools()` / `createFsTools()`), and
  * arrays mixing tools and records.
  */
@@ -35,7 +35,7 @@ function toolResults(messages: readonly Message[]): string[] {
   return messages.filter((m) => m.role === 'tool').map((m) => String(m.content));
 }
 
-describe('toolEntries (LOU-R12)', () => {
+describe('toolEntries', () => {
   it('flattens a record to [name, tool] entries', () => {
     const tool = weather();
     expect(toolEntries({ weather: tool }, 'test')).toEqual([['weather', tool]]);
@@ -78,7 +78,7 @@ describe('toolEntries (LOU-R12)', () => {
   });
 });
 
-describe('ToolRegistry.registerMany (LOU-R12)', () => {
+describe('ToolRegistry.registerMany', () => {
   it('registers a mix of records and defined tools', async () => {
     const registry = new ToolRegistry();
     const mcp = await mcpTools();
@@ -95,7 +95,7 @@ describe('ToolRegistry.registerMany (LOU-R12)', () => {
   });
 });
 
-describe('createAgent({ tools }) mixed shapes (LOU-R12)', () => {
+describe('createAgent({ tools }) mixed shapes', () => {
   const calls = [{ name: 'srv__search', args: {}, id: 'c1' }, { name: 'weather', args: { city: 'Paris' }, id: 'c2' }];
 
   it('an MCP-style record and array tools side by side both run', async () => {

@@ -159,7 +159,7 @@
       const decide = (body) => { box.querySelectorAll('button,input').forEach((c) => { c.disabled = true; }); stream(url, body); };
       const question = event.kind === 'question' ? event.question || { text: event.toolName } : null;
       if (event.kind === 'sign-in' && event.signIn) {
-        // N9b: open the link, then continue; approving before the callback answers 409 and the pause stays.
+        // Open the link, then continue; approving before the callback answers 409 and the pause stays.
         const link = el('a', '', 'Sign in to ' + (event.signIn.displayName || event.signIn.provider));
         link.href = event.signIn.url;
         link.target = '_blank';
@@ -249,7 +249,7 @@
       input.focus();
     });
 
-    // Hot reload (LOU-D31): show the last failed reload; the previous agent keeps answering.
+    // Hot reload: show the last failed reload; the previous agent keeps answering.
     const status = document.getElementById('status');
     async function refreshStatus() {
       try {
