@@ -7306,6 +7306,43 @@ filtering and ordering for you. Without it `agent.pending()` throws
   touching the newer run. `discardPending()` withdraws the dropped turn's
   approvals at once.
 
+## Run a job once (webhook redelivery)
+
+A webhook or queue delivers at least once, so the same payload can arrive
+twice. Sending it again with the same `sessionId` is **not** a no-op: once
+the first run is `'finished'`, the second `send()` is a new turn of that
+conversation and calls the model again (in a consumer test it re-ran seven
+model calls). To run a job once, derive the `sessionId` from the delivery id
+and look at the checkpoint before sending:
+
+```ts
+import { createAgent, memoryStore } from '@lousho/build-ai-agent';
+
+const store = memoryStore();
+const agent = createAgent({ provider, store });
+
+export async function handleDelivery(deliveryId: string, payload: string) {
+  const sessionId = `job-${deliveryId}`;
+  const checkpoint = await store.checkpoints?.load(sessionId);
+
+  if (checkpoint?.status === 'finished') return; // already done: acknowledge the redelivery
+  if (checkpoint?.status === 'awaiting-approval') return; // paused: resolve it with agent.approvals.resolve()
+  if (checkpoint) {
+    await agent.resume(sessionId); // 'in-progress': a crash left it half done; finish it
+    return;
+  }
+  await agent.send(payload, { sessionId });
+}
+```
+
+The check-then-send is not atomic: two concurrent deliveries can both see no
+checkpoint. Serialise deliveries per id (a queue keyed by `deliveryId`, or a
+unique-insert in your own database) and keep the run lease on (see
+[Run leases](#run-leases)) so a second process fails with
+`LOUSHO_SESSION_BUSY` instead of running the job twice. Tools that run again
+on resume must still be idempotent, so also pass the call's `toolCallId` as
+the idempotency key of every side effect (see the next section).
+
 ## At-least-once tools: make side effects idempotent
 
 A tool that was **running** when the process died has no recorded result,
@@ -13808,6 +13845,28 @@ const agent = createAgent({
 });
 ```
 
+### A custom `fetch` for proxies and tests
+
+Besides longer timeouts, `fetch` is the hook for a corporate proxy, for
+logging every request, or for fault injection in tests. `OpenAIProvider`,
+`AnthropicProvider`, `OpenRouterProvider` and `OllamaProvider` all take it
+the same way, and `OpenRouterProvider` and `OllamaProvider` also use it for
+their model-catalog requests. Their error handling and request changes wrap
+your function, so a failure you return from it is classified as it would be
+from the real network:
+
+```ts
+import { OpenRouterProvider } from '@lousho/build-ai-agent';
+
+let failures = 1;
+const provider = new OpenRouterProvider({
+  apiKey: 'test-key',
+  // Fail the first request with a 503, then pass through (to exercise retries).
+  fetch: async (input, init) =>
+    failures-- > 0 ? new Response('upstream down', { status: 503 }) : fetch(input, init),
+});
+```
+
 ### Any AI SDK model: fromAiSdk()
 
 `fromAiSdk(model)` turns a language model from any AI SDK provider package
@@ -16412,6 +16471,33 @@ import { createAgent } from '@lousho/build-ai-agent';
 const agent = createAgent({ model: 'openai/gpt-4o-mini', output: z.object({ city: z.string() }) });
 const { object } = await agent.send('Where is the Eiffel Tower?');
 console.log(object?.city); // typed: string
+```
+
+## Schemas that mirror a side-effect tool
+
+When the output schema mirrors a side-effect tool's payload (say a
+`comments[]` array in `output` next to a `post_comment` tool), models often
+put the data in the final object and never call the tool, or do both. Do not
+rely on the model to pick one. Either perform the side effect in your own
+code from the validated `result.object`, or do not mirror the payload: let
+the tool take the data and keep `output` for a summary or status.
+
+```ts
+import { z } from 'zod';
+import { createAgent } from '@lousho/build-ai-agent';
+
+declare function postComment(comment: { file: string; body: string }): Promise<void>;
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  instructions: 'Review the diff and return your comments.',
+  output: z.object({ comments: z.array(z.object({ file: z.string(), body: z.string() })) }),
+});
+
+const result = await agent.send('Review this diff: ...');
+for (const comment of result.object?.comments ?? []) {
+  await postComment(comment); // host code, once per validated comment
+}
 ```
 
 ## Sessions
