@@ -8,7 +8,7 @@
  * (app.ts) is registered as `'chat'` in a `TriggerRegistry` alongside the
  * webhook/cron/Slack built-ins, instead of being a bespoke, unregistered
  * code path - closing the last of the four ad hoc "ways an agent can be
- * woken up" an earlier audit called out.
+ * woken up".
  *
  * ## Conservative by design
  *
