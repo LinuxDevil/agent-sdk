@@ -270,6 +270,9 @@ describe('withRetry', () => {
         throw new Error('unused');
       },
       stream: async () => ({ fullStream: attempts[call++]!() } as never),
+      supportsTools: () => true,
+      supportsStreaming: () => true,
+      getModels: async () => ['m'],
     };
     const result = await withRetry(provider, { ...fast, onRetry }).stream(request);
     const chunks: StreamChunk[] = [];
