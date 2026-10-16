@@ -19,8 +19,12 @@ const config: CreateAgentConfig = { instructions, provider: createMockProvider({
 export default config;
 `;
 
-/** Starts dist/server.js on a free port; resolves once it listens. */
-function startServer(outDir: string): Promise<{ stop: () => void; port: number }> {
+/**
+ * Starts dist/server.js on a free port; resolves once it listens. `stop()`
+ * resolves once the process has exited: Windows refuses to delete a directory
+ * that is a running process's cwd, so afterAll's rmSync must wait for it.
+ */
+function startServer(outDir: string): Promise<{ stop: () => Promise<void>; port: number }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['dist/server.js', '--port=0'], { cwd: outDir, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
@@ -30,7 +34,15 @@ function startServer(outDir: string): Promise<{ stop: () => void; port: number }
       const match = /listening on http:\/\/[^:]+:(\d+)/.exec(output);
       if (!match) return;
       clearTimeout(timer);
-      resolve({ stop: () => child.kill(), port: Number(match[1]) });
+      resolve({
+        stop: () =>
+          new Promise<void>((done) => {
+            if (child.exitCode !== null || child.signalCode !== null) return done();
+            child.once('exit', () => done());
+            child.kill();
+          }),
+        port: Number(match[1]),
+      });
     });
     child.stderr.on('data', (chunk) => (output += chunk));
     child.on('exit', (code) => reject(new Error(`server exited early (code ${code}): ${output}`)));
@@ -71,7 +83,7 @@ describe('NodeServerAdapter with an agent module', () => {
       expect(res.status).toBe(200);
       expect(((await res.json()) as { text: string }).text).toBe('module pong');
     } finally {
-      stop();
+      await stop();
     }
   }, 30_000);
 

@@ -301,7 +301,8 @@ describe('createAgent approvals: expiry (TTL)', () => {
   it('an approve callback still waiting at the deadline loses to it', async () => {
     const { tool, execute } = emailTool();
     const approve = vi.fn(() => new Promise<boolean>(() => {})); // a UI that never answers
-    const agent = createAgent({ provider: mockModel([callEmail, 'Understood.']), tools: [tool], approve, approvalTtlMs: 40 });
+    // Long enough that the pause has not expired yet when approve is called (an expired one skips approve), even on a loaded machine.
+    const agent = createAgent({ provider: mockModel([callEmail, 'Understood.']), tools: [tool], approve, approvalTtlMs: 500 });
 
     const result = await agent.send('Email Sam');
 

@@ -64,8 +64,12 @@ function writeAgentDir(): string {
   return dir;
 }
 
-/** Starts dist/server.js on a free port; resolves with its stdout once it listens. */
-function startServer(outDir: string): Promise<{ stop: () => void; port: number; stdout: string }> {
+/**
+ * Starts dist/server.js on a free port; resolves with its stdout once it
+ * listens. `stop()` resolves once the process has exited: Windows refuses to
+ * delete a directory that is a running process's cwd (afterAll's rmSync).
+ */
+function startServer(outDir: string): Promise<{ stop: () => Promise<void>; port: number; stdout: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['dist/server.js', '--port=0'], { cwd: outDir, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
@@ -76,7 +80,13 @@ function startServer(outDir: string): Promise<{ stop: () => void; port: number; 
       const match = /listening on http:\/\/[^:]+:(\d+)\s+lousho server: schedules/.exec(stdout);
       if (!match) return;
       clearTimeout(timer);
-      resolve({ stop: () => child.kill(), port: Number(match[1]), stdout });
+      const stop = () =>
+        new Promise<void>((done) => {
+          if (child.exitCode !== null || child.signalCode !== null) return done();
+          child.once('exit', () => done());
+          child.kill();
+        });
+      resolve({ stop, port: Number(match[1]), stdout });
     });
     child.stderr.on('data', (chunk) => (stderr += chunk));
     child.on('exit', (code) => reject(new Error(`server exited early (code ${code}): ${stdout} ${stderr}`)));
@@ -155,7 +165,7 @@ describe('NodeServerAdapter with an agent directory', () => {
       // a read claims nothing (only a turn does), so another principal can still read the unused id
       expect(await chat({ Authorization: `Basic ${btoa('ops:pw')}` })).toBe(200);
     } finally {
-      stop();
+      await stop();
     }
   }, 30_000);
 
