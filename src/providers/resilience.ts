@@ -428,6 +428,21 @@ export function withFallback(providers: LLMProvider[], options: WithFallbackOpti
   }
   const { fallbackOn = (error: unknown) => !isAbortError(error), onFallback } = options;
 
+  function announceFallback(call: GenerateOptions, model: string | undefined, index: number, error: unknown): void {
+    const previous = providers[index - 1];
+    const provider = providers[index];
+    const fromModel = (index === 1 ? model : undefined) ?? previous.defaultModel;
+    const info: FallbackInfo = {
+      from: previous.name,
+      to: provider.name,
+      ...(fromModel !== undefined && { fromModel }),
+      ...(provider.defaultModel !== undefined && { toModel: provider.defaultModel }),
+      error,
+    };
+    onFallback?.(info);
+    providerEventsOf(call)?.fallback(info);
+  }
+
   async function run<T extends { servedBy?: ServedBy }>(
     call: GenerateOptions,
     attempt: (provider: LLMProvider, call: GenerateOptions) => Promise<T>
@@ -436,20 +451,8 @@ export function withFallback(providers: LLMProvider[], options: WithFallbackOpti
     let lastError: unknown;
     for (const [index, provider] of providers.entries()) {
       if (index > 0) {
-        if (call.signal?.aborted || !fallbackOn(lastError)) {
-          throw lastError;
-        }
-        const previous = providers[index - 1];
-        const fromModel = (index === 1 ? model : undefined) ?? previous.defaultModel;
-        const info: FallbackInfo = {
-          from: previous.name,
-          to: provider.name,
-          ...(fromModel !== undefined && { fromModel }),
-          ...(provider.defaultModel !== undefined && { toModel: provider.defaultModel }),
-          error: lastError,
-        };
-        onFallback?.(info);
-        providerEventsOf(call)?.fallback(info);
+        if (call.signal?.aborted || !fallbackOn(lastError)) throw lastError;
+        announceFallback(call, model, index, lastError);
       }
       const sent = index === 0 ? model : undefined;
       try {

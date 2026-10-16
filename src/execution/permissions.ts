@@ -352,17 +352,20 @@ export function unknownPermissionTools(
 ): UnknownPermissionTool[] {
   const known = new Set(registered);
   const candidates = [...known];
-  const found: UnknownPermissionTool[] = [];
-  for (const [index, rule] of (rules ?? []).entries()) {
-    const names = typeof rule.tool === 'string' ? [rule.tool] : Array.isArray(rule.tool) ? (rule.tool as readonly string[]) : [];
-    for (const tool of names) {
-      if (typeof tool !== 'string' || !isLiteralToolName(tool) || known.has(tool)) continue;
+  return (rules ?? []).flatMap((rule, index) =>
+    ruleToolNames(rule).flatMap((tool): UnknownPermissionTool[] => {
+      if (!isLiteralToolName(tool) || known.has(tool)) return [];
       const suggestion = closestMatch(tool, candidates);
-      if (suggestion === undefined && options.lenient) continue;
-      found.push({ index, tool, ...(suggestion !== undefined && { suggestion }) });
-    }
-  }
-  return found;
+      if (suggestion === undefined && options.lenient) return [];
+      return [{ index, tool, ...(suggestion !== undefined && { suggestion }) }];
+    })
+  );
+}
+
+/** The string tool names a rule's `tool` matcher lists (none for a RegExp). */
+function ruleToolNames(rule: PermissionRule): string[] {
+  const names: unknown[] = typeof rule.tool === 'string' ? [rule.tool] : Array.isArray(rule.tool) ? rule.tool : [];
+  return names.filter((name): name is string => typeof name === 'string');
 }
 
 /** One line for an {@link UnknownPermissionTool}: which rule, and the "did you mean". */
