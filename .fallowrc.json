@@ -137,7 +137,7 @@
         ],
         "maxCyclomatic": 30,
         "maxCognitive": 32,
-        "reason": "These functions gate tool calls, normalize/repair structured output, compact, route chats and run steps - they grew through the audit-merge series (#412-#437) and are heavily covered, but their decision density sits just over the global ceilings. Ceiling exempts complexity only; CRAP still gates. Refactor candidates: see the fallow report."
+        "reason": "These functions gate tool calls, normalize/repair structured output, compact, route chats and run steps and are heavily covered, but their decision density sits just over the global ceilings. Ceiling exempts complexity only; CRAP still gates. Refactor candidates: see the fallow report."
       },
       {
         "files": [

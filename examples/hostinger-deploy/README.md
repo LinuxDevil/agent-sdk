@@ -28,7 +28,7 @@ for approval, reads are always allowed. The model is
 export HOSTINGER_API_TOKEN=...   # Hostinger API token (developers.hostinger.com)
 export OPENROUTER_API_KEY=...    # the agent's model key
 export LOUSHO_API_TOKEN=...      # bearer token protecting the deployed server
-node examples/hostinger-deploy/deploy.mjs --vm 1924068   # id, hostname or IPv4
+node examples/hostinger-deploy/deploy.mjs --vm <id|hostname|ip>
 ```
 
 The script verifies the VM is running, builds the docker target locally,

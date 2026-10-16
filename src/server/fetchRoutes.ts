@@ -439,7 +439,7 @@ const runChat: RouteHandler = async (request, ctx, _params, principal) => {
   if (typeof sessionId === 'string' && (typeof input === 'string' ? input : Array.isArray(input))) {
     // the transcript is this session's, so client input is user content only -
     // a caller-sent `system`, `assistant` or `tool` entry would be stored and replayed
-    // to the model every turn (the /ui route was hardened the same way, Eve TOOLS-F9).
+    // to the model every turn (the /ui route was hardened the same way).
     // A content-part array has no roles: it is one user message and passes untouched.
     const messages =
       Array.isArray(input) && input.length > 0 && typeof input[0] === 'object' && input[0] !== null && 'role' in input[0]

@@ -11201,8 +11201,8 @@ What it does, step by step:
 
 1. **Verify the VM.** `GET /api/vps/v1/virtual-machines` finds the VM by id,
    hostname or IPv4 and refuses non-`running` machines. The
-   `hostinger-api-mcp` MCP server wraps this same API, so an agent (or this
-   session) can also drive it interactively — VM lifecycle, SSH keys,
+   `hostinger-api-mcp` MCP server wraps this same API, so an agent
+   can also drive it interactively — VM lifecycle, SSH keys,
    firewall rules, post-install scripts.
 2. **Build.** `lousho build ./agent --target=docker --out <dir>` produces a
    self-contained context (bundled `dist/server.js`, `Dockerfile`).
