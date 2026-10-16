@@ -64,3 +64,4 @@ docs/api/
 .coding-kit-*/
 # Local agent worktrees and session state
 .claude/
+audit/

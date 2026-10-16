@@ -1,98 +1,93 @@
 {
-  "question": "What breaks first when a Node.js app is under memory pressure?",
+  "question": "How should a production app handle approvals, durable session resume, and cost tracking with this SDK?",
   "verdict": {
     "pass": false,
     "gaps": [
-      "Diagnostics (heap snapshots, tooling) - Some mentions of heap snapshots and memory metrics are present, but there is a lack of real substance in discussing tooling beyond basic usage, and no mention of alternative tools apart from basic ones.",
-      "Mitigations/backpressure - While some mitigation strategies are mentioned, detailed approaches or diverse strategies to handle backpressure in practical scenarios are insufficient."
+      "External/native memory and RSS",
+      "OS/container OOM kills",
+      "diagnostics (heap snapshots, tooling)",
+      "mitigations/backpressure"
     ]
   },
   "report": {
-    "title": "Memory Pressure in Node.js Applications: Breakpoints and Effects",
+    "title": "Handling Approvals, Session Resumption, and Cost Tracking in Production Apps Using the SDK",
     "sections": [
       {
-        "heading": "Garbage Collection Under Memory Pressure",
-        "body": "When a Node.js application experiences memory pressure, the V8 heap memory can approach its limits, leading to longer and more frequent garbage collection (GC) cycles. These cycles can drastically increase the duration of mark-sweep-compact processes, causing stop-the-world pauses, which can detrimentally affect application performance and responsiveness."
+        "heading": "Approvals Management",
+        "body": "Production applications utilizing the SDK must implement user authentication and authorization thoroughly by defining clear rules around who can approve tool calls. The SDK provides mechanisms for defining tool permissions globally and per-tool, which in conjunction with attributes like `needsApproval`, ensures controlled access to sensitive operations. Approvals can be managed through flag-based systems where actions requiring approval will pause the workflow until a decision is made by the user, enabling asynchronous management of tool requests, suitable for scenarios involving delayed decision-making. The SDK also supports notifications for real-time updates about approval requests, which enhances user engagement throughout the approval process. To streamline the workflow, a dedicated UI component can manage pending approvals using the `approvals` API."
       },
       {
-        "heading": "Impacts on Event Loop and Application Responsiveness",
-        "body": "Prolonged GC pauses can lead to noticeable delays in the event loop, affecting the timing of I/O callbacks and timers. As a result, health checks may fail, and keep-alive timeouts can occur, making the application appear less responsive even when CPU usage is low."
+        "heading": "Durable Session Resume",
+        "body": "To achieve durable session resumes in applications using the SDK, developers should use the `createAgent()` function in combination with a durable storage solution such as `SqliteStore`. By passing a `sessionId` to the `send()` method, applications can maintain user interactions across system disruptions, allowing sessions to be restored seamlessly. Implementing checkpoints that automatically save the transcript and state of interactions after crucial events—like responses or tool executions—ensures users can resume exactly where they left off, even in the case of interruptions. Utilizing `run.enqueue(input)` aids in preserving queued user inputs for execution order recovery and continuity, enhancing user experience."
       },
       {
-        "heading": "External Memory Allocations",
-        "body": "It's crucial to understand that not all memory usage is counted against the V8 heap limit. External allocations, such as Buffers and native addons, can cause the Resident Set Size (RSS) to exceed the limits set for the heap, which may lead to out-of-memory (OOM) issues without triggering expected heap errors."
-      },
-      {
-        "heading": "Container Environments and OOM Killer",
-        "body": "In containerized environments, if the total memory usage surpasses the container's limits, the Linux Out-Of-Memory (OOM) killer may terminate the Node.js process via SIGKILL, often before V8 can report a memory error. This highlights the importance of aligning the max old space size with container limits to avoid abrupt process termination."
-      },
-      {
-        "heading": "Strategies for Managing Memory Pressure",
-        "body": "To alleviate memory pressure issues, developers can use the `--max-old-space-size` flag to increase the V8 heap size and monitor event loop delays as potential indicators of memory stress. Implementing backpressure strategies, such as `highWaterMark`, helps manage allocation rates effectively."
+        "heading": "Cost Tracking Methods",
+        "body": "Cost tracking in SDK-based applications can be effectively implemented by defining agent directories with parameters like `maxCostUsd`, which helps monitor expenditure per operation. The `Agent Client Protocol (ACP)` allows tracking of tool calls and associated costs in real-time, facilitating insights into resource use and expense management. Additionally, utilizing resources like the `Agent Forge` dashboard provides visualizations of agent operations and cost indicators, helping developers to optimize financial oversight in their applications."
       }
     ],
     "citations": [
       {
-        "id": "C1",
-        "title": "V8 heap limit and --max-old-space-size",
-        "url": "https://nodejs.org/api/cli.html#--max-old-space-sizesize-in-mib"
+        "id": "D1",
+        "title": "Agent Client Protocol (ACP)",
+        "url": "E:\\agent-sdk\\docs\\acp.md"
       },
       {
-        "id": "C2",
-        "title": "GC pauses under pressure",
-        "url": "https://nodejs.org/en/learn/diagnostics/memory"
+        "id": "D2",
+        "title": "Agent directories",
+        "url": "E:\\agent-sdk\\docs\\agent-directories.md"
       },
       {
-        "id": "C3",
-        "title": "Event loop lag under memory pressure",
-        "url": "https://nodejs.org/api/perf_hooks.html#performanceeventloopdelay"
+        "id": "D6",
+        "title": "Approvals",
+        "url": "E:\\agent-sdk\\docs\\approvals.md"
       },
       {
-        "id": "C4",
-        "title": "RSS vs heap: external and native memory",
-        "url": "https://nodejs.org/api/process.html#processmemoryusage"
+        "id": "D19",
+        "title": "Durable execution",
+        "url": "E:\\agent-sdk\\docs\\durable-execution.md"
       },
       {
-        "id": "C5",
-        "title": "Container and OS OOM killer",
-        "url": "https://nodejs.org/api/process.html"
+        "id": "D3",
+        "title": "Agent Forge",
+        "url": "E:\\agent-sdk\\docs\\agent-forge.md"
       },
       {
-        "id": "C8",
-        "title": "Mitigations and backpressure",
-        "url": "https://nodejs.org/api/stream.html"
+        "id": "D12",
+        "title": "Cloudflare Workers",
+        "url": "E:\\agent-sdk\\docs\\cloudflare-workers.md"
       }
     ],
-    "confidence": 0.95
+    "confidence": 0.9
   },
   "usage": [
     {
       "label": "wave-1-coordinator",
-      "ms": 12343,
+      "ms": 9875,
       "usage": {
-        "inputTokens": 7006,
-        "outputTokens": 1556,
-        "totalTokens": 8562,
-        "costUsd": 0.0019844999999999997,
+        "inputTokens": 33484,
+        "outputTokens": 1509,
+        "totalTokens": 34993,
+        "costUsd": 0.005928,
         "modelCalls": 8,
         "estimated": false,
         "byModel": {
           "openai/gpt-4o-mini": {
-            "inputTokens": 7006,
-            "outputTokens": 1556,
+            "inputTokens": 33484,
+            "outputTokens": 1509,
             "calls": 8,
-            "costUsd": 0.0019844999999999997
+            "costUsd": 0.005928
           }
         },
-        "promptTokens": 7006,
-        "completionTokens": 1556,
+        "promptTokens": 33484,
+        "completionTokens": 1509,
         "cachedInputTokens": 0,
+        "cacheWriteTokens": 0,
         "reasoningTokens": 0,
         "delegated": {
-          "inputTokens": 4022,
-          "outputTokens": 1190,
-          "totalTokens": 5212,
-          "costUsd": 0.0013173,
+          "inputTokens": 30508,
+          "outputTokens": 1229,
+          "totalTokens": 31737,
+          "costUsd": 0.0053136,
           "modelCalls": 6,
           "estimated": false,
           "runs": 3
@@ -105,25 +100,26 @@
     },
     {
       "label": "wave-1-verifier",
-      "ms": 1006,
+      "ms": 2526,
       "usage": {
-        "inputTokens": 1415,
-        "outputTokens": 24,
-        "totalTokens": 1439,
-        "costUsd": 0.00022665,
+        "inputTokens": 1464,
+        "outputTokens": 48,
+        "totalTokens": 1512,
+        "costUsd": 0.0002484,
         "modelCalls": 1,
         "estimated": false,
         "byModel": {
           "openai/gpt-4o-mini": {
-            "inputTokens": 1415,
-            "outputTokens": 24,
+            "inputTokens": 1464,
+            "outputTokens": 48,
             "calls": 1,
-            "costUsd": 0.00022665
+            "costUsd": 0.0002484
           }
         },
-        "promptTokens": 1415,
-        "completionTokens": 24,
+        "promptTokens": 1464,
+        "completionTokens": 48,
         "cachedInputTokens": 0,
+        "cacheWriteTokens": 0,
         "reasoningTokens": 0
       },
       "steps": 1,
@@ -133,62 +129,64 @@
     },
     {
       "label": "wave-2-coordinator",
-      "ms": 11841,
+      "ms": 13524,
       "usage": {
-        "inputTokens": 4768,
-        "outputTokens": 1083,
-        "totalTokens": 5851,
-        "costUsd": 0.001365,
-        "modelCalls": 6,
+        "inputTokens": 62445,
+        "outputTokens": 2932,
+        "totalTokens": 65377,
+        "costUsd": 0.01103955,
+        "modelCalls": 14,
         "estimated": false,
         "byModel": {
           "openai/gpt-4o-mini": {
-            "inputTokens": 4768,
-            "outputTokens": 1083,
-            "calls": 6,
-            "costUsd": 0.001365
+            "inputTokens": 62445,
+            "outputTokens": 2932,
+            "calls": 14,
+            "costUsd": 0.01103955
           }
         },
-        "promptTokens": 4768,
-        "completionTokens": 1083,
-        "cachedInputTokens": 0,
+        "promptTokens": 62445,
+        "completionTokens": 2932,
+        "cachedInputTokens": 1152,
+        "cacheWriteTokens": 0,
         "reasoningTokens": 0,
         "delegated": {
-          "inputTokens": 2257,
-          "outputTokens": 777,
-          "totalTokens": 3034,
-          "costUsd": 0.0008047499999999999,
-          "modelCalls": 4,
+          "inputTokens": 58022,
+          "outputTokens": 2497,
+          "totalTokens": 60519,
+          "costUsd": 0.010201499999999999,
+          "modelCalls": 12,
           "estimated": false,
-          "runs": 2
+          "runs": 6
         }
       },
       "steps": 2,
       "ownModelCalls": 2,
       "finishReason": "stop",
-      "taskCalls": 2
+      "taskCalls": 6
     },
     {
       "label": "wave-2-verifier",
-      "ms": 3874,
+      "ms": 1148,
       "usage": {
-        "inputTokens": 2136,
-        "outputTokens": 83,
-        "totalTokens": 2219,
-        "costUsd": 0.0003702,
+        "inputTokens": 3781,
+        "outputTokens": 36,
+        "totalTokens": 3817,
+        "costUsd": 0.00058875,
         "modelCalls": 1,
         "estimated": false,
         "byModel": {
           "openai/gpt-4o-mini": {
-            "inputTokens": 2136,
-            "outputTokens": 83,
+            "inputTokens": 3781,
+            "outputTokens": 36,
             "calls": 1,
-            "costUsd": 0.0003702
+            "costUsd": 0.00058875
           }
         },
-        "promptTokens": 2136,
-        "completionTokens": 83,
+        "promptTokens": 3781,
+        "completionTokens": 36,
         "cachedInputTokens": 0,
+        "cacheWriteTokens": 0,
         "reasoningTokens": 0
       },
       "steps": 1,
@@ -198,25 +196,26 @@
     },
     {
       "label": "report-writer",
-      "ms": 8347,
+      "ms": 10367,
       "usage": {
-        "inputTokens": 2410,
-        "outputTokens": 583,
-        "totalTokens": 2993,
-        "costUsd": 0.0007113,
+        "inputTokens": 5007,
+        "outputTokens": 566,
+        "totalTokens": 5573,
+        "costUsd": 0.00109065,
         "modelCalls": 1,
         "estimated": false,
         "byModel": {
           "openai/gpt-4o-mini": {
-            "inputTokens": 2410,
-            "outputTokens": 583,
+            "inputTokens": 5007,
+            "outputTokens": 566,
             "calls": 1,
-            "costUsd": 0.0007113
+            "costUsd": 0.00109065
           }
         },
-        "promptTokens": 2410,
-        "completionTokens": 583,
+        "promptTokens": 5007,
+        "completionTokens": 566,
         "cachedInputTokens": 0,
+        "cacheWriteTokens": 0,
         "reasoningTokens": 0
       },
       "steps": 1,
