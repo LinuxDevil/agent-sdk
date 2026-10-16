@@ -163,7 +163,8 @@ function warnRecallFailed(slot: MemorySlot, error: unknown): void {
 
 /**
  * Recalls into the system prompt on the run's first model call (not a
- * sub-agent's). A handoff replaces the system prompt with the target's, so a
+ * sub-agent's: a sub-agent with memory recalls its own, with this hook run
+ * as one of its own hooks, before it sees `ctx.subagent`). A handoff replaces the system prompt with the target's, so a
  * later call puts the recalled blocks back when they are missing.
  */
 function recallHook(bound: readonly BoundSlot[]): AgentHook {

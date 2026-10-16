@@ -108,7 +108,7 @@ export class TaskSessions {
     }
     const saved = JSON.parse(header.content as string) as { agent: string; remoteSessionId?: string };
     if (saved.agent !== agent) {
-      throw taskNotFound(`taskId '${taskId}' belongs to sub-agent '${saved.agent}', not '${agent}'. Pass agent: '${saved.agent}' to continue it.`);
+      throw taskNotFound(`taskId '${taskId}' belongs to sub-agent '${saved.agent}', not '${agent}'. To start a new task for '${agent}', omit taskId (and mode); to continue that task, pass agent: '${saved.agent}'.`);
     }
     return { messages, remoteSessionId: saved.remoteSessionId };
   }

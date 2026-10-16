@@ -31,6 +31,14 @@ export interface SubagentOptions {
    */
   background?: boolean;
   /**
+   * H3-4: `false` leaves task continuation out: the `task` tool has no
+   * `taskId` or `mode` argument, so every call starts a new sub-agent
+   * conversation, and neither the tool nor the prompt block mentions
+   * follow-ups. For leads that misuse taskIds (a weak model passing one task's
+   * id to another sub-agent). Default `true`.
+   */
+  continuation?: boolean;
+  /**
    * LOU-Y6: where the child conversations of `task` calls are kept, so the
    * lead can resume or fork them by `taskId` in later runs of its session
    * (also after a restart, with a durable store). Used by lead runs with a
