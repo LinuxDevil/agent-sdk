@@ -1,7 +1,6 @@
 /**
- * The webhook channel (LOU-P7): `WebhookTriggerAdapter`'s request handling
- * (LOU-T5, auth from LOU-D13) on the channel contract. The adapter delegates
- * its auth and parsing here. Node-only: HMAC checks use `node:crypto`.
+ * The webhook channel (LOU-P7): request handling and auth (LOU-D13) on the
+ * channel contract. Node-only: HMAC checks use `node:crypto`.
  */
 import type { IncomingMessage } from 'node:http';
 import { newId } from '../utils/id';
@@ -15,7 +14,7 @@ export interface WebhookChannelOptions {
   name?: string;
   /** Shorthand for `auth: { type: 'hmac', secret }` (header `x-signature-256: sha256=<hex>` over the raw body). */
   secret?: string;
-  /** Any `WebhookTriggerAdapter` auth (hmac with options, bearer, custom). Wins over `secret`. */
+  /** Any `WebhookAuth` (hmac with options, bearer, custom). Wins over `secret`. */
   auth?: WebhookAuth;
   /**
    * Who is calling, as the turn's `principal` (N10a: memory scopes, `model` /
@@ -65,8 +64,7 @@ async function verifyWebhook(auth: WebhookAuth | undefined, req: ChannelRequest)
 
 /**
  * A generic webhook: the body's JSON `input` string (or the whole body) is
- * the input, and the response is the turn's `ExecutionResult` as JSON, as
- * with `WebhookTriggerAdapter`. Each request is a one-shot session unless the
+ * the input, and the response is the turn's `ExecutionResult` as JSON. Each request is a one-shot session unless the
  * JSON body has a `sessionKey` string. With `secret` or `auth`, a request
  * that fails the check gets 401. `principal` names the caller of the turn
  * (an alerting system, an integration user) from the verified request.

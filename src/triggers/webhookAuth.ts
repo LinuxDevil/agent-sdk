@@ -1,9 +1,9 @@
 /**
  * Webhook request authentication (LOU-D13).
  *
- * Pure verification helpers used by `WebhookTriggerAdapter`. They never
+ * Pure verification helpers used by `webhookChannel()`. They never
  * throw for a bad request - they return the (internal) reason a request was
- * rejected so the adapter can log it, while the HTTP response stays generic.
+ * rejected so the caller can log it, while the HTTP response stays generic.
  */
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
@@ -16,7 +16,7 @@ import { SDKError } from '../execution/errors';
  *
  * @example
  * ```ts
- * new WebhookTriggerAdapter({ auth: { type: 'hmac', secret: process.env.WEBHOOK_SECRET! } });
+ * webhookChannel({ auth: { type: 'hmac', secret: process.env.WEBHOOK_SECRET! } });
  * ```
  */
 export interface HmacWebhookAuth {
@@ -45,7 +45,7 @@ export interface HmacWebhookAuth {
  *
  * @example
  * ```ts
- * new WebhookTriggerAdapter({ auth: { type: 'bearer', token: process.env.WEBHOOK_TOKEN! } });
+ * webhookChannel({ auth: { type: 'bearer', token: process.env.WEBHOOK_TOKEN! } });
  * ```
  */
 export interface BearerWebhookAuth {
@@ -60,7 +60,7 @@ export interface BearerWebhookAuth {
  *
  * @example
  * ```ts
- * new WebhookTriggerAdapter({
+ * webhookChannel({
  *   auth: { type: 'custom', verify: (req) => req.headers['x-api-key'] === process.env.API_KEY },
  * });
  * ```
@@ -70,7 +70,7 @@ export interface CustomWebhookAuth {
   verify(req: IncomingMessage, rawBody: Buffer): boolean | Promise<boolean>;
 }
 
-/** How `WebhookTriggerAdapter` authenticates inbound requests. */
+/** How `webhookChannel()` authenticates inbound requests. */
 export type WebhookAuth = HmacWebhookAuth | BearerWebhookAuth | CustomWebhookAuth;
 
 const DEFAULT_TOLERANCE_SECONDS = 300;
@@ -79,17 +79,17 @@ const DEFAULT_TOLERANCE_SECONDS = 300;
 export function assertValidWebhookAuth(auth: WebhookAuth): void {
   if (auth.type === 'hmac') {
     if (!auth.secret) {
-      throw new SDKError("WebhookTriggerAdapter: auth.secret must be a non-empty string (e.g. { type: 'hmac', secret: process.env.WEBHOOK_SECRET }).", 'LOUSHO_TRIGGER_INVALID');
+      throw new SDKError("webhook auth: auth.secret must be a non-empty string (e.g. { type: 'hmac', secret: process.env.WEBHOOK_SECRET }).", 'LOUSHO_TRIGGER_INVALID');
     }
     if (auth.toleranceSeconds !== undefined && !auth.timestampHeader) {
-      throw new SDKError('WebhookTriggerAdapter: auth.toleranceSeconds has no effect without auth.timestampHeader. Set timestampHeader (e.g. "x-timestamp") or remove toleranceSeconds.', 'LOUSHO_TRIGGER_INVALID');
+      throw new SDKError('webhook auth: auth.toleranceSeconds has no effect without auth.timestampHeader. Set timestampHeader (e.g. "x-timestamp") or remove toleranceSeconds.', 'LOUSHO_TRIGGER_INVALID');
     }
   } else if (auth.type === 'bearer') {
     if (!auth.token) {
-      throw new SDKError("WebhookTriggerAdapter: auth.token must be a non-empty string (e.g. { type: 'bearer', token: process.env.WEBHOOK_TOKEN }).", 'LOUSHO_TRIGGER_INVALID');
+      throw new SDKError("webhook auth: auth.token must be a non-empty string (e.g. { type: 'bearer', token: process.env.WEBHOOK_TOKEN }).", 'LOUSHO_TRIGGER_INVALID');
     }
   } else if (auth.type !== 'custom' || typeof auth.verify !== 'function') {
-    throw new SDKError("WebhookTriggerAdapter: auth.type must be 'hmac', 'bearer' or 'custom' (custom needs a verify(req, rawBody) function).", 'LOUSHO_TRIGGER_INVALID');
+    throw new SDKError("webhook auth: auth.type must be 'hmac', 'bearer' or 'custom' (custom needs a verify(req, rawBody) function).", 'LOUSHO_TRIGGER_INVALID');
   }
 }
 

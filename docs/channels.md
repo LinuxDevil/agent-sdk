@@ -10,8 +10,8 @@ handler and runs every request the same way:
 POST <basePath>/<name>  ->  verify  ->  parse  ->  session turn  ->  reply (or onApproval)
 ```
 
-Channels replace the [trigger adapters](triggers.md), which are deprecated
-(`WebhookTriggerAdapter` uses `webhookChannel()` for its auth and parsing).
+Channels replaced the built-in trigger adapters (see
+[Migrating from triggers](upgrading.md#migrating-from-triggers)).
 Channels add what triggers lack: each conversation on the surface is
 a [session](sessions.md), and approvals and questions go back to the surface.
 
@@ -212,7 +212,7 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 | Channel | Request | Response |
 | ------- | ------- | -------- |
 | `httpChannel({ name?, verify? })` | JSON `{ sessionKey, input }` (`input` a string or content parts); anything else is a 400. Without `verify`, a body sent without `Content-Type: application/json` is a `415` (`LOUSHO_UNSUPPORTED_MEDIA_TYPE`), so a web page cannot post a form to it | `200 { sessionId, text, finishReason }`; when paused, `approval` too and `text` is the prompt |
-| `webhookChannel({ secret?, auth?, name?, principal? })` | The JSON body's `input` string, or the whole body; a one-shot session unless the body has a `sessionKey` | `200` with the turn's `ExecutionResult`, as `WebhookTriggerAdapter` answers |
+| `webhookChannel({ secret?, auth?, name?, principal? })` | The JSON body's `input` string, or the whole body; a one-shot session unless the body has a `sessionKey` | `200` with the turn's `ExecutionResult` |
 | `slackChannel({ signingSecret, botToken, name?, fetch?, approvers?, onError? })` | Slack Events API and interactivity requests (see [Slack](#slack)) | `200` at once; replies are posted in the Slack thread |
 | `discordChannel({ publicKey, applicationId, botToken?, name?, fetch?, approvers?, onError? })` | Discord slash-command and button interactions (see [Discord](#discord)) | Deferred ack at once; the reply edits the original response |
 | `telegramChannel({ botToken, secretToken, botUsername?, name?, fetch?, approvers?, onError? })` | Telegram bot webhook updates: messages and inline-keyboard taps (see [Telegram](#telegram)) | `200` at once; replies are sent with `sendMessage` as plain text |
@@ -223,7 +223,7 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 `x-signature-256: sha256=<hex>`; `auth` takes any
 [webhook auth](triggers.md#webhook-authentication) (HMAC options with
 replay protection, bearer token, custom). The checks and the generic 401 are
-the ones `WebhookTriggerAdapter` uses. `principal` is a
+the same for every webhook. `principal` is a
 `(body, req) => Principal | undefined` that names the caller of the turn from
 the verified request (the alerting system that sent the hook, an integration
 user); `body` is the parsed JSON body, `undefined` when it is not JSON.
@@ -422,8 +422,7 @@ before the approval is resolved - the continuation joins its transcript, and a
 stale or copied click decides nothing.
 
 An [agent directory](./agent-directories.md)'s `channels/*.ts` files are loaded
-as channels too, and the node server mounts them. `SlackTriggerAdapter` (see [Triggers](triggers.md)), which replies
-through an incoming webhook, is deprecated: use `slackChannel()`. `verifySlackSignature()` is not deprecated.
+as channels too, and the node server mounts them. For your own Slack handler, `verifySlackSignature()` (see [Triggers](triggers.md#slack-request-signatures)) checks a request's signature.
 
 ## Telegram
 

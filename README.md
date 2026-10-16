@@ -239,7 +239,7 @@ offline with `npx vitest run scripts/buildACodingAgent.test.ts`.
 | [Context compaction](docs/compaction.md) | `createAgent({ compaction })`: prune old tool results, then summarize old turns |
 | [Channels](docs/channels.md) | `defineChannel()`, `mountChannels()`, `httpChannel()`, `webhookChannel()`, `slackChannel()`: surfaces mapped to sessions, replies and approvals sent back |
 | [Schedules](docs/schedules.md) | `defineSchedule()` cron schedules, `schedules/` in an agent directory, `startSchedules()` |
-| [Triggers](docs/triggers.md) | `@lousho/build-ai-agent/triggers`: webhook, Slack and cron adapters, `TriggerAdapter`, `TriggerRegistry`; triggers vs channels vs schedules |
+| [Triggers](docs/triggers.md) | `@lousho/build-ai-agent/triggers`: `TriggerAdapter`, `TriggerRegistry`, webhook auth and Slack signature helpers; triggers vs channels vs schedules |
 | [Flows](docs/flows.md) | Fixed multi-step workflows with `FlowBuilder` and `FlowExecutor` |
 | [Workspace tools](docs/workspace-tools.md) | File system and shell tools for coding agents, and their security model |
 | [Build a coding agent](docs/build-a-coding-agent.md) | A terminal coding agent step by step: workspace tools, approvals, streaming, a session, offline tests |
