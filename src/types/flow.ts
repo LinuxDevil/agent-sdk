@@ -162,6 +162,12 @@ export type RuntimeStep =
   | EndNode
   | ThrowNode;
 
+/**
+ * An editor-side node naming an agent and its input. `FlowExecutor` does not
+ * run it: a flow that reaches one fails with `LOUSHO_FLOW_INVALID`. To run a
+ * `createAgent()` agent in a flow, register a tool that calls `agent.send()`
+ * and use a `toolCall` step (see docs/flows.md, "Running an agent in a flow").
+ */
 export interface StepNode {
   type: 'step';
   agent: string;

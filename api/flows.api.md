@@ -1265,7 +1265,7 @@ interface StandardSchemaV1<Input = unknown, Output = Input> {
     };
 }
 
-// @public (undocumented)
+// @public
 export interface StepNode {
     // (undocumented)
     agent: string;

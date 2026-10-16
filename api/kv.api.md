@@ -856,7 +856,7 @@ interface SetVariableNode extends NodeRunOptions {
     variable: string;
 }
 
-// @public (undocumented)
+// @public
 interface StepNode {
     // (undocumented)
     agent: string;
