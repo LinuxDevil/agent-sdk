@@ -71,6 +71,8 @@ export function globToRegExp(pattern: string): RegExp {
 interface WalkOptions {
   /** Directory names that are never descended into (e.g. `.git`). */
   ignore: ReadonlySet<string>;
+  /** Entries (files or directories) skipped by name, e.g. the file tools' `deny` list. */
+  isDenied?: (name: string) => string | undefined;
   /** Stop after collecting this many files. */
   maxFiles: number;
   signal?: AbortSignal;
@@ -101,6 +103,7 @@ export async function walkFiles(fs: FsProvider, base: string, options: WalkOptio
     const entries = await fs.readdir(dir);
     entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     for (const entry of entries) {
+      if (options.isDenied?.(entry.name) !== undefined) continue;
       const path = joinWorkspacePath(dir, entry.name);
       if (entry.type === 'directory' && !options.ignore.has(entry.name)) queue.push(path);
       if (entry.type !== 'file') continue;

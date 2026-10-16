@@ -96,6 +96,7 @@ const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistr
 | `maxFilesScanned` | 20,000                      | Most files a `glob` or `grep` walk visits. |
 | `grepTimeoutMs`   | 10,000                      | Milliseconds `grep` may spend matching its regex across all files; time spent reading files does not count. A slow pattern stops with an error naming how many files were scanned. |
 | `ignore`          | `['.git', 'node_modules']`  | Directory names `glob` and `grep` skip. |
+| `deny`            | `['.git']`                  | Entry names no tool reads, lists, searches or writes, at any depth. A path through one is a tool error. `[]` turns it off. See [Security model](#security-model). |
 | `checkpoints`     | none                        | A `WorkspaceCheckpoints`: back up every file `write_file` and `edit_file` change, so the changes can be rewound (see below). |
 
 `createShellTool(shell, options?)` returns one tool, `shell`, that takes
@@ -239,6 +240,38 @@ path. This means:
   through it could create a file outside the root.
 - `glob` and `grep` never follow links while walking the tree.
 - `rm` on a link removes the link itself and leaves its target alone.
+
+**The file tools keep out of `.git`.** A checkout often has credentials in
+`.git/config`: `actions/checkout` keeps the job's token there as
+`http.https://github.com/.extraheader = AUTHORIZATION: basic ...`, and a
+model that can read it can leak the token in its answer. In a git worktree,
+`.git` is a file that names the host path of the main repository. So
+`read_file`, `list_dir`, `glob`, `grep`, `write_file` and `edit_file` refuse
+any path with a `.git` segment, at any depth (`.git/config`, `sub/.git`), and
+`glob`, `grep` and `list_dir` leave `.git` entries out of their results, even
+with `ignore: []`. The check runs after normalization, so `./.git`,
+`a/../.git`, `.git\config` and `.git/` are refused too. Names compare
+case-insensitively (`.GIT`), trailing dots and spaces are ignored (Windows
+opens `.git.` as `.git`), and on Windows 8.3 short names such as `GIT~1` are
+refused. `.gitignore` and `.github/` are not affected. Add names with the
+`deny` option, for example `deny: ['.git', '.env', 'secrets']` (entry names,
+not paths), or pass `deny: []` to turn the check off.
+
+```ts
+import { createFsTools, NodeWorkspace } from '@lousho/build-ai-agent';
+
+const workspace = new NodeWorkspace({ root: '.' });
+const tools = createFsTools(workspace, { readOnly: true, deny: ['.git', '.env'] });
+```
+
+The check is by name, so a symlink elsewhere in the workspace that points
+into `.git` is not caught (`glob` and `grep` never follow links, but
+`read_file` on the link does). **The `shell` tool is not covered:** a command
+is free text, so it cannot be path-filtered, and `cat .git/config` or
+`git config --get-regexp extraheader` still works. Git commands that coding
+agents need (`git status`, `git diff`) go through the shell tool, so keep its
+`allow` list to the git commands you mean. In CI, also pass
+`persist-credentials: false` to `actions/checkout` when the job does not push.
 
 **Rejections are tool errors.** A refused path, a missing file or an
 ambiguous edit throws a `WorkspaceError` inside the tool. The model receives

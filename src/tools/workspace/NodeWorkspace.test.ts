@@ -342,3 +342,27 @@ describe('NodeWorkspace shell (LOU-X6)', () => {
     });
   }, 30_000);
 });
+
+describe('NodeWorkspace file tools keep out of .git (consumer harness H1-2)', () => {
+  it('read-only tools never return a checkout token or a worktree gitdir host path', async () => {
+    const repo = path.join(tmp, 'repo');
+    fs.mkdirSync(path.join(repo, '.git'), { recursive: true });
+    fs.mkdirSync(path.join(repo, 'wt'));
+    fs.writeFileSync(path.join(repo, '.git', 'config'), '[http "https://github.com/"]\n\textraheader = AUTHORIZATION: basic c2VjcmV0\n');
+    fs.writeFileSync(path.join(repo, 'wt', '.git'), `gitdir: ${repo}/.git/worktrees/wt\n`);
+    fs.writeFileSync(path.join(repo, 'README.md'), '# repo\n');
+    const ro = Object.fromEntries(createFsTools(new NodeWorkspace({ root: repo }), { readOnly: true, ignore: [] }).map((t) => [t.name, t]));
+    for (const p of ['.git/config', './.git/config', 'wt/../.git/config', '.git\\config', 'wt/.git', '.git/']) {
+      await expect(exec(ro.read_file, { path: p })).rejects.toThrow(WorkspaceError);
+    }
+    if (IS_WINDOWS || process.platform === 'darwin') {
+      await expect(exec(ro.read_file, { path: '.GIT/CONFIG' })).rejects.toThrow(/is denied/);
+    }
+    await expect(exec(ro.list_dir, { path: '.git' })).rejects.toThrow(/is denied/);
+    await expect(exec(ro.grep, { pattern: 'AUTHORIZATION', path: '.git/config' })).rejects.toThrow(/is denied/);
+    await expect(exec(ro.glob, { pattern: '*', path: '.git' })).rejects.toThrow(/is denied/);
+    expect(await exec(ro.grep, { pattern: 'AUTHORIZATION|gitdir' })).toMatch(/^No matches/);
+    expect(await exec(ro.glob, { pattern: '**' })).toBe('README.md');
+    expect(await exec(ro.list_dir, {})).toBe('README.md\nwt/');
+  });
+});
