@@ -76,8 +76,10 @@ The generated `server.ts` imports the module, so tsup bundles it with its local
 imports and the SDK into an ESM `dist/server.js`. With an options export the
 server builds the agent with `LOUSHO_STORE` (unless the options name a
 `store`); an exported agent keeps its own. The build's `package.json` names
-the provider package when the module has a literal `model: '<provider>/...'`;
-add any other optional peer it needs yourself. The `cloudflare-worker` target
+the provider package when the module has a literal `model: '<provider>/...'` or
+names an SDK provider class (`new OpenRouterProvider(...)`); only the entry file
+is scanned, and the build warns when it finds no provider. Add any other
+optional peer it needs to `dependencies` yourself. The `cloudflare-worker` target
 does not build a module: use a spec or an agent directory.
 
 ## HTTP API
@@ -180,9 +182,27 @@ before it exits:
 4. It closes the connections still open and calls `agent.close()`.
 
 Keep the platform's grace period (Docker's `--stop-timeout`, Kubernetes'
-`terminationGracePeriodSeconds`) longer than that wait. When you serve
-`createDeployedServer(agent, options)` yourself, it returns the same drain as
-`shutdown({ timeoutMs? })`. Call `agent.close()` after it.
+`terminationGracePeriodSeconds`) longer than that wait. The drain is part of
+the generated server; `createDeployedServer()` is an internal helper of that
+bundle and is not exported. When you serve the agent yourself (for example
+`createRouteHandler()` behind your own `node:http` server), do the same in your
+signal handler: stop accepting, let the requests in flight finish, then call
+`agent.close()`.
+
+```ts
+import { createServer } from 'node:http';
+import { createAgent, mountChannels } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini' });
+const handler = mountChannels(agent, []);
+const server = createServer((req, res) => void handler(req, res).then((handled) => handled || res.writeHead(404).end()));
+server.listen(3000);
+
+process.once('SIGTERM', () => {
+  server.close(() => void agent.close()); // close() waits for open connections
+  setTimeout(() => server.closeAllConnections(), 10_000).unref(); // then cut the stragglers
+});
+```
 
 Provider credentials are read from the same
 environment variables as everywhere else (`OPENAI_API_KEY`, ...).

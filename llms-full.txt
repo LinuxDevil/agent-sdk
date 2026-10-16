@@ -3131,7 +3131,7 @@ a wrong audience all get the same `401`. Every auth response carries
 | --- | --- | --- |
 | `jwt()`, `oidc()`, `basic()`, `apiToken()`, `anonymous()`, `routeAuth()` | yes | yes: Web Crypto and `fetch` only, no `node:` import |
 | `createRouteHandler({ auth })` | yes | yes |
-| `createDeployedServer({ auth })`, the `node-server` and `docker` targets | yes | no (Node `http`) |
+| The `node-server` and `docker` targets | yes | no (Node `http`) |
 | An agent directory's `auth.ts` | yes (`node-server`, `docker`) | no |
 | The `cloudflare-worker` build target | | `LOUSHO_API_TOKEN` only; no auth list yet |
 
@@ -3151,7 +3151,7 @@ behind `auth`. The accepted principal reaches every route: `POST <basePath>`,
 
 ## The node server and `auth.ts`
 
-`createDeployedServer(agent, { auth })` takes the same list (or one entry).
+The generated server (it uses the bundle's internal `createDeployedServer()`) takes the same list (or one entry).
 When `LOUSHO_API_TOKEN` is set, `apiToken(LOUSHO_API_TOKEN)` is appended after
 your entries, so an operator's token keeps working. Channels under
 `/channels/<name>` are not behind the list: they verify their own requests.
@@ -3380,7 +3380,7 @@ getting its owner forgotten. Only a session that was never stored can be
 claimed again. So for anything that runs on more than one instance, or keeps
 sessions across restarts, check ownership yourself with `authorizeSession`.
 
-`createRouteHandler()` and `createDeployedServer()` take `authorizeSession`,
+`createRouteHandler()` and the generated node server take `authorizeSession`,
 which replaces that default. It is asked before a caller reads a session
 (`action: 'read'`), sends it a turn (`'chat'`, also `POST <basePath>` and the
 `useChat` endpoint) or decides one of its approvals (`'approve'`). Return
@@ -3428,7 +3428,7 @@ compared as origins: case, a trailing slash and a default port
 (`https://app.example:443`) do not matter. `allowedHosts` (off by default)
 refuses any request whose `Host` is not listed, against DNS rebinding of a
 server on a private address. All three work on `createRouteHandler()` and
-`createDeployedServer()`; the generated node server and Cloudflare Worker read
+the generated node server; that server and the Cloudflare Worker read
 them from `LOUSHO_ALLOWED_ORIGINS` and `LOUSHO_ALLOWED_HOSTS` (comma-separated)
 and `LOUSHO_REQUIRE_JSON_BODY=false`.
 
@@ -6840,8 +6840,10 @@ The generated `server.ts` imports the module, so tsup bundles it with its local
 imports and the SDK into an ESM `dist/server.js`. With an options export the
 server builds the agent with `LOUSHO_STORE` (unless the options name a
 `store`); an exported agent keeps its own. The build's `package.json` names
-the provider package when the module has a literal `model: '<provider>/...'`;
-add any other optional peer it needs yourself. The `cloudflare-worker` target
+the provider package when the module has a literal `model: '<provider>/...'` or
+names an SDK provider class (`new OpenRouterProvider(...)`); only the entry file
+is scanned, and the build warns when it finds no provider. Add any other
+optional peer it needs to `dependencies` yourself. The `cloudflare-worker` target
 does not build a module: use a spec or an agent directory.
 
 ## HTTP API
@@ -6944,9 +6946,27 @@ before it exits:
 4. It closes the connections still open and calls `agent.close()`.
 
 Keep the platform's grace period (Docker's `--stop-timeout`, Kubernetes'
-`terminationGracePeriodSeconds`) longer than that wait. When you serve
-`createDeployedServer(agent, options)` yourself, it returns the same drain as
-`shutdown({ timeoutMs? })`. Call `agent.close()` after it.
+`terminationGracePeriodSeconds`) longer than that wait. The drain is part of
+the generated server; `createDeployedServer()` is an internal helper of that
+bundle and is not exported. When you serve the agent yourself (for example
+`createRouteHandler()` behind your own `node:http` server), do the same in your
+signal handler: stop accepting, let the requests in flight finish, then call
+`agent.close()`.
+
+```ts
+import { createServer } from 'node:http';
+import { createAgent, mountChannels } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini' });
+const handler = mountChannels(agent, []);
+const server = createServer((req, res) => void handler(req, res).then((handled) => handled || res.writeHead(404).end()));
+server.listen(3000);
+
+process.once('SIGTERM', () => {
+  server.close(() => void agent.close()); // close() waits for open connections
+  setTimeout(() => server.closeAllConnections(), 10_000).unref(); // then cut the stragglers
+});
+```
 
 Provider credentials are read from the same
 environment variables as everywhere else (`OPENAI_API_KEY`, ...).
