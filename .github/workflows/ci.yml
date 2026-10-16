@@ -140,3 +140,6 @@ jobs:
         # pack-smoke runs `npm run build` itself, which needs the same heap.
         env:
           NODE_OPTIONS: --max-old-space-size=12288
+      # C10: hello-world bundle and tarball unpacked size against scripts/size-budget.json.
+      # pack-smoke above leaves the SDK and Agent Forge builds in place, so the tarball figure is the real one.
+      - run: npm run size-check
