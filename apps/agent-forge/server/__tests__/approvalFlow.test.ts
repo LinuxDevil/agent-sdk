@@ -8,7 +8,7 @@
  * pause -> approve -> resume round trip is verified; runRegistry.test.ts and
  * app.test.ts cover the run()/stop() and HTTP-layer behavior around it.
  *
- * None of the LOU-N server's spec-resolvable tools (http/current-date/
+ * None of the server's spec-resolvable tools (http/current-date/
  * day-name, see buildAgent.ts + specToAgent.ts's RESOLVABLE_BUILT_IN_TOOLS)
  * set `needsApproval`, so a spec alone can't trigger this path end-to-end
  * through the HTTP API in a test - a custom ToolDescriptor is used here

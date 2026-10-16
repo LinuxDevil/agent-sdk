@@ -49,7 +49,7 @@ describe('defineTool types', () => {
     new ToolRegistry().register(sendEmail);
   });
 
-  it('carries the canonical inputSchema and execute (LOU-D22)', () => {
+  it('carries the canonical inputSchema and execute', () => {
     const input = z.object({ to: z.string().email(), count: z.number().default(1) });
     const t = defineTool({ name: 't', description: 'd', input, execute: async () => ({ ok: true }) });
     expectTypeOf(t.inputSchema).toEqualTypeOf<typeof input>();
@@ -60,7 +60,7 @@ describe('defineTool types', () => {
     void t.execute({ to: 'a@b.c', count: 'x' }, {} as ToolExecutionContext);
   });
 
-  it('types ctx as our ToolExecutionContext, not ai\'s options (LOU-D23)', () => {
+  it('types ctx as our ToolExecutionContext, not ai\'s options', () => {
     defineTool({
       name: 'ctx_probe',
       description: 'd',
@@ -100,7 +100,7 @@ describe('defineTool types', () => {
   });
 });
 
-describe('defineTool annotations (LOU-Z5.2)', () => {
+describe('defineTool annotations', () => {
   it('accepts MCP annotations and rejects unknown hints', () => {
     defineTool({ name: 'ro', description: 'd', input: z.object({}), annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false, title: 'T' }, execute: () => 1 });
     defineTool({
@@ -114,7 +114,7 @@ describe('defineTool annotations (LOU-Z5.2)', () => {
   });
 });
 
-describe('needsApproval outcomes (LOU-X8)', () => {
+describe('needsApproval outcomes', () => {
   const input = z.object({ to: z.string() });
   it('accepts booleans, outcomes, async outcomes and the helpers', () => {
     defineTool({ name: 'b', description: 'd', input, needsApproval: (args) => args.to === 'x', execute: () => 1 });
@@ -147,7 +147,7 @@ describe('needsApproval outcomes (LOU-X8)', () => {
   });
 });
 
-describe('either zod major (LOU-D29)', () => {
+describe('either zod major', () => {
   // `zod/v3` and `zod/v4` exist in both zod@^3.25 and zod@4, whichever is installed.
   it('infers execute args from a zod 3 schema', () => {
     const t = defineTool({
@@ -180,7 +180,7 @@ describe('either zod major (LOU-D29)', () => {
     new ToolRegistry().register(t);
   });
 
-  it('N13b: a generator execute has the yielded type as its output', () => {
+  it('a generator execute has the yielded type as its output', () => {
     const counter = defineTool({
       name: 'count_to',
       description: 'd',
@@ -200,7 +200,7 @@ describe('either zod major (LOU-D29)', () => {
     new ToolRegistry().register(counter);
   });
 
-  it('N13b: a plain async tool is unchanged', () => {
+  it('a plain async tool is unchanged', () => {
     const plain = defineTool({ name: 'p', description: 'd', input: z.object({}), execute: async () => ({ ok: true }) });
     expectTypeOf<ToolOutput<typeof plain>>().toEqualTypeOf<{ ok: boolean }>();
     expectTypeOf(plain.execute).returns.toEqualTypeOf<Promise<{ ok: boolean }>>();

@@ -6,7 +6,7 @@ import { loadMcpTools, type McpApproval } from './McpToolLoader';
 import { createConnectedClient } from './McpToolLoader.test';
 
 describe('loadMcpTools', () => {
-  it('N2: deferLoading marks every loaded tool; the server name is kept in metadata.mcp.server', async () => {
+  it('deferLoading marks every loaded tool; the server name is kept in metadata.mcp.server', async () => {
     const { client } = await createConnectedClient();
     const deferred = await loadMcpTools(client, 'myconn', { deferLoading: true });
     expect(Object.values(deferred).map((descriptor) => descriptor.deferLoading)).toEqual([true, true]);
@@ -82,7 +82,7 @@ describe('loadMcpTools', () => {
     expect(Object.keys(descriptors)).toEqual(['srv__create']);
   });
 
-  it('Eve TOOLS-F4: a tool whose root schema is not an object gets a passthrough object schema', async () => {
+  it('a tool whose root schema is not an object gets a passthrough object schema', async () => {
     const client = {
       listTools: async () => ({
         tools: [
@@ -113,7 +113,7 @@ describe('loadMcpTools', () => {
   });
 });
 
-describe('loadMcpTools approval (LOU-Z5)', () => {
+describe('loadMcpTools approval', () => {
   const schema = { type: 'object', properties: {} };
   const tools = [
     { name: 'plain', inputSchema: schema },
@@ -136,7 +136,7 @@ describe('loadMcpTools approval (LOU-Z5)', () => {
     return Object.fromEntries(Object.entries(loaded).map(([name, d]) => [name.slice(3), d.needsApproval]));
   };
 
-  it("Eve TOOLS-F11: the default asks for every tool, whatever the server's hints say", async () => {
+  it("the default asks for every tool, whatever the server's hints say", async () => {
     expect(Object.values(await asks()).every((v) => v === true)).toBe(true);
     const loaded = await loadMcpTools(client, 's');
     expect(loaded.s__read_only.metadata?.mcp?.annotationsTrusted).toBe(false);
@@ -184,7 +184,7 @@ describe('loadMcpTools approval (LOU-Z5)', () => {
   });
 });
 
-describe('loadMcpTools call options (audit D4)', () => {
+describe('loadMcpTools call options', () => {
   /** A connected client whose `slow` tool never answers on its own. */
   async function hangingClient(): Promise<Client> {
     const { McpServer } = await import('@modelcontextprotocol/sdk/server/mcp.js');
@@ -215,7 +215,7 @@ describe('loadMcpTools call options (audit D4)', () => {
   });
 });
 
-describe('loadMcpTools tool names (audit D4)', () => {
+describe('loadMcpTools tool names', () => {
   const schema = { type: 'object', properties: {} };
   const named = (...names: string[]) => {
     const callTool = vi.fn(async (params: { name: string }) => ({ content: [{ type: 'text', text: `ran ${params.name}` }] }));
@@ -254,7 +254,7 @@ describe('loadMcpTools tool names (audit D4)', () => {
   });
 });
 
-describe('loadMcpTools include / exclude (audit D4)', () => {
+describe('loadMcpTools include / exclude', () => {
   const schema = { type: 'object', properties: {} };
   const client = {
     listTools: async () => ({ tools: ['search', 'execute', 'multi-execute'].map((name) => ({ name, inputSchema: schema })) }),
@@ -273,7 +273,7 @@ describe('loadMcpTools include / exclude (audit D4)', () => {
   });
 });
 
-describe('loadMcpTools approval predicate sees the arguments (audit D4)', () => {
+describe('loadMcpTools approval predicate sees the arguments', () => {
   const client = {
     listTools: async () => ({
       tools: [{ name: 'execute', inputSchema: { type: 'object', properties: { operation: { type: 'string' } } }, annotations: { readOnlyHint: true } }],

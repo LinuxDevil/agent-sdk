@@ -43,7 +43,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('limits (LOU-V6)', () => {
+describe('limits', () => {
   it.each([
     ['maxTokens', { maxTokens: 250 }, 300],
     ['maxInputTokens', { maxInputTokens: 150 }, 200],
@@ -169,7 +169,7 @@ describe('limits (LOU-V6)', () => {
   });
 });
 
-describe('session limits (LOU-V6)', () => {
+describe('session limits', () => {
   it('maxCostUsd holds across turns, from the persisted usage', async () => {
     // Each call: (1000 * 0.15 + 1000 * 0.6) / 1e6 = 0.00075
     const usage = { inputTokens: 1000, outputTokens: 1000 };
@@ -204,7 +204,7 @@ describe('session limits (LOU-V6)', () => {
   });
 });
 
-describe('unknown cost under maxCostUsd (Eve PROV-F3)', () => {
+describe('unknown cost under maxCostUsd', () => {
   it('warns once that the cost limit cannot be enforced', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const budget = startBudget({ maxCostUsd: 1 })!;
@@ -214,6 +214,25 @@ describe('unknown cost under maxCostUsd (Eve PROV-F3)', () => {
     budget.dispose();
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0][0])).toContain('maxCostUsd');
+    warn.mockRestore();
+  });
+
+  it('enforces the cap on the partial total when only some steps have a known price', () => {
+    const budget = startBudget({ maxCostUsd: 1 })!;
+    const usage: RunUsage = { inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: 1.5, costPartial: true, modelCalls: 2, estimated: false, promptTokens: 1, completionTokens: 1, byModel: {} };
+    expect(budget.check(usage, 1)).toMatchObject({ limit: 'maxCostUsd', value: 1.5, max: 1 });
+    budget.dispose();
+  });
+
+  it('stays quiet for a scripted mockModel(), which has no price', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.resetModules();
+    const { startBudget: fresh } = await import('./budget');
+    const usage: RunUsage = { inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: undefined, modelCalls: 1, estimated: false, promptTokens: 1, completionTokens: 1, byModel: {} };
+    fresh({ maxCostUsd: 1 }, undefined, undefined, true)!.check(usage, 1);
+    expect(warn).not.toHaveBeenCalled();
+    fresh({ maxCostUsd: 1 })!.check(usage, 1);
+    expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
   });
 });

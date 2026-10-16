@@ -1,5 +1,5 @@
 /**
- * LOU-D15: reduceAgentEvents() over scripted event sequences, without React.
+ * ReduceAgentEvents() over scripted event sequences, without React.
  */
 import { describe, it, expect } from 'vitest';
 import { AGENT_EVENT_SCHEMA_VERSION, type AgentEvent, type AgentEventPayload } from '../execution/agentEvents';
@@ -19,7 +19,7 @@ function reduce(...items: (AgentEvent | AgentUIAction)[]): AgentUIState {
 
 const send: AgentUIAction = { type: 'ui.send', input: 'Weather in Paris?' };
 
-describe('reduceAgentEvents (LOU-D15)', () => {
+describe('reduceAgentEvents', () => {
   it('ui.send adds the user message and an empty assistant message, and starts streaming', () => {
     const state = reduce(send);
     expect(state.status).toBe('streaming');
@@ -29,7 +29,7 @@ describe('reduceAgentEvents (LOU-D15)', () => {
     ]);
   });
 
-  it('ui.send with content parts shows their text and a marker per non-text part (LOU-V12)', () => {
+  it('ui.send with content parts shows their text and a marker per non-text part', () => {
     const state = reduce({
       type: 'ui.send',
       input: [{ type: 'text', text: 'What is this?' }, { type: 'image', image: 'https://example.com/a.png' }],
@@ -84,7 +84,7 @@ describe('reduceAgentEvents (LOU-D15)', () => {
     ]);
   });
 
-  it('N13b: tool.partial sets the running call\'s partial; tool.done / tool.error clear it', () => {
+  it('tool.partial sets the running call\'s partial; tool.done / tool.error clear it', () => {
     const [start1, start2, p0, p1, q0, done1, error2, late] = events(
       { type: 'tool.start', toolCallId: 'c1', toolName: 'a', args: {} },
       { type: 'tool.start', toolCallId: 'c2', toolName: 'b', args: {} },
@@ -111,7 +111,7 @@ describe('reduceAgentEvents (LOU-D15)', () => {
     expect(reduce(send, ...unknown).messages[1].toolCalls).toEqual([]);
   });
 
-  it('N13b: a call paused mid-stream (sign-in) drops its partial; a rerun starts without one', () => {
+  it('a call paused mid-stream (sign-in) drops its partial; a rerun starts without one', () => {
     const script = events(
       { type: 'tool.start', toolCallId: 'c1', toolName: 'list_repos', args: {} },
       { type: 'tool.partial', toolCallId: 'c1', toolName: 'list_repos', output: { status: 'connecting' }, index: 0 },
@@ -150,7 +150,7 @@ describe('reduceAgentEvents (LOU-D15)', () => {
     expect(rejected.messages[1].toolCalls[0].status).toBe('rejected');
   });
 
-  it("an ask_question pause exposes kind: 'question' and the question (LOU-X9)", () => {
+  it("an ask_question pause exposes kind: 'question' and the question", () => {
     const question = { text: 'Which city?', options: ['Porto', 'Lisbon'], allowFreeText: false };
     const args = { question: 'Which city?', options: ['Porto', 'Lisbon'], allowFreeText: false };
     const paused = reduce(
@@ -165,7 +165,7 @@ describe('reduceAgentEvents (LOU-D15)', () => {
     expect(paused.messages[1].toolCalls[0]).toMatchObject({ name: 'ask_question', status: 'awaiting-approval' });
   });
 
-  it("a sign-in pause exposes kind: 'sign-in' and the link (N9b)", () => {
+  it("a sign-in pause exposes kind: 'sign-in' and the link", () => {
     const signIn = { provider: 'github', displayName: 'GitHub', url: 'https://github.example.com/login/oauth/authorize?state=s' };
     const paused = reduce(
       send,
@@ -202,7 +202,7 @@ describe('reduceAgentEvents (LOU-D15)', () => {
     expect(state.lastEvent?.subagent?.name).toBe('researcher');
   });
 
-  it('ui.reset (LOU-P2) goes back to the empty chat', () => {
+  it('ui.reset goes back to the empty chat', () => {
     expect(reduce(send, ...events({ type: 'text.delta', text: 'Hi' }), { type: 'ui.reset' })).toBe(initialAgentUIState);
   });
 
@@ -211,7 +211,7 @@ describe('reduceAgentEvents (LOU-D15)', () => {
     expect(state.messages).toEqual([{ id: 'm0', role: 'assistant', text: 'Hi', toolCalls: [] }]);
   });
 
-  describe('todos (N12)', () => {
+  describe('todos', () => {
     const todos = [{ id: 'todo_1', content: 'a', status: 'in_progress' as const }];
     const counts = { pending: 0, in_progress: 1, completed: 0, total: 1 };
     const updated: AgentEventPayload = { type: 'todo.updated', todos, counts, toolCallId: 'w1' };
@@ -233,7 +233,7 @@ describe('reduceAgentEvents (LOU-D15)', () => {
     });
   });
 
-  describe('multi-step text and endings (Eve CORE-F9)', () => {
+  describe('multi-step text and endings', () => {
     it('starts a new paragraph for each step instead of gluing step texts', () => {
       const state = reduce(
         send,
@@ -302,7 +302,7 @@ describe('reduceAgentEvents (LOU-D15)', () => {
   });
 });
 
-describe('partialObject (Eve CORE-F13)', () => {
+describe('partialObject', () => {
   it('follows the top-level object.delta events, ends at run.done object, and resets on the next send', () => {
     const [start, first, inner, last] = events(
       { type: 'run.start', agentName: 'a' },

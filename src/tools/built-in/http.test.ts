@@ -43,7 +43,7 @@ describe('makeHttpRequest', () => {
     // The behavioral tests below (timeout / redirects / TLS) spin up a real
     // HTTP server bound to 'localhost' purely as test infrastructure - they
     // are not exercising SSRF behavior. 'localhost' resolves to a loopback
-    // address the SSRF check refuses, and since N13a the connection goes to
+    // address the SSRF check refuses, and the connection goes to
     // exactly the address the check saw, so those tests opt in with
     // `allowPrivate: ['localhost']` (LOCAL). The resolver is spied on (and
     // passes through) so the SSRF tests can stub it.
@@ -118,7 +118,7 @@ describe('makeHttpRequest', () => {
     }
   });
 
-  it('LOU-V1: the tool passes its abortSignal to fetch and rejects with an AbortError', async () => {
+  it('the tool passes its abortSignal to fetch and rejects with an AbortError', async () => {
     server = http.createServer(() => {
       // Never respond
     });
@@ -229,7 +229,7 @@ describe('makeHttpRequest', () => {
       fetchSpy.mockRestore();
     });
 
-    it('N13a: connects to the address it checked, so a rebinding name cannot reach a private address', async () => {
+    it('connects to the address it checked, so a rebinding name cannot reach a private address', async () => {
       // A rebinding DNS server: the first answer for the name is public, every
       // later one is loopback. Both resolver entry points are stubbed (the
       // promise API and the callback API sockets use by default), sharing one
@@ -361,7 +361,7 @@ describe('makeHttpRequest', () => {
       }
     });
 
-    it('loads undici on the first request, not at import time (LOU-D19; N13a pins every request through it)', async () => {
+    it('loads undici on the first request, not at import time (every request is pinned through it)', async () => {
       vi.resetModules();
       vi.doMock('undici', () => {
         throw new Error('undici is loaded lazily');
@@ -431,7 +431,7 @@ describe('makeHttpRequest', () => {
     });
   });
 
-  describe('sandbox seam (LOU-K2)', () => {
+  describe('sandbox seam', () => {
     it('flags requiresSandbox and implements sandboxExecute', () => {
       const descriptor = createHttpTool();
       expect(descriptor.requiresSandbox).toBe(true);
@@ -488,7 +488,7 @@ describe('makeHttpRequest', () => {
       expect(result).toBe('from-custom-sandbox');
     });
 
-    it('N13a: the sandboxed process connects to the address checked here, not its own resolution', async () => {
+    it('the sandboxed process connects to the address checked here, not its own resolution', async () => {
       // 'pinned-target.invalid' cannot resolve anywhere (RFC 6761), so the
       // request only reaches the local server if the child process uses the
       // address this process resolved (stubbed to 127.0.0.1) and checked.
@@ -522,7 +522,7 @@ describe('makeHttpRequest', () => {
       }
     }, 15000);
 
-    it('N13a: hands the sandbox the checked address and refuses a private one without running it', async () => {
+    it('hands the sandbox the checked address and refuses a private one without running it', async () => {
       const runSpy = vi.fn(async (_cmd: string, _args: string[], opts?: { env?: Record<string, string> }) => {
         const request = JSON.parse(Buffer.from(opts!.env!.SANDBOX_FETCH_REQUEST, 'base64').toString('utf-8'));
         return { stdout: JSON.stringify({ status: 200, statusText: 'OK', headers: {}, body: `via ${request.pinnedAddress}` }), stderr: '', exitCode: 0 };

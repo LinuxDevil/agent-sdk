@@ -1,5 +1,5 @@
 /**
- * Channels (LOU-P7): one definition per surface (an HTTP API, a webhook,
+ * Channels: one definition per surface (an HTTP API, a webhook,
  * Slack, Discord, ...) that says how an inbound request is authenticated,
  * which conversation it belongs to, and how the agent's reply (or an
  * approval it pauses on) goes back to that surface. `mountChannels()` runs
@@ -44,7 +44,7 @@ export interface ChannelInbound<TEvent = unknown> {
   /** Passed to the turn as `SendOptions.metadata` (memory scopes, `model` / `instructions` / `tools` functions). Unlike `principal`, it is not authenticated. */
   metadata?: Record<string, unknown>;
   /**
-   * The sender, as the surface identified them (N10a): passed to the turn as its
+   * The sender, as the surface identified them: passed to the turn as its
    * `principal` (memory scopes, `model` / `instructions` / `tools` functions).
    * Set it only from data the channel's `verify` vouched for.
    */
@@ -109,7 +109,7 @@ export interface ChannelContext {
   /** Whether a session was already saved for `sessionKey` (e.g. "the bot is active in this thread"). */
   hasSession(sessionKey: string): Promise<boolean>;
   /**
-   * M10a: the id of the `ask_question` the session for `sessionKey` is waiting on, or `undefined`
+   * The id of the `ask_question` the session for `sessionKey` is waiting on, or `undefined`
    * (no pending turn, or a turn waiting on a tool approval). Also finds a question asked before a
    * restart, given durable stores for sessions, checkpoints and approvals. Call it only for a message
    * you will return as the answer (`{ decision: { id, answer }, inbound }`): the id is handed out once,
@@ -134,7 +134,7 @@ export interface ChannelReplyContext<TEvent = unknown> {
   /** Set when the turn paused on this approval or question. */
   approval?: PendingApproval;
   /**
-   * Eve TOOLS-F12: when the paused step waits on several calls, every one of
+   * When the paused step waits on several calls, every one of
    * them not decided yet, in call order (`approval` is one of them; each is
    * handed to `onApproval` once). Absent when the step paused on one call.
    */
@@ -213,7 +213,7 @@ export function channelSessionId<TEvent>(channel: Channel<TEvent>, inbound: Chan
   return SESSION_ID.test(key) ? key : `${key.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 112)}-${cyrb53(key)}`;
 }
 
-/** The default text for a pause: the question (with numbered options), the sign-in link (N9b), or the tool call to approve. */
+/** The default text for a pause: the question (with numbered options), the sign-in link, or the tool call to approve. */
 export function approvalPrompt(approval: PendingApproval): string {
   if (approval.kind === 'sign-in' && approval.signIn) {
     return `Sign in to ${approval.signIn.displayName ?? approval.signIn.provider} to continue: ${approval.signIn.url}`;

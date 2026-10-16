@@ -1,5 +1,5 @@
 /**
- * typedoc-ratchet (Eve DUI-F18)
+ * typedoc-ratchet
  *
  * TypeDoc covers every package.json `exports` entry (see typedoc.json). Many
  * exported symbols still have no doc comment. This script counts TypeDoc's

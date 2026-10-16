@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-/** Below this width the rail and Inspector become slide-over drawers (Eve DUI-F8). Keep in sync with layout.css. */
+/** Below this width the rail and Inspector become slide-over drawers. Keep in sync with layout.css. */
 export const NARROW_QUERY = '(max-width: 860px)';
 
 function matches(query: string): boolean {

@@ -39,7 +39,7 @@ import { isRawJsonSchema, schemaToJsonSchema } from '../utils/zodCompat';
 import { type AiSdkCallSettings, type AiSdkMessage, type AiSdkModule, aiMajorOf, compatGenerateText, streamCompat } from './aiSdkCompat';
 import { DEFAULT_REQUEST_TIMEOUT_MS, chatCompletionWatch, providerFetch, type ResponseWatch } from './providerFetch';
 
-// The `ai` v4 request shapes built here, as our own structural types (LOU-D28a):
+// The `ai` v4 request shapes built here, as our own structural types:
 // `ai` v6/v7 do not export the v4 ones, and aiSdkCompat maps these to v6/v7.
 // Text, image and file parts are already v4-shaped as our `ContentPart`s.
 type ToolCallPart = { type: 'tool-call'; toolCallId: string; toolName: string; args: unknown };
@@ -49,7 +49,7 @@ type ReasoningPart = { type: 'reasoning'; text: string; signature?: string } | {
 type AiSdkTool = { description: string; parameters: unknown; execute: () => Promise<null> };
 
 /**
- * What a provider does with a user file part it cannot send (A9):
+ * What a provider does with a user file part it cannot send:
  * `'error'` rejects the call with `LOUSHO_UNSUPPORTED_CONTENT`; `'text-note'`
  * sends `[file <name> (<type>) not sent]` in its place, with a one-time warning.
  */
@@ -61,7 +61,7 @@ export interface AiSdkProviderConfig extends LLMProviderConfig {
   /** A file part this provider cannot send: reject the call (`'error'`, the default) or send a text note. */
   unsupportedFiles?: UnsupportedFiles;
   /**
-   * The `fetch` the provider's HTTP requests go through (C2), e.g. one with
+   * The `fetch` the provider's HTTP requests go through, e.g. one with
    * longer undici timeouts for a slow local model: Node's default `fetch`
    * gives up on a response whose headers take over 300 s. Default: `globalThis.fetch`.
    */
@@ -117,7 +117,7 @@ function toAssistantToolCallMessage(msg: Message, toolCalls: ToolCall[], support
   return { role: 'assistant', content: parts };
 }
 
-/** LOU-V13: a reasoning block as the v4 part Anthropic replays (aiSdkCompat maps it for v6/v7). */
+/** A reasoning block as the v4 part Anthropic replays (aiSdkCompat maps it for v6/v7). */
 function toReasoningPart(block: ReasoningBlock): ReasoningPart {
   if (block.redactedData !== undefined) return { type: 'redacted-reasoning', data: block.redactedData };
   return { type: 'reasoning', text: block.text, ...(block.signature !== undefined && { signature: block.signature }) };
@@ -141,7 +141,7 @@ function toToolResultMessage(msg: Message, toolNames: Map<string, string>): AiSd
   return { role: 'tool', content: [part] };
 }
 
-/** How a provider sends multimodal parts (LOU-V11). */
+/** How a provider sends multimodal parts. */
 interface PartSupport {
   provider: string;
   /** Whether a file part of this media type is sent; `false`: see `unsupportedFiles`. */
@@ -150,7 +150,7 @@ interface PartSupport {
   unsupportedFiles: UnsupportedFiles;
   /** The `ai` major in use, named in the warning. */
   aiMajor: number;
-  /** LOU-V13: send an assistant turn's `reasoning` blocks back (Anthropic). */
+  /** Send an assistant turn's `reasoning` blocks back (Anthropic). */
   reasoning?: boolean;
 }
 
@@ -167,7 +167,7 @@ function toUserPart(part: ContentPart, support: PartSupport): ContentPart {
     return { type: 'file', data: part.data, mimeType: part.mimeType, ...(part.filename ? { filename: part.filename } : {}) };
   }
   if (support.unsupportedFiles === 'error') {
-    // A9: never drop a file silently - the model would answer without it (and may invent its content).
+    // Never drop a file silently - the model would answer without it (and may invent its content).
     throw new SDKError(
       `The ${support.provider} provider cannot send ${part.mimeType} file parts on ai ${support.aiMajor} ` +
         `(file ${part.filename ?? 'attachment'}). Use a provider and ai major that sends this type, put the file's text in the message, ` +
@@ -189,7 +189,7 @@ function toUserPart(part: ContentPart, support: PartSupport): ContentPart {
  * Convert our Message history to 'ai' SDK CoreMessages, preserving the
  * assistant's tool-call turns and linking each tool result to its call by
  * id, as every provider (OpenAI, Anthropic, Ollama, OpenRouter) requires.
- * Content parts (LOU-V11) are sent on user messages; other roles get their text.
+ * Content parts are sent on user messages; other roles get their text.
  */
 function toCoreMessages(messages: Message[], support: PartSupport): AiSdkMessage[] {
   const toolNames = new Map<string, string>();
@@ -220,7 +220,7 @@ function v4JsonSchema(ai: AiSdkModule, parameters: unknown): unknown {
 }
 
 /**
- * A tool's `parameters` for `ai` v4: its JSON Schema (LOU-D29, LOU-R4: v4's
+ * A tool's `parameters` for `ai` v4: its JSON Schema (v4's
  * own converter only reads zod 3), with a validation that accepts any value.
  * The executor validates the arguments and hands a bad call back to the model
  * as a tool error; ai 4's own validation would throw and end the run.
@@ -263,7 +263,7 @@ function supportsStructuredOutputs(model: unknown): boolean {
   return typeof model === 'object' && model !== null && Boolean((model as { supportsStructuredOutputs?: unknown }).supportsStructuredOutputs);
 }
 
-/** F9: the AI SDK's `toolChoice` for a call, only when the call has tools (a choice without tools is an API error). */
+/** The AI SDK's `toolChoice` for a call, only when the call has tools (a choice without tools is an API error). */
 function toolChoiceOf(
   options: GenerateOptions,
   hostedTools: Record<string, unknown> | undefined,
@@ -274,7 +274,7 @@ function toolChoiceOf(
 }
 
 /**
- * LOU-V4: `responseFormat` as an 'ai' SDK output spec - JSON mode, with the
+ * `responseFormat` as an 'ai' SDK output spec - JSON mode, with the
  * schema only for models that support structured outputs (as
  * `Output.object()` does). Unlike `Output.object()` it leaves the prompt and
  * the reply text alone: AgentExecutor instructs the model and validates.
@@ -372,7 +372,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
   protected abstract createModel(modelId: string, options?: GenerateOptions): LanguageModel | Promise<LanguageModel>;
 
   /**
-   * Whether this provider's 'ai' SDK model takes `file` parts (LOU-V11). The
+   * Whether this provider's 'ai' SDK model takes `file` parts. The
    * built-in providers' pinned peers (`@ai-sdk/*` 0.0.x, `ollama-ai-provider`)
    * do not, so their file parts become a text note; image parts are sent.
    * `true` sends every file type; `fileMediaTypes()` opts in single types.
@@ -384,17 +384,17 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
     return [];
   }
 
-  /** LOU-V13: whether assistant turns send their signed `reasoning` blocks back (Anthropic requires it with tools). */
+  /** Whether assistant turns send their signed `reasoning` blocks back (Anthropic requires it with tools). */
   protected readonly replaysReasoning: boolean = false;
 
   /**
    * Convert our messages to `ai` v4 CoreMessages (aiSdkCompat maps them to
    * v6/v7 ModelMessages). Typed with our structural `AiSdkMessage`, not the
-   * v4 `CoreMessage` (which `ai` v6/v7 do not export), since LOU-D27; an
+   * v4 `CoreMessage` (which `ai` v6/v7 do not export); an
    * override returning `CoreMessage[]` still compiles.
    *
    * @deprecated An `ai` v4-shaped hook, kept for the built-in providers.
-   * Do not override it in new code: LOU-D28 replaces it with a hook on our
+   * Do not override it in new code: replaces it with a hook on our
    * own `Message[]`.
    */
   protected convertMessages(messages: Message[]): AiSdkMessage[] {
@@ -408,13 +408,13 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
     });
   }
 
-  /** LOU-V13: the `providerOptions` that carry the call's `reasoning` for this provider's model. */
+  /** The `providerOptions` that carry the call's `reasoning` for this provider's model. */
   protected reasoningOptions(modelId: string, options: GenerateOptions): Record<string, unknown> | undefined {
     return reasoningProviderOptions(this.name, modelId, options.reasoning);
   }
 
   /**
-   * N1a: whether this provider can send a hosted tool of `type`. The base
+   * Whether this provider can send a hosted tool of `type`. The base
    * supports only `hostedTool()` pass-through, on `ai` 6 or 7; providers with
    * built-in hosted tools (OpenAI) override it.
    */
@@ -423,7 +423,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
   }
 
   /**
-   * N1a: the AI SDK tool objects for `tools`, keyed by name, sent with the
+   * The AI SDK tool objects for `tools`, keyed by name, sent with the
    * function tools. The base passes `hostedTool()` objects through on `ai` 6
    * or 7 and throws `LOUSHO_HOSTED_TOOL_UNSUPPORTED` for everything else;
    * a provider with built-in hosted tools maps them (see OpenAIProvider).
@@ -433,7 +433,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
   }
 
   /**
-   * N1a/N1b: for providers with built-in hosted tools: the `hostedTool()`
+   * For providers with built-in hosted tools: the `hostedTool()`
    * objects as tools (`passed`, which is where `ai` 4 and a provider without
    * the tool are refused) and the helpers' tools for the provider to map (`builtIn`).
    */
@@ -463,7 +463,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
   protected readonly mapsHostedTools: boolean = false;
 
   /**
-   * Eve PROV-F4: whether this call marks Anthropic cache breakpoints with
+   * Whether this call marks Anthropic cache breakpoints with
    * `providerOptions.anthropic.cacheControl` (AnthropicProvider: Claude
    * models unless `promptCaching: false`). None by default.
    */
@@ -493,7 +493,7 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
       tools: convertTools(this.ai, options.tools),
       maxSteps: 1, // Single step - tool execution happens in AgentExecutor
       // The 'ai' SDK's own retries (its default is 2), off for a call that
-      // withRetry() retries (C2): one retry layer, never one multiplied by the other.
+      // withRetry() retries: one retry layer, never one multiplied by the other.
       maxRetries: retriesOwned(options) ? 0 : (this.config.maxRetries ?? 2),
       abortSignal: options.signal,
       experimental_output: toOutput(options.responseFormat),
@@ -502,14 +502,14 @@ export abstract class AiSdkProvider<TConfig extends AiSdkProviderConfig> impleme
   }
 
   /**
-   * Generate text without streaming, on `ai` v4 or v6/v7 (LOU-D26).
+   * Generate text without streaming, on `ai` v4 or v6/v7.
    */
   async generate(options: GenerateOptions): Promise<GenerateResult> {
     return compatGenerateText(this.ai, await this.buildCallSettings(options), options);
   }
 
   /**
-   * Generate text with streaming, on `ai` v4 or v6/v7 (LOU-D27).
+   * Generate text with streaming, on `ai` v4 or v6/v7.
    */
   async stream(options: GenerateOptions): Promise<StreamResult> {
     return streamCompat(this.ai, await this.buildCallSettings(options), options);

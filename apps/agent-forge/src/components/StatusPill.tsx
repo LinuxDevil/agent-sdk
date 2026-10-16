@@ -9,7 +9,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 /**
  * Run-status pill shared by the top bar and the agent cards in the left rail.
- * Eve DUI-F9: the top bar's pill is `live` - a polite `role="status"` region,
+ * The top bar's pill is `live` - a polite `role="status"` region,
  * so screen readers hear the run start, pause and finish.
  */
 export function StatusPill({ status, live = false }: { status: string; live?: boolean }) {

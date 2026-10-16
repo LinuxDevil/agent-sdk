@@ -1,5 +1,5 @@
 /**
- * CI replay of the N5a live recording (`__fixtures__/cassettes/n5a-guardrail-models.json`, gpt-4o-mini via
+ * CI replay of the live recording (`__fixtures__/cassettes/n5a-guardrail-models.json`, gpt-4o-mini via
  * OpenRouter): the prompt-injection and moderation guardrails read a real model's replies on six fixed texts.
  * No key, no network. Re-record with `npm run test:live -- src/execution/guardrailStarterSet`.
  */
@@ -21,7 +21,7 @@ async function verdict(guardrail: IoGuardrail, text: string) {
   return guardrail.check({ kind: 'input', text, messages: [] });
 }
 
-describe('guardrail starter set, replayed from a real recording (N5a)', () => {
+describe('guardrail starter set, replayed from a real recording', () => {
   it('prompt-injection and moderation replies are parseable and classify the fixed texts', async () => {
     const model = recordReplay(undefined, { cassette: CASSETTE, mode: 'replay' });
     const injection = promptInjectionGuardrail({ model });

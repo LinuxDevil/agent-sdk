@@ -1,5 +1,5 @@
 /**
- * Worker-safe stand-in for the optional peer `quickjs-emscripten` (N14).
+ * Worker-safe stand-in for the optional peer `quickjs-emscripten`.
  *
  * The cloudflare-worker adapter's build redirects the SDK's import of
  * `quickjs-emscripten` (code mode's isolate) here, so a Worker bundle never

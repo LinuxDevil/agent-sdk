@@ -58,7 +58,8 @@ With `subagents`, the lead agent gets:
 2. ONE tool, `task`, with the input
    `{ agent: <one of the names>, prompt: string, description?: string, background?: boolean, taskId?: string, mode?: 'new' | 'resume' | 'fork' }`
    (`description` is an optional 3-5 word label used in events and hooks; `taskId` and
-   `mode` continue an earlier task, see [Continuing a task](#continuing-a-task)).
+   `mode` continue an earlier task, see [Continuing a task](#continuing-a-task);
+   `subagentOptions: { continuation: false }` leaves them out).
 3. Three tools for background tasks: `agent_status`, `agent_await` and
    `agent_cancel` (see [Background sub-agents](#background-sub-agents)).
 
@@ -139,7 +140,22 @@ as structured tool errors: an unknown `taskId`, one of another lead session,
 or one that belongs to another sub-agent fails with
 `LOUSHO_SUBAGENT_TASK_NOT_FOUND`; a task that is still running (a background
 task that has not ended) fails with `LOUSHO_SUBAGENT_TASK_BUSY`, telling the
-model to `agent_await` or `agent_cancel` it first.
+model to `agent_await` or `agent_cancel` it first. The error for another
+sub-agent's `taskId` tells the model to omit `taskId` to start a new task.
+
+A lead that never needs follow-ups can leave continuation out with
+`subagentOptions: { continuation: false }`: the `task` tool then has no
+`taskId` or `mode` argument, every call starts a new task, and neither the
+tool description nor the prompt block mentions taskIds. Weaker lead models
+sometimes pass one sub-agent's `taskId` to another and waste a turn on the
+error; this removes the option.
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+const analyst = createAgent({ provider, instructions: 'You analyze.', description: 'Analyzes data' });
+const lead = createAgent({ provider, subagents: { analyst }, subagentOptions: { continuation: false } });
+```
 
 A resumed or forked task is a normal `task` call otherwise: it can run in the
 background (it keeps its `taskId`), an approval inside it pauses and resumes
@@ -488,6 +504,7 @@ inherits:
 | `permissionMode` | Yes, unless the lead's is `'default'` | The sub-agent runs under the lead's [permission mode](./permission-modes.md#sub-agents), read at each of its tool calls; while the lead's is `'default'`, under its own (a sub-agent whose own mode is `'plan'` always stays in plan mode). A remote sub-agent does not inherit it: plan mode refuses a `task` call to one. |
 | `principal` | Yes | Who the lead's run acts for (route auth's caller, a channel's sender); a remote sub-agent is not told. |
 | `metadata` | Yes | The lead run's `metadata` — the sub-agent's hooks see it. |
+| `memory` | No | The lead's memory slots stay the lead's. A sub-agent with its own `memory` recalls into its own prompt and gets its own memory tools, scoped by the lead run's `sessionId`, `metadata` and `principal` (see [Memory](./memory.md#limitations)). |
 | `onLLMRequest`, `onToolCall` and the other single-run callbacks | No | They describe one run; use hooks or an event listener to observe sub-agents. |
 | `sessionId` / `checkpointStore` | No | A sub-agent is not checkpointed on its own. If the process dies while a sub-agent runs, the resumed lead runs that `task` call again. |
 | `output` schema | No | A sub-agent's output is its own: with one, `task` returns its validated object as JSON (see [Structured output](./structured-output.md#sub-agents)); without, text. |

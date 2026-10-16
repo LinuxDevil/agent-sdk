@@ -1,5 +1,5 @@
 /**
- * LOU-D51: KVStore, the AgentStore on a Workers KV namespace, against a fake
+ * KVStore, the AgentStore on a Workers KV namespace, against a fake
  * binding (the same store runs once under workerd in adapters/cloudflare.test.ts).
  */
 import { describe, it, expect } from 'vitest';
@@ -40,7 +40,7 @@ function fakeKV() {
   return { kv, data, ttls };
 }
 
-// The shared store contracts (LOU-W5), including the Uint8Array round-trip (Eve DUR-F5).
+// The shared store contracts, including the Uint8Array round-trip.
 describeSessionStoreContract('KVStore.sessions', () => new KVStore(fakeKV().kv).sessions);
 describeCheckpointStoreContract('KVStore.checkpoints', () => new KVStore(fakeKV().kv).checkpoints);
 describeApprovalStoreContract('KVStore.approvals', () => new KVStore(fakeKV().kv).approvals);
@@ -170,7 +170,7 @@ describe('createAgent({ store: new KVStore(kv) })', () => {
   });
 });
 
-describe('agent.fork() with a KVStore (LOU-D43.2)', () => {
+describe('agent.fork() with a KVStore', () => {
   it('forks a run from its KV history, resumes the fork and compares the trajectories', async () => {
     const { kv } = fakeKV();
     const store = new KVStore(kv);
@@ -194,7 +194,7 @@ describe('agent.fork() with a KVStore (LOU-D43.2)', () => {
   });
 });
 
-describe('KVStore approvals: two decisions of one approval at once (Eve DUR-F9)', () => {
+describe('KVStore approvals: two decisions of one approval at once', () => {
   /** A KV whose every operation yields first, so two requests interleave like separate isolates. */
   function slowKV() {
     const fake = fakeKV();
@@ -229,7 +229,9 @@ describe('KVStore approvals: two decisions of one approval at once (Eve DUR-F9)'
       const results = await Promise.all([approvals.resolve('ap-1'), approvals.resolve('ap-1')]);
       expect(results.filter((record) => record !== null)).toHaveLength(1);
     }
-  });
+    // 30 trials of ~8 sequential jittered KV ops plus the 50 ms settle window: ~2 s on Linux, ~5.5 s on
+    // Windows, whose timers round a 0-3 ms delay up to its ~15.6 ms clock tick.
+  }, 30_000);
 
   it('a pause saved again after a resolve can be resolved again', async () => {
     const { kv, ttls } = fakeKV();

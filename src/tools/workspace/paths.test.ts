@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeWorkspacePath, WorkspaceError } from './paths';
+import { createDenyTest, normalizeAllowedPath, normalizeWorkspacePath, WorkspaceError } from './paths';
 import { globToRegExp } from './glob';
 
-describe('normalizeWorkspacePath (LOU-X6)', () => {
+describe('normalizeWorkspacePath', () => {
   it.each([
     ['src/a.ts', 'src/a.ts'],
     ['./src//a.ts', 'src/a.ts'],
@@ -57,7 +57,7 @@ describe('normalizeWorkspacePath (LOU-X6)', () => {
   });
 });
 
-describe('globToRegExp (LOU-X6)', () => {
+describe('globToRegExp', () => {
   it.each([
     ['*.ts', 'a.ts', true],
     ['*.ts', 'src/a.ts', false],
@@ -82,5 +82,43 @@ describe('globToRegExp (LOU-X6)', () => {
 
   it('rejects an unclosed brace with a clear error', () => {
     expect(() => globToRegExp('*.{js')).toThrow(/unclosed '\{'/);
+  });
+});
+
+describe('createDenyTest (consumer harness H1-2)', () => {
+  it.each([
+    ['.git', '.git'],
+    ['.git/config', '.git'],
+    ['a/.git/HEAD', '.git'],
+    ['.GIT/config', '.GIT'],
+    ['.Git', '.Git'],
+    ['.git./config', '.git.'],
+    ['.git /config', '.git '],
+  ])('denies %j (segment %j) on every platform', (path, segment) => {
+    expect(createDenyTest(['.git'], 'linux')(path)).toBe(segment);
+    expect(createDenyTest(['.git'], 'win32')(path)).toBe(segment);
+  });
+
+  it.each(['.', 'src/a.ts', '.gitignore', '.github/x', 'my.git/x', 'git/x'])('allows %j', (path) => {
+    expect(createDenyTest(['.git'], 'win32')(path)).toBeUndefined();
+  });
+
+  it('denies 8.3 short-name aliases on Windows only', () => {
+    for (const alias of ['GIT~1/config', 'git~2', 'GI4F2A~1/HEAD']) {
+      expect(createDenyTest(['.git'], 'win32')(alias)).toBeDefined();
+      expect(createDenyTest(['.git'], 'linux')(alias)).toBeUndefined();
+    }
+  });
+
+  it('denies nothing for an empty list', () => {
+    expect(createDenyTest([], 'win32')('.git/config')).toBeUndefined();
+  });
+
+  it('normalizeAllowedPath normalizes first, so ./, .. and backslashes cannot hide a denied segment', () => {
+    const isDenied = createDenyTest(['.git'], 'linux');
+    for (const path of ['./.git/config', 'a/../.git/config', '.git\\config', '.git/', 'x\\..\\.git']) {
+      expect(() => normalizeAllowedPath(path, isDenied)).toThrow(WorkspaceError);
+    }
+    expect(normalizeAllowedPath('./src//a.ts', isDenied)).toBe('src/a.ts');
   });
 });

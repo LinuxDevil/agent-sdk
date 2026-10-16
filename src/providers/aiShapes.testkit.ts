@@ -1,5 +1,5 @@
 /**
- * Test helper (LOU-D28f): the provider contract tests run on every `ai` major,
+ * Test helper: the provider contract tests run on every `ai` major,
  * so what differs between majors lives here and the tests assert one shape.
  *
  * - `mockLanguageModel()`: the right `MockLanguageModel*` for the installed

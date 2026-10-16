@@ -1,11 +1,11 @@
 /**
- * LOU-X3: hook handler return types. Existing hooks that return nothing still
+ * Hook handler return types. Existing hooks that return nothing still
  * type-check; outcomes are typed.
  */
 import { describe, it, expectTypeOf } from 'vitest';
 import type { AgentHook, PostToolCallOutcome, PreToolCallOutcome } from './hooks';
 
-describe('AgentHook return types (LOU-X3)', () => {
+describe('AgentHook return types', () => {
   it('accepts hooks that return nothing, sync or async', () => {
     const hooks: AgentHook[] = [
       { name: 'sync', preToolCall: () => {}, postToolCall: () => {} },

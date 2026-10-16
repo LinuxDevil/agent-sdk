@@ -32,7 +32,7 @@ describe('isEdgeTypeAllowed', () => {
     expect(isEdgeTypeAllowed('output', 'approval')).toBe(false);
   });
 
-  describe('LOU-T3: router edges', () => {
+  describe('router edges', () => {
     it('allows llm/tool to feed a router', () => {
       expect(isEdgeTypeAllowed('llm', 'router')).toBe(true);
       expect(isEdgeTypeAllowed('tool', 'router')).toBe(true);

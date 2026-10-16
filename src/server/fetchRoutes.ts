@@ -1,6 +1,6 @@
 /**
  * The `/chat` HTTP API of `lousho dev`, of the deployed node server and of the
- * Cloudflare Worker (LOU-D32, LOU-D14, LOU-D51), written once on the Fetch API:
+ * Cloudflare Worker, written once on the Fetch API:
  *
  *   GET  /health                         `ok`, never behind the bearer token
  *   POST /chat                           { sessionId, input } in, the turn streamed as SSE out
@@ -9,7 +9,7 @@
  *   GET  /chat/:sessionId                the session's transcript and pending approvals
  *   POST /chat/:sessionId/approvals/:id  { approved, note? } or { answer }, the continuation streamed
  *                                        (409 for a sign-in pause the user has not signed in to yet)
- *   GET  /oauth/callback                 N9b: where an OAuth provider redirects after sign-in; never behind
+ *   GET  /oauth/callback                 Where an OAuth provider redirects after sign-in; never behind
  *                                        the bearer token (its protection is the single-use `state`)
  *
  * `Request` in, `Response` out, and no `node:*` import (this file is bundled
@@ -31,10 +31,10 @@ import type { OAuthCompleteResult } from '../oauth/signIn';
 import { createAgentConfigOf, type SimpleAgent } from '../createAgent';
 import { claimSession, decodeParam, hostRefusal, postRefusal, releaseSession, sessionOwner } from './requestGuard';
 
-/** A1: what a caller wants to do with a session: read its transcript, send it a turn, or decide one of its approvals. */
+/** What a caller wants to do with a session: read its transcript, send it a turn, or decide one of its approvals. */
 export type SessionAction = 'read' | 'chat' | 'approve';
 
-/** A1: the input of `authorizeSession`. */
+/** The input of `authorizeSession`. */
 export interface SessionAccessRequest {
   /** The caller route auth accepted; `undefined` on a route without auth. */
   principal: Principal | undefined;
@@ -42,7 +42,7 @@ export interface SessionAccessRequest {
   action: SessionAction;
 }
 
-/** A1: the input of `authorizeApproval`. */
+/** The input of `authorizeApproval`. */
 export interface ApprovalAccessRequest {
   /** The caller route auth accepted; `undefined` on a route without auth. */
   principal: Principal | undefined;
@@ -52,7 +52,7 @@ export interface ApprovalAccessRequest {
   approval: PendingApproval;
 }
 
-/** A1: who may use which session and decide which approval over HTTP, and how much of an error a client sees; B4: what a client disconnect does to a turn. */
+/** Who may use which session and decide which approval over HTTP, and how much of an error a client sees; what a client disconnect does to a turn. */
 export interface ChatRoutesAccess {
   /**
    * Whether `principal` may `action` session `sessionId` (read it, send it a
@@ -88,7 +88,7 @@ export interface ChatRoutesAccess {
    */
   exposeErrors?: boolean;
   /**
-   * B4: what happens to a session turn when its client goes away mid-stream
+   * What happens to a session turn when its client goes away mid-stream
    * (a closed tab, a dropped connection). `'continue'` (default): the turn
    * runs to its end on the server and is saved to the session, so a tool
    * call that already ran (a refund, an email) is in the transcript and the
@@ -98,7 +98,7 @@ export interface ChatRoutesAccess {
    */
   onDisconnect?: 'continue' | 'abort';
   /**
-   * B4: keeps the host alive for a turn that outlives its client: called
+   * Keeps the host alive for a turn that outlives its client: called
    * with a promise that settles once the turn has finished and been saved.
    * Pass the platform's `waitUntil` on serverless hosts (`ctx.waitUntil` on
    * Cloudflare, `waitUntil` from `@vercel/functions`); a long-running Node
@@ -131,7 +131,7 @@ export interface ChatRoutesAccess {
 }
 
 /**
- * A1: the default `authorizeApproval`: the approval is decided by the caller
+ * The default `authorizeApproval`: the approval is decided by the caller
  * the paused run acts for (same `id`, `type`, `authenticator` and `issuer`).
  * A run without a principal, or a route without auth, accepts any caller.
  */
@@ -150,7 +150,7 @@ export interface ChatRoutesContext extends ChatRoutesAccess {
   /** Checkpoints the deprecated `{ message, sessionId }` run under its `sessionId` (needs a checkpoint store on the agent). */
   durableMessage?: boolean;
   /**
-   * N9b: called after `GET /oauth/callback` stored a token (or the user
+   * Called after `GET /oauth/callback` stored a token (or the user
    * declined), e.g. to continue a channel turn that paused on that sign-in.
    * Not awaited by the response.
    */
@@ -189,7 +189,7 @@ function jsonResponse(status: number, value: unknown, headers: Record<string, st
 
 const DONE_FRAME = 'event: done\ndata: {}\n\n';
 
-/** A1: what a client sees of an error unless `exposeErrors` is set. */
+/** What a client sees of an error unless `exposeErrors` is set. */
 const PUBLIC_ERROR_MESSAGE = 'The request failed. The server log has the details.';
 
 /**
@@ -208,7 +208,7 @@ function publicError({ name, message, code }: AgentEventError): AgentEventError 
 }
 
 /**
- * A1: `event` as a client may see it: provider error text (response bodies,
+ * `event` as a client may see it: provider error text (response bodies,
  * chat templates) stays in the server log unless the host exposes errors.
  */
 function publicEvent(ctx: ChatRoutesContext, event: AgentEvent): AgentEvent {
@@ -221,7 +221,7 @@ function publicEvent(ctx: ChatRoutesContext, event: AgentEvent): AgentEvent {
   return event;
 }
 
-/** A1: `run` with {@link publicEvent} applied; a failure it throws ends it with the `error` and `run.done` events of a generic error. */
+/** `run` with {@link publicEvent} applied; a failure it throws ends it with the `error` and `run.done` events of a generic error. */
 export async function* publicEvents(ctx: ChatRoutesContext, run: AsyncIterable<AgentEvent>): AsyncGenerator<AgentEvent> {
   if (ctx.exposeErrors) return yield* run;
   try {
@@ -232,13 +232,13 @@ export async function* publicEvents(ctx: ChatRoutesContext, run: AsyncIterable<A
 }
 const warnedLegacy = new Set<string>();
 
-/** B4: whether a client disconnect aborts the turn it was streaming (`onDisconnect: 'abort'`). */
+/** Whether a client disconnect aborts the turn it was streaming (`onDisconnect: 'abort'`). */
 export function disconnectAborts(access: ChatRoutesAccess): boolean {
   return access.onDisconnect === 'abort';
 }
 
 /**
- * B4: `run` for a client that may go away. When the consumer stops early (the
+ * `run` for a client that may go away. When the consumer stops early (the
  * response body is cancelled), `run` is not returned, which would abort the
  * turn: it is read to its end in the background, so the turn finishes and is
  * saved, and that read is handed to `waitUntil`. With `onDisconnect: 'abort'`
@@ -276,7 +276,7 @@ export function outliveClient(ctx: ChatRoutesAccess & { name: string }, run: Asy
 /**
  * Streams `events` as SSE (`data: <AgentEvent JSON>`, then `event: done`); a
  * failure becomes `error` + `run.done` events. Writing stops when the client
- * goes away (the request's signal, or the response body cancelled); B4: the
+ * goes away (the request's signal, or the response body cancelled); the
  * turn runs on and is saved ({@link outliveClient}), or with `onDisconnect:
  * 'abort'` it is aborted.
  */
@@ -323,7 +323,7 @@ async function readJson(request: Request): Promise<Record<string, unknown>> {
   return ((JSON.parse((await readBody(request)) || '{}') as Record<string, unknown> | null) ?? {}) as Record<string, unknown>;
 }
 
-/** The error status for a failed handler: 413 over the size cap, 400 for bad JSON, else 500 (A1: its message logged, not sent). */
+/** The error status for a failed handler: 413 over the size cap, 400 for bad JSON, else 500 (its message logged, not sent). */
 function failureResponse(ctx: ChatRoutesContext, error: unknown): Response {
   const status = error instanceof PayloadTooLargeError ? 413 : error instanceof SyntaxError ? 400 : 500;
   if (status !== 500 || ctx.exposeErrors) return jsonResponse(status, { error: (error as Error).message });
@@ -335,7 +335,7 @@ function failureResponse(ctx: ChatRoutesContext, error: unknown): Response {
 const ACTION_WORDS: Record<SessionAction, string> = { read: 'read', chat: 'continue', approve: 'decide approvals of' };
 
 /**
- * A1: the `403` for a caller `authorizeSession` refuses; `undefined` when it
+ * The `403` for a caller `authorizeSession` refuses; `undefined` when it
  * may go on. Without `authorizeSession` (and once route auth accepted a
  * caller), a turn claims an unclaimed session for its caller, and only that
  * caller may read or continue it after; a read claims nothing, so reading an
@@ -369,7 +369,7 @@ async function ownsSession(ctx: ChatRoutesContext, principal: Principal, session
   const owner = sessionOwner(agent, sessionId);
   if (owner !== undefined) return samePrincipal(owner, principal);
   if (await sessionStored(ctx, sessionId, session)) return false;
-  // Eve2-F1: the claim itself decides the race - it is atomic with the record,
+  // The claim itself decides the race - it is atomic with the record,
   // so a concurrent first touch that registered another owner first is refused
   // here instead of streaming a turn inside that principal's session.
   return !claim || claimSession(agent, sessionId, principal);
@@ -405,7 +405,7 @@ export function claimOnCommit(ctx: ChatRoutesContext, principal: Principal | und
     } finally {
       const agent = ctx.agent();
       if (await sessionStored(ctx, session.id, session)) {
-        // Eve2-F1: the claim taken before the turn can have been forgotten past
+        // The claim taken before the turn can have been forgotten past
         // the owner cap and taken by another principal while it ran; this
         // turn's transcript is then readable as theirs, so a lost re-claim
         // clears it again and the stream ends on a coded error, never a clean `done`.
@@ -437,7 +437,7 @@ const runChat: RouteHandler = async (request, ctx, _params, principal) => {
   const { sessionId, input, message } = await readJson(request);
   if (typeof sessionId === 'string' && Array.isArray(input) && input.length === 0) return jsonResponse(400, { error: "Request body's 'input' is empty: send the user's message" });
   if (typeof sessionId === 'string' && (typeof input === 'string' ? input : Array.isArray(input))) {
-    // Eve3-S5: the transcript is this session's, so client input is user content only -
+    // the transcript is this session's, so client input is user content only -
     // a caller-sent `system`, `assistant` or `tool` entry would be stored and replayed
     // to the model every turn (the /ui route was hardened the same way, Eve TOOLS-F9).
     // A content-part array has no roles: it is one user message and passes untouched.
@@ -465,17 +465,17 @@ const runChat: RouteHandler = async (request, ctx, _params, principal) => {
 };
 
 /**
- * A1: the pending approval `id` when it belongs to `session`, else
+ * The pending approval `id` when it belongs to `session`, else
  * `undefined`. A pause of this process names its session; one made in
  * another process (or a Worker isolate that is gone) is found through the
  * session's checkpoint, which names its pending approval.
  */
 async function approvalOf(agent: SimpleAgent, session: AgentSession, id: string): Promise<PendingApproval | undefined> {
-  // A stored pause no session of this process ran yet is listed without a sessionId (Eve TOOLS-F13): check its checkpoint.
+  // A stored pause no session of this process ran yet is listed without a sessionId: check its checkpoint.
   const live = (await agent.approvals.list()).find((candidate) => candidate.id === id && candidate.sessionId !== undefined);
   if (live) return live.sessionId === session.id ? live : undefined;
   const turn = await session.pending();
-  // Eve TOOLS-F12: a turn paused on several calls of one step waits on each of them.
+  // A turn paused on several calls of one step waits on each of them.
   if (turn?.status !== 'awaiting-approval' || !(turn.approvalIds ?? [turn.approvalId]).includes(id)) return undefined;
   // A store without `load()` cannot say whose call it is: the run then counts as having no principal.
   return (await agent.approvals.get(id)) ?? { id, toolCallId: '', toolName: '', args: {}, createdAt: '', sessionId: session.id };
@@ -499,8 +499,8 @@ function notPending(id: string): Response {
 
 /**
  * Reads a decision's stream up to its first event after `run.start`: a
- * decision that lost the race for the approval (A1) or approves a sign-in the
- * user has not finished (N9b) is a `409`; anything else is replayed in full.
+ * decision that lost the race for the approval or approves a sign-in the
+ * user has not finished is a `409`; anything else is replayed in full.
  */
 async function decisionGate(run: AsyncIterable<AgentEvent>): Promise<Response | AsyncIterable<AgentEvent>> {
   const iterator = run[Symbol.asyncIterator]();
@@ -536,13 +536,13 @@ const runApproval: RouteHandler = async (request, ctx, [sessionId, id], principa
   const forbidden = await sessionForbidden(ctx, principal, sessionId, 'approve', session);
   if (forbidden) return forbidden;
   const agent = ctx.agent();
-  // A1: only an approval of the session in the URL; another session's is as unknown as a decided one.
+  // Only an approval of the session in the URL; another session's is as unknown as a decided one.
   const approval = await approvalOf(agent, session, id);
   if (!approval) return notPending(id);
   if (!(await (ctx.authorizeApproval ?? callerOwnsApproval)({ principal, sessionId, approval }))) {
     return jsonResponse(403, { error: 'Not allowed to decide this approval', code: 'LOUSHO_APPROVAL_FORBIDDEN' });
   }
-  // Eve3-S6: a decision must match the pause's kind (the channel binding checks the same):
+  // a decision must match the pause's kind (the channel binding checks the same):
   // `answer` decides a question, `approved` a tool call - answering a tool approval must
   // not silently approve it. Checked after authorization, so a refused caller learns nothing of the pause's kind.
   const kind = approval.kind ?? 'tool';
@@ -553,10 +553,10 @@ const runApproval: RouteHandler = async (request, ctx, [sessionId, id], principa
     });
   }
   await bindRecovered(agent, session, id);
-  // LOU-D32.2: the continuation streams live (decided call, text deltas, a further pause, run.done).
-  // N10b: the caller route auth accepted is the approver (`ctx.approval.by`); the run keeps its own principal.
+  // The continuation streams live (decided call, text deltas, a further pause, run.done).
+  // The caller route auth accepted is the approver (`ctx.approval.by`); the run keeps its own principal.
   const controller = new AbortController();
-  // B4: by default the decided call runs to its end even when the client leaves (sseResponse).
+  // By default the decided call runs to its end even when the client leaves (sseResponse).
   if (disconnectAborts(ctx)) request.signal.addEventListener('abort', () => controller.abort());
   const run =
     typeof answer === 'string'
@@ -582,7 +582,7 @@ function signInPage(status: number, title: string, text: string): Response {
 }
 
 /**
- * N9b: `GET /oauth/callback?state&code` (or `&error`): finishes the sign-in
+ * `GET /oauth/callback?state&code` (or `&error`): finishes the sign-in
  * with `agent.oauth.complete()` and answers a small HTML page. An unknown,
  * used or expired `state` is 400. The page never shows a query value.
  */
@@ -617,7 +617,7 @@ const runTranscript: RouteHandler = async (_request, ctx, [sessionId], principal
   return (await sessionForbidden(ctx, principal, sessionId, 'read', session)) ?? jsonResponse(200, { sessionId, messages: await session.load(), pending: await session.pending() });
 };
 
-/** N9b: the sign-in callback, under any prefix (a proxy may mount the API below a path). */
+/** The sign-in callback, under any prefix (a proxy may mount the API below a path). */
 const OAUTH_CALLBACK = /^(?:\/.*)?\/oauth\/callback$/;
 
 /** Whether `request` is the OAuth callback: a browser redirect, so it carries no API token. */
@@ -626,7 +626,7 @@ function isOAuthCallback(request: Request): boolean {
 }
 
 /**
- * N9b: who is completing a sign-in, when the callback request happens to be
+ * Who is completing a sign-in, when the callback request happens to be
  * authenticated (e.g. a session cookie the auth list accepts); `undefined`
  * otherwise. Never a refusal: the callback is open, its `state` protects it.
  * An anonymous principal says nothing about the user, so it is not used.
@@ -648,8 +648,8 @@ const ROUTES: Array<[method: string, pattern: RegExp, handler: RouteHandler]> = 
 /**
  * Answers `request` when it is one of the `/chat` routes; resolves `undefined`
  * for any other request, so the host can serve its own routes. A failure before
- * streaming starts answers with a JSON error. `principal` (N10a) is the caller
- * the host's auth accepted; a new turn runs with it, and (N10b) a decision on
+ * streaming starts answers with a JSON error. `principal` is the caller
+ * the host's auth accepted; a new turn runs with it, and a decision on
  * an approval records it as the approver.
  */
 export async function handleChatFetch(request: Request, ctx: ChatRoutesContext, principal?: Principal): Promise<Response | undefined> {
@@ -668,7 +668,7 @@ export async function handleChatFetch(request: Request, ctx: ChatRoutesContext, 
   return undefined;
 }
 
-/** What guards the deployed API: a bearer token (`LOUSHO_API_TOKEN`), or (N10a) an auth entry or ordered list (docs/auth.md). */
+/** What guards the deployed API: a bearer token (`LOUSHO_API_TOKEN`), or an auth entry or ordered list (docs/auth.md). */
 export type ServeAuth = string | AuthFn | readonly AuthFn[];
 
 /**
@@ -677,12 +677,12 @@ export type ServeAuth = string | AuthFn | readonly AuthFn[];
  * answered here), then the `/chat` routes with the accepted principal, then 404.
  */
 export async function serveFetch(request: Request, ctx: ChatRoutesContext, auth?: ServeAuth): Promise<Response> {
-  // Eve CH-F16: an empty token fails closed, as on `createRouteHandler()`, instead of serving every route open.
+  // An empty token fails closed, as on `createRouteHandler()`, instead of serving every route open.
   if (auth === '') throw new SDKError('serveFetch(): `auth` is an empty string. Pass the token, an auth list, or undefined for open routes.', 'LOUSHO_AUTH_CONFIG_INVALID');
   if (request.method === 'GET' && new URL(request.url).pathname === '/health') return textResponse(200, 'ok');
   let principal: Principal | undefined;
   if (isOAuthCallback(request)) {
-    // N9b: a browser redirect carries no API token; an authenticated one still names who completes the sign-in.
+    // A browser redirect carries no API token; an authenticated one still names who completes the sign-in.
     principal = typeof auth === 'string' ? undefined : await callbackPrincipal(request, auth);
   } else if (auth !== undefined) {
     const outcome = await routeAuth(request, typeof auth === 'string' ? apiToken(auth) : auth);

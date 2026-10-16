@@ -64,7 +64,7 @@ describe('defineTool', () => {
       expect(() => defineTool(opts as never)).toThrow(message);
     });
 
-    // Eve TOOLS-F10: schemas no model can satisfy fail at definition, not on every call.
+    // Schemas no model can satisfy fail at definition, not on every call.
     it.each([
       ['zod 3 string root', z.string(), /'input' must be a z\.object\(\).*got string/],
       ['zod 3 array root', z.array(z.object({ a: z.string() })), /must be a z\.object\(\).*got array/],

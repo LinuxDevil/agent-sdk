@@ -1,14 +1,14 @@
 /**
- * LOU-V2: `AgentRun`, the handle `agent.stream()` / `AgentExecutor.stream()`
+ * `AgentRun`, the handle `agent.stream()` / `AgentExecutor.stream()`
  * return - an async iterable of {@link AgentEvent}s plus a `result` promise.
  *
- * LOU-D41: this module is the run's one event system. The AgentExecutor loop
+ * This module is the run's one event system. The AgentExecutor loop
  * reports everything through a {@link RunEventSink} (under the
  * {@link RUN_EVENTS} key of its options), including how one model step is
  * obtained (streamed, with `text.delta` per chunk). The sink turns it into
  * AgentEvents for the run's listeners: an AgentRun's buffer and
  * `onAgentEvent`. A run that is not iterated but has a listener (`send()`,
- * `execute({ onAgentEvent })`) gets a sink too, and (M9) streams its model
+ * `execute({ onAgentEvent })`) gets a sink too, and streams its model
  * calls as well (see {@link observeRun}).
  *
  * Backpressure: none. The run never waits for the consumer; events are
@@ -53,7 +53,7 @@ const MODEL_FINISH_REASONS: ReadonlySet<string> = new Set<GenerateResult['finish
   'other',
 ]);
 
-/** Eve CORE-F14: a provider's finish reason, or `'other'` when it is not one of the known ones. */
+/** A provider's finish reason, or `'other'` when it is not one of the known ones. */
 export function modelFinishReason(reason: unknown): GenerateResult['finishReason'] {
   return typeof reason === 'string' && MODEL_FINISH_REASONS.has(reason) ? (reason as GenerateResult['finishReason']) : 'other';
 }
@@ -87,7 +87,7 @@ export interface AgentRun<TObject = unknown> extends AsyncIterable<AgentEvent> {
    */
   readonly result: Promise<ExecutionResult<TObject>>;
   /**
-   * LOU-V9: adds user input to the running run. It joins the transcript at
+   * Adds user input to the running run. It joins the transcript at
    * the next safe point (after the current step's tool results, before the
    * next model call) and the run continues as if the user had typed it;
    * `input.queued` and `input.applied` events mark both moments. Returns
@@ -102,7 +102,7 @@ export interface AgentRun<TObject = unknown> extends AsyncIterable<AgentEvent> {
    */
   enqueue(input: AgentInput): EnqueueResult;
   /**
-   * LOU-V10: redirects the running run to `input`. When the model call in
+   * Redirects the running run to `input`. When the model call in
    * flight has not emitted text or tool calls yet, it is aborted, its partial
    * output discarded, and the run calls the model again with `input` appended
    * (`applied: 'immediate'`); otherwise `input` waits for the next safe point
@@ -125,11 +125,11 @@ export interface ToolSettled {
   toolName: string;
   result: unknown;
   error?: string;
-  /** LOU-X3: the hook whose `{ result }` outcome became this call's result. */
+  /** The hook whose `{ result }` outcome became this call's result. */
   replacedByHook?: string;
 }
 
-/** The listener a run's options can carry (LOU-D41), and whether it gets model calls streamed (M9). */
+/** The listener a run's options can carry, and whether it gets model calls streamed. */
 export type RunListeners = Pick<ExecuteOptions, 'onAgentEvent' | 'streamModelCalls'>;
 
 /**
@@ -140,7 +140,7 @@ export interface RunEventSink {
   /**
    * Whether the caller iterates the run (a `stream()` run). Output guardrails
    * then check every step's text, not only the final reply. `send()` and
-   * `execute()` with listeners are not iterated, even though (M9) their
+   * `execute()` with listeners are not iterated, even though their
    * model calls are streamed.
    */
   readonly iterated: boolean;
@@ -149,7 +149,7 @@ export interface RunEventSink {
   /** A top-level run reports one `run.start`, however often it is (re)started. */
   runStart(agent: { id?: string; name: string }): void;
   textDone(text: string, stepUsage?: StepUsage): void;
-  /** N14: `parentToolCallId` for an inner call of a `run_code` script (also on the next two). */
+  /** `parentToolCallId` for an inner call of a `run_code` script (also on the next two). */
   toolStart(toolCall: ToolCall, parentToolCallId?: string): void;
   /**
    * The call this run was resumed for (`tool.resume`): it already had its
@@ -157,7 +157,7 @@ export interface RunEventSink {
    * call keeps exactly one `tool.start` across a pause.
    */
   toolResume(toolCall: ToolCall): void;
-  /** N13b: a snapshot a generator tool yielded (`tool.partial`). */
+  /** A snapshot a generator tool yielded (`tool.partial`). */
   toolPartial(toolCallId: string, toolName: string, output: unknown, parentToolCallId?: string): void;
   toolSettled(outcome: ToolSettled, parentToolCallId?: string): void;
   error(error: unknown): void;
@@ -169,28 +169,28 @@ export interface RunEventSink {
   /** `finishReason` overrides the step's own (the model's) finish reason. */
   stepDone(step: number, finishReason?: ExecutionFinishReason | 'steered'): void;
   approvalRequested(pending: PendingApproval): void;
-  /** LOU-X2: a tool call's permission decision. */
+  /** A tool call's permission decision. */
   permissionDecision(entry: PermissionDecisionEntry): void;
-  /** LOU-V6: a `limits` budget tripped. */
+  /** A `limits` budget tripped. */
   budgetExceeded(budget: BudgetExceeded): void;
-  /** LOU-V9: an input was queued (LOU-V10: or steered), then applied before the model call of `step`. */
+  /** An input was queued (or steered), then applied before the model call of `step`. */
   inputQueued(input: QueuedInput): void;
   inputApplied(id: string, step: number): void;
-  /** LOU-X4: a guardrail blocked or rewrote. */
+  /** A guardrail blocked or rewrote. */
   guardrail(event: GuardrailTrip & { type: 'guardrail.tripped' | 'guardrail.rewrote' }): void;
-  /** LOU-W3.2: an event a hook emits (`GenerateHookContext.emit`). */
+  /** An event a hook emits (`GenerateHookContext.emit`). */
   hookEvent(event: HookEventPayload): void;
-  /** LOU-W9.2: the resuming agent differs from the one that saved the run. */
+  /** The resuming agent differs from the one that saved the run. */
   agentDrift(drift: AgentDrift): void;
-  /** N6: the run handed off to another agent. */
+  /** The run handed off to another agent. */
   handoff(handoff: { from: string; to: string; toolCallId: string }): void;
   /**
    * Obtains one model step - streamed when the provider can; `onOutput` before its first text or tool call is reported.
-   * N5b: with `hold`, the step's `text.delta`, `reasoning.*` and provider-run tool events wait for it: released
+   * With `hold`, the step's `text.delta`, `reasoning.*` and provider-run tool events wait for it: released
    * in order when it resolves `true`, dropped when `false`.
    */
   generate(provider: LLMProvider, request: GenerateOptions, onOutput?: () => void, hold?: Promise<boolean>, onText?: (text: string) => void): Promise<GenerateResult>;
-  /** LOU-Y1: the sink for a sub-agent's run, whose events carry `subagent`. */
+  /** The sink for a sub-agent's run, whose events carry `subagent`. */
   forSubagent(subagent: SubagentInfo): RunEventSink;
 }
 
@@ -213,7 +213,7 @@ export function runEventsOf(options: object): RunEventSink | undefined {
   return (options as StreamingExecuteOptions)[RUN_EVENTS];
 }
 
-/** N13b: where a run's generator tools report their snapshots - its sink's `tool.partial` - when the run has a sink. */
+/** Where a run's generator tools report their snapshots - its sink's `tool.partial` - when the run has a sink. */
 export function partialSink(options: object): ((toolCallId: string, toolName: string, output: unknown) => void) | undefined {
   const sink = runEventsOf(options);
   return sink && ((toolCallId, toolName, output) => sink.toolPartial(toolCallId, toolName, output));
@@ -242,10 +242,11 @@ function toEventUsage(usage: {
   totalTokens: number;
   estimated: boolean;
   costUsd?: number;
+  costPartial?: boolean;
   modelCalls?: number;
   hostedToolCalls?: Partial<Record<string, number>>;
 }): AgentEventUsage {
-  const { inputTokens, outputTokens, totalTokens, estimated, costUsd, modelCalls, hostedToolCalls } = usage;
+  const { inputTokens, outputTokens, totalTokens, estimated, costUsd, costPartial, modelCalls, hostedToolCalls } = usage;
   return {
     promptTokens: inputTokens,
     completionTokens: outputTokens,
@@ -254,6 +255,7 @@ function toEventUsage(usage: {
     outputTokens,
     estimated,
     ...(costUsd !== undefined && { costUsd }),
+    ...(costPartial && { costPartial: true }),
     ...(modelCalls !== undefined && { modelCalls }),
     ...(hostedToolCalls && Object.keys(hostedToolCalls).length > 0 && { hostedToolCalls: { ...hostedToolCalls } }),
   };
@@ -269,7 +271,7 @@ function toJsonValue(value: unknown): unknown {
   }
 }
 
-/** A finished model step's finish reason and measured usage (LOU-V5). */
+/** A finished model step's finish reason and measured usage. */
 type MeasuredStep = { finishReason: GenerateResult['finishReason']; usage: Usage; estimated: boolean; costUsd?: number };
 
 /** `run.done` of a finished run. */
@@ -291,12 +293,12 @@ class RunEvents {
   private started = false;
   private readonly listeners = new Set<(event: AgentEvent) => void>();
   private readonly toolStarts = new Map<string, number>();
-  /** N13b: how many snapshots each running call has yielded (keyed like `toolStarts`). */
+  /** How many snapshots each running call has yielded (keyed like `toolStarts`). */
   private readonly partials = new Map<string, number>();
 
   /**
    * `iterated`: the caller iterates a `stream()` (see {@link RunEventSink.iterated}).
-   * `streamModelCalls` (M9): each model call is streamed when the provider
+   * `streamModelCalls`: each model call is streamed when the provider
    * can, so its text arrives as several `text.delta`; otherwise each step is
    * generated whole and its text is one `text.delta`.
    */
@@ -307,8 +309,8 @@ class RunEvents {
   }
 
   /**
-   * Sends an event to the listeners; `subagent` tags one of a sub-agent's run
-   * (LOU-Y1). A sub-agent's `run.start`/`run.done` are internal: they mark
+   * Sends an event to the listeners; `subagent` tags one of a sub-agent's run.
+   * A sub-agent's `run.start`/`run.done` are internal: they mark
    * the sub-agent's own run, not the top-level one, so they are never built
    * and never reach a listener (and `seq` does not move for them).
    */
@@ -325,7 +327,7 @@ class RunEvents {
     } as AgentEvent;
     if (!subagent) this.started ||= payload.type === 'run.start';
     if (!subagent) this.closed = payload.type === 'run.done';
-    // Eve CORE-F2: a listener is the caller's telemetry; a throw in it must not fail a run whose tools already ran.
+    // A listener is the caller's telemetry; a throw in it must not fail a run whose tools already ran.
     for (const listener of this.listeners) {
       try {
         listener(event);
@@ -355,7 +357,7 @@ class RunEvents {
 
   private toolBegan(type: 'tool.start' | 'tool.resume', toolCall: ToolCall, subagent?: SubagentInfo, parent?: string): void {
     this.toolStarts.set(toolStartKey(toolCall.id, subagent), Date.now());
-    // N13b: a call that runs again (after a sign-in, or on a resume) counts its snapshots from 0.
+    // A call that runs again (after a sign-in, or on a resume) counts its snapshots from 0.
     this.partials.delete(toolStartKey(toolCall.id, subagent));
     const decoded = decodeToolArguments(toolCall.function.arguments);
     const args = decoded.ok ? decoded.value : {};
@@ -365,7 +367,7 @@ class RunEvents {
         toolCallId: toolCall.id,
         toolName: toolCall.function.name,
         args: (typeof args === 'object' && args !== null ? args : {}) as Record<string, unknown>,
-        // F7: the text the model sent, when it was not valid JSON as sent.
+        // The text the model sent, when it was not valid JSON as sent.
         ...((!decoded.ok || decoded.repaired) && { rawArgs: String(toolCall.function.arguments) }),
         ...parentOf(parent),
       },
@@ -373,7 +375,7 @@ class RunEvents {
     );
   }
 
-  /** N13b: `tool.partial`, the snapshot JSON-round-tripped like `tool.done`'s result. */
+  /** `tool.partial`, the snapshot JSON-round-tripped like `tool.done`'s result. */
   private toolPartial(toolCallId: string, toolName: string, output: unknown, subagent?: SubagentInfo, parent?: string): void {
     const key = toolStartKey(toolCallId, subagent);
     const index = this.partials.get(key) ?? 0;
@@ -409,7 +411,7 @@ class RunEvents {
     );
   }
 
-  /** N1a: a hosted call the provider started: `tool.start` with `executedBy: 'provider'`. */
+  /** A hosted call the provider started: `tool.start` with `executedBy: 'provider'`. */
   private hostedStarted(call: HostedToolCall, subagent?: SubagentInfo): void {
     this.toolStarts.set(toolStartKey(call.id, subagent), Date.now());
     const args = toJsonValue(call.args);
@@ -417,7 +419,7 @@ class RunEvents {
     this.emit({ ...event, args: (typeof args === 'object' && args !== null && !Array.isArray(args) ? args : {}) as Record<string, unknown> }, subagent);
   }
 
-  /** N1a: a hosted call the provider finished: `tool.done` (result capped), or `tool.error` when it failed. */
+  /** A hosted call the provider finished: `tool.done` (result capped), or `tool.error` when it failed. */
   private hostedSettled(call: HostedToolCall, subagent?: SubagentInfo): void {
     const key = toolStartKey(call.id, subagent);
     if (!this.toolStarts.has(key)) this.hostedStarted(call, subagent);
@@ -432,7 +434,7 @@ class RunEvents {
   }
 
   /**
-   * The sink for the top-level run, or (LOU-Y1) for a sub-agent's run, whose
+   * The sink for the top-level run, or for a sub-agent's run, whose
    * events carry `subagent`. A sub-agent's approval request is reported by
    * the top-level run it pauses, so its own sink does not emit one.
    */
@@ -485,10 +487,10 @@ class RunEvents {
           toolCallId: pending.toolCallId,
           toolName: pending.toolName,
           args: toJsonValue(pending.args) as Record<string, unknown>,
-          // LOU-X9: an `ask_question` call carries its question.
+          // An `ask_question` call carries its question.
           ...(pending.kind && { kind: pending.kind }),
           ...(pending.question && { question: pending.question }),
-          // N9b: the link only (never the declined flag, which a later callback sets).
+          // The link only (never the declined flag, which a later callback sets).
           ...(pending.signIn && { signIn: { provider: pending.signIn.provider, ...(pending.signIn.displayName !== undefined && { displayName: pending.signIn.displayName }), url: pending.signIn.url } }),
           // TTL: the pause's deadline, so a UI can show it.
           ...(pending.expiresAt && { expiresAt: pending.expiresAt }),
@@ -512,7 +514,7 @@ class RunEvents {
         const generated = settleHostedFinish(await this.generateStep(provider, call, subagent, onOutput, hold, onText));
         const measured = measureUsage(generated.servedBy?.model ?? request.model ?? provider.name, request.messages, generated);
         const measuredStep = { finishReason: generated.finishReason, ...measured, usage: measured.usage };
-        // N5b: a step a parallel input guardrail blocked reports only the usage the provider reported.
+        // A step a parallel input guardrail blocked reports only the usage the provider reported.
         if (!hold || !measured.estimated) stepResult = measuredStep;
         else void hold.then((passed) => passed && (stepResult = measuredStep));
         return generated;
@@ -521,7 +523,7 @@ class RunEvents {
     };
   }
 
-  /** Reports what `withRetry()` / `withFallback()` do with this run's model calls (LOU-V7.2). */
+  /** Reports what `withRetry()` / `withFallback()` do with this run's model calls. */
   private providerEvents(subagent: SubagentInfo | undefined): ProviderEventListener {
     return {
       retry: ({ attempt, maxRetries, delayMs, error, provider }) => {
@@ -529,8 +531,18 @@ class RunEvents {
         const eventError = { message, ...(category !== 'unknown' && { category }) };
         this.emit({ type: 'provider.retry', attempt, maxRetries, delayMs, error: eventError, provider }, subagent);
       },
-      fallback: ({ from, to, error }) =>
-        this.emit({ type: 'provider.fallback', from, to, error: { message: compactProviderError(error).error } }, subagent),
+      fallback: ({ from, to, fromModel, toModel, error }) =>
+        this.emit(
+          {
+            type: 'provider.fallback',
+            from,
+            to,
+            ...(fromModel !== undefined && { fromModel }),
+            ...(toModel !== undefined && { toModel }),
+            error: { message: compactProviderError(error).error },
+          },
+          subagent
+        ),
     };
   }
 
@@ -544,7 +556,7 @@ class RunEvents {
     onText?: (text: string) => void
   ): Promise<GenerateResult> {
     const held = heldUntil(hold);
-    // Eve CORE-F15: a provider that ignores an abort may stream on after the run stopped waiting; that output is not reported.
+    // A provider that ignores an abort may stream on after the run stopped waiting; that output is not reported.
     const report = (event: () => void) => {
       if (!request.signal?.aborted) held(event);
     };
@@ -553,7 +565,7 @@ class RunEvents {
       onTextDelta: (text) => {
         onText?.(text);
         report(() => this.emit({ type: 'text.delta', text }, subagent));
-        // Eve CORE-F13: an `output` run's reply as parsed so far, when it changed.
+        // An `output` run's reply as parsed so far, when it changed.
         const object = objectDelta?.(text);
         if (object !== undefined) report(() => this.emit({ type: 'object.delta', object: object.value }, subagent));
       },
@@ -566,11 +578,11 @@ class RunEvents {
       return generateViaStream(provider, request, sink);
     }
     const generated = await provider.generate(request);
-    // LOU-V10: a call steered away from while it ran reports nothing.
+    // A call steered away from while it ran reports nothing.
     request.signal?.throwIfAborted();
     onOutput?.();
     reportReasoning(generated, sink);
-    // N1a: the provider's calls, in call order, before the text that follows them.
+    // The provider's calls, in call order, before the text that follows them.
     for (const hosted of generated.hostedToolCalls ?? []) this.hostedSettled(hosted, subagent);
     if (generated.text) sink.onTextDelta(generated.text);
     return generated;
@@ -578,7 +590,7 @@ class RunEvents {
 }
 
 /**
- * Eve CORE-F13: takes a step's text deltas and returns the reply parsed so
+ * Takes a step's text deltas and returns the reply parsed so
  * far (`{ value }`) when it differs from the last one returned, else undefined.
  */
 function partialObjects(): (delta: string) => { value: unknown } | undefined {
@@ -596,7 +608,7 @@ function partialObjects(): (delta: string) => { value: unknown } | undefined {
 }
 
 /**
- * N5b: reports events at once without `hold`; with it, holds them in order
+ * Reports events at once without `hold`; with it, holds them in order
  * until it settles: released when it resolves `true` (and later ones then go
  * out at once), dropped for good when `false`.
  */
@@ -617,7 +629,7 @@ function heldUntil(hold: Promise<boolean> | undefined): (report: () => void) => 
   };
 }
 
-/** N14: the `parentToolCallId` field of an inner call's tool event (none for a direct call). */
+/** The `parentToolCallId` field of an inner call's tool event (none for a direct call). */
 function parentOf(parent: string | undefined): { parentToolCallId?: string } {
   return parent === undefined ? {} : { parentToolCallId: parent };
 }
@@ -636,7 +648,7 @@ function toolStartKey(toolCallId: string, subagent: SubagentInfo | undefined): s
 type WiredOptions = Pick<ExecuteOptions, 'signal' | 'inputQueue'>;
 
 /**
- * LOU-V14: streams a resume after an approval. `resume` runs it with the
+ * Streams a resume after an approval. `resume` runs it with the
  * options `wire()` returns, which carry the run's signal, input queue and
  * event sink. The resume reports its own `run.start` before the decided
  * call; the continuation's is dropped (one per top-level run).
@@ -653,12 +665,12 @@ export function streamResumed(
 }
 
 /**
- * LOU-D41: runs `run` with the run's event sink in its options - the
+ * Runs `run` with the run's event sink in its options - the
  * stream's, or a new one when `options` has listeners - after adding
  * `options`' listeners to it, then reports how it ended (`run.done`, or
  * `error` and `run.done`). Without a sink or listeners, just runs it.
  *
- * M9: a new sink (listeners, no iteration) streams the run's model calls
+ * A new sink (listeners, no iteration) streams the run's model calls
  * like `stream()` does, unless `options.streamModelCalls` is `false`; it is
  * not `iterated`, so output guardrails behave as on a run without listeners.
  */
@@ -769,7 +781,7 @@ export function startAgentRun(start: RunStarter, signal?: AbortSignal, inputQueu
 }
 
 /**
- * Eve CORE-F10: `run` whose iterator also rethrows, after the last event, the
+ * `run` whose iterator also rethrows, after the last event, the
  * error that failed the run (`run.done { finishReason: 'error' }`): the one
  * `run.result` rejects with, the same `send()` would throw. An early `break`,
  * an abort and a pause for approval end it normally.

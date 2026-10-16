@@ -1,5 +1,5 @@
 /**
- * Audit C4: a rejected summary is retried once the transcript has grown, the
+ * A rejected summary is retried once the transcript has grown, the
  * summarizer's call is counted in the run (usage, span, budgets), the events
  * report the strategy that ran and the one applied, `createAgent({ compaction })`
  * takes `onCompaction`, and pruned results leave a stub naming the call.
@@ -47,7 +47,7 @@ function transcript(rounds: number): Message[] {
 const ofType = <T extends AgentEvent['type']>(events: AgentEvent[], type: T) =>
   events.filter((e): e is AgentEventOf<T> => e.type === type);
 
-describe('a rejected summary is retried once the transcript has grown (C4a)', () => {
+describe('a rejected summary is retried once the transcript has grown', () => {
   it('prunes only while the transcript is small, then summarizes again once it has doubled', async () => {
     const summarizer = mockModel([BIG], { onExhausted: 'repeat-last' });
     const infos: CompactionInfo[] = [];
@@ -78,7 +78,7 @@ describe('a rejected summary is retried once the transcript has grown (C4a)', ()
   });
 });
 
-describe('the summarizer call is part of the run (C4b)', () => {
+describe('the summarizer call is part of the run', () => {
   it('adds its usage to result.usage (byModel, modelCalls) and gives it a chat span tagged compaction', async () => {
     const model = mockModel(fourPages(usage(100, 10)));
     const summarizer = mockModel([{ text: 'Read pages 1 and 2.', ...usage(3_000, 400) }], { onExhausted: 'repeat-last', defaultModel: 'summarizer-model' });
@@ -119,7 +119,7 @@ describe('the summarizer call is part of the run (C4b)', () => {
   });
 });
 
-describe('compaction events and options (C4c, C4d)', () => {
+describe('compaction events and options', () => {
   it('compaction.start and compaction.done name the same strategy; done adds appliedStrategy when the summary was rejected', async () => {
     const summarizer = mockModel(['x'.repeat(20_000)], { onExhausted: 'repeat-last' });
     const infos: CompactionInfo[] = [];
@@ -164,7 +164,7 @@ describe('compaction events and options (C4c, C4d)', () => {
   });
 });
 
-describe('pruned results leave a stub naming the call (C4e)', () => {
+describe('pruned results leave a stub naming the call', () => {
   it('names the tool and its arguments and says the result was already seen', async () => {
     const { messages } = await compactMessages(transcript(3), { protectedTokens: 0, contextWindow: 100_000 });
     const stub = textOf(messages[3]);

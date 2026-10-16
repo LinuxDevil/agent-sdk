@@ -1,5 +1,5 @@
 /**
- * Agent fingerprint (LOU-W9.2): a short, stable summary of the run-relevant
+ * Agent fingerprint: a short, stable summary of the run-relevant
  * parts of an agent, saved in every checkpoint and approval snapshot. A resume
  * compares it with the resuming agent's, so a deploy that renamed a tool or
  * changed the model is noticed instead of silently continuing the old run.
@@ -59,7 +59,7 @@ async function shortHash(text: string): Promise<string> {
 
 /**
  * The fingerprint of `agent` (as configured, before skills or sub-agents) running on `provider` with `toolRegistry`.
- * N1a: hosted tools count as tools, hashed by their type and options, so a resume with another set reports drift.
+ * Hosted tools count as tools, hashed by their type and options, so a resume with another set reports drift.
  */
 export async function fingerprintOf(
   agent: AgentConfig,

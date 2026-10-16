@@ -1,5 +1,5 @@
 /**
- * LOU-U1: the executor must send the right `model` to provider.generate().
+ * The executor must send the right `model` to provider.generate().
  * Precedence: agent.settings.model > provider's configured model > nothing
  * (the provider then applies its own built-in default). Never a hard-coded
  * 'gpt-4'.

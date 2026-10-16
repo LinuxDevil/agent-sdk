@@ -8,7 +8,7 @@ function fakeSandbox(run: (cmd: string, args: string[], opts?: SandboxRunOptions
   return sandbox;
 }
 
-describe('SandboxShell (LOU-X6)', () => {
+describe('SandboxShell', () => {
   it('runs the command as sh -c in the configured cwd, with only the given env', async () => {
     const sandbox = fakeSandbox(async () => ({ stdout: 'ok', stderr: '', exitCode: 0 }));
     const shell = new SandboxShell(sandbox, { cwd: '/work/project/' });
@@ -30,7 +30,7 @@ describe('SandboxShell (LOU-X6)', () => {
     expect(sandbox.run).toHaveBeenLastCalledWith('sh', ['-c', 'ls'], { cwd: 'sub', env: {}, inheritEnv: false, timeoutMs: undefined });
   });
 
-  it('passes only set values and allowed host names, never planted secrets (LOU-X11)', async () => {
+  it('passes only set values and allowed host names, never planted secrets', async () => {
     Object.assign(process.env, { FAKE_SECRET_FOR_TEST: 'fake-secret-x11', FAKE_ALLOWED_FOR_TEST: 'allowed-x11' });
     try {
       const sandbox = fakeSandbox(async () => ({ stdout: '', stderr: '', exitCode: 0 }));

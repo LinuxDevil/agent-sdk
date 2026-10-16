@@ -1,10 +1,10 @@
 /**
- * Slack alert tool (LOU-J5)
+ * Slack alert tool
  *
  * Posts an alert message to a Slack channel via an Incoming Webhook, using
  * Slack's Block Kit format with a single interactive "Fix it" button whose
  * `value` carries an approvalId. Clicking that button is meant to resolve a
- * REAL LOU-C ApprovalGate PendingApproval (see resumeAfterApproval() in
+ * REAL ApprovalGate PendingApproval (see resumeAfterApproval() in
  * src/execution/resume.ts, and examples/ops-pipeline/slackInteractions.ts
  * for the interaction-callback route that wires the button click back to
  * it) - this tool itself only sends the message; it does not bypass or
@@ -12,7 +12,7 @@
  *
  * Built with `defineTool()`, like src/tools/built-in/http.ts.
  *
- * ## Env var convention (LOU-F8 style)
+ * ## Env var convention
  *
  * The webhook URL is read from `SLACK_WEBHOOK_URL` by default - following
  * the same "credential lives in an env var named after the provider"
@@ -132,7 +132,7 @@ export async function postSlackAlert(
 
 /**
  * Same as postSlackAlert(), but the outbound webhook POST is routed through
- * `sandbox` (LOU-K2) via sandboxHttpFetch() rather than calling `fetch`
+ * `sandbox` via sandboxHttpFetch() rather than calling `fetch`
  * directly in this process.
  */
 export async function postSlackAlertViaSandbox(
@@ -173,7 +173,7 @@ export async function postSlackAlertViaSandbox(
 
 /**
  * Creates the Slack alert ToolDescriptor. Requires {channel, message,
- * approvalId} - `approvalId` is the id of a REAL LOU-C PendingApproval
+ * approvalId} - `approvalId` is the id of a REAL PendingApproval
  * (see ApprovalGate.ts) that the "Fix it" button, once clicked, resolves
  * via resumeAfterApproval().
  */
@@ -192,7 +192,7 @@ export function createSlackTool(options: SlackToolOptions = {}): ToolDescriptor 
       // `?.`: direct callers have historically passed no context object.
       return postSlackAlert(channel, message, approvalId, options, ctx?.abortSignal);
     },
-    // LOU-K2: this tool POSTs to a webhook URL read from an env var /
+    // This tool POSTs to a webhook URL read from an env var /
     // options (an external endpoint, not something the model chooses
     // directly, but still a real outbound network call) - route it through
     // executeToolWithSandboxGuard()'s sandboxExecute() path. execute()

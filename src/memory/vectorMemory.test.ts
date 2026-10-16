@@ -1,4 +1,4 @@
-/** N15: inMemoryVectorMemory, hashEmbedder, and recall by meaning in an agent run. */
+/** InMemoryVectorMemory, hashEmbedder, and recall by meaning in an agent run. */
 import { describe, expect, it } from 'vitest';
 import { createAgent } from '../createAgent';
 import { hashEmbedder, mockModel } from '../testing';

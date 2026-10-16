@@ -4,7 +4,7 @@
  * `agent.stream()`. Run with `npm run test:live -- hostedTools.openrouter`.
  * Records `__fixtures__/cassettes/n1b-openrouter-web-search.json`, which
  * hostedTools.openrouter.replay.test.ts replays offline. About 0.007 USD per
- * search (Exa) plus tokens; N1b's cap is 0.10 USD.
+ * search (Exa) plus tokens; the cap is 0.10 USD.
  */
 
 import { describe, expect, it } from 'vitest';

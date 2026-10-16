@@ -1,5 +1,5 @@
 /**
- * M5b: where Agent Forge keeps run traces, and how it reads them back.
+ * Where Agent Forge keeps run traces, and how it reads them back.
  *
  * Every run writes the SDK's trace files (`fileTraceExporter`, the same
  * format `lousho traces` reads) to `<baseDir>/.lousho/agents/<agentId>/traces`.

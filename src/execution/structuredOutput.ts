@@ -1,5 +1,5 @@
 /**
- * Structured output (LOU-V4): what a run with `ExecuteOptions.output` adds
+ * Structured output: what a run with `ExecuteOptions.output` adds
  * to the request (an instruction in the system prompt and a
  * `responseFormat` hint), and the parse/validate/repair of its final reply.
  */
@@ -17,7 +17,7 @@ export interface OutputError {
    * `'truncated'` when the reply was cut off at the `maxTokens` limit (its
    * `finishReason` was `'length'`) before the JSON was complete: no repair
    * call is made, since it would be cut off the same way - raise
-   * `modelSettings.maxTokens` (Eve CORE-F12). `'invalid'` otherwise.
+   * `modelSettings.maxTokens`. `'invalid'` otherwise.
    */
   kind: 'invalid' | 'truncated';
   /** Model-readable summary, e.g. `The reply does not match the output schema: 1 issue (city: Required)`. */
@@ -28,7 +28,7 @@ export interface OutputError {
 
 /**
  * `ExecuteOptions.output` / `createAgent({ output })` as an options object
- * instead of a bare schema (audit invoice F12). `promptSchema: false` leaves
+ * instead of a bare schema. `promptSchema: false` leaves
  * the JSON Schema out of the system prompt: it is sent only on
  * `GenerateOptions.responseFormat`, so a provider that enforces it no longer
  * pays for the schema twice (~1k prompt tokens a call on a large one). Keep
@@ -91,7 +91,7 @@ function isObjectSchemaNode(node: Record<string, unknown>): boolean {
 
 /**
  * `schema`, with `additionalProperties: false` on every object node that
- * does not set it (LOU-R7): OpenAI-compatible strict structured-output
+ * does not set it: OpenAI-compatible strict structured-output
  * endpoints reject an object schema without it. zod 3's converter already
  * emits it; zod 4's `toJSONSchema` does not - a plain `z.object` (the
  * documented way) produced an unclosable schema. An explicit
@@ -99,7 +99,7 @@ function isObjectSchemaNode(node: Record<string, unknown>): boolean {
  * `record`) is left alone - it says what the author meant.
  *
  * Strict endpoints also require `required` to list every key of
- * `properties` (audit A6): each optional property is made required and
+ * `properties`: each optional property is made required and
  * nullable instead, and {@link dropOptionalNulls} turns the model's `null`
  * back into an absent key before validation.
  */
@@ -130,7 +130,7 @@ function closeObjectSchemas(node: unknown, root: unknown = node): void {
   for (const [member, value] of Object.entries(schema)) closeMember(member, value, root);
 }
 
-/** Every key of `schema.properties` in `required`; each one that was optional also accepts `null` (audit A6). */
+/** Every key of `schema.properties` in `required`; each one that was optional also accepts `null`. */
 function requireEveryProperty(schema: Record<string, unknown>, root: unknown): void {
   const properties = schema.properties;
   if (typeof properties !== 'object' || properties === null || Array.isArray(properties)) return;
@@ -163,7 +163,7 @@ function admitsNull(node: unknown, root: unknown, refs: ReadonlySet<string> = ne
 /**
  * Removes from `value` (parsed JSON, in place) each `null` that the strict
  * schema allowed only because {@link requireEveryProperty} made an optional
- * property nullable (audit A6). `node` is the unnormalized schema: a key it
+ * property nullable. `node` is the unnormalized schema: a key it
  * leaves out of `required` whose own schema rejects `null` is deleted, so
  * the user's `.optional()` schema sees it absent. Walks nested objects,
  * array items, combinator branches and local `$ref`s.
@@ -199,18 +199,18 @@ function dropOptionalNulls(value: unknown, node: unknown, root: unknown, refs: R
 interface OutputJsonSchemas {
   strict: Record<string, unknown>;
   original: Record<string, unknown>;
-  /** The nodes of `strict` rewritten for strict endpoints (Eve PROV-F1), which a reply is decoded through. */
+  /** The nodes of `strict` rewritten for strict endpoints, which a reply is decoded through. */
   shapes: StrictShapes;
 }
 
 /**
  * The schema as JSON Schema, computed once per schema: `z.toJSONSchema` for
- * zod 4 (LOU-D29), the `ai` SDK's zod converter for zod 3. In the copy sent
- * to the model, object nodes are closed (`additionalProperties: false`,
- * LOU-R7) and list every property in `required` (audit A6) for strict
+ * zod 4, the `ai` SDK's zod converter for zod 3. In the copy sent
+ * to the model, object nodes are closed (`additionalProperties: false`)
+ * and list every property in `required` for strict
  * structured-output endpoints. Shapes strict endpoints reject (`oneOf`,
- * records, tuples, a root that is not an object) are then rewritten (Eve
- * PROV-F1, see `strictShapes.ts`).
+ * records, tuples, a root that is not an object) are then rewritten
+ * (see `strictShapes.ts`).
  */
 function jsonSchemasOf(schema: StandardSchemaV1): OutputJsonSchemas {
   let json = jsonSchemas.get(schema);
@@ -228,7 +228,7 @@ function jsonSchemasOf(schema: StandardSchemaV1): OutputJsonSchemas {
 }
 
 /**
- * Audit invoice F8: a zod 4 `z.date()` has no JSON form - it was sent as
+ * A zod 4 `z.date()` has no JSON form - it was sent as
  * `{}` and no JSON reply could ever validate it. Throws a
  * ConfigurationError naming each such field.
  */
@@ -260,7 +260,7 @@ function jsonSchemaOf(schema: StandardSchemaV1): Record<string, unknown> {
 /**
  * The system-prompt block that asks for the final answer as JSON matching
  * `schema`. An `output` spec's `promptSchema: false` leaves the schema itself
- * out (audit invoice F12): the ask to answer with only JSON stays, the copy
+ * out: the ask to answer with only JSON stays, the copy
  * `responseFormat` already carries does not.
  */
 export function outputInstruction(output: StandardSchemaV1 | OutputSpec): string {
@@ -347,7 +347,7 @@ function tryParse(text: string): { value: unknown } | undefined {
 }
 
 /**
- * The JSON values a final reply holds, best first (audit log F8): the whole
+ * The JSON values a final reply holds, best first: the whole
  * reply (a code fence around it tolerated). Only when that is not JSON - a
  * near miss - then, with `<think>` blocks removed: the rest, each fenced
  * block, and each balanced object or array. A prose prefix, trailing prose
@@ -379,7 +379,7 @@ function* jsonCandidates(text: string): Generator<unknown> {
   }
 }
 
-/** A reply that does not validate: why, and whether it was the JSON Schema itself (audit docs-qa F9). */
+/** A reply that does not validate: why, and whether it was the JSON Schema itself. */
 export interface OutputFailure {
   outputError: OutputError;
   schemaEcho?: true;
@@ -387,8 +387,8 @@ export interface OutputFailure {
 
 /**
  * Validates one parsed reply with `schema`: decoded from the strict shape
- * (Eve PROV-F1: a wrapped root, `{ key, value }` records, `_0`.. tuples)
- * and with an optional key sent as `null` absent (audit A6). When that
+ * (a wrapped root, `{ key, value }` records, `_0`.. tuples)
+ * and with an optional key sent as `null` absent. When that
  * does not validate, the decoded and then the raw reply are tried as sent.
  */
 async function validateValue(schema: StandardSchemaV1, value: unknown): Promise<{ object: unknown } | OutputFailure> {
@@ -441,7 +441,7 @@ export async function validateOutput(
 }
 
 /**
- * Eve CORE-F12: `failure` of a reply the model ended with `finishReason:
+ * `failure` of a reply the model ended with `finishReason:
  * 'length'` - cut off at the `maxTokens` limit, so a repair call would be
  * cut off the same way. Kind `'truncated'`, with the hint to raise the limit.
  */
@@ -460,7 +460,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Whether `value` is the sent JSON Schema echoed back (audit docs-qa F9): a
+ * Whether `value` is the sent JSON Schema echoed back: a
  * `$schema` key, or a `properties` map of subschemas over the schema's own
  * property names next to an object `type` or a `required` list.
  */
@@ -509,7 +509,7 @@ function exampleOf(node: unknown, root: unknown, depth = 0): unknown {
 
 /**
  * The user message of the one repair step: the issues, and the ask to
- * answer again. When the reply echoed the JSON Schema (audit docs-qa F9),
+ * answer again. When the reply echoed the JSON Schema,
  * it says so and shows an example instance rather than the schema again.
  */
 export function outputRepairMessage(output: StandardSchemaV1 | OutputSpec, failure: OutputFailure): Message {

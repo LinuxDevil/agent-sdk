@@ -22,7 +22,7 @@ interface RunControlDeps {
   setDebugState: Dispatch<SetStateAction<DebugStatePayload | undefined>>;
 }
 
-/** Run/stop/approve and the O3 step-debugger actions for `agentId`. */
+/** Run/stop/approve and the step-debugger actions for `agentId`. */
 export function useRunControls({ agentId, spec, runStatus, setLogs, setSpans, setDebugState }: RunControlDeps) {
   const [debugMode, setDebugMode] = useState(false);
 
@@ -77,7 +77,7 @@ export function useRunControls({ agentId, spec, runStatus, setLogs, setSpans, se
 
 interface ChatControlDeps {
   agentId: string;
-  /** Eve DUI-F7: sent with each message so chat runs the canvas as it is now. */
+  /** Sent with each message so chat runs the canvas as it is now. */
   spec: AgentSpec;
   setChat: Dispatch<SetStateAction<ChatState>>;
   setChatActionError: Dispatch<SetStateAction<string | undefined>>;
@@ -85,7 +85,7 @@ interface ChatControlDeps {
   setViewedChatSession: Dispatch<SetStateAction<ChatSessionRecord | undefined>>;
 }
 
-/** P1/P3 chat actions: send a message, start a new session, browse past sessions. */
+/** Chat actions: send a message, start a new session, browse past sessions. */
 export function useChatControls({
   agentId,
   spec,
@@ -137,7 +137,7 @@ export function useChatControls({
   return { sendChatMessage, startNewChat, viewChatSession, returnToLiveChat };
 }
 
-/** R3: the currently-active settings profile, fetched on mount and re-fetchable after Settings mutations. */
+/** The currently-active settings profile, fetched on mount and re-fetchable after Settings mutations. */
 export function useActiveProfile() {
   const [activeProfile, setActiveProfile] = useState<SettingsProfile | undefined>(undefined);
 

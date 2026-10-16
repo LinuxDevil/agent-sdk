@@ -6,13 +6,14 @@
 import { createAgent } from '../../../createAgent';
 import { defineEval, includes } from '../../../evals';
 import { mockModel } from '../../../testing';
+import { notMock } from '../../../testing/notMock';
 
 defineEval({
   name: 'slug collision',
   agent: () =>
     createAgent({
       prompt: 'p',
-      provider: process.env.FIXTURE_PROVIDER === 'offline' ? mockModel([]) : mockModel([(req) => `echo: ${String(req.messages.at(-1)?.content)}`]),
+      provider: process.env.FIXTURE_PROVIDER === 'offline' ? notMock(mockModel([])) : notMock(mockModel([(req) => `echo: ${String(req.messages.at(-1)?.content)}`])),
     }),
   cases: [
     { input: 'How do I configure the retry policy and backoff for the OpenAI provider?' },

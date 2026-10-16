@@ -1,5 +1,5 @@
 /**
- * LOU-I4: docker adapter.
+ * Docker adapter.
  *
  * Always runs: Dockerfile content checks, and spy assertions proving
  * scaffold()/build() delegate to NodeServerAdapter rather than duplicating
@@ -7,7 +7,7 @@
  *
  * The real `docker build` + `docker run` integration test needs a running
  * Docker daemon; it lives in docker.docker.test.ts and runs in the Linux
- * Docker CI job (`npm run test:docker`, LOU-M6).
+ * Docker CI job (`npm run test:docker`).
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
@@ -57,7 +57,7 @@ describe('DockerAdapter', () => {
     const dockerfile = fs.readFileSync(path.join(outDir, 'Dockerfile'), 'utf8');
     expect(dockerfile).toBe(DOCKERFILE);
     // A local .env or a packed SDK tarball in the build folder (--out=.) never reaches the image.
-    expect(fs.readFileSync(path.join(outDir, '.dockerignore'), 'utf8').split('\n')).toEqual(expect.arrayContaining(['.env', '.env.*', '*.tgz']));
+    expect(fs.readFileSync(path.join(outDir, '.dockerignore'), 'utf8').split('\n')).toEqual(expect.arrayContaining(['.env', '.env.*', '**/.env', '**/.env.*', '**/.lousho', '*.tgz']));
     const lines = dockerfile.split('\n');
     expect(lines).toContain('FROM node:22-slim');
     expect(lines).toContain('WORKDIR /app');
@@ -75,7 +75,7 @@ describe('DockerAdapter', () => {
     expect(lines).toContain('ENV HOST=0.0.0.0');
   });
 
-  it('writes a package.json shipping the SDK and the peers the spec needs (LOU-R20)', async () => {
+  it('writes a package.json shipping the SDK and the peers the spec needs', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-docker-'));
     const specPath = path.join(dir, 'agent.yaml');
     fs.writeFileSync(

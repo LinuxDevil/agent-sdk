@@ -38,7 +38,7 @@ export interface FetchChannelsOptions {
   /** Called when a button decision names who decided (the Slack and Discord channels do): the audit trail of approvals. */
   onDecision?(event: { decision: ChannelApprovalDecision; approver: NonNullable<ChannelDecision['approver']>; sessionId: string; channel: string }): void | Promise<void>;
   /**
-   * Eve CH-F4: keeps a turn alive past an early acknowledgment when the host
+   * Keeps a turn alive past an early acknowledgment when the host
    * passes no `ctx.waitUntil` to the handler: `waitUntil` from
    * `@vercel/functions` (or `after` from `next/server`) on serverless, or
    * `(turn) => void turn` on a long-running server (Bun, Deno, Node), whose
@@ -92,7 +92,7 @@ function jsonResponse(status: number, value: unknown): Response {
   return new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-/** The error status for a failed handler: 413 over the size cap, 400 for bad JSON, else 500 (Eve CH-F6: its message reported, not sent). */
+/** The error status for a failed handler: 413 over the size cap, 400 for bad JSON, else 500 (its message reported, not sent). */
 async function failureResponse(error: unknown, report: (error: unknown) => Promise<void>): Promise<Response> {
   const status = error instanceof PayloadTooLargeError ? 413 : error instanceof SyntaxError ? 400 : 500;
   if (status === 500) await report(error);
@@ -172,7 +172,7 @@ export function mountFetchChannels(
   if (byName.size !== channels.length) throw new SDKError('mountFetchChannels: channel names must be unique', 'LOUSHO_CHANNEL_INVALID');
   const core = channelCore(agent, channels, options);
   let warned = false;
-  /** Eve CH-F4: once per handler, when an early ack is held back until the turn ends. */
+  /** Once per handler, when an early ack is held back until the turn ends. */
   const warnHeld = () => {
     if (warned) return;
     warned = true;
@@ -214,7 +214,7 @@ export function mountFetchChannels(
         text: new TextDecoder().decode(rawBody),
         native: request,
       };
-      // Eve3-S7: malformed percent-encoding in the approval id is a 400, not a 500.
+      // malformed percent-encoding in the approval id is a 400, not a 500.
       turn = core.handle(channel, isApproval ? decodeParam(route[2]) : undefined, req, respond);
     } catch (error) {
       return failureResponse(error, report);

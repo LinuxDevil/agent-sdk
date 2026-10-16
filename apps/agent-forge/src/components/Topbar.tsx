@@ -62,7 +62,7 @@ function profileName(profile: ActiveProfile) {
 }
 
 /**
- * Eve DUI-F4: the env pill names the provider the agent actually runs on -
+ * The env pill names the provider the agent actually runs on -
  * the one the in-flight run reported, else the agent's own spec - not the
  * settings profile's (cosmetic) provider type. A mock agent gets a visible
  * MOCK badge, so canned replies are never mistaken for a real model.
@@ -99,9 +99,9 @@ function DebugToggle() {
 }
 
 /**
- * Import/Export. Eve DUI-F11: a failed import (bad YAML, a spec that fails
+ * Import/Export. a failed import (bad YAML, a spec that fails
  * validation) is reported through `onImport`'s error surface instead of
- * failing silently. The hidden file input stays mounted (Eve DUI-F8: the
+ * failing silently. The hidden file input stays mounted (the
  * narrow layout's overflow menu unmounts its items once closed).
  */
 function useSpecFiles(onImport: (file: File) => Promise<void>) {
@@ -135,7 +135,7 @@ function useSpecFiles(onImport: (file: File) => Promise<void>) {
 
 export type SidePanel = 'rail' | 'inspector';
 
-/** Eve DUI-F8: opens/closes a slide-over side panel in the narrow layout. */
+/** Opens/closes a slide-over side panel in the narrow layout. */
 function PanelToggle({
   panel,
   label,
@@ -171,7 +171,7 @@ interface OverflowItem {
 }
 
 /**
- * Eve DUI-F8: the narrow layout's "More" menu - Debug, Import, Export and
+ * The narrow layout's "More" menu - Debug, Import, Export and
  * Save, plus the provider pill, which no longer fit next to Run at 375px.
  */
 function OverflowMenu({ items, children }: { items: OverflowItem[]; children?: React.ReactNode }) {
@@ -278,7 +278,7 @@ function useRunActions() {
 }
 
 interface TopbarProps {
-  /** Eve DUI-F8: below 860px - side-panel toggles, and Debug/Import/Export/Save move into a "More" menu. */
+  /** Below 860px - side-panel toggles, and Debug/Import/Export/Save move into a "More" menu. */
   narrow?: boolean;
   openPanel?: SidePanel;
   onTogglePanel?: (panel: SidePanel) => void;
@@ -315,7 +315,7 @@ function NarrowTopbar({ openPanel, onTogglePanel }: Omit<TopbarProps, 'narrow'>)
       <div className="crumbs">
         <b>{spec.name}</b>
         {dirty && <span className="dirty-dot" title="Unsaved changes" />}
-        {/* Eve DUI-F4: the provider pill moved into the menu; keep the MOCK badge in sight. */}
+        {/* The provider pill moved into the menu; keep the MOCK badge in sight. */}
         {spec.provider.type === 'mock' && <span className="mock-badge">MOCK</span>}
       </div>
       <RunNotices runStatus={runStatus} actionError={actionError} />
@@ -371,7 +371,7 @@ function WideTopbar() {
 
       {/*
         R3: real per-environment settings profile (name + provider type),
-        replacing the LOU-L/O mockup's static "local · mock provider" label.
+        replacing the mockup's static "local · mock provider" label.
         Falls back to the current spec's own provider while the profile
         fetch hasn't resolved yet (e.g. runtime server not reachable).
       */}

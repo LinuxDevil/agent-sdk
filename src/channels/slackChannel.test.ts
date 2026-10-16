@@ -1,5 +1,5 @@
 /**
- * LOU-P5: `slackChannel()` - signatures, the url_verification handshake, a
+ * `slackChannel()` - signatures, the url_verification handshake, a
  * session per thread, retry dedupe, in-thread replies and approvals as buttons.
  * A fake `fetch` stands in for the Slack Web API: no network.
  */
@@ -118,7 +118,7 @@ function setup(responses: Parameters<typeof mockModel>[0], agentOptions: Partial
   return { ...slack, model, handler, userTexts, send: (payload: unknown, options?: SendOptions) => send(handler, slack.log, payload, options) };
 }
 
-describe('slackChannel (LOU-P5)', () => {
+describe('slackChannel', () => {
   it('answers the url_verification challenge and rejects bad or stale signatures', async () => {
     const t = setup(['never']);
 
@@ -130,7 +130,7 @@ describe('slackChannel (LOU-P5)', () => {
     expect(() => slackChannel({ signingSecret: '', botToken: 'x' })).toThrow(/signingSecret/);
   });
 
-  it('runs the turn with the sender as its principal, which a memory scope sees (N10a)', async () => {
+  it('runs the turn with the sender as its principal, which a memory scope sees', async () => {
     const scopes: MemoryScopeContext[] = [];
     const notes = defineMemory({ name: 'notes', scope: (ctx) => (scopes.push(ctx), ctx.principal && `slack:${ctx.principal.id}`), provider: inMemoryMemory() });
     const t = setup(['Hi'], { memory: [notes] });
@@ -155,7 +155,7 @@ describe('slackChannel (LOU-P5)', () => {
     expect(t.userTexts(2)).toEqual(['Who am I?']);
   });
 
-  it('runs a retry whose event it never saw, and skips a redelivered event_id (Eve CH-F8)', async () => {
+  it('runs a retry whose event it never saw, and skips a redelivered event_id', async () => {
     const t = setup(['First', 'Lost one']);
 
     await t.send({ ...event('hi'), event_id: 'Ev1' });
@@ -254,10 +254,10 @@ describe('slackChannel (LOU-P5)', () => {
     expect(execute).toHaveBeenCalledTimes(1);
     expect(seen[1]).toEqual([
       { id: 'UADMIN', name: 'name-UADMIN' },
-      // N10b: the approvers function sees whose call it is (the turn's sender).
+      // The approvers function sees whose call it is (the turn's sender).
       { toolName: 'send_email', input: { to: 'sam@example.com' }, sessionId: expect.stringContaining('slack_T1_C1_100_1'), principal: { id: 'U1', type: 'user', authenticator: 'slack' } },
     ]);
-    // N10b: the tool runs for the sender; the clicking user is recorded as the approver.
+    // The tool runs for the sender; the clicking user is recorded as the approver.
     expect((execute.mock.calls[0] as unknown[])[1]).toMatchObject({
       principal: { id: 'U1', type: 'user', authenticator: 'slack' },
       approval: { by: { id: 'UADMIN', type: 'user', authenticator: 'slack' } },
@@ -355,7 +355,7 @@ describe('slackChannel (LOU-P5)', () => {
     expect(JSON.stringify(t.model.calls[1].messages)).toContain('Lisbon');
   });
 
-  describe('after a restart: a second channel over the same durable stores (M10a)', () => {
+  describe('after a restart: a second channel over the same durable stores', () => {
     const ask = { toolCalls: [{ name: 'ask_question', args: { question: 'Which city?' }, id: 'call_q' }] };
     const threadMessage = (text: string, ts: string) => event('x', { type: 'message', text, thread_ts: '100.1', ts });
 
@@ -471,7 +471,7 @@ describe('slackChannel (LOU-P5)', () => {
   });
 });
 
-describe('slackChannel sign-in (N9b)', () => {
+describe('slackChannel sign-in', () => {
   it('sends the sign-in link ephemerally to the user who asked, with no buttons, and continues in the thread after the callback', async () => {
     const slack = fakeSlack();
     const { tool, executions } = listReposTool(githubProvider(fakeOAuthServer()));

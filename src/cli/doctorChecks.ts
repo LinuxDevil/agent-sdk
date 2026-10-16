@@ -89,7 +89,7 @@ interface OptionalPeer {
   install: string;
   /** True when the agent spec cannot work without it (not installed becomes a failure). */
   required: boolean;
-  /** Provider packages: the versions that pair with the installed `ai` (LOU-D28d), e.g. `ai 7` and `^4.0.0`. */
+  /** Provider packages: the versions that pair with the installed `ai`, e.g. `ai 7` and `^4.0.0`. */
   pairing?: { ai: string; accepts: string; note?: string };
 }
 
@@ -112,7 +112,7 @@ function providerPeers(env: DoctorEnvironment, needs: SpecNeeds): Map<string, Op
   return peers;
 }
 
-/** The optional peers behind SDK features (LOU-D40); only Docker can be known from the spec. */
+/** The optional peers behind SDK features; only Docker can be known from the spec. */
 function featurePeers(needs: SpecNeeds): Map<string, OptionalPeer> {
   return new Map(
     Object.entries(FEATURE_PEERS).map(([name, peer]) => [
@@ -127,6 +127,8 @@ function featurePeers(needs: SpecNeeds): Map<string, OptionalPeer> {
   );
 }
 
+const NOT_INSTALLED_OPTIONAL = 'not installed (optional)';
+
 function checkOptionalPeer(env: DoctorEnvironment, name: string, peer: OptionalPeer): DoctorCheck {
   const note = peer.pairing?.note;
   const fix = `npm install ${peer.install}` + (note ? ` (note: ${note})` : '');
@@ -139,7 +141,7 @@ function checkOptionalPeer(env: DoctorEnvironment, name: string, peer: OptionalP
       status: peer.required ? 'fail' : 'warn',
       finding: peer.required
         ? `not installed, and the agent spec needs it${enables}`
-        : `not installed (optional)${enables}`,
+        : `${NOT_INSTALLED_OPTIONAL}${enables}`,
       fix,
     };
   }
@@ -150,7 +152,7 @@ function checkOptionalPeer(env: DoctorEnvironment, name: string, peer: OptionalP
 
 /**
  * Why the installed version is wrong, or null: a provider package must pair with
- * the installed `ai` (LOU-D28d); any other peer must match the SDK's own range.
+ * the installed `ai`; any other peer must match the SDK's own range.
  */
 function versionMismatch(env: DoctorEnvironment, name: string, peer: OptionalPeer, version: string): string | null {
   const expected = peer.pairing
@@ -166,7 +168,22 @@ export function checkOptionalPeers(env: DoctorEnvironment, needs: SpecNeeds): Do
   // provider's package and the feature peer for `pi/...` specs) is reported
   // once, as the provider package.
   const features = [...featurePeers(needs)].filter(([name]) => !providers.has(name));
-  return [...providers, ...features].map(([name, peer]) => checkOptionalPeer(env, name, peer));
+  const checks = [...providers, ...features].map(([name, peer]) => [name, checkOptionalPeer(env, name, peer)] as const);
+  // Packages the agent does not use are not problems: one info line instead of a warning each, so real warnings stay visible.
+  const unused = checks.filter(([, check]) => check.status === 'warn' && check.finding.startsWith(NOT_INSTALLED_OPTIONAL));
+  const rest = checks.filter((entry) => !unused.includes(entry)).map(([, check]) => check);
+  if (unused.length === 0) return rest;
+  const names = unused.map(([name]) => name);
+  return [
+    ...rest,
+    {
+      id: 'optional-peers.unused',
+      title: 'Optional packages not installed',
+      status: 'ok',
+      finding: `${names.length} not needed by this agent (${names.join(', ')}); install one only if you use its feature`,
+      fix: unused.map(([, check]) => check.fix).join('; '),
+    },
+  ];
 }
 
 /** The env variable the provider reads for a custom endpoint (a local or OpenAI-compatible server), on every provider-package major. */
@@ -215,7 +232,7 @@ function checkDefaultProvider(env: DoctorEnvironment): DoctorCheck {
       ...base,
       status: 'warn',
       finding: 'none configured (createAgent() needs a model, a provider instance, or an env var)',
-      fix: 'Set LOUSHO_MODEL (e.g. openai/gpt-4o-mini) or one of the API key variables above.',
+      fix: 'Set LOUSHO_MODEL (e.g. openai/gpt-4.1-mini) or one of the API key variables above.',
     };
   }
 }

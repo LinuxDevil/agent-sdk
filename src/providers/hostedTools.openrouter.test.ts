@@ -1,5 +1,5 @@
 /**
- * N1b: `webSearch()` on the OpenRouter provider. The request body is captured
+ * `webSearch()` on the OpenRouter provider. The request body is captured
  * by a stubbed global `fetch` (the real `@ai-sdk/openai` of the installed peer
  * builds it), and the responses are shaped like OpenRouter's Chat Completions
  * responses with a server-side web search as the live run (the cassette of

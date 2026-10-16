@@ -9,7 +9,7 @@ function issues(mcpServers: unknown): string[] {
   return result.error.issues.map((issue) => `${(issue.path ?? []).join('.')}: ${issue.message}`);
 }
 
-describe('AgentSpec.mcpServers (LOU-D20)', () => {
+describe('AgentSpec.mcpServers', () => {
   it('accepts stdio and HTTP entries', () => {
     const mcpServers: AgentSpec['mcpServers'] = {
       fs: { command: 'npx', args: ['-y', 'server-fs'], env: { ROOT: '/tmp' } },
@@ -19,7 +19,7 @@ describe('AgentSpec.mcpServers (LOU-D20)', () => {
     expect(agentSpecSchema.parse({ ...base, mcpServers }).mcpServers).toEqual(mcpServers);
   });
 
-  it("accepts a per-server 'timeoutMs' and rejects a non-positive one (audit D4)", () => {
+  it("accepts a per-server 'timeoutMs' and rejects a non-positive one", () => {
     const mcpServers: AgentSpec['mcpServers'] = { fs: { command: 'npx', timeoutMs: 5000 }, docs: { url: 'https://example.com/mcp', timeoutMs: 100 } };
     expect(agentSpecSchema.parse({ ...base, mcpServers }).mcpServers).toEqual(mcpServers);
     expect(issues({ fs: { command: 'npx', timeoutMs: 0 } })).toEqual([
@@ -27,7 +27,7 @@ describe('AgentSpec.mcpServers (LOU-D20)', () => {
     ]);
   });
 
-  it("accepts stdio 'cwd', 'stderr' and 'connectTimeoutMs'; refuses stdio-only fields on an HTTP entry (audit D4)", () => {
+  it("accepts stdio 'cwd', 'stderr' and 'connectTimeoutMs'; refuses stdio-only fields on an HTTP entry", () => {
     const mcpServers: AgentSpec['mcpServers'] = {
       fs: { command: 'npx', cwd: '/srv', stderr: 'capture', connectTimeoutMs: 10_000 },
       docs: { url: 'https://example.com/mcp', connectTimeoutMs: 5000 },
@@ -39,7 +39,7 @@ describe('AgentSpec.mcpServers (LOU-D20)', () => {
     expect(issues({ docs: { url: 'https://example.com/mcp', cwd: '/srv' } })[0]).toMatch(/'cwd' does not apply to an HTTP/);
   });
 
-  it("accepts a per-server 'tools' filter and rejects a malformed one (audit D4)", () => {
+  it("accepts a per-server 'tools' filter and rejects a malformed one", () => {
     const mcpServers: AgentSpec['mcpServers'] = { fs: { command: 'npx', tools: { include: ['read'], exclude: ['write'] } } };
     expect(agentSpecSchema.parse({ ...base, mcpServers }).mcpServers).toEqual(mcpServers);
     expect(issues({ fs: { command: 'npx', tools: { include: 'read' } } })).toEqual([
@@ -47,7 +47,7 @@ describe('AgentSpec.mcpServers (LOU-D20)', () => {
     ]);
   });
 
-  it("accepts a per-server 'approval' mode (or a predicate in code) on both shapes (LOU-Z5)", () => {
+  it("accepts a per-server 'approval' mode (or a predicate in code) on both shapes", () => {
     const predicate = () => true;
     const mcpServers: AgentSpec['mcpServers'] = {
       fs: { command: 'npx', approval: 'always' },
@@ -58,14 +58,14 @@ describe('AgentSpec.mcpServers (LOU-D20)', () => {
     expect(agentSpecSchema.parse({ ...base, mcpServers }).mcpServers).toEqual(mcpServers);
   });
 
-  it("rejects an unknown 'approval' value, naming the entry (LOU-Z5)", () => {
+  it("rejects an unknown 'approval' value, naming the entry", () => {
     expect(issues({ fs: { command: 'npx', approval: 'sometimes' } })).toEqual([
       "mcpServers.fs.approval: AgentSpec validation failed: 'approval' must be 'annotations', 'always' or 'never'",
     ]);
     expect(issues({ fs: { command: 'npx', approval: true } })[0]).toMatch(/'approval' must be/);
   });
 
-  it("N2: accepts 'deferLoading' on both shapes and rejects a non-boolean, naming the entry", () => {
+  it("accepts 'deferLoading' on both shapes and rejects a non-boolean, naming the entry", () => {
     const mcpServers: AgentSpec['mcpServers'] = { fs: { command: 'npx', deferLoading: true }, docs: { url: 'https://example.com/mcp', deferLoading: false } };
     expect(agentSpecSchema.parse({ ...base, mcpServers }).mcpServers).toEqual(mcpServers);
     expect(issues({ fs: { command: 'npx', deferLoading: 'yes' } })).toEqual([
@@ -135,7 +135,7 @@ describe('AgentSpec.mcpServers (LOU-D20)', () => {
     );
   });
 
-  it("accepts 'oauth' on HTTP entries and rejects it on stdio entries (N9c)", () => {
+  it("accepts 'oauth' on HTTP entries and rejects it on stdio entries", () => {
     const mcpServers: AgentSpec['mcpServers'] = {
       linear: { url: 'https://mcp.linear.app/mcp', oauth: { redirectUri: 'https://agent.example.com/oauth/callback' } },
       notion: {

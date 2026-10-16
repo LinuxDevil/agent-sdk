@@ -81,7 +81,7 @@ describe('estimateTokens', () => {
     expect(estimateTokens('abcd')).toBe(1);
   });
 
-  it('counts text parts as text and each image or file part as 1,000 tokens (LOU-V11)', () => {
+  it('counts text parts as text and each image or file part as 1,000 tokens', () => {
     const parts: Message = {
       role: 'user',
       content: [
@@ -121,14 +121,14 @@ describe('model registry', () => {
     expect(getModelInfo('does-not-exist')).toBeUndefined();
   });
 
-  it("treats '.' and '-' between version digits as one spelling (Eve PROV-F3)", () => {
+  it("treats '.' and '-' between version digits as one spelling", () => {
     expect(getModelInfo('anthropic/claude-haiku-4.5')?.id).toBe('claude-haiku-4-5');
     expect(getModelInfo('claude-haiku-4.5-20251001')?.id).toBe('claude-haiku-4-5');
     expect(getModelInfo('openai/gpt-4-1-mini')?.id).toBe('gpt-4.1-mini');
     expect(estimateCost({ inputTokens: 1_000_000, outputTokens: 1_000_000 }, 'anthropic/claude-haiku-4.5')).toBe(6);
   });
 
-  it('does not match a different model whose name only starts with a registered id (Eve PROV-F3)', () => {
+  it('does not match a different model whose name only starts with a registered id', () => {
     expect(getModelInfo('mistral-7b-instruct')).toBeUndefined();
     expect(getModelInfo('openai/gpt-4o-2024-05-13')?.id).toBe('gpt-4o-2024-05-13');
     expect(estimateCost({ inputTokens: 1_000_000, outputTokens: 1_000_000 }, 'openai/gpt-4o-2024-05-13')).toBe(20);
@@ -162,7 +162,7 @@ describe('estimateCost', () => {
     expect(estimateCost({ inputTokens: 10, outputTokens: 10 }, 'llama3.1')).toBeUndefined();
   });
 
-  it('Eve PROV-F4: prices cache reads and cache writes at their own rates', () => {
+  it('prices cache reads and cache writes at their own rates', () => {
     // Anthropic: reads at 10% of input, 5-minute writes at 125%.
     // 1M input = 100k uncached + 900k read: 0.1 * $1 + 0.9 * $0.10.
     expect(estimateCost({ inputTokens: 1_000_000, outputTokens: 0, cachedInputTokens: 900_000 }, 'claude-haiku-4-5')).toBeCloseTo(0.19);
@@ -173,7 +173,7 @@ describe('estimateCost', () => {
     expect(estimateCost({ inputTokens: 1_000_000, outputTokens: 0, cacheWriteTokens: 1_000_000 }, 'gpt-4o-mini')).toBeCloseTo(0.15);
   });
 
-  it('Eve PROV-F4: a model without a cache price bills cached tokens at the input rate, and never below zero uncached', () => {
+  it('a model without a cache price bills cached tokens at the input rate, and never below zero uncached', () => {
     registerModel({ id: 'no-cache-price', provider: 'x', contextWindow: 1000, inputCostPerMTok: 2, outputCostPerMTok: 4 });
     expect(estimateCost({ inputTokens: 1_000_000, outputTokens: 0, cachedInputTokens: 500_000, cacheWriteTokens: 500_000 }, 'no-cache-price')).toBeCloseTo(2);
     // Cached tokens are a part of `inputTokens`: more cached than input is clamped, never priced negative.

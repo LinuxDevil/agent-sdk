@@ -1,6 +1,6 @@
 /**
  * `lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]` - serve an agent
- * spec over MCP (LOU-Z3). stdio by default; stdout carries only the MCP
+ * spec over MCP. stdio by default; stdout carries only the MCP
  * protocol there, so every message from this command goes to stderr.
  */
 import * as path from 'node:path';

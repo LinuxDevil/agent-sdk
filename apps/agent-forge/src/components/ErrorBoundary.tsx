@@ -10,7 +10,7 @@ interface ErrorBoundaryState {
 }
 
 /**
- * Eve DUI-F3: the top-level error boundary. A render error anywhere in the
+ * The top-level error boundary. A render error anywhere in the
  * studio used to unmount the whole tree and leave a blank page; now it shows
  * what broke and a way out (retry, or reload).
  */

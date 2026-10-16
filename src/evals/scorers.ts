@@ -1,5 +1,5 @@
 /**
- * Scorers for defineEval() (LOU-G3/G4/G5)
+ * Scorers for defineEval()
  *
  * All scorer factories return a plain, synchronous `(result: ExecutionResult) => number`
  * function - the same shape defineEval()'s `score` field expects. None of
@@ -10,7 +10,7 @@ import { ExecutionResult } from '../execution/AgentExecutor';
 import { ToolCall } from '../providers/llm';
 
 // ---------------------------------------------------------------------------
-// LOU-G3: rule-based / exact-match scorer
+// Rule-based / exact-match scorer
 // ---------------------------------------------------------------------------
 
 /**
@@ -48,7 +48,7 @@ export function exactMatch(matcher: Matcher): (result: ExecutionResult) => numbe
 }
 
 // ---------------------------------------------------------------------------
-// LOU-G4: tool-call-order assertion scorer
+// Tool-call-order assertion scorer
 // ---------------------------------------------------------------------------
 
 /**
@@ -68,7 +68,7 @@ export interface ExpectedCall {
  * loop accumulates every tool call the model made
  * (`allToolCalls.push(...result.toolCalls)` in runAgentLoop()), across
  * every step, in request order. There is no need to collect calls via the
- * LOU-E onToolCall/onToolResult tracing hooks for this - the plain field
+ * OnToolCall/onToolResult tracing hooks for this - the plain field
  * on the result already exposes the full, ordered call list. Each entry's
  * `function.arguments` is a JSON string (the raw provider tool-call
  * arguments), so args comparison below JSON.parses it before comparing.
@@ -108,7 +108,7 @@ export function toolCallOrder(expected: ExpectedCall[]): (result: ExecutionResul
 }
 
 // ---------------------------------------------------------------------------
-// LOU-G5: token/step budget scorer
+// Token/step budget scorer
 // ---------------------------------------------------------------------------
 
 export interface Budget {

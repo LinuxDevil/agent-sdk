@@ -1,5 +1,5 @@
 /**
- * M10a: stores that outlive one `createAgent()` + `mountChannels()` pair, so a
+ * Stores that outlive one `createAgent()` + `mountChannels()` pair, so a
  * second pair over the same stores is "the process after a restart". Sessions,
  * checkpoints (a `KVCheckpointStore` over a Map, JSON round-trip) and
  * approvals, all in memory.
@@ -19,7 +19,7 @@ class RecordingSessionStore extends MemorySessionStore {
     await super.save(id, messages);
   }
 
-  // A session commits through saveIf (Eve DUR-F4), which does not go through save().
+  // A session commits through saveIf, which does not go through save().
   override async saveIf(id: string, expectedRevision: string, messages: readonly Message[]): Promise<boolean> {
     const saved = await super.saveIf(id, expectedRevision, messages);
     if (saved) this.ids.add(id);

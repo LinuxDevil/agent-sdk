@@ -1,5 +1,5 @@
 /**
- * Runs channels (LOU-P7) behind one framework-free `(req, res)` handler, in
+ * Runs channels behind one framework-free `(req, res)` handler, in
  * the style of the `/chat` routes (src/server/chatRoutes.ts):
  *
  *   POST <basePath>/<name>                verify -> parse -> a session turn (or a decision) -> reply
@@ -121,13 +121,13 @@ function matchChannelRoute(
 /** Answers a failed channel request (413, 400 or 500) unless it was already answered, reporting what the client does not see. */
 async function failChannelRequest(error: unknown, responded: boolean, respond: ChannelRespond, channel: Channel, options: MountChannelsOptions): Promise<void> {
   const status = error instanceof PayloadTooLargeError ? 413 : error instanceof SyntaxError ? 400 : 500;
-  // Eve CH-F6: a failure after the ack, or a 500's detail, goes to onError; the client never sees an internal message.
+  // A failure after the ack, or a 500's detail, goes to onError; the client never sees an internal message.
   if (responded || status === 500) await reportChannelError(channel.onError ?? options.onError, error, { channel: channel.name, stage: 'parse' });
   respond(status, channelFailureBody(status, error)); // a no-op once the request was answered
 }
 
 /**
- * N9b: after the OAuth callback stored a user's token (or the user declined),
+ * After the OAuth callback stored a user's token (or the user declined),
  * continues the channel turn this process paused on that sign-in, so the
  * answer is posted to the surface it was asked on. A sign-in that no channel
  * turn of this process waits on is left alone (a client continues it with the

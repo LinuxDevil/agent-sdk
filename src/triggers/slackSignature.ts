@@ -1,5 +1,5 @@
 /**
- * Slack request signatures without `node:*` imports (LOU-P5), so a Worker
+ * Slack request signatures without `node:*` imports, so a Worker
  * host can verify them too. The header and timestamp checks are shared with
  * the `node:crypto` `checkSlackSignature()` in webhookAuth.ts; this module adds
  * the Web Crypto HMAC that `slackChannel()` uses.

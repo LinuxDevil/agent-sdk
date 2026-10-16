@@ -1,5 +1,5 @@
 /**
- * N15: sqliteVectorMemory - the shared provider contract in rank mode,
+ * SqliteVectorMemory - the shared provider contract in rank mode,
  * persistence of vectors across reopening, migration of a database from
  * before `memory_vectors`, and that `sqliteMemory` / `memory_items` are untouched.
  */

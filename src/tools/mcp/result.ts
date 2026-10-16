@@ -1,5 +1,5 @@
 /**
- * MCP `CallToolResult` handling (LOU-Z2)
+ * MCP `CallToolResult` handling
  *
  * Turns the raw result of `client.callTool()` into what the SDK hands the
  * model: an `McpToolError` for `isError` results (so the normal tool-error
@@ -60,7 +60,7 @@ export class McpToolError extends Error {
     return instanceOfOwnBrand(this, value);
   }
 
-  /** Read by the executor's shared tool-error shape (LOU-U14). */
+  /** Read by the executor's shared tool-error shape. */
   readonly toolErrorKind = 'mcp' as const;
 
   constructor(message: string) {
@@ -82,7 +82,7 @@ function definedProps<T extends object>(obj: T): T {
 }
 
 /**
- * Eve TOOLS-F8: `part` with its base64 `field` replaced by a short placeholder in
+ * `part` with its base64 `field` replaced by a short placeholder in
  * its JSON (what the model gets), so an image is not sent as hundreds of KB of
  * text. The part itself keeps the data for code that reads it.
  */

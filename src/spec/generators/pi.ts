@@ -1,5 +1,5 @@
 /**
- * Pi generator (LOU-J3)
+ * Pi generator
  *
  * Turns an AgentSpec into a Pi skill YAML file. Reuses the `yaml` package
  * that's already a project dependency (added for loadSpec.ts's .yaml/.yml

@@ -1,7 +1,6 @@
 /**
- * The webhook channel (LOU-P7): `WebhookTriggerAdapter`'s request handling
- * (LOU-T5, auth from LOU-D13) on the channel contract. The adapter delegates
- * its auth and parsing here. Node-only: HMAC checks use `node:crypto`.
+ * The webhook channel: request handling and auth on the
+ * channel contract. Node-only: HMAC checks use `node:crypto`.
  */
 import type { IncomingMessage } from 'node:http';
 import { newId } from '../utils/id';
@@ -15,10 +14,10 @@ export interface WebhookChannelOptions {
   name?: string;
   /** Shorthand for `auth: { type: 'hmac', secret }` (header `x-signature-256: sha256=<hex>` over the raw body). */
   secret?: string;
-  /** Any `WebhookTriggerAdapter` auth (hmac with options, bearer, custom). Wins over `secret`. */
+  /** Any `WebhookAuth` (hmac with options, bearer, custom). Wins over `secret`. */
   auth?: WebhookAuth;
   /**
-   * Who is calling, as the turn's `principal` (N10a: memory scopes, `model` /
+   * Who is calling, as the turn's `principal` (memory scopes, `model` /
    * `instructions` / `tools` functions) - e.g. which alerting system sent the
    * hook. `body` is the parsed JSON body (`undefined` when it is not JSON);
    * `req` carries the headers. Set it only from data `auth` vouched for.
@@ -65,8 +64,7 @@ async function verifyWebhook(auth: WebhookAuth | undefined, req: ChannelRequest)
 
 /**
  * A generic webhook: the body's JSON `input` string (or the whole body) is
- * the input, and the response is the turn's `ExecutionResult` as JSON, as
- * with `WebhookTriggerAdapter`. Each request is a one-shot session unless the
+ * the input, and the response is the turn's `ExecutionResult` as JSON. Each request is a one-shot session unless the
  * JSON body has a `sessionKey` string. With `secret` or `auth`, a request
  * that fails the check gets 401. `principal` names the caller of the turn
  * (an alerting system, an integration user) from the verified request.
@@ -89,7 +87,7 @@ export function webhookChannel(options: WebhookChannelOptions = {}): WebhookChan
   if (auth) assertValidWebhookAuth(auth);
   const channel: WebhookChannel = {
     name: options.name ?? 'webhook',
-    // Eve3-S3: a `verify` that cannot reject is no verify - without `secret`/`auth`
+    // a `verify` that cannot reject is no verify - without `secret`/`auth`
     // the channel is open, and `mountChannels` must see it so (its cross-site
     // guard only covers channels with no verify).
     ...(auth && { verify: (req: ChannelRequest) => verifyWebhook(auth, req) }),

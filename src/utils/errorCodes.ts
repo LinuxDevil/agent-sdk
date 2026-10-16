@@ -1,5 +1,5 @@
 /**
- * The registry of stable SDK error codes (LOU-D2).
+ * The registry of stable SDK error codes.
  *
  * Every `SDKError` carries one of these as `code`, with the matching one-
  * sentence `hint` and a `docs` link to its section of docs/errors.md. A test
@@ -14,14 +14,14 @@ export const ERROR_CODES = {
   LOUSHO_GENERIC_ERROR: 'Read the message above; it names what failed.',
   LOUSHO_CONFIG_INVALID: 'Fix the option named in the message.',
   LOUSHO_CONFIG_MISSING_PROVIDER:
-    "Pass a model string such as createAgent({ model: 'openai/gpt-4o-mini' }), a provider instance, or set LOUSHO_MODEL or a provider API key.",
+    "Pass a model string such as createAgent({ model: 'openai/gpt-4.1-mini' }), a provider instance, or set LOUSHO_MODEL or a provider API key.",
   LOUSHO_CONFIG_MISSING_AGENT: 'Pass the agent to run, e.g. AgentBuilder.create().setName(...).build().',
   LOUSHO_CONFIG_MISSING_INPUT: 'Pass the user message (a string or a Message[]) as `input`.',
   LOUSHO_CONFIG_CONFLICTING_OPTIONS: 'Keep one of the two options named in the message and remove the other.',
   LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE:
     'Pass createAgent({ store }) with `checkpoints` (e.g. memoryStore() or a SqliteStore), or drop `sessionId`.',
   LOUSHO_CONFIG_RESOLVER_FAILED: "Fix the createAgent() option function named in the message; its own error is the `cause`.",
-  LOUSHO_PROVIDER_SPEC_INVALID: "Write the model as '<provider>/<model>', e.g. 'openai/gpt-4o-mini'.",
+  LOUSHO_PROVIDER_SPEC_INVALID: "Write the model as '<provider>/<model>', e.g. 'openai/gpt-4.1-mini'.",
   LOUSHO_PROVIDER_UNKNOWN: 'Use one of the supported provider prefixes listed in the message.',
   LOUSHO_PROVIDER_MISSING_API_KEY: 'Set the environment variable named in the message, or pass a provider instance.',
   LOUSHO_PROVIDER_REQUEST_FAILED: 'Check the provider status, your API key and the request; retryable failures are retried by withRetry().',

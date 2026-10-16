@@ -268,7 +268,7 @@ describe('async strategies in the hook', () => {
   });
 });
 
-describe('a summary that does not compact below the threshold (LOU-R11)', () => {
+describe('a summary that does not compact below the threshold', () => {
   async function runHook(
     strategy: CompactionStrategy,
     onCompaction: (info: CompactionInfo) => void,
@@ -392,7 +392,7 @@ describe('summarize compaction in a run', () => {
     expectValidTranscript(result.messages);
   });
 
-  it('an adversarial summarizer (larger output) is rejected once; the run finishes without re-summarizing (LOU-R11)', async () => {
+  it('an adversarial summarizer (larger output) is rejected once; the run finishes without re-summarizing', async () => {
     const fetchPage = defineTool({
       name: 'fetch_page',
       description: 'Fetch a page',

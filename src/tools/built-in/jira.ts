@@ -156,7 +156,7 @@ export class JiraTools extends ToolRegistry {
   }
 
   /**
-   * LOU-K2: every Jira tool's execute() makes a real outbound HTTP call to
+   * Every Jira tool's execute() makes a real outbound HTTP call to
    * the configured Jira instance via the ambient global `fetch`. Flag it
    * requiresSandbox and route sandboxExecute() through withSandboxedFetch(),
    * which swaps `fetch` for a SandboxAdapter-routed implementation just for

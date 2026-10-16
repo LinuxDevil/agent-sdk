@@ -1,8 +1,8 @@
 /**
  * Durable execution gaps:
- * - LOU-U7: an approval in the middle of a tool batch keeps the transcript valid.
- * - LOU-U8: resuming a session with new input (unfinished / finished / awaiting approval).
- * - LOU-U9: a checkpoint after every model turn, so a crash never re-calls the model.
+ * - an approval in the middle of a tool batch keeps the transcript valid.
+ * - resuming a session with new input (unfinished / finished / awaiting approval).
+ * - a checkpoint after every model turn, so a crash never re-calls the model.
  *
  * Every checkpoint goes through the real KVCheckpointStore (JSON round-trip)
  * and every approval snapshot through a JSON round-trip, as a real store would.
@@ -148,7 +148,7 @@ async function resume(h: Harness, paused: ExecutionResult, script: MockTurn[], a
   return { model, result };
 }
 
-describe('LOU-U7: approval in the middle of a tool batch', () => {
+describe('approval in the middle of a tool batch', () => {
   it('approved: the paused call and the other calls each run once, every call has one result in call order', async () => {
     const runs: Runs = {};
     const h: Harness = {
@@ -157,7 +157,7 @@ describe('LOU-U7: approval in the middle of a tool batch', () => {
     };
     const paused = await execute(h, [turnCalling('a', 'b', 'c')]).result;
     expect(paused.finishReason).toBe('awaiting-approval');
-    // Eve TOOLS-F12: only the call that needs approval waits; the others of the step ran.
+    // Only the call that needs approval waits; the others of the step ran.
     expect(runs).toEqual({ a: 1, b: 0, c: 1 });
     const [snapshot] = (h.approvals as ReturnType<typeof approvalStore>).snapshots;
     expect(snapshot.remainingToolCalls).toEqual([]);
@@ -189,7 +189,7 @@ describe('LOU-U7: approval in the middle of a tool batch', () => {
     expect(c).toMatchObject({ toolCallId: 'call_c', content: '"c done"' });
   });
 
-  it('Eve TOOLS-F12: two calls that need approval pause together; the step runs once both are decided, no call run twice', async () => {
+  it('two calls that need approval pause together; the step runs once both are decided, no call run twice', async () => {
     const runs: Runs = {};
     const approvals = approvalStore();
     const h: Harness = {
@@ -262,7 +262,7 @@ describe('LOU-U7: approval in the middle of a tool batch', () => {
   });
 });
 
-describe('LOU-U9: checkpoint after every model turn', () => {
+describe('checkpoint after every model turn', () => {
   it("checkpoints the model's tool-call turn before any tool runs", async () => {
     const checkpoints = checkpointStore();
     let atToolStart: Checkpoint | null = null;
@@ -307,7 +307,7 @@ describe('LOU-U9: checkpoint after every model turn', () => {
   });
 
   it('a crash behind finished parallel calls resumes by running only the missing call', async () => {
-    // Audit log-incident F9: `b` and `c` finish while the slower `a` is still
+    // `b` and `c` finish while the slower `a` is still
     // running and the process dies. Their results are checkpointed by
     // toolCallId, so resume re-runs `a` only - never `b` or `c` again.
     const runs: Runs = { a: 0, b: 0, c: 0 };
@@ -370,7 +370,7 @@ describe('LOU-U9: checkpoint after every model turn', () => {
   });
 });
 
-describe('LOU-U8: resume with new input', () => {
+describe('resume with new input', () => {
   it('(a) unfinished run + new input: appended after the pending tool results, never between', async () => {
     const runs: Runs = {};
     const h: Harness = { tools: [tool('a', runs), tool('b', runs, { crashOnce: true })], checkpoints: checkpointStore() };
@@ -489,7 +489,7 @@ describe('LOU-U8: resume with new input', () => {
   });
 });
 
-describe('usage continuity across resumes (LOU-V5 x LOU-U7/U9)', () => {
+describe('usage continuity across resumes', () => {
   const callTurn = (...names: string[]): MockTurn => ({ ...(turnCalling(...names) as object), usage: { inputTokens: 100, outputTokens: 10 } });
   const finalTurn: MockTurn = { text: 'done', usage: { inputTokens: 200, outputTokens: 20 } };
 
@@ -550,7 +550,7 @@ describe('usage continuity across resumes (LOU-V5 x LOU-U7/U9)', () => {
   });
 });
 
-describe('newSessionMessages (LOU-U8 input merging)', () => {
+describe('newSessionMessages', () => {
   const stored: Message[] = [
     { role: 'system', content: 'p' },
     { role: 'user', content: 'hi' },

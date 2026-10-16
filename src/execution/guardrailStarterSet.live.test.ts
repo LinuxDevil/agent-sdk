@@ -1,6 +1,6 @@
 /**
  * Live test (costs money, needs OPENROUTER_API_KEY; at most 0.05 USD): the
- * model-backed checks of the guardrail starter set (N5a) against
+ * model-backed checks of the guardrail starter set against
  * `openrouter/openai/gpt-4o-mini` on six short fixed texts, to confirm their
  * fixed prompts get replies the parsers can read on a real model. Records the
  * calls to `__fixtures__/cassettes/n5a-guardrail-models.json` for an offline
@@ -26,7 +26,7 @@ async function verdict(guardrail: IoGuardrail, text: string) {
   return guardrail.check({ kind: 'input', text, messages: [] });
 }
 
-describe.skipIf(!process.env.OPENROUTER_API_KEY)('guardrail starter set on a real model (N5a)', () => {
+describe.skipIf(!process.env.OPENROUTER_API_KEY)('guardrail starter set on a real model', () => {
   it('prompt-injection and moderation replies are parseable and classify the fixed texts', async () => {
     const model = recordReplay(() => resolveProvider('openrouter/openai/gpt-4o-mini'), { cassette: CASSETTE, mode: 'record' });
     const injection = promptInjectionGuardrail({ model });

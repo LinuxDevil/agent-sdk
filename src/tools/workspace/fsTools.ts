@@ -1,11 +1,12 @@
 /**
- * createFsTools: file system tools over any FsProvider (LOU-X6).
+ * createFsTools: file system tools over any FsProvider.
  */
 import { z } from 'zod';
 import { defineTool, type DefinedTool } from '../defineTool';
 import type { FsProvider } from './types';
-import { normalizeWorkspacePath } from './paths';
-import { editFile, globFiles, grepFiles, listDirectory, prepareEdit, readNumberedLines, type FsLimits } from './fsOperations';
+import { createDenyTest } from './paths';
+import { allowedPath, editFile, globFiles, grepFiles, listDirectory, prepareEdit, readNumberedLines, type FsLimits } from './fsOperations';
+import { ConfigurationError } from '../../execution/errors';
 import type { WorkspaceCheckpoints } from './checkpoints';
 import type { StandardSchemaV1 } from '../../utils/zodCompat';
 
@@ -87,11 +88,28 @@ export interface FsToolsOptions {
   maxResults?: number;
   /** Most files a `glob`/`grep` walk visits before stopping. Defaults to 20,000. */
   maxFilesScanned?: number;
+  /**
+   * Milliseconds `grep` may spend matching its regex over all files (time
+   * reading files does not count), so a slow pattern cannot hang the run.
+   * Defaults to 10,000.
+   */
+  grepTimeoutMs?: number;
   /** Directory names `glob` and `grep` never descend into. Defaults to `['.git', 'node_modules']`. */
   ignore?: readonly string[];
   /**
+   * Entry names no tool opens, lists, searches or writes, at any depth.
+   * Defaults to `['.git']`: `.git/config` can hold a CI checkout token
+   * (`http.<url>.extraheader = AUTHORIZATION: basic ...`), and a worktree's
+   * `.git` file names a host path. A path with a denied segment (`.git/config`,
+   * `./.GIT`, `a/../.git/`, `sub\.git\HEAD`) is a `WorkspaceError`; `glob`,
+   * `grep` and `list_dir` leave such entries out. Names compare
+   * case-insensitively. Pass `[]` to allow everything. The `shell` tool is not
+   * covered: a command can still run `cat .git/config`.
+   */
+  deny?: readonly string[];
+  /**
    * Back up every file `write_file` and `edit_file` change, so
-   * `checkpoints.rewind(turn)` can put it back (N7). Without it the tools do
+   * `checkpoints.rewind(turn)` can put it back. Without it the tools do
    * no extra reads before writing.
    */
   checkpoints?: WorkspaceCheckpoints;
@@ -104,7 +122,22 @@ function resolveLimits(options: FsToolsOptions): FsLimits {
     maxResults: options.maxResults ?? 200,
     maxFilesScanned: options.maxFilesScanned ?? 20_000,
     ignore: new Set(options.ignore ?? ['.git', 'node_modules']),
+    grepTimeoutMs: options.grepTimeoutMs,
+    isDenied: createDenyTest(resolveDeny(options.deny)),
   };
+}
+
+function resolveDeny(deny: readonly string[] | undefined): readonly string[] {
+  if (deny === undefined) return ['.git'];
+  for (const name of deny) {
+    if (typeof name !== 'string' || /[/\\]/.test(name)) {
+      throw new ConfigurationError(
+        `createFsTools: deny entries are entry names such as ".git", not paths; got ${JSON.stringify(name)}.`,
+        'deny'
+      );
+    }
+  }
+  return deny;
 }
 
 /** Caps a tool's text output at `maxOutputChars`, saying so. */
@@ -153,7 +186,7 @@ function readOnlyTools(fs: FsProvider, limits: FsLimits, approvals: FsToolApprov
   ];
 }
 
-function mutatingTools(fs: FsProvider, approvals: FsToolApprovals, checkpoints: WorkspaceCheckpoints | undefined): DefinedTool[] {
+function mutatingTools(fs: FsProvider, limits: FsLimits, approvals: FsToolApprovals, checkpoints: WorkspaceCheckpoints | undefined): DefinedTool[] {
   return [
     defineTool({
       name: 'write_file',
@@ -162,7 +195,7 @@ function mutatingTools(fs: FsProvider, approvals: FsToolApprovals, checkpoints: 
       input: writeFileInput,
       needsApproval: approvals.write_file,
       async execute({ path, content }, ctx) {
-        const target = normalizeWorkspacePath(path);
+        const target = allowedPath(path, limits);
         const write = async () => {
           await fs.writeFile(target, content);
           return content;
@@ -179,6 +212,7 @@ function mutatingTools(fs: FsProvider, approvals: FsToolApprovals, checkpoints: 
       input: editFileInput,
       needsApproval: approvals.edit_file,
       async execute(args, ctx) {
+        allowedPath(args.path, limits);
         if (!checkpoints) return editFile(fs, args);
         let message = '';
         await checkpoints.track(ctx, args.path, async () => {
@@ -199,7 +233,8 @@ function mutatingTools(fs: FsProvider, approvals: FsToolApprovals, checkpoints: 
  *
  * Paths are workspace-relative; a path that escapes the workspace, a missing
  * file or an ambiguous edit becomes a tool error the model can read and
- * recover from, never an exception that ends the run. Outputs are capped and
+ * recover from, never an exception that ends the run. Paths through `.git`
+ * are refused the same way (see {@link FsToolsOptions.deny}). Outputs are capped and
  * say when they were truncated.
  *
  * @example
@@ -218,5 +253,5 @@ export function createFsTools(fs: FsProvider, options: FsToolsOptions = {}): Def
   const limits = resolveLimits(options);
   const approvals = options.needsApproval ?? {};
   const tools = readOnlyTools(fs, limits, approvals);
-  return options.readOnly ? tools : [tools[0], ...mutatingTools(fs, approvals, options.checkpoints), ...tools.slice(1)];
+  return options.readOnly ? tools : [tools[0], ...mutatingTools(fs, limits, approvals, options.checkpoints), ...tools.slice(1)];
 }

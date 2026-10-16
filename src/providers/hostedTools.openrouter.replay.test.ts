@@ -1,5 +1,5 @@
 /**
- * N1b: replays the cassette recorded by hostedTools.openrouter.live.test.ts
+ * Replays the cassette recorded by hostedTools.openrouter.live.test.ts
  * (a real OpenRouter web search with `openai/gpt-4o-mini`, once through
  * `send()` and once through `stream()`), offline: the provider's hosted call
  * and its cited sources reach the run's events, messages and usage.

@@ -147,6 +147,7 @@ type AgentEventType = AgentEvent['type'];
 // @public
 interface AgentEventUsage {
     completionTokens: number;
+    costPartial?: boolean;
     costUsd?: number;
     estimated: boolean;
     hostedToolCalls?: Partial<Record<string, number>>;
@@ -426,6 +427,7 @@ interface Checkpoint {
     approvalKind?: ApprovalKind;
     attempts?: number;
     businessState?: unknown;
+    delegatedInFlight?: CheckpointUsage[];
     // (undocumented)
     finishReason?: string;
     flow?: FlowCheckpointState;
@@ -444,6 +446,7 @@ interface Checkpoint {
     stepUsage?: StepUsage[];
     // (undocumented)
     toolCalls: unknown[];
+    unstarted?: boolean;
     usage: CheckpointUsage;
 }
 
@@ -643,6 +646,7 @@ interface DefinedTool<S extends StandardSchemaV1 = StandardSchemaV1, O = unknown
 
 // @public
 interface DelegatedUsage {
+    costPartial?: boolean;
     costUsd: number | undefined;
     // (undocumented)
     estimated: boolean;
@@ -794,6 +798,7 @@ export interface ExecutionResult<TObject = unknown> {
     text: string;
     // (undocumented)
     toolCalls: ToolCall[];
+    toolErrors?: number;
     usage: RunUsage;
 }
 
@@ -1352,6 +1357,7 @@ interface ModelSettings {
 // @public
 interface ModelUsage {
     calls: number;
+    costPartial?: boolean;
     costUsd?: number;
     // (undocumented)
     inputTokens: number;
@@ -1578,6 +1584,7 @@ interface PendingRun {
     approvalId?: string;
     approvalIds?: string[];
     approvalKind?: ApprovalKind;
+    attempts?: number;
     checkpointId: string;
     kind: 'session' | 'run';
     lastError?: CheckpointError;
@@ -1744,7 +1751,9 @@ interface ProviderFallbackEvent extends AgentEventBase<'provider.fallback'> {
         message: string;
     };
     from: string;
+    fromModel?: string;
     to: string;
+    toModel?: string;
 }
 
 // @public
@@ -1843,6 +1852,14 @@ interface ReasoningSettings {
 
 // @public
 type ReasoningStartEvent = AgentEventBase<'reasoning.start'>;
+
+// @public
+interface RecoverOptions<TResult = unknown> {
+    intervalMs?: number;
+    onError?: (error: unknown, run?: PendingRun) => void;
+    onRecovered?: (run: PendingRun, result: TResult) => void;
+    signal?: AbortSignal;
+}
 
 // @public
 interface RemoteRunOptions {
@@ -1958,7 +1975,14 @@ interface RunLimits {
     maxOutputTokens?: number;
     maxSteps?: number;
     maxTokens?: number;
+    maxToolErrors?: number;
     onExceeded?: 'stop' | 'throw';
+}
+
+// @public
+interface RunRecovery {
+    readonly done: Promise<void>;
+    stop(): Promise<void>;
 }
 
 // @public
@@ -1978,6 +2002,7 @@ interface RunUsage {
     cacheWriteTokens?: number;
     // @deprecated (undocumented)
     completionTokens: number;
+    costPartial?: boolean;
     costUsd: number | undefined;
     delegated?: DelegatedUsage;
     estimated: boolean;
@@ -2204,6 +2229,7 @@ interface SimpleAgent<TObject = unknown> {
     oauth: AgentOAuth;
     pending: () => Promise<PendingRun[]>;
     ready: () => Promise<void>;
+    recover: (options?: RecoverOptions<ExecutionResult<TObject>>) => RunRecovery;
     resume: (sessionId: string, options?: {
         signal?: AbortSignal;
     }) => Promise<ExecutionResult<TObject> | null>;
@@ -2289,7 +2315,7 @@ interface StepDoneEvent extends AgentEventBase<'step.done'> {
     usage?: AgentEventUsage;
 }
 
-// @public (undocumented)
+// @public
 interface StepNode {
     // (undocumented)
     agent: string;
@@ -2385,6 +2411,7 @@ interface SubagentSpec {
     agent: AgentConfig;
     approvalTtlMs?: number;
     guardrails?: AgentGuardrails;
+    hooks?: HookRegistry;
     hostedTools?: readonly HostedTool[];
     // (undocumented)
     maxSteps?: number;

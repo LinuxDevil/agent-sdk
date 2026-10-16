@@ -1,5 +1,5 @@
 /**
- * N2: the per-step half of tool search, kept apart from `toolSearch.ts` so the
+ * The per-step half of tool search, kept apart from `toolSearch.ts` so the
  * request builder (`generateStep.ts`) does not import the tool search setup:
  * which deferred tools the transcript has loaded, and which tools a model
  * call is sent. See `toolSearch.ts` for the whole picture.

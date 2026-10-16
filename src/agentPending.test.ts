@@ -1,5 +1,5 @@
 /**
- * Eve DUR-F15: `agent.pending()` lists the runs a crash or a pause left
+ * `agent.pending()` lists the runs a crash or a pause left
  * unfinished across sessions, so a restarted process can find and resume them.
  */
 import { afterEach, describe, it, expect } from 'vitest';
@@ -76,7 +76,7 @@ const kinds: Array<[string, () => () => AgentStore]> = [
   ],
 ];
 
-describe('agent.pending() (Eve DUR-F15)', () => {
+describe('agent.pending()', () => {
   for (const [name, setup] of kinds) {
     it(`${name}: lists interrupted and paused runs across sessions after a restart, and recovering empties it`, async () => {
       const mkStore = setup();
@@ -101,6 +101,7 @@ describe('agent.pending() (Eve DUR-F15)', () => {
           status: 'in-progress',
           step: expect.any(Number),
           lastError: expect.objectContaining({ message: 'process died', retryable: true }),
+          attempts: 1,
         },
         {
           sessionId: 'bob',
@@ -127,7 +128,18 @@ describe('agent.pending() (Eve DUR-F15)', () => {
     const runs: Record<string, number> = {};
     const agent = createAgent({ provider: mockModel([calling('work'), 'finished']), tools: tools(runs), store });
     await expect(agent.send('do work', { sessionId: 'job-7' })).rejects.toThrow('process died');
-    expect(await agent.pending()).toEqual([{ sessionId: 'job-7', kind: 'run', checkpointId: 'job-7', status: 'in-progress', step: expect.any(Number) }]);
+    // The rejected run records why, like a session turn.
+    expect(await agent.pending()).toEqual([
+      {
+        sessionId: 'job-7',
+        kind: 'run',
+        checkpointId: 'job-7',
+        status: 'in-progress',
+        step: expect.any(Number),
+        lastError: expect.objectContaining({ message: 'process died', retryable: true }),
+        attempts: 1,
+      },
+    ]);
     expect((await agent.resume('job-7'))?.text).toBe('finished');
     expect(await agent.pending()).toEqual([]);
   });

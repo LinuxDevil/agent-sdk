@@ -88,7 +88,7 @@ describe('jsonSchemaToZod', () => {
     expect(result.success).toBe(true);
   });
 
-  // LOU-Z1: these used to throw; conversion is now permissive and never throws.
+  // These used to throw; conversion is now permissive and never throws.
   it('falls back to z.any() for an unresolvable $ref', () => {
     const zodSchema = jsonSchemaToZod({ $ref: '#/definitions/Missing' });
     expect(zodSchema.safeParse({ anything: 1 }).success).toBe(true);
@@ -121,7 +121,7 @@ describe('jsonSchemaToZod', () => {
   });
 });
 
-describe('jsonSchemaToZod (LOU-Z1 features)', () => {
+describe('jsonSchemaToZod', () => {
   const accepts = (schema: unknown, value: unknown) => jsonSchemaToZod(schema).safeParse(value).success;
 
   it('treats unknown, empty and boolean schemas as z.any()', () => {
@@ -146,7 +146,7 @@ describe('jsonSchemaToZod (LOU-Z1 features)', () => {
     }
   });
 
-  it('Eve TOOLS-F4: keeps an object schema whose sibling oneOf/anyOf only adds required branches', () => {
+  it('keeps an object schema whose sibling oneOf/anyOf only adds required branches', () => {
     const base = {
       type: 'object',
       properties: { owner: { type: 'string' }, repo: { type: 'string' }, issue_number: { type: 'integer' }, title: { type: 'string' } },
@@ -162,7 +162,7 @@ describe('jsonSchemaToZod (LOU-Z1 features)', () => {
     }
   });
 
-  it('Eve TOOLS-F4: keeps the base object when sibling branches are full object schemas', () => {
+  it('keeps the base object when sibling branches are full object schemas', () => {
     const zodSchema = jsonSchemaToZod({
       type: 'object',
       properties: { kind: { type: 'string' } },

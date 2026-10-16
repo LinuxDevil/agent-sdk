@@ -64,7 +64,7 @@ function buildHeaders(config: OpenRouterProviderConfig): Record<string, string> 
   return headers;
 }
 
-/** N1b: `webSearch()` options as the `parameters` of OpenRouter's `openrouter:web_search` server tool. */
+/** `webSearch()` options as the `parameters` of OpenRouter's `openrouter:web_search` server tool. */
 const OPENROUTER_SEARCH_PARAMETERS: HostedOptionMapping = {
   maxUses: (max_uses) => ({ max_uses }),
   allowedDomains: (allowed_domains) => ({ allowed_domains }),
@@ -75,7 +75,7 @@ const OPENROUTER_SEARCH_PARAMETERS: HostedOptionMapping = {
 
 /**
  * What one response left: the web search's count, the cited urls and the
- * completion id (N1b), and the reasoning the model reported (LOU-R8) - the
+ * completion id, and the reasoning the model reported - the
  * `reasoning` SDK never reaches these fields, so they are read from the
  * response body itself.
  */
@@ -86,9 +86,9 @@ interface CallObservation {
   /** Reasoning text fragments and detail end-markers, in arrival order. */
   reasoning: ReasoningPiece[];
   reasoningTokens?: number;
-  /** `usage.prompt_tokens_details.cached_tokens`: input tokens read from the prompt cache (Eve PROV-F4). */
+  /** `usage.prompt_tokens_details.cached_tokens`: input tokens read from the prompt cache. */
   cachedInputTokens?: number;
-  /** `usage.prompt_tokens_details.cache_write_tokens`: input tokens written to the prompt cache (Eve PROV-F4). */
+  /** `usage.prompt_tokens_details.cache_write_tokens`: input tokens written to the prompt cache. */
   cacheWriteTokens?: number;
   /** `usage.cost`: the USD OpenRouter billed for the call. */
   costUsd?: number;
@@ -218,7 +218,7 @@ function reasoningBlocks(found: CallObservation | undefined): ReasoningBlock[] {
   return blocks;
 }
 
-/** The observed reasoning pieces as the stream chunks reporting them (LOU-R8). */
+/** The observed reasoning pieces as the stream chunks reporting them. */
 function reasoningChunks(found: CallObservation | undefined): StreamChunk[] {
   return (found?.reasoning ?? []).map((piece): StreamChunk =>
     'text' in piece ? { type: 'reasoning-delta', textDelta: piece.text } : { type: 'reasoning-end', reasoning: piece.end }
@@ -227,11 +227,11 @@ function reasoningChunks(found: CallObservation | undefined): StreamChunk[] {
 
 /** What one model call changes about the request, and what it watches in the response. */
 interface RequestChanges {
-  /** Top-level body fields to set (LOU-V13: `reasoning`). */
+  /** Top-level body fields to set (`reasoning`). */
   merge?: Record<string, unknown>;
-  /** N1b: tool entries appended to the body's `tools` array, after the function tools `@ai-sdk/openai` put there. */
+  /** Tool entries appended to the body's `tools` array, after the function tools `@ai-sdk/openai` put there. */
   tools?: unknown[];
-  /** Eve PROV-F4: a last change to the whole body (Anthropic `cache_control` breakpoints). */
+  /** A last change to the whole body (Anthropic `cache_control` breakpoints). */
   rewrite?: (body: Record<string, unknown>) => Record<string, unknown>;
   /** Called with what each successful call's response leaves, once read (the last one wins). */
   observe?: (settled: Promise<CallObservation | undefined>) => void;
@@ -320,7 +320,7 @@ function normalizedOpenRouterError(body: string): {
 }
 
 /**
- * LOU-R5: `fetch` that keeps OpenRouter's error explanation. The real cause
+ * `fetch` that keeps OpenRouter's error explanation. The real cause
  * of a failed call lives in the response body's `error.message` ("No
  * endpoints found for ...", "No auth credentials found"), but the body does
  * not match `@ai-sdk/openai`'s error schema (see normalizedOpenRouterError),
@@ -371,7 +371,7 @@ function* finishWithObservation(
 
 /**
  * `usage`, with the observed reasoning token count, the prompt-cache reads and
- * writes (Eve PROV-F4) and the cost OpenRouter billed (`usage.cost`) that the
+ * writes and the cost OpenRouter billed (`usage.cost`) that the
  * SDK's usage lacks (the same instance when nothing is added).
  */
 function withObservedUsage(usage: ProviderUsage | undefined, found: CallObservation | undefined): ProviderUsage | undefined {
@@ -385,15 +385,15 @@ function withObservedUsage(usage: ProviderUsage | undefined, found: CallObservat
 
 /**
  * A watched call: what its response left, once read, and which of the
- * reported extras it asked for. Every call is watched for its cost (PROV-F3),
+ * reported extras it asked for. Every call is watched for its cost,
  * but the search's hosted call and the reasoning are reported only for a call
  * that requested them, so a plain call's result and stream stay unchanged.
  */
 interface CallWatch {
   settled?: Promise<CallObservation | undefined>;
-  /** The call sent `webSearch()` (N1b). */
+  /** The call sent `webSearch()`. */
   search: boolean;
-  /** The call sent OpenRouter's `reasoning` field (LOU-R8). */
+  /** The call sent OpenRouter's `reasoning` field. */
   reasoning: boolean;
 }
 
@@ -414,7 +414,7 @@ function searchCallOf(found: CallObservation | undefined): HostedToolCall | unde
  */
 export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> {
   readonly name = 'openrouter';
-  protected readonly fallbackModel = 'openai/gpt-4o-mini';
+  protected readonly fallbackModel = 'openai/gpt-4.1-mini';
   private logger: Logger;
 
   /** Loads `@ai-sdk/openai` on first use (it is an optional peer). */
@@ -422,9 +422,9 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
     (await loadOptionalPeer('@ai-sdk/openai', () => import('@ai-sdk/openai'), aiMajorOf(this.ai))).createOpenAI
   );
 
-  /** `@ai-sdk/openai` pointed at OpenRouter; `changes` (LOU-V13 `reasoning`, N1b web search) are applied to each request. */
+  /** `@ai-sdk/openai` pointed at OpenRouter; `changes` (`reasoning`, web search) are applied to each request. */
   private async openRouter(changes?: RequestChanges) {
-    // LOU-R5: every call goes through the fetch that keeps the body's error
+    // Every call goes through the fetch that keeps the body's error
     // message; the request `changes` compose inside it, and the response is
     // watched (its observation, and in-response failures) under the
     // provider's `timeout` (requestFetch).
@@ -443,7 +443,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
     return (this.config.baseURL || OPENROUTER_API_URL).replace(/\/+$/, '');
   }
 
-  /** What each call (by its options object) left in OpenRouter's response: the web search (N1b) and the reasoning (LOU-R8). */
+  /** What each call (by its options object) left in OpenRouter's response: the web search and the reasoning. */
   private readonly observed = new WeakMap<GenerateOptions, CallWatch>();
 
   private readonly loadProvider = lazyValue(() => this.openRouter());
@@ -459,14 +459,14 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
   }
 
   protected async createModel(modelId: string, options?: GenerateOptions): Promise<LanguageModel> {
-    // LOU-V13: `@ai-sdk/openai` has no field for OpenRouter's unified `reasoning`, so it is added to the body.
+    // `@ai-sdk/openai` has no field for OpenRouter's unified `reasoning`, so it is added to the body.
     const reasoning = openRouterReasoning(modelId, options?.reasoning);
-    // N1b: OpenRouter's web search is a server tool in the `tools` array, not an AI SDK tool.
+    // OpenRouter's web search is a server tool in the `tools` array, not an AI SDK tool.
     const search = options?.hostedTools?.find((tool) => tool.type === 'web_search');
     const changes: RequestChanges = {
-      // PROV-F3: asks for `usage.cost` (OpenRouter's usage accounting) instead of relying on it arriving unrequested.
+      // Asks for `usage.cost` (OpenRouter's usage accounting) instead of relying on it arriving unrequested.
       merge: { usage: { include: true }, ...reasoning },
-      // Eve PROV-F4: `@ai-sdk/openai` has no field for Anthropic's `cache_control`, so it is added to the body.
+      // `@ai-sdk/openai` has no field for Anthropic's `cache_control`, so it is added to the body.
       ...(cachesPrompt(modelId, options?.promptCaching) && { rewrite: withBodyBreakpoints }),
     };
     if (search) {
@@ -475,8 +475,8 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
     }
     if (options) {
       // The response is watched for what `@ai-sdk/openai` drops: the reasoning
-      // fields (LOU-R8), the server-side search's traces (N1b) and the cost
-      // OpenRouter billed (PROV-F3).
+      // fields, the server-side search's traces and the cost
+      // OpenRouter billed.
       const watch: CallWatch = { search: search !== undefined, reasoning: reasoning !== undefined };
       this.observed.set(options, watch);
       changes.observe = (settled) => {
@@ -490,7 +490,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
   }
 
   /**
-   * N1b: `webSearch()` only (an `openrouter:web_search` server tool added to the request body); `hostedTool()`
+   * `webSearch()` only (an `openrouter:web_search` server tool added to the request body); `hostedTool()`
    * passes through on ai 6 or 7. The server runs the search inside the request, so the model reports no tool call:
    * the call is read from the response (see generate() and stream()).
    */
@@ -524,7 +524,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
       ...result,
       ...(usage && { usage }),
       ...(call && { hostedToolCalls: [...(result.hostedToolCalls ?? []), call] }),
-      // The SDK-reported reasoning, when any, stays (LOU-R8's observed blocks win: they carry the details it dropped).
+      // The SDK-reported reasoning, when any, stays (observed blocks win: they carry the details it dropped).
       ...(reasoning.length > 0 && { reasoning }),
     };
   }
@@ -545,7 +545,7 @@ export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> 
   /**
    * `chunks`, with what the response left that the SDK dropped, just before the
    * `finish` chunk (the response is read to its end by then): the reasoning
-   * chunks (LOU-R8) and the web search's hosted call (N1b); the `finish` chunk's
+   * chunks and the web search's hosted call; the `finish` chunk's
    * usage gains the reasoning token count it lacks.
    */
   private async *withObservation(chunks: AsyncIterable<StreamChunk>, options: GenerateOptions): AsyncGenerator<StreamChunk> {

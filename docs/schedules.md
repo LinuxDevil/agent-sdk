@@ -3,8 +3,8 @@
 A **schedule** runs the agent on a cron expression, with nobody asking: a
 morning summary, a nightly cleanup. `defineSchedule()` declares one, an
 [agent directory](agent-directories.md) picks them up from `schedules/`, and
-`startSchedules()` (or the node server) runs them in process. Schedules replace
-the deprecated `CronTriggerAdapter` (see [Triggers](triggers.md#cron-schedules)).
+`startSchedules()` (or the node server) runs them in process. Schedules replaced
+`CronTriggerAdapter` (see [Migrating from triggers](upgrading.md#migrating-from-triggers)).
 
 ## Define a schedule
 

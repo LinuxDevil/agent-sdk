@@ -166,7 +166,7 @@ The entries `exports` declares, and what each one holds:
 | `@lousho/build-ai-agent/auth` | Route auth: `routeAuth()`, `jwt()`, `oidc()`, `basic()`, `apiToken()`, `anonymous()` |
 | `@lousho/build-ai-agent/kv` | `KVStore`, `KVCheckpointStore` for a hand-written Cloudflare Worker |
 | `@lousho/build-ai-agent/traces` | `fileTraceExporter()`, `listTraces()`, `readTrace()` (what `lousho traces` reads) |
-| `@lousho/build-ai-agent/triggers` | `WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter`, `TriggerRegistry` |
+| `@lousho/build-ai-agent/triggers` | `TriggerAdapter`, `TriggerRegistry`, `verifySlackSignature`, `parseCronExpression` |
 | `@lousho/build-ai-agent/react` | `useLoushoAgent()` and the React helpers (needs `react`) |
 | `@lousho/build-ai-agent/vue` | `useLoushoAgent()` as a Vue composable (needs `vue`) |
 | `@lousho/build-ai-agent/svelte` | `loushoAgent()` as a Svelte store |

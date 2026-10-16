@@ -1,5 +1,5 @@
 /**
- * zod 3 / zod 4 compatibility (LOU-D29). The SDK accepts schemas from either
+ * zod 3 / zod 4 compatibility. The SDK accepts schemas from either
  * major (and any Standard Schema that can describe itself as JSON Schema),
  * and its own schemas are built with whichever `zod` is installed.
  * `zod/v4/core` exists in both `zod@^3.25` and `zod@4`.
@@ -71,7 +71,7 @@ export function schemaToJsonSchema(schema: unknown): Record<string, unknown> | u
 
 /**
  * The paths (`items[].due`) of each `z.date()` in a zod 4 schema, which
- * {@link schemaToJsonSchema} renders as `{}` (audit invoice F8). A
+ * {@link schemaToJsonSchema} renders as `{}`. A
  * `z.coerce.date()` is not listed: it accepts the string a model writes.
  */
 export function unrepresentableDates(schema: unknown): string[] {
@@ -86,7 +86,7 @@ export interface UnrepresentableFields {
 
 /**
  * The paths of each non-coercing `z.date()` and `z.bigint()` in a zod 3 or
- * zod 4 schema (Eve TOOLS-F10): a model writes a string or a number there,
+ * zod 4 schema: a model writes a string or a number there,
  * which they reject. Fields under a zod 3 transform or preprocess are not
  * listed, since it may convert the value first.
  */
@@ -244,7 +244,7 @@ function zod3Inner(def: Zod3Def): Zod3Node | undefined {
  * The JSON type of a schema's root when it is plainly not an object
  * (`'string'`, `'array'`, ...), else `undefined` (an object, a union of
  * objects, or a root that cannot be told). Tool arguments are a JSON object,
- * and providers reject a tool whose parameters are not (Eve TOOLS-F10).
+ * and providers reject a tool whose parameters are not.
  */
 export function nonObjectRoot(schema: unknown): string | undefined {
   if (isZod3Schema(schema)) {
@@ -274,7 +274,7 @@ export function isModelSchema(value: unknown): boolean {
 }
 
 /**
- * A plain JSON-Schema object (LOU-R4): an object that is none of the schema
+ * A plain JSON-Schema object: an object that is none of the schema
  * forms {@link isModelSchema} recognizes and not an 'ai' `jsonSchema()`
  * wrapper either (`{jsonSchema, validate}`). `defineTool({ input })` accepts
  * raw JSON Schemas; 'ai' v4 would run one through its zod converter and crash

@@ -1,5 +1,5 @@
 /**
- * C6: an agent's sampling settings (`ModelSettings`), merged and stripped of
+ * An agent's sampling settings (`ModelSettings`), merged and stripped of
  * undefined keys before they are sent, so a key nobody set never overrides
  * what a provider (or a wrapping provider) would apply itself.
  */
@@ -30,7 +30,7 @@ export function mergeModelSettings(...layers: (ModelSettings | undefined)[]): Mo
   return merged as ModelSettings;
 }
 
-/** Eve CORE-F13: the numeric settings with a bounded range (inclusive), as the major providers accept them. */
+/** The numeric settings with a bounded range (inclusive), as the major providers accept them. */
 const SETTING_RANGES: Readonly<Partial<Record<string, readonly [number, number]>>> = {
   temperature: [0, 2],
   topP: [0, 1],
@@ -62,7 +62,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Eve CORE-F13: what is wrong with `value` as the `modelSettings` key `key`,
+ * What is wrong with `value` as the `modelSettings` key `key`,
  * or undefined when nothing is (an undefined value is never sent, so it is fine).
  */
 export function modelSettingProblem(key: string, value: unknown): string | undefined {
@@ -96,7 +96,7 @@ function numericSettingProblem(key: string, value: unknown): string | undefined 
 }
 
 /**
- * Eve CORE-F13: rejects bad `modelSettings` (`createAgent`'s, or a `send()` /
+ * Rejects bad `modelSettings` (`createAgent`'s, or a `send()` /
  * `stream()` call's) with `LOUSHO_CONFIG_INVALID` naming the key, before any
  * model call - instead of a provider round trip whose error names the AI
  * SDK's parameter.

@@ -5,7 +5,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 /**
- * tsup only bundles TS/JS entrypoints - src/cli/dev-ui/index.html (LOU-H7)
+ * tsup only bundles TS/JS entrypoints - src/cli/dev-ui/index.html
  * is a plain static asset dev.ts reads at runtime relative to its own
  * __dirname, so it has to be copied into dist/cli/dev-ui alongside the
  * compiled dev.js by hand.
@@ -74,19 +74,14 @@ export default defineConfig([
     // (their CJS build, which shares this build's chunks, is left out of the package: see "files").
     dts: { entry: { ...Object.fromEntries(Object.entries(entry).filter(([name]) => !name.startsWith('cli/'))), 'deploy/worker': 'src/deploy/worker.ts' } },
     splitting: true,
-    sourcemap: true,
+    // No source maps: ~3.7 MB of the tarball. `src/` stays published because `lousho build` bundles
+    // src/deploy/*.worker.ts from it, but the maps do not.
+    sourcemap: false,
     clean: true,
     treeshake: true,
     minify: false,
-    // Optional peers (LOU-D40) stay external too: tsup would externalize them from package.json anyway.
+    // Optional peers stay external too: tsup would externalize them from package.json anyway.
     external: ['ai', 'zod', '@opentelemetry/api', 'dockerode', '@modelcontextprotocol/sdk', 'prompts', 'quickjs-emscripten', '@earendil-works/pi-ai'],
-    esbuildOptions(options) {
-      // Ship maps without `sourcesContent` (#191): `src/` is in the published
-      // package and the maps' `sources` resolve to it, so embedding the source a
-      // second time only adds ~5 MB to the tarball. `src/` must stay published
-      // regardless: `lousho build` bundles src/deploy/*.worker.ts from it.
-      options.sourcesContent = false;
-    },
     onSuccess: async () => {
       copyDevUi();
     },
@@ -107,8 +102,6 @@ export default defineConfig([
     target: 'es2022',
     dts: false,
     splitting: false,
-    // No maps: this entry is pre-bundled with its dependencies, whose sources
-    // are not in the package, so a map would only add ~1.6 MB (both formats).
     sourcemap: false,
     clean: false,
     treeshake: true,

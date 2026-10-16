@@ -1,5 +1,5 @@
 /**
- * Eve DUR-F14: lock contention must not freeze the event loop for seconds and
+ * Lock contention must not freeze the event loop for seconds and
  * must surface as the coded LOUSHO_STORAGE_BUSY, not a raw ERR_SQLITE_ERROR.
  */
 import { describe, it, expect, afterEach } from 'vitest';
@@ -33,7 +33,7 @@ function lockedByAnotherConnection() {
   return { conn, holder };
 }
 
-describe('Connection lock contention (Eve DUR-F14)', () => {
+describe('Connection lock contention', () => {
   it('transaction() fails fast with LOUSHO_STORAGE_BUSY instead of blocking for seconds', () => {
     const { conn, holder } = lockedByAnotherConnection();
     const start = Date.now();

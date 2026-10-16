@@ -1,11 +1,11 @@
 /**
- * Sandbox adapter interface (LOU-F4), its trusted-host, zero-isolation
+ * Sandbox adapter interface, its trusted-host, zero-isolation
  * implementation NoopSandbox, and its Docker-backed real-isolation
- * implementation SubprocessSandbox (LOU-F6).
+ * implementation SubprocessSandbox.
  *
  * A SandboxAdapter is the seam through which a tool that opts in via
  * `ToolDescriptor.requiresSandbox` gets its command execution routed
- * (see AgentExecutor's `executeToolCall`, LOU-F5) instead of running
+ * (see AgentExecutor's `executeToolCall`) instead of running
  * in-process. NoopSandbox is the default: it runs commands directly on
  * the host via node:child_process, i.e. exactly the trusted-host behavior
  * this SDK already had before sandboxing existed. A real isolation
@@ -56,14 +56,14 @@ function isNoSuchImageError(err: unknown, image: string): boolean {
 }
 
 /**
- * Network access for a {@link SubprocessSandbox} container (LOU-X11):
+ * Network access for a {@link SubprocessSandbox} container:
  * - `'none'` (default): no network at all (Docker `NetworkMode: 'none'`).
  * - `'default'`: Docker's default network, unrestricted egress.
  * - `{ allow: ['api.github.com', '*.npmjs.org'] }`: only these hosts. Docker
  *   cannot filter egress by host name on its own, so this needs an egress
  *   proxy that is the container's only route out. With a `broker`
  *   (`createCredentialBroker()`), the container joins an internal Docker
- *   network whose only reachable peer is the broker (LOU-X12.2; Docker Engine
+ *   network whose only reachable peer is the broker (Docker Engine
  *   on Linux only, see `sandboxEgress.ts`). Without one it gets no network
  *   (fail closed). The validated list is kept on {@link SubprocessSandbox.network}.
  */
@@ -88,7 +88,7 @@ function networkMode(network: SandboxNetwork, egress: Egress | undefined): strin
   return network === 'default' ? 'default' : 'none';
 }
 
-/** Per-container resource limits of a {@link SubprocessSandbox} (Eve TOOLS-F17). */
+/** Per-container resource limits of a {@link SubprocessSandbox}. */
 export interface SandboxLimits {
   /** Memory cap in bytes (Docker `Memory`). Default 512 MiB. */
   memoryBytes?: number;
@@ -112,7 +112,7 @@ const DEFAULT_LIMITS: Required<SandboxLimits> = { memoryBytes: 512 * 1024 * 1024
  * network unless the policy is `'default'` or there is an `egress` network,
  * whose proxy variables are then added to the env. It runs as `hardening.user`
  * with every capability dropped, `no-new-privileges` and the memory, process
- * and CPU limits (Eve TOOLS-F17).
+ * and CPU limits.
  */
 function buildContainerOptions(
   image: string,
@@ -167,7 +167,7 @@ function captureOutput() {
   };
 }
 
-/** Kills the container and force-removes it (LOU-U23); safe when it already exited or AutoRemove took it. */
+/** Kills the container and force-removes it; safe when it already exited or AutoRemove took it. */
 async function stopContainer(container: Docker.Container): Promise<void> {
   await ignoreFailure(() => container.kill());
   await ignoreFailure(() => container.remove({ force: true }));
@@ -177,7 +177,7 @@ async function stopContainer(container: Docker.Container): Promise<void> {
  * The `exited` wait (started before `start()`), or whichever comes first of the container exiting, the
  * timeout and the abort `signal`. A timeout or abort stops and removes the
  * container (once) and rejects: with a "timed out" error, or an `AbortError`
- * like `NoopSandbox` (LOU-U23). Listeners and the timer are always cleaned up.
+ * like `NoopSandbox`. Listeners and the timer are always cleaned up.
  */
 async function waitForExit(
   container: Docker.Container,
@@ -267,7 +267,7 @@ export interface SubprocessSandboxOptions {
   /** Network access for each container. Defaults to `'none'`. See {@link SandboxNetwork} for what `{ allow }` enforces. */
   network?: SandboxNetwork;
   /**
-   * Egress proxy for `network: { allow }` (LOU-X12.2). The container's only
+   * Egress proxy for `network: { allow }`. The container's only
    * route is to this broker on an internal Docker network; its allowlist there
    * is the broker's rule hosts plus `allow`. Call {@link SubprocessSandbox.close} when done.
    */
@@ -275,7 +275,7 @@ export interface SubprocessSandboxOptions {
   /** Internal network to create, or reuse when it exists. Defaults to a fresh `lousho-egress-<random>` name. */
   networkName?: string;
   /**
-   * The host directory `writeFile()` may write under (Eve TOOLS-F17).
+   * The host directory `writeFile()` may write under.
    * Relative paths resolve against it; a path outside it, also through a
    * symlink, is refused with `LOUSHO_SANDBOX_PATH_DENIED`. Defaults to
    * `process.cwd()` when the sandbox is constructed.
@@ -292,7 +292,7 @@ export interface SubprocessSandboxOptions {
 }
 
 /**
- * Docker-backed SandboxAdapter (LOU-F6). Runs each `run()` call in a
+ * Docker-backed SandboxAdapter. Runs each `run()` call in a
  * brand-new, network-isolated (`NetworkMode: 'none'` unless `network` says
  * otherwise), auto-removed
  * (`AutoRemove: true`) container - no bind mounts beyond the explicit
@@ -303,14 +303,14 @@ export interface SubprocessSandboxOptions {
  */
 export class SubprocessSandbox implements SandboxAdapter {
   readonly name = 'docker';
-  /** dockerode is loaded on first `run()`, not at import or construction time (LOU-D19). */
+  /** dockerode is loaded on first `run()`, not at import or construction time. */
   private readonly getDocker: () => Promise<Docker>;
   private readonly image: string;
   /** The validated network policy. Without a `broker`, an `{ allow }` list means no network. */
   readonly network: SandboxNetwork;
   private readonly broker?: CredentialBroker;
   private readonly networkName: string;
-  /** The internal network and broker listener, set up on the first `run()` (LOU-X12.2). */
+  /** The internal network and broker listener, set up on the first `run()`. */
   private egress?: Promise<Egress>;
   /** The directory `writeFile()` is confined to. */
   readonly root: string;
@@ -414,7 +414,7 @@ export class SubprocessSandbox implements SandboxAdapter {
 
   /**
    * Stops the broker listener and removes the internal network if this
-   * sandbox created it (LOU-X12.2). Call it once no `run()` is in flight; a
+   * sandbox created it. Call it once no `run()` is in flight; a
    * later `run()` sets them up again. The broker itself keeps running.
    */
   async close(): Promise<void> {
@@ -431,7 +431,7 @@ export class SubprocessSandbox implements SandboxAdapter {
    * written here becomes visible inside a subsequent `run()` call only if
    * that call's `opts.cwd` bind-mounts the directory `path` lives in.
    * A path outside the root (`..`, an absolute path elsewhere, or a symlink
-   * leading out) rejects with `LOUSHO_SANDBOX_PATH_DENIED` (Eve TOOLS-F17).
+   * leading out) rejects with `LOUSHO_SANDBOX_PATH_DENIED`.
    */
   async writeFile(path: string, content: string): Promise<void> {
     await fsWriteFile(await this.confine(path), content, 'utf-8');

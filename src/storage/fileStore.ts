@@ -222,7 +222,7 @@ class FileCheckpointStore implements CheckpointStore {
   }
 
   /**
-   * Eve DUR-F15: the latest checkpoint of every id in the directory, by id. A
+   * The latest checkpoint of every id in the directory, by id. A
    * file that cannot be read as a checkpoint is listed as an `'in-progress'` run
    * whose `lastError` is `LOUSHO_CHECKPOINT_CORRUPT`, as `load()` reports it.
    */
@@ -369,7 +369,7 @@ class FileApprovalStore implements ApprovalStore {
     return raw === undefined || claim !== undefined ? null : (JSON.parse(raw, decodeBytes) as ResolvedApproval);
   }
 
-  /** Eve TOOLS-F13: every unclaimed record in the directory, oldest first; a half-written file is skipped. */
+  /** Every unclaimed record in the directory, oldest first; a half-written file is skipped. */
   async list(): Promise<PendingApproval[]> {
     const found = new Map<string, PendingApproval>();
     for (const name of await jsonFiles(this.dir)) {

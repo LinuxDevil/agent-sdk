@@ -1,6 +1,6 @@
 /**
- * Shared fixture AgentSpec reused by every cross-harness generator's tests
- * (LOU-J1/J2/J3), so the generators are all verified against the exact same
+ * Shared fixture AgentSpec reused by every cross-harness generator's tests,
+ * so the generators are all verified against the exact same
  * input.
  */
 import { AgentSpec } from '../../schema';

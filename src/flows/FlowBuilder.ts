@@ -137,7 +137,7 @@ export class FlowBuilder {
       assertUniqueInputNames(this.flow.inputs);
     }
 
-    // LOU-R14: a createAgent() agent runs itself; `agents` entries are the
+    // A createAgent() agent runs itself; `agents` entries are the
     // plain data a flow's steps run under ({ name, model, system, tools }),
     // and its instructions are not readable from a flow. Reject it instead
     // of silently building a flow that drops them.

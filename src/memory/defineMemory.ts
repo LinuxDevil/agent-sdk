@@ -2,7 +2,7 @@ import { SDKError } from '../execution/errors';
 import type { Principal } from '../auth/types';
 import { isModelSchema, type StandardSchemaV1 } from '../utils/zodCompat';
 /**
- * Memory slots (LOU-W6): named, scoped long-term memory an agent recalls at
+ * Memory slots: named, scoped long-term memory an agent recalls at
  * the start of a run and reads / writes with `remember_<name>` and
  * `recall_<name>` tools. Storage is a pluggable `MemoryProvider`.
  */
@@ -29,7 +29,7 @@ export interface MemoryProvider {
   add(scopeKey: string, item: { text: string; metadata?: Record<string, unknown> }): Promise<MemoryItem>;
   remove(scopeKey: string, id: string): Promise<void>;
   /**
-   * Eve MEM-F2: replaces the stored item `id` with `text` and `metadata` - same
+   * Replaces the stored item `id` with `text` and `metadata` - same
    * id, a new `createdAt`, so it lists as the newest - and returns it. Another
    * item with the same `text` is removed. Without `id`, or with an id that is
    * not stored, it adds the item like `add()`. Optional: without it, a slot
@@ -39,7 +39,7 @@ export interface MemoryProvider {
   upsert?(scopeKey: string, item: { id?: string; text: string; metadata?: Record<string, unknown> }): Promise<MemoryItem>;
 }
 
-/** What a scope function gets: the run's session id, `send()` metadata and (N10a) the verified caller. */
+/** What a scope function gets: the run's session id, `send()` metadata and the verified caller. */
 export interface MemoryScopeContext {
   sessionId?: string;
   metadata?: Record<string, unknown>;
@@ -79,7 +79,7 @@ export function memoryKey(slot: MemorySlot, ctx: MemoryScopeContext = {}): strin
     });
   }
   if (scope === undefined || scope === null) return undefined;
-  // Eve MEM-F6: a non-string, or a key interpolated from a missing value
+  // A non-string, or a key interpolated from a missing value
   // (`user:${undefined}`, `user:${{}}`), would pool every caller's memory under one key.
   if (typeof scope !== 'string' || scope === '' || /\[object |(^|:)(undefined|null)$/.test(scope)) {
     throw new SDKError(
@@ -92,7 +92,7 @@ export function memoryKey(slot: MemorySlot, ctx: MemoryScopeContext = {}): strin
 }
 
 /**
- * Internal (Eve MEM-F7): throws unless `key` is a non-empty string, so a
+ * Internal: throws unless `key` is a non-empty string, so a
  * forgotten `memoryKey(slot, ctx)` argument never stores items under the key
  * `undefined` that every such caller would share.
  */
@@ -123,7 +123,7 @@ export interface DefineMemoryOptions {
   recall?: { onSessionStart?: boolean; maxItems?: number; query?: 'last-input' | 'none' };
   /**
    * Which tools the model gets. `remember` and `recall` default to `true`.
-   * `forget` (default `false`, Eve MEM-F2) adds `forget_<name>({ id })`, which
+   * `forget` (default `false`) adds `forget_<name>({ id })`, which
    * deletes an item, and shows each item's id in the recalled `<memory>`
    * block, so the model can drop a fact that is wrong or out of date.
    */
@@ -145,7 +145,7 @@ export interface DefineMemoryOptions {
    */
   itemSchema?: StandardSchemaV1;
   /**
-   * Eve MEM-F2: with `itemSchema`, the field (or fields) that identify an
+   * With `itemSchema`, the field (or fields) that identify an
    * item. Remembering an item whose key fields equal a stored item's replaces
    * that item (same id, now the newest) instead of adding a second version:
    * `itemKey: 'topic'` keeps one `{ topic: 'language', value }` item.

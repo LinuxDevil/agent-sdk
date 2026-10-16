@@ -30,8 +30,8 @@
  * checkpoint instead of starting over. This is what makes Stop-then-Run
  * "resume from the last checkpoint" rather than "restart from scratch".
  *
- * Caveat (documented, not fixed here - real-provider wiring is LOU-R's
- * job): for the MockLLMProvider used by default in this epic, `generate()`
+ * Caveat (documented, not fixed here - real-provider wiring is a separate
+ * concern): for the MockLLMProvider used by default in this epic, `generate()`
  * has no real network I/O to cancel, so this wrapper's pre-call check is
  * the entire cancellation mechanism - a mock call already in flight when
  * `stop()` fires will still resolve, but the loop will not continue to a
@@ -69,7 +69,7 @@ export function withAbortSignal(provider: LLMProvider, signal: AbortSignal): LLM
       checkAborted();
       return result;
     },
-    // M9: AgentExecutor.execute({ onAgentEvent }) streams model calls, so a
+    // AgentExecutor.execute({ onAgentEvent }) streams model calls, so a
     // stop() during a streamed call is checked between chunks and after the
     // last one - the same point generate() checks after its call returns.
     async stream(options: GenerateOptions): Promise<StreamResult> {

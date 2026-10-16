@@ -1,18 +1,18 @@
 /**
- * node-server deployment adapter (LOU-I2).
+ * node-server deployment adapter.
  *
  * scaffold(): loads + validates the agent spec at agentPath (the same
- *   .yaml/.yml/.json AgentSpec format `lousho dev` serves, via LOU-H9's
+ *   .yaml/.yml/.json AgentSpec format `lousho dev` serves, via the
  *   loadSpec()), then writes:
  *     - agent.config.js  the validated spec, as an ES module default export
  *     - server.ts        starts the SDK's node server (src/deploy/nodeServer.ts):
  *                        GET /health plus the `lousho dev` /chat API (sessions,
- *                        SSE, approvals; LOU-D14), bearer auth via LOUSHO_API_TOKEN
+ *                        SSE, approvals), bearer auth via LOUSHO_API_TOKEN
  *     - package.json     manifest with a `start` script and the runtime
  *                        dependencies the built server needs (the spec's
  *                        provider peer, the MCP SDK when mcpServers are
  *                        configured) - the docker image's `npm install`
- *   An agent directory (LOU-P8.2, see node-server-dir.ts) is accepted in place
+ *   An agent directory (see node-server-dir.ts) is accepted in place
  *   of a spec: server.ts then resolves it with resolveAgentDir() and starts
  *   its schedules and mounts its channels. So is a .ts/.js module whose
  *   default (or `agent`) export is a createAgent() config or a built agent,
@@ -122,7 +122,7 @@ import { createAgent, createDeployedServer, resolveAgentDir, storeFromEnv } from
   const store = process.env.LOUSHO_STORE === undefined ? (resolved.config.store ?? storeFromEnv()) : storeFromEnv();
   const agent = createAgent({ ...resolved.config, store });
   await agent.ready();`,
-    // An agent directory's auth.ts (N10a) replaces the baked token; LOUSHO_API_TOKEN is appended to it.
+    // An agent directory's auth.ts replaces the baked token; LOUSHO_API_TOKEN is appended to it.
     options: `{ ...${JSON.stringify(options)}, ...(resolved.auth ? { auth: resolved.auth } : {}), schedules: resolved.schedules, channels: resolved.channels }`,
     report: `console.log('lousho server: schedules: ' + (resolved.manifest.schedules.join(', ') || 'none') + '; channels: ' + (resolved.manifest.channels.join(', ') || 'none'));`,
   };
@@ -148,9 +148,39 @@ import * as agentModule from ${file};`,
   };
 }
 
-/** The first literal `model: '<provider>/<id>'` in a module's source (a guess at its provider, for the build's package.json). */
-function agentModuleModel(agentPath: string): string | undefined {
-  return /\bmodel\s*:\s*['"`]([a-z][\w-]*\/[^'"`]+)['"`]/.exec(fs.readFileSync(agentPath, 'utf8'))?.[1];
+/** The SDK provider classes and the provider each one is (its `PROVIDERS` name in providerSpec.ts). */
+const PROVIDER_CLASSES: Record<string, string> = {
+  OpenAIProvider: 'openai',
+  AnthropicProvider: 'anthropic',
+  OpenRouterProvider: 'openrouter',
+  OllamaProvider: 'ollama',
+  PiProvider: 'pi',
+};
+
+/**
+ * The providers a module's source names (a guess, for the build's package.json): the `<provider>/<id>` of
+ * each literal `model: '...'` and each SDK provider class it mentions (`new OpenRouterProvider(...)`).
+ */
+export function providersInSource(source: string): string[] {
+  const found = new Set<string>();
+  for (const match of source.matchAll(/\bmodel\s*:\s*['"`]([a-z][\w-]*)\/[^'"`]+['"`]/g)) found.add(match[1]);
+  for (const [className, provider] of Object.entries(PROVIDER_CLASSES)) {
+    if (new RegExp(`\\b${className}\\b`).test(source)) found.add(provider);
+  }
+  return [...found];
+}
+
+/** Providers named in a module file, warning when none is found (the build's package.json would then list no provider package). */
+function moduleProviders(file: string): string[] {
+  const providers = providersInSource(fs.readFileSync(file, 'utf8'));
+  if (providers.length === 0) {
+    console.warn(
+      `lousho build: no provider found in ${file}, so the build's package.json lists no provider package. ` +
+        `If the agent needs one (@ai-sdk/openai, @ai-sdk/anthropic, ...), add it to the "dependencies" of the generated package.json ` +
+        `(or use a literal model: '<provider>/<model>' or an SDK provider class such as new OpenRouterProvider(...) in the entry file).`
+    );
+  }
+  return providers;
 }
 
 /** The generated server.ts: flags and listening here, the routes in the SDK runtime (src/deploy/nodeServer.ts). */
@@ -208,7 +238,7 @@ async function main(): Promise<void> {
     }
   });
 
-  // Eve DUR-F15: stop accepting, stop the schedules, let in-flight turns finish (bounded), then close the agent.
+  // Stop accepting, stop the schedules, let in-flight turns finish (bounded), then close the agent.
   const shutdownTimeoutMs = Number(process.env.LOUSHO_SHUTDOWN_TIMEOUT_MS) || undefined;
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, () => {
@@ -261,7 +291,7 @@ async function agentDirModel(dir: string): Promise<string | undefined> {
 }
 
 /**
- * The runtime dependencies a built server needs (LOU-R20): `dist/server.js`
+ * The runtime dependencies a built server needs: `dist/server.js`
  * bundles the SDK and its required dependencies (`ai`, `zod`, ...), but the
  * SDK's optional peers stay external (see bundleExternals()), so `npm install`
  * where the server runs - the docker image's `npm install --omit=dev` - must
@@ -271,14 +301,14 @@ async function agentDirModel(dir: string): Promise<string | undefined> {
  * SDK itself is not listed: the bundle never loads an installed copy. An
  * unknown provider type (e.g. a registered test provider) adds no dependency.
  */
-export function deployDependencies(providerType?: string, hasMcpServers = false): Record<string, string> {
+export function deployDependencies(providerType?: string | readonly string[], hasMcpServers = false): Record<string, string> {
   const sdkRoot = findSdkRoot();
   const pkg = JSON.parse(fs.readFileSync(path.join(sdkRoot, 'package.json'), 'utf8')) as {
     peerDependencies?: Record<string, string>;
   };
   const dependencies: Record<string, string> = {};
-  const info = listProviders().find((p) => p.name === providerType);
-  if (info) {
+  const types = typeof providerType === 'string' ? [providerType] : (providerType ?? []);
+  for (const info of listProviders().filter((p) => types.includes(p.name))) {
     const peer = info.peers[bundledAiMajor(sdkRoot)];
     dependencies[peer.name] = peer.range;
   }
@@ -332,7 +362,7 @@ function scaffoldAgentModule(agentPath: string, outDir: string, options: DeployO
   writeAgentModulePointer(outDir, agentPath);
   writeFile(path.join(outDir, 'server.ts'), serverSource(agentModuleVariant(agentPath, options)));
   const name = projectName(agentPath) ?? path.basename(agentPath, path.extname(agentPath));
-  writeFile(path.join(outDir, 'package.json'), packageJsonSource(name, deployDependencies(providerTypeOf(agentModuleModel(agentPath)))));
+  writeFile(path.join(outDir, 'package.json'), packageJsonSource(name, deployDependencies(moduleProviders(agentPath))));
 }
 
 async function scaffoldAgentDir(agentPath: string, outDir: string, options: DeployOptions): Promise<void> {
@@ -341,7 +371,13 @@ async function scaffoldAgentDir(agentPath: string, outDir: string, options: Depl
   writeFile(path.join(outDir, 'server.ts'), serverSource(agentDirVariant(options)));
   // A code config can name any provider; a data config's `model` ('openai/...') tells us the peer to ship.
   const model = await agentDirModel(agentPath);
-  writeFile(path.join(outDir, 'package.json'), packageJsonSource(path.basename(agentPath), deployDependencies(providerTypeOf(model))));
+  let providers = [providerTypeOf(model)].filter((p): p is string => p !== undefined);
+  if (providers.length === 0) {
+    // A code config (agent.ts) is scanned like an agent module: literal models and SDK provider classes.
+    const file = await findConfigFile(agentPath).catch(() => undefined);
+    if (file && isCodeConfigFile(file)) providers = moduleProviders(file);
+  }
+  writeFile(path.join(outDir, 'package.json'), packageJsonSource(path.basename(agentPath), deployDependencies(providers)));
 }
 
 export const NodeServerAdapter: DeploymentAdapter = {
@@ -370,6 +406,9 @@ export const NodeServerAdapter: DeploymentAdapter = {
     const entry = { server: path.join(outDir, 'server.ts'), ...(source ? await agentDirEntries(source) : {}) };
     // An agent module may use ESM-only syntax (top-level await, import.meta), so it is bundled as ESM like a directory.
     const esm = source !== undefined || fs.existsSync(path.join(outDir, AGENT_MODULE_POINTER));
+    // Start from an empty dist/: a store a previous build's server wrote under dist/agent (or a file
+    // since dropped from the directory) must not survive into this build.
+    fs.rmSync(path.join(outDir, 'dist'), { recursive: true, force: true });
     await buildBundle(build, {
       config: false,
       entry,
@@ -394,7 +433,7 @@ export const NodeServerAdapter: DeploymentAdapter = {
       // Set LOUSHO_BUILD_VERBOSE=1 to see tsup's own build log (and full bundling errors).
       silent: !process.env.LOUSHO_BUILD_VERBOSE,
     }, outDir);
-    if (source) copyAgentDirAssets(source, outDir);
+    if (source) await copyAgentDirAssets(source, outDir);
     // An ESM dist/server.js needs "type": "module" next to it (a directory build's copy step writes it too).
     else if (esm) writeFile(path.join(outDir, 'dist', 'package.json'), '{ "type": "module" }\n');
   },

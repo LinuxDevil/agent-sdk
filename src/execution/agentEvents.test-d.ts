@@ -61,7 +61,7 @@ describe('AgentEvent types', () => {
     }
   });
 
-  it('narrows provider retry/fallback events on event.type (LOU-V7.2)', () => {
+  it('narrows provider retry/fallback events on event.type', () => {
     if (event.type === 'provider.retry') {
       expectTypeOf(event.attempt).toBeNumber();
       expectTypeOf(event.error.category).toEqualTypeOf<CompactedProviderErrorCategory | undefined>();
@@ -69,7 +69,7 @@ describe('AgentEvent types', () => {
     if (event.type === 'provider.fallback') expectTypeOf(event.error).toEqualTypeOf<{ message: string }>();
   });
 
-  it('narrows permission.decision on event.type (LOU-X2)', () => {
+  it('narrows permission.decision on event.type', () => {
     if (event.type === 'permission.decision') {
       expectTypeOf(event.decision).toEqualTypeOf<'allow' | 'deny' | 'ask' | 'default'>();
       expectTypeOf(event.rule).toEqualTypeOf<{ index: number; reason?: string } | undefined>();
@@ -77,7 +77,7 @@ describe('AgentEvent types', () => {
     }
   });
 
-  it('narrows compaction events on event.type (LOU-W3.2)', () => {
+  it('narrows compaction events on event.type', () => {
     if (event.type === 'compaction.start') expectTypeOf(event.thresholdTokens).toBeNumber();
     if (event.type === 'compaction.done') {
       expectTypeOf(event.prunedToolCallIds).toEqualTypeOf<string[]>();
@@ -86,29 +86,29 @@ describe('AgentEvent types', () => {
     }
   });
 
-  it('narrows budget.exceeded on event.type (LOU-V6)', () => {
+  it('narrows budget.exceeded on event.type', () => {
     if (event.type === 'budget.exceeded') {
       expectTypeOf(event.limit).toEqualTypeOf<
-        'maxTokens' | 'maxInputTokens' | 'maxOutputTokens' | 'maxCostUsd' | 'maxDurationMs' | 'maxSteps'
+        'maxTokens' | 'maxInputTokens' | 'maxOutputTokens' | 'maxCostUsd' | 'maxDurationMs' | 'maxSteps' | 'maxToolErrors'
       >();
       expectTypeOf(event.scope).toEqualTypeOf<'run' | 'session'>();
     }
   });
 
-  it('narrows input events on event.type (LOU-V9)', () => {
+  it('narrows input events on event.type', () => {
     if (event.type === 'input.queued') expectTypeOf(event.text).toBeString();
     if (event.type === 'input.applied') expectTypeOf(event.step).toBeNumber();
     if (event.type === 'input.steered') expectTypeOf(event.mode).toEqualTypeOf<'immediate' | 'queued'>();
   });
 
-  it('narrows agent.drift on event.type (LOU-W9.2)', () => {
+  it('narrows agent.drift on event.type', () => {
     if (event.type === 'agent.drift') {
       expectTypeOf(event.toolsAdded).toEqualTypeOf<string[]>();
       expectTypeOf(event.instructions).toBeBoolean();
     }
   });
 
-  it('narrows guardrail events on event.type (LOU-X4)', () => {
+  it('narrows guardrail events on event.type', () => {
     if (event.type === 'guardrail.tripped' || event.type === 'guardrail.rewrote') {
       expectTypeOf(event.kind).toEqualTypeOf<'input' | 'output' | 'tool'>();
       expectTypeOf(event.toolName).toEqualTypeOf<string | undefined>();
@@ -116,7 +116,7 @@ describe('AgentEvent types', () => {
     }
   });
 
-  it('narrows a guardrail trip info on its category (N5a)', () => {
+  it('narrows a guardrail trip info on its category', () => {
     type Info<C extends GuardrailTripInfo['category']> = Extract<GuardrailTripInfo, { category: C }>;
     expectTypeOf<Info<'pii'>['matches'][number]>().toEqualTypeOf<{ type: PiiType; start: number; end: number }>();
     expectTypeOf<Info<'secret'>['matches'][number]>().toEqualTypeOf<{ label: string; start: number; end: number }>();
@@ -125,7 +125,7 @@ describe('AgentEvent types', () => {
     expectTypeOf<Info<'custom'>['anything']>().toBeUnknown();
   });
 
-  it('narrows handoff on event.type (N6)', () => {
+  it('narrows handoff on event.type', () => {
     if (event.type === 'handoff') {
       expectTypeOf(event.from).toBeString();
       expectTypeOf(event.to).toBeString();
@@ -133,7 +133,7 @@ describe('AgentEvent types', () => {
     }
   });
 
-  it('narrows todo.updated on event.type (N12)', () => {
+  it('narrows todo.updated on event.type', () => {
     if (event.type === 'todo.updated') {
       expectTypeOf(event.todos).toEqualTypeOf<Todo[]>();
       expectTypeOf(event.counts.total).toBeNumber();
@@ -201,7 +201,7 @@ describe('AgentEvent types', () => {
     expectTypeOf(run.result).toEqualTypeOf<Promise<ExecutionResult>>();
   });
 
-  it('LOU-V13: narrows reasoning events; the reasoning option takes an effort or settings', () => {
+  it('narrows reasoning events; the reasoning option takes an effort or settings', () => {
     if (event.type === 'reasoning.delta') expectTypeOf(event.text).toBeString();
     if (event.type === 'reasoning.done') expectTypeOf(event.tokens).toEqualTypeOf<number | undefined>();
     if (event.type === 'reasoning.start') {
@@ -219,13 +219,13 @@ describe('AgentEvent types', () => {
   });
 });
 
-describe('event listener options (LOU-D41)', () => {
+describe('event listener options', () => {
   it('types createAgent({ onEvent }) and ExecuteOptions.onAgentEvent with AgentEvent', () => {
     createAgent({ provider: createMockProvider(), onEvent: (e) => expectTypeOf(e).toEqualTypeOf<AgentEvent>() });
     expectTypeOf<NonNullable<ExecuteOptions['onAgentEvent']>>().parameter(0).toEqualTypeOf<AgentEvent>();
   });
 
-  it('has no ExecuteOptions.onEvent (removed in A2b)', () => {
+  it('has no ExecuteOptions.onEvent (removed)', () => {
     expectTypeOf<ExecuteOptions>().not.toHaveProperty('onEvent');
   });
 });

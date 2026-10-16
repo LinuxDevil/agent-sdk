@@ -1,5 +1,5 @@
 /**
- * `@lousho/build-ai-agent/vue` (LOU-P2): the `useLoushoAgent()` composable,
+ * `@lousho/build-ai-agent/vue`: the `useLoushoAgent()` composable,
  * and the framework-neutral reducer and stream parser it is built on.
  */
 

@@ -88,7 +88,7 @@ describe('startSchedules', () => {
     await agent.close();
   });
 
-  it('runs each fire in its own durable session, schedule-<name>-<fire time> (Eve DUR-F10)', async () => {
+  it('runs each fire in its own durable session, schedule-<name>-<fire time>', async () => {
     const store = memoryStore();
     const provider = mockModel(['ok'], { onExhausted: 'repeat-last' });
     const agent = createAgent({ provider, instructions: 'x', store });

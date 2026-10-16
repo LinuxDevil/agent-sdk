@@ -171,6 +171,28 @@ result; use it in your own tool wrappers so they match. A thrown error can pick
 its kind by carrying a `toolErrorKind` property. An error extending
 `PropagatingToolError` is not a result: it aborts the run.
 
+### Failed calls in the result
+
+The model sees each failed call and may still answer as if it had worked,
+ending the run with `finishReason: 'stop'`. `result.toolErrors` counts the
+run's tool calls whose result is an error (any `kind` above except `not-run`);
+it is absent when none failed. Check it before trusting `text`, or cap it with
+`limits.maxToolErrors`: once that many calls have failed, the run stops before
+its next model call with `finishReason: 'budget-exceeded'` and
+`result.budget.limit` `'maxToolErrors'` (or rejects with `BudgetExceededError`
+under `onExceeded: 'throw'`, see [Budgets](./configuration.md#budgets)).
+
+```ts
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+const stats = defineTool({ name: 'stats', description: 'Weekly stats', input: z.object({}), execute: async () => (await fetch('https://stats.example.com/week')).json() });
+const agent = createAgent({ provider, tools: [stats], limits: { maxToolErrors: 3 } });
+const result = await agent.send('Summarise this week');
+if (result.budget?.limit === 'maxToolErrors') throw new Error('The stats tool keeps failing.');
+if (result.toolErrors) console.warn(`${result.toolErrors} tool call(s) failed; the answer may be incomplete.`);
+```
+
 ## Built-in tools
 
 | Export | Tool |
@@ -181,7 +203,7 @@ its kind by carrying a `toolErrorKind` property. An error extending
 | `createTodoTools()` | `todo_write` / `todo_read` so an agent can plan multi-step work; see [Todo tools](#todo-tools). |
 | `askQuestionTool()`, `createAgent({ askQuestion: true })` | `ask_question`: the agent asks the user something and the run pauses until `agent.approvals.answer()`; see [Asking the user a question](./approvals.md#asking-the-user-a-question). |
 | `createFsTools()`, `createShellTool()` | File system and shell tools for coding agents; see [Workspace tools](./workspace-tools.md). |
-| `createEmailTool()`, `createSlackTool()`, `createGitHubTools()`, `createJiraTools()` (from `@lousho/build-ai-agent/integrations`) | Integrations that need credentials, so they are built with options. `createSlackTool()` (and `SlackTriggerAdapter` from `/triggers`) reads the webhook URL from `SLACK_WEBHOOK_URL` unless you pass `webhookUrl`; `createJiraTools()` takes `baseUrl`, `email` and `apiToken` explicitly (conventionally from `JIRA_BASE_URL`, `JIRA_EMAIL` and `JIRA_API_TOKEN`). |
+| `createEmailTool()`, `createSlackTool()`, `createGitHubTools()`, `createJiraTools()` (from `@lousho/build-ai-agent/integrations`) | Integrations that need credentials, so they are built with options. `createSlackTool()` reads the webhook URL from `SLACK_WEBHOOK_URL` unless you pass `webhookUrl`; `createJiraTools()` takes `baseUrl`, `email` and `apiToken` explicitly (conventionally from `JIRA_BASE_URL`, `JIRA_EMAIL` and `JIRA_API_TOKEN`). |
 | `createAgent({ mcpServers })`, `connectMcp(servers)` | Every tool of MCP servers given as config (stdio `command` or HTTP `url`), named `<server>__<tool>`; see [Use MCP servers in an agent](./mcp.md#use-mcp-servers-in-an-agent). |
 | `openApiTools(document, options)` | One tool per operation of an OpenAPI 3.0 / 3.1 document; mutating operations ask for approval. See [OpenAPI tools](./openapi-tools.md). |
 | `loadMcpTools(client, name)` | Every tool of a connected MCP server; see [MCP tools](./mcp.md#tools-from-a-client-you-connected-yourself). |

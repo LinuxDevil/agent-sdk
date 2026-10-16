@@ -1,5 +1,5 @@
 /**
- * Value checks for `t.check()` / `t.soft()` (LOU-D7).
+ * Value checks for `t.check()` / `t.soft()`.
  *
  * A check judges one value (a reply string, a judge score, a number) and
  * says why it failed. `includes`, `matches` and `equals` are yes/no;

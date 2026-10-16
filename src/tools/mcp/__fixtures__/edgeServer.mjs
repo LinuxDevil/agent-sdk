@@ -1,4 +1,4 @@
-// An MCP server over stdio for connect.test.ts (Eve TOOLS-F18): its tools/list
+// An MCP server over stdio for connect.test.ts: its tools/list
 // has two pages, `grow` adds a tool and sends tools/list_changed, `die` exits
 // the process with code 3. Plain JS, run with `node`.
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';

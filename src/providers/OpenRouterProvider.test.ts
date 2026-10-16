@@ -146,8 +146,8 @@ describe('OpenRouterProvider', () => {
       return { url: String(url), headers: new Headers(init.headers) };
     }
 
-    // On `@ai-sdk/openai` 2+ the bare call is the Responses API, which OpenRouter does not implement
-    // (LOU-D28f); this runs on every installed `ai` major and pins the Chat Completions endpoint.
+    // On `@ai-sdk/openai` 2+ the bare call is the Responses API, which OpenRouter does not implement;
+    // this runs on every installed `ai` major and pins the Chat Completions endpoint.
     it('calls the Chat Completions endpoint, not the Responses API', async () => {
       const { url } = await requestOf(new OpenRouterProvider(config));
       expect(url).toBe('https://openrouter.ai/api/v1/chat/completions');
@@ -216,7 +216,7 @@ describe('OpenRouterProvider', () => {
         );
     }
 
-    it('LOU-R5: a 404 keeps the body\'s "No endpoints found" on the thrown error', async () => {
+    it('a 404 keeps the body\'s "No endpoints found" on the thrown error', async () => {
       // OpenRouter's real shape: a numeric `code`, no `type`/`param` - which
       // does not fit @ai-sdk/openai's error schema, so without the rewrite the
       // APICallError message is only the status text.
@@ -224,12 +224,12 @@ describe('OpenRouterProvider', () => {
       expect(error.message).toContain('No endpoints found for openai/retired.');
     });
 
-    it('LOU-R5: a 401 keeps the body\'s auth explanation on the thrown error', async () => {
+    it('a 401 keeps the body\'s auth explanation on the thrown error', async () => {
       const error = await errorOf(401, JSON.stringify({ error: { message: 'No auth credentials found', code: 401 } }));
       expect(error.message).toContain('No auth credentials found');
     });
 
-    it('LOU-R5: a non-JSON error body still rejects (status text, nothing to keep)', async () => {
+    it('a non-JSON error body still rejects (status text, nothing to keep)', async () => {
       const error = await errorOf(502, 'bad gateway');
       expect(error).toBeInstanceOf(Error);
     });
@@ -237,7 +237,7 @@ describe('OpenRouterProvider', () => {
     it("keeps the upstream provider's own message (error.metadata.raw) on the thrown error", async () => {
       // What OpenRouter returns when the upstream provider rejects the call:
       // "Provider returned error", with the upstream body verbatim in
-      // metadata.raw (audit repo-maintainer F2 - the generic message alone
+      // metadata.raw (the generic message alone
       // hid the real cause).
       const error = await errorOf(
         400,
@@ -270,7 +270,7 @@ describe('OpenRouterProvider', () => {
   });
 });
 
-describe('OpenRouterProvider reported cost (Eve PROV-F3)', () => {
+describe('OpenRouterProvider reported cost', () => {
   it("fills usage.costUsd from the response's usage.cost", async () => {
     const body = {
       id: 'x', object: 'chat.completion', created: 0, model: 'm',
@@ -283,7 +283,7 @@ describe('OpenRouterProvider reported cost (Eve PROV-F3)', () => {
   });
 });
 
-describe('OpenRouterProvider prompt-cache usage (Eve PROV-F4)', () => {
+describe('OpenRouterProvider prompt-cache usage', () => {
   it("reads the response's cache reads and writes into usage", async () => {
     const body = {
       id: 'x', object: 'chat.completion', created: 0, model: 'm',

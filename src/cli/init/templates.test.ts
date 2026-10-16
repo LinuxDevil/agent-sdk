@@ -27,7 +27,7 @@ const ENV_KEYS: Record<string, string> = {
   pi: 'OPENROUTER_API_KEY',
 };
 
-/** The `ai` / provider-package pairing each provider is scaffolded with (LOU-D28d). */
+/** The `ai` / provider-package pairing each provider is scaffolded with. */
 const SCAFFOLD_PAIRINGS: Record<string, Record<string, string>> = {
   openai: { ai: '^7.0.0', '@ai-sdk/openai': '^4.0.0' },
   anthropic: { ai: '^7.0.0', '@ai-sdk/anthropic': '^4.0.0' },
@@ -49,7 +49,7 @@ describe('renderProject', () => {
     expect(files['.env.example']).toMatch(new RegExp(`^${ENV_KEYS[provider]}=$`, 'm'));
     expect(files['.gitignore']).toMatch(/^\.env$/m);
     expect(files['.gitignore']).toMatch(/^!\.env\.example$/m);
-    // M5a: local trace files (fileTraceExporter) and other .lousho/ state stay out of git.
+    // Local trace files (fileTraceExporter) and other .lousho/ state stay out of git.
     expect(files['.gitignore']).toMatch(/^\.lousho\/$/m);
 
     const pkg = JSON.parse(files['package.json']!);
@@ -64,11 +64,11 @@ describe('renderProject', () => {
     expect(files['README.md']).toContain('npm run dev');
   });
 
-  it.each(PROVIDER_NAMES)('%s: zod pairs with the scaffolded ai major (LOU-D29)', (provider) => {
+  it.each(PROVIDER_NAMES)('%s: zod pairs with the scaffolded ai major', (provider) => {
     const sdk = { ...SDK, peerDependencies: { ...SDK.peerDependencies, zod: '^3.25.76 || ^4.0.0' } };
     const pkg = JSON.parse(renderProject({ ...config(provider, 'minimal'), sdk })['package.json']!);
     const zod3Only = SCAFFOLD_PAIRINGS[provider]!.ai === '^4.3.19';
-    // zod 3 for ai 4, zod 4 for Ollama's ai 6/7 package (LOU-M8), both for the rest.
+    // zod 3 for ai 4, zod 4 for Ollama's ai 6/7 package, both for the rest.
     expect(pkg.dependencies.zod).toBe(zod3Only ? '^3.25.76' : provider === 'ollama' ? '^4.0.0' : '^3.25.76 || ^4.0.0');
   });
 
@@ -158,8 +158,16 @@ describe('renderProject', () => {
   it('the terminal chat survives a provider error and reports a startup error without a stack', () => {
     const index = renderProject(config('openai', 'minimal'))['src/index.ts']!;
     expect(index).toMatch(/try \{\n  agent = buildAgent\(\);/);
-    expect(index).toMatch(/try \{\n    console\.log\(`agent> /);
-    expect(index).toContain("console.error(`error: ${errorText(error)}`);");
+    expect(index).toMatch(/try \{\n      for await \(const event of agent\.stream\(message\)\)/);
+    expect(index).toContain('console.error(`\\nerror: ${errorText(error)}`);');
+  });
+
+  it('the terminal chat streams text deltas and waits for the turn in flight at end of input', () => {
+    const index = renderProject(config('openai', 'minimal'))['src/index.ts']!;
+    expect(index).toContain("event.type === 'text.delta'");
+    expect(index).toContain('for await (const line of rl)');
+    expect(index).not.toContain("rl.on('close', () => process.exit");
+    expect(index).toContain('if (!closed) rl.prompt();');
   });
 
   it('uses the chosen package manager in the README commands', () => {

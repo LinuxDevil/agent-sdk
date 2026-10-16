@@ -1,5 +1,5 @@
 /**
- * Remote eval target (LOU-D47): runs an eval case against a deployed agent
+ * Remote eval target: runs an eval case against a deployed agent
  * (`lousho deploy` node server or Cloudflare Worker) over its session API,
  * `POST /chat { sessionId, input }` streamed as SSE, and turns the streamed
  * events into the `ExecutionResult` the in-process path produces, so checks,

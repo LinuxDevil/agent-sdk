@@ -12,7 +12,7 @@ const event = (inputTokens: number, outputTokens: number, extra: Partial<AgentEv
   ...extra,
 });
 
-describe('remote sub-agent usage helpers (M10b)', () => {
+describe('remote sub-agent usage helpers', () => {
   it('fromEventUsage files the totals under one remote entry, one call by default', () => {
     const usage = fromEventUsage(event(100, 50, { costUsd: 0.5, estimated: true }), remoteModelKey('researcher'));
     expect(usage).toEqual({
@@ -43,14 +43,51 @@ describe('remote sub-agent usage helpers (M10b)', () => {
     expect(restoreRunUsage(structuredClone(run)).costUsd).toBeCloseTo(leadCost + 0.5);
   });
 
-  it("makes the lead's cost unknown when the remote sent no cost", () => {
+  it("flags the lead's cost partial when a remote call sent no cost", () => {
     const run = emptyRunUsage();
     recordStepUsage(run, { model: 'gpt-4o-mini', usage: { inputTokens: 10, outputTokens: 1, totalTokens: 11 }, estimated: false });
     mergeDelegatedUsage(run, fromEventUsage(event(10, 5, { costUsd: 0.25 }), 'remote:r'));
     mergeDelegatedUsage(run, fromEventUsage(event(10, 5), 'remote:r'));
-    expect(run.byModel['remote:r'].costUsd).toBeUndefined();
+    expect(run.byModel['remote:r']).toMatchObject({ costUsd: 0.25, costPartial: true });
+    expect(run.costPartial).toBe(true);
+    expect(run.costUsd).toBeGreaterThan(0.25);
+  });
+
+  it('keeps the priced steps in the total and flags it partial when one step has no known price', () => {
+    const run = emptyRunUsage();
+    const usage = { inputTokens: 1000, outputTokens: 1000, totalTokens: 2000 };
+    recordStepUsage(run, { model: 'gpt-4o-mini', usage, estimated: false });
+    const priced = run.costUsd!;
+    expect(priced).toBeGreaterThan(0);
+    expect(run.costPartial).toBeUndefined();
+
+    recordStepUsage(run, { model: 'no-such-model-xyz', usage, estimated: false });
+    expect(run.costUsd).toBeCloseTo(priced);
+    expect(run.costPartial).toBe(true);
+    expect(run.byModel['no-such-model-xyz'].costUsd).toBeUndefined();
+
+    // a later billed step of the same unknown model adds up and marks that model partial too
+    recordStepUsage(run, { model: 'no-such-model-xyz', usage, estimated: false, costUsd: 0.5 });
+    expect(run.costUsd).toBeCloseTo(priced + 0.5);
+    expect(run.byModel['no-such-model-xyz']).toMatchObject({ costUsd: 0.5, costPartial: true });
+    expect(restoreRunUsage(structuredClone(run))).toMatchObject({ costPartial: true });
+  });
+
+  it('leaves the cost undefined (not partial) when no step has a known price, and rolls partial children into the parent', () => {
+    const run = emptyRunUsage();
+    const usage = { inputTokens: 10, outputTokens: 1, totalTokens: 11 };
+    recordStepUsage(run, { model: 'no-such-model-xyz', usage, estimated: false });
     expect(run.costUsd).toBeUndefined();
-    expect(run.delegated?.costUsd).toBeUndefined();
+    expect(run.costPartial).toBeUndefined();
+
+    const child = emptyRunUsage();
+    recordStepUsage(child, { model: 'gpt-4o-mini', usage, estimated: false });
+    recordStepUsage(child, { model: 'no-such-model-xyz', usage, estimated: false });
+    const parent = emptyRunUsage();
+    mergeDelegatedUsage(parent, child);
+    expect(parent.costUsd).toBeCloseTo(child.costUsd!);
+    expect(parent.costPartial).toBe(true);
+    expect(parent.delegated).toMatchObject({ costPartial: true });
   });
 
   it('usageSince is what a cumulative total added after an earlier one, never below zero', () => {
@@ -70,7 +107,7 @@ describe('remote sub-agent usage helpers (M10b)', () => {
   });
 });
 
-describe('provider-reported cost (Eve PROV-F3)', () => {
+describe('provider-reported cost', () => {
   const generated = (costUsd?: number) => ({ text: 'x', finishReason: 'stop' as const, usage: { promptTokens: 100, completionTokens: 10, totalTokens: 110, costUsd } });
 
   it('prefers the reported cost over the registry estimate, even for a priced model', () => {

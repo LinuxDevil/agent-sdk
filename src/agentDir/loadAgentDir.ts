@@ -1,5 +1,5 @@
 /**
- * Filesystem agent loader (LOU-Y5): define an agent as a directory.
+ * Filesystem agent loader: define an agent as a directory.
  *
  * The typed code API stays the source of truth. A directory is just another
  * way to produce the `createAgent()` options, so `loadAgentDir()` assembles
@@ -31,6 +31,8 @@ import { SDKError } from '../execution/errors';
 import type { AuthFn } from '../auth/types';
 import type { AgentHook } from '../execution/hooks';
 import type { ApproveToolCall } from '../createAgentApprovals';
+import type { OutputSpec } from '../execution/structuredOutput';
+import type { InferSchemaOutput, StandardSchemaV1 } from '../utils/zodCompat';
 import type { AgentStore } from '../storage/agentStore';
 import { fileStore } from '../storage/fileStore';
 import { loadAuth } from './loadAuth';
@@ -97,7 +99,7 @@ export interface AgentDirManifest {
   channels: string[];
   /** Memory slot names discovered in `memory/` (the file name unless the slot sets its own). */
   memory: string[];
-  /** Whether the directory has an `auth.ts` / `.js` (N10a); only the top-level directory's counts. */
+  /** Whether the directory has an `auth.ts` / `.js`; only the top-level directory's counts. */
   auth: boolean;
   /**
    * The `lousho-registry.json` install receipt, when the directory has one (#272):
@@ -118,7 +120,7 @@ export interface ResolvedAgentDir {
   /** The channels of `channels/`; serve them with `createDeployedServer(agent, { channels })` or `mountChannels()`. `loadAgentDir()` does not mount them. */
   channels: Channel[];
   /**
-   * The route auth of `auth.ts` (N10a, docs/auth.md): pass it to
+   * The route auth of `auth.ts` (docs/auth.md): pass it to
    * `createDeployedServer(agent, { auth })` or `createRouteHandler(agent, { auth })`.
    * `loadAgentDir()` does not use it.
    */
@@ -128,7 +130,7 @@ export interface ResolvedAgentDir {
 /** The model source a parent hands down to sub-agents that do not choose their own. */
 interface Inherited {
   provider?: LLMProvider;
-  /** A function of the run only from overrides (LOU-V15). */
+  /** A function of the run only from overrides. */
   model?: PerRun<string>;
 }
 
@@ -384,7 +386,7 @@ async function loadSubagents(dir: string, overrides: AgentDirOverrides, inherite
     }
     const child = await resolveWith(childDir, childOverrides, inherited, scope);
     const description = requireDescription(childDir, child.manifest.description);
-    // Eve MA-F5: a native sub-agent (the lead's `subagents` map), so it needs its description on the agent.
+    // A native sub-agent (the lead's `subagents` map), so it needs its description on the agent.
     const agent = createAgent({ ...child.config, description });
     const levels = child.config.maxSubagentDepth ?? (child.config.subagents === undefined ? 0 : 1);
     loaded.delegated.push({ name, description, agent, depth: 1 + levels, ...optional('approve', child.config.approve) });
@@ -443,7 +445,7 @@ function assembleConfig(
   }
 ): CreateAgentConfig {
   const { name, instructions, tools, delegated, remote, overrides, memorySlots, skills, configured, approver, hostApprove } = parts;
-  // Eve MA-F5: every sub-agent directory is a native sub-agent (the `task` tool); `delegate_to_<name>` is its alias.
+  // Every sub-agent directory is a native sub-agent (the `task` tool); `delegate_to_<name>` is its alias.
   const fileTools = [...tools.map((t) => t.tool), ...delegated.map(delegateTool)];
   const native: Record<string, RemoteSubagent | SimpleAgent> = { ...remote };
   for (const subagent of delegated) native[subagent.name] = subagent.agent;
@@ -493,6 +495,8 @@ function configOptions(
     ...optional('compaction', overrides.compaction ?? config.compaction),
     ...optional('limits', overrides.limits ?? config.limits),
     ...optional('modelSettings', overrides.modelSettings ?? config.modelSettings),
+    ...optional('retry', overrides.retry ?? config.retry),
+    ...optional('output', overrides.output ?? config.output),
     ...optional('hooks', overrides.hooks ?? configured?.hooks),
     ...optional('approve', overrides.approve ?? approver?.approve),
     ...optional('approvalTtlMs', overrides.approvalTtlMs ?? config.approvalTtlMs),
@@ -664,6 +668,11 @@ export async function resolveAgentDir(
  * const testAgent = await loadAgentDir('./my-agent', { provider: mockModel(['hi']) });
  * ```
  */
+export async function loadAgentDir<TOutput extends StandardSchemaV1>(
+  dir: string,
+  overrides: Omit<AgentDirOverrides, 'output'> & { output: TOutput | OutputSpec<TOutput> }
+): Promise<SimpleAgent<InferSchemaOutput<TOutput>>>;
+export async function loadAgentDir(dir: string, overrides?: AgentDirOverrides): Promise<SimpleAgent>;
 export async function loadAgentDir(dir: string, overrides: AgentDirOverrides = {}): Promise<SimpleAgent> {
   return createAgent((await resolveAgentDir(dir, overrides)).config);
 }

@@ -1,5 +1,5 @@
 /**
- * Eve CORE-F13: a tolerant parser for JSON that is still being written (a
+ * A tolerant parser for JSON that is still being written (a
  * structured-output reply as its text streams). Dependency-free.
  *
  * The prefix is cut back to the last complete value (an unfinished key, a
@@ -175,7 +175,7 @@ function completePartialJson(source: string): string | undefined {
 }
 
 /**
- * Eve CORE-F13: the best-effort value of a JSON text that may be cut off
+ * The best-effort value of a JSON text that may be cut off
  * mid-way, or undefined when no part of it parses yet.
  *
  * @example

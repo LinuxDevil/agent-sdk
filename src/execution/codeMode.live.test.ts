@@ -1,5 +1,5 @@
 /**
- * Live test for code mode (N14): an agent with `codeMode: { exclusive: true }`
+ * Live test for code mode: an agent with `codeMode: { exclusive: true }`
  * and two cheap local tools answers a question that needs four tool calls with
  * one `run_code` call (openrouter/openai/gpt-4o-mini, `maxSteps: 4`).
  *
@@ -28,7 +28,7 @@ const runnable = recording ? Boolean(process.env.OPENROUTER_API_KEY) : fs.exists
 const PRICES: Record<string, number> = { apple: 1.2, pear: 0.8, plum: 2 };
 const RATES: Record<string, number> = { EUR: 0.9, GBP: 0.8 };
 
-describe.skipIf(!runnable)('code mode live (N14)', () => {
+describe.skipIf(!runnable)('code mode live', () => {
   // Recorded 2026-10-03: gpt-4o-mini's first script guessed the shape of get_price's result and failed; the
   // error listed the calls' results, and its second script was right. So the test asks for a successful
   // run_code call (not exactly one), as the ticket allows when the model needs a retry.

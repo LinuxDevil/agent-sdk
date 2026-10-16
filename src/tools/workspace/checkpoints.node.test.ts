@@ -41,7 +41,7 @@ function backup(overrides: Partial<WorkspaceFileBackup>): WorkspaceFileBackup {
   return { sessionId: 's', turn: 0, toolCallId: 'c', path: 'a.txt', before: 'a0\n', afterHash: hashContent('a1\n'), at: new Date().toISOString(), ...overrides };
 }
 
-describe('WorkspaceCheckpoints on NodeWorkspace (N7)', () => {
+describe('WorkspaceCheckpoints on NodeWorkspace', () => {
   // Three agent turns, a cold createAgent import and real file I/O: well under a second alone, but past the 5s default when the machine is saturated (#326).
   it('rewinds three turns on disk, with a file store', async () => {
     const workspace = new NodeWorkspace({ root: rootDir });
@@ -124,7 +124,7 @@ describe('WorkspaceCheckpoints on NodeWorkspace (N7)', () => {
   });
 });
 
-describe('FileWorkspaceCheckpointStore (N7)', () => {
+describe('FileWorkspaceCheckpointStore', () => {
   it('round-trips backups across instances and prunes by turn', async () => {
     const store = new FileWorkspaceCheckpointStore(storeDir);
     expect(await store.list('s')).toEqual([]);

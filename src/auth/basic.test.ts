@@ -1,4 +1,4 @@
-/** N10a: basic(), apiToken() and anonymous(). */
+/** Basic(), apiToken() and anonymous(). */
 import { describe, expect, it, vi } from 'vitest';
 import { SDKError } from '../utils/sdkError';
 import { anonymous, apiToken, basic } from './basic';
@@ -9,7 +9,7 @@ const withBasic = (user: string, password: string) => {
   return new Request('https://agent.test/', { headers: { authorization: `Basic ${btoa(String.fromCharCode(...bytes))}` } });
 };
 
-describe('basic() (N10a)', () => {
+describe('basic()', () => {
   const auth = basic({ users: { ops: 'correct horse', 'zoë': 'pässword' }, realm: 'agent' });
 
   it('accepts the right password as a user principal', async () => {
@@ -54,7 +54,7 @@ describe('basic() (N10a)', () => {
   });
 });
 
-describe('apiToken() and anonymous() (N10a)', () => {
+describe('apiToken() and anonymous()', () => {
   it('accepts the bearer token as a service principal, in constant time', async () => {
     const auth = apiToken('sekret-token', { id: 'ci' });
     const spy = vi.spyOn(encoding, 'sameSecret');

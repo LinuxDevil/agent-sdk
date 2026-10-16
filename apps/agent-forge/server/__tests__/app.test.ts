@@ -47,7 +47,7 @@ function waitForStatus(
   });
 }
 
-describe('LOU-N HTTP API', () => {
+describe('HTTP API', () => {
   let baseDir: string;
   let app: ReturnType<typeof createApp>;
   let runManager: RunManager;
@@ -75,7 +75,7 @@ describe('LOU-N HTTP API', () => {
     expect(res.text).toBe('ok');
   });
 
-  it('GET /workspace names the served directory; DELETE /agents/:id removes a saved spec (Eve DUI-F2)', async () => {
+  it('GET /workspace names the served directory; DELETE /agents/:id removes a saved spec', async () => {
     const ws = await request(app).get('/workspace');
     expect(ws.status).toBe(200);
     expect(ws.body.baseDir).toBe(path.resolve(baseDir));
@@ -217,7 +217,7 @@ describe('LOU-N HTTP API', () => {
   });
 });
 
-describe('LOU-R settings/secrets HTTP routes', () => {
+describe('settings/secrets HTTP routes', () => {
   let baseDir: string;
   let app: ReturnType<typeof createApp>;
 

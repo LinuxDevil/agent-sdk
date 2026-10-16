@@ -5,7 +5,7 @@ import { createMockProvider } from './providers/mock';
 
 const provider = createMockProvider();
 
-describe('createAgent modelSettings types (C6)', () => {
+describe('createAgent modelSettings types', () => {
   it('accepts modelSettings on the agent and on a call', () => {
     const agent = createAgent({ provider, modelSettings: { maxTokens: 1024, temperature: 0.2, topP: 0.9, stop: ['END'], seed: 7 } });
     void agent.send('hi', { modelSettings: { maxTokens: 64 } });
@@ -25,7 +25,7 @@ describe('createAgent modelSettings types (C6)', () => {
   });
 });
 
-describe('composing createAgent configs (log F18)', () => {
+describe('composing createAgent configs', () => {
   it('spreads a shared CreateAgentBase into createAgent()', () => {
     const shared: CreateAgentBase = { maxSteps: 8, modelSettings: { maxTokens: 512 } };
     // Type-only: never called (a model string needs OPENAI_API_KEY at createAgent()).

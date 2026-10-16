@@ -1,5 +1,5 @@
 /**
- * M2: any AI SDK `LanguageModel` (Google, Bedrock, Azure, Mistral, the
+ * Any AI SDK `LanguageModel` (Google, Bedrock, Azure, Mistral, the
  * Gateway, ...) as an `LLMProvider`, through the same adapter the built-in
  * providers use (`AiSdkProvider`, which stays internal).
  *

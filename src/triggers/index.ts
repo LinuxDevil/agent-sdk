@@ -1,5 +1,5 @@
 /**
- * Trigger adapters module (LOU-T5)
+ * Trigger adapters module
  *
  * Public surface for `@lousho/build-ai-agent/triggers`: the TriggerAdapter
  * interface, TriggerRegistry, and the three built-in adapters
@@ -8,8 +8,5 @@
 
 export * from './types';
 export * from './TriggerRegistry';
-export * from './adapters/WebhookTriggerAdapter';
 export * from './webhookAuth';
 export * from './cronExpression';
-export * from './adapters/CronTriggerAdapter';
-export * from './adapters/SlackTriggerAdapter';

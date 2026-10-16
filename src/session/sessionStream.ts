@@ -1,5 +1,5 @@
 /**
- * LOU-V8: the `AgentRun` that `session.stream()` returns. A session has to
+ * The `AgentRun` that `session.stream()` returns. A session has to
  * queue behind earlier calls and load its history before it can start a turn,
  * but a run handle must exist at once, so this wraps the run the session
  * starts when its turn comes: same events, but under its own `runId`, and
@@ -17,7 +17,7 @@ import type { AgentInput } from '../providers/content';
 /**
  * Runs one session turn. Call `started` with the run as soon as it exists;
  * resolve with the turn's result once it is recorded (or reject). `inputs`
- * is what `run.enqueue()` pushes to (LOU-V9): start the turn's run with it.
+ * is what `run.enqueue()` pushes to: start the turn's run with it.
  */
 export type SessionTurn = (
   signal: AbortSignal,
@@ -106,12 +106,15 @@ class SessionRun implements AgentRun {
   /** `error` then `run.done`, for a turn that failed outside the run's own events. */
   private *failure(error: unknown, seq: number): Generator<AgentEvent> {
     const { name, message } = error as { name?: unknown; message?: unknown };
+    // An SDKError's stable `code` (e.g. LOUSHO_SESSION_BUSY) is safe to show; the routes still sanitize the message.
+    const code = error instanceof SDKError ? error.code : undefined;
     yield this.event(
       {
         type: 'error',
         error: {
           name: typeof name === 'string' && name ? name : 'Error',
           message: typeof message === 'string' ? message : String(error),
+          ...(code && { code }),
         },
       },
       seq

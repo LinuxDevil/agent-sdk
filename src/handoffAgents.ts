@@ -1,5 +1,5 @@
 /**
- * N6: the `createAgent()` side of handoffs. Every agent registers how it runs
+ * The `createAgent()` side of handoffs. Every agent registers how it runs
  * as a handoff target; an agent with `handoffs` walks the graph its targets
  * (and theirs) form, by name, to build the run's `ExecuteOptions.handoffs`
  * and to pick the agent a session turn, a crash resume or an approval
@@ -178,7 +178,7 @@ function asTarget(spec: SubagentSpec, lead: LeadRunOptions): SubagentSpec {
     subagents: own.subagents,
     reasoning: own.reasoning,
     modelSettings: own.modelSettings,
-    // Eve MA-F6: its own deferred tools are searched with its own tuning (docs/tool-search.md), never the lead's.
+    // Its own deferred tools are searched with its own tuning (docs/tool-search.md), never the lead's.
     toolSearch: own.toolSearch,
     guardrails: inheritGuardrails(lead.guardrails, own.guardrails),
     permissions,

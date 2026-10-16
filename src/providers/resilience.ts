@@ -1,5 +1,5 @@
 /**
- * Provider resilience (LOU-V7.1): retry and model-fallback wrappers that
+ * Provider resilience: retry and model-fallback wrappers that
  * turn any `LLMProvider` into another `LLMProvider`, so they compose with
  * each other and work anywhere a provider is accepted.
  *
@@ -130,7 +130,7 @@ function retrierFor(provider: LLMProvider, call: GenerateOptions, options: WithR
     attemptCall(bounded = true) {
       signal?.throwIfAborted();
       const timeout = timeoutMs === undefined || !bounded ? undefined : AbortSignal.timeout(timeoutMs);
-      // C2: the 'ai' SDK's own retries are off for a call retried here.
+      // The 'ai' SDK's own retries are off for a call retried here.
       return withRetriesOwned({ ...call, signal: combineSignals(signal, timeout) });
     },
     async afterFailure(error) {
@@ -215,7 +215,7 @@ function streamResultOf({ streamed, iterator, first, servedBy }: OpenedStream): 
 }
 
 /**
- * C2: whether a chunk commits a stream attempt - it is output the consumer
+ * Whether a chunk commits a stream attempt - it is output the consumer
  * acts on (text, a tool call or result, the finish). Reasoning chunks and an
  * empty text delta do not: a local runtime (LM Studio) sends an empty
  * `reasoning-end` before reporting a 500 as an error event.
@@ -238,7 +238,7 @@ async function streamWithRetry(provider: LLMProvider, call: GenerateOptions, opt
   const retrier = retrierFor(provider, call, options);
   const { timeoutMs, idleTimeoutMs } = options;
   const firstChunkMs = timeoutMs ?? idleTimeoutMs;
-  // PROV-F7: `timeoutMs` bounds opening the stream up to its first chunk only,
+  // `timeoutMs` bounds opening the stream up to its first chunk only,
   // so the attempt's own controller (not a fixed `AbortSignal.timeout`) is
   // aborted by a timer that is cleared once the first chunk is in.
   const openBounded = async (attempt: GenerateOptions): Promise<OpenedStream> => {
@@ -370,7 +370,7 @@ export function withRetry(provider: LLMProvider, options: WithRetryOptions = {})
 /**
  * `withRetry()` configured from a provider config's `maxRetries` and
  * `timeout` (ms per attempt). The wrapped provider's calls go out with the
- * `ai` SDK's own retries off (C2), so retries happen in one place.
+ * `ai` SDK's own retries off, so retries happen in one place.
  */
 export function resilientProvider(
   provider: LLMProvider,
@@ -383,6 +383,10 @@ export function resilientProvider(
 export interface FallbackInfo {
   from: string;
   to: string;
+  /** Model id the failed provider was called with, when known. */
+  fromModel?: string;
+  /** Model id the provider that takes over is called with, when known. */
+  toModel?: string;
   error: unknown;
 }
 
@@ -424,6 +428,21 @@ export function withFallback(providers: LLMProvider[], options: WithFallbackOpti
   }
   const { fallbackOn = (error: unknown) => !isAbortError(error), onFallback } = options;
 
+  function announceFallback(call: GenerateOptions, model: string | undefined, index: number, error: unknown): void {
+    const previous = providers[index - 1];
+    const provider = providers[index];
+    const fromModel = (index === 1 ? model : undefined) ?? previous.defaultModel;
+    const info: FallbackInfo = {
+      from: previous.name,
+      to: provider.name,
+      ...(fromModel !== undefined && { fromModel }),
+      ...(provider.defaultModel !== undefined && { toModel: provider.defaultModel }),
+      error,
+    };
+    onFallback?.(info);
+    providerEventsOf(call)?.fallback(info);
+  }
+
   async function run<T extends { servedBy?: ServedBy }>(
     call: GenerateOptions,
     attempt: (provider: LLMProvider, call: GenerateOptions) => Promise<T>
@@ -432,12 +451,8 @@ export function withFallback(providers: LLMProvider[], options: WithFallbackOpti
     let lastError: unknown;
     for (const [index, provider] of providers.entries()) {
       if (index > 0) {
-        if (call.signal?.aborted || !fallbackOn(lastError)) {
-          throw lastError;
-        }
-        const info: FallbackInfo = { from: providers[index - 1].name, to: provider.name, error: lastError };
-        onFallback?.(info);
-        providerEventsOf(call)?.fallback(info);
+        if (call.signal?.aborted || !fallbackOn(lastError)) throw lastError;
+        announceFallback(call, model, index, lastError);
       }
       const sent = index === 0 ? model : undefined;
       try {

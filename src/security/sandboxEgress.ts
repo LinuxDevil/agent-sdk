@@ -1,5 +1,5 @@
 /**
- * Allowlisted egress for SubprocessSandbox containers (LOU-X12.2).
+ * Allowlisted egress for SubprocessSandbox containers.
  *
  * The container joins an internal Docker network (`Internal: true`: no route
  * off the bridge) and the credential broker listens on that network's gateway

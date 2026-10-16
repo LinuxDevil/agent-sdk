@@ -1,5 +1,5 @@
 /**
- * Eve CORE-F15: an aborted signal's `reason` as `{ name, message }` (an
+ * An aborted signal's `reason` as `{ name, message }` (an
  * Error or DOMException's own, e.g. `TimeoutError` from `AbortSignal.timeout()`;
  * `AbortError` with the text of any other reason). `ExecutionResult.abortReason`.
  */

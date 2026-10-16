@@ -1,5 +1,5 @@
 /**
- * Eve DUR-F15: `agent.pending()` - the runs a crash (or a pause) left
+ * `agent.pending()` - the runs a crash (or a pause) left
  * unfinished in the agent's checkpoint store, across all sessions, so an
  * operator can find and resume them after a restart.
  */
@@ -28,14 +28,20 @@ export interface PendingRun {
   status: 'in-progress' | 'awaiting-approval';
   /** With `status: 'awaiting-approval'`, the pending approval's id (`agent.approvals.get(approvalId)` shows the call). */
   approvalId?: string;
-  /** Eve TOOLS-F12: with `status: 'awaiting-approval'`, when the paused step waits on several calls: every one not decided yet (`approvalId` is the first). */
+  /** With `status: 'awaiting-approval'`, when the paused step waits on several calls: every one not decided yet (`approvalId` is the first). */
   approvalIds?: string[];
   /** `'question'` when the pause is an `ask_question` call. */
   approvalKind?: ApprovalKind;
   /** The checkpoint's `stepIndex`: how far the run got. */
   step: number;
-  /** Why the last attempt at a session turn failed, when it did (`retryable: false`: fix the cause before resuming, or `discardPending()` the turn). */
+  /**
+   * Why the last attempt at the run failed, when it did - a session turn, or a `send(msg, { sessionId })` /
+   * `agent.resume()` run that rejected (`retryable: false`: fix the cause before resuming, or `discardPending()` the
+   * turn). Absent on a run a crash interrupted, and once the run saved progress after the failure.
+   */
   lastError?: CheckpointError;
+  /** With `lastError`: how many attempts failed in a row since the run last saved progress. */
+  attempts?: number;
 }
 
 const SESSION_TURN = /^(.+)\.turn-\d+$/;
@@ -43,25 +49,32 @@ const SESSION_TURN = /^(.+)\.turn-\d+$/;
 const PAUSED_POINTER = /\.paused$/;
 
 /**
- * The unfinished runs in `checkpoints`, by checkpoint id. Throws
+ * `checkpoints`, when it can list its runs; else throws
  * `LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE` without a store, and a
- * `ConfigurationError` when the store cannot `list()`.
+ * `ConfigurationError` when the store cannot `list()`. `api` names the caller.
  */
-export async function listPendingRuns(checkpoints: CheckpointStore | undefined): Promise<PendingRun[]> {
+export function assertListable(checkpoints: CheckpointStore | undefined, api: string): CheckpointStore & Required<Pick<CheckpointStore, 'list'>> {
   if (!checkpoints) {
     throw new ConfigurationError(
-      'agent.pending() needs a checkpoint store: pass createAgent({ store }) with `checkpoints` (fileStore(), SqliteStore, ...).',
+      `${api} needs a checkpoint store: pass createAgent({ store }) with \`checkpoints\` (fileStore(), SqliteStore, ...).`,
       'store',
       'LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE'
     );
   }
   if (!checkpoints.list) {
-    throw new ConfigurationError(
-      "agent.pending() needs a checkpoint store that implements list(); the built-in file, SQLite, KV and memory stores do.",
-      'store.checkpoints'
-    );
+    throw new ConfigurationError(`${api} needs a checkpoint store that implements list(); the built-in file, SQLite, KV and memory stores do.`, 'store.checkpoints');
   }
-  const entries = await checkpoints.list({ status: ['in-progress', 'awaiting-approval'] });
+  return checkpoints as CheckpointStore & Required<Pick<CheckpointStore, 'list'>>;
+}
+
+/**
+ * The unfinished runs in `checkpoints`, by checkpoint id. Throws
+ * `LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE` without a store, and a
+ * `ConfigurationError` when the store cannot `list()`.
+ */
+export async function listPendingRuns(checkpoints: CheckpointStore | undefined): Promise<PendingRun[]> {
+  const listable = assertListable(checkpoints, 'agent.pending()');
+  const entries = await listable.list({ status: ['in-progress', 'awaiting-approval'] });
   const runs: PendingRun[] = [];
   for (const { sessionId: checkpointId, status, checkpoint } of entries) {
     if (status === 'finished' || PAUSED_POINTER.test(checkpointId)) continue;
@@ -76,6 +89,7 @@ export async function listPendingRuns(checkpoints: CheckpointStore | undefined):
       ...(checkpoint.approvalKind !== undefined && status === 'awaiting-approval' && { approvalKind: checkpoint.approvalKind }),
       step: checkpoint.stepIndex,
       ...(checkpoint.lastError && { lastError: checkpoint.lastError }),
+      ...(checkpoint.lastError && checkpoint.attempts !== undefined && { attempts: checkpoint.attempts }),
     });
   }
   return runs;

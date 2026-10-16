@@ -5,9 +5,13 @@ import * as path from 'node:path';
 import { z } from 'zod';
 import { createAgent } from '../createAgent';
 import { defineTool } from '../tools/defineTool';
-import { mockModel } from '../testing';
+import { mockModel as scriptedModel } from '../testing';
+import { notMock } from '../testing/notMock';
 import { CASSETTES_ENV, CONFIG_ENV, DRIFT_DIR_ENV, cassettePath, driftCassettePath, legacyCassettePath, withEvalCassettes } from './cassettes';
 import type { EvalResult } from './evalResult';
+
+/** These tests use a scripted model as the real network provider; a plain mockModel() is skipped by design. */
+const mockModel: typeof scriptedModel = (script, options) => notMock(scriptedModel(script, options));
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -35,7 +39,7 @@ describe('cassettePath', () => {
     expect(cassettePath('/p/a.eval.ts', 'e', undefined, 1)).toBe(path.join('/p', '__cassettes__', 'e', 'default.2.json'));
   });
 
-  it('hashes the full label, so labels that slug or truncate alike get their own cassette (docs-qa F3)', () => {
+  it('hashes the full label, so labels that slug or truncate alike get their own cassette', () => {
     const a = cassettePath('/p/a.eval.ts', 'e', 'How do I configure the retry policy and backoff for the OpenAI provider?');
     const b = cassettePath('/p/a.eval.ts', 'e', 'How do I configure the retry policy and backoff for the Anthropic provider?');
     expect(a).not.toBe(b);
@@ -77,6 +81,17 @@ describe('withEvalCassettes', () => {
     await expect(runCase(file, mockModel(['x']))).rejects.toThrow(/no cassette for "Refund flow \[Order #42\]".*npx lousho eval --record/);
     vi.stubEnv(CASSETTES_ENV, 'auto');
     expect((await runCase(file, mockModel(['live']))).reply).toBe('live');
+  });
+
+  it('skips a plain mockModel(): no cassette is needed to replay, none is written to record', async () => {
+    const file = evalFile();
+    vi.stubEnv(CASSETTES_ENV, 'replay');
+    const replayed = await runCase(file, scriptedModel(['offline']));
+    expect(replayed.reply).toBe('offline');
+    expect(replayed.result.cassettes).toBeUndefined();
+    vi.stubEnv(CASSETTES_ENV, 'record');
+    expect((await runCase(file, scriptedModel(['again']))).result.cassettes).toBeUndefined();
+    expect(fs.existsSync(path.join(path.dirname(file), '__cassettes__'))).toBe(false);
   });
 
   it('records into the drift dir instead of over the committed cassette', async () => {
@@ -143,7 +158,7 @@ describe('withEvalCassettes', () => {
   });
 });
 
-describe('cassette names (docs-qa F3, F14)', () => {
+describe('cassette names', () => {
   const caseResult = (label: string): EvalResult => ({ name: 'Refund flow', case: label, tags: [], passed: true, assertions: [], durationMs: 0, steps: 1, toolCalls: [] });
   const send = async (file: string, provider: ReturnType<typeof mockModel>, info: { label: string; key?: string; index?: number }) => {
     let reply = '';
@@ -217,7 +232,7 @@ describe('cassette names (docs-qa F3, F14)', () => {
   });
 });
 
-describe('parallel sub-agents (Eve MA-F7)', () => {
+describe('parallel sub-agents', () => {
   const noop = defineTool({ name: 'lookup', description: 'lookup', input: z.object({ q: z.string() }), execute: async ({ q }) => `data for ${q}` });
   const realWorker = () =>
     mockModel(

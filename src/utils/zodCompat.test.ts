@@ -37,7 +37,7 @@ const descriptor = (inputSchema: unknown): ToolDescriptor => ({
   tool: {} as unknown as ToolDescriptor['tool'],
 });
 
-describe('zodCompat (LOU-D29)', () => {
+describe('zodCompat', () => {
   it('converts zod 4 and Standard JSON Schemas, and leaves zod 3 to the ai SDK', () => {
     expect(schemaToJsonSchema(z4.object({ q: z4.string() }))).toMatchObject({
       type: 'object',
@@ -57,7 +57,7 @@ describe('zodCompat (LOU-D29)', () => {
     expect(isModelSchema({ type: 'object' })).toBe(false);
   });
 
-  it('LOU-R4: recognizes a plain JSON-Schema object, but no schema form or wrapper', () => {
+  it('recognizes a plain JSON-Schema object, but no schema form or wrapper', () => {
     expect(isRawJsonSchema({ type: 'object', properties: { q: { type: 'string' } } })).toBe(true);
     expect(isRawJsonSchema({})).toBe(true);
     // Every schema form the providers convert on their own stays untouched.
@@ -110,7 +110,7 @@ describe('zodCompat (LOU-D29)', () => {
     expect(() => defineTool({ name: 's', description: 'd', input: standardString(false), execute: () => 1 })).toThrow(
       /zod schema as 'input'/
     );
-    // Eve TOOLS-F10: its JSON Schema is a string, which no provider takes as tool parameters.
+    // Its JSON Schema is a string, which no provider takes as tool parameters.
     expect(() => defineTool({ name: 's', description: 'd', input: standardString(true), execute: (q) => q })).toThrow(/must be a z\.object\(\).*got string/);
     const objectSchema = { '~standard': { ...standardString(true)['~standard'], jsonSchema: { input: () => ({ type: 'object', properties: { q: { type: 'string' } } }) } } };
     expect(defineTool({ name: 's', description: 'd', input: objectSchema as StandardSchemaV1<string>, execute: (q) => q }).name).toBe('s');

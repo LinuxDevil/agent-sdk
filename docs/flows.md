@@ -39,7 +39,7 @@ const result = await FlowExecutor.execute(flow, { agent, provider, variables: { 
 | `sequence` | Runs its `steps` one after another. |
 | `parallel` | Runs its steps at the same time. If one fails, the others are cancelled (see [Cancelling a flow](#cancelling-a-flow)). |
 | `llmCall` | Calls the model with a `prompt` (with `{{variable}}` placeholders); `outputVariable` stores the reply. |
-| `toolCall` | Calls a tool with `arguments` (placeholders interpolated). |
+| `toolCall` | Calls a tool with `arguments` (placeholders interpolated; see [Argument values](#argument-values)). |
 | `setVariable` | Sets `variable` to `value`. |
 | `oneOf` | Takes the first branch whose condition matches. |
 | `forEach` | Runs a step for each item of `items`, one after another. The item and index (`itemVariable`, default `item`; `indexVariable`, default `index`) belong to that iteration only, so loops in `parallel` branches never see each other's item; other variables the step sets are written to the flow's variables. |
@@ -83,6 +83,28 @@ const result = await FlowExecutor.execute(flow, {
   variables: { invoiceId: 'inv-1' },
   approve: ({ toolName, args }) => toolName !== 'pay_vendor' || Number(args.amount) < 1000,
 });
+```
+
+### Argument values
+
+An argument string that is exactly one placeholder, `'{{name}}'` or
+`'$name'`, passes the variable's value as it is: a number stays a number, an
+object stays an object. So `arguments: { n: '{{n}}' }` with `n = 5` passes
+`5` to a tool whose schema is `z.number()`. This also applies inside arrays
+and nested objects. Any other string is interpolated as text:
+`'n is {{n}}'` becomes `'n is 5'`. A placeholder of a variable that is not
+set stays as before: `'{{missing}}'` is `''`, and `'$USD'` (no variable
+named `USD`) is the literal string `'$USD'`.
+
+```ts
+import type { EditorStep } from '@lousho/build-ai-agent/flows';
+
+// With variables { count: 5, tags: ['a', 'b'] }, the tool gets { count: 5, tags: ['a', 'b'], note: 'count: 5' }.
+const step: EditorStep = {
+  type: 'toolCall',
+  tool: 'create_batch',
+  arguments: { count: '{{count}}', tags: '$tags', note: 'count: {{count}}' },
+};
 ```
 
 A flow's declared inputs are checked before the first step runs. A missing
@@ -202,6 +224,16 @@ if (!first.success) {
   `execute()` with the `runId` of an unfinished run is refused with
   `LOUSHO_CONFIG_INVALID`; resume it instead, or use a new `runId`.
 - A run with no checkpoint is refused with `LOUSHO_CHECKPOINT_NOT_FOUND`.
+- Only one call runs a `runId` at a time. While `execute()` or `resume()`
+  runs, it holds a run lease on the `runId` in the store, the same lease an
+  agent run takes (see [Durable execution](./durable-execution.md)). Another
+  `execute()` or `resume()` of that `runId` is refused with
+  `LOUSHO_SESSION_BUSY`, and runs nothing. That holds in this process, in
+  another process or replica on the same store, and through another store
+  object over the same data. The lease is renewed while a long step runs, and
+  released when the call returns. If the process holding it died, the lease
+  expires (in 60 s at most), and then the run can be resumed. A custom
+  `CheckpointStore` without `acquireLease` runs without leases.
 - A node that completed is only skipped once its checkpoint was saved. A node
   interrupted while running (an `llmCall` or a `toolCall`) runs again, so make
   side-effecting tools idempotent.
@@ -269,6 +301,48 @@ These resume calls are refused:
 Flow approvals are not listed in an agent's approval store. Keep the
 `approvalId` (or read `checkpoint.flow.pendingApproval` from the store) to
 decide later.
+
+## Running an agent in a flow
+
+A flow's steps run under the plain `agent` config in the context
+(`{ name, prompt?, settings }`). Passing a `createAgent()` agent as
+`context.agent` is refused with `LOUSHO_CONFIG_INVALID`. To run a
+`createAgent()` agent as one step, register a tool that calls
+`agent.send()`, and call that tool in a `toolCall` step:
+
+```ts
+import { z } from 'zod';
+import { createAgent } from '@lousho/build-ai-agent';
+import { FlowExecutor, type AgentFlow } from '@lousho/build-ai-agent/flows';
+import { ToolRegistry } from '@lousho/build-ai-agent/tools';
+
+const researcher = createAgent({ name: 'researcher', model: 'openai/gpt-4o-mini', instructions: 'Answer with three facts.' });
+
+const toolRegistry = new ToolRegistry();
+toolRegistry.register('research', {
+  displayName: 'Research',
+  tool: {
+    description: 'Asks the researcher agent a question',
+    parameters: z.object({ question: z.string() }),
+    execute: async ({ question }: { question: string }) => (await researcher.send(question)).text,
+  },
+});
+
+const flow: AgentFlow = {
+  code: 'report',
+  name: 'Report',
+  flow: { type: 'toolCall', tool: 'research', arguments: { question: 'What is {{topic}}?' }, outputVariable: 'facts' },
+};
+const result = await FlowExecutor.execute(flow, { agent: { name: 'report' }, provider, toolRegistry, variables: { topic: 'WebAssembly' } });
+```
+
+The agent runs with its own model, tools and approvals. Its usage is in the
+`send()` result, not in the flow's `result.usage`. For a single model call
+with no tools, an `llmCall` step is simpler.
+
+The `step` node type (`StepNode`, `{ type: 'step', agent, input }`) is a
+shape that visual editors produce. `FlowExecutor` does not run it: a flow
+that reaches one fails with `LOUSHO_FLOW_INVALID`.
 
 ## Flows, sub-agents or skills?
 

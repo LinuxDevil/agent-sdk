@@ -1,5 +1,5 @@
 /**
- * LOU-P4: serve an agent from a route file of any framework that exports Fetch
+ * Serve an agent from a route file of any framework that exports Fetch
  * handlers (Next.js App Router, SvelteKit `+server.ts`, Remix, Hono, Bun.serve).
  * A thin wrapper over the deployed session API (fetchRoutes.ts): it strips the
  * mount path, checks auth, and adds the optional `useChat` endpoint. `Request`
@@ -68,7 +68,7 @@ function singleFunction(fn: (request: Request) => unknown): AuthFn {
   return entry;
 }
 
-/** The `auth` option as an auth list; `undefined` for an open route. Eve CH-F16: an empty token is a configuration error, as on `serveFetch`. */
+/** The `auth` option as an auth list; `undefined` for an open route. an empty token is a configuration error, as on `serveFetch`. */
 function authList(auth: RouteHandlerOptions['auth']): readonly AuthFn[] | undefined {
   if (auth === undefined) return undefined;
   if (auth === '') throw new SDKError("createRouteHandler(): `auth` is an empty string. Pass the token (e.g. process.env.AGENT_TOKEN), an auth list, or no `auth` for an open route.", 'LOUSHO_AUTH_CONFIG_INVALID');
@@ -100,13 +100,13 @@ async function jsonBody(request: Request): Promise<Record<string, unknown> | Pay
 async function uiChat(agent: SimpleAgent, request: Request, principal: Principal | undefined, ctx: ChatRoutesContext): Promise<Response> {
   const refused = hostRefusal(request, ctx) ?? postRefusal(request, ctx);
   if (refused) return refused;
-  // Eve3-S1: `request.json()` buffers without limit - every POST route caps at MAX_BODY_BYTES.
+  // `request.json()` buffers without limit - every POST route caps at MAX_BODY_BYTES.
   const body = (await jsonBody(request)) as { messages?: UIMessageLike[]; id?: unknown } | PayloadTooLargeError | undefined;
   if (body instanceof PayloadTooLargeError) return json(413, { error: body.message });
   if (!Array.isArray(body?.messages)) return json(400, { error: "Request body must be JSON with a 'messages' array" });
   const { id } = body;
   if (typeof id !== 'string' || !id) return toUIMessageStreamResponse(publicEvents(ctx, agent.stream(fromUIMessages(body.messages), { principal, throwOnError: false })));
-  // Eve CH-F11: an invalid id is a 400, as on POST /chat, and `authorizeSession` only sees a valid one.
+  // An invalid id is a 400, as on POST /chat, and `authorizeSession` only sees a valid one.
   try {
     assertSessionId(id);
   } catch (error) {
@@ -117,7 +117,7 @@ async function uiChat(agent: SimpleAgent, request: Request, principal: Principal
   const session = agent.session({ id });
   const forbidden = await sessionForbidden(ctx, principal, id, 'chat', session);
   if (forbidden) return forbidden;
-  // B4: a session turn outlives its client unless `onDisconnect: 'abort'`.
+  // A session turn outlives its client unless `onDisconnect: 'abort'`.
   const run = claimOnCommit(ctx, principal, session, session.stream(input, { ...(disconnectAborts(ctx) && { signal: request.signal }), principal }));
   return toUIMessageStreamResponse(publicEvents(ctx, outliveClient(ctx, run)));
 }
@@ -125,8 +125,8 @@ async function uiChat(agent: SimpleAgent, request: Request, principal: Principal
 /**
  * The routes `useLoushoAgent({ url, approvalsUrl })` talks to, mapped onto the
  * session API: `POST <base>` takes `{ input, sessionId? }` (a fresh session when
- * none is sent) and `POST <base>/approvals/:id` decides a pending approval (A1:
- * as a decision in the session the approval belongs to, so the session and
+ * none is sent) and `POST <base>/approvals/:id` decides a pending approval
+ * (as a decision in the session the approval belongs to, so the session and
  * approval checks apply).
  */
 async function hookRoute(agent: SimpleAgent, request: Request, path: string): Promise<{ path: string; body?: string }> {
@@ -143,7 +143,7 @@ async function hookRoute(agent: SimpleAgent, request: Request, path: string): Pr
     return { path: `/chat/${encodeURIComponent(sessionId ?? 'hook')}/approvals/${approval[1]}` };
   }
   if (path !== '/') return { path };
-  // Eve3-S1: capped like every POST route; `PayloadTooLargeError` propagates to the handler's 413.
+  // capped like every POST route; `PayloadTooLargeError` propagates to the handler's 413.
   const parsed = await jsonBody(request);
   if (parsed instanceof PayloadTooLargeError) throw parsed;
   const body = parsed ?? {};
@@ -152,7 +152,7 @@ async function hookRoute(agent: SimpleAgent, request: Request, path: string): Pr
 
 /**
  * Serves `agent` (the session API of `lousho dev` and the deployed server:
- * `POST /chat`, `GET /chat/:id`, approvals, `GET /health`, and - N9b - the
+ * `POST /chat`, `GET /chat/:id`, approvals, `GET /health`, and the
  * OAuth sign-in callback `GET <basePath>/oauth/callback`, which is not behind
  * `auth`) under `basePath`;
  * `POST <basePath>` and `POST <basePath>/approvals/:id` serve `useLoushoAgent`.
@@ -178,7 +178,7 @@ export function createRouteHandler(agent: SimpleAgent, options: RouteHandlerOpti
     if (request.method === 'GET' && path === '/health') return text(200, 'ok');
     let principal: Principal | undefined;
     if (request.method === 'GET' && path === '/oauth/callback') {
-      // N9b: the provider's redirect carries no API token; the single-use `state` protects it.
+      // The provider's redirect carries no API token; the single-use `state` protects it.
       principal = await callbackPrincipal(request, auth);
     } else if (auth) {
       const outcome = await routeAuth(request, auth);

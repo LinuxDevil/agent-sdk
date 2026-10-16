@@ -1,20 +1,20 @@
 /**
- * LOU-N runtime control server - HTTP API (N1).
+ * Runtime control server - HTTP API.
  *
  * Routes:
  *   GET  /health                     -> 200 'ok'
  *   GET  /agents                     -> AgentStoreEntry[] (saved agent specs on disk)
  *   GET  /agents/:id                 -> AgentSpec | 404
  *   PUT  /agents/:id                 -> save an AgentSpec to disk (body: AgentSpec)
- *   DELETE /agents/:id               -> remove the saved spec, 204 (Eve DUI-F2)
- *   GET  /workspace                  -> { baseDir } - the directory `.lousho/` lives under (Eve DUI-F2)
+ *   DELETE /agents/:id               -> remove the saved spec, 204
+ *   GET  /workspace                  -> { baseDir } - the directory `.lousho/` lives under
  *   POST /agents/:id/run            -> body: { spec?: AgentSpec, input: string }
  *   POST /agents/:id/stop            -> abort the in-flight run, if any
  *   GET  /agents/:id/status          -> AgentRunStatusPayload
  *   POST /agents/:id/approve         -> body: { approvalId, approved, note? }
- *   GET  /agents/:id/traces?limit=N  -> { traces: TraceSummaryPayload[] } (M5b, newest first)
- *   GET  /agents/:id/traces/:traceId -> TraceDetailPayload | 404 (M5b)
- *   GET  /runs/:id/history           -> RunHistoryPayload (LOU-D45 time travel)
+ *   GET  /agents/:id/traces?limit=N  -> { traces: TraceSummaryPayload[] } (newest first)
+ *   GET  /agents/:id/traces/:traceId -> TraceDetailPayload | 404
+ *   GET  /runs/:id/history           -> RunHistoryPayload
  *   POST /runs/:id/fork              -> body: ForkRunRequest; starts the fork, 202 ForkRunResponse
  *   GET  /runs/compare?a=&b=         -> RunComparisonPayload (compareTrajectories)
  *
@@ -64,12 +64,12 @@ export interface CreateAppOptions {
   runManager: RunManager;
   /** Directory `.lousho/**` lives under - same `baseDir` the server was started with. Required for R1/R2/R3's routes. */
   baseDir: string;
-  /** R1: defaults to `new SecretsStore(baseDir)` when omitted. */
+  /** Defaults to `new SecretsStore(baseDir)` when omitted. */
   secretsStore?: SecretsStore;
-  /** R3: defaults to `new SettingsStore(baseDir)` when omitted. */
+  /** Defaults to `new SettingsStore(baseDir)` when omitted. */
   settingsStore?: SettingsStore;
   /**
-   * S1 (LOU-S): directory holding the pre-built Agent Forge client (the
+   * Directory holding the pre-built Agent Forge client (the
    * output of `vite build`, normally `apps/agent-forge/dist`). When set and
    * it actually contains an `index.html`, this server serves it as static
    * files plus a SPA fallback, so `lousho studio --prod` can serve the whole
@@ -81,7 +81,7 @@ export interface CreateAppOptions {
    */
   staticDir?: string;
   /**
-   * Eve DUI-F1: the per-launch token (and extra allowed hosts) every API
+   * The per-launch token (and extra allowed hosts) every API
    * request must present - see auth.ts. `startStudioServer()` always passes
    * one; omitting it (in-process tests only) skips the token check, while
    * the Host/Origin check still applies.
@@ -166,7 +166,7 @@ function registerAgentRoutes(app: Express, agentStore: AgentStore): void {
 }
 
 /**
- * Eve DUI-F2: the workspace the studio serves - the client keys its draft
+ * The workspace the studio serves - the client keys its draft
  * cache by it, so unsaved edits never leak into another project's studio.
  */
 function registerWorkspaceRoute(app: Express, baseDir: string): void {
@@ -192,7 +192,7 @@ function registerRunRoutes(app: Express, runManager: RunManager): void {
         respondWithMappedError(res, error, [
           [AlreadyRunningError, 409],
           [AgentNotFoundError, 404],
-          // Eve DUI-F4: e.g. LOUSHO_PROVIDER_MISSING_API_KEY - the run never started.
+          // E.g. LOUSHO_PROVIDER_MISSING_API_KEY - the run never started.
           [ConfigurationError, 422],
         ]);
       }
@@ -235,7 +235,7 @@ function registerRunRoutes(app: Express, runManager: RunManager): void {
   );
 }
 
-/** LOU-D45: the `ForkPatch` fields a fork request may carry, each with its check. */
+/** The `ForkPatch` fields a fork request may carry, each with its check. */
 const FORK_PATCH_CHECKS = new Map<string, (value: unknown) => boolean>([
   ['toolResult', (v) => isObject(v) && typeof v.toolCallId === 'string' && 'result' in v],
   ['appendInput', (v) => typeof v === 'string' && v.trim() !== ''],
@@ -246,7 +246,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** LOU-D45: a validated `POST /runs/:id/fork` body, or the 400 message. */
+/** A validated `POST /runs/:id/fork` body, or the 400 message. */
 function parseForkRequest(body: Partial<ForkRunRequest> | undefined): { fromStep: number; patch: ForkPatch } | string {
   const { fromStep, patch = {} } = body ?? {};
   if (!Number.isInteger(fromStep) || (fromStep as number) < 0) return "'fromStep' must be a non-negative integer";
@@ -258,7 +258,7 @@ function parseForkRequest(body: Partial<ForkRunRequest> | undefined): { fromStep
   return { fromStep: fromStep as number, patch };
 }
 
-/** M5b: the persisted traces of an agent's runs (files under `.lousho/agents/<id>/traces`, the ones `lousho traces` reads). */
+/** The persisted traces of an agent's runs (files under `.lousho/agents/<id>/traces`, the ones `lousho traces` reads). */
 function registerTraceRoutes(app: Express, agentStore: AgentStore, baseDir: string): void {
   const known = async (id: string) => traceDirExists(baseDir, id) || (await agentStore.load(id)) !== undefined;
 
@@ -306,7 +306,7 @@ function registerTraceRoutes(app: Express, agentStore: AgentStore, baseDir: stri
   );
 }
 
-/** LOU-D45 time travel: a run's step history, forking it from a step, and comparing two runs. */
+/** Time travel: a run's step history, forking it from a step, and comparing two runs. */
 function registerTimeTravelRoutes(app: Express, runManager: RunManager): void {
   app.get(
     '/runs/compare',
@@ -359,9 +359,9 @@ function registerTimeTravelRoutes(app: Express, runManager: RunManager): void {
   );
 }
 
-/** P1/P3 chat transport and multi-session history. */
+/** Chat transport and multi-session history. */
 function registerChatRoutes(app: Express, runManager: RunManager, triggerRegistry: TriggerRegistry): void {
-  // P1: chat transport. `POST /agents/:id/message` appends a user message
+  // Chat transport. `POST /agents/:id/message` appends a user message
   // and either continues the agent's existing conversation or starts a
   // fresh one (see RunManager.sendMessage()'s doc comment for the exact
   // continuation semantics); replies stream back over the existing
@@ -390,14 +390,14 @@ function registerChatRoutes(app: Express, runManager: RunManager, triggerRegistr
     })
   );
 
-  // P1: current live chat transcript (a REST snapshot mirroring the WS
+  // Current live chat transcript (a REST snapshot mirroring the WS
   // stream's initial `{type:'chat'}` push, for a client that wants it
   // without opening a socket).
   app.get('/agents/:id/chat', (req, res) => {
     res.json(runManager.chatState(paramId(req)));
   });
 
-  // P3: multi-session chat history - archives the current transcript and
+  // Multi-session chat history - archives the current transcript and
   // starts a new, empty one.
   app.post('/agents/:id/chat/new', (req, res) => {
     res.json(runManager.newChat(paramId(req)));
@@ -422,9 +422,9 @@ function registerChatRoutes(app: Express, runManager: RunManager, triggerRegistr
   });
 }
 
-/** O3 step-debugger controls. */
+/** Step-debugger controls. */
 function registerDebugRoutes(app: Express, runManager: RunManager): void {
-  // O3: step-through debugger controls (Topbar's "Debug" button). See
+  // Step-through debugger controls (Topbar's "Debug" button). See
   // debugController.ts for exactly what "breakpoint"/"paused" mean given
   // AgentExecutor's real control surface.
   app.get('/agents/:id/debug', (req, res) => {
@@ -457,7 +457,7 @@ function registerDebugRoutes(app: Express, runManager: RunManager): void {
 
 function registerProviderKeyRoutes(app: Express, secrets: SecretsStore): void {
   // ---------------------------------------------------------------------
-  // LOU-R1: provider key management. GET only ever returns masked status
+  // Provider key management. GET only ever returns masked status
   // (never a real key - see secretsStore.ts's `list()`/`ProviderKeyStatus`).
   // ---------------------------------------------------------------------
   app.get('/settings/providers', (_req, res) => {
@@ -501,7 +501,7 @@ function registerProviderKeyRoutes(app: Express, secrets: SecretsStore): void {
 
 function registerProfileRoutes(app: Express, settings: SettingsStore): void {
   // ---------------------------------------------------------------------
-  // LOU-R3: per-environment settings profiles.
+  // Per-environment settings profiles.
   // ---------------------------------------------------------------------
   app.get('/settings/profiles', (_req, res) => {
     res.json(settings.list());
@@ -556,7 +556,7 @@ function registerProfileRoutes(app: Express, settings: SettingsStore): void {
 
 function registerDeployRoutes(app: Express, agentStore: AgentStore, baseDir: string): void {
   // ---------------------------------------------------------------------
-  // LOU-R2: deploy target picker + "Deploy this agent" action.
+  // Deploy target picker + "Deploy this agent" action.
   // ---------------------------------------------------------------------
   app.get('/settings/deploy-adapters', (_req, res) => {
     res.json(DEPLOY_ADAPTERS);
@@ -582,7 +582,7 @@ function registerDeployRoutes(app: Express, agentStore: AgentStore, baseDir: str
 }
 
 function registerStaticClient(app: Express, staticDir: string | undefined): void {
-  // S1: serve the pre-built client (production mode only - see `staticDir`'s
+  // Serve the pre-built client (production mode only - see `staticDir`'s
   // doc comment above). Registered after every API route above so a real
   // `/agents/**`/`/health` request is always handled by its own route first;
   // this only ever runs for requests those routes didn't match.
@@ -610,7 +610,7 @@ export function createApp({
   access,
 }: CreateAppOptions): Express {
   const app = express();
-  // Eve DUI-F1: no CORS middleware - the client is same-origin (served by
+  // No CORS middleware - the client is same-origin (served by
   // this server, or proxied by Vite in dev). Every request must name a
   // loopback Host and carry no foreign Origin; API routes also need the token.
   app.use((req, res, next) => {
@@ -630,7 +630,7 @@ export function createApp({
   const secrets = secretsStore ?? new SecretsStore(baseDir);
   const settings = settingsStore ?? new SettingsStore(baseDir);
 
-  // LOU-T5: `POST /agents/:id/message` below is routed through a
+  // `POST /agents/:id/message` below is routed through a
   // TriggerRegistry-registered ChatTriggerAdapter rather than calling
   // `runManager.sendMessage()` directly - see chatTriggerAdapter.ts for why
   // this is a behavior-preserving wrapper, not a rewrite.

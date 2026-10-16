@@ -173,7 +173,7 @@ export function setSessionOwnerLimit(limit: number): number {
   return previous;
 }
 
-/** How many session records one principal may own per agent. Eve3-S4: a single caller could otherwise POST fresh session ids until every other owner's record was evicted past {@link MAX_SESSION_OWNERS}, locking each of them out of their stored sessions. */
+/** How many session records one principal may own per agent. a single caller could otherwise POST fresh session ids until every other owner's record was evicted past {@link MAX_SESSION_OWNERS}, locking each of them out of their stored sessions. */
 export const MAX_OWNERS_PER_PRINCIPAL = 1024;
 
 let perPrincipalLimit = MAX_OWNERS_PER_PRINCIPAL;
@@ -227,7 +227,7 @@ export function sessionOwner(agent: object, sessionId: string): Principal | unde
  * Records `principal` as the owner of session `sessionId` of `agent` when it
  * has none, and answers whether `principal` holds the claim afterward: `true`
  * when it was just taken (or was `principal`'s already), `false` when another
- * principal owns it. Eve2-F1: the check-and-set is one synchronous step, so a
+ * principal owns it. The check-and-set is one synchronous step, so a
  * `false` answer means a concurrent first touch won the id and this caller
  * must be refused - never streamed a turn inside that principal's session.
  * `false` too when `principal` already owns {@link MAX_OWNERS_PER_PRINCIPAL}

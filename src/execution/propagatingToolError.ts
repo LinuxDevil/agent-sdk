@@ -1,4 +1,5 @@
 import { brandClass, instanceOfOwnBrand, sharedWeakSet } from '../utils/brand';
+import type { RunUsage } from '../models/usage';
 
 /**
  * Base class for tool errors that must NOT be swallowed by
@@ -18,6 +19,9 @@ import { brandClass, instanceOfOwnBrand, sharedWeakSet } from '../utils/brand';
  * core can both use it without a circular import.
  */
 export class PropagatingToolError extends Error {
+  /** Once it ended a run, what the run had spent until then (see `SDKError.usage`). */
+  declare usage?: RunUsage;
+
   /** `instanceof` also holds for one thrown by another loaded copy of the SDK (a `.cjs` tool next to the ESM CLI). */
   static [Symbol.hasInstance](value: unknown): boolean {
     return instanceOfOwnBrand(this, value);
@@ -30,7 +34,7 @@ const propagatingErrors = sharedWeakSet('lousho.propagatingErrors');
 
 /**
  * Makes an error that is not a {@link PropagatingToolError} propagate like
- * one - used for a hook error thrown inside a sub-agent (LOU-Y1), which must
+ * one - used for a hook error thrown inside a sub-agent, which must
  * halt the whole run, not become the sub-agent tool's error result.
  */
 export function markPropagating(error: unknown): void {

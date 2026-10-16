@@ -1,5 +1,5 @@
 /**
- * LOU-V8: `session.stream()` streams a session turn and persists it when the run is done.
+ * `session.stream()` streams a session turn and persists it when the run is done.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
@@ -30,6 +30,20 @@ const emailTool = () =>
 const callEmail = { toolCalls: [{ name: 'send_email', args: { to: 'sam@example.com' }, id: 'call_email' }] };
 
 describe('AgentSession.stream()', () => {
+  it('a turn that fails outside the run carries its SDKError code on the error event', async () => {
+    const inner = new MemorySessionStore();
+    const wrap = (): SessionStore => ({ load: (id) => inner.load(id), save: (id, m) => inner.save(id, m), delete: (id) => inner.delete(id) });
+    const agent = createAgent({ provider: mockModel([{ text: 'slow', delayMs: 50 }, { text: 'fast', delayMs: 1 }]) });
+    const slow = agent.session({ id: 'shared', store: wrap() });
+    const fast = agent.session({ id: 'shared', store: wrap() });
+
+    const [slowEvents] = await Promise.all([collect(slow.stream('first')), collect(fast.stream('second'))]);
+
+    const error = slowEvents.find((e) => e.type === 'error');
+    expect(error).toMatchObject({ error: { name: 'SDKError', code: 'LOUSHO_SESSION_BUSY' } });
+    expect(slowEvents.at(-1)).toMatchObject({ type: 'run.done', finishReason: 'error' });
+  });
+
   it('streams the turn in order and has saved it when the run is done', async () => {
     const store = new MemorySessionStore();
     const session = createAgent({ provider: mockModel(['Nice to meet you, Ali.']) }).session({ id: 's1', store });
@@ -107,7 +121,7 @@ describe('AgentSession.stream()', () => {
     await expect(collect(run)).rejects.toMatchObject({ code: 'LOUSHO_RUN_ALREADY_ITERATED' });
   });
 
-  it('keeps only the tool calls that ran when a stream is aborted by its signal (B4)', async () => {
+  it('keeps only the tool calls that ran when a stream is aborted by its signal', async () => {
     const controller = new AbortController();
     const slow = defineTool({
       name: 'slow',
@@ -134,7 +148,7 @@ describe('AgentSession.stream()', () => {
     expect(roles(model.calls[2].messages.filter((m) => m.role !== 'system'))).toEqual(['user', 'assistant', 'user', 'assistant', 'tool', 'tool', 'user']);
   });
 
-  it('keeps the tool call that ran when the loop is exited early (B4)', async () => {
+  it('keeps the tool call that ran when the loop is exited early', async () => {
     const wait = defineTool({
       name: 'wait',
       description: 'waits',

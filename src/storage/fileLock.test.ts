@@ -14,7 +14,7 @@ const lockIn = async (): Promise<string> => {
   return path.join(dir, 'x.json.lock');
 };
 
-describe('withFileLock (Eve MEM-F8)', () => {
+describe('withFileLock', () => {
   it('runs tasks on one lock one at a time and removes the lock file after', async () => {
     const lock = await lockIn();
     let running = 0;

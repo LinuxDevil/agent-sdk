@@ -1,5 +1,5 @@
 /**
- * One `generateText()` (LOU-D26) or `streamText()` (LOU-D27) call on `ai` v4
+ * One `generateText()` or `streamText()` call on `ai` v4
  * or `ai` v6/v7.
  *
  * aiSdkProvider builds its request in the `ai` v4 shape (CoreMessages,
@@ -56,11 +56,11 @@ export interface AiSdkCallSettings {
   toolChoice?: 'auto' | 'none' | 'required' | { type: 'tool'; toolName: string };
   maxRetries: number;
   abortSignal?: AbortSignal;
-  /** LOU-V13: the reasoning options (`ai` 4.3 and 6/7 take the same field). */
+  /** The reasoning options (`ai` 4.3 and 6/7 take the same field). */
   providerOptions?: Record<string, unknown>;
-  /** N1a: the hosted tools' AI SDK tool objects by name (`ai` 6/7 only), merged into `tools` as they are. */
+  /** The hosted tools' AI SDK tool objects by name (`ai` 6/7 only), merged into `tools` as they are. */
   hostedTools?: Record<string, unknown>;
-  /** Eve PROV-F4: `providerOptions` of the last function tool (Anthropic's cache breakpoint; `ai` 6/7 only). */
+  /** `providerOptions` of the last function tool (Anthropic's cache breakpoint; `ai` 6/7 only). */
   lastToolProviderOptions?: Record<string, unknown>;
 }
 
@@ -71,7 +71,7 @@ export function isModernAi(ai: AiSdkModule): boolean {
 }
 
 /**
- * The installed `ai` major (LOU-D28d), from its exports: `stepCountIs` from
+ * The installed `ai` major, from its exports: `stepCountIs` from
  * v5 on, and `registerTelemetry` from v7 on (v6 calls it `registerTelemetryIntegration`).
  */
 export function aiMajorOf(ai: AiSdkModule): AiMajor {
@@ -85,7 +85,7 @@ interface AiSdkToolCall {
   toolName: string;
   args?: unknown;
   input?: unknown;
-  /** v5+: the provider ran the call (a hosted tool, N1a); it is never ours to run. */
+  /** v5+: the provider ran the call (a hosted tool); it is never ours to run. */
   providerExecuted?: boolean;
 }
 
@@ -109,7 +109,7 @@ interface AiSdkGenerateResult {
   rawFinishReason?: unknown;
   usage?: Record<string, unknown>;
   toolCalls?: AiSdkToolCall[];
-  /** v5+: the step's parts in order (N1a reads the provider-executed calls, their results and sources). */
+  /** v5+: the step's parts in order (hosted-tool support reads the provider-executed calls, their results and sources). */
   content?: AiSdkContentPart[];
   providerMetadata?: Record<string, unknown>;
   /** v4: `reasoningDetails`; v6/v7: `reasoning` parts. */
@@ -161,7 +161,7 @@ function uniqueCallId(id: string, used: Set<string>): string {
   return unique;
 }
 
-/** Convert tool calls from 'ai' SDK format to our format; a provider-executed call (N1a) is left out. */
+/** Convert tool calls from 'ai' SDK format to our format; a provider-executed call is left out. */
 function convertToolCalls(calls: AiSdkToolCall[], used: Set<string> = new Set()): ToolCall[] {
   return calls.filter((tc) => !tc.providerExecuted).map((tc) => {
     const input = tc.input ?? tc.args;
@@ -187,7 +187,7 @@ function mapFinishReason(reason: string): GenerateResult['finishReason'] {
 }
 
 /**
- * F8: a step that ends with finish reason 'error' (OpenRouter reports an
+ * A step that ends with finish reason 'error' (OpenRouter reports an
  * upstream failure mid-generation as a 200 with `finish_reason: "error"`) failed,
  * and what it wrote is cut off. Thrown as a retryable 502 so withRetry() retries
  * it and a run does not resolve as a success with truncated text.
@@ -245,7 +245,7 @@ function withDetails(
  * (OpenAI `cachedPromptTokens`/`reasoningTokens`, Anthropic
  * `cacheReadInputTokens`/`cacheCreationInputTokens`). `@ai-sdk/anthropic` 0.x/1.x
  * leave Anthropic's cache reads and writes out of `promptTokens`; they are
- * added back, so `promptTokens` counts every input token as on ai 6/7 (Eve PROV-F4).
+ * added back, so `promptTokens` counts every input token as on ai 6/7.
  */
 function toGenerateUsage(
   usage: Partial<ProviderUsage>,
@@ -323,7 +323,7 @@ function plainToolError(part: Record<string, unknown>): Record<string, unknown> 
   return part;
 }
 
-/** LOU-V13: a v4 reasoning part as v5+ carries it, Anthropic's signature or redacted data in `providerOptions`. */
+/** A v4 reasoning part as v5+ carries it, Anthropic's signature or redacted data in `providerOptions`. */
 function modernReasoning({ text = '', signature, data }: Record<string, unknown>): Record<string, unknown> {
   const anthropic = data !== undefined ? { redactedData: data } : signature !== undefined ? { signature } : undefined;
   return { type: 'reasoning', text, ...(anthropic && { providerOptions: { anthropic } }) };
@@ -411,7 +411,7 @@ function toModernTools(ai: AiSdkModule, toolDefs: ToolDefinition[] | undefined, 
   return tools;
 }
 
-/** N1a: the function tools plus the hosted tools' provider tool objects, passed exactly as the provider package made them. */
+/** The function tools plus the hosted tools' provider tool objects, passed exactly as the provider package made them. */
 function modernToolSet(ai: AiSdkModule, toolDefs: ToolDefinition[] | undefined, hostedTools: Record<string, unknown> | undefined, lastToolProviderOptions?: Record<string, unknown>) {
   const tools = toModernTools(ai, toolDefs, lastToolProviderOptions);
   if (!hostedTools || Object.keys(hostedTools).length === 0) return tools;
@@ -419,7 +419,7 @@ function modernToolSet(ai: AiSdkModule, toolDefs: ToolDefinition[] | undefined, 
 }
 
 /**
- * LOU-V4 on v6/v7: JSON mode with the schema, leaving the prompt and the
+ * On v6/v7: JSON mode with the schema, leaving the prompt and the
  * reply text alone (AgentExecutor instructs the model and validates).
  */
 function toModernOutput(format: GenerateOptions['responseFormat']) {
@@ -467,7 +467,7 @@ function usageOf(
   return modern ? modernUsage(usage) : toGenerateUsage(usage ?? {}, metadata);
 }
 
-/** LOU-V13: Anthropic's signature or redacted data, from a v6/v7 part's `providerMetadata`. */
+/** Anthropic's signature or redacted data, from a v6/v7 part's `providerMetadata`. */
 function blockData(metadata: unknown): Omit<ReasoningBlock, 'text'> {
   const anthropic = (metadata as { anthropic?: { signature?: unknown; redactedData?: unknown } } | undefined)?.anthropic;
   return {
@@ -476,7 +476,7 @@ function blockData(metadata: unknown): Omit<ReasoningBlock, 'text'> {
   };
 }
 
-/** LOU-V13: either major's reasoning as blocks (v4 `reasoningDetails`; v6/v7 `reasoning` parts). */
+/** Either major's reasoning as blocks (v4 `reasoningDetails`; v6/v7 `reasoning` parts). */
 function reasoningOf(result: AiSdkGenerateResult, modern: boolean): ReasoningBlock[] {
   if (!modern) {
     return (result.reasoningDetails ?? []).map((d) =>
@@ -487,12 +487,12 @@ function reasoningOf(result: AiSdkGenerateResult, modern: boolean): ReasoningBlo
   return parts.filter((p) => p.type === 'reasoning').map((p) => ({ text: p.text ?? '', ...blockData(p.providerMetadata) }));
 }
 
-/** N1a: a provider-executed `tool-call` part as our hosted call (no result yet). */
+/** A provider-executed `tool-call` part as our hosted call (no result yet). */
 function hostedCallOf(part: AiSdkContentPart): HostedToolCall {
   return { id: part.toolCallId ?? '', name: part.toolName ?? '', args: part.input ?? part.args ?? {} };
 }
 
-/** N1a: a provider-executed `tool-result` / `tool-error` part's result, set on `call`. */
+/** A provider-executed `tool-result` / `tool-error` part's result, set on `call`. */
 function settleHostedCall(call: HostedToolCall, part: AiSdkContentPart): void {
   if (part.type === 'tool-error') {
     call.result = part.error instanceof Error ? part.error.message : part.error;
@@ -502,19 +502,19 @@ function settleHostedCall(call: HostedToolCall, part: AiSdkContentPart): void {
   }
 }
 
-/** N1a: adds a url `source` part to `call`'s sources (other source types are not kept). */
+/** Adds a url `source` part to `call`'s sources (other source types are not kept). */
 function addSource(call: HostedToolCall | undefined, part: AiSdkContentPart): void {
   if (!call || typeof part.url !== 'string' || (part.sourceType !== undefined && part.sourceType !== 'url')) return;
   (call.sources ??= []).push({ url: part.url, ...(typeof part.title === 'string' && part.title !== '' && { title: part.title }) });
 }
 
-/** N1a: a `tool-result` / `tool-error` part of a provider-executed call. */
+/** A `tool-result` / `tool-error` part of a provider-executed call. */
 function isHostedResult(part: AiSdkContentPart): boolean {
   return (part.type === 'tool-result' || part.type === 'tool-error') && part.providerExecuted === true;
 }
 
 /**
- * N1a: the provider-executed calls of a v5+ result's ordered `content`, with
+ * The provider-executed calls of a v5+ result's ordered `content`, with
  * their results; a `source` part attaches to the call it follows (the last
  * hosted call before it). Sources before any hosted call are not kept.
  */
@@ -584,7 +584,7 @@ interface AiSdkStreamPart extends AiSdkContentPart {
   finishReason?: string;
   /** ai 6/7 `finish`: the provider's own finish reason, before mapping. */
   rawFinishReason?: unknown;
-  /** v4 `reasoning-signature` / `redacted-reasoning` (LOU-V13). */
+  /** v4 `reasoning-signature` / `redacted-reasoning`. */
   signature?: string;
   data?: string;
   /** `finish`: v4 `usage` (and `providerMetadata`), v6/v7 `totalUsage`. */
@@ -611,22 +611,22 @@ interface ChunkState {
   inputs: Map<string, { toolName: string; input: string }>;
   /** The ids of the tool calls already reported (see uniqueCallId). */
   callIds: Set<string>;
-  /** LOU-V13: the open v6/v7 reasoning block's `providerMetadata` (Anthropic sends the signature on a delta). */
+  /** The open v6/v7 reasoning block's `providerMetadata` (Anthropic sends the signature on a delta). */
   reasoningMetadata?: unknown;
-  /** N1a: provider-executed calls by id, the last one seen, and a settled one whose result chunk waits for the sources after it. */
+  /** Provider-executed calls by id, the last one seen, and a settled one whose result chunk waits for the sources after it. */
   hosted: Map<string, HostedToolCall>;
   lastHosted?: HostedToolCall;
   settledHosted?: HostedToolCall;
 }
 
-/** LOU-V13: a reasoning text delta (v4 `reasoning`, v6/v7 `reasoning-delta`), noting a v6/v7 block's metadata. */
+/** A reasoning text delta (v4 `reasoning`, v6/v7 `reasoning-delta`), noting a v6/v7 block's metadata. */
 function reasoningDelta(part: AiSdkStreamPart, state: ChunkState): StreamChunk[] {
   state.reasoningMetadata = part.providerMetadata ?? state.reasoningMetadata;
   const textDelta = part.text ?? part.textDelta;
   return textDelta ? [{ type: 'reasoning-delta', textDelta }] : [];
 }
 
-/** LOU-V13: the end of a reasoning block, with its signature or redacted data. */
+/** The end of a reasoning block, with its signature or redacted data. */
 function reasoningEnd(reasoning: Omit<ReasoningBlock, 'text'>): StreamChunk[] {
   return [{ type: 'reasoning-end', reasoning }];
 }
@@ -648,7 +648,7 @@ function finishChunks(part: AiSdkStreamPart, { modern, inputs, callIds }: ChunkS
 }
 
 /**
- * N1a: a provider-executed call's result. Its `hosted-tool-result` chunk is
+ * A provider-executed call's result. Its `hosted-tool-result` chunk is
  * held (see toChunks) until a part other than a `source` arrives, so the
  * sources that follow the result travel with it. Other results (v4's
  * placeholder `execute`) carry nothing.
@@ -663,7 +663,7 @@ function hostedResult(part: AiSdkStreamPart, state: ChunkState): StreamChunk[] {
   return [];
 }
 
-/** N1a: the held `hosted-tool-result` chunk, if any. */
+/** The held `hosted-tool-result` chunk, if any. */
 function flushHosted(state: ChunkState): StreamChunk[] {
   const call = state.settledHosted;
   state.settledHosted = undefined;
@@ -673,8 +673,8 @@ function flushHosted(state: ChunkState): StreamChunk[] {
 /**
  * The chunks each `fullStream` part type becomes, on either major. An `error`
  * part rejects the stream with its error, an `abort` part with the signal's
- * reason. Reasoning (LOU-V13) becomes `reasoning-delta` / `reasoning-end`
- * chunks. N1a: a provider-executed call and its result become
+ * reason. Reasoning becomes `reasoning-delta` / `reasoning-end`
+ * chunks. A provider-executed call and its result become
  * `hosted-tool-call` / `hosted-tool-result` chunks (never a `tool-call`), and
  * url `source` parts attach to the hosted call they follow. Unlisted parts
  * are dropped: steps, files, `raw` and v4's results of the placeholder
@@ -696,7 +696,7 @@ const PART_CHUNKS = new Map<string, (part: AiSdkStreamPart, state: ChunkState) =
   ['reasoning-signature', (part) => reasoningEnd({ signature: part.signature })],
   ['redacted-reasoning', (part) => reasoningEnd({ redactedData: part.data })],
   ['tool-input-start', (part, { inputs }) => {
-    // N1a: a provider-executed call's input is never completed into a call of ours by finishChunks().
+    // A provider-executed call's input is never completed into a call of ours by finishChunks().
     if (!part.providerExecuted) inputs.set(part.id ?? '', { toolName: part.toolName ?? '', input: '' });
     return [];
   }],

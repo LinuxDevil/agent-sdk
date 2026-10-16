@@ -1,6 +1,6 @@
 /**
  * research-assistant - an agent with the built-in `http` tool wired up, so
- * it can fetch pages/APIs while researching a question (LOU-H1's
+ * it can fetch pages/APIs while researching a question (using
  * createAgent()).
  *
  * Defaults to a free, local mock provider so it runs with zero setup and

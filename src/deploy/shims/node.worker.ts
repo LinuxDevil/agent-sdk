@@ -1,5 +1,5 @@
 /**
- * Worker-safe stand-in for the Node builtins `createAgent()` reaches (LOU-D51).
+ * Worker-safe stand-in for the Node builtins `createAgent()` reaches.
  *
  * The Worker runtime serves its API with a `createAgent()` agent, whose module
  * graph imports `node:fs`, `node:path`, `node:crypto` & co. for features a

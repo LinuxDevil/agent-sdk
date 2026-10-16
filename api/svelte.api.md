@@ -92,6 +92,7 @@ interface AgentEventError {
 // @public
 interface AgentEventUsage {
     completionTokens: number;
+    costPartial?: boolean;
     costUsd?: number;
     estimated: boolean;
     hostedToolCalls?: Partial<Record<string, number>>;
@@ -165,7 +166,7 @@ class AgentSession<TObject = unknown> {
 
 // @public
 export type AgentUIAction =
-/** `input` may be multimodal (LOU-V12); the bubble shows its text and an `[image]` / `[file]` marker per other part. */
+/** `input` may be multimodal; the bubble shows its text and an `[image]` / `[file]` marker per other part. */
     {
     type: 'ui.send';
     input: AgentInput;
@@ -178,7 +179,7 @@ export type AgentUIAction =
 } | {
     type: 'ui.stopped';
 }
-/** LOU-P2: back to the empty chat. */
+/** Back to the empty chat. */
 | {
     type: 'ui.reset';
 } | {
@@ -326,6 +327,7 @@ interface Checkpoint {
     approvalKind?: ApprovalKind;
     attempts?: number;
     businessState?: unknown;
+    delegatedInFlight?: CheckpointUsage[];
     // (undocumented)
     finishReason?: string;
     flow?: FlowCheckpointState;
@@ -344,6 +346,7 @@ interface Checkpoint {
     stepUsage?: StepUsage[];
     // (undocumented)
     toolCalls: unknown[];
+    unstarted?: boolean;
     usage: CheckpointUsage;
 }
 
@@ -514,6 +517,7 @@ type CredentialOwner = 'app' | 'user';
 
 // @public
 interface DelegatedUsage {
+    costPartial?: boolean;
     costUsd: number | undefined;
     // (undocumented)
     estimated: boolean;
@@ -564,6 +568,7 @@ interface ExecutionResult<TObject = unknown> {
     text: string;
     // (undocumented)
     toolCalls: ToolCall[];
+    toolErrors?: number;
     usage: RunUsage;
 }
 
@@ -913,6 +918,7 @@ interface ModelSettings {
 // @public
 interface ModelUsage {
     calls: number;
+    costPartial?: boolean;
     costUsd?: number;
     // (undocumented)
     inputTokens: number;
@@ -1024,6 +1030,7 @@ interface PendingRun {
     approvalId?: string;
     approvalIds?: string[];
     approvalKind?: ApprovalKind;
+    attempts?: number;
     checkpointId: string;
     kind: 'session' | 'run';
     lastError?: CheckpointError;
@@ -1146,7 +1153,9 @@ interface ProviderFallbackEvent extends AgentEventBase<'provider.fallback'> {
         message: string;
     };
     from: string;
+    fromModel?: string;
     to: string;
+    toModel?: string;
 }
 
 // @public
@@ -1226,6 +1235,14 @@ interface ReasoningSettings {
 type ReasoningStartEvent = AgentEventBase<'reasoning.start'>;
 
 // @public
+interface RecoverOptions<TResult = unknown> {
+    intervalMs?: number;
+    onError?: (error: unknown, run?: PendingRun) => void;
+    onRecovered?: (run: PendingRun, result: TResult) => void;
+    signal?: AbortSignal;
+}
+
+// @public
 export function reduceAgentEvents(state: AgentUIState, event: AgentEvent | AgentUIAction): AgentUIState;
 
 // @public
@@ -1264,7 +1281,14 @@ interface RunLimits {
     maxOutputTokens?: number;
     maxSteps?: number;
     maxTokens?: number;
+    maxToolErrors?: number;
     onExceeded?: 'stop' | 'throw';
+}
+
+// @public
+interface RunRecovery {
+    readonly done: Promise<void>;
+    stop(): Promise<void>;
 }
 
 // @public
@@ -1281,6 +1305,7 @@ interface RunUsage {
     cacheWriteTokens?: number;
     // @deprecated (undocumented)
     completionTokens: number;
+    costPartial?: boolean;
     costUsd: number | undefined;
     delegated?: DelegatedUsage;
     estimated: boolean;
@@ -1461,6 +1486,7 @@ interface SimpleAgent<TObject = unknown> {
     oauth: AgentOAuth;
     pending: () => Promise<PendingRun[]>;
     ready: () => Promise<void>;
+    recover: (options?: RecoverOptions<ExecutionResult<TObject>>) => RunRecovery;
     resume: (sessionId: string, options?: {
         signal?: AbortSignal;
     }) => Promise<ExecutionResult<TObject> | null>;

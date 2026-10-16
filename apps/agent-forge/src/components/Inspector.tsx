@@ -30,7 +30,7 @@ interface HookChipProps {
   onRemoved: () => void;
 }
 
-/** Eve DUI-F9: a native button with `role="switch"`, so Enter/Space toggle it and its state is announced. */
+/** A native button with `role="switch"`, so Enter/Space toggle it and its state is announced. */
 function HookToggleSwitch({ hook, onToggle }: { hook: AgentNodeHookInstance; onToggle: () => void }) {
   return (
     <button
@@ -57,7 +57,7 @@ function HookWhen({ hook }: { hook: AgentNodeHookInstance }) {
 }
 
 /**
- * Eve DUI-F9: the chip holds three native buttons (enable switch, select,
+ * The chip holds three native buttons (enable switch, select,
  * remove) side by side rather than nesting buttons inside a `role="button"`
  * div - so each is reachable and operable from the keyboard.
  */
@@ -138,10 +138,10 @@ function useHookSelection(hooks: AgentNodeHookInstance[]) {
 }
 
 /**
- * LOU-Q2: Hooks section of the Inspector - lists pre/post-call hooks
+ * Hooks section of the Inspector - lists pre/post-call hooks
  * attached to the selected node (see graph/types.ts's
  * `AgentNodeHookInstance`), lets you toggle each on/off, add one from a
- * starter template (LOU-Q2's redact-pii/rate-limit/audit-log/
+ * starter template (the redact-pii/rate-limit/audit-log/
  * inject-context), and edit its code body in a real CodeMirror editor
  * (replacing the mockup's static `.hook-code` preview - see
  * `.design-ref/agent-forge-mockup.html`). Only rendered for `llm`/`tool`
@@ -237,7 +237,7 @@ function BranchRow({ edge, target, setGraph }: BranchRowProps) {
 }
 
 /**
- * LOU-T3: branch editor for a `router` node - lists its outgoing edges
+ * Branch editor for a `router` node - lists its outgoing edges
  * (each one IS a branch; see `graph/types.ts`'s `AgentGraphEdge.condition`),
  * with an editable condition expression per branch and a remove button.
  * "Add a branch" isn't a button here: a branch is created by dragging a new
@@ -275,7 +275,7 @@ function BranchesField({ node, graph, setGraph }: { node: AgentGraphNode; graph:
 }
 
 /**
- * O3: breakpoint toggle for an llm/tool node's Inspector panel, shown only
+ * Breakpoint toggle for an llm/tool node's Inspector panel, shown only
  * in debug mode. Breaks "before" that node runs - see
  * server/debugController.ts's doc comment for why `before`/`after` on an
  * llm/tool hook is the real granularity AgentExecutor's control surface
@@ -294,7 +294,7 @@ function BreakpointField({
   return (
     <div className="field">
       <label htmlFor="node-breakpoint">Breakpoint</label>
-      {/* Eve DUI-F9: a native toggle button (Enter/Space, announced as pressed). */}
+      {/* A native toggle button (Enter/Space, announced as pressed). */}
       <button
         type="button"
         id="node-breakpoint"
@@ -384,7 +384,7 @@ function ApprovalFields({ node, patch }: { node: NodeOf<'approval'>; patch: Patc
   return (
     <div className="field">
       <label htmlFor="node-requires-approval">Requires approval</label>
-      {/* Eve DUI-F9: a native toggle button (Enter/Space, announced as pressed). */}
+      {/* A native toggle button (Enter/Space, announced as pressed). */}
       <button
         type="button"
         id="node-requires-approval"
@@ -506,7 +506,7 @@ function NodeInspector({ selected }: { selected: AgentGraphNode }) {
 }
 
 /**
- * Inspector (LOU-M): reflects and edits whichever canvas node is currently
+ * Inspector: reflects and edits whichever canvas node is currently
  * selected, wired through `AppState.graph`/`selectedNodeId` - the same
  * mechanism the canvas itself reads/writes (see CanvasArea.tsx), so there
  * is exactly one source of truth for node data, per the epic's

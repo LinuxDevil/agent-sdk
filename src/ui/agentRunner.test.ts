@@ -1,5 +1,5 @@
 /**
- * LOU-D32.2: approve() / reject() / answer() of the runner consume the streamed
+ * Approve() / reject() / answer() of the runner consume the streamed
  * continuation event by event, and fall back to an older server's JSON outcome.
  */
 import { describe, it, expect } from 'vitest';
@@ -41,7 +41,7 @@ function harness(continuation: 'sse' | 'json') {
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
 
-describe('createAgentRunner approvals over the session API (LOU-D32.2)', () => {
+describe('createAgentRunner approvals over the session API', () => {
   it('shows the streamed continuation as it arrives, then a second pause like a first one', async () => {
     const h = harness('sse');
     await h.runner.send('Pay');
@@ -70,7 +70,7 @@ describe('createAgentRunner approvals over the session API (LOU-D32.2)', () => {
   });
 });
 
-describe('remote mode session id (Eve CORE-F1)', () => {
+describe('remote mode session id', () => {
   function remote(source: { sessionId?: string } = {}) {
     const bodies: Array<{ input: string; sessionId?: string }> = [];
     const fetchMock = (async (_url: string | URL | Request, init?: RequestInit) => {
@@ -105,7 +105,7 @@ describe('remote mode session id (Eve CORE-F1)', () => {
     expect(bodies[0]).toEqual({ input: 'a', sessionId: 'stored-1' });
   });
 
-  it('keeps the server { error } message in a failed request (Eve CORE-F17)', async () => {
+  it('keeps the server { error } message in a failed request', async () => {
     let state: AgentUIState = initialAgentUIState;
     const fetchMock = (async () => Response.json({ error: 'Invalid API key' }, { status: 401 })) as typeof fetch;
     const runner = createAgentRunner({

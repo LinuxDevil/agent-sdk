@@ -1,5 +1,5 @@
 /**
- * LOU-M6: the real-daemon suite's gate (docker.testkit.ts) skips without a
+ * The real-daemon suite's gate (docker.testkit.ts) skips without a
  * daemon, fails under LOUSHO_DOCKER_TESTS=1, and treats Docker Desktop and
  * rootless daemons as absent for the egress suite. Against a dockerode fake.
  */
@@ -29,7 +29,7 @@ const up = () => Promise.resolve('OK');
 const down = () => Promise.reject(new Error('connect ENOENT /var/run/docker.sock'));
 const LINUX = { OperatingSystem: 'Ubuntu 24.04.5 LTS', SecurityOptions: ['name=seccomp,profile=builtin'] };
 
-describe('docker.testkit (LOU-M6)', () => {
+describe('docker.testkit', () => {
   it('dockerAvailable() is true when the daemon answers and false when it refuses', async () => {
     expect(await (await load({ ping: up })).dockerAvailable()).toBe(true);
     expect(await (await load({ ping: down })).dockerAvailable()).toBe(false);

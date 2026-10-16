@@ -1,5 +1,5 @@
 /**
- * Workspace path validation shared by every provider and tool (LOU-X6).
+ * Workspace path validation shared by every provider and tool.
  */
 import { brandClass, instanceOfOwnBrand } from '../../utils/brand';
 
@@ -109,4 +109,47 @@ export function joinWorkspacePath(base: string, name: string): string {
 export function parentWorkspacePath(path: string): string {
   const slash = path.lastIndexOf('/');
   return slash === -1 ? '.' : path.slice(0, slash);
+}
+
+/**
+ * Tests a normalized workspace path against the file tools' `deny` list
+ * (consumer harness H1-2): returns the first segment that names a denied
+ * entry, or `undefined`.
+ */
+export type DeniedSegment = (normalizedPath: string) => string | undefined;
+
+/** An 8.3 short name keeps a name's first characters (two, when hashed), then `~N`: `.git` can be opened as `GIT~1`. */
+function shortNamePattern(name: string): RegExp | undefined {
+  const stem = name.replace(/[^a-z0-9]/gi, '').slice(0, 2);
+  return stem === '' ? undefined : new RegExp(`^${stem}[a-z0-9]{0,4}~\\d+(\\..*)?$`, 'i');
+}
+
+/**
+ * Builds a {@link DeniedSegment} test for entry `names` such as `.git`.
+ * Segments compare case-insensitively (Windows and macOS file systems ignore
+ * case) and with trailing dots and spaces dropped (Windows opens `.git.` as
+ * `.git`). On Windows an 8.3 short-name alias (`GIT~1`) is denied too.
+ */
+export function createDenyTest(names: readonly string[], platform: string = process.platform): DeniedSegment {
+  const effective = (segment: string) => segment.replace(/[ .]+$/, '').toLowerCase();
+  const denied = new Set(names.map(effective).filter((name) => name !== ''));
+  if (denied.size === 0) return () => undefined;
+  const aliases = platform === 'win32' ? [...denied].map(shortNamePattern).filter((p): p is RegExp => p !== undefined) : [];
+  return (normalizedPath) =>
+    normalizedPath === '.'
+      ? undefined
+      : normalizedPath.split('/').find((segment) => denied.has(effective(segment)) || aliases.some((p) => p.test(segment)));
+}
+
+/** Normalizes `path` like {@link normalizeWorkspacePath}, then refuses it when one of its segments is denied. */
+export function normalizeAllowedPath(path: string, isDenied: DeniedSegment): string {
+  const normalized = normalizeWorkspacePath(path);
+  const segment = isDenied(normalized);
+  if (segment !== undefined) {
+    throw new WorkspaceError(
+      `Access to ${JSON.stringify(path)} is denied: the file tools never open ${JSON.stringify(segment)}, ` +
+        'which can hold credentials (for example CI checkout tokens in .git/config). Use files elsewhere in the workspace.'
+    );
+  }
+  return normalized;
 }

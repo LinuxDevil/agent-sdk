@@ -1,5 +1,5 @@
 /**
- * `AgentSpec.policy` compiled into `createAgent()` options (LOU-X5).
+ * `AgentSpec.policy` compiled into `createAgent()` options.
  */
 import type { z } from 'zod';
 import type { CreateAgentConfig } from '../createAgent';

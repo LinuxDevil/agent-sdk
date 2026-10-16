@@ -1,9 +1,9 @@
 /**
  * File-backed `CheckpointStore` (src/execution/checkpoint.ts, public SDK
- * API) for the LOU-N runtime control server, persisting under
+ * API) for the runtime control server, persisting under
  * `<baseDir>/.lousho/agents/<agentId>/checkpoints/<sessionId>.json`.
  *
- * This is exactly the seam LOU-L's `createFsAgentStore()` TODO pointed at
+ * This is exactly the seam the `createFsAgentStore()` TODO pointed at
  * ("wire this up behind the runtime control server"): a sibling store next
  * to it, following the same `.lousho/agents/<id>/...` layout, rather than
  * extending fsAgentStore.ts itself (agent specs and run checkpoints are
@@ -11,13 +11,13 @@
  *
  * Consumes only the public `CheckpointStore` interface - no SDK internals.
  *
- * LOU-T1: `Checkpoint.businessState` needs no changes here - `save()`/
+ * `Checkpoint.businessState` needs no changes here - `save()`/
  * `load()` already serialize/deserialize the whole `Checkpoint` record
  * verbatim via `JSON.stringify`/`JSON.parse`, so any JSON-serializable
  * `businessState` a consumer attaches round-trips through this store for
  * free, exactly like every other field.
  *
- * LOU-D45: also keeps the bounded per-session `history()` ring the SDK's
+ * Also keeps the bounded per-session `history()` ring the SDK's
  * `LocalStorageCheckpointStore` keeps (same helpers, same semantics), under
  * `.lousho/agents/<agentId>/checkpoint-history/<sessionId>.json`, so the
  * time-travel panel can list a run's steps and `AgentExecutor.fork()` can

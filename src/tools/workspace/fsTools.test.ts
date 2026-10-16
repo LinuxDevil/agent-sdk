@@ -18,14 +18,14 @@ function call(tool: DefinedTool, args: Record<string, unknown>, abortSignal?: Ab
   return Promise.resolve(tool.tool.execute!(args, { toolCallId: 't', messages: [], abortSignal }));
 }
 
-describe('createFsTools on MemoryWorkspace (LOU-X6)', () => {
+describe('createFsTools on MemoryWorkspace', () => {
   it('creates all six tools, or only the read-only four with readOnly', () => {
     const ws = new MemoryWorkspace();
     expect(createFsTools(ws).map((t) => t.name)).toEqual(['read_file', 'write_file', 'edit_file', 'list_dir', 'glob', 'grep']);
     expect(createFsTools(ws, { readOnly: true }).map((t) => t.name)).toEqual(['read_file', 'list_dir', 'glob', 'grep']);
   });
 
-  it('marks write_file and edit_file, and only them, as file edits (N4); the four readers stay read-only', () => {
+  it('marks write_file and edit_file, and only them, as file edits; the four readers stay read-only', () => {
     const ws = new MemoryWorkspace();
     // #309: with rewind checkpoints the same two tools are the edits.
     for (const options of [{}, { checkpoints: new WorkspaceCheckpoints(ws) }] as FsToolsOptions[]) {
@@ -232,7 +232,7 @@ describe('createFsTools on MemoryWorkspace (LOU-X6)', () => {
       await expect(call(toolsByName(new MemoryWorkspace({ files })).grep, { pattern: 'x' }, controller.signal)).rejects.toThrow(/cancelled/);
     });
 
-    // Eve TOOLS-F6: a model-written regex must not freeze the process.
+    // A model-written regex must not freeze the process.
     it('refuses a pattern with nested unbounded quantifiers, and allows the safe look-alikes', async () => {
       const { grep } = toolsByName(new MemoryWorkspace({ files: { 'data.txt': `${'a'.repeat(28)}!\n` } }));
       for (const pattern of ['^(a+)+$', '(\\w+\\s*)*', '((ab)*c)+', '(a|b+){2,}']) {
@@ -250,10 +250,25 @@ describe('createFsTools on MemoryWorkspace (LOU-X6)', () => {
       const timer = setInterval(() => ticks++, 10);
       const started = Date.now();
       // Polynomial (not nested) backtracking: far too slow on 2000 tested characters.
-      await expect(grepFiles(ws, { pattern: '\\s*\\s*\\s*\\s*\\s*!' }, limits)).rejects.toThrow(/grep stopped after/);
+      await expect(grepFiles(ws, { pattern: '\\s*\\s*\\s*\\s*\\s*!' }, limits)).rejects.toThrow(/too slow on this input.*scanned 0 of 1 files/);
       clearInterval(timer);
       expect(Date.now() - started).toBeLessThan(5000);
       expect(ticks).toBeGreaterThan(5);
+    });
+
+    it('does not count time spent reading files against the matching budget', async () => {
+      const files = Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`f${i}.txt`, 'hello world\n']));
+      const inner = new MemoryWorkspace({ files });
+      const slow = Object.create(inner) as MemoryWorkspace;
+      slow.readFile = async (path: string) => {
+        await new Promise((r) => setTimeout(r, 300));
+        return inner.readFile(path);
+      };
+      const limits = { maxReadLines: 2000, maxOutputChars: 30_000, maxResults: 100, maxFilesScanned: 10, ignore: new Set<string>(), grepTimeoutMs: 1000 };
+      const started = Date.now();
+      const out = await grepFiles(slow, { pattern: 'hello' }, limits);
+      expect(Date.now() - started).toBeGreaterThan(1500);
+      expect(out.split('\n')).toHaveLength(6);
     });
 
     it('an abort stops a running slow pattern at once', async () => {
@@ -281,7 +296,7 @@ describe('createFsTools on MemoryWorkspace (LOU-X6)', () => {
   });
 });
 
-describe('MemoryWorkspace (LOU-X6)', () => {
+describe('MemoryWorkspace', () => {
   it('stats, removes and refuses invalid operations', async () => {
     const ws = new MemoryWorkspace({ files: { 'd/a.txt': 'abc' } });
     expect(await ws.stat('d/a.txt')).toEqual({ type: 'file', size: 3 });
@@ -317,5 +332,81 @@ describe('MemoryWorkspace (LOU-X6)', () => {
 
   it('exec without a handler fails with 127 and says how to program it', async () => {
     expect(await new MemoryWorkspace().exec('ls')).toMatchObject({ exitCode: 127, stderr: expect.stringMatching(/no exec handler/) });
+  });
+});
+
+describe('createFsTools deny list (consumer harness H1-2)', () => {
+  const token = 'AUTHORIZATION: basic c2VjcmV0';
+  const files = {
+    '.git/config': `[http "https://github.com/"]\n\textraheader = ${token}\n`,
+    '.git/HEAD': 'ref: refs/heads/main\n',
+    'sub/.git': 'gitdir: C:/Users/someone/repo/.git/worktrees/sub\n',
+    'src/a.ts': 'export const a = 1;\n',
+  };
+
+  it.each(['.git/config', './.git/config', 'a/../.git/config', '.git\\config', '.GIT/config', '.git./config', '.git /HEAD', 'sub/.git', '.git', '.git/', './.git/'])(
+    'read_file and list_dir refuse %j',
+    async (path) => {
+      const { read_file, list_dir } = toolsByName(new MemoryWorkspace({ files }), { readOnly: true });
+      await expect(call(read_file, { path })).rejects.toThrow(/is denied: the file tools never open/);
+      await expect(call(list_dir, { path })).rejects.toThrow(/is denied/);
+    }
+  );
+
+  it('grep and glob refuse a denied path and never return denied entries, even with ignore: []', async () => {
+    const { grep, glob, list_dir } = toolsByName(new MemoryWorkspace({ files }), { readOnly: true, ignore: [] });
+    await expect(call(grep, { pattern: 'AUTHORIZATION', path: '.git/config' })).rejects.toThrow(/is denied/);
+    await expect(call(grep, { pattern: 'x', path: './.git' })).rejects.toThrow(/is denied/);
+    await expect(call(glob, { pattern: '*', path: '.git' })).rejects.toThrow(/is denied/);
+    expect(await call(grep, { pattern: 'AUTHORIZATION|gitdir' })).toMatch(/^No matches/);
+    expect(await call(glob, { pattern: '**' })).toBe('src/a.ts');
+    expect(await call(list_dir, {})).toBe('src/\nsub/');
+    expect(await call(list_dir, { path: 'sub' })).toBe('sub is empty.');
+  });
+
+  it('filters a provider-native glob too', async () => {
+    const native: FsProvider = Object.assign(Object.create(new MemoryWorkspace({ files })) as MemoryWorkspace, {
+      glob: async () => ['.git/config', 'sub/.git', 'src/a.ts'],
+    });
+    const { glob, grep } = toolsByName(native, { readOnly: true });
+    expect(await call(glob, { pattern: '**' })).toBe('src/a.ts');
+    expect(await call(grep, { pattern: 'AUTHORIZATION', glob: '**' })).toMatch(/^No matches/);
+  });
+
+  it('write_file and edit_file refuse denied paths, with and without checkpoints', async () => {
+    for (const options of [{}, { checkpoints: new WorkspaceCheckpoints(new MemoryWorkspace()) }] as FsToolsOptions[]) {
+      const ws = new MemoryWorkspace({ files });
+      const { write_file, edit_file } = toolsByName(ws, options);
+      await expect(call(write_file, { path: '.git/hooks/pre-commit', content: 'curl evil' })).rejects.toThrow(/is denied/);
+      await expect(call(edit_file, { path: '.git/config', old_string: 'basic', new_string: 'x' })).rejects.toThrow(/is denied/);
+      expect(ws.snapshot()['.git/config']).toContain(token);
+      expect(ws.snapshot()['.git/hooks/pre-commit']).toBeUndefined();
+    }
+  });
+
+  it('reaches the model as a WorkspaceError tool error, without the file content', async () => {
+    const provider = mockModel([{ toolCalls: [{ name: 'read_file', args: { path: '.git/config' } }] }, 'ok']);
+    await createAgent({ prompt: 'p', provider, tools: createFsTools(new MemoryWorkspace({ files }), { readOnly: true }) }).send('go');
+    const toolMessage = provider.calls[1].messages.find((m) => m.role === 'tool');
+    expect(toolMessage?.isError).toBe(true);
+    expect(JSON.parse(toolMessage!.content as string)).toMatchObject({ error: 'WorkspaceError', toolName: 'read_file' });
+    expect(toolMessage!.content).not.toContain('c2VjcmV0');
+  });
+
+  it('is configurable: custom names, and [] allows everything', async () => {
+    const custom = toolsByName(new MemoryWorkspace({ files: { ...files, 'secrets/key': 'k' } }), { deny: ['secrets'] });
+    await expect(call(custom.read_file, { path: 'Secrets/key' })).rejects.toThrow(/is denied/);
+    expect(await call(custom.read_file, { path: '.git/HEAD' })).toContain('refs/heads/main');
+    const open = toolsByName(new MemoryWorkspace({ files }), { deny: [] });
+    expect(await call(open.read_file, { path: '.git/config' })).toContain(token);
+    expect(() => createFsTools(new MemoryWorkspace(), { deny: ['.git/config'] })).toThrow(/entry names such as ".git", not paths/);
+  });
+
+  it('allows names that only contain a denied name', async () => {
+    const ws = new MemoryWorkspace({ files: { '.gitignore': 'dist\n', '.github/ci.yml': 'on: push\n', 'my.git/x': 'y\n' } });
+    const { read_file } = toolsByName(ws);
+    expect(await call(read_file, { path: '.gitignore' })).toContain('dist');
+    expect(await call(read_file, { path: '.github/ci.yml' })).toContain('push');
+    expect(await call(read_file, { path: 'my.git/x' })).toContain('y');
   });
 });

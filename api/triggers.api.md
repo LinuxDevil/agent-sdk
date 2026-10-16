@@ -4,7 +4,6 @@
 
 ```ts
 
-import * as http from 'node:http';
 import { IncomingMessage } from 'node:http';
 
 // @public
@@ -63,46 +62,10 @@ export class CronExpressionError extends Error {
     constructor(message: string);
 }
 
-// @public @deprecated
-export interface CronExpressionOptions extends CronTriggerAdapterBaseOptions {
-    cron: string;
-    // (undocumented)
-    intervalMs?: never;
-    timezone?: string;
-}
-
-// @public @deprecated
-export interface CronIntervalOptions extends CronTriggerAdapterBaseOptions {
-    // (undocumented)
-    cron?: never;
-    intervalMs: number;
-    // (undocumented)
-    timezone?: never;
-}
-
 // @public
 export interface CronSchedule {
     nextRun(after: Date): Date;
 }
-
-// @public @deprecated
-export class CronTriggerAdapter implements TriggerAdapter {
-    constructor(options: CronTriggerAdapterOptions);
-    // (undocumented)
-    listen(agent: RunnableAgent, onEvent: (input: string, context: TriggerContext) => Promise<ExecutionResult>): TriggerHandle;
-    // (undocumented)
-    readonly type = "cron";
-}
-
-// @public
-interface CronTriggerAdapterBaseOptions {
-    fireImmediately?: boolean;
-    input: string;
-    onResult: (result: ExecutionResult | undefined, error: unknown, context: TriggerContext) => void;
-}
-
-// @public @deprecated
-export type CronTriggerAdapterOptions = CronIntervalOptions | CronExpressionOptions;
 
 // @public
 export interface CustomWebhookAuth {
@@ -114,6 +77,7 @@ export interface CustomWebhookAuth {
 
 // @public
 interface DelegatedUsage {
+    costPartial?: boolean;
     costUsd: number | undefined;
     // (undocumented)
     estimated: boolean;
@@ -158,6 +122,7 @@ interface ExecutionResult<TObject = unknown> {
     text: string;
     // (undocumented)
     toolCalls: ToolCall[];
+    toolErrors?: number;
     usage: RunUsage;
 }
 
@@ -270,18 +235,6 @@ interface ImageContentPart {
 type IoGuardrailKind = 'input' | 'output' | 'tool';
 
 // @public
-interface Logger {
-    // (undocumented)
-    debug(msg: string, meta?: Record<string, unknown>): void;
-    // (undocumented)
-    error(msg: string, meta?: Record<string, unknown>): void;
-    // (undocumented)
-    info(msg: string, meta?: Record<string, unknown>): void;
-    // (undocumented)
-    warn(msg: string, meta?: Record<string, unknown>): void;
-}
-
-// @public
 interface Message {
     content: string | ContentPart[];
     isError?: boolean;
@@ -302,6 +255,7 @@ type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 // @public
 interface ModelUsage {
     calls: number;
+    costPartial?: boolean;
     costUsd?: number;
     // (undocumented)
     inputTokens: number;
@@ -359,6 +313,7 @@ interface RunLimits {
     maxOutputTokens?: number;
     maxSteps?: number;
     maxTokens?: number;
+    maxToolErrors?: number;
     onExceeded?: 'stop' | 'throw';
 }
 
@@ -375,6 +330,7 @@ interface RunUsage {
     cacheWriteTokens?: number;
     // @deprecated (undocumented)
     completionTokens: number;
+    costPartial?: boolean;
     costUsd: number | undefined;
     delegated?: DelegatedUsage;
     estimated: boolean;
@@ -399,55 +355,12 @@ interface ServedBy {
 }
 
 // @public
-export interface SlackHttpResponse {
-    // (undocumented)
-    body: Record<string, unknown>;
-    // (undocumented)
-    status: number;
-}
-
-// @public
-export interface SlackInboundRequest {
-    headers: Record<string, string | string[] | undefined>;
-    rawBody: Buffer | string;
-}
-
-// @public
-export interface SlackMessageEvent {
-    // (undocumented)
-    channel: string;
-    // (undocumented)
-    text: string;
-}
-
-// @public
 export interface SlackSignatureInput {
     now?: number;
     rawBody: Buffer | string;
     signature: string | undefined;
     signingSecret: string;
     timestamp: string | undefined;
-}
-
-// @public @deprecated
-export class SlackTriggerAdapter implements TriggerAdapter<string> {
-    constructor(options?: SlackTriggerAdapterOptions);
-    handleEvent(event: SlackMessageEvent): Promise<ExecutionResult | undefined>;
-    handleRequest(request: SlackInboundRequest): Promise<SlackHttpResponse>;
-    // (undocumented)
-    listen(agent: RunnableAgent, onEvent: (input: string, context: TriggerContext) => Promise<ExecutionResult>): TriggerHandle;
-    // (undocumented)
-    reply(channel: string, message: string): Promise<void>;
-    // (undocumented)
-    readonly type = "slack";
-}
-
-// @public @deprecated
-export interface SlackTriggerAdapterOptions {
-    fetchImpl?: typeof fetch;
-    logger?: Logger;
-    signingSecret?: string;
-    webhookUrl?: string;
 }
 
 // @public
@@ -533,33 +446,6 @@ export function verifySlackSignature(input: SlackSignatureInput): boolean;
 
 // @public
 export type WebhookAuth = HmacWebhookAuth | BearerWebhookAuth | CustomWebhookAuth;
-
-// @public (undocumented)
-type WebhookOnEvent = (input: string, context: TriggerContext) => Promise<ExecutionResult>;
-
-// @public @deprecated
-export class WebhookTriggerAdapter implements TriggerAdapter<http.ServerResponse> {
-    constructor(options?: WebhookTriggerAdapterOptions);
-    // (undocumented)
-    listen(agent: RunnableAgent, onEvent: WebhookOnEvent): WebhookTriggerHandle;
-    // (undocumented)
-    readonly type = "webhook";
-}
-
-// @public @deprecated
-export interface WebhookTriggerAdapterOptions {
-    allowUnauthenticated?: boolean;
-    auth?: WebhookAuth;
-    host?: string;
-    logger?: Logger;
-    path?: string;
-    port?: number;
-}
-
-// @public @deprecated
-export interface WebhookTriggerHandle extends TriggerHandle {
-    readonly port: number;
-}
 
 // (No @packageDocumentation comment for this package)
 

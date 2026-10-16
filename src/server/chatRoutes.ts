@@ -1,7 +1,7 @@
 /**
  * The `/chat` HTTP API of `lousho dev` and of the deployed node server
- * (LOU-D32, LOU-D14) on `node:http`. The routes themselves are Fetch-native
- * (fetchRoutes.ts, shared with the Cloudflare Worker, LOU-D51); this file
+ * on `node:http`. The routes themselves are Fetch-native
+ * (fetchRoutes.ts, shared with the Cloudflare Worker); this file
  * adapts an `IncomingMessage` / `ServerResponse` pair to a `Request` /
  * `Response`, so only Node hosts import it.
  */
@@ -72,7 +72,7 @@ export function handleChatRequest(req: http.IncomingMessage, res: http.ServerRes
   return relayFetch(req, res, (request) => handleChatFetch(request, ctx));
 }
 
-/** Body-size cap for raw-body routes (channels, LOU-P7), matching the Fetch routes' 1MB limit. */
+/** Body-size cap for raw-body routes (channels), matching the Fetch routes' 1MB limit. */
 const MAX_BODY_BYTES = 1024 * 1024; // 1MB
 
 export class PayloadTooLargeError extends Error {}

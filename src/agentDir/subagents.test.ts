@@ -1,5 +1,5 @@
 /**
- * Eve MA-F5: a `subagents/<name>/` directory runs through the native sub-agent
+ * A `subagents/<name>/` directory runs through the native sub-agent
  * runtime (`runSubagent()`), whether the lead calls the `task` tool or the
  * backward-compatible `delegate_to_<name>` alias: the lead's deny rules hold
  * in the child, its approvals pause the lead, its usage rolls up, and its
@@ -36,7 +36,7 @@ function coderScript(delegateCall: { name: string; args: Record<string, unknown>
 const viaAlias = { name: 'delegate_to_coder', args: { task: 'write a.txt then deploy' } };
 const viaTask = { name: 'task', args: { agent: 'coder', prompt: 'write a.txt then deploy', description: 'write and deploy' } };
 
-describe('agent-directory sub-agents run through the native sub-agent runtime (Eve MA-F5)', () => {
+describe('agent-directory sub-agents run through the native sub-agent runtime', () => {
   it('lists every createAgent sub-agent directory in the lead config.subagents, keeping the delegate_to_<name> alias', async () => {
     const { config } = await resolveAgentDir(fixture, { provider: mockModel(['x']) });
     expect(Object.keys(config.subagents as Record<string, unknown>).sort()).toEqual(['coder', 'ops']);

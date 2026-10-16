@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { LLMProviderRegistry, LLMProvider } from './llm';
 import { resolveProvider } from './resolveProvider';
 
-/** Matches an SDKError with this stable `code` (LOU-D2). */
+/** Matches an SDKError with this stable `code`. */
 const withCode = (code: string) => expect.objectContaining({ code });
 
 function fakeProvider(name: string): LLMProvider {
@@ -94,7 +94,7 @@ describe('resolveProvider', () => {
   });
 });
 
-describe('resolveProvider errors (LOU-D1)', () => {
+describe('resolveProvider errors', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
@@ -111,7 +111,7 @@ describe('resolveProvider errors (LOU-D1)', () => {
     expect(createSpy).not.toHaveBeenCalled();
   });
 
-  it('under cassette replay resolves a spec without the key; a call that reaches it reports the missing key (LOU-R10)', async () => {
+  it('under cassette replay resolves a spec without the key; a call that reaches it reports the missing key', async () => {
     vi.stubEnv('OPENAI_API_KEY', '');
     vi.stubEnv('LOUSHO_EVAL_CASSETTES', 'replay');
     const fake = Object.assign(fakeProvider('openai'), { defaultModel: 'gpt-4o-mini' });
@@ -153,7 +153,7 @@ describe('resolveProvider errors (LOU-D1)', () => {
   });
 
   it('shows an example for a spec without a provider prefix', () => {
-    expect(() => resolveProvider('gpt-4o')).toThrow(/Example: 'openai\/gpt-4o-mini'/);
+    expect(() => resolveProvider('gpt-4o')).toThrow(/Example: 'openai\/gpt-4.1-mini'/);
   });
 
   it.each([
@@ -182,7 +182,7 @@ describe('resolveProvider errors (LOU-D1)', () => {
     expect(() => resolveProvider(spec)).toThrow(withCode('LOUSHO_PEER_MISSING'));
   });
 
-  it('resolves "<name>/<model>" for a provider added with LLMProviderRegistry.register() (Eve PROV-F13)', () => {
+  it('resolves "<name>/<model>" for a provider added with LLMProviderRegistry.register()', () => {
     const factory = vi.fn((config: { defaultModel?: string }) => ({ ...fakeProvider('f13-custom'), defaultModel: config.defaultModel }) as unknown as LLMProvider);
     LLMProviderRegistry.register('f13-custom', factory);
 

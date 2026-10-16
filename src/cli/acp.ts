@@ -1,6 +1,6 @@
 /**
  * `lousho acp <path> [--model provider/model]` - serve an agent over the
- * Agent Client Protocol on stdio, for editors such as Zed (LOU-Z6). The path
+ * Agent Client Protocol on stdio, for editors such as Zed. The path
  * is what `lousho chat` takes. stdout carries only protocol messages, so
  * everything else (errors, the agent's own console output) goes to stderr.
  */

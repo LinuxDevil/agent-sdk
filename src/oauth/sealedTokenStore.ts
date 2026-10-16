@@ -1,5 +1,5 @@
 /**
- * The encrypted `OAuthTokenStore` (N9a) shared by the persistent stores:
+ * The encrypted `OAuthTokenStore` shared by the persistent stores:
  * `SqliteStore`, `KVStore` and `fileStore` each supply a small backend of
  * opaque sealed strings, and this class does validation, encryption and
  * expiry. No `node:*` import: `KVStore` bundles it.

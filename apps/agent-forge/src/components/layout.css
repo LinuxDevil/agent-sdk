@@ -1,8 +1,8 @@
 /*
  * App shell chrome, ported from .design-ref/agent-forge-mockup.html's
- * topbar / rail / canvas-placeholder / inspector / drawer CSS (LOU-L1).
+ * topbar / rail / canvas-placeholder / inspector / drawer CSS.
  * Node/edge/flow-surface styling is intentionally NOT ported here - the
- * canvas is a placeholder until LOU-M wires up real ReactFlow, so there is
+ * canvas is a placeholder until real ReactFlow is wired up, so there is
  * nothing to draw nodes/edges onto yet.
  */
 
@@ -12,7 +12,7 @@
   grid-template-rows: 48px 1fr 240px;
 }
 
-/* Eve DUI-F9: read by screen readers, not drawn (the page h1, status prefixes). */
+/* read by screen readers, not drawn (the page h1, status prefixes). */
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -84,7 +84,7 @@
   align-items: center;
   gap: 6px;
 }
-/* Eve DUI-F4: a mock agent is labelled as such, persistently. */
+/* a mock agent is labelled as such, persistently. */
 .env-select-mock {
   border-color: var(--warning);
 }
@@ -105,10 +105,10 @@
   box-shadow: 0 0 0 3px var(--success-soft);
 }
 
-/* LOU-N: inline human-in-the-loop approval card, shown in the Topbar while
+/* inline human-in-the-loop approval card, shown in the Topbar while
    a run is paused awaiting a tool-call decision (see AppState.runStatus /
    Topbar.tsx). A minimal affordance by design - the richer version is
-   LOU-O/P's job (see server/types.ts's PendingApprovalInfo doc comment). */
+   a later job (see server/types.ts's PendingApprovalInfo doc comment). */
 .approval-card {
   display: flex;
   align-items: center;
@@ -121,8 +121,8 @@
   padding: 4px 8px;
 }
 
-/* LOU-N: a run's error message, surfaced inline in the Topbar next to the
-   status pill - full log/trace display is LOU-O's job, this is just
+/* a run's error message, surfaced inline in the Topbar next to the
+   status pill - full log/trace display is a later job, this is just
    "don't silently swallow it". */
 .run-error {
   font-size: 11.5px;
@@ -287,7 +287,7 @@
   width: 5px;
   height: 5px;
   box-shadow: none;
-  /* LOU-N: match each status pill's own text color (success/danger/
+  /* match each status pill's own text color (success/danger/
      warning/faint, set by .status-running/.status-error/.status-paused/
      .status-stopped above) instead of always rendering the base `.dot`
      rule's green - a status pill's dot should reflect that status. */
@@ -298,7 +298,7 @@
   background: var(--success-soft);
   color: var(--success);
 }
-/* Eve DUI-F21: an unsaved agent is a warning, not a green "running". */
+/* an unsaved agent is a warning, not a green "running". */
 .status-unsaved {
   background: var(--warning-soft);
   color: var(--warning);
@@ -327,7 +327,7 @@
 .btn-danger-text {
   color: var(--danger);
 }
-/* Eve DUI-F21: shown while the live stream to the studio server is down. */
+/* shown while the live stream to the studio server is down. */
 .connection-banner {
   position: fixed;
   top: 56px;
@@ -371,7 +371,7 @@
   font-size: 12px;
   font-weight: 500;
 }
-/* Eve DUI-F9: palette items, hook switches/chips and toggles are native buttons. */
+/* palette items, hook switches/chips and toggles are native buttons. */
 button.node-palette-item {
   width: 100%;
   text-align: left;
@@ -439,7 +439,7 @@ button.breakpoint-toggle {
   flex: none;
 }
 
-/* ---------- Canvas (real ReactFlow / @xyflow/react, LOU-M) ---------- */
+/* ---------- Canvas (real ReactFlow / @xyflow/react) ---------- */
 .canvas-wrap {
   position: relative;
   overflow: hidden;
@@ -489,7 +489,7 @@ button.breakpoint-toggle {
   border-radius: 9px;
   box-shadow: var(--shadow);
 }
-/* Eve DUI-F22: minimap nodes in their type's swatch colour (AgentNode.tsx's
+/* minimap nodes in their type's swatch colour (AgentNode.tsx's
    miniMapNodeClassName), and a mask that is visible on --surface in both
    schemes - the default light-grey nodes and mask vanished on it. */
 .react-flow__minimap-mask {
@@ -702,7 +702,7 @@ button.breakpoint-toggle {
   background: var(--accent-soft);
 }
 
-/* ---------- Hooks (LOU-Q) ---------- */
+/* ---------- Hooks ---------- */
 .node-hooks {
   position: absolute;
   top: -7px;
@@ -893,7 +893,7 @@ button.breakpoint-toggle {
   color: var(--text-muted);
 }
 
-/* ---------- O1: Logs tab ---------- */
+/* ---------- Logs tab ---------- */
 .logs-panel {
   display: flex;
   flex-direction: column;
@@ -955,7 +955,7 @@ button.breakpoint-toggle {
 .log-msg { color: var(--text); white-space: pre-wrap; word-break: break-word; }
 .log-msg b { color: var(--text-muted); font-weight: 600; }
 
-/* ---------- O2: Trace tab ---------- */
+/* ---------- Trace tab ---------- */
 .trace-panel {
   flex: 1;
   min-width: 0;
@@ -977,7 +977,7 @@ button.breakpoint-toggle {
 .trace-name { width: 150px; flex: none; color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trace-dur { width: 56px; flex: none; text-align: right; color: var(--text-muted); }
 
-/* ---------- LOU-D45: History tab (time travel) ---------- */
+/* ---------- History tab (time travel) ---------- */
 .history-panel { display: flex; flex-direction: column; gap: 10px; }
 .history-table { width: 100%; border-collapse: collapse; }
 .history-table th { text-align: left; color: var(--text-faint); font-weight: 600; padding: 3px 8px; border-bottom: 1px solid var(--border); }
@@ -993,7 +993,7 @@ button.breakpoint-toggle {
 .traj-tool { color: var(--accent); }
 .traj-drift { margin: 6px 0 0; padding-left: 18px; color: var(--warning); }
 
-/* ---------- O4: Output tab ---------- */
+/* ---------- Output tab ---------- */
 .output-json { padding: 10px 14px; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); font-size: 11.5px; }
 .json-key { color: var(--info); }
 .json-str { color: var(--success); }
@@ -1016,7 +1016,7 @@ button.breakpoint-toggle {
   padding-left: 8px;
 }
 
-/* ---------- O3: step-through debugger ---------- */
+/* ---------- Step-through debugger ---------- */
 .debug-bar {
   display: flex;
   align-items: center;
@@ -1054,7 +1054,7 @@ button.breakpoint-toggle {
   box-shadow: 0 0 0 3px var(--accent), var(--shadow);
 }
 
-/* ---------- Eve DUI-F8: narrow layout (<= 860px) ----------
+/* ---------- narrow layout (<= 860px) ----------
    The rail and the Inspector become slide-over drawers toggled from the top
    bar (App.tsx's useSidePanels, Topbar.tsx's NarrowTopbar); Debug, Import,
    Export and Save move into the top bar's "More" menu. Keep the breakpoint in
@@ -1192,7 +1192,7 @@ button.breakpoint-toggle {
   }
 }
 
-/* ---------- Chat (LOU-P) ----------
+/* ---------- Chat ----------
    Ported from .design-ref/agent-forge-mockup.html's `.chat-*` classes -
    user/agent bubbles, avatars, timestamps, a typing indicator, and inline
    tool-call/approval cards under an agent bubble. See ChatPanel.tsx. */
@@ -1299,7 +1299,7 @@ button.breakpoint-toggle {
 .chat-msg.user .chat-time {
   text-align: right;
 }
-/* Eve DUI-F21: the top bar's Run input, kept apart from typed messages. */
+/* the top bar's Run input, kept apart from typed messages. */
 .chat-msg.run-input .chat-bubble {
   background: var(--surface-2);
   border: 1px dashed var(--border);
@@ -1351,7 +1351,7 @@ button.breakpoint-toggle {
     opacity: 1;
   }
 }
-/* Inline-in-thread approval card (P2) - reuses .approval-card's base look
+/* Inline-in-thread approval card - reuses .approval-card's base look
    (Topbar.tsx's compact version) with a couple of thread-specific tweaks. */
 .chat-approval-card {
   flex-wrap: wrap;
@@ -1388,7 +1388,7 @@ button.breakpoint-toggle {
   opacity: 0.6;
 }
 
-/* M5b: persisted trace history next to the waterfall */
+/* Persisted trace history next to the waterfall */
 .trace-layout { display: flex; height: 100%; min-height: 0; }
 .trace-main { flex: 1; min-width: 0; height: 100%; }
 .trace-history { display: flex; flex-direction: column; gap: 4px; width: 240px; flex: none; padding: 8px; overflow-y: auto; border-right: 1px solid var(--border); }
@@ -1408,7 +1408,7 @@ button.breakpoint-toggle {
   .trace-item { min-width: 200px; }
 }
 
-/* Eve DUI-F3: top-level error boundary fallback. */
+/* top-level error boundary fallback. */
 .error-boundary {
   max-width: 640px;
   margin: 64px auto;

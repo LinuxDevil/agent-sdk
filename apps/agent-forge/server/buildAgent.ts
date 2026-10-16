@@ -8,7 +8,7 @@
  * AgentConfig/provider/toolRegistry inside a closure and calls
  * `AgentExecutor.execute()` with no `sessionId`/`checkpointStore`/
  * `approvalStore`/`onAgentEvent`/abortable-provider hooks - exactly the things
- * this server needs to wire up N2/N3. So this file composes the same
+ * this server needs to wire up (runs and approvals). So this file composes the same
  * public building blocks `specToAgent()` uses
  * (`resolveSpecProvider`/`resolveSpecTool`/`AgentBuilder`/`ToolRegistry`,
  * all public SDK exports) itself, rather than reaching past `specToAgent()`
@@ -73,7 +73,7 @@ export interface BuiltAgent {
   provider: LLMProvider;
   toolRegistry?: ToolRegistry;
   /**
-   * LOU-Q1/Q2: compiled from `spec.policy.hooks` (the enabled hooks
+   * Compiled from `spec.policy.hooks` (the enabled hooks
    * attached to nodes in the canvas graph - see graphToSpec.ts), or
    * `undefined` when the agent has none. Each compiled hook runs its
    * user-authored code sandboxed via `sandbox` (see hookSandbox.ts) rather
@@ -93,7 +93,7 @@ const REAL_KEYED_PROVIDER_ENV: Record<string, string> = {
 const REAL_ENV_ONLY_PROVIDERS = new Set(['ollama', 'openrouter']);
 
 /**
- * Eve DUI-F4: a real provider with no usable credential. The studio used to
+ * A real provider with no usable credential. The studio used to
  * swap in the `mock` provider here and only say so in a log line, so a user
  * with no key got "This is a mock response." and thought the model answered.
  * The run now fails up front with this actionable error instead; `mock` is
@@ -110,10 +110,10 @@ function missingProviderKey(type: string, envVar: string): ConfigurationError {
 
 /**
  * Resolves `spec.provider` to a real `LLMProvider`, preferring a stored key
- * from `secretsStore` (LOU-R1) over the env-var-only path
+ * from `secretsStore` over the env-var-only path
  * `resolveSpecProvider()` (the core SDK's `src/spec/specToAgent.ts`) uses.
  * A real provider type with no usable credential throws a
- * `LOUSHO_PROVIDER_MISSING_API_KEY` `ConfigurationError` (Eve DUI-F4) - it
+ * `LOUSHO_PROVIDER_MISSING_API_KEY` `ConfigurationError` - it
  * never silently runs `mock` instead.
  */
 function resolveProviderForSpec(type: string, model: string, secretsStore?: SecretsStore): LLMProvider {
@@ -151,9 +151,9 @@ function resolveProviderForSpec(type: string, model: string, secretsStore?: Secr
 
 
 export interface BuildAgentFromSpecOptions {
-  /** LOU-R1: stored provider keys, checked before env vars. */
+  /** Stored provider keys, checked before env vars. */
   secretsStore?: SecretsStore;
-  /** LOU-R3: configurable sandboxed-hook timeout (settingsStore.ts's `SettingsProfile.hookTimeoutMs`). */
+  /** Configurable sandboxed-hook timeout (settingsStore.ts's `SettingsProfile.hookTimeoutMs`). */
   hookTimeoutMs?: number;
 }
 
@@ -190,7 +190,7 @@ export function buildAgentFromSpec(
 }
 
 /**
- * LOU-T3: reads back the `AgentFlow` a branching (`router`-node) canvas
+ * Reads back the `AgentFlow` a branching (`router`-node) canvas
  * graph's `graphToSpec()` stashed under `spec.policy.flow` (see
  * `apps/agent-forge/src/graph/graphToFlow.ts`/`graphToSpec.ts`) - the
  * signal `runRegistry.ts` uses to run this agent through `FlowExecutor`

@@ -1,5 +1,5 @@
 /**
- * N5b: `runInParallel` input guardrails check the new input while the first
+ * `runInParallel` input guardrails check the new input while the first
  * model call is already in flight. The call's output is held until every
  * parallel check passes; a trip cancels the call and nothing it produced is
  * shown, run, checkpointed or kept.
@@ -151,7 +151,7 @@ function memoryStore() {
   return { store, saved };
 }
 
-describe('runInParallel input guardrails (N5b): a passing check', () => {
+describe('runInParallel input guardrails: a passing check', () => {
   it('starts the model call before the check resolves', async () => {
     const gate = gatedGuardrail();
     const model = mockModel(['Hello there.']);
@@ -240,7 +240,7 @@ describe('runInParallel input guardrails (N5b): a passing check', () => {
   });
 });
 
-describe('runInParallel input guardrails (N5b): a trip', () => {
+describe('runInParallel input guardrails: a trip', () => {
   it('aborts the in-flight call; no text, no tool, no usage; ends as a blocking trip would', async () => {
     const gate = gatedGuardrail();
     const { tool, runs } = weatherTool();
@@ -401,7 +401,7 @@ describe('runInParallel input guardrails (N5b): a trip', () => {
   });
 });
 
-describe('runInParallel input guardrails (N5b): with blocking guardrails', () => {
+describe('runInParallel input guardrails: with blocking guardrails', () => {
   it('a blocking trip makes no model call and does not start the parallel checks', async () => {
     const gate = gatedGuardrail();
     const model = mockModel(['never']);
@@ -442,7 +442,7 @@ describe('runInParallel input guardrails (N5b): with blocking guardrails', () =>
   });
 });
 
-describe('runInParallel input guardrails (N5b): resume and sub-agents', () => {
+describe('runInParallel input guardrails: resume and sub-agents', () => {
   it('a run resumed after an approval does not check the input again', async () => {
     let checks = 0;
     const counting: IoGuardrail = { name: 'counting', runInParallel: true, check: () => (checks++, { ok: true }) };
@@ -544,7 +544,7 @@ describe('runInParallel input guardrails (N5b): resume and sub-agents', () => {
   });
 });
 
-describe('runInParallel on the starter set (N5b)', () => {
+describe('runInParallel on the starter set', () => {
   it('promptInjectionGuardrail and moderationGuardrail take runInParallel (default off)', () => {
     const model = mockModel(['NONE']);
     expect(moderationGuardrail({ model }).runInParallel).toBeUndefined();

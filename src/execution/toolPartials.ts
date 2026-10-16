@@ -1,5 +1,5 @@
 /**
- * N13b: partial tool results. A tool's `execute` may be an `async function*`:
+ * Partial tool results. A tool's `execute` may be an `async function*`:
  * every `yield` is a complete snapshot that replaces the previous one (reported
  * as a `tool.partial` event), and the last one is the tool's result. A
  * `return` value is ignored; a generator that yields nothing has the result

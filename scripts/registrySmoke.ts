@@ -1,6 +1,6 @@
 // fallow-ignore-file complexity
 /**
- * registry-smoke (R1b)
+ * registry-smoke
  *
  * Proves that what a stranger gets from the npm registry works. It never reads
  * the checkout: everything runs in a fresh temp directory with what npm
@@ -31,10 +31,10 @@ import { IS_WIN, SDK_NAME, checkBin, checkModuleLoads, createReporter, run, type
 
 const CREATE_NAME = 'create-lousho-agent';
 /**
- * `lousho studio` only works outside the SDK repository from this version on (R1a). Older
+ * `lousho studio` only works outside the SDK repository from this version on. Older
  * published versions print `SKIP studio` instead of failing, so the scheduled job is not red
  * for a release that is already out. It is a minimum, not a pin: once a release containing
- * R1a is published, the studio step runs for it and for everything newer.
+ * the studio fix is published, the studio step runs for it and for everything newer.
  */
 const STUDIO_FIXED_IN = '1.0.0-alpha.9';
 const STUDIO_TIMEOUT_MS = 30_000;
@@ -206,7 +206,7 @@ async function waitForHealth(base: string, child: ChildProcess): Promise<boolean
   return false;
 }
 
-/** Step 5: `lousho studio` from the installed package (R1a). */
+/** Step 5: `lousho studio` from the installed package. */
 async function checkStudio(demo: string, version: string): Promise<void> {
   if (compareVersions(version, STUDIO_FIXED_IN) < 0) {
     log(`SKIP studio: ${version} < ${STUDIO_FIXED_IN} (this release predates the fix for running lousho studio outside the SDK repository; this is not a pass)`);

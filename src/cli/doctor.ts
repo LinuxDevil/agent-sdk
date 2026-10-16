@@ -13,6 +13,7 @@ import { findSdkRoot } from '../deploy/bundle';
 import { loadSpec } from '../spec/loadSpec';
 import { resolveAgentDir } from '../agentDir';
 import { resolveSpecTool } from '../spec/specToAgent';
+import { unknownPermissionToolMessage, unknownPermissionTools } from '../execution/permissions';
 import { exitCodeFor, parseCommand, type CommandSpec } from './args';
 import { runDoctor } from './doctorCore';
 import { renderJson, renderReport } from './doctorRender';
@@ -121,7 +122,8 @@ export function buildEnvironment(args: DoctorArgs, cwd: string = process.cwd()):
     isDirectory: (file) => fs.existsSync(file) && fs.statSync(file).isDirectory(),
     loadAgentDir: async (dir) => {
       const { config, manifest } = await resolveAgentDir(dir);
-      return { name: manifest.name, model: typeof config.model === 'string' ? config.model : undefined, tools: manifest.tools };
+      const permissionIssues = unknownPermissionTools(config.permissions, manifest.tools, { lenient: true }).map(unknownPermissionToolMessage);
+      return { name: manifest.name, model: typeof config.model === 'string' ? config.model : undefined, tools: manifest.tools, permissionIssues };
     },
     loadSpec,
     resolveTool: resolveSpecTool,

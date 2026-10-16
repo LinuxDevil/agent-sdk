@@ -63,6 +63,15 @@ describe('aggregation', () => {
     expect(summarize(all, true)).toMatchObject({ passed: 1, failed: 3, softFailed: 1, strict: true });
   });
 
+  it('counts soft failures on cases that also failed a gate', () => {
+    const gateAndSoft: EvalResult = { ...gateFail, assertions: [...gateFail.assertions, ...softFail.assertions] };
+    expect(summarize([gateAndSoft], false)).toMatchObject({ failed: 1, softFailed: 1 });
+    expect(renderTable([gateAndSoft], false)).toContain('1 eval(s): 0 passed, 1 failed, 1 with soft failures');
+    const xml = renderJunit([gateAndSoft], false);
+    expect(xml).toContain('<failure');
+    expect(xml).toContain('<system-out>soft failure: soft check');
+  });
+
   it('failsRun covers gate failures, errors and strict soft failures', () => {
     expect(failsRun(passing, true)).toBe(false);
     expect(failsRun(softFail, false)).toBe(false);

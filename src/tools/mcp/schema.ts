@@ -1,5 +1,5 @@
 /**
- * JSON Schema -> Zod conversion utility (LOU-F1, LOU-Z1)
+ * JSON Schema -> Zod conversion utility
  *
  * Converts the plain-JSON-Schema `inputSchema` objects that MCP tools
  * advertise into Zod schemas so the SDK can validate a model's tool
@@ -94,7 +94,7 @@ function isObjectBase(schema: JsonSchema): boolean {
  * branches like `oneOf: [{ required: ['id'] }, { required: ['title'] }]`)
  * keeps its object shape; the branches are left to the server to enforce.
  * Converting them to a union would turn the root into `anyOf: [{}, {}]`,
- * which providers reject (Eve TOOLS-F4).
+ * which providers reject.
  */
 function convertObjectWithSiblingUnion(schema: JsonSchema, ctx: Context): ZodTypeAny {
   const { anyOf: _anyOf, oneOf: _oneOf, ...base } = schema;

@@ -1,7 +1,7 @@
 /**
- * Waits `ms`, rejecting with the signal's reason as soon as it is aborted
- * (LOU-V1), or at once when it already is. Shared by the mock provider's
- * simulated latency and `withRetry()`'s backoff (LOU-V7.1).
+ * Waits `ms`, rejecting with the signal's reason as soon as it is aborted,
+ * or at once when it already is. Shared by the mock provider's
+ * simulated latency and `withRetry()`'s backoff.
  */
 export function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {

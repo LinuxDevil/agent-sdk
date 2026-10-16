@@ -8,7 +8,7 @@ import type { SandboxAdapter } from '../../security/sandboxCore';
 import { executeToolWithSandboxGuard } from '../../execution/sandboxGuard';
 import { getToolExecute, getToolInputSchema } from '../toolContract';
 
-describe('JiraTools sandbox seam (LOU-K2)', () => {
+describe('JiraTools sandbox seam', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });

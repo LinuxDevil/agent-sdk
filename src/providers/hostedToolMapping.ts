@@ -1,5 +1,5 @@
 /**
- * N1a/N1b: how a provider maps a hosted helper's options (`webSearch({ maxUses })`)
+ * How a provider maps a hosted helper's options (`webSearch({ maxUses })`)
  * to its own tool's arguments, warning once about the options it has no field for.
  */
 

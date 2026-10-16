@@ -12,7 +12,7 @@ const BASE_SPEC: AgentSpec = {
   provider: { type: 'mock', model: 'mock-1' },
 };
 
-describe('buildAgentFromSpec - R1 provider resolution', () => {
+describe('buildAgentFromSpec - provider resolution', () => {
   let baseDir: string;
   let secretsStore: SecretsStore;
   const savedEnv = { ...process.env };
@@ -34,7 +34,7 @@ describe('buildAgentFromSpec - R1 provider resolution', () => {
     expect(built.provider.name).toBe('mock');
   });
 
-  it('fails with an actionable LOUSHO_PROVIDER_MISSING_API_KEY error, not a silent mock run, when a real provider has no key (Eve DUI-F4)', () => {
+  it('fails with an actionable LOUSHO_PROVIDER_MISSING_API_KEY error, not a silent mock run, when a real provider has no key', () => {
     const spec: AgentSpec = { ...BASE_SPEC, provider: { type: 'openai', model: 'gpt-4o' } };
     let caught: unknown;
     try {

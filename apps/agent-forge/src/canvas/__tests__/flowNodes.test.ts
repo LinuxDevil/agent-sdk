@@ -7,7 +7,7 @@ import type { AgentGraphNodeType } from '../../graph/types';
 const GRAPH_TYPES: AgentGraphNodeType[] = ['trigger', 'llm', 'tool', 'approval', 'output', 'router'];
 const REACT_FLOW_BUILT_INS = ['input', 'output', 'default', 'group'];
 
-describe('React Flow node types (Eve DUI-F22)', () => {
+describe('React Flow node types', () => {
   it('never reuse a React Flow built-in type, so no built-in node chrome is applied', () => {
     for (const type of GRAPH_TYPES) {
       expect(REACT_FLOW_BUILT_INS).not.toContain(flowNodeType(type));
@@ -23,7 +23,7 @@ describe('React Flow node types (Eve DUI-F22)', () => {
   });
 });
 
-describe('applyDimensionChanges (Eve DUI-F22)', () => {
+describe('applyDimensionChanges', () => {
   it('records measured sizes so the MiniMap can draw the nodes', () => {
     const changes: NodeChange[] = [
       { type: 'dimensions', id: 'a', dimensions: { width: 190, height: 80 } },

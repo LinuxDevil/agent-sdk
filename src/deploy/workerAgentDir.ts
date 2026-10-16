@@ -1,5 +1,5 @@
 /**
- * An agent directory inside a Cloudflare Worker bundle (M3b, and #298 for
+ * An agent directory inside a Cloudflare Worker bundle (and #298 for
  * `subagents/` / `schedules/` / `channels/` / `memory/` / `projectInstructions`).
  *
  * `resolveAgentDir()` reads the directory from disk and imports its files at
@@ -21,6 +21,9 @@ import type { DefinedTool } from '../tools/defineTool';
 import type { Skill } from '../skills/defineSkill';
 import type { LLMProvider, ModelSettings } from '../providers/llm';
 import type { ToolConcurrency } from '../execution/toolBatch';
+import type { WithRetryOptions } from '../providers/resilience';
+import type { OutputSpec } from '../execution/structuredOutput';
+import type { StandardSchemaV1 } from '../utils/zodCompat';
 import type { Channel } from '../channels/defineChannel';
 import { defineChannel } from '../channels/defineChannel';
 import { defineSchedule, isDefinedSchedule, type DefinedSchedule } from '../schedules/defineSchedule';
@@ -108,10 +111,14 @@ export interface ResolvedWorkerAgentDir {
   permissions?: readonly PermissionRule[];
   compaction?: AgentCompaction;
   limits?: RunLimits;
-  /** `createAgent`'s `modelSettings` (C6). */
+  /** `createAgent`'s `modelSettings`. */
   modelSettings?: ModelSettings;
   /** `createAgent`'s `approvalTtlMs`: how long a pause for approval stays decidable, in milliseconds. */
   approvalTtlMs?: number;
+  /** `createAgent`'s `retry`. */
+  retry?: WithRetryOptions | false;
+  /** `createAgent`'s `output` (a code config's schema). */
+  output?: StandardSchemaV1 | OutputSpec;
   /** Hooks a code config set inline; a `hooks` path is refused (a Worker cannot import a file). */
   hooks?: readonly AgentHook[];
   /** An inline approver; an `approve` path is refused. */
@@ -291,7 +298,7 @@ export function resolveWorkerAgentDir(dir: WorkerAgentDir, inherited?: WorkerAge
 function codeOnly(
   dir: WorkerAgentDir,
   config: AgentDirConfig
-): Pick<ResolvedWorkerAgentDir, 'permissionMode' | 'permissions' | 'compaction' | 'limits' | 'modelSettings' | 'approvalTtlMs' | 'hooks' | 'approve'> {
+): Pick<ResolvedWorkerAgentDir, 'permissionMode' | 'permissions' | 'compaction' | 'limits' | 'modelSettings' | 'approvalTtlMs' | 'retry' | 'output' | 'hooks' | 'approve'> {
   const where = dir.configFile ?? `the agent directory '${dir.name}'`;
   if (typeof config.hooks === 'string') unsupported(`${where}: 'hooks' points at a file ('${config.hooks}'), but a Worker cannot import it. Set the hooks inline in an agent.ts config.`);
   if (typeof config.approve === 'string') unsupported(`${where}: 'approve' points at a file ('${config.approve}'), but a Worker cannot import it. Set the approver inline in an agent.ts config.`);
@@ -303,6 +310,8 @@ function codeOnly(
     ...(config.limits === undefined ? {} : { limits: config.limits }),
     ...(config.modelSettings === undefined ? {} : { modelSettings: config.modelSettings }),
     ...(config.approvalTtlMs === undefined ? {} : { approvalTtlMs: config.approvalTtlMs }),
+    ...(config.retry === undefined ? {} : { retry: config.retry }),
+    ...(config.output === undefined ? {} : { output: config.output }),
     ...(config.hooks === undefined ? {} : { hooks: Array.isArray(config.hooks) ? config.hooks : [config.hooks as AgentHook] }),
     ...(config.approve === undefined ? {} : { approve: config.approve as ApproveToolCall }),
   };

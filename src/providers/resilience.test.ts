@@ -1,9 +1,9 @@
 /**
- * Provider resilience wrappers (LOU-V7.1): withRetry, withFallback,
+ * Provider resilience wrappers: withRetry, withFallback,
  * resilientProvider.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { APICallError } from 'ai';
+import { APICallError, JSONParseError, TypeValidationError } from 'ai';
 import type { GenerateOptions, LLMProvider, StreamChunk } from './llm';
 import { MockLLMProvider } from './mock';
 import { retriesOwned } from './providerEvents';
@@ -11,6 +11,7 @@ import { isRetryableProviderError, resilientProvider, withFallback, withRetry } 
 import { CompactedLLMProviderError, compactProviderError } from '../execution/errors';
 import { createAgent } from '../createAgent';
 import { estimateCost } from '../models';
+import type { AgentEvent } from '../execution/agentEvents';
 
 function apiError(statusCode: number, headers?: Record<string, string>): APICallError {
   return new APICallError({
@@ -48,7 +49,7 @@ function flaky(failures: unknown[], name = 'flaky', reply = `${name} ok`) {
 /**
  * A provider whose `stream()` resolves, then fails inside the stream the way
  * a streaming provider reports a request error: the fullStream's first read
- * throws, or its first chunk is an `error` chunk (LOU-R6).
+ * throws, or its first chunk is an `error` chunk.
  */
 function flakyStream(failures: unknown[], name = 'flaky', reply = `${name} ok`) {
   const inner = new MockLLMProvider({ responses: [reply], defaultModel: `${name}-model` });
@@ -228,8 +229,80 @@ describe('withRetry', () => {
     expect(isRetryableProviderError(contextLength)).toBe(false);
   });
 
+  it('classifies a malformed or cut-off provider response as retryable, bare or wrapped in a cause', () => {
+    const parse = new JSONParseError({ text: '{"id":"x', cause: new SyntaxError('Unterminated string in JSON at position 8') });
+    const validation = new TypeValidationError({ value: { bad: 1 }, cause: new Error('invalid chunk') });
+    const socket = Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' });
+    const terminated = new TypeError('terminated', { cause: socket });
+    const bareTerminated = new TypeError('terminated');
+    const wrap = (cause: unknown) => new Error('stream failed', { cause });
+
+    for (const error of [parse, validation, socket, terminated, bareTerminated, new Error('Premature close')]) {
+      expect(isRetryableProviderError(error)).toBe(true);
+      expect(isRetryableProviderError(wrap(error))).toBe(true);
+    }
+    expect(isRetryableProviderError(Object.assign(new Error('x'), { name: 'AI_JSONParseError' }))).toBe(true);
+    expect(isRetryableProviderError(Object.assign(new Error('x'), { code: 'ECONNRESET' }))).toBe(true);
+    expect(isRetryableProviderError(new Error('boom', { cause: new Error('nope') }))).toBe(false);
+  });
+
+  it('retries a stream whose first chunk is garbage or whose socket drops, but not after text', async () => {
+    const parse = new JSONParseError({ text: '{"id":"x', cause: new SyntaxError('Unterminated string in JSON') });
+    const dropped = new TypeError('terminated', { cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' }) });
+    const onRetry = vi.fn();
+    const attempts: Array<() => AsyncGenerator<StreamChunk>> = [
+      async function* () {
+        throw parse;
+      },
+      async function* () {
+        throw dropped;
+      },
+      async function* () {
+        yield { type: 'text-delta', textDelta: 'ok' };
+        yield { type: 'finish', finishReason: 'stop' };
+      },
+    ];
+    let call = 0;
+    const provider: LLMProvider = {
+      name: 'garbled',
+      defaultModel: 'm',
+      generate: async () => {
+        throw new Error('unused');
+      },
+      stream: async () => ({ fullStream: attempts[call++]!() } as never),
+      supportsTools: () => true,
+      supportsStreaming: () => true,
+      getModels: async () => ['m'],
+    };
+    const result = await withRetry(provider, { ...fast, onRetry }).stream(request);
+    const chunks: StreamChunk[] = [];
+    for await (const chunk of result.fullStream) chunks.push(chunk);
+    expect(chunks.map((chunk) => chunk.textDelta ?? chunk.type)).toEqual(['ok', 'finish']);
+    expect(onRetry).toHaveBeenCalledTimes(2);
+
+    call = 0;
+    const afterText: LLMProvider = {
+      ...provider,
+      stream: async () =>
+        ({
+          fullStream: (async function* () {
+            call++;
+            yield { type: 'text-delta', textDelta: 'partial' } as StreamChunk;
+            throw parse;
+          })(),
+        }) as never,
+    };
+    const second = await withRetry(afterText, { ...fast, onRetry }).stream(request);
+    await expect(
+      (async () => {
+        for await (const _ of second.fullStream) void _;
+      })()
+    ).rejects.toBe(parse);
+    expect(call).toBe(1);
+  });
+
   it('does not retry a llama.cpp/LM Studio context overflow, whether it arrives as a 500 or a stream error', () => {
-    // audit _cross X1 / log-incident F2: these runtimes wrap the overflow in
+    // These runtimes wrap the overflow in
     // an HTTP 500 (which isRetryable marks retryable) or send it as an SSE
     // error event surfaced as a plain Error - both are deterministic
     // failures and must classify non-retryable.
@@ -268,7 +341,7 @@ describe('withRetry', () => {
     expect(calls).toHaveLength(2);
   });
 
-  it('throws at once, with retryAfterMs set, when the hint exceeds backoff.maxMs (Eve PROV-F5)', async () => {
+  it('throws at once, with retryAfterMs set, when the hint exceeds backoff.maxMs', async () => {
     const { provider, calls } = flaky([apiError(429, { 'retry-after': '3600' })]);
     const onRetry = vi.fn();
 
@@ -288,7 +361,7 @@ describe('withRetry', () => {
     expect(calls).toHaveLength(1);
   });
 
-  it('reads retry-after-ms, and honors Retry-After on a 503 (Eve PROV-F5)', async () => {
+  it('reads retry-after-ms, and honors Retry-After on a 503', async () => {
     expect(compactProviderError(apiError(503, { 'retry-after-ms': '2000', 'retry-after': '9' })).retryAfterMs).toBe(2_000);
     expect(compactProviderError(apiError(503, { 'Retry-After': '2' })).retryAfterMs).toBe(2_000);
     expect(compactProviderError(apiError(429, { 'Retry-After-Ms': '250' })).retryAfterMs).toBe(250);
@@ -334,7 +407,7 @@ describe('withRetry', () => {
     expect(calls).toHaveLength(2);
   });
 
-  it('retries a stream() whose stream fails before its first chunk (LOU-R6)', async () => {
+  it('retries a stream() whose stream fails before its first chunk', async () => {
     const { provider, calls } = flakyStream([apiError(503), apiError(429)]);
     const onRetry = vi.fn();
 
@@ -347,7 +420,7 @@ describe('withRetry', () => {
     await expect(stream.text).resolves.toBe('flaky ok');
   });
 
-  it('retries a stream() whose first chunk is an error chunk (LOU-R6)', async () => {
+  it('retries a stream() whose first chunk is an error chunk', async () => {
     const { provider, calls } = flakyStream(['error-chunk']);
 
     const stream = await withRetry(provider, fast).stream(request);
@@ -365,7 +438,7 @@ describe('withRetry', () => {
     expect(calls).toHaveLength(2);
   });
 
-  it('does not retry a failure after the stream delivered a chunk (LOU-R6)', async () => {
+  it('does not retry a failure after the stream delivered a chunk', async () => {
     const boom = apiError(503);
     const calls: GenerateOptions[] = [];
     const inner = new MockLLMProvider({ responses: ['partial then boom'] });
@@ -399,7 +472,7 @@ describe('withRetry', () => {
     expect(calls).toHaveLength(1);
   });
 
-  it('retries a stream that fails after only an empty reasoning-end (C2: LM Studio)', async () => {
+  it('retries a stream that fails after only an empty reasoning-end (LM Studio)', async () => {
     const { provider, calls } = scriptedStream([
       [{ type: 'reasoning-end' }, { type: 'error', error: apiError(500) }],
       [{ type: 'text-delta', textDelta: 'ok' }, { type: 'finish', finishReason: 'stop' }],
@@ -415,7 +488,7 @@ describe('withRetry', () => {
     await expect(stream.text).resolves.toBe('attempt 2');
   });
 
-  it('retries a stream that throws after reasoning deltas, passing both attempts on in order (C2)', async () => {
+  it('retries a stream that throws after reasoning deltas, passing both attempts on in order', async () => {
     const { provider, calls } = scriptedStream([
       [{ type: 'reasoning-delta', textDelta: 'hmm' }, { type: 'text-delta', textDelta: '' }, apiError(503)],
       [{ type: 'reasoning-delta', textDelta: 'again' }, { type: 'text-delta', textDelta: 'ok' }],
@@ -433,7 +506,7 @@ describe('withRetry', () => {
     ]);
   });
 
-  it('passes on a non-retryable error chunk that follows reasoning (C2)', async () => {
+  it('passes on a non-retryable error chunk that follows reasoning', async () => {
     const { provider, calls } = scriptedStream([[{ type: 'reasoning-delta', textDelta: 'hmm' }, { type: 'error', error: apiError(400) }]]);
 
     const stream = await withRetry(provider, fast).stream(request);
@@ -443,7 +516,7 @@ describe('withRetry', () => {
     expect(chunks.map((chunk) => chunk.type)).toEqual(['reasoning-delta', 'error']);
   });
 
-  it('shares maxRetries between establishing a stream and failing mid-reasoning (C2)', async () => {
+  it('shares maxRetries between establishing a stream and failing mid-reasoning', async () => {
     const last = apiError(502);
     const { provider, calls } = scriptedStream([
       [{ type: 'reasoning-end' }, apiError(503)],
@@ -455,7 +528,7 @@ describe('withRetry', () => {
     expect(calls).toHaveLength(2);
   });
 
-  it('marks the calls it retries, so the ai SDK retries are off (C2)', async () => {
+  it('marks the calls it retries, so the ai SDK retries are off', async () => {
     const { provider, calls } = flaky([apiError(503)]);
     await withRetry(provider, fast).generate(request);
     expect(calls.map(retriesOwned)).toEqual([true, true]);
@@ -473,7 +546,7 @@ describe('withRetry', () => {
     await expect(wrapped.getModels()).resolves.toEqual(['flaky-model']);
   });
 
-  describe('stream timeouts (Eve PROV-F7)', () => {
+  describe('stream timeouts', () => {
     it('timeoutMs bounds only the wait for the first chunk: a healthy stream outlives it', async () => {
       const { provider, calls } = pacedStream([10, 40, 40, 40, 40]);
 
@@ -545,7 +618,7 @@ describe('withFallback', () => {
     const result = await provider.generate({ ...request, model: provider.defaultModel });
 
     expect(result.text).toBe('backup ok');
-    expect(onFallback).toHaveBeenCalledWith({ from: 'primary', to: 'backup', error: primaryError });
+    expect(onFallback).toHaveBeenCalledWith({ from: 'primary', to: 'backup', fromModel: 'primary-model', toModel: 'backup-model', error: primaryError });
     expect(result.servedBy).toEqual({ provider: 'backup', model: 'backup-model' });
     // the wrapper itself keeps reporting the first provider
     expect(provider.name).toBe('primary');
@@ -609,7 +682,7 @@ describe('withFallback', () => {
     await expect(provider.getModels()).resolves.toEqual(['a-model']);
   });
 
-  it('falls back when a stream() fails inside the stream before its first chunk (LOU-R6)', async () => {
+  it('falls back when a stream() fails inside the stream before its first chunk', async () => {
     const primary = flakyStream([apiError(503)], 'primary');
     const backup = flakyStream([], 'backup');
     const onFallback = vi.fn();
@@ -622,10 +695,10 @@ describe('withFallback', () => {
     expect(stream.servedBy).toEqual({ provider: 'backup', model: 'backup-model' });
     expect(primary.calls).toHaveLength(1);
     expect(backup.calls).toHaveLength(1);
-    expect(onFallback).toHaveBeenCalledWith({ from: 'primary', to: 'backup', error: expect.objectContaining({ statusCode: 503 }) });
+    expect(onFallback).toHaveBeenCalledWith({ from: 'primary', to: 'backup', fromModel: 'primary-model', toModel: 'backup-model', error: expect.objectContaining({ statusCode: 503 }) });
   });
 
-  it('composes with withRetry: in-stream failures are retried, then the next provider serves (LOU-R6)', async () => {
+  it('composes with withRetry: in-stream failures are retried, then the next provider serves', async () => {
     const a = flakyStream([apiError(503), apiError(503), apiError(503)], 'a');
     const b = flakyStream([apiError(503)], 'b');
     const onFallback = vi.fn();
@@ -640,11 +713,34 @@ describe('withFallback', () => {
     expect(onFallback).toHaveBeenCalledWith(expect.objectContaining({ from: 'a', to: 'b' }));
   });
 
+  it('reports the model ids of the failing and the taking-over provider, so same-named providers can be told apart', async () => {
+    const make = (defaultModel: string, fail: boolean): LLMProvider => ({
+      name: 'openrouter',
+      defaultModel,
+      generate: async () => {
+        if (fail) throw apiError(503);
+        return { text: 'ok', finishReason: 'stop' };
+      },
+      stream: async () => Promise.reject(new Error('n/a')),
+      supportsTools: () => true,
+      supportsStreaming: () => false,
+      getModels: async () => [defaultModel],
+    });
+    const onFallback = vi.fn();
+    const provider = withFallback([make('openai/gpt-4o-mini', true), make('anthropic/claude-3.5-haiku', false)], { onFallback });
+    const heard: AgentEvent[] = [];
+    await createAgent({ provider, instructions: 'x', retry: false, onEvent: (e) => heard.push(e) }).send('hi');
+
+    const expected = { from: 'openrouter', to: 'openrouter', fromModel: 'openai/gpt-4o-mini', toModel: 'anthropic/claude-3.5-haiku' };
+    expect(onFallback).toHaveBeenCalledWith(expect.objectContaining(expected));
+    expect(heard.find((e) => e.type === 'provider.fallback')).toMatchObject(expected);
+  });
+
   it('needs at least one provider', () => {
     expect(() => withFallback([])).toThrow('at least one provider');
   });
 
-  it('keeps fallback state per call: concurrent calls report their own switch and serving model (A9)', async () => {
+  it('keeps fallback state per call: concurrent calls report their own switch and serving model', async () => {
     const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
     const seen: Record<string, Array<string | undefined>> = { primary: [], backup: [] };
     const timed = (name: string, defaultModel: string, behave: (prompt: string) => Promise<void>): LLMProvider => ({

@@ -59,7 +59,7 @@ describe('SubprocessSandbox', () => {
       expect(created[0].HostConfig).toMatchObject({ NetworkMode: 'none', AutoRemove: true, Binds: ['/work:/work'] });
     });
 
-    // Eve TOOLS-F17: the container ran as root with every capability and no limits.
+    // The container ran as root with every capability and no limits.
     it('runs as a non-root user with no capabilities, no-new-privileges and resource limits by default', async () => {
       const { created, Sandbox } = await withFakeDocker();
       await new Sandbox().run('ls', []);
@@ -108,7 +108,7 @@ describe('SubprocessSandbox', () => {
       expect(calls).toEqual(['wait:next-exit', 'start']);
     });
 
-    it('maps the network policy, failing closed for { allow } without an egress proxy (LOU-X11)', async () => {
+    it('maps the network policy, failing closed for { allow } without an egress proxy', async () => {
       const { created, Sandbox } = await withFakeDocker();
       await new Sandbox({ network: 'default' }).run('ls', []);
       await new Sandbox({ network: 'none' }).run('ls', []);
@@ -121,7 +121,7 @@ describe('SubprocessSandbox', () => {
       expect(() => new Sandbox({ network: 'bridge' as 'none' })).toThrow(/'none', 'default' or \{ allow/);
     });
 
-    it('passes the SandboxShell allowlisted env into the container, never the host env (LOU-X11)', async () => {
+    it('passes the SandboxShell allowlisted env into the container, never the host env', async () => {
       process.env.FAKE_SECRET_FOR_TEST = 'fake-secret-x11';
       process.env.FAKE_ALLOWED_FOR_TEST = 'allowed-x11';
       try {
@@ -137,7 +137,7 @@ describe('SubprocessSandbox', () => {
     });
   });
 
-  // Eve TOOLS-F17: writeFile wrote to any host path.
+  // WriteFile wrote to any host path.
   describe('writeFile confinement', () => {
     const tmp = fs.mkdtempSync(nodePath.join(os.tmpdir(), 'lousho-sbx-'));
     const root = nodePath.join(tmp, 'root');
@@ -178,7 +178,7 @@ describe('SubprocessSandbox', () => {
     });
   });
 
-  describe('cancellation (dockerode fake, LOU-U23)', () => {
+  describe('cancellation (dockerode fake)', () => {
     afterEach(() => {
       vi.doUnmock('dockerode');
       vi.resetModules();

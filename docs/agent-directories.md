@@ -69,6 +69,8 @@ export default {
 | `approvalTtlMs` | `createAgent({ approvalTtlMs })`: milliseconds before an unanswered approval expires; an `ask` rule's `ttlMs` wins over it |
 | `limits` | `createAgent({ limits })`, e.g. `{ "maxCostUsd": 0.05 }` |
 | `modelSettings` | `createAgent({ modelSettings })`, e.g. `{ "maxTokens": 1024, "temperature": 0.2 }`; see [Model settings](./configuration.md#model-settings) |
+| `retry` | `createAgent({ retry })`, e.g. `{ "maxRetries": 4, "timeoutMs": 30000, "backoff": { "initialMs": 1000 } }`; `timeoutMs` bounds each attempt, `false` sends each call once. `retryOn`, `onRetry` and `signal` are functions, so code configs only |
+| `output` | `createAgent({ output })`: a Standard Schema (e.g. a zod object) the final answer must match. Code config files only (JSON/YAML cannot hold a schema); from code, `loadAgentDir(dir, { output })` also types `result.object` |
 | `store` | `createAgent({ store })`: `{ "dir": "./.lousho" }` (resolved against the agent directory) becomes a `fileStore()` — sessions, checkpoints and paused approvals survive a restart; `historyLimit` and `tokenKey` may be set too. A code config may give an `AgentStore` instance instead. Node only |
 
 Unknown keys are an error with a suggestion (`'modle' (did you mean 'model'?)`).
@@ -265,6 +267,21 @@ const { manifest } = await resolveAgentDir('./my-agent', {
 console.log(manifest.memory); // names found in memory/
 ```
 
+A relative `dir` in a `memory/*.ts` file resolves against the process working directory, not the agent directory (unlike `store.dir` in `agent.ts`, which is relative to the agent directory). A bare `./.lousho/memory` therefore puts memory in a different tree from the sessions, and it moves when you start the agent from another directory or from a build. Anchor it to the module instead, so it always lands next to the agent's other state:
+
+```ts
+// memory/notes.ts
+import { fileURLToPath } from 'node:url';
+import { fileMemory } from '@lousho/build-ai-agent';
+
+export default {
+  scope: 'global',
+  provider: fileMemory({ dir: fileURLToPath(new URL('../.lousho/memory', import.meta.url)) }),
+};
+```
+
+The path follows the module: a copied or bundled build keeps its memory next to the build, so point it at a fixed absolute path (or a database provider) if memory must survive redeploys.
+
 ## How it maps to `createAgent()`
 
 | Directory | `createAgent()` option |
@@ -358,12 +375,13 @@ The agent directory is the unit of deployment: the built server loads it with
 `channels/` under `/channels`, guards its chat routes with `auth.ts` when there
 is one ([Route auth and principals](auth.md)), and prints which it found. The code files (the
 config, `auth.ts`, a root `hooks.*` / `approve.*` file, `tools/`, `schedules/`, `channels/`, `memory/`, and the same in each
-sub-agent) are bundled to `dist/agent/**.js`, and `instructions.md` (with `instructions/<family>.md`), `skills/`
-and JSON/YAML config are copied next to them, so the server needs no TypeScript
-loader, sources or `node_modules`. See [Deployment](deployment.md#agent-directories).
+sub-agent) are bundled to `dist/agent/**.js`, and only `instructions.md` (with `instructions/<family>.md`), `skills/`
+and a JSON/YAML config (the same in each sub-agent) are copied next to them, so the server needs no TypeScript
+loader, sources or `node_modules`. Nothing else is copied: `.env` files, the `.lousho/` session store
+(or the config's `store.dir`) and any other file stay out of the build and its Docker image. See [Deployment](deployment.md#agent-directories).
 The Cloudflare Worker target builds a directory too, embedding every folder: `subagents/` become `delegate_to_` tools, `schedules/` become cron triggers, `channels/` are mounted under `/channels` and `memory/` slots run on `kvMemory()` ([Cloudflare Workers](cloudflare-workers.md#build-and-deploy)).
 
-## What is not covered
+## Serving over MCP
 
-`lousho mcp` still takes an agent spec file ([Configuration](configuration.md)),
-not a directory.
+`lousho mcp` takes an agent directory as well as a spec file ([Configuration](configuration.md)):
+`lousho mcp ./my-agent` serves it as an MCP server ([MCP](mcp.md#serve-an-agent-over-mcp)).

@@ -1,7 +1,7 @@
 /**
- * AgentSession (LOU-W4): a multi-turn conversation on top of the stateless
+ * AgentSession: a multi-turn conversation on top of the stateless
  * executor. The session owns the transcript and passes it in on every
- * `send()`. With a checkpoint store (LOU-W9), each turn also runs as a
+ * `send()`. With a checkpoint store, each turn also runs as a
  * durable-execution session, so a turn interrupted mid-way can be resumed.
  */
 
@@ -11,14 +11,15 @@ import { toMessages, type AgentInput } from '../providers/content';
 import type { ExecutionResult } from '../execution/AgentExecutor';
 import { startAgentRun, type AgentRun } from '../execution/agentRun';
 import { InputQueue } from '../execution/inputQueue';
-import { getCheckpointHistory, isCheckpointCorrupt, pausedApprovalIds, type Checkpoint, type CheckpointError, type CheckpointListEntry, type CheckpointStore } from '../execution/checkpoint';
-import { acquireRunLease, HELD_RUN_LEASE, type RunLease, type RunLeaseOptions } from '../execution/runLease';
+import { getCheckpointHistory, isCheckpointCorrupt, pausedApprovalIds, type Checkpoint, type CheckpointListEntry, type CheckpointStore } from '../execution/checkpoint';
+import { acquireRunLease, HELD_RUN_LEASE, REPLACES_CHECKPOINT, type RunLease, type RunLeaseOptions } from '../execution/runLease';
 import type { ApprovalKind } from '../execution/ApprovalGate';
-import { CompactedLLMProviderError, ConfigurationError, SDKError, SessionAwaitingApprovalError } from '../execution/errors';
+import { ConfigurationError, LLMProviderError, SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 import { streamSessionTurn } from './sessionStream';
 import { MemorySessionStore, assertSessionId, encodeBytes, transcriptRevision, type SessionStore } from './sessionStore';
 import { addSpent, runSpent, sessionSpent, type BudgetSpent, type RunLimits, type SessionBudget } from '../execution/budget';
 import { restoreRunUsage } from '../execution/runUsage';
+import { checkpointError } from '../execution/runFailure';
 import { AGENT_EVENT_SCHEMA_VERSION, type AgentEvent, type AgentEventPayload } from '../execution/agentEvents';
 import { manualCompactionOptions, type AgentCompaction } from '../context/agentCompaction';
 import { compactTranscript, type SessionCompactOptions, type SessionCompactResult } from './sessionCompact';
@@ -42,13 +43,13 @@ export interface SessionOptions {
    */
   store?: SessionStore | SessionStores;
   /**
-   * Checkpoints every turn after each model response and tool result
-   * (LOU-W9), so `resume()` can finish a turn that was interrupted (see
+   * Checkpoints every turn after each model response and tool result,
+   * so `resume()` can finish a turn that was interrupted (see
    * docs/sessions.md, "Durable sessions"). Overrides `store.checkpoints`.
    */
   checkpointStore?: CheckpointStore;
   /**
-   * Budgets across all of the session's turns (LOU-V6), the same limits as
+   * Budgets across all of the session's turns, the same limits as
    * `createAgent({ limits })`: a turn stops with
    * `finishReason: 'budget-exceeded'` once the session's tokens, cost, steps
    * or run time reach a limit. What the turns spent is saved with the
@@ -58,10 +59,10 @@ export interface SessionOptions {
   limits?: RunLimits;
   /**
    * What a `send()` / `stream()` does while a turn is running or waiting to
-   * start (LOU-V9). `'wait'` (default): it runs as the next turn once that one
+   * start. `'wait'` (default): it runs as the next turn once that one
    * ends. `'queue'`: its input joins that turn like `run.enqueue()` (before
    * that turn's next model call) and it resolves with that turn's result -
-   * its own `signal` does not apply. `'steer'` (LOU-V10): it joins like
+   * its own `signal` does not apply. `'steer'`: it joins like
    * `'queue'`, but through `run.steer()`, so a model call that has not
    * emitted anything yet is aborted and made again with the input. A joining
    * `stream()` yields only the turn's `run.done`. If the turn ends before
@@ -70,19 +71,19 @@ export interface SessionOptions {
    */
   turnPolicy?: 'queue' | 'steer' | 'wait';
   /**
-   * What `session.compact()` runs when called without a `strategy` (LOU-W8):
+   * What `session.compact()` runs when called without a `strategy`:
    * the same value as `createAgent({ compaction })` (its `strategy` or
    * `summarizer`, `protectedTokens`, `contextWindow`). `agent.session()`
    * defaults it to the agent's `compaction`. Default: prune old tool results.
    */
   compaction?: AgentCompaction;
   /**
-   * The session's permission mode (N4) until `setPermissionMode()` switches
+   * The session's permission mode until `setPermissionMode()` switches
    * it. `agent.session()` defaults it to the agent's `permissionMode`. See
    * docs/permission-modes.md.
    */
   permissionMode?: PermissionOptions['permissionMode'];
-  /** Called by `setPermissionMode()` (N4). `agent.session()` defaults it to the agent's `onPermissionModeChange`. */
+  /** Called by `setPermissionMode()`. `agent.session()` defaults it to the agent's `onPermissionModeChange`. */
   onPermissionModeChange?: PermissionOptions['onPermissionModeChange'];
   /**
    * In a checkpointed session, how many of the latest committed turns keep their
@@ -105,9 +106,9 @@ export interface PendingTurn {
   /** `'in-progress'`: interrupted, `resume()` continues it. `'awaiting-approval'`: decide `approvalId` first. */
   status: 'in-progress' | 'awaiting-approval';
   approvalId?: string;
-  /** Eve TOOLS-F12: with `'awaiting-approval'`, when the paused step waits on several calls: every one not decided yet (`approvalId` is the first). */
+  /** With `'awaiting-approval'`, when the paused step waits on several calls: every one not decided yet (`approvalId` is the first). */
   approvalIds?: string[];
-  /** M10a: `'question'` when the turn waits on an `ask_question` call; absent for a tool approval (or a turn paused before this field existed). */
+  /** `'question'` when the turn waits on an `ask_question` call; absent for a tool approval (or a turn paused before this field existed). */
   approvalKind?: ApprovalKind;
 }
 
@@ -118,30 +119,36 @@ export interface SessionTurnCheckpoint {
   checkpointStore: CheckpointStore;
 }
 
-/** How a session's turn runs: where it is checkpointed, and the session's budget (LOU-V6). */
+/** How a session's turn runs: where it is checkpointed, and the session's budget. */
 export type SessionTurnOptions = Partial<SessionTurnCheckpoint> & {
   sessionBudget?: SessionBudget;
   inputQueue?: InputQueue;
-  /** N4: the session's mode, read at each tool call of the turn. */
+  /** The session's mode, read at each tool call of the turn. */
   permissionMode?: PermissionOptions['permissionMode'];
-  /** LOU-R18: forwards the turn's events to the session's `on()` listeners. */
+  /** Forwards the turn's events to the session's `on()` listeners. */
   onAgentEvent?: (event: AgentEvent) => void;
 };
 
-/** A turn's own user input and `metadata` (LOU-V15), for `createAgent()`'s per-run config; absent on a resumed turn. */
+/** A turn's own user input and `metadata`, for `createAgent()`'s per-run config; absent on a resumed turn. */
 export interface SessionTurnCall {
   input: AgentInput;
   metadata?: Record<string, unknown>;
-  /** The turn's caller (N10a). */
+  /** The turn's caller. */
   principal?: Principal;
+}
+
+/** A new turn's input and call, kept when its first model call fails (see `AgentSession.unstartedTurn`). */
+interface FailedTurnInput {
+  input: Message[];
+  call: SessionTurnCall;
 }
 
 /** Options of `session.send()` / `session.stream()`. */
 interface SessionSendOptions {
   signal?: AbortSignal;
-  /** Passed to the agent's `model` / `instructions` / `tools` functions and memory scopes (LOU-V15). */
+  /** Passed to the agent's `model` / `instructions` / `tools` functions and memory scopes. */
   metadata?: Record<string, unknown>;
-  /** Who is calling (N10a, docs/auth.md); passed where `metadata` goes. Route auth does not check that this caller owns the session. */
+  /** Who is calling (docs/auth.md); passed where `metadata` goes. Route auth does not check that this caller owns the session. */
   principal?: Principal;
 }
 
@@ -159,7 +166,7 @@ export type SessionRunner = (
 ) => Promise<ExecutionResult>;
 
 /**
- * Streams one turn (LOU-V8): like {@link SessionRunner}, but returns the
+ * Streams one turn: like {@link SessionRunner}, but returns the
  * run's `AgentRun`. Supplied by `createAgent()`.
  */
 export type SessionStreamRunner = (
@@ -170,7 +177,7 @@ export type SessionStreamRunner = (
 ) => AgentRun;
 
 /**
- * Creates a session bound to the same agent (N3a), for `session.fork()`.
+ * Creates a session bound to the same agent, for `session.fork()`.
  * Supplied by `createAgent()`.
  */
 export type SessionSpawner = (options: SessionOptions) => AgentSession;
@@ -191,7 +198,7 @@ const sessionQueues = new WeakMap<object, Map<string, Promise<unknown>>>();
 /**
  * Runs `task` after everything queued before it under `(store, id)` in this
  * process (see `sessionQueues`). Sessions queue on their transcript store;
- * `agent.send(msg, { sessionId })` runs (Eve DUR-F2) on their checkpoint
+ * `agent.send(msg, { sessionId })` runs on their checkpoint
  * store, so two concurrent calls with one id no longer both continue the same
  * 'finished' checkpoint and silently drop one turn.
  */
@@ -224,7 +231,7 @@ function splitStores(store: SessionOptions['store']): Partial<SessionStores> {
 
 /**
  * `options` with the stores it does not give taken from `defaults` (an
- * agent's `store`, LOU-D30): `store` / `store.sessions` and
+ * agent's `store`): `store` / `store.sessions` and
  * `checkpointStore` / `store.checkpoints` win over them.
  */
 export function withDefaultStores(options: SessionOptions = {}, defaults: Partial<SessionStores> = {}): SessionOptions {
@@ -262,7 +269,7 @@ function ignoreCorrupt(error: unknown): null {
 }
 
 /**
- * Eve EVE-0: the checkpoint id under which a session records its turn that
+ * The checkpoint id under which a session records its turn that
  * waits on an approval - a pointer to that turn's `<id>.turn-<n>` checkpoint,
  * so the pause is found whatever transcript (length) a caller sees.
  */
@@ -271,10 +278,10 @@ function pausedTurnKey(id: string): string {
 }
 
 /**
- * Eve EVE-0: the session's turn that waits on an approval, found through its
+ * The session's turn that waits on an approval, found through its
  * {@link pausedTurnKey} pointer, or `null`. A pointer whose turn no longer
  * waits (decided, finished or discarded elsewhere) is deleted.
- * Eve2-F3: without a live pointer, the turn checkpoints themselves are scanned
+ * Without a live pointer, the turn checkpoints themselves are scanned
  * (see {@link pausedTurnScan}) - `markPaused()` writes the pointer AFTER the
  * executor saved the paused checkpoint, so a crash between the two writes (or a
  * send that slipped into the gap) leaves the pause with no pointer, permanently.
@@ -290,7 +297,7 @@ export async function pausedSessionTurn(checkpointStore: CheckpointStore, id: st
 }
 
 /**
- * Eve2-F3: the newest `<id>.turn-<n>` checkpoint that still waits on an approval,
+ * The newest `<id>.turn-<n>` checkpoint that still waits on an approval,
  * or `null` - the fallback when the {@link pausedTurnKey} pointer is missing
  * (see {@link pausedSessionTurn}). A store that cannot `list()` keeps the
  * pointer's behavior.
@@ -366,28 +373,7 @@ function notRun(message: Message): boolean {
 }
 
 /**
- * Eve DUR-F11: what a failed attempt at a checkpointed turn records. Only a provider error known not to go away is
- * not retryable: a context-length or auth failure, or another 4xx response (not 408 / 409 / 429). A crash, a network
- * error, a 5xx or an unclassified failure stays retryable, so the next `send()` resumes the turn as before.
- */
-function checkpointError(error: unknown): CheckpointError {
-  const compacted = error instanceof CompactedLLMProviderError ? error.compacted : undefined;
-  const code = error instanceof SDKError ? error.code : undefined;
-  const cause = error instanceof Error ? (error.cause as { status?: unknown; statusCode?: unknown } | undefined) : undefined;
-  const status = Number(compacted?.statusCode ?? cause?.statusCode ?? cause?.status);
-  const clientError = status >= 400 && status < 500 && ![408, 409, 429].includes(status);
-  const permanent = compacted !== undefined && !compacted.retryable && (compacted.category === 'context-length-exceeded' || compacted.category === 'auth-failure' || clientError);
-  return {
-    message: error instanceof Error ? error.message : String(error),
-    ...(code && { code }),
-    ...(compacted && { category: compacted.category }),
-    retryable: !permanent,
-    at: new Date().toISOString(),
-  };
-}
-
-/**
- * B4: what an aborted turn keeps: its `messages` up to the last result of a
+ * What an aborted turn keeps: its `messages` up to the last result of a
  * tool call that ran in it (with the rest of that call's batch, so every call
  * is answered), or `undefined` when no tool call of the turn finished. A
  * side effect that happened is then in the transcript.
@@ -403,8 +389,8 @@ function completedToolPrefix(messages: readonly Message[], previous: readonly Me
 }
 
 /**
- * What an aborted turn leaves in the transcript (Eve CORE-F11): the user's input, the turn up to the last tool call
- * that ran (B4: a refund, an email), and the reply the model had streamed when it was stopped (an assistant message
+ * What an aborted turn leaves in the transcript: the user's input, the turn up to the last tool call
+ * that ran (a refund, an email), and the reply the model had streamed when it was stopped (an assistant message
  * marked `metadata.interrupted`). Calls that never ran and an assistant tool-call turn none of whose calls ran are
  * dropped, and so is a turn stopped before it called the model. `undefined` when the turn added nothing.
  */
@@ -432,7 +418,7 @@ function abortedTurn(result: ExecutionResult, transcript: readonly Message[], in
 export class AgentSession<TObject = unknown> {
   readonly id: string;
   private readonly store: SessionStore;
-  /** Set when every turn is checkpointed (LOU-W9). */
+  /** Set when every turn is checkpointed. */
   protected readonly checkpointStore: CheckpointStore | undefined;
   private readonly run: SessionRunner;
   private readonly streamRun: SessionStreamRunner | undefined;
@@ -444,11 +430,11 @@ export class AgentSession<TObject = unknown> {
   private mode: SessionOptions['permissionMode'];
   private readonly onPermissionModeChange: SessionOptions['onPermissionModeChange'];
   private readonly turnHistoryLimit: number;
-  /** N4: the session's mode at the time of the call; handed to every turn, so a switch applies from the next tool call. */
+  /** The session's mode at the time of the call; handed to every turn, so a switch applies from the next tool call. */
   protected readonly currentPermissionMode = (): PermissionMode => this.permissionMode;
   private readonly listeners = new Set<(event: AgentEvent) => void>();
   /**
-   * LOU-R18: forwards a turn's event, as the run reports it, to the `on()`
+   * Forwards a turn's event, as the run reports it, to the `on()`
    * listeners (a throwing listener is ignored). Protected so the approval
    * continuation (`resolveWith` / `streamResolveWith`) reports the resumed
    * run's events to them too.
@@ -470,13 +456,13 @@ export class AgentSession<TObject = unknown> {
   protected get turnEvents(): ((event: AgentEvent) => void) | undefined {
     return this.listeners.size > 0 ? this.forwardToListeners : undefined;
   }
-  /** The turn running (or about to run) and the queue its run takes input from (LOU-V9). */
+  /** The turn running (or about to run) and the queue its run takes input from. */
   private running: { inputs: InputQueue; result: Promise<ExecutionResult> } | undefined;
-  /** The run lease this session's turn holds on its checkpoint id, from before the run starts until its `record()` is done (Eve2-F2). */
+  /** The run lease this session's turn holds on its checkpoint id, from before the run starts until its `record()` is done. */
   private turnLease: RunLease | undefined;
   private turnStartedAt = 0;
   private transcript: Message[] = [];
-  /** Whether `transcript` was read in the queued call running now (each call reads it again, Eve DUR-F3). */
+  /** Whether `transcript` was read in the queued call running now (each call reads it again). */
   private loaded = false;
 
   constructor(run: SessionRunner, options: SessionOptions = {}, streamRun?: SessionStreamRunner, spawn?: SessionSpawner) {
@@ -507,13 +493,13 @@ export class AgentSession<TObject = unknown> {
     return structuredClone(this.transcript);
   }
 
-  /** N4: the permission mode the session's next tool call runs under (`'default'` unless set). */
+  /** The permission mode the session's next tool call runs under (`'default'` unless set). */
   get permissionMode(): PermissionMode {
     return permissionModeOf({ permissionMode: this.mode });
   }
 
   /**
-   * Switches the session's permission mode (N4). It applies from the next
+   * Switches the session's permission mode. It applies from the next
    * tool call, also in a turn that is running now, and to a paused turn
    * continued by `agent.approvals.resolve()`. A turn's system prompt is not
    * changed (only a turn that starts in plan mode is told about it). The switch
@@ -560,8 +546,8 @@ export class AgentSession<TObject = unknown> {
    * A call that throws leaves the transcript as it was before the call. An
    * aborted call resolves with `finishReason: 'aborted'` and keeps the user's
    * message (once the model was called), the results of tool calls that
-   * already ran (B4) and the reply streamed so far, marked
-   * `metadata.interrupted` (Eve CORE-F11).
+   * already ran and the reply streamed so far, marked
+   * `metadata.interrupted`.
    * In a checkpointed session, a pending turn is resumed first (see `resume()`).
    *
    * @example
@@ -616,7 +602,7 @@ export class AgentSession<TObject = unknown> {
             try {
               const run = streamRun([...this.transcript, ...messages], signal, turn, call);
               started(run);
-              return this.record(await this.attempt(() => run.result), messages);
+              return this.record(await this.attempt(() => run.result, { input: messages, call }), messages);
             } finally {
               await this.releaseRunLease();
             }
@@ -675,7 +661,7 @@ export class AgentSession<TObject = unknown> {
       }
       if (!pending) return;
       await this.deleteCheckpoint();
-      // Eve EVE-0: a paused turn another view of the session started (another transcript length) is dropped too.
+      // A paused turn another view of the session started (another transcript length) is dropped too.
       if (this.checkpointStore && pending.sessionId !== this.turnCheckpoint()?.sessionId) await this.checkpointStore.delete(pending.sessionId);
       await this.checkpointStore?.delete(pausedTurnKey(this.id));
       // Its approvals can never continue it now: they are withdrawn, so they are not listed or decided any more.
@@ -697,7 +683,7 @@ export class AgentSession<TObject = unknown> {
   protected async pendingTurnDiscarded(_approvalIds: string[]): Promise<void> {}
 
   /**
-   * Listens for the session's events (LOU-R18): every turn's events as the
+   * Listens for the session's events: every turn's events as the
    * turn runs - on `send()` as on `stream()`, and on a paused turn continued
    * by `agent.approvals.resolve()` - plus `compact()`'s `compaction.start` /
    * `compaction.done` and `clear()`'s `context.cleared`. A turn's events are
@@ -719,7 +705,7 @@ export class AgentSession<TObject = unknown> {
   }
 
   /**
-   * Compacts the transcript now (LOU-W8), whatever its size: with
+   * Compacts the transcript now, whatever its size: with
    * `options.strategy`, else the session's `compaction` option, else by
    * pruning old tool results. Saves the result to the store, emits
    * `compaction.start` / `compaction.done` with `trigger: 'manual'` to `on()`
@@ -749,10 +735,9 @@ export class AgentSession<TObject = unknown> {
   }
 
   /**
-   * Empties the transcript (LOU-W8) and saves the empty conversation. The
+   * Empties the transcript and saves the empty conversation. The
    * session keeps its id, its store and its options (limits, turn policy);
-   * the transcript, every turn's checkpoint and checkpoint history (Eve
-   * DUR-F8: they hold copies of the transcript, so `agent.fork('<id>.turn-<n>')`
+   * the transcript, every turn's checkpoint and checkpoint history (they hold copies of the transcript, so `agent.fork('<id>.turn-<n>')`
    * cannot bring the conversation back) and the spend recorded in
    * the transcript for `limits` are gone. Memory slots are cross-session and
    * untouched. Emits `context.cleared` to `on()` listeners. Rejects with
@@ -782,7 +767,7 @@ export class AgentSession<TObject = unknown> {
   }
 
   /**
-   * The steps of the committed transcript, oldest first (N3a): one per model
+   * The steps of the committed transcript, oldest first: one per model
    * response, with its tool calls and their results, numbered from 1 across
    * the whole session. A checkpointed turn that has not finished is not in
    * the transcript yet, so it is not listed. After `compact()` the steps are
@@ -805,7 +790,7 @@ export class AgentSession<TObject = unknown> {
 
   /**
    * Starts a new session from this one's transcript up to and including step
-   * `fromStep` of `history()` (N3a), optionally with one tool result
+   * `fromStep` of `history()`, optionally with one tool result
    * replaced, saved under a new id in the same store and bound to the same
    * agent and options. This session is not changed. Only the conversation is
    * copied: a turn waiting on an approval or a question, or an interrupted
@@ -838,16 +823,16 @@ export class AgentSession<TObject = unknown> {
         throw new ConfigurationError(`fork: session '${id}' already exists; pick an id with no transcript in the store.`, 'id', 'LOUSHO_SESSION_EXISTS');
       }
       await this.store.save(id, messages);
-      // This session's own stores (without `store`, each session has its own new MemorySessionStore) and current permission mode (N4).
+      // This session's own stores (without `store`, each session has its own new MemorySessionStore) and current permission mode.
       const fork = spawn({ ...this.options, id, store: this.store, checkpointStore: this.checkpointStore, permissionMode: this.mode }) as AgentSession<TObject>;
-      // Eve DUI-F23: the fork's `messages` are its transcript at once, without a `load()`.
+      // The fork's `messages` are its transcript at once, without a `load()`.
       fork.transcript = structuredClone(messages);
       return fork;
     });
   }
 
   /**
-   * `<id>-fork-<n>` for the first `n` (from 1) that is not taken. Eve DUR-F19: when that is longer than a session id
+   * `<id>-fork-<n>` for the first `n` (from 1) that is not taken. when that is longer than a session id
    * may be (128 characters), `<id prefix>-<8 hex of the id's hash>-fork-<n>` instead, so a long id can be forked too.
    */
   private async nextForkId(length: number): Promise<string> {
@@ -878,14 +863,14 @@ export class AgentSession<TObject = unknown> {
   /** Reports a paused turn of this transcript (not one another view of the session started) to {@link pausedTurnFound}. */
   private foundPaused(checkpoint: Checkpoint): void {
     if (checkpoint.status === 'awaiting-approval' && checkpoint.approvalId && checkpoint.sessionId === this.turnCheckpoint()?.sessionId) {
-      // Eve TOOLS-F12: every approval of the paused step continues this session.
+      // Every approval of the paused step continues this session.
       for (const approvalId of pausedApprovalIds(checkpoint)) this.pausedTurnFound(approvalId);
     }
   }
 
   /**
    * Called when `pending()`, `resume()`, `send()` or `stream()` finds this session's turn waiting on approval
-   * `approvalId` (coding-agent F2), so `agent.approvals.resolve()` continues it in this session.
+   * `approvalId`, so `agent.approvals.resolve()` continues it in this session.
    */
   protected pausedTurnFound(_approvalId: string): void {}
 
@@ -923,7 +908,7 @@ export class AgentSession<TObject = unknown> {
    */
   private enqueue<T>(task: () => Promise<T>): Promise<T> {
     return enqueueSessionWork(this.store, this.id, () => {
-      // Eve DUR-F3: every queued call reads the transcript again, so turns that another session object (or
+      // Every queued call reads the transcript again, so turns that another session object (or
       // `agent.resume()` / `agent.approvals.resolve()`, which open their own) committed since are not lost on this one.
       this.loaded = false;
       return task();
@@ -943,28 +928,39 @@ export class AgentSession<TObject = unknown> {
     const options = this.turnOptions(inputs);
     await this.holdRunLease(options);
     try {
-      return this.record(await this.attempt(() => this.run([...this.transcript, ...input], signal, options, call)), input);
+      return this.record(await this.attempt(() => this.run([...this.transcript, ...input], signal, options, call), { input, call }), input);
     } finally {
       await this.releaseRunLease();
     }
   }
 
   /**
-   * Eve DUR-F11: runs a turn's `run`; when it throws in a checkpointed session, the turn's checkpoint records the
+   * Runs a turn's `run`; when it throws in a checkpointed session, the turn's checkpoint records the
    * error (`lastError`) and the failed attempts (`attempts`), so a turn that failed for good is not replayed by
    * every later `send()` (see `resumePending`).
    */
-  private async attempt(run: () => Promise<ExecutionResult>): Promise<ExecutionResult> {
+  private async attempt(run: () => Promise<ExecutionResult>, turn?: FailedTurnInput): Promise<ExecutionResult> {
     try {
       return await run();
     } catch (error) {
-      await this.recordFailure(error).catch(() => undefined);
+      await this.recordFailure(error, turn).catch(() => undefined);
       throw error;
     }
   }
 
   /**
-   * Eve2-F2: takes the turn's run lease before the run starts and hands it to the
+   * Runs again a turn whose first model call failed before the run saved a checkpoint (`Checkpoint.unstarted`):
+   * a new run from its input (`REPLACES_CHECKPOINT`, so the agent's system prompt is added as on any new turn), with
+   * the metadata and principal it was sent with. Its first checkpoint replaces the one `recordFailure` wrote.
+   */
+  private rerunUnstarted(pending: Checkpoint, signal: AbortSignal | undefined, options: SessionTurnOptions | undefined): Promise<ExecutionResult> {
+    if (options) (options as SessionTurnOptions & RunLeaseOptions)[REPLACES_CHECKPOINT] = true;
+    const input = pending.messages.slice(this.transcript.length);
+    return this.run([...pending.messages], signal, options, { input, metadata: pending.metadata, principal: pending.principal });
+  }
+
+  /**
+   * Takes the turn's run lease before the run starts and hands it to the
    * run (`HELD_RUN_LEASE`, so the executor saves under it instead of taking its
    * own). The session keeps it until `record()` is done, so `recordFailure()`
    * can write through `RunLease.save` - fenced: a run that lost its lease (it
@@ -987,14 +983,14 @@ export class AgentSession<TObject = unknown> {
     await lease?.release().catch(() => undefined);
   }
 
-  private async recordFailure(error: unknown): Promise<void> {
+  private async recordFailure(error: unknown, input?: FailedTurnInput): Promise<void> {
     // A turn refused because another process runs it (its run lease) did not run: the checkpoint is that process's.
     if (error instanceof SDKError && error.code === 'LOUSHO_SESSION_BUSY') return;
     const turn = this.turnCheckpoint();
-    const checkpoint = turn && (await turn.checkpointStore.load(turn.sessionId));
+    const checkpoint = turn && ((await turn.checkpointStore.load(turn.sessionId)) ?? this.unstartedTurn(turn.sessionId, error, input));
     if (!turn || !checkpoint || (checkpoint.status ?? 'in-progress') !== 'in-progress') return;
     const failed = { ...checkpoint, lastError: checkpointError(error), attempts: (checkpoint.attempts ?? 0) + 1 };
-    // Eve2-F2: under the turn's own lease the write is fenced - it throws LOUSHO_SESSION_BUSY, writing
+    // Under the turn's own lease the write is fenced - it throws LOUSHO_SESSION_BUSY, writing
     // nothing, when the run lost the lease and the checkpoint now belongs to the run that took it over.
     if (this.turnLease?.id === turn.sessionId) {
       await this.turnLease.save(failed);
@@ -1004,8 +1000,31 @@ export class AgentSession<TObject = unknown> {
   }
 
   /**
-   * Runs `task` as the next turn, whose run takes queued input from `inputs`
-   * (LOU-V9). Under `turnPolicy: 'queue'` (or `'steer'`, LOU-V10), while a
+   * The checkpoint a new turn whose first model call failed is kept in, before the run saved one (the run saves its
+   * first after a model response): the transcript plus the turn's input, so the next `send()` / `resume()` runs it
+   * again (see `rerunUnstarted`) instead of losing the message. Only for a provider failure: an error such as a bad
+   * configuration fails the call and leaves nothing to resume, as before.
+   */
+  private unstartedTurn(sessionId: string, error: unknown, turn: FailedTurnInput | undefined): Checkpoint | null {
+    if (!turn || turn.input.length === 0 || !(error instanceof LLMProviderError)) return null;
+    const { metadata, principal } = turn.call;
+    return {
+      agentId: '',
+      sessionId,
+      stepIndex: 0,
+      messages: [...this.transcript, ...turn.input],
+      toolCalls: [],
+      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+      status: 'in-progress',
+      unstarted: true,
+      ...(metadata !== undefined && { metadata }),
+      ...(principal && { principal }),
+    };
+  }
+
+  /**
+   * Runs `task` as the next turn, whose run takes queued input from `inputs`.
+   * Under `turnPolicy: 'queue'` (or `'steer'`), while a
    * turn is running or about to run, `input` joins that turn instead (pushed
    * or steered) and this resolves with its result
    * (handed to `joined` first); if that turn ends before taking the input,
@@ -1055,7 +1074,7 @@ export class AgentSession<TObject = unknown> {
     return checkpointStore && { sessionId: `${this.id}.turn-${this.transcript.length}`, checkpointStore };
   }
 
-  /** The next turn's checkpoint and, with `limits`, the session's budget (LOU-V6); starts the turn's clock. */
+  /** The next turn's checkpoint and, with `limits`, the session's budget; starts the turn's clock. */
   private turnOptions(inputQueue?: InputQueue): SessionTurnOptions | undefined {
     this.turnStartedAt = Date.now();
     const checkpoint = { ...this.turnCheckpoint(), ...(inputQueue && { inputQueue }), permissionMode: this.currentPermissionMode, ...(this.turnEvents && { onAgentEvent: this.turnEvents }) };
@@ -1064,7 +1083,7 @@ export class AgentSession<TObject = unknown> {
   }
 
   /**
-   * Eve DUR-F8: deletes the checkpoint and checkpoint history of every turn of the session, `<id>.turn-<n>`. A turn's
+   * Deletes the checkpoint and checkpoint history of every turn of the session, `<id>.turn-<n>`. A turn's
    * `n` is the transcript length when it started, so `n` runs up to the transcript's length - or further, when a
    * compaction shortened it: every checkpoint found holds the transcript of its turn, whose length is a later turn's `n`.
    */
@@ -1092,7 +1111,7 @@ export class AgentSession<TObject = unknown> {
     const turn = this.turnCheckpoint();
     if (!turn) return null;
     const checkpoint = await turn.checkpointStore.load(turn.sessionId);
-    // Eve EVE-0: a turn waiting on an approval counts whatever transcript it started from.
+    // A turn waiting on an approval counts whatever transcript it started from.
     if (!checkpoint) return pausedSessionTurn(turn.checkpointStore, this.id);
     if (checkpoint.status !== 'finished') return checkpoint;
     await this.commit(checkpoint.messages, runSpent(restoreRunUsage(checkpoint.usage), checkpoint.stepIndex, 0));
@@ -1119,6 +1138,7 @@ export class AgentSession<TObject = unknown> {
     const options = this.turnOptions();
     await this.holdRunLease(options);
     try {
+      if (pending.unstarted) return this.record(await this.attempt(() => this.rerunUnstarted(pending, signal, options)));
       return this.record(await this.attempt(() => this.run([], signal, options)));
     } finally {
       await this.releaseRunLease();
@@ -1128,7 +1148,7 @@ export class AgentSession<TObject = unknown> {
   /**
    * Runs `next` as this session's next turn (after any queued `send()`) and
    * records the transcript it returns. `createAgent()` uses it to continue a
-   * session whose turn paused for approval (LOU-D21).
+   * session whose turn paused for approval.
    */
   protected continueTurn(next: () => Promise<ExecutionResult>): Promise<ExecutionResult> {
     return this.enqueue(async () => {
@@ -1139,7 +1159,7 @@ export class AgentSession<TObject = unknown> {
   }
 
   /**
-   * Eve EVE-0: points {@link pausedTurnKey} at this turn's checkpoint while it waits on an approval, so a new turn
+   * Points {@link pausedTurnKey} at this turn's checkpoint while it waits on an approval, so a new turn
    * under the session's id - `agent.send(msg, { sessionId })`, or a session object over another transcript - is
    * refused with `SessionAwaitingApprovalError` instead of running beside the paused one.
    */
@@ -1150,7 +1170,7 @@ export class AgentSession<TObject = unknown> {
     await turn.checkpointStore.save(pausedTurnKey(this.id), { ...checkpoint, messages: [], toolCalls: [], stepUsage: undefined, businessState: undefined });
   }
 
-  /** `input`: the turn's new user message(s), kept when the turn is aborted (Eve CORE-F11). */
+  /** `input`: the turn's new user message(s), kept when the turn is aborted. */
   private async record(result: ExecutionResult, input: readonly Message[] = []): Promise<ExecutionResult> {
     if (result.finishReason === 'aborted') {
       const kept = abortedTurn(result, this.transcript, input);
@@ -1176,7 +1196,7 @@ export class AgentSession<TObject = unknown> {
    * forkable through `agent.fork('<id>.turn-<n>', { fromStep })` exactly like
    * a `send(msg, { sessionId })` run's 'finished' checkpoint does.
    * With `limits`, the last message records what the session has spent,
-   * this turn included (LOU-V6).
+   * this turn included.
    */
   private async commit(messages: readonly Message[], spent?: BudgetSpent): Promise<void> {
     const withoutSystem = messages[0]?.role === 'system' ? messages.slice(1) : messages;
@@ -1231,7 +1251,7 @@ export class AgentSession<TObject = unknown> {
   }
 
   /**
-   * Saves `next` only if the store still holds `base`. With the store's `saveIf` (Eve DUR-F4) that is one atomic
+   * Saves `next` only if the store still holds `base`. With the store's `saveIf` that is one atomic
    * compare-and-swap; without it, a load, compare and save, which a writer in another process can slip between.
    */
   private async saveOver(base: readonly Message[], next: readonly Message[]): Promise<boolean> {
@@ -1249,9 +1269,9 @@ export class AgentSession<TObject = unknown> {
    * writer's turn without an error - instead the turn's leftover checkpoint
    * is dropped (replaying it later would clobber the committed transcript
    * anyway) and the send fails with `LOUSHO_SESSION_BUSY`. Tool calls of the
-   * turn that ran (an email, a refund) are not lost (Eve DUR-F3): the turn up
+   * turn that ran (an email, a refund) are not lost: the turn up
    * to their results is added after the other writer's transcript, as an
-   * aborted turn keeps them (B4).
+   * aborted turn keeps them.
    */
   private async busy(next: readonly Message[]): Promise<void> {
     const stored = (await this.store.load(this.id)) ?? [];

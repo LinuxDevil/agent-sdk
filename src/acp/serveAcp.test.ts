@@ -82,7 +82,7 @@ function client(turns: MockTurn[], config: Partial<CreateAgentConfig> = {}) {
 }
 
 
-/** N9b: a tool that needs a GitHub sign-in the user never completes (the chat surfaces run without a principal). */
+/** A tool that needs a GitHub sign-in the user never completes (the chat surfaces run without a principal). */
 function signInTool() {
   const github = githubProvider(fakeOAuthServer());
   return defineTool({
@@ -108,7 +108,7 @@ describe('serveAcp', () => {
     await c.end();
   });
 
-  it("sends the model's reasoning as agent_thought_chunk updates, before its message (LOU-V13)", async () => {
+  it("sends the model's reasoning as agent_thought_chunk updates, before its message", async () => {
     const model = mockModel(['Hello there.']);
     const thinker = { ...model, generate: async (options: GenerateOptions) => ({ ...(await model.generate(options)), reasoning: [{ text: 'Be polite.' }] }) };
     const c = client([], { provider: thinker });
@@ -173,7 +173,7 @@ describe('serveAcp', () => {
     await c.end();
   });
 
-  it('a sign-in: shows the link, asks again while not signed in, and a rejection cancels the call (N9b)', async () => {
+  it('a sign-in: shows the link, asks again while not signed in, and a rejection cancels the call', async () => {
     const c = client([{ toolCalls: [{ name: 'list_repos' }] }, 'Okay, not listing.'], { tools: [signInTool()], store: memoryStore() });
     const sessionId = await c.newSession();
     const pending = c.prompt(sessionId, 'list my repos');
@@ -271,7 +271,7 @@ describe('serveAcp', () => {
     await c.end();
   });
 
-  it('answers -32600 for a line that is not a JSON-RPC object and keeps serving (Eve TOOLS-F14)', async () => {
+  it('answers -32600 for a line that is not a JSON-RPC object and keeps serving', async () => {
     const c = client([]);
     for (const bad of ['null', '[]', '"str"', '42', '{"id":9,"method":7}']) c.push(bad);
     await c.waitFor(() => c.out.filter((m) => m.error?.code === (-32600 as unknown as Loose)).length === 5);

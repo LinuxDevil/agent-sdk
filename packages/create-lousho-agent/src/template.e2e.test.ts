@@ -38,7 +38,7 @@ describe('end-to-end scaffold + install + typecheck + test', () => {
     base = undefined;
   });
 
-  // OpenRouter runs on `@ai-sdk/openai` 4 through its Chat Completions model (LOU-D28f), like OpenAI.
+  // OpenRouter runs on `@ai-sdk/openai` 4 through its Chat Completions model, like OpenAI.
   it.each(['openai', 'openrouter'])(
     '%s: generates a project that installs from the locally packed SDK, typechecks, and passes its own tests',
     (provider) => {
@@ -65,7 +65,7 @@ describe('end-to-end scaffold + install + typecheck + test', () => {
       );
       expect(installed.version).toBe(sdkPkg.version);
 
-      // The scaffold is on the current `ai` major with its provider package major (LOU-D28d).
+      // The scaffold is on the current `ai` major with its provider package major.
       const versionOf = (name: string) =>
         JSON.parse(fs.readFileSync(path.join(dir, 'node_modules', name, 'package.json'), 'utf8')).version as string;
       expect(versionOf('ai')).toMatch(/^7\./);

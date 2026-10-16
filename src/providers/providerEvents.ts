@@ -1,5 +1,5 @@
 /**
- * Internal (LOU-V7.2): how a streaming run hears about the retries and
+ * Internal: how a streaming run hears about the retries and
  * fallbacks of the model calls it makes. The run attaches a listener to each
  * request (`withProviderEvents()`); `withRetry()` and `withFallback()` report
  * to the listener of the call they handle, besides their own `onRetry` /
@@ -22,6 +22,8 @@ export interface ProviderRetryReport {
 export interface ProviderFallbackReport {
   from: string;
   to: string;
+  fromModel?: string;
+  toModel?: string;
   error: unknown;
 }
 
@@ -53,7 +55,7 @@ export function withProviderEvents(call: GenerateOptions, listener: ProviderEven
 }
 
 /**
- * C2: `call` marked as retried by `withRetry()`, so an 'ai'-SDK-backed
+ * `call` marked as retried by `withRetry()`, so an 'ai'-SDK-backed
  * provider sends it with the 'ai' SDK's own retries off (`maxRetries: 0`):
  * one retry layer, never one multiplied by the other.
  */

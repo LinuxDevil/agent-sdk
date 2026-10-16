@@ -10,7 +10,7 @@ export interface VirtualListProps<T> {
 }
 
 /**
- * O1's "lightweight windowing technique" for the live log feed - a real run
+ * A "lightweight windowing technique" for the live log feed - a real run
  * can produce far more rows than fit comfortably in the DOM at once (up to
  * `LOG_BUFFER_CAPACITY`, see state/logReducer.ts), so this only renders the
  * rows currently scrolled into view (plus `overscan` rows of padding either

@@ -1,7 +1,7 @@
 # Lousho — TypeScript AI agent SDK
 
 [![npm](https://img.shields.io/npm/v/@lousho/build-ai-agent)](https://www.npmjs.com/package/@lousho/build-ai-agent)
-![CI](https://github.com/LinuxDevil/agent-sdk/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/LinuxDevil/agent-sdk/actions/workflows/ci.yml/badge.svg?branch=main)
 [![Docs](https://img.shields.io/badge/docs-lousho.com-0F9D74)](https://lousho.com)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -46,6 +46,8 @@ cd my-agent                                          # copy .env.example to .env
 npm run dev                                          # chat in the terminal; `npm test` runs offline
 ```
 
+From a locally packed tarball: `npx --package=<absolute path to create-lousho-agent-x.y.z.tgz> create-lousho-agent my-agent` (`npx ../x.tgz` fails on Windows).
+
 To add it to an existing project, install the SDK with the current `ai` major
 and the provider packages that pair with it:
 
@@ -66,7 +68,7 @@ The snippet uses top-level `await`, so the file must be an ES module (`.mts`, or
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
 
-const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a helpful assistant.' });
+const agent = createAgent({ model: 'openai/gpt-4.1-mini', instructions: 'You are a helpful assistant.' });
 const { text } = await agent.send('Hello!');
 console.log(text);
 ```
@@ -109,7 +111,7 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **Testing and evals**: `mockModel`, `recordReplay` cassettes, `defineEval()` trajectory assertions, `lousho eval` with `--record` / `--replay` cassettes and `--drift` trajectory diffs. [Testing](docs/testing.md), [Evals](docs/evals.md)
 - **CLI**: `init`, `doctor`, `dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `traces`, `build` and `studio`. [CLI](docs/cli.md)
 - **Editors (ACP)**: `lousho acp ./my-agent` serves your agent to Zed and other Agent Client Protocol editors, with tool calls and permission prompts. [ACP](docs/acp.md)
-- **Registry**: `lousho add <name>` copies a tool, skill, channel, schedule, memory slot or **kit** - a whole agent directory - into yours from the default registry (or one you point at with `--registry <url-or-path>`), after showing its permissions. The built-in `coding-kit` and `coding-pi` kits are production-shaped coding harnesses. [Registry](docs/registry.md)
+- **Registry**: `lousho add <name>` copies a tool, skill, channel, schedule, memory slot or **kit** - a whole agent directory - into yours from the default registry (or one you point at with `--registry <url-or-path>`), after showing its permissions. The built-in `coding-kit` and `coding-pi` kits are coding-agent starting points (workspace tools, permission rules, checkpoints) that you own and edit. [Registry](docs/registry.md)
 - **Agent Forge** (the `lousho studio` command): a visual canvas, run debugger and chat with approval cards. [Agent Forge](docs/agent-forge.md)
 
 ## Usage
@@ -128,7 +130,7 @@ const getWeather = defineTool({
 });
 
 const agent = createAgent({
-  model: 'openai/gpt-4o-mini',
+  model: 'openai/gpt-4.1-mini',
   instructions: 'You are a travel assistant. Check the weather before giving advice.',
   tools: [getWeather],
 });
@@ -153,7 +155,7 @@ const sendEmail = defineTool({
   execute: async ({ to }) => ({ sent: true, to }),
 });
 
-const agent = createAgent({ model: 'openai/gpt-4o-mini', tools: [sendEmail] });
+const agent = createAgent({ model: 'openai/gpt-4.1-mini', tools: [sendEmail] });
 
 const run = await agent.send('Email the Q3 summary to sam@example.com');
 if (run.finishReason === 'awaiting-approval') {
@@ -171,7 +173,7 @@ import { createAgent, resolveProvider } from '@lousho/build-ai-agent';
 import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
 
 // Transcripts, per-step checkpoints and approvals in one SQLite file, wired by one option.
-const agent = createAgent({ provider: resolveProvider('openai/gpt-4o-mini'), store: new SqliteStore('./.lousho/agent.db') });
+const agent = createAgent({ provider: resolveProvider('openai/gpt-4.1-mini'), store: new SqliteStore('./.lousho/agent.db') });
 
 await agent.resume('user-42'); // after a crash: finishes the interrupted turn without redoing finished steps
 const { text } = await agent.session({ id: 'user-42' }).send('What is my name?'); // same id, same conversation
@@ -188,8 +190,10 @@ OPENROUTER_API_KEY=... lousho dev ./my-agent
 rewind, an allow-listed shell, permission rules (`rm` denied, writes to
 `*.test.*` refused), a loop guard, a cost cap, a read-only explorer and a Pi
 coding sub-agent the lead delegates to through `task`. `coding-kit` is the
-same rails on the standard providers. Both were validated live over
-OpenRouter.
+same rails on the standard providers. Both have offline tests that run in CI;
+live OpenRouter runs are manual and are not part of CI. A recorded model run
+is committed at `scripts/__cassettes__/build-a-coding-agent.json` and replays
+offline with `npx vitest run scripts/buildACodingAgent.test.ts`.
 
 ## Documentation
 
@@ -203,6 +207,7 @@ OpenRouter.
 | [Connectors](docs/connectors.md) | Connect to Google Docs, Slack, GitHub, Notion: the connector table, OAuth sign-in, approval for connector writes |
 | [OpenAPI tools](docs/openapi-tools.md) | `openApiTools()`: an OpenAPI 3.0 / 3.1 document becomes one tool per operation, with approval for mutating ones |
 | [Providers](docs/providers.md) | Model strings, `resolveProvider()`, which model runs, custom providers |
+| [Comparison](docs/comparison.md) | How lousho compares with the Vercel AI SDK, Mastra, the OpenAI Agents SDK, Vercel eve and LangGraph.js, including where it is weaker |
 | [CLI](docs/cli.md) | Every `lousho` command and its flags |
 | [ACP](docs/acp.md) | `lousho acp` / `serveAcp()`: drive an agent from Zed and other Agent Client Protocol editors |
 | [Tools](docs/tools.md) | `defineTool()`, validation and errors, built-in tools, `ToolRegistry` |
@@ -236,7 +241,7 @@ OpenRouter.
 | [Context compaction](docs/compaction.md) | `createAgent({ compaction })`: prune old tool results, then summarize old turns |
 | [Channels](docs/channels.md) | `defineChannel()`, `mountChannels()`, `httpChannel()`, `webhookChannel()`, `slackChannel()`: surfaces mapped to sessions, replies and approvals sent back |
 | [Schedules](docs/schedules.md) | `defineSchedule()` cron schedules, `schedules/` in an agent directory, `startSchedules()` |
-| [Triggers](docs/triggers.md) | `@lousho/build-ai-agent/triggers`: webhook, Slack and cron adapters, `TriggerAdapter`, `TriggerRegistry`; triggers vs channels vs schedules |
+| [Triggers](docs/triggers.md) | `@lousho/build-ai-agent/triggers`: `TriggerAdapter`, `TriggerRegistry`, webhook auth and Slack signature helpers; triggers vs channels vs schedules |
 | [Flows](docs/flows.md) | Fixed multi-step workflows with `FlowBuilder` and `FlowExecutor` |
 | [Workspace tools](docs/workspace-tools.md) | File system and shell tools for coding agents, and their security model |
 | [Build a coding agent](docs/build-a-coding-agent.md) | A terminal coding agent step by step: workspace tools, approvals, streaming, a session, offline tests |
@@ -275,7 +280,7 @@ Most examples run offline with a mock provider; see the
 | Example | What it shows |
 | ------- | ------------- |
 | [ops-pipeline](examples/ops-pipeline) | Flagship: monitor alert, Slack "Fix it" button, human approval, fixer agent, patch-check-gated GitHub PR (`npm run pipeline:demo`) |
-| [coding-harness](examples/coding-harness) | A production-shaped coding agent: checkpoints, permission rules, loop guard, the `coding-kit` and `coding-pi` registry kits, live OpenRouter runs |
+| [coding-harness](examples/coding-harness) | A coding agent starting point: checkpoints, permission rules, loop guard, the `coding-kit` and `coding-pi` registry kits, live OpenRouter runs |
 | [deep-research](examples/deep-research) | Coordinator fans out parallel `task` calls to researcher sub-agents, then synthesizes a cited report |
 | [support-desk](examples/support-desk) | Triage agent `handoff()`s to billing/tech specialists; approval-gated refund tool |
 | [evaluator-loop](examples/evaluator-loop) | Writer/critic loop: `llmCritique()` scores a draft and returns feedback until it passes |

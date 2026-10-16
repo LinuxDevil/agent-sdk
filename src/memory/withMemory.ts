@@ -1,5 +1,5 @@
 /**
- * Wires memory slots into createAgent() runs (LOU-W6): each run resolves its
+ * Wires memory slots into createAgent() runs: each run resolves its
  * scope keys, gets a `memory` preGenerate hook that recalls into the system
  * prompt on the run's first model call, and gets the slots' tools bound to
  * those keys.
@@ -33,7 +33,7 @@ function toolNames({ name, expose }: MemorySlot): string[] {
 const ALL_ITEMS = 100_000;
 
 /**
- * Eve MEM-F2: stores `item` in place of `id` - with `provider.upsert`, or by
+ * Stores `item` in place of `id` - with `provider.upsert`, or by
  * `remove` then `add` for a provider without it.
  */
 async function replaceItem(provider: MemoryProvider, key: string, id: string, item: { text: string; metadata?: Record<string, unknown> }): Promise<MemoryItem> {
@@ -50,17 +50,17 @@ async function sameKey(slot: MemorySlot, key: string, args: Record<string, unkno
   return items.filter((item) => item.metadata && stableStringify(fields.map((field) => item.metadata![field] ?? null)) === wanted);
 }
 
-/** Most items one `recall_<name>` call returns, whatever `limit` the model asks for (Eve MEM-F11). */
+/** Most items one `recall_<name>` call returns, whatever `limit` the model asks for. */
 const MAX_RECALL_LIMIT = 100;
 
-/** Eve MEM-F15: how long a remembered item lasts, by the slot's scope. */
+/** How long a remembered item lasts, by the slot's scope. */
 function persistence(slot: MemorySlot): string {
   if (slot.scope === 'session') return 'recalled later in this conversation';
   if (slot.scope === 'global') return 'recalled in later conversations';
   return 'recalled in later conversations with the same user or key';
 }
 
-/** What `recall_<name>` returns for an item: its `score` (vector providers) and, on a free-text slot, its other metadata (Eve MEM-F11). */
+/** What `recall_<name>` returns for an item: its `score` (vector providers) and, on a free-text slot, its other metadata. */
 function recalledItem(slot: MemorySlot, { id, text, createdAt, metadata }: MemoryItem) {
   const { score, ...rest } = metadata ?? {};
   return {
@@ -88,7 +88,7 @@ function memoryTools([slot, key]: BoundSlot): DefinedTool[] {
         ? { text: stableStringify(args), metadata: args as Record<string, unknown> }
         : { text: (args as { text: string }).text };
       if (slot.itemKey) {
-        // Eve MEM-F2: structured state upserts on its key fields.
+        // Structured state upserts on its key fields.
         const [old, ...stale] = await sameKey(slot, key, args as Record<string, unknown>);
         if (old) {
           for (const extra of stale) await slot.provider.remove(key, extra.id);
@@ -100,7 +100,7 @@ function memoryTools([slot, key]: BoundSlot): DefinedTool[] {
   });
   const recall = defineTool({
     name: `recall_${slot.name}`,
-    // N4: recalling changes nothing, so plan mode can use it.
+    // Recalling changes nothing, so plan mode can use it.
     annotations: { readOnlyHint: true, destructiveHint: false },
     description: `Search the "${slot.name}" memory${slot.provider.ranking === 'relevance' ? ' by meaning, most relevant first' : ', newest items first'}.${about}`,
     input: z.object({
@@ -134,9 +134,9 @@ function memoryTools([slot, key]: BoundSlot): DefinedTool[] {
 const BLOCK = /\n*<memory name="([^"]*)">[\s\S]*?<\/memory>/g;
 
 function block(slot: MemorySlot, items: readonly MemoryItem[]): string {
-  // Eve MEM-F16: an opening or closing memory tag inside an item would break
+  // An opening or closing memory tag inside an item would break
   // the block (and the replacement of blocks in a resumed transcript).
-  // Eve MEM-F2: with forget_<name>, each item shows its id, to forget it by.
+  // With forget_<name>, each item shows its id, to forget it by.
   const lines = items.map(
     (item) => `- ${item.text.replace(/<(\/?memory)/gi, '&lt;$1').replace(/\s+/g, ' ').trim()}${slot.expose.forget ? ` (id: ${item.id})` : ''}`
   );
@@ -163,7 +163,8 @@ function warnRecallFailed(slot: MemorySlot, error: unknown): void {
 
 /**
  * Recalls into the system prompt on the run's first model call (not a
- * sub-agent's). A handoff replaces the system prompt with the target's, so a
+ * sub-agent's: a sub-agent with memory recalls its own, with this hook run
+ * as one of its own hooks, before it sees `ctx.subagent`). A handoff replaces the system prompt with the target's, so a
  * later call puts the recalled blocks back when they are missing.
  */
 function recallHook(bound: readonly BoundSlot[]): AgentHook {
@@ -187,7 +188,7 @@ function recallHook(bound: readonly BoundSlot[]): AgentHook {
           try {
             items = await slot.provider.list(key, { limit: slot.recall.maxItems, query });
           } catch (error) {
-            // Eve MEM-F4: recall is an optimization; a corrupt file or a store
+            // Recall is an optimization; a corrupt file or a store
             // outage must not fail every run. The recall_ tool still reports it.
             warnRecallFailed(slot, error);
             return '';
@@ -225,7 +226,7 @@ export interface AgentMemory {
   /** Adds the slots' tool names to the agent's tools; throws when one is taken. */
   addTools(toolsConfig: Record<string, { tool: string }>): void;
   /**
-   * N6: the agent a run handed off to, with this run's memory tools added to
+   * The agent a run handed off to, with this run's memory tools added to
    * its tools and registry (bound to the same scope keys), so the lead's
    * memory stays on after a handoff.
    */

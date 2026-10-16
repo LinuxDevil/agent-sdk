@@ -5,7 +5,7 @@ import { mockModel } from '../testing';
 
 const fixture = (name: string): string => path.join(__dirname, '__fixtures__', name);
 
-describe('schedules/ in an agent directory (LOU-P8)', () => {
+describe('schedules/ in an agent directory', () => {
   it('loads schedules/*.ts: the name defaults to the file name, an explicit name wins', async () => {
     const { schedules, manifest } = await resolveAgentDir(fixture('schedules'), { provider: mockModel(['x']) });
     expect(schedules.map((s) => [s.name, s.cron, s.timezone])).toEqual([

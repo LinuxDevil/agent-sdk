@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * Eve DUI-F9: keyboard and screen-reader access to the studio - landmarks
+ * Keyboard and screen-reader access to the studio - landmarks
  * and a heading, real tablists, labelled controls, a live run status, and
  * palette/hook/toggle controls that work from the keyboard alone.
  */

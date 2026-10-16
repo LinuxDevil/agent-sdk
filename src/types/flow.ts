@@ -162,13 +162,19 @@ export type RuntimeStep =
   | EndNode
   | ThrowNode;
 
+/**
+ * An editor-side node naming an agent and its input. `FlowExecutor` does not
+ * run it: a flow that reaches one fails with `LOUSHO_FLOW_INVALID`. To run a
+ * `createAgent()` agent in a flow, register a tool that calls `agent.send()`
+ * and use a `toolCall` step (see docs/flows.md, "Running an agent in a flow").
+ */
 export interface StepNode {
   type: 'step';
   agent: string;
   input: string;
 }
 
-/** Eve DUR-F17: a node's `retry` setting (see {@link NodeRunOptions.retry}). */
+/** A node's `retry` setting (see {@link NodeRunOptions.retry}). */
 export interface NodeRetry {
   /** Attempts in all, including the first (an integer >= 1). */
   maxAttempts: number;
@@ -177,7 +183,7 @@ export interface NodeRetry {
 }
 
 /**
- * Eve DUR-F17: how `FlowExecutor` runs a node - retries and a time limit. Any
+ * How `FlowExecutor` runs a node - retries and a time limit. Any
  * executor-side node (and `sequence` / `parallel`) takes them.
  *
  * @example

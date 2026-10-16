@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitest/config';
 
 // Standalone config (NOT merged with vitest.config.ts) for the real-daemon
-// Docker suite (LOU-M6): `*.docker.test.ts` files start containers, networks
+// Docker suite: `*.docker.test.ts` files start containers, networks
 // and images on a Docker Engine. The main vitest.config.ts excludes the same
 // pattern, so `npm test` and `npm run test:coverage` never pick them up.
 //

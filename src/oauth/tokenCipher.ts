@@ -1,5 +1,5 @@
 /**
- * The cipher of the OAuth token store (N9a): AES-256-GCM through Web Crypto
+ * The cipher of the OAuth token store: AES-256-GCM through Web Crypto
  * (`crypto.subtle`), so it runs unchanged in Node and in a Cloudflare Worker.
  * No `node:*` import here: `KVStore` bundles this file.
  *

@@ -48,7 +48,7 @@ describe('parseCronExpression().nextRun()', () => {
     ['30 1 * * *', '2026-03-07T06:30:00Z', '2026-03-08T06:30:00.000Z', 'America/New_York'],
     ['30 3 * * *', '2026-03-08T06:30:00Z', '2026-03-08T07:30:00.000Z', 'America/New_York'],
     ['0 * * * *', '2026-03-08T06:30:00Z', '2026-03-08T07:00:00.000Z', 'America/New_York'],
-    // a time inside the skipped hour does not exist: it runs once at the first instant after the gap (Eve DUR-F20)
+    // a time inside the skipped hour does not exist: it runs once at the first instant after the gap
     ['30 2 * * *', '2026-03-07T07:30:00Z', '2026-03-08T07:00:00.000Z', 'America/New_York'],
     ['30 2 * * *', '2026-03-08T07:00:00Z', '2026-03-09T06:30:00.000Z', 'America/New_York'],
     ['*/20 2 * * *', '2026-03-08T06:30:00Z', '2026-03-08T07:00:00.000Z', 'America/New_York'],

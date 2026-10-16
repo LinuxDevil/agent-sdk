@@ -1,6 +1,6 @@
 /**
- * The host-agnostic core of {@link mountChannels} and `mountFetchChannels`
- * (LOU-P7): `handle` runs a channel's verify -> parse -> a session turn (or a
+ * The host-agnostic core of {@link mountChannels} and `mountFetchChannels`:
+ * `handle` runs a channel's verify -> parse -> a session turn (or a
  * pause decision) -> reply, answering through `respond`; `resolveApproval`
  * decides a pause a channel turn stopped on. No `node:*` import, so a Worker
  * host can drive the same code (src/channels/fetchChannels.ts).
@@ -34,8 +34,8 @@ export interface ChannelCoreOptions {
   /**
    * Where the channels' transcripts are kept (e.g. the `SqliteStore` the agent
    * uses). Defaults to the agent's `store` when it keeps sessions, so channel
-   * turns, approval continuations and `agent.resume()` share one transcript
-   * (Eve EVE-0); else to an in-memory store owned by this handler.
+   * turns, approval continuations and `agent.resume()` share one transcript;
+   * else to an in-memory store owned by this handler.
    */
   store?: SessionStore | SessionStores;
   /** Fallback for a channel without its own `onError`: failures after the request was acknowledged. Default: `console.error`. */
@@ -63,7 +63,7 @@ export interface ChannelCore {
 
 const FAILED_TEXT = 'Sorry, that request failed.';
 
-/** Eve TOOLS-F12: the reply to a decision that leaves other calls of its step undecided. */
+/** The reply to a decision that leaves other calls of its step undecided. */
 function stillWaiting(approvals: readonly PendingApproval[]): string {
   const left = approvals.map((approval) => `${approval.toolName} (approval id: ${approval.id})`).join(', ');
   return `Decision recorded. Still waiting on: ${left}.`;
@@ -99,7 +99,7 @@ async function isAuthorized(channel: Channel, req: ChannelRequest): Promise<bool
 
 /**
  * The decision in an approvals-route body, or undefined when it has neither `approved` nor `answer`.
- * Eve CH-F10: an optional `sessionKey` names the conversation, so a pause this process forgot can still be bound.
+ * An optional `sessionKey` names the conversation, so a pause this process forgot can still be bound.
  */
 function readDecision(id: string, text: string): { decision: ChannelApprovalDecision; sessionKey?: string } | undefined {
   const { approved, note, answer, sessionKey } = (JSON.parse(text || '{}') ?? {}) as Record<string, unknown>;
@@ -110,7 +110,7 @@ function readDecision(id: string, text: string): { decision: ChannelApprovalDeci
 }
 
 /**
- * N10b: who decided a pause on a surface: the clicking user as a principal of the channel
+ * Who decided a pause on a surface: the clicking user as a principal of the channel
  * (`{ id, type: 'user', authenticator: <channel name> }`), else - an answer sent as a message - the
  * message's verified sender. `undefined` for a decision posted to the approvals route, which names nobody.
  */
@@ -120,7 +120,7 @@ function approverPrincipal(channel: Channel, approver: ChannelUser | undefined, 
 }
 
 /**
- * Eve EVE-0: the `store` of an agent built by `createAgent()` when it keeps
+ * The `store` of an agent built by `createAgent()` when it keeps
  * session transcripts. A channel's private in-memory transcript next to the
  * agent's durable checkpoints let the two views diverge: `agent.resume(id)`
  * looked for the checkpoint at the durable transcript's length and missed a
@@ -161,13 +161,13 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
   /** Question ids `pendingQuestion` handed out whose answer has not been processed yet. */
   const claimed = new Set<string>();
   const answered = new WeakSet<ChannelRespond>();
-  /** Eve F7: approval ids a decision is in flight for; a second decision on one is a conflict, not a race. */
+  /** Approval ids a decision is in flight for; a second decision on one is a conflict, not a race. */
   const deciding = new Set<string>();
   const stores = withDefaultStores({ store });
   const sessions = stores.store as SessionStore | undefined;
   /** #279: `store` has checkpoints, so a session tells which pause its turn waits on, also after a restart. */
   const checkpointed = stores.checkpointStore !== undefined;
-  /** Eve3-S2: the durable approval store, whose snapshots bind a pause to the session it paused in. */
+  /** the durable approval store, whose snapshots bind a pause to the session it paused in. */
   const approvalStore = agentApprovalStore(agent);
 
   /** What `channel.parse` may ask: the agent's pending approvals and saved sessions. */
@@ -191,7 +191,7 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
   }
 
   /**
-   * M10a: the `ask_question` session `sessionId` waits on. A pause of this process is in `paused`;
+   * The `ask_question` session `sessionId` waits on. A pause of this process is in `paused`;
    * after a restart, the session's checkpoint says whether its turn waits on a question, and
    * `resume()` (which throws `SessionAwaitingApprovalError`) binds that approval to the session, so
    * the answer's continuation is appended to its transcript.
@@ -237,7 +237,7 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
 
   /**
    * Replies with the turn's result, or hands a pause to `onApproval` (default: a text prompt via `reply`).
-   * Eve TOOLS-F12: a step paused on several calls hands each to `onApproval` once (only the first gets
+   * A step paused on several calls hands each to `onApproval` once (only the first gets
    * `respond`); a decision that leaves others of its step pending replies with what is left.
    */
   async function finish(turn: PausedTurn, result: ExecutionResult, events: AgentEvent[] | undefined, respond?: ChannelRespond): Promise<void> {
@@ -280,7 +280,7 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
    * kind (a button decides a tool call, an answer a question); `resume()` then binds the pause to
    * the session (`SessionAwaitingApprovalError`), so the continuation joins its transcript. Anything
    * else - another conversation, a replay, a forged id - is refused before the approval is touched.
-   * Eve3-S2: without a checkpoint store the session cannot tell, so the pause's stored
+   * Without a checkpoint store the session cannot tell, so the pause's stored
    * snapshot must: it names the session the paused turn ran in, and only a decision that
    * names that same conversation may bind. A `sessionKey` that maps to another session -
    * or to no session the pause knows - is refused, as is a kind mismatch.
@@ -297,7 +297,7 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
       const kind = record?.pending.kind ?? 'tool';
       return isAnswer === (kind === 'question') && kind !== 'sign-in';
     }
-    // Eve TOOLS-F12: a turn paused on several calls of one step waits on each of them.
+    // A turn paused on several calls of one step waits on each of them.
     const ids = pending.approvalIds ?? (pending.approvalId === undefined ? [] : [pending.approvalId]);
     if (pending.status !== 'awaiting-approval' || !ids.includes(decision.id)) return false;
     const kind = (decision.id === pending.approvalId ? pending.approvalKind : (await agent.approvals.get(decision.id))?.kind) ?? 'tool';
@@ -319,7 +319,7 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
   }
 
   /**
-   * Eve F7: a decision on an approval another request decided (or is deciding): 409 while the
+   * A decision on an approval another request decided (or is deciding): 409 while the
    * request is open, like the session routes' `decisionGate`; a no-op once the surface was answered.
    */
   function conflict(respond: ChannelRespond): void {
@@ -327,7 +327,7 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
     respond(409, { error: 'This approval was decided by another request', code: 'LOUSHO_APPROVAL_CONFLICT' });
   }
 
-  /** Eve F7: runs `fn` with `id` claimed, so a concurrent decision on it cannot start. */
+  /** Runs `fn` with `id` claimed, so a concurrent decision on it cannot start. */
   async function claiming(id: string, fn: () => Promise<void>): Promise<void> {
     deciding.add(id);
     try {
@@ -339,7 +339,7 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
 
   /**
    * Decides the pause `turn` stopped on and delivers the continuation, as the session's next turn.
-   * N10b: `approver` is recorded as who decided (`ctx.approval.by`); the run keeps its own principal.
+   * `approver` is recorded as who decided (`ctx.approval.by`); the run keeps its own principal.
    * `accept` (#279) runs first, in the session's queue: it checks the decision and audits it, or refuses it.
    */
   function continueTurn(
@@ -358,9 +358,9 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
         const decide = () =>
           typeof answer === 'string' ? agent.approvals.answer({ id, answer }, decided) : agent.approvals.resolve({ id, approved: approved === true, note }, decided);
         const result = await decide().catch((error: unknown) => {
-          // N9b: approved before the user signed in: the pause stays, and so does this turn's binding to it.
+          // Approved before the user signed in: the pause stays, and so does this turn's binding to it.
           if (error instanceof Error && error.name === 'SignInPendingError') paused.set(id, turn);
-          // Eve F7: decided meanwhile by another path (the session routes, another replica): a conflict, not a failure.
+          // Decided meanwhile by another path (the session routes, another replica): a conflict, not a failure.
           if (respond && error instanceof SDKError && error.code === 'LOUSHO_APPROVAL_NOT_FOUND') return undefined;
           throw error;
         });
@@ -398,7 +398,7 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
     if (!body) return tracked(400, { error: "Request body must be JSON with 'approved' (and optional 'note') or 'answer'" });
     const { decision, sessionKey } = body;
     const known = paused.get(decision.id);
-    // Eve CH-F10: the conversation the body names, for a pause this process forgot (a restart, another replica). A pause
+    // The conversation the body names, for a pause this process forgot (a restart, another replica). A pause
     // it remembers keeps its own inbound (where the reply goes); the named conversation must still be the one that paused.
     const named: ChannelInbound | undefined = sessionKey === undefined ? undefined : { sessionKey, input: '', replyTo: known?.inbound.replyTo ?? null };
     const sameAsKnown = known && named && channelSessionId(channel, named) === known.sessionId;
@@ -416,7 +416,7 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
     if (!turn || (known && (known.channel !== channel || known.sessionId !== turn.sessionId))) {
       return respond(404, { error: `No pending approval '${decision.id}' on channel '${channel.name}'` });
     }
-    // Eve F7: claimed before the first await (`onDecision`), so a double click cannot decide twice.
+    // Claimed before the first await (`onDecision`), so a double click cannot decide twice.
     if (deciding.has(decision.id)) return conflict(respond);
     await claiming(decision.id, () => decideClaimed(channel, turn, known, { decision, inbound, approver }, respond));
   }
@@ -442,7 +442,7 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
 }
 
 /**
- * N9b: after the OAuth callback stored a user's token (or the user declined),
+ * After the OAuth callback stored a user's token (or the user declined),
  * continues the channel turn this process paused on that sign-in, so the
  * answer is posted to the surface it was asked on. A sign-in that no channel
  * turn of this process waits on is left alone (a client continues it with the

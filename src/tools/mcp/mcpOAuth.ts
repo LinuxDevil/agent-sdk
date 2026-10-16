@@ -1,9 +1,9 @@
 /**
- * N9c: OAuth for HTTP MCP servers, per the MCP authorization spec. The MCP
+ * OAuth for HTTP MCP servers, per the MCP authorization spec. The MCP
  * SDK does the protocol (RFC 9728 and RFC 8414 discovery, RFC 7591 dynamic
  * registration, PKCE, RFC 8707 resource indicators, refresh); this module is
  * its `OAuthClientProvider` over the agent's encrypted token store, and the
- * operator's sign-in on top of N9b's pending records and callback.
+ * operator's sign-in on top of the pending records and callback.
  *
  * The grant belongs to the app (provider `mcp-<server>`, owner `app`). A
  * connection never starts an interactive sign-in: without a usable token the

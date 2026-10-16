@@ -1,5 +1,5 @@
 /**
- * N10a: JWT verification on Web Crypto (`crypto.subtle`) only, so it runs in
+ * JWT verification on Web Crypto (`crypto.subtle`) only, so it runs in
  * Node, Workers and edge routes alike. No `node:*` import, no dependency.
  *
  * Rules (each has a test in jwt.test.ts):

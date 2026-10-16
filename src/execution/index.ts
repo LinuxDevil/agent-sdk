@@ -3,12 +3,12 @@
  * Agent execution engine with streaming support
  */
 
-// A3: the executor API moved to '@lousho/build-ai-agent/executor'. The
+// The executor API moved to '@lousho/build-ai-agent/executor'. The
 // root keeps PropagatingToolError and the result types createAgent() uses.
 export { PropagatingToolError } from './propagatingToolError';
 export type { ExecutionResult, ExecutionFinishReason } from './AgentExecutor';
 export * from './errors';
-// A1: StorageServiceApprovalStore moved to '@lousho/build-ai-agent/utils'.
+// StorageServiceApprovalStore moved to '@lousho/build-ai-agent/utils'.
 export {
   ASK_QUESTION_TOOL_NAME,
   approvalExpired,
@@ -28,8 +28,8 @@ export {
   type SuspendedBackgroundTasks,
 } from './ApprovalGate';
 export { InMemoryApprovalStore } from './InMemoryApprovalStore';
-// A3: the resume functions moved to '@lousho/build-ai-agent/executor'.
-// A1: LocalStorageCheckpointStore moved to '@lousho/build-ai-agent/utils'.
+// The resume functions moved to '@lousho/build-ai-agent/executor'.
+// LocalStorageCheckpointStore moved to '@lousho/build-ai-agent/utils'.
 export {
   appendToRing,
   DEFAULT_CHECKPOINT_HISTORY_LIMIT,
@@ -54,7 +54,7 @@ export {
 export * from './tracing';
 export * from './semconv';
 export * from './logger';
-// A5: the patch checks (formerly "patch guardrails") run against a proposed
+// The patch checks (formerly "patch guardrails") run against a proposed
 // diff; SECRET_PATTERNS lives in a Node-free module so ioGuardrails - and so
 // createAgent() - does not reach this file's node:child_process imports.
 export * from './patchChecks';
@@ -136,9 +136,9 @@ export type {
   RunDoneEvent,
 } from './agentEvents';
 export type { HandoffInputData, HandoffMarker, HandoffTarget, ResolvedHandoff } from './handoffRun';
-// Tool search: deferred tools and the tool_search tool (N2)
+// Tool search: deferred tools and the tool_search tool
 export type { ToolSearchOptions, ToolSearchResult } from './toolSearch';
-// Code mode: the run_code tool (N14)
+// Code mode: the run_code tool
 export type { CodeModeOptions } from './codeMode';
 export { rankToolsByKeywords } from '../tools/toolSearchRank';
 export { BudgetExceededError } from './budget';

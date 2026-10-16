@@ -9,7 +9,7 @@ const tools = [
   { name: 'lookupStock', description: 'Look up a stock price' },
 ];
 
-describe('rankToolsByKeywords (N2)', () => {
+describe('rankToolsByKeywords', () => {
   it('scores name hits above description hits, case-insensitively', () => {
     expect(rankToolsByKeywords('Currency', tools)).toEqual(['convert_currency', 'exchange_rates']);
     expect(rankToolsByKeywords('EXCHANGE', tools)).toEqual(['exchange_rates']);
@@ -27,7 +27,7 @@ describe('rankToolsByKeywords (N2)', () => {
     expect(rankToolsByKeywords('weather forecasts', tools)[0]).toBe('get_weather');
   });
 
-  it('finds tools by a synonym or a word of the same family (Eve MEM-F13)', () => {
+  it('finds tools by a synonym or a word of the same family', () => {
     const more = [
       { name: 'fetch_equity_quote', description: 'Latest trade for a ticker' },
       { name: 'job_status', description: 'Report a job' },

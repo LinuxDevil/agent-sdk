@@ -1,7 +1,7 @@
 /**
  * The provider.generate() half of one AgentExecutor loop step: building the
  * request and tool definitions, the onLLMRequest/onLLMResponse callbacks,
- * pre/post generate hooks, the `chat {model}` span, and LOU-T4's
+ * pre/post generate hooks, the `chat {model}` span, and the
  * compaction of a generate() failure.
  */
 
@@ -89,7 +89,7 @@ function generateHookContext(
     agentId: options.agent.id,
     agentName: options.agent.name,
     sessionId: options.sessionId,
-    // LOU-R16: `send(x, { metadata })`, as `ctx.metadata`.
+    // `send(x, { metadata })`, as `ctx.metadata`.
     metadata: options.metadata,
     messages,
     request,
@@ -99,7 +99,7 @@ function generateHookContext(
 }
 
 /**
- * Audit C4: `GenerateHookContext.generate` for a run - a side model call (the
+ * `GenerateHookContext.generate` for a run - a side model call (the
  * compaction summarizer) in its own `chat` span under the run's span, tagged
  * with its purpose, whose usage `record` adds to the run's total.
  */
@@ -148,13 +148,13 @@ export async function prepareGenerateRequest(
   generate?: GenerateHookContext['generate']
 ): Promise<GenerateOptions> {
   const { temperature, maxTokens, onLLMRequest, hooks } = options;
-  // C6: the agent's / call's settings, then the run's own `temperature` / `maxTokens`; an unset key is not sent at all.
+  // The agent's / call's settings, then the run's own `temperature` / `maxTokens`; an unset key is not sent at all.
   const settings = mergeModelSettings(options.modelSettings, { temperature, maxTokens });
-  // LOU-V10: a steer aborts this call alone (`callSignal`), the run's signal all of them.
+  // A steer aborts this call alone (`callSignal`), the run's signal all of them.
   const signal = withSteerSignal(options.signal, callSignal);
-  // N1a x N4: read the mode at every call, so a switch to plan mode drops non-read-only hosted tools from the next one.
+  // Read the mode at every call, so a switch to plan mode drops non-read-only hosted tools from the next one.
   const hostedTools = hostedToolsInMode(options.hostedTools, permissionModeOf(options));
-  // N2: the tools of this call, from the transcript as it is now (deferred tools load through `tool_search`).
+  // The tools of this call, from the transcript as it is now (deferred tools load through `tool_search`).
   const deferral = deferralOf(options);
   const sent = visibleTools(tools, messages, deferral);
 
@@ -165,15 +165,15 @@ export async function prepareGenerateRequest(
     messages,
     ...settings,
     tools: sent.length > 0 ? sent : undefined,
-    // N1a: the provider's own tools, sent with every call of the run (plan mode: read-only ones only).
+    // The provider's own tools, sent with every call of the run (plan mode: read-only ones only).
     ...(hostedTools?.length && { hostedTools }),
-    // LOU-V4: a JSON-mode hint for runs with an `output` schema.
+    // A JSON-mode hint for runs with an `output` schema.
     ...(options.output ? { responseFormat: outputResponseFormat(options.output) } : {}),
-    // LOU-V13: the providers send it only to models that accept it.
+    // The providers send it only to models that accept it.
     ...(options.reasoning !== undefined && { reasoning: options.reasoning }),
-    // Eve PROV-F4: the providers mark Anthropic cache breakpoints unless it is `false`.
+    // The providers mark Anthropic cache breakpoints unless it is `false`.
     ...(options.promptCaching !== undefined && { promptCaching: options.promptCaching }),
-    // LOU-V1: lets the provider cancel the in-flight request.
+    // Lets the provider cancel the in-flight request.
     ...(signal ? { signal } : {}),
   };
 
@@ -187,7 +187,7 @@ export async function prepareGenerateRequest(
     if (deferral && generateRequest.tools === before) reloadTools(generateRequest, tools, messages, deferral);
   }
 
-  // Eve CORE-F13: a call's `instructions` join the leading system message (the transcript is not changed).
+  // A call's `instructions` join the leading system message (the transcript is not changed).
   const outgoing = options.appendInstructions
     ? [...generateRequest.messages, { role: 'system' as const, content: options.appendInstructions }]
     : generateRequest.messages;
@@ -215,7 +215,7 @@ export function withLeadingSystemOnly(messages: Message[]): Message[] {
 }
 
 /**
- * N2: after the preGenerate hooks, the call's tools again from the transcript: a compaction
+ * After the preGenerate hooks, the call's tools again from the transcript: a compaction
  * hook that pruned a `tool_search` result unloads its tools from this call on.
  */
 function reloadTools(request: GenerateOptions, tools: ToolDefinition[], messages: Message[], deferral: ToolDeferral): void {
@@ -223,7 +223,7 @@ function reloadTools(request: GenerateOptions, tools: ToolDefinition[], messages
   if (after.length !== (request.tools?.length ?? 0)) request.tools = after.length > 0 ? after : undefined;
 }
 
-/** A generate() reply with what the call spent (LOU-V5). */
+/** A generate() reply with what the call spent. */
 export interface GeneratedStep {
   generated: GenerateResult;
   measured: CallUsage;
@@ -235,7 +235,7 @@ function anySignal(a: AbortSignal | undefined, b: AbortSignal | undefined): Abor
   return AbortSignal.any([a, b]);
 }
 
-/** C2: `request` with each `withRetry()` retry of it recorded on its `chat` span (count, and category and status per failure). */
+/** `request` with each `withRetry()` retry of it recorded on its `chat` span (count, and category and status per failure). */
 function recordingRetries(request: GenerateOptions, span: Span): GenerateOptions {
   const errors: string[] = [];
   return withProviderEvents(request, {
@@ -249,7 +249,7 @@ function recordingRetries(request: GenerateOptions, span: Span): GenerateOptions
 }
 
 /**
- * Eve CORE-F11: the usage of a model call the run's signal aborted - nothing reported it, so it is estimated from
+ * The usage of a model call the run's signal aborted - nothing reported it, so it is estimated from
  * the request and `text`, the reply streamed before the abort - so budgets and the session's spend count it.
  */
 export function measureAbortedCall(options: ExecuteOptions, messages: Message[], text: string): CallUsage {
@@ -259,8 +259,8 @@ export function measureAbortedCall(options: ExecuteOptions, messages: Message[],
 /**
  * Runs provider.generate() inside a `chat {model}` span parented to the
  * run's `invoke_agent` span, followed by the onLLMResponse callback and
- * postGenerate hooks. A steer (`callSignal`, LOU-V10) rejects it at once.
- * `partial` collects the text the call streamed so far (Eve CORE-F11).
+ * postGenerate hooks. A steer (`callSignal`) rejects it at once.
+ * `partial` collects the text the call streamed so far.
  */
 export function generateInSpan(
   options: ExecuteOptions,
@@ -272,7 +272,7 @@ export function generateInSpan(
   partial?: { text: string }
 ): Promise<GeneratedStep> {
   const { exporter, onLLMResponse, hooks, redactContent } = options;
-  // LOU-D46.2: the one place a run's model call is routed, so eval cassettes cover every entry point.
+  // The one place a run's model call is routed, so eval cassettes cover every entry point.
   const limited = options.rateLimiter ? withRateLimit(options.provider, options.rateLimiter) : options.provider;
   const provider = interceptProvider(limited, { agent: subagentNameOf(options) ?? options.agent?.name });
   const captureContent = resolveCaptureContent(options.captureContent);
@@ -284,17 +284,17 @@ export function generateInSpan(
     init.attributes,
     async (llmSpan) => {
       const llmStart = Date.now();
-      // LOU-V2: a run with a sink (a stream, or M9: listeners) obtains the
+      // A run with a sink (a stream, or listeners) obtains the
       // step through it (streamed when the provider can); everything around it is the same.
       const runEvents = runEventsOf(options);
       const onOutput = () => options.inputQueue?.callOutput();
-      // N5b: the sink holds the step's streamed output until the parallel input guardrails pass.
+      // The sink holds the step's streamed output until the parallel input guardrails pass.
       const hold = inputCheck?.verdict;
       const request = recordingRetries(generateRequest, llmSpan);
       const generated = settleHostedFinish(
         await abortable(
           runEvents ? runEvents.generate(provider, request, onOutput, hold, partial && ((text) => (partial.text += text))) : provider.generate(request),
-          // Eve CORE-F15: the run's signal too, so a provider that ignores it does not hold an aborted run.
+          // The run's signal too, so a provider that ignores it does not hold an aborted run.
           anySignal(callSignal, options.signal)
         )
       );
@@ -303,7 +303,7 @@ export function generateInSpan(
       // A fallback's call is booked under the model that served it.
       const measured = measureUsage(generated.servedBy?.model ?? resolveModel(options) ?? provider.name, messages, generated);
       if (inputCheck) {
-        // N5b: a reply that came first waits for the checks; a trip (which aborts `callSignal`) discards it.
+        // A reply that came first waits for the checks; a trip (which aborts `callSignal`) discards it.
         inputCheck.response = { generated, measured };
         await inputCheck.verdict;
         callSignal?.throwIfAborted();
@@ -329,7 +329,7 @@ export function generateInSpan(
 }
 
 /**
- * LOU-T4 (Factor 9): compact whatever the provider adapter threw - a raw
+ * Factor 9: compact whatever the provider adapter threw - a raw
  * 'ai'-SDK APICallError/LoadAPIKeyError/RetryError, or a bare network
  * error - into a small CompactedProviderError before it goes anywhere near
  * the caller or `messages`. See errors.ts's `compactProviderError()` doc

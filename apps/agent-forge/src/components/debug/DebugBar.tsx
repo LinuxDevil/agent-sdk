@@ -48,7 +48,7 @@ function LiveMessages({ debugState }: { debugState: DebugState }) {
 }
 
 /**
- * O3: step-through controls + live paused state, shown above the Trace tab
+ * Step-through controls + live paused state, shown above the Trace tab
  * whenever a breakpoint has been hit (or `debugMode` is on). "Paused" here
  * is a real await inside AgentExecutor's onLLMRequest/onLLMResponse/
  * onToolCall/onToolResult hooks (see server/debugController.ts) - Step

@@ -1,6 +1,6 @@
 /**
  * `lousho chat <path> [--model provider/model] [--session id] [--store sqlite:<file>]`
- * - a terminal REPL for an agent (LOU-D33). The path is what `lousho dev`
+ * - a terminal REPL for an agent. The path is what `lousho dev`
  * takes (spec file, agent directory or TS module); the loop itself lives in
  * chatRepl.ts. Returns the exit code.
  */
@@ -37,7 +37,7 @@ The path is a spec file (.yaml/.yml/.json), an agent directory, or a .ts/.js mod
 ./.env is loaded when it exists (variables already set win).
 
 Options:
-  --model provider/model   use another model (e.g. openai/gpt-4o-mini)
+  --model provider/model   use another model (e.g. openai/gpt-4.1-mini)
   --session id             resume or name the session
   --store sqlite:<file>    keep sessions in a SQLite file (default: in memory)
   --traces[=dir]           write local trace files (default .lousho/traces)

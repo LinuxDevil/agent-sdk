@@ -16,7 +16,7 @@ export function nextTabId<T extends string>(ids: readonly T[], current: T, key: 
 }
 
 /**
- * Eve DUI-F9: roving-focus keyboard handler for a `role="tablist"` - the
+ * Roving-focus keyboard handler for a `role="tablist"` - the
  * arrow keys (and Home/End) select and focus the neighbouring tab, as the
  * WAI-ARIA tabs pattern expects. Only the active tab is in the Tab order.
  */

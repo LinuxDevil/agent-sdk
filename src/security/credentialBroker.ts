@@ -1,5 +1,5 @@
 /**
- * Credential broker (LOU-X12): a host-side HTTP forward proxy that adds auth
+ * Credential broker: a host-side HTTP forward proxy that adds auth
  * headers for allowed hosts, so a sandboxed command can call an authenticated
  * API without the token ever entering its environment.
  *
@@ -13,7 +13,7 @@
  * allowlist is enforced on the tunnel target, but headers cannot be seen or
  * added (no TLS interception).
  *
- * `listen()` (LOU-X12.2) adds a listener on another address, e.g. the gateway
+ * `listen()` adds a listener on another address, e.g. the gateway
  * of an internal Docker network, that serves only peers from one subnet.
  */
 
@@ -49,7 +49,7 @@ export interface CredentialBrokerOptions {
   pathFormScheme?: 'https' | 'http';
 }
 
-/** An extra listener (LOU-X12.2), e.g. on an internal Docker network's gateway address. */
+/** An extra listener, e.g. on an internal Docker network's gateway address. */
 export interface BrokerListenOptions {
   /** Address to bind, e.g. `172.18.0.1`. */
   host: string;
@@ -80,7 +80,7 @@ export interface CredentialBroker {
   readonly env: Readonly<Record<string, string>>;
   /** A base URL that reaches `https://<host>` with the injected headers: `<url>/__broker/<host>`. */
   baseUrl(host: string): string;
-  /** Also listens on `host`, for peers in `clients` only (LOU-X12.2). `SubprocessSandbox` calls it for its Docker network. */
+  /** Also listens on `host`, for peers in `clients` only. `SubprocessSandbox` calls it for its Docker network. */
   listen(options: BrokerListenOptions): Promise<BrokerListener>;
   /** Stops every listener and destroys every open client and upstream socket. */
   close(): Promise<void>;

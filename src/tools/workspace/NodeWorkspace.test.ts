@@ -65,10 +65,11 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  fs.rmSync(tmp, { recursive: true, force: true });
+  // On Windows taskkill ends a killed command's grandchildren asynchronously; one can still hold root/ as its cwd here.
+  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 });
 
-describe('NodeWorkspace file system (LOU-X6)', () => {
+describe('NodeWorkspace file system', () => {
   it('requires an existing root', () => {
     expect(() => new NodeWorkspace({ root: '' })).toThrow(/'root' is required/);
     expect(() => new NodeWorkspace({ root: path.join(tmp, 'missing') })).toThrow(/does not exist/);
@@ -111,7 +112,7 @@ describe('NodeWorkspace file system (LOU-X6)', () => {
     expect(await exec(tools.glob, { pattern: '**/*.txt' })).toBe('tool/x.txt');
   });
 
-  // Eve TOOLS-F7: decoding as UTF-8 and writing back replaced every non-UTF-8 byte with U+FFFD.
+  // Decoding as UTF-8 and writing back replaced every non-UTF-8 byte with U+FFFD.
   it('edit_file refuses a file that is not UTF-8 and leaves its bytes alone', async () => {
     const latin1 = Buffer.from([0x63, 0x61, 0x66, 0xe9, 0x20, 0x3d, 0x20, 0x31, 0x0a, 0x78, 0x20, 0x3d, 0x20, 0x32, 0x0a]);
     fs.writeFileSync(path.join(rootDir, 'legacy.ini'), latin1);
@@ -234,7 +235,7 @@ describe('NodeWorkspace file system (LOU-X6)', () => {
   });
 });
 
-describe('NodeWorkspace shell (LOU-X6)', () => {
+describe('NodeWorkspace shell', () => {
   it('returns stdout, stderr and the exit code', async () => {
     const result = await ws.exec(node("process.stdout.write('out');process.stderr.write('err');process.exit(3)"));
     expect(result).toEqual({ stdout: 'out', stderr: 'err', exitCode: 3, timedOut: false });
@@ -262,7 +263,7 @@ describe('NodeWorkspace shell (LOU-X6)', () => {
     }
   });
 
-  it('a command printing its environment sees only allowlisted names, never planted secrets (LOU-X11)', async () => {
+  it('a command printing its environment sees only allowlisted names, never planted secrets', async () => {
     const planted = { FAKE_SECRET_FOR_TEST: 'fake-secret-x11', FAKE_API_KEY_FOR_TEST: 'fake-key-x11' };
     Object.assign(process.env, planted, { FAKE_ALLOWED_FOR_TEST: 'allowed-x11' });
     try {
@@ -341,4 +342,28 @@ describe('NodeWorkspace shell (LOU-X6)', () => {
       aborted: true,
     });
   }, 30_000);
+});
+
+describe('NodeWorkspace file tools keep out of .git (consumer harness H1-2)', () => {
+  it('read-only tools never return a checkout token or a worktree gitdir host path', async () => {
+    const repo = path.join(tmp, 'repo');
+    fs.mkdirSync(path.join(repo, '.git'), { recursive: true });
+    fs.mkdirSync(path.join(repo, 'wt'));
+    fs.writeFileSync(path.join(repo, '.git', 'config'), '[http "https://github.com/"]\n\textraheader = AUTHORIZATION: basic c2VjcmV0\n');
+    fs.writeFileSync(path.join(repo, 'wt', '.git'), `gitdir: ${repo}/.git/worktrees/wt\n`);
+    fs.writeFileSync(path.join(repo, 'README.md'), '# repo\n');
+    const ro = Object.fromEntries(createFsTools(new NodeWorkspace({ root: repo }), { readOnly: true, ignore: [] }).map((t) => [t.name, t]));
+    for (const p of ['.git/config', './.git/config', 'wt/../.git/config', '.git\\config', 'wt/.git', '.git/']) {
+      await expect(exec(ro.read_file, { path: p })).rejects.toThrow(WorkspaceError);
+    }
+    if (IS_WINDOWS || process.platform === 'darwin') {
+      await expect(exec(ro.read_file, { path: '.GIT/CONFIG' })).rejects.toThrow(/is denied/);
+    }
+    await expect(exec(ro.list_dir, { path: '.git' })).rejects.toThrow(/is denied/);
+    await expect(exec(ro.grep, { pattern: 'AUTHORIZATION', path: '.git/config' })).rejects.toThrow(/is denied/);
+    await expect(exec(ro.glob, { pattern: '*', path: '.git' })).rejects.toThrow(/is denied/);
+    expect(await exec(ro.grep, { pattern: 'AUTHORIZATION|gitdir' })).toMatch(/^No matches/);
+    expect(await exec(ro.glob, { pattern: '**' })).toBe('README.md');
+    expect(await exec(ro.list_dir, {})).toBe('README.md\nwt/');
+  });
 });

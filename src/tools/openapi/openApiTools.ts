@@ -1,5 +1,5 @@
 /**
- * `openApiTools()` (N8): an OpenAPI 3.0 / 3.1 document becomes one tool per
+ * `openApiTools()`: an OpenAPI 3.0 / 3.1 document becomes one tool per
  * operation. The document is parsed once here; each tool's `execute` only
  * builds a request, sends it and shapes the response.
  */

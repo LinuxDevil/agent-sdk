@@ -11,5 +11,6 @@
   "hooks": "hooks.ts",
   "approve": "approve.ts",
   "limits": { "maxCostUsd": 0.05, "onExceeded": "stop" },
-  "modelSettings": { "maxTokens": 2048, "temperature": 0.2 }
+  "modelSettings": { "maxTokens": 2048, "temperature": 0.2 },
+  "retry": { "maxRetries": 4, "timeoutMs": 30000, "backoff": { "initialMs": 1000 } }
 }

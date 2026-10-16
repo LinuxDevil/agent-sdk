@@ -1,7 +1,7 @@
 /**
  * Pure helpers for `serveMcp`. Kept apart from `buildServer` so that importing
  * `serveMcp` does not load `@modelcontextprotocol/sdk` (it is loaded on first
- * `serveMcp()` call, LOU-D19).
+ * `serveMcp()` call).
  */
 import type { McpToolAnnotations } from '../../../types';
 import type { DefinedTool } from '../../defineTool';

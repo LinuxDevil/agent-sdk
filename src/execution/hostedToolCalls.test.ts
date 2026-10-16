@@ -1,5 +1,5 @@
 /**
- * N1a: hosted tool calls in the run loop, driven by `mockModel` hosted turns:
+ * Hosted tool calls in the run loop, driven by `mockModel` hosted turns:
  * mockModel itself (generate and stream), events on both paths, the
  * transcript cap, usage (also rolled up from a sub-agent), the finish-reason
  * rule, traces, the fingerprint, and that sub-agents do not inherit the
@@ -243,7 +243,7 @@ describe('approvals', () => {
   });
 });
 
-describe('hosted tools under permission modes (N1a x N4)', () => {
+describe('hosted tools under permission modes', () => {
   const allHosted = () => [webSearch(), fileSearch({ vectorStoreIds: ['vs_1'] }), codeInterpreter(), hostedTool('image_generation', { type: 'provider' })];
   const sentNames = (model: ReturnType<typeof mockModel>) => model.calls.map((call) => call.hostedTools?.map((tool) => tool.name));
 

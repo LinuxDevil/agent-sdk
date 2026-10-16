@@ -14,7 +14,7 @@ async function freePort(): Promise<number> {
   });
 }
 
-describe('ops-pipeline entry point (DUI-F6)', () => {
+describe('ops-pipeline entry point', () => {
   it('binds MONITOR_PORT/SLACK_PORT so the documented trigger script reaches it', async () => {
     const monitorPort = await freePort();
     const slackPort = await freePort();

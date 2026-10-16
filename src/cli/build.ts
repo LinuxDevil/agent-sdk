@@ -1,5 +1,5 @@
 /**
- * `lousho build --target=<name> --agent=<path> [--out=<dir>]` (LOU-I1).
+ * `lousho build --target=<name> --agent=<path> [--out=<dir>]`.
  *
  * Looks the target up in the DeploymentAdapter registry (src/deploy/types.ts)
  * and drives it through scaffold() -> build() -> describe(), printing the

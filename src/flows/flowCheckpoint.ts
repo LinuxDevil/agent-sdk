@@ -1,5 +1,5 @@
 /**
- * Eve DUR-F17: durable flow runs. With a `checkpointStore` and a `runId`,
+ * Durable flow runs. With a `checkpointStore` and a `runId`,
  * FlowExecutor saves the run's state after every completed node, and
  * `FlowExecutor.resume()` continues it, skipping the nodes that completed.
  *

@@ -1,5 +1,7 @@
 name: CI
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
 jobs:
@@ -9,7 +11,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          # `undici` (a direct dependency, ^8.11.2 as of LOU-K3's Cloudflare
+          # `undici` (a direct dependency, ^8.11.2 as of the Cloudflare
           # Worker LLM provider support) declares an engines requirement of
           # node >=22.19.0. Under Node 20, requiring it (indirectly, via
           # anything that touches its Cache/fetch internals) throws
@@ -38,7 +40,7 @@ jobs:
         # the default heap, like the peers job's build below.
         env:
           NODE_OPTIONS: --max-old-space-size=12288
-      # API surface gate (A7): every exports entry has a checked-in api/*.api.md
+      # API surface gate: every exports entry has a checked-in api/*.api.md
       # report; a public-API change fails here until `npm run api:update` is run
       # and the diff committed. Runs only in the main job so the report reflects
       # the default peers, not the `peers` matrix's ai/zod pairings.
@@ -54,16 +56,16 @@ jobs:
       # Compile-time API tests (*.test-d.ts): inference of defineTool, flow types, fs adapter.
       - run: npm run test:types
       - run: npm run docs:llms:check
-      # TypeDoc "not documented" count may only go down (Eve DUI-F18).
+      # TypeDoc "not documented" count may only go down.
       - run: npm run docs:ratchet
-      # registry/dist is generated from registry/; fail if stale (M7b).
+      # registry/dist is generated from registry/; fail if stale.
       - run: npm run registry:check
       - run: npm run test:coverage
       # Agent Forge (apps/agent-forge) imports the SDK as
       # `@lousho/build-ai-agent` via `file:../..`, i.e. the root dist/ built
       # above, so these run after the root build. Its client and server
       # suites were never run in CI before, which is how a Stop-then-Run
-      # resume regression (LOU-U10) landed unnoticed.
+      # resume regression landed unnoticed.
       - run: npm run typecheck --workspace apps/agent-forge
       - run: npm run typecheck:server --workspace apps/agent-forge
       - run: npm run test --workspace apps/agent-forge -- --run
@@ -72,14 +74,14 @@ jobs:
       # Bare `fallow` fails on any finding. Runs after the coverage step because
       # its CRAP scores read coverage/coverage-final.json.
       - run: npm run fallow
-  # LOU-M8: every `ai` and zod pairing the peer ranges accept, installed for real on top of the
+  # Every `ai` and zod pairing the peer ranges accept, installed for real on top of the
   # default install (`npm ci`; `--no-save` leaves the lockfile alone). The default dev install is
   # `ai` 4 with zod 3 and runs in `ci`. `ollama-ai-provider-v2` peers on zod 4, so only the zod 4
   # entries install it; ollamaV2.contract.test.ts runs against the real package in those two.
   # `flags` for those two: ollama-ai-provider-v2 is an optional peer of this package, which npm does not
   # install by name unless `--save-prod` (in-memory only with --no-save) makes it a dependency, and the dev
   # install's ollama-ai-provider (v1, zod 3 peer) conflicts with zod 4, hence `--legacy-peer-deps`.
-  # The v4-only tests are gated by itOnAiV4/describeOnAiV4 (LOU-D28b); Worker bundle tests run on all.
+  # The v4-only tests are gated by itOnAiV4/describeOnAiV4; Worker bundle tests run on all.
   peers:
     name: peers (${{ matrix.name }})
     runs-on: ubuntu-latest
@@ -121,7 +123,7 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=12288
       - run: npm run build --workspace=packages/create-lousho-agent
       - run: npx vitest run
-  # LOU-D49: what `npm pack` produces must install and work in a fresh project. The script
+  # What `npm pack` produces must install and work in a fresh project. The script
   # builds, packs the SDK and create-lousho-agent, runs `npm publish --dry-run` (never a real
   # publish), installs the tarballs plus peers from the registry, and loads every export in
   # ESM and CJS, runs a mock-model turn, the lousho bin and tsc (bundler and node16).
@@ -138,3 +140,6 @@ jobs:
         # pack-smoke runs `npm run build` itself, which needs the same heap.
         env:
           NODE_OPTIONS: --max-old-space-size=12288
+      # Hello-world bundle and tarball unpacked size against scripts/size-budget.json.
+      # pack-smoke above leaves the SDK and Agent Forge builds in place, so the tarball figure is the real one.
+      - run: npm run size-check

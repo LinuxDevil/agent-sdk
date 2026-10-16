@@ -125,7 +125,7 @@ function registerDirectTool(server: McpServer, tool: DefinedTool): void {
 /**
  * Builds an `McpServer` exposing the agent tool plus the directly exposed
  * tools. Async because `@modelcontextprotocol/sdk` is loaded on first use,
- * not when the SDK is imported (LOU-D19).
+ * not when the SDK is imported.
  */
 export async function buildServer(spec: ServerSpec): Promise<McpServer> {
   const { McpServer } = await loadOptionalPeer('@modelcontextprotocol/sdk', () =>

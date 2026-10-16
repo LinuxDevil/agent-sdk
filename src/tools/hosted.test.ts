@@ -1,5 +1,5 @@
 /**
- * N1a: the hosted tool helpers, `isHostedTool`, the duplicate-name error, and
+ * The hosted tool helpers, `isHostedTool`, the duplicate-name error, and
  * how `createAgent()` separates hosted tools from local ones (array and
  * record forms), checked through the requests `mockModel` records.
  */

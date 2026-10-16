@@ -1,9 +1,9 @@
 /**
- * The `subagents` option (LOU-Y3): registers ONE `task` tool through which a
+ * The `subagents` option: registers ONE `task` tool through which a
  * lead agent delegates work to named sub-agents, and lists them (name +
  * description) in the lead's system prompt. Sub-agents run through the
  * shared delegation core (`runSubagent()`), so they inherit the lead run's
- * runtime (LOU-Y1).
+ * runtime.
  */
 
 import { z } from 'zod';
@@ -33,9 +33,9 @@ import type { PausedBackgroundTask, SuspendedBackgroundTasks } from '../executio
 
 /** Name of the tool the lead model delegates with. */
 const TASK_TOOL = 'task';
-/** Tools that observe and steer background tasks (LOU-Y4), registered with `task`. */
+/** Tools that observe and steer background tasks, registered with `task`. */
 const BACKGROUND_TOOLS = ['agent_status', 'agent_await', 'agent_cancel'] as const;
-/** Told to the model by `task` and `agent_status` (M4). */
+/** Told to the model by `task` and `agent_status`. */
 const AWAIT_APPROVAL_HINT = 'A task awaiting approval continues only when you call agent_await on it.';
 
 /** Same default as `ExecuteOptions.maxSteps`. */
@@ -43,12 +43,12 @@ const DEFAULT_MAX_STEPS = 10;
 
 /** An agent usable as a sub-agent: its run configuration and description. */
 interface RegisteredSubagent {
-  /** A function for an agent whose config is resolved per run (LOU-V15): called with the task prompt and the caller. */
+  /** A function for an agent whose config is resolved per run: called with the task prompt and the caller. */
   spec: SubagentSpec | ((prompt: string, caller: SubagentCaller) => Promise<SubagentSpec>);
   description?: string;
 }
 
-/** Eve CORE-F7: what a dynamic sub-agent's config functions see of the run that started it. */
+/** What a dynamic sub-agent's config functions see of the run that started it. */
 export interface SubagentCaller {
   /** The lead run's session (a session turn's `<id>.turn-<n>` counts as `<id>`). */
   sessionId?: string;
@@ -67,7 +67,7 @@ export function subagentCallerOf(toolOptions: unknown): SubagentCaller {
   };
 }
 
-/** A sub-agent to run: a local one by its spec, or a deployed one (LOU-Y7). */
+/** A sub-agent to run: a local one by its spec, or a deployed one. */
 type ResolvedSubagent = RegisteredSubagent | { remote: RemoteSubagent; description: string };
 
 const registeredSubagents = new WeakMap<object, RegisteredSubagent>();
@@ -77,7 +77,7 @@ export function registerSubagent(agent: object, registration: RegisteredSubagent
   registeredSubagents.set(agent, registration);
 }
 
-/** The run spec `agent` was registered with as a sub-agent (Eve MA-F5: the agent-directory `delegate_to_<name>` alias). */
+/** The run spec `agent` was registered with as a sub-agent (the agent-directory `delegate_to_<name>` alias). */
 export function subagentSpecOf(agent: object): RegisteredSubagent['spec'] | undefined {
   return registeredSubagents.get(agent)?.spec;
 }
@@ -185,14 +185,14 @@ async function resolveSubagent(subagents: Subagents, name: string, names: readon
   return registrationOf(agent, name, 'task');
 }
 
-function subagentsPromptBlock(summaries: readonly SubagentSummary[], background: boolean): string {
+function subagentsPromptBlock(summaries: readonly SubagentSummary[], { background, continuation }: TaskToolOptions): string {
   const backgroundUse = background
     ? ' With `background: true` a task runs while you keep working: check it with `agent_status`, collect its answer with `agent_await` before you finish, or stop it with `agent_cancel`.'
     : '';
   return [
     '## Available sub-agents',
     '',
-    `Delegate a self-contained task to one of these with the \`${TASK_TOOL}\` tool. A sub-agent sees only the prompt you give it, not this conversation, so include everything it needs. Several \`${TASK_TOOL}\` calls in one turn run in parallel.${backgroundUse} Every result ends with a taskId: pass it back as \`taskId\` to ask that sub-agent a follow-up with its earlier work in context, or with \`mode: 'fork'\` to branch a copy of that conversation.`,
+    `Delegate a self-contained task to one of these with the \`${TASK_TOOL}\` tool. A sub-agent sees only the prompt you give it, not this conversation, so include everything it needs. Several \`${TASK_TOOL}\` calls in one turn run in parallel.${backgroundUse}${continuation ? CONTINUATION_USE : ''}`,
     '',
     ...summaries.map((s) => `- ${s.name}: ${s.description.replace(/\s+/g, ' ').trim()}`),
   ].join('\n');
@@ -215,7 +215,7 @@ function failureReason(name: string, result: ExecutionResult, maxSteps: number):
 
 /**
  * The `task` tool result: the sub-agent's final text plus a metadata footer. A sub-agent with an `output` schema
- * (LOU-V4.2) answers with its validated object as JSON in place of the text, then the same footer. Throws when it did not finish.
+ * answers with its validated object as JSON in place of the text, then the same footer. Throws when it did not finish.
  */
 function taskResult(name: string, result: ExecutionResult, maxSteps: number, taskId: string): string {
   if (result.finishReason !== 'stop' && result.finishReason !== 'length') {
@@ -223,7 +223,7 @@ function taskResult(name: string, result: ExecutionResult, maxSteps: number, tas
   }
   const footer = `[sub-agent '${name}': ${result.steps} step(s), finish reason '${result.finishReason}', taskId '${taskId}']`;
   const body = result.object === undefined ? result.text : JSON.stringify(result.object);
-  // Eve MA-F15: say so plainly, or the lead takes a cut-off answer for a whole one.
+  // Say so plainly, or the lead takes a cut-off answer for a whole one.
   const note = result.finishReason === 'length' ? `\n${TRUNCATED_NOTE}` : '';
   return body ? `${body}\n\n${footer}${note}` : `${footer}${note}`;
 }
@@ -235,7 +235,7 @@ const TRUNCATED_NOTE =
 type TaskArgs = { agent: string; prompt: string; description?: string; background?: boolean; taskId?: string; mode?: TaskMode };
 type ToolOptions = { abortSignal?: AbortSignal; onDelegatedUsage?: (usage: RunUsage) => void } | undefined;
 
-/** The child conversation a `task` call runs in (LOU-Y6). */
+/** The child conversation a `task` call runs in. */
 interface ChildTask {
   taskId: string;
   /** The earlier turns of a resumed or forked task. */
@@ -282,22 +282,22 @@ function withAbortSignal(toolOptions: ToolOptions, abortSignal: AbortSignal): { 
 
 /**
  * A deployed sub-agent's task: its final text, or a thrown coded error (never wrapped, so the code stays visible).
- * A resumed task continues in its remote session (LOU-Y7.2), saved up front so a task whose remote run paused for
- * approval can be continued. LOU-Y7.3: with an approval store, a remote pause pauses the lead; re-entered on resume,
+ * A resumed task continues in its remote session, saved up front so a task whose remote run paused for
+ * approval can be continued. with an approval store, a remote pause pauses the lead; re-entered on resume,
  * the call decides the remote approval its suspension recorded (remote session id, approval id) with the lead's decision.
  */
 async function runRemoteTask(remote: RemoteSubagent, args: TaskArgs, toolOptions: ToolOptions, task: ChildTask): Promise<string> {
   const scope = toolCallScopeOf(toolOptions);
-  // N4: a deployed sub-agent runs under its own server's permissions, so it cannot be held to the lead's mode.
+  // A deployed sub-agent runs under its own server's permissions, so it cannot be held to the lead's mode.
   const mode = scope ? permissionModeOf(scope.runtime) : 'default';
   if (mode === 'plan') throw toolFailure(`${PLAN_MODE_REASON} The sub-agent '${args.agent}' is deployed elsewhere and does not inherit plan mode.`);
   const paused = scope?.resume && { snapshot: scope.resume.suspension.snapshot, decision: scope.resume.decision };
   const sessionId = paused?.snapshot.sessionId ?? task.remoteSessionId ?? newId('task');
   await task.save({ messages: [], remoteSessionId: sessionId });
   const decision = paused && { approvalId: paused.snapshot.pendingToolCall.id, approved: paused.decision.approved, note: paused.decision.note };
-  // N4: in dontAsk mode nothing pauses: a remote approval fails the task instead.
+  // In dontAsk mode nothing pauses: a remote approval fails the task instead.
   const pausable = scope?.runtime.approvalStore !== undefined && mode !== 'dontAsk';
-  // M10b: the remote run's usage rolls into the lead's totals, like a local child's (LOU-V5). A continuation reports
+  // The remote run's usage rolls into the lead's totals, like a local child's. A continuation reports
   // the remote run's usage from its start: only what it spent since the pause (kept on the pause snapshot) is added.
   const reportUsage = scope?.onDelegatedUsage ?? toolOptions?.onDelegatedUsage;
   let reported: RunUsage | undefined;
@@ -322,16 +322,16 @@ interface TaskContext {
   names: readonly string[];
   background: BackgroundTasks;
   sessions: TaskSessions;
-  /** M4: the `task` call of each background task, so a paused one can be resumed from the lead's suspension. */
+  /** The `task` call of each background task, so a paused one can be resumed from the lead's suspension. */
   backgroundCalls: Map<string, TaskArgs>;
 }
 
 /**
- * The child conversation of a `task` call (LOU-Y6): a new one, the one of
+ * The child conversation of a `task` call: a new one, the one of
  * `taskId` (resume), or a new one starting from a copy of it (fork). A call
  * re-entered after an approval keeps the taskId it paused with.
  */
-async function openTask(ctx: TaskContext, args: TaskArgs, reentered: boolean): Promise<ChildTask> {
+async function openTask(ctx: TaskContext, args: TaskArgs, reentered: string | undefined): Promise<ChildTask> {
   const child = (taskId: string, record?: TaskRecord): ChildTask => ({
     taskId,
     history: record?.messages ?? [],
@@ -339,7 +339,7 @@ async function openTask(ctx: TaskContext, args: TaskArgs, reentered: boolean): P
     save: (saved) => ctx.sessions.save(taskId, args.agent, saved),
   });
   const mode = args.mode ?? (args.taskId === undefined ? 'new' : 'resume');
-  if (reentered && args.taskId) return child(args.taskId);
+  if (reentered) return child(reentered);
   if (mode === 'new') return child(await ctx.sessions.allocate());
   if (args.taskId === undefined) throw taskNotFound(`mode '${mode}' needs the taskId of an earlier task.`);
   if (ctx.background.isActive(args.taskId)) throw busy(args.taskId);
@@ -347,6 +347,17 @@ async function openTask(ctx: TaskContext, args: TaskArgs, reentered: boolean): P
   if (mode === 'resume') return child(args.taskId, record);
   if (record.remoteSessionId) throw toolFailure(`Task '${args.taskId}' ran on a remote agent, whose session cannot be copied: use mode 'resume' or 'new'.`);
   return child(await ctx.sessions.allocate(), record);
+}
+
+/**
+ * The taskId a `task` call re-entered after an approval paused with (saved on its suspension, so it is there
+ * also when the tool has no `taskId` argument: subagentOptions `continuation: false`).
+ */
+function reenteredTaskId(toolOptions: ToolOptions): string | undefined {
+  const resume = toolCallScopeOf(toolOptions)?.resume;
+  if (!resume) return undefined;
+  const taskId = (resume.suspension.args as { taskId?: unknown }).taskId;
+  return typeof taskId === 'string' ? taskId : undefined;
 }
 
 /** Runs (or, inside a resume, resumes) the child of a `task` call with `toolOptions`. */
@@ -358,7 +369,7 @@ function runChild(ctx: TaskContext, resolved: ResolvedSubagent, args: TaskArgs, 
 
 async function startTask(ctx: TaskContext, args: TaskArgs, toolOptions: ToolOptions): Promise<unknown> {
   const resolved = await resolveSubagent(ctx.subagents, args.agent, ctx.names);
-  const task = await openTask(ctx, args, toolCallScopeOf(toolOptions)?.resume !== undefined);
+  const task = await openTask(ctx, args, reenteredTaskId(toolOptions));
   const run = (options: ToolOptions) => runChild(ctx, resolved, args, options, task);
   if (!args.background) {
     return run(toolOptions);
@@ -379,33 +390,53 @@ function unknownSubagent(names: readonly string[]): (input: unknown) => string {
   return (input) => (input === undefined ? 'Required' : `Unknown sub-agent ${JSON.stringify(input)}. Expected one of: ${valid}`);
 }
 
-function createTaskTool(ctx: TaskContext, background: boolean): DefinedTool {
+/** What the `task` tool offers (subagentOptions `background` and `continuation`). */
+interface TaskToolOptions {
+  background: boolean;
+  continuation: boolean;
+}
+
+const CONTINUATION_USE =
+  " Every result ends with a taskId: pass it back as `taskId` (with the same `agent`) to ask that sub-agent a follow-up with its earlier work in context, or with `mode: 'fork'` to branch a copy of that conversation. Omit `taskId` to start a new task.";
+
+function createTaskTool(ctx: TaskContext, { background, continuation }: TaskToolOptions): DefinedTool {
   const backgroundArg = z
     .boolean()
     .optional()
     .describe(`true: start the sub-agent and return a taskId at once; collect the answer later with agent_await. ${AWAIT_APPROVAL_HINT}`);
-  // N4: usable in plan mode because a local sub-agent inherits the mode (a remote one is refused, see runRemoteTask).
+  // Usable in plan mode because a local sub-agent inherits the mode (a remote one is refused, see runRemoteTask).
   return allowInPlanMode(defineTool({
     name: TASK_TOOL,
     description:
       'Delegate a self-contained task to a sub-agent listed under "Available sub-agents" and get its final answer back. ' +
-      'The sub-agent sees only your prompt, not this conversation. The result ends with a taskId: pass it back as taskId ' +
-      'to send that sub-agent a follow-up with its earlier work still in context, or with mode "fork" to branch a copy of it.',
+      'The sub-agent sees only your prompt, not this conversation.' +
+      (continuation
+        ? ' The result ends with a taskId: pass it back as taskId (with the same agent) to send that sub-agent a follow-up ' +
+          'with its earlier work still in context, or with mode "fork" to branch a copy of it. Omit taskId for a new task.'
+        : ''),
     input: z.object({
       agent: z.enum(ctx.names as [string, ...string[]], anyError(unknownSubagent(ctx.names))).describe('Name of the sub-agent, exactly as listed'),
       prompt: z.string().describe('Complete instructions for the sub-agent, including all context it needs'),
-      // Eve MA-F14: optional, so a lead that sends none is not refused.
+      // Optional, so a lead that sends none is not refused.
       description: z.string().optional().describe('A short (3-5 word) label for this task'),
-      // Eve MA-F14: offered only while background tasks are on (subagentOptions.background).
+      // Offered only while background tasks are on (subagentOptions.background).
       ...(background ? { background: backgroundArg } : {}),
-      taskId: z.string().optional().describe('The taskId of an earlier task of the same agent, to continue (or fork) it'),
-      mode: z
-        .enum(['new', 'resume', 'fork'])
-        .optional()
-        .describe("'new' (default without taskId): a fresh sub-agent. 'resume' (default with taskId): continue that task. 'fork': a new task starting from a copy of it"),
+      // Offered only while continuation is on (subagentOptions.continuation).
+      ...(continuation ? continuationArgs() : {}),
     }),
-    execute: (args, options) => startTask(ctx, { ...args, background: args.background === true }, options),
+    execute: (args, options) => startTask(ctx, { ...(args as TaskArgs), background: args.background === true }, options),
   }));
+}
+
+/** The `task` arguments that continue an earlier task. */
+function continuationArgs() {
+  return {
+    taskId: z.string().optional().describe('Only to continue (or fork) an earlier task of the same agent: its taskId. Omit it for a new task'),
+    mode: z
+      .enum(['new', 'resume', 'fork'])
+      .optional()
+      .describe("'new' (default without taskId): a fresh sub-agent. 'resume' (default with taskId): continue that task. 'fork': a new task starting from a copy of it"),
+  };
 }
 
 type AwaitArgs = { taskId?: string; taskIds?: string[]; timeoutMs?: number };
@@ -416,7 +447,7 @@ function awaitResult(args: AwaitArgs, views: BackgroundTaskView[]): unknown {
 }
 
 /**
- * M4: `pause` (of background task `taskId`) as the pause of the lead's `agent_await` call. The re-entered
+ * `pause` (of background task `taskId`) as the pause of the lead's `agent_await` call. The re-entered
  * call gets `views` (what it returns once the task is decided) in its args; the `task` call and the other
  * paused tasks, each with its paused run, stay on the suspension record (`suspended`).
  */
@@ -426,13 +457,13 @@ function pauseOnTask(pause: SubagentApprovalPause, taskId: string, suspended: Su
   return pause;
 }
 
-/** M4: the pause of the lead on the first of `paused` (the rest wait on the suspension), or none. */
+/** The pause of the lead on the first of `paused` (the rest wait on the suspension), or none. */
 function pauseOnFirst([first, ...waiting]: readonly PausedBackgroundTask[], views: BackgroundTaskView[]): SubagentApprovalPause | undefined {
   if (!first) return undefined;
   return pauseOnTask(new SubagentApprovalPause(String(first.task.agent), first.snapshot), first.taskId, { task: first.task, waiting }, views);
 }
 
-/** Waits for background tasks; pauses the lead on the first one paused for approval (M4). */
+/** Waits for background tasks; pauses the lead on the first one paused for approval. */
 async function awaitTasks(ctx: TaskContext, args: AwaitArgs, signal: AbortSignal | undefined): Promise<unknown> {
   const ids = args.taskIds ?? (args.taskId === undefined ? [] : [args.taskId]);
   if (ids.length === 0) throw toolFailure('agent_await: pass taskId or taskIds.');
@@ -449,7 +480,7 @@ async function awaitTasks(ctx: TaskContext, args: AwaitArgs, signal: AbortSignal
 }
 
 /**
- * M4: `agent_await` re-entered on resume. The paused task is resumed from the suspension (not from the
+ * `agent_await` re-entered on resume. The paused task is resumed from the suspension (not from the
  * run's background tasks, which ended with the paused run) with the decision, in this call: its answer
  * replaces its view, then the call pauses on the next awaited task still paused, if any.
  */
@@ -480,7 +511,7 @@ function createBackgroundTools(ctx: TaskContext): DefinedTool[] {
   return [
     defineTool({
       name: 'agent_status',
-      // N4: observing background tasks changes nothing, so plan mode can use it.
+      // Observing background tasks changes nothing, so plan mode can use it.
       annotations: { readOnlyHint: true, destructiveHint: false },
       description: `Status of one background task, or of all of them: queued, running, done, failed, cancelled or awaiting-approval, with elapsedMs. ${AWAIT_APPROVAL_HINT}`,
       input: z.object({ taskId: taskId.optional() }),
@@ -524,7 +555,7 @@ export function assertNoTaskTool(agent: AgentConfig, toolRegistry: ToolRegistry 
 type OnRunEnd = ExecuteOptions['onRunEnd'];
 
 /**
- * The run's `onRunEnd` (LOU-Y4.2): first cancels (or, with
+ * The run's `onRunEnd`: first cancels (or, with
  * `awaitBackgroundOnFinish`, awaits) the background tasks still active and
  * reports them on `result.backgroundTasks`, then calls `next`.
  */
@@ -563,7 +594,8 @@ export async function withSubagents(
   const sessions = TaskSessions.of(options.sessions, run.sessionId);
   const ctx: TaskContext = { subagents, names: summaries.map((s) => s.name), background, sessions, backgroundCalls: new Map() };
   const backgroundOn = options.background !== false;
-  const extended = withPromptTool(agent, toolRegistry, createTaskTool(ctx, backgroundOn), subagentsPromptBlock(summaries, backgroundOn));
+  const offered: TaskToolOptions = { background: backgroundOn, continuation: options.continuation !== false };
+  const extended = withPromptTool(agent, toolRegistry, createTaskTool(ctx, offered), subagentsPromptBlock(summaries, offered));
   const tools = { ...extended.agent.tools };
   for (const tool of backgroundOn ? createBackgroundTools(ctx) : []) {
     extended.toolRegistry.register(tool);

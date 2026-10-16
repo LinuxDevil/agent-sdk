@@ -1,5 +1,5 @@
 /**
- * Eve TOOLS-F6: the `grep` tool runs a regex the model wrote. A pattern that
+ * The `grep` tool runs a regex the model wrote. A pattern that
  * backtracks catastrophically (`^(a+)+$`) would block the event loop for
  * seconds or forever, and an abort could not stop it. So the pattern is
  * checked for nested unbounded quantifiers, each line is tested on at most
@@ -11,7 +11,7 @@ import { WorkspaceError } from './paths';
 
 /** Characters of each line the regex is tested against. */
 const MAX_GREP_TEST_CHARS = 2000;
-/** Default wall-clock budget for one `grep` call's matching. */
+/** Default budget for the time one `grep` call spends matching (file reads are not counted). */
 export const GREP_TIMEOUT_MS = 10_000;
 
 /**
@@ -84,6 +84,20 @@ export function assertSafePattern(pattern: string): void {
   );
 }
 
+/** A `grep` timeout; `slowRegex` is true when one file alone used (most of) the budget. */
+export class GrepTimeoutError extends WorkspaceError {
+  constructor(
+    readonly slowRegex: boolean,
+    readonly timeoutMs: number
+  ) {
+    super(
+      slowRegex
+        ? `grep stopped after ${Math.round(timeoutMs / 1000)}s of matching: the pattern is too slow on this input (it may backtrack heavily). Simplify it, or narrow the path or glob.`
+        : `grep used its ${Math.round(timeoutMs / 1000)}s matching budget across many files. Narrow the path or glob, or use a more specific pattern.`
+    );
+  }
+}
+
 /** Matches lines of one file at a time; `close()` releases it. */
 export interface LineMatcher {
   /** 1-based numbers of the lines that match, at most `max`. */
@@ -147,9 +161,10 @@ async function loadWorker(): Promise<WorkerCtor | undefined> {
 }
 
 /**
- * A matcher for `regex` with a wall-clock budget of `timeoutMs` over all
- * files. A timeout or an abort terminates the worker and rejects with a
- * WorkspaceError.
+ * A matcher for `regex` with a budget of `timeoutMs` of matching time over all
+ * files: only the time each `match()` call takes counts, not the time the
+ * caller spends reading files between calls. A timeout (a `GrepTimeoutError`)
+ * or an abort terminates the worker and rejects with a WorkspaceError.
  */
 export async function createLineMatcher(regex: RegExp, timeoutMs: number, signal?: AbortSignal): Promise<LineMatcher> {
   const Worker = await loadWorker();
@@ -158,7 +173,8 @@ export async function createLineMatcher(regex: RegExp, timeoutMs: number, signal
   }
   const worker = new Worker(WORKER_SOURCE, { eval: true, workerData: { source: regex.source, flags: regex.flags, cap: MAX_GREP_TEST_CHARS } });
   worker.unref();
-  const deadline = Date.now() + timeoutMs;
+  /** Milliseconds spent inside `match()` so far. */
+  let spent = 0;
   let closed = false;
   const close = (): void => {
     if (closed) return;
@@ -167,8 +183,11 @@ export async function createLineMatcher(regex: RegExp, timeoutMs: number, signal
   };
   const match = (content: string, max: number): Promise<number[]> =>
     new Promise<number[]>((resolve, reject) => {
+      const started = Date.now();
+      const spentBefore = spent;
       const finish = (error?: Error, hits?: number[]): void => {
         clearTimeout(timer);
+        spent += Date.now() - started;
         signal?.removeEventListener('abort', onAbort);
         worker.off('message', onMessage);
         worker.off('error', onError);
@@ -182,13 +201,9 @@ export async function createLineMatcher(regex: RegExp, timeoutMs: number, signal
       const onAbort = (): void => finish(new WorkspaceError('The operation was cancelled.'));
       const timer = setTimeout(
         () =>
-          finish(
-            new WorkspaceError(
-              `grep stopped after ${Math.round(timeoutMs / 1000)}s: the pattern is too slow on this input ` +
-                '(it may backtrack heavily). Simplify it, or narrow the path or glob.'
-            )
-          ),
-        Math.max(0, deadline - Date.now())
+          // One file that used at least half the budget alone points at the regex; otherwise the many files do.
+          finish(new GrepTimeoutError(spentBefore < timeoutMs / 2, timeoutMs)),
+        Math.max(0, timeoutMs - spentBefore)
       );
       if (signal?.aborted) return onAbort();
       signal?.addEventListener('abort', onAbort, { once: true });

@@ -84,6 +84,7 @@ interface AgentEventError {
 // @public
 interface AgentEventUsage {
     completionTokens: number;
+    costPartial?: boolean;
     costUsd?: number;
     estimated: boolean;
     hostedToolCalls?: Partial<Record<string, number>>;
@@ -286,6 +287,7 @@ interface Checkpoint {
     approvalKind?: ApprovalKind;
     attempts?: number;
     businessState?: unknown;
+    delegatedInFlight?: CheckpointUsage[];
     // (undocumented)
     finishReason?: string;
     flow?: FlowCheckpointState;
@@ -304,6 +306,7 @@ interface Checkpoint {
     stepUsage?: StepUsage[];
     // (undocumented)
     toolCalls: unknown[];
+    unstarted?: boolean;
     usage: CheckpointUsage;
 }
 
@@ -503,6 +506,7 @@ interface DefinedTool<S extends StandardSchemaV1 = StandardSchemaV1, O = unknown
 
 // @public
 interface DelegatedUsage {
+    costPartial?: boolean;
     costUsd: number | undefined;
     // (undocumented)
     estimated: boolean;
@@ -527,13 +531,13 @@ interface EnqueueResult {
 const ERROR_CODES: {
     readonly LOUSHO_GENERIC_ERROR: "Read the message above; it names what failed.";
     readonly LOUSHO_CONFIG_INVALID: "Fix the option named in the message.";
-    readonly LOUSHO_CONFIG_MISSING_PROVIDER: "Pass a model string such as createAgent({ model: 'openai/gpt-4o-mini' }), a provider instance, or set LOUSHO_MODEL or a provider API key.";
+    readonly LOUSHO_CONFIG_MISSING_PROVIDER: "Pass a model string such as createAgent({ model: 'openai/gpt-4.1-mini' }), a provider instance, or set LOUSHO_MODEL or a provider API key.";
     readonly LOUSHO_CONFIG_MISSING_AGENT: "Pass the agent to run, e.g. AgentBuilder.create().setName(...).build().";
     readonly LOUSHO_CONFIG_MISSING_INPUT: "Pass the user message (a string or a Message[]) as `input`.";
     readonly LOUSHO_CONFIG_CONFLICTING_OPTIONS: "Keep one of the two options named in the message and remove the other.";
     readonly LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE: "Pass createAgent({ store }) with `checkpoints` (e.g. memoryStore() or a SqliteStore), or drop `sessionId`.";
     readonly LOUSHO_CONFIG_RESOLVER_FAILED: "Fix the createAgent() option function named in the message; its own error is the `cause`.";
-    readonly LOUSHO_PROVIDER_SPEC_INVALID: "Write the model as '<provider>/<model>', e.g. 'openai/gpt-4o-mini'.";
+    readonly LOUSHO_PROVIDER_SPEC_INVALID: "Write the model as '<provider>/<model>', e.g. 'openai/gpt-4.1-mini'.";
     readonly LOUSHO_PROVIDER_UNKNOWN: "Use one of the supported provider prefixes listed in the message.";
     readonly LOUSHO_PROVIDER_MISSING_API_KEY: "Set the environment variable named in the message, or pass a provider instance.";
     readonly LOUSHO_PROVIDER_REQUEST_FAILED: "Check the provider status, your API key and the request; retryable failures are retried by withRetry().";
@@ -654,6 +658,7 @@ interface ExecutionResult<TObject = unknown> {
     text: string;
     // (undocumented)
     toolCalls: ToolCall[];
+    toolErrors?: number;
     usage: RunUsage;
 }
 
@@ -1185,6 +1190,7 @@ interface ModelSettings {
 // @public
 interface ModelUsage {
     calls: number;
+    costPartial?: boolean;
     costUsd?: number;
     // (undocumented)
     inputTokens: number;
@@ -1349,6 +1355,7 @@ interface PendingRun {
     approvalId?: string;
     approvalIds?: string[];
     approvalKind?: ApprovalKind;
+    attempts?: number;
     checkpointId: string;
     kind: 'session' | 'run';
     lastError?: CheckpointError;
@@ -1488,7 +1495,9 @@ interface ProviderFallbackEvent extends AgentEventBase<'provider.fallback'> {
         message: string;
     };
     from: string;
+    fromModel?: string;
     to: string;
+    toModel?: string;
 }
 
 // @public
@@ -1584,6 +1593,14 @@ interface ReasoningSettings {
 type ReasoningStartEvent = AgentEventBase<'reasoning.start'>;
 
 // @public
+interface RecoverOptions<TResult = unknown> {
+    intervalMs?: number;
+    onError?: (error: unknown, run?: PendingRun) => void;
+    onRecovered?: (run: PendingRun, result: TResult) => void;
+    signal?: AbortSignal;
+}
+
+// @public
 interface ResolveApprovalOptions {
     principal?: Principal;
     // (undocumented)
@@ -1608,7 +1625,14 @@ interface RunLimits {
     maxOutputTokens?: number;
     maxSteps?: number;
     maxTokens?: number;
+    maxToolErrors?: number;
     onExceeded?: 'stop' | 'throw';
+}
+
+// @public
+interface RunRecovery {
+    readonly done: Promise<void>;
+    stop(): Promise<void>;
 }
 
 // @public
@@ -1625,6 +1649,7 @@ interface RunUsage {
     cacheWriteTokens?: number;
     // @deprecated (undocumented)
     completionTokens: number;
+    costPartial?: boolean;
     costUsd: number | undefined;
     delegated?: DelegatedUsage;
     estimated: boolean;
@@ -1695,6 +1720,7 @@ class SDKError extends Error {
     readonly hint?: string;
     // (undocumented)
     toString(): string;
+    usage?: RunUsage;
 }
 
 // @public
@@ -1884,6 +1910,7 @@ interface SimpleAgent<TObject = unknown> {
     oauth: AgentOAuth;
     pending: () => Promise<PendingRun[]>;
     ready: () => Promise<void>;
+    recover: (options?: RecoverOptions<ExecutionResult<TObject>>) => RunRecovery;
     resume: (sessionId: string, options?: {
         signal?: AbortSignal;
     }) => Promise<ExecutionResult<TObject> | null>;

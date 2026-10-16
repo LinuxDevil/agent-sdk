@@ -1,5 +1,5 @@
 /**
- * N9b: `ctx.getToken()` pauses the run until the user signs in. A fake OAuth
+ * `ctx.getToken()` pauses the run until the user signs in. A fake OAuth
  * token endpoint (a `fetch` fake) and `mockModel` drive every flow offline:
  * pause, callback, resume; refresh; `requireAuth`; principal and app
  * credentials; declining; approval and sign-in together; the result safety net.
@@ -56,7 +56,7 @@ function setup(server: FakeOAuthServer = fakeOAuthServer(), options: Parameters<
   return { server, github, executions, store, agent };
 }
 
-describe('ctx.getToken(): pause until sign-in (N9b)', () => {
+describe('ctx.getToken(): pause until sign-in', () => {
   it('pauses with a sign-in link, exchanges the code with the right PKCE verifier, and re-runs the tool on approval', async () => {
     const { server, executions, store, agent } = setup();
     const paused = await collect(agent.stream('List my repositories.', { principal: ALICE }));
@@ -204,7 +204,7 @@ describe('ctx.getToken(): pause until sign-in (N9b)', () => {
   });
 });
 
-describe('stored tokens: refresh and requireAuth (N9b)', () => {
+describe('stored tokens: refresh and requireAuth', () => {
   it('refreshes a token that expires within 60 s, without a pause', async () => {
     const { server, store, agent, executions } = setup();
     await store.tokens.set('github', ALICE_OWNER, { accessToken: 'gho_SECRET_old', refreshToken: 'ghr_SECRET_old', expiresAt: Date.now() + 30_000 });
@@ -230,7 +230,7 @@ describe('stored tokens: refresh and requireAuth (N9b)', () => {
     expect(executions).toEqual([]);
   });
 
-  it('concurrent refreshes with a rotating refresh token share one request and keep the new token (Eve TOOLS-F16)', async () => {
+  it('concurrent refreshes with a rotating refresh token share one request and keep the new token', async () => {
     let live = 'ghr_SECRET_R0';
     let issued = 0;
     const requests: string[] = [];
@@ -256,7 +256,7 @@ describe('stored tokens: refresh and requireAuth (N9b)', () => {
     expect(await store.tokens.get('github', ALICE_OWNER)).toMatchObject({ accessToken: 'gho_SECRET_A1', refreshToken: 'ghr_SECRET_R1' });
   });
 
-  it('a refresh refused because another process already rotated the token uses the stored new token (Eve TOOLS-F16)', async () => {
+  it('a refresh refused because another process already rotated the token uses the stored new token', async () => {
     const store = memoryStore();
     const server = fakeOAuthServer();
     // Another process refreshes first: the server refuses our refresh token, and the store already holds the new one.
@@ -321,7 +321,7 @@ describe('stored tokens: refresh and requireAuth (N9b)', () => {
   });
 });
 
-describe('who owns the credential (N9b)', () => {
+describe('who owns the credential', () => {
   it("a user credential on a run without a principal is a tool error, with no pause", async () => {
     const { agent, executions } = setup(undefined, {}, 'I cannot tell who you are.');
     const { events, result } = await collect(agent.stream('List my repositories.'));
@@ -409,7 +409,7 @@ describe('who owns the credential (N9b)', () => {
   });
 });
 
-describe('a tool never returns a token (N9b)', () => {
+describe('a tool never returns a token', () => {
   it('a result containing a token from getToken() has it replaced with [REDACTED], with a warning naming the tool', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const { store, agent } = setup(undefined, { returnToken: true });
@@ -421,7 +421,7 @@ describe('a tool never returns a token (N9b)', () => {
     expect(warn.mock.calls.flat().join(' ')).not.toContain('gho_SECRET_leaky');
   });
 
-  // Eve TOOLS-F2: the shapes a real tool plausibly returns or throws.
+  // The shapes a real tool plausibly returns or throws.
   const TOKEN = 'gho_SECRET_shape_123456';
   const BASIC = Buffer.from(`x-access-token:${TOKEN}`).toString('base64');
   class Debug { header = `Bearer ${TOKEN}`; }
@@ -435,7 +435,7 @@ describe('a tool never returns a token (N9b)', () => {
     'a thrown string': (token) => { throw `Bearer ${token}`; },
   };
   for (const [shape, make] of Object.entries(shapes)) {
-    it(`redacts a token in ${shape} (Eve TOOLS-F2)`, async () => {
+    it(`redacts a token in ${shape}`, async () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       const github = githubProvider(fakeOAuthServer());
       const tool = defineTool({
@@ -456,7 +456,7 @@ describe('a tool never returns a token (N9b)', () => {
     });
   }
 
-  it('redacts the message, stack and cause chain of a thrown error, keeping its identity (Eve TOOLS-F2)', () => {
+  it('redacts the message, stack and cause chain of a thrown error, keeping its identity', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const inner = new Error(`token ${TOKEN} refused`);
     const error = Object.assign(new TypeError(`Bearer ${TOKEN}`, { cause: inner }), { code: 'E_GH' });
@@ -476,7 +476,7 @@ describe('a tool never returns a token (N9b)', () => {
   });
 });
 
-describe('defineOAuthProvider (N9b)', () => {
+describe('defineOAuthProvider', () => {
   it('validates the name, the URLs and the client id', () => {
     const server = fakeOAuthServer();
     expect(() => githubProvider(server, { name: 'git hub' })).toThrow(/`name` must be 1-64 characters/);

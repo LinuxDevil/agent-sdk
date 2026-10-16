@@ -1,8 +1,7 @@
 /**
- * Events for `lousho dev` responses that are not a live `stream()` (LOU-D32):
+ * Events for `lousho dev` responses that are not a live `stream()`:
  * a request that failed while streaming is answered with `error` + `run.done`.
- * (Approval continuations stream live from `agent.approvals.streamResolve()`,
- * LOU-D32.2.)
+ * (Approval continuations stream live from `agent.approvals.streamResolve()`.)
  */
 import { AGENT_EVENT_SCHEMA_VERSION, type AgentEvent, type AgentEventPayload } from '../execution/agentEvents';
 import { newId } from '../utils/id';

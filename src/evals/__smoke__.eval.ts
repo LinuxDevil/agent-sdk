@@ -1,5 +1,5 @@
 /**
- * Smoke eval (LOU-G2) - a real, always-passing defineEval() call that
+ * Smoke eval - a real, always-passing defineEval() call that
  * proves '**\/*.eval.ts' files are picked up by the default `vitest run`
  * path (wired into vitest.config.ts's test.include in this ticket).
  */

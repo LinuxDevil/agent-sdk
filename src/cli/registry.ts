@@ -1,5 +1,5 @@
 /**
- * The registry behind `lousho add` (LOU-D50): a JSON index plus one JSON
+ * The registry behind `lousho add`: a JSON index plus one JSON
  * document per item, at a URL or a local path. Reading is all this does; nothing
  * from a registry is executed or imported. See docs/registry.md.
  */
@@ -23,7 +23,7 @@ const itemType = z.enum(['tool', 'skill', 'channel', 'schedule', 'memory', 'kit'
 
 /**
  * The registry `lousho add` reads when neither `--registry` nor `LOUSHO_REGISTRY`
- * points at one (M7b): the `registry/dist/` folder of this repository, hosted as
+ * points at one: the `registry/dist/` folder of this repository, hosted as
  * static JSON. One constant so the hosting answer (issue #230) is a one-line change.
  */
 export const DEFAULT_REGISTRY = 'https://registry.lousho.com/index.json';

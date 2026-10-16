@@ -59,7 +59,7 @@ export class ToolRegistry {
   /**
    * Register multiple tools at once: a record of descriptors keyed by name,
    * or an array of `defineTool()` results, named descriptors (such as the
-   * tools `connectMcp()` loads) and records of them, mixed (LOU-R12).
+   * tools `connectMcp()` loads) and records of them, mixed.
    */
   public registerMany(tools: ToolsOption): void {
     for (const [name, tool] of toolEntries(tools, 'ToolRegistry.registerMany')) {

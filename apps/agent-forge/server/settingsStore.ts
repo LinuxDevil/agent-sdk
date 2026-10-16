@@ -1,10 +1,10 @@
 /**
- * LOU-R3: per-environment settings profiles.
+ * Per-environment settings profiles.
  *
  * A profile is a small named bundle of "which provider, which stored key
  * reference, which deploy adapter, how long a sandboxed hook gets before
  * it's killed" - deliberately NOT a full multi-tenant config system. This
- * backs the Topbar's env indicator (LOU-L/O's static "local · mock
+ * backs the Topbar's env indicator (the static "local · mock
  * provider" label becomes the active profile's name + provider) and the
  * Settings drawer's deploy-adapter dropdown/OTel toggle.
  *

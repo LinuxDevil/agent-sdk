@@ -1,6 +1,7 @@
 import { describe, it, expectTypeOf } from 'vitest';
 import { z } from 'zod';
-import { createAgent, type CreateAgentConfig, type PerRun, type RunConfigContext } from './createAgent';
+import { createAgent, type CreateAgentConfig, type PerRun, type RunConfigContext, type SimpleAgent } from './createAgent';
+import { loadAgentDir } from './agentDir';
 import { defineTool } from './tools/defineTool';
 import { createMockProvider } from './providers/mock';
 import type { AgentInput } from './providers/content';
@@ -8,7 +9,7 @@ import type { AgentInput } from './providers/content';
 const provider = createMockProvider();
 const lookup = defineTool({ name: 'lookup', description: 'Looks up', input: z.object({ q: z.string() }), execute: async ({ q }) => q });
 
-describe('createAgent dynamic config types (LOU-V15)', () => {
+describe('createAgent dynamic config types', () => {
   it('accepts model, instructions, prompt and tools as functions of the run', () => {
     createAgent({
       model: ({ metadata }) => (metadata?.plan === 'pro' ? 'openai/gpt-4o' : 'openai/gpt-4o-mini'),
@@ -49,5 +50,14 @@ describe('createAgent dynamic config types (LOU-V15)', () => {
     const session = createAgent({ provider }).session();
     void session.send('hi', { metadata: { plan: 'pro' } });
     void session.stream('hi', { metadata: { plan: 'pro' } });
+  });
+});
+
+describe('loadAgentDir output typing', () => {
+  it('flows an output override into result.object', async () => {
+    const typed = await loadAgentDir('./agent', { output: z.object({ city: z.string(), tempC: z.number() }) });
+    const result = await typed.send('weather?');
+    expectTypeOf(result.object).toEqualTypeOf<{ city: string; tempC: number } | undefined>();
+    expectTypeOf(await loadAgentDir('./agent')).toEqualTypeOf<SimpleAgent>();
   });
 });

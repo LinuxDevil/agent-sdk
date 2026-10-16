@@ -48,7 +48,7 @@ async function connectToServer(): Promise<Client> {
   return client;
 }
 
-describe('serveMcp annotations (LOU-Z5.2)', () => {
+describe('serveMcp annotations', () => {
   it('advertises explicit hints verbatim and derives them from needsApproval', async () => {
     const { tools } = await (await connectToServer()).listTools();
     const by = Object.fromEntries(tools.map((t) => [t.name, t.annotations]));

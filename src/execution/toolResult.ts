@@ -1,5 +1,5 @@
 /**
- * LOU-341: a tool that returns nothing (`undefined`, an async generator that
+ * A tool that returns nothing (`undefined`, an async generator that
  * yields nothing, a value `JSON.stringify` drops such as a function) has the
  * result `null`. Without this, `JSON.stringify(undefined)` is `undefined` and
  * the transcript gets a `tool` message with `content: undefined`, which
@@ -14,10 +14,10 @@ export function normalizeToolResult(result: unknown): unknown {
   return result === undefined ? null : result;
 }
 
-/** Eve TOOLS-F8: the default `maxToolResultChars`, about 12k tokens. */
+/** The default `maxToolResultChars`, about 12k tokens. */
 export const DEFAULT_MAX_TOOL_RESULT_CHARS = 50_000;
 
-/** Eve TOOLS-F8: `maxToolResultChars` is a positive integer or `Infinity` (`LOUSHO_CONFIG_INVALID` otherwise). */
+/** `maxToolResultChars` is a positive integer or `Infinity` (`LOUSHO_CONFIG_INVALID` otherwise). */
 export function assertMaxToolResultChars(value: unknown, caller: string): void {
   if (value === undefined || value === Infinity || (typeof value === 'number' && Number.isInteger(value) && value >= 1)) return;
   throw new ConfigurationError(
@@ -83,7 +83,7 @@ function toolResultJson(result: unknown): string {
 
 /**
  * The `content` of a `tool` message for `result`: always a JSON string (`'null'` for nothing).
- * Eve TOOLS-F8: JSON longer than `maxChars` (default {@link DEFAULT_MAX_TOOL_RESULT_CHARS})
+ * JSON longer than `maxChars` (default {@link DEFAULT_MAX_TOOL_RESULT_CHARS})
  * becomes a JSON string of its head and tail with a truncation marker (a string result is cut
  * as text, so the model reads it unescaped). `Infinity` turns the cap off.
  */

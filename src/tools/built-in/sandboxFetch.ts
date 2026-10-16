@@ -1,6 +1,5 @@
 /**
- * Shared "route an outbound HTTP call through a SandboxAdapter" helper
- * (LOU-K2).
+ * Shared "route an outbound HTTP call through a SandboxAdapter" helper.
  *
  * `SandboxAdapter` (src/security/sandboxCore.ts) only exposes `run()` (run a
  * command, capture stdout/stderr/exitCode) and `writeFile()` - there is no
@@ -41,7 +40,7 @@ export interface SandboxFetchRequest {
   insecureTLS?: boolean;
   /**
    * The address the caller resolved and SSRF-checked for the URL's host
-   * (N13a). When set, the sandboxed process connects to exactly this address
+   *. When set, the sandboxed process connects to exactly this address
    * (with node:http/node:https and a fixed `lookup`; the URL's host still
    * goes in the `Host` header and TLS SNI) instead of resolving the name
    * again, so a DNS-rebinding name cannot swap in a private address between
@@ -58,7 +57,7 @@ export interface SandboxFetchRequest {
  * not follow them), so any SSRF/redirect-chasing policy a caller implements
  * (see http.ts, which checks every hop) stays in control of following them.
  * With `pinnedAddress` the request goes out through node:http/node:https
- * with a `lookup` that only ever answers that address (N13a).
+ * with a `lookup` that only ever answers that address.
  */
 const SANDBOX_FETCH_SCRIPT = `
 const req = JSON.parse(Buffer.from(process.env.SANDBOX_FETCH_REQUEST, 'base64').toString('utf-8'));
@@ -146,7 +145,7 @@ export interface SandboxFetchOptions {
   /** Milliseconds before the sandboxed request is killed. Defaults to 30s. */
   timeoutMs?: number;
   /**
-   * Cancels the request (LOU-U17). An already-aborted signal rejects without
+   * Cancels the request. An already-aborted signal rejects without
    * running anything in the sandbox; an abort mid-flight rejects promptly
    * with an `AbortError` and is also handed to `sandbox.run()` so an adapter
    * that supports it can kill the sandboxed process.

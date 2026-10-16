@@ -209,7 +209,7 @@ describe('startDevServer', () => {
   });
 });
 
-describe('hot reload (LOU-H8)', () => {
+describe('hot reload', () => {
   it('picks up an edited prompt without restarting the server/port, and keeps working on an invalid edit', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-dev-reload-'));
     const configPath = writeConfig(dir);
@@ -273,7 +273,7 @@ describe('hot reload (LOU-H8)', () => {
   });
 });
 
-describe('agent directories and TS modules (LOU-D31)', () => {
+describe('agent directories and TS modules', () => {
   const fixtures = path.join(__dirname, '__fixtures__');
   const copies: string[] = [];
 
@@ -516,7 +516,7 @@ describe('agent directories and TS modules (LOU-D31)', () => {
   });
 });
 
-describe('stateful streaming chat (LOU-D32)', () => {
+describe('stateful streaming chat', () => {
   const fixtures = path.join(__dirname, '__fixtures__');
   const post = (h: DevServerHandle, route: string, body: unknown) =>
     fetch(`http://localhost:${addressPort(h)}${route}`, {
@@ -599,7 +599,7 @@ describe('stateful streaming chat (LOU-D32)', () => {
 
     const { approvalId } = requested as { approvalId: string };
     const continued = await eventsOf(await post(handle, `/chat/s2/approvals/${approvalId}`, { approved: true }));
-    // LOU-D32.2: the continuation is a live stream, as a fresh turn's: the decided call resumes, then the model's reply.
+    // The continuation is a live stream, as a fresh turn's: the decided call resumes, then the model's reply.
     expect(continued.map((e) => e.type)).toContain('tool.resume');
     expect(continued.find((e) => e.type === 'tool.done')).toMatchObject({ toolName: 'ping', result: 'pong' });
     expect(continued.flatMap((e) => (e.type === 'text.delta' ? [e.text] : [])).join('')).toBe('The tool said pong.');
@@ -613,7 +613,7 @@ describe('stateful streaming chat (LOU-D32)', () => {
     expect((await post(handle, `/chat/s2/approvals/${approvalId}`, { approved: true })).status).toBe(404);
   });
 
-  it('a second pause inside the streamed continuation arrives as approval.requested (LOU-D32.2)', async () => {
+  it('a second pause inside the streamed continuation arrives as approval.requested', async () => {
     handle = await serve(mockModel([pinged, pinged, 'Both pinged.']));
     const first = (await turn(handle, 's4', 'ping twice')).find((e) => e.type === 'approval.requested') as { approvalId: string };
     const second = await eventsOf(await post(handle, `/chat/s4/approvals/${first.approvalId}`, { approved: true }));

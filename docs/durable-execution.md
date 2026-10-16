@@ -52,7 +52,18 @@ A checkpoint is the run's whole transcript plus its step count, usage,
 
 A run that rejects (a provider error, a throwing hook, a
 `PropagatingToolError`, a process crash) keeps its last `'in-progress'`
-checkpoint.
+checkpoint. When it rejects (rather than crashes), the checkpoint also gets the
+error as `lastError` and the count of failed attempts as `attempts`, so
+[`agent.pending()`](#recovering-after-a-crash) can tell a run that
+keeps failing from one a crash interrupted. The next checkpoint the run saves
+(it made progress) drops both.
+
+While a [sub-agent](sub-agents.md) runs, what it has spent so far is saved on
+the lead's checkpoint after each of its model calls and tool results
+(`delegatedInFlight`). A sub-agent is not checkpointed itself: when the lead
+crashes mid-sub-agent and is resumed, the `task` call runs again and the
+sub-agent starts over, but the model calls of the interrupted attempt stay in
+the resumed run's `usage` (as one more delegated run).
 
 ## What happens when you send again with the same `sessionId`
 
@@ -164,7 +175,7 @@ for (const run of await agent.pending()) {
 ```
 
 Each entry is `{ sessionId, kind, checkpointId, status, approvalId?,
-approvalKind?, step, lastError? }`:
+approvalKind?, step, lastError?, attempts? }`:
 
 - `sessionId` is what `agent.resume()` takes: the `agent.session()` id for a
   session turn (`kind: 'session'`, checkpointed as `<id>.turn-<n>`), or the
@@ -172,10 +183,13 @@ approvalKind?, step, lastError? }`:
 - `status` is `'in-progress'` (interrupted) or `'awaiting-approval'` (decide
   `approvalId` with `agent.approvals.resolve()`; `agent.approvals.list()`
   shows the call).
-- `lastError` is set when the last attempt at a session turn failed. With
-  `retryable: false` (a 400 from the provider, for example) the same turn
-  will fail again: fix the cause before `agent.resume()`, or drop the turn
-  with `agent.session({ id }).discardPending()`.
+- `lastError` is set when the last attempt at a session turn, or at a
+  `send(msg, { sessionId })` run (`kind: 'run'`), failed; `attempts` counts
+  the attempts that failed in a row. With `retryable: false` (a 400 from the
+  provider, for example) it will fail again: fix the cause before
+  `agent.resume()`, or drop it with `agent.session({ id }).discardPending()`
+  (a run: `store.checkpoints.delete(id)`). An `'in-progress'` entry without
+  `lastError` was interrupted (a crash), or is still running.
 
 A run that is still running in some process is listed as `'in-progress'`
 too. Resuming it is safe: the run holds a lease (see [Run leases](#run-leases)),
@@ -187,6 +201,79 @@ without durable writes) is listed as `'in-progress'` with `lastError.code`
 `LOUSHO_CHECKPOINT_CORRUPT` (`retryable: false`), the error `send()` and
 `resume()` fail with; drop it with `discardPending()` (or `clear()`), or
 `store.checkpoints.delete(id)` for a run.
+
+### Recovering automatically
+
+`agent.recover()` runs that recipe for you, in the background: every
+`intervalMs` (default 30 seconds) it lists `agent.pending()` and calls
+`agent.resume()` on each `'in-progress'` run. Start it once per process, next
+to the code that serves traffic:
+
+```ts
+import { createAgent, defineTool, memoryStore, PropagatingToolError } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+import { z } from 'zod';
+
+let charges = 0;
+let attempts = 0;
+const tools = [
+  defineTool({ name: 'charge', description: 'Charge the card', input: z.object({}), execute: async () => `charged ${++charges}` }),
+  // Stands in for the process dying mid-step: it fails the first time only.
+  defineTool({
+    name: 'ship',
+    description: 'Ship the order',
+    input: z.object({}),
+    execute: async () => {
+      if (++attempts === 1) throw new PropagatingToolError('process died');
+      return 'shipped';
+    },
+  }),
+];
+const agent = createAgent({
+  provider: mockModel([{ toolCalls: [{ name: 'charge' }] }, { toolCalls: [{ name: 'ship' }] }, 'Order charged and shipped.']),
+  tools,
+  store: memoryStore(),
+});
+await agent.send('Charge and ship order 7', { sessionId: 'order-7' }).catch(() => undefined); // interrupted after the charge
+
+const recovery = agent.recover({
+  intervalMs: 1_000,
+  onRecovered: (run, result) => {
+    console.log(`${run.sessionId}: ${result.text}`); // order-7: Order charged and shipped.
+    void recovery.stop(); // a server keeps it running and stops it on shutdown (or passes `signal`)
+  },
+  onError: (error, run) => console.error('recovery failed', run?.sessionId, error),
+});
+await recovery.done; // resolves once the loop stopped
+console.log(charges); // 1: the completed charge step did not run again
+```
+
+What a sweep does with each pending run:
+
+- `'in-progress'`: resumed, from its last checkpoint, so completed steps never
+  run again (a tool that was mid-call runs again: make it idempotent).
+- `'awaiting-approval'` (a tool approval or an `ask_question`): left alone; a
+  human decides it with `agent.approvals.resolve()`.
+- A run whose `lastError` has `retryable: false`: left alone, since it would
+  fail the same way; `agent.pending()` still lists it.
+- A run still running in another process, or one whose crashed process's
+  [run lease](#run-leases) has not expired yet: its resume is turned away
+  with `LOUSHO_SESSION_BUSY` before anything runs, silently, and a later sweep
+  tries again once the lease is free. So a crashed run is finished at most
+  one lease expiry plus one `intervalMs` after the crash, and every replica
+  can run `recover()`: the leases make sure only one of them resumes a run.
+  The loop also never starts a second resume of a run it is already resuming.
+
+`onError(error, run?)` hears about a sweep that could not list the store
+(`run` undefined) and a resume that failed (`run` set); the loop keeps going
+either way. `onRecovered(run, result)` gets each run it finished. Aborting
+`signal` (or `stop()`) stops the polling and aborts the resumes in flight
+(their checkpoints stay for the next start); `done` resolves once everything
+settled. The loop keeps the process alive until it is stopped. Like
+`pending()`, `recover()` throws `LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE`
+without a checkpoint store. With a custom store that has no leases
+(`acquireLease`), nothing stops it from resuming a run another process is
+still running: run it in one process only.
 
 ## Run leases
 
@@ -298,6 +385,43 @@ filtering and ordering for you. Without it `agent.pending()` throws
   `LOUSHO_APPROVAL_ORPHANED` and withdraws it, without running the tool or
   touching the newer run. `discardPending()` withdraws the dropped turn's
   approvals at once.
+
+## Run a job once (webhook redelivery)
+
+A webhook or queue delivers at least once, so the same payload can arrive
+twice. Sending it again with the same `sessionId` is **not** a no-op: once
+the first run is `'finished'`, the second `send()` is a new turn of that
+conversation and calls the model again (in a consumer test it re-ran seven
+model calls). To run a job once, derive the `sessionId` from the delivery id
+and look at the checkpoint before sending:
+
+```ts
+import { createAgent, memoryStore } from '@lousho/build-ai-agent';
+
+const store = memoryStore();
+const agent = createAgent({ provider, store });
+
+export async function handleDelivery(deliveryId: string, payload: string) {
+  const sessionId = `job-${deliveryId}`;
+  const checkpoint = await store.checkpoints?.load(sessionId);
+
+  if (checkpoint?.status === 'finished') return; // already done: acknowledge the redelivery
+  if (checkpoint?.status === 'awaiting-approval') return; // paused: resolve it with agent.approvals.resolve()
+  if (checkpoint) {
+    await agent.resume(sessionId); // 'in-progress': a crash left it half done; finish it
+    return;
+  }
+  await agent.send(payload, { sessionId });
+}
+```
+
+The check-then-send is not atomic: two concurrent deliveries can both see no
+checkpoint. Serialise deliveries per id (a queue keyed by `deliveryId`, or a
+unique-insert in your own database) and keep the run lease on (see
+[Run leases](#run-leases)) so a second process fails with
+`LOUSHO_SESSION_BUSY` instead of running the job twice. Tools that run again
+on resume must still be idempotent, so also pass the call's `toolCallId` as
+the idempotency key of every side effect (see the next section).
 
 ## At-least-once tools: make side effects idempotent
 
@@ -643,3 +767,10 @@ if (original && replayed) {
   delete the checkpoint). `agent.approvals.resolve()` passes it for you.
 - Workers KV is eventually consistent across locations - see
   [Deployment](./deployment.md) for the caveat.
+- The spend of a sub-agent still running when its lead crashed is kept for
+  in-process sub-agents only, as of its last model call or tool result: a
+  [remote sub-agent](./sub-agents.md#remote-sub-agents) reports its usage
+  when it ends, so an interrupted one's calls are not counted, and a
+  background sub-agent still running after the lead paused or finished does
+  not write the lead's checkpoint. Their limits are checked against a
+  sub-agent's usage only once it returns.

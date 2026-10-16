@@ -1,5 +1,5 @@
 /**
- * N3a: `session.history()` / `session.fork()` against every shipped
+ * `session.history()` / `session.fork()` against every shipped
  * `AgentStore` (in memory, `fileStore()`, `SqliteStore`, `KVStore`). A fork
  * uses only `SessionStore.load` / `save` and `CheckpointStore.load`, so every
  * store must pass the same contract.

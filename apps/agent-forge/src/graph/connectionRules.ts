@@ -6,7 +6,7 @@ import type { AgentGraphNodeType } from './types';
  * graph/types.ts (trigger(s) -> llm -> tool(s) -> [approval] -> output).
  *
  * Used two places so the same rule set backs both "reject inline while
- * dragging a connection" (CanvasArea, LOU-M) and "catch it in a full
+ * dragging a connection" (CanvasArea) and "catch it in a full
  * validateGraph() pass" (e.g. a graph saved/imported from outside the
  * canvas): a connection ReactFlow lets through client-side but that
  * violates these rules would otherwise only be caught at
@@ -15,12 +15,12 @@ import type { AgentGraphNodeType } from './types';
  */
 const ALLOWED_EDGE_TYPES: Record<AgentGraphNodeType, AgentGraphNodeType[]> = {
   trigger: ['llm'],
-  // LOU-T3: an `llm`/`tool` step can now feed a `router` node instead of
+  // An `llm`/`tool` step can now feed a `router` node instead of
   // going straight to a tool/approval/output, letting the pipeline branch
   // on the result of that step.
   llm: ['tool', 'approval', 'output', 'router'],
   tool: ['tool', 'approval', 'output', 'router'],
-  // LOU-T3: a router's branches can each continue into another llm/tool
+  // A router's branches can each continue into another llm/tool
   // step or terminate at output. Deliberately NOT `approval`:
   // `FlowExecutor` (src/flows/FlowExecutor.ts) has no
   // approval/needsApproval node type or checkpoint/resume concept, so an

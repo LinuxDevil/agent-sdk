@@ -1,5 +1,5 @@
 /**
- * Live test for `telegramChannel()` (N11a): one private-chat turn through the
+ * Live test for `telegramChannel()`: one private-chat turn through the
  * channel with a real model (gpt-4o-mini on OpenRouter), the platform faked.
  *
  * - Replay (default): the model is served from `__cassettes__/telegram-turn.json`,
@@ -25,7 +25,7 @@ const CASSETTE = path.join(__dirname, '__cassettes__', 'telegram-turn.json');
 const recording = Boolean(process.env.LOUSHO_RECORD);
 const runnable = recording ? Boolean(process.env.OPENROUTER_API_KEY) : fs.existsSync(CASSETTE);
 
-describe.skipIf(!runnable)('telegramChannel live (N11a)', () => {
+describe.skipIf(!runnable)('telegramChannel live', () => {
   it('a real model answers a private message through the channel as plain text', async () => {
     const sent: Array<{ method: string; body: Record<string, unknown> }> = [];
     const fake = (async (url: RequestInfo | URL, init?: RequestInit) => {

@@ -1,4 +1,4 @@
-/** Eve CORE-F2: a throwing onEvent listener must not fail a run whose side effects already ran. */
+/** A throwing onEvent listener must not fail a run whose side effects already ran. */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { createAgent } from '../createAgent';
@@ -9,7 +9,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('onEvent listener isolation (Eve CORE-F2)', () => {
+describe('onEvent listener isolation', () => {
   for (const failOn of ['run.start', 'tool.start', 'tool.done', 'run.done'] as const) {
     it(`a throw on ${failOn} does not reject send() and is reported once`, async () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});

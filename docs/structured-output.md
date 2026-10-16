@@ -43,6 +43,33 @@ const { object } = await agent.send('Where is the Eiffel Tower?');
 console.log(object?.city); // typed: string
 ```
 
+## Schemas that mirror a side-effect tool
+
+When the output schema mirrors a side-effect tool's payload (say a
+`comments[]` array in `output` next to a `post_comment` tool), models often
+put the data in the final object and never call the tool, or do both. Do not
+rely on the model to pick one. Either perform the side effect in your own
+code from the validated `result.object`, or do not mirror the payload: let
+the tool take the data and keep `output` for a summary or status.
+
+```ts
+import { z } from 'zod';
+import { createAgent } from '@lousho/build-ai-agent';
+
+declare function postComment(comment: { file: string; body: string }): Promise<void>;
+
+const agent = createAgent({
+  model: 'openai/gpt-4o-mini',
+  instructions: 'Review the diff and return your comments.',
+  output: z.object({ comments: z.array(z.object({ file: z.string(), body: z.string() })) }),
+});
+
+const result = await agent.send('Review this diff: ...');
+for (const comment of result.object?.comments ?? []) {
+  await postComment(comment); // host code, once per validated comment
+}
+```
+
 ## Sessions
 
 `agent.session()` on an agent with `output` returns a session whose

@@ -15,7 +15,7 @@ import { baseAgentOf } from './subagentRuntime';
 import { CompactedLLMProviderError, ConfigurationError, SessionAwaitingApprovalError } from './errors';
 import { inputMessages, insertToolResult, newSessionMessages, splitPendingTurn } from './transcript';
 import type { CallUsage, RunUsage, StepUsage } from '../models/usage';
-import { emptyRunUsage, recordStepUsage, restoreRunUsage } from './runUsage';
+import { emptyRunUsage, mergeDelegatedUsage, recordStepUsage, restoreRunUsage } from './runUsage';
 import type { ExecuteOptions, ExecutionFinishReason, ExecutionResult } from './AgentExecutor';
 import type { ToolCallOutcome } from './toolCallExecution';
 import type { UnrecordedToolCall } from './toolBatch';
@@ -32,16 +32,16 @@ export interface AgentRunState {
   messages: Message[];
   toolCalls: ToolCall[];
   usage: RunUsage;
-  /** One entry per model call (LOU-V5). */
+  /** One entry per model call. */
   stepUsage: StepUsage[];
   steps: number;
   businessState: unknown;
   finalText: string;
   finishReason: ExecutionFinishReason;
-  /** LOU-V13: the reasoning text of this run's steps so far. */
+  /** The reasoning text of this run's steps so far. */
   reasoning?: string;
   /**
-   * LOU-T4: set right before a compacted, model-actionable provider error
+   * Set right before a compacted, model-actionable provider error
    * is pushed onto `messages` and the loop retries; cleared on any turn
    * that actually produces a result (text or tool calls). If the loop
    * exits because `maxSteps` was exhausted while this is still set, the
@@ -53,13 +53,13 @@ export interface AgentRunState {
    */
   lastSurfacedProviderError?: CompactedLLMProviderError;
   /**
-   * LOU-U7/U9: tool calls of the last model turn that have no result yet
+   * Tool calls of the last model turn that have no result yet
    * (a run resumed after a crash, or after an approval mid-batch). They run
    * through the normal batch path before the model is called again.
    */
   pendingToolCalls: ToolCall[];
   /**
-   * LOU-U8: new input held back until `pendingToolCalls` all have results
+   * New input held back until `pendingToolCalls` all have results
    * (a user message must never sit between a tool-call turn and its
    * results). Persisted at the end of checkpoints and snapshots so it
    * survives a crash or another approval pause; splitPendingTurn() moves it
@@ -67,32 +67,32 @@ export interface AgentRunState {
    */
   queuedInput: Message[];
   /**
-   * Eve CORE-F11: the reply a model call had streamed when the run's signal aborted it. The aborted result ends with
+   * The reply a model call had streamed when the run's signal aborted it. The aborted result ends with
    * it as an assistant message marked `metadata.interrupted` (after the abort's checkpoint, so a resume never sees it).
    */
   interruptedText?: string;
-  /** LOU-V6: the run's `limits`, when it has any. */
+  /** The run's `limits`, when it has any. */
   budget?: RunBudget;
-  /** LOU-V9: the checkpoint writes so far - each starts after the one before, so the newest state lands last. */
+  /** The checkpoint writes so far - each starts after the one before, so the newest state lands last. */
   saving?: Promise<void>;
-  /** LOU-W9.2: this run's agent, as written into its checkpoints and approval snapshots. */
+  /** This run's agent, as written into its checkpoints and approval snapshots. */
   fingerprint?: AgentFingerprint;
-  /** LOU-W9.2: set when an unfinished checkpoint is resumed: the fingerprint it was saved with, if any. */
+  /** Set when an unfinished checkpoint is resumed: the fingerprint it was saved with, if any. */
   resumedFrom?: { fingerprint?: AgentFingerprint };
-  /** N10b: who the run acts for (frozen): an unfinished checkpoint's, else `ExecuteOptions.principal`. */
+  /** Who the run acts for (frozen): an unfinished checkpoint's, else `ExecuteOptions.principal`. */
   principal?: Readonly<Principal>;
-  /** LOU-R16: the run's hook-context metadata: an unfinished checkpoint's fills in when `ExecuteOptions.metadata` is unset. */
+  /** The run's hook-context metadata: an unfinished checkpoint's fills in when `ExecuteOptions.metadata` is unset. */
   metadata?: Record<string, unknown>;
-  /** N5b: the `runInParallel` input guardrails, until the first model call takes them. */
+  /** The `runInParallel` input guardrails, until the first model call takes them. */
   inputCheck?: ParallelInputCheck;
-  /** N6: the agent running now (the target after a handoff): `result.agentName`. */
+  /** The agent running now (the target after a handoff): `result.agentName`. */
   agentName?: string;
-  /** N6: handoffs this run made, checked against `maxHandoffs`. */
+  /** Handoffs this run made, checked against `maxHandoffs`. */
   handoffs?: number;
-  /** N6: the options and tools of the agent a handoff in the last step switched to, for the loop to take. */
+  /** The options and tools of the agent a handoff in the last step switched to, for the loop to take. */
   switched?: { options: ExecuteOptions; tools: ToolDefinition[] };
   /**
-   * Eve CORE-F3: messages of `messages` that only the model calls of this
+   * Messages of `messages` that only the model calls of this
    * run see - the structured-output repair and forced-answer prompts, and
    * the reply a repair rejected. They are left out of `result.messages` and
    * of the finished checkpoint (the session transcript).
@@ -100,9 +100,49 @@ export interface AgentRunState {
   requestOnly?: Set<Message>;
   /** The run lease the run holds on its checkpoint id, when the store has leases (see `runLease.ts`). */
   lease?: RunLease;
+  /** What each sub-agent run still running has spent so far (not in `usage` until it ends); checkpointed. */
+  delegatedInFlight?: Map<symbol, RunUsage>;
+  /** Set once the run saved a checkpoint that ends or pauses it: a sub-agent still running then no longer writes it. */
+  closed?: boolean;
 }
 
-/** Eve CORE-F3: marks `messages` (already in `state.messages`) as {@link AgentRunState.requestOnly}. */
+/**
+ * An internal option of a sub-agent run - called with what the run has
+ * spent so far (its sub-agents still running included) after each model call
+ * and tool result, so the lead can checkpoint it before the sub-agent ends.
+ */
+export const DELEGATED_PROGRESS = Symbol('lousho.delegatedProgress');
+
+/** Options carrying {@link DELEGATED_PROGRESS}. */
+export interface DelegatedProgressOptions {
+  [DELEGATED_PROGRESS]?: (usage: RunUsage) => void;
+}
+
+/**
+ * A checkpoint that ends or pauses the run closes it to its sub-agents
+ * still running; an `'in-progress'` one of a sub-agent run tells its lead what
+ * it has spent so far.
+ */
+function noteProgress(options: ExecuteOptions, state: AgentRunState, status: CheckpointStatus): void {
+  if (status !== 'in-progress') state.closed = true;
+  else (options as DelegatedProgressOptions)[DELEGATED_PROGRESS]?.(usageWithInFlight(state));
+}
+
+/** The checkpoint's `delegatedInFlight`, while the run is unfinished and has sub-agents running. */
+function inFlightOf(state: AgentRunState, status: CheckpointStatus): Pick<Checkpoint, 'delegatedInFlight'> {
+  if (status === 'finished' || !state.delegatedInFlight?.size) return {};
+  return { delegatedInFlight: [...state.delegatedInFlight.values()].map((usage) => structuredClone(usage)) };
+}
+
+/** The run's usage plus what its sub-agents still running spent so far. */
+function usageWithInFlight(state: AgentRunState): RunUsage {
+  if (!state.delegatedInFlight?.size) return state.usage;
+  const total = structuredClone(state.usage);
+  for (const child of state.delegatedInFlight.values()) mergeDelegatedUsage(total, child);
+  return total;
+}
+
+/** Marks `messages` (already in `state.messages`) as {@link AgentRunState.requestOnly}. */
 export function markRequestOnly(state: AgentRunState, ...messages: Message[]): void {
   state.requestOnly ??= new Set();
   for (const message of messages) state.requestOnly.add(message);
@@ -125,7 +165,7 @@ function buildMessages(
   // Add system prompt, unless the caller has indicated `input` already
   // includes one (e.g. resume.ts rebuilding from an ExecutionSnapshot), or
   // `input` already starts with it - a `result.messages` fed back into
-  // `send()` (Eve CORE-F4).
+  // `send()`.
   // An empty message list would send a request with no user turn, which providers reject or answer from nothing.
   if (Array.isArray(input) && input.length === 0 && !skipSystemPromptInjection) {
     throw new ConfigurationError("The run's input is an empty message list. Pass a string or at least one message, e.g. send('Hello').", 'input');
@@ -144,13 +184,13 @@ type InitialRunState = Pick<
 >;
 
 /**
- * Rehydrates run state from a checkpoint left by an earlier call (LOU-U8):
+ * Rehydrates run state from a checkpoint left by an earlier call:
  * an unfinished run resumes where it stopped (new input, if any, is
  * appended after it - see newSessionMessages()); a finished run continues
  * as a conversation, with a fresh step budget, usage and tool-call list.
  */
 function stateFromCheckpoint(checkpoint: Checkpoint, options: ExecuteOptions): InitialRunState {
-  // LOU-T1: on a rehydrated run (e.g. a fresh process resuming after a
+  // On a rehydrated run (e.g. a fresh process resuming after a
   // crash), the caller of this execute() call may have no way to know
   // what businessState a *previous* process attached - that's exactly
   // the "second store, hope it stays aligned" gap this field closes. So
@@ -165,13 +205,20 @@ function stateFromCheckpoint(checkpoint: Checkpoint, options: ExecuteOptions): I
   return {
     messages: [...checkpoint.messages, ...added],
     toolCalls: finished ? [] : [...(checkpoint.toolCalls as ToolCall[])],
-    // LOU-V5: an unfinished run continues from the checkpointed totals (older
+    // An unfinished run continues from the checkpointed totals (older
     // checkpoints: token counts only); a new turn of a finished one starts at zero.
-    usage: finished ? emptyRunUsage() : restoreRunUsage(checkpoint.usage),
+    usage: finished ? emptyRunUsage() : resumedUsage(checkpoint),
     stepUsage: finished ? [] : [...(checkpoint.stepUsage ?? [])],
     steps: finished ? 0 : checkpoint.stepIndex,
     businessState: businessState === undefined ? checkpoint.businessState : businessState,
   };
+}
+
+/** An unfinished run's usage, plus what its sub-agents that were still running had spent. */
+function resumedUsage(checkpoint: Checkpoint): RunUsage {
+  const usage = restoreRunUsage(checkpoint.usage);
+  for (const child of checkpoint.delegatedInFlight ?? []) mergeDelegatedUsage(usage, restoreRunUsage(child));
+  return usage;
 }
 
 /** Builds messages from scratch (the no-checkpoint fallback path). */
@@ -197,9 +244,9 @@ async function checkpointToContinue(options: ExecuteOptions): Promise<Checkpoint
 /**
  * If a checkpoint exists for this sessionId, rehydrate state from it
  * instead of building messages from scratch. Either way, unanswered tool
- * calls of the last model turn become `pendingToolCalls` (LOU-U7/U9).
+ * calls of the last model turn become `pendingToolCalls`.
  * Throws SessionAwaitingApprovalError when the session is paused on an
- * approval (LOU-U8).
+ * approval.
  */
 export async function loadRunState(options: ExecuteOptions): Promise<AgentRunState> {
   const { sessionId, checkpointStore } = options;
@@ -211,11 +258,11 @@ export async function loadRunState(options: ExecuteOptions): Promise<AgentRunSta
   const initial = checkpoint ? stateFromCheckpoint(checkpoint, options) : freshState(options);
   const turn = splitPendingTurn(initial.messages);
   settleStartedCalls(turn, checkpoint);
-  // N10b: an unfinished run goes on as the caller it was saved with; a finished one starts a new run.
+  // An unfinished run goes on as the caller it was saved with; a finished one starts a new run.
   const principal = readonlyPrincipal(
     sessionId && checkpoint && checkpoint.status !== 'finished' ? resumedRunPrincipal(checkpoint.principal, options.principal, sessionId) : options.principal
   );
-  // LOU-R16: an unfinished run's hooks keep seeing the metadata it was saved
+  // An unfinished run's hooks keep seeing the metadata it was saved
   // with when this call did not pass its own; a finished run's next turn (or
   // a fresh run) uses exactly the call's.
   const metadata =
@@ -231,7 +278,7 @@ export async function loadRunState(options: ExecuteOptions): Promise<AgentRunSta
     finalText: '',
     finishReason: 'stop',
     agentName: options.agent.name,
-    // LOU-W9.2: with checkpointing on, known before the first (synchronous) checkpoint write.
+    // With checkpointing on, known before the first (synchronous) checkpoint write.
     ...(sessionId && checkpointStore && { fingerprint: await fingerprintOf(baseAgentOf(options.agent), options.toolRegistry, options.provider, options.hostedTools) }),
     ...(checkpoint && checkpoint.status !== 'finished' && { resumedFrom: { fingerprint: checkpoint.agentFingerprint } }),
     ...(principal && { principal }),
@@ -272,7 +319,7 @@ function settleStartedCalls(turn: ReturnType<typeof splitPendingTurn>, checkpoin
 }
 
 /**
- * This run's agent fingerprint (LOU-W9.2). Computed on first use, so a run that
+ * This run's agent fingerprint. Computed on first use, so a run that
  * is neither checkpointed, paused nor resumed takes no extra step to start.
  */
 export async function ensureFingerprint(options: ExecuteOptions, state: AgentRunState): Promise<AgentFingerprint> {
@@ -281,7 +328,7 @@ export async function ensureFingerprint(options: ExecuteOptions, state: AgentRun
 }
 
 /**
- * LOU-W9.2: when an unfinished checkpoint saved with an agent fingerprint is
+ * When an unfinished checkpoint saved with an agent fingerprint is
  * resumed, compares it with this run's agent (`onAgentDrift`) before any model
  * call or tool runs: throws on a pending call whose tool is gone, or on drift
  * with `'error'`; with `'warn'` also reports an `agent.drift` event.
@@ -307,7 +354,7 @@ export function recordStep(state: AgentRunState, measured: CallUsage): StepUsage
 
 /**
  * Persists the run's progress, when checkpointing is on: after each model
- * response (LOU-U9), as tool results are recorded, and when the run
+ * response, as tool results are recorded, and when the run
  * aborts, pauses (`'awaiting-approval'`) or finishes (`'finished'`).
  */
 export async function saveStepCheckpoint(
@@ -317,12 +364,13 @@ export async function saveStepCheckpoint(
   approval?: string | string[],
   approvalKind?: ApprovalKind
 ): Promise<void> {
-  // Eve TOOLS-F12: a step paused on several calls records all their ids.
+  // A step paused on several calls records all their ids.
   const approvalIds = typeof approval === 'string' ? [approval] : approval;
   const approvalId = approvalIds?.[0];
   const { agent, sessionId, checkpointStore, inputQueue } = options;
-  // LOU-V9: a run that stops here takes no more queued input, and keeps none it did not apply.
+  // A run that stops here takes no more queued input, and keeps none it did not apply.
   if (status !== 'in-progress') inputQueue?.close();
+  noteProgress(options, state, status);
   if (!sessionId || !checkpointStore) {
     return;
   }
@@ -331,7 +379,7 @@ export async function saveStepCheckpoint(
     agentId: agent.id || '',
     sessionId,
     stepIndex: state.steps,
-    // Eve CORE-F3: an unfinished run keeps its request-only prompts, so a resume sends what the model saw.
+    // An unfinished run keeps its request-only prompts, so a resume sends what the model saw.
     messages: [...(status === 'finished' ? keptMessages(state) : state.messages), ...state.queuedInput, ...(inputQueue?.messages ?? [])],
     toolCalls: [...state.toolCalls],
     usage: structuredClone(state.usage),
@@ -344,10 +392,11 @@ export async function saveStepCheckpoint(
     ...(approvalKind !== undefined && { approvalKind }),
     ...(state.fingerprint && { agentFingerprint: state.fingerprint }),
     ...(agent.metadata?.[RUN_CONFIG_KEY] !== undefined && { runConfig: agent.metadata[RUN_CONFIG_KEY] }),
-    // N10b: so a crash resume acts for the same caller.
+    // So a crash resume acts for the same caller.
     ...(options.principal && { principal: options.principal }),
-    // LOU-R16: so a crash resume's hooks keep seeing the run's metadata.
+    // So a crash resume's hooks keep seeing the run's metadata.
     ...(options.metadata !== undefined && { metadata: options.metadata }),
+    ...inFlightOf(state, status),
   };
   // Under the run's lease, a save is fenced: a run that lost it (it stalled past it) fails instead of overwriting the new holder's progress.
   const { lease } = state;
@@ -360,7 +409,7 @@ export async function saveStepCheckpoint(
 /**
  * Records one settled tool call's result in the transcript, where the
  * model's call order puts it. Results may arrive out of order - a parallel
- * call is recorded as soon as it settles (audit log-incident F9), so a
+ * call is recorded as soon as it settles, so a
  * checkpoint holds every finished call and a crash never re-runs it - and
  * the transcript still keeps call order for the provider.
  */
@@ -370,14 +419,14 @@ export function pushToolResult(
   outcome: ToolCallOutcome,
   maxToolResultChars?: number
 ): void {
-  // The message shape (the `{error}` payload, isError, LOU-X3's
+  // The message shape (the `{error}` payload, isError,
   // replacedByHook record) is toolOutcomeMessage()'s, shared with the
   // handoff settle path in handoffRun.ts.
   insertToolResult(state.messages, toolOutcomeMessage(toolCall, outcome, maxToolResultChars));
 }
 
 /**
- * LOU-V1: gives a tool call the run was aborted before reaching a `not-run`
+ * Gives a tool call the run was aborted before reaching a `not-run`
  * tool error result, so the transcript stays well-formed (every assistant tool
  * call has a matching result) and a checkpointed run can be resumed without
  * the provider rejecting an unanswered tool call.
@@ -400,7 +449,7 @@ function pushCancelledToolResult(state: AgentRunState, toolCall: ToolCall, reaso
 }
 
 /**
- * LOU-V3: closes out a batch cut short by an abort - in call order, each
+ * Closes out a batch cut short by an abort - in call order, each
  * call that was not yet in the transcript gets its result if it finished,
  * or a cancelled result if it never started, was waiting on an approval,
  * or ended in a fatal error.
@@ -436,10 +485,41 @@ export function toExecutionResult(
     finishReason,
     steps: state.steps,
     ...(state.agentName !== undefined && { agentName: state.agentName }),
+    ...withToolErrors(state),
   };
 }
 
-/** LOU-V13: adds a step's reasoning text to the run's. */
+/** Whether a tool message is the result of a call that never ran (`kind: 'not-run'`: an abort, a budget stop). */
+function isNotRunResult(content: Message['content']): boolean {
+  if (typeof content !== 'string') return false;
+  try {
+    return (JSON.parse(content) as { kind?: unknown } | null)?.kind === 'not-run';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * How many of the run's tool calls (`state.toolCalls`, a resumed run's
+ * included) ended in an error result - thrown, invalid arguments, unknown
+ * tool, denied, rejected, ... - but not a call that never ran (`'not-run'`).
+ */
+export function countToolErrors(state: Pick<AgentRunState, 'messages' | 'toolCalls'>): number {
+  if (state.toolCalls.length === 0) return 0;
+  const ids = new Set(state.toolCalls.map((call) => call.id));
+  let failed = 0;
+  for (const message of state.messages) {
+    if (message.role === 'tool' && message.isError && message.toolCallId && ids.has(message.toolCallId) && !isNotRunResult(message.content)) failed++;
+  }
+  return failed;
+}
+
+function withToolErrors(state: AgentRunState): Pick<ExecutionResult, 'toolErrors'> {
+  const toolErrors = countToolErrors(state);
+  return toolErrors > 0 ? { toolErrors } : {};
+}
+
+/** Adds a step's reasoning text to the run's. */
 export function noteReasoning(state: AgentRunState, reasoning: ReasoningBlock[] | undefined): void {
   const text = (reasoning ?? []).map((block) => block.text).join('');
   if (text) state.reasoning = state.reasoning ? `${state.reasoning}
@@ -448,13 +528,13 @@ ${text}` : text;
 }
 
 /**
- * The assistant message of a tool-call turn. LOU-V13: it keeps only the
+ * The assistant message of a tool-call turn. it keeps only the
  * reasoning blocks a provider needs back (signed or redacted Anthropic
  * thinking), so they survive the next step, a checkpoint and a resume.
  */
 export function assistantTurn(result: GenerateResult): Message {
   const replayed = (result.reasoning ?? []).filter((block) => block.signature || block.redactedData);
   const turn: Message = { role: 'assistant', content: result.text || '', toolCalls: result.toolCalls, ...(replayed.length > 0 && { reasoning: replayed }) };
-  // N1a: the provider's own calls are kept on the turn, never sent back as calls.
+  // The provider's own calls are kept on the turn, never sent back as calls.
   return withHostedCalls(turn, result.hostedToolCalls);
 }

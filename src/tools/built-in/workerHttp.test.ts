@@ -1,5 +1,5 @@
 /**
- * M3a: the Cloudflare Worker `http_request` tool. No network: every request
+ * The Cloudflare Worker `http_request` tool. No network: every request
  * goes to an injected `fetch`, which records the URLs it was asked for.
  */
 import { describe, it, expect } from 'vitest';

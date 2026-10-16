@@ -1,5 +1,5 @@
 /**
- * The delegation half of agent-directory sub-agents (Eve MA-F5), with no Node
+ * The delegation half of agent-directory sub-agents, with no Node
  * builtins so the Cloudflare Worker runtime (src/deploy/runtime.worker.ts)
  * wires a bundled directory's `subagents/` the same way `loadAgentDir()` does:
  * native sub-agents behind a `delegate_to_<name>` alias, and the lead's
@@ -30,7 +30,7 @@ export interface LoadedSubagent {
 
 /**
  * `delegate_to_<name>`: the backward-compatible alias of the `task` tool for
- * one sub-agent directory (Eve MA-F5). It runs the sub-agent through the same
+ * one sub-agent directory. It runs the sub-agent through the same
  * delegation core as `task` (`runSubagent()`), so the child inherits the lead
  * run's permissions, approvals (a paused child pauses the lead), hooks, events
  * and tracing, and its usage rolls up into the lead's. It returns the
@@ -70,7 +70,7 @@ export function delegateTool(subagent: LoadedSubagent): DefinedTool {
 
 /**
  * The lead's approver once its sub-agent directories run as native
- * sub-agents (Eve MA-F5): a sub-agent's paused call (`subagentPath[0]` is a
+ * sub-agents: a sub-agent's paused call (`subagentPath[0]` is a
  * directory sub-agent) is decided by that sub-agent's own approver - which
  * routes its own sub-agents the same way and keeps receipt-enforced calls for
  * the host - else by the host's in-code approver, else it waits for a human

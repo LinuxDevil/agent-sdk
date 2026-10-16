@@ -1,8 +1,8 @@
 /**
- * LOU-D43 `CheckpointStore.history()` contract suite, shared so every store
+ * `CheckpointStore.history()` contract suite, shared so every store
  * that keeps a history runs the same assertions: the SDK's own stores
  * (checkpointHistory.contract.test.ts) and Agent Forge's `FileCheckpointStore`
- * (apps/agent-forge/server/__tests__/checkpointStore.test.ts, LOU-D45).
+ * (apps/agent-forge/server/__tests__/checkpointStore.test.ts).
  */
 import { describe, it, expect } from 'vitest';
 import { DEFAULT_CHECKPOINT_HISTORY_LIMIT, type CheckpointStore } from '../checkpoint';

@@ -1,5 +1,5 @@
 /**
- * Record/replay for `lousho eval` (LOU-D46). When the CLI sets
+ * Record/replay for `lousho eval`. When the CLI sets
  * `LOUSHO_EVAL_CASSETTES`, every model call an eval case makes goes through
  * `recordReplay()`, one cassette per case and provider, committed next to the
  * eval file at `__cassettes__/<eval>/<case>.json`.
@@ -19,6 +19,7 @@ import * as path from 'node:path';
 import { setProviderInterceptor } from '../providers/interception';
 import { markPropagating } from '../execution/propagatingToolError';
 import type { LLMProvider } from '../providers/llm';
+import { isMockProvider } from '../providers/mockMarker';
 import { recordReplay } from '../testing/recordReplay';
 import type { EvalResult } from './evalResult';
 import { SDKError } from '../execution/errors';
@@ -147,7 +148,8 @@ function claimForRecording(run: CaseRun, cassette: string): void {
 }
 
 function wrapperFor(run: CaseRun, provider: LLMProvider, agent?: string): LLMProvider {
-  if (wrappers.has(provider)) return provider;
+  // A scripted mockModel() makes no network call: there is nothing to record or replay.
+  if (wrappers.has(provider) || isMockProvider(provider)) return provider;
   const existing = run.wrappers.get(provider);
   if (existing) return existing;
   const committed = committedCassette(run, run.wrappers.size, agent);

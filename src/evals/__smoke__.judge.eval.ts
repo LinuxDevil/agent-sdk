@@ -1,5 +1,5 @@
 /**
- * Smoke judge eval (LOU-G6) - a real defineEval() + llmJudge() combination,
+ * Smoke judge eval - a real defineEval() + llmJudge() combination,
  * using a mock judge provider that resolves generate() with a fixed
  * rubric score ("0.9"). Only collected by vitest.judge.config.ts's
  * '**\/*.judge.eval.ts' include (NOT by the default vitest.config.ts,

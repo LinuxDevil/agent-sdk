@@ -1,19 +1,19 @@
 /**
  * Internal "<provider>/<model>" resolution shared by `resolveProvider()` and
- * `createAgent()` (LOU-D1). Not re-exported from the providers barrel: the
+ * `createAgent()`. Not re-exported from the providers barrel: the
  * public surface is `resolveProvider()` and `createAgent({ model })`. The
  * `caller` argument only decides the prefix of error messages, so each entry
  * point reports errors in its own name.
  */
 
-// LOU-R27: type-only imports only - `LLMProviderRegistry` arrives as the
+// Type-only imports only - `LLMProviderRegistry` arrives as the
 // `registry` argument of resolveProviderSpec() so nothing here adds a
 // runtime edge back into the provider import graph.
 import type { LLMProvider, LLMProviderConfig } from './llm';
 import { ConfigurationError } from '../execution/errors';
 import { closestMatch } from '../utils/closestMatch';
 
-/** The `ai` majors the SDK runs on (LOU-D28); `ai` 5 is not supported. */
+/** The `ai` majors the SDK runs on; `ai` 5 is not supported. */
 export type AiMajor = 4 | 6 | 7;
 
 /** The `ai` range of each supported major. */
@@ -141,7 +141,7 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     configField: 'apiKey',
     envRequired: true,
     peers: aiSdkPeer('@ai-sdk/openai'),
-    envDefaultModel: 'gpt-4o-mini',
+    envDefaultModel: 'gpt-4.1-mini',
   },
   anthropic: {
     envKey: 'ANTHROPIC_API_KEY',
@@ -155,7 +155,7 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     configField: 'apiKey',
     envRequired: true,
     peers: aiSdkPeer('@ai-sdk/openai'),
-    envDefaultModel: 'openai/gpt-4o-mini',
+    envDefaultModel: 'openai/gpt-4.1-mini',
   },
   ollama: {
     envKey: 'OLLAMA_BASE_URL',
@@ -180,7 +180,7 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     envForInfoOnly: true,
     envRequired: false,
     peers: PI_PEERS,
-    envDefaultModel: 'openrouter/openai/gpt-4o-mini',
+    envDefaultModel: 'openrouter/openai/gpt-4.1-mini',
   },
 };
 
@@ -216,7 +216,7 @@ function missingKeyError(caller: string, envKey: string): Error {
 }
 
 /**
- * Whether a cassette may answer this process's model calls (LOU-R10):
+ * Whether a cassette may answer this process's model calls:
  * `lousho eval` sets `LOUSHO_EVAL_CASSETTES` (see src/evals/cassettes.ts) in
  * the eval's vitest process - `replay` under `--replay`, `auto` under CI,
  * where every case that has a cassette replays it. In those modes the
@@ -230,7 +230,7 @@ function cassetteMayAnswerCalls(): boolean {
 
 /**
  * A provider that reports `provider`'s identity but rejects every model call
- * with `error` (LOU-R10). Resolving a keyless spec under cassette replay
+ * with `error`. Resolving a keyless spec under cassette replay
  * still builds the real provider for its name/defaultModel; if a call does
  * reach it (mode 'auto' on a case with no cassette) the caller gets the same
  * missing-key error the spec check would have thrown up front.
@@ -268,12 +268,11 @@ function isModuleNotFound(error: unknown): boolean {
 /**
  * The registry slice `resolveProviderSpec` needs: `LLMProviderRegistry`
  * satisfies it (its `create` is static, so pass the class itself). Injected
- * rather than imported to keep this module out of the provider import cycle
- * (LOU-R27).
+ * rather than imported to keep this module out of the provider import cycle.
  */
 export interface ProviderResolver {
   create(providerName: string, config: LLMProviderConfig): LLMProvider;
-  /** Whether `providerName` was registered; a spec naming a registered provider that is not built in is created through `create()` (F13). */
+  /** Whether `providerName` was registered; a spec naming a registered provider that is not built in is created through `create()`. */
   has?(providerName: string): boolean;
 }
 
@@ -303,7 +302,7 @@ export function resolveProviderSpec(spec: string, caller: string, registry: Prov
   if (separatorIndex <= 0 || separatorIndex === spec.length - 1) {
     throw new ConfigurationError(
       `${caller}: expected a "<provider>/<model>" spec, got '${spec}'. ` +
-        `Example: 'openai/gpt-4o-mini'. Supported prefixes: ${SPEC_PREFIXES}.`,
+        `Example: 'openai/gpt-4.1-mini'. Supported prefixes: ${SPEC_PREFIXES}.`,
       'model',
       'LOUSHO_PROVIDER_SPEC_INVALID'
     );
@@ -314,7 +313,7 @@ export function resolveProviderSpec(spec: string, caller: string, registry: Prov
 
   const entry = PROVIDERS[providerName];
   if (!entry) {
-    // F13: a provider added with LLMProviderRegistry.register() can be named in a model string too; its factory reads its own credentials.
+    // A provider added with LLMProviderRegistry.register() can be named in a model string too; its factory reads its own credentials.
     // 'mock' is built in: create() registers it on first use, whichever entry point (ESM or CJS copy) loaded this.
     if (registry.has?.(providerName) || providerName === MOCK_PROVIDER) return registry.create(providerName, { ...extra, defaultModel: model });
     throw unknownProviderError(caller, spec.slice(0, separatorIndex), spec);
@@ -353,9 +352,9 @@ export function modelFromEnv(caller: string, env: Record<string, string | undefi
   const envKeys = Object.values(PROVIDERS).map((p) => p.envKey);
   throw new ConfigurationError(
     `${caller}: no model configured. Do one of the following: ` +
-      "(1) pass a model: createAgent({ model: 'openai/gpt-4o-mini' }); " +
+      "(1) pass a model: createAgent({ model: 'openai/gpt-4.1-mini' }); " +
       '(2) pass a provider instance: createAgent({ provider: ... }); ' +
-      `(3) set ${MODEL_ENV_VAR} (e.g. ${MODEL_ENV_VAR}=openai/gpt-4o-mini); ` +
+      `(3) set ${MODEL_ENV_VAR} (e.g. ${MODEL_ENV_VAR}=openai/gpt-4.1-mini); ` +
       `(4) set one of ${envKeys.join(', ')} (checked in that order).`,
     'model',
     'LOUSHO_CONFIG_MISSING_PROVIDER'

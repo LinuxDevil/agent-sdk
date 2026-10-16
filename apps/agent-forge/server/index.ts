@@ -1,5 +1,5 @@
 /**
- * LOU-N runtime control server entry point.
+ * Runtime control server entry point.
  *
  * Started either directly (`tsx server/index.ts`, e.g. from `lousho studio`
  * - see src/cli/studio.ts) or programmatically via `startStudioServer()`
@@ -23,7 +23,7 @@ export interface StudioServerHandle {
   server: http.Server;
   port: number;
   runManager: RunManager;
-  /** Eve DUI-F1: the per-launch token every API/WebSocket request must carry. */
+  /** The per-launch token every API/WebSocket request must carry. */
   token: string;
   /** The URL to open: the studio's own origin with `?token=` appended. */
   url: string;
@@ -36,7 +36,7 @@ export interface StartStudioServerOptions {
   port?: number;
   host?: string;
   /**
-   * S1: directory holding the built client (`vite build`'s output,
+   * Directory holding the built client (`vite build`'s output,
    * `apps/agent-forge/dist`) to serve as static files - see
    * `createApp`'s `staticDir` doc comment in `./app.ts`. Defaults to
    * `<this file's directory>/../dist`, i.e. `apps/agent-forge/dist`
@@ -47,7 +47,7 @@ export interface StartStudioServerOptions {
    */
   staticDir?: string | false;
   /**
-   * Eve DUI-F1: the per-launch API token. Defaults to the
+   * The per-launch API token. Defaults to the
    * `LOUSHO_STUDIO_TOKEN` env var (set by `lousho studio`), else a freshly
    * minted random one.
    */

@@ -1,11 +1,11 @@
 /**
- * The work behind each file system tool (LOU-X6), kept apart from the tool
+ * The work behind each file system tool, kept apart from the tool
  * definitions so each piece stays small and testable.
  */
 import type { FsProvider } from './types';
 import { globToRegExp, walkFiles } from './glob';
-import { normalizeWorkspacePath, WorkspaceError } from './paths';
-import { assertSafePattern, createLineMatcher, GREP_TIMEOUT_MS, type LineMatcher } from './grepMatcher';
+import { normalizeAllowedPath, normalizeWorkspacePath, WorkspaceError, type DeniedSegment } from './paths';
+import { assertSafePattern, createLineMatcher, GREP_TIMEOUT_MS, GrepTimeoutError, type LineMatcher } from './grepMatcher';
 
 /** Resolved limits shared by the file system tools. */
 export interface FsLimits {
@@ -14,7 +14,9 @@ export interface FsLimits {
   maxResults: number;
   maxFilesScanned: number;
   ignore: ReadonlySet<string>;
-  /** Wall-clock budget for one `grep` call's matching (Eve TOOLS-F6); default 10 s. */
+  /** Path segments no tool opens, lists or returns; none when omitted. */
+  isDenied?: DeniedSegment;
+  /** Time one `grep` call may spend matching, not reading files; default 10 s. */
   grepTimeoutMs?: number;
 }
 
@@ -24,6 +26,13 @@ const MAX_GREP_LINE_CHARS = 500;
 const MAX_GREP_FILE_BYTES = 2_000_000;
 /** `read_file` refuses files larger than this instead of loading them into memory. */
 const MAX_READ_FILE_BYTES = 10_000_000;
+
+const NOTHING_DENIED: DeniedSegment = () => undefined;
+
+/** Normalizes a model-supplied path and refuses one the `deny` list covers. */
+export function allowedPath(path: string, limits: Pick<FsLimits, 'isDenied'>): string {
+  return normalizeAllowedPath(path, limits.isDenied ?? NOTHING_DENIED);
+}
 
 function clip(line: string, max: number): string {
   return line.length > max ? `${line.slice(0, max)} ... [line truncated]` : line;
@@ -45,7 +54,7 @@ export async function readNumberedLines(
   args: { path: string; offset?: number; limit?: number },
   limits: FsLimits
 ): Promise<string> {
-  const path = normalizeWorkspacePath(args.path);
+  const path = allowedPath(args.path, limits);
   const stat = await fs.stat(path);
   if (stat && stat.type === 'file' && stat.size > MAX_READ_FILE_BYTES) {
     throw new WorkspaceError(`${path} is too large to read (${stat.size} bytes). Use grep to find the lines you need.`);
@@ -90,7 +99,7 @@ function notFoundMessage(path: string, content: string, oldString: string): stri
 }
 
 /**
- * The text of a file `edit_file` may rewrite (Eve TOOLS-F7). With the
+ * The text of a file `edit_file` may rewrite. With the
  * provider's raw bytes, a UTF-16 file (by its BOM) or one a fatal UTF-8
  * decoder rejects is refused: decoding it as UTF-8 and writing it back would
  * replace each undecodable byte with U+FFFD, also on lines the edit never
@@ -163,8 +172,8 @@ export async function editFile(fs: FsProvider, args: EditArgs): Promise<string> 
 
 /** `list_dir`: sorted entries, directories suffixed with `/`. */
 export async function listDirectory(fs: FsProvider, args: { path?: string }, limits: FsLimits): Promise<string> {
-  const path = normalizeWorkspacePath(args.path ?? '.');
-  const entries = await fs.readdir(path);
+  const path = allowedPath(args.path ?? '.', limits);
+  const entries = (await fs.readdir(path)).filter((e) => limits.isDenied?.(e.name) === undefined);
   const names = entries.map((e) => (e.type === 'directory' ? `${e.name}/` : e.name)).sort();
   if (names.length === 0) return `${path} is empty.`;
   const shown = names.slice(0, limits.maxResults);
@@ -190,11 +199,13 @@ async function findFiles(
   const normalizedPattern = pattern === undefined ? undefined : normalizeWorkspacePath(pattern);
   if (normalizedPattern !== undefined && fs.glob) {
     const full = base === '.' ? normalizedPattern : `${base}/${normalizedPattern}`;
-    const files = (await fs.glob(full, { signal })).map((p) => normalizeWorkspacePath(p));
+    const files = (await fs.glob(full, { signal }))
+      .map((p) => normalizeWorkspacePath(p))
+      .filter((p) => limits.isDenied?.(p) === undefined);
     return { files: [...new Set(files)].sort(), truncated: false };
   }
   const regex = normalizedPattern === undefined ? undefined : globToRegExp(normalizedPattern);
-  const walked = await walkFiles(fs, base, { ignore: limits.ignore, maxFiles: limits.maxFilesScanned, signal });
+  const walked = await walkFiles(fs, base, { ignore: limits.ignore, isDenied: limits.isDenied, maxFiles: limits.maxFilesScanned, signal });
   const prefix = base === '.' ? 0 : base.length + 1;
   const files = regex ? walked.files.filter((f) => regex.test(f.slice(prefix))) : walked.files;
   return { files: files.sort(), truncated: walked.truncated };
@@ -211,7 +222,7 @@ export async function globFiles(
   limits: FsLimits,
   signal?: AbortSignal
 ): Promise<string> {
-  const base = normalizeWorkspacePath(args.path ?? '.');
+  const base = allowedPath(args.path ?? '.', limits);
   const { files, truncated } = await findFiles(fs, base, args.pattern, limits, signal);
   if (files.length === 0) return `No files match ${JSON.stringify(args.pattern)} under ${base}.${scanNote(truncated, limits)}`;
   const shown = files.slice(0, limits.maxResults);
@@ -237,7 +248,7 @@ async function grepTargets(
   limits: FsLimits,
   signal?: AbortSignal
 ): Promise<FileList> {
-  const base = normalizeWorkspacePath(args.path ?? '.');
+  const base = allowedPath(args.path ?? '.', limits);
   const stat = await fs.stat(base);
   if (!stat) throw new WorkspaceError(`Path not found: ${base}`);
   if (stat.type === 'file') return { files: [base], truncated: false };
@@ -268,12 +279,18 @@ export async function grepFiles(
   const { files, truncated } = await grepTargets(fs, args, limits, signal);
   const matches: string[] = [];
   let capped = false;
+  let scanned = 0;
   // The regex runs off the event loop with a timeout, so a slow pattern cannot freeze the process.
   const matcher = await createLineMatcher(regex, limits.grepTimeoutMs ?? GREP_TIMEOUT_MS, signal);
   try {
     for (const file of files) {
       if (signal?.aborted) throw new WorkspaceError('The operation was cancelled.');
-      const found = await grepFile(fs, file, matcher, limits.maxResults - matches.length);
+      scanned++;
+      const found = await grepFile(fs, file, matcher, limits.maxResults - matches.length).catch((error: unknown) => {
+        throw error instanceof GrepTimeoutError
+          ? new WorkspaceError(`${error.message} (scanned ${scanned - 1} of ${files.length} files before ${file}.)`)
+          : error;
+      });
       if (found.length === 0) continue;
       matches.push(...found);
       if (matches.length >= limits.maxResults) {

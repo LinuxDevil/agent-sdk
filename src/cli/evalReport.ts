@@ -1,5 +1,5 @@
 /**
- * Pure aggregation and rendering for `lousho eval` (LOU-D8): the summary
+ * Pure aggregation and rendering for `lousho eval`: the summary
  * table, JUnit XML and JSON. No I/O, so every output is snapshot-testable.
  */
 import {
@@ -18,7 +18,7 @@ export interface EvalSummary {
   passed: number;
   /** Cases that failed a gate, threw, or (with `strict`) failed a soft assertion. */
   failed: number;
-  /** Cases that passed their gates but have failed soft assertions. */
+  /** Cases with failed soft assertions, whether or not the case also failed a gate or threw. */
   softFailed: number;
   strict: boolean;
   durationMs: number;
@@ -50,7 +50,7 @@ export function summarize(results: readonly EvalResult[], strict: boolean): Eval
     total: results.length,
     passed: results.length - failed,
     failed,
-    softFailed: results.filter((r) => r.passed && softFailures(r).length > 0).length,
+    softFailed: results.filter((r) => softFailures(r).length > 0).length,
     strict,
     durationMs: results.reduce((sum, r) => sum + r.durationMs, 0),
   };
@@ -118,7 +118,7 @@ export function renderTable(results: readonly EvalResult[], strict: boolean): st
   ].join('\n');
 }
 
-/** One drifted field of one case (`lousho eval --drift`, LOU-D46). */
+/** One drifted field of one case (`lousho eval --drift`). */
 export interface DriftRow {
   result: EvalResult;
   /** A trajectory difference, or `cassette` when one side was never recorded. */
@@ -168,7 +168,9 @@ function testcaseXml(result: EvalResult, strict: boolean): string {
   }
   const failures = gates.length > 0 ? gates : strict ? softs : [];
   if (failures.length > 0) {
-    return `${open}>\n      <failure message="${xml(failures[0])}" type="AssertionError">${xml(failures.join('\n'))}</failure>\n    </testcase>`;
+    // A failed case's soft failures stay visible: as notes unless `strict` already lists them as failures.
+    const notes = !strict && softs.length > 0 ? `\n      <system-out>${xml(softs.map((m) => `soft failure: ${m}`).join('\n'))}</system-out>` : '';
+    return `${open}>\n      <failure message="${xml(failures[0])}" type="AssertionError">${xml(failures.join('\n'))}</failure>${notes}\n    </testcase>`;
   }
   if (softs.length > 0) {
     return `${open}>\n      <system-out>${xml(softs.map((m) => `soft failure: ${m}`).join('\n'))}</system-out>\n    </testcase>`;

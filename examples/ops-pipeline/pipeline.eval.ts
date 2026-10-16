@@ -1,10 +1,10 @@
 /**
- * Ops pipeline eval (LOU-J9).
+ * Ops pipeline eval.
  *
  * Two complementary checks:
  *
- * 1. A REAL defineEval() (LOU-G1) using the REAL toolCallOrder() scorer
- *    (LOU-G4) against the monitor agent's own single
+ * 1. A REAL defineEval() using the REAL toolCallOrder() scorer
+ *    against the monitor agent's own single
  *    AgentExecutor.execute() step. This step's ExecutionResult.toolCalls
  *    DOES naturally carry the expected sequence (a single delegate call to
  *    the real `delegate_to_fixer` tool name used by index.ts), so
@@ -43,14 +43,14 @@ const DELEGATE_TOOL_NAME = 'delegate_to_fixer';
 const FIXTURE_SIGNAL = exampleErrorSignal();
 
 // ---------------------------------------------------------------------------
-// 1. REAL defineEval() + REAL toolCallOrder() scorer (LOU-G1/G4)
+// 1. REAL defineEval() + REAL toolCallOrder() scorer
 // ---------------------------------------------------------------------------
 
 const evalProvider = createDemoProvider();
 const evalFixerAgent = buildFixerAgent();
 const evalDelegateTool = createFixerTool({ agent: evalFixerAgent, provider: evalProvider });
 // Note: unlike index.ts's real wiring, this eval registry does NOT flag the
-// delegate tool needsApproval:true - defineEval()'s EvalConfig (LOU-G1) has
+// delegate tool needsApproval:true - defineEval()'s EvalConfig has
 // no approvalStore field to satisfy a paused run, and the approval-gate
 // property itself is already covered directly by index.test.ts. This eval
 // is purely about the monitor agent's own tool-call CHOICE/ORDER.
@@ -77,7 +77,7 @@ defineEval({
 // 2. Full cross-stage call-order recording (direct assertion)
 // ---------------------------------------------------------------------------
 
-describe('ops-pipeline: full cross-stage call order (LOU-J9)', () => {
+describe('ops-pipeline: full cross-stage call order', () => {
   it('runs monitor -> slack alert -> fixer delegate -> patchChecks -> github PR, in that order', async () => {
     const order: string[] = [];
 

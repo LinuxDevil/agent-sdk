@@ -1,5 +1,5 @@
 /**
- * Eve PROV-F1/F2: the strict-schema rewrite (oneOf, records, tuples, a
+ * The strict-schema rewrite (oneOf, records, tuples, a
  * non-object root) and the decode of a reply back to the schema's shape.
  */
 
@@ -12,7 +12,7 @@ function rewrite(schema: Record<string, unknown>) {
   return { strict, decode: (value: unknown) => decodeStrictValue(value, strict, strict, shapes) };
 }
 
-describe('strictShapes (Eve PROV-F1)', () => {
+describe('strictShapes', () => {
   it('rewrites oneOf (zod 4 z.discriminatedUnion) to anyOf, nested and at the root', () => {
     const branch = (kind: string) => ({ type: 'object', properties: { kind: { const: kind } }, required: ['kind'], additionalProperties: false });
     const { strict, decode } = rewrite({ oneOf: [branch('a'), branch('b')] });

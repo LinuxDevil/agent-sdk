@@ -103,7 +103,7 @@ export class SqliteStore {
    * sign-ins. Unresolved approvals and OAuth tokens are kept, and so is a run
    * paused on an unresolved approval, however old: its checkpoint
    * (`<id>.turn-<n>` for a session turn), that checkpoint's history and the
-   * session's transcript (Eve DUR-F6).
+   * session's transcript.
    *
    * @example
    * ```ts

@@ -1,5 +1,5 @@
 /**
- * Eve CORE-F11: pressing Stop while the model was answering a session turn erased the user's message from the
+ * Pressing Stop while the model was answering a session turn erased the user's message from the
  * session, and the aborted model call counted 0 tokens. Now the turn keeps the user's input, plus the reply streamed
  * so far marked `metadata.interrupted`, and the aborted call's usage counts (estimated when the provider gave none).
  */
@@ -21,7 +21,7 @@ const waitOrAbort = (ms: number, signal?: AbortSignal): Promise<void> =>
     });
   });
 
-describe('Stop during a model reply keeps the turn (Eve CORE-F11)', () => {
+describe('Stop during a model reply keeps the turn', () => {
   it('send(): the user message stays in the transcript and the next turn sees it', async () => {
     let call = 0;
     const seen: unknown[][] = [];

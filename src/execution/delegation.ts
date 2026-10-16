@@ -1,7 +1,6 @@
 /**
- * The delegation core used by the `task` tool (LOU-Y3): runs a child agent
- * for one tool call of a parent run, inheriting the parent's runtime
- * (LOU-Y1).
+ * The delegation core used by the `task` tool: runs a child agent
+ * for one tool call of a parent run, inheriting the parent's runtime.
  *
  * The child keeps its own instructions, model/provider, tools, skills and
  * maxSteps, and sees only the input it is given (never the parent's
@@ -9,7 +8,7 @@
  * own: the abort signal, the trace exporter and span parent, the hooks
  * (tagged with `ctx.subagent`), the approval store (a paused child pauses the
  * parent), `toolConcurrency`, the sandbox and content-capture settings, the
- * run's principal (N10b) and the run's event listeners (events tagged with
+ * run's principal and the run's event listeners (events tagged with
  * `event.subagent`). Its token usage is added to the parent's.
  */
 
@@ -47,26 +46,32 @@ export interface SubagentSpec {
   maxSubagentDepth?: number;
   maxSteps?: number;
   toolConcurrency?: ToolConcurrency;
-  /** LOU-X2: the sub-agent's own permission rules, checked after the ones it inherits. */
+  /** The sub-agent's own permission rules, checked after the ones it inherits. */
   permissions?: readonly PermissionRule[];
-  /** N4: the sub-agent's own mode, used while the lead's is `'default'`. */
+  /** The sub-agent's own mode, used while the lead's is `'default'`. */
   permissionMode?: PermissionOptions['permissionMode'];
-  /** LOU-X4: the sub-agent's own guardrails, run after the ones it inherits. */
+  /** The sub-agent's own guardrails, run after the ones it inherits. */
   guardrails?: AgentGuardrails;
-  /** LOU-V13: the sub-agent's own `reasoning` (not inherited: it may run another model). */
+  /** The sub-agent's own `reasoning` (not inherited: it may run another model). */
   reasoning?: ReasoningOption;
-  /** C6: the sub-agent's own sampling settings (not inherited: it may run another model). */
+  /** The sub-agent's own sampling settings (not inherited: it may run another model). */
   modelSettings?: ModelSettings;
-  /** Eve PROV-F14: the model-call budget the run's agents share (the lead run's, else this agent's own). */
+  /** The model-call budget the run's agents share (the lead run's, else this agent's own). */
   rateLimiter?: RateLimiter;
-  /** LOU-V4.2: the sub-agent's own `output` schema (never the lead's); its validated object is the `task` result. */
+  /** The sub-agent's own `output` schema (never the lead's); its validated object is the `task` result. */
   output?: StandardSchemaV1 | OutputSpec;
-  /** N1a: the sub-agent's own hosted tools (never the lead's). */
+  /** The sub-agent's own hosted tools (never the lead's). */
   hostedTools?: readonly HostedTool[];
-  /** N2: the sub-agent's own tool search tuning (never the lead's); see docs/tool-search.md. */
+  /** The sub-agent's own tool search tuning (never the lead's); see docs/tool-search.md. */
   toolSearch?: false | ToolSearchOptions;
   /** TTL: the sub-agent's own approval deadline; absent, it inherits the lead run's `approvalTtlMs`. */
   approvalTtlMs?: number;
+  /**
+   * The sub-agent's own hooks (its memory recall), run before the ones
+   * it inherits from the lead run, on its own model and tool calls (where
+   * `ctx.subagent` is not set yet); the sub-agents it starts inherit them.
+   */
+  hooks?: HookRegistry;
 }
 
 /** One child run requested by a parent tool call. */
@@ -81,7 +86,7 @@ export interface SubagentRequest {
   toolOptions?: { abortSignal?: AbortSignal } & ToolRunContext;
   /** Short label of the task, for events and hooks. */
   description?: string;
-  /** The `task` call's taskId, recorded on the child's `invoke_agent` span (Eve MA-F10). */
+  /** The `task` call's taskId, recorded on the child's `invoke_agent` span. */
   taskId?: string;
 }
 
@@ -111,18 +116,18 @@ export async function runSubagent(
     throw new SDKError(`Sub-agent '${request.name}' can only be started by a tool call of an agent run.`, 'LOUSHO_CONFIG_INVALID');
   }
 
-  // LOU-V5: the child's usage rolls up into the parent run's totals.
+  // The child's usage rolls up into the parent run's totals.
   const reportUsage = scope?.onDelegatedUsage ?? request.toolOptions?.onDelegatedUsage;
   const resume = scope?.resume;
   let result: ExecutionResult;
   try {
     result =
       resume && capture.store
-        ? // M10c: the paused child is compared with its current definition, under the lead's `onAgentDrift`.
+        ? // The paused child is compared with its current definition, under the lead's `onAgentDrift`.
           await resume.run(resume.decision, capture.store, spec.toolRegistry ?? new ToolRegistry(), spec.provider, {
             ...options,
             currentAgent: spec.agent,
-            // N10b: who decided, for the sub-agent's approved call.
+            // Who decided, for the sub-agent's approved call.
             ...(resume.approver && { approver: resume.approver }),
           })
         : await run({
@@ -131,11 +136,11 @@ export async function runSubagent(
             input: request.input,
             provider: spec.provider,
             toolRegistry: spec.toolRegistry,
-            // LOU-D23.2: its own id under the parent's session, for its tools and hooks (not checkpointed).
+            // Its own id under the parent's session, for its tools and hooks (not checkpointed).
             ...(scope?.runtime.sessionId && { sessionId: `${scope.runtime.sessionId}/${info.toolCallId}` }),
           });
   } catch (error) {
-    // Eve MA-F1: a child that failed after spending tokens still counts toward the lead's usage and limits.
+    // A child that failed after spending tokens still counts toward the lead's usage and limits.
     const spent = runUsageOfError(error);
     if (spent) reportUsage?.(spent);
     throw error;
@@ -148,7 +153,7 @@ export async function runSubagent(
   return result;
 }
 
-/** Eve MA-F10: who the child is, for its `invoke_agent` span: one level deeper than the run that started it. */
+/** Who the child is, for its `invoke_agent` span: one level deeper than the run that started it. */
 function subagentSpanInfo(scope: ToolCallScope | undefined, request: SubagentRequest): SubagentSpanInfo {
   const parent = (scope?.runtime as { [SUBAGENT_SPAN]?: SubagentSpanInfo } | undefined)?.[SUBAGENT_SPAN];
   return { name: request.name, depth: (parent?.depth ?? 0) + 1, ...(request.taskId && { taskId: request.taskId }) };
@@ -214,21 +219,21 @@ function childOptions(
     // The top-level run's limit bounds the whole tree: one level used up here.
     maxSubagentDepth: Math.max(0, subagentBudget(runtime.maxSubagentDepth) - 1),
     maxSteps: spec.maxSteps,
-    // LOU-X2: the parent's rules come first, so they win over the sub-agent's own.
+    // The parent's rules come first, so they win over the sub-agent's own.
     permissions:
       runtime.permissions && spec.permissions
         ? [...runtime.permissions, ...spec.permissions]
         : (runtime.permissions ?? spec.permissions),
     onPermissionDecision: runtime.onPermissionDecision,
-    // N4: the lead's mode while it is not 'default', else the sub-agent's own; read at each of the child's tool calls.
+    // The lead's mode while it is not 'default', else the sub-agent's own; read at each of the child's tool calls.
     permissionMode: inheritPermissionMode(runtime.permissionMode, spec.permissionMode),
-    // M10c: a paused child (and its own children) resumes under the top-level run's drift mode.
+    // A paused child (and its own children) resumes under the top-level run's drift mode.
     onAgentDrift: runtime.onAgentDrift,
-    // N10b: an in-process child acts for the lead's caller (a remote sub-agent is never told who it is).
+    // An in-process child acts for the lead's caller (a remote sub-agent is never told who it is).
     principal: runtime.principal,
-    // LOU-R16: and the run's hooks see the same metadata inside the child.
+    // And the run's hooks see the same metadata inside the child.
     metadata: runtime.metadata,
-    // N9b: and reads that caller's OAuth tokens from the lead's store.
+    // And reads that caller's OAuth tokens from the lead's store.
     tokens: runtime.tokens,
     // TTL: the lead's approval deadline unless the sub-agent sets its own.
     approvalTtlMs: spec.approvalTtlMs ?? runtime.approvalTtlMs,
@@ -238,12 +243,29 @@ function childOptions(
     rateLimiter: runtime.rateLimiter ?? spec.rateLimiter,
     output: spec.output,
     hostedTools: spec.hostedTools,
-    // N2: its own deferred tools and tuning; it never sees what the lead loaded (its transcript is its own).
+    // Its own deferred tools and tuning; it never sees what the lead loaded (its transcript is its own).
     toolSearch: spec.toolSearch,
+    hooks: childHooks(spec.hooks, runtime.hooks && hooksForSubagent(runtime.hooks, info), info.name),
   };
 }
 
-/** Tracing, content capture, hooks and events, as inherited from the parent run. */
+/**
+ * The child's hooks: its own first (they see its calls untagged), then the ones it inherits. An own hook named
+ * like an inherited one (the lead's and the child's `memory-recall`) is renamed, so neither replaces the other.
+ */
+function childHooks(own: HookRegistry | undefined, inherited: HookRegistry | undefined, name: string): HookRegistry | undefined {
+  if (!own || !inherited) return own ?? inherited;
+  const hooks = new HookRegistry();
+  for (const hook of own.list()) {
+    let unique = hook.name;
+    while (inherited.has(unique) || hooks.has(unique)) unique = `${unique} (${name})`;
+    hooks.register(unique === hook.name ? hook : (Object.create(hook, { name: { value: unique, enumerable: true } }) as AgentHook));
+  }
+  hooks.registerMany(inherited.list());
+  return hooks;
+}
+
+/** Tracing, content capture and events, as inherited from the parent run. */
 function inheritedObservability(
   scope: ToolCallScope | undefined,
   info: SubagentInfo
@@ -257,7 +279,6 @@ function inheritedObservability(
     parentSpanId: scope?.spanId,
     captureContent: runtime.captureContent,
     redactContent: runtime.redactContent,
-    hooks: runtime.hooks && hooksForSubagent(runtime.hooks, info),
   };
 }
 
@@ -301,7 +322,7 @@ function decorateHook(hook: AgentHook, tag: (ctx: HookContext) => HookContext): 
     if (fn) {
       decorated[method] = async (ctx, ...rest) => {
         try {
-          // LOU-X3: the hook's outcome (deny / result / input) reaches the child's run.
+          // The hook's outcome (deny / result / input) reaches the child's run.
           return await fn.call(hook, tag(ctx), ...rest);
         } catch (error) {
           markPropagating(error);

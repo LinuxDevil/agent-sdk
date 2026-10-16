@@ -99,13 +99,19 @@ describe('optional provider peers', () => {
   it('ok when installed', async () => {
     expect((await check(makeEnv(), 'optional-peer.@ai-sdk/openai')).status).toBe('ok');
   });
-  it('warn with an install command when missing and unused', async () => {
-    const result = await check(
-      makeEnv({ resolvePackageVersion: without('@ai-sdk/anthropic') }),
-      'optional-peer.@ai-sdk/anthropic'
-    );
-    expect(result.status).toBe('warn');
-    expect(result.fix).toBe('npm install @ai-sdk/anthropic@^0.0.42');
+  it('missing and unused: one info line naming it, with the install command in its fix, not a warning each', async () => {
+    const env = makeEnv({ resolvePackageVersion: without('@ai-sdk/anthropic') });
+    const report = await runDoctor(env);
+    expect(report.checks.find((c) => c.id === 'optional-peer.@ai-sdk/anthropic')).toBeUndefined();
+    const result = await check(env, 'optional-peers.unused');
+    expect(result.status).toBe('ok');
+    expect(result.finding).toContain('@ai-sdk/anthropic');
+    expect(result.fix).toContain('npm install @ai-sdk/anthropic@^0.0.42');
+  });
+  it('groups every unused optional package into the one line', async () => {
+    const env = makeEnv({ resolvePackageVersion: (n) => (n === '@ai-sdk/anthropic' || n === 'prompts' ? null : INSTALLED[n] ?? null) });
+    const unusedLine = await check(env, 'optional-peers.unused');
+    expect(unusedLine.finding).toMatch(/not needed by this agent \(.*@ai-sdk\/anthropic.*prompts.*\)/);
   });
   it('fail when missing and the spec needs it', async () => {
     const env = makeEnv({
@@ -127,7 +133,7 @@ describe('optional provider peers', () => {
   });
 });
 
-describe('ai / provider package pairing (LOU-D28d)', () => {
+describe('ai / provider package pairing', () => {
   const WIDE_PEERS = {
     ai: '^4.3.19 || ^6.0.0 || ^7.0.0',
     zod: '^3.25.76',
@@ -162,21 +168,21 @@ describe('ai / provider package pairing (LOU-D28d)', () => {
   it('checks ollama-ai-provider-v2 on ai 7, and its fix states the zod 4 limitation', async () => {
     const report = await runDoctor(envWith({ ai: '7.0.0', 'ollama-ai-provider-v2': null }));
     expect(report.checks.find((c) => c.id === 'optional-peer.ollama-ai-provider')).toBeUndefined();
-    const result = await check(envWith({ ai: '7.0.0', 'ollama-ai-provider-v2': null }), 'optional-peer.ollama-ai-provider-v2');
-    expect(result.fix).toMatch(/^npm install ollama-ai-provider-v2@\^4\.0\.0 \(note: .*zod 4/);
+    const result = await check(envWith({ ai: '7.0.0', 'ollama-ai-provider-v2': null }), 'optional-peers.unused');
+    expect(result.fix).toMatch(/npm install ollama-ai-provider-v2@\^4\.0\.0 \(note: .*zod 4/);
   });
 
   it('a missing or unsupported ai gets one installable range, and provider hints for ai 7', async () => {
     for (const ai of [null, '5.0.0']) {
       expect((await check(envWith({ ai }), 'peer.ai')).fix).toBe('npm install ai@^7.0.0');
-      expect((await check(envWith({ ai, '@ai-sdk/openai': null }), 'optional-peer.@ai-sdk/openai')).fix).toBe(
+      expect((await check(envWith({ ai, '@ai-sdk/openai': null }), 'optional-peers.unused')).fix).toContain(
         'npm install @ai-sdk/openai@^4.0.0'
       );
     }
   });
 });
 
-describe('optional feature peers (LOU-D40)', () => {
+describe('optional feature peers', () => {
   const without = (missing: string) => (n: string) => (n === missing ? null : INSTALLED[n] ?? null);
 
   it.each([
@@ -193,10 +199,11 @@ describe('optional feature peers (LOU-D40)', () => {
     ['dockerode', 'npm install dockerode@^5.0.1'],
     ['@modelcontextprotocol/sdk', 'npm install @modelcontextprotocol/sdk@^1.31.0'],
     ['prompts', 'npm install prompts@^2.4.2'],
-  ])('%s: warn with the exact install command when missing', async (name, fix) => {
-    const result = await check(makeEnv({ resolvePackageVersion: without(name) }), `optional-peer.${name}`);
-    expect(result.status).toBe('warn');
-    expect(result.fix).toBe(fix);
+  ])('%s: grouped as unused with the exact install command when missing', async (name, fix) => {
+    const result = await check(makeEnv({ resolvePackageVersion: without(name) }), 'optional-peers.unused');
+    expect(result.status).toBe('ok');
+    expect(result.finding).toContain(name);
+    expect(result.fix).toContain(fix);
   });
 
   it('dockerode fails when missing and the spec uses a sandboxed tool', async () => {
@@ -303,7 +310,7 @@ describe('spec checks', () => {
     expect(bad.status).toBe('fail');
     expect(bad.fix).toContain("Remove 'nope'");
   });
-  it('checks MCP server commands from the validated spec field (LOU-D20)', async () => {
+  it('checks MCP server commands from the validated spec field', async () => {
     const commandExists = (command: string) => command === 'npx';
     const env = withSpec(
       spec({
@@ -333,7 +340,7 @@ describe('spec checks', () => {
   });
 });
 
-describe('spec policy checks (LOU-X5)', () => {
+describe('spec policy checks', () => {
   const withPolicy = (policy: AgentSpec['policy']) =>
     makeEnv({ specPath: 'a.yaml', loadSpec: () => spec({ policy }) });
 
@@ -413,7 +420,7 @@ describe('ollama check', () => {
   });
 });
 
-describe('OpenAI base URL and --ping (audit C5)', () => {
+describe('OpenAI base URL and --ping', () => {
   it('shows OPENAI_BASE_URL when set, without credentials or query', async () => {
     const env = makeEnv({ env: { OPENAI_API_KEY: SECRET, OPENAI_BASE_URL: `http://user:${SECRET}@localhost:1234/v1/?key=${SECRET}` } });
     const result = await check(env, 'env.openai-base-url');
@@ -509,15 +516,10 @@ describe('report, rendering and exit codes', () => {
       [ ok ] Required peer zod: 3.25.76 satisfies ^3.25.76
       [ ok ] Provider package @ai-sdk/openai: 0.0.42 installed
       [ ok ] Provider package @ai-sdk/anthropic: 0.0.42 installed
-      [warn] Provider package ollama-ai-provider: not installed (optional)
-             fix: npm install ollama-ai-provider@^1.2.0
-      [warn] Provider package @earendil-works/pi-ai: not installed (optional)
-             fix: npm install @earendil-works/pi-ai@^1.0.3
       [ ok ] Optional package dockerode: 5.0.1 installed - enables Docker sandboxing (SubprocessSandbox)
       [ ok ] Optional package @modelcontextprotocol/sdk: 1.31.0 installed - enables MCP (serveMcp, \`lousho mcp\` and MCP client connections)
       [ ok ] Optional package prompts: 2.4.2 installed - enables the interactive prompts of \`lousho init\` (pass --yes to skip them)
-      [warn] Optional package quickjs-emscripten: not installed (optional) - enables code mode (\`createAgent({ codeMode })\`)
-             fix: npm install quickjs-emscripten@^0.32.0
+      [ ok ] Optional packages not installed: 3 not needed by this agent (ollama-ai-provider, @earendil-works/pi-ai, quickjs-emscripten); install one only if you use its feature
       [ ok ] openai (OPENAI_API_KEY): set
       [warn] anthropic (ANTHROPIC_API_KEY): not set
              fix: Set ANTHROPIC_API_KEY in your environment, e.g. export ANTHROPIC_API_KEY=<your key>
@@ -525,10 +527,10 @@ describe('report, rendering and exit codes', () => {
              fix: Set OPENROUTER_API_KEY in your environment, e.g. export OPENROUTER_API_KEY=<your key>
       [ ok ] ollama (OLLAMA_BASE_URL): not set (optional; the provider default endpoint is used)
       [ ok ] pi (OPENROUTER_API_KEY): not set (only needed by the matching nested provider; each pi provider reads its own env key)
-      [ ok ] Default provider for createAgent(): would use 'openai/gpt-4o-mini'
+      [ ok ] Default provider for createAgent(): would use 'openai/gpt-4.1-mini'
       [ ok ] Docker: daemon not reachable (only needed for sandboxed tools; none configured)
 
-      12 ok, 5 warnings, 1 failure"
+      13 ok, 2 warnings, 1 failure"
     `);
     expect(text).not.toMatch(/[^\x20-\x7e\n]/);
   });
@@ -575,6 +577,18 @@ describe('agent directory', () => {
   it('flags an unknown provider in the model string', async () => {
     const env = dirEnv({ loadAgentDir: async () => ({ name: 'ck', model: 'gemini/pro', tools: [] }) });
     expect(await check(env, 'spec.provider')).toMatchObject({ status: 'fail', fix: expect.stringMatching(/^Set the config's model/) });
+  });
+
+  it('warns about a permission rule naming a tool the agent does not have, with the suggestion', async () => {
+    const env = dirEnv({
+      loadAgentDir: async () => ({
+        name: 'ck',
+        model: 'anthropic/claude-x',
+        tools: ['write_file'],
+        permissionIssues: ["permissions[0] names the tool 'write_flie', which no tool of the agent has, so the rule never applies. Did you mean 'write_file'?"],
+      }),
+    });
+    expect(await check(env, 'spec.permissions.0')).toMatchObject({ status: 'warn', finding: expect.stringContaining("Did you mean 'write_file'?") });
   });
 });
 

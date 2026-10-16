@@ -1,7 +1,7 @@
 /**
- * LOU-T2: durable checkpointing on the cloudflare-worker target, driven
- * through the REAL, tsup-built dist/worker.js bundle - same standard LOU-I3/
- * LOU-K3 already hold this adapter to ("verified genuinely Workers-
+ * Durable checkpointing on the cloudflare-worker target, driven
+ * through the REAL, tsup-built dist/worker.js bundle - same standard
+ * the rest of this adapter is held to ("verified genuinely Workers-
  * compatible, zero Node-builtin references in the built bundle").
  *
  * The built Worker's fetch() handler only exposes GET /health and POST
@@ -76,7 +76,7 @@ function createMockKV() {
 
 type WorkerHandler = { fetch: (r: Request, env?: Record<string, unknown>) => Promise<Response> };
 
-describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () => {
+describe('cloudflare-worker: durable checkpointing (built bundle)', () => {
   let outDir: string;
   let handler: WorkerHandler;
 
@@ -87,7 +87,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
     await withBuildLock(() => CloudflareWorkerAdapter.build(outDir));
 
     const bundlePath = path.join(outDir, 'dist', 'worker.js');
-    // Same LOU-I3/LOU-K3 bar this whole adapter is held to: the checkpoint
+    // Same bar this whole adapter is held to: the checkpoint
     // wiring must not have leaked any node: builtin into the bundle either.
     expect(findNodeBuiltinReferences(fs.readFileSync(bundlePath, 'utf8'))).toEqual([]);
 
@@ -128,7 +128,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
     expect(res.status).toBe(400);
   });
 
-  it('a real run through the built bundle writes a checkpoint to KV and keeps it, marked finished, on completion (LOU-U8)', async () => {
+  it('a real run through the built bundle writes a checkpoint to KV and keeps it, marked finished, on completion', async () => {
     const kv = createMockKV();
     const sessionId = 'writes-and-completes';
 
@@ -146,7 +146,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
     expect(body.finishReason).toBe('stop');
 
     // The run completed inside this single request/response cycle, so
-    // AgentExecutor keeps its transcript marked 'finished' (LOU-U8) - the
+    // AgentExecutor keeps its transcript marked 'finished' - the
     // next request with this sessionId continues the conversation. Proven
     // here via the real built bundle + a real (mocked) KV binding.
     const stored = JSON.parse((await kv.get(`checkpoints/${sessionId}`))!) as Checkpoint;
@@ -181,7 +181,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
     // this is the real payload the built bundle's AgentExecutor produced,
     // not a hand-crafted fixture.
     expect(capturedPuts.length).toBeGreaterThan(0);
-    // LOU-U9: the first put is the model's tool-call turn (before the tool
+    // The first put is the model's tool-call turn (before the tool
     // ran); take the one written after the tool result.
     const midRunCheckpoint = capturedPuts.find((c) => c.messages.some((m) => m.role === 'tool'))!;
     expect(midRunCheckpoint.sessionId).toBe(captureSessionId);
@@ -221,7 +221,7 @@ describe('cloudflare-worker: durable checkpointing (LOU-T2, built bundle)', () =
 
     // The resumed run's message history starts with EXACTLY the seeded
     // checkpoint's pre-pause messages, then this request's own `message` as
-    // a new user turn (LOU-U8: new input on an unfinished run is appended
+    // a new user turn (new input on an unfinished run is appended
     // after it), plus the messages that finish the run.
     expect(resumeBody.messages.length).toBeGreaterThan(midRunCheckpoint.messages.length);
     expect(resumeBody.messages.slice(0, midRunCheckpoint.messages.length)).toEqual(midRunCheckpoint.messages);

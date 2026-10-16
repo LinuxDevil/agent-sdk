@@ -97,6 +97,11 @@ const agent = createAgent({ provider: mockModel(['Hello!']), memory: [userFacts]
 await agent.send('Hi again!', { metadata: { userId: 'u-42' } });
 ```
 
+`lousho dev` and `lousho chat` cannot pass run `metadata`, so a scope function that
+reads `metadata.userId` is off there. To try per-user memory in the terminal, derive the
+scope from `sessionId` as well (for example `` `user:${metadata?.userId ?? sessionId}` ``, with
+`lousho chat --session <id>` as the "user"), or exercise it from a script with `send(..., { metadata })`.
+
 When a run has no scope key (a `'session'` slot in a `send()` without a
 `sessionId`, or a scope function that returns `undefined` or `null`), the slot is off
 for that run: nothing is recalled and its tools are not offered.
@@ -334,8 +339,12 @@ console.log((await store.list(memoryKey(notes)!)).map((item) => item.text)); // 
 
 ## Limitations
 
-- Recall and the memory tools apply to the agent's own runs, not to its
-  sub-agents. A [handoff](./handoffs.md#what-switches-and-what-stays) target
+- An agent's memory is its own: the lead's slots are not shared with its
+  [sub-agents](./sub-agents.md), and a sub-agent's slots are not shared with
+  the lead. A sub-agent with `memory` gets its own recall and memory tools
+  when the lead's `task` tool runs it, as on its own runs, with its scope
+  keys taken from the lead run (its `sessionId`, `metadata` and `principal`),
+  so a `'session'` slot of the sub-agent follows the lead's session. A [handoff](./handoffs.md#what-switches-and-what-stays) target
   keeps the lead's memory (the recalled blocks and the tools, under the same
   scope keys); a target's own `memory` slots are not used. When `agent.approvals.resolve()` continues a run after an
   approval pause, the recalled block stays in the prompt but the memory tools

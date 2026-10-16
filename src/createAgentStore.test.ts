@@ -1,5 +1,5 @@
 /**
- * LOU-D30: createAgent({ store }) wires sessions, checkpoints and approvals
+ * CreateAgent({ store }) wires sessions, checkpoints and approvals
  * from one AgentStore (memoryStore() or a SqliteStore); agent.resume(id)
  * finishes an interrupted durable run or session turn.
  */
@@ -40,7 +40,7 @@ const stores: Array<[string, () => AgentStore & { close?: () => void }]> = [
   ["SqliteStore(':memory:')", () => new SqliteStore(':memory:')],
 ];
 
-describe.each(stores)('createAgent({ store: %s }) (LOU-D30)', (_name, makeStore) => {
+describe.each(stores)('createAgent({ store: %s })', (_name, makeStore) => {
   it('agent.session({ id }) keeps its transcript in store.sessions, across agents', async () => {
     const store = makeStore();
     await createAgent({ provider: mockModel(['Hi Ali.']), store }).session({ id: 'chat' }).send('My name is Ali.');
@@ -120,7 +120,7 @@ describe.each(stores)('createAgent({ store: %s }) (LOU-D30)', (_name, makeStore)
   });
 });
 
-describe('createAgent({ store }) defaults and precedence (LOU-D30)', () => {
+describe('createAgent({ store }) defaults and precedence', () => {
   it('explicit session store, checkpointStore and approvalStore win over the agent store', async () => {
     const store = memoryStore();
     const sessions = new MemorySessionStore();
@@ -160,7 +160,7 @@ describe('createAgent({ store }) defaults and precedence (LOU-D30)', () => {
     expect(await store.checkpoints.load('job-1')).toBeNull();
   });
 
-  // Eve DUR-F2: concurrent send({ sessionId }) calls on one id read the same 'finished' checkpoint and the last save dropped the other turn.
+  // Concurrent send({ sessionId }) calls on one id read the same 'finished' checkpoint and the last save dropped the other turn.
   it.each(stores)('concurrent send()/stream() with one sessionId run one after another, keeping every turn (%s)', async (_name, makeStore) => {
     const store = makeStore();
     const echo: MockTurn = (request) => ({ text: `ack ${String(request.messages.at(-1)?.content)}`, delayMs: 20 });

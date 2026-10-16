@@ -1,5 +1,5 @@
 /**
- * The environment a sandboxed or workspace command gets (LOU-X11).
+ * The environment a sandboxed or workspace command gets.
  *
  * Commands a model asks for must not see the host's secrets (API keys,
  * cloud credentials), so they get an allowlisted environment: a small base

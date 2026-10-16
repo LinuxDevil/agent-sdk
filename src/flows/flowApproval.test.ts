@@ -1,5 +1,5 @@
 /**
- * Eve DUR-F17: a durable flow pauses on a `toolCall` awaiting approval, and
+ * A durable flow pauses on a `toolCall` awaiting approval, and
  * resume continues once the approval is decided.
  */
 
@@ -26,7 +26,7 @@ const flow: AgentFlow = {
   },
 };
 
-describe('FlowExecutor approval pause (DUR-F17)', () => {
+describe('FlowExecutor approval pause', () => {
   let provider: MockLLMProvider;
   let store: CheckpointStore;
   let pay: Mock<[{ amount: string }], Promise<string>>;

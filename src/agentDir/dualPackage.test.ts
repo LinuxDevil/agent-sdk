@@ -42,7 +42,8 @@ describe('brands across two loaded copies of the SDK', () => {
     expect(second.schedule.isDefinedSchedule(schedule)).toBe(true);
     expect(second.remote.isRemoteSubagent(remote)).toBe(true);
     expect(second.tool.isDefinedTool({ ...tool })).toBe(false);
-  });
+    // Imports (and so transforms) these module graphs twice inside the test: ~3 s alone on Windows, more under a full parallel run.
+  }, 30_000);
 });
 
 /** A project whose node_modules links this checkout, with an agent directory holding an ESM and a CJS tool file. */
@@ -50,8 +51,9 @@ function project(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'lousho-dual-'));
   dirs.push(dir);
   mkdirSync(path.join(dir, 'node_modules', '@lousho'), { recursive: true });
-  symlinkSync(ROOT, path.join(dir, 'node_modules', '@lousho', 'build-ai-agent'), 'dir');
-  symlinkSync(path.join(ROOT, 'node_modules', 'zod'), path.join(dir, 'node_modules', 'zod'), 'dir');
+  // 'junction' makes a directory link without the symlink privilege on Windows; other platforms ignore the type.
+  symlinkSync(ROOT, path.join(dir, 'node_modules', '@lousho', 'build-ai-agent'), 'junction');
+  symlinkSync(path.join(ROOT, 'node_modules', 'zod'), path.join(dir, 'node_modules', 'zod'), 'junction');
   writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'dual', private: true }));
   const agent = path.join(dir, 'simple');
   mkdirSync(path.join(agent, 'tools'), { recursive: true });

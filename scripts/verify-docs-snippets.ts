@@ -1,12 +1,12 @@
 /**
- * verify-docs-snippets (LOU-I7)
+ * verify-docs-snippets
  *
  * Extracts every ```ts / ```typescript / ```tsx fenced code block from the
  * docs (or the markdown files passed as arguments) and proves the runnable
  * ones (stage B below) type-check AND run without error against the LOCALLY BUILT package
  * - exactly what a reader copy-pasting it into a fresh project would get.
  *
- * How (mirrors LOU-H4's create-lousho-agent approach for its generated
+ * How (mirrors create-lousho-agent approach for its generated
  * projects): build the SDK, `npm pack` it, install the tarball into a
  * throwaway temp project, write each snippet there as its own ES module
  * (`snippet-<n>.mts`), then
@@ -20,7 +20,7 @@
  *   --keep        keep the temp project (its path is printed) for debugging
  *   --source-only run stage A (type-check against src/) only; no build, pack or run
  *
- * Two stages (LOU-U5):
+ * Two stages:
  *
  *   A. SOURCE CHECK - every ```ts / ```typescript block in README.md and
  *      docs/*.md (all of them, not just the quick start) is type-checked
@@ -53,7 +53,7 @@
  * never make network calls. A fence whose info string contains
  * `no-verify` (e.g. ```ts no-verify) is skipped. One containing `no-run`
  * (e.g. ```ts no-run) is still type-checked by both stages but not executed,
- * for snippets that need a real API key to run (LOU-D1).
+ * for snippets that need a real API key to run.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
@@ -169,7 +169,7 @@ function setUpProject(projectDir: string, skipBuild: boolean): void {
   // Everything a reader installs per docs/installation.md: the SDK, its
   // required peers (ai, zod) and - because the root entry currently loads
   // every provider module - the optional provider packages too. `ai` and
-  // `@ai-sdk/*` peer on several majors (LOU-D28d): pin the pairing the repo
+  // `@ai-sdk/*` peer on several majors: pin the pairing the repo
   // develops against (its devDependencies), not whatever the widest range resolves to.
   const dependencies: Record<string, string> = {
     '@lousho/build-ai-agent': `file:./${tarball}`,
@@ -229,21 +229,45 @@ export function findDeprecatedPromptUse(source: string): number[] {
   const lines: number[] = [];
   const call = /\bcreateAgent\s*\(/g;
   for (let m = call.exec(source); m; m = call.exec(source)) {
-    let depth = 0;
-    let quote = '';
-    for (let i = m.index + m[0].length; i < source.length; i++) {
-      const ch = source[i];
-      if (quote) {
-        if (ch === '\\') i++;
-        else if (ch === quote) quote = '';
-      } else if (ch === "'" || ch === '"' || ch === '`') quote = ch;
-      else if (ch === '{' || ch === '[' || ch === '(') depth++;
-      else if (ch === '}' || ch === ']' || ch === ')') {
-        if (--depth < 0) break;
-      } else if (depth === 1 && /^prompt\s*[:,}]/.test(source.slice(i, i + 12)) && /[{,]\s*$/.test(source.slice(0, i))) {
-        lines.push(source.slice(0, i).split('\n').length);
-      }
+    lines.push(...promptKeyLines(source, m.index + m[0].length));
+  }
+  return lines;
+}
+
+/** Index of the quote closing the string literal that opens at `start` (the source length if unterminated). */
+function endOfString(source: string, start: number): number {
+  const quote = source[start];
+  for (let i = start + 1; i < source.length; i++) {
+    if (source[i] === '\\') i++;
+    else if (source[i] === quote) return i;
+  }
+  return source.length;
+}
+
+/** +1 for an opening bracket, -1 for a closing one, 0 otherwise. */
+function bracketDelta(ch: string): number {
+  if (ch === '{' || ch === '[' || ch === '(') return 1;
+  return ch === '}' || ch === ']' || ch === ')' ? -1 : 0;
+}
+
+/** Whether a `prompt` key starts at `i`, as a property of an object literal (preceded by `{` or `,`). */
+function isPromptKeyAt(source: string, i: number): boolean {
+  return /^prompt\s*[:,}]/.test(source.slice(i, i + 12)) && /[{,]\s*$/.test(source.slice(0, i));
+}
+
+/** Lines of top-level `prompt` keys in the call whose arguments start at `from`, up to its closing paren. */
+function promptKeyLines(source: string, from: number): number[] {
+  const lines: number[] = [];
+  let depth = 0;
+  for (let i = from; i < source.length; i++) {
+    const ch = source[i];
+    if (ch === "'" || ch === '"' || ch === '`') {
+      i = endOfString(source, i);
+      continue;
     }
+    depth += bracketDelta(ch);
+    if (depth < 0) break;
+    if (depth === 1 && isPromptKeyAt(source, i)) lines.push(source.slice(0, i).split('\n').length);
   }
   return lines;
 }

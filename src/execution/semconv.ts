@@ -1,5 +1,5 @@
 /**
- * OpenTelemetry GenAI semantic-convention names (LOU-D9).
+ * OpenTelemetry GenAI semantic-convention names.
  *
  * Every span name, attribute key and well-known value this SDK emits lives
  * here so nothing is stringly-typed across files.
@@ -64,7 +64,7 @@ export const GenAiAttr = {
 export const TokenType = { INPUT: 'input', OUTPUT: 'output' } as const;
 
 /**
- * OpenTelemetry GenAI client metrics (LOU-D48). Spec: gen-ai-metrics.md of
+ * OpenTelemetry GenAI client metrics. Spec: gen-ai-metrics.md of
  * semantic-conventions v1.40 (the newer semantic-conventions-genai repo
  * replaces the token histogram with per-type counters, which are not
  * emitted here). Both are `Development` stability; the bucket boundaries are
@@ -96,40 +96,40 @@ export const TOOL_TYPE_FUNCTION = 'function';
 
 /** Attributes specific to this SDK (not part of the GenAI semantic conventions). */
 export const SdkAttr = {
-  /** `true` on a span whose token counts are (partly) estimates because the provider reported none (LOU-V5). */
+  /** `true` on a span whose token counts are (partly) estimates because the provider reported none. */
   USAGE_ESTIMATED: 'lousho.usage.estimated',
   /**
-   * Estimated USD (LOU-D48): per step on a `chat` span; cumulative on the
+   * Estimated USD: per step on a `chat` span; cumulative on the
    * parent spans (`invoke_agent`, and a delegating `execute_tool`). Absent
    * when the price table does not know a contributing model.
    */
   COST_USD: 'lousho.cost_usd',
-  /** Reasoning (thinking) tokens of a `chat` span's call, when the provider reports them (LOU-V13). */
+  /** Reasoning (thinking) tokens of a `chat` span's call, when the provider reports them. */
   USAGE_REASONING_TOKENS: 'lousho.usage.reasoning_tokens',
   /**
-   * N1a: on a `chat` span, the names of the hosted tools the provider ran
+   * On a `chat` span, the names of the hosted tools the provider ran
    * inside that call (e.g. `['web_search']`). They get no `execute_tool`
    * span: the SDK did not run them.
    */
   HOSTED_TOOL_CALLS: 'lousho.hosted_tool_calls',
-  /** N14: on the `execute_tool` span of a tool call a `run_code` script made, the `run_code` call's id (that span is its parent). */
+  /** On the `execute_tool` span of a tool call a `run_code` script made, the `run_code` call's id (that span is its parent). */
   PARENT_TOOL_CALL_ID: 'lousho.tool.parent_call_id',
-  /** Audit C4: on a `chat` span of a side call a hook made for the run (e.g. `'compaction'` for the summarizer). */
+  /** On a `chat` span of a side call a hook made for the run (e.g. `'compaction'` for the summarizer). */
   CALL_PURPOSE: 'lousho.call.purpose',
-  /** C2: on a `chat` span, how many times `withRetry()` retried the call. Absent when it was not retried. */
+  /** On a `chat` span, how many times `withRetry()` retried the call. Absent when it was not retried. */
   RETRY_COUNT: 'lousho.retry.count',
-  /** C2: on a `chat` span, each retried failure's error category and HTTP status, e.g. `['timeout', 'unknown 500']`. */
+  /** On a `chat` span, each retried failure's error category and HTTP status, e.g. `['timeout', 'unknown 500']`. */
   RETRY_ERRORS: 'lousho.retry.errors',
-  /** Eve MA-F10: on a sub-agent's `invoke_agent` span, the name the lead knows it by (the `task` tool's `agent`). */
+  /** On a sub-agent's `invoke_agent` span, the name the lead knows it by (the `task` tool's `agent`). */
   SUBAGENT_NAME: 'lousho.subagent.name',
-  /** Eve MA-F10: on a sub-agent's `invoke_agent` span, 1 for a sub-agent of the top-level run, 2 for its sub-agent, and so on. */
+  /** On a sub-agent's `invoke_agent` span, 1 for a sub-agent of the top-level run, 2 for its sub-agent, and so on. */
   SUBAGENT_DEPTH: 'lousho.subagent.depth',
-  /** Eve MA-F10: on a sub-agent's `invoke_agent` span, the `task` call's taskId. */
+  /** On a sub-agent's `invoke_agent` span, the `task` call's taskId. */
   TASK_ID: 'lousho.task.id',
 } as const;
 
 /**
- * The attribute names this SDK emitted before LOU-D9. They are still emitted
+ * The attribute names this SDK emitted before. They are still emitted
  * alongside the GenAI ones (dual-emit) and are DEPRECATED.
  */
 export const LegacyAttr = {

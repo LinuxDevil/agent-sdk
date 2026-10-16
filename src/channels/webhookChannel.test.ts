@@ -1,9 +1,7 @@
 /**
- * LOU-P7: `webhookChannel()` authenticates exactly as `WebhookTriggerAdapter`
- * (LOU-D13), which now delegates to it. The cases are D13's test vectors
- * (src/triggers/adapters/WebhookTriggerAdapter.auth.test.ts), run through both.
+ * `webhookChannel()` request authentication (the test vectors).
  */
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import type * as http from 'node:http';
 import { createHmac } from 'node:crypto';
 import { Readable } from 'node:stream';
@@ -11,9 +9,6 @@ import { createAgent } from '../createAgent';
 import { z } from 'zod';
 import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
-import type { ExecutionResult } from '../execution/AgentExecutor';
-import { emptyRunUsage } from '../execution/runUsage';
-import { WebhookTriggerAdapter, type WebhookTriggerHandle } from '../triggers/adapters/WebhookTriggerAdapter';
 import type { WebhookAuth } from '../triggers/webhookAuth';
 import { mountChannels } from './mountChannels';
 import { mountFetchChannels } from './fetchChannels';
@@ -55,8 +50,6 @@ const VECTORS: Vector[] = [
   { name: 'wrong bearer token', auth: { type: 'bearer', token: 's3cret-token' }, headers: () => ({ authorization: 'Bearer s3cret-tokeX' }), status: 401 },
 ];
 
-const okResult: ExecutionResult = { text: 'ok', messages: [], toolCalls: [], usage: emptyRunUsage(), finishReason: 'stop', steps: 1 };
-
 /** The status (and parsed body) `mountChannels()` with `channel` answers `payload` with. */
 async function viaChannel(channel: Channel, payload: string, headers: Record<string, string>, agent?: Pick<SimpleAgent, 'session' | 'approvals'>) {
   const handler = mountChannels(agent ?? createAgent({ provider: mockModel(['ok']) }), [channel]);
@@ -67,45 +60,26 @@ async function viaChannel(channel: Channel, payload: string, headers: Record<str
   return { status: res.status, json: JSON.parse(res.text) as Record<string, unknown> };
 }
 
-describe('webhookChannel parity with WebhookTriggerAdapter (LOU-P7, D13 vectors)', () => {
-  let handle: WebhookTriggerHandle | undefined;
-  afterEach(async () => {
-    await handle?.stop();
-    handle = undefined;
-  });
-
-  async function viaAdapter(auth: WebhookAuth, payload: string, headers: Record<string, string>) {
-    const onEvent = vi.fn(async (_input: string) => okResult);
-    handle = new WebhookTriggerAdapter({ host: '127.0.0.1', auth }).listen({ send: vi.fn() }, onEvent);
-    await vi.waitFor(() => expect(handle?.port).toBeGreaterThan(0));
-    const res = await fetch(`http://127.0.0.1:${handle.port}/`, { method: 'POST', body: payload, headers });
-    await handle.stop();
-    handle = undefined;
-    return { status: res.status, input: onEvent.mock.calls[0]?.[0] };
-  }
-
+describe('webhookChannel auth (test vectors)', () => {
   for (const vector of VECTORS) {
-    it(`${vector.name}: ${vector.status} from both`, async () => {
+    it(`${vector.name}: ${vector.status}`, async () => {
       const payload = vector.body ?? body;
-      const adapter = await viaAdapter(vector.auth, payload, vector.headers());
       const channel = await viaChannel(webhookChannel({ auth: vector.auth }), payload, vector.headers());
-      expect(adapter.status).toBe(vector.status);
       expect(channel.status).toBe(vector.status);
       if (vector.status === 401) expect(channel.json).toEqual({ error: 'Unauthorized' });
       else expect(channel.json).toMatchObject({ text: 'ok', finishReason: 'stop' });
-      if (vector.status === 200) expect(adapter.input).toBe(JSON.parse(payload).input);
     });
   }
 
-  it('webhookChannel({ secret }) is HMAC-SHA256 over the raw body; config errors match the adapter', async () => {
+  it('webhookChannel({ secret }) is HMAC-SHA256 over the raw body; config errors throw', async () => {
     const channel = webhookChannel({ secret: SECRET });
     expect((await viaChannel(channel, body, { 'x-signature-256': `sha256=${hmac(body)}` })).status).toBe(200);
     expect((await viaChannel(channel, body, { 'x-signature-256': `sha256=${hmac(body, 'other')}` })).status).toBe(401);
     expect(() => webhookChannel({ secret: '' })).toThrow(/secret/);
-    expect(() => new WebhookTriggerAdapter({ auth: { type: 'hmac', secret: '' } })).toThrow(/secret/);
+    expect(() => webhookChannel({ auth: { type: 'hmac', secret: '' } })).toThrow(/secret/);
   });
 
-  it('runs the turn with the principal `principal` derives from the verified request (N10a)', async () => {
+  it('runs the turn with the principal `principal` derives from the verified request', async () => {
     const scopes: MemoryScopeContext[] = [];
     const seen: Array<RunConfigContext['principal']> = [];
     const notes = defineMemory({ name: 'notes', scope: (ctx) => (scopes.push(ctx), 'global'), provider: inMemoryMemory() });
@@ -159,7 +133,7 @@ describe('webhookChannel parity with WebhookTriggerAdapter (LOU-P7, D13 vectors)
   });
 });
 
-describe('webhookChannel on a Fetch host (Eve E17 / F2)', () => {
+describe('webhookChannel on a Fetch host', () => {
   const fakeAgent = {
     session: () => ({
       stream: () => ({

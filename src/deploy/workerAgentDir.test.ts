@@ -1,5 +1,5 @@
 /**
- * M3b: an agent directory as bundled into a Cloudflare Worker (WorkerAgentDir)
+ * An agent directory as bundled into a Cloudflare Worker (WorkerAgentDir)
  * becomes createAgent() options with resolveAgentDir()'s rules, and the Worker
  * runtime serves it. In-process, mock providers only.
  */
@@ -36,7 +36,7 @@ function dir(overrides: Partial<WorkerAgentDir> = {}): WorkerAgentDir {
   };
 }
 
-describe('resolveWorkerAgentDir (M3b)', () => {
+describe('resolveWorkerAgentDir', () => {
   it('assembles name, instructions, the provider type and model, tools and settings', () => {
     const resolved = resolveWorkerAgentDir(
       dir({ config: { name: 'renamed', model: 'OpenAI/gpt-4o-mini', maxSteps: 3, toolConcurrency: 2 } })
@@ -59,7 +59,7 @@ describe('resolveWorkerAgentDir (M3b)', () => {
     expect(resolved.permissions).toEqual([{ tool: 'deploy', action: 'ask', ttlMs: 30_000 }]);
   });
 
-  it('carries modelSettings over to the resolved options (C6)', () => {
+  it('carries modelSettings over to the resolved options', () => {
     const resolved = resolveWorkerAgentDir(dir({ config: { model: 'mock/x', modelSettings: { maxTokens: 512, stop: ['END'] } } }));
     expect(resolved.modelSettings).toEqual({ maxTokens: 512, stop: ['END'] });
   });
@@ -227,7 +227,7 @@ describe('resolveWorkerAgentDir: projectInstructions (#298)', () => {
   });
 });
 
-describe('the Worker runtime of an agent directory (M3b)', () => {
+describe('the Worker runtime of an agent directory', () => {
   it('prepareWorkerAgentDir caches the resolved options per directory', () => {
     const agentDir = dir();
     expect(prepareWorkerAgentDir(agentDir)).toBe(prepareWorkerAgentDir(agentDir));
@@ -345,7 +345,7 @@ describe('the Worker runtime of an agent directory: subagents, channels, memory,
   });
 });
 
-describe('the Worker runtime of an agent directory: sub-agents run through the native sub-agent runtime (Eve E14, MA-F5)', () => {
+describe('the Worker runtime of an agent directory: sub-agents run through the native sub-agent runtime', () => {
   const usage = (inputTokens: number, outputTokens: number) => ({ inputTokens, outputTokens });
 
   /** A lead (agent.ts config: `provider` and `permissions`) whose `coder` sub-agent writes a file and deploys. */

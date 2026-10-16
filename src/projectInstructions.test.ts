@@ -1,5 +1,5 @@
 /**
- * LOU-W7: AGENTS.md / CLAUDE.md auto-loading.
+ * AGENTS.md / CLAUDE.md auto-loading.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';

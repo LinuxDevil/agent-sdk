@@ -10,7 +10,7 @@ import { isEdgeTypeAllowed } from '../graph/connectionRules';
 import type { HookTemplate } from '../hooks/hookTemplates';
 
 /**
- * Pure, canvas-agnostic mutations over `AgentGraphSpec` (LOU-M2).
+ * Pure, canvas-agnostic mutations over `AgentGraphSpec`.
  *
  * `CanvasArea` calls these in response to ReactFlow interaction events, but
  * none of these functions know anything about ReactFlow: they take the
@@ -172,7 +172,7 @@ export function removeEdge(graph: AgentGraphSpec, edgeId: string): AgentGraphSpe
 }
 
 /**
- * LOU-T3: sets (or clears) a branch's condition. Only meaningful on an edge
+ * Sets (or clears) a branch's condition. Only meaningful on an edge
  * whose source is a `router` node (see `AgentGraphEdge.condition`'s doc
  * comment), but this doesn't check the source type - the Inspector's branch
  * editor only ever calls it for edges it renders under a router node's
@@ -210,10 +210,10 @@ function nextHookId(): string {
 }
 
 /**
- * Attaches a new hook instance (from a starter template, LOU-Q2) to
+ * Attaches a new hook instance (from a starter template) to
  * `nodeId`, appended to its `data.hooks` list (created if absent) and
  * enabled by default. This is what dragging a Pre-hook/Post-hook palette
- * item onto a node (LOU-Q3, see CanvasArea.tsx's onDrop) and the
+ * item onto a node (see CanvasArea.tsx's onDrop) and the
  * Inspector's "+ Add hook" both call.
  */
 export function addHookToNode(graph: AgentGraphSpec, nodeId: string, template: HookTemplate): AgentGraphSpec {

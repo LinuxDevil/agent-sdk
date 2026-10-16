@@ -23,7 +23,7 @@ interface AnthropicToolMapping {
   options: HostedOptionMapping;
 }
 
-/** N1b: web search and code execution; Anthropic has no hosted file search. */
+/** Web search and code execution; Anthropic has no hosted file search. */
 const ANTHROPIC_HOSTED_TOOLS: Partial<Record<HostedToolType, AnthropicToolMapping>> = {
   web_search: {
     prefix: 'webSearch_',
@@ -62,7 +62,7 @@ export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
   readonly name = 'anthropic';
   protected readonly mapsHostedTools = true;
   protected readonly fallbackModel = 'claude-sonnet-4-5';
-  /** LOU-V13: thinking blocks go back unmodified with their tool-call turn. */
+  /** Thinking blocks go back unmodified with their tool-call turn. */
   protected readonly replaysReasoning = true;
   /** Loads `@ai-sdk/anthropic` on first use (it is an optional peer). */
   private readonly loadProvider = lazyValue(async () => {
@@ -95,18 +95,18 @@ export class AnthropicProvider extends AiSdkProvider<AnthropicProviderConfig> {
     return aiMajorOf(this.ai) !== 6;
   }
 
-  /** Eve PROV-F4: cache breakpoints on Claude models unless the call says `promptCaching: false`. */
+  /** Cache breakpoints on Claude models unless the call says `promptCaching: false`. */
   protected cachesPrompt(modelId: string, options: GenerateOptions): boolean {
     return cachesPrompt(modelId, options.promptCaching);
   }
 
-  /** N1b: web search and code execution, on ai 6 (@ai-sdk/anthropic 3) and ai 7 (@ai-sdk/anthropic 4); `hostedTool()` passes through. */
+  /** Web search and code execution, on ai 6 (@ai-sdk/anthropic 3) and ai 7 (@ai-sdk/anthropic 4); `hostedTool()` passes through. */
   supportsHostedTool(type: HostedToolType | 'custom'): boolean {
     return aiMajorOf(this.ai) >= 6 && (type === 'custom' || type in ANTHROPIC_HOSTED_TOOLS);
   }
 
   /**
-   * N1b: the helpers as `@ai-sdk/anthropic`'s server tools: `web_search` is the
+   * The helpers as `@ai-sdk/anthropic`'s server tools: `web_search` is the
    * newest `tools.webSearch_*()` the installed package has, `code_interpreter`
    * the newest `tools.codeExecution_*()` (Anthropic calls it `code_execution`;
    * events keep our name). `file_search` has no Anthropic equivalent.

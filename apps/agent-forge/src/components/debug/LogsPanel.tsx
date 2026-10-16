@@ -107,7 +107,7 @@ function LogRow({ entry, highlighted, onSelect }: { entry: LogEntry; highlighted
 }
 
 /**
- * O1: live log feed. Reads `AppState.logs` (a capped ring buffer fed by
+ * Live log feed. Reads `AppState.logs` (a capped ring buffer fed by
  * `{type:'log'}` WS messages - see state/AppState.tsx and
  * server/runRegistry.ts's `toLogEntries()`), rendered through `VirtualList`
  * so a long run's log volume doesn't bloat the DOM.

@@ -1,5 +1,5 @@
 /**
- * Glob matching and tree walking over any FsProvider (LOU-X6).
+ * Glob matching and tree walking over any FsProvider.
  */
 import type { FsProvider } from './types';
 import { joinWorkspacePath, WorkspaceError } from './paths';
@@ -71,6 +71,8 @@ export function globToRegExp(pattern: string): RegExp {
 interface WalkOptions {
   /** Directory names that are never descended into (e.g. `.git`). */
   ignore: ReadonlySet<string>;
+  /** Entries (files or directories) skipped by name, e.g. the file tools' `deny` list. */
+  isDenied?: (name: string) => string | undefined;
   /** Stop after collecting this many files. */
   maxFiles: number;
   signal?: AbortSignal;
@@ -87,6 +89,12 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new WorkspaceError('The operation was cancelled.');
 }
 
+/** A directory's entries sorted by name, without the denied ones. */
+async function visibleEntries(fs: FsProvider, dir: string, options: WalkOptions) {
+  const entries = (await fs.readdir(dir)).filter((entry) => options.isDenied?.(entry.name) === undefined);
+  return entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+}
+
 /**
  * Lists every regular file under `base` (breadth-first, workspace-relative),
  * skipping ignored directory names. Symlinks are never followed, so a walk
@@ -98,9 +106,7 @@ export async function walkFiles(fs: FsProvider, base: string, options: WalkOptio
   while (queue.length > 0) {
     throwIfAborted(options.signal);
     const dir = queue.shift() as string;
-    const entries = await fs.readdir(dir);
-    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-    for (const entry of entries) {
+    for (const entry of await visibleEntries(fs, dir, options)) {
       const path = joinWorkspacePath(dir, entry.name);
       if (entry.type === 'directory' && !options.ignore.has(entry.name)) queue.push(path);
       if (entry.type !== 'file') continue;

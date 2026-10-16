@@ -48,7 +48,7 @@ function createApprovalStore(): StorageServiceApprovalStore {
   return new StorageServiceApprovalStore(storageService);
 }
 
-// The shared store contract (LOU-W5), including the Uint8Array round-trip (Eve DUR-F5, E14).
+// The shared store contract, including the Uint8Array round-trip.
 describeApprovalStoreContract('StorageServiceApprovalStore', createApprovalStore);
 
 function buildSnapshot(pending: PendingApproval): ExecutionSnapshot {
@@ -149,7 +149,7 @@ describe('Execution - StorageServiceApprovalStore', () => {
     expect(second).toBeNull();
   });
 
-  it('should round-trip the LOU-U7 remainingToolCalls of a snapshot', async () => {
+  it('should round-trip the remainingToolCalls of a snapshot', async () => {
     const store = createApprovalStore();
     const pending: PendingApproval = {
       id: 'approval-mid-batch',

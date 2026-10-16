@@ -1,5 +1,5 @@
 /**
- * Dependency-free cron expression parser and scheduler math (LOU-D13).
+ * Dependency-free cron expression parser and scheduler math.
  *
  * Supports the standard 5-field format `minute hour day-of-month month
  * day-of-week` with `*`, lists (`1,15`), ranges (`1-5`), steps (`*\/15`,
@@ -240,7 +240,7 @@ class CronExpressionSchedule implements CronSchedule {
   /**
    * True when `t` is the first instant after a spring-forward gap and a
    * fixed-hour job's wall time fell inside the gap: like Vixie cron, it runs
-   * once at `t` instead of being skipped for the day (Eve DUR-F20).
+   * once at `t` instead of being skipped for the day.
    */
   private firesAfterGap(t: number, p: ZonedParts): boolean {
     if (!this.flags.hourRestricted) return false;

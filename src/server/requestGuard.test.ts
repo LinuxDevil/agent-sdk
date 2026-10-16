@@ -69,7 +69,7 @@ describe('cross-site requests (CSRF)', () => {
     expect((await handler(post('/chat', json({ sessionId: 'o4', input: 'hi' }), { ...alice, ...asJson }))).status).toBe(200);
   });
 
-  it('never treats client-sent forwarding headers as the request\'s own host (Eve3-S8)', async () => {
+  it('never treats client-sent forwarding headers as the request\'s own host', async () => {
     const { handler } = routes(['a', 'b', 'c', 'd'], { allowedOrigins: ['https://App.example/'] });
     const proxied = { ...alice, ...asJson, host: 'internal:3000' };
     // X-Forwarded-Host / Forwarded name attacker-controlled values, so they do not whitelist an Origin.
@@ -183,7 +183,7 @@ describe('default session owner', () => {
     }
   });
 
-  it('one principal cannot hold every owner slot: past its cap new claims are refused, others are unaffected (Eve3-S4)', () => {
+  it('one principal cannot hold every owner slot: past its cap new claims are refused, others are unaffected', () => {
     const agent = {};
     const user = (id: string) => ({ id, type: 'user' as const, authenticator: 'custom' });
     const previousOwner = setSessionOwnerLimit(5);
@@ -248,7 +248,7 @@ describe('default session owner', () => {
     }
   });
 
-  it('a concurrent first touch on an unowned session loses the claim: refused, and none of its input is streamed or stored (Eve2-F1)', async () => {
+  it('a concurrent first touch on an unowned session loses the claim: refused, and none of its input is streamed or stored', async () => {
     // The first transcript load is delayed so both owner checks observe the
     // session as unowned and unstored before either claim runs; the claim
     // itself must then decide the race - one caller wins, the other must be
@@ -292,7 +292,7 @@ describe('default session owner', () => {
     expect(retry?.status).toBe(403);
   });
 
-  it('a claim lost while a turn ran clears what it stored and ends the stream on a coded error (Eve2-F1)', async () => {
+  it('a claim lost while a turn ran clears what it stored and ends the stream on a coded error', async () => {
     // With the owner cap at one, a claim on another session evicts 's' while
     // alice's turn is still running; mallory then takes the unowned, still
     // unstored id through the session-less { message } route. Alice's commit
@@ -332,8 +332,13 @@ describe('default session owner', () => {
   });
 
   it('a turn that stores nothing leaves the session unclaimed', async () => {
-    const model = mockModel([{ error: new Error('provider down') }, 'Hi Alice.']);
-    const agent = createAgent({ provider: model, store: memoryStore() });
+    // A failure before the run (here the agent's instructions) stores nothing; a provider failure keeps the turn (below).
+    let failures = 1;
+    const instructions = () => {
+      if (failures-- > 0) throw new Error('config down');
+      return 'Be brief.';
+    };
+    const agent = createAgent({ provider: mockModel(['Hi Alice.']), store: memoryStore(), instructions });
     const { handler } = createRouteHandler(agent, { auth: [cookieAuth] });
     const bob = { cookie: 'user=bob' };
     const failed = await handler(post('/chat', json({ sessionId: 'alice-3', input: 'hi' }), { ...bob, ...asJson }));
@@ -342,6 +347,17 @@ describe('default session owner', () => {
     await (await handler(post('/chat', json({ sessionId: 'alice-3', input: 'hi' }), { ...alice, ...asJson }))).text();
     expect(sessionOwner(agent, 'alice-3')).toMatchObject({ id: 'alice' });
     expect((await handler(new Request('http://app.test/api/agent/chat/alice-3', { headers: bob }))).status).toBe(403);
+  });
+
+  it("a turn whose first model call fails keeps its message pending, so the session is its caller's", async () => {
+    const agent = createAgent({ provider: mockModel([{ error: new Error('provider down') }, 'Hi Bob.']), store: memoryStore(), retry: false });
+    const { handler } = createRouteHandler(agent, { auth: [cookieAuth] });
+    const bob = { cookie: 'user=bob' };
+    const failed = await handler(post('/chat', json({ sessionId: 'bob-1', input: 'hi' }), { ...bob, ...asJson }));
+    expect(await failed.text()).toContain('"type":"error"');
+    expect(sessionOwner(agent, 'bob-1')).toMatchObject({ id: 'bob' });
+    expect((await handler(new Request('http://app.test/api/agent/chat/bob-1', { headers: alice }))).status).toBe(403);
+    expect(await (await handler(new Request('http://app.test/api/agent/chat/bob-1', { headers: bob }))).json()).toMatchObject({ messages: [], pending: { status: 'in-progress' } });
   });
 
   it('after a restart a stored session is refused until authorizeSession says whose it is; one bearer token is one caller', async () => {

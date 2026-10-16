@@ -1,5 +1,5 @@
 /**
- * Child-process plumbing for NodeWorkspace.exec (LOU-X6): spawn a shell
+ * Child-process plumbing for NodeWorkspace.exec: spawn a shell
  * command, cap what it prints, and kill its whole process tree on timeout
  * or abort - on Windows too.
  */

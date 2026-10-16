@@ -1,9 +1,9 @@
 /**
  * Logger
- * A minimal, pluggable logging interface (LOU-E7) that internal modules
+ * A minimal, pluggable logging interface that internal modules
  * (providers, retry.ts, ...) can accept instead of calling console.*
  * directly, so a consuming application can route SDK log output wherever
- * it wants. See LOU-E8 for wiring this into OllamaProvider,
+ * it wants. See for wiring this into OllamaProvider,
  * OpenRouterProvider and retry.ts.
  */
 

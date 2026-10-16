@@ -1,5 +1,5 @@
 /**
- * LOU-P7: channels - an inbound request maps to a session turn, the reply
+ * Channels - an inbound request maps to a session turn, the reply
  * goes back through the channel, `verify` guards it, and pauses go through
  * `onApproval` and `resolveApproval()`.
  */
@@ -65,8 +65,8 @@ function emailTool() {
 
 const callEmail = { toolCalls: [{ name: 'send_email', args: { to: 'sam@example.com' }, id: 'call_email' }] };
 
-describe('defineChannel / mountChannels (LOU-P7)', () => {
-  it('a 500 does not leak the internal error message; the detail goes to onError (Eve CH-F6)', async () => {
+describe('defineChannel / mountChannels', () => {
+  it('a 500 does not leak the internal error message; the detail goes to onError', async () => {
     const onError = vi.fn();
     const { channel } = recordingChannel({
       onError,
@@ -95,7 +95,7 @@ describe('defineChannel / mountChannels (LOU-P7)', () => {
     expect(replies[0].sessionId).toMatch(/^test_ali-[0-9a-z]+$/);
   });
 
-  it('runs the turn with the inbound metadata and principal: memory scopes see both (N10a)', async () => {
+  it('runs the turn with the inbound metadata and principal: memory scopes see both', async () => {
     const scopes: MemoryScopeContext[] = [];
     const notes = defineMemory({ name: 'notes', scope: (ctx) => (scopes.push(ctx), 'global'), provider: inMemoryMemory() });
     const { channel } = recordingChannel({
@@ -222,7 +222,7 @@ describe('defineChannel / mountChannels (LOU-P7)', () => {
     await expect(handler.resolveApproval({ id: ctx.approval!.id, approved: true })).rejects.toThrow(/No pending channel approval/);
   });
 
-  it('a stored pause binds only to the session its snapshot names; a foreign sessionKey decides nothing (Eve3-S2)', async () => {
+  it('a stored pause binds only to the session its snapshot names; a foreign sessionKey decides nothing', async () => {
     const approvalStore = new InMemoryApprovalStore();
     const sessions = new MemorySessionStore();
     const { tool, execute } = emailTool();
@@ -245,7 +245,7 @@ describe('defineChannel / mountChannels (LOU-P7)', () => {
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
-  it('an open webhookChannel is cross-site guarded like any unauthenticated channel (Eve3-S3)', async () => {
+  it('an open webhookChannel is cross-site guarded like any unauthenticated channel', async () => {
     const handler = mountChannels(createAgent({ provider: mockModel(['pong']) }), [webhookChannel()]);
     const local = { host: 'localhost:3737' };
     const refused = await post(handler, '/channels/webhook', { input: 'ping' }, { ...local, origin: 'https://evil.example' });
@@ -272,7 +272,7 @@ describe('defineChannel / mountChannels (LOU-P7)', () => {
     expect(done.json).toMatchObject({ text: 'Booked Lisbon.', finishReason: 'stop', sessionId: paused.json.sessionId });
   });
 
-  describe('ChannelContext.pendingQuestion (M10a)', () => {
+  describe('ChannelContext.pendingQuestion', () => {
     const ask = { toolCalls: [{ name: 'ask_question', args: { question: 'Which city?' }, id: 'call_q' }] };
 
     /** A custom channel whose next message answers a pending question; `ctx()` is the context its last parse got. */
@@ -455,7 +455,7 @@ describe('defineChannel / mountChannels (LOU-P7)', () => {
       expect(second.replies.map((r) => r.text)).toEqual(['Email sent.']);
     });
 
-    it('in process: a second click while onDecision is still running is a 409, not a failure (Eve F7)', async () => {
+    it('in process: a second click while onDecision is still running is a 409, not a failure', async () => {
       const t = mount([callEmail, 'Email sent.', 'never'], durableStores());
       t.onDecision.mockImplementation(() => new Promise<void>((resolve) => setTimeout(resolve, 30)));
       const ali = await pauseOn(t, 'ali');
@@ -469,7 +469,7 @@ describe('defineChannel / mountChannels (LOU-P7)', () => {
       expect(t.replies.map((r) => r.text)).toEqual([expect.any(String), 'Email sent.']);
     });
 
-    it('a click that acknowledged the surface first and lost the race is a no-op, not a "request failed" reply (Eve F7)', async () => {
+    it('a click that acknowledged the surface first and lost the race is a no-op, not a "request failed" reply', async () => {
       const stores = durableStores();
       const { tool, execute } = emailTool();
       const agent = createAgent({ provider: mockModel([callEmail, 'Email sent.', 'never']), tools: [tool], approvalStore: stores.approvalStore });
@@ -533,7 +533,7 @@ describe('defineChannel / mountChannels (LOU-P7)', () => {
     });
   });
 
-  describe('the approvals route after a restart (Eve CH-F10)', () => {
+  describe('the approvals route after a restart', () => {
     function mountHttp(responses: Parameters<typeof mockModel>[0], stores: ReturnType<typeof durableStores>, execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`)) {
       const tool = defineTool({ name: 'send_email', description: 'Sends an email', input: z.object({ to: z.string() }), needsApproval: true, execute });
       const agent = createAgent({ provider: mockModel(responses), tools: [tool], approvalStore: stores.approvalStore });
@@ -566,7 +566,7 @@ describe('defineChannel / mountChannels (LOU-P7)', () => {
     });
   });
 
-  describe("without a `store` option, channel sessions use the agent's store (Eve EVE-0)", () => {
+  describe("without a `store` option, channel sessions use the agent's store", () => {
     it('agent.resume() refuses a paused channel turn and the transcript is the one agent.session() sees', async () => {
       const store = memoryStore();
       const { tool } = emailTool();
@@ -602,7 +602,7 @@ describe('defineChannel / mountChannels (LOU-P7)', () => {
   });
 });
 
-describe('channels: a step paused on several calls (Eve TOOLS-F12)', () => {
+describe('channels: a step paused on several calls', () => {
   const twoEmails = {
     toolCalls: [
       { name: 'send_email', args: { to: 'sam@example.com' }, id: 'call_sam' },

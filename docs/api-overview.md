@@ -317,9 +317,9 @@ Token estimates, the model price table, and the usage and cost of a run: see [Mo
 
 - `FlowBuilder` / `FlowExecutor` (`@lousho/build-ai-agent/flows`) - multi-step
   workflow graphs; see [Flows](./flows.md).
-- `WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter` and `TriggerRegistry`
-  (`@lousho/build-ai-agent/triggers`) - wake an agent from a webhook, a Slack
-  message or a schedule; see [Triggers](./triggers.md).
+- `TriggerAdapter` and `TriggerRegistry` (`@lousho/build-ai-agent/triggers`) -
+  the extension point for your own wake-up mechanism, plus `verifySlackSignature()`,
+  `parseCronExpression()` and the `WebhookAuth` helpers; see [Triggers](./triggers.md).
 - `jwt()`, `oidc()`, `basic()`, `apiToken()`, `anonymous()` and `routeAuth()`
   (`@lousho/build-ai-agent/auth`) - route auth as an ordered list; the caller
   it accepts reaches the run as `principal`; see [Route auth and principals](./auth.md).

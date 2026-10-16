@@ -80,7 +80,7 @@ async function flush(): Promise<void> {
   });
 }
 
-describe('TraceHistory (M5b)', () => {
+describe('TraceHistory', () => {
   it('renders a row per trace with time, duration, model calls, tokens, cost and status', () => {
     const container = render(<TraceHistory traces={TRACES} selectedId="trace-old" liveActive={false} onSelect={() => undefined} />);
     const rows = [...container.querySelectorAll('[role=option]')];
@@ -114,7 +114,7 @@ describe('TraceHistory (M5b)', () => {
   });
 });
 
-describe('TracePanel with trace history (M5b)', () => {
+describe('TracePanel with trace history', () => {
   beforeEach(() => {
     mocks.listTraces.mockResolvedValue(TRACES);
     mocks.readTrace.mockResolvedValue(PAST_SPANS);

@@ -117,6 +117,7 @@ interface Checkpoint {
     approvalKind?: ApprovalKind;
     attempts?: number;
     businessState?: unknown;
+    delegatedInFlight?: CheckpointUsage[];
     // (undocumented)
     finishReason?: string;
     flow?: FlowCheckpointState;
@@ -135,6 +136,7 @@ interface Checkpoint {
     stepUsage?: StepUsage[];
     // (undocumented)
     toolCalls: unknown[];
+    unstarted?: boolean;
     usage: CheckpointUsage;
 }
 
@@ -226,6 +228,7 @@ type ContentPart = TextContentPart | ImageContentPart | FileContentPart;
 
 // @public
 interface DelegatedUsage {
+    costPartial?: boolean;
     costUsd: number | undefined;
     // (undocumented)
     estimated: boolean;
@@ -509,6 +512,7 @@ type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 // @public
 interface ModelUsage {
     calls: number;
+    costPartial?: boolean;
     costUsd?: number;
     // (undocumented)
     inputTokens: number;
@@ -743,6 +747,7 @@ interface RunUsage {
     cacheWriteTokens?: number;
     // @deprecated (undocumented)
     completionTokens: number;
+    costPartial?: boolean;
     costUsd: number | undefined;
     delegated?: DelegatedUsage;
     estimated: boolean;
@@ -841,7 +846,7 @@ interface SqlStatement {
 // @public
 type SqlValue = string | number | Uint8Array | null;
 
-// @public (undocumented)
+// @public
 interface StepNode {
     // (undocumented)
     agent: string;
