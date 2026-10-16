@@ -59,10 +59,14 @@ const REPO_ROOT = path.resolve(__dirname, '..');
  * got past the build. Re-measured by CI's pack-smoke on main after the Eve
  * fix series (MAIN-HEALTH): 1011 entries / 19,968,100 bytes (~19.0 MiB)
  * unpacked / 5,199,937 bytes (~4.96 MiB) packed. Budgets: ~10% headroom.
+ * C4: no source maps ship any more (dist/**.map was 3.7 MB), measured
+ * 774 entries / 15,116,044 bytes (~14.4 MiB) unpacked / 4,307,099 bytes
+ * (~4.1 MiB) packed; budgets cut to 16 MiB unpacked / 4.5 MiB packed.
+ * scripts/size-check.ts holds the tighter, committed budget.
  */
-const MAX_ENTRIES = 1150;
-const MAX_UNPACKED_BYTES = 21 * 1024 * 1024;
-const MAX_PACKED_BYTES = 5.5 * 1024 * 1024;
+const MAX_ENTRIES = 850;
+const MAX_UNPACKED_BYTES = 16 * 1024 * 1024;
+const MAX_PACKED_BYTES = 4.5 * 1024 * 1024;
 
 const DEFAULT_PEERS = 'ai@7 zod@4 @ai-sdk/openai@4 react@19 vue@3 @opentelemetry/api@1';
 const FORBIDDEN_PATHS = [
@@ -76,7 +80,7 @@ const FORBIDDEN_PATHS = [
   /__cassettes__\//,
   /(^|\/)node_modules\//,
   /^apps\/agent-forge\/dist-server\/.*\.map$/,
-  /^dist\/deploy\/worker\.m?js\.map$/,
+  /^dist\/.*\.map$/,
   // bin/lousho.js loads only the ESM CLI build (dist/cli/*.mjs); the CJS one is not shipped.
   /^dist\/cli\/[^/]+\.js(\.map)?$/,
   /\.pem$/,
