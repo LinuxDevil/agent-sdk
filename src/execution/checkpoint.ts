@@ -121,6 +121,13 @@ export interface Checkpoint {
   /** Eve DUR-F11: how many attempts at the session's turn failed so far. */
   attempts?: number;
   /**
+   * Set by a session whose turn failed before the run saved any checkpoint
+   * (its first model call threw): `messages` is the turn's input - the
+   * transcript plus the new user message, without the system prompt - so the
+   * message is not lost, and resuming runs the turn again from that input.
+   */
+  unstarted?: boolean;
+  /**
    * M10a: with `status: 'awaiting-approval'`, `'question'` when the pending
    * approval is an `ask_question` call (`PendingApproval.kind`), so a
    * process that did not make the pause can tell a question from a tool

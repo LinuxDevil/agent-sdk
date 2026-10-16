@@ -305,8 +305,13 @@ describe('default session owner', () => {
   });
 
   it('a turn that stores nothing leaves the session unclaimed', async () => {
-    const model = mockModel([{ error: new Error('provider down') }, 'Hi Alice.']);
-    const agent = createAgent({ provider: model, store: memoryStore() });
+    // A failure before the run (here the agent's instructions) stores nothing; a provider failure keeps the turn (below).
+    let failures = 1;
+    const instructions = () => {
+      if (failures-- > 0) throw new Error('config down');
+      return 'Be brief.';
+    };
+    const agent = createAgent({ provider: mockModel(['Hi Alice.']), store: memoryStore(), instructions });
     const { handler } = createRouteHandler(agent, { auth: [cookieAuth] });
     const bob = { cookie: 'user=bob' };
     const failed = await handler(post('/chat', json({ sessionId: 'alice-3', input: 'hi' }), { ...bob, ...asJson }));
@@ -315,6 +320,17 @@ describe('default session owner', () => {
     await (await handler(post('/chat', json({ sessionId: 'alice-3', input: 'hi' }), { ...alice, ...asJson }))).text();
     expect(sessionOwner(agent, 'alice-3')).toMatchObject({ id: 'alice' });
     expect((await handler(new Request('http://app.test/api/agent/chat/alice-3', { headers: bob }))).status).toBe(403);
+  });
+
+  it("a turn whose first model call fails keeps its message pending, so the session is its caller's", async () => {
+    const agent = createAgent({ provider: mockModel([{ error: new Error('provider down') }, 'Hi Bob.']), store: memoryStore(), retry: false });
+    const { handler } = createRouteHandler(agent, { auth: [cookieAuth] });
+    const bob = { cookie: 'user=bob' };
+    const failed = await handler(post('/chat', json({ sessionId: 'bob-1', input: 'hi' }), { ...bob, ...asJson }));
+    expect(await failed.text()).toContain('"type":"error"');
+    expect(sessionOwner(agent, 'bob-1')).toMatchObject({ id: 'bob' });
+    expect((await handler(new Request('http://app.test/api/agent/chat/bob-1', { headers: alice }))).status).toBe(403);
+    expect(await (await handler(new Request('http://app.test/api/agent/chat/bob-1', { headers: bob }))).json()).toMatchObject({ messages: [], pending: { status: 'in-progress' } });
   });
 
   it('after a restart a stored session is refused until authorizeSession says whose it is; one bearer token is one caller', async () => {
