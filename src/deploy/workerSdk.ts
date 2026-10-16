@@ -32,6 +32,7 @@ export { OpenAIProvider } from '../providers/OpenAIProvider';
 export { AnthropicProvider } from '../providers/AnthropicProvider';
 export { OpenRouterProvider } from '../providers/OpenRouterProvider';
 export { fromAiSdk } from '../providers/fromAiSdk';
+export { fromAiSdkTools } from '../providers/fromAiSdkTools';
 export { LLMProviderRegistry } from '../providers/llm';
 export { textOf } from '../providers/content';
 export { SDKError, ConfigurationError, ToolExecutionError, ValidationError } from '../execution/errors';

@@ -353,6 +353,9 @@ mapped). Each throws `LOUSHO_CONFIG_INVALID`:
   cause of the `LOUSHO_PROVIDER_REQUEST_FAILED` error): wrap each model with
   `fromAiSdk()` and combine them with `withFallback()`.
 
+Tools written for the AI SDK (`tool({ ... })`) come over with `fromAiSdkTools()`; see
+[Migrating from the AI SDK](./migrating-from-ai-sdk.md#tools-fromaisdktools).
+
 ### The `pi` provider
 
 `pi/<pi-provider>/<model>` routes a call through

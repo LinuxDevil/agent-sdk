@@ -29,6 +29,8 @@ Tools the model provider runs itself (web search, code interpreter, file search)
 
 With many tools, mark them `deferLoading` so the model finds them with a built-in `tool_search` tool instead of receiving every definition on every call; see [Tool search](./tool-search.md).
 
+Tools written for the Vercel AI SDK (`tool({ description, inputSchema, execute })`) convert with `fromAiSdkTools({ weather, sendEmail })`, `needsApproval` included; see [Migrating from the AI SDK](./migrating-from-ai-sdk.md#tools-fromaisdktools).
+
 ## `defineTool()` options
 
 | Option | Required | Description |
