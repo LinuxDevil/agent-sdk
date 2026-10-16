@@ -8,8 +8,7 @@
     "examples/hostinger-deploy/deploy.mjs"
   ],
   "ignorePatterns": [
-    ".claude/**",
-    "audit/**"
+    ".claude/**"
   ],
   "dynamicallyLoaded": [
     "src/deploy/runtime.ts",
@@ -92,8 +91,7 @@
       "**/*.eval.ts",
       "**/__fixtures__/**",
       "apps/agent-forge/e2e/**",
-      "registry/**",
-      "audit/**"
+      "registry/**"
     ],
     "coverage": "coverage/coverage-final.json",
     "thresholdOverrides": [

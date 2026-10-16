@@ -60,6 +60,10 @@ By participating in this project, you agree to maintain a respectful and inclusi
 
 5. Push to your fork and create a pull request
 
+### Lint rules
+
+`npm run lint` runs with `--max-warnings 0`; `no-explicit-any`, `no-unused-vars` and `ban-ts-comment` are errors (prefix an unused parameter an interface requires with `_`). When a real type is not possible, use a targeted `// eslint-disable-next-line <rule> -- <reason>` on that one line, never a file- or directory-wide disable, a rule turned off in the config or a new `ignores` entry. In tests, a value of the wrong type passed on purpose gets `// @ts-expect-error -- <reason>`, and a partial mock is cast to the type it stands in for (`as Partial<T> as T` when it lacks a required member).
+
 ### Code Style
 
 - Use TypeScript for all code

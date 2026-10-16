@@ -295,7 +295,6 @@
     "README.md",
     "llms.txt",
     "docs/*.md",
-    "!docs/eslint-baseline-followup.md",
     "LICENSE",
     "CHANGELOG.md",
     "CONTRIBUTING.md"

@@ -65,3 +65,9 @@ docs/api/
 # Local agent worktrees and session state
 .claude/
 audit/
+
+# Local scratch / packed tarballs / npm logs
+*.tgz
+tmp-*/
+npmci-*.log
+snip.txt

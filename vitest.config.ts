@@ -74,10 +74,6 @@ export default defineConfig({
       // Agent worktrees (.claude/worktrees/*) are full checkouts of this repo;
       // without this the main checkout would run every copy's tests too.
       '.claude/**',
-      // audit/** harnesses are consumer projects that install the packed
-      // tarball: their fixture repos carry intentionally-broken suites and
-      // their *.eval.ts files run under `lousho eval`, not this config.
-      'audit/**',
     ],
     coverage: {
       provider: 'v8',
@@ -92,7 +88,7 @@ export default defineConfig({
       // LOU-P's growth (new server/chat + ChatPanel/ApprovalCard code, all
       // covered by apps/agent-forge's own 49/49 + 74/74 suites) tipped the
       // denominator enough to trip the global threshold below.
-      // Only the library source counts: scripts/, examples/, audit/ and
+      // Only the library source counts: scripts/, examples/ and
       // packages/ are not shipped code, and counting them (and any scratch
       // directory a test made in the repo) diluted the figure to ~82% while
       // src/ itself sat at ~96%, so the floors below caught nothing.
@@ -112,7 +108,7 @@ export default defineConfig({
       // (`npm run test:coverage`, 2026-10): statements 96.64%, branches
       // 91.06%, functions 96.05%, lines 96.64%. They used to sit ~35 points
       // under the real figure because the denominator counted scripts/,
-      // examples/ and audit/ too (see `include` above).
+      // examples/ too (see `include` above).
       thresholds: {
         statements: 95,
         branches: 89,

@@ -520,8 +520,7 @@ describe('Error Classes', () => {
   });
 
   describe('C1: local-runtime errors (llama.cpp / LM Studio)', () => {
-    // Bodies verbatim from audit/_cross X1, audit/invoice-extract repro/error-body.ts
-    // and audit/coding-agent repro/classify-lmstudio-error.out.txt.
+    // Bodies taken verbatim from real llama.cpp / LM Studio error responses.
     const LLAMA_CPP_BODY = JSON.stringify({
       error: {
         code: 500,

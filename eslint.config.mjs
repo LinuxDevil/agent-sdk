@@ -1,6 +1,5 @@
-// The pre-existing warning baseline was cleared in LOU-D16 (see
-// docs/eslint-baseline-followup.md): these rules are errors, and `npm run lint`
-// runs with --max-warnings 0 so no warning-level rule can accumulate either.
+// These rules are errors, and `npm run lint` runs with --max-warnings 0 so no
+// warning-level rule can accumulate either (see CONTRIBUTING.md).
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
