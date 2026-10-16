@@ -11,6 +11,12 @@ What is on `main` and not yet on npm. Entries marked **Behavior change** can
 break working code; [Upgrading](docs/upgrading.md) lists each one with its
 opt-out.
 
+### Breaking
+- Removed the deprecated trigger adapters and their types from `@lousho/build-ai-agent/triggers`. `TriggerAdapter`, `TriggerRegistry`, the `WebhookAuth` helpers, `verifySlackSignature()` and `parseCronExpression()` stay. Migration (see [Migrating from triggers](docs/upgrading.md#migrating-from-triggers)):
+  - `WebhookTriggerAdapter`, `WebhookTriggerAdapterOptions`, `WebhookTriggerHandle` -> `webhookChannel()` with `mountChannels()` (same `auth` option)
+  - `SlackTriggerAdapter`, `SlackTriggerAdapterOptions` -> `slackChannel()` with `mountChannels()`
+  - `CronTriggerAdapter`, `CronTriggerAdapterOptions`, `CronIntervalOptions`, `CronExpressionOptions` -> `defineSchedule()` with `startSchedules()` (no `intervalMs`: use a cron expression such as `*/5 * * * *`)
+
 ### Changed
 - **Behavior change:** the fallback default model for the OpenAI, OpenRouter and Pi providers (what `lousho init` scaffolds and what runs when no model is configured) is now `gpt-4.1-mini` instead of `gpt-4o-mini`; set `model` or `LOUSHO_MODEL` to keep the old one. README and Quick Start use it. Added `docs/comparison.md`; CI also runs on pushes to `main`; README no longer claims unverifiable live validation.
 

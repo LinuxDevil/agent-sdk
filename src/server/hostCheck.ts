@@ -1,7 +1,6 @@
 /**
  * Loopback and `Host` header checks shared by the HTTP listeners that run on a
- * developer's machine (`lousho dev`, `serveMcp`'s HTTP transport,
- * `WebhookTriggerAdapter`) and by the session routes' `allowedHosts`. Exact
+ * developer's machine (`lousho dev`, `serveMcp`'s HTTP transport) and by the session routes' `allowedHosts`. Exact
  * matches only: `127.attacker.example` is a domain name, not a loopback
  * address. No `node:*` import, so Worker code can use it.
  */

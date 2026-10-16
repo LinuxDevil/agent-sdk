@@ -112,6 +112,16 @@ results and behavior are unchanged; `SECRET_PATTERNS` keeps its name. See
 | `createTestRunGuardrail` | `createTestRunCheck` |
 | `createLintGuardrail` | `createLintCheck` |
 
+## Migrating from triggers
+
+`WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter` and their option/handle types were removed from `@lousho/build-ai-agent/triggers`. `TriggerAdapter`, `TriggerRegistry`, the `WebhookAuth` helpers, `verifySlackSignature()` and `parseCronExpression()` stay. See [Triggers](./triggers.md).
+
+| Removed | Replacement |
+| ------- | ----------- |
+| `WebhookTriggerAdapter`, `WebhookTriggerAdapterOptions`, `WebhookTriggerHandle` | `webhookChannel()`, mounted with `mountChannels()`; it takes the same `auth` option. See [Channels](./channels.md) |
+| `SlackTriggerAdapter`, `SlackTriggerAdapterOptions` | `slackChannel()`, mounted with `mountChannels()` - sessions per thread, approval buttons. See [Channels](./channels.md#slack) |
+| `CronTriggerAdapter`, `CronTriggerAdapterOptions`, `CronIntervalOptions`, `CronExpressionOptions` | `defineSchedule()` with `startSchedules()`, `schedules/` in an agent directory, or cron triggers in a spec file. There is no `intervalMs`: write the cron expression (`*/5 * * * *`). See [Schedules](./schedules.md) |
+
 ## Deprecated, still working in 1.x
 
 These names still work in 1.x and are removed in 2.0. Move off them when you
@@ -119,10 +129,6 @@ touch the code; nothing breaks if you do not.
 
 | Deprecated | Replacement |
 | ---------- | ----------- |
-| `SlackTriggerAdapter` (`@lousho/build-ai-agent/triggers`) | `slackChannel()`, mounted with `mountChannels()` - sessions per thread, approval buttons. See [Channels](./channels.md) |
-| `CronTriggerAdapter` | `defineSchedule()` with `startSchedules()`, `schedules/` in an agent directory, or cron triggers in a spec file. See [Schedules](./schedules.md) |
-| `WebhookTriggerAdapter` | `webhookChannel()`, mounted with `mountChannels()`. See [Channels](./channels.md) |
-| The adapters' options types (`SlackTriggerAdapterOptions`, `CronTriggerAdapterOptions`, `WebhookTriggerAdapterOptions`) and `WebhookTriggerHandle` | The corresponding channel/schedule option types. `verifySlackSignature()`, the `WebhookAuth` helpers, `parseCronExpression()`, `TriggerAdapter` and `TriggerRegistry` are **not** deprecated |
 | `ToolRunContext` | `ToolExecutionContext`, the one public execute-context type |
 | `RunUsage.promptTokens` | `RunUsage.inputTokens` |
 | `RunUsage.completionTokens` | `RunUsage.outputTokens` |
@@ -206,9 +212,8 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | A client that disconnects mid-turn no longer aborts the turn: it runs to its end and is saved. See [Next.js routes](./nextjs.md#routes). | `onDisconnect: 'abort'` |
 | `lousho dev` answers `403` to a request whose `Host` is not a loopback name (or, off loopback, an IP address or the `--host` name), against DNS rebinding; this covers `/channels/<name>` for a channel without `verify`. | `--allowed-hosts a,b` (adds to the defaults) |
 | A channel without `verify` refuses a browser request from another site (`403 LOUSHO_REQUEST_FORBIDDEN`), and `httpChannel()` without `verify` refuses a body that is not `Content-Type: application/json` (`415 LOUSHO_UNSUPPORTED_MEDIA_TYPE`). See [Channels](./channels.md). | give the channel a `verify` (send the JSON content type from scripts: `curl -H 'Content-Type: application/json'`) |
-| `WebhookTriggerAdapter` binds `127.0.0.1` (was `0.0.0.0`), throws `LOUSHO_TRIGGER_INVALID` for a non-loopback `host` without `auth`, and without `auth` refuses a foreign `Host` or a request with an `Origin`. See [Webhook authentication](./triggers.md#webhook-authentication). | `host: '0.0.0.0'` with `auth`, or `allowUnauthenticated: true` |
 | The Cloudflare Worker refuses every `/chat` route (a turn, a transcript, an approval decision; `403`) when no `LOUSHO_API_TOKEN` secret is set. `/health`, the OAuth callback and channels stay open. See [Cloudflare Workers](./cloudflare-workers.md). | the `LOUSHO_ALLOW_OPEN_SESSIONS` var (or the earlier `LOUSHO_ALLOW_OPEN_TRANSCRIPTS`) set to `"true"` |
-| `serveMcp()` over HTTP checks `Host` and `Origin` against DNS rebinding; loopback is exactly `localhost`, a `127.x.x.x` address or `::1` (also for `WebhookTriggerAdapter`). | `allowedHosts` / `allowedOrigins` on `serveMcp()`'s HTTP transport (`['*']` turns a check off) |
+| `serveMcp()` over HTTP checks `Host` and `Origin` against DNS rebinding; loopback is exactly `localhost`, a `127.x.x.x` address or `::1` (also for `webhookChannel()`). | `allowedHosts` / `allowedOrigins` on `serveMcp()`'s HTTP transport (`['*']` turns a check off) |
 | Agent Forge (`lousho studio`) sends no CORS headers, refuses a foreign `Origin` or non-loopback `Host`, and needs the per-launch token it prints. See [Access token](./agent-forge.md#access-token). | no opt-out |
 | `fromUIMessages()` (and so `POST <base>/ui`) drops client-sent `system` messages and any role other than `user` / `assistant`. | no opt-out |
 | Slack and Discord signature checks accept a timestamp at most a minute ahead (was five minutes either way), read in seconds. | no opt-out |

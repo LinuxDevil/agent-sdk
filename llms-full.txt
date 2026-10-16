@@ -236,7 +236,7 @@ offline with `npx vitest run scripts/buildACodingAgent.test.ts`.
 | [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md) | `createAgent({ compaction })`: prune old tool results, then summarize old turns |
 | [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) | `defineChannel()`, `mountChannels()`, `httpChannel()`, `webhookChannel()`, `slackChannel()`: surfaces mapped to sessions, replies and approvals sent back |
 | [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md) | `defineSchedule()` cron schedules, `schedules/` in an agent directory, `startSchedules()` |
-| [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md) | `@lousho/build-ai-agent/triggers`: webhook, Slack and cron adapters, `TriggerAdapter`, `TriggerRegistry`; triggers vs channels vs schedules |
+| [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md) | `@lousho/build-ai-agent/triggers`: `TriggerAdapter`, `TriggerRegistry`, webhook auth and Slack signature helpers; triggers vs channels vs schedules |
 | [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md) | Fixed multi-step workflows with `FlowBuilder` and `FlowExecutor` |
 | [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md) | File system and shell tools for coding agents, and their security model |
 | [Build a coding agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/build-a-coding-agent.md) | A terminal coding agent step by step: workspace tools, approvals, streaming, a session, offline tests |
@@ -521,7 +521,7 @@ The entries `exports` declares, and what each one holds:
 | `@lousho/build-ai-agent/auth` | Route auth: `routeAuth()`, `jwt()`, `oidc()`, `basic()`, `apiToken()`, `anonymous()` |
 | `@lousho/build-ai-agent/kv` | `KVStore`, `KVCheckpointStore` for a hand-written Cloudflare Worker |
 | `@lousho/build-ai-agent/traces` | `fileTraceExporter()`, `listTraces()`, `readTrace()` (what `lousho traces` reads) |
-| `@lousho/build-ai-agent/triggers` | `WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter`, `TriggerRegistry` |
+| `@lousho/build-ai-agent/triggers` | `TriggerAdapter`, `TriggerRegistry`, `verifySlackSignature`, `parseCronExpression` |
 | `@lousho/build-ai-agent/react` | `useLoushoAgent()` and the React helpers (needs `react`) |
 | `@lousho/build-ai-agent/vue` | `useLoushoAgent()` as a Vue composable (needs `vue`) |
 | `@lousho/build-ai-agent/svelte` | `loushoAgent()` as a Svelte store |
@@ -1297,9 +1297,9 @@ Token estimates, the model price table, and the usage and cost of a run: see [Mo
 
 - `FlowBuilder` / `FlowExecutor` (`@lousho/build-ai-agent/flows`) - multi-step
   workflow graphs; see [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md).
-- `WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter` and `TriggerRegistry`
-  (`@lousho/build-ai-agent/triggers`) - wake an agent from a webhook, a Slack
-  message or a schedule; see [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md).
+- `TriggerAdapter` and `TriggerRegistry` (`@lousho/build-ai-agent/triggers`) -
+  the extension point for your own wake-up mechanism, plus `verifySlackSignature()`,
+  `parseCronExpression()` and the `WebhookAuth` helpers; see [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md).
 - `jwt()`, `oidc()`, `basic()`, `apiToken()`, `anonymous()` and `routeAuth()`
   (`@lousho/build-ai-agent/auth`) - route auth as an ordered list; the caller
   it accepts reaches the run as `principal`; see [Route auth and principals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md).
@@ -3832,8 +3832,8 @@ handler and runs every request the same way:
 POST <basePath>/<name>  ->  verify  ->  parse  ->  session turn  ->  reply (or onApproval)
 ```
 
-Channels replace the [trigger adapters](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md), which are deprecated
-(`WebhookTriggerAdapter` uses `webhookChannel()` for its auth and parsing).
+Channels replaced the built-in trigger adapters (see
+[Migrating from triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/upgrading.md#migrating-from-triggers)).
 Channels add what triggers lack: each conversation on the surface is
 a [session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md), and approvals and questions go back to the surface.
 
@@ -4034,7 +4034,7 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 | Channel | Request | Response |
 | ------- | ------- | -------- |
 | `httpChannel({ name?, verify? })` | JSON `{ sessionKey, input }` (`input` a string or content parts); anything else is a 400. Without `verify`, a body sent without `Content-Type: application/json` is a `415` (`LOUSHO_UNSUPPORTED_MEDIA_TYPE`), so a web page cannot post a form to it | `200 { sessionId, text, finishReason }`; when paused, `approval` too and `text` is the prompt |
-| `webhookChannel({ secret?, auth?, name?, principal? })` | The JSON body's `input` string, or the whole body; a one-shot session unless the body has a `sessionKey` | `200` with the turn's `ExecutionResult`, as `WebhookTriggerAdapter` answers |
+| `webhookChannel({ secret?, auth?, name?, principal? })` | The JSON body's `input` string, or the whole body; a one-shot session unless the body has a `sessionKey` | `200` with the turn's `ExecutionResult` |
 | `slackChannel({ signingSecret, botToken, name?, fetch?, approvers?, onError? })` | Slack Events API and interactivity requests (see [Slack](#slack)) | `200` at once; replies are posted in the Slack thread |
 | `discordChannel({ publicKey, applicationId, botToken?, name?, fetch?, approvers?, onError? })` | Discord slash-command and button interactions (see [Discord](#discord)) | Deferred ack at once; the reply edits the original response |
 | `telegramChannel({ botToken, secretToken, botUsername?, name?, fetch?, approvers?, onError? })` | Telegram bot webhook updates: messages and inline-keyboard taps (see [Telegram](#telegram)) | `200` at once; replies are sent with `sendMessage` as plain text |
@@ -4045,7 +4045,7 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 `x-signature-256: sha256=<hex>`; `auth` takes any
 [webhook auth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md#webhook-authentication) (HMAC options with
 replay protection, bearer token, custom). The checks and the generic 401 are
-the ones `WebhookTriggerAdapter` uses. `principal` is a
+the same for every webhook. `principal` is a
 `(body, req) => Principal | undefined` that names the caller of the turn from
 the verified request (the alerting system that sent the hook, an integration
 user); `body` is the parsed JSON body, `undefined` when it is not JSON.
@@ -4244,8 +4244,7 @@ before the approval is resolved - the continuation joins its transcript, and a
 stale or copied click decides nothing.
 
 An [agent directory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md)'s `channels/*.ts` files are loaded
-as channels too, and the node server mounts them. `SlackTriggerAdapter` (see [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md)), which replies
-through an incoming webhook, is deprecated: use `slackChannel()`. `verifySlackSignature()` is not deprecated.
+as channels too, and the node server mounts them. For your own Slack handler, `verifySlackSignature()` (see [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md#slack-request-signatures)) checks a request's signature.
 
 ## Telegram
 
@@ -6067,7 +6066,7 @@ validated with zod by `loadSpec()` (`src/spec/schema.ts`). It is the format
 | `provider.model` | `string`   | yes      | Model id every call uses (the provider's configured model; an agent's own `settings.model` would override it). |
 | `tools`          | `string[]` | no       | Built-in tool names (see below).                       |
 | `policy`         | `AgentSpecPolicy` | no | Approvals, guardrails, limits and more, enforced when the spec becomes an agent (see below). |
-| `triggers`       | `AgentSpecTrigger[]` | no | What runs the agent on its own — cron schedules (`{ type: 'cron', cron, input, name?, timezone? }`); see [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md) and [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md#cron-schedules). |
+| `triggers`       | `AgentSpecTrigger[]` | no | What runs the agent on its own — cron schedules (`{ type: 'cron', cron, input, name?, timezone? }`); see [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md) and [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md#cron-expressions). |
 | `mcpServers`     | `Record<string, McpServerSpec>` | no | MCP servers the agent uses, keyed by name (see below). |
 
 A missing or invalid field fails with an error naming the exact field, e.g.
@@ -7870,8 +7869,8 @@ stop the run), `WorkspaceError` (a workspace operation refused or failed -
 the model sees it as a tool error), `McpToolError` (a loaded MCP tool whose
 server reports `isError`; also a tool error), `AuthError` (an
 `@lousho/build-ai-agent/auth` entry rejects the request with its 401 or 403),
-`CronExpressionError` (`parseCronExpression()`, which `CronTriggerAdapter`
-lets escape and `defineSchedule()` wraps as `LOUSHO_SCHEDULE_INVALID`) and
+`CronExpressionError` (`parseCronExpression()`, which
+`defineSchedule()` wraps as `LOUSHO_SCHEDULE_INVALID`) and
 `DecryptionError` (`EncryptionUtils`, `DTOEncryptionFilter`).
 
 `CassetteMismatchError` (`recordReplay` replay; see
@@ -15183,8 +15182,8 @@ Source: docs/schedules.md
 A **schedule** runs the agent on a cron expression, with nobody asking: a
 morning summary, a nightly cleanup. `defineSchedule()` declares one, an
 [agent directory](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md) picks them up from `schedules/`, and
-`startSchedules()` (or the node server) runs them in process. Schedules replace
-the deprecated `CronTriggerAdapter` (see [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md#cron-schedules)).
+`startSchedules()` (or the node server) runs them in process. Schedules replaced
+`CronTriggerAdapter` (see [Migrating from triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/upgrading.md#migrating-from-triggers)).
 
 ## Define a schedule
 
@@ -18306,7 +18305,7 @@ its kind by carrying a `toolErrorKind` property. An error extending
 | `createTodoTools()` | `todo_write` / `todo_read` so an agent can plan multi-step work; see [Todo tools](#todo-tools). |
 | `askQuestionTool()`, `createAgent({ askQuestion: true })` | `ask_question`: the agent asks the user something and the run pauses until `agent.approvals.answer()`; see [Asking the user a question](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#asking-the-user-a-question). |
 | `createFsTools()`, `createShellTool()` | File system and shell tools for coding agents; see [Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md). |
-| `createEmailTool()`, `createSlackTool()`, `createGitHubTools()`, `createJiraTools()` (from `@lousho/build-ai-agent/integrations`) | Integrations that need credentials, so they are built with options. `createSlackTool()` (and `SlackTriggerAdapter` from `/triggers`) reads the webhook URL from `SLACK_WEBHOOK_URL` unless you pass `webhookUrl`; `createJiraTools()` takes `baseUrl`, `email` and `apiToken` explicitly (conventionally from `JIRA_BASE_URL`, `JIRA_EMAIL` and `JIRA_API_TOKEN`). |
+| `createEmailTool()`, `createSlackTool()`, `createGitHubTools()`, `createJiraTools()` (from `@lousho/build-ai-agent/integrations`) | Integrations that need credentials, so they are built with options. `createSlackTool()` reads the webhook URL from `SLACK_WEBHOOK_URL` unless you pass `webhookUrl`; `createJiraTools()` takes `baseUrl`, `email` and `apiToken` explicitly (conventionally from `JIRA_BASE_URL`, `JIRA_EMAIL` and `JIRA_API_TOKEN`). |
 | `createAgent({ mcpServers })`, `connectMcp(servers)` | Every tool of MCP servers given as config (stdio `command` or HTTP `url`), named `<server>__<tool>`; see [Use MCP servers in an agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#use-mcp-servers-in-an-agent). |
 | `openApiTools(document, options)` | One tool per operation of an OpenAPI 3.0 / 3.1 document; mutating operations ask for approval. See [OpenAPI tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/openapi-tools.md). |
 | `loadMcpTools(client, name)` | Every tool of a connected MCP server; see [MCP tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#tools-from-a-client-you-connected-yourself). |
@@ -18502,34 +18501,15 @@ What to know:
 
 Source: docs/triggers.md
 
-A trigger adapter turns one wake-up mechanism into an agent run: an inbound webhook, a clock, or a Slack event. **`WebhookTriggerAdapter`, `SlackTriggerAdapter` and `CronTriggerAdapter` are deprecated** and will be removed in a future major version: use `webhookChannel()`, `slackChannel()` and `defineSchedule()` instead (each section below has a migration snippet). `TriggerAdapter` and `TriggerRegistry` are the extension point and are not deprecated. Import them from the `@lousho/build-ai-agent/triggers` subpath: `WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter` and `TriggerRegistry`. Wire any of them with `listen(agent, onEvent)`, where `onEvent` runs the agent, and call `stop()` on the returned handle to shut the adapter down.
-
-```ts
-import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
-import { CronTriggerAdapter } from '@lousho/build-ai-agent/triggers';
-
-const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
-
-const cron = new CronTriggerAdapter({
-  intervalMs: 60_000,
-  input: 'Check the queue',
-  onResult: (result, error) => console.log(error ?? result?.text),
-});
-const handle = cron.listen(agent, (input) => agent.send(input));
-
-// Later, on shutdown: clear the timer (a webhook adapter closes its HTTP listener).
-await handle.stop();
-```
+A trigger adapter turns one wake-up mechanism into an agent run. The `@lousho/build-ai-agent/triggers` subpath is the extension point for your own mechanism (`TriggerAdapter`, `TriggerRegistry`) plus a few helpers shared with channels and schedules: the `WebhookAuth` shapes, `verifySlackSignature()` and `parseCronExpression()`. The built-in webhook, Slack and cron adapters were removed; see [Migrating from triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/upgrading.md#migrating-from-triggers).
 
 ## Choosing between triggers, channels and schedules
 
 | | Use it for | Entry points |
 |---|---|---|
-| Triggers | The extension point for your own wake-up mechanism. The three built-in adapters are deprecated. | `TriggerAdapter`, `TriggerRegistry` (deprecated: `WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter`) |
-| [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) | A surface people talk to. Each conversation maps to a session, and approvals and questions the agent pauses on go back to the surface. | `defineChannel()`, `mountChannels()`, `httpChannel()`, `webhookChannel()` |
+| Triggers | The extension point for your own wake-up mechanism. | `TriggerAdapter`, `TriggerRegistry` |
+| [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) | A surface people talk to. Each conversation maps to a session, and approvals and questions the agent pauses on go back to the surface. | `defineChannel()`, `mountChannels()`, `httpChannel()`, `webhookChannel()`, `slackChannel()` |
 | [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md) | Cron for agent directories and the node server, with support on the deployed targets. | `defineSchedule()`, `startSchedules()` |
-
-Each deprecated adapter has a replacement that is wired into sessions, approvals, agent directories and `lousho build`: Slack is `slackChannel()`, webhooks are `webhookChannel()` (both mounted with `mountChannels()`), and cron is `defineSchedule()` with `startSchedules()`. The deprecated adapters keep working until they are removed.
 
 ## The TriggerAdapter interface
 
@@ -18544,9 +18524,9 @@ interface TriggerAdapter<TChannel = unknown> {
 }
 ```
 
-`listen` takes both `agent` and `onEvent` on purpose. `agent` is the plain "prompt in, text out" surface, and `onEvent` is the entry point the adapter calls when its trigger fires: a simple caller passes `(input) => agent.send(input)`, while a caller with checkpointing, approval gates or abort control passes an `onEvent` that wraps all of that.
+`listen` takes both `agent` and `onEvent` on purpose. `agent` is the plain "prompt in, text out" surface, and `onEvent` is the entry point the adapter calls when its trigger fires: a simple caller passes `(input) => agent.send(input)`, while a caller with checkpointing, approval gates or abort control passes an `onEvent` that wraps all of that. Call `stop()` on the returned handle to shut the adapter down.
 
-Reply semantics differ per adapter. A webhook writes the result you return as the HTTP response, so it has no `reply()`. A cron has no caller waiting, so it hands the result to its `onResult` option. Slack posts the answer back through `reply()`.
+Reply semantics differ per adapter. An adapter whose reply is the open request (a webhook) has no `reply()`, one with no caller waiting (a clock) hands the result elsewhere, and one with an out-of-band reply channel (chat) implements `reply()`.
 
 Write your own adapter by returning a handle from `listen`:
 
@@ -18570,48 +18550,23 @@ handle.stop();
 
 `TriggerRegistry` keeps adapters by name: `register(name, adapter)`, `registerMany()`, `get()`, `has()`, `list()`, `getAll()`, `unregister()`, `clear()` and `size()`. `globalTriggerRegistry` is a shared instance.
 
-## Webhook
+## Webhook authentication
 
-### Webhook authentication
-
-**Deprecated.** `WebhookTriggerAdapter` is replaced by `webhookChannel()` mounted with `mountChannels()` (see [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md)), which takes the same `auth` option and adds sessions and approvals. The `WebhookAuth` shapes below stay and are the reference for `webhookChannel({ auth })`.
+The `WebhookAuth` shapes are the reference for `webhookChannel({ auth })` (see [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md)). `checkWebhookAuth()` and `assertValidWebhookAuth()` are exported for your own handler.
 
 ```ts no-run
 import { createAgent, createMockProvider, mountChannels, webhookChannel } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
 
-// POST /webhook, authenticated with an HMAC of the raw body; serve it from any node server.
+// HMAC of the RAW request body (GitHub / Shopify style): header `x-signature-256: sha256=<hex>`.
 const handler = mountChannels(agent, [
   webhookChannel({ auth: { type: 'hmac', secret: process.env.WEBHOOK_SECRET ?? '' } }),
 ]);
-```
-
-`WebhookTriggerAdapter` starts an HTTP server on `127.0.0.1` (this machine
-only) unless you pass `host`. **Always set `auth` for a webhook that is
-reachable from outside your machine**: without it, anyone who can reach the
-port can run your agent (and spend your tokens). A non-loopback `host` (e.g.
-`'0.0.0.0'`) without `auth` throws `LOUSHO_TRIGGER_INVALID` at construction;
-`allowUnauthenticated: true` allows it anyway and logs a one-time warning
-through `options.logger`. Without `auth` on loopback, a request whose `Host`
-is not a loopback name (DNS rebinding) or that carries an `Origin` header (a
-web page) gets `403`.
-
-```ts no-run
-import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
-import { WebhookTriggerAdapter } from '@lousho/build-ai-agent/triggers';
-
-const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
-
-// HMAC of the RAW request body (GitHub / Shopify style): header `x-signature-256: sha256=<hex>`.
-new WebhookTriggerAdapter({
-  port: 8787,
-  auth: { type: 'hmac', secret: process.env.WEBHOOK_SECRET ?? '' },
-}).listen(agent, (input) => agent.send(input));
 
 // Replay protection: the signed payload becomes `${timestamp}.${body}` and
 // requests more than `toleranceSeconds` (default 300) old are rejected.
-new WebhookTriggerAdapter({
+webhookChannel({
   auth: {
     type: 'hmac',
     secret: process.env.WEBHOOK_SECRET ?? '',
@@ -18622,10 +18577,10 @@ new WebhookTriggerAdapter({
 });
 
 // A shared bearer token (`Authorization: Bearer <token>`).
-new WebhookTriggerAdapter({ auth: { type: 'bearer', token: process.env.WEBHOOK_TOKEN ?? '' } });
+webhookChannel({ auth: { type: 'bearer', token: process.env.WEBHOOK_TOKEN ?? '' } });
 
 // Anything else: return true to accept. `rawBody` is a Buffer of the exact bytes received.
-new WebhookTriggerAdapter({
+webhookChannel({
   auth: { type: 'custom', verify: (req) => req.headers['x-api-key'] === process.env.API_KEY },
 });
 ```
@@ -18636,64 +18591,17 @@ digest), `timestampHeader` and `toleranceSeconds` (a timestamp may also be at
 most a minute ahead of local time). Signatures and bearer
 tokens are compared in constant time. A request that fails authentication gets
 a generic `401 {"error":"Unauthorized"}` - the response never says which check
-failed - and the reason (never a secret or signature) is logged at `warn`
-level. Serve webhooks over HTTPS (terminate TLS in front of the adapter) so
-tokens and payloads are not sent in clear text.
+failed. An invalid `auth` throws `LOUSHO_TRIGGER_INVALID`. Serve webhooks over
+HTTPS (terminate TLS in front of the server) so tokens and payloads are not
+sent in clear text.
 
-## Slack
+## Slack request signatures
 
-### Slack request signatures
-
-**Deprecated.** `SlackTriggerAdapter` is replaced by `slackChannel()` mounted with `mountChannels()` (see [Slack in Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md#slack)): one session per Slack thread, approval buttons, and the signature check built in. `verifySlackSignature()` stays and is not deprecated.
+`slackChannel()` verifies every request for you (see [Slack in Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md#slack)). For your own handler (slash commands, interactivity), verify the RAW body with `verifySlackSignature()`: HMAC-SHA256 over `v0:{X-Slack-Request-Timestamp}:{raw body}`, compared in constant time with `X-Slack-Signature` (`v0=<hex>`). Requests more than five minutes old, or more than a minute ahead of local time, are rejected (the timestamp is in seconds, as Slack sends it). See [Slack's documentation](https://docs.slack.dev/authentication/verifying-requests-from-slack).
 
 ```ts no-run
-import { createAgent, createMockProvider, mountChannels, slackChannel } from '@lousho/build-ai-agent';
+import { verifySlackSignature } from '@lousho/build-ai-agent/triggers';
 
-const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
-
-const handler = mountChannels(agent, [
-  slackChannel({
-    signingSecret: process.env.SLACK_SIGNING_SECRET ?? '',
-    botToken: process.env.SLACK_BOT_TOKEN ?? '',
-  }),
-]);
-```
-
-`SlackTriggerAdapter.handleRequest({ headers, rawBody })` handles a raw Slack
-Events API request and returns the `{ status, body }` to send back. **Set
-`signingSecret` for any endpoint reachable from outside your machine**: without
-it, anyone who can reach the endpoint can run your agent, and `listen()` logs a
-one-time warning through `options.logger`. With it, every request is verified
-as [Slack documents](https://docs.slack.dev/authentication/verifying-requests-from-slack)
-before the body is parsed: HMAC-SHA256 over `v0:{X-Slack-Request-Timestamp}:{raw body}`,
-compared in constant time with `X-Slack-Signature` (`v0=<hex>`), and requests
-more than five minutes old, or more than a minute ahead of local time, are
-rejected (the timestamp is in seconds, as Slack sends it). Failures get a generic
-`401 {"error":"Unauthorized"}`; the reason (never a secret or signature) is
-logged at `warn` level. The signed `url_verification` handshake is answered
-after verification.
-
-```ts no-run
-import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
-import { SlackTriggerAdapter, verifySlackSignature } from '@lousho/build-ai-agent/triggers';
-import * as http from 'node:http';
-
-const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
-const slack = new SlackTriggerAdapter({ signingSecret: process.env.SLACK_SIGNING_SECRET });
-slack.listen(agent, (input) => agent.send(input));
-
-http
-  .createServer((req, res) => {
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('end', async () => {
-      const { status, body } = await slack.handleRequest({ headers: req.headers, rawBody: Buffer.concat(chunks) });
-      res.writeHead(status, { 'Content-Type': 'application/json' }).end(JSON.stringify(body));
-    });
-  })
-  .listen(3000);
-
-// Your own handler (slash commands, interactivity)? Verify the RAW body yourself:
 const authentic = verifySlackSignature({
   signingSecret: process.env.SLACK_SIGNING_SECRET ?? '',
   timestamp: '1700000000', // the X-Slack-Request-Timestamp header
@@ -18702,47 +18610,9 @@ const authentic = verifySlackSignature({
 });
 ```
 
-`handleRequest` answers Slack after the agent finishes; Slack expects a reply
-within three seconds, so for slow agents acknowledge first and run the agent in
-the background.
+## Cron expressions
 
-## Cron
-
-### Cron schedules
-
-**Deprecated.** `CronTriggerAdapter` is replaced by `defineSchedule()` with `startSchedules()` (see [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md)), which also works from an agent directory's `schedules/` and from a spec file's cron triggers. `parseCronExpression()` and `CronExpressionError` stay. Schedules have no `intervalMs`: write the equivalent cron expression (`*/5 * * * *` for every five minutes), or keep a `setInterval` that calls `agent.send()`.
-
-```ts
-import { createAgent, createMockProvider, defineSchedule, startSchedules } from '@lousho/build-ai-agent';
-
-const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
-
-const queue = defineSchedule({
-  cron: '*/15 9-17 * * MON-FRI',
-  timezone: 'Europe/Paris',
-  prompt: 'Check the support queue',
-});
-const running = startSchedules(agent, [queue]);
-// later, on shutdown:
-running.stop();
-```
-
-`CronTriggerAdapter` takes either a fixed `intervalMs` or a real cron
-expression:
-
-```ts
-import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
-import { CronTriggerAdapter } from '@lousho/build-ai-agent/triggers';
-
-const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
-
-new CronTriggerAdapter({
-  cron: '*/15 9-17 * * MON-FRI', // minute hour day-of-month month day-of-week
-  timezone: 'Europe/Paris', // IANA name; defaults to the machine's local zone
-  input: 'Check the support queue',
-  onResult: (result, error) => console.log(error ?? result?.text),
-}).listen(agent, (input) => agent.send(input));
-```
+`defineSchedule()` with `startSchedules()` runs cron (see [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md)). `parseCronExpression(expr, timezone)` and `CronExpressionError` are exported if you need to validate an expression or compute the next fire time with `.nextRun(after)`.
 
 Supported syntax: `*`, lists (`1,15`), ranges (`1-5`), steps (`*/15`,
 `10-40/10`), month names (`JAN`) and weekday names (`MON`), with `0` and `7`
@@ -18750,14 +18620,12 @@ both meaning Sunday, plus the `@hourly`, `@daily` (or `@midnight`), `@weekly`,
 `@monthly` and `@yearly` (or `@annually`) shortcuts. As in
 classic cron, when both day-of-month and day-of-week are restricted a day
 matches if either does. An invalid expression throws a `CronExpressionError`
-naming the field and showing a valid example. `parseCronExpression(expr,
-timezone).nextRun(after)` is exported if you need the next fire time.
+naming the field and showing a valid example.
 
 Around daylight-saving changes, a fixed-hour job whose time does not exist
 (spring forward, e.g. `30 2 * * *`) runs once at the first instant after the
 gap (03:00) instead of being skipped for the day, and a time that happens twice (fall back) fires once;
-an every-hour schedule keeps firing hourly. The timer is re-armed after each
-run from the scheduled time (no drift, no double fire), and `stop()` clears it.
+an every-hour schedule keeps firing hourly.
 
 # Troubleshooting
 
@@ -19024,6 +18892,16 @@ results and behavior are unchanged; `SECRET_PATTERNS` keeps its name. See
 | `createTestRunGuardrail` | `createTestRunCheck` |
 | `createLintGuardrail` | `createLintCheck` |
 
+## Migrating from triggers
+
+`WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter` and their option/handle types were removed from `@lousho/build-ai-agent/triggers`. `TriggerAdapter`, `TriggerRegistry`, the `WebhookAuth` helpers, `verifySlackSignature()` and `parseCronExpression()` stay. See [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md).
+
+| Removed | Replacement |
+| ------- | ----------- |
+| `WebhookTriggerAdapter`, `WebhookTriggerAdapterOptions`, `WebhookTriggerHandle` | `webhookChannel()`, mounted with `mountChannels()`; it takes the same `auth` option. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) |
+| `SlackTriggerAdapter`, `SlackTriggerAdapterOptions` | `slackChannel()`, mounted with `mountChannels()` - sessions per thread, approval buttons. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md#slack) |
+| `CronTriggerAdapter`, `CronTriggerAdapterOptions`, `CronIntervalOptions`, `CronExpressionOptions` | `defineSchedule()` with `startSchedules()`, `schedules/` in an agent directory, or cron triggers in a spec file. There is no `intervalMs`: write the cron expression (`*/5 * * * *`). See [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md) |
+
 ## Deprecated, still working in 1.x
 
 These names still work in 1.x and are removed in 2.0. Move off them when you
@@ -19031,10 +18909,6 @@ touch the code; nothing breaks if you do not.
 
 | Deprecated | Replacement |
 | ---------- | ----------- |
-| `SlackTriggerAdapter` (`@lousho/build-ai-agent/triggers`) | `slackChannel()`, mounted with `mountChannels()` - sessions per thread, approval buttons. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) |
-| `CronTriggerAdapter` | `defineSchedule()` with `startSchedules()`, `schedules/` in an agent directory, or cron triggers in a spec file. See [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md) |
-| `WebhookTriggerAdapter` | `webhookChannel()`, mounted with `mountChannels()`. See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md) |
-| The adapters' options types (`SlackTriggerAdapterOptions`, `CronTriggerAdapterOptions`, `WebhookTriggerAdapterOptions`) and `WebhookTriggerHandle` | The corresponding channel/schedule option types. `verifySlackSignature()`, the `WebhookAuth` helpers, `parseCronExpression()`, `TriggerAdapter` and `TriggerRegistry` are **not** deprecated |
 | `ToolRunContext` | `ToolExecutionContext`, the one public execute-context type |
 | `RunUsage.promptTokens` | `RunUsage.inputTokens` |
 | `RunUsage.completionTokens` | `RunUsage.outputTokens` |
@@ -19118,9 +18992,8 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | A client that disconnects mid-turn no longer aborts the turn: it runs to its end and is saved. See [Next.js routes](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md#routes). | `onDisconnect: 'abort'` |
 | `lousho dev` answers `403` to a request whose `Host` is not a loopback name (or, off loopback, an IP address or the `--host` name), against DNS rebinding; this covers `/channels/<name>` for a channel without `verify`. | `--allowed-hosts a,b` (adds to the defaults) |
 | A channel without `verify` refuses a browser request from another site (`403 LOUSHO_REQUEST_FORBIDDEN`), and `httpChannel()` without `verify` refuses a body that is not `Content-Type: application/json` (`415 LOUSHO_UNSUPPORTED_MEDIA_TYPE`). See [Channels](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/channels.md). | give the channel a `verify` (send the JSON content type from scripts: `curl -H 'Content-Type: application/json'`) |
-| `WebhookTriggerAdapter` binds `127.0.0.1` (was `0.0.0.0`), throws `LOUSHO_TRIGGER_INVALID` for a non-loopback `host` without `auth`, and without `auth` refuses a foreign `Host` or a request with an `Origin`. See [Webhook authentication](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md#webhook-authentication). | `host: '0.0.0.0'` with `auth`, or `allowUnauthenticated: true` |
 | The Cloudflare Worker refuses every `/chat` route (a turn, a transcript, an approval decision; `403`) when no `LOUSHO_API_TOKEN` secret is set. `/health`, the OAuth callback and channels stay open. See [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md). | the `LOUSHO_ALLOW_OPEN_SESSIONS` var (or the earlier `LOUSHO_ALLOW_OPEN_TRANSCRIPTS`) set to `"true"` |
-| `serveMcp()` over HTTP checks `Host` and `Origin` against DNS rebinding; loopback is exactly `localhost`, a `127.x.x.x` address or `::1` (also for `WebhookTriggerAdapter`). | `allowedHosts` / `allowedOrigins` on `serveMcp()`'s HTTP transport (`['*']` turns a check off) |
+| `serveMcp()` over HTTP checks `Host` and `Origin` against DNS rebinding; loopback is exactly `localhost`, a `127.x.x.x` address or `::1` (also for `webhookChannel()`). | `allowedHosts` / `allowedOrigins` on `serveMcp()`'s HTTP transport (`['*']` turns a check off) |
 | Agent Forge (`lousho studio`) sends no CORS headers, refuses a foreign `Origin` or non-loopback `Host`, and needs the per-launch token it prints. See [Access token](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md#access-token). | no opt-out |
 | `fromUIMessages()` (and so `POST <base>/ui`) drops client-sent `system` messages and any role other than `user` / `assistant`. | no opt-out |
 | Slack and Discord signature checks accept a timestamp at most a minute ahead (was five minutes either way), read in seconds. | no opt-out |

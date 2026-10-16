@@ -32,8 +32,8 @@ stop the run), `WorkspaceError` (a workspace operation refused or failed -
 the model sees it as a tool error), `McpToolError` (a loaded MCP tool whose
 server reports `isError`; also a tool error), `AuthError` (an
 `@lousho/build-ai-agent/auth` entry rejects the request with its 401 or 403),
-`CronExpressionError` (`parseCronExpression()`, which `CronTriggerAdapter`
-lets escape and `defineSchedule()` wraps as `LOUSHO_SCHEDULE_INVALID`) and
+`CronExpressionError` (`parseCronExpression()`, which
+`defineSchedule()` wraps as `LOUSHO_SCHEDULE_INVALID`) and
 `DecryptionError` (`EncryptionUtils`, `DTOEncryptionFilter`).
 
 `CassetteMismatchError` (`recordReplay` replay; see
