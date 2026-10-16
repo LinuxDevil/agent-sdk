@@ -845,7 +845,7 @@ interface SqlStatement {
 // @public
 type SqlValue = string | number | Uint8Array | null;
 
-// @public (undocumented)
+// @public
 interface StepNode {
     // (undocumented)
     agent: string;

@@ -786,7 +786,7 @@ interface SetVariableNode extends NodeRunOptions {
 // @public
 export function sha256(message: string, salt: string): Promise<string>;
 
-// @public (undocumented)
+// @public
 interface StepNode {
     // (undocumented)
     agent: string;

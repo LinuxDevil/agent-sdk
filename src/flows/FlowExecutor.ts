@@ -44,6 +44,7 @@ import { gateFlowToolCall } from './flowToolGate';
 import { validateFlowInput } from './inputs';
 import { abortableDelay } from '../providers/abortableDelay';
 import type { CheckpointStore } from '../execution/checkpoint';
+import { acquireRunLease, fencedCheckpointStore } from '../execution/runLease';
 import { FlowApprovalPause, FlowRun, addUsage, durableOptions, flowStateOf, flowStructure, type FlowApprovalDecision } from './flowCheckpoint';
 import type { FlowPendingApproval } from '../execution/checkpoint';
 
@@ -406,8 +407,12 @@ export class FlowExecutor {
   ): Promise<FlowExecutionResult> {
     this.assertRunnableAgent(context.agent);
     const durable = durableOptions(context, 'execute');
-    if (durable) {
-      const existing = await durable.store.load(durable.runId);
+    if (!durable) {
+      return this.traced(flow, { ...context, variables: { ...context.variables } }, onEvent, undefined);
+    }
+    // H3-1: the lease is taken before the checkpoint is read, so two execute() calls with one new runId cannot both pass the check.
+    return this.leased(durable.store, durable.runId, async (store) => {
+      const existing = await store.load(durable.runId);
       if (existing && existing.status !== 'finished') {
         throw new ConfigurationError(
           `FlowExecutor.execute: run '${durable.runId}' has an unfinished checkpoint (status '${existing.status ?? 'in-progress'}'). ` +
@@ -415,10 +420,33 @@ export class FlowExecutor {
           'runId'
         );
       }
+      const variables = { ...context.variables };
+      const run = new FlowRun(store, durable.runId, flow.code, variables, undefined, flowStructure(flow.flow));
+      return this.traced(flow, { ...context, variables }, onEvent, run);
+    });
+  }
+
+  /**
+   * H3-1: runs `body` holding the run lease on `runId` in `store`, as an agent
+   * run does (see `acquireRunLease`): while another live run holds the id
+   * (another process, replica or store object, or a concurrent call), this one
+   * rejects with `LOUSHO_SESSION_BUSY` before anything runs. The lease renews
+   * itself during long steps, the run's saves go through `store` fenced by it
+   * (a run that lost its lease cannot overwrite the new holder's checkpoint),
+   * and it is released when the run returns. A store without leases runs
+   * without one.
+   */
+  private static async leased(
+    store: CheckpointStore,
+    runId: string,
+    body: (store: CheckpointStore) => Promise<FlowExecutionResult>
+  ): Promise<FlowExecutionResult> {
+    const lease = await acquireRunLease(store, runId);
+    try {
+      return await body(fencedCheckpointStore(store, lease));
+    } finally {
+      await lease?.release();
     }
-    const variables = { ...context.variables };
-    const run = durable ? new FlowRun(durable.store, durable.runId, flow.code, variables, undefined, flowStructure(flow.flow)) : undefined;
-    return this.traced(flow, { ...context, variables }, onEvent, run);
   }
 
   /**
@@ -442,7 +470,20 @@ export class FlowExecutor {
     onEvent?: (event: FlowExecutionEvent) => void
   ): Promise<FlowExecutionResult> {
     this.assertRunnableAgent(context.agent);
-    const { store, runId } = durableOptions(context, 'resume')!;
+    const durable = durableOptions(context, 'resume')!;
+    const { runId } = durable;
+    // H3-1: one live run per runId; a concurrent resume rejects with LOUSHO_SESSION_BUSY.
+    return this.leased(durable.store, runId, (store) => this.resumeLeased(flow, context, onEvent, store, runId));
+  }
+
+  /** `resume()` once it holds the run lease; `store` is fenced by it. */
+  private static async resumeLeased(
+    flow: AgentFlow,
+    context: FlowResumeContext,
+    onEvent: ((event: FlowExecutionEvent) => void) | undefined,
+    store: CheckpointStore,
+    runId: string
+  ): Promise<FlowExecutionResult> {
     const checkpoint = await store.load(runId);
     const structure = flowStructure(flow.flow);
     const saved = flowStateOf(checkpoint, runId, flow.code, structure);
@@ -452,13 +493,21 @@ export class FlowExecutor {
     const variables = { ...saved.variables };
     const run = new FlowRun(store, runId, flow.code, variables, saved, structure);
     const pending = checkpoint?.status === 'awaiting-approval' ? saved.pendingApproval : undefined;
-    this.assertApprovalDecision(runId, pending, context.approval);
-    if (pending && context.approval) {
-      run.decide(pending.nodeId, context.approval);
-      // The decision is used once: the run is no longer waiting for it.
-      await run.save('in-progress');
-    }
+    await this.applyApprovalDecision(run, pending, context.approval);
     return this.traced(flow, { ...context, variables }, onEvent, run);
+  }
+
+  /** Checks the resume's decision against the pending approval, and applies it to `run`. */
+  private static async applyApprovalDecision(
+    run: FlowRun,
+    pending: FlowPendingApproval | undefined,
+    approval: FlowApprovalDecision | undefined
+  ): Promise<void> {
+    this.assertApprovalDecision(run.runId, pending, approval);
+    if (!pending || !approval) return;
+    run.decide(pending.nodeId, approval);
+    // The decision is used once: the run is no longer waiting for it.
+    await run.save('in-progress');
   }
 
   /** A paused run resumes only with a decision on its pending approval; a decision needs one. */
@@ -671,7 +720,12 @@ export class FlowExecutor {
   ): unknown {
     const handler = this.nodeHandlers.get(node.type);
     if (!handler) {
-      throw new SDKError(`Unknown node type: ${node.type}`, 'LOUSHO_FLOW_INVALID');
+      // H3-7: `StepNode` is in the node union (editors produce it), but nothing runs it.
+      const hint =
+        node.type === 'step'
+          ? ` ('step' nodes are an editor shape FlowExecutor does not run: to run a createAgent() agent in a flow, register a tool that calls agent.send() and use a 'toolCall' step, or use an 'llmCall' step)`
+          : '';
+      throw new SDKError(`Unknown node type: ${node.type}${hint}`, 'LOUSHO_FLOW_INVALID');
     }
     // The handler was found by `node.type`, so `node` has that handler's shape.
     return handler(node as ExecutableNode, context, events, onEvent);
@@ -1343,10 +1397,18 @@ export class FlowExecutor {
   }
 
   /**
-   * Interpolate object with variables
+   * Interpolate object with variables. H3-5: a string that is exactly one
+   * `{{name}}` (or `$name`) of a defined variable is that variable's value,
+   * not its text, so `{ n: '{{n}}' }` passes a number to a `z.number()` tool;
+   * any other string is interpolated as text.
    */
   private static interpolateObject(obj: unknown, variables: Record<string, unknown>): unknown {
     if (typeof obj === 'string') {
+      const whole = /^(?:\{\{(\w+)\}\}|\$(\w+))$/.exec(obj);
+      const name = whole?.[1] ?? whole?.[2];
+      if (name !== undefined && Object.hasOwn(variables, name) && variables[name] !== undefined) {
+        return variables[name];
+      }
       return this.interpolate(obj, variables);
     }
     if (Array.isArray(obj)) {

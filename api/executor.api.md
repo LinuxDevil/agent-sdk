@@ -2311,7 +2311,7 @@ interface StepDoneEvent extends AgentEventBase<'step.done'> {
     usage?: AgentEventUsage;
 }
 
-// @public (undocumented)
+// @public
 interface StepNode {
     // (undocumented)
     agent: string;
