@@ -25,7 +25,7 @@ import {
 } from './defineChannel';
 import { reportChannelError } from './channelSupport';
 import type { Principal } from '../auth/types';
-import type { ApprovalStore, PendingApproval, ResolvedApproval } from '../execution/ApprovalGate';
+import { describeApproval, type ApprovalStore, type PendingApproval, type ResolvedApproval } from '../execution/ApprovalGate';
 import { SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 import { crossSiteRequest } from '../server/requestGuard';
 
@@ -294,13 +294,14 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
       const record = await approvalStore?.load?.(decision.id);
       const bound = pausedSessionId(record) ?? (await agent.approvals.get?.(decision.id))?.sessionId;
       if (bound !== sessionId) return false;
-      const kind = record?.pending.kind ?? 'tool';
+      const kind = record ? describeApproval(record.pending).kind ?? 'tool' : 'tool';
       return isAnswer === (kind === 'question') && kind !== 'sign-in';
     }
     // A turn paused on several calls of one step waits on each of them.
     const ids = pending.approvalIds ?? (pending.approvalId === undefined ? [] : [pending.approvalId]);
     if (pending.status !== 'awaiting-approval' || !ids.includes(decision.id)) return false;
-    const kind = (decision.id === pending.approvalId ? pending.approvalKind : (await agent.approvals.get(decision.id))?.kind) ?? 'tool';
+    const approval = decision.id === pending.approvalId ? undefined : await agent.approvals.get(decision.id);
+    const kind = (decision.id === pending.approvalId ? pending.approvalKind : approval ? describeApproval(approval).kind : undefined) ?? 'tool';
     if (isAnswer !== (kind === 'question') || kind === 'sign-in') return false;
     try {
       await session.resume();

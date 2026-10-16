@@ -322,15 +322,16 @@ describe('request hardening', () => {
     expect(ledger).toEqual([]);
   });
 
-  it('refuses { approved } on a question pause', async () => {
+  it('answers a question pause with { approved: true, note } (the resolve path)', async () => {
     const ask = { toolCalls: [{ name: 'ask_question', args: { question: 'Which city?' }, id: 'q1' }] };
-    const { handler } = refundDesk([ask], {}, memoryStore(), { askQuestion: true });
+    const { handler, model } = refundDesk([ask, 'Lisbon it is.'], {}, memoryStore(), { askQuestion: true });
     const paused = await events(await handler(call('POST', '/chat', 'alice', { sessionId: 'q-1', input: 'Book a trip' })));
     const requested = paused.find((event) => event.type === 'approval.requested') as { approvalId: string } | undefined;
-    const id = requested!.approvalId;
-    const decided = await handler(call('POST', `/chat/q-1/approvals/${id}`, 'alice', { approved: true }));
-    expect(decided.status).toBe(400);
-    expect(await decided.json()).toMatchObject({ code: 'LOUSHO_APPROVAL_KIND_MISMATCH' });
+    const decided = await handler(call('POST', `/chat/q-1/approvals/${requested!.approvalId}`, 'alice', { approved: true, note: 'Lisbon' }));
+    expect(decided.status).toBe(200);
+    const continuation = await events(decided);
+    expect(continuation.some((event) => event.type === 'run.done')).toBe(true);
+    expect(JSON.stringify(model.calls[1].messages)).toContain('Lisbon');
   });
 
   it('answers malformed percent-encoding with 400, not 500', async () => {

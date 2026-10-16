@@ -18,7 +18,7 @@
  */
 import type { AgentInput } from '../providers/content';
 import type { AgentEvent, AgentEventError } from '../execution/agentEvents';
-import type { PendingApproval } from '../execution/ApprovalGate';
+import { describeApproval, type PendingApproval } from '../execution/ApprovalGate';
 import { samePrincipal } from '../execution/runPrincipal';
 import { assertSessionId } from '../session/sessionStore';
 import type { AgentSession } from '../session/AgentSession';
@@ -542,13 +542,15 @@ const runApproval: RouteHandler = async (request, ctx, [sessionId, id], principa
   if (!(await (ctx.authorizeApproval ?? callerOwnsApproval)({ principal, sessionId, approval }))) {
     return jsonResponse(403, { error: 'Not allowed to decide this approval', code: 'LOUSHO_APPROVAL_FORBIDDEN' });
   }
-  // a decision must match the pause's kind (the channel binding checks the same):
-  // `answer` decides a question, `approved` a tool call - answering a tool approval must
-  // not silently approve it. Checked after authorization, so a refused caller learns nothing of the pause's kind.
-  const kind = approval.kind ?? 'tool';
-  if (typeof answer === 'string' ? kind !== 'question' : kind === 'question') {
+  // `answer` decides a question only - an answer posted to a tool-call or
+  // sign-in pause must not silently resolve it. `approved`+`note` is the
+  // resolve path: on a question pause it answers (`note`) or declines
+  // (`approved: false`), on a sign-in the resolve's own 409 applies. Checked
+  // after authorization, so a refused caller learns nothing of the pause's kind.
+  const kind = describeApproval(approval).kind ?? 'tool';
+  if (typeof answer === 'string' && kind !== 'question') {
     return jsonResponse(400, {
-      error: kind === 'question' ? "This approval is a question: send 'answer'" : "This approval is a tool call: send 'approved'",
+      error: "This approval is not a question: send 'approved'",
       code: 'LOUSHO_APPROVAL_KIND_MISMATCH',
     });
   }

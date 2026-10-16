@@ -350,7 +350,6 @@ describe('remote sub-agent approvals through the lead run', () => {
     expect((await agent.approvals.list())[0]).toMatchObject({ kind: 'question', question: { text: 'Which env?' }, subagentPath: ['remote'] });
 
     const result = await agent.approvals.answer({ id: paused.approvalId!, answer: 'staging' });
-
     expect(taskResult(result.messages)).toMatch(/^Using staging\./);
     expect(JSON.stringify(remoteModel.calls[1].messages)).toContain('staging');
   });
