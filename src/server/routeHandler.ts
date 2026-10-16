@@ -171,20 +171,21 @@ export function createRouteHandler(agent: SimpleAgent, options: RouteHandlerOpti
   const ctx: ChatRoutesContext = { name: 'route', agent: () => agent, authorizeSession: authorizeSession ?? everySession, authorizeApproval, exposeErrors, onDisconnect, waitUntil, allowedOrigins, requireJsonBody, allowedHosts };
   const auth = authList(options.auth);
   if (!auth) warnOpenInProduction();
+  // The request's caller, or the auth failure's response. The oauth callback
+  // skips the token: the provider's redirect carries the single-use `state`.
+  const routeCaller = async (request: Request, path: string): Promise<Principal | undefined | Response> => {
+    if (request.method === 'GET' && path === '/oauth/callback') return callbackPrincipal(request, auth);
+    if (!auth) return undefined;
+    const outcome = await routeAuth(request, auth);
+    return outcome.ok ? outcome.principal : outcome.response;
+  };
   const handler: RouteHandler = async (request) => {
     const url = new URL(request.url);
     const path = stripBase(url.pathname, base);
     if (path === undefined) return text(404, 'not found');
     if (request.method === 'GET' && path === '/health') return text(200, 'ok');
-    let principal: Principal | undefined;
-    if (request.method === 'GET' && path === '/oauth/callback') {
-      // The provider's redirect carries no API token; the single-use `state` protects it.
-      principal = await callbackPrincipal(request, auth);
-    } else if (auth) {
-      const outcome = await routeAuth(request, auth);
-      if (!outcome.ok) return outcome.response;
-      principal = outcome.principal;
-    }
+    const principal = await routeCaller(request, path);
+    if (principal instanceof Response) return principal;
     if (options.uiMessageStream && request.method === 'POST' && path === '/ui') {
       return uiChat(agent, request, principal, ctx).catch((error) => {
         if (exposeErrors) return json(500, { error: (error as Error).message });
