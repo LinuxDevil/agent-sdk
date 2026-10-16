@@ -22,7 +22,7 @@ const weather = defineTool({
 type WeatherArgs = ToolInput<typeof weather>;   // { location: string; units: 'celsius' | 'fahrenheit' }
 type WeatherResult = ToolOutput<typeof weather>; // { temperature: number; conditions: string }
 
-const agent = createAgent({ prompt: '...', provider, tools: [weather] });
+const agent = createAgent({ instructions: '...', provider, tools: [weather] });
 ```
 
 Tools the model provider runs itself (web search, code interpreter, file search) go in the same `tools` list; see [Hosted provider tools](./hosted-tools.md).
@@ -261,7 +261,7 @@ emits a `todo.updated` stream event with the new list and its counts (see
 import { createAgent, createTodoTools, type TodoStore } from '@lousho/build-ai-agent';
 
 const todos = createTodoTools({ onChange: (list) => console.log(list.length, 'todos') });
-const planner = createAgent({ prompt: 'Plan multi-step work, then do it.', provider, tools: todos.tools });
+const planner = createAgent({ instructions: 'Plan multi-step work, then do it.', provider, tools: todos.tools });
 
 await planner.send('Migrate the repo to ESM');
 console.log(await todos.getTodos()); // [{ id: 'todo_1', content: '...', status: 'completed' }, ...]

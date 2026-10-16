@@ -19,7 +19,7 @@ const provider = process.env.OPENAI_API_KEY
 
 const agent = createAgent({
   name: 'slack-notifier',
-  prompt:
+  instructions:
     'You turn a raw event description into a short, Slack-ready notification message, using ' +
     'Slack emoji shorthand (e.g. :rotating_light:) where it fits.',
   provider,

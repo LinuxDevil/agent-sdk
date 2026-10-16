@@ -58,7 +58,7 @@ How the pieces fit:
 
 ### Dynamic config
 
-`createAgent()`'s `model`, `instructions` (or `prompt`) and `tools` each take
+`createAgent()`'s `model`, `instructions` and `tools` each take
 the static value or a function of the run, `(ctx) => value | Promise<value>`
 (type `PerRun<T>`). `ctx` is `{ sessionId?, input, metadata?, principal? }` (type
 `RunConfigContext`): the `sessionId` of `send()` / `stream()` or the

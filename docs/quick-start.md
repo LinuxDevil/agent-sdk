@@ -83,7 +83,7 @@ const currentDate = defineTool({
 });
 
 const agent = createAgent({
-  prompt: 'You are a scheduling assistant. Use tools when helpful.',
+  instructions: 'You are a scheduling assistant. Use tools when helpful.',
   provider: createMockProvider({ responses: ['Let me check.', 'Here is the date you asked for.'] }),
   tools: [currentDate],
 });
@@ -106,7 +106,7 @@ and `await run.result` for the same result `send()` returns.
 import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
 
 const agent = createAgent({
-  prompt: 'You are a helpful assistant.',
+  instructions: 'You are a helpful assistant.',
   provider: createMockProvider({ responses: ['Streaming works word by word.'] }),
 });
 
@@ -132,7 +132,7 @@ keeps the transcript and passes it to the model on each `send()`.
 import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
 
 const agent = createAgent({
-  prompt: 'You are a helpful assistant.',
+  instructions: 'You are a helpful assistant.',
   provider: createMockProvider({ responses: ['Nice to meet you, Ali.', 'Your name is Ali.'] }),
 });
 
@@ -250,7 +250,7 @@ const provider = process.env.OPENAI_API_KEY
 
 const agent = createAgent({
   name: 'geography-bot',
-  prompt: 'Answer geography questions in one word.',
+  instructions: 'Answer geography questions in one word.',
   provider,
 });
 

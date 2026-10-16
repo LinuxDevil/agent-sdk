@@ -26,7 +26,7 @@ the deprecated `onEvent` counterpart).
 
 ```ts
 import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
-const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider(), maxSteps: 3 });
+const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider(), maxSteps: 3 });
 const result = await agent.send('Research this thoroughly');
 if (result.finishReason === 'max-steps') console.warn(`Gave up after ${result.steps} steps`);
 ```
@@ -39,7 +39,7 @@ Pass an `AbortSignal` to stop a run: `agent.send(input, { signal })`,
 
 ```ts
 import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
-const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
+const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
 const controller = new AbortController();
 setTimeout(() => controller.abort(), 5_000); // e.g. from a Stop button
 const result = await agent.send('Write a long report', { signal: controller.signal });
@@ -50,7 +50,7 @@ For a time limit, use `AbortSignal.timeout(ms)`:
 
 ```ts
 import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
-const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
+const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
 const result = await agent.send('Summarize this', { signal: AbortSignal.timeout(30_000) });
 ```
 
@@ -112,7 +112,7 @@ const getWeather = defineTool({
 });
 
 const agent = createAgent({
-  prompt: 'You are a travel assistant.',
+  instructions: 'You are a travel assistant.',
   provider: createMockProvider(),
   tools: [getWeather],
   toolConcurrency: 4, // at most 4 tool calls of a turn in flight

@@ -222,7 +222,7 @@ import { createAgent } from '@lousho/build-ai-agent';
 import { loadMcpTools } from '@lousho/build-ai-agent/mcp';
 
 const tools = await loadMcpTools(mcpClient, 'my-server');
-const agent = createAgent({ prompt: '...', provider, tools });
+const agent = createAgent({ instructions: '...', provider, tools });
 ```
 
 `loadMcpTools` is also available from the package root and from
@@ -246,7 +246,7 @@ const searchDocs = defineTool({
   execute: ({ query }) => `results for ${query}`,
 });
 
-const supportAgent = createAgent({ prompt: 'You answer support questions.', provider, tools: [searchDocs] });
+const supportAgent = createAgent({ instructions: 'You answer support questions.', provider, tools: [searchDocs] });
 
 const server = await serveMcp({
   agent: supportAgent,            // exposed as ONE tool taking { message: string }

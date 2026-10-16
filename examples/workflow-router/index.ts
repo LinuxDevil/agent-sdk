@@ -17,7 +17,7 @@ const provider = process.env.OPENAI_API_KEY
 
 const agent = createAgent({
   name: 'workflow-router',
-  prompt:
+  instructions:
     'You are a request router. Given a customer message, reply with exactly one word: ' +
     "'billing', 'technical', or 'sales' - whichever category best matches the message.",
   provider,

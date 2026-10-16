@@ -132,7 +132,7 @@ use `createAgent()`, which needs no separate agent object.
 
 **Means:** two options that mean the same thing were both given.
 
-**Fix:** keep one. For `createAgent()`, `prompt` is an alias of `instructions`:
+**Fix:** keep one. For `createAgent()`, `prompt` is a deprecated alias of `instructions`:
 keep `instructions`.
 
 **Example:** `createAgent({ provider, instructions: 'a', prompt: 'b' })`.

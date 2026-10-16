@@ -25,7 +25,7 @@ can correct itself.
 import { createAgent, defineSkill } from '@lousho/build-ai-agent';
 
 const agent = createAgent({
-  prompt: 'You are a release engineer.',
+  instructions: 'You are a release engineer.',
   provider,
   skills: [
     defineSkill({
@@ -94,7 +94,7 @@ Use the imperative mood and link the PR.
 import { createAgent, loadSkills } from '@lousho/build-ai-agent';
 
 const agent = createAgent({
-  prompt: 'You are a release engineer.',
+  instructions: 'You are a release engineer.',
   provider,
   skills: [...(await loadSkills('./skills'))],
 });

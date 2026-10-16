@@ -18,7 +18,7 @@ techniques stay a thin layer of instructions on top.
 ## Prompt-level techniques
 
 These all reduce to instructions and message shape — `createAgent`'s
-`instructions` / `prompt`, seeded session turns, and `output` schemas.
+`instructions`, seeded session turns, and `output` schemas.
 
 | Technique | What it is | How to use it in Lousho |
 | --------- | ---------- | ----------------------- |

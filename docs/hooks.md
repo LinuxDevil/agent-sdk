@@ -33,7 +33,7 @@ const lookup = defineTool({
 });
 
 const agent = createAgent({
-  prompt: 'You answer questions.',
+  instructions: 'You answer questions.',
   provider: mockModel([{ toolCalls: [{ name: 'lookup', args: { query: 'hooks' } }] }, { text: 'Done.' }]),
   tools: [lookup],
   hooks: [auditHook],
@@ -130,7 +130,7 @@ const noShell: AgentHook = {
 };
 
 const model = mockModel([{ toolCalls: [{ name: 'shell', args: { command: 'ls' } }] }, { text: 'I could not run it.' }]);
-const agent = createAgent({ prompt: 'You help.', provider: model, tools: [shell], hooks: [noShell] });
+const agent = createAgent({ instructions: 'You help.', provider: model, tools: [shell], hooks: [noShell] });
 
 const result = await agent.send('List the files');
 console.log(result.text);
@@ -165,7 +165,7 @@ const defaultLimit: AgentHook = {
 };
 
 const model = mockModel([{ toolCalls: [{ name: 'search', args: { query: 'hooks' } }] }, { text: 'Found it.' }]);
-const agent = createAgent({ prompt: 'You search.', provider: model, tools: [search], hooks: [defaultLimit] });
+const agent = createAgent({ instructions: 'You search.', provider: model, tools: [search], hooks: [defaultLimit] });
 
 await agent.send('Search for hooks');
 ```
@@ -198,7 +198,7 @@ const redact: AgentHook = {
 };
 
 const model = mockModel([{ toolCalls: [{ name: 'read_log', args: {} }] }, { text: 'Read it.' }]);
-const agent = createAgent({ prompt: 'You read logs.', provider: model, tools: [readLog], hooks: [redact] });
+const agent = createAgent({ instructions: 'You read logs.', provider: model, tools: [readLog], hooks: [redact] });
 
 await agent.send('Read the log');
 const toolMessage = model.calls[1].messages.at(-1);
@@ -222,7 +222,7 @@ const addDate: AgentHook = {
 };
 
 const model = mockModel(['Noted.']);
-const agent = createAgent({ prompt: 'You help.', provider: model, hooks: [addDate] });
+const agent = createAgent({ instructions: 'You help.', provider: model, hooks: [addDate] });
 
 await agent.send('Hello');
 console.log(model.calls.length); // 1
