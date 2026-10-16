@@ -11,6 +11,10 @@ What is on `main` and not yet on npm. Entries marked **Behavior change** can
 break working code; [Upgrading](docs/upgrading.md) lists each one with its
 opt-out.
 
+### Changed
+
+- CI is one workflow with two jobs: `ci` (type checks, lint, build, tests with coverage, docs, API and fallow gates, pack-smoke, size check, and a zod 4 type check) and `compat` (the newest peers, `ai` 7 with zod 4, plus the real-Docker sandbox tests). The separate Docker Engine, Agent Forge E2E and weekly registry-smoke workflows and the `ai` 6 / zod 3 matrix entries are gone; `npm run registry-smoke` and `npm run test:e2e:studio` still run locally. When the fallow gate fails, CI now prints its full health and duplication reports.
+
 ### Added
 - `fromAiSdkTools(record)` converts Vercel AI SDK tools (`tool({ ... })` or plain `{ description, inputSchema | parameters, execute, needsApproval? }` objects) into Lousho tools, keyed by name: zod and Standard Schemas are kept, `jsonSchema()` wrappers and plain JSON Schemas are converted (their own `validate` still runs), `needsApproval` (boolean or function) pauses the run for approval, and `execute` gets the call id and the run's abort signal. It imports nothing from `ai`, so tools built on `ai` 4 to 7 work with any installed version. New guide: [Migrating from the AI SDK](docs/migrating-from-ai-sdk.md).
 - `lousho eval` without vitest installed now says it runs `*.eval.ts` files through vitest, the directory it searched from, and the install command; [Evals](docs/evals.md) states the requirement up front.

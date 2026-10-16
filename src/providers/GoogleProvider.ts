@@ -5,7 +5,7 @@
 
 import { LanguageModel } from 'ai';
 import { AiSdkProvider, AiSdkProviderConfig } from './aiSdkProvider';
-import { aiMajorOf } from './aiSdkCompat';
+import { aiMajorOf, documentFileTypes } from './aiSdkCompat';
 import { lazyValue, loadOptionalPeer } from './optionalPeer';
 
 export interface GoogleProviderConfig extends AiSdkProviderConfig {
@@ -29,7 +29,7 @@ export class GoogleProvider extends AiSdkProvider<GoogleProviderConfig> {
 
   /** PDF and plain-text file parts go to the model on ai 6 and 7; older peers have no file parts. */
   protected fileMediaTypes(): readonly string[] {
-    return aiMajorOf(this.ai) >= 6 ? ['application/pdf', 'text/plain'] : [];
+    return documentFileTypes(this.ai);
   }
 
   protected async createModel(modelId: string): Promise<LanguageModel> {

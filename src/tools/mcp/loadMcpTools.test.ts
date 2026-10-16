@@ -21,7 +21,7 @@ describe('loadMcpTools', () => {
       const descriptor = await load(async () => {
         throw cause;
       });
-      const error = await descriptor.tool.execute!({}, {} as ToolExecutionOptions).catch((e: unknown) => e);
+      const error = await Promise.resolve(descriptor.tool.execute!({}, {} as ToolExecutionOptions)).catch((e: unknown) => e);
       expect(error).toBeInstanceOf(SDKError);
       expect((error as SDKError).code).toBe('LOUSHO_MCP_CALL_FAILED');
       expect((error as SDKError).message).toContain("'srv__ping'");

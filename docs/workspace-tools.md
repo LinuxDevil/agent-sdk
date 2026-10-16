@@ -502,8 +502,8 @@ What this enforces, and where:
   the allowlist check. Raw IP connections have no route. Non-HTTP protocols
   (SSH, raw TCP, UDP) are blocked, because only the proxy is reachable, and
   `CONNECT` tunnels are checked against the allowlist like any request.
-  This is tested against a real daemon: the Docker Engine CI workflow
-  (`.github/workflows/docker.yml`, `npm run test:docker`) runs on GitHub's
+  This is tested against a real daemon: CI's `compat` job
+  (`npm run test:docker`) runs on GitHub's
   `ubuntu-latest` runner (rootful Docker Engine 28.0.4 on Ubuntu 24.04 when
   it was added) and checks that an allowed host answers through the broker,
   that other hosts get a 403, that bypassing the proxy or dialling a raw IP
