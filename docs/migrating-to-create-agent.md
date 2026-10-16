@@ -104,7 +104,7 @@ approval store and provider, so deciding the pause needs only the approval id.
 
 | Legacy | `createAgent()` |
 | ------ | --------------- |
-| `AgentBuilder.create().setName(n).setPrompt(p).build()` | `createAgent({ name, instructions })` (`prompt` is an alias of `instructions`). |
+| `AgentBuilder.create().setName(n).setPrompt(p).build()` | `createAgent({ name, instructions })` (use `instructions`, not the deprecated `prompt` alias). |
 | `addTool(key, config)` on the builder, plus `ToolRegistry.register(tool)` | `tools: [defineTool(...)]`. There is no registry to build; see [Tools](./tools.md). |
 | `AgentExecutor.execute({ agent, input, provider })` | `agent.send(message)`. The model is `model` (a `provider/model` string) or `provider`. |
 | `AgentExecutor.stream(...)` | `agent.stream(message)`; see [Streaming](./streaming.md). |

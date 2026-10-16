@@ -239,7 +239,7 @@ const provider = withFallback(
   { onFallback: ({ from, to }) => console.warn(`falling back from ${from} to ${to}`) }
 );
 
-const agent = createAgent({ prompt: 'You are helpful.', provider });
+const agent = createAgent({ instructions: 'You are helpful.', provider });
 ```
 
 - `withRetry` retries `generate()` and `stream()` (default `maxRetries: 2`)
@@ -339,7 +339,7 @@ createAgent({ model: 'openai/gpt-4o-mini', subagents: { researcher }, rateLimit:
 | `model`        | A `'provider/model'` string such as `'openai/gpt-4o-mini'`, resolved with `resolveProvider()` (key from the env var above). Alternative to `provider`. |
 | `provider`     | An `LLMProvider` instance (real or mock). Alternative to `model`. If you pass both, `provider` is used and `model` becomes the agent's per-run model setting (a bare model id such as `'gpt-4o'`). |
 | `instructions` | System prompt. Optional (defaults to `'You are a helpful assistant.'`). |
-| `prompt`       | Working alias of `instructions`; passing both is an error.      |
+| `prompt`       | Deprecated alias of `instructions`; passing both is an error.      |
 | `tools`    | An array of `defineTool()` results, or a `Record<string, ToolDescriptor>` keyed by the name the agent uses (see [Tools](./tools.md)). |
 | `name`     | Agent name (default `'agent'`).                                    |
 | `description` | What the agent does, in a sentence. Required when it is used as a sub-agent. |

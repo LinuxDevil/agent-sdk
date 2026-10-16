@@ -465,7 +465,7 @@ approval: in sessions, in durable stores and across a restart.
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
 
-const agent = createAgent({ prompt: 'Plan the trip with the user.', provider, askQuestion: true });
+const agent = createAgent({ instructions: 'Plan the trip with the user.', provider, askQuestion: true });
 
 const paused = await agent.send('Book me a weekend away');
 const [pending] = await agent.approvals.list();

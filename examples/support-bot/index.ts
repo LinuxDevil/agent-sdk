@@ -21,7 +21,7 @@ const provider = process.env.OPENAI_API_KEY
 
 const agent = createAgent({
   name: 'support-bot',
-  prompt:
+  instructions:
     'You are a friendly customer support agent. Be concise, empathetic, and always ask for ' +
     'an order number when a customer reports a problem with an order.',
   provider,

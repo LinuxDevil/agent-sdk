@@ -22,7 +22,7 @@ const provider = process.env.ANTHROPIC_API_KEY
 
 const agent = createAgent({
   name: 'research-assistant',
-  prompt:
+  instructions:
     'You are a diligent research assistant. Use the http tool to fetch sources when needed, ' +
     'and always summarize findings concisely with citations.',
   provider,

@@ -38,7 +38,7 @@ defineEval({
   // A factory builds a fresh agent (and a fresh script) for every case.
   agent: () =>
     createAgent({
-      prompt: 'You handle refund requests.',
+      instructions: 'You handle refund requests.',
       tools: [lookupOrder],
       provider: mockModel([
         { toolCalls: [{ name: 'lookup_order', args: { orderId: '42' } }] },

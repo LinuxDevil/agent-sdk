@@ -26,7 +26,7 @@ const provider = process.env.OLLAMA_BASE_URL
 
 const agent = createAgent({
   name: 'doc-qa',
-  prompt:
+  instructions:
     `You answer questions using ONLY the following document. If the answer isn't in the ` +
     `document, say so.\n\nDocument:\n${DOCUMENT}`,
   provider,

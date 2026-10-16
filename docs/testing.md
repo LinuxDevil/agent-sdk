@@ -18,7 +18,7 @@ import { createAgent } from '@lousho/build-ai-agent';
 import { mockModel } from '@lousho/build-ai-agent/testing';
 
 const model = mockModel(['Hello! How can I help?']);
-const agent = createAgent({ prompt: 'You are friendly.', provider: model });
+const agent = createAgent({ instructions: 'You are friendly.', provider: model });
 
 const result = await agent.send('hi');
 
@@ -54,7 +54,7 @@ describe('weather agent', () => {
       { text: 'It is 21°C in Paris.' },                                  // turn 2
     ]);
     const agent = createAgent({
-      prompt: 'You report the weather.',
+      instructions: 'You report the weather.',
       provider: model,
       tools: [getWeather],
     });
@@ -82,7 +82,7 @@ import { mockModel } from '@lousho/build-ai-agent/testing';
 
 it('surfaces a provider failure', async () => {
   const model = mockModel([{ error: new Error('upstream 503') }]);
-  const agent = createAgent({ prompt: 'x', provider: model });
+  const agent = createAgent({ instructions: 'x', provider: model });
 
   await expect(agent.send('hi')).rejects.toThrow();
   expect(model.calls).toHaveLength(1); // the failed request is still recorded
@@ -168,7 +168,7 @@ const provider = recordReplay(() => resolveProvider('openai/gpt-4o-mini'), {
   cassette: './__cassettes__/refund-flow.json',
   mode: process.env.LOUSHO_RECORD ? 'record' : 'replay', // or 'auto'
 });
-const agent = createAgent({ provider, prompt: 'You handle refund requests.' });
+const agent = createAgent({ provider, instructions: 'You handle refund requests.' });
 ```
 
 The first argument is the real provider, or a `() => provider` factory that is

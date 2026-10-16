@@ -6,7 +6,7 @@ A trigger adapter turns one wake-up mechanism into an agent run: an inbound webh
 import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
 import { CronTriggerAdapter } from '@lousho/build-ai-agent/triggers';
 
-const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
+const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
 
 const cron = new CronTriggerAdapter({
   intervalMs: 60_000,
@@ -52,7 +52,7 @@ Write your own adapter by returning a handle from `listen`:
 import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
 import type { TriggerAdapter } from '@lousho/build-ai-agent/triggers';
 
-const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
+const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
 
 const everyTenSeconds: TriggerAdapter = {
   type: 'ten-seconds',
@@ -99,7 +99,7 @@ web page) gets `403`.
 import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
 import { WebhookTriggerAdapter } from '@lousho/build-ai-agent/triggers';
 
-const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
+const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
 
 // HMAC of the RAW request body (GitHub / Shopify style): header `x-signature-256: sha256=<hex>`.
 new WebhookTriggerAdapter({
@@ -176,7 +176,7 @@ import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
 import { SlackTriggerAdapter, verifySlackSignature } from '@lousho/build-ai-agent/triggers';
 import * as http from 'node:http';
 
-const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
+const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
 const slack = new SlackTriggerAdapter({ signingSecret: process.env.SLACK_SIGNING_SECRET });
 slack.listen(agent, (input) => agent.send(input));
 
@@ -232,7 +232,7 @@ expression:
 import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
 import { CronTriggerAdapter } from '@lousho/build-ai-agent/triggers';
 
-const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
+const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
 
 new CronTriggerAdapter({
   cron: '*/15 9-17 * * MON-FRI', // minute hour day-of-month month day-of-week

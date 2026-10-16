@@ -215,8 +215,48 @@ function setUpProject(projectDir: string, skipBuild: boolean): void {
 
 interface Failure {
   snippet: Snippet;
-  stage: 'typecheck' | 'run';
+  stage: 'typecheck' | 'run' | 'deprecated';
   output: string;
+}
+
+/**
+ * 1-based line numbers (within the snippet) where a `createAgent({ ... })` config
+ * passes the deprecated `prompt` key. `instructions` is the one documented name,
+ * so docs must not teach the alias. Only the call's own top-level keys count:
+ * nested objects (`send({ prompt })`, tool schemas, ...) are ignored.
+ */
+export function findDeprecatedPromptUse(source: string): number[] {
+  const lines: number[] = [];
+  const call = /\bcreateAgent\s*\(/g;
+  for (let m = call.exec(source); m; m = call.exec(source)) {
+    let depth = 0;
+    let quote = '';
+    for (let i = m.index + m[0].length; i < source.length; i++) {
+      const ch = source[i];
+      if (quote) {
+        if (ch === '\\') i++;
+        else if (ch === quote) quote = '';
+      } else if (ch === "'" || ch === '"' || ch === '`') quote = ch;
+      else if (ch === '{' || ch === '[' || ch === '(') depth++;
+      else if (ch === '}' || ch === ']' || ch === ')') {
+        if (--depth < 0) break;
+      } else if (depth === 1 && /^prompt\s*[:,}]/.test(source.slice(i, i + 12)) && /[{,]\s*$/.test(source.slice(0, i))) {
+        lines.push(source.slice(0, i).split('\n').length);
+      }
+    }
+  }
+  return lines;
+}
+
+/** Fails every snippet whose createAgent config uses the deprecated `prompt` alias instead of `instructions`. */
+function checkDeprecatedPrompt(snippets: Snippet[]): Failure[] {
+  return snippets.flatMap((snippet) =>
+    findDeprecatedPromptUse(snippet.source).map((line) => ({
+      snippet,
+      stage: 'deprecated' as const,
+      output: `snippet line ${line}: createAgent() config passes 'prompt'; use 'instructions' (prompt is a deprecated alias)`,
+    }))
+  );
 }
 
 /** Writes each snippet into the temp project as its own `snippet-<n>.mts`; returns the file names. */
@@ -442,7 +482,7 @@ function main(): void {
   const packed = args.includes('--source-only')
     ? []
     : verifyPacked(runnableSnippets, args.includes('--skip-build'), args.includes('--keep'));
-  const failures = [...checkAgainstSource(sourceSnippets), ...packed];
+  const failures = [...checkDeprecatedPrompt(sourceSnippets), ...checkAgainstSource(sourceSnippets), ...packed];
   if (failures.length > 0) {
     reportFailures(failures);
     process.exit(1);

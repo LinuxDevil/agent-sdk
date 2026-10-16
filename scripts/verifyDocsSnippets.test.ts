@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractSnippets, isRunnableByDefault } from './verify-docs-snippets';
+import { extractSnippets, findDeprecatedPromptUse, isRunnableByDefault } from './verify-docs-snippets';
 
 describe('extractSnippets (Eve DUI-F19)', () => {
   const md = [
@@ -57,5 +57,18 @@ describe('isRunnableByDefault', () => {
   it('honours no-run and never runs tsx', () => {
     expect(isRunnableByDefault(snippet('docs/quick-start.md', 'mockModel([])', true))).toBe(false);
     expect(isRunnableByDefault({ ...snippet('docs/quick-start.md', 'mockModel([])'), ext: 'tsx' })).toBe(false);
+  });
+});
+
+describe('findDeprecatedPromptUse', () => {
+  it('flags the prompt alias in a createAgent config', () => {
+    expect(findDeprecatedPromptUse("createAgent({ prompt: 'x', provider });")).toEqual([1]);
+    expect(findDeprecatedPromptUse("createAgent({\n  provider,\n  prompt: 'x',\n});")).toEqual([3]);
+  });
+
+  it('ignores instructions, nested prompt keys and unrelated calls', () => {
+    expect(findDeprecatedPromptUse("createAgent({ instructions: 'x', tools: [t({ prompt: 'y' })] });")).toEqual([]);
+    expect(findDeprecatedPromptUse("defineSchedule({ cron: '* * * * *', prompt: 'x' });")).toEqual([]);
+    expect(findDeprecatedPromptUse("createAgent({ instructions: 'the prompt: a' });")).toEqual([]);
   });
 });

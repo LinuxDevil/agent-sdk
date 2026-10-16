@@ -136,7 +136,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    * docs/hosted-tools.md). In the record form a hosted tool's key must be its name.
    *
    * @example
-   * createAgent({ prompt: '...', provider, tools: [sendEmail] });
+   * createAgent({ instructions: '...', provider, tools: [sendEmail] });
    */
   tools?: PerRun<AgentToolsOption>;
   /**
@@ -157,7 +157,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    * `load_skill` tool. Build them with `defineSkill()` or `loadSkills()`.
    *
    * @example
-   * createAgent({ prompt: '...', provider, skills: await loadSkills('./skills') });
+   * createAgent({ instructions: '...', provider, skills: await loadSkills('./skills') });
    */
   skills?: readonly Skill[];
   /** Optional agent name; defaults to 'agent'. */
@@ -280,7 +280,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    *
    * @example
    * ```ts
-   * const agent = createAgent({ prompt: '...', provider, tools: [sendEmail], toolConcurrency: 1 });
+   * const agent = createAgent({ instructions: '...', provider, tools: [sendEmail], toolConcurrency: 1 });
    * ```
    */
   toolConcurrency?: ToolConcurrency;
@@ -291,7 +291,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    *
    * @example
    * ```ts
-   * const agent = createAgent({ prompt: '...', provider, tools: [dumpLogs], maxToolResultChars: 20_000 });
+   * const agent = createAgent({ instructions: '...', provider, tools: [dumpLogs], maxToolResultChars: 20_000 });
    * ```
    */
   maxToolResultChars?: number;
@@ -307,7 +307,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    *
    * @example
    * ```ts
-   * const agent = createAgent({ prompt: '...', provider, store, onAgentDrift: 'error' });
+   * const agent = createAgent({ instructions: '...', provider, store, onAgentDrift: 'error' });
    * ```
    */
   onAgentDrift?: AgentDriftMode;
@@ -408,8 +408,8 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    *
    * @example
    * ```ts
-   * createAgent({ prompt: '...', provider, projectInstructions: true });
-   * createAgent({ prompt: '...', provider, projectInstructions: { cwd: './packages/api', files: ['AGENTS.md'] } });
+   * createAgent({ instructions: '...', provider, projectInstructions: true });
+   * createAgent({ instructions: '...', provider, projectInstructions: { cwd: './packages/api', files: ['AGENTS.md'] } });
    * ```
    */
   projectInstructions?: boolean | { cwd?: string; files?: readonly string[] };
@@ -442,7 +442,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    *
    * @example
    * ```ts
-   * createAgent({ prompt: '...', provider, tools: [sendEmail], approve: ({ args }) => args.to === 'me@example.com' });
+   * createAgent({ instructions: '...', provider, tools: [sendEmail], approve: ({ args }) => args.to === 'me@example.com' });
    * ```
    */
   approve?: ApproveToolCall;
@@ -542,7 +542,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    *
    * @example
    * ```ts
-   * createAgent({ prompt: '...', provider, hooks: [{ name: 'audit', preToolCall: (ctx) => console.log(ctx.toolName) }] });
+   * createAgent({ instructions: '...', provider, hooks: [{ name: 'audit', preToolCall: (ctx) => console.log(ctx.toolName) }] });
    * ```
    */
   hooks?: readonly AgentHook[];
@@ -579,8 +579,8 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
 }
 
 /**
- * The system prompt. `instructions` is the preferred name; `prompt` is a
- * working alias. Give at most one - both is an error. Omit both for a
+ * The system prompt. `instructions` is the name to use; `prompt` is a
+ * deprecated alias kept for older code. Give at most one - both is an error. Omit both for a
  * minimal default ("You are a helpful assistant."). Either may be a function
  * of the run (LOU-V15, see `PerRun`).
  */
@@ -588,13 +588,13 @@ export type CreateAgentInstructions =
   | {
       /** System prompt for the agent (preferred name). */
       instructions?: PerRun<string>;
-      /** Alias of `instructions`; do not pass both. */
+      /** @deprecated Use `instructions`. Do not pass both. */
       prompt?: undefined;
     }
   | {
       /** Preferred name of `prompt`; do not pass both. */
       instructions?: undefined;
-      /** System prompt for the agent (alias of `instructions`). */
+      /** @deprecated Use `instructions`; `prompt` is a legacy alias for it. */
       prompt?: PerRun<string>;
     };
 
