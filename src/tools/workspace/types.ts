@@ -84,6 +84,15 @@ export interface FsProvider {
    * U+FFFD in place of every byte it could not decode. `NodeWorkspace` has it.
    */
   readFileBytes?(path: string): Promise<Uint8Array>;
+  /**
+   * Optional: the workspace-relative, `/`-separated path `path` resolves to
+   * once symlinks and junctions are followed (`'.'` for the root); for a path
+   * that does not exist yet, its deepest existing ancestor's real path plus
+   * the rest. A backend with links should implement it: the file tools check
+   * their `deny` list against it too, so a link `gitj -> .git` cannot open
+   * `.git/config` as `gitj/config`. `NodeWorkspace` has it.
+   */
+  realPath?(path: string): Promise<string>;
 }
 
 /** Options for {@link ShellProvider.exec}. */

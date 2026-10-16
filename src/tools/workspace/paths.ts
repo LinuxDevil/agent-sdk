@@ -153,3 +153,18 @@ export function normalizeAllowedPath(path: string, isDenied: DeniedSegment): str
   }
   return normalized;
 }
+
+/**
+ * Refuses `path` when the location it resolves to (`realPath`, the
+ * workspace-relative path after following symlinks and junctions) has a denied
+ * segment: a link `gitj -> .git` must not open `.git/config` as `gitj/config`.
+ */
+export function assertResolvedPathAllowed(path: string, realPath: string, isDenied: DeniedSegment): void {
+  const segment = isDenied(realPath);
+  if (segment !== undefined) {
+    throw new WorkspaceError(
+      `Access to ${JSON.stringify(path)} is denied: it resolves through a link to ${JSON.stringify(realPath)}, and the file tools never open ` +
+        `${JSON.stringify(segment)}, which can hold credentials (for example CI checkout tokens in .git/config). Use files elsewhere in the workspace.`
+    );
+  }
+}

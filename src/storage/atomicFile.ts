@@ -73,10 +73,11 @@ async function syncDirectory(dir: string): Promise<void> {
   }
 }
 
-/** Writes and flushes `content` to a new file `temp`. */
-async function writeSynced(temp: string, content: string): Promise<void> {
+/** Writes and flushes `content` to a new file `temp`, with permission bits `mode` when given. */
+async function writeSynced(temp: string, content: string, mode: number | undefined): Promise<void> {
   const handle = await open(temp, 'wx');
   try {
+    if (mode !== undefined) await handle.chmod(mode);
     await handle.writeFile(content, 'utf8');
     await handle.sync();
   } finally {
@@ -86,17 +87,18 @@ async function writeSynced(temp: string, content: string): Promise<void> {
 
 /**
  * Writes `content` to `file` atomically and durably (see the module comment);
- * creates the directory when it is missing.
+ * creates the directory when it is missing. `mode` sets the new file's
+ * permission bits (to keep those of the file it replaces).
  */
-export async function writeFileAtomic(file: string, content: string): Promise<void> {
+export async function writeFileAtomic(file: string, content: string, { mode }: { mode?: number } = {}): Promise<void> {
   const temp = `${file}.${process.pid}.${randomUUID()}.tmp`;
   try {
     try {
-      await writeSynced(temp, content);
+      await writeSynced(temp, content, mode);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       await mkdir(dirname(file), { recursive: true });
-      await writeSynced(temp, content);
+      await writeSynced(temp, content, mode);
     }
     await renameWithRetry(temp, file);
   } catch (error) {

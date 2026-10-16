@@ -1,7 +1,7 @@
 /**
  * NodeWorkspace: a Workspace over a real directory.
  */
-import { promises as fsp, realpathSync, statSync, type Dirent, type Stats } from 'node:fs';
+import { constants as fsConstants, promises as fsp, realpathSync, statSync, type Dirent, type Stats } from 'node:fs';
 import * as nodePath from 'node:path';
 import type {
   ShellExecOptions,
@@ -15,6 +15,7 @@ import { normalizeWorkspacePath, WorkspaceError } from './paths';
 import { runShellCommand } from './nodeProcess';
 import { commandEnv } from '../../security/commandEnv';
 import { ConfigurationError } from '../../execution/errors';
+import { writeFileAtomic } from '../../storage/atomicFile';
 
 const DEFAULT_MAX_OUTPUT_BYTES = 1_000_000;
 
@@ -139,15 +140,34 @@ export class NodeWorkspace implements Workspace {
     return fsp.readFile(abs).catch((error) => Promise.reject(toWorkspaceError(error, rel)));
   }
 
+  /**
+   * Writes through a temp file in the same directory that is renamed over the
+   * target, so a killed process never leaves a truncated file. An existing
+   * file keeps its permission bits, and one that is not writable is refused
+   * as before.
+   */
   async writeFile(path: string, content: string): Promise<void> {
     const { rel, abs } = await this.resolve(path);
     if (abs === this.root) throw new WorkspaceError('Cannot write a file at the workspace root path ".".');
     try {
+      const existing = await fsp.stat(abs).catch((error: unknown) => (isMissing(error) ? undefined : Promise.reject(error)));
+      if (existing?.isDirectory()) throw Object.assign(new Error('directory'), { code: 'EISDIR' });
+      if (existing) await fsp.access(abs, fsConstants.W_OK);
       await fsp.mkdir(nodePath.dirname(abs), { recursive: true });
-      await fsp.writeFile(abs, content, 'utf8');
+      await writeFileAtomic(abs, content, { mode: existing ? existing.mode & 0o7777 : undefined });
     } catch (error) {
-      throw toWorkspaceError(error, rel);
+      throw toWorkspaceError((error as { cause?: unknown } | undefined)?.cause ?? error, rel);
     }
+  }
+
+  /**
+   * The workspace-relative path `path` resolves to once symlinks and
+   * junctions are followed (`'.'` for the root); see `FsProvider.realPath`.
+   */
+  async realPath(path: string): Promise<string> {
+    const { abs } = await this.resolve(path);
+    const relative = nodePath.relative(this.root, abs);
+    return relative === '' ? '.' : relative.split(nodePath.sep).join('/');
   }
 
   async stat(path: string): Promise<WorkspaceStat | undefined> {
