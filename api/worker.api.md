@@ -371,16 +371,6 @@ interface AiSdkProviderConfig extends LLMProviderConfig {
 }
 
 // @public
-interface AiSdkToolLike {
-    description?: string | ((options: never) => unknown);
-    execute?: (input: never, options: never) => unknown;
-    inputSchema?: unknown;
-    needsApproval?: boolean | ((input: never, options: never) => unknown);
-    parameters?: unknown;
-    type?: string;
-}
-
-// @public
 export function always(): true;
 
 // @public
@@ -1357,6 +1347,7 @@ const ERROR_CODES: {
     readonly LOUSHO_SIGNIN_PENDING: "Open the sign-in link first and let the provider redirect to the callback, then approve again (or approve with false to cancel).";
     readonly LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED: "Check the provider's tokenUrl, clientId, clientSecret and redirectUri (it must match the one registered with the provider), then sign in again.";
     readonly LOUSHO_MCP_START_FAILED: "Run the server's command yourself to see why it fails; the message has its exit code and last stderr lines, and `connectTimeoutMs` bounds a server that never answers.";
+    readonly LOUSHO_MCP_CALL_FAILED: "Read the message: it names the server and tool; the `cause` is the MCP error (its `code`, e.g. -32000 'Connection closed' when the server exited). Check the server is running.";
     readonly LOUSHO_MCP_AUTH_REQUIRED: "Sign the app in to the MCP server once: open the URL from agent.oauth.mcpSignInUrl('<server>') and let the callback store the token.";
 };
 
@@ -1575,9 +1566,6 @@ interface FromAiSdkOptions {
     replaysReasoning?: boolean;
     unsupportedFiles?: UnsupportedFiles;
 }
-
-// @public
-export function fromAiSdkTools(tools: Readonly<Record<string, AiSdkToolLike>>): DefinedTool[];
 
 // @public
 interface GenerateHookContext extends HookContext {
