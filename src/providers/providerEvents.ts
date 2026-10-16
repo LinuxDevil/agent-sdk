@@ -22,6 +22,8 @@ export interface ProviderRetryReport {
 export interface ProviderFallbackReport {
   from: string;
   to: string;
+  fromModel?: string;
+  toModel?: string;
   error: unknown;
 }
 

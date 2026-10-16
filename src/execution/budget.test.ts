@@ -216,4 +216,11 @@ describe('unknown cost under maxCostUsd (Eve PROV-F3)', () => {
     expect(String(warn.mock.calls[0][0])).toContain('maxCostUsd');
     warn.mockRestore();
   });
+
+  it('enforces the cap on the partial total when only some steps have a known price', () => {
+    const budget = startBudget({ maxCostUsd: 1 })!;
+    const usage: RunUsage = { inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: 1.5, costPartial: true, modelCalls: 2, estimated: false, promptTokens: 1, completionTokens: 1, byModel: {} };
+    expect(budget.check(usage, 1)).toMatchObject({ limit: 'maxCostUsd', value: 1.5, max: 1 });
+    budget.dispose();
+  });
 });

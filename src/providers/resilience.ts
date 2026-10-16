@@ -383,6 +383,10 @@ export function resilientProvider(
 export interface FallbackInfo {
   from: string;
   to: string;
+  /** Model id the failed provider was called with, when known. */
+  fromModel?: string;
+  /** Model id the provider that takes over is called with, when known. */
+  toModel?: string;
   error: unknown;
 }
 
@@ -435,7 +439,15 @@ export function withFallback(providers: LLMProvider[], options: WithFallbackOpti
         if (call.signal?.aborted || !fallbackOn(lastError)) {
           throw lastError;
         }
-        const info: FallbackInfo = { from: providers[index - 1].name, to: provider.name, error: lastError };
+        const previous = providers[index - 1];
+        const fromModel = (index === 1 ? model : undefined) ?? previous.defaultModel;
+        const info: FallbackInfo = {
+          from: previous.name,
+          to: provider.name,
+          ...(fromModel !== undefined && { fromModel }),
+          ...(provider.defaultModel !== undefined && { toModel: provider.defaultModel }),
+          error: lastError,
+        };
         onFallback?.(info);
         providerEventsOf(call)?.fallback(info);
       }

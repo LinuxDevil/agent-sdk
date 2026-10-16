@@ -126,6 +126,7 @@ type AgentEventType = AgentEvent['type'];
 // @public
 interface AgentEventUsage {
     completionTokens: number;
+    costPartial?: boolean;
     costUsd?: number;
     estimated: boolean;
     hostedToolCalls?: Partial<Record<string, number>>;
@@ -1145,6 +1146,7 @@ interface DefineToolOptions<S extends StandardSchemaV1, R> {
 
 // @public
 interface DelegatedUsage {
+    costPartial?: boolean;
     costUsd: number | undefined;
     // (undocumented)
     estimated: boolean;
@@ -2304,6 +2306,7 @@ interface ModelSettings {
 // @public
 interface ModelUsage {
     calls: number;
+    costPartial?: boolean;
     costUsd?: number;
     // (undocumented)
     inputTokens: number;
@@ -2830,7 +2833,9 @@ interface ProviderFallbackEvent extends AgentEventBase<'provider.fallback'> {
         message: string;
     };
     from: string;
+    fromModel?: string;
     to: string;
+    toModel?: string;
 }
 
 // @public
@@ -3062,6 +3067,7 @@ interface RunUsage {
     cacheWriteTokens?: number;
     // @deprecated (undocumented)
     completionTokens: number;
+    costPartial?: boolean;
     costUsd: number | undefined;
     delegated?: DelegatedUsage;
     estimated: boolean;

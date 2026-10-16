@@ -106,12 +106,15 @@ class SessionRun implements AgentRun {
   /** `error` then `run.done`, for a turn that failed outside the run's own events. */
   private *failure(error: unknown, seq: number): Generator<AgentEvent> {
     const { name, message } = error as { name?: unknown; message?: unknown };
+    // An SDKError's stable `code` (e.g. LOUSHO_SESSION_BUSY) is safe to show; the routes still sanitize the message.
+    const code = error instanceof SDKError ? error.code : undefined;
     yield this.event(
       {
         type: 'error',
         error: {
           name: typeof name === 'string' && name ? name : 'Error',
           message: typeof message === 'string' ? message : String(error),
+          ...(code && { code }),
         },
       },
       seq

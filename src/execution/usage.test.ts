@@ -301,8 +301,9 @@ describe('run usage (LOU-V5)', () => {
     });
 
     expect(result.usage).toMatchObject({ inputTokens: 40, outputTokens: 4, totalTokens: 44, modelCalls: 1 });
-    // the earlier tokens have no known model, so no (partial) cost is claimed
-    expect(result.usage.costUsd).toBeUndefined();
+    // the earlier tokens have no known model: only this turn's call is priced, and the total says it is partial
+    expect(result.usage.costUsd).toBeCloseTo(0.0000021);
+    expect(result.usage.costPartial).toBe(true);
   });
 
   it('reports usage on events, onLLMResponse and the chat span from the same numbers', async () => {

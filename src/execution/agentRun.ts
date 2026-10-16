@@ -242,10 +242,11 @@ function toEventUsage(usage: {
   totalTokens: number;
   estimated: boolean;
   costUsd?: number;
+  costPartial?: boolean;
   modelCalls?: number;
   hostedToolCalls?: Partial<Record<string, number>>;
 }): AgentEventUsage {
-  const { inputTokens, outputTokens, totalTokens, estimated, costUsd, modelCalls, hostedToolCalls } = usage;
+  const { inputTokens, outputTokens, totalTokens, estimated, costUsd, costPartial, modelCalls, hostedToolCalls } = usage;
   return {
     promptTokens: inputTokens,
     completionTokens: outputTokens,
@@ -254,6 +255,7 @@ function toEventUsage(usage: {
     outputTokens,
     estimated,
     ...(costUsd !== undefined && { costUsd }),
+    ...(costPartial && { costPartial: true }),
     ...(modelCalls !== undefined && { modelCalls }),
     ...(hostedToolCalls && Object.keys(hostedToolCalls).length > 0 && { hostedToolCalls: { ...hostedToolCalls } }),
   };
@@ -529,8 +531,18 @@ class RunEvents {
         const eventError = { message, ...(category !== 'unknown' && { category }) };
         this.emit({ type: 'provider.retry', attempt, maxRetries, delayMs, error: eventError, provider }, subagent);
       },
-      fallback: ({ from, to, error }) =>
-        this.emit({ type: 'provider.fallback', from, to, error: { message: compactProviderError(error).error } }, subagent),
+      fallback: ({ from, to, fromModel, toModel, error }) =>
+        this.emit(
+          {
+            type: 'provider.fallback',
+            from,
+            to,
+            ...(fromModel !== undefined && { fromModel }),
+            ...(toModel !== undefined && { toModel }),
+            error: { message: compactProviderError(error).error },
+          },
+          subagent
+        ),
     };
   }
 

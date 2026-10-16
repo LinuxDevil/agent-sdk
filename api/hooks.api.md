@@ -71,6 +71,7 @@ type AgentEventType = AgentEvent['type'];
 // @public
 interface AgentEventUsage {
     completionTokens: number;
+    costPartial?: boolean;
     costUsd?: number;
     estimated: boolean;
     hostedToolCalls?: Partial<Record<string, number>>;
@@ -539,7 +540,9 @@ interface ProviderFallbackEvent extends AgentEventBase<'provider.fallback'> {
         message: string;
     };
     from: string;
+    fromModel?: string;
     to: string;
+    toModel?: string;
 }
 
 // @public
