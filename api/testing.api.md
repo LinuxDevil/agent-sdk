@@ -52,13 +52,13 @@ interface EmbeddingProvider {
 const ERROR_CODES: {
     readonly LOUSHO_GENERIC_ERROR: "Read the message above; it names what failed.";
     readonly LOUSHO_CONFIG_INVALID: "Fix the option named in the message.";
-    readonly LOUSHO_CONFIG_MISSING_PROVIDER: "Pass a model string such as createAgent({ model: 'openai/gpt-4o-mini' }), a provider instance, or set LOUSHO_MODEL or a provider API key.";
+    readonly LOUSHO_CONFIG_MISSING_PROVIDER: "Pass a model string such as createAgent({ model: 'openai/gpt-4.1-mini' }), a provider instance, or set LOUSHO_MODEL or a provider API key.";
     readonly LOUSHO_CONFIG_MISSING_AGENT: "Pass the agent to run, e.g. AgentBuilder.create().setName(...).build().";
     readonly LOUSHO_CONFIG_MISSING_INPUT: "Pass the user message (a string or a Message[]) as `input`.";
     readonly LOUSHO_CONFIG_CONFLICTING_OPTIONS: "Keep one of the two options named in the message and remove the other.";
     readonly LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE: "Pass createAgent({ store }) with `checkpoints` (e.g. memoryStore() or a SqliteStore), or drop `sessionId`.";
     readonly LOUSHO_CONFIG_RESOLVER_FAILED: "Fix the createAgent() option function named in the message; its own error is the `cause`.";
-    readonly LOUSHO_PROVIDER_SPEC_INVALID: "Write the model as '<provider>/<model>', e.g. 'openai/gpt-4o-mini'.";
+    readonly LOUSHO_PROVIDER_SPEC_INVALID: "Write the model as '<provider>/<model>', e.g. 'openai/gpt-4.1-mini'.";
     readonly LOUSHO_PROVIDER_UNKNOWN: "Use one of the supported provider prefixes listed in the message.";
     readonly LOUSHO_PROVIDER_MISSING_API_KEY: "Set the environment variable named in the message, or pass a provider instance.";
     readonly LOUSHO_PROVIDER_REQUEST_FAILED: "Check the provider status, your API key and the request; retryable failures are retried by withRetry().";

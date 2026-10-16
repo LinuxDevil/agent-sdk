@@ -58,7 +58,7 @@ export interface PiProviderConfig extends LLMProviderConfig {
 }
 
 /** The fallback nested spec when the constructor got no `defaultModel`. */
-const FALLBACK_MODEL = 'openrouter/openai/gpt-4o-mini';
+const FALLBACK_MODEL = 'openrouter/openai/gpt-4.1-mini';
 
 /**
  * Env var names used in missing-key error text. pi resolves each nested

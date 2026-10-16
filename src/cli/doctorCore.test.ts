@@ -525,7 +525,7 @@ describe('report, rendering and exit codes', () => {
              fix: Set OPENROUTER_API_KEY in your environment, e.g. export OPENROUTER_API_KEY=<your key>
       [ ok ] ollama (OLLAMA_BASE_URL): not set (optional; the provider default endpoint is used)
       [ ok ] pi (OPENROUTER_API_KEY): not set (only needed by the matching nested provider; each pi provider reads its own env key)
-      [ ok ] Default provider for createAgent(): would use 'openai/gpt-4o-mini'
+      [ ok ] Default provider for createAgent(): would use 'openai/gpt-4.1-mini'
       [ ok ] Docker: daemon not reachable (only needed for sandboxed tools; none configured)
 
       12 ok, 5 warnings, 1 failure"

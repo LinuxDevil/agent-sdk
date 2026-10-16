@@ -414,7 +414,7 @@ function searchCallOf(found: CallObservation | undefined): HostedToolCall | unde
  */
 export class OpenRouterProvider extends AiSdkProvider<OpenRouterProviderConfig> {
   readonly name = 'openrouter';
-  protected readonly fallbackModel = 'openai/gpt-4o-mini';
+  protected readonly fallbackModel = 'openai/gpt-4.1-mini';
   private logger: Logger;
 
   /** Loads `@ai-sdk/openai` on first use (it is an optional peer). */

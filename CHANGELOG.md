@@ -11,6 +11,9 @@ What is on `main` and not yet on npm. Entries marked **Behavior change** can
 break working code; [Upgrading](docs/upgrading.md) lists each one with its
 opt-out.
 
+### Changed
+- **Behavior change:** the fallback default model for the OpenAI, OpenRouter and Pi providers (what `lousho init` scaffolds and what runs when no model is configured) is now `gpt-4.1-mini` instead of `gpt-4o-mini`; set `model` or `LOUSHO_MODEL` to keep the old one. README and Quick Start use it. Added `docs/comparison.md`; CI also runs on pushes to `main`; README no longer claims unverifiable live validation.
+
 ### Security
 - **Behavior change:** with route auth and no `authorizeSession`, a session belongs to the first principal that sends it a turn (reading claims nothing); any other principal gets `403 LOUSHO_SESSION_FORBIDDEN`. Owners are kept in memory per agent for the 100,000 most recently used sessions, so a stored session whose owner is not on record (after a restart, on another replica, past the cap) is refused to everyone: pass `authorizeSession` for multi-instance deployments and durable stores, or `authorizeSession: () => true` for the old behavior. A route behind one bearer token has a single caller and checks no owner. `POST /chat` with an empty `input` (and `POST <base>/ui` without a user message) is a `400` that claims nothing, and a turn that stores nothing drops its claim, so an owner can no longer be evicted by flooding. See [Who may use a session](docs/auth.md#who-may-use-a-session).
 - **Behavior change:** `POST /chat/:sessionId/approvals/:id` answers `404` unless the approval belongs to that session, and by default only the caller the paused run acts for may decide it; allow others (a supervisor) with `authorizeApproval`.

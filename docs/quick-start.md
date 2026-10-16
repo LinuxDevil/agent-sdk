@@ -44,12 +44,12 @@ instructions in, a `{ send }` agent out. The API key is read from the
 provider's conventional environment variable (`OPENAI_API_KEY` here;
 `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` or `OLLAMA_BASE_URL` for the other
 providers). The `vendor/` model prefix chooses the provider; with OpenRouter
-use `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
+use `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4.1-mini`).
 
 ```ts no-run
 import { createAgent } from '@lousho/build-ai-agent';
 
-const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a helpful assistant.' });
+const agent = createAgent({ model: 'openai/gpt-4.1-mini', instructions: 'You are a helpful assistant.' });
 const { text } = await agent.send('Hello!');
 console.log(text);
 ```
@@ -245,7 +245,7 @@ the mock provider otherwise - the same pattern the runnable
 import { createAgent, createMockProvider, resolveProvider } from '@lousho/build-ai-agent';
 
 const provider = process.env.OPENAI_API_KEY
-  ? resolveProvider('openai/gpt-4o-mini')
+  ? resolveProvider('openai/gpt-4.1-mini')
   : createMockProvider({ responses: ['Paris.'] });
 
 const agent = createAgent({

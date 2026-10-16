@@ -79,7 +79,7 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
   readonly name = 'openai';
   protected readonly mapsHostedTools = true;
   protected readonly checksChatFailures = true;
-  protected readonly fallbackModel = 'gpt-4o-mini';
+  protected readonly fallbackModel = 'gpt-4.1-mini';
   /** Loads `@ai-sdk/openai` on first use (it is an optional peer). */
   private readonly loadProvider = lazyValue(async () => {
     const { createOpenAI } = await loadOptionalPeer('@ai-sdk/openai', () => import('@ai-sdk/openai'), aiMajorOf(this.ai));
