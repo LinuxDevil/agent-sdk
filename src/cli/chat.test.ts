@@ -251,10 +251,11 @@ describe('lousho chat REPL', () => {
   });
 
   it('reports a failing turn with its error code and keeps going', async () => {
-    const { err, out } = await converse(['hi', 'again', '/quit'], [{ error: new Error('boom') }, 'Recovered.']);
+    // The failed turn stays pending: the next message resumes it first (not streamed), then runs.
+    const { err, out } = await converse(['hi', 'again', '/quit'], [{ error: new Error('boom') }, 'Recovered.', 'Again.']);
     expect(err).toContain('error: ');
     expect(err).toContain('boom');
-    expect(out).toContain('Recovered.');
+    expect(out).toContain('Again.');
   });
 
   it('streams the continuation after y, and asks again when it pauses a second time (LOU-D32.2)', async () => {
