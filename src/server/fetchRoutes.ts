@@ -18,7 +18,7 @@
  */
 import type { AgentInput } from '../providers/content';
 import type { AgentEvent, AgentEventError } from '../execution/agentEvents';
-import type { PendingApproval } from '../execution/ApprovalGate';
+import { describeApproval, type PendingApproval } from '../execution/ApprovalGate';
 import { samePrincipal } from '../execution/runPrincipal';
 import { assertSessionId } from '../session/sessionStore';
 import type { AgentSession } from '../session/AgentSession';
@@ -29,7 +29,7 @@ import { routeAuth } from '../auth/routeAuth';
 import { apiToken } from '../auth/basic';
 import type { OAuthCompleteResult } from '../oauth/signIn';
 import { createAgentConfigOf, type SimpleAgent } from '../createAgent';
-import { claimSession, hostRefusal, postRefusal, releaseSession, sessionOwner } from './requestGuard';
+import { claimSession, decodeParam, hostRefusal, postRefusal, releaseSession, sessionOwner } from './requestGuard';
 
 /** What a caller wants to do with a session: read its transcript, send it a turn, or decide one of its approvals. */
 export type SessionAction = 'read' | 'chat' | 'approve';
@@ -160,9 +160,11 @@ export interface ChatRoutesContext extends ChatRoutesAccess {
 /** Body-size cap for POST routes, matching common Node.js body-size-limit conventions. */
 const MAX_BODY_BYTES = 1024 * 1024; // 1MB
 
-class PayloadTooLargeError extends Error {}
+/** @internal Thrown by {@link readBody} past the 1MB cap; the route layer maps it to 413. */
+export class PayloadTooLargeError extends Error {}
 
-async function readBody(request: Request): Promise<string> {
+/** @internal `request`'s body as text, capped at the 1MB cap (the body is drained, then 413 is thrown). */
+export async function readBody(request: Request): Promise<string> {
   const reader = request.body?.getReader();
   const decoder = new TextDecoder();
   let body = '';
@@ -435,10 +437,21 @@ const runChat: RouteHandler = async (request, ctx, _params, principal) => {
   const { sessionId, input, message } = await readJson(request);
   if (typeof sessionId === 'string' && Array.isArray(input) && input.length === 0) return jsonResponse(400, { error: "Request body's 'input' is empty: send the user's message" });
   if (typeof sessionId === 'string' && (typeof input === 'string' ? input : Array.isArray(input))) {
+    // the transcript is this session's, so client input is user content only -
+    // a caller-sent `system`, `assistant` or `tool` entry would be stored and replayed
+    // to the model every turn (the /ui route was hardened the same way, Eve TOOLS-F9).
+    // A content-part array has no roles: it is one user message and passes untouched.
+    const messages =
+      Array.isArray(input) && input.length > 0 && typeof input[0] === 'object' && input[0] !== null && 'role' in input[0]
+        ? (input as { role?: unknown }[]).filter((entry) => entry.role === 'user')
+        : input;
+    if (Array.isArray(messages) && messages.length === 0) {
+      return jsonResponse(400, { error: "Request body's 'input' must contain at least one 'user' message" });
+    }
     const session = openSession(ctx, sessionId);
     if (session instanceof Response) return session;
     const forbidden = await sessionForbidden(ctx, principal, sessionId, 'chat', session);
-    return forbidden ?? sseResponse(request, ctx, (signal) => claimOnCommit(ctx, principal, session, session.stream(input as AgentInput, { signal, principal })));
+    return forbidden ?? sseResponse(request, ctx, (signal) => claimOnCommit(ctx, principal, session, session.stream(messages as AgentInput, { signal, principal })));
   }
   if (typeof message === 'string' && message) {
     if (sessionId !== undefined && typeof sessionId !== 'string') return jsonResponse(400, { error: "Request body's 'sessionId', if present, must be a string" });
@@ -528,6 +541,18 @@ const runApproval: RouteHandler = async (request, ctx, [sessionId, id], principa
   if (!approval) return notPending(id);
   if (!(await (ctx.authorizeApproval ?? callerOwnsApproval)({ principal, sessionId, approval }))) {
     return jsonResponse(403, { error: 'Not allowed to decide this approval', code: 'LOUSHO_APPROVAL_FORBIDDEN' });
+  }
+  // `answer` decides a question only - an answer posted to a tool-call or
+  // sign-in pause must not silently resolve it. `approved`+`note` is the
+  // resolve path: on a question pause it answers (`note`) or declines
+  // (`approved: false`), on a sign-in the resolve's own 409 applies. Checked
+  // after authorization, so a refused caller learns nothing of the pause's kind.
+  const kind = describeApproval(approval).kind ?? 'tool';
+  if (typeof answer === 'string' && kind !== 'question') {
+    return jsonResponse(400, {
+      error: "This approval is not a question: send 'approved'",
+      code: 'LOUSHO_APPROVAL_KIND_MISMATCH',
+    });
   }
   await bindRecovered(agent, session, id);
   // The continuation streams live (decided call, text deltas, a further pause, run.done).
@@ -637,7 +662,7 @@ export async function handleChatFetch(request: Request, ctx: ChatRoutesContext, 
     const refused = handler === runOAuthCallback ? undefined : (hostRefusal(request, ctx) ?? (method === 'POST' ? postRefusal(request, ctx) : undefined));
     if (refused) return refused;
     try {
-      return await handler(request, ctx, match.slice(1).map(decodeURIComponent), principal);
+      return await handler(request, ctx, match.slice(1).map(decodeParam), principal);
     } catch (error) {
       return failureResponse(ctx, error);
     }

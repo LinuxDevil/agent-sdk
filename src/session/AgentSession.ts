@@ -223,6 +223,78 @@ export function enqueueSessionWork<T>(store: object, id: string, task: () => Pro
   return result;
 }
 
+/** What a paused turn without a checkpoint store remembers in-process. */
+interface InMemoryPause {
+  approvalId?: string;
+  approvalIds?: string[];
+  approvalKind?: ApprovalKind;
+}
+
+/**
+ * a session WITHOUT a checkpointStore has nowhere durable to mark a
+ * paused turn, so its own pause was invisible to the next `send()` — which
+ * ran over the truncated transcript, and the later `approvals.resolve()`
+ * clobbered that committed turn. Kept per `(store, id)` like `sessionQueues`,
+ * so every AgentSession object over the transcript in this process sees it.
+ * Across processes there is still nothing to read: a session that may pause
+ * needs a `checkpointStore` for a durable marker.
+ */
+const inMemoryPauses = new WeakMap<object, Map<string, InMemoryPause>>();
+
+function inMemoryPause(store: object, id: string): InMemoryPause | undefined {
+  return inMemoryPauses.get(store)?.get(id);
+}
+
+function markInMemoryPause(store: object, id: string, paused: InMemoryPause | undefined): void {
+  if (paused === undefined) {
+    inMemoryPauses.get(store)?.delete(id);
+    return;
+  }
+  let perStore = inMemoryPauses.get(store);
+  if (!perStore) inMemoryPauses.set(store, (perStore = new Map()));
+  perStore.set(id, paused);
+}
+
+/** Every approval id of a pause (`approvalIds` when there are several, else `approvalId`). */
+function pauseApprovalIds(paused: InMemoryPause): string[] {
+  return paused.approvalIds ?? (paused.approvalId ? [paused.approvalId] : []);
+}
+
+/** The `pending()` view of an in-process pause (no checkpoint store). */
+function inMemoryPending(paused: InMemoryPause): PendingTurn {
+  const approvalIds = pauseApprovalIds(paused);
+  return {
+    status: 'awaiting-approval',
+    approvalId: paused.approvalId,
+    ...(approvalIds.length > 1 && { approvalIds }),
+    ...(paused.approvalKind && { approvalKind: paused.approvalKind }),
+  };
+}
+
+/**
+ * `<id>.turn-counter`, a tiny checkpoint that persists how high the
+ * turn checkpoint numbering has gone (`stepIndex` = the smallest `n` still
+ * guaranteed unused). A compaction shortens the transcript, so numbering
+ * turns by transcript length reused `<id>.turn-<n>` and `fork()` silently
+ * resolved to a different turn.
+ */
+function turnCounterKey(id: string): string {
+  return `${id}.turn-counter`;
+}
+
+/** The {@link turnCounterKey} record: only `stepIndex` carries meaning (the high-water mark). */
+function turnCounterCheckpoint(id: string, highWater: number): Checkpoint {
+  return {
+    agentId: '',
+    sessionId: turnCounterKey(id),
+    stepIndex: highWater,
+    messages: [],
+    toolCalls: [],
+    usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+    status: 'finished',
+  };
+}
+
 /** `store` as its parts: a plain `SessionStore` is the transcript store. */
 function splitStores(store: SessionOptions['store']): Partial<SessionStores> {
   if (!store) return {};
@@ -464,6 +536,14 @@ export class AgentSession<TObject = unknown> {
   private transcript: Message[] = [];
   /** Whether `transcript` was read in the queued call running now (each call reads it again). */
   private loaded = false;
+  /**
+   * the `n` of the in-flight turn's `<id>.turn-<n>` checkpoint, and
+   * the smallest `n` still guaranteed unused (persisted in the
+   * {@link turnCounterKey} checkpoint). Numbering turns by transcript length
+   * alone collided after a `compact()` shortened it.
+   */
+  private turnIndex: number | undefined;
+  private turnHighWater: number | undefined;
 
   constructor(run: SessionRunner, options: SessionOptions = {}, streamRun?: SessionStreamRunner, spawn?: SessionSpawner) {
     if (options.id !== undefined) assertSessionId(options.id);
@@ -615,13 +695,19 @@ export class AgentSession<TObject = unknown> {
   }
 
   /**
-   * The checkpointed turn that has not finished, or `null` (always `null`
-   * without a checkpoint store). See docs/sessions.md, "Durable sessions".
+   * The checkpointed turn that has not finished, or `null`. A session without
+   * a checkpoint store reports its in-process pause (a turn waiting on an
+   * approval since this store saw it) here too. See docs/sessions.md,
+   * "Durable sessions".
    */
   pending(): Promise<PendingTurn | null> {
     return this.enqueue(async () => {
       const checkpoint = await this.pendingCheckpoint();
-      if (!checkpoint) return null;
+      // report the in-memory pause of a session without a checkpoint store too.
+      if (!checkpoint) {
+        const paused = inMemoryPause(this.store, this.id);
+        return paused ? inMemoryPending(paused) : null;
+      }
       this.foundPaused(checkpoint);
       const status = checkpoint.status === 'awaiting-approval' ? 'awaiting-approval' : 'in-progress';
       const { approvalId, approvalKind } = checkpoint;
@@ -659,7 +745,15 @@ export class AgentSession<TObject = unknown> {
         // A checkpoint that cannot be read is dropped too: it is the only way out of it.
         return this.discardUnreadable();
       }
-      if (!pending) return;
+      if (!pending) {
+        // dropping the in-memory pause of a session without a checkpoint store.
+        const paused = inMemoryPause(this.store, this.id);
+        if (!paused) return;
+        markInMemoryPause(this.store, this.id, undefined);
+        // Its approvals can never continue it now: they are withdrawn.
+        await this.pendingTurnDiscarded(pauseApprovalIds(paused));
+        return;
+      }
       await this.deleteCheckpoint();
       // A paused turn another view of the session started (another transcript length) is dropped too.
       if (this.checkpointStore && pending.sessionId !== this.turnCheckpoint()?.sessionId) await this.checkpointStore.delete(pending.sessionId);
@@ -729,6 +823,8 @@ export class AgentSession<TObject = unknown> {
       if (JSON.stringify(messages) !== JSON.stringify(before)) {
         await this.store.save(this.id, messages);
         this.transcript = messages;
+        // the shorter transcript must not lower the next turn's n below turnHighWater.
+        this.turnIndex = undefined;
       }
       return result;
     });
@@ -756,12 +852,16 @@ export class AgentSession<TObject = unknown> {
       }
       const pending = this.checkpointStore ? await this.pendingCheckpoint().catch(ignoreCorrupt) : null;
       if (pending?.status === 'awaiting-approval') throw this.awaitingApproval(pending);
+      const paused = inMemoryPause(this.store, this.id);
+      if (paused) throw new SessionAwaitingApprovalError(this.id, paused.approvalId, paused.approvalKind);
       await this.deleteTurnCheckpoints();
       if (this.checkpointStore) await this.discardUnreadable();
       await this.checkpointStore?.delete(pausedTurnKey(this.id));
+      markInMemoryPause(this.store, this.id, undefined);
       await this.store.delete(this.id);
       const messagesCleared = this.transcript.length;
       this.transcript = [];
+      this.turnIndex = undefined;
       this.emitter()({ type: 'context.cleared', sessionId: this.id, messagesCleared });
     });
   }
@@ -849,7 +949,9 @@ export class AgentSession<TObject = unknown> {
   /** `id` has a transcript, or a checkpointed turn that a fork of `length` messages would pick up as its own. */
   private async isTaken(id: string, length: number): Promise<boolean> {
     if ((await this.store.load(id)) !== undefined) return true;
-    return Boolean(this.checkpointStore && (await this.checkpointStore.load(`${id}.turn-${length}`)));
+    if (!this.checkpointStore) return false;
+    // a turn counter means `id` ran turns even where no turn-<length> checkpoint survives.
+    return Boolean((await this.checkpointStore.load(`${id}.turn-${length}`)) || (await this.checkpointStore.load(turnCounterKey(id)).catch(ignoreCorrupt)));
   }
 
   /** Runs `task` after queued calls, unless a turn is running or queued now (`LOUSHO_SESSION_BUSY`). */
@@ -880,7 +982,11 @@ export class AgentSession<TObject = unknown> {
 
   private async assertNoPendingTurn(): Promise<void> {
     const pending = await this.pendingCheckpoint();
-    if (!pending) return;
+    if (!pending) {
+      const paused = inMemoryPause(this.store, this.id);
+      if (paused) throw new SessionAwaitingApprovalError(this.id, paused.approvalId, paused.approvalKind);
+      return;
+    }
     if (pending.status === 'awaiting-approval') throw this.awaitingApproval(pending);
     throw new SDKError(`Session '${this.id}' has an interrupted turn; resume() or discardPending() it first.`, 'LOUSHO_SESSION_TURN_PENDING');
   }
@@ -919,6 +1025,10 @@ export class AgentSession<TObject = unknown> {
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
     this.transcript = (await this.store.load(this.id)) ?? [];
+    if (this.checkpointStore) {
+      const counter = await this.checkpointStore.load(turnCounterKey(this.id)).catch(ignoreCorrupt);
+      this.turnHighWater = counter?.stepIndex ?? 0;
+    }
     this.loaded = true;
   }
 
@@ -1068,10 +1178,17 @@ export class AgentSession<TObject = unknown> {
     }
   }
 
-  /** Where the next turn is checkpointed: keyed by the transcript length, so it is found again after a restart. */
+  /**
+   * Where the next turn is checkpointed. `n` starts at the transcript length
+   * (so sessions checkpointed by earlier releases are found again) and only
+   * grows: {@link turnHighWater} survives a `compact()`'s shorter transcript
+   * and is persisted in the {@link turnCounterKey} checkpoint.
+   */
   private turnCheckpoint(): SessionTurnCheckpoint | undefined {
     const { checkpointStore } = this;
-    return checkpointStore && { sessionId: `${this.id}.turn-${this.transcript.length}`, checkpointStore };
+    if (!checkpointStore) return undefined;
+    this.turnIndex ??= Math.max(this.turnHighWater ?? 0, this.transcript.length);
+    return { sessionId: `${this.id}.turn-${this.turnIndex}`, checkpointStore };
   }
 
   /** The next turn's checkpoint and, with `limits`, the session's budget; starts the turn's clock. */
@@ -1090,7 +1207,8 @@ export class AgentSession<TObject = unknown> {
   private async deleteTurnCheckpoints(): Promise<void> {
     const { checkpointStore } = this;
     if (!checkpointStore) return;
-    let last = this.transcript.length;
+    // turn numbers run past the transcript length once a compaction shortened it.
+    let last = Math.max(this.transcript.length, this.turnHighWater ?? 0);
     for (let n = 0; n <= last; n++) {
       const id = `${this.id}.turn-${n}`;
       // Only the newest history entry: it holds the turn's longest transcript (reading whole rings made clear() quadratic).
@@ -1098,6 +1216,7 @@ export class AgentSession<TObject = unknown> {
       for (const checkpoint of saved) if (checkpoint) last = Math.max(last, checkpoint.messages.length);
       await checkpointStore.delete(id);
     }
+    await checkpointStore.delete(turnCounterKey(this.id));
   }
 
   private async deleteCheckpoint(): Promise<void> {
@@ -1121,7 +1240,13 @@ export class AgentSession<TObject = unknown> {
   /** `retryFailed` (an explicit `resume()`): run a turn again whose last attempt failed with an error retrying cannot fix. */
   private async resumePending(signal?: AbortSignal, retryFailed = false): Promise<ExecutionResult | null> {
     const pending = await this.pendingCheckpoint();
-    if (!pending) return null;
+    if (!pending) {
+      // a pause without a checkpoint store is an in-memory marker.
+      const paused = inMemoryPause(this.store, this.id);
+      if (!paused) return null;
+      for (const approvalId of pauseApprovalIds(paused)) this.pausedTurnFound(approvalId);
+      throw new SessionAwaitingApprovalError(this.id, paused.approvalId, paused.approvalKind);
+    }
     if (pending.status === 'awaiting-approval') {
       this.foundPaused(pending);
       throw this.awaitingApproval(pending);
@@ -1154,7 +1279,15 @@ export class AgentSession<TObject = unknown> {
     return this.enqueue(async () => {
       await this.ensureLoaded();
       this.turnStartedAt = Date.now();
-      return this.record(await next());
+      try {
+        return await this.record(await next());
+      } catch (error) {
+        // A continuation that fails before record() leaves the pause dead (its
+        // approval is consumed) — drop the in-memory marker rather than refuse
+        // every later send() forever.
+        markInMemoryPause(this.store, this.id, undefined);
+        throw error;
+      }
     });
   }
 
@@ -1175,15 +1308,22 @@ export class AgentSession<TObject = unknown> {
     if (result.finishReason === 'aborted') {
       const kept = abortedTurn(result, this.transcript, input);
       if (kept) await this.commit(kept, runSpent(result.usage, result.steps, Date.now() - this.turnStartedAt));
+      markInMemoryPause(this.store, this.id, undefined);
       await this.deleteCheckpoint();
       return result;
     }
     // A checkpointed turn joins the transcript once, when it finishes; until then its checkpoint holds it.
     if (result.finishReason === 'awaiting-approval') {
       // Its spend is recorded once the turn finishes (the resumed result counts it all).
-      if (!this.checkpointStore) await this.commit(result.messages);
-      else await this.markPaused();
+      if (!this.checkpointStore) {
+        // without a checkpoint there is no durable pause marker;
+        // keep one in-process so the next send()/compact() is refused instead
+        // of committing a turn the resume would silently overwrite.
+        markInMemoryPause(this.store, this.id, { approvalId: result.approvalId, approvalIds: result.approvalIds });
+        await this.commit(result.messages);
+      } else await this.markPaused();
     } else {
+      markInMemoryPause(this.store, this.id, undefined);
       await this.commit(result.messages, runSpent(result.usage, result.steps, Date.now() - this.turnStartedAt));
     }
     return result;
@@ -1211,7 +1351,12 @@ export class AgentSession<TObject = unknown> {
     const start = this.transcript.length;
     this.transcript = next;
     if (turn) {
+      // the claimed `n` is spent; the high-water (and the transcript
+      // length, so numbers stay aligned while it grows) may not be reused.
+      this.turnHighWater = Math.max(this.turnHighWater ?? 0, (this.turnIndex ?? 0) + 1, next.length);
+      this.turnIndex = undefined;
       await turn.checkpointStore.delete(turn.sessionId, { keepHistory: this.turnHistoryLimit > 0 });
+      await turn.checkpointStore.save(turnCounterKey(this.id), turnCounterCheckpoint(this.id, this.turnHighWater));
       await this.dropOldTurnHistory(next, start);
     }
   }

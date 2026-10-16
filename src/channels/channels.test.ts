@@ -15,6 +15,9 @@ import { channelSessionId, defineChannel, type Channel, type ChannelContext, typ
 import { durableStores } from './__fixtures__/durableStores';
 import { mountChannels, type ChannelsHandler } from './mountChannels';
 import { httpChannel } from './httpChannel';
+import { webhookChannel } from './webhookChannel';
+import { InMemoryApprovalStore } from '../execution/InMemoryApprovalStore';
+import { MemorySessionStore } from '../session/sessionStore';
 import { defineMemory, inMemoryMemory, type MemoryScopeContext } from '../memory';
 import { memoryStore } from '../storage/agentStore';
 import { SessionAwaitingApprovalError } from '../execution/errors';
@@ -217,6 +220,39 @@ describe('defineChannel / mountChannels', () => {
     expect(replies).toHaveLength(1);
     expect(replies[0]).toMatchObject({ text: 'Email sent.', sessionId: ctx.sessionId, inbound: { replyTo: 'dm:ali' } });
     await expect(handler.resolveApproval({ id: ctx.approval!.id, approved: true })).rejects.toThrow(/No pending channel approval/);
+  });
+
+  it('a stored pause binds only to the session its snapshot names; a foreign sessionKey decides nothing', async () => {
+    const approvalStore = new InMemoryApprovalStore();
+    const sessions = new MemorySessionStore();
+    const { tool, execute } = emailTool();
+    const mount = (replies: Parameters<typeof mockModel>[0]) =>
+      mountChannels(createAgent({ provider: mockModel(replies), tools: [tool], approvalStore }), [httpChannel()], { store: sessions });
+
+    const paused = await post(mount([callEmail]), '/channels/http', { sessionKey: 'victim', input: 'Email Sam' });
+    const id = (paused.json.approval as { id: string }).id;
+
+    // A second process over the same stores: the pause is only known through the store.
+    const second = mount(['Email sent.']);
+    const foreign = await post(second, `/channels/http/approvals/${id}`, { approved: true, sessionKey: 'mallory' });
+    expect(foreign.status).toBe(404);
+    expect(execute).not.toHaveBeenCalled();
+    // An unknown id is a 404 too: the route does not tell a live pause from a made-up one.
+    expect((await post(second, '/channels/http/approvals/made-up', { approved: true, sessionKey: 'victim' })).status).toBe(404);
+
+    const own = await post(second, `/channels/http/approvals/${id}`, { approved: true, sessionKey: 'victim' });
+    expect(own.status).toBe(200);
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('an open webhookChannel is cross-site guarded like any unauthenticated channel', async () => {
+    const handler = mountChannels(createAgent({ provider: mockModel(['pong']) }), [webhookChannel()]);
+    const local = { host: 'localhost:3737' };
+    const refused = await post(handler, '/channels/webhook', { input: 'ping' }, { ...local, origin: 'https://evil.example' });
+    expect(refused).toMatchObject({ status: 403, json: { code: 'LOUSHO_REQUEST_FORBIDDEN' } });
+    expect((await post(handler, '/channels/webhook/approvals/a1', { approved: true }, { ...local, origin: 'https://evil.example' })).status).toBe(403);
+    // A webhook sender (no Origin) still gets through; so does a signed request's own verify path.
+    expect((await post(handler, '/channels/webhook', { input: 'ping' }, local)).status).toBe(200);
   });
 
   it('answers an ask_question pause over the approvals route (default onApproval = a text prompt via reply)', async () => {

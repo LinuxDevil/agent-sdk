@@ -63,6 +63,8 @@ const calling = (name: string): MockStaticTurn => ({ toolCalls: [{ name, id: `ca
 const roles = (messages: readonly { role: string }[]): string[] => messages.map((m) => m.role);
 const users = (messages: readonly Message[]): number => messages.filter((m) => m.role === 'user').length;
 const fullTurn = ['user', 'assistant', 'tool', 'assistant', 'tool', 'assistant'];
+/** Checkpoint keys except `<id>.turn-counter`, the bookkeeping record a commit leaves. */
+const liveKeys = (data: Map<string, string>): string[] => [...data.keys()].filter((key) => !key.endsWith('.turn-counter'));
 
 async function drain(run: AgentRun): Promise<void> {
   for await (const event of run) void event;
@@ -95,7 +97,7 @@ describe('checkpointed sessions', () => {
     expect(roles(saved)).toEqual(fullTurn);
     expect(users(saved)).toBe(1);
     expect(session.messages).toEqual(saved);
-    expect(checkpoints.data.size).toBe(0);
+    expect(liveKeys(checkpoints.data)).toEqual([]);
     expect(await session.pending()).toBeNull();
     expect(await session.resume()).toBeNull();
   });
@@ -133,7 +135,7 @@ describe('checkpointed sessions', () => {
     expect(model.calls).toHaveLength(2);
     expect(model.calls[1].messages.at(-1)).toMatchObject({ role: 'user', content: 'second' });
     expect(roles(session.messages)).toEqual([...fullTurn, 'user', 'assistant']);
-    expect(store.checkpoints.data.size).toBe(0);
+    expect(liveKeys(store.checkpoints.data)).toEqual([]);
   });
 
   it('stream() checkpoints its turn too, and a fresh session resumes it', async () => {
@@ -143,13 +145,13 @@ describe('checkpointed sessions', () => {
 
     const ok = createAgent({ provider: mockModel(['Hi.']) }).session({ id: 'chat', store });
     await drain(ok.stream('hello'));
-    expect(store.checkpoints.data.size).toBe(0); // a finished turn leaves no checkpoint
+    expect(liveKeys(store.checkpoints.data)).toEqual([]); // a finished turn leaves no checkpoint
 
     const crashing = createAgent({ provider: mockModel([calling('a'), calling('b')]), tools }).session({ id: 'chat', store });
     const run = crashing.stream('do a then b');
     await drain(run);
     await expect(run.result).rejects.toThrow('process died');
-    expect([...store.checkpoints.data.keys()]).toEqual(['checkpoints/chat.turn-2']);
+    expect([...store.checkpoints.data.keys()]).toEqual(['checkpoints/chat.turn-counter', 'checkpoints/chat.turn-2']);
 
     const model = mockModel(['All done.']);
     const result = await createAgent({ provider: model, tools }).session({ id: 'chat', store }).resume();
@@ -220,7 +222,7 @@ describe('checkpointed sessions', () => {
     expect(await session.resume()).toBeNull();
     expect(roles(session.messages)).toEqual(['user', 'assistant']);
     expect(roles((await sessions.load('chat'))!)).toEqual(['user', 'assistant']);
-    expect(checkpoints.data.size).toBe(0);
+    expect(liveKeys(checkpoints.data)).toEqual([]);
   });
 
   it('resolving a paused session turn from a fresh agent (session never opened) commits the turn', async () => {
@@ -437,6 +439,28 @@ describe('checkpointed sessions', () => {
     expect(await kept()).toBe(0);
   });
 
+  // turn checkpoint ids numbered by transcript length collided after compact() - fork('p.turn-2') then
+  // silently resolved to a different turn. Turn numbers now only grow, kept by the <id>.turn-counter checkpoint.
+  it('a compaction cannot collide a later turn checkpoint id with an earlier turn', async () => {
+    const store = memoryStore();
+    const runs: Runs = {};
+    const model = mockModel([(r) => (r.messages.at(-1)?.role === 'tool' ? 'Noted.' : calling('lookup'))], { onExhausted: 'repeat-last' });
+    const agent = createAgent({ provider: model, tools: [tool('lookup', runs)], store });
+    const session = agent.session({ id: 'p' });
+    // Four messages a turn: turns checkpoint at p.turn-0, p.turn-4, p.turn-8.
+    for (const text of ['one', 'two', 'three']) await session.send(text);
+    await session.compact({
+      strategy: { name: 'summary', compact: async ({ messages }) => ({ messages: [{ role: 'user', content: 'summary' }, messages.at(-1)!], tokensBefore: 0, tokensAfter: 0, prunedToolCallIds: [] }) },
+    });
+    await session.send('four');
+
+    // Before the fix the post-compaction turn reused 'p.turn-2'; now it takes the never-used 'p.turn-12'.
+    expect(await store.checkpoints.history!('p.turn-2')).toEqual([]);
+    expect((await store.checkpoints.history!('p.turn-12')).length).toBeGreaterThan(0);
+    // The earlier turns' history still resolves to their own turns.
+    expect((await store.checkpoints.history!('p.turn-8')).length).toBeGreaterThan(0);
+  });
+
   it('an aborted turn, discardPending() and clear() leave no pending turn', async () => {
     const runs: Runs = {};
     const tools = [tool('a', runs), tool('b', runs, { crashOnce: true })];
@@ -456,6 +480,6 @@ describe('checkpointed sessions', () => {
     runs.b = 0;
     await expect(session.send('go')).rejects.toThrow('process died');
     await session.clear();
-    expect(store.checkpoints.data.size).toBe(0);
+    expect(liveKeys(store.checkpoints.data)).toEqual([]);
   });
 });

@@ -156,8 +156,14 @@ export class SqliteStore {
     ]
       .map((row) => row.run)
       .filter((run): run is string => typeof run === 'string' && run !== '');
-    const sessions = runs.map((run) => TURN_CHECKPOINT.exec(run)?.[1] ?? run);
-    return { checkpoints: new Set(runs), sessions: new Set(sessions) };
+    const checkpoints = new Set(runs);
+    const sessions = runs.map((run) => {
+      const session = TURN_CHECKPOINT.exec(run)?.[1] ?? run;
+      // a kept session keeps its turn counter (the numbering the next turn needs).
+      if (session !== run) checkpoints.add(`${session}.turn-counter`);
+      return session;
+    });
+    return { checkpoints, sessions: new Set(sessions) };
   }
 
   /** Close the database. Any later use of the store or its parts throws. Safe to call twice. */

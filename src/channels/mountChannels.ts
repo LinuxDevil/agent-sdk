@@ -13,7 +13,8 @@ import type * as http from 'node:http';
 import type { SimpleAgent } from '../createAgent';
 import type { SessionStore } from '../session/sessionStore';
 import type { SessionStores } from '../session/AgentSession';
-import { PayloadTooLargeError, readRawBody, sendJson } from '../server/chatRoutes';
+import { readRawBody, sendJson } from '../server/chatRoutes';
+import { PayloadTooLargeError } from '../server/fetchRoutes';
 import {
   toChannelRequest,
   type Channel,
@@ -24,6 +25,7 @@ import {
 } from './defineChannel';
 import { channelFailureBody, reportChannelError } from './channelSupport';
 import { channelCore, type ChannelCore } from './channelCore';
+import { decodeParam } from '../server/requestGuard';
 import { SDKError } from '../execution/errors';
 
 /** Options of {@link mountChannels}. */
@@ -93,7 +95,7 @@ export function mountChannels(
     };
     try {
       const request = toChannelRequest(req, await readRawBody(req));
-      await core.handle(channel, approvalId === undefined ? undefined : decodeURIComponent(approvalId), request, respond);
+      await core.handle(channel, approvalId === undefined ? undefined : decodeParam(approvalId), request, respond);
       respond(200, { ok: true });
     } catch (error) {
       await failChannelRequest(error, responded, respond, channel, options);

@@ -317,6 +317,61 @@ describe('createAgent({ memory })', () => {
     expect(() => defineMemory({ name: 's', scope: 'global', provider, itemSchema: {} as never })).toThrow(/itemSchema must be a zod schema/);
   });
 
+  // two parallel remember_ calls of one step both ran sameKey() before either add() landed, storing
+  // duplicate itemKey items. remember_ is now serialized per memory key.
+  it('two parallel itemKey remembers in one step store a single item', async () => {
+    const base = inMemoryMemory();
+    const provider: MemoryProvider = {
+      ...base,
+      add: async (key, item) => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return base.add(key, item);
+      },
+    };
+    const state = defineMemory({
+      name: 'state',
+      scope: 'global',
+      provider,
+      itemSchema: z.object({ topic: z.string(), value: z.string() }),
+      itemKey: ['topic'],
+    });
+    const model = mockModel([
+      {
+        toolCalls: [
+          { name: 'remember_state', id: 'c1', args: { topic: 'color', value: 'blue' } },
+          { name: 'remember_state', id: 'c2', args: { topic: 'color', value: 'red' } },
+        ],
+      },
+      'done',
+    ]);
+    await createAgent({ provider: model, memory: [state] }).send('hi');
+
+    const items = (await provider.list('state#global')).filter((item) => item.metadata?.topic === 'color');
+    expect(items).toHaveLength(1);
+  });
+
+  // an oversized remembered item went into the system prompt of every later run, past the context window,
+  // and compaction cannot remove a system message. remember_ caps item text and the injected block has a budget.
+  it('an oversized remember_ is refused and the injected block stays under its budget', async () => {
+    const provider = inMemoryMemory();
+    const notes = defineMemory({ name: 'notes', scope: 'global', provider });
+    const model = mockModel([{ toolCalls: [{ name: 'remember_notes', args: { text: 'x'.repeat(200_000) } }] }, 'done']);
+    await createAgent({ provider: model, memory: [notes] }).send('hi');
+
+    expect(await provider.list('notes#global')).toEqual([]);
+
+    // And the block the recall injects is capped: the oldest items are dropped.
+    const seeded = inMemoryMemory();
+    for (let i = 0; i < 10; i++) await seeded.add('facts#global', { text: `fact-${i}-${'y'.repeat(5_000)}` });
+    const facts = defineMemory({ name: 'facts', scope: 'global', provider: seeded });
+    const calls = mockModel(['ok']);
+    await createAgent({ provider: calls, memory: [facts] }).send('hi');
+    const system = systemOf(calls.calls[0]);
+    expect(system.length).toBeLessThan(21_000);
+    expect(system).toContain('<memory name="facts">');
+    expect(system).not.toContain('fact-0-');
+  });
+
   it('expose: { remember: false } hides the tool; onSessionStart: false skips recall', async () => {
     const provider = await seeded(['likes tea']);
     const notes = defineMemory({

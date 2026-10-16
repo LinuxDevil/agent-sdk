@@ -50,6 +50,37 @@ async function sameKey(slot: MemorySlot, key: string, args: Record<string, unkno
   return items.filter((item) => item.metadata && stableStringify(fields.map((field) => item.metadata![field] ?? null)) === wanted);
 }
 
+/**
+ * Serializes `remember_<slot>` calls per memory key, so an `itemKey`
+ * check-and-replace cannot interleave — two parallel calls both listed before
+ * either `add` landed and stored duplicate items (the toolConcurrency default
+ * is 'unbounded'). Entries drain like `sessionQueues`.
+ */
+const rememberQueues = new Map<string, Promise<void>>();
+
+function serializeRemember<T>(key: string, task: () => Promise<T>): Promise<T> {
+  const queued = (rememberQueues.get(key) ?? Promise.resolve()).then(task, task);
+  const settled = queued.then(
+    () => undefined,
+    () => undefined
+  );
+  rememberQueues.set(key, settled);
+  return queued.finally(() => {
+    if (rememberQueues.get(key) === settled) rememberQueues.delete(key);
+  });
+}
+
+/**
+ * Most characters a remembered item's `text` may hold, and most
+ * characters the injected `<memory>` block may take. An oversized item went
+ * into the system prompt of every later run — past the context window or as a
+ * permanent cost blowout — and compaction cannot remove a system message.
+ */
+const MAX_ITEM_CHARS = 20_000;
+const MAX_BLOCK_CHARS = 20_000;
+/** A single item's line in the injected block (items longer than this are cut with an ellipsis). */
+const MAX_ITEM_LINE_CHARS = 4_000;
+
 /** Most items one `recall_<name>` call returns, whatever `limit` the model asks for. */
 const MAX_RECALL_LIMIT = 100;
 
@@ -80,23 +111,27 @@ function memoryTools([slot, key]: BoundSlot): DefinedTool[] {
   const remember = defineTool({
     name: `remember_${slot.name}`,
     description: `Save a fact to the "${slot.name}" memory so it is ${persistence(slot)}.${replaces}${correct}${about}`,
-    input: slot.itemSchema ?? z.object({ text: z.string().min(1).describe('The fact, written so it makes sense on its own') }),
-    execute: async (args) => {
-      // With an itemSchema the parsed arguments are the item: canonical JSON
-      // for its text, the parsed object for its metadata.
-      const item = slot.itemSchema
-        ? { text: stableStringify(args), metadata: args as Record<string, unknown> }
-        : { text: (args as { text: string }).text };
-      if (slot.itemKey) {
-        // Structured state upserts on its key fields.
-        const [old, ...stale] = await sameKey(slot, key, args as Record<string, unknown>);
-        if (old) {
-          for (const extra of stale) await slot.provider.remove(key, extra.id);
-          return { remembered: (await replaceItem(slot.provider, key, old.id, item)).id, replaced: true };
+    input: slot.itemSchema ?? z.object({ text: z.string().min(1).max(MAX_ITEM_CHARS).describe('The fact, written so it makes sense on its own') }),
+    execute: (args) =>
+      serializeRemember(key, async () => {
+        // With an itemSchema the parsed arguments are the item: canonical JSON
+        // for its text, the parsed object for its metadata.
+        const item = slot.itemSchema
+          ? { text: stableStringify(args), metadata: args as Record<string, unknown> }
+          : { text: (args as { text: string }).text };
+        if (item.text.length > MAX_ITEM_CHARS) {
+          return { remembered: null, reason: `The item is ${item.text.length} characters; the most a memory item holds is ${MAX_ITEM_CHARS}. Store a shorter summary.` };
         }
-      }
-      return { remembered: (await slot.provider.add(key, item)).id };
-    },
+        if (slot.itemKey) {
+          // Structured state upserts on its key fields.
+          const [old, ...stale] = await sameKey(slot, key, args as Record<string, unknown>);
+          if (old) {
+            for (const extra of stale) await slot.provider.remove(key, extra.id);
+            return { remembered: (await replaceItem(slot.provider, key, old.id, item)).id, replaced: true };
+          }
+        }
+        return { remembered: (await slot.provider.add(key, item)).id };
+      }),
   });
   const recall = defineTool({
     name: `recall_${slot.name}`,
@@ -137,10 +172,20 @@ function block(slot: MemorySlot, items: readonly MemoryItem[]): string {
   // An opening or closing memory tag inside an item would break
   // the block (and the replacement of blocks in a resumed transcript).
   // With forget_<name>, each item shows its id, to forget it by.
-  const lines = items.map(
-    (item) => `- ${item.text.replace(/<(\/?memory)/gi, '&lt;$1').replace(/\s+/g, ' ').trim()}${slot.expose.forget ? ` (id: ${item.id})` : ''}`
-  );
-  return [`<memory name="${slot.name}">`, ...lines, '</memory>'].join('\n');
+  // The block is capped at MAX_BLOCK_CHARS (each line at
+  // MAX_ITEM_LINE_CHARS); the items past the budget - the oldest or least
+  // relevant, listed last - are dropped.
+  const lines: string[] = [];
+  let budget = MAX_BLOCK_CHARS - slot.name.length - 20;
+  for (const item of items) {
+    let text = item.text.replace(/<(\/?memory)/gi, '&lt;$1').replace(/\s+/g, ' ').trim();
+    if (text.length > MAX_ITEM_LINE_CHARS) text = `${text.slice(0, MAX_ITEM_LINE_CHARS)}…`;
+    const line = `- ${text}${slot.expose.forget ? ` (id: ${item.id})` : ''}`;
+    if (line.length + 1 > budget) break;
+    budget -= line.length + 1;
+    lines.push(line);
+  }
+  return lines.length > 0 ? [`<memory name="${slot.name}">`, ...lines, '</memory>'].join('\n') : '';
 }
 
 /** Puts `blocks` at the end of the system message, replacing earlier blocks of the same slots (from a resumed run). */
