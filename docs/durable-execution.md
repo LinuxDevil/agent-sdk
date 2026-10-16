@@ -429,9 +429,9 @@ A tool that was **running** when the process died has no recorded result,
 so it runs again on resume. Tool execution is therefore at-least-once, not
 exactly-once. For tools with side effects (charging a card, sending an
 email), either gate them with `needsApproval` or make them idempotent.
-Each call's `toolCallId` (the model's id for the call, unchanged when it is
-re-run on resume) is passed to `execute`, so it works as an idempotency
-key:
+Each call's `toolCallId` (the model's id for the call, unchanged when that
+same call is re-run on resume) is passed to `execute`, so it works as an
+idempotency key against a re-run of one call:
 
 ```ts
 import { defineTool } from '@lousho/build-ai-agent';
@@ -450,6 +450,29 @@ const chargeCard = defineTool({
 
 (`toolCallId` is set for every tool run, including tools that route through
 `sandboxExecute`.)
+
+`toolCallId` (and `ctx.approval.id` for an approved call) identifies one call
+the model made. It only protects against that call running twice. If the
+process dies before the call is recorded, the model may make the call again
+as a **new** call with a new id and a new approval, and the id no longer
+matches. A side effect that must happen once per business event (one claim,
+one invoice) needs an idempotency key from your own data, such as the claim id
+in the arguments, checked or passed on to the system you write to:
+
+```ts
+import { defineTool } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+declare const claims: { file(claim: { claimId: string }, opts: { idempotencyKey: string }): Promise<{ id: string }> };
+
+const fileClaim = defineTool({
+  name: 'file_claim',
+  description: 'File an insurance claim',
+  input: z.object({ claimId: z.string() }),
+  needsApproval: true,
+  execute: async ({ claimId }) => claims.file({ claimId }, { idempotencyKey: `claim:${claimId}` }), // a new call for the same claim cannot file twice
+});
+```
 
 ## Checkpoint history
 

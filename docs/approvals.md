@@ -321,6 +321,38 @@ await agent.approvals.resolve({ id: paused.approvalId!, approved: true, args: { 
 `remember` and `args` are for decisions people make. An `approve` callback
 decides each call it is asked about, and `once()` does not count its yes.
 
+### Ending the run after a rejection
+
+A rejection is a tool result, not a stop: the model gets the `kind: 'rejected'`
+error (with your `note`) and the run continues, so a model that still wants the
+task done may call the tool again, with new arguments, and pause on a new
+approval. There is no option on `resolve()` that ends the run. To stop that:
+
+- Say it in the tool's `description` or the agent's `instructions`: "If the
+  reviewer rejects the call, do not call it again; tell the user it was not
+  done."
+- Enforce it with a `preToolCall` hook that denies the tool once the
+  transcript holds a rejection of it. A denial is not an approval pause, so the
+  model gets the reason and answers:
+
+```ts
+import { createAgent, type AgentHook } from '@lousho/build-ai-agent';
+
+const noRefile: AgentHook = {
+  name: 'no-refile',
+  preToolCall(ctx) {
+    const rejected = ctx.messages.some((m) => m.role === 'tool' && m.toolName === ctx.toolName && String(m.content).includes('"kind":"rejected"'));
+    return rejected ? { deny: 'A reviewer rejected this call. Do not call it again; tell the user it was not done.' } : undefined;
+  },
+};
+
+const agent = createAgent({ provider, instructions: 'You file claims.', tools: [emailTool], hooks: [noRefile] });
+```
+
+The rule is per run history: in a long session, a rejection earlier in the
+transcript also blocks later, unrelated calls of that tool, so narrow the check
+(for example to the messages after the latest user message) if that is too broad.
+
 ### Approval expiry
 
 `createAgent({ approvalTtlMs })` puts a deadline on every pause the agent
