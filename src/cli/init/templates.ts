@@ -194,20 +194,31 @@ try {
   console.error(errorText(error));
   process.exit(1);
 }
-const rl = createInterface({ input: process.stdin, output: process.stdout });
-rl.on('close', () => process.exit(0));
+const rl = createInterface({ input: process.stdin, output: process.stdout, prompt: 'you> ' });
 
 console.log('Chat with your agent. Press Ctrl+C to quit.');
-for (;;) {
-  const message = (await rl.question('you> ')).trim();
-  if (!message) continue;
-  try {
-    console.log(\`agent> \${(await agent.send(message)).text}\`);
-  } catch (error) {
-    // An invalid key, a rate limit or no network: report it and keep the chat open.
-    console.error(\`error: \${errorText(error)}\`);
+rl.prompt();
+let closed = false;
+rl.on('close', () => (closed = true));
+// Reading lines as an async iterator: at end of input (piped, as in \`printf 'hi\\n' | npm run dev\`)
+// the loop ends only after the turn in flight has finished and printed its reply.
+for await (const line of rl) {
+  const message = line.trim();
+  if (message) {
+    process.stdout.write('agent> ');
+    try {
+      for await (const event of agent.stream(message)) {
+        if (event.type === 'text.delta' && !event.subagent) process.stdout.write(event.text);
+      }
+      process.stdout.write('\\n');
+    } catch (error) {
+      // An invalid key, a rate limit or no network: report it and keep the chat open.
+      console.error(\`\\nerror: \${errorText(error)}\`);
+    }
   }
+  if (!closed) rl.prompt();
 }
+process.exit(0);
 `;
 }
 

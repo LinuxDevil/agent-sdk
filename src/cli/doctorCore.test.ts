@@ -576,6 +576,18 @@ describe('agent directory', () => {
     const env = dirEnv({ loadAgentDir: async () => ({ name: 'ck', model: 'gemini/pro', tools: [] }) });
     expect(await check(env, 'spec.provider')).toMatchObject({ status: 'fail', fix: expect.stringMatching(/^Set the config's model/) });
   });
+
+  it('warns about a permission rule naming a tool the agent does not have, with the suggestion', async () => {
+    const env = dirEnv({
+      loadAgentDir: async () => ({
+        name: 'ck',
+        model: 'anthropic/claude-x',
+        tools: ['write_file'],
+        permissionIssues: ["permissions[0] names the tool 'write_flie', which no tool of the agent has, so the rule never applies. Did you mean 'write_file'?"],
+      }),
+    });
+    expect(await check(env, 'spec.permissions.0')).toMatchObject({ status: 'warn', finding: expect.stringContaining("Did you mean 'write_file'?") });
+  });
 });
 
 describe('spec load failure fix text', () => {

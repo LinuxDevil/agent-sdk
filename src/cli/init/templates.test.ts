@@ -158,8 +158,16 @@ describe('renderProject', () => {
   it('the terminal chat survives a provider error and reports a startup error without a stack', () => {
     const index = renderProject(config('openai', 'minimal'))['src/index.ts']!;
     expect(index).toMatch(/try \{\n  agent = buildAgent\(\);/);
-    expect(index).toMatch(/try \{\n    console\.log\(`agent> /);
-    expect(index).toContain("console.error(`error: ${errorText(error)}`);");
+    expect(index).toMatch(/try \{\n      for await \(const event of agent\.stream\(message\)\)/);
+    expect(index).toContain('console.error(`\\nerror: ${errorText(error)}`);');
+  });
+
+  it('the terminal chat streams text deltas and waits for the turn in flight at end of input', () => {
+    const index = renderProject(config('openai', 'minimal'))['src/index.ts']!;
+    expect(index).toContain("event.type === 'text.delta'");
+    expect(index).toContain('for await (const line of rl)');
+    expect(index).not.toContain("rl.on('close', () => process.exit");
+    expect(index).toContain('if (!closed) rl.prompt();');
   });
 
   it('uses the chosen package manager in the README commands', () => {

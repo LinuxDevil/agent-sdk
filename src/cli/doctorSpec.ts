@@ -127,6 +127,15 @@ async function inspectAgentDir(env: DoctorEnvironment, dir: string): Promise<Spe
   }
   const tools = summary.tools.length === 0 ? 'no tools' : `${summary.tools.length} tool(s): ${summary.tools.join(', ')}`;
   const checks: DoctorCheck[] = [{ id: 'spec', status: 'ok', title, finding: `'${summary.name}' loads (${tools})` }];
+  for (const [i, issue] of (summary.permissionIssues ?? []).entries()) {
+    checks.push({
+      id: `spec.permissions.${i}`,
+      status: 'warn',
+      title: 'Agent permissions',
+      finding: issue,
+      fix: "Fix the tool name in the rule: a rule that matches no tool never applies, so a 'deny' guards nothing.",
+    });
+  }
   const slash = summary.model?.indexOf('/') ?? -1;
   if (summary.model === undefined || slash <= 0) {
     return { checks, needs: NO_SPEC_NEEDS };

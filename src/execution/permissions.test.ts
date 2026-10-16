@@ -12,7 +12,15 @@ import { mockModel, type MockModel } from '../testing';
 import type { AgentConfig } from '../types';
 import type { AgentEvent, AgentEventOf } from './agentEvents';
 import { AgentExecutor } from './AgentExecutor';
-import { allow, ask, deny, type PermissionDecisionEntry, type PermissionRule } from './permissions';
+import {
+  allow,
+  ask,
+  deny,
+  unknownPermissionToolMessage,
+  unknownPermissionTools,
+  type PermissionDecisionEntry,
+  type PermissionRule,
+} from './permissions';
 
 /** A tool named `name` that records its calls; `needsApproval` as given. */
 function tool(name: string, needsApproval = false) {
@@ -253,5 +261,55 @@ describe('permission policies (LOU-X2)', () => {
       ['fetch_page', 'allow'],
     ]);
     expect(decisions(events).filter((e) => e.subagent).map((e) => e.toolName)).toEqual(['lookup', 'fetch_page']);
+  });
+});
+
+describe('rules naming an unknown tool', () => {
+  const registered = ['read_file', 'write_file'];
+
+  it('reports a typo with its suggestion', () => {
+    expect(unknownPermissionTools([deny('write_flie')], registered)).toEqual([{ index: 0, tool: 'write_flie', suggestion: 'write_file' }]);
+    expect(unknownPermissionToolMessage({ index: 0, tool: 'write_flie', suggestion: 'write_file' })).toContain("Did you mean 'write_file'?");
+  });
+
+  it('reports a name with no close tool, unless lenient', () => {
+    expect(unknownPermissionTools([ask(['read_file', 'shell'])], registered)).toEqual([{ index: 0, tool: 'shell' }]);
+    expect(unknownPermissionTools([ask('shell')], registered, { lenient: true })).toEqual([]);
+    expect(unknownPermissionTools([deny('write_flie')], registered, { lenient: true })).toHaveLength(1);
+  });
+
+  it('skips known tools, wildcards, globs and patterns', () => {
+    expect(unknownPermissionTools([allow('*'), allow('read_*'), allow(/^wri/), deny('read_file'), deny(['write_file'])], registered)).toEqual([]);
+  });
+
+  it('createAgent warns at creation about a typo in a deny rule', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const writer = tool('write_file').defined;
+      createAgent({ provider: mockModel(['hi']), tools: [writer], permissions: [deny('write_flie'), allow('*')] });
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("'write_flie'"));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("Did you mean 'write_file'?"));
+      warn.mockClear();
+      createAgent({ provider: mockModel(['hi']), tools: [writer], permissions: [deny('write_file'), allow('*')] });
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('createAgent stays quiet about a far name when tools may arrive later', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const writer = tool('write_file').defined;
+      createAgent({
+        provider: mockModel(['hi']),
+        tools: [writer],
+        mcpServers: { s: { command: 'definitely-not-run', args: [] } },
+        permissions: [deny('s__delete_everything')],
+      });
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

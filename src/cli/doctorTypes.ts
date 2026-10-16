@@ -33,6 +33,8 @@ export interface AgentDirSummary {
   /** The config's `provider/model` string; undefined when `agent.ts` sets a provider instance. */
   model?: string;
   tools: string[];
+  /** `permissions` rules that name a tool the agent does not have (a typo; the rule never applies), one message each. */
+  permissionIssues?: string[];
 }
 
 /**
