@@ -829,6 +829,7 @@ interface ExpressionEvaluatorNode extends NodeRunOptions {
     expression: string;
     // (undocumented)
     id?: string;
+    outputVariable?: string;
     // (undocumented)
     type: 'evaluator';
 }

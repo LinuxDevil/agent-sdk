@@ -9789,6 +9789,12 @@ Describe the graph with `FlowBuilder` and run it with the static
 
 ```ts
 import { FlowBuilder, FlowExecutor, type EditorStep } from '@lousho/build-ai-agent/flows';
+import { resolveProvider, type AgentConfig } from '@lousho/build-ai-agent';
+
+// A flow calls an LLMProvider directly (reads OPENAI_API_KEY).
+const provider = resolveProvider('openai/gpt-4o-mini');
+// A plain agent config: `prompt` is every llmCall's system message.
+const agent: AgentConfig = { name: 'triage', prompt: 'You are a support triager.' };
 
 // FlowBuilder is a metadata builder: setCode/setName/setInputs/setFlow(...).build().
 // EditorStep covers every node type FlowExecutor runs ('sequence', 'llmCall',
@@ -9809,8 +9815,37 @@ const flow = new FlowBuilder()
   .build();
 
 // FlowExecutor is a static API too: execute(flow, context, onEvent?)
-const result = await FlowExecutor.execute(flow, { agent, provider, variables: { message: input } });
+const result = await FlowExecutor.execute(flow, { agent, provider, variables: { message: 'My invoice is wrong' } });
 ```
+
+An `llmCall` step's model is its own `model`, else the agent's
+`settings.model`, else the provider's default (`gpt-4o-mini` above). Either
+setting is the provider's bare model id, such as `'gpt-4o'`, handed to
+`provider.generate()` as is: not a `'openai/gpt-4o'` spec, which only
+`resolveProvider()` and `createAgent({ model })` read. An `llmCall` returns
+the reply text; it has no structured-output (schema) option. For a typed
+result, parse the text in a later step, or call an agent that has a
+structured output as a tool (see [Running an agent in a flow](#running-an-agent-in-a-flow)).
+
+### Template values
+
+A `{{name}}` placeholder in a prompt, a `throw` message or a tool argument
+is replaced by the variable's text:
+
+- A string is used as is; a number or boolean is its text (`0` is `'0'`); a
+  variable that is not set, or is `null`, is `''`.
+- An object whose only field is `text` (an [MCP tool](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md) result,
+  `{ text }`) is that text, and so is a raw MCP result
+  (`{ content: [{ type: 'text', text }] }`, its text parts joined by newlines).
+- Any other object or array is its JSON, so a `toolCall` result stored in
+  `outputVariable` reads `{"city":"Oslo","temp":4}` in the next prompt, not
+  `[object Object]`.
+- A dotted path reads into an object or array: `{{weather.city}}`,
+  `{{results.0.title}}`. Only own properties are read (`{{res.constructor}}`
+  is `''`), and a missing step on the path is `''`.
+
+An `evaluator` step stores its result in `outputVariable` too, like
+`llmCall` and `toolCall`.
 
 ## Node types
 
@@ -9820,12 +9855,12 @@ const result = await FlowExecutor.execute(flow, { agent, provider, variables: { 
 | ------ | ------------ |
 | `sequence` | Runs its `steps` one after another. |
 | `parallel` | Runs its steps at the same time. If one fails, the others are cancelled (see [Cancelling a flow](#cancelling-a-flow)). |
-| `llmCall` | Calls the model with a `prompt` (with `{{variable}}` placeholders); `outputVariable` stores the reply. |
+| `llmCall` | Calls the model with a `prompt` (with `{{variable}}` placeholders; see [Template values](#template-values)); `outputVariable` stores the reply text. |
 | `toolCall` | Calls a tool with `arguments` (placeholders interpolated; see [Argument values](#argument-values)). |
 | `setVariable` | Sets `variable` to `value`. |
 | `oneOf` | Takes the first branch whose condition matches. |
 | `forEach` | Runs a step for each item of `items`, one after another. The item and index (`itemVariable`, default `item`; `indexVariable`, default `index`) belong to that iteration only, so loops in `parallel` branches never see each other's item; other variables the step sets are written to the flow's variables. |
-| `evaluator` | Evaluates an expression over the flow's variables. |
+| `evaluator` | Evaluates an expression over the flow's variables; `outputVariable` stores the result. |
 | `return`, `end` | Produce the node's `value` as the result. |
 | `throw` | Fails the flow with the node's `message` (`{{variable}}` placeholders interpolated; default `'Flow error'`). |
 
@@ -9871,7 +9906,7 @@ const result = await FlowExecutor.execute(flow, {
 
 An argument string that is exactly one placeholder, `'{{name}}'` or
 `'$name'`, passes the variable's value as it is: a number stays a number, an
-object stays an object. So `arguments: { n: '{{n}}' }` with `n = 5` passes
+object stays an object; `'{{res.count}}'` passes that field's value. So `arguments: { n: '{{n}}' }` with `n = 5` passes
 `5` to a tool whose schema is `z.number()`. This also applies inside arrays
 and nested objects. Any other string is interpolated as text:
 `'n is {{n}}'` becomes `'n is 5'`. A placeholder of a variable that is not
@@ -9938,11 +9973,22 @@ Any node can have `retry` and `timeoutMs`. That includes `llmCall`,
   before each retry (default `0`). Each failed attempt that is retried emits a
   `step-retry` event with `{ attempt, maxAttempts, delayMs }` and the
   attempt's `error`. Only the last failure emits `step-error`. A cancelled run
-  (`signal`) is not retried.
+  (`signal`) is not retried, and neither is a model failure that retrying
+  cannot fix (see below).
 - `timeoutMs` fails an attempt that runs longer with `LOUSHO_OPERATION_TIMEOUT`
   (a `TimeoutError`). The attempt's model request or tool call gets an aborted
   signal. A timed-out attempt is retried like any other failure. A tool that
   ignores `ctx.abortSignal` keeps running in the background.
+
+An `llmCall` whose model request fails fails with the same
+`CompactedLLMProviderError` an agent run rejects with, not the provider SDK's
+raw error: `code` is `LOUSHO_PROVIDER_RATE_LIMITED` for a 429 and
+`LOUSHO_PROVIDER_REQUEST_FAILED` otherwise, and `compacted` holds
+`{ error, category, retryable, statusCode?, providerName? }`. A failure with
+`retryable: false` (an `'auth-failure'` such as a 401 or a bad API key, a
+`'quota-exceeded'`, a `'context-length-exceeded'`) fails the step at once,
+without using its remaining `retry` attempts; a rate limit, a timeout or a 5xx
+is retried.
 
 Invalid values (`maxAttempts` < 1 or not an integer, a negative `backoffMs`,
 a `timeoutMs` <= 0) fail the step with `LOUSHO_FLOW_INVALID`.
@@ -9968,7 +10014,9 @@ A retried container runs its children again. The exception is a durable run
 Pass a `checkpointStore` and a `runId` to make a run durable. The run's
 variables, the nodes that completed (with their results), the branch each
 `oneOf` took and the usage so far are saved under `runId` after every node
-that completes, and again when the flow finishes. Any `CheckpointStore` works,
+that completes, and again when the flow finishes. A new run is also saved
+once before its first step (after its inputs are checked), so a run whose
+first step fails can be resumed too. Any `CheckpointStore` works,
 such as `memoryStore().checkpoints` or a SQLite store (see
 [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)).
 
@@ -10005,7 +10053,9 @@ if (!first.success) {
   nothing. `execute()` with the `runId` of a finished run starts a new run.
   `execute()` with the `runId` of an unfinished run is refused with
   `LOUSHO_CONFIG_INVALID`; resume it instead, or use a new `runId`.
-- A run with no checkpoint is refused with `LOUSHO_CHECKPOINT_NOT_FOUND`.
+- A run with no checkpoint is refused with `LOUSHO_CHECKPOINT_NOT_FOUND`. A
+  run whose declared inputs were invalid saved none: call `execute()` again
+  with valid inputs.
 - Only one call runs a `runId` at a time. While `execute()` or `resume()`
   runs, it holds a run lease on the `runId` in the store, the same lease an
   agent run takes (see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). Another
@@ -10016,7 +10066,9 @@ if (!first.success) {
   released when the call returns. If the process holding it died, the lease
   expires (in 60 s at most), and then the run can be resumed. A custom
   `CheckpointStore` without `acquireLease` runs without leases.
-- A node that completed is only skipped once its checkpoint was saved. A node
+- A node that completed is only skipped once its checkpoint was saved, and
+  its `step-complete` event is emitted after that save, so a step reported
+  complete is never run again on resume. A node
   interrupted while running (an `llmCall` or a `toolCall`) runs again, so make
   side-effecting tools idempotent.
 - Variables and node results must survive `structuredClone`, so no functions

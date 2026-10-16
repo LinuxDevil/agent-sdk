@@ -14,7 +14,7 @@ import type { Checkpoint, CheckpointStatus, CheckpointStore, FlowCheckpointState
 import { ConfigurationError, SDKError } from '../execution/errors';
 import { cyrb53 } from '../utils/cyrb53';
 
-/** The run's usage and completed-step count so far, as FlowExecutor reports them. */
+/** A run's usage and completed-step count. */
 export interface FlowRunProgress {
   usage: ProviderUsage;
   steps: number;
@@ -85,10 +85,14 @@ export class FlowRun {
   private readonly choices: Map<string, number>;
   private readonly priorUsage: ProviderUsage;
   private readonly priorSteps: number;
+  /** Whether the run started without a saved state (a new `execute()`, not a resume). */
+  private readonly isNew: boolean;
+  /** The nodes completed in this attempt (counted here, so a save made before `step-complete` counts its node). */
+  private stepsNow = 0;
   private readonly decisions = new Map<string, FlowApprovalDecision>();
   private saving: Promise<void> = Promise.resolve();
-  /** Set by FlowExecutor once the run has started, to read its usage and steps. */
-  progress: () => FlowRunProgress = () => ({ usage: { ...ZERO_USAGE }, steps: 0 });
+  /** Set by FlowExecutor once the run has started, to read its usage. */
+  usage: () => ProviderUsage = () => ({ ...ZERO_USAGE });
 
   constructor(
     private readonly store: CheckpointStore,
@@ -103,6 +107,15 @@ export class FlowRun {
     this.choices = new Map(Object.entries(saved?.choices ?? {}));
     this.priorUsage = saved?.usage ?? { ...ZERO_USAGE };
     this.priorSteps = saved?.steps ?? 0;
+    this.isNew = saved === undefined;
+  }
+
+  /**
+   * Save a new run's first checkpoint, before its first node runs, so a run
+   * whose first step fails can be resumed too. A resumed run has one already.
+   */
+  async start(): Promise<void> {
+    if (this.isNew) await this.save('in-progress');
   }
 
   /** Whether the node at `path` completed (in this run or before the resume). */
@@ -145,13 +158,13 @@ export class FlowRun {
       }
     }
     this.completed.set(path, result);
+    this.stepsNow++;
     await this.save('in-progress');
   }
 
   /** The run's usage and steps including those before a resume. */
   totals(): FlowRunProgress {
-    const now = this.progress();
-    return { usage: addUsage(this.priorUsage, now.usage), steps: this.priorSteps + now.steps };
+    return { usage: addUsage(this.priorUsage, this.usage()), steps: this.priorSteps + this.stepsNow };
   }
 
   /** Save the run's state now (after any save in flight). */
@@ -235,7 +248,12 @@ export function flowStateOf(checkpoint: Checkpoint | null, runId: string, code: 
     throw new SDKError(
       `FlowExecutor.resume: no checkpoint for run '${runId}'. Start the run with FlowExecutor.execute(flow, { ...context, checkpointStore, runId }).`,
       'LOUSHO_CHECKPOINT_NOT_FOUND',
-      { appendHelp: false }
+      {
+        appendHelp: false,
+        hint:
+          'Resume only a run FlowExecutor.execute() started with this checkpointStore and runId (it saves before its first step; ' +
+          'a run whose inputs were invalid saved nothing). Otherwise start it with FlowExecutor.execute().',
+      }
     );
   }
   if (!checkpoint.flow) {
