@@ -13,7 +13,8 @@ import type * as http from 'node:http';
 import type { SimpleAgent } from '../createAgent';
 import type { SessionStore } from '../session/sessionStore';
 import type { SessionStores } from '../session/AgentSession';
-import { PayloadTooLargeError, readRawBody, sendJson } from '../server/chatRoutes';
+import { readRawBody, sendJson } from '../server/chatRoutes';
+import { PayloadTooLargeError } from '../server/fetchRoutes';
 import {
   toChannelRequest,
   type Channel,

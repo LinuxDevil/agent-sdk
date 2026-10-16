@@ -174,11 +174,11 @@ export function setSessionOwnerLimit(limit: number): number {
 }
 
 /** How many session records one principal may own per agent. a single caller could otherwise POST fresh session ids until every other owner's record was evicted past {@link MAX_SESSION_OWNERS}, locking each of them out of their stored sessions. */
-export const MAX_OWNERS_PER_PRINCIPAL = 1024;
+const MAX_OWNERS_PER_PRINCIPAL = 1024;
 
 let perPrincipalLimit = MAX_OWNERS_PER_PRINCIPAL;
 
-/** @internal Sets the per-principal owner cap ({@link MAX_OWNERS_PER_PRINCIPAL} by default) and returns the previous one; for tests. */
+/** @internal Sets the per-principal owner cap (the 1024-owner cap by default) and returns the previous one; for tests. */
 export function setSessionPrincipalLimit(limit: number): number {
   const previous = perPrincipalLimit;
   perPrincipalLimit = limit;
@@ -230,7 +230,7 @@ export function sessionOwner(agent: object, sessionId: string): Principal | unde
  * principal owns it. The check-and-set is one synchronous step, so a
  * `false` answer means a concurrent first touch won the id and this caller
  * must be refused - never streamed a turn inside that principal's session.
- * `false` too when `principal` already owns {@link MAX_OWNERS_PER_PRINCIPAL}
+ * `false` too when `principal` already owns the 1024-owner cap
  * sessions: one caller cannot evict every other owner by flooding new ids.
  */
 export function claimSession(agent: object, sessionId: string, principal: Principal): boolean {

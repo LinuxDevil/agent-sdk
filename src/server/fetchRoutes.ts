@@ -158,12 +158,12 @@ export interface ChatRoutesContext extends ChatRoutesAccess {
 }
 
 /** Body-size cap for POST routes, matching common Node.js body-size-limit conventions. */
-export const MAX_BODY_BYTES = 1024 * 1024; // 1MB
+const MAX_BODY_BYTES = 1024 * 1024; // 1MB
 
-/** @internal Thrown by {@link readBody} past {@link MAX_BODY_BYTES}; the route layer maps it to 413. */
+/** @internal Thrown by {@link readBody} past the 1MB cap; the route layer maps it to 413. */
 export class PayloadTooLargeError extends Error {}
 
-/** @internal `request`'s body as text, capped at {@link MAX_BODY_BYTES} (the body is drained, then 413 is thrown). */
+/** @internal `request`'s body as text, capped at the 1MB cap (the body is drained, then 413 is thrown). */
 export async function readBody(request: Request): Promise<string> {
   const reader = request.body?.getReader();
   const decoder = new TextDecoder();
