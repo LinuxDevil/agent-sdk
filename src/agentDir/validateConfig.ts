@@ -407,12 +407,16 @@ function objectEntries(file: string, name: string, example: string, value: unkno
   return Object.entries(value);
 }
 
+function isPositiveNumber(value: unknown): boolean {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
 function assertLimits(file: string, value: unknown): void {
   for (const [key, entry] of objectEntries(file, 'limits', '{ "maxCostUsd": 0.05 }', value)) {
     if (!LIMIT_KEYS.has(key)) fail(file, `'limits.${key}' is not a known limit. Allowed keys: ${[...LIMIT_KEYS].join(', ')}.`);
     if (key === 'onExceeded') {
       if (entry !== 'stop' && entry !== 'throw') fail(file, `'limits.onExceeded' must be 'stop' or 'throw', got ${describeValue(entry)}.`);
-    } else if (!(typeof entry === 'number' && Number.isFinite(entry) && entry > 0)) {
+    } else if (!isPositiveNumber(entry)) {
       fail(file, `'limits.${key}' must be a positive number, got ${describeValue(entry)}.`);
     }
   }
@@ -425,17 +429,21 @@ function assertRetry(file: string, value: unknown): void {
   if (value === undefined || value === false) return;
   for (const [key, entry] of objectEntries(file, 'retry', '{ "maxRetries": 4, "timeoutMs": 30000 } (or false)', value)) {
     if (!(RETRY_KEYS as readonly string[]).includes(key)) fail(file, `'retry.${key}' is not a known option. Allowed keys: ${RETRY_KEYS.join(', ')}.`);
-    if (key === 'backoff') {
-      assertBackoff(file, entry);
-    } else if (key === 'retryOn' || key === 'onRetry') {
-      if (typeof entry !== 'function') fail(file, `'retry.${key}' must be a function (code config only), got ${describeValue(entry)}.`);
-    } else if (key === 'signal') {
-      if (typeof entry !== 'object' || entry === null) fail(file, `'retry.signal' must be an AbortSignal (code config only), got ${describeValue(entry)}.`);
-    } else if (key === 'maxRetries') {
-      if (!(typeof entry === 'number' && Number.isInteger(entry) && entry >= 0)) fail(file, `'retry.maxRetries' must be a non-negative integer, got ${describeValue(entry)}.`);
-    } else if (!(typeof entry === 'number' && Number.isFinite(entry) && entry > 0)) {
-      fail(file, `'retry.${key}' must be a positive number, got ${describeValue(entry)}.`);
-    }
+    assertRetryOption(file, key, entry);
+  }
+}
+
+function assertRetryOption(file: string, key: string, entry: unknown): void {
+  if (key === 'backoff') {
+    assertBackoff(file, entry);
+  } else if (key === 'retryOn' || key === 'onRetry') {
+    if (typeof entry !== 'function') fail(file, `'retry.${key}' must be a function (code config only), got ${describeValue(entry)}.`);
+  } else if (key === 'signal') {
+    if (typeof entry !== 'object' || entry === null) fail(file, `'retry.signal' must be an AbortSignal (code config only), got ${describeValue(entry)}.`);
+  } else if (key === 'maxRetries') {
+    if (!(typeof entry === 'number' && Number.isInteger(entry) && entry >= 0)) fail(file, `'retry.maxRetries' must be a non-negative integer, got ${describeValue(entry)}.`);
+  } else if (!isPositiveNumber(entry)) {
+    fail(file, `'retry.${key}' must be a positive number, got ${describeValue(entry)}.`);
   }
 }
 
@@ -444,7 +452,7 @@ function assertBackoff(file: string, value: unknown): void {
     if (!(BACKOFF_KEYS as readonly string[]).includes(key)) fail(file, `'retry.backoff.${key}' is not a known option. Allowed keys: ${BACKOFF_KEYS.join(', ')}.`);
     if (key === 'jitter') {
       if (typeof entry !== 'boolean') fail(file, `'retry.backoff.jitter' must be a boolean, got ${describeValue(entry)}.`);
-    } else if (!(typeof entry === 'number' && Number.isFinite(entry) && entry > 0)) {
+    } else if (!isPositiveNumber(entry)) {
       fail(file, `'retry.backoff.${key}' must be a positive number, got ${describeValue(entry)}.`);
     }
   }

@@ -229,21 +229,45 @@ export function findDeprecatedPromptUse(source: string): number[] {
   const lines: number[] = [];
   const call = /\bcreateAgent\s*\(/g;
   for (let m = call.exec(source); m; m = call.exec(source)) {
-    let depth = 0;
-    let quote = '';
-    for (let i = m.index + m[0].length; i < source.length; i++) {
-      const ch = source[i];
-      if (quote) {
-        if (ch === '\\') i++;
-        else if (ch === quote) quote = '';
-      } else if (ch === "'" || ch === '"' || ch === '`') quote = ch;
-      else if (ch === '{' || ch === '[' || ch === '(') depth++;
-      else if (ch === '}' || ch === ']' || ch === ')') {
-        if (--depth < 0) break;
-      } else if (depth === 1 && /^prompt\s*[:,}]/.test(source.slice(i, i + 12)) && /[{,]\s*$/.test(source.slice(0, i))) {
-        lines.push(source.slice(0, i).split('\n').length);
-      }
+    lines.push(...promptKeyLines(source, m.index + m[0].length));
+  }
+  return lines;
+}
+
+/** Index of the quote closing the string literal that opens at `start` (the source length if unterminated). */
+function endOfString(source: string, start: number): number {
+  const quote = source[start];
+  for (let i = start + 1; i < source.length; i++) {
+    if (source[i] === '\\') i++;
+    else if (source[i] === quote) return i;
+  }
+  return source.length;
+}
+
+/** +1 for an opening bracket, -1 for a closing one, 0 otherwise. */
+function bracketDelta(ch: string): number {
+  if (ch === '{' || ch === '[' || ch === '(') return 1;
+  return ch === '}' || ch === ']' || ch === ')' ? -1 : 0;
+}
+
+/** Whether a `prompt` key starts at `i`, as a property of an object literal (preceded by `{` or `,`). */
+function isPromptKeyAt(source: string, i: number): boolean {
+  return /^prompt\s*[:,}]/.test(source.slice(i, i + 12)) && /[{,]\s*$/.test(source.slice(0, i));
+}
+
+/** Lines of top-level `prompt` keys in the call whose arguments start at `from`, up to its closing paren. */
+function promptKeyLines(source: string, from: number): number[] {
+  const lines: number[] = [];
+  let depth = 0;
+  for (let i = from; i < source.length; i++) {
+    const ch = source[i];
+    if (ch === "'" || ch === '"' || ch === '`') {
+      i = endOfString(source, i);
+      continue;
     }
+    depth += bracketDelta(ch);
+    if (depth < 0) break;
+    if (depth === 1 && isPromptKeyAt(source, i)) lines.push(source.slice(0, i).split('\n').length);
   }
   return lines;
 }
