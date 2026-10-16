@@ -241,6 +241,12 @@ path. This means:
 - `glob` and `grep` never follow links while walking the tree.
 - `rm` on a link removes the link itself and leaves its target alone.
 
+**Writes are atomic.** `NodeWorkspace` writes a file (for `write_file` and
+`edit_file` too) to a temp file in the same directory, flushes it and renames
+it over the target, so a process killed mid-write leaves the old file or the
+new one, never half of it. A replaced file keeps its permission bits, and a
+read-only file is still refused.
+
 **The file tools keep out of `.git`.** A checkout often has credentials in
 `.git/config`: `actions/checkout` keeps the job's token there as
 `http.https://github.com/.extraheader = AUTHORIZATION: basic ...`, and a
@@ -264,9 +270,19 @@ const workspace = new NodeWorkspace({ root: '.' });
 const tools = createFsTools(workspace, { readOnly: true, deny: ['.git', '.env'] });
 ```
 
-The check is by name, so a symlink elsewhere in the workspace that points
-into `.git` is not caught (`glob` and `grep` never follow links, but
-`read_file` on the link does). **The `shell` tool is not covered:** a command
+Links into `.git` are refused too. With `NodeWorkspace` (or any provider that
+implements `realPath`), the check also runs on where a path really leads, so a
+symlink or Windows junction elsewhere in the workspace that points at `.git`
+or into it (`gitj -> .git`, `hooks -> .git/hooks`, `cfg -> .git/config`)
+cannot be used to read, write or edit what is behind it: `read_file
+gitj/config`, `edit_file gitj/config` and `write_file gitj/PWNED` are tool
+errors, and so are `list_dir`, `glob` and `grep` given the link as their
+`path` (`grep` with `path: 'gitj'` or `path: 'gitj/config'`). `glob` and
+`grep` never follow links while walking the tree, so a search from the root
+does not reach `.git` through a link either. A provider without `realPath`
+(`MemoryWorkspace` has no links) gets the name check only.
+
+**The `shell` tool is not covered:** a command
 is free text, so it cannot be path-filtered, and `cat .git/config` or
 `git config --get-regexp extraheader` still works. Git commands that coding
 agents need (`git status`, `git diff`) go through the shell tool, so keep its
