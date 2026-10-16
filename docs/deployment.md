@@ -99,15 +99,28 @@ a page or script written against the dev server works against the deployed one.
 | `GET /health` | `200 ok`. Never needs auth: point load balancers and container health checks here. |
 | `POST /chat` `{ "sessionId", "input" }` | Runs a turn of session `sessionId` (1-128 characters of `A-Za-z0-9_-`; a new id starts a conversation, a known one continues it) and streams it as SSE: one `data: <AgentEvent JSON>` per event ([Streaming](./streaming.md)), then `event: done`. `input` is a string or an array of content parts. |
 | `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`. A turn's messages are saved when it finishes, so `messages` does not hold a turn that is paused on an approval; `pending` says it is. |
-| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn live as SSE, in the same framing and event types as `POST /chat` (the decided call's `tool.resume` / `tool.done` or `tool.error`, text deltas, `approval.requested` if it pauses again, `run.done`), from `agent.approvals.streamResolve()` / `streamAnswer()`. `404` when `id` is not pending. When the turn's step paused on several calls, each id is decided on its own; a decision that leaves others pending streams `run.done` with `finishReason: 'awaiting-approval'`, and the last one runs the step. |
+| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn live as SSE, in the same framing and event types as `POST /chat` (the decided call's `tool.resume` / `tool.done` or `tool.error`, text deltas, `approval.requested` if it pauses again, `run.done`), from `agent.approvals.streamResolve()` / `streamAnswer()`. `404` when `id` is not pending; `409` (`LOUSHO_APPROVAL_CONFLICT`) while another request's decision of it is still streaming; `400` (`LOUSHO_APPROVAL_DECISION_INVALID`) for a body with neither field. When the turn's step paused on several calls, each id is decided on its own; a decision that leaves others pending streams `run.done` with `finishReason: 'awaiting-approval'`, and the last one runs the step. |
 | `POST /chat` `{ "message" }` | Legacy, single turn without history or streaming: returns the agent's `ExecutionResult` as JSON, with a `Deprecation: true` header. |
 
 Bodies over 1MB get `413`, invalid JSON `400`. A POST must send
 `Content-Type: application/json` (anything else is `415`,
 `LOUSHO_UNSUPPORTED_MEDIA_TYPE`), and a browser POST from another origin is
 `403` (`LOUSHO_REQUEST_FORBIDDEN`): see
-[Cross-site requests](./auth.md#cross-site-requests). An empty `input` is
-`400`. With an auth list, a session belongs to the first principal that sends
+[Cross-site requests](./auth.md#cross-site-requests). An empty `input`, or a
+body without `sessionId` and `input`, is `400` (`LOUSHO_REQUEST_INVALID`; an
+invalid session id is `LOUSHO_SESSION_ID_INVALID`). Every error body is JSON
+`{ error, code }`. A turn sent to a session that is paused on an approval is
+`409` with `code: 'LOUSHO_SESSION_AWAITING_APPROVAL'`, `approvalId` and
+`approvalIds` (every approval still to decide): decide them through the
+approvals route, which streams the paused turn's continuation, then send the
+new turn.
+
+While a turn streams, the server writes an SSE comment line (`: ping`) after
+every 15 seconds without an event, so a proxy (nginx closes an idle upstream
+after 60s) or a client (Node's `fetch` gives up after 300s without a byte)
+keeps the connection while a model or a tool is slow. SSE parsers ignore
+comment lines. `createRouteHandler(agent, { heartbeatMs })` changes the
+interval; `0` turns it off. With an auth list, a session belongs to the first principal that sends
 it a turn, and a stored session whose owner the server no longer remembers
 (after a restart) is refused to everyone until `authorizeSession` says whose
 it is; with only `LOUSHO_API_TOKEN` there is one caller and no owner check

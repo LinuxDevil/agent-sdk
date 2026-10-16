@@ -69,10 +69,14 @@ export const ERROR_CODES = {
   LOUSHO_APPROVAL_ORPHANED: "The paused run (or session turn) was deleted or replaced by a newer one; the approval is withdrawn and cannot be continued - start a new turn instead.",
   LOUSHO_APPROVAL_CONFLICT:'Another request decided this approval at the same time; read the session to see the outcome instead of deciding again.',
   LOUSHO_APPROVAL_FORBIDDEN: 'Decide the approval as a caller the route\'s authorizeApproval accepts (by default, the caller the run acts for).',
+  /** The approvals route got a body without `approved` or `answer` (`400`). */
+  LOUSHO_APPROVAL_DECISION_INVALID: "Send a JSON body with 'approved' (true or false, and an optional 'note') or, for a question, 'answer'.",
   LOUSHO_APPROVAL_KIND_MISMATCH: "'answer' decides a question pause only; a tool-call pause takes 'approved' (a question also answers with 'approved' and the answer as 'note').",
   LOUSHO_SESSION_FORBIDDEN: 'Use a session the route\'s authorizeSession lets this caller read, continue or decide approvals in.',
   /** A session route refused a cross-site POST or a `Host` outside `allowedHosts` (`403`). */
   LOUSHO_REQUEST_FORBIDDEN: "Call from the server's own origin (or add the page's origin to allowedOrigins) and use a Host the server allows (allowedHosts).",
+  /** A session route got a body it cannot use: invalid JSON, or missing or empty fields (`400`). */
+  LOUSHO_REQUEST_INVALID: 'Send valid JSON with the fields the route names, e.g. POST /chat { "sessionId": "chat-1", "input": "Hello" }.',
   /** A session route refused a POST body that is not JSON (`415`). */
   LOUSHO_UNSUPPORTED_MEDIA_TYPE: "Send the request body as JSON with the header 'Content-Type: application/json'.",
   LOUSHO_SESSION_AWAITING_APPROVAL: 'Resolve the pending approval first (agent.approvals.resolve() or resumeAfterApproval()), then send again.',

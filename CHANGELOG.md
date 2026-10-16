@@ -15,6 +15,7 @@ opt-out.
 - `fromAiSdkTools(record)` converts Vercel AI SDK tools (`tool({ ... })` or plain `{ description, inputSchema | parameters, execute, needsApproval? }` objects) into Lousho tools, keyed by name: zod and Standard Schemas are kept, `jsonSchema()` wrappers and plain JSON Schemas are converted (their own `validate` still runs), `needsApproval` (boolean or function) pauses the run for approval, and `execute` gets the call id and the run's abort signal. It imports nothing from `ai`, so tools built on `ai` 4 to 7 work with any installed version. New guide: [Migrating from the AI SDK](docs/migrating-from-ai-sdk.md).
 - `lousho eval` without vitest installed now says it runs `*.eval.ts` files through vitest, the directory it searched from, and the install command; [Evals](docs/evals.md) states the requirement up front.
 - `result.usage.delegated.toolErrors`: the tool calls that failed inside a run's sub-agents (and theirs), which the lead's own `result.toolErrors` does not count. `ToolCallContext.onDelegatedUsage` takes the child's `toolErrors` as an optional second argument.
+- The session HTTP API (`createRouteHandler()`, the deployed node server, the Worker, `lousho dev`) writes an SSE comment (`: ping`) after 15 seconds without an event, so proxies and client idle timeouts no longer drop a turn whose model or tool is slow; `heartbeatMs` changes the interval (`0` turns it off). See [HTTP API](docs/deployment.md#http-api).
 
 ### Fixed
 - MCP tool schemas with OpenAPI's `nullable: true` (any type) now accept `null`; the model's valid `null` was rejected with `ToolArgumentsValidationError`.
@@ -25,6 +26,9 @@ opt-out.
 - A provider answering a streaming request with HTTP 200 and a body that is neither an event stream nor valid JSON (for example a truncated `{"choices": [ {"oops`) no longer ends as a silent empty reply. It now fails as a retryable 502, so `withRetry` retries it and an exhausted retry surfaces as a provider error.
 - A sub-agent with an `output` schema that ran out of steps and gave a valid object in its forced final call is now a `task` result (the object, with a line saying the steps ran out), not a failure telling the lead it gave no final answer - which made leads re-run the task.
 - Sub-agents are held to their lead's token, cost and duration `limits` while they run, counted with what the lead and its other running sub-agents have spent, so parallel sub-agents no longer each spend the lead's whole budget (a lead with `maxCostUsd` could end at several times it). A sub-agent stopped this way reports the limit to the lead. A spend limit stays a hard stop with no forced `output` answer; the finished tool results stay in `result.messages` ([Budgets](docs/configuration.md#budgets)).
+- **Behavior change:** `POST /chat` to a session paused on an approval is a `409` JSON body (`LOUSHO_SESSION_AWAITING_APPROVAL`, with `approvalId` and `approvalIds`) instead of a `200` stream ending in a generic error.
+- A decision on an approval whose winning decision is still streaming is a `409` (`LOUSHO_APPROVAL_CONFLICT`), as docs/auth.md says, instead of a `404`.
+- The session routes' `400` bodies carry a `code`: `LOUSHO_REQUEST_INVALID` (invalid JSON, missing or empty fields), `LOUSHO_APPROVAL_DECISION_INVALID` (an approval body with neither `approved` nor `answer`), `LOUSHO_SESSION_ID_INVALID`.
 
 ### Documentation
 

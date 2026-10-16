@@ -3551,8 +3551,13 @@ export const { GET, POST } = createRouteHandler(agent, {
 });
 ```
 
-Two requests that decide the same approval at once get one continuation: the
-other request is a `409` (`LOUSHO_APPROVAL_CONFLICT`), and a later one a `404`.
+Two requests that decide the same approval get one continuation: while the
+winning decision's continuation is still running (on the same server process),
+any other decision of that approval is a `409` (`LOUSHO_APPROVAL_CONFLICT`),
+whether it arrived at the same moment or while the decided tool was running;
+once that continuation has ended, a decision is a `404`
+(`LOUSHO_APPROVAL_NOT_FOUND`). A decision handled by another replica is a
+`404` there.
 
 ### Pauses, crashes and forks
 
@@ -7009,15 +7014,28 @@ a page or script written against the dev server works against the deployed one.
 | `GET /health` | `200 ok`. Never needs auth: point load balancers and container health checks here. |
 | `POST /chat` `{ "sessionId", "input" }` | Runs a turn of session `sessionId` (1-128 characters of `A-Za-z0-9_-`; a new id starts a conversation, a known one continues it) and streams it as SSE: one `data: <AgentEvent JSON>` per event ([Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)), then `event: done`. `input` is a string or an array of content parts. |
 | `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`. A turn's messages are saved when it finishes, so `messages` does not hold a turn that is paused on an approval; `pending` says it is. |
-| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn live as SSE, in the same framing and event types as `POST /chat` (the decided call's `tool.resume` / `tool.done` or `tool.error`, text deltas, `approval.requested` if it pauses again, `run.done`), from `agent.approvals.streamResolve()` / `streamAnswer()`. `404` when `id` is not pending. When the turn's step paused on several calls, each id is decided on its own; a decision that leaves others pending streams `run.done` with `finishReason: 'awaiting-approval'`, and the last one runs the step. |
+| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn live as SSE, in the same framing and event types as `POST /chat` (the decided call's `tool.resume` / `tool.done` or `tool.error`, text deltas, `approval.requested` if it pauses again, `run.done`), from `agent.approvals.streamResolve()` / `streamAnswer()`. `404` when `id` is not pending; `409` (`LOUSHO_APPROVAL_CONFLICT`) while another request's decision of it is still streaming; `400` (`LOUSHO_APPROVAL_DECISION_INVALID`) for a body with neither field. When the turn's step paused on several calls, each id is decided on its own; a decision that leaves others pending streams `run.done` with `finishReason: 'awaiting-approval'`, and the last one runs the step. |
 | `POST /chat` `{ "message" }` | Legacy, single turn without history or streaming: returns the agent's `ExecutionResult` as JSON, with a `Deprecation: true` header. |
 
 Bodies over 1MB get `413`, invalid JSON `400`. A POST must send
 `Content-Type: application/json` (anything else is `415`,
 `LOUSHO_UNSUPPORTED_MEDIA_TYPE`), and a browser POST from another origin is
 `403` (`LOUSHO_REQUEST_FORBIDDEN`): see
-[Cross-site requests](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#cross-site-requests). An empty `input` is
-`400`. With an auth list, a session belongs to the first principal that sends
+[Cross-site requests](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#cross-site-requests). An empty `input`, or a
+body without `sessionId` and `input`, is `400` (`LOUSHO_REQUEST_INVALID`; an
+invalid session id is `LOUSHO_SESSION_ID_INVALID`). Every error body is JSON
+`{ error, code }`. A turn sent to a session that is paused on an approval is
+`409` with `code: 'LOUSHO_SESSION_AWAITING_APPROVAL'`, `approvalId` and
+`approvalIds` (every approval still to decide): decide them through the
+approvals route, which streams the paused turn's continuation, then send the
+new turn.
+
+While a turn streams, the server writes an SSE comment line (`: ping`) after
+every 15 seconds without an event, so a proxy (nginx closes an idle upstream
+after 60s) or a client (Node's `fetch` gives up after 300s without a byte)
+keeps the connection while a model or a tool is slow. SSE parsers ignore
+comment lines. `createRouteHandler(agent, { heartbeatMs })` changes the
+interval; `0` turns it off. With an auth list, a session belongs to the first principal that sends
 it a turn, and a stored session whose owner the server no longer remembers
 (after a restart) is refused to everyone until `authorizeSession` says whose
 it is; with only `LOUSHO_API_TOKEN` there is one caller and no owner check
@@ -8067,7 +8085,7 @@ Find a code by area:
 | [Providers and peers](#providers-and-peers) | [`LOUSHO_PROVIDER_SPEC_INVALID`](#lousho_provider_spec_invalid), [`LOUSHO_PROVIDER_UNKNOWN`](#lousho_provider_unknown), [`LOUSHO_PROVIDER_MISSING_API_KEY`](#lousho_provider_missing_api_key), [`LOUSHO_PROVIDER_REQUEST_FAILED`](#lousho_provider_request_failed), [`LOUSHO_PROVIDER_RATE_LIMITED`](#lousho_provider_rate_limited), [`LOUSHO_PEER_MISSING`](#lousho_peer_missing), [`LOUSHO_HOSTED_TOOL_UNSUPPORTED`](#lousho_hosted_tool_unsupported), [`LOUSHO_UNSUPPORTED_CONTENT`](#lousho_unsupported_content) | Resolving a model string, a missing API key or peer package, a failed or rate-limited model request, a hosted tool the provider cannot run, a file the provider cannot send. |
 | [Agent spec files](#agent-spec-files) | [`LOUSHO_SPEC_NOT_FOUND`](#lousho_spec_not_found), [`LOUSHO_SPEC_INVALID`](#lousho_spec_invalid), [`LOUSHO_SPEC_UNKNOWN_FIELD`](#lousho_spec_unknown_field), [`LOUSHO_SPEC_UNSUPPORTED_FORMAT`](#lousho_spec_unsupported_format) | Loading an `AgentSpec` file with `loadSpec()` or `specToAgent()`. |
 | [Tools](#tools) | [`LOUSHO_TOOL_NOT_FOUND`](#lousho_tool_not_found), [`LOUSHO_TOOL_NEEDS_CREDENTIALS`](#lousho_tool_needs_credentials), [`LOUSHO_TOOL_EXECUTION_FAILED`](#lousho_tool_execution_failed), [`LOUSHO_TOOL_ARGS_INVALID`](#lousho_tool_args_invalid), [`LOUSHO_MCP_START_FAILED`](#lousho_mcp_start_failed), [`LOUSHO_MCP_CALL_FAILED`](#lousho_mcp_call_failed) | A tool the model called is unknown, needs credentials, threw, or got invalid arguments; a stdio MCP server did not start or a call to one failed. |
-| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_ORPHANED`](#lousho_approval_orphaned), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_APPROVAL_KIND_MISMATCH`](#lousho_approval_kind_mismatch), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_TURN_FAILED`](#lousho_session_turn_failed), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_CHECKPOINT_CORRUPT`](#lousho_checkpoint_corrupt), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
+| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_ORPHANED`](#lousho_approval_orphaned), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_APPROVAL_DECISION_INVALID`](#lousho_approval_decision_invalid), [`LOUSHO_APPROVAL_KIND_MISMATCH`](#lousho_approval_kind_mismatch), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_TURN_FAILED`](#lousho_session_turn_failed), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_CHECKPOINT_CORRUPT`](#lousho_checkpoint_corrupt), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
 | [Schedules](#schedules) | [`LOUSHO_SCHEDULE_INVALID`](#lousho_schedule_invalid), [`LOUSHO_SCHEDULE_RUN_INCOMPLETE`](#lousho_schedule_run_incomplete) | Defining or loading a schedule, or a scheduled turn that did not finish. |
 | [Channels](#channels) | [`LOUSHO_CHANNEL_INVALID`](#lousho_channel_invalid), [`LOUSHO_MEMORY_INVALID`](#lousho_memory_invalid) | Defining a channel or a memory slot. |
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
@@ -8457,7 +8475,8 @@ approving the refund that turn paused on.
 ### LOUSHO_APPROVAL_CONFLICT
 
 **Means:** a `409` from the approvals route: another request decided the same
-approval while this one was being checked, and won.
+approval first, and its continuation is still running (on this server
+process).
 
 **Fix:** do not decide again; read the session (`GET /chat/:sessionId`) to see
 how the turn went on.
@@ -8474,6 +8493,17 @@ decide it (see [Route auth](https://github.com/LinuxDevil/agent-sdk/blob/main/do
 `authorizeApproval`.
 
 **Example:** user `bob` posts a decision on an approval of `alice`'s run.
+
+### LOUSHO_APPROVAL_DECISION_INVALID
+
+**Means:** a `400` from the approvals route: the body has neither
+`approved` (a boolean) nor `answer` (a string).
+
+**Fix:** send `{ "approved": true }` (or `false`, with an optional `note`),
+or `{ "answer": "..." }` for an `ask_question` pause.
+
+**Example:** posting `{ "approve": "yes" }` to
+`/chat/alice-1/approvals/ap-1`.
 
 ### LOUSHO_APPROVAL_KIND_MISMATCH
 
@@ -8515,6 +8545,18 @@ names on `lousho dev`).
 **Example:** a page on `https://evil.example` posts to `/api/agent/chat` with
 the user's session cookie.
 
+### LOUSHO_REQUEST_INVALID
+
+**Means:** a `400` from a session route: the body is not valid JSON, or it
+lacks a field the route needs (`POST /chat` without `sessionId` and `input`,
+an empty `input`, an `input` with no `user` message).
+
+**Fix:** send the fields the error message names, e.g.
+`{ "sessionId": "chat-1", "input": "Hello" }` (see
+[HTTP API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#http-api)).
+
+**Example:** `POST /chat` with `{ "sessionId": "chat-1", "input": [] }`.
+
 ### LOUSHO_UNSUPPORTED_MEDIA_TYPE
 
 **Means:** a `415` from a session route: a POST body was not sent as JSON.
@@ -8535,6 +8577,9 @@ paused on an approval (`error.approvalId`), so it cannot take new input yet.
 **Fix:** resolve the approval with `agent.approvals.resolve()` (or
 `resumeAfterApproval()` with the same `checkpointStore`), then send again. See
 [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md).
+
+Over HTTP, `POST /chat` to such a session is a `409` with this code and the
+approvals to decide (`approvalId`, `approvalIds`).
 
 **Example:** `session.send('next')` while the previous turn waits on an approval.
 
@@ -19563,6 +19608,7 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | With route auth and no `authorizeSession`, a session belongs to the first principal that sends it a turn (a read claims nothing); another principal gets `403 LOUSHO_SESSION_FORBIDDEN`. The owner is kept in memory per agent (the 100,000 most recently used sessions); a stored session whose owner is not on record (after a restart, past that cap) is refused to everyone, so pass `authorizeSession` on more than one instance or with a store that outlives the process. One bearer token is one caller and checks no owner. See [Who may use a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-use-a-session). | `authorizeSession: () => true` |
 | The session routes (`createRouteHandler()`, `createDeployedServer()`, the Worker, `lousho dev`) refuse a cross-site POST (`403 LOUSHO_REQUEST_FORBIDDEN`) and a POST body that is not `Content-Type: application/json` (`415 LOUSHO_UNSUPPORTED_MEDIA_TYPE`). The new `allowedHosts` (off by default) refuses unlisted `Host` headers. See [Cross-site requests](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#cross-site-requests). | `allowedOrigins: ['*']`, `requireJsonBody: false` (or list the front end's origin in `allowedOrigins`) |
 | `POST /chat/:sessionId/approvals/:id` answers `404` unless the approval belongs to that session, and only the caller the paused run acts for may decide it. | `authorizeApproval` to let others (a supervisor) decide |
+| `POST /chat` to a session paused on an approval answers `409` JSON (`LOUSHO_SESSION_AWAITING_APPROVAL`, with `approvalId` and `approvalIds`) instead of a `200` stream that ends in an `error` event. | no opt-out (decide the approval first) |
 | The routes send an error's `name` and `code` with a generic message instead of its raw text (in `error` events, `500` bodies and `provider.retry` / `provider.fallback` events); the full error goes to `console.error`. | `exposeErrors: true` (`lousho dev` sets it) |
 | A client that disconnects mid-turn no longer aborts the turn: it runs to its end and is saved. See [Next.js routes](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md#routes). | `onDisconnect: 'abort'` |
 | `lousho dev` answers `403` to a request whose `Host` is not a loopback name (or, off loopback, an IP address or the `--host` name), against DNS rebinding; this covers `/channels/<name>` for a channel without `verify`. | `--allowed-hosts a,b` (adds to the defaults) |

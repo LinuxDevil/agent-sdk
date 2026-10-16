@@ -551,8 +551,13 @@ export const { GET, POST } = createRouteHandler(agent, {
 });
 ```
 
-Two requests that decide the same approval at once get one continuation: the
-other request is a `409` (`LOUSHO_APPROVAL_CONFLICT`), and a later one a `404`.
+Two requests that decide the same approval get one continuation: while the
+winning decision's continuation is still running (on the same server process),
+any other decision of that approval is a `409` (`LOUSHO_APPROVAL_CONFLICT`),
+whether it arrived at the same moment or while the decided tool was running;
+once that continuation has ended, a decision is a `404`
+(`LOUSHO_APPROVAL_NOT_FOUND`). A decision handled by another replica is a
+`404` there.
 
 ### Pauses, crashes and forks
 
