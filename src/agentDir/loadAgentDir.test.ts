@@ -209,6 +209,25 @@ describe('loadAgentDir', () => {
   });
 });
 
+describe('agent.ts output and retry', () => {
+  it('carries a code config output schema and retry into the assembled config, and an override wins', async () => {
+    const { config } = await resolveAgentDir(fixture('config-output'), { provider: mockModel(['x']) });
+    expect(config.retry).toEqual({ maxRetries: 1, timeoutMs: 5000 });
+    expect(config.output).toBeDefined();
+    const overridden = await resolveAgentDir(fixture('config-output'), { provider: mockModel(['x']), retry: false, output: z.object({ a: z.string() }) });
+    expect(overridden.config.retry).toBe(false);
+    expect(overridden.config.output).not.toBe(config.output);
+  });
+
+  it('types result.object from an output override', async () => {
+    const agent = await loadAgentDir(fixture('config-output'), { provider: mockModel(['{"city":"Oslo","tempC":3}']), output: z.object({ city: z.string(), tempC: z.number() }) });
+    const result = await agent.send('weather?');
+    expect(result.object?.tempC).toBe(3);
+    const fromFile = await loadAgentDir(fixture('config-output'), { provider: mockModel(['{"city":"Rome","tempC":20}']) });
+    expect((await fromFile.send('weather?')).object).toEqual({ city: 'Rome', tempC: 20 });
+  });
+});
+
 describe('agent.* run options (permissionMode, permissions, compaction, hooks, approve, limits)', () => {
   it('maps every new key into the createAgent() options and tracks the files it imported', async () => {
     const { config, manifest } = await resolveAgentDir(fixture('config-extras'), {
@@ -220,6 +239,7 @@ describe('agent.* run options (permissionMode, permissions, compaction, hooks, a
     expect(config.compaction).toEqual({ thresholdPercent: 0.8 });
     expect(config.limits).toEqual({ maxCostUsd: 0.05, onExceeded: 'stop' });
     expect(config.modelSettings).toEqual({ maxTokens: 2048, temperature: 0.2 });
+    expect(config.retry).toEqual({ maxRetries: 4, timeoutMs: 30000, backoff: { initialMs: 1000 } });
     expect(config.permissions).toHaveLength(3);
     expect(config.permissions?.[0]).toMatchObject({ tool: 'shell', action: 'deny', reason: 'No deletes' });
     expect(typeof config.approve).toBe('function');
