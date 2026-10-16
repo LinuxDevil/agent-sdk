@@ -502,7 +502,7 @@ describe('OpenAI base URL and --ping', () => {
     const report = await runDoctor(makeEnv({ env: { GOOGLE_GENERATIVE_AI_API_KEY: SECRET }, fetch }), { ping: true });
     expect(fetch.mock.calls.map(([url]) => url)).toEqual(['https://generativelanguage.googleapis.com/v1beta/models']);
     expect(fetch.mock.calls[0][1].headers).toEqual({ 'x-goog-api-key': SECRET });
-    expect(report.checks.find((c) => c.id === 'ping.google')).toMatchObject({ status: 'ok', finding: 'reachable (HTTP 200)' });
+    expect(report.checks.find((c) => c.id === 'ping.google')).toMatchObject({ status: 'ok', finding: 'reachable, key accepted (HTTP 200)' });
   });
 
   it('--ping with no provider configured says so', async () => {
