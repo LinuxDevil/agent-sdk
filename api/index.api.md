@@ -480,6 +480,23 @@ interface AiSdkProviderConfig extends LLMProviderConfig {
 }
 
 // @public
+export interface AiSdkToolCallOptions {
+    abortSignal?: AbortSignal;
+    messages: readonly Message[];
+    toolCallId: string;
+}
+
+// @public
+export interface AiSdkToolLike {
+    description?: string | ((options: never) => unknown);
+    execute?: (input: never, options: never) => unknown;
+    inputSchema?: unknown;
+    needsApproval?: boolean | ((input: never, options: never) => unknown);
+    parameters?: unknown;
+    type?: string;
+}
+
+// @public
 export function allow(tools: PermissionToolMatcher): PermissionRule;
 
 // @public
@@ -2539,6 +2556,9 @@ export interface FromAiSdkOptions {
     replaysReasoning?: boolean;
     unsupportedFiles?: UnsupportedFiles;
 }
+
+// @public
+export function fromAiSdkTools(tools: Readonly<Record<string, AiSdkToolLike>>): DefinedTool[];
 
 // @public
 export function fromUIMessages(messages: readonly UIMessageLike[], options?: {
@@ -6992,7 +7012,7 @@ export type VectorMemoryProvider = MemoryProvider & {
 };
 
 // @public
-export const VERSION = "1.0.0-alpha.20";
+export const VERSION = "1.0.0-alpha.23";
 
 // @public
 export function warnUnknownContextWindow(feature: string, model: string | undefined, assumed: number): void;

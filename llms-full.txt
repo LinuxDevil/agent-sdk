@@ -206,6 +206,7 @@ offline with `npx vitest run scripts/buildACodingAgent.test.ts`.
 | [OpenAPI tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/openapi-tools.md) | `openApiTools()`: an OpenAPI 3.0 / 3.1 document becomes one tool per operation, with approval for mutating ones |
 | [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md) | Model strings, `resolveProvider()`, which model runs, custom providers |
 | [Comparison](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/comparison.md) | How lousho compares with the Vercel AI SDK, Mastra, the OpenAI Agents SDK, Vercel eve and LangGraph.js, including where it is weaker |
+| [Migrating from the AI SDK](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/migrating-from-ai-sdk.md) | From `ToolLoopAgent` / `generateText({ tools })`: a mapping table, models via `fromAiSdk()`, tools via `fromAiSdkTools()`, `useChat` |
 | [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md) | Every `lousho` command and its flags |
 | [ACP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md) | `lousho acp` / `serveAcp()`: drive an agent from Zed and other Agent Client Protocol editors |
 | [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md) | `defineTool()`, validation and errors, built-in tools, `ToolRegistry` |
@@ -9201,6 +9202,12 @@ They are written with `defineEval()`, live in `*.eval.ts` files, run under
 [vitest](https://vitest.dev), and are best run in CI with `lousho eval`, which
 prints a summary and writes JUnit and JSON reports.
 
+> **vitest is required.** `lousho eval` does not run eval files itself: it runs
+> your `*.eval.ts` files through [vitest](https://vitest.dev), resolved from your
+> project's own `node_modules` (Lousho does not bundle it). Install it as a dev
+> dependency first; without it, `lousho eval` exits 1 with
+> `vitest was not found from <dir>` and the install command.
+
 ```bash
 npm install --save-dev vitest
 npx lousho eval
@@ -12025,6 +12032,157 @@ Costs and limits:
 - `fileMemory()`, `sqliteMemory()` and the Cloudflare KV store have no vector
   support. Write your own `MemoryProvider` for a vector database.
 
+# Migrating from the Vercel AI SDK
+
+Source: docs/migrating-from-ai-sdk.md
+
+This page is for code built on the Vercel AI SDK's agent loop: `generateText({ tools })`
+or `streamText({ tools })` with a step limit, or `new ToolLoopAgent({ ... })`. You can keep
+your models, your tools and your `useChat` front end. Three adapters bring them over
+without a rewrite:
+
+| You have | Use | Covered in |
+| --- | --- | --- |
+| An AI SDK model (`openai('gpt-4o')`, `google(...)`, `bedrock(...)`, the Gateway) | `fromAiSdk(model)` | [Models](#models-fromaisdk) |
+| AI SDK tools (`tool({ ... })` or plain `{ description, inputSchema, execute }` objects) | `fromAiSdkTools(tools)` | [Tools](#tools-fromaisdktools) |
+| A `useChat` front end | `toUIMessageStreamResponse()` and `fromUIMessages()` | [useChat](#usechat) |
+
+What you get in return is what `createAgent()` adds on top of a model loop: durable
+approvals that survive a restart, sessions in memory, files or SQLite, crash resume,
+budgets, permission rules, sub-agents and handoffs, MCP servers, tracing and evals.
+
+## Mapping
+
+| AI SDK | Lousho |
+| --- | --- |
+| `new ToolLoopAgent({ model, instructions, tools })` | `createAgent({ provider: fromAiSdk(model), instructions, tools: fromAiSdkTools(tools) })` |
+| `generateText({ model, system, prompt, tools, stopWhen })` | `await agent.send(prompt)`; `system` is `instructions` |
+| `streamText({ ... })` / `agent.stream()` | `agent.stream(prompt)`: `for await` over typed events, or `await run.result` |
+| `result.text` | `result.text` |
+| `result.steps`, `onStepFinish` | `step.start` / `step.done` / `tool.done` events (`onEvent`, or iterate `agent.stream()`) ([Stream events](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/stream-events.md)) |
+| `result.usage` / `totalUsage` | `result.usage` (tokens of every call, plus `costUsd` for priced models) ([Models and cost](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/models-and-cost.md)) |
+| `stopWhen: stepCountIs(n)` / v4 `maxSteps: n` | `maxSteps: n`; token, cost and time budgets with `limits` ([Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets)) |
+| `temperature`, `maxOutputTokens`, `toolChoice`, ... | `modelSettings: { temperature, maxTokens, toolChoice, ... }` |
+| `output: Output.object({ schema })` / `experimental_output` | `output: schema`, read as `result.object` ([Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)) |
+| `messages: [...]` (you keep the history) | `agent.session({ id })` keeps it for you, or pass the messages to `send()` ([Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md)) |
+| `abortSignal` | `send(input, { signal })` |
+| `tool({ needsApproval })` and `addToolApprovalResponse` | `needsApproval` (kept by `fromAiSdkTools()`); the run pauses with `finishReason: 'awaiting-approval'` and continues with `agent.approvals.resolve()`, also after a restart ([Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)) |
+| Provider tools (`openai.tools.webSearch()`) | `webSearch()`, `codeInterpreter()`, `fileSearch()`, `hostedTool()` ([Hosted tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hosted-tools.md)) |
+| `experimental_createMCPClient()` | `createAgent({ mcpServers })` ([MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md)) |
+
+## Models: fromAiSdk()
+
+`fromAiSdk(model)` wraps any AI SDK `LanguageModel` as the agent's provider, so a model
+you already configured (keys, base URL, provider options) works as it is:
+
+```ts no-run
+import { createOpenAI } from '@ai-sdk/openai';
+import { createAgent, fromAiSdk } from '@lousho/build-ai-agent';
+
+const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const agent = createAgent({ provider: fromAiSdk(openai.chat('gpt-4o-mini')), instructions: 'You are helpful.' });
+```
+
+For the built-in vendors a model string is shorter: `createAgent({ model: 'openai/gpt-4o-mini' })`.
+See [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md#any-ai-sdk-model-fromaisdk) for the options and which
+`ai` majors are supported.
+
+## Tools: fromAiSdkTools()
+
+`fromAiSdkTools()` takes the same record you pass to `generateText({ tools })` or
+`ToolLoopAgent`, and returns Lousho tools; each key becomes the tool's name:
+
+```ts no-verify
+import { tool } from 'ai';
+import { z } from 'zod';
+import { createAgent, fromAiSdk, fromAiSdkTools } from '@lousho/build-ai-agent';
+
+const weather = tool({
+  description: 'Get the weather in a city',
+  inputSchema: z.object({ city: z.string() }),
+  execute: async ({ city }, { abortSignal }) => fetchWeather(city, abortSignal),
+});
+const sendEmail = tool({
+  description: 'Send an email',
+  inputSchema: z.object({ to: z.string(), body: z.string() }),
+  needsApproval: async ({ to }) => !to.endsWith('@example.com'),
+  execute: async ({ to, body }) => mailer.send(to, body),
+});
+
+const agent = createAgent({
+  provider: fromAiSdk(model),
+  instructions: 'You are a helpful assistant.',
+  tools: fromAiSdkTools({ weather, sendEmail }),
+});
+```
+
+The conversion does not import `ai`, so a tool works whatever `ai` version built it,
+and a plain object works too. This one runs offline:
+
+```ts
+import { z } from 'zod';
+import { createAgent, fromAiSdkTools } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+
+const tools = fromAiSdkTools({
+  weather: {
+    description: 'Get the weather in a city',
+    inputSchema: z.object({ city: z.string() }),
+    execute: async ({ city }: { city: string }) => `Sunny in ${city}`,
+  },
+});
+const agent = createAgent({
+  provider: mockModel([{ toolCalls: [{ name: 'weather', args: { city: 'Paris' } }] }, 'It is sunny in Paris.']),
+  tools,
+});
+const result = await agent.send('Weather in Paris?');
+console.log(result.text); // It is sunny in Paris.
+```
+
+How each part of an AI SDK tool is carried over:
+
+| AI SDK tool | Lousho tool |
+| --- | --- |
+| `inputSchema` (`ai` 5+) or `parameters` (`ai` 4), a zod 3 / zod 4 schema or a Standard Schema | used as it is |
+| `inputSchema: jsonSchema({...})`, or a plain JSON Schema | converted to zod (the converter MCP tools use); the wrapper's own `validate` still runs before `execute` |
+| `execute(input, { toolCallId, messages, abortSignal })` | called with Lousho's call id, the run's abort signal, and the transcript as Lousho `Message`s (not AI SDK `ModelMessage`s) |
+| An `execute` that throws | a tool error the model sees; the run continues |
+| An `execute` that returns an async iterable (preliminary results) | each value is a `tool.partial` event; the last is the result |
+| `needsApproval: true` or a function of the input | `needsApproval`: the run pauses durably until `agent.approvals.resolve()` |
+| A `description` function (`ai` 7) | called once with an empty context |
+| No `execute` (a client-side tool) | rejected with `LOUSHO_CONFIG_INVALID`: give it an `execute`, or use `needsApproval` / the [`ask_question` tool](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#asking-the-user-a-question) |
+| A provider-defined tool | rejected: use [hosted tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hosted-tools.md) |
+
+`experimental_context`, `onInputStart` / `onInputDelta` / `onInputAvailable` and
+`toModelOutput` are not carried over. For a new tool, prefer `defineTool()`
+([Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md)): it also takes `timeoutMs`, `annotations`, `editsFiles` and
+`deferLoading`.
+
+## useChat
+
+A `useChat` front end keeps working: the route returns the agent's run as a UI message
+stream.
+
+```ts no-run
+import { createAgent, fromUIMessages, memoryStore, toUIMessageStreamResponse, type UIMessageLike } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are helpful.', store: memoryStore() });
+
+// app/api/chat/route.ts
+export async function POST(request: Request): Promise<Response> {
+  const { id, messages } = (await request.json()) as { id: string; messages: UIMessageLike[] };
+  return toUIMessageStreamResponse(agent.session({ id }).stream(fromUIMessages(messages, { lastUserOnly: true })));
+}
+```
+
+Approvals, tool parts and the client side are in [AI SDK UI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/ai-sdk-ui.md); a ready
+App Router route is `createRouteHandler(agent)` ([Next.js](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md)).
+
+## See also
+
+- [Comparison](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/comparison.md): where Lousho and the AI SDK differ, including where Lousho is weaker.
+- [Migrating to createAgent()](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/migrating-to-create-agent.md) is about Lousho's own older `AgentBuilder` / `AgentExecutor` API, not the AI SDK.
+
 # Migrating to createAgent()
 
 Source: docs/migrating-to-create-agent.md
@@ -14238,6 +14396,9 @@ mapped). Each throws `LOUSHO_CONFIG_INVALID`:
 - a run with another `model` id than the wrapped one (inside a run it is the
   cause of the `LOUSHO_PROVIDER_REQUEST_FAILED` error): wrap each model with
   `fromAiSdk()` and combine them with `withFallback()`.
+
+Tools written for the AI SDK (`tool({ ... })`) come over with `fromAiSdkTools()`; see
+[Migrating from the AI SDK](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/migrating-from-ai-sdk.md#tools-fromaisdktools).
 
 ### The `pi` provider
 
@@ -18347,6 +18508,8 @@ const agent = createAgent({ instructions: '...', provider, tools: [weather] });
 Tools the model provider runs itself (web search, code interpreter, file search) go in the same `tools` list; see [Hosted provider tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hosted-tools.md).
 
 With many tools, mark them `deferLoading` so the model finds them with a built-in `tool_search` tool instead of receiving every definition on every call; see [Tool search](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tool-search.md).
+
+Tools written for the Vercel AI SDK (`tool({ description, inputSchema, execute })`) convert with `fromAiSdkTools({ weather, sendEmail })`, `needsApproval` included; see [Migrating from the AI SDK](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/migrating-from-ai-sdk.md#tools-fromaisdktools).
 
 ## `defineTool()` options
 

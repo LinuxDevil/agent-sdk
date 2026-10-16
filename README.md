@@ -209,6 +209,7 @@ offline with `npx vitest run scripts/buildACodingAgent.test.ts`.
 | [OpenAPI tools](docs/openapi-tools.md) | `openApiTools()`: an OpenAPI 3.0 / 3.1 document becomes one tool per operation, with approval for mutating ones |
 | [Providers](docs/providers.md) | Model strings, `resolveProvider()`, which model runs, custom providers |
 | [Comparison](docs/comparison.md) | How lousho compares with the Vercel AI SDK, Mastra, the OpenAI Agents SDK, Vercel eve and LangGraph.js, including where it is weaker |
+| [Migrating from the AI SDK](docs/migrating-from-ai-sdk.md) | From `ToolLoopAgent` / `generateText({ tools })`: a mapping table, models via `fromAiSdk()`, tools via `fromAiSdkTools()`, `useChat` |
 | [CLI](docs/cli.md) | Every `lousho` command and its flags |
 | [ACP](docs/acp.md) | `lousho acp` / `serveAcp()`: drive an agent from Zed and other Agent Client Protocol editors |
 | [Tools](docs/tools.md) | `defineTool()`, validation and errors, built-in tools, `ToolRegistry` |

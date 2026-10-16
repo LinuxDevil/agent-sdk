@@ -5,7 +5,7 @@
  * `--url <base> [--token t]` runs the cases against a deployed agent instead (src/evals/remoteTarget.ts).
  *
  * vitest is the user's dependency, not ours: it is resolved from the
- * project's own node_modules and the command exits 2 with the install
+ * project's own node_modules and the command exits 1 with the install
  * command when it is missing. Results travel back through a JSON-lines
  * file (see src/evals/recorder.ts for why that beats a custom reporter).
  */
@@ -404,7 +404,11 @@ export async function runEval(rest: string[], deps: EvalDeps = {}): Promise<numb
   try {
     const vitestBin = resolved.resolveVitest(resolved.cwd);
     if (!vitestBin) {
-      console.error('lousho eval: vitest is not installed in this project. Install it with:\n  npm install --save-dev vitest');
+      console.error(
+        `lousho eval: vitest was not found from ${resolved.cwd}. lousho eval runs your *.eval.ts files through vitest, ` +
+          "which is your project's dev dependency (lousho does not bundle it). Install it in this project with:\n" +
+          '  npm install --save-dev vitest   (pnpm add -D vitest / yarn add -D vitest / bun add -d vitest)'
+      );
       return 1;
     }
     return await runAndReport(args, resolved, vitestBin);

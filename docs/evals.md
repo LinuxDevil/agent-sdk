@@ -6,6 +6,12 @@ They are written with `defineEval()`, live in `*.eval.ts` files, run under
 [vitest](https://vitest.dev), and are best run in CI with `lousho eval`, which
 prints a summary and writes JUnit and JSON reports.
 
+> **vitest is required.** `lousho eval` does not run eval files itself: it runs
+> your `*.eval.ts` files through [vitest](https://vitest.dev), resolved from your
+> project's own `node_modules` (Lousho does not bundle it). Install it as a dev
+> dependency first; without it, `lousho eval` exits 1 with
+> `vitest was not found from <dir>` and the install command.
+
 ```bash
 npm install --save-dev vitest
 npx lousho eval
