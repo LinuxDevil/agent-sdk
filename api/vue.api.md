@@ -1219,6 +1219,14 @@ interface ReasoningSettings {
 type ReasoningStartEvent = AgentEventBase<'reasoning.start'>;
 
 // @public
+interface RecoverOptions<TResult = unknown> {
+    intervalMs?: number;
+    onError?: (error: unknown, run?: PendingRun) => void;
+    onRecovered?: (run: PendingRun, result: TResult) => void;
+    signal?: AbortSignal;
+}
+
+// @public
 export function reduceAgentEvents(state: AgentUIState, event: AgentEvent | AgentUIAction): AgentUIState;
 
 // @public
@@ -1258,6 +1266,12 @@ interface RunLimits {
     maxSteps?: number;
     maxTokens?: number;
     onExceeded?: 'stop' | 'throw';
+}
+
+// @public
+interface RunRecovery {
+    readonly done: Promise<void>;
+    stop(): Promise<void>;
 }
 
 // @public
@@ -1455,6 +1469,7 @@ interface SimpleAgent<TObject = unknown> {
     oauth: AgentOAuth;
     pending: () => Promise<PendingRun[]>;
     ready: () => Promise<void>;
+    recover: (options?: RecoverOptions<ExecutionResult<TObject>>) => RunRecovery;
     resume: (sessionId: string, options?: {
         signal?: AbortSignal;
     }) => Promise<ExecutionResult<TObject> | null>;

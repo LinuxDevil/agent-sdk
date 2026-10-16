@@ -7271,6 +7271,79 @@ without durable writes) is listed as `'in-progress'` with `lastError.code`
 `resume()` fail with; drop it with `discardPending()` (or `clear()`), or
 `store.checkpoints.delete(id)` for a run.
 
+### Recovering automatically
+
+`agent.recover()` runs that recipe for you, in the background: every
+`intervalMs` (default 30 seconds) it lists `agent.pending()` and calls
+`agent.resume()` on each `'in-progress'` run. Start it once per process, next
+to the code that serves traffic:
+
+```ts
+import { createAgent, defineTool, memoryStore, PropagatingToolError } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+import { z } from 'zod';
+
+let charges = 0;
+let attempts = 0;
+const tools = [
+  defineTool({ name: 'charge', description: 'Charge the card', input: z.object({}), execute: async () => `charged ${++charges}` }),
+  // Stands in for the process dying mid-step: it fails the first time only.
+  defineTool({
+    name: 'ship',
+    description: 'Ship the order',
+    input: z.object({}),
+    execute: async () => {
+      if (++attempts === 1) throw new PropagatingToolError('process died');
+      return 'shipped';
+    },
+  }),
+];
+const agent = createAgent({
+  provider: mockModel([{ toolCalls: [{ name: 'charge' }] }, { toolCalls: [{ name: 'ship' }] }, 'Order charged and shipped.']),
+  tools,
+  store: memoryStore(),
+});
+await agent.send('Charge and ship order 7', { sessionId: 'order-7' }).catch(() => undefined); // interrupted after the charge
+
+const recovery = agent.recover({
+  intervalMs: 1_000,
+  onRecovered: (run, result) => {
+    console.log(`${run.sessionId}: ${result.text}`); // order-7: Order charged and shipped.
+    void recovery.stop(); // a server keeps it running and stops it on shutdown (or passes `signal`)
+  },
+  onError: (error, run) => console.error('recovery failed', run?.sessionId, error),
+});
+await recovery.done; // resolves once the loop stopped
+console.log(charges); // 1: the completed charge step did not run again
+```
+
+What a sweep does with each pending run:
+
+- `'in-progress'`: resumed, from its last checkpoint, so completed steps never
+  run again (a tool that was mid-call runs again: make it idempotent).
+- `'awaiting-approval'` (a tool approval or an `ask_question`): left alone; a
+  human decides it with `agent.approvals.resolve()`.
+- A run whose `lastError` has `retryable: false`: left alone, since it would
+  fail the same way; `agent.pending()` still lists it.
+- A run still running in another process, or one whose crashed process's
+  [run lease](#run-leases) has not expired yet: its resume is turned away
+  with `LOUSHO_SESSION_BUSY` before anything runs, silently, and a later sweep
+  tries again once the lease is free. So a crashed run is finished at most
+  one lease expiry plus one `intervalMs` after the crash, and every replica
+  can run `recover()`: the leases make sure only one of them resumes a run.
+  The loop also never starts a second resume of a run it is already resuming.
+
+`onError(error, run?)` hears about a sweep that could not list the store
+(`run` undefined) and a resume that failed (`run` set); the loop keeps going
+either way. `onRecovered(run, result)` gets each run it finished. Aborting
+`signal` (or `stop()`) stops the polling and aborts the resumes in flight
+(their checkpoints stay for the next start); `done` resolves once everything
+settled. The loop keeps the process alive until it is stopped. Like
+`pending()`, `recover()` throws `LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE`
+without a checkpoint store. With a custom store that has no leases
+(`acquireLease`), nothing stops it from resuming a run another process is
+still running: run it in one process only.
+
 ## Run leases
 
 While a checkpointed run executes (a session turn, a `send(msg, { sessionId })`

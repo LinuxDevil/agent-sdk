@@ -64,7 +64,8 @@ import { RUN_CONFIG_KEY, type CheckpointStore, type ForkOptions, type ForkResult
 import type { AgentDriftMode } from './execution/agentFingerprint';
 import { ConfigurationError, SDKError, SessionAwaitingApprovalError } from './execution/errors';
 import { newId } from './utils/id';
-import { listPendingRuns, type PendingRun } from './agentPending';
+import { assertListable, listPendingRuns, type PendingRun } from './agentPending';
+import { startRecovery, type RecoverOptions, type RunRecovery } from './agentRecover';
 import { createAgentApprovals, type AgentApprovals, type ApproveToolCall } from './createAgentApprovals';
 import { createAgentOAuth, type AgentOAuth } from './oauth/agentOAuth';
 import type { OAuthTokenStore } from './oauth/types';
@@ -853,6 +854,26 @@ export interface SimpleAgent<TObject = unknown> {
    */
   pending: () => Promise<PendingRun[]>;
   /**
+   * C8: starts a loop that finishes interrupted runs on its own: every
+   * `intervalMs` (default 30 s) it lists `agent.pending()` and calls
+   * `agent.resume()` on each `'in-progress'` run. Runs paused on an approval or
+   * a question are left alone, and so are runs whose `lastError` is not
+   * retryable. A run still running elsewhere, or whose crashed process's run
+   * lease has not expired yet, is skipped (its lease turns the resume away
+   * before anything runs) and retried on a later sweep, so no run is resumed
+   * twice at once and completed steps never run again
+   * (docs/durable-execution.md, "Recovering automatically"). Stop it with
+   * `signal` or `stop()`; `done` resolves once it stopped. Throws like
+   * `pending()` without a listable checkpoint store.
+   *
+   * @example
+   * ```ts
+   * const recovery = agent.recover({ onError: (error, run) => console.error(run?.sessionId, error) });
+   * process.on('SIGTERM', () => void recovery.stop());
+   * ```
+   */
+  recover: (options?: RecoverOptions<ExecutionResult<TObject>>) => RunRecovery;
+  /**
    * Tool calls this agent is paused on, waiting for approval (LOU-D21). A
    * paused `send()` resolves with `finishReason: 'awaiting-approval'` and an
    * `approvalId`; `resolve()` runs or rejects the call and continues the run
@@ -1224,6 +1245,10 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
       return AgentExecutor.fork({ ...options, ...(durable(sessionId) as SessionTurnCheckpoint) });
     },
     pending: () => listPendingRuns(checkpoints),
+    recover(options) {
+      assertListable(checkpoints, 'agent.recover()');
+      return startRecovery({ pending: () => listPendingRuns(checkpoints), resume: (id, { signal }) => simpleAgent.resume(id, { signal }) }, options);
+    },
     approvals: approvals.approvals,
     oauth: createAgentOAuth(tokens, approvals.store, mcp.oauth),
     ready: mcp.ready,
