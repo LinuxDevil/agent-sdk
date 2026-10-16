@@ -260,6 +260,17 @@ function pauseApprovalIds(paused: InMemoryPause): string[] {
   return paused.approvalIds ?? (paused.approvalId ? [paused.approvalId] : []);
 }
 
+/** The `pending()` view of an in-process pause (no checkpoint store). */
+function inMemoryPending(paused: InMemoryPause): PendingTurn {
+  const approvalIds = pauseApprovalIds(paused);
+  return {
+    status: 'awaiting-approval',
+    approvalId: paused.approvalId,
+    ...(approvalIds.length > 1 && { approvalIds }),
+    ...(paused.approvalKind && { approvalKind: paused.approvalKind }),
+  };
+}
+
 /**
  * `<id>.turn-counter`, a tiny checkpoint that persists how high the
  * turn checkpoint numbering has gone (`stepIndex` = the smallest `n` still
@@ -692,17 +703,10 @@ export class AgentSession<TObject = unknown> {
   pending(): Promise<PendingTurn | null> {
     return this.enqueue(async () => {
       const checkpoint = await this.pendingCheckpoint();
+      // report the in-memory pause of a session without a checkpoint store too.
       if (!checkpoint) {
-        // report the in-memory pause of a session without a checkpoint store too.
         const paused = inMemoryPause(this.store, this.id);
-        if (!paused) return null;
-        const approvalIds = pauseApprovalIds(paused);
-        return {
-          status: 'awaiting-approval',
-          approvalId: paused.approvalId,
-          ...(approvalIds.length > 1 && { approvalIds }),
-          ...(paused.approvalKind && { approvalKind: paused.approvalKind }),
-        };
+        return paused ? inMemoryPending(paused) : null;
       }
       this.foundPaused(checkpoint);
       const status = checkpoint.status === 'awaiting-approval' ? 'awaiting-approval' : 'in-progress';
