@@ -89,6 +89,12 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) throw new WorkspaceError('The operation was cancelled.');
 }
 
+/** A directory's entries sorted by name, without the denied ones. */
+async function visibleEntries(fs: FsProvider, dir: string, options: WalkOptions) {
+  const entries = (await fs.readdir(dir)).filter((entry) => options.isDenied?.(entry.name) === undefined);
+  return entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+}
+
 /**
  * Lists every regular file under `base` (breadth-first, workspace-relative),
  * skipping ignored directory names. Symlinks are never followed, so a walk
@@ -100,10 +106,7 @@ export async function walkFiles(fs: FsProvider, base: string, options: WalkOptio
   while (queue.length > 0) {
     throwIfAborted(options.signal);
     const dir = queue.shift() as string;
-    const entries = await fs.readdir(dir);
-    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-    for (const entry of entries) {
-      if (options.isDenied?.(entry.name) !== undefined) continue;
+    for (const entry of await visibleEntries(fs, dir, options)) {
       const path = joinWorkspacePath(dir, entry.name);
       if (entry.type === 'directory' && !options.ignore.has(entry.name)) queue.push(path);
       if (entry.type !== 'file') continue;
