@@ -190,7 +190,7 @@ a wrong audience all get the same `401`. Every auth response carries
 | --- | --- | --- |
 | `jwt()`, `oidc()`, `basic()`, `apiToken()`, `anonymous()`, `routeAuth()` | yes | yes: Web Crypto and `fetch` only, no `node:` import |
 | `createRouteHandler({ auth })` | yes | yes |
-| `createDeployedServer({ auth })`, the `node-server` and `docker` targets | yes | no (Node `http`) |
+| The `node-server` and `docker` targets | yes | no (Node `http`) |
 | An agent directory's `auth.ts` | yes (`node-server`, `docker`) | no |
 | The `cloudflare-worker` build target | | `LOUSHO_API_TOKEN` only; no auth list yet |
 
@@ -210,7 +210,7 @@ behind `auth`. The accepted principal reaches every route: `POST <basePath>`,
 
 ## The node server and `auth.ts`
 
-`createDeployedServer(agent, { auth })` takes the same list (or one entry).
+The generated server (it uses the bundle's internal `createDeployedServer()`) takes the same list (or one entry).
 When `LOUSHO_API_TOKEN` is set, `apiToken(LOUSHO_API_TOKEN)` is appended after
 your entries, so an operator's token keeps working. Channels under
 `/channels/<name>` are not behind the list: they verify their own requests.
@@ -439,7 +439,7 @@ getting its owner forgotten. Only a session that was never stored can be
 claimed again. So for anything that runs on more than one instance, or keeps
 sessions across restarts, check ownership yourself with `authorizeSession`.
 
-`createRouteHandler()` and `createDeployedServer()` take `authorizeSession`,
+`createRouteHandler()` and the generated node server take `authorizeSession`,
 which replaces that default. It is asked before a caller reads a session
 (`action: 'read'`), sends it a turn (`'chat'`, also `POST <basePath>` and the
 `useChat` endpoint) or decides one of its approvals (`'approve'`). Return
@@ -487,7 +487,7 @@ compared as origins: case, a trailing slash and a default port
 (`https://app.example:443`) do not matter. `allowedHosts` (off by default)
 refuses any request whose `Host` is not listed, against DNS rebinding of a
 server on a private address. All three work on `createRouteHandler()` and
-`createDeployedServer()`; the generated node server and Cloudflare Worker read
+the generated node server; that server and the Cloudflare Worker read
 them from `LOUSHO_ALLOWED_ORIGINS` and `LOUSHO_ALLOWED_HOSTS` (comma-separated)
 and `LOUSHO_REQUIRE_JSON_BODY=false`.
 
