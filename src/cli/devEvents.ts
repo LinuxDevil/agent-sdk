@@ -4,6 +4,7 @@
  * (Approval continuations stream live from `agent.approvals.streamResolve()`.)
  */
 import { AGENT_EVENT_SCHEMA_VERSION, type AgentEvent, type AgentEventPayload } from '../execution/agentEvents';
+import type { ExecutionFinishReason } from '../execution/AgentExecutor';
 import { newId } from '../utils/id';
 
 /** `payloads` as one run's events: a shared `runId`, `seq` 0, 1, 2..., `timestamp` and `v` filled in. */
@@ -12,6 +13,11 @@ function runEvents(payloads: AgentEventPayload[]): AgentEvent[] {
   return payloads.map(
     (payload, seq) => ({ ...payload, runId, seq, timestamp: new Date().toISOString(), v: AGENT_EVENT_SCHEMA_VERSION }) as AgentEvent
   );
+}
+
+/** A lone `run.done` with `text`, for a turn that already ran and is answered again (an idempotent resend). */
+export function replayEvents(text: string, finishReason: ExecutionFinishReason): AgentEvent[] {
+  return runEvents([{ type: 'run.done', finishReason, text }]);
 }
 
 /** `error` then `run.done`, for a request that failed while streaming. */

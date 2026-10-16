@@ -1619,6 +1619,7 @@ interface PendingTurn {
     approvalId?: string;
     approvalIds?: string[];
     approvalKind?: ApprovalKind;
+    idempotencyKey?: string;
     status: 'in-progress' | 'awaiting-approval';
 }
 

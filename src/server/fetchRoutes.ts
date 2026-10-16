@@ -4,7 +4,8 @@
  *
  *   GET  /health                         `ok`, never behind the bearer token
  *   POST /chat                           { sessionId, input } in, the turn streamed as SSE out
- *                                        (`data: <AgentEvent>` frames, then `event: done`);
+ *                                        (`data: <AgentEvent>` frames, then `event: done`); an
+ *                                        `Idempotency-Key` header makes a resend replay or resume its turn;
  *                                        the deprecated { message } still returns the ExecutionResult
  *   GET  /chat/:sessionId                the session's transcript and pending approvals
  *   POST /chat/:sessionId/approvals/:id  { approved, note? } or { answer }, the continuation streamed
@@ -21,9 +22,11 @@ import type { AgentEvent, AgentEventError } from '../execution/agentEvents';
 import { describeApproval, type PendingApproval } from '../execution/ApprovalGate';
 import { samePrincipal } from '../execution/runPrincipal';
 import { assertSessionId } from '../session/sessionStore';
-import type { AgentSession } from '../session/AgentSession';
+import { idempotencyKeyOf, type AgentSession } from '../session/AgentSession';
+import type { Message } from '../providers/llm';
+import { toMessages } from '../providers/content';
 import { SDKError, SessionAwaitingApprovalError } from '../execution/errors';
-import { errorEvents } from '../cli/devEvents';
+import { errorEvents, replayEvents } from '../cli/devEvents';
 import type { AuthFn, Principal } from '../auth/types';
 import { routeAuth } from '../auth/routeAuth';
 import { apiToken } from '../auth/basic';
@@ -505,6 +508,166 @@ async function awaitingApproval(session: AgentSession): Promise<Response | undef
   });
 }
 
+/** What an `Idempotency-Key` header may hold: 1-255 visible ASCII characters (a UUID, a ULID, a hash). */
+const IDEMPOTENCY_KEY = /^[\x21-\x7e]{1,255}$/;
+
+/**
+ * The idempotency keys whose turn a request of this process is running now
+ * (`<sessionId> <key>`), per agent: a resend of one while it runs is a `409`
+ * (`LOUSHO_SESSION_BUSY`) instead of a second turn.
+ */
+const keysInFlight = new WeakMap<SimpleAgent, Set<string>>();
+
+function keysOf(agent: SimpleAgent): Set<string> {
+  let keys = keysInFlight.get(agent);
+  if (!keys) keysInFlight.set(agent, (keys = new Set()));
+  return keys;
+}
+
+/** `input` as the turn's user messages, each marked with `key` (`metadata.idempotencyKey`), which the transcript keeps. */
+function keyedInput(input: AgentInput, key: string): Message[] {
+  return toMessages(input).map((message) => (message.role === 'user' ? { ...message, metadata: { ...message.metadata, idempotencyKey: key } } : message));
+}
+
+/** The messages of the turn whose user message carries `key` (up to the next turn's user message), or `undefined`. */
+function keyedTurn(transcript: readonly Message[], key: string): Message[] | undefined {
+  const start = transcript.findIndex((message) => idempotencyKeyOf(message) === key);
+  if (start < 0) return undefined;
+  let end = start + 1;
+  while (end < transcript.length && (transcript[end].role !== 'user' || idempotencyKeyOf(transcript[end]) === key)) end += 1;
+  return transcript.slice(start, end);
+}
+
+function textOf(message: Message | undefined): string {
+  const content = message?.content;
+  if (typeof content === 'string') return content;
+  return (content ?? []).map((part) => (part.type === 'text' ? part.text : '')).join('');
+}
+
+/**
+ * A turn of `session` sent with an `Idempotency-Key`. The key is stored on the
+ * turn's user message (`metadata.idempotencyKey`), in the transcript and in the
+ * turn's checkpoint, so it outlives the process:
+ *
+ * - its turn is running in this process: `409` (`LOUSHO_SESSION_BUSY`);
+ * - the session is paused on an approval: `409` (`LOUSHO_SESSION_AWAITING_APPROVAL`), as without a key;
+ * - its turn was interrupted (a crash): that turn is resumed, not sent again, and streamed;
+ * - its turn is in the transcript: its reply is replayed as `run.done`
+ *   (`Idempotent-Replayed: true`), and nothing runs;
+ * - else it runs as a new turn, its user message marked with the key.
+ */
+async function idempotentTurn(request: Request, ctx: ChatRoutesContext, principal: Principal | undefined, session: AgentSession, input: AgentInput, key: string): Promise<Response> {
+  const keys = keysOf(ctx.agent());
+  const claim = `${session.id} ${key}`;
+  if (keys.has(claim)) {
+    return jsonResponse(409, { error: `A request with this Idempotency-Key is still running its turn of session '${session.id}'`, code: 'LOUSHO_SESSION_BUSY' });
+  }
+  keys.add(claim);
+  const release = () => void keys.delete(claim);
+  try {
+    const pending = await session.pending().catch(() => null);
+    if (pending?.status === 'awaiting-approval') {
+      release();
+      return (await awaitingApproval(session))!;
+    }
+    if (pending?.status === 'in-progress' && pending.idempotencyKey === key) {
+      return sseResponse(request, ctx, (signal) => releasing(claimOnCommit(ctx, principal, session, resumedTurn(session, signal)), release));
+    }
+    const turn = keyedTurn(await session.load(), key);
+    if (turn) {
+      release();
+      const last = [...turn].reverse().find((message) => message.role === 'assistant');
+      const replay = replayEvents(textOf(last), last?.metadata?.interrupted === true ? 'aborted' : 'stop');
+      const response = sseResponse(request, ctx, async function* () {
+        yield* replay;
+      });
+      response.headers.set('Idempotent-Replayed', 'true');
+      return response;
+    }
+    return sseResponse(request, ctx, (signal) => releasing(claimOnCommit(ctx, principal, session, session.stream(keyedInput(input, key), { signal, principal })), release));
+  } catch (error) {
+    release();
+    throw error;
+  }
+}
+
+/**
+ * The events of `session.resume()`, the turn an earlier request started and a
+ * crash interrupted, as they happen (through `session.on()`); a resume that
+ * reports none ends with its result's `run.done`.
+ */
+async function* resumedTurn(session: AgentSession, signal: AbortSignal): AsyncGenerator<AgentEvent> {
+  const queue: AgentEvent[] = [];
+  let wake: (() => void) | undefined;
+  let settled = false;
+  let failure: { error: unknown } | undefined;
+  let result = null as Awaited<ReturnType<AgentSession['resume']>>;
+  const stop = session.on((event) => {
+    queue.push(event);
+    wake?.();
+  });
+  void session
+    .resume({ signal })
+    .then(
+      (resumed) => void (result = resumed),
+      (error: unknown) => void (failure = { error })
+    )
+    .finally(() => {
+      settled = true;
+      wake?.();
+    });
+  try {
+    let done = false;
+    for (;;) {
+      for (let event = queue.shift(); event; event = queue.shift()) {
+        done ||= event.type === 'run.done';
+        yield event;
+      }
+      if (settled) break;
+      await new Promise<void>((resolve) => (wake = resolve));
+      wake = undefined;
+    }
+    if (failure) throw failure.error;
+    if (!done && result) yield* replayEvents(result.text, result.finishReason);
+  } finally {
+    stop();
+  }
+}
+
+/** `run`, calling `release` once when it ends, fails or is returned (also before it started). */
+function releasing(run: AsyncIterable<AgentEvent>, release: () => void): AsyncIterable<AgentEvent> {
+  return {
+    [Symbol.asyncIterator]() {
+      const iterator = run[Symbol.asyncIterator]();
+      let released = false;
+      const done = () => {
+        if (released) return;
+        released = true;
+        release();
+      };
+      return {
+        next: async () => {
+          try {
+            const next = await iterator.next();
+            if (next.done) done();
+            return next;
+          } catch (error) {
+            done();
+            throw error;
+          }
+        },
+        return: async () => {
+          try {
+            return (await iterator.return?.()) ?? { done: true, value: undefined };
+          } finally {
+            done();
+          }
+        },
+      };
+    },
+  };
+}
+
 type RouteHandler = (request: Request, ctx: ChatRoutesContext, params: string[], principal: Principal | undefined) => Promise<Response>;
 
 const runChat: RouteHandler = async (request, ctx, _params, principal) => {
@@ -522,10 +685,14 @@ const runChat: RouteHandler = async (request, ctx, _params, principal) => {
     if (Array.isArray(messages) && messages.length === 0) {
       return badRequest("Request body's 'input' must contain at least one 'user' message");
     }
+    const key = request.headers.get('idempotency-key');
+    if (key !== null && !IDEMPOTENCY_KEY.test(key)) return badRequest("The 'Idempotency-Key' header must be 1-255 visible ASCII characters");
     const session = openSession(ctx, sessionId);
     if (session instanceof Response) return session;
-    const forbidden = (await sessionForbidden(ctx, principal, sessionId, 'chat', session)) ?? (await awaitingApproval(session));
-    return forbidden ?? sseResponse(request, ctx, (signal) => claimOnCommit(ctx, principal, session, session.stream(messages as AgentInput, { signal, principal })));
+    const forbidden = await sessionForbidden(ctx, principal, sessionId, 'chat', session);
+    if (forbidden) return forbidden;
+    if (key !== null) return idempotentTurn(request, ctx, principal, session, messages as AgentInput, key);
+    return (await awaitingApproval(session)) ?? sseResponse(request, ctx, (signal) => claimOnCommit(ctx, principal, session, session.stream(messages as AgentInput, { signal, principal })));
   }
   if (typeof message === 'string' && message) {
     if (sessionId !== undefined && typeof sessionId !== 'string') return badRequest("Request body's 'sessionId', if present, must be a string");
@@ -663,20 +830,7 @@ const runApproval: RouteHandler = async (request, ctx, [sessionId, id], principa
     inFlight.delete(decision);
     return gate;
   }
-  const decided = gate;
-  return sseResponse(
-    request,
-    ctx,
-    () =>
-      (async function* () {
-        try {
-          yield* decided;
-        } finally {
-          inFlight.delete(decision);
-        }
-      })(),
-    gate.controller
-  );
+  return sseResponse(request, ctx, () => releasing(gate, () => void inFlight.delete(decision)), gate.controller);
 };
 
 /** Binds a recovered pause to `session` and starts the decision's continuation, gated by {@link decisionGate}. */

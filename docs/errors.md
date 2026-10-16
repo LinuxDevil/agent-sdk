@@ -634,7 +634,9 @@ kept: the turn up to their results is added after the other writer's turn. Also 
 checkpointed run (or session turn) is running in another process, replica or store object right
 now, which holds its run lease (see
 [Durable execution](./durable-execution.md#run-leases)); nothing ran here, and a resolved
-approval stays pending.
+approval stays pending. Over HTTP, a `409` from `POST /chat`: a request with the same
+`Idempotency-Key` is still running its turn of that session on this server (see
+[Resending a turn](./deployment.md#resending-a-turn)).
 
 **Fix:** await the turn's `send()` (or abort it), then call again. After a `send()` that failed
 this way, send again: the session reads the current transcript at the start of every call. A
