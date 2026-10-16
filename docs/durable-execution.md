@@ -52,7 +52,18 @@ A checkpoint is the run's whole transcript plus its step count, usage,
 
 A run that rejects (a provider error, a throwing hook, a
 `PropagatingToolError`, a process crash) keeps its last `'in-progress'`
-checkpoint.
+checkpoint. When it rejects (rather than crashes), the checkpoint also gets the
+error as `lastError` and the count of failed attempts as `attempts`, so
+[`agent.pending()`](#recovering-after-a-crash) can tell a run that
+keeps failing from one a crash interrupted. The next checkpoint the run saves
+(it made progress) drops both.
+
+While a [sub-agent](sub-agents.md) runs, what it has spent so far is saved on
+the lead's checkpoint after each of its model calls and tool results
+(`delegatedInFlight`). A sub-agent is not checkpointed itself: when the lead
+crashes mid-sub-agent and is resumed, the `task` call runs again and the
+sub-agent starts over, but the model calls of the interrupted attempt stay in
+the resumed run's `usage` (as one more delegated run).
 
 ## What happens when you send again with the same `sessionId`
 
@@ -164,7 +175,7 @@ for (const run of await agent.pending()) {
 ```
 
 Each entry is `{ sessionId, kind, checkpointId, status, approvalId?,
-approvalKind?, step, lastError? }`:
+approvalKind?, step, lastError?, attempts? }`:
 
 - `sessionId` is what `agent.resume()` takes: the `agent.session()` id for a
   session turn (`kind: 'session'`, checkpointed as `<id>.turn-<n>`), or the
@@ -172,10 +183,13 @@ approvalKind?, step, lastError? }`:
 - `status` is `'in-progress'` (interrupted) or `'awaiting-approval'` (decide
   `approvalId` with `agent.approvals.resolve()`; `agent.approvals.list()`
   shows the call).
-- `lastError` is set when the last attempt at a session turn failed. With
-  `retryable: false` (a 400 from the provider, for example) the same turn
-  will fail again: fix the cause before `agent.resume()`, or drop the turn
-  with `agent.session({ id }).discardPending()`.
+- `lastError` is set when the last attempt at a session turn, or at a
+  `send(msg, { sessionId })` run (`kind: 'run'`), failed; `attempts` counts
+  the attempts that failed in a row. With `retryable: false` (a 400 from the
+  provider, for example) it will fail again: fix the cause before
+  `agent.resume()`, or drop it with `agent.session({ id }).discardPending()`
+  (a run: `store.checkpoints.delete(id)`). An `'in-progress'` entry without
+  `lastError` was interrupted (a crash), or is still running.
 
 A run that is still running in some process is listed as `'in-progress'`
 too. Resuming it is safe: the run holds a lease (see [Run leases](#run-leases)),
@@ -753,3 +767,10 @@ if (original && replayed) {
   delete the checkpoint). `agent.approvals.resolve()` passes it for you.
 - Workers KV is eventually consistent across locations - see
   [Deployment](./deployment.md) for the caveat.
+- The spend of a sub-agent still running when its lead crashed is kept for
+  in-process sub-agents only, as of its last model call or tool result: a
+  [remote sub-agent](./sub-agents.md#remote-sub-agents) reports its usage
+  when it ends, so an interrupted one's calls are not counted, and a
+  background sub-agent still running after the lead paused or finished does
+  not write the lead's checkpoint. Their limits are checked against a
+  sub-agent's usage only once it returns.

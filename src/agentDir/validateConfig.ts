@@ -265,6 +265,7 @@ const LIMIT_KEYS: ReadonlySet<string> = new Set<keyof RunLimits>([
   'maxCostUsd',
   'maxDurationMs',
   'maxSteps',
+  'maxToolErrors',
   'onExceeded',
 ]);
 

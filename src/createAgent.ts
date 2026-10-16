@@ -259,7 +259,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
   maxSteps?: number;
   /**
    * Budgets of each run (LOU-V6): `maxTokens`, `maxInputTokens`,
-   * `maxOutputTokens`, `maxCostUsd`, `maxDurationMs`, `maxSteps` and
+   * `maxOutputTokens`, `maxCostUsd`, `maxDurationMs`, `maxSteps`, `maxToolErrors` and
    * `onExceeded`. A tripped limit ends the run with
    * `finishReason: 'budget-exceeded'`; see `ExecuteOptions.limits`. For a
    * budget across a session's turns, use `agent.session({ limits })`.

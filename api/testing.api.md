@@ -550,6 +550,7 @@ class SDKError extends Error {
     readonly hint?: string;
     // (undocumented)
     toString(): string;
+    usage?: RunUsage;
 }
 
 // @public

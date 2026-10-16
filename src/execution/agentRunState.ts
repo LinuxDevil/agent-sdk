@@ -15,7 +15,7 @@ import { baseAgentOf } from './subagentRuntime';
 import { CompactedLLMProviderError, ConfigurationError, SessionAwaitingApprovalError } from './errors';
 import { inputMessages, insertToolResult, newSessionMessages, splitPendingTurn } from './transcript';
 import type { CallUsage, RunUsage, StepUsage } from '../models/usage';
-import { emptyRunUsage, recordStepUsage, restoreRunUsage } from './runUsage';
+import { emptyRunUsage, mergeDelegatedUsage, recordStepUsage, restoreRunUsage } from './runUsage';
 import type { ExecuteOptions, ExecutionFinishReason, ExecutionResult } from './AgentExecutor';
 import type { ToolCallOutcome } from './toolCallExecution';
 import type { UnrecordedToolCall } from './toolBatch';
@@ -100,6 +100,46 @@ export interface AgentRunState {
   requestOnly?: Set<Message>;
   /** The run lease the run holds on its checkpoint id, when the store has leases (see `runLease.ts`). */
   lease?: RunLease;
+  /** H3-6: what each sub-agent run still running has spent so far (not in `usage` until it ends); checkpointed. */
+  delegatedInFlight?: Map<symbol, RunUsage>;
+  /** H3-6: set once the run saved a checkpoint that ends or pauses it: a sub-agent still running then no longer writes it. */
+  closed?: boolean;
+}
+
+/**
+ * H3-6: an internal option of a sub-agent run - called with what the run has
+ * spent so far (its sub-agents still running included) after each model call
+ * and tool result, so the lead can checkpoint it before the sub-agent ends.
+ */
+export const DELEGATED_PROGRESS = Symbol('lousho.delegatedProgress');
+
+/** Options carrying {@link DELEGATED_PROGRESS}. */
+export interface DelegatedProgressOptions {
+  [DELEGATED_PROGRESS]?: (usage: RunUsage) => void;
+}
+
+/**
+ * H3-6: a checkpoint that ends or pauses the run closes it to its sub-agents
+ * still running; an `'in-progress'` one of a sub-agent run tells its lead what
+ * it has spent so far.
+ */
+function noteProgress(options: ExecuteOptions, state: AgentRunState, status: CheckpointStatus): void {
+  if (status !== 'in-progress') state.closed = true;
+  else (options as DelegatedProgressOptions)[DELEGATED_PROGRESS]?.(usageWithInFlight(state));
+}
+
+/** H3-6: the checkpoint's `delegatedInFlight`, while the run is unfinished and has sub-agents running. */
+function inFlightOf(state: AgentRunState, status: CheckpointStatus): Pick<Checkpoint, 'delegatedInFlight'> {
+  if (status === 'finished' || !state.delegatedInFlight?.size) return {};
+  return { delegatedInFlight: [...state.delegatedInFlight.values()].map((usage) => structuredClone(usage)) };
+}
+
+/** The run's usage plus what its sub-agents still running spent so far. */
+function usageWithInFlight(state: AgentRunState): RunUsage {
+  if (!state.delegatedInFlight?.size) return state.usage;
+  const total = structuredClone(state.usage);
+  for (const child of state.delegatedInFlight.values()) mergeDelegatedUsage(total, child);
+  return total;
 }
 
 /** Eve CORE-F3: marks `messages` (already in `state.messages`) as {@link AgentRunState.requestOnly}. */
@@ -167,11 +207,18 @@ function stateFromCheckpoint(checkpoint: Checkpoint, options: ExecuteOptions): I
     toolCalls: finished ? [] : [...(checkpoint.toolCalls as ToolCall[])],
     // LOU-V5: an unfinished run continues from the checkpointed totals (older
     // checkpoints: token counts only); a new turn of a finished one starts at zero.
-    usage: finished ? emptyRunUsage() : restoreRunUsage(checkpoint.usage),
+    usage: finished ? emptyRunUsage() : resumedUsage(checkpoint),
     stepUsage: finished ? [] : [...(checkpoint.stepUsage ?? [])],
     steps: finished ? 0 : checkpoint.stepIndex,
     businessState: businessState === undefined ? checkpoint.businessState : businessState,
   };
+}
+
+/** H3-6: an unfinished run's usage, plus what its sub-agents that were still running had spent. */
+function resumedUsage(checkpoint: Checkpoint): RunUsage {
+  const usage = restoreRunUsage(checkpoint.usage);
+  for (const child of checkpoint.delegatedInFlight ?? []) mergeDelegatedUsage(usage, restoreRunUsage(child));
+  return usage;
 }
 
 /** Builds messages from scratch (the no-checkpoint fallback path). */
@@ -323,6 +370,7 @@ export async function saveStepCheckpoint(
   const { agent, sessionId, checkpointStore, inputQueue } = options;
   // LOU-V9: a run that stops here takes no more queued input, and keeps none it did not apply.
   if (status !== 'in-progress') inputQueue?.close();
+  noteProgress(options, state, status);
   if (!sessionId || !checkpointStore) {
     return;
   }
@@ -348,6 +396,7 @@ export async function saveStepCheckpoint(
     ...(options.principal && { principal: options.principal }),
     // LOU-R16: so a crash resume's hooks keep seeing the run's metadata.
     ...(options.metadata !== undefined && { metadata: options.metadata }),
+    ...inFlightOf(state, status),
   };
   // Under the run's lease, a save is fenced: a run that lost it (it stalled past it) fails instead of overwriting the new holder's progress.
   const { lease } = state;
@@ -436,7 +485,38 @@ export function toExecutionResult(
     finishReason,
     steps: state.steps,
     ...(state.agentName !== undefined && { agentName: state.agentName }),
+    ...withToolErrors(state),
   };
+}
+
+/** Whether a tool message is the result of a call that never ran (`kind: 'not-run'`: an abort, a budget stop). */
+function isNotRunResult(content: Message['content']): boolean {
+  if (typeof content !== 'string') return false;
+  try {
+    return (JSON.parse(content) as { kind?: unknown } | null)?.kind === 'not-run';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * H3-3: how many of the run's tool calls (`state.toolCalls`, a resumed run's
+ * included) ended in an error result - thrown, invalid arguments, unknown
+ * tool, denied, rejected, ... - but not a call that never ran (`'not-run'`).
+ */
+export function countToolErrors(state: Pick<AgentRunState, 'messages' | 'toolCalls'>): number {
+  if (state.toolCalls.length === 0) return 0;
+  const ids = new Set(state.toolCalls.map((call) => call.id));
+  let failed = 0;
+  for (const message of state.messages) {
+    if (message.role === 'tool' && message.isError && message.toolCallId && ids.has(message.toolCallId) && !isNotRunResult(message.content)) failed++;
+  }
+  return failed;
+}
+
+function withToolErrors(state: AgentRunState): Pick<ExecutionResult, 'toolErrors'> {
+  const toolErrors = countToolErrors(state);
+  return toolErrors > 0 ? { toolErrors } : {};
 }
 
 /** LOU-V13: adds a step's reasoning text to the run's. */

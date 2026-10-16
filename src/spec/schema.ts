@@ -177,6 +177,7 @@ const runLimitsSchema = z
     maxCostUsd: z.number().positive().optional(),
     maxDurationMs: posInt.optional(),
     maxSteps: posInt.optional(),
+    maxToolErrors: posInt.optional(),
     onExceeded: z.enum(['stop', 'throw']).optional(),
   })
   .strict();

@@ -21,6 +21,27 @@ ConfigurationError: createAgent: no model configured. Do one of the following: (
 [LOUSHO_CONFIG_MISSING_PROVIDER] Pass a model string such as createAgent({ model: 'openai/gpt-4.1-mini' }), a provider instance, or set LOUSHO_MODEL or a provider API key. (https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_config_missing_provider)
 ```
 
+A run that rejects (`send()`, `stream()`'s `result`, a session turn,
+`AgentExecutor.execute()`) puts what it had spent on the error as
+`error.usage`, a `RunUsage` like `result.usage` (its sub-agents included), so
+a failed run's tokens and cost are not lost. It is set on any error the run
+rejects with - an `SDKError`, a `PropagatingToolError` or your own - unless the
+error has a `usage` property of its own, and it is not enumerable (logging or
+serialising the error is unchanged). It is absent when the run failed before
+it started.
+
+```ts
+import { createAgent, type RunUsage } from '@lousho/build-ai-agent';
+
+try {
+  await createAgent({ provider }).send('Go');
+} catch (error) {
+  const spent = (error as { usage?: RunUsage }).usage;
+  if (spent) console.error(`failed after ${spent.modelCalls} model calls, $${spent.costUsd ?? '?'}`);
+  throw error;
+}
+```
+
 `error.detail` is the message without that line. Tool and provider errors
 (`ToolExecutionError`, `LLMProviderError`, `TimeoutError`, `RateLimitError`)
 keep their message as it was, because the model sees it as a tool result or a

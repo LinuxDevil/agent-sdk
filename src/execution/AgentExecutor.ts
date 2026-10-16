@@ -24,6 +24,7 @@ import { signInRequest } from '../oauth/signIn';
 import { forkSession } from './fork';
 import type { CallUsage, RunUsage, StepUsage } from '../models/usage';
 import { attachRunUsage, mergeDelegatedUsage, recordStepUsage } from './runUsage';
+import { recordRunFailure } from './runFailure';
 import { TraceExporter, withSpan } from './tracing';
 import {
   agentRunSpanInit,
@@ -82,6 +83,9 @@ import {
   pushToolResult,
   recordStep,
   saveStepCheckpoint,
+  countToolErrors,
+  DELEGATED_PROGRESS,
+  type DelegatedProgressOptions,
   toExecutionResult,
 } from './agentRunState';
 import { acquireRunLease, HELD_RUN_LEASE, type RunLeaseOptions } from './runLease';
@@ -759,6 +763,14 @@ export interface ExecutionResult<TObject = unknown> {
   backgroundTasks?: BackgroundTaskView[];
   /** LOU-V6: the limit that ended the run (`finishReason: 'budget-exceeded'`). */
   budget?: BudgetExceeded;
+  /**
+   * H3-3: how many of the run's tool calls ended in an error result (the tool
+   * threw, its arguments were invalid, it was unknown, denied or rejected).
+   * Absent when none did. The model saw each error and may still have
+   * answered (`finishReason: 'stop'`), so check this before trusting `text`;
+   * `limits.maxToolErrors` stops the run instead (docs/tools.md#failed-calls-in-the-result).
+   */
+  toolErrors?: number;
   /** LOU-X4: the guardrail that ended the run (`finishReason: 'guardrail'`). */
   guardrail?: GuardrailTrip;
   /** N6: the agent that produced the final reply: the run's own, or the one it handed off to (docs/handoffs.md). */
@@ -927,6 +939,8 @@ export class AgentExecutor {
       } catch (error) {
         // Eve MA-F1: a lead that ran this as a sub-agent still counts what it spent before failing.
         attachRunUsage(error, state.usage);
+        // H1-3: the run's checkpoint says why it failed, so `agent.pending()` can tell it from a crash.
+        await recordRunFailure(options, state, error).catch(() => undefined);
         throw error;
       }
     } finally {
@@ -1131,7 +1145,7 @@ export class AgentExecutor {
   /** The run's end when it must stop before the next model call: aborted (LOU-V1) or over budget (LOU-V6). */
   private static stopBeforeStep(options: ExecuteOptions, state: AgentRunState, agentSpanId: string, tools: ToolDefinition[]): Promise<ExecutionResult> | undefined {
     if (options.signal?.aborted) return this.abortRun(options, state);
-    const exceeded = state.budget?.check(state.usage, state.steps);
+    const exceeded = state.budget?.check(state.usage, state.steps, false, countToolErrors(state));
     if (exceeded?.limit === 'maxSteps' && options.output && state.budget?.mode(exceeded) !== 'throw') {
       return this.stepLimitAnswer(options, state, exceeded, agentSpanId, tools);
     }
@@ -1711,7 +1725,7 @@ export class AgentExecutor {
           runtime: options,
           toolCallId: toolCall.id,
           spanId: toolSpan.id,
-          execute: (childOptions) => AgentExecutor.execute(childOptions),
+          execute: (childOptions) => AgentExecutor.executeDelegated(options, state, childOptions),
         };
         // N14: a `run_code` call's script calls tools through this run's gate.
         if (toolCall.function.name === RUN_CODE_TOOL && codeModeOf(options)) {
@@ -1761,6 +1775,29 @@ export class AgentExecutor {
       agentSpanId,
       init.kind
     );
+  }
+
+  /**
+   * Runs a sub-agent of this run (LOU-Y1). H3-6: while it runs, what it has
+   * spent so far is kept on this run's checkpoint (`delegatedInFlight`), so a
+   * crash before it ends does not lose its model calls; once it ends, its
+   * usage is the delegated usage its result (or error) reports.
+   */
+  private static async executeDelegated(options: ExecuteOptions, state: AgentRunState, child: ExecuteOptions): Promise<ExecutionResult> {
+    const key = Symbol('delegated');
+    let running = true;
+    const progress = (usage: RunUsage) => {
+      if (!running || state.closed) return;
+      (state.delegatedInFlight ??= new Map()).set(key, structuredClone(usage));
+      saveStepCheckpoint(options, state).catch(() => undefined);
+    };
+    try {
+      const reporting: ExecuteOptions & DelegatedProgressOptions = { ...child, [DELEGATED_PROGRESS]: progress };
+      return await AgentExecutor.execute(reporting);
+    } finally {
+      running = false;
+      state.delegatedInFlight?.delete(key);
+    }
   }
 
   /**

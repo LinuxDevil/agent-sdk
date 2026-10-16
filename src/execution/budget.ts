@@ -22,6 +22,11 @@ export interface RunLimits {
   maxDurationMs?: number;
   /** Model steps: an alias of `maxSteps` (the stricter wins). */
   maxSteps?: number;
+  /**
+   * Tool calls of the run that ended in an error result (`result.toolErrors`): once this many have failed, the run
+   * stops before its next model call. Off by default. Counted per run - on `agent.session({ limits })`, per turn.
+   */
+  maxToolErrors?: number;
   /** `'stop'` (default): resolve with `finishReason: 'budget-exceeded'`. `'throw'`: reject with `BudgetExceededError`. */
   onExceeded?: 'stop' | 'throw';
 }
@@ -64,7 +69,7 @@ export class BudgetExceededError extends SDKError {
 }
 brandClass(BudgetExceededError, 'BudgetExceededError');
 
-const SPENT_KEYS: Record<BudgetLimit, keyof BudgetSpent> = {
+const SPENT_KEYS: Record<Exclude<BudgetLimit, 'maxToolErrors'>, keyof BudgetSpent> = {
   maxTokens: 'totalTokens',
   maxInputTokens: 'inputTokens',
   maxOutputTokens: 'outputTokens',
@@ -113,10 +118,22 @@ export function sessionSpent(messages: readonly Message[]): BudgetSpent {
 export interface RunBudget {
   /** The run's signal, aborted with a `BudgetExceededError` when `maxDurationMs` runs out. */
   readonly signal: AbortSignal | undefined;
-  /** The first limit the run has reached; `afterModelCall` leaves out `maxSteps`. */
-  check(usage: RunUsage, steps: number, afterModelCall?: boolean): BudgetExceeded | undefined;
+  /** The first limit the run has reached; `afterModelCall` leaves out `maxSteps`. `toolErrors`: the run's failed tool calls so far. */
+  check(usage: RunUsage, steps: number, afterModelCall?: boolean, toolErrors?: number): BudgetExceeded | undefined;
   mode(budget: BudgetExceeded): 'stop' | 'throw';
   dispose(): void;
+}
+
+/** The first spend limit of `max` that `total` reaches; `afterModelCall` leaves out `maxSteps`, `quietUnknownCost` the unknown-cost warning. */
+function spendLimitReached(max: RunLimits, total: BudgetSpent, afterModelCall: boolean, quietUnknownCost: boolean): Omit<BudgetExceeded, 'scope'> | undefined {
+  for (const [limit, key] of Object.entries(SPENT_KEYS) as Array<[Exclude<BudgetLimit, 'maxToolErrors'>, keyof BudgetSpent]>) {
+    const value = total[key];
+    const cap = max[limit];
+    if (cap !== undefined && value === undefined && limit === 'maxCostUsd' && !quietUnknownCost) warnUnknownCost();
+    if (cap === undefined || value === undefined || (afterModelCall && limit === 'maxSteps')) continue;
+    if (value >= cap) return { limit, value, max: cap };
+  }
+  return undefined;
 }
 
 /** Starts the run's budget; `undefined` without limits. */
@@ -128,17 +145,13 @@ export function startBudget(limits?: RunLimits, session?: SessionBudget, signal?
   ];
   if (scopes.length === 0) return undefined;
   const startedAt = Date.now();
-  const check = (usage: Pick<RunUsage, 'inputTokens' | 'outputTokens' | 'totalTokens' | 'costUsd'>, steps: number, afterModelCall = false) => {
+  const check = (usage: Pick<RunUsage, 'inputTokens' | 'outputTokens' | 'totalTokens' | 'costUsd'>, steps: number, afterModelCall = false, toolErrors = 0) => {
     const now = runSpent(usage, steps, Date.now() - startedAt);
     for (const { scope, limits: max, spent } of scopes) {
-      const total = addSpent(spent, now);
-      for (const [limit, key] of Object.entries(SPENT_KEYS) as Array<[BudgetLimit, keyof BudgetSpent]>) {
-        const value = total[key];
-        const cap = max[limit];
-        if (cap !== undefined && value === undefined && limit === 'maxCostUsd' && !quietUnknownCost) warnUnknownCost();
-        if (cap === undefined || value === undefined || (afterModelCall && limit === 'maxSteps')) continue;
-        if (value >= cap) return { limit, value, max: cap, scope };
-      }
+      // H3-3: failed tool calls count per run, also under a session's limits.
+      if (max.maxToolErrors !== undefined && toolErrors >= max.maxToolErrors) return { limit: 'maxToolErrors' as const, value: toolErrors, max: max.maxToolErrors, scope };
+      const reached = spendLimitReached(max, addSpent(spent, now), afterModelCall, quietUnknownCost);
+      if (reached) return { ...reached, scope };
     }
     return undefined;
   };

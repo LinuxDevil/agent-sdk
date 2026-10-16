@@ -169,6 +169,14 @@ export interface Checkpoint {
    */
   startedToolCallIds?: string[];
   /**
+   * H3-6: what the sub-agents still running when this was saved had spent
+   * so far, one entry per sub-agent run (updated after each of its model
+   * calls). Not in `usage` yet: a run resumed from this checkpoint adds them
+   * to its usage (as delegated runs), so a crash mid-sub-agent does not lose
+   * their spend. Absent when no sub-agent was running.
+   */
+  delegatedInFlight?: CheckpointUsage[];
+  /**
    * Eve DUR-F17: present on a flow run's checkpoint (`FlowExecutor` with a
    * `checkpointStore` and `runId`): where the flow stands. Opaque to agent runs.
    */
