@@ -1,5 +1,5 @@
 /**
- * Handoffs (N6): `createAgent({ handoffs })` lets an agent hand the whole
+ * Handoffs: `createAgent({ handoffs })` lets an agent hand the whole
  * conversation to another agent, which then answers the user itself and keeps
  * the conversation in later session turns. Unlike a sub-agent, the target is
  * not a tool whose result comes back: the run goes on as the target. See

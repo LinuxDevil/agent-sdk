@@ -8,7 +8,7 @@ import { ToolRegistry } from '../tools';
 import { AgentBuilder } from '../core';
 import type { RunUsage } from '../models/usage';
 
-/** A full RunUsage with token counts (LOU-V5's shape: `promptTokens`/`completionTokens` are aliases of the in/out fields). */
+/** A full RunUsage with token counts (shape: `promptTokens`/`completionTokens` are aliases of the in/out fields). */
 function fakeUsage(inputTokens: number, outputTokens: number, totalTokens: number): RunUsage {
   return { ...emptyRunUsage(), inputTokens, outputTokens, totalTokens, promptTokens: inputTokens, completionTokens: outputTokens };
 }
@@ -122,7 +122,7 @@ describe('budget', () => {
 });
 
 describe('toolCallOrder() against a genuine AgentExecutor.execute() result', () => {
-  // LOU-G4's acceptance criteria requires toolCallOrder() to be verified
+  // Acceptance criteria requires toolCallOrder() to be verified
   // against REAL AgentExecutor.execute() output, not just fakeResult()/
   // fakeToolCall() fixtures - a scorer can type-check against the
   // ExecutionResult/ToolCall shapes while silently drifting from how the

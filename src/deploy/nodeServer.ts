@@ -1,11 +1,11 @@
 /**
- * The HTTP server of the node-server and docker targets (LOU-I2, LOU-D14).
+ * The HTTP server of the node-server and docker targets.
  *
  * Serves the `/chat` API shared with `lousho dev` (src/server/chatRoutes.ts)
  * over a `node:http` server (the routes are Fetch-native, src/server/fetchRoutes.ts,
  * and shared with the Worker target): `GET /health`, sessions, SSE streaming,
  * approvals and the legacy `POST /chat { message }`. When auth is configured (a bearer
- * token, or N10a's auth list from `@lousho/build-ai-agent/auth`), every route except
+ * token, or an auth list from `@lousho/build-ai-agent/auth`), every route except
  * `/health` and the channels requires it.
  *
  * Node-only (the Worker target has its own runtime, runtime.worker.ts).
@@ -33,8 +33,8 @@ const API_TOKEN_ENV = 'LOUSHO_API_TOKEN';
 const STORE_ENV = 'LOUSHO_STORE';
 
 /**
- * A1: `authorizeSession`, `authorizeApproval` and `exposeErrors` work as on
- * `createRouteHandler()` (docs/auth.md); B4: so do `onDisconnect` and
+ * `authorizeSession`, `authorizeApproval` and `exposeErrors` work as on
+ * `createRouteHandler()` (docs/auth.md); so do `onDisconnect` and
  * `waitUntil`, and `allowedOrigins`, `requireJsonBody` and `allowedHosts`
  * (when unset, read from `LOUSHO_ALLOWED_ORIGINS`, `LOUSHO_REQUIRE_JSON_BODY`
  * and `LOUSHO_ALLOWED_HOSTS` in `env`).
@@ -42,7 +42,7 @@ const STORE_ENV = 'LOUSHO_STORE';
 export interface DeployedServerOptions extends ChatRoutesAccess {
   /**
    * `{ token }` (the build options' `auth.token`): the bearer token when
-   * `LOUSHO_API_TOKEN` is not set. Or (N10a) an auth entry or ordered list
+   * `LOUSHO_API_TOKEN` is not set. Or an auth entry or ordered list
    * (`jwt()`, `oidc()`, `basic()`, ...; an agent directory's `auth.ts`):
    * `apiToken(LOUSHO_API_TOKEN)` is appended to it when that variable is set.
    */
@@ -104,7 +104,7 @@ export interface DeployedServer {
   /** Whether requests are checked (a token or an auth list), so the caller can warn when it listens publicly without. */
   authenticated: boolean;
   /**
-   * Eve DUR-F15: a graceful stop, for SIGTERM. Stops accepting connections
+   * A graceful stop, for SIGTERM. Stops accepting connections
    * (`server.close()`), stops the schedules (no new fires), then waits for
    * what is in flight - requests and their turns (a channel turn, a stream),
    * turns that outlived a disconnected client, and schedule fires - for at
@@ -123,7 +123,7 @@ export function createDeployedServer(agent: SimpleAgent, options: DeployedServer
   const auth = serverAuth(options);
   // Channels authenticate themselves (their own verify), so they sit beside the bearer-protected chat routes.
   const channels = options.channels?.length ? mountChannels(agent, options.channels) : undefined;
-  // DUR-F15: requests being handled, and turns that outlived their client, for shutdown() to wait for.
+  // Requests being handled, and turns that outlived their client, for shutdown() to wait for.
   const inFlight = new Set<Promise<unknown>>();
   const track = (work: Promise<unknown>): void => {
     const settled = work.then(
@@ -133,7 +133,7 @@ export function createDeployedServer(agent: SimpleAgent, options: DeployedServer
     inFlight.add(settled);
     void settled.then(() => inFlight.delete(settled));
   };
-  // N9b: a channel turn paused on a sign-in continues on its surface once the callback stored the token.
+  // A channel turn paused on a sign-in continues on its surface once the callback stored the token.
   const { authorizeSession, authorizeApproval, exposeErrors, onDisconnect, waitUntil } = options;
   // LOUSHO_ALLOWED_ORIGINS, LOUSHO_ALLOWED_HOSTS and LOUSHO_REQUIRE_JSON_BODY, where the options leave them unset.
   const guard = { ...requestGuardFromEnv(options.env ?? process.env), ...definedOnly({ allowedOrigins: options.allowedOrigins, allowedHosts: options.allowedHosts, requireJsonBody: options.requireJsonBody }) };

@@ -51,7 +51,7 @@ function questions({ known, defaults }: AskInput): PromptObject<keyof InitAnswer
  * Interactively asks only for the answers not already given as flags, using
  * the `prompts` library (tests drive it with `prompts.inject()`). Ctrl+C
  * cancels the whole scaffold. `prompts` is an optional peer, loaded here on
- * first use (LOU-D40), so `lousho init --yes` never needs it.
+ * first use, so `lousho init --yes` never needs it.
  */
 export async function askMissing(input: AskInput): Promise<InitAnswers> {
   const { default: prompts } = await loadOptionalPeer('prompts', () => import('prompts'));

@@ -1,7 +1,7 @@
 /**
  * Runnable example: AgentExecutor.execute() wired to a real OpenTelemetry
  * NodeTracerProvider, using OTel's own ConsoleSpanExporter so the emitted
- * spans are visible without needing a real collector (LOU-E6, LOU-K4).
+ * spans are visible without needing a real collector.
  *
  * The TraceExporter itself comes from the bundled, opt-in
  * `createOtelTraceExporter()` (src/execution/otel.ts) - this example only
@@ -9,7 +9,7 @@
  * that decides *where* the spans go; the SDK-to-OTel translation is no
  * longer hand-rolled here.
  *
- * LOU-D48: the same exporter also records the GenAI metrics
+ * The same exporter also records the GenAI metrics
  * (`gen_ai.client.token.usage`, `gen_ai.client.operation.duration`) through
  * whatever global MeterProvider is registered; here an OTel MeterProvider
  * prints them to the console on shutdown. The spans carry `lousho.cost_usd`.

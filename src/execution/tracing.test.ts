@@ -76,7 +76,7 @@ describe('withSpan', () => {
   });
 });
 
-describe('withSpan kind and error status (LOU-D9)', () => {
+describe('withSpan kind and error status', () => {
   it('records the span kind when given and leaves it unset otherwise', async () => {
     const { exporter, starts } = createSpyExporter();
     await withSpan(exporter, 'a', {}, async () => 1, undefined, 'client');
@@ -108,7 +108,7 @@ describe('withSpan kind and error status (LOU-D9)', () => {
   });
 });
 
-describe('withSpan cost rollup (LOU-D48)', () => {
+describe('withSpan cost rollup', () => {
   /** Runs `children` (their attributes) as child spans of one parent span and returns the parent's final attributes. */
   async function parentAttributes(children: Array<Record<string, unknown>>) {
     const { exporter, ends } = createSpyExporter();
@@ -152,7 +152,7 @@ describe('withSpan cost rollup (LOU-D48)', () => {
     expect(run.attributes).toEqual({ 'lousho.cost_usd': 1, 'lousho.usage.estimated': true });
   });
 
-  it('rolls a span that outlives its parent up to the nearest open ancestor (Eve MA-F2)', async () => {
+  it('rolls a span that outlives its parent up to the nearest open ancestor', async () => {
     const { exporter, ends } = createSpyExporter();
     let release!: () => void;
     const gate = new Promise<void>((resolve) => (release = resolve));

@@ -33,7 +33,7 @@ export function describeMemoryProviderContract(
     });
 
     if (query === 'filter') {
-      it('matches whole words, never fails open, and ranks by hits (Eve MEM-F1)', async () => {
+      it('matches whole words, never fails open, and ranks by hits', async () => {
         const provider = await make();
         for (const text of ['works in education', 'a user from Oslo', 'the user likes green tea', 'AI researcher', 'has two cats']) {
           await provider.add('k', { text });
@@ -52,7 +52,7 @@ export function describeMemoryProviderContract(
       });
     }
 
-    it('keeps scope keys that differ only in case apart (Eve MEM-F3)', async () => {
+    it('keeps scope keys that differ only in case apart', async () => {
       const provider = await make();
       await provider.add('notes#user:Alice', { text: 'alice secret' });
       await provider.add('notes#user:ALICE', { text: 'other user' });
@@ -70,7 +70,7 @@ export function describeMemoryProviderContract(
       expect(await provider.list('k')).toEqual([first]);
     });
 
-    it('upsert replaces an item by id, newest first, or adds one (Eve MEM-F2)', async () => {
+    it('upsert replaces an item by id, newest first, or adds one', async () => {
       const provider = await make();
       expect(typeof provider.upsert).toBe('function');
       const a = await provider.add('k', { text: 'lives in Oslo' });

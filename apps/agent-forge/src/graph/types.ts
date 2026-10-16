@@ -1,5 +1,5 @@
 /**
- * Agent graph data model (LOU-L2).
+ * Agent graph data model.
  *
  * `AgentGraphSpec` is the visual/graph-editor representation of the SDK's
  * existing `AgentSpec` (src/spec/schema.ts) - it is NOT a competing agent
@@ -13,13 +13,13 @@
  *   trigger(s) -> llm -> tool(s) -> [approval] -> output
  *
  * rather than an arbitrary user-wireable DAG of multiple LLM/tool steps.
- * That's a deliberate LOU-L scope decision, not an oversight: extending
+ * That's a deliberate scope decision, not an oversight: extending
  * `AgentSpec` itself to support multi-step orchestration/branching is a
  * bigger, cross-cutting change that belongs to a later epic (the canvas
- * work in LOU-M and/or the runtime control server in LOU-N), once we know
+ * work on the canvas and/or the runtime control server), once we know
  * what the executor actually needs to run such a graph. Kept app-local
  * (apps/agent-forge/src/graph) rather than in the core SDK for the same
- * reason: this shape may well change once LOU-M/N land, and it has no
+ * reason: this shape may well change once those land, and it has no
  * meaning outside the visual editor today.
  *
  * Fields that do NOT round-trip:
@@ -48,7 +48,7 @@ export interface GraphPosition {
 }
 
 /**
- * LOU-Q3: which execution point a hook attached to a node runs at.
+ * Which execution point a hook attached to a node runs at.
  * `toolCall` maps to the SDK's `preToolCall`/`postToolCall`, `generate`
  * maps to `preGenerate`/`postGenerate` (see src/execution/hooks.ts in the
  * core SDK). `phase` picks pre vs. post within that point.
@@ -57,7 +57,7 @@ export type AgentNodeHookPhase = 'pre' | 'post';
 export type AgentNodeHookPoint = 'toolCall' | 'generate';
 
 /**
- * One hook instance attached to a node (LOU-Q2/Q3) - either dragged onto
+ * One hook instance attached to a node - either dragged onto
  * the node from the LeftRail's Pre-hook/Post-hook palette item, or added
  * from the Inspector's "+ Add hook" starter-template list. `code` is the
  * editable JS function body a user authors in the Inspector's CodeMirror
@@ -87,7 +87,7 @@ interface AgentGraphNodeBase<TType extends AgentGraphNodeType, TData> {
   label: string;
   data: TData;
   /**
-   * Hooks attached to this node (LOU-Q3). Present on any node type in
+   * Hooks attached to this node. Present on any node type in
    * principle, but only `llm` (generate hooks) and `tool` (tool-call hooks)
    * nodes are meaningful drop targets today - see dnd.ts/CanvasArea.tsx.
    */
@@ -118,7 +118,7 @@ export interface ApprovalNodeData {
 export interface OutputNodeData {}
 
 /**
- * LOU-T3: a "router" node has no config of its own - all of its behavior
+ * A "router" node has no config of its own - all of its behavior
  * lives on its OUTGOING EDGES (see `AgentGraphEdge.condition` below), the
  * same way `AgentGraphEdge` already carries no data for every other node
  * type today. Kept as an empty data object (like `OutputNodeData`) rather
@@ -142,7 +142,7 @@ export interface AgentGraphEdge {
   source: string;
   target: string;
   /**
-   * LOU-T3: present only on an edge whose `source` is a `router` node - the
+   * Present only on an edge whose `source` is a `router` node - the
    * branch condition, evaluated by `FlowExecutor.evaluateCondition()` at
    * runtime (see `src/flows/FlowExecutor.ts`): a `{{variable}}`-interpolated
    * JS expression string, `eval()`'d after interpolation against the flow's

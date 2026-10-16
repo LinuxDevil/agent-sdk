@@ -22,7 +22,7 @@ const NODE_META: Record<AgentGraphNodeType, { color: string; icon: string; hasIn
   tool: { color: 'var(--warning)', icon: '🔧', hasIn: true, hasOut: true },
   approval: { color: 'var(--warning)', icon: '✓', hasIn: true, hasOut: true },
   output: { color: 'var(--success)', icon: '→', hasIn: true, hasOut: false },
-  // LOU-T3: router shares tool's warning-orange swatch family (both are
+  // Router shares tool's warning-orange swatch family (both are
   // "control" nodes in the mockup's visual language, see
   // .design-ref/agent-forge-mockup.html) but with its own icon so it reads
   // distinctly on the canvas; `hasOut: true` matters here more than
@@ -60,9 +60,9 @@ function rowsFor(node: AgentGraphNode): NodeRow[] {
 export interface AgentNodeData extends Record<string, unknown> {
   graphNode: AgentGraphNode;
   onRename: (nodeId: string, label: string) => void;
-  /** O2: true when this node's log/span is the one currently selected in the drawer. */
+  /** True when this node's log/span is the one currently selected in the drawer. */
   highlighted?: boolean;
-  /** O3: true when this node has an active breakpoint set. */
+  /** True when this node has an active breakpoint set. */
   hasBreakpoint?: boolean;
 }
 
@@ -101,7 +101,7 @@ function nodeClassName(selected: boolean | undefined, highlighted?: boolean, has
   return `rf-node${selected ? ' selected' : ''}${highlighted ? ' highlighted' : ''}${hasBreakpoint ? ' has-breakpoint' : ''}`;
 }
 
-// LOU-Q3: pre·N / post·N badges, matching the mockup's `.hook-badge`
+// Pre·N / post·N badges, matching the mockup's `.hook-badge`
 // (search `.design-ref/agent-forge-mockup.html` for `hook-badge`) - only
 // ENABLED hooks count, since a disabled hook has no runtime effect (see
 // graphToSpec.ts's serialization, which drops disabled hooks entirely).
@@ -176,7 +176,7 @@ function AgentNodeImpl({ data, selected }: NodeProps) {
         </span>
         <NodeTitle label={graphNode.label} rename={rename} />
       </div>
-      {/* Eve DUI-F22: no empty body box under a node with nothing to show (output, router). */}
+      {/* No empty body box under a node with nothing to show (output, router). */}
       {rows.length > 0 && (
         <div className="rf-node-body">
           {rows.map((row) => (
@@ -194,7 +194,7 @@ function AgentNodeImpl({ data, selected }: NodeProps) {
 const AgentNode = memo(AgentNodeImpl);
 
 /**
- * Eve DUI-F22: the React Flow node type for a graph node. Prefixed so none
+ * The React Flow node type for a graph node. Prefixed so none
  * collides with React Flow's built-in `input`/`output`/`default`/`group`
  * types - a node typed `output` picked up `.react-flow__node-output`'s
  * default border, padding and width and was drawn double-boxed. The graph's
@@ -210,7 +210,7 @@ export const NODE_TYPES: Record<string, typeof AgentNode> = Object.fromEntries(
   GRAPH_NODE_TYPES.map((type) => [flowNodeType(type), AgentNode])
 );
 
-/** Eve DUI-F22: the MiniMap draws each node in its type's swatch colour (see `.minimap-node-*` in layout.css). */
+/** The MiniMap draws each node in its type's swatch colour (see `.minimap-node-*` in layout.css). */
 export function miniMapNodeClassName(node: { data: Record<string, unknown> }): string {
   const graphNode = (node.data as Partial<AgentNodeData>).graphNode;
   return graphNode ? `minimap-node-${graphNode.type}` : '';

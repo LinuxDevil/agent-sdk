@@ -1,5 +1,5 @@
 /**
- * Ops pipeline: Grafana/Datadog error-signal monitor (LOU-J4).
+ * Ops pipeline: Grafana/Datadog error-signal monitor.
  *
  * Receives an ErrorSignal (from a Grafana or Datadog alert webhook, or from
  * the mock sender in mocks/ for the demo), dedupes it by `signature` so a

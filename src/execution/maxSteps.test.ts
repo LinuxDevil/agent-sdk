@@ -1,5 +1,5 @@
 /**
- * LOU-U19: exhausting `maxSteps` while the model still wants to continue
+ * Exhausting `maxSteps` while the model still wants to continue
  * reports `finishReason: 'max-steps'` (on the result and on `run.done`).
  */
 
@@ -148,7 +148,7 @@ describe("finishReason 'max-steps'", () => {
   });
 });
 
-describe('limits.maxSteps and maxSteps validation (Eve CORE-F5)', () => {
+describe('limits.maxSteps and maxSteps validation', () => {
   const answer = z.object({ answer: z.string() });
   const script = () =>
     mockModel([(req) => (req.tools?.length && req.toolChoice !== 'none' ? { toolCalls: [{ name: 'ping' }] } : '{"answer":"from gathered data"}')], {

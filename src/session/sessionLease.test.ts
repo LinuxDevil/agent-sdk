@@ -190,7 +190,7 @@ describe.each(stallable)('a run that stalled past its lease, over %s', (_name, b
     expect(transcript.map((message) => `${message.role}:${typeof message.content === 'string' ? message.content : ''}`)).toEqual(['user:go', 'assistant:', 'tool:"by B"', 'assistant:done by B']);
   });
 
-  it("a stalled run that fails after losing its lease does not stamp its failure on the new holder's checkpoint (Eve2-F2)", async () => {
+  it("a stalled run that fails after losing its lease does not stamp its failure on the new holder's checkpoint", async () => {
     const { open, stall } = backend();
     let releaseA!: () => void;
     const gateA = new Promise<void>((resolve) => (releaseA = resolve));

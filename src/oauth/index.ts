@@ -1,6 +1,6 @@
 /**
- * OAuth token storage (N9a): the types of `AgentStore.tokens`, its record
- * keys and the key helper. N9b: providers and sign-in for tools
+ * OAuth token storage: the types of `AgentStore.tokens`, its record
+ * keys and the key helper. Providers and sign-in for tools
  * (`defineOAuthProvider`, `ctx.getToken()`, `agent.oauth`).
  */
 export type {

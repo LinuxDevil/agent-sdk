@@ -1,5 +1,5 @@
 /**
- * Eve CORE-F15: an abort ends the run 'aborted' even when the provider or a
+ * An abort ends the run 'aborted' even when the provider or a
  * tool ignores the signal, mockModel honours the signal, and the result says
  * why it was aborted (`abortReason`).
  */
@@ -10,7 +10,7 @@ import { defineTool } from '../tools/defineTool';
 import { mockModel } from '../testing';
 import type { AgentEvent } from './agentEvents';
 
-describe('abort with a provider that ignores the signal (Eve CORE-F15)', () => {
+describe('abort with a provider that ignores the signal', () => {
   it('send() ends promptly as aborted, without the late reply', async () => {
     const agent = createAgent({ provider: mockModel([{ text: 'late', delayMs: 2000, ignoreSignal: true }]) });
     const started = Date.now();
@@ -53,7 +53,7 @@ describe('abort with a provider that ignores the signal (Eve CORE-F15)', () => {
     expect(model.calls).toHaveLength(1);
   });
 
-  it('a tool that never settles does not hold an aborted run open (Eve2-F5)', async () => {
+  it('a tool that never settles does not hold an aborted run open', async () => {
     const controller = new AbortController();
     let release!: (value: string) => void;
     const wedged = defineTool({
@@ -86,7 +86,7 @@ describe('abort with a provider that ignores the signal (Eve CORE-F15)', () => {
     expect(result.messages.filter((m) => m.role === 'tool')).toHaveLength(1);
   });
 
-  it('a wedged approved tool does not hold a resume open on abort (Eve2-F5)', async () => {
+  it('a wedged approved tool does not hold a resume open on abort', async () => {
     const controller = new AbortController();
     const wedged = defineTool({
       name: 'wedged',
@@ -113,7 +113,7 @@ describe('abort with a provider that ignores the signal (Eve CORE-F15)', () => {
   });
 });
 
-describe('mockModel honours the signal (Eve CORE-F15)', () => {
+describe('mockModel honours the signal', () => {
   it('rejects a delayed turn with the signal reason as soon as it aborts', async () => {
     const model = mockModel([{ text: 'x', delayMs: 2000 }]);
     const controller = new AbortController();
@@ -144,7 +144,7 @@ describe('mockModel honours the signal (Eve CORE-F15)', () => {
   });
 });
 
-describe('abortReason (Eve CORE-F15)', () => {
+describe('abortReason', () => {
   it('tells a timeout from a cancel and keeps a string reason', async () => {
     const agent = createAgent({ provider: mockModel([{ text: 'x', delayMs: 500 }], { onExhausted: 'repeat-last' }) });
 

@@ -18,10 +18,10 @@ const OPENAI_SPEC: AgentSpec = {
 };
 
 /**
- * Eve DUI-F4: with no API key the studio used to run the mock provider and
+ * With no API key the studio used to run the mock provider and
  * answer "This is a mock response." - the only hint was a log line.
  */
-describe('a real provider with no key (Eve DUI-F4)', () => {
+describe('a real provider with no key', () => {
   let baseDir: string;
   let app: ReturnType<typeof createApp>;
   let runManager: RunManager;

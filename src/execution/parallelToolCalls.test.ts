@@ -1,5 +1,5 @@
 /**
- * LOU-V3: the tool calls of one model turn run concurrently (up to
+ * The tool calls of one model turn run concurrently (up to
  * `toolConcurrency`), while the transcript, approvals, failures, aborts and
  * checkpoints stay deterministic.
  */
@@ -121,7 +121,7 @@ function settledFlag(promise: Promise<unknown>): { settled: boolean } {
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
 
-describe('parallel tool calls (LOU-V3)', () => {
+describe('parallel tool calls', () => {
   it('runs the calls of one turn concurrently by default', async () => {
     const log: string[] = [];
     const a = controllableTool('a', log);
@@ -319,19 +319,19 @@ describe('parallel tool calls (LOU-V3)', () => {
     const { result } = run([a.tool, b.tool], ['a', 'b'], { sessionId: 's1', checkpointStore });
     await Promise.all([a.started, b.started]);
 
-    // LOU-U9: the model's turn itself is checkpointed before any call starts.
+    // The model's turn itself is checkpointed before any call starts.
     expect(saved).toEqual([[]]);
 
     b.release.resolve('B');
     await tick();
     // `b` finished behind the still-running `a`; its result is checkpointed
-    // by toolCallId at once, so a crash never runs it again (audit log F9).
+    // by toolCallId at once, so a crash never runs it again.
     expect(saved).toEqual([[], ['call_b']]);
 
     a.release.resolve('A');
     await result;
     // `a`'s result lands before `b`'s (call order), then the 'finished'
-    // checkpoint (LOU-U8).
+    // checkpoint.
     expect(saved).toEqual([[], ['call_b'], ['call_a', 'call_b'], ['call_a', 'call_b']]);
   });
 
@@ -349,7 +349,7 @@ describe('parallel tool calls (LOU-V3)', () => {
       };
     }
 
-    it.each([0, 1, 2])('pauses on the approval call in position %i; the other calls run once (Eve TOOLS-F12)', async (position) => {
+    it.each([0, 1, 2])('pauses on the approval call in position %i; the other calls run once', async (position) => {
       const names = ['t0', 't1', 't2'];
       const runs: Record<string, number> = { t0: 0, t1: 0, t2: 0 };
       const tools = names.map((name, index) =>

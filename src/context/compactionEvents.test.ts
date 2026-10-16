@@ -1,5 +1,5 @@
 /**
- * LOU-W3.2: `compaction.start` / `compaction.done` stream events and
+ * `compaction.start` / `compaction.done` stream events and
  * `createAgent({ compaction, hooks })`. No network: scripted `mockModel`s.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -60,7 +60,7 @@ function agentWith(compaction: CreateAgentConfig['compaction'], size = BIG, extr
   return { agent, model };
 }
 
-describe('compaction events when nothing can be compacted (Eve MEM-F14)', () => {
+describe('compaction events when nothing can be compacted', () => {
   it('reports one unchanged compaction.done per transcript, not a start/done pair on every step', async () => {
     // Every request is over the threshold, but the transcript is assistant text and tiny results: nothing to prune.
     const { agent } = wordyAgentWith({ ...SUMMARIZING, strategy: undefined });
@@ -76,7 +76,7 @@ describe('compaction events when nothing can be compacted (Eve MEM-F14)', () => 
   });
 });
 
-describe('compaction stream events (LOU-W3.2)', () => {
+describe('compaction stream events', () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
@@ -129,7 +129,7 @@ describe('compaction stream events (LOU-W3.2)', () => {
   });
 
   it('createAgent({ compaction: true }) compacts a long transcript with the defaults', async () => {
-    const { agent, model } = agentWith(true, HUGE, { maxToolResultChars: Infinity }); // Eve TOOLS-F8: uncapped, so the results fill the window
+    const { agent, model } = agentWith(true, HUGE, { maxToolResultChars: Infinity }); // uncapped, so the results fill the window
     const run = agent.stream('read four pages');
     const events = await collect(run);
     const result = await run.result;
@@ -219,7 +219,7 @@ describe('compaction stream events (LOU-W3.2)', () => {
   });
 });
 
-describe('createAgent({ hooks, compaction }) options (LOU-W3.2)', () => {
+describe('createAgent({ hooks, compaction }) options', () => {
   it('forwards `hooks`: they run around every model call, in order, before the compaction hook', async () => {
     const seen: string[] = [];
     const { agent } = agentWith(SMALL, BIG, {
@@ -252,7 +252,7 @@ describe('createAgent({ hooks, compaction }) options (LOU-W3.2)', () => {
     // No listener: `ctx.emit` is not set, and the run is unaffected.
     expect((await agent.send('hello')).text).toBe('hi');
 
-    // M9: send() with a listener sets it too.
+    // Send() with a listener sets it too.
     const heard: AgentEvent[] = [];
     const listening = createAgent({ provider: mockModel(['hi']), hooks: [hook], onEvent: (event) => heard.push(event) });
     expect((await listening.send('hello')).text).toBe('hi');

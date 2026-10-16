@@ -1,5 +1,5 @@
 /**
- * Eve DUR-F4: the LOUSHO_SESSION_BUSY base check was a load, compare, save. Two writers that cannot share the
+ * The LOUSHO_SESSION_BUSY base check was a load, compare, save. Two writers that cannot share the
  * in-process queue (two store objects over the same data: two processes or replicas) whose turns finished at the
  * same moment both passed the check and both committed, so one turn was silently lost while both callers got 'ok'.
  * A session now commits through the store's `saveIf` compare-and-swap when the store has one.
@@ -48,7 +48,7 @@ async function raceTwoReplicas(make: () => SessionStore): Promise<{ results: Pro
   return { results, users: stored.filter((m) => m.role === 'user').map((m) => m.content) };
 }
 
-describe('session commit is a compare-and-swap (Eve DUR-F4)', () => {
+describe('session commit is a compare-and-swap', () => {
   const cases: [string, () => () => SessionStore][] = [
     [
       'FileSessionStore x2',

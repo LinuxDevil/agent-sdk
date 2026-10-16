@@ -1,4 +1,4 @@
-/** Eve TOOLS-F15: the token owner is namespaced by the authenticator when a principal has no issuer. */
+/** The token owner is namespaced by the authenticator when a principal has no issuer. */
 import { describe, expect, it } from 'vitest';
 import type { Principal } from '../auth/types';
 import { signInOwner } from './signIn';
@@ -6,7 +6,7 @@ import { signInOwner } from './signIn';
 const slack: Principal = { id: 'U04ABCDEF', type: 'user', authenticator: 'slack' };
 const github: Principal = { id: 'U04ABCDEF', type: 'user', authenticator: 'github' };
 
-describe('signInOwner (TOOLS-F15)', () => {
+describe('signInOwner', () => {
   it('defaults the issuer to authenticator:<name>, so one id from two authenticators is two owners', () => {
     expect(signInOwner(slack)).toEqual({ owner: 'user', principalId: 'U04ABCDEF', issuer: 'authenticator:slack' });
     expect(signInOwner(github)).toEqual({ owner: 'user', principalId: 'U04ABCDEF', issuer: 'authenticator:github' });

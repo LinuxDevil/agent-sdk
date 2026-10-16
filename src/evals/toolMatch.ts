@@ -1,5 +1,5 @@
 /**
- * Tool-call matching and diffing for trajectory assertions (LOU-D7).
+ * Tool-call matching and diffing for trajectory assertions.
  */
 import type { EvalToolCall } from './evalResult';
 

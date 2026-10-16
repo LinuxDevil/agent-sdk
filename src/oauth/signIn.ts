@@ -1,5 +1,5 @@
 /**
- * N9b: OAuth sign-in for tools. `ctx.getToken(provider)` reads the caller's
+ * OAuth sign-in for tools. `ctx.getToken(provider)` reads the caller's
  * token from `AgentStore.tokens` (refreshing it when it is about to expire);
  * without one it throws {@link SignInRequired}, which the executor turns into
  * a durable `kind: 'sign-in'` pause. {@link startSignIn} builds the
@@ -143,7 +143,7 @@ export async function getToken(provider: OAuthProvider, access: TokenAccess): Pr
   if (!tokens) throw storeMissing();
   const owner = tokenOwnerFor(provider, access.principal);
   let stored = await tokens.get(provider.name, owner);
-  // Eve TOOLS-F16: a failed refresh is retried once when another caller replaced the token meanwhile.
+  // A failed refresh is retried once when another caller replaced the token meanwhile.
   for (let attempt = 0; stored && attempt < 2; attempt++) {
     const state = usable(stored, Date.now());
     if (state === 'fresh') return handOut(stored, access);
@@ -181,7 +181,7 @@ function sameToken(a: OAuthToken, b: OAuthToken): boolean {
 }
 
 /**
- * Eve TOOLS-F16: refreshes in flight, by provider and refresh token. Callers
+ * Refreshes in flight, by provider and refresh token. Callers
  * that present the same refresh token at once share one request (a rotating
  * refresh token is single use, so a second request would be refused).
  */
@@ -370,12 +370,12 @@ export async function completeSignIn(
 }
 
 /**
- * N9c: exchanges the code of an MCP server's sign-in (a pending record with
+ * Exchanges the code of an MCP server's sign-in (a pending record with
  * `data.mcpServer`) through the MCP SDK and stores the token.
  */
 export type McpSignInExchange = (server: string, pending: PendingSignIn, code: string) => Promise<void>;
 
-/** {@link completeSignIn} for an MCP server's pending sign-in (N9c). */
+/** {@link completeSignIn} for an MCP server's pending sign-in. */
 async function completeMcpSignIn(server: string, pending: PendingSignIn, params: OAuthCallbackParams, mcp: McpSignInExchange | undefined): Promise<OAuthCompleteResult> {
   const where = { provider: pending.provider, displayName: server };
   if (params.error !== undefined) return { ...where, outcome: 'declined' };
@@ -458,7 +458,7 @@ const MIN_ENCODED_SECRET = 8;
 const MAX_CAUSE_DEPTH = 8;
 
 /**
- * Eve TOOLS-F2: the base64 forms of `secret` wherever it sits inside an
+ * The base64 forms of `secret` wherever it sits inside an
  * encoded value (`Basic base64(user:token)`). For each of the three byte
  * alignments, the characters that encode only the secret's own bytes, in the
  * URL-safe and the standard alphabet.
@@ -567,7 +567,7 @@ function setOwn(target: object, key: string, value: unknown): void {
 }
 
 /**
- * Eve TOOLS-F2: the same safety net for what a tool throws. The `message`,
+ * The same safety net for what a tool throws. The `message`,
  * `stack` and `cause` chain of an error (or a thrown string or object) have
  * the handed-out tokens replaced by `[REDACTED]` before the error becomes the
  * call's error result. The error keeps its identity (class, name, code).

@@ -1,5 +1,5 @@
 /**
- * ChatTriggerAdapter (LOU-T5)
+ * ChatTriggerAdapter
  *
  * Wraps Agent Forge's existing chat transport - `RunManager.sendMessage()`
  * (see runRegistry.ts's doc comment on that method for the full
@@ -8,14 +8,14 @@
  * (app.ts) is registered as `'chat'` in a `TriggerRegistry` alongside the
  * webhook/cron/Slack built-ins, instead of being a bespoke, unregistered
  * code path - closing the last of the four ad hoc "ways an agent can be
- * woken up" the LOU-T5 audit called out.
+ * woken up" an earlier audit called out.
  *
  * ## Conservative by design
  *
  * `trigger()` below is a pure pass-through to `RunManager.sendMessage()` -
  * it changes NOTHING about `launch()`, checkpoint/approval semantics, the
  * WS chat broadcast, or any other logic in runRegistry.ts. This is
- * deliberate: LOU-T5 requires the existing LOU-P chat test suites (49+
+ * deliberate: the existing chat test suites (49+
  * server / 74+ client tests) to keep passing UNCHANGED, so this file only
  * adds a thin adapter shell around the existing, untouched call path -
  * `app.ts`'s `POST /agents/:id/message` route below is the only thing

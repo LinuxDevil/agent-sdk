@@ -6,11 +6,11 @@ function jsonResponse(status: number, body: unknown): Response {
 }
 
 /**
- * Eve DUI-F3: an agent named "My Agent" made `GET /agents/My%20Agent/chats`
+ * An agent named "My Agent" made `GET /agents/My%20Agent/chats`
  * answer 400 `{ error }`; listChats() returned that object as the session
  * list and the Chat tab crashed with `n.filter is not a function`.
  */
-describe('RuntimeClient error handling (Eve DUI-F3)', () => {
+describe('RuntimeClient error handling', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });

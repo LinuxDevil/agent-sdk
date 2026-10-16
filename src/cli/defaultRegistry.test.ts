@@ -1,5 +1,5 @@
 /**
- * The committed default registry (M7b): `registry/dist/index.json` plus one
+ * The committed default registry: `registry/dist/index.json` plus one
  * document per item, built by `npm run registry:build`. Every document is
  * schema-valid, every item installs with `runAdd` into a temp agent directory
  * and the directory then loads the way `lousho dev` would load it. Nothing

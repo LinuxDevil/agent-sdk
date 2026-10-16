@@ -1,5 +1,5 @@
 /**
- * N14: code mode. With `createAgent({ codeMode })` the model gets a `run_code`
+ * Code mode. With `createAgent({ codeMode })` the model gets a `run_code`
  * tool: it writes one short JavaScript program that calls the run's tools as
  * async functions, and only the program's return value enters the transcript.
  *
@@ -201,7 +201,7 @@ function runCodeTool(allowed: readonly ToolDefinition[], codeMode: CodeModeOptio
     name: RUN_CODE_TOOL,
     description: runCodeDescription(allowed, limits),
     input: z.object({ code: z.string().describe('The body of an async JavaScript function: call tools with await tools.<name>({ ... }) and return the result') }),
-    // N4: run_code itself changes nothing; each inner call passes the permission mode on its own (plan mode refuses non-read-only ones).
+    // Run_code itself changes nothing; each inner call passes the permission mode on its own (plan mode refuses non-read-only ones).
     annotations: { readOnlyHint: true, destructiveHint: false },
     execute: async ({ code }, ctx): Promise<RunCodeResult> => {
       const callTool = toolCallScopeOf(ctx)?.callTool;

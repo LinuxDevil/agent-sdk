@@ -1,5 +1,5 @@
 /**
- * LOU-X2: declarative permission policies - ordered allow/deny/ask rules
+ * Declarative permission policies - ordered allow/deny/ask rules
  * checked before a tool's `needsApproval`, with an audit trail.
  */
 
@@ -54,7 +54,7 @@ async function collect(run: AsyncIterable<AgentEvent>): Promise<AgentEvent[]> {
 const decisions = (events: AgentEvent[]): AgentEventOf<'permission.decision'>[] =>
   events.filter((e): e is AgentEventOf<'permission.decision'> => e.type === 'permission.decision');
 
-describe('permission policies (LOU-X2)', () => {
+describe('permission policies', () => {
   it('allow runs a needsApproval tool without pausing', async () => {
     const email = tool('send_email', true);
     const agent = createAgent({

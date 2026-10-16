@@ -1,5 +1,5 @@
 /**
- * N9b: an OAuth 2.0 provider a tool signs in to (`ctx.getToken(provider)`).
+ * An OAuth 2.0 provider a tool signs in to (`ctx.getToken(provider)`).
  * Plain data plus the provider's `fetch`; the sign-in flow is in signIn.ts.
  *
  * Fetch-runtime safe: no `node:*` import.

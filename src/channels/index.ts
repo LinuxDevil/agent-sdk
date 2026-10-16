@@ -1,5 +1,5 @@
 /**
- * Channels (LOU-P7): `defineChannel()`, `mountChannels()` and the built-in
+ * Channels: `defineChannel()`, `mountChannels()` and the built-in
  * `httpChannel()` / `webhookChannel()` / `slackChannel()` / `discordChannel()` / `telegramChannel()` / `githubChannel()` / `teamsChannel()`. See docs/channels.md.
  */
 export * from './defineChannel';

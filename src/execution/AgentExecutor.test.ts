@@ -413,7 +413,7 @@ describe('AgentExecutor', () => {
         checkpointStore,
       });
 
-      // LOU-U9/U8: one save after each model turn (before its tool runs),
+      // One save after each model turn (before its tool runs),
       // one after each tool result, and a final 'finished' one.
       expect(save).toHaveBeenCalledTimes(7);
       const lengths = save.mock.calls.map(([, checkpoint]) => checkpoint.messages.length);
@@ -424,7 +424,7 @@ describe('AgentExecutor', () => {
       ]);
     });
 
-    it('should write the businessState option into every checkpoint record (LOU-T1)', async () => {
+    it('should write the businessState option into every checkpoint record', async () => {
       const execute = vi.fn().mockResolvedValue({ ok: true });
       toolRegistry.register('noop', {
         displayName: 'Noop',
@@ -488,7 +488,7 @@ describe('AgentExecutor', () => {
       }
     });
 
-    it('should leave checkpoint.businessState undefined when the option is omitted - backward compatible (LOU-T1)', async () => {
+    it('should leave checkpoint.businessState undefined when the option is omitted - backward compatible', async () => {
       const execute = vi.fn().mockResolvedValue({ ok: true });
       toolRegistry.register('noop', {
         displayName: 'Noop',
@@ -673,7 +673,7 @@ describe('AgentExecutor', () => {
       expect(resumedResult.messages).toHaveLength(baselineResult.messages.length);
     });
 
-    it('should carry businessState through a crash + restart without the resumed call re-passing it (LOU-T1)', async () => {
+    it('should carry businessState through a crash + restart without the resumed call re-passing it', async () => {
       const execute = vi.fn().mockResolvedValue({ ok: true });
       toolRegistry.register('noop', {
         displayName: 'Noop',
@@ -824,7 +824,7 @@ describe('AgentExecutor', () => {
       expect(userMessage?.content).toBe('Hello');
     });
 
-    it('should keep the checkpoint, marked finished, once a run reaches a terminal finish reason (LOU-U8)', async () => {
+    it('should keep the checkpoint, marked finished, once a run reaches a terminal finish reason', async () => {
       const execute = vi.fn().mockResolvedValue({ ok: true });
       toolRegistry.register('noop', {
         displayName: 'Noop',
@@ -899,7 +899,7 @@ describe('AgentExecutor', () => {
       expect(finished!.messages.at(-1)).toEqual({ role: 'assistant', content: 'done' });
     });
 
-    it('should continue the conversation when execute() is called again with the same sessionId after completion (LOU-U8)', async () => {
+    it('should continue the conversation when execute() is called again with the same sessionId after completion', async () => {
       function makeCheckpointStore() {
         const records = new Map<string, Checkpoint>();
         return {
@@ -975,7 +975,7 @@ describe('AgentExecutor', () => {
     });
   });
 
-  describe('tracing hooks (LOU-E2)', () => {
+  describe('tracing hooks', () => {
     it('invokes onLLMRequest/onLLMResponse and onToolCall/onToolResult in order, with real latency', async () => {
       const { tool } = await import('ai');
       const { z } = await import('zod');
@@ -1180,7 +1180,7 @@ describe('AgentExecutor', () => {
     });
   });
 
-  describe('withSpan tracing (LOU-E5)', () => {
+  describe('withSpan tracing', () => {
     function createSpyExporter() {
       const starts: Span[] = [];
       const ends: Span[] = [];
@@ -1380,7 +1380,7 @@ describe('AgentExecutor', () => {
     });
   });
 
-  describe('guiding runtime error messages (LOU-H12)', () => {
+  describe('guiding runtime error messages', () => {
     it('throws naming "provider" with a corrective snippet when provider is omitted', async () => {
       const agent = AgentBuilder.create()
         .setName('Test Agent')
@@ -1426,7 +1426,7 @@ describe('AgentExecutor', () => {
     });
   });
 
-  describe('hooks (LOU-Q1)', () => {
+  describe('hooks', () => {
     it('runs preGenerate and postGenerate around each provider.generate() call', async () => {
       const { HookRegistry } = await import('./hooks');
       const hooks = new HookRegistry();
@@ -1614,7 +1614,7 @@ describe('AgentExecutor', () => {
     });
   });
 
-  describe('LOU-T4: provider.generate() failure compaction', () => {
+  describe('provider.generate() failure compaction', () => {
     /**
      * A minimal, hand-rolled LLMProvider whose `generate()` is fully
      * scripted - throws a caller-supplied sequence of errors, then
@@ -1709,7 +1709,7 @@ describe('AgentExecutor', () => {
     it('leaves the existing tool-error {error} compaction pattern (resume.ts/executeToolCall) completely unaffected', async () => {
       // A tool that throws should still be compacted into a conversational
       // {error} tool-result message and the run should still complete
-      // normally - this is the pre-existing pattern LOU-T4 must not touch.
+      // normally - this is the pre-existing pattern must not touch.
       const { tool } = await import('ai');
       const { z } = await import('zod');
       toolRegistry.register('boom', {
@@ -1741,7 +1741,7 @@ describe('AgentExecutor', () => {
         onAgentEvent: (event) => events.push(event),
       });
 
-      // Pre-existing pattern (unrelated to LOU-T4): a thrown tool error is
+      // Pre-existing pattern (unrelated to): a thrown tool error is
       // compacted to `{error: message}` on the `tool.error` event/return
       // value (see AgentExecutor.doExecuteToolCall()'s catch block) - the
       // run itself completes normally rather than rejecting.

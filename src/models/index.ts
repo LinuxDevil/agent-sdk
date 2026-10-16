@@ -1,5 +1,5 @@
 /**
- * Models, tokens and cost (LOU-W1): token estimation and a model registry
+ * Models, tokens and cost: token estimation and a model registry
  * with context windows and prices.
  */
 

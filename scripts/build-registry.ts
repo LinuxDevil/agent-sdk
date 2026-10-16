@@ -1,6 +1,6 @@
 // fallow-ignore-file complexity
 /**
- * build-registry (M7b)
+ * build-registry
  *
  * Builds `registry/dist/` - the static JSON `lousho add` reads by default -
  * from the `registry/<name>/` source folders. Each folder holds an `item.json`

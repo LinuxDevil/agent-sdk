@@ -63,14 +63,14 @@ async function runAgent(extra: { captureContent?: boolean; redactContent?: boole
     sessionId: 'session-9',
     temperature: 0.2,
     maxTokens: 256,
-    // The deprecated content attributes are dual-emitted only on an explicit opt-out of redaction (Eve MA-F4).
+    // The deprecated content attributes are dual-emitted only on an explicit opt-out of redaction.
     redactContent: false,
     ...extra,
   });
   return { spans, provider };
 }
 
-describe('OpenTelemetry GenAI semantic conventions (LOU-D9)', () => {
+describe('OpenTelemetry GenAI semantic conventions', () => {
   afterEach(() => {
     delete process.env[CAPTURE_CONTENT_ENV];
   });
@@ -297,7 +297,7 @@ describe('OpenTelemetry GenAI semantic conventions (LOU-D9)', () => {
     });
 
     // One JSON.parse yields the spec's message schema; `content` is the
-    // literal text, not a second JSON document (LOU-R3).
+    // literal text, not a second JSON document.
     expect(JSON.parse(spans[0].attributes['gen_ai.input.messages'] as string)).toEqual([
       { role: 'system', parts: [{ type: 'text', content: 'Be terse.' }] },
       { role: 'user', parts: [{ type: 'text', content: 'Weather in Paris?' }] },
@@ -305,7 +305,7 @@ describe('OpenTelemetry GenAI semantic conventions (LOU-D9)', () => {
   });
 });
 
-describe('traced flows (LOU-D9)', () => {
+describe('traced flows', () => {
   const flow: AgentFlow = {
     code: 'weather-flow',
     name: 'Weather Flow',
@@ -418,7 +418,7 @@ describe('traced flows (LOU-D9)', () => {
   });
 });
 
-describe('lousho.cost_usd and lousho.usage.estimated spans (LOU-D48)', () => {
+describe('lousho.cost_usd and lousho.usage.estimated spans', () => {
   async function runPriced(model: string, scripted: boolean) {
     const { agent, toolRegistry } = setup();
     const { exporter, spans } = memoryExporter();

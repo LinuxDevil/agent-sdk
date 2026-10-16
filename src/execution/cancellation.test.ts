@@ -1,5 +1,5 @@
 /**
- * LOU-V1: cancelling a run with an AbortSignal.
+ * Cancelling a run with an AbortSignal.
  *
  * Covers the executor loop (abort before start, during a model call, during
  * a tool call, between steps), checkpoint-on-abort + resume, the "an abort is
@@ -107,7 +107,7 @@ function createApprovalStore(): ApprovalStore {
   };
 }
 
-describe('AgentExecutor cancellation (LOU-V1)', () => {
+describe('AgentExecutor cancellation', () => {
   it('an already-aborted signal resolves immediately with finishReason "aborted" and never calls the provider', async () => {
     const { provider, generate } = scriptedProvider(async () => textResult('never'));
     const events: AgentEvent[] = [];
@@ -279,7 +279,7 @@ describe('AgentExecutor cancellation (LOU-V1)', () => {
     });
     const resumed = await AgentExecutor.execute({
       agent: agentWithTools('fast'),
-      input: 'do the thing', // a retry of the same request: resumes, nothing appended (LOU-U8)
+      input: 'do the thing', // a retry of the same request: resumes, nothing appended
       provider: second.provider,
       toolRegistry: registryWith({ fast }),
       sessionId: 's1',
@@ -373,7 +373,7 @@ describe('AgentExecutor cancellation (LOU-V1)', () => {
   });
 });
 
-describe('cancellation entry points (LOU-V1)', () => {
+describe('cancellation entry points', () => {
   it('createAgent().send(input, { signal }) forwards the signal', async () => {
     const provider = createMockProvider({ name: 'mock' });
     const generateSpy = vi.spyOn(provider, 'generate');

@@ -125,7 +125,7 @@ interface AgentListContext {
   doc: DocumentSetters;
 }
 
-/** Eve DUI-F21: saves agent `fromId` (renamed) as `toId`, deletes the old file, and follows the rename when it is open. */
+/** Saves agent `fromId` (renamed) as `toId`, deletes the old file, and follows the rename when it is open. */
 async function renameSavedAgent({ store, agents, agentId, refreshAgents, doc }: AgentListContext, spec: AgentSpec, fromId: string, toId: string): Promise<void> {
   const problem = agentIdProblem(toId);
   if (problem) throw new Error(`Invalid agent name '${toId}': ${problem}`);
@@ -140,7 +140,7 @@ async function renameSavedAgent({ store, agents, agentId, refreshAgents, doc }: 
   await refreshAgents();
 }
 
-/** Eve DUI-F21: deletes saved agent `id`; deleting the open one opens the next, or a fresh default. */
+/** Deletes saved agent `id`; deleting the open one opens the next, or a fresh default. */
 async function deleteSavedAgent(
   { store, agents, agentId, refreshAgents, doc }: AgentListContext,
   setAgents: (agents: AgentStoreEntry[]) => void,
@@ -223,10 +223,10 @@ function useAgentActions(context: AgentListContext, spec: AgentSpec, setAgents: 
 
   const createAgent = useCallback(
     async (id: string, template: TemplateId) => {
-      // Eve DUI-F3: never persist an id the server would reject.
+      // Never persist an id the server would reject.
       const problem = agentIdProblem(id);
       if (problem) throw new Error(`Invalid agent name '${id}': ${problem}`);
-      // Eve DUI-F21: the agent is named what the user typed, not the template's name.
+      // The agent is named what the user typed, not the template's name.
       const nextGraph = graphFromTemplate(template, id);
       const nextSpec = graphToSpec(nextGraph);
       await store.save(id, nextSpec);
@@ -237,7 +237,7 @@ function useAgentActions(context: AgentListContext, spec: AgentSpec, setAgents: 
   );
 
   /**
-   * Eve DUI-F21: renames a saved agent - saves its spec (renamed) under the
+   * Renames a saved agent - saves its spec (renamed) under the
    * new id, then deletes the old file. Chats, traces and checkpoints stay
    * under the old id in `.lousho/agents/`.
    */
@@ -246,7 +246,7 @@ function useAgentActions(context: AgentListContext, spec: AgentSpec, setAgents: 
     [store, agents, agentId, spec, refreshAgents]
   );
 
-  /** Eve DUI-F21: deletes a saved agent (`DELETE /agents/:id`); deleting the open one opens the next, or a fresh default. */
+  /** Deletes a saved agent (`DELETE /agents/:id`); deleting the open one opens the next, or a fresh default. */
   const deleteAgent = useCallback(
     (id: string) => deleteSavedAgent({ store, agents, agentId, refreshAgents, doc }, setAgents, id),
     [store, agents, agentId, refreshAgents]

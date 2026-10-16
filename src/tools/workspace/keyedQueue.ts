@@ -1,5 +1,5 @@
 /**
- * Runs async tasks one at a time per key (N7): writes to one path, or one
+ * Runs async tasks one at a time per key: writes to one path, or one
  * session's read-modify-write of a checkpoint file, never interleave.
  */
 export class KeyedQueue {

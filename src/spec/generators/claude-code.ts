@@ -1,8 +1,7 @@
 /**
- * Claude Code generator (LOU-J1)
+ * Claude Code generator
  *
- * Turns a cross-harness AgentSpec (LOU-H9, extended with `policy`/`triggers`
- * in LOU-J1) into a real Claude Code Skill file (SKILL.md).
+ * Turns a cross-harness AgentSpec (extended with `policy`/`triggers`) into a real Claude Code Skill file (SKILL.md).
  *
  * This repository does not itself ship a `.claude/skills/` directory (there
  * is nothing under `.claude/` to mirror the frontmatter shape from), so the
@@ -91,7 +90,7 @@ function buildPolicySection(policy: AgentSpec['policy']): string {
  * truncated) - only the frontmatter `description` is shortened, since that
  * field exists purely for the skill picker, not to carry the whole prompt.
  * Every tool from `spec.tools` is listed explicitly so a reader (or the
- * LOU-J1 test) can see exactly which tools this skill expects to be
+ * Test) can see exactly which tools this skill expects to be
  * available.
  */
 export function generateClaudeCodeSkill(spec: AgentSpec): GeneratedFile {

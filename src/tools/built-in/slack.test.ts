@@ -82,7 +82,7 @@ describe('postSlackAlert / createSlackTool (mocked Slack API)', () => {
   });
 });
 
-describe('slack tool sandbox seam (LOU-K2)', () => {
+describe('slack tool sandbox seam', () => {
   it('flags requiresSandbox and implements sandboxExecute', () => {
     const descriptor = createSlackTool({ webhookUrl: 'https://hooks.slack.test/services/mock' });
     expect(descriptor.requiresSandbox).toBe(true);

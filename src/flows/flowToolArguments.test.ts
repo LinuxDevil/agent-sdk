@@ -1,6 +1,6 @@
 /**
- * H3-5: a `toolCall` argument that is exactly one `{{name}}` (or `$name`)
- * passes the variable's value, not its text. H3-7: running a createAgent()
+ * A `toolCall` argument that is exactly one `{{name}}` (or `$name`)
+ * passes the variable's value, not its text. Running a createAgent()
  * agent in a flow (through a tool), and `step` nodes, which do not run.
  */
 
@@ -21,7 +21,7 @@ function run(root: EditorStep, toolRegistry: ToolRegistry, variables: Record<str
   return FlowExecutor.execute(flowOf(root), { agent: { name: 'flow-agent' }, provider: new MockLLMProvider({ name: 'mock' }), toolRegistry, variables });
 }
 
-describe('toolCall arguments (H3-5)', () => {
+describe('toolCall arguments', () => {
   const seen: unknown[] = [];
   const toolRegistry = new ToolRegistry();
   toolRegistry.register('typed', {
@@ -70,7 +70,7 @@ describe('toolCall arguments (H3-5)', () => {
   });
 });
 
-describe('agents in flows (H3-7)', () => {
+describe('agents in flows', () => {
   it('runs a createAgent() agent through a tool, and its reply is the step output', async () => {
     const researcher = createAgent({ name: 'researcher', provider: mockModel(['Cats sleep 16 hours a day.']), instructions: 'You research.' });
     const toolRegistry = new ToolRegistry();

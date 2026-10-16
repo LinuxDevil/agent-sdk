@@ -1,7 +1,7 @@
 /**
  * The agent id rule, shared by the server (every `:id` becomes a filesystem
  * path segment - see server/types.ts) and the browser client (the "+ New
- * agent" form validates against the same rule inline - Eve DUI-F3).
+ * agent" form validates against the same rule inline).
  */
 const AGENT_ID_RE = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,127})$/;
 

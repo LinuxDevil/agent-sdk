@@ -1,5 +1,5 @@
 /**
- * LOU-V2: obtains one model step through `provider.stream()` instead of
+ * Obtains one model step through `provider.stream()` instead of
  * `provider.generate()`, reporting text chunks as they arrive and assembling
  * the same GenerateResult the rest of the AgentExecutor loop works with.
  */
@@ -35,16 +35,16 @@ export function canStream(provider: LLMProvider, request: GenerateOptions): bool
   return typeof candidate.supportsStreaming !== 'function' || candidate.supportsStreaming.call(provider, request.model ?? '');
 }
 
-/** LOU-V13: the `reasoning.*` events of a step. */
+/** The `reasoning.*` events of a step. */
 type ReasoningEventPayload = Extract<AgentEventPayload, { type: 'reasoning.start' | 'reasoning.delta' | 'reasoning.done' }>;
 
 /** Where a step reports what it streams. */
 export interface StepSink {
   onTextDelta(text: string): void;
   onReasoning(event: ReasoningEventPayload): void;
-  /** Called before the first text delta or tool call is applied (LOU-V10). */
+  /** Called before the first text delta or tool call is applied. */
   onOutput?: () => void;
-  /** N1a: a provider-executed call started, and finished (with its result), as the chunks arrive. */
+  /** A provider-executed call started, and finished (with its result), as the chunks arrive. */
   onHostedToolCall?(call: HostedToolCall): void;
   onHostedToolResult?(call: HostedToolCall): void;
 }
@@ -52,17 +52,17 @@ export interface StepSink {
 interface StreamedParts {
   text: string;
   toolCalls: ToolCall[];
-  /** N1a: provider-executed calls by id, in call order, and the ids already reported finished. */
+  /** Provider-executed calls by id, in call order, and the ids already reported finished. */
   hosted: Map<string, HostedToolCall>;
   hostedDone: Set<string>;
   finish?: StreamChunk;
-  /** LOU-V13: finished reasoning blocks, the open block's text, and the text of the reasoning reported since `reasoning.start`. */
+  /** Finished reasoning blocks, the open block's text, and the text of the reasoning reported since `reasoning.start`. */
   reasoning: ReasoningBlock[];
   block: string;
   thought: string;
 }
 
-/** LOU-V13: closes the open block and, if reasoning was reported, ends it with `reasoning.done`. */
+/** Closes the open block and, if reasoning was reported, ends it with `reasoning.done`. */
 function closeReasoning(parts: StreamedParts, sink: StepSink, tokens?: number): void {
   if (parts.block) parts.reasoning.push({ text: parts.block });
   parts.block = '';
@@ -120,7 +120,7 @@ const CHUNK_HANDLERS: Partial<Record<StreamChunk['type'], ChunkHandler>> = {
   },
 };
 
-/** LOU-V13: a non-streamed step's reasoning, as one `reasoning.start` / `.delta` / `.done`. */
+/** A non-streamed step's reasoning, as one `reasoning.start` / `.delta` / `.done`. */
 export function reportReasoning(generated: GenerateResult, sink: Pick<StepSink, 'onReasoning'>): void {
   const text = (generated.reasoning ?? []).map((block) => block.text).join('');
   if (!text) return;
@@ -146,12 +146,12 @@ function silenceFinalValues(streamed: StreamResult): void {
  * stream's `toolCalls` promise (the 'ai' SDK adapters only report them
  * there); finish reason and usage from the `finish` chunk, else from the
  * stream's promises. The signal is checked between chunks. Reasoning
- * (LOU-V13) is reported as `reasoning.*` events, ended before the first text
+ * is reported as `reasoning.*` events, ended before the first text
  * or tool call (or a retry), and returned in blocks.
  */
 export async function generateViaStream(provider: LLMProvider, request: GenerateOptions, sink: StepSink): Promise<GenerateResult> {
   const parts: StreamedParts = { text: '', toolCalls: [], hosted: new Map(), hostedDone: new Set(), reasoning: [], block: '', thought: '' };
-  // C2: withRetry() retries a stream that failed after reasoning only. The
+  // WithRetry() retries a stream that failed after reasoning only. The
   // failed attempt's reasoning is ended (`reasoning.done`, before the
   // `provider.retry` event) and dropped; the step keeps the retry's.
   const retried = () => {
@@ -166,7 +166,7 @@ export async function generateViaStream(provider: LLMProvider, request: Generate
   }
   request.signal?.throwIfAborted();
   closeReasoning(parts, sink);
-  // N1a: a call whose result never came (the provider reported none) still ends with `tool.done`.
+  // A call whose result never came (the provider reported none) still ends with `tool.done`.
   for (const call of parts.hosted.values()) if (!parts.hostedDone.has(call.id)) sink.onHostedToolResult?.(call);
   const hostedToolCalls = [...parts.hosted.values()];
 

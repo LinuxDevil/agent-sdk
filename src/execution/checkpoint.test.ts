@@ -13,7 +13,7 @@ function createCheckpointStore(): LocalStorageCheckpointStore {
   return new LocalStorageCheckpointStore(storageService);
 }
 
-// The shared store contract (LOU-W5), including the Uint8Array round-trip (Eve DUR-F5, E14).
+// The shared store contract, including the Uint8Array round-trip.
 describeCheckpointStoreContract('LocalStorageCheckpointStore', createCheckpointStore);
 
 function buildCheckpoint(overrides: Partial<Checkpoint> = {}): Checkpoint {
@@ -88,7 +88,6 @@ describe('Execution - LocalStorageCheckpointStore', () => {
     );
   });
 
-  // LOU-T1
   it('should round-trip an arbitrary businessState blob deep-equal', async () => {
     const store = createCheckpointStore();
     const checkpoint = buildCheckpoint({
@@ -106,7 +105,6 @@ describe('Execution - LocalStorageCheckpointStore', () => {
     });
   });
 
-  // LOU-U8
   it('should round-trip status, approvalId and a transcript with queued input behind a pending turn', async () => {
     const store = createCheckpointStore();
     const checkpoint = buildCheckpoint({
@@ -134,7 +132,7 @@ describe('Execution - LocalStorageCheckpointStore', () => {
     expect(loaded?.businessState).toBeUndefined();
   });
 
-  // LOU-R9: on a fresh root the first save() used to die with ENOENT on the
+  // On a fresh root the first save() used to die with ENOENT on the
   // `checkpoints/*.lock` file, because nothing created the subdirectories.
   it('works on a fresh, empty directory: save() creates checkpoints/ and checkpoint-history/', async () => {
     const root = realFs.mkdtempSync(realPath.join(os.tmpdir(), 'lou-checkpoints-'));

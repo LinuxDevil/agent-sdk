@@ -1,5 +1,5 @@
 /**
- * Eve DUI-F1: the per-launch API token `lousho studio` prints in its URL
+ * The per-launch API token `lousho studio` prints in its URL
  * (`http://127.0.0.1:4750/?token=...`). Read once from the page URL, kept in
  * `sessionStorage` so a reload of this tab still works, and stripped from
  * the address bar. Every API call and the WebSocket send it back (see

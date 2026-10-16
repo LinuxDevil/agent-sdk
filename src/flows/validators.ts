@@ -6,8 +6,8 @@ import { AgentFlow, FlowAgentDefinition } from '../types/flow';
  * Flow APIs take plain data - `FlowExecutionContext.agent` is an
  * `AgentConfig` (`{ name, prompt?, settings }`) and `FlowBuilder.addAgent` a
  * `FlowAgentDefinition` (`{ name, model, system, tools }`) - so a SimpleAgent
- * passed to either was silently accepted while its instructions were dropped
- * (LOU-R14). Both reject it with a coded `SDKError` instead.
+ * passed to either was silently accepted while its instructions were dropped.
+ * Both reject it with a coded `SDKError` instead.
  */
 export function isCreateAgentResult(value: unknown): boolean {
   return typeof value === 'object' && value !== null && typeof (value as { send?: unknown }).send === 'function';

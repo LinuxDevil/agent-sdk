@@ -1,4 +1,4 @@
-/** M4: a background sub-agent paused for approval pauses the lead when the lead awaits it, and resumes with the decision. */
+/** A background sub-agent paused for approval pauses the lead when the lead awaits it, and resumes with the decision. */
 import { describe, it, expect } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -43,7 +43,7 @@ function results(messages: readonly Message[], name: string): Record<string, unk
 const childTurns = (model: ReturnType<typeof mockModel>) =>
   model.calls.map((call) => call.messages.filter((m) => m.role !== 'system').map((m) => `${m.role}: ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`));
 
-describe('background sub-agents that need approval (M4)', () => {
+describe('background sub-agents that need approval', () => {
   it('agent_await pauses the lead on the child approval, listed with its sub-agent path', async () => {
     const child = coder([shellCall('npm test'), 'tests pass']);
     const lead = createAgent({ provider: mockModel([bgTask('coder'), awaitTasks('task_1'), 'done']), subagents: { coder: child.agent } });

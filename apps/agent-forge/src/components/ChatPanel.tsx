@@ -1,19 +1,19 @@
 /**
- * P1/P2: chat with a running agent - the Chat tab's real content, replacing
- * BottomDrawer's LOU-P placeholder. Renders `AppState.chat` (the server's
+ * Chat with a running agent - the Chat tab's real content, replacing
+ * BottomDrawer's former placeholder. Renders `AppState.chat` (the server's
  * real `Message[]` history, reconciled and streamed over the existing
  * `WS /agents/:id/stream` channel - see runRegistry.ts/chatReconcile.ts),
  * ported from `.design-ref/agent-forge-mockup.html`'s bubble/avatar/
  * timestamp layout.
  *
- * Streaming granularity: MESSAGE-level, not token-level. Since M9 the
+ * Streaming granularity: MESSAGE-level, not token-level. The
  * server's `AgentExecutor.execute({ onAgentEvent })` streams each model
  * call through `provider.stream()` when the provider can, so the
  * WebSocket carries several `text.delta` events per step - but this panel
  * renders the reconciled `Message[]` history, not the deltas. A message
  * appears in the thread once its run turn settles (completes, or pauses
  * for approval); the "typing" indicator below fills the gap, driven by the
- * real `status: 'running'` from LOU-N rather than a fake timeout.
+ * real `status: 'running'` from the runtime server rather than a fake timeout.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useAppState } from '../state/AppState';
@@ -50,7 +50,7 @@ function ToolCallCard({ toolCall, result }: { toolCall: NonNullable<ChatMessage[
 }
 
 /**
- * Eve DUI-F21: the user turn a top-bar Run added is shown as "Run input" in
+ * The user turn a top-bar Run added is shown as "Run input" in
  * a neutral bubble, not as a message the user typed.
  */
 function Bubble({ message, toolResults }: { message: ChatMessage; toolResults: Map<string, ChatMessage> }) {

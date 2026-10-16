@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * S3 (LOU-S): full-stack smoke test against the real, BUILT `lousho studio`
+ * S3: full-stack smoke test against the real, BUILT `lousho studio`
  * (see playwright.config.ts's `webServer` - it runs the same
  * `dist-server/index.cjs` production entry `lousho studio --prod` spawns,
  * serving the pre-built client too). This is the guard against regressions
@@ -25,18 +25,18 @@ import { test, expect } from '@playwright/test';
  * it calls any registered tool whose name appears in the last user message
  * - see `src/providers/mock.ts`) -> the run pauses awaiting approval ->
  * approve via the Chat tab's inline approval card
- * (`ApprovalCard`/`ChatPanel.tsx`, the same component and endpoint the
- * epic brief calls for) -> the run resumes and completes.
+ * (`ApprovalCard`/`ChatPanel.tsx`, the same component and endpoint
+ * the Approve button uses) -> the run resumes and completes.
  *
- * Agents live in the server workspace (`HttpAgentStore` over `PUT /agents`,
- * Eve DUI-F2), and Chat sends the canvas's current spec with each message
- * (Eve DUI-F7) - so this test chats on the freshly created agent straight
+ * Agents live in the server workspace (`HttpAgentStore` over `PUT /agents`),
+ * and Chat sends the canvas's current spec with each message
+ * - so this test chats on the freshly created agent straight
  * away, with no Run first.
  */
 test('create an agent, hit an approval gate via chat, approve it, and complete the run', async ({ page }) => {
   const agentId = `e2e-approval-agent-${Date.now()}`;
 
-  // Eve DUI-F1: the studio URL carries the per-launch token (see playwright.config.ts).
+  // The studio URL carries the per-launch token (see playwright.config.ts).
   await page.goto('/?token=e2e-studio-token');
   await expect(page.locator('.app')).toBeVisible();
 
@@ -58,7 +58,7 @@ test('create an agent, hit an approval gate via chat, approve it, and complete t
   await toolNameInput.fill('demo-approval');
   await expect(toolNameInput).toHaveValue('demo-approval');
 
-  // Eve DUI-F2: the new agent is a file in the server workspace, not a
+  // The new agent is a file in the server workspace, not a
   // browser-only entry.
   await expect
     .poll(async () => {
@@ -67,7 +67,7 @@ test('create an agent, hit an approval gate via chat, approve it, and complete t
     })
     .toContain(agentId);
 
-  // --- Chat (no Run first - Eve DUI-F7: chat on a new agent works, and
+  // --- Chat (no Run first - chat on a new agent works, and
   // sends the canvas's current spec): send a message mentioning the tool,
   // hitting the approval gate --- send a message mentioning the tool, hitting the approval gate ---
   const chatInput = page.locator('.chat-input');

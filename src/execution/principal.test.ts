@@ -1,5 +1,5 @@
 /**
- * N10b: the run's principal reaches tools, `needsApproval` policies,
+ * The run's principal reaches tools, `needsApproval` policies,
  * permission rules, hooks and in-process sub-agents; it is kept across an
  * approval pause and a crash; the caller who decides an approval is recorded
  * as the approver (`ctx.approval.by`), never swapped in as the run's principal.
@@ -66,7 +66,7 @@ afterEach(() => {
   for (const dir of temps.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-describe('the principal in tools, policies and permission rules (N10b)', () => {
+describe('the principal in tools, policies and permission rules', () => {
   it('a tool reads ctx.principal from send(), stream() and a session turn', async () => {
     const whoami = probe('whoami');
     const agent = createAgent({ provider: mockModel([calling('whoami'), 'a', calling('whoami'), 'b', calling('whoami'), 'c']), tools: [whoami.tool] });
@@ -166,7 +166,7 @@ describe('the principal in tools, policies and permission rules (N10b)', () => {
   });
 });
 
-describe('sub-agents (N10b)', () => {
+describe('sub-agents', () => {
   it('an in-process sub-agent, foreground or background, acts for the lead caller', async () => {
     const whoami = probe('whoami');
     const researcher = createAgent({ provider: mockModel([calling('whoami'), 'found', calling('whoami'), 'found again']), tools: [whoami.tool], description: 'Researches' });
@@ -217,7 +217,7 @@ describe('sub-agents (N10b)', () => {
   });
 });
 
-describe('pause and resume (N10b)', () => {
+describe('pause and resume', () => {
   it('a static run paused for A and approved by B runs the call, and the rest of the turn, for A; B is the approver', async () => {
     const send = probe('send_email', { needsApproval: true });
     const log = probe('log');
@@ -259,7 +259,7 @@ describe('pause and resume (N10b)', () => {
     expect(send.seen[0].approval).toEqual({ id: expect.any(String), note: 'ok', by: BOB });
   });
 
-  it('an approval snapshot saved before N10b resumes with no principal', async () => {
+  it('an approval snapshot saved before principals existed resumes with no principal', async () => {
     const records = new Map<string, { pending: PendingApproval; snapshot: ExecutionSnapshot }>();
     const approvalStore: ApprovalStore = {
       save: async (pending, snapshot) => {
@@ -319,7 +319,7 @@ describe('pause and resume (N10b)', () => {
     }
   });
 
-  it('a checkpoint written before N10b resumes with no principal; continuing it as the same caller is allowed', async () => {
+  it('a checkpoint written before principals existed resumes with no principal; continuing it as the same caller is allowed', async () => {
     const store = memoryStore();
     const b = probe('b', { crashOnce: true });
     await expect(createAgent({ provider: mockModel([calling('b')]), tools: [b.tool], store }).send('go', { sessionId: 'old', principal: ALICE })).rejects.toThrow();
@@ -355,13 +355,13 @@ describe('pause and resume (N10b)', () => {
   });
 });
 
-describe('approvers over HTTP and channels (N10b)', () => {
+describe('approvers over HTTP and channels', () => {
   it("the approvals route passes route auth's principal as the approver; the run keeps its own", async () => {
     const deploy = probe('deploy', { needsApproval: true });
     const agent = createAgent({ provider: mockModel([calling('deploy'), 'shipped']), tools: [deploy.tool], store: memoryStore() });
     const { handler } = createRouteHandler(agent, {
       auth: [apiToken('alice-token', { id: 'alice' }), apiToken('bob-token', { id: 'bob' })],
-      // A1: by default only alice may decide her own call; bob is her approver here.
+      // By default only alice may decide her own call; bob is her approver here.
       authorizeApproval: ({ principal }) => principal?.id === 'bob',
     });
     const as = (token: string) => ({ authorization: `Bearer ${token}` });

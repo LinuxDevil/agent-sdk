@@ -1,11 +1,11 @@
 /**
- * Slack interaction-callback route (LOU-J5).
+ * Slack interaction-callback route.
  *
  * Parses a Slack interaction callback (what Slack POSTs to the
  * `POST /slack/interactions` endpoint when a user clicks the "Fix it"
  * button built by src/tools/built-in/slack.ts's buildSlackAlertPayload()),
  * extracts the approvalId from the clicked button's `value`, and calls the
- * REAL LOU-C6 `resumeAfterApproval()` (src/execution/resume.ts) with that
+ * REAL `resumeAfterApproval()` (src/execution/resume.ts) with that
  * id - genuinely resuming the paused AgentExecutor run through the real
  * ApprovalGate, not a bypass or a reimplementation of it.
  */

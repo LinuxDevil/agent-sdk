@@ -1,5 +1,5 @@
 /**
- * LOU-X8: ready-made `needsApproval` policies. `always()` and `never()` are
+ * Ready-made `needsApproval` policies. `always()` and `never()` are
  * the plain booleans; `once()` asks the first time a tool is called in a
  * session and approves its later calls once a human approved one.
  *
@@ -30,7 +30,7 @@ export function never(): false {
  * Asks the first time the tool is called in a session; once a human approves
  * a call, later calls of the tool in that session run without asking. A
  * rejection is not remembered, nor is an approval given by a
- * `createAgent({ approve })` callback (Eve TOOLS-F19): the callback is asked
+ * `createAgent({ approve })` callback: the callback is asked
  * again each time, unless the decision said `remember: 'session'`. `per: 'args'` remembers approvals per tool and
  * arguments instead (the next call with different arguments asks again).
  *
@@ -58,7 +58,7 @@ export function once(options: { per?: 'tool' | 'args' } = {}): ApprovalPolicy {
 
 /**
  * The `metadata` recorded on the `tool` message of an approved call.
- * Eve TOOLS-F19: `automatic` when an `approve` callback (not a human)
+ * `automatic` when an `approve` callback (not a human)
  * approved it, `remember` when the decision asked to approve identical calls
  * for the rest of the session.
  */
@@ -79,13 +79,13 @@ const markOf = (message: Message): ApprovalMark | undefined => message.metadata?
 
 function wasApproved(message: Message, key: string | undefined): boolean {
   const approval = markOf(message);
-  // Eve TOOLS-F19: an `approve` callback's yes counts only with `remember`. (Markers written before it have no `automatic`.)
+  // An `approve` callback's yes counts only with `remember`. (Markers written before it have no `automatic`.)
   if (approval?.approved !== true || (approval.automatic === true && approval.remember === undefined)) return false;
   return key === undefined || approval.args === key;
 }
 
 /**
- * Eve TOOLS-F19: whether an earlier call of `toolName` in `messages` was
+ * Whether an earlier call of `toolName` in `messages` was
  * approved with `remember: 'session'` and the same `args` - the tool's
  * `needsApproval` then does not ask again.
  */

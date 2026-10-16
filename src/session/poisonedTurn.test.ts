@@ -1,5 +1,5 @@
 /**
- * Eve DUR-F11: a checkpointed turn that fails with a provider error that
+ * A checkpointed turn that fails with a provider error that
  * retrying cannot fix (a 400, e.g. the context window overflowed) no longer
  * bricks the session by being replayed on every later send(): the checkpoint
  * records the error and the attempts, and send() fails fast with
@@ -27,7 +27,7 @@ function poisoning(error: Error) {
 
 const overflow = () => Object.assign(new Error('400 context_length_exceeded: maximum context length is 128000 tokens'), { status: 400 });
 
-describe('a checkpointed turn that failed for good (Eve DUR-F11)', () => {
+describe('a checkpointed turn that failed for good', () => {
   it('records the error on the checkpoint and fails later sends fast, naming discardPending()', async () => {
     const store = memoryStore();
     const model = poisoning(overflow());

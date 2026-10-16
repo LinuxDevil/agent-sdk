@@ -12,7 +12,7 @@ import type { ModelInfo } from './registry';
  *  - Ollama: https://ollama.com/library/<model> (context window only; local
  *    models have no per-token price, so prices are left undefined)
  *
- * Cache prices (Eve PROV-F4): OpenAI's "cached input" column (writes cost
+ * Cache prices: OpenAI's "cached input" column (writes cost
  * nothing extra, so `cacheWriteCostPerMTok` is unset; `gpt-4o-2024-05-13` has
  * no cached price). Anthropic bills cache reads at 0.1x and 5-minute cache
  * writes at 1.25x the input price.

@@ -23,7 +23,7 @@ declare module 'ollama-ai-provider' {
   export function createOllama(options?: Record<string, any>): any;
 }
 
-// The Ollama package for `ai` 6/7 (LOU-D28d).
+// The Ollama package for `ai` 6/7.
 declare module 'ollama-ai-provider-v2' {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   export function createOllama(options?: Record<string, any>): any;

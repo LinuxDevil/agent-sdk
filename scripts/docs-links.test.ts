@@ -1,5 +1,5 @@
 /**
- * LOU-I6: every relative markdown link under README.md's "Documentation"
+ * Every relative markdown link under README.md's "Documentation"
  * and "Examples" headings (and every relative link inside docs/*.md)
  * resolves, from the repo root / the linking file, to a non-empty file.
  */

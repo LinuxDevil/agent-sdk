@@ -1,5 +1,5 @@
 /**
- * withRateLimit / createRateLimiter (Eve PROV-F14), on fake timers.
+ * withRateLimit / createRateLimiter, on fake timers.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GenerateOptions, GenerateResult, LLMProvider, StreamChunk } from './llm';

@@ -1,12 +1,12 @@
 /**
- * Agent Hooks (LOU-Q1)
+ * Agent Hooks
  *
  * User-authored extension points that run at well-defined points inside
  * AgentExecutor's execution loop: immediately before/after each
  * `provider.generate()` call, and immediately before/after each tool
  * invocation. They are a DIFFERENT, complementary concept to the
  * `onLLMRequest`/`onLLMResponse`/`onToolCall`/`onToolResult` callbacks on
- * `ExecuteOptions` (LOU-E2/O): those are single, internal instrumentation
+ * `ExecuteOptions`: those are single, internal instrumentation
  * callbacks wired up by apps/agent-forge's debugController.ts for the
  * step-through debugger. `AgentHook`s are a registered, ordered LIST of
  * independent, named, user-authored plugins (redact-pii, rate-limit,
@@ -27,7 +27,7 @@
  *   - `audit-log`: reads `ctx` fields (agentId, sessionId, toolName, args)
  *     without mutating anything.
  *
- * Outcomes (LOU-X3): a `preToolCall` hook may also RETURN `{ deny: reason }`,
+ * Outcomes: a `preToolCall` hook may also RETURN `{ deny: reason }`,
  * `{ result: value }` or `{ input: newArgs }`, and a `postToolCall` hook
  * `{ result: value }`; see {@link PreToolCallOutcome}.
  *
@@ -69,7 +69,7 @@ export interface HookContext {
   /** Free-form bag for hook-to-hook or hook-to-caller data passing. */
   metadata?: Record<string, unknown>;
   /**
-   * LOU-Y1: set when the hook fires inside a sub-agent (a child run started
+   * Set when the hook fires inside a sub-agent (a child run started
    * by the `task` tool). A parent run's
    * hooks apply to its sub-agents' model calls and tool calls too; a hook
    * that should only see the top-level run can return early on it.
@@ -89,7 +89,7 @@ export interface HookContext {
 }
 
 /**
- * Which sub-agent a hook call or an execution event comes from (LOU-Y1).
+ * Which sub-agent a hook call or an execution event comes from.
  */
 export interface SubagentInfo {
   /** The sub-agent's name: the `task` tool's `agent`, or the delegated agent's name. */
@@ -115,7 +115,7 @@ export interface ToolCallHookContext extends HookContext {
   args: Record<string, unknown>;
   /** The raw ToolCall as returned by the LLM provider. */
   toolCall: ToolCall;
-  /** N10b: who the run acts for (docs/auth.md), frozen; absent for a run without one. */
+  /** Who the run acts for (docs/auth.md), frozen; absent for a run without one. */
   principal?: Readonly<Principal>;
   /**
    * `true` only when this hook fires for the post-approval re-fire of a call
@@ -136,7 +136,7 @@ export interface ToolCallHookResult {
 }
 
 /**
- * What a `preToolCall` hook may return (LOU-X3). Returning nothing continues
+ * What a `preToolCall` hook may return. Returning nothing continues
  * with the call unchanged.
  * - `{ deny: reason }`: the call does not run; the model gets a `kind: 'denied'`
  *   tool error with `reason`. Later pre-hooks do not run.
@@ -147,7 +147,7 @@ export interface ToolCallHookResult {
  */
 export type PreToolCallOutcome = { deny: string } | { result: unknown } | { input: Record<string, unknown> };
 
-/** What a `postToolCall` hook may return (LOU-X3): `{ result }` replaces the result the model sees. */
+/** What a `postToolCall` hook may return: `{ result }` replaces the result the model sees. */
 export interface PostToolCallOutcome {
   result: unknown;
 }
@@ -168,13 +168,13 @@ function outcomeKey<K extends string>(value: unknown, keys: readonly K[]): K | u
   return keys.find((key) => key in value);
 }
 
-/** The stream events a hook may emit with `GenerateHookContext.emit` (LOU-W3.2). */
+/** The stream events a hook may emit with `GenerateHookContext.emit`. */
 export type HookEventPayload = Extract<AgentEventPayload, { type: 'compaction.start' | 'compaction.done' }>;
 
 /** Context passed to `AgentHook.preGenerate` / `postGenerate`. */
 export interface GenerateHookContext extends HookContext {
   /**
-   * Adds an event to the run's stream, inside the current step (LOU-W3.2).
+   * Adds an event to the run's stream, inside the current step.
    * Set when the run has listeners or is streamed (`createAgent({ onEvent })`,
    * `onAgentEvent`, `agent.stream()`, `session.stream()`,
    * `AgentExecutor.stream()`); `ctx.emit?.(...)` is a no-op otherwise. The run
@@ -182,7 +182,7 @@ export interface GenerateHookContext extends HookContext {
    */
   emit?: (event: HookEventPayload) => void;
   /**
-   * Makes a side model call that counts as part of the run (audit C4): it
+   * Makes a side model call that counts as part of the run: it
    * gets a `chat` span under the run's span tagged `lousho.call.purpose`,
    * and its usage is added to the run's `usage` (`byModel`, `modelCalls`)
    * and budgets. Set on `preGenerate` inside an AgentExecutor run; the
@@ -234,7 +234,7 @@ export interface AgentHook {
  * propagates to the caller (see the file-level doc comment above).
  */
 export class HookRegistry {
-  /** `instanceof HookRegistry` also holds for registries from another loaded copy of the SDK (LOU-D42). */
+  /** `instanceof HookRegistry` also holds for registries from another loaded copy of the SDK. */
   static [Symbol.hasInstance](value: unknown): boolean {
     return instanceOfBranded(this, HookRegistry, HOOK_REGISTRY_BRAND, value);
   }

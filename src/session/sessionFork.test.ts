@@ -1,5 +1,5 @@
 /**
- * N3a: `session.history()` and `session.fork({ fromStep })` on agent sessions,
+ * `session.history()` and `session.fork({ fromStep })` on agent sessions,
  * offline with mockModel.
  */
 import { describe, it, expect, afterAll } from 'vitest';
@@ -188,7 +188,7 @@ describe('session.fork()', () => {
     expect((await session.fork({ fromStep: 2 })).id).toBe('chat-fork-2');
   });
 
-  it('forks a session whose id is too long for <id>-fork-<n> under a valid, distinct id (Eve DUR-F19)', async () => {
+  it('forks a session whose id is too long for <id>-fork-<n> under a valid, distinct id', async () => {
     const agent = createAgent({ provider: mockModel(['hi'], { onExhausted: 'repeat-last' }), store: memoryStore() });
     for (const length of [122, 128]) {
       const id = 'u'.repeat(length);
@@ -205,7 +205,7 @@ describe('session.fork()', () => {
     }
   });
 
-  it('returns a fork whose messages are its transcript without load() (Eve DUI-F23)', async () => {
+  it('returns a fork whose messages are its transcript without load()', async () => {
     const { session } = await twoTurns();
     const fork = await session.fork({ fromStep: 1 });
     expect(fork.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'tool']);
@@ -266,7 +266,7 @@ describe('session.fork()', () => {
     expect(result.budget).toMatchObject({ limit: 'maxSteps', scope: 'session' });
   });
 
-  it('gives the fork the permission mode the session has when it forks (N4)', async () => {
+  it('gives the fork the permission mode the session has when it forks', async () => {
     const session = createAgent({ provider: mockModel(['a']) }).session({ permissionMode: 'plan' });
     await session.send('hi');
     session.setPermissionMode('acceptEdits');

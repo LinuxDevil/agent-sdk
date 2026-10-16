@@ -1,5 +1,5 @@
 /**
- * Eve DUR-F15: `createDeployedServer().shutdown()` drains the node server on
+ * `createDeployedServer().shutdown()` drains the node server on
  * SIGTERM - it stops accepting, stops the schedules, waits (bounded) for the
  * turns in flight, then closes what is left - instead of `agent.close()`
  * cutting running turns off.
@@ -42,7 +42,7 @@ async function slowServer() {
   return { ...deployed, url, release, started };
 }
 
-describe('createDeployedServer().shutdown() (Eve DUR-F15)', () => {
+describe('createDeployedServer().shutdown()', () => {
   it('stops accepting, lets the turn in flight finish, then resolves', async () => {
     const { url, shutdown, release, started } = await slowServer();
     const turn = fetch(`${url}/chat`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message: 'go' }) });

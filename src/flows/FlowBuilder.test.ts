@@ -192,7 +192,7 @@ describe('FlowBuilder', () => {
       expect(flow.agents).toEqual(agents);
     });
 
-    it('rejects a createAgent() agent at build() with a coded error (LOU-R14)', () => {
+    it('rejects a createAgent() agent at build() with a coded error', () => {
       const simpleAgent = createAgent({ provider: mockModel(['hi']) });
 
       const builder = new FlowBuilder()

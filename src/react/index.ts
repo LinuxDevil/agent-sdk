@@ -1,7 +1,7 @@
 /**
- * `@lousho/build-ai-agent/react` (LOU-D15): the `useLoushoAgent()` hook, and
+ * `@lousho/build-ai-agent/react`: the `useLoushoAgent()` hook, and
  * the framework-neutral reducer and stream parser it is built on (now in
- * src/ui, shared with the Vue binding, LOU-P2).
+ * src/ui, shared with the Vue binding).
  */
 
 export {

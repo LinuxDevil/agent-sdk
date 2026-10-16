@@ -1,5 +1,5 @@
 /**
- * LOU-W6.2: sqliteMemory - the shared provider contract, persistence across
+ * SqliteMemory - the shared provider contract, persistence across
  * store instances, migration of an older database, and an agent that recalls
  * in one session what it remembered in another.
  */
@@ -38,7 +38,7 @@ afterEach(() => {
 describeMemoryProviderContract('sqliteMemory', (options) => sqliteMemory(open(tempFile()), options));
 
 describe('sqliteMemory', () => {
-  it('keeps every item when two providers on one store add to one key at once (Eve MEM-F8)', async () => {
+  it('keeps every item when two providers on one store add to one key at once', async () => {
     const store = open(tempFile());
     const a = sqliteMemory(store);
     const b = sqliteMemory(store);

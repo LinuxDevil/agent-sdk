@@ -1,5 +1,5 @@
 /**
- * `http_request` for Cloudflare Workers (M3a): the Node tool's name, input
+ * `http_request` for Cloudflare Workers: the Node tool's name, input
  * and request logic (./httpCore.ts) over the platform `fetch()`, limited to
  * the host names the deployer listed.
  *

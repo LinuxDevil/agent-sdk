@@ -1,6 +1,6 @@
 /**
  * Evals Module
- * Lightweight harness for scoring agent runs (LOU-G)
+ * Lightweight harness for scoring agent runs
  */
 
 export * from './defineEval';

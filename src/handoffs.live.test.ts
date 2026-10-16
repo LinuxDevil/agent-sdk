@@ -1,5 +1,5 @@
 /**
- * Live test for handoffs (N6): a triage agent hands a session to `billing`,
+ * Live test for handoffs: a triage agent hands a session to `billing`,
  * which hands back to triage for a question outside billing (openrouter/openai/gpt-4o-mini, `maxSteps: 6`).
  *
  * - Replay (default): each agent's model is served from its own cassette,
@@ -27,7 +27,7 @@ const recording = Boolean(process.env.LOUSHO_RECORD);
 const runnable = recording ? Boolean(process.env.OPENROUTER_API_KEY) : AGENTS.every((agent) => fs.existsSync(cassette(agent)));
 const model = (agent: string) => recordReplay(() => resolveProvider('openrouter/openai/gpt-4o-mini'), { cassette: cassette(agent), mode: recording ? 'record' : 'replay' });
 
-describe.skipIf(!runnable)('handoffs live (N6)', () => {
+describe.skipIf(!runnable)('handoffs live', () => {
   it('triage hands a billing question to billing; billing hands an off-topic question back', async () => {
     const lookupCharges = defineTool({
       name: 'lookup_charges',

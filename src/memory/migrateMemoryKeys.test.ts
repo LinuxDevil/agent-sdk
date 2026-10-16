@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { defineMemory, inMemoryMemory, memoryKey, migrateMemoryKeys } from './index';
 
-describe('migrateMemoryKeys (Eve MEM-F10)', () => {
+describe('migrateMemoryKeys', () => {
   it("copies items stored under a slot's pre-namespacing key to its current key, oldest first", async () => {
     const provider = inMemoryMemory();
     await provider.add('global', { text: 'Lives in Oslo.' });

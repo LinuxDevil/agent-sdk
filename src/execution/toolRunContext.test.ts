@@ -109,7 +109,7 @@ const paths: Array<[string, Path]> = [
   ['resume after approval, sandbox path', (seen, controller) => runResume(seen, controller, true)],
 ];
 
-describe('tool execute context (LOU-U15)', () => {
+describe('tool execute context', () => {
   it.each(paths)('%s hands the tool a real toolCallId, messages and abortSignal', async (_name, run) => {
     const seen: Partial<Seen> = {};
     const controller = new AbortController();
@@ -173,7 +173,7 @@ describe('tool execute context (LOU-U15)', () => {
   });
 });
 
-describe('the tool execute context carries the run session (LOU-D23.2)', () => {
+describe('the tool execute context carries the run session', () => {
   const sessionProbe = (seen: string[]) =>
     defineTool({
       name: 'where',

@@ -77,7 +77,7 @@ function originHostOf(origin: string): string | undefined {
   }
 }
 
-/** Why the request's `Host` / `Origin` is refused (DNS rebinding, Eve TOOLS-F5), else `undefined`. */
+/** Why the request's `Host` / `Origin` is refused (DNS rebinding), else `undefined`. */
 function rebindingRefusal(
   req: http.IncomingMessage,
   boundHost: string,

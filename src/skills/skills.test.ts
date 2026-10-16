@@ -187,7 +187,7 @@ describe('loadSkills', () => {
     expect((error as { code?: string }).code).toBe('LOUSHO_SKILL_INVALID');
   });
 
-  it('skips a loose markdown file with no frontmatter (a README) with a warning (Eve MA-F13)', async () => {
+  it('skips a loose markdown file with no frontmatter (a README) with a warning', async () => {
     await write('README.md', '# My skills\n\nSkills for our agents.');
     await write('pdf/SKILL.md', '---\ndescription: Work with PDFs\n---\nPDF body');
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -201,7 +201,7 @@ describe('loadSkills', () => {
     }
   });
 
-  it('gives a folder skill its directory and reads bundled files through a confined read_skill_file (Eve MA-F13)', async () => {
+  it('gives a folder skill its directory and reads bundled files through a confined read_skill_file', async () => {
     await write('pdf/SKILL.md', '---\ndescription: Work with PDFs\n---\nSee FORMS.md for forms.');
     await write('pdf/FORMS.md', 'FORMS-BODY');
     await write('pdf/scripts/fill.py', 'print("fill")');

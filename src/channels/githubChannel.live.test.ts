@@ -1,5 +1,5 @@
 /**
- * Live test for `githubChannel()` (N11b): one issue-comment turn through the
+ * Live test for `githubChannel()`: one issue-comment turn through the
  * channel with a real model (gpt-4o-mini on OpenRouter), the platform faked.
  *
  * - Replay (default): the model is served from `__cassettes__/github-turn.json`,
@@ -26,7 +26,7 @@ const CASSETTE = path.join(__dirname, '__cassettes__', 'github-turn.json');
 const recording = Boolean(process.env.LOUSHO_RECORD);
 const runnable = recording ? Boolean(process.env.OPENROUTER_API_KEY) : fs.existsSync(CASSETTE);
 
-describe.skipIf(!runnable)('githubChannel live (N11b)', () => {
+describe.skipIf(!runnable)('githubChannel live', () => {
   it('a real model answers an issue comment through the channel with one posted comment', async () => {
     const sent: Array<{ url: string; body: string }> = [];
     const fake = (async (url: RequestInfo | URL, init?: RequestInit) => {

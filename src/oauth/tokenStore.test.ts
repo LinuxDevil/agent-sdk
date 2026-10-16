@@ -1,5 +1,5 @@
 /**
- * N9a: `AgentStore.tokens` on every shipped store. The shared contract runs
+ * `AgentStore.tokens` on every shipped store. The shared contract runs
  * against memoryStore(), fileStore(), SqliteStore and KVStore; the rest checks
  * what only persistent stores do: encryption at rest, the key, migrations.
  */
@@ -108,7 +108,7 @@ const persistent: Array<{ name: string; make: (tokenKey?: string) => { tokens: O
   },
 ];
 
-describe.each(persistent)('$name tokens at rest (N9a)', ({ make }) => {
+describe.each(persistent)('$name tokens at rest', ({ make }) => {
   it('stores no access token, refresh token, PKCE verifier or client secret in plaintext', async () => {
     const { tokens, raw } = make(KEY);
     await tokens.set('github', { owner: 'user', principalId: 'alice', issuer: 'https://id.example.com' }, sentinelToken());
@@ -209,7 +209,7 @@ describe('tokenStoreKey', () => {
   });
 });
 
-describe('SqliteStore oauth tables (N9a)', () => {
+describe('SqliteStore oauth tables', () => {
   it('a database at the previous user_version opens and gains both tables', async () => {
     const file = join(tempDir(), 'v3.db');
     const DatabaseSync = loadDatabaseSync();
@@ -243,7 +243,7 @@ describe('SqliteStore oauth tables (N9a)', () => {
   });
 });
 
-describe('KVStore oauth keys (N9a)', () => {
+describe('KVStore oauth keys', () => {
   it('keeps tokens under <prefix>oauth/tokens/ and pending sign-ins under <prefix>oauth/pending/ with an expirationTtl', async () => {
     const { kv, data, ttls } = fakeKV();
     const { tokens } = new KVStore(kv, { tokenKey: KEY, prefix: 'app/' });
@@ -264,7 +264,7 @@ describe('KVStore oauth keys (N9a)', () => {
   });
 });
 
-describe('fileStore oauth files (N9a)', () => {
+describe('fileStore oauth files', () => {
   it('names token files by hash and drops expired pending files when a new sign-in starts', async () => {
     const dir = tempDir();
     const { tokens } = fileStore(dir, { tokenKey: KEY });

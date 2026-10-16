@@ -1,5 +1,5 @@
 /**
- * The reference channel (LOU-P7): a plain JSON API. No runtime `node:*` import.
+ * The reference channel: a plain JSON API. No runtime `node:*` import.
  */
 import type { AgentInput } from '../providers/content';
 import { defineChannel, type Channel, type ChannelRequest } from './defineChannel';
@@ -50,7 +50,7 @@ export function httpChannel(options: HttpChannelOptions = {}): Channel {
       return { sessionKey, input: input as AgentInput, replyTo: null };
     },
     async reply({ sessionId, text, result, approval, approvals, respond }) {
-      // Eve TOOLS-F12: a step paused on several calls lists all of them.
+      // A step paused on several calls lists all of them.
       respond?.(200, { sessionId, text, finishReason: result?.finishReason, approval, ...(approvals && { approvals }) });
     },
   });

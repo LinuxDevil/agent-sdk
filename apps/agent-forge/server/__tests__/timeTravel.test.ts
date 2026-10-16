@@ -1,5 +1,5 @@
 /**
- * LOU-D45: the time-travel routes - `GET /runs/:id/history`,
+ * The time-travel routes - `GET /runs/:id/history`,
  * `POST /runs/:id/fork` and `GET /runs/compare` - against real runs of the
  * mock provider, through the same RunManager lifecycle as every other run.
  */
@@ -37,7 +37,7 @@ function settled(runManager: RunManager, runId: string, status: AgentRunStatusPa
   });
 }
 
-describe('LOU-D45 time-travel routes', () => {
+describe('time-travel routes', () => {
   let baseDir: string;
   let runManager: RunManager;
   let app: ReturnType<typeof createApp>;

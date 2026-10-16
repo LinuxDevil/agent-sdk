@@ -1,7 +1,7 @@
 import type { SpanEvent } from '../../shared/wireTypes';
 
 /**
- * O2: folds a stream of `{type:'span'}` WS messages (one per
+ * Folds a stream of `{type:'span'}` WS messages (one per
  * onSpanStart/onSpanEnd notification - see server/runRegistry.ts's
  * `makeTraceExporter()`) into a flat list of spans, upserting by `id` so
  * the 'end' notification (which carries `endTime`) merges onto the same

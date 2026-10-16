@@ -1,5 +1,5 @@
 /**
- * N9b: a full sign-in (pause, callback, resume) over a `SqliteStore`, traced
+ * A full sign-in (pause, callback, resume) over a `SqliteStore`, traced
  * through OpenTelemetry (in-memory exporter) and recorded with `recordReplay`,
  * leaves the access token, the refresh token, the authorization code and the
  * PKCE verifier in no emitted event, session transcript, checkpoint row,
@@ -38,7 +38,7 @@ function dumpTables(file: string): Record<string, string> {
   }
 }
 
-describe('sign-in secret hygiene (N9b)', () => {
+describe('sign-in secret hygiene', () => {
   it('no token, code or verifier in events, transcript, checkpoints, approvals, spans or the cassette; a returned token is redacted', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'lousho-signin-hygiene-'));
     dirs.push(dir);

@@ -15,7 +15,7 @@ afterEach(async () => {
   for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true });
 });
 
-describe('fileMemory across instances (Eve MEM-F8)', () => {
+describe('fileMemory across instances', () => {
   it('keeps every item when two providers on one directory add to one key at once', async () => {
     const dir = await tempDir();
     const a = fileMemory({ dir });

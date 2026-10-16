@@ -1,5 +1,5 @@
 /**
- * LOU-U1: every 'ai'-SDK-backed provider type sends the configured model to
+ * Every 'ai'-SDK-backed provider type sends the configured model to
  * the underlying generateText()/streamText() call.
  *
  * Precedence per call: explicit call model > constructor `defaultModel` >
@@ -20,8 +20,8 @@ vi.mock('ai', async () => {
   };
 });
 
-// On ai 6/7 OllamaProvider loads ollama-ai-provider-v2 (LOU-D28d), which needs zod 4. Where it is
-// installed (the ai6-zod4 / ai7-zod4 CI jobs, LOU-M8) the real package builds the model; where it is
+// On ai 6/7 OllamaProvider loads ollama-ai-provider-v2, which needs zod 4. Where it is
+// installed (the ai6-zod4 / ai7-zod4 CI jobs) the real package builds the model; where it is
 // not, generateText is mocked anyway, so a stand-in model does.
 vi.mock('ollama-ai-provider-v2', async (importActual) => {
   try {

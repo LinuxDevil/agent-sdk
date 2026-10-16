@@ -1,6 +1,5 @@
 /**
- * support-bot - a minimal customer-support agent built with createAgent()
- * (LOU-H1).
+ * support-bot - a minimal customer-support agent built with createAgent().
  *
  * Defaults to a free, local mock provider so it runs with zero setup and
  * zero API cost. Set OPENAI_API_KEY to run it against real OpenAI instead.

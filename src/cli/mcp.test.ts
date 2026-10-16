@@ -63,7 +63,7 @@ describe('runMcp', () => {
   });
 });
 
-describe('lousho mcp with an agent directory (Eve CLI-F2)', () => {
+describe('lousho mcp with an agent directory', () => {
   it('serves an agent directory instead of crashing with EISDIR', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-mcp-dir-'));
     fs.writeFileSync(path.join(dir, 'agent.json'), JSON.stringify({ model: 'openai/gpt-4o-mini' }));

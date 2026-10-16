@@ -84,7 +84,7 @@ export class StorageService implements IStorageService {
    * Ensures that the parent directory of a resolved file path exists.
    * Storage keys may name subdirectories (e.g. `checkpoints/<id>.json`), so
    * creating only `uploadPath` is not enough: on a fresh root the first
-   * write (or `.lock` file) in a subdirectory fails with ENOENT (LOU-R9).
+   * write (or `.lock` file) in a subdirectory fails with ENOENT.
    */
   private ensureParentDirExists(filePath: string): void {
     const separator = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
@@ -240,7 +240,7 @@ export class StorageService implements IStorageService {
   /**
    * Writes data as JSON to disk. Checks size against maxFileSizeMB (default 10).
    * A `Uint8Array` (image or file bytes in a checkpoint or approval snapshot)
-   * is written as `{ "$bytes": "<base64>" }`, like the other stores (Eve E14).
+   * is written as `{ "$bytes": "<base64>" }`, like the other stores.
    */
   public writePlainJSONAttachment(storageKey: string, data: unknown, maxFileSizeMB = 10): void {
     this.ensureParentDirExists(this.getFilePath(storageKey));

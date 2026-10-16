@@ -1,4 +1,4 @@
-/** The trace file format shared by fileTraceExporter() and the readers (M5a). */
+/** The trace file format shared by fileTraceExporter() and the readers. */
 import type { SpanKind, SpanStatus } from '../execution/tracing';
 
 /** Where trace files go unless `dir` says otherwise (relative to the working directory). */

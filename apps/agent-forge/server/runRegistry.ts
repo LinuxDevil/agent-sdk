@@ -1,11 +1,11 @@
 /**
  * In-memory registry mapping agent IDs to live `AgentExecutor.execute()`
- * invocations, tracked by `sessionId` (N1). One `RunEntry` per agent ID -
+ * invocations, tracked by `sessionId`. One `RunEntry` per agent ID -
  * only one live run per agent at a time, matching the app's Run/Stop/Debug
  * buttons which operate on "the currently loaded agent".
  *
- * This is the piece that actually wires N2 (start/stop/status) and N3
- * (durable-execution resume + approval-gate pause/resume) together on top
+ * This is the piece that actually wires start/stop/status and
+ * durable-execution resume + approval-gate pause/resume together on top
  * of the SDK's public execution API.
  */
 import { EventEmitter } from 'node:events';
@@ -64,7 +64,7 @@ interface RunEntry {
   reason?: 'awaiting_approval';
   pendingApproval?: AgentRunStatusPayload['pendingApproval'];
   resultText?: string;
-  /** O4: full ExecutionResult (messages/toolCalls/usage/steps/finishReason) for the Output tab's JSON tree. */
+  /** Full ExecutionResult (messages/toolCalls/usage/steps/finishReason) for the Output tab's JSON tree. */
   result?: ExecutionResult;
   updatedAt: string;
   /**
@@ -77,27 +77,27 @@ interface RunEntry {
    * the process.
    */
   lastSpec?: AgentSpec;
-  /** Eve DUI-F4: `<provider>/<model>` the last run actually used, for the Topbar's env pill. */
+  /** `<provider>/<model>` the last run actually used, for the Topbar's env pill. */
   provider?: string;
-  /** O3: live step-through debug session for this agent's in-flight run, if any. */
+  /** Live step-through debug session for this agent's in-flight run, if any. */
   debugSession?: DebugSession;
   /**
-   * Eve DUI-F21: the `input` of the latest `run()` (the top bar's Run), so
+   * The `input` of the latest `run()` (the top bar's Run), so
    * the user turn it adds is tagged `source: 'run'` in the transcript
    * instead of passing for something the user typed in Chat.
    */
   runInput?: string;
   /**
-   * P1/P3: the chat transcript for this agent's CURRENT chat session -
+   * The chat transcript for this agent's CURRENT chat session -
    * reconciled from the real `ExecutionResult.messages` on every run
    * settle (see chatReconcile.ts), plus the just-sent user message pushed
    * optimistically by sendMessage() before the run even starts. Persisted
    * to disk (chatStore) on every change so it survives a server restart.
    */
   messages: ChatMessage[];
-  /** P3: id of the chat session `messages` belongs to - stable across Stop/Run continuations, changes only on newChat(). */
+  /** Id of the chat session `messages` belongs to - stable across Stop/Run continuations, changes only on newChat(). */
   chatSessionId: string;
-  /** P3: when the current chat session started, for its ChatSessionMeta. */
+  /** When the current chat session started, for its ChatSessionMeta. */
   chatStartedAt: string;
 }
 
@@ -114,18 +114,18 @@ export interface RunManagerOptions {
   loadSpec: (agentId: string) => Promise<AgentSpec | undefined>;
   /** Persists a run's spec to disk (fsAgentStore.save) so it survives a server restart. */
   saveSpec?: (agentId: string, spec: AgentSpec) => Promise<void>;
-  /** P1/P3: chat transcript persistence. Defaults to `new FileChatStore(baseDir)` when omitted. */
+  /** Chat transcript persistence. Defaults to `new FileChatStore(baseDir)` when omitted. */
   chatStore?: FileChatStore;
-  /** R1: stored provider keys - see buildAgent.ts's resolveProviderForSpec(). Omitted (e.g. in older tests) means every real provider type falls back to mock, same as no keys configured. */
+  /** Stored provider keys - see buildAgent.ts's resolveProviderForSpec(). Omitted (e.g. in older tests) means every real provider type falls back to mock, same as no keys configured. */
   secretsStore?: SecretsStore;
-  /** R3: active settings profile source (hook timeout today; provider/deploy-adapter selection lives on the profile too, for the Settings UI). */
+  /** Active settings profile source (hook timeout today; provider/deploy-adapter selection lives on the profile too, for the Settings UI). */
   settingsStore?: SettingsStore;
 }
 
 export class AgentNotFoundError extends Error {}
 export class AlreadyRunningError extends Error {}
 export class NoActiveRunError extends Error {}
-/** P1: a chat message was sent while the run was paused awaiting a tool approval decision - resolve that first via approve(). */
+/** A chat message was sent while the run was paused awaiting a tool approval decision - resolve that first via approve(). */
 export class ApprovalPendingError extends Error {}
 
 /**
@@ -151,7 +151,7 @@ function authoritativeMessages(result: ExecutionResult): Message[] {
     : result.messages;
 }
 
-/** P1: strips the id/timestamp this file adds for the UI, back to the SDK's real `Message` shape for feeding into AgentExecutor.execute(). */
+/** Strips the id/timestamp this file adds for the UI, back to the SDK's real `Message` shape for feeding into AgentExecutor.execute(). */
 function toSdkMessage(m: ChatMessage): Message {
   return {
     role: m.role,
@@ -163,7 +163,7 @@ function toSdkMessage(m: ChatMessage): Message {
   };
 }
 
-/** LOU-D45: a history entry as the History panel lists it. */
+/** A history entry as the History panel lists it. */
 function toHistoryStep({ step, status, savedAt, checkpoint }: CheckpointHistoryEntry): RunHistoryStep {
   const call = checkpoint.stepUsage?.filter((usage) => usage.step === step).at(-1);
   // The step's model turn is the transcript's last assistant message.
@@ -182,13 +182,13 @@ function toHistoryStep({ step, status, savedAt, checkpoint }: CheckpointHistoryE
 export class RunManager extends EventEmitter {
   private readonly entries = new Map<string, RunEntry>();
   /**
-   * O3: breakpoints persist per agent id across runs (set them once, they
+   * Breakpoints persist per agent id across runs (set them once, they
    * apply to every future run() until cleared/changed), independent of the
    * in-flight `RunEntry.debugSession` - a fresh DebugSession is created
    * per-run() but seeded from this map.
    */
   private readonly breakpoints = new Map<string, Set<BreakpointKey>>();
-  /** P1/P3: chat transcript persistence (see chatStore.ts). */
+  /** Chat transcript persistence (see chatStore.ts). */
   private readonly chatStore: FileChatStore;
 
   constructor(private readonly opts: RunManagerOptions) {
@@ -229,7 +229,7 @@ export class RunManager extends EventEmitter {
 
   private freshEntry(agentId: string): RunEntry {
     const now = new Date().toISOString();
-    // P3: a brand-new (never-touched-this-process) agent id picks up any
+    // A brand-new (never-touched-this-process) agent id picks up any
     // chat transcript persisted under its default session id (`agentId`
     // itself, mirroring AgentExecutor's `sessionId = agentId`) from a
     // previous server run, so chat history survives a restart the same way
@@ -242,7 +242,7 @@ export class RunManager extends EventEmitter {
     // agent's FIRST session rather than whichever one was live; every
     // session is still fully intact and browsable via listChats()/
     // loadChatSession(), just not auto-selected as "current". Left for
-    // LOU-Q: a small "current session pointer" file would close this gap.
+    // A small "current session pointer" file would close this gap.
     const persisted = this.chatStore.load(agentId, agentId);
     return {
       status: 'idle' as RunStatus,
@@ -254,18 +254,18 @@ export class RunManager extends EventEmitter {
     };
   }
 
-  /** P1: current live chat transcript for `agentId` (creates no run - safe to call for an agent that has never run). */
+  /** Current live chat transcript for `agentId` (creates no run - safe to call for an agent that has never run). */
   chatState(agentId: string): ChatStatePayload {
     const entry = this.entries.get(agentId) ?? this.freshEntry(agentId);
     return { agentId, sessionId: entry.chatSessionId, messages: entry.messages };
   }
 
-  /** P3: metadata for every persisted chat session for `agentId` (including the current one, once it has been saved at least once). */
+  /** Metadata for every persisted chat session for `agentId` (including the current one, once it has been saved at least once). */
   listChats(agentId: string): ChatSessionMeta[] {
     return this.chatStore.list(agentId);
   }
 
-  /** P3: a full past (or current) chat session's transcript, or undefined if unknown. */
+  /** A full past (or current) chat session's transcript, or undefined if unknown. */
   loadChatSession(agentId: string, sessionId: string): ChatSessionRecord | undefined {
     return this.chatStore.load(agentId, sessionId) ?? undefined;
   }
@@ -288,7 +288,7 @@ export class RunManager extends EventEmitter {
   }
 
   /**
-   * P3: archives the current chat session (already persisted incrementally
+   * Archives the current chat session (already persisted incrementally
    * by every prior emitChat() call, so this is really just "cut a new
    * session going forward") and starts a fresh, empty one for `agentId`.
    * Does not touch any in-flight run - starting a new chat while a run is
@@ -328,10 +328,10 @@ export class RunManager extends EventEmitter {
   }
 
   /**
-   * O2: builds a `TraceExporter` (src/execution/tracing.ts) that forwards
+   * Builds a `TraceExporter` (src/execution/tracing.ts) that forwards
    * every real span start/end notification for this run over the existing
    * WS channel (as `{type:'span', ...}` messages, see wsServer.ts) rather
-   * than a second tracing pipeline. M5b: it also writes the run to the
+   * than a second tracing pipeline. It also writes the run to the
    * agent's trace folder (see traceStore.ts), so the Trace tab can reopen it.
    */
   private makeTraceExporter(agentId: string): TraceExporter {
@@ -342,7 +342,7 @@ export class RunManager extends EventEmitter {
     return fanOutExporter(live, fileTraceExporter({ dir: agentTraceDir(this.opts.baseDir, agentId) }));
   }
 
-  /** O3: (re)creates the debug session for a fresh run(), seeded from this agent's persisted breakpoints. */
+  /** (re)creates the debug session for a fresh run(), seeded from this agent's persisted breakpoints. */
   private makeDebugSession(agentId: string): DebugSession {
     const initial = this.breakpoints.get(agentId) ?? new Set<BreakpointKey>();
     const session = new DebugSession(initial, (state) => {
@@ -357,7 +357,7 @@ export class RunManager extends EventEmitter {
           message: `Paused at breakpoint ${state.atBreakpoint?.phase} (${state.atBreakpoint?.boundary})`,
         } satisfies LogEntry);
       } else if (state.autoResumed) {
-        // O3 safety net: nobody called continue()/step() before
+        // Debugger safety net: nobody called continue()/step() before
         // DEFAULT_PAUSE_TIMEOUT_MS elapsed (most plausibly the only WS
         // client watching this run disconnected while it was paused) - see
         // debugController.ts's DEFAULT_PAUSE_TIMEOUT_MS doc comment.
@@ -379,7 +379,7 @@ export class RunManager extends EventEmitter {
    *
    * `sessionId` is always just `agentId` - stable across every run() call
    * for this agent id, including a run() that follows a stop(). This is
-   * what makes Stop-then-Run resume from the last checkpoint (N3) instead
+   * what makes Stop-then-Run resume from the last checkpoint instead
    * of starting over: AgentExecutor.execute() (see its doc comments)
    * rehydrates from `checkpointStore.load(sessionId)` when a checkpoint
    * exists under that id, and only marks it 'finished' on a *successful*
@@ -388,7 +388,7 @@ export class RunManager extends EventEmitter {
    * still there, and the very next run() call for this agentId picks it
    * back up automatically.
    *
-   * LOU-U8: `input` is appended to the rehydrated conversation as a new
+   * `input` is appended to the rehydrated conversation as a new
    * user turn (after the interrupted turn's pending tool results), unless
    * it re-sends the message the interrupted run started from; after a
    * finished run it continues the conversation.
@@ -402,7 +402,7 @@ export class RunManager extends EventEmitter {
   }
 
   /**
-   * P1: `POST /agents/:id/message` - appends a chat message to the agent's
+   * `POST /agents/:id/message` - appends a chat message to the agent's
    * conversation and either continues it (if this agent has any prior chat
    * history) or starts a brand-new one, replying over the existing
    * `WS /agents/:id/stream` channel as `{type:'chat', ...}` events rather
@@ -428,7 +428,7 @@ export class RunManager extends EventEmitter {
    *   the system+user turn from scratch exactly like a Topbar "Run" click.
    *
    * The checkpoint under this agent's sessionId already holds that same
-   * history; AgentExecutor.execute() (LOU-U8) recognises the re-sent prefix
+   * history; AgentExecutor.execute() recognises the re-sent prefix
    * and appends only the new user turn - after a Stop mid-flight, once the
    * interrupted turn's pending tool results are recorded.
    */
@@ -455,8 +455,7 @@ export class RunManager extends EventEmitter {
     try {
       await this.launch(agentId, input, spec, { skipSystemPromptInjection: priorMessages.length > 0 });
     } catch (error) {
-      // The run never started (no spec, provider not configured - Eve
-      // DUI-F4): take the user's message back out of the transcript so a
+      // The run never started (no spec, provider not configured): take the user's message back out of the transcript so a
       // retry after fixing it doesn't send it twice.
       const current = this.entries.get(agentId);
       if (current) this.emitChat(agentId, this.setEntry(agentId, { messages: priorMessages }, current));
@@ -535,7 +534,7 @@ export class RunManager extends EventEmitter {
 
     const abortableProvider = withAbortSignal(provider, controller.signal);
 
-    // LOU-T3: a graph containing a `router` node compiles (graphToSpec.ts)
+    // A graph containing a `router` node compiles (graphToSpec.ts)
     // to a real branching `AgentFlow` stashed under `spec.policy.flow`
     // rather than being runnable through the flat AgentSpec/AgentExecutor
     // path at all (there's no router/branch concept in `AgentConfig`). Every
@@ -561,7 +560,7 @@ export class RunManager extends EventEmitter {
       onAgentEvent: (event) => this.emitEvent(agentId, event),
       exporter: this.makeTraceExporter(agentId),
       skipSystemPromptInjection: options.skipSystemPromptInjection,
-      // LOU-Q1/Q2: hooks compiled from this agent's graph (spec.policy.hooks)
+      // Hooks compiled from this agent's graph (spec.policy.hooks)
       // and the SandboxAdapter they (and any requiresSandbox tool) run
       // through - see buildAgentFromSpec()/compileHooks.ts.
       hooks,
@@ -575,7 +574,7 @@ export class RunManager extends EventEmitter {
   }
 
   /**
-   * LOU-T3: runs a branching graph's compiled `AgentFlow` through
+   * Runs a branching graph's compiled `AgentFlow` through
    * `FlowExecutor.execute()` instead of `AgentExecutor.execute()`.
    *
    * Known, DELIBERATE gaps vs. the flat-spec path (see this ticket's
@@ -593,7 +592,7 @@ export class RunManager extends EventEmitter {
    *  - No hooks/sandbox-gated tool calls beyond `requiresSandbox` itself:
    *    `FlowExecutor.executeToolCall()` does route through the same
    *    `executeToolWithSandboxGuard()` seam, but there is no `hooks`
-   *    parameter at all, so LOU-Q pre/post hooks attached to a node never
+   *    parameter at all, so pre/post hooks attached to a node never
    *    fire on a branching run.
    *  - Debug console: logs only, not trace spans or step-debugger
    *    breakpoints - see `toFlowLogEntries()`'s doc comment in logEntries.ts.
@@ -644,7 +643,7 @@ export class RunManager extends EventEmitter {
 
   /** Shared success-path handling for both run() and approve()'s follow-up execute() call. */
   private async handleRunSettled(agentId: string, result: ExecutionResult): Promise<void> {
-    // P1: reconcile the chat transcript against the real, authoritative
+    // Reconcile the chat transcript against the real, authoritative
     // ExecutionResult.messages - see chatReconcile.ts's doc comment for why
     // this (rather than building the transcript incrementally from
     // AgentEvents) is the single source of truth. Done for BOTH the
@@ -659,7 +658,7 @@ export class RunManager extends EventEmitter {
       entryBefore?.runInput
     );
 
-    // O4: the full ExecutionResult (messages/toolCalls/usage/steps, not
+    // The full ExecutionResult (messages/toolCalls/usage/steps, not
     // just the final text) is kept on the entry either way, so the
     // client's Output tab can render it as a JSON tree whether the run
     // finished or is paused for approval - "the final OR paused
@@ -720,7 +719,7 @@ export class RunManager extends EventEmitter {
   }
 
   /**
-   * Resolves a pending approval (N3's human-in-the-loop round trip) via the
+   * Resolves a pending approval (the human-in-the-loop round trip) via the
    * SDK's public `resumeAfterApproval()`, then continues broadcasting
    * status/events for the resumed run exactly like run() does.
    */
@@ -757,7 +756,7 @@ export class RunManager extends EventEmitter {
       {
         onAgentEvent: (event) => this.emitEvent(agentId, event),
         exporter: this.makeTraceExporter(agentId),
-        // LOU-Q1: hooks must fire on the deferred, post-approval tool
+        // Hooks must fire on the deferred, post-approval tool
         // execution path too (see resume.ts in the core SDK) - not just
         // the initial run() - so the same compiled hooks/sandbox are
         // threaded through here.
@@ -772,7 +771,7 @@ export class RunManager extends EventEmitter {
   }
 
   /**
-   * LOU-D45: the steps of run `runId`'s latest execution (a run id is a
+   * The steps of run `runId`'s latest execution (a run id is a
    * checkpoint session id: the agent id, or a fork's id), oldest first, each
    * the newest checkpoint saved at that step - the one fork() forks from.
    * Undefined when the run has no history.
@@ -789,7 +788,7 @@ export class RunManager extends EventEmitter {
   }
 
   /**
-   * LOU-D45: forks run `runId` at `fromStep` (`AgentExecutor.fork()`, with
+   * Forks run `runId` at `fromStep` (`AgentExecutor.fork()`, with
    * `patch`) and starts the fork as a run of its own, under the returned id,
    * with the source run's spec - same lifecycle, status and WS stream as any
    * other run (`/agents/<id>/status`, `WS /agents/<id>/stream`).
@@ -805,14 +804,14 @@ export class RunManager extends EventEmitter {
     return fork.sessionId;
   }
 
-  /** LOU-D45: `compareTrajectories()` of two runs' latest checkpoints, or undefined when either has none. */
+  /** `compareTrajectories()` of two runs' latest checkpoints, or undefined when either has none. */
   async compare(a: string, b: string): Promise<TrajectoryComparison | undefined> {
     const [left, right] = await Promise.all([this.opts.checkpointStore.load(a), this.opts.checkpointStore.load(b)]);
     return left && right ? compareTrajectories(left, right) : undefined;
   }
 
   /**
-   * O3: replaces the breakpoint set for `agentId`, persisted across runs.
+   * Replaces the breakpoint set for `agentId`, persisted across runs.
    * If a run is currently in flight, its live DebugSession is updated too
    * so the change takes effect on the very next hook call, not just future
    * run()s.

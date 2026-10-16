@@ -13,7 +13,7 @@ async function seeded(key: string, texts: string[]): Promise<MemoryProvider> {
   return provider;
 }
 
-describe("a sub-agent's own memory (H3-2)", () => {
+describe("a sub-agent's own memory", () => {
   it('recalls into its system prompt, offers its tools and persists what it remembers when run by the task tool', async () => {
     const provider = await seeded('runs#global', ['Last run: revenue 100.']);
     const runs = defineMemory({ name: 'runs', scope: 'global', provider });

@@ -1,5 +1,5 @@
 /**
- * Client-side rate limiting for model calls (Eve PROV-F14): `withRateLimit()`
+ * Client-side rate limiting for model calls: `withRateLimit()`
  * turns any `LLMProvider` into one that queues its calls to stay under a
  * requests-per-minute, tokens-per-minute and in-flight cap, so sub-agent
  * fan-out, flow waves and eval suites cannot burst unbounded calls.
@@ -198,7 +198,7 @@ function countingRetries(call: GenerateOptions, limiter: RateLimiter): GenerateO
 
 /**
  * Queue a provider's `generate()` and `stream()` calls to stay under the
- * limits (Eve PROV-F14). Calls are admitted in order; one waiting for its turn
+ * limits. Calls are admitted in order; one waiting for its turn
  * rejects with the call's `signal` reason when aborted. A `stream()` holds its
  * `maxConcurrent` slot until the stream is read to its end (or its final
  * values settle). Pass a {@link RateLimiter} (`createRateLimiter()`) to share

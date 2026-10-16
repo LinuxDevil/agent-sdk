@@ -1,5 +1,5 @@
 /**
- * M5a: fileTraceExporter() writes each run of a createAgent() agent as one
+ * FileTraceExporter() writes each run of a createAgent() agent as one
  * JSON Lines file under `<dir>/<YYYY-MM-DD>/<traceId>.jsonl`.
  */
 import * as fs from 'node:fs';
@@ -50,7 +50,7 @@ function traceFiles(): { file: string; lines: TraceLine[] }[] {
 
 const ops = (lines: TraceLine[]) => lines.map((line) => line.attributes['gen_ai.operation.name']);
 
-describe('fileTraceExporter (M5a)', () => {
+describe('fileTraceExporter', () => {
   it('writes one run with a tool call as one file of invoke_agent, chat and execute_tool spans sharing a traceId', async () => {
     const agent = createAgent({
       name: 'weather',

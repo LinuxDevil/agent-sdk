@@ -1,2 +1,2 @@
-/** Moved to src/ui (LOU-P2, shared with the Vue binding); kept for existing importers. */
+/** Moved to src/ui (shared with the Vue binding); kept for existing importers. */
 export { parseEventStream } from '../ui/parseEventStream';

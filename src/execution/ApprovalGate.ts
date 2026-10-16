@@ -31,32 +31,32 @@ export interface PendingApproval {
    */
   expiresAt?: string;
   /**
-   * LOU-Y1: set when the call belongs to a sub-agent - the names of the
+   * Set when the call belongs to a sub-agent - the names of the
    * sub-agents it runs inside, outermost first (e.g. `['researcher']`).
    * Absent for the top-level agent's own tool calls.
    */
   subagentPath?: string[];
   /**
-   * LOU-X9: what the pause asks the human for. `'question'` for a call of the
+   * What the pause asks the human for. `'question'` for a call of the
    * built-in `ask_question` tool (see `question`); absent for a tool call
    * waiting on approval.
    */
   kind?: ApprovalKind;
-  /** LOU-X9: the question to show, when `kind` is `'question'`. */
+  /** The question to show, when `kind` is `'question'`. */
   question?: ApprovalQuestion;
   /**
-   * N9b: where to sign in, when `kind` is `'sign-in'`: the tool called
+   * Where to sign in, when `kind` is `'sign-in'`: the tool called
    * `ctx.getToken()` for a provider the user has no token for yet.
    */
   signIn?: ApprovalSignIn;
   /**
-   * N10b: who the paused run acts for (docs/auth.md), so an `approve`
+   * Who the paused run acts for (docs/auth.md), so an `approve`
    * callback or a channel's `approvers` function can see whose call it is.
    * Absent for a run without a principal.
    */
   principal?: Principal;
   /**
-   * A1: the `agent.session()` id the paused run belongs to, as
+   * The `agent.session()` id the paused run belongs to, as
    * `agent.approvals.list()` / `get()` report it when this process ran (or
    * resumed) that session's turn. Absent for a run outside a session, and for
    * a pause loaded from the store that no session of this process has opened
@@ -66,12 +66,12 @@ export interface PendingApproval {
 }
 
 /**
- * LOU-X9: what a pending approval asks for. Absent on a record means `'tool'`.
- * N9b: `'sign-in'` when a tool needs the user to sign in to an OAuth provider.
+ * What a pending approval asks for. Absent on a record means `'tool'`.
+ * `'sign-in'` when a tool needs the user to sign in to an OAuth provider.
  */
 export type ApprovalKind = 'tool' | 'question' | 'sign-in';
 
-/** N9b: the sign-in a `kind: 'sign-in'` pause waits on. */
+/** The sign-in a `kind: 'sign-in'` pause waits on. */
 export interface ApprovalSignIn {
   /** The provider's `name` (its token store key). */
   provider: string;
@@ -83,7 +83,7 @@ export interface ApprovalSignIn {
   declined?: boolean;
 }
 
-/** LOU-X9: the question an `ask_question` call puts to the user. */
+/** The question an `ask_question` call puts to the user. */
 export interface ApprovalQuestion {
   text: string;
   /** Choices to offer, in order; the tool result's `option` is an index into them. */
@@ -92,7 +92,7 @@ export interface ApprovalQuestion {
   allowFreeText?: boolean;
 }
 
-/** LOU-X9: the name of the built-in question tool (`askQuestionTool()`). */
+/** The name of the built-in question tool (`askQuestionTool()`). */
 export const ASK_QUESTION_TOOL_NAME = 'ask_question';
 
 /**
@@ -108,7 +108,7 @@ export function approvalExpired(pending: Pick<PendingApproval, 'expiresAt'>, now
 }
 
 /**
- * LOU-X9: `pending` with `kind: 'question'` and its `question` filled in when
+ * `pending` with `kind: 'question'` and its `question` filled in when
  * it is an `ask_question` call; any other record is returned as is.
  */
 export function describeApproval(pending: PendingApproval): PendingApproval {
@@ -126,7 +126,7 @@ export function describeApproval(pending: PendingApproval): PendingApproval {
 }
 
 /**
- * A human decision resolving a PendingApproval. For a question (LOU-X9),
+ * A human decision resolving a PendingApproval. For a question,
  * `approved: true` with the answer as `note` answers it; `approved: false`
  * declines to answer.
  */
@@ -135,13 +135,13 @@ export interface ApprovalDecision {
   approved: boolean;
   note?: string;
   /**
-   * Eve TOOLS-F19: with `approved: true`, `'session'` approves later calls of
+   * With `approved: true`, `'session'` approves later calls of
    * this tool with the same arguments in the same session (the same
    * transcript) without asking again - "don't ask again for this".
    */
   remember?: 'session';
   /**
-   * Eve TOOLS-F19: with `approved: true`, approve with these arguments instead
+   * With `approved: true`, approve with these arguments instead
    * of the model's ("approve with edits"). They are validated against the
    * tool's input schema first: invalid ones throw `LOUSHO_TOOL_ARGS_INVALID`
    * and leave the approval pending. The model's tool call in the transcript is
@@ -152,19 +152,19 @@ export interface ApprovalDecision {
 }
 
 /**
- * Eve TOOLS-F19: decisions made by a non-human `approve` callback
+ * Decisions made by a non-human `approve` callback
  * (`createAgent({ approve })`). Their approval is not remembered by `once()`:
  * only a human's (or a `remember` decision's) is.
  */
 const automaticDecisions = new WeakSet<ApprovalDecision>();
 
-/** Eve TOOLS-F19: marks `decision` as made by an `approve` callback, not a human. */
+/** Marks `decision` as made by an `approve` callback, not a human. */
 export function markAutomaticDecision<T extends ApprovalDecision>(decision: T): T {
   automaticDecisions.add(decision);
   return decision;
 }
 
-/** Eve TOOLS-F19: whether `decision` was made by an `approve` callback (see {@link markAutomaticDecision}). */
+/** Whether `decision` was made by an `approve` callback (see {@link markAutomaticDecision}). */
 export function isAutomaticDecision(decision: ApprovalDecision): boolean {
   return automaticDecisions.has(decision);
 }
@@ -176,12 +176,12 @@ export function isAutomaticDecision(decision: ApprovalDecision): boolean {
 export interface ExecutionSnapshot {
   agent: AgentConfig;
   currentMessages: Message[];
-  /** The call this record decides (Eve TOOLS-F12: one of `approvalGroup`, when the step paused on several). */
+  /** The call this record decides (one of `approvalGroup`, when the step paused on several). */
   pendingToolCall: PendingApproval;
   steps: number;
   /**
    * The sessionId the paused AgentExecutor.execute() run was using for
-   * durable-execution checkpointing (LOU-C9/C10), if any. Recorded so that
+   * durable-execution checkpointing, if any. Recorded so that
    * resume.ts can proactively invalidate any stale checkpoint left behind
    * under this sessionId once the approval is resolved - a checkpoint
    * saved before the pause is stale by construction, since a pause always
@@ -190,10 +190,10 @@ export interface ExecutionSnapshot {
    * execution at all.
    */
   sessionId?: string;
-  /** Eve DUI-F5: the paused run's `contextSessionId` (a session turn's session id), what its tools see as `ctx.sessionId`. */
+  /** The paused run's `contextSessionId` (a session turn's session id), what its tools see as `ctx.sessionId`. */
   contextSessionId?: string;
   /**
-   * LOU-U7: the tool calls of the same model turn that come after the
+   * The tool calls of the same model turn that come after the
    * paused one and have not run yet, in call order. `resumeAfterApproval()`
    * records the paused call's result (or rejection) and then runs these
    * through the normal batch path - they can run, fail validation, or pause
@@ -203,37 +203,37 @@ export interface ExecutionSnapshot {
    * so the transcript stays valid for the provider.
    */
   remainingToolCalls?: ToolCall[];
-  /** Usage the paused run had spent (LOU-V5), so the resumed run continues its totals. */
+  /** Usage the paused run had spent, so the resumed run continues its totals. */
   usage?: RunUsage;
   /**
-   * LOU-Y1: set when the run paused because a sub-agent it called paused for
+   * Set when the run paused because a sub-agent it called paused for
    * approval. `pendingToolCall` is then the sub-agent's call, and
    * `resumeAfterApproval()` re-enters the sub-agent instead of running a tool
    * of this run.
    */
   subagent?: SubagentSuspension;
   /**
-   * LOU-W9.2: the fingerprint of the agent that paused (for a sub-agent's
+   * The fingerprint of the agent that paused (for a sub-agent's
    * nested snapshot, of that sub-agent). `resumeAfterApproval()` compares it
    * with the resuming agent's (`onAgentDrift`). Absent on older snapshots,
    * which resume without any check.
    */
   agentFingerprint?: AgentFingerprint;
   /**
-   * N10b: who the paused run acts for. `resumeAfterApproval()` runs the
+   * Who the paused run acts for. `resumeAfterApproval()` runs the
    * approved call and the rest of the run as this principal, whoever decides
    * (the decider is the approver, `ctx.approval.by`). Absent for a run without
    * one and on older snapshots (they resume with no principal).
    */
   principal?: Principal;
   /**
-   * LOU-R16: the paused run's `ExecuteOptions.metadata`, so the resumed run's
+   * The paused run's `ExecuteOptions.metadata`, so the resumed run's
    * hook contexts keep seeing it when the resuming call passes none. Absent
    * for a run without one and on older snapshots.
    */
   metadata?: Record<string, unknown>;
   /**
-   * Eve TOOLS-F12: set when one model step paused on several calls at once -
+   * Set when one model step paused on several calls at once -
    * every call of the step that waits on a decision, in call order, this
    * record's own (`pendingToolCall`) among them. Each has its own approval
    * record (the same snapshot with its own `pendingToolCall`); a decision is
@@ -244,7 +244,7 @@ export interface ExecutionSnapshot {
    */
   approvalGroup?: ApprovalGroupMember[];
   /**
-   * Eve TOOLS-F12: a sub-agent started by the same step that paused for
+   * A sub-agent started by the same step that paused for
    * approval too. Once the step's own calls are decided (and ran), the run
    * pauses on it, as a run paused on a sub-agent (`subagent`). Absent when no
    * sub-agent of the step paused.
@@ -252,7 +252,7 @@ export interface ExecutionSnapshot {
   heldSubagent?: SubagentSuspension;
 }
 
-/** Eve TOOLS-F12: one call of a step paused on several approvals (see {@link ExecutionSnapshot.approvalGroup}). */
+/** One call of a step paused on several approvals (see {@link ExecutionSnapshot.approvalGroup}). */
 export interface ApprovalGroupMember {
   /** The paused call, as its own approval record holds it. */
   pending: PendingApproval;
@@ -260,7 +260,7 @@ export interface ApprovalGroupMember {
   decision?: GroupDecision;
 }
 
-/** Eve TOOLS-F12: a decision kept with a step's other pending calls until all of them are decided. */
+/** A decision kept with a step's other pending calls until all of them are decided. */
 export interface GroupDecision {
   /** `ApprovalDecision.approved` (false for an expired call). */
   approved: boolean;
@@ -274,12 +274,12 @@ export interface GroupDecision {
   automatic?: true;
   /** TTL: the call's `expiresAt` had passed when it was decided, so it is denied as expired. */
   expired?: true;
-  /** N10b: who decided (`ctx.approval.by`). */
+  /** Who decided (`ctx.approval.by`). */
   by?: Principal;
 }
 
 /**
- * Eve TOOLS-F12: `snapshot` as the record of group member `id` stores it: its
+ * `snapshot` as the record of group member `id` stores it: its
  * `pendingToolCall` is that member's call, also in the sub-agent's snapshot
  * it waits on (ids are shared across the levels of a sub-agent pause).
  */
@@ -290,7 +290,7 @@ export function snapshotForMember(snapshot: ExecutionSnapshot, id: string): Exec
 }
 
 /**
- * Eve TOOLS-F12: `snapshot` with the decisions of `decided` (by id) written
+ * `snapshot` with the decisions of `decided` (by id) written
  * into its group, and into the group of the sub-agent snapshot it waits on.
  */
 export function withGroupDecisions(snapshot: ExecutionSnapshot, decided: ReadonlyMap<string, GroupDecision>): ExecutionSnapshot {
@@ -303,7 +303,7 @@ export function withGroupDecisions(snapshot: ExecutionSnapshot, decided: Readonl
 }
 
 /**
- * Eve TOOLS-F12: the records a pause saves - one per call of its group (each
+ * The records a pause saves - one per call of its group (each
  * with its own `pendingToolCall`), or `record` itself when the step paused on
  * one call. The group's first call comes first.
  */
@@ -328,14 +328,14 @@ export interface SubagentSuspension {
   /** The sub-agent's own paused run (which may itself wait on a sub-agent). */
   snapshot: ExecutionSnapshot;
   /**
-   * M4: set when the suspended call is an `agent_await` waiting on background
+   * Set when the suspended call is an `agent_await` waiting on background
    * sub-agent tasks paused for approval. Kept here, not in `args`, so the
    * model never sees it.
    */
   background?: SuspendedBackgroundTasks;
 }
 
-/** M4: the background tasks an `agent_await` call paused on (see {@link SubagentSuspension.background}). */
+/** The background tasks an `agent_await` call paused on (see {@link SubagentSuspension.background}). */
 export interface SuspendedBackgroundTasks {
   /** The `task` call (`agent`, `prompt`, `description`) of the task this suspension pauses on (its run is `snapshot`). */
   task: Record<string, unknown>;
@@ -343,7 +343,7 @@ export interface SuspendedBackgroundTasks {
   waiting: PausedBackgroundTask[];
 }
 
-/** M4: a background sub-agent task paused for approval, kept until an `agent_await` call resumes it. */
+/** A background sub-agent task paused for approval, kept until an `agent_await` call resumes it. */
 export interface PausedBackgroundTask {
   taskId: string;
   /** The `task` call that started it (`agent`, `prompt`, `description`). */
@@ -376,7 +376,7 @@ export interface ApprovalStore {
    */
   load?(id: string): Promise<ResolvedApproval | null>;
   /**
-   * Eve TOOLS-F13: every approval the store holds that is not resolved yet,
+   * Every approval the store holds that is not resolved yet,
    * oldest first (by `createdAt`) - the pending calls as they were saved,
    * without their snapshots. Optional: with it, `agent.approvals.list()` also
    * lists pauses saved by another process or before a restart. The file,
@@ -386,7 +386,7 @@ export interface ApprovalStore {
   list?(): Promise<PendingApproval[]>;
 }
 
-/** Eve TOOLS-F13: `pending`, oldest first by `createdAt` (ties keep their order). */
+/** `pending`, oldest first by `createdAt` (ties keep their order). */
 export function oldestFirst(pending: PendingApproval[]): PendingApproval[] {
   return pending
     .map((entry, index) => ({ entry, index, at: Date.parse(entry.createdAt) }))

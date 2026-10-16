@@ -100,7 +100,7 @@ export interface RecordReplayProvider extends LLMProvider {
  * out of entries). It is a `LOUSHO_CASSETTE_INVALID` SDKError (docs/errors.md)
  * and AgentExecutor never compacts it into a provider error: through
  * `agent.send()` it reaches the caller typed, with `.cassette`/`.callNumber`
- * intact (LOU-R13).
+ * intact.
  */
 export class CassetteMismatchError extends SDKError {
   constructor(
@@ -112,7 +112,7 @@ export class CassetteMismatchError extends SDKError {
   ) {
     super(message, 'LOUSHO_CASSETTE_INVALID');
     this.name = 'CassetteMismatchError';
-    // A fixture failure must stop the run, not become a sub-agent tool's "failed" result (Eve MA-F7).
+    // A fixture failure must stop the run, not become a sub-agent tool's "failed" result.
     markPropagating(this);
   }
 }
@@ -282,7 +282,7 @@ class Recorder implements RecordReplayProvider {
     return this.provider.supportsStreaming(model);
   }
 
-  /** N1a: the recorded provider's answer. */
+  /** The recorded provider's answer. */
   supportsHostedTool(type: HostedToolType | 'custom'): boolean {
     return this.provider.supportsHostedTool?.(type) ?? false;
   }
@@ -402,7 +402,7 @@ class Player implements RecordReplayProvider {
     return true;
   }
 
-  /** N1a: a replay answers with whatever was recorded. */
+  /** A replay answers with whatever was recorded. */
   supportsHostedTool(): boolean {
     return true;
   }

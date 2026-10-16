@@ -160,7 +160,7 @@ describe('createTodoTools', () => {
     expect(todoRead.name).toBe('todo_read');
   });
 
-  describe('todo.updated event (N12)', () => {
+  describe('todo.updated event', () => {
     const write = { name: 'todo_write', id: 'w1', args: { todos: [{ content: 'a', status: 'in_progress' }, { content: 'b', status: 'pending' }] } };
 
     it('follows the tool.done of a todo_write with the list and counts; todo_read emits none', async () => {

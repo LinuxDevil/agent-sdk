@@ -1,5 +1,5 @@
 /**
- * NodeWorkspace: a Workspace over a real directory (LOU-X6).
+ * NodeWorkspace: a Workspace over a real directory.
  */
 import { promises as fsp, realpathSync, statSync, type Dirent, type Stats } from 'node:fs';
 import * as nodePath from 'node:path';
@@ -33,7 +33,7 @@ export interface NodeWorkspaceOptions {
    * `TEMP`, `TMP`, `TMPDIR`, `LANG`, `LC_*` and `TERM` (plus `SystemRoot`,
    * `SystemDrive`, `ComSpec`, `PATHEXT` and `WINDIR` on Windows) are
    * inherited. `true` passes the whole host environment, API keys included
-   * (the behavior before LOU-X11); only use it for trusted commands.
+   * (the behavior before); only use it for trusted commands.
    */
   inheritEnv?: readonly string[] | true;
   /** Shell used to run commands. Defaults to `/bin/sh`, or `%ComSpec%` (cmd.exe) on Windows. */

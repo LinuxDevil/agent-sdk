@@ -1,5 +1,5 @@
 /**
- * The work behind each file system tool (LOU-X6), kept apart from the tool
+ * The work behind each file system tool, kept apart from the tool
  * definitions so each piece stays small and testable.
  */
 import type { FsProvider } from './types';
@@ -14,9 +14,9 @@ export interface FsLimits {
   maxResults: number;
   maxFilesScanned: number;
   ignore: ReadonlySet<string>;
-  /** Path segments no tool opens, lists or returns (H1-2); none when omitted. */
+  /** Path segments no tool opens, lists or returns; none when omitted. */
   isDenied?: DeniedSegment;
-  /** Time one `grep` call may spend matching, not reading files (Eve TOOLS-F6); default 10 s. */
+  /** Time one `grep` call may spend matching, not reading files; default 10 s. */
   grepTimeoutMs?: number;
 }
 
@@ -99,7 +99,7 @@ function notFoundMessage(path: string, content: string, oldString: string): stri
 }
 
 /**
- * The text of a file `edit_file` may rewrite (Eve TOOLS-F7). With the
+ * The text of a file `edit_file` may rewrite. With the
  * provider's raw bytes, a UTF-16 file (by its BOM) or one a fatal UTF-8
  * decoder rejects is refused: decoding it as UTF-8 and writing it back would
  * replace each undecodable byte with U+FFFD, also on lines the edit never

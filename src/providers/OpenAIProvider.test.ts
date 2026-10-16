@@ -73,7 +73,7 @@ describe('OpenAIProvider', () => {
       vi.unstubAllGlobals();
     });
 
-    // Audit C5: OpenAI-compatible servers that only implement Chat Completions (llama.cpp, vLLM, Ollama's /v1).
+    // OpenAI-compatible servers that only implement Chat Completions (llama.cpp, vLLM, Ollama's /v1).
     it("api: 'chat' calls <baseURL>/chat/completions", async () => {
       const fetchMock = vi.fn().mockImplementation(
         async () => new Response(JSON.stringify({ error: { message: 'stub' } }), { status: 400 })

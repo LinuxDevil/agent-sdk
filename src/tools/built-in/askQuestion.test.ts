@@ -1,5 +1,5 @@
 /**
- * LOU-X9: the built-in `ask_question` tool pauses the run through the
+ * The built-in `ask_question` tool pauses the run through the
  * approval mechanism until a human answers (or declines), durably.
  */
 import { describe, it, expect, vi } from 'vitest';
@@ -22,7 +22,7 @@ function seen(model: ReturnType<typeof mockModel>): { content: unknown; isError?
   return { content: JSON.parse(message?.content as string), isError: message?.isError };
 }
 
-describe('ask_question (LOU-X9)', () => {
+describe('ask_question', () => {
   it("pauses with kind: 'question'; answer() continues and the model sees the answer", async () => {
     const model = mockModel([asking({ question: 'Where to?' }), 'Booking Lisbon.']);
     const agent = createAgent({ provider: model, askQuestion: true });
@@ -124,7 +124,7 @@ const stores: Array<[string, () => AgentStore & { close?: () => void }]> = [
   ["SqliteStore(':memory:')", () => new SqliteStore(':memory:')],
 ];
 
-describe.each(stores)('ask_question with createAgent({ store: %s }) (LOU-X9)', (_name, makeStore) => {
+describe.each(stores)('ask_question with createAgent({ store: %s })', (_name, makeStore) => {
   it('a restart between the question and the answer: a fresh agent answers and finishes the run', async () => {
     const store = makeStore();
     const before = createAgent({ provider: mockModel([whichCity]), askQuestion: true, store });

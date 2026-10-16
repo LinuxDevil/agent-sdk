@@ -1,11 +1,11 @@
 /**
- * Lazy loading of optional packages (LOU-D10, LOU-D19).
+ * Lazy loading of optional packages.
  *
  * Importing the SDK never loads a provider SDK: each is imported with a
  * dynamic `import()` on first use, and a missing package becomes a
  * {@link MissingPeerDependencyError} with the exact install command.
  *
- * LOU-D40 extends this to the feature peers (`dockerode`, the MCP SDK and
+ * Extends this to the feature peers (`dockerode`, the MCP SDK and
  * `prompts`): each is described in {@link FEATURE_PEERS}, so its error also
  * names the feature that needs it.
  */
@@ -103,7 +103,7 @@ function isMissingPackage(error: unknown, packageName: string): boolean {
  * bundlers keep it external) and translate "package not found" into a
  * {@link MissingPeerDependencyError}. Other errors are rethrown unchanged.
  * Provider packages pass the installed `aiMajor`, so the hint names the
- * version that pairs with it (LOU-D28d).
+ * version that pairs with it.
  */
 export async function loadOptionalPeer<T>(packageName: string, importer: () => Promise<T>, aiMajor?: AiMajor): Promise<T> {
   try {

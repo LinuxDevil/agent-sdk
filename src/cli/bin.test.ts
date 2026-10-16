@@ -13,13 +13,13 @@ function lousho(...args: string[]) {
 }
 
 describe('bin/lousho.js', () => {
-  it.each(['--version', '-v', 'version'])('prints the package version for %s (Eve CLI-F9)', (flag) => {
+  it.each(['--version', '-v', 'version'])('prints the package version for %s', (flag) => {
     const res = lousho(flag);
     expect(res.status).toBe(0);
     expect(res.stdout.trim()).toBe(VERSION);
   });
 
-  it('keeps the top-level usage in step with the commands (Eve CLI-F10)', () => {
+  it('keeps the top-level usage in step with the commands', () => {
     const banner = lousho('--help').stdout;
     expect(banner).toContain('lousho doctor [agent.yaml|json|agent-dir] [--json] [--ping]');
     // One-line descriptions and the build targets (a usage line alone said neither).
@@ -59,7 +59,7 @@ describe('bin/lousho.js', () => {
   });
 });
 
-describe('detectTarget command name (Eve CLI-F8)', () => {
+describe('detectTarget command name', () => {
   it('names the calling command in a missing-path error', () => {
     expect(() => detectTarget('./nope.ts', 'chat')).toThrow(/lousho chat: '\.\/nope\.ts' does not exist/);
     expect(() => detectTarget('./nope.ts', 'acp')).toThrow(/lousho acp:/);

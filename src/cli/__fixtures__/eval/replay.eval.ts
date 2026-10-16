@@ -1,6 +1,6 @@
 /**
  * Fixture for the `--record` / `--replay` / `--drift` tests in
- * src/cli/eval.test.ts (LOU-D46). The "real" provider is a mockModel set up
+ * src/cli/eval.test.ts. The "real" provider is a mockModel set up
  * from env vars: FIXTURE_PROVIDER=offline makes every model call fail (so
  * replay provably never calls it) and FIXTURE_ORDER_ID changes the tool
  * arguments (drift). Its cassettes are written to __cassettes__/ next to this

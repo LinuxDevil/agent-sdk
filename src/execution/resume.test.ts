@@ -249,7 +249,7 @@ describe('Execution - resumeAfterApproval', () => {
   });
 
   it('should reject (not resolve with an error-shaped tool message) when the deferred tool throws a PropagatingToolError on resume', async () => {
-    // Reproduces the LOU-D reviewer finding: resume.ts's own catch/convert
+    // Reproduces the reviewer finding: resume.ts's own catch/convert
     // block for the deferred tool's execute() call never got the same
     // PropagatingToolError special-case that AgentExecutor.executeToolCall
     // got in the AgentExecutor fix. A deferred tool that throws a
@@ -406,9 +406,9 @@ describe('Execution - resumeAfterApproval', () => {
   });
 
   it('reviewer repro: a stale checkpoint under the paused session must not clobber the resume state, even when sessionId+checkpointStore are explicitly passed through resume executeOptions', async () => {
-    // Reproduces the LOU-C bug: combining sessionId+checkpointStore
-    // (durable execution, LOU-C9/C10) with resumeAfterApproval() (approval
-    // gate, LOU-C6) on the SAME session silently lost data, because
+    // Reproduces the bug: combining sessionId+checkpointStore
+    // (durable execution) with resumeAfterApproval() (approval
+    // gate) on the SAME session silently lost data, because
     // AgentExecutor's checkpoint-rehydration branch would unconditionally
     // override the resume's carefully-reconstructed messages/steps with
     // whatever stale checkpoint existed under that sessionId from before
@@ -506,7 +506,7 @@ describe('Execution - resumeAfterApproval', () => {
     // point (it doesn't know about the pending 'chargeCard' call at all).
     const preResumeCheckpoint = await checkpointStore.load(sessionId);
     expect(preResumeCheckpoint).not.toBeNull();
-    // LOU-U8/U9: the checkpoint now records the pause itself (the model's
+    // The checkpoint now records the pause itself (the model's
     // chargeCard turn was checkpointed before the tool gate ran).
     expect(preResumeCheckpoint!.status).toBe('awaiting-approval');
     expect(preResumeCheckpoint!.approvalId).toBe(paused.approvalId);
@@ -557,14 +557,14 @@ describe('Execution - resumeAfterApproval', () => {
 
     // Defense in depth: the pre-pause checkpoint was cleared before the
     // resumed run started; what is stored now is that run's own 'finished'
-    // checkpoint (LOU-U8), which includes the deferred chargeCard result.
+    // checkpoint, which includes the deferred chargeCard result.
     const finalCheckpoint = await checkpointStore.load(sessionId);
     expect(finalCheckpoint?.status).toBe('finished');
     expect(finalCheckpoint?.messages).toEqual(resumed.messages);
   });
 
-  it('LOU-K5: writes a NEW checkpoint for a tool-call step taken after a successful resume, when a checkpointStore is supplied', async () => {
-    // Reproduces/verifies the LOU-K5 fix: resumeAfterApproval() used to
+  it('writes a NEW checkpoint for a tool-call step taken after a successful resume, when a checkpointStore is supplied', async () => {
+    // Reproduces/verifies the fix: resumeAfterApproval() used to
     // force sessionId/checkpointStore to `undefined` on the follow-up
     // execute() call, which silently disabled checkpointing for the whole
     // remainder of the resumed run. This test drives the resumed run
@@ -685,11 +685,11 @@ describe('Execution - resumeAfterApproval', () => {
     expect(savedCheckpoint.messages.some((m: Message) => m.toolName === 'lookup')).toBe(true);
 
     // The run reached a terminal state, so its checkpoint is kept, marked
-    // 'finished', for session continuation (LOU-U8).
+    // 'finished', for session continuation.
     expect((await checkpointStore.load(sessionId))?.status).toBe('finished');
   });
 
-  it('LOU-T1: carries businessState across a pause-for-approval -> approve -> resume cycle without the resumed call re-passing it', async () => {
+  it('carries businessState across a pause-for-approval -> approve -> resume cycle without the resumed call re-passing it', async () => {
     // AgentExecutor only writes a checkpoint AFTER a tool result is
     // appended (see AgentExecutor.ts's requiresApproval early-return, which
     // returns *before* reaching that save() call) - so the pause-for-
@@ -818,7 +818,7 @@ describe('Execution - resumeAfterApproval', () => {
     expect(lookupExecute).toHaveBeenCalledTimes(2);
 
     // The run reached a terminal state, so the checkpoint is kept, marked
-    // 'finished' (LOU-U8) - and every save the resumed run made along the way
+    // 'finished' - and every save the resumed run made along the way
     // must have carried the businessState forward.
     expect(saveSpy).toHaveBeenCalled();
     for (const [, checkpoint] of saveSpy.mock.calls) {
@@ -830,7 +830,7 @@ describe('Execution - resumeAfterApproval', () => {
     expect((await checkpointStore.load(sessionId))?.status).toBe('finished');
   });
 
-  it('LOU-T1: an explicit businessState passed to resumeAfterApproval() overrides the stale pre-pause checkpoint value', async () => {
+  it('an explicit businessState passed to resumeAfterApproval() overrides the stale pre-pause checkpoint value', async () => {
     const chargeExecute = vi.fn().mockResolvedValue({ charged: true });
     toolRegistry.register('chargeCard', {
       displayName: 'Charge Card',
@@ -928,7 +928,7 @@ describe('Execution - resumeAfterApproval', () => {
     }
   });
 
-  it('LOU-K5: resuming without a checkpointStore still works exactly as before (no crash, no checkpoint attempted)', async () => {
+  it('resuming without a checkpointStore still works exactly as before (no crash, no checkpoint attempted)', async () => {
     // Guards the "fully optional/backward compatible" requirement: a
     // caller that never passes a checkpointStore to resumeAfterApproval()
     // must see identical behavior to before this fix - sessionId and
@@ -986,7 +986,7 @@ describe('Execution - resumeAfterApproval', () => {
     ).rejects.toMatchObject({ message: expect.stringMatching(/No pending approval/), code: 'LOUSHO_APPROVAL_NOT_FOUND' });
   });
 
-  describe('hooks (LOU-Q1)', () => {
+  describe('hooks', () => {
     it('fires preToolCall/postToolCall hooks for the deferred, post-approval tool execution', async () => {
       const { HookRegistry } = await import('./hooks');
       const hooks = new HookRegistry();
@@ -1158,11 +1158,11 @@ describe('Execution - resumeAfterApproval', () => {
         { hooks }
       );
 
-      // LOU-X3.2: the approval carries the redacted input, so the hook's rewrite on resume is a no-op.
+      // The approval carries the redacted input, so the hook's rewrite on resume is a no-op.
       expect(execute).toHaveBeenCalledWith({ email: '[REDACTED]' }, expect.objectContaining({ toolCallId: 'call-1', messages: expect.any(Array) }));
     });
 
-    it('LOU-X3.2: a preToolCall hook that only exists on resume and changes args in place is refused', async () => {
+    it('a preToolCall hook that only exists on resume and changes args in place is refused', async () => {
       const { HookRegistry } = await import('./hooks');
       const hooks = new HookRegistry();
       hooks.register({ name: 'redact-pii', preToolCall: (ctx) => { ctx.args.email = '[REDACTED]'; } });
@@ -1197,7 +1197,7 @@ describe('Execution - resumeAfterApproval', () => {
       expect(resumed.messages.find((m) => m.role === 'tool')?.content).toContain('approved with different input');
     });
 
-    it('LOU-X3.2: a hook that rebuilds the same arguments with the keys in another order is not refused', async () => {
+    it('a hook that rebuilds the same arguments with the keys in another order is not refused', async () => {
       const { HookRegistry } = await import('./hooks');
       const hooks = new HookRegistry();
       hooks.register({ name: 'reorder', preToolCall: (ctx) => { const { a, b } = ctx.args; ctx.args = { b, a }; } });

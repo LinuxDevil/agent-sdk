@@ -1,4 +1,4 @@
-/** LOU-P8.2: `lousho dev` mounts an agent directory's channels and starts its schedules, and swaps both on reload. */
+/** `lousho dev` mounts an agent directory's channels and starts its schedules, and swaps both on reload. */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import http from 'node:http';

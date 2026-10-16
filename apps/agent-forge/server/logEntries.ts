@@ -1,6 +1,6 @@
 /**
  * Translators from the SDK's execution event streams to the structured
- * `LogEntry` rows the Logs tab renders (LOU-O1). Used by runRegistry.ts.
+ * `LogEntry` rows the Logs tab renders. Used by runRegistry.ts.
  */
 import { randomUUID } from 'node:crypto';
 import type { AgentEvent, AgentEventOf, AgentEventType } from '@lousho/build-ai-agent';
@@ -65,7 +65,7 @@ const AGENT_LOG_BUILDERS: AgentLogBuilders = {
 };
 
 /**
- * O1 (LOU-D41: from the SDK's `AgentEvent`s): translates one run event into
+ * From the SDK's `AgentEvent`s: translates one run event into
  * zero or more structured `LogEntry` rows. `LogPhase` is a coarser regrouping
  * of the same events (e.g. both `run.start` and `run.done` map to phase
  * 'trigger', since those are this pipeline's entry/exit points) plus
@@ -127,7 +127,7 @@ const FLOW_LOG_BUILDERS: FlowLogBuilders = {
 };
 
 /**
- * LOU-T3: translates one `FlowExecutionEvent` (`src/flows/FlowExecutor.ts`'s
+ * Translates one `FlowExecutionEvent` (`src/flows/FlowExecutor.ts`'s
  * own, unrelated event taxonomy - flow-start/step-start/llm-call/
  * llm-response/tool-call/tool-result/condition-evaluated/loop-iteration/
  * step-complete/flow-complete/flow-error, NOT `AgentExecutor`'s
@@ -136,13 +136,13 @@ const FLOW_LOG_BUILDERS: FlowLogBuilders = {
  * for a `FlowExecutor` run today: these land in the Logs tab, but NOT the
  * structured Trace tab (`emitSpan`/`makeTraceExporter` needs a real
  * `TraceExporter`/`Span` stream, which `FlowExecutor.execute()` has no
- * parameter for) or the O3 step-debugger (`DebugSession`'s breakpoints hook
+ * parameter for) or the step-debugger (`DebugSession`'s breakpoints hook
  * into `AgentExecutor`'s `preGenerate`/`postGenerate`/`preToolCall`/
  * `postToolCall` hook points via `hooks`/`sandbox` options that
  * `FlowExecutor.execute()` simply doesn't accept - see its signature). A
  * branching run is therefore only PARTIALLY observable in Agent Forge's
  * debug console: logs yes, trace graph and breakpoint stepping no. Noted
- * here rather than silently left blank; see the LOU-T3 report for the full
+ * here rather than silently left blank; see the report for the full
  * writeup.
  */
 export function toFlowLogEntries(agentId: string, event: FlowExecutionEvent): LogEntry[] {

@@ -56,7 +56,7 @@ const failure = (promise: Promise<unknown>) =>
     (e: unknown) => e as SDKError
   );
 
-describe('runRemoteTurn (LOU-D53)', () => {
+describe('runRemoteTurn', () => {
   it('posts the turn and summarizes the run: text, tool calls, steps, usage, session id', async () => {
     const requests: Request[] = [];
     const script: MockTurn[] = [

@@ -70,7 +70,7 @@ import { withSpan, type Span } from './tracing';
  * resumeAfterApproval() below for exactly what gets threaded through and why
  * that's safe.
  *
- * LOU-K5 update: earlier, this file forced BOTH to `undefined` on the
+ * Update: earlier, this file forced BOTH to `undefined` on the
  * follow-up execute() call, as a "belt-and-suspenders" guard against
  * re-rehydrating stale pre-pause state. That guard was overbroad: it also
  * disabled checkpointing for the entire remainder of the resumed run, so a
@@ -80,7 +80,7 @@ import { withSpan, type Span } from './tracing';
  * deleted the stale pre-pause checkpoint - see the "Defense in depth"
  * comment below for why that ordering still makes rehydration impossible.
  *
- * LOU-T1: `businessState` is deliberately NOT in the Omit list below - a
+ * `businessState` is deliberately NOT in the Omit list below - a
  * caller may pass it here to explicitly override the value carried forward
  * from the pre-pause checkpoint. See resumeAfterApproval()'s `businessState:`
  * argument to the follow-up `AgentExecutor.execute()` call for the full
@@ -100,14 +100,14 @@ export type ResumeExecuteOptions = Omit<
   | 'agentSpanId'
 > & {
   /**
-   * LOU-W9.2: the agent as it is now, so `onAgentDrift` can compare its
+   * The agent as it is now, so `onAgentDrift` can compare its
    * instructions and model with the paused run's. Default: the paused agent
    * (`snapshot.agent`), which only drifts in its tools and the provider's
    * default model. `createAgent()` passes its own.
    */
   currentAgent?: AgentConfig;
   /**
-   * N10b: who decides (route auth's principal, a channel's clicking user).
+   * Who decides (route auth's principal, a channel's clicking user).
    * The approved tool sees it as `ctx.approval.by`. It never becomes the
    * run's principal: the resumed run acts for the principal it paused with
    * (`snapshot.principal`), and `principal` here is ignored.
@@ -130,7 +130,7 @@ export type ResumeExecuteOptions = Omit<
  * under that sessionId from before the pause (this closes the gap for a
  * LATER, unrelated execute() call against the same sessionId+checkpointStore
  * that doesn't go through resume at all, so it can't silently rehydrate
- * that stale pre-pause state either); second - LOU-K5 - it is then threaded
+ * that stale pre-pause state either); second, it is then threaded
  * through, together with `snapshot.sessionId`, to the follow-up
  * AgentExecutor.execute() call that continues the run, so checkpointing
  * resumes for the remainder of the run instead of staying silently
@@ -143,7 +143,7 @@ export type ResumeExecuteOptions = Omit<
  * both the delete and the pass-through are skipped and resume behaves
  * exactly as it did before durable execution existed.
  *
- * LOU-V1: `executeOptions.signal` cancels the resumed run exactly like
+ * `executeOptions.signal` cancels the resumed run exactly like
  * `ExecuteOptions.signal` - the approved tool receives it as `abortSignal`,
  * and the continued run resolves with `finishReason: 'aborted'` once it is
  * aborted, e.g. `resumeAfterApproval(decision, approvals, tools, provider,
@@ -157,7 +157,7 @@ export function resumeAfterApproval(
   executeOptions: ResumeExecuteOptions = {},
   checkpointStore?: CheckpointStore
 ): Promise<ExecutionResult> {
-  // LOU-D41: the decided call and the continuation report to the run's listeners.
+  // The decided call and the continuation report to the run's listeners.
   return observeRun(executeOptions, (observed) => resumeObserved(decision, approvalStore, toolRegistry, provider, observed, checkpointStore));
 }
 
@@ -173,14 +173,14 @@ async function resumeObserved(
   if (!claimed) {
     throw new SDKError(`No pending approval found for id '${decision.id}' (unknown or already resolved)`, 'LOUSHO_APPROVAL_NOT_FOUND');
   }
-  // Eve TOOLS-F12: a call of a step paused on several - the step runs once the last of them is decided.
+  // A call of a step paused on several - the step runs once the last of them is decided.
   const grouped = (claimed.snapshot.approvalGroup?.length ?? 0) > 1;
   const claim = await recordToResume(claimed, decision, approvalStore, toolRegistry, observed, checkpointStore, grouped);
   if ('paused' in claim) return claim.paused;
   const { record } = claim;
 
   const { snapshot } = record;
-  // N10b: the run goes on as the caller that paused it, whoever resumes it (an old snapshot: no principal).
+  // The run goes on as the caller that paused it, whoever resumes it (an old snapshot: no principal).
   const { approver, ...rest } = observed;
   const executeOptions = resumedOptions(rest, snapshot);
   const decided = await effectiveDecision(record, decision, approvalStore, executeOptions, grouped);
@@ -262,7 +262,7 @@ async function recordToResume(
     if ('paused' in step) await markGroupPending(claimed.snapshot, step.paused, checkpointStore);
     return step;
   }
-  // Eve TOOLS-F19: "approve with edits" - invalid arguments leave the approval pending.
+  // "approve with edits" - invalid arguments leave the approval pending.
   try {
     return { record: await withEditedArgs(claimed, decision, toolRegistry, observed) };
   } catch (error) {
@@ -283,7 +283,7 @@ function resumedOptions(rest: Omit<ResumeExecuteOptions, 'approver'>, snapshot: 
   return {
     ...rest,
     principal: readonlyPrincipal(snapshot.principal),
-    // LOU-R16: and its hooks keep seeing the metadata it paused with, unless the resuming call passed its own.
+    // And its hooks keep seeing the metadata it paused with, unless the resuming call passed its own.
     ...(rest.metadata === undefined && snapshot.metadata !== undefined && { metadata: snapshot.metadata }),
   };
 }
@@ -300,14 +300,14 @@ async function effectiveDecision(
   // decision says - a stale approve must never run the tool. The denial is
   // what rejectionOf() reports to the model, so a resumed run sees the
   // expiry, and a sign-in pause that lapsed is denied rather than re-armed.
-  // Eve TOOLS-F12: a group's calls were each checked when they were decided (groupDecision()).
+  // A group's calls were each checked when they were decided (groupDecision()).
   const decided = grouped
     ? decision
     : approvalExpired(record.pending)
       ? { ...decision, approved: false }
-      : // N9b: a sign-in pause continues only once the user signed in (else it stays paused), or ends as cancelled.
+      : // A sign-in pause continues only once the user signed in (else it stays paused), or ends as cancelled.
         await signInDecision(record, decision, approvalStore, executeOptions.tokens);
-  // Eve TOOLS-F19: a copy of an `approve` callback's decision is still the callback's (once() does not remember it).
+  // A copy of an `approve` callback's decision is still the callback's (once() does not remember it).
   if (decided !== decision && isAutomaticDecision(decision)) markAutomaticDecision(decided);
   return decided;
 }
@@ -336,15 +336,15 @@ async function continueInRunSpan(resumed: ResumedRun, span: Span): Promise<Execu
   const staleBusinessState = resumed.staleCheckpoint?.businessState;
   const businessState = executeOptions.businessState !== undefined ? executeOptions.businessState : staleBusinessState;
   if ('paused' in step) {
-    // LOU-U8: the sub-agent paused again, so the session still awaits an approval.
+    // The sub-agent paused again, so the session still awaits an approval.
     await markAwaitingApproval(snapshot, step.paused, checkpointStore, businessState);
     return step.paused;
   }
-  // N6: the approved transfer completed its switch - continue the run as the target.
+  // The approved transfer completed its switch - continue the run as the target.
   if ('handoff' in step) return continueHandoff(ctx, step.handoff, span, checkpointStore, businessState, resumed.lease);
-  // LOU-Y1: a call whose sub-agent paused already has a placeholder result.
+  // A call whose sub-agent paused already has a placeholder result.
   if ('message' in step) replaceToolResult(messages, step.message);
-  // Eve TOOLS-F12: a sub-agent of the step paused too - the run pauses on it now.
+  // A sub-agent of the step paused too - the run pauses on it now.
   const held = snapshot.subagent ? undefined : snapshot.heldSubagent;
   if (held) {
     const paused = await pauseAgain(ctx, held);
@@ -355,7 +355,7 @@ async function continueInRunSpan(resumed: ResumedRun, span: Span): Promise<Execu
   // The span's input is the transcript the continued run starts from, decided call included.
   span.attributes = { ...span.attributes, ...runSpan().attributes };
 
-  // LOU-U7: the turn's remaining calls still have no result here;
+  // The turn's remaining calls still have no result here;
   // AgentExecutor.execute() finds them in the transcript and runs them
   // through its normal batch path before calling the model again.
   return keepTurnOnFailure(snapshot, messages, checkpointStore, businessState, ctx.usage, () =>
@@ -377,16 +377,16 @@ async function continueInRunSpan(resumed: ResumedRun, span: Span): Promise<Execu
 async function runDecidedStep({ ctx, claimed, pending, drift, staleCheckpoint, checkpointStore }: ResumedRun): Promise<DecidedStep> {
   const { snapshot } = ctx;
   try {
-    // Eve TOOLS-F12: a decided group runs all its calls (a sub-agent's group runs inside the sub-agent).
+    // A decided group runs all its calls (a sub-agent's group runs inside the sub-agent).
     return snapshot.approvalGroup && !snapshot.subagent ? await runDecidedGroup(ctx, snapshot.approvalGroup, drift) : await streamedDecision(ctx, pending, drift);
   } catch (error) {
-    // M10c: a paused sub-agent refused the resume before anything ran, so this run stays paused too.
+    // A paused sub-agent refused the resume before anything ran, so this run stays paused too.
     if (refusedResumes.has(error as object)) await restorePause(claimed, ctx.approvalStore, staleCheckpoint, checkpointStore);
     throw error;
   }
 }
 
-/** N6: continues the run as the handoff's target, from the switched transcript. */
+/** Continues the run as the handoff's target, from the switched transcript. */
 function continueHandoff(
   ctx: ResumeContext,
   handoff: HandoffSwitch,
@@ -416,11 +416,11 @@ function continueHandoff(
 }
 
 /**
- * LOU-V14: {@link resumeAfterApproval} (same arguments, same result) streamed
+ * {@link resumeAfterApproval} (same arguments, same result) streamed
  * as the `AgentRun` that `AgentExecutor.stream()` returns: `run.start`, the
  * decided call's `tool.resume` / `tool.done` (`tool.error` for a rejection;
- * `tool.resume` because its `tool.start` was emitted by the run that paused,
- * LOU-R17), then the continuation's events as in a fresh run. A further pause ends it
+ * `tool.resume` because its `tool.start` was emitted by the run that paused),
+ * then the continuation's events as in a fresh run. A further pause ends it
  * with `approval.requested` and `run.done`. Aborting (`signal` or an early
  * `break`), `enqueue()` and `steer()` work as on a fresh run.
  *
@@ -445,7 +445,7 @@ export function streamResumeAfterApproval(
   );
 }
 
-/** What resumeAfterApproval() takes, as one object (LOU-V14). */
+/** What resumeAfterApproval() takes, as one object. */
 export interface ResumeRequest {
   decision: ApprovalDecision;
   approvalStore: ApprovalStore;
@@ -461,11 +461,11 @@ export function resumeRequest(request: ResumeRequest): Promise<ExecutionResult> 
   return resumeAfterApproval(decision, approvalStore, toolRegistry, provider, executeOptions, checkpointStore);
 }
 
-/** M10c: drift errors of a resume check, which ran before anything of the paused run did. */
+/** Drift errors of a resume check, which ran before anything of the paused run did. */
 const refusedResumes = new WeakSet<object>();
 
 /**
- * Eve TOOLS-F19: `record` with the decision's edited `args` in place of the
+ * `record` with the decision's edited `args` in place of the
  * model's - validated against the tool's schema, and written into the
  * transcript's tool call so the model sees what ran. `record` itself when the
  * decision edits nothing (or rejects). A sub-agent's call passes the edit on
@@ -495,7 +495,7 @@ async function withEditedArgs(
   return { pending: edited, snapshot: { ...snapshot, pendingToolCall: edited, currentMessages } };
 }
 
-/** Eve TOOLS-F19: `messages` with the arguments of tool call `toolCallId` replaced by `args` (new message objects, never in place). */
+/** `messages` with the arguments of tool call `toolCallId` replaced by `args` (new message objects, never in place). */
 function withCallArgs(messages: Message[], toolCallId: string, args: Record<string, unknown>): Message[] {
   return messages.map((message) =>
     message.role === 'assistant' && message.toolCalls?.some((call) => call.id === toolCallId)
@@ -508,7 +508,7 @@ function withCallArgs(messages: Message[], toolCallId: string, args: Record<stri
 }
 
 /**
- * Eve TOOLS-F12: in-process serialization of the decisions on one group (keyed
+ * In-process serialization of the decisions on one group (keyed
  * by its first call's approval id), so two decisions made at the same time
  * cannot both find the other's record claimed.
  */
@@ -526,7 +526,7 @@ function withGroupLock<T>(key: string, work: () => Promise<T>): Promise<T> {
 }
 
 /**
- * Eve TOOLS-F12: decides one call of a step paused on several. While other
+ * Decides one call of a step paused on several. While other
  * calls of the step are undecided, the decision is written into their
  * records and the run stays paused (`paused`, listing what is left); the
  * decision that completes the group returns the `record` to run the whole
@@ -552,7 +552,7 @@ async function decideGroupMember(
       decided.set(pending.id, mine);
       const waiting = await claimWaitingSiblings(group, decided, approvalStore, pending.id);
       if (waiting.length === 0) {
-        // Eve2-F4: a decision made on a sub-agent's record stored its edited
+        // A decision made on a sub-agent's record stored its edited
         // args unchecked (the lead's registry holds no such tool) - the
         // sub-agent's own resume is where they can be validated, before any
         // call of the step runs.
@@ -568,7 +568,7 @@ async function decideGroupMember(
 }
 
 /**
- * Eve TOOLS-F12: claims the group's calls still waiting, which take the
+ * Claims the group's calls still waiting, which take the
  * decisions in `decided` (and add to it any decision another resolver wrote
  * into them). A call being decided elsewhere puts the claimed ones back and throws.
  */
@@ -601,7 +601,7 @@ function adoptDecisions(snapshot: ExecutionSnapshot, decided: Map<string, GroupD
 }
 
 /**
- * Eve2-F4: the edited `args` of every approved decision in `decided`, checked
+ * The edited `args` of every approved decision in `decided`, checked
  * against its tool's schema before the group runs - a decision recorded
  * without validation (a sub-agent's, whose lead could not check them against
  * the sub-agent's tools) is caught here, in the run that owns the registry.
@@ -623,7 +623,7 @@ async function validateGroupArgs(
   }
 }
 
-/** Eve TOOLS-F12: the run's result while the `waiting` calls of its step are undecided. */
+/** The run's result while the `waiting` calls of its step are undecided. */
 function groupPaused(snapshot: ExecutionSnapshot, waiting: ResolvedApproval[]): ExecutionResult {
   const ids = waiting.map((sibling) => sibling.pending.id);
   return {
@@ -639,7 +639,7 @@ function groupPaused(snapshot: ExecutionSnapshot, waiting: ResolvedApproval[]): 
 }
 
 /**
- * Eve TOOLS-F12: `decision` as a group keeps it: an expired call is denied
+ * `decision` as a group keeps it: an expired call is denied
  * (TTL), a sign-in is approved only once the user signed in, and edited
  * arguments are validated (a sub-agent's call: by the sub-agent's resume).
  */
@@ -670,7 +670,7 @@ async function groupDecision(
 }
 
 /**
- * Eve TOOLS-F12: the session's 'awaiting-approval' checkpoint names the
+ * The session's 'awaiting-approval' checkpoint names the
  * approvals of the paused step that are still undecided, so a session,
  * channel or route sees what is left to decide.
  */
@@ -690,7 +690,7 @@ async function markGroupPending(snapshot: ExecutionSnapshot, paused: ExecutionRe
 }
 
 /**
- * Eve TOOLS-F12: runs a decided group's calls in call order - each approved
+ * Runs a decided group's calls in call order - each approved
  * call like a single approved call, each rejected one with its rejection -
  * and records their results in the transcript. A call that needs sign-in
  * again pauses the run on it, the group's later calls waiting with it.
@@ -726,7 +726,7 @@ async function runDecidedGroup(ctx: ResumeContext, group: ApprovalGroupMember[],
 }
 
 /**
- * M10c: puts a paused run back as it was (its approval record, and the
+ * Puts a paused run back as it was (its approval record, and the
  * session's 'awaiting-approval' checkpoint) after a paused sub-agent refused
  * the resume, so fixing the sub-agent and deciding again works.
  */
@@ -741,7 +741,7 @@ async function restorePause(
 }
 
 /**
- * N9b: the decision on a `kind: 'sign-in'` pause as it is carried out.
+ * The decision on a `kind: 'sign-in'` pause as it is carried out.
  * Approving continues only when the run's user has a token for the provider
  * now; otherwise the record is put back and `LOUSHO_SIGNIN_PENDING` is thrown,
  * so the run stays paused. After the provider reported that the user declined,
@@ -767,7 +767,7 @@ async function signInDecision(
   throw new SignInPendingError(signIn.displayName ?? signIn.provider);
 }
 
-/** N9b: the rejection a declined or cancelled call gets: an expired pause, a sign-in, a question, or a tool call. */
+/** The rejection a declined or cancelled call gets: an expired pause, a sign-in, a question, or a tool call. */
 function rejectionOf(pending: PendingApproval, expired: boolean = approvalExpired(pending)): { error: string; kind: 'denied' | 'rejected' } {
   const described = describeApproval(pending);
   // TTL: a pause decided after `expiresAt` denies, whatever kind it was.
@@ -775,13 +775,13 @@ function rejectionOf(pending: PendingApproval, expired: boolean = approvalExpire
     return { error: `Approval of '${described.toolName}' expired before it was decided`, kind: 'denied' };
   }
   if (described.kind === 'sign-in') return { error: `Sign-in to ${described.signIn?.displayName ?? described.signIn?.provider ?? 'the provider'} was cancelled.`, kind: 'denied' };
-  // LOU-X9: declining an `ask_question` call is not a tool rejection.
+  // Declining an `ask_question` call is not a tool rejection.
   if (described.kind === 'question') return { error: 'The user declined to answer the question', kind: 'rejected' };
   return { error: 'Tool execution was rejected by the reviewer', kind: 'rejected' };
 }
 
 /**
- * N9b: the approved call needed sign-in (again, or to another provider): the
+ * The approved call needed sign-in (again, or to another provider): the
  * run pauses again on it with a new `kind: 'sign-in'` approval - or, for the
  * app's own credential, the call gets the error.
  */
@@ -796,7 +796,7 @@ async function signInAgain(ctx: ResumeContext, pending: PendingApproval, signal:
   const next: PendingApproval = { ...pending, id, createdAt: new Date().toISOString(), kind: 'sign-in', signIn };
   delete next.question;
   const saved: ExecutionSnapshot = { ...snapshot, pendingToolCall: next, usage: structuredClone(ctx.usage) };
-  // Eve TOOLS-F12: inside a decided group, the calls before this one already ran; the decided ones after it wait with it.
+  // Inside a decided group, the calls before this one already ran; the decided ones after it wait with it.
   const later = ctx.laterInGroup;
   if (later) {
     saved.currentMessages = [...ctx.messages];
@@ -809,11 +809,11 @@ async function signInAgain(ctx: ResumeContext, pending: PendingApproval, signal:
 }
 
 /**
- * LOU-W9.2: compares the agent resuming a paused run with the one that paused
+ * Compares the agent resuming a paused run with the one that paused
  * it (`onAgentDrift`) before anything runs: an approved call, or a call still
  * to run, whose tool is gone is always an error. On an error the approval
  * record, already taken from the store, is put back so the run stays paused.
- * M10c: a sub-agent's check (its own resume, nested in the lead's) throws an
+ * A sub-agent's check (its own resume, nested in the lead's) throws an
  * error that propagates out of the sub-agent tool, so each enclosing run puts
  * its own record back too.
  */
@@ -827,7 +827,7 @@ async function checkApprovalDrift(
   if (!saved) return undefined;
   const { toolRegistry, executeOptions } = run;
   const configured = snapshot.agent.tools ?? {};
-  // Eve TOOLS-F12: a decided group runs every approved call of it.
+  // A decided group runs every approved call of it.
   const group = snapshot.subagent ? undefined : snapshot.approvalGroup;
   const decided = group
     ? group.filter((member) => member.decision?.approved).map((member) => member.pending.toolName)
@@ -848,7 +848,7 @@ async function checkApprovalDrift(
 }
 
 /**
- * decidedToolMessage(), reported on a streamed resume (LOU-V14) as the run's
+ * decidedToolMessage(), reported on a streamed resume as the run's
  * `start` and the decided call's `tool.resume` / `tool.done` (`tool.error`)
  * events.
  */
@@ -870,13 +870,13 @@ async function streamedCall(ctx: ResumeContext, pending: PendingApproval): Retur
     type: 'function',
     function: { name: call.toolName, arguments: JSON.stringify(call.args) },
   };
-  // LOU-R17: the decided call's `tool.start` was emitted by the run that
+  // The decided call's `tool.start` was emitted by the run that
   // paused; the continuation reports `tool.resume` so the call keeps exactly
   // one `tool.start` across the pause.
   sink.toolResume(toolCall);
   const step = await decidedToolMessage(ctx, pending);
   if ('message' in step) sink.toolSettled(toolResultOf(step.message));
-  // N6: an approved transfer reports `tool.done` then `handoff`, like the switch in a live run.
+  // An approved transfer reports `tool.done` then `handoff`, like the switch in a live run.
   if ('handoff' in step) {
     sink.toolSettled({
       toolCallId: toolCall.id,
@@ -908,7 +908,7 @@ interface HandoffSwitch {
   options: ExecuteOptions;
   messages: Message[];
   marker: HandoffMarker;
-  /** The routing result as the post-tool hooks left it (LOU-X3), for `tool.done`. */
+  /** The routing result as the post-tool hooks left it, for `tool.done`. */
   result?: unknown;
   replacedByHook?: string;
 }
@@ -916,7 +916,7 @@ interface HandoffSwitch {
 /**
  * The `tool` message for the decided call: the approved tool's result, the
  * rejection - or, when the run paused on a sub-agent, the sub-agent's final
- * answer after resuming it with the decision (LOU-Y1). N6: an approved
+ * answer after resuming it with the decision. An approved
  * `transfer_to_*` call does not run a tool - it returns the completed switch.
  */
 async function decidedToolMessage(
@@ -934,7 +934,7 @@ async function decidedToolMessage(
     return resumeSubagentCall(ctx, snapshot.subagent, runApproved);
   }
   if (!ctx.decision.approved) {
-    // Eve TOOLS-F12: a group's call was expired (or not) when it was decided.
+    // A group's call was expired (or not) when it was decided.
     const expired = ctx.expired ?? approvalExpired(pending);
     const { error, kind } = rejectionOf(pending, expired);
     // TTL: an expiry denial is audited like a rule's `deny`.
@@ -949,9 +949,9 @@ async function decidedToolMessage(
     }
     return { message: toolResultMessage(pending, toolErrorResult({ toolName: pending.toolName, error, kind, details: { note: ctx.decision.note } }), true) };
   }
-  // N6: a transfer call resumes by handing off, not by running a tool.
+  // A transfer call resumes by handing off, not by running a tool.
   const handoff = handoffNamed(executeOptions, pending.toolName);
-  // N4: a call approved before a switch to plan mode does not run in plan mode.
+  // A call approved before a switch to plan mode does not run in plan mode.
   const { toolName, toolCallId, args } = pending;
   const { principal } = executeOptions;
   const toolDesc = ctx.toolRegistry.get(toolName) ?? (handoff ? handoffToolRegistry(executeOptions).get(toolName) : undefined);
@@ -968,11 +968,11 @@ async function decidedToolMessage(
     onDelegatedUsage: (child) => mergeDelegatedUsage(ctx.usage, child),
     execute: ctx.execute,
   };
-  // LOU-X9: the tool sees the decision's note (an `ask_question` answer) as `ctx.approval`; N10b: and who decided as `by`.
+  // The tool sees the decision's note (an `ask_question` answer) as `ctx.approval`; and who decided as `by`.
   let message: Message;
   try {
     message = await runApprovedInSpan(ctx, pending, scope, async () => {
-      // N14: an approved `run_code` call runs its script, whose calls pass this run's gate (and are traced under its span).
+      // An approved `run_code` call runs its script, whose calls pass this run's gate (and are traced under its span).
       const registry = toolName === RUN_CODE_TOOL ? await approvedCodeMode(ctx, scope) : ctx.toolRegistry;
       return runApproved(pending, registry, scope, { id: pending.id, note: ctx.decision.note, ...(ctx.approver && { by: ctx.approver }) });
     });
@@ -980,14 +980,14 @@ async function decidedToolMessage(
     if (!isSignInRequired(error)) throw error;
     return signInAgain(ctx, pending, error);
   }
-  // LOU-X8: the transcript remembers the approval, for `once()`; Eve TOOLS-F19: whether a human gave it, and `remember`.
+  // The transcript remembers the approval, for `once()`; whether a human gave it, and `remember`.
   const marker = approvalMarker(pending.args, { automatic: isAutomaticDecision(ctx.decision), remember: ctx.decision.remember });
   return { message: { ...message, metadata: { ...message.metadata, ...marker } } };
 }
 
 /**
- * N6: carries out an approved `transfer_to_*` call. Its pre-tool hooks re-run
- * on the approved arguments (LOU-X3.2: a hook may still deny it or supply its
+ * Carries out an approved `transfer_to_*` call. Its pre-tool hooks re-run
+ * on the approved arguments (a hook may still deny it or supply its
  * result); a cleared call hands the run off exactly as the main loop would
  * (post hooks may rewrite the routing result the target reads). The caller
  * continues the run with `handoff.options`/`handoff.messages`.
@@ -995,7 +995,7 @@ async function decidedToolMessage(
 /**
  * The tool-call and hook context for a paused call's post-approval pass
  * (`resumedAfterApproval: true`, and a `hookArgs` copy hooks may not change
- * away from the approved args - LOU-X3.2 compares it with `pending.args`).
+ * away from the approved args - compares it with `pending.args`).
  * Shared by the tool-call and handoff-call resume paths.
  */
 function resumedHookCall(
@@ -1114,7 +1114,7 @@ async function runApprovedInSpan(ctx: ResumeContext, pending: PendingApproval, s
 }
 
 /**
- * N14: the registry a decided `run_code` call runs from (with the tool as the
+ * The registry a decided `run_code` call runs from (with the tool as the
  * run built it, when the run has code mode) and the inner-call runner bound
  * to `scope`. Without code mode, the registry as it is (the call then fails
  * as not found).
@@ -1171,8 +1171,8 @@ async function approvedCodeMode(ctx: ResumeContext, scope: ToolCallScope): Promi
  *   them again: each gets an "interrupted, may or may not have taken effect"
  *   result (approved calls run at most once, docs/durable-execution.md).
  *
- * Returns the pre-pause checkpoint (LOU-T1: its businessState is carried into
- * the resumed run; M10c: it is put back when a paused sub-agent refuses the
+ * Returns the pre-pause checkpoint (its businessState is carried into
+ * the resumed run; it is put back when a paused sub-agent refuses the
  * resume) and the lease, which the caller releases.
  */
 async function holdPausedRun(
@@ -1209,7 +1209,7 @@ async function holdPausedRun(
     const marked: Checkpoint = {
       ...staleCheckpoint,
       status: 'in-progress',
-      // LOU-T1: an explicit businessState of the resuming call wins, as on the continuation's own saves.
+      // An explicit businessState of the resuming call wins, as on the continuation's own saves.
       ...(businessState !== undefined && { businessState }),
       ...(started.length > 0 && { startedToolCallIds: started }),
     };
@@ -1311,7 +1311,7 @@ async function keepTurnOnFailure(
 }
 
 /**
- * LOU-U8 + LOU-Y1: when a resumed sub-agent pauses again, no execute() call
+ * When a resumed sub-agent pauses again, no execute() call
  * of this run writes a checkpoint (the stale one was just deleted), so mark
  * the session 'awaiting-approval' here - a later execute() on it then throws
  * SessionAwaitingApprovalError instead of starting over. Only the status,
@@ -1338,7 +1338,7 @@ async function markAwaitingApproval(
     businessState,
     status: 'awaiting-approval',
     approvalId: paused.approvalId,
-    // Eve2-F6: a re-pause on several of a step's calls keeps every pending id, like markGroupPending() does.
+    // A re-pause on several of a step's calls keeps every pending id, like markGroupPending() does.
     ...(paused.approvalIds !== undefined && paused.approvalIds.length > 1 && { approvalIds: paused.approvalIds }),
     agentFingerprint: snapshot.agentFingerprint,
     runConfig: snapshot.agent.metadata?.[RUN_CONFIG_KEY],
@@ -1348,7 +1348,7 @@ async function markAwaitingApproval(
 }
 
 /**
- * LOU-U7 backward compatibility: a snapshot saved before
+ * Backward compatibility: a snapshot saved before
  * `remainingToolCalls` existed records no remaining calls, so - as before -
  * no other call of the paused turn runs on resume. Each one still without a
  * result gets an error result instead, so the transcript stays valid for
@@ -1422,18 +1422,18 @@ async function runApprovedToolCall(
     );
   }
 
-  // LOU-Q1: hooks must fire for this deferred, post-approval execution
+  // Hooks must fire for this deferred, post-approval execution
   // path too - not just AgentExecutor's own main-loop tool call site -
   // since this is a genuine, independent point where a tool actually
   // runs. `args` is a mutable object a `preToolCall` hook (e.g.
   // redact-pii) can rewrite in place before the real execution below, the
   // same contract AgentExecutor.executeToolCall() offers.
   const hooks: HookRegistry | undefined = executeOptions.hooks;
-  // LOU-X3.2 compares hookArgs with `pending.args`; the ctx is flagged so
+  // Compares hookArgs with `pending.args`; the ctx is flagged so
   // stateful hooks can skip the re-fire (see resumedHookCall).
   const { hookArgs, hookCtx } = resumedHookCall({ snapshot, messages, executeOptions }, pending);
 
-  // LOU-X3: a pre-hook may deny the call or supply its result; input it
+  // A pre-hook may deny the call or supply its result; input it
   // supplies must match what the human approved.
   const verdict = hooks
     ? await runPreToolHooks(hooks, hookCtx, { toolRegistry, runtime: executeOptions, approvedArgs: pending.args })
@@ -1456,7 +1456,7 @@ async function runApprovedToolCall(
   return toolResultMessage(pending, shown, errorResult !== undefined, replacedBy ?? settled.replacedByHook, executeOptions.maxToolResultChars);
 }
 
-/** A call a pre-tool hook settled (LOU-X3), in executeApprovedTool()'s shape. */
+/** A call a pre-tool hook settled, in executeApprovedTool()'s shape. */
 function settledByHook(outcome: ToolCallOutcome): SettledCall {
   if (outcome.error !== undefined) {
     return { result: undefined, toolError: outcome.error, errorResult: outcome.result as ToolErrorResult };
@@ -1469,7 +1469,7 @@ interface SettledCall {
   result: unknown;
   toolError?: string;
   errorResult?: ToolErrorResult;
-  /** LOU-X3: the pre-tool hook that supplied `result`. */
+  /** The pre-tool hook that supplied `result`. */
   replacedByHook?: string;
 }
 
@@ -1498,13 +1498,13 @@ async function executeApprovedTool(
 ): Promise<SettledCall> {
   try {
     // Mirrors AgentExecutor.executeToolCall()'s fail-closed handling of
-    // `requiresSandbox` tools (LOU-F5) via the shared
-    // executeToolWithSandboxGuard() helper (LOU-F fix), so a deferred
+    // `requiresSandbox` tools via the shared
+    // executeToolWithSandboxGuard() helper, so a deferred
     // tool executed after human approval can't silently bypass the
     // sandbox seam the way it previously did.
     const sandbox = executeOptions.sandbox ?? NoopSandbox;
     return {
-      // Eve2-F5: raced against the run's signal - a tool that ignores it
+      // Raced against the run's signal - a tool that ignores it
       // would otherwise hold the resume open forever. The rejection lands
       // in the catch below like the tool's own abort error (the tool keeps
       // running, documented for ExecuteOptions.signal).
@@ -1523,7 +1523,7 @@ async function executeApprovedTool(
       ),
     };
   } catch (error) {
-    // N9b: the call needs sign-in: decidedToolMessage() pauses the run again.
+    // The call needs sign-in: decidedToolMessage() pauses the run again.
     if (isSignInRequired(error)) throw error;
     // Mirror AgentExecutor.executeToolCall's handling of a thrown tool
     // error: errors that mark themselves as `PropagatingToolError` must
@@ -1539,7 +1539,7 @@ async function executeApprovedTool(
     // the pending-approval record has already been deleted
     // (ApprovalGate.resolve() is delete-on-read), so failing to catch
     // here would mean the whole resume just fails with no retry path.
-    // LOU-U14: the model gets the same structured error as in the main loop;
+    // The model gets the same structured error as in the main loop;
     // `toolError` keeps the plain message for the postToolCall hook.
     return {
       result: undefined,
@@ -1549,7 +1549,7 @@ async function executeApprovedTool(
   }
 }
 
-/** N13b: a streamed resume reports the decided call's snapshots as `tool.partial` (its `tool.resume` was reported by streamedDecision()). */
+/** A streamed resume reports the decided call's snapshots as `tool.partial` (its `tool.resume` was reported by streamedDecision()). */
 function partialsOf(pending: PendingApproval, executeOptions: ResumeExecuteOptions): ((output: unknown) => void) | undefined {
   const report = partialSink(executeOptions);
   return report && ((output) => report(pending.toolCallId, pending.toolName, output));
@@ -1559,7 +1559,7 @@ function partialsOf(pending: PendingApproval, executeOptions: ResumeExecuteOptio
  * Continues the paused run via AgentExecutor.execute(), with the deferred
  * tool result (or rejection) now appended to `messages`.
  *
- * LOU-K5: sessionId/checkpointStore are threaded through so AgentExecutor
+ * SessionId/checkpointStore are threaded through so AgentExecutor
  * resumes writing per-tool-result checkpoints for the rest of this run
  * (previously both were forced to `undefined` here, which also killed
  * forward checkpointing for the whole remainder of the resumed run -
@@ -1605,10 +1605,10 @@ async function continueResumedRun(
     sessionId: snapshot.sessionId,
     ...(snapshot.contextSessionId !== undefined && { contextSessionId: snapshot.contextSessionId }),
     checkpointStore: run.checkpointStore,
-    // LOU-U7: a remaining call of the paused turn (or a later one) may need
+    // A remaining call of the paused turn (or a later one) may need
     // approval too - it pauses into the same store unless told otherwise.
     approvalStore: executeOptions.approvalStore ?? run.approvalStore,
-    // LOU-T1: carry the pre-pause checkpoint's businessState forward into
+    // Carry the pre-pause checkpoint's businessState forward into
     // the resumed run's own checkpoint-writes by default, so a consumer's
     // domain state (order id, ticket id, workflow stage, ...) survives a
     // pause-for-approval -> approve/reject -> resume cycle - the whole
@@ -1636,13 +1636,13 @@ async function continueResumedRun(
     // snapshot.steps is the step count AgentExecutor.execute() had already
     // reached (see ExecutionSnapshot) at the moment it paused for approval.
     initialSteps: snapshot.steps,
-    // LOU-V5: and usage totals, rather than restarting them at zero
-    // (including a resumed sub-agent's usage, LOU-Y1).
+    // And usage totals, rather than restarting them at zero
+    // (including a resumed sub-agent's usage).
     initialUsage: run.usage,
   });
 }
 
-/** Eve DUI-F5: the session id the paused run's tools see (a session turn's session id, not its checkpoint key). */
+/** The session id the paused run's tools see (a session turn's session id, not its checkpoint key). */
 function contextSessionIdOf(snapshot: ExecutionSnapshot): string | undefined {
   return snapshot.contextSessionId ?? snapshot.sessionId;
 }

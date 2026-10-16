@@ -6,7 +6,7 @@ import { createEmailTool } from './email';
 import { getToolExecute } from '../toolContract';
 import type { ToolExecutionContext } from '../../types';
 
-/** The minimal execution context: these built-in tools read no fields off it (N9b's getToken/requireAuth fail loudly if one ever does). */
+/** The minimal execution context: these built-in tools read no fields off it (getToken/requireAuth fail loudly if one ever does). */
 const ctx: ToolExecutionContext = {
   toolCallId: 'test-call',
   messages: [],

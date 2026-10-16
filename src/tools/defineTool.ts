@@ -15,7 +15,7 @@ export interface DefineToolOptions<S extends StandardSchemaV1, R> {
   /** What the tool does; shown to the model. */
   description: string;
   /**
-   * Schema of the arguments: zod 3 or zod 4 (LOU-D29), or another Standard
+   * Schema of the arguments: zod 3 or zod 4, or another Standard
    * Schema that exposes its JSON Schema (`~standard.jsonSchema`). `execute`
    * and `needsApproval` receive its parsed (output) type.
    */
@@ -40,13 +40,13 @@ export interface DefineToolOptions<S extends StandardSchemaV1, R> {
    */
   annotations?: McpToolAnnotations;
   /**
-   * N4: the tool edits files (like `write_file` and `edit_file`), so
+   * The tool edits files (like `write_file` and `edit_file`), so
    * `permissionMode: 'acceptEdits'` runs its calls without asking. Stored as
    * `metadata.editsFiles`. A tool is never a file edit by its name alone.
    */
   editsFiles?: boolean;
   /**
-   * N2: withhold this tool's definition from the model until it finds the
+   * Withhold this tool's definition from the model until it finds the
    * tool with the built-in `tool_search` tool. Use it for large tool sets;
    * `createAgent({ toolSearch })` tunes when deferral applies. See
    * docs/tool-search.md.
@@ -66,14 +66,14 @@ export interface DefineToolOptions<S extends StandardSchemaV1, R> {
   sandboxExecute?: (args: InferSchemaOutput<S>, sandbox: SandboxAdapter) => Promise<unknown>;
   /**
    * Runs the tool. Arguments are typed from `input`; the return type is preserved on the result.
-   * N13b: may be an `async function*`: each `yield` is a complete snapshot of the output, streamed
+   * May be an `async function*`: each `yield` is a complete snapshot of the output, streamed
    * as a `tool.partial` event, and the last one is the result the model receives (see {@link ToolResultOf}).
    */
   execute: (args: InferSchemaOutput<S>, ctx: ToolExecutionContext) => R | Promise<R>;
 }
 
 /**
- * N13b: the result type of a tool whose `execute` returns `R`: the yielded
+ * The result type of a tool whose `execute` returns `R`: the yielded
  * type when `R` is an async generator (an async iterator that is also async
  * iterable - the snapshots it yields stream as `tool.partial`, the last one is
  * the result), else `Awaited<R>`.
@@ -86,7 +86,7 @@ export type ToolResultOf<R> = R extends AsyncIterator<infer Y> & AsyncIterable<u
  * input/output types - see {@link ToolInput} and {@link ToolOutput}.
  * `inputSchema` and `execute` are the canonical contract; `tool` is a
  * legacy `ai` v4-shaped copy of them. `X` is what `execute` resolves to: the
- * output `O`, or (N13b) the async generator of a streaming tool.
+ * output `O`, or the async generator of a streaming tool.
  */
 export interface DefinedTool<S extends StandardSchemaV1 = StandardSchemaV1, O = unknown, X = O>
   extends ToolDescriptor {
@@ -103,7 +103,7 @@ export interface DefinedTool<S extends StandardSchemaV1 = StandardSchemaV1, O = 
 /** The (parsed) argument type of a defined tool. */
 export type ToolInput<T extends DefinedTool> = InferSchemaOutput<T['input']>;
 
-/** The awaited return type of a defined tool's `execute`; for a generator `execute` (N13b), the type it yields. */
+/** The awaited return type of a defined tool's `execute`; for a generator `execute`, the type it yields. */
 export type ToolOutput<T extends DefinedTool> = NonNullable<T['_types']>['output'];
 
 /** Shared across loaded SDK copies, so a tool from the ESM build passes the check in the CJS build and vice versa. */
@@ -188,7 +188,7 @@ async function withTimeout<T>(
 }
 
 /**
- * Eve TOOLS-F10: a schema no model can satisfy fails here, not on every call.
+ * A schema no model can satisfy fails here, not on every call.
  * Tool arguments are a JSON object, so the root must be one; a `z.date()` or
  * `z.bigint()` field rejects the ISO string or number a model writes.
  */
@@ -229,7 +229,7 @@ function assertModelCanWrite(name: string, input: unknown): void {
  * });
  * type Result = ToolOutput<typeof sendEmail>; // { messageId: string }
  *
- * // N13b: a generator streams snapshots (`tool.partial`); the last one is the result.
+ * // A generator streams snapshots (`tool.partial`); the last one is the result.
  * const report = defineTool({
  *   name: 'build_report',
  *   description: 'Build a report',
@@ -247,7 +247,7 @@ export function defineTool<S extends StandardSchemaV1, R>(
 ): DefinedTool<S, ToolResultOf<R>, Awaited<R>> {
   assertValidOptions(opts);
 
-  // N13b: an async generator passes through unchanged (it is not thenable); the runtime iterates it.
+  // An async generator passes through unchanged (it is not thenable); the runtime iterates it.
   const { timeoutMs } = opts;
   const execute = async (args: InferSchemaOutput<S>, ctx: ToolExecutionContext): Promise<Awaited<R>> =>
     timeoutMs === undefined ? await opts.execute(args, ctx) : await withTimeout(opts.name, timeoutMs, ctx, (timed) => opts.execute(args, timed));
@@ -271,7 +271,7 @@ export function defineTool<S extends StandardSchemaV1, R>(
   return defined;
 }
 
-/** `metadata` from the options: MCP `annotations` (LOU-Z5) and the `editsFiles` marker (N4); none when neither is set. */
+/** `metadata` from the options: MCP `annotations` and the `editsFiles` marker; none when neither is set. */
 function toolMetadata(opts: Pick<DefineToolOptions<StandardSchemaV1, unknown>, 'annotations' | 'editsFiles'>): Pick<ToolDescriptor, 'metadata'> {
   if (!opts.annotations && !opts.editsFiles) return {};
   return { metadata: { ...(opts.annotations && { mcp: { annotations: opts.annotations } }), ...(opts.editsFiles && { editsFiles: true }) } };

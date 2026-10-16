@@ -10,7 +10,7 @@ function recordingExporter() {
 
 const task = (agent: string) => ({ name: 'task', args: { agent, prompt: 'p', description: agent } });
 
-describe('sub-agent invoke_agent spans (Eve MA-F10)', () => {
+describe('sub-agent invoke_agent spans', () => {
   it('names an unnamed sub-agent by its key and records its name, depth and taskId', async () => {
     const { spans, exporter } = recordingExporter();
     const researcher = createAgent({ provider: mockModel(['r']), instructions: 'You research.', description: 'Finds sources' });

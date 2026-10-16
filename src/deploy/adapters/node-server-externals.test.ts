@@ -1,5 +1,5 @@
 /**
- * LOU-P8.3: builds that bundle the SDK keep its optional peers external (so a
+ * Builds that bundle the SDK keep its optional peers external (so a
  * missing peer cannot fail the build), and the node server runs a spec's cron triggers.
  */
 import { describe, it, expect } from 'vitest';

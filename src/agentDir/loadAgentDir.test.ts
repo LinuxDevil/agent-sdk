@@ -104,7 +104,7 @@ describe('resolveAgentDir', () => {
 });
 
 /**
- * F2 (audit A3): every `createAgent()` option, so a new one cannot be added
+ * Every `createAgent()` option, so a new one cannot be added
  * without this test noticing. `satisfies` fails to compile on a missing or an
  * unknown key.
  */

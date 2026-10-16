@@ -55,7 +55,7 @@ describe('createFsAgentStore', () => {
     expect(await store.load('ops-pipeline')).toBeUndefined();
   });
 
-  it('skips an unreadable file or an invalid id instead of failing the whole list (Eve DUI-F2)', async () => {
+  it('skips an unreadable file or an invalid id instead of failing the whole list', async () => {
     const store = createFsAgentStore(tmpDir);
     await store.save('good', spec);
     const dir = path.join(tmpDir, '.lousho', 'agents');

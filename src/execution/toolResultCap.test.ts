@@ -1,5 +1,5 @@
 /**
- * Eve TOOLS-F8: a tool result longer than `maxToolResultChars` (default 50_000)
+ * A tool result longer than `maxToolResultChars` (default 50_000)
  * reaches the model as its head and tail with a truncation marker.
  */
 import { describe, expect, it } from 'vitest';
@@ -17,7 +17,7 @@ const sentToolContent = (model: ReturnType<typeof mockModel>, call = 1): string 
   return message?.content as string;
 };
 
-describe('toolResultContent cap (Eve TOOLS-F8)', () => {
+describe('toolResultContent cap', () => {
   it('leaves a result within the cap unchanged', () => {
     expect(toolResultContent('short', 10)).toBe('"short"');
     expect(toolResultContent({ a: 1 })).toBe('{"a":1}');
@@ -48,7 +48,7 @@ describe('toolResultContent cap (Eve TOOLS-F8)', () => {
   });
 });
 
-describe('createAgent({ maxToolResultChars }) (Eve TOOLS-F8)', () => {
+describe('createAgent({ maxToolResultChars })', () => {
   it('caps a 3 MB defineTool result at the default ~50k characters', async () => {
     const model = mockModel([{ toolCalls: [{ name: 'dump', args: {} }] }, 'done']);
     const agent = createAgent({ provider: model, tools: [dump('x'.repeat(3_000_000))] });

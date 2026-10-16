@@ -1,5 +1,5 @@
 /**
- * Eve PROV-F4: Anthropic prompt-cache breakpoints, as the AI SDK's
+ * Anthropic prompt-cache breakpoints, as the AI SDK's
  * `providerOptions` (AnthropicProvider) and as an OpenRouter body rewrite.
  */
 
@@ -110,7 +110,7 @@ const call = (model: string, extra: Partial<GenerateOptions> = {}): GenerateOpti
   ...extra,
 });
 
-describe('OpenRouterProvider sends cache_control (Eve PROV-F4)', () => {
+describe('OpenRouterProvider sends cache_control', () => {
   it('on an Anthropic model by default', async () => {
     const { provider, bodies } = capturingOpenRouter();
     await provider.generate(call('anthropic/claude-haiku-4.5'));

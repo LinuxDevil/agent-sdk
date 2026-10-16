@@ -18,14 +18,14 @@ function call(tool: DefinedTool, args: Record<string, unknown>, abortSignal?: Ab
   return Promise.resolve(tool.tool.execute!(args, { toolCallId: 't', messages: [], abortSignal }));
 }
 
-describe('createFsTools on MemoryWorkspace (LOU-X6)', () => {
+describe('createFsTools on MemoryWorkspace', () => {
   it('creates all six tools, or only the read-only four with readOnly', () => {
     const ws = new MemoryWorkspace();
     expect(createFsTools(ws).map((t) => t.name)).toEqual(['read_file', 'write_file', 'edit_file', 'list_dir', 'glob', 'grep']);
     expect(createFsTools(ws, { readOnly: true }).map((t) => t.name)).toEqual(['read_file', 'list_dir', 'glob', 'grep']);
   });
 
-  it('marks write_file and edit_file, and only them, as file edits (N4); the four readers stay read-only', () => {
+  it('marks write_file and edit_file, and only them, as file edits; the four readers stay read-only', () => {
     const ws = new MemoryWorkspace();
     // #309: with rewind checkpoints the same two tools are the edits.
     for (const options of [{}, { checkpoints: new WorkspaceCheckpoints(ws) }] as FsToolsOptions[]) {
@@ -232,7 +232,7 @@ describe('createFsTools on MemoryWorkspace (LOU-X6)', () => {
       await expect(call(toolsByName(new MemoryWorkspace({ files })).grep, { pattern: 'x' }, controller.signal)).rejects.toThrow(/cancelled/);
     });
 
-    // Eve TOOLS-F6: a model-written regex must not freeze the process.
+    // A model-written regex must not freeze the process.
     it('refuses a pattern with nested unbounded quantifiers, and allows the safe look-alikes', async () => {
       const { grep } = toolsByName(new MemoryWorkspace({ files: { 'data.txt': `${'a'.repeat(28)}!\n` } }));
       for (const pattern of ['^(a+)+$', '(\\w+\\s*)*', '((ab)*c)+', '(a|b+){2,}']) {
@@ -296,7 +296,7 @@ describe('createFsTools on MemoryWorkspace (LOU-X6)', () => {
   });
 });
 
-describe('MemoryWorkspace (LOU-X6)', () => {
+describe('MemoryWorkspace', () => {
   it('stats, removes and refuses invalid operations', async () => {
     const ws = new MemoryWorkspace({ files: { 'd/a.txt': 'abc' } });
     expect(await ws.stat('d/a.txt')).toEqual({ type: 'file', size: 3 });

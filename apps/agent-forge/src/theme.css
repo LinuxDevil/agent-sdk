@@ -1,5 +1,5 @@
 /*
- * Design tokens ported from .design-ref/agent-forge-mockup.html (LOU-L1).
+ * Design tokens ported from .design-ref/agent-forge-mockup.html.
  * Keep these in lockstep with the mockup's :root / dark-mode custom
  * properties - this file is the single source of truth for color/typography
  * tokens consumed by every component's CSS module.
@@ -16,7 +16,7 @@
   --surface-2: light-dark(#eceef3, #171b24);
   --border: light-dark(#d7dbe4, #262b39);
   --text: light-dark(#171a21, #e7e9f2);
-  /* Eve DUI-F9: every text token meets WCAG AA (4.5:1) on the surfaces it is
+  /* every text token meets WCAG AA (4.5:1) on the surfaces it is
      drawn on, in both schemes - enforced by src/__tests__/contrast.test.ts. */
   --text-muted: light-dark(#4f5466, #9096ac);
   --text-faint: light-dark(#5e6376, #8a90a6);

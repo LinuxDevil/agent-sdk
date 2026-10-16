@@ -1,5 +1,5 @@
 /**
- * N10a: JWT verification. Keys are generated here with crypto.subtle (HMAC,
+ * JWT verification. Keys are generated here with crypto.subtle (HMAC,
  * RSASSA-PKCS1-v1_5, ECDSA P-256); every refusal the helper promises has a case.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -30,7 +30,7 @@ const secretSource = async (): Promise<KeySource> => {
   return { keys: async () => [{ kty: 'oct', importFor: async () => key }] };
 };
 
-describe('jwt() (N10a)', () => {
+describe('jwt()', () => {
   it('accepts a valid token of each family and maps it to a principal', async () => {
     const families: Array<[SigningKey, Parameters<typeof jwt>[0]]> = [];
     const hs = await hmacKey();
@@ -107,7 +107,7 @@ describe('jwt() (N10a)', () => {
   });
 });
 
-describe('verifyJwt (N10a)', () => {
+describe('verifyJwt', () => {
   const checks: JwtChecks = { algorithms: ['HS256'], issuer: ISS, audience: AUD };
 
   it("rejects alg 'none' in any casing, even when the signature part is empty or junk", async () => {
@@ -205,7 +205,7 @@ describe('verifyJwt (N10a)', () => {
   });
 });
 
-describe('jwksKeySource (N10a)', () => {
+describe('jwksKeySource', () => {
   const URL_ = 'https://keys.example.test/jwks.json';
 
   it('fetches once, caches for 10 minutes, and refetches an unknown kid at most once per 30 s', async () => {

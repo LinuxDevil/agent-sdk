@@ -1,5 +1,5 @@
 /**
- * LOU-X5: `spec.policy` is validated and compiled into createAgent options.
+ * `spec.policy` is validated and compiled into createAgent options.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
 import { agentSpecSchema, type AgentSpec } from './schema';
@@ -18,7 +18,7 @@ function policyIssues(policy: unknown): string[] {
 
 const accepted = (policy: unknown) => agentSpecSchema.parse({ ...base, policy }).policy;
 
-describe('AgentSpec.policy schema (LOU-X5)', () => {
+describe('AgentSpec.policy schema', () => {
   it('accepts every known field and keeps unknown keys', () => {
     const policy = {
       requiresApproval: ['send_email'],
@@ -60,7 +60,7 @@ describe('AgentSpec.policy schema (LOU-X5)', () => {
     expect(accepted({ guardrails })).toEqual({ guardrails });
   });
 
-  it('rejects bad options of the starter-set guardrails (N5a)', () => {
+  it('rejects bad options of the starter-set guardrails', () => {
     expect(policyIssues({ guardrails: [{ name: 'pii', types: ['passport'] }] })[0]).toMatch(/guardrail 'pii' option 'types\.0'/);
     expect(policyIssues({ guardrails: [{ name: 'pii', types: [] }] })[0]).toMatch(/guardrail 'pii' option 'types'/);
     expect(policyIssues({ guardrails: [{ name: 'pii', replacement: 'x' }] })[0]).toMatch(/guardrail 'pii': Unrecognized key/);
@@ -107,7 +107,7 @@ describe('AgentSpec.policy schema (LOU-X5)', () => {
   });
 });
 
-describe('compilePolicy (LOU-X5)', () => {
+describe('compilePolicy', () => {
   it('compiles nothing for no policy, an empty one or false/empty approvals', () => {
     expect(compilePolicy(undefined)).toEqual({});
     expect(compilePolicy({ harness: 'x' })).toEqual({});
@@ -140,7 +140,7 @@ describe('compilePolicy (LOU-X5)', () => {
     expect(names(guardrails?.tools)).toEqual(['deny-topics', 'secrets']);
   });
 
-  it('builds the starter-set guardrails with their spec options (N5a)', async () => {
+  it('builds the starter-set guardrails with their spec options', async () => {
     const { guardrails } = compilePolicy({
       guardrails: [
         { name: 'pii', types: ['email'], action: 'rewrite', on: 'input' },
@@ -193,7 +193,7 @@ describe('compilePolicy (LOU-X5)', () => {
   });
 });
 
-describe('specToAgent enforces policy (LOU-X5)', () => {
+describe('specToAgent enforces policy', () => {
   let model: MockModel;
   const build = (policy: AgentSpec['policy'], tools: string[], script: Parameters<typeof mockModel>[0]) => {
     model = mockModel(script);

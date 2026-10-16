@@ -1,5 +1,5 @@
 /**
- * M5a: listTraces() and readTrace() over the fixture directory
+ * ListTraces() and readTrace() over the fixture directory
  * (`__fixtures__/traces`: two traces on 2026-10-01 sharing the id prefix
  * `3f2`, one of them failed; one older trace with a sub-agent).
  */
@@ -14,7 +14,7 @@ const OK = '3f2a9c1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f';
 const FAILED = '3f2b7d00-1111-4222-8333-444455556666';
 const OLDER = '9e8d7c6b-5a49-4382-a170-f0e1d2c3b4a5';
 
-describe('listTraces (M5a)', () => {
+describe('listTraces', () => {
   it('lists the traces newest first', async () => {
     const traces = await listTraces({ dir });
     expect(traces.map((trace) => trace.traceId)).toEqual([FAILED, OK, OLDER]);
@@ -43,7 +43,7 @@ describe('listTraces (M5a)', () => {
     expect(older).toMatchObject({ agent: 'lead', modelCalls: 3, toolCalls: 1, inputTokens: 220, outputTokens: 44, costUsd: expect.closeTo(0.000064, 12) });
   });
 
-  it('sums the chat spans for the cost, so a background sub-agent that outlived its parent span counts (Eve MA-F2)', async () => {
+  it('sums the chat spans for the cost, so a background sub-agent that outlived its parent span counts', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-traces-'));
     try {
       fs.mkdirSync(path.join(tmp, '2026-10-02'));
@@ -90,7 +90,7 @@ describe('listTraces (M5a)', () => {
   });
 });
 
-describe('readTrace (M5a)', () => {
+describe('readTrace', () => {
   it('reads a trace by id, spans by start time', async () => {
     const spans = await readTrace(OK, { dir });
     expect(spans.map((span) => span.name)).toEqual([

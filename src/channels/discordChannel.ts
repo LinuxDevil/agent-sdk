@@ -1,5 +1,5 @@
 /**
- * The Discord channel (LOU-P6): slash-command interactions over Discord's HTTP
+ * The Discord channel: slash-command interactions over Discord's HTTP
  * Interactions endpoint (no gateway, no websocket). Only `fetch` and Web
  * Crypto (Ed25519): no `node:*` import and no Discord library.
  */
@@ -79,14 +79,14 @@ function fromHex(hex: string): Uint8Array<ArrayBuffer> | undefined {
   return /^([0-9a-f]{2})+$/i.test(hex) ? new Uint8Array(hex.match(/../g)!.map((byte) => parseInt(byte, 16))) : undefined;
 }
 
-/** Eve CH-F13: how far a request's `X-Signature-Timestamp` may be from local time. */
+/** How far a request's `X-Signature-Timestamp` may be from local time. */
 const TIMESTAMP_TOLERANCE_SECONDS = 300;
 
 /** A short reason when `signature` is not Ed25519 over `timestamp + rawBody` by `key`, else undefined. */
 async function checkSignature(key: Promise<CryptoKey>, timestamp: string | undefined, signature: string | undefined, rawBody: Uint8Array): Promise<string | undefined> {
   const bytes = signature === undefined ? undefined : fromHex(signature);
   if (timestamp === undefined || !bytes) return 'missing or malformed signature headers';
-  // Eve CH-F13: a captured, validly signed request is refused once it is older (or newer) than five minutes, as on Slack.
+  // A captured, validly signed request is refused once it is older (or newer) than five minutes, as on Slack.
   if (!/^\d+$/.test(timestamp) || !isFresh(timestamp, TIMESTAMP_TOLERANCE_SECONDS, Date.now())) return 'stale or invalid timestamp';
   const prefix = new TextEncoder().encode(timestamp);
   const data = new Uint8Array(prefix.length + rawBody.length);
@@ -125,7 +125,7 @@ function button(label: string, customId: string, style: number) {
  * (or thread) share one session. A tool approval is posted with Approve / Deny
  * buttons that only `approvers` (default: the user who ran the command) can use;
  * a click names the conversation itself, so it works after a restart. An `ask_question` as text, answered by the next command in that
- * channel. A sign-in (N9b) is sent as an ephemeral follow-up to the user who
+ * channel. A sign-in is sent as an ephemeral follow-up to the user who
  * ran the command, without buttons. Interaction tokens last 15 minutes, which bounds a reply's delay.
  *
  * @example
@@ -218,7 +218,7 @@ export function discordChannel(options: DiscordChannelOptions): Channel<DiscordI
     reply: ({ inbound, text }) => post(inbound.replyTo as DiscordTarget, text),
     async onApproval({ inbound, approval, text }) {
       const target = inbound.replyTo as DiscordTarget;
-      // N9b: the sign-in link only as an ephemeral follow-up (flag 64) to the user who ran the command; no buttons.
+      // The sign-in link only as an ephemeral follow-up (flag 64) to the user who ran the command; no buttons.
       if (approval.kind === 'sign-in') {
         const name = approval.signIn?.displayName ?? approval.signIn?.provider ?? 'the provider';
         await post(target, `Waiting for a sign-in to ${name}. The link was sent privately to the user who asked.`);

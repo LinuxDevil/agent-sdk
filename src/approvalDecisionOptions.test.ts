@@ -1,5 +1,5 @@
 /**
- * Eve TOOLS-F19: `ApprovalDecision.remember` ("don't ask again") and `args`
+ * `ApprovalDecision.remember` ("don't ask again") and `args`
  * ("approve with edits"), and `once()` remembering only a human's approval.
  */
 import { describe, it, expect, vi } from 'vitest';
@@ -27,7 +27,7 @@ function emailTool(needsApproval: boolean | ((args: unknown, ctx: never) => Appr
   return { tool, sent };
 }
 
-describe('once() and a non-human approve callback (Eve TOOLS-F19)', () => {
+describe('once() and a non-human approve callback', () => {
   it("asks the callback again for each call: its yes is not remembered", async () => {
     const { tool, sent } = emailTool(once());
     const approve = vi.fn(() => true);
@@ -57,7 +57,7 @@ describe('once() and a non-human approve callback (Eve TOOLS-F19)', () => {
   });
 });
 
-describe("ApprovalDecision.remember: 'session' (Eve TOOLS-F19)", () => {
+describe("ApprovalDecision.remember: 'session'", () => {
   it('approves later identical calls in the session without asking; other arguments still ask', async () => {
     const { tool, sent } = emailTool(true);
     const model = mockModel([email('a@x.io', 'c1'), 'first', email('a@x.io', 'c2'), 'second', email('b@x.io', 'c3'), 'third']);
@@ -88,7 +88,7 @@ describe("ApprovalDecision.remember: 'session' (Eve TOOLS-F19)", () => {
   });
 });
 
-describe('ApprovalDecision.args: approve with edits (Eve TOOLS-F19)', () => {
+describe('ApprovalDecision.args: approve with edits', () => {
   it('runs the tool with the edited arguments and rewrites the call in the transcript', async () => {
     const { tool, sent } = emailTool(true);
     const model = mockModel([email('wrong@x.io', 'c1'), 'done']);

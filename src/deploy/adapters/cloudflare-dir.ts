@@ -1,5 +1,5 @@
 /**
- * Agent directories as a cloudflare-worker deployment source (M3b, and #298
+ * Agent directories as a cloudflare-worker deployment source (and #298
  * for `subagents/` / `schedules/` / `channels/` / `memory/` /
  * `projectInstructions`).
  *

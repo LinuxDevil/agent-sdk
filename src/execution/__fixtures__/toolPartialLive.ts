@@ -1,4 +1,4 @@
-/** N13b: the generator tool, prompt and event collection shared by toolPartial.live.test.ts and its replay test. */
+/** The generator tool, prompt and event collection shared by toolPartial.live.test.ts and its replay test. */
 import { z } from 'zod';
 import { defineTool } from '../../tools/defineTool';
 import type { AgentEvent, AgentEventOf } from '../agentEvents';

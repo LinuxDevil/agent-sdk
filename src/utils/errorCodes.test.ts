@@ -1,5 +1,5 @@
 /**
- * LOU-D2: the error-code registry, the codes used in src/ and docs/errors.md
+ * The error-code registry, the codes used in src/ and docs/errors.md
  * cannot drift apart.
  */
 import { describe, it, expect } from 'vitest';
@@ -19,7 +19,7 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-describe('error codes (LOU-D2)', () => {
+describe('error codes', () => {
   it('every code is LOUSHO_<AREA>_<NAME> with a one-sentence hint', () => {
     for (const code of CODES) {
       expect(code).toMatch(/^LOUSHO_[A-Z]+_[A-Z0-9_]+$/);
@@ -34,7 +34,7 @@ describe('error codes (LOU-D2)', () => {
     const pattern = new RegExp(`\\bLOUSHO_(?:${areas.join('|')})_[A-Z0-9_]+\\b`, 'g');
     const used = new Set(sourceFiles(SRC).flatMap((file) => readFileSync(file, 'utf8').match(pattern) ?? []));
     expect(used.size).toBeGreaterThan(10);
-    // Environment variables that share a registry area's prefix (LOUSHO_TOKEN_KEY, N9a) are not codes.
+    // Environment variables that share a registry area's prefix (LOUSHO_TOKEN_KEY) are not codes.
     const envVars = ['LOUSHO_TOKEN_KEY'];
     expect([...used].filter((code) => !CODES.includes(code) && !envVars.includes(code))).toEqual([]);
   });

@@ -1,5 +1,5 @@
 /**
- * Durable-execution transcript helpers (LOU-U7, LOU-U8, LOU-U9): find the
+ * Durable-execution transcript helpers: find the
  * tool calls of an interrupted model turn that still have no result, and
  * merge new input into a stored session transcript without duplicating it
  * or breaking the "tool results directly follow their tool-call turn" rule
@@ -95,7 +95,7 @@ function sharedPrefixLength(known: readonly Message[], incoming: readonly Messag
   return shared;
 }
 
-/** True for a real user turn (not a LOU-T4 `[provider-error]` note). */
+/** True for a real user turn (not a `[provider-error]` note). */
 function isUserTurn(m: Message): boolean {
   return m.role === 'user' && !textOf(m).startsWith('[provider-error]');
 }
@@ -111,7 +111,7 @@ function repeatsLatestUserTurn(known: readonly Message[], incoming: readonly Mes
 }
 
 /**
- * LOU-U8: the messages of `input` that are new to a stored session
+ * The messages of `input` that are new to a stored session
  * transcript - what a session resume or continuation appends. System
  * messages in `input` are dropped (the session already has its own).
  *

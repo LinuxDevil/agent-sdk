@@ -366,7 +366,7 @@ describe('loadAgentDir receipt enforcement', () => {
         .map((m) => JSON.stringify(m.content))
         .join('\n');
 
-    it("pauses the lead on the sub-agent's call despite the sub-agent's own approver (Eve MA-F5)", async () => {
+    it("pauses the lead on the sub-agent's call despite the sub-agent's own approver", async () => {
       const model = delegation();
       const agent = await loadAgentDir(kitWithExplorer(), { provider: model });
       const result = await agent.send('go');

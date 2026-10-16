@@ -1,5 +1,5 @@
 /**
- * The 'ai'-SDK providers' generate() on `ai` v7 (LOU-D26): the scenarios of
+ * The 'ai'-SDK providers' generate() on `ai` v7: the scenarios of
  * toolCallTurns.contract.test.ts and multimodal.contract.test.ts, run
  * through the real `ai` v7 (installed as the `ai-v7` dev alias) and its
  * `MockLanguageModelV4`, by giving each provider that module instead of the
@@ -106,12 +106,12 @@ const history: Message[] = [
 describe('the compat layer detects the ai major', () => {
   it('treats ai v7 as modern, and the installed ai as modern only from v5 on', async () => {
     expect(isModernAi(aiV7)).toBe(true);
-    // Agnostic (LOU-D28b): `ai` is v4 on the default install and v7 on the ai-7 CI job.
+    // Agnostic: `ai` is v4 on the default install and v7 on the ai-7 CI job.
     expect(isModernAi(await import('ai'))).toBe(installedAiMajor >= 5);
   });
 });
 
-describe.each(providers)('%s provider on ai v7: generate() (LOU-D26)', (_name, make) => {
+describe.each(providers)('%s provider on ai v7: generate()', (_name, make) => {
   it('sends tool-call turns as ModelMessages linked by id', async () => {
     const provider = make();
     const calls = onV7(provider);
@@ -305,7 +305,7 @@ describe.each(providers)('%s provider on ai v7: generate() (LOU-D26)', (_name, m
         { type: 'text', text: 'What is this?' },
         { type: 'file', mediaType: 'image/png' },
         { type: 'file', mediaType: 'image/jpeg' },
-        // LOU-V13 (D-follow-up): sent as a `file` part, not the deprecated `image` part; `image/*` when the type is unknown.
+        // (D-follow-up): sent as a `file` part, not the deprecated `image` part; `image/*` when the type is unknown.
         { type: 'file', mediaType: 'image/*', data: { type: 'url', url: new URL('https://example.com/cat.png') } },
       ],
     });
@@ -372,7 +372,7 @@ describe.each(providers)('%s provider on ai v7: generate() (LOU-D26)', (_name, m
     ]);
   });
 
-  it('rejects an unsupported file type with LOUSHO_UNSUPPORTED_CONTENT by default, sending nothing (A9)', async () => {
+  it('rejects an unsupported file type with LOUSHO_UNSUPPORTED_CONTENT by default, sending nothing', async () => {
     const provider = make();
     const calls = onV7(provider);
 
@@ -404,7 +404,7 @@ describe('file parts for a provider that accepts them, on ai v7', () => {
   });
 });
 
-describe('AgentExecutor on ai v7 (LOU-D26)', () => {
+describe('AgentExecutor on ai v7', () => {
   it.each(providers)('%s: runs a tool loop, and the second call sees the first call tool turn', async (_name, make) => {
     const toolRegistry = new ToolRegistry();
     toolRegistry.register(
@@ -441,7 +441,7 @@ describe('AgentExecutor on ai v7 (LOU-D26)', () => {
   });
 });
 
-describe('Anthropic prompt-cache breakpoints on ai v7 (Eve PROV-F4)', () => {
+describe('Anthropic prompt-cache breakpoints on ai v7', () => {
   const tool = (name: string) => ({ type: 'function' as const, function: { name, description: name, parameters: { type: 'object', properties: {} } } });
   const cache = { anthropic: { cacheControl: { type: 'ephemeral' } } };
 

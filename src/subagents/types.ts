@@ -10,7 +10,7 @@ export interface SubagentSummary {
 }
 
 /**
- * A dynamic set of sub-agents (LOU-Y3). `list()` is called at the start of
+ * A dynamic set of sub-agents. `list()` is called at the start of
  * every run that offers the `task` tool; `resolve(name)` when the lead calls
  * `task` with that name (return `undefined` for an unknown name).
  *
@@ -30,7 +30,7 @@ export interface SubagentCatalog {
 /** What a sub-agent can be: a `createAgent()` agent, or a deployed one from `remoteAgent()`. */
 type LocalOrRemoteSubagent = SimpleAgent | RemoteSubagent;
 
-/** Options of `remoteAgent()` (LOU-Y7). */
+/** Options of `remoteAgent()`. */
 export interface RemoteAgentOptions {
   /** Base URL of the deployed agent; the task goes to `<url>/chat`. */
   url: string;
@@ -52,10 +52,10 @@ export interface RemoteSubagent {
   readonly description: string;
   /**
    * Runs one task and resolves with the remote agent's final text: in a fresh
-   * remote session, or (LOU-Y6) in `sessionId` to continue that one. `taskId`
+   * remote session, or in `sessionId` to continue that one. `taskId`
    * is the lead's id for the task, shown in the result footer.
    *
-   * LOU-Y7.3: with `pausable`, a remote run that pauses for approval throws a
+   * With `pausable`, a remote run that pauses for approval throws a
    * `SubagentApprovalPause` (the lead run pauses on it) instead of a coded error;
    * with `decision`, the pending approval `decision.approvalId` of session
    * `sessionId` is decided on the remote agent instead of sending `prompt`, and
@@ -73,7 +73,7 @@ export interface RemoteRunOptions {
   pausable?: boolean;
   decision?: { approvalId: string; approved: boolean; note?: string };
   /**
-   * M10b: called once per remote turn with the usage the remote run reported on its `run.done` event (not called when
+   * Called once per remote turn with the usage the remote run reported on its `run.done` event (not called when
    * it reported none, e.g. an older server), before the turn's outcome is returned or thrown, so a turn that paused
    * for approval reports what it spent too. A continuation after a `decision` reports the remote run's usage from its
    * start, the turn before the pause included. `withSubagents()` uses it to add the usage to the lead run's totals.

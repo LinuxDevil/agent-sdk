@@ -11,7 +11,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { NARROW_QUERY, useMediaQuery } from './components/useMediaQuery';
 
 /**
- * Eve DUI-F8: below 860px the rail and the Inspector are slide-over drawers,
+ * Below 860px the rail and the Inspector are slide-over drawers,
  * opened one at a time from the top bar and closed by Escape or the scrim.
  */
 function useSidePanels() {
@@ -33,7 +33,7 @@ function useSidePanels() {
   return { narrow, open, toggle, close: () => setOpen(undefined) };
 }
 
-/** Eve DUI-F21: says so when the live connection to the studio server drops, instead of going quietly stale. */
+/** Says so when the live connection to the studio server drops, instead of going quietly stale. */
 function ConnectionBanner() {
   const { connected } = useAppState();
   if (connected) return null;
@@ -67,7 +67,7 @@ export function App() {
   return (
     <ErrorBoundary>
       <AppStateProvider>
-        {/* Eve DUI-F9: shared by the canvas and the rail's palette (click/keyboard add at the viewport centre). */}
+        {/* Shared by the canvas and the rail's palette (click/keyboard add at the viewport centre). */}
         <ReactFlowProvider>
           <Studio />
         </ReactFlowProvider>

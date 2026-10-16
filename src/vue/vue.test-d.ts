@@ -1,5 +1,5 @@
 /**
- * LOU-P2: the public types of `@lousho/build-ai-agent/vue`.
+ * The public types of `@lousho/build-ai-agent/vue`.
  */
 import { describe, it, expectTypeOf } from 'vitest';
 import type { ComputedRef, Ref } from 'vue';

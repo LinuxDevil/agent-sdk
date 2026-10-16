@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { NoopSandbox } from '@lousho/build-ai-agent';
 import { sandboxRunHook } from './hookSandbox';
 
-describe('sandboxRunHook (LOU-Q2)', () => {
+describe('sandboxRunHook', () => {
   it('runs a hook body as a real subprocess via SandboxAdapter.run() and returns its mutated ctx', async () => {
     const result = await sandboxRunHook(NoopSandbox, 'ctx.args.email = "[REDACTED]"; return ctx;', {
       toolName: 'sendEmail',

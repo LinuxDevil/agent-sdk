@@ -1,5 +1,5 @@
 /**
- * H3-3 / H3-6 / H1-3: a run says when its tools failed (`result.toolErrors`,
+ * A run says when its tools failed (`result.toolErrors`,
  * `limits.maxToolErrors`), a rejected run says what it spent (`error.usage`),
  * a sub-agent's spend survives a crash of its lead (`delegatedInFlight`), and a
  * checkpointed run that rejects records why (`agent.pending()`'s `lastError`).
@@ -29,7 +29,7 @@ const stats = defineTool({
 });
 const ok = defineTool({ name: 'ok', description: 'ok', input: z.object({}), execute: async () => 'fine' });
 
-describe('result.toolErrors (H3-3)', () => {
+describe('result.toolErrors', () => {
   it('counts the tool calls that failed, even when the model then answers normally', async () => {
     const agent = createAgent({ provider: mockModel([call('stats'), call('ok'), call('stats'), answer('All good: 42.')]), tools: [stats, ok] });
 
@@ -83,7 +83,7 @@ describe('result.toolErrors (H3-3)', () => {
   });
 });
 
-describe('error.usage (H3-6)', () => {
+describe('error.usage', () => {
   it('a run rejected by a PropagatingToolError carries what it spent', async () => {
     const fatal = defineTool({
       name: 'fatal',
@@ -129,7 +129,7 @@ describe('error.usage (H3-6)', () => {
   });
 });
 
-describe('sub-agent usage across a crash of its lead (H3-6)', () => {
+describe('sub-agent usage across a crash of its lead', () => {
   it("checkpoints a running sub-agent's spend, and a resumed lead counts it", async () => {
     let release: () => void = () => undefined;
     let hang = true;
@@ -173,7 +173,7 @@ describe('sub-agent usage across a crash of its lead (H3-6)', () => {
   });
 });
 
-describe('lastError of a failed run in agent.pending() (H1-3)', () => {
+describe('lastError of a failed run in agent.pending()', () => {
   it('records why a send(msg, { sessionId }) run rejected, and counts the attempts', async () => {
     const outage = Object.assign(new Error('503 upstream down'), { status: 503 });
     const store = memoryStore();

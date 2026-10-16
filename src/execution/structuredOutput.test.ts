@@ -1,5 +1,5 @@
 /**
- * LOU-V4: `createAgent({ output })` / `ExecuteOptions.output` - the final
+ * `createAgent({ output })` / `ExecuteOptions.output` - the final
  * reply is parsed and validated into `result.object`, with one repair step.
  */
 
@@ -14,7 +14,7 @@ import { memoryStore } from '../storage/agentStore';
 
 const weather = z.object({ city: z.string(), tempC: z.number() });
 
-describe('structured output (LOU-V4)', () => {
+describe('structured output', () => {
   it('validates a JSON reply into result.object and keeps the raw text', async () => {
     const model = mockModel(['{"city":"Paris","tempC":21}']);
     const agent = createAgent({ provider: model, instructions: 'You report weather.', output: weather });
@@ -202,7 +202,7 @@ describe('structured output (LOU-V4)', () => {
     expect(model.calls[0].messages[0].content).toBe('Hi.');
   });
 
-  it('LOU-R7: closes every object node of a zod 4 output schema (strict endpoints reject open ones)', async () => {
+  it('closes every object node of a zod 4 output schema (strict endpoints reject open ones)', async () => {
     // zod 4's toJSONSchema emits no additionalProperties; OpenAI-compatible
     // strict structured outputs 400 on that. The sent schema must close each
     // object node - nested, in items, and inside combinators.
@@ -231,7 +231,7 @@ describe('structured output (LOU-V4)', () => {
     expect(schema.properties.choice.anyOf.map((b) => b.additionalProperties)).toEqual([false, false]);
   });
 
-  it('LOU-R7.2: optional fields become required `| null` unions, and a strict null validates as absent', async () => {
+  it('optional fields become required `| null` unions, and a strict null validates as absent', async () => {
     // Strict structured outputs reject a schema whose `required` does not
     // list every `properties` key (OpenRouter/OpenAI 400: "'required' is
     // required to be supplied and to be an array including every key in
@@ -280,14 +280,14 @@ describe('structured output (LOU-V4)', () => {
     expect(result.finishReason).toBe('stop');
   });
 
-  it('LOU-R7.2: a null the model sent for a genuinely nullable field is kept', async () => {
+  it('a null the model sent for a genuinely nullable field is kept', async () => {
     const output = z4.object({ city: z4.string(), when: z4.string().nullable() });
     const agent = createAgent({ provider: mockModel(['{"city":"Paris","when":null}']), output });
 
     expect((await agent.send('go')).object).toEqual({ city: 'Paris', when: null });
   });
 
-  it('LOU-R7.2: the zod 3 path expands required the same way', async () => {
+  it('the zod 3 path expands required the same way', async () => {
     const output = z.object({ city: z.string(), nick: z.string().optional() });
     const model = mockModel(['{"city":"Paris","nick":null}']);
     const agent = createAgent({ provider: model, output });
@@ -300,7 +300,7 @@ describe('structured output (LOU-V4)', () => {
     expect(result.object).toEqual({ city: 'Paris' });
   });
 
-  it('LOU-R7: an explicit additionalProperties is kept, never forced closed', async () => {
+  it('an explicit additionalProperties is kept, never forced closed', async () => {
     const strict = mockModel(['{"city":"Paris"}']);
     await createAgent({ provider: strict, output: z4.strictObject({ city: z4.string() }) }).send('go');
     expect((strict.calls[0].responseFormat?.schema as { additionalProperties?: unknown }).additionalProperties).toBe(false);
@@ -311,7 +311,7 @@ describe('structured output (LOU-V4)', () => {
     expect((loose.calls[0].responseFormat?.schema as { additionalProperties?: unknown }).additionalProperties).toEqual({});
   });
 
-  it('LOU-R7: the zod 3 path still sends a closed schema', async () => {
+  it('the zod 3 path still sends a closed schema', async () => {
     const model = mockModel(['{"city":"Paris","tempC":21}']);
     await createAgent({ provider: model, output: weather }).send('go');
 
@@ -320,7 +320,7 @@ describe('structured output (LOU-V4)', () => {
   });
 });
 
-describe('structured output with optional fields (audit A6)', () => {
+describe('structured output with optional fields', () => {
   // OpenAI-strict json_schema requires `required` to list every key of
   // `properties`; an optional field is sent required + nullable instead,
   // and the model's `null` for it is read back as an absent key.
@@ -408,7 +408,7 @@ describe('structured output with optional fields (audit A6)', () => {
   });
 });
 
-describe('structured output near misses and repair (audit log F8, docs-qa F9, invoice F6-F8)', () => {
+describe('structured output near misses and repair', () => {
   const J = '{"city":"Paris","tempC":21}';
 
   it.each([
@@ -467,7 +467,7 @@ describe('structured output near misses and repair (audit log F8, docs-qa F9, in
     });
   });
 
-  it('Eve PROV-F1: wraps a root union as { result } for strict endpoints and unwraps the reply', async () => {
+  it('wraps a root union as { result } for strict endpoints and unwraps the reply', async () => {
     const output = z4.union([z4.object({ kind: z4.literal('a'), a: z4.string() }), z4.object({ kind: z4.literal('b'), b: z4.number() })]);
     const model = mockModel(['{"result":{"kind":"b","b":2}}']);
     const result = await createAgent({ provider: model, output }).send('go');
@@ -479,18 +479,18 @@ describe('structured output near misses and repair (audit log F8, docs-qa F9, in
     expect(result.object).toEqual({ kind: 'b', b: 2 });
   });
 
-  it('Eve PROV-F1: a root union reply sent unwrapped (a model that ignored the wrapper) still validates', async () => {
+  it('a root union reply sent unwrapped (a model that ignored the wrapper) still validates', async () => {
     const output = z4.union([z4.object({ a: z4.string() }), z4.object({ b: z4.number() })]);
     expect((await createAgent({ provider: mockModel(['{"b":2}']), output }).send('go')).object).toEqual({ b: 2 });
   });
 
-  it('Eve PROV-F1: a root union with a non-object branch is wrapped too, not rejected', async () => {
+  it('a root union with a non-object branch is wrapped too, not rejected', async () => {
     const output = z4.union([z4.object({ a: z4.string() }), z4.string()]);
     const result = await createAgent({ provider: mockModel(['{"result":"hi"}']), output }).send('go');
     expect(result.object).toBe('hi');
   });
 
-  it('Eve PROV-F1: sends a discriminated union as anyOf, never oneOf', async () => {
+  it('sends a discriminated union as anyOf, never oneOf', async () => {
     const output = z4.object({
       action: z4.discriminatedUnion('kind', [
         z4.object({ kind: z4.literal('refund'), amount: z4.number() }),
@@ -508,7 +508,7 @@ describe('structured output near misses and repair (audit log F8, docs-qa F9, in
     ['zod 3', z.object({ counts: z.record(z.string(), z.number()) })],
     ['zod 4', z4.object({ counts: z4.record(z4.string(), z4.number()) })],
   ] as const) {
-    it(`Eve PROV-F1/F2 (${zod}): sends a record as a { key, value } array and decodes the reply back to a record`, async () => {
+    it(`${zod}: sends a record as a { key, value } array and decodes the reply back to a record`, async () => {
       const model = mockModel(['{"counts":[{"key":"a","value":2},{"key":"b","value":1}]}']);
       const result = await createAgent({ provider: model, output }).send('go');
 
@@ -521,12 +521,12 @@ describe('structured output near misses and repair (audit log F8, docs-qa F9, in
     });
   }
 
-  it('Eve PROV-F1: a record reply in the record shape (a non-strict model) still validates', async () => {
+  it('a record reply in the record shape (a non-strict model) still validates', async () => {
     const output = z4.object({ counts: z4.record(z4.string(), z4.number()) });
     expect((await createAgent({ provider: mockModel(['{"counts":{"a":2}}']), output }).send('go')).object).toEqual({ counts: { a: 2 } });
   });
 
-  it('Eve PROV-F1: an optional record sent as null is absent; nested records decode', async () => {
+  it('an optional record sent as null is absent; nested records decode', async () => {
     const output = z4.object({
       byTeam: z4.record(z4.string(), z4.object({ lead: z4.string(), tags: z4.record(z4.string(), z4.boolean()) })).optional(),
       n: z4.number(),
@@ -544,7 +544,7 @@ describe('structured output near misses and repair (audit log F8, docs-qa F9, in
     ['zod 3', z.object({ point: z.tuple([z.number(), z.string()]) })],
     ['zod 4', z4.object({ point: z4.tuple([z4.number(), z4.string()]) })],
   ] as const) {
-    it(`Eve PROV-F1 (${zod}): sends a tuple as an object of _0.._n and decodes the reply back to an array`, async () => {
+    it(`${zod}: sends a tuple as an object of _0.._n and decodes the reply back to an array`, async () => {
       const model = mockModel(['{"point":{"_0":1,"_1":"x"}}']);
       const result = await createAgent({ provider: model, output }).send('go');
 
@@ -559,7 +559,7 @@ describe('structured output near misses and repair (audit log F8, docs-qa F9, in
     });
   }
 
-  it('Eve PROV-F1: a root record is wrapped and decoded', async () => {
+  it('a root record is wrapped and decoded', async () => {
     const output = z4.record(z4.string(), z4.number());
     const result = await createAgent({ provider: mockModel(['{"result":[{"key":"a","value":1}]}']), output }).send('go');
     expect(result.object).toEqual({ a: 1 });
@@ -579,7 +579,7 @@ describe('structured output near misses and repair (audit log F8, docs-qa F9, in
     expect(() => AgentExecutor.stream({ agent, input: 'go', provider: mockModel([]), output: z4.object({ d: z4.date() }) })).toThrow(/'d' is a z\.date\(\)/);
   });
 
-  it('audit invoice F12: output { schema, promptSchema: false } sends the schema only as responseFormat', async () => {
+  it('output { schema, promptSchema: false } sends the schema only as responseFormat', async () => {
     const model = mockModel(['{"city":"Paris","tempC":21}']);
     const agent = createAgent({ provider: model, instructions: 'You report weather.', output: { schema: weather, promptSchema: false } });
 
@@ -596,7 +596,7 @@ describe('structured output near misses and repair (audit log F8, docs-qa F9, in
     expect(system.content).not.toContain('"tempC"');
   });
 
-  it('audit invoice F12: output { schema } keeps the schema in the prompt, like a bare schema', async () => {
+  it('output { schema } keeps the schema in the prompt, like a bare schema', async () => {
     const model = mockModel(['{"city":"Paris","tempC":21}']);
     const agent = createAgent({ provider: model, instructions: 'You report weather.', output: { schema: weather } });
 
@@ -606,12 +606,12 @@ describe('structured output near misses and repair (audit log F8, docs-qa F9, in
     expect(model.calls[0].messages[0].content).toContain('"tempC":{"type":"number"}');
   });
 
-  it('audit invoice F12: a wrapped schema is checked at config time ({ schema } rejects z.date())', () => {
+  it('a wrapped schema is checked at config time ({ schema } rejects z.date())', () => {
     expect(() => createAgent({ provider: mockModel([]), output: { schema: z4.object({ d: z4.date() }) } })).toThrow(/'d' is a z\.date\(\)/);
   });
 });
 
-describe('structured output cut off by maxTokens (Eve CORE-F12)', () => {
+describe('structured output cut off by maxTokens', () => {
   it("skips the repair after a 'length' reply and reports outputError.kind 'truncated'", async () => {
     const model = mockModel([{ text: '{"city":"Par', finishReason: 'length' }, '{"city":"Paris","tempC":21}']);
     const agent = createAgent({ provider: model, output: weather, modelSettings: { maxTokens: 5 } });
@@ -650,7 +650,7 @@ describe('structured output cut off by maxTokens (Eve CORE-F12)', () => {
   });
 });
 
-describe('synthetic structured-output prompts stay request-only (Eve CORE-F3)', () => {
+describe('synthetic structured-output prompts stay request-only', () => {
   const isSynthetic = (content: unknown) => /^\[output-invalid\]|^You are out of steps/.test(String(content));
   const lookup = defineTool({ name: 'lookup', description: 'l', input: z.object({}), execute: async () => 21 });
 

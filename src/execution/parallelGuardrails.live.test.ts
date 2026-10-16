@@ -1,6 +1,6 @@
 /**
  * Live test (costs money, needs OPENROUTER_API_KEY; at most 0.05 USD): a streamed run on
- * `openrouter/openai/gpt-4o-mini` with `moderationGuardrail({ runInParallel: true })` (N5b), on a clean
+ * `openrouter/openai/gpt-4o-mini` with `moderationGuardrail({ runInParallel: true })`, on a clean
  * input (passes, the text arrives) and on a moderation hit (the agent's call is aborted, no text), plus
  * one unrecorded blocking run of the clean input to compare the time to the first released `text.delta`.
  * Records the agent's calls and the guardrail's calls to two cassettes,
@@ -36,7 +36,7 @@ async function timedRun(agentModel: LLMProvider, judge: LLMProvider, runInParall
   return { firstDeltaMs, text, result: await run.result };
 }
 
-describe.skipIf(!process.env.OPENROUTER_API_KEY)('parallel input guardrails on a real model (N5b)', () => {
+describe.skipIf(!process.env.OPENROUTER_API_KEY)('parallel input guardrails on a real model', () => {
   it('a clean input streams; a moderation hit aborts the call with no text; blocking vs parallel latency', async () => {
     const agentModel = recordReplay(() => resolveProvider(MODEL), { cassette: join(CASSETTES, 'n5b-parallel-guardrails-agent.json'), mode: 'record' });
     const judge = recordReplay(() => resolveProvider(MODEL), { cassette: join(CASSETTES, 'n5b-parallel-guardrails-guardrail.json'), mode: 'record' });

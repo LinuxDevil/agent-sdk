@@ -1,5 +1,5 @@
 /**
- * N4: permission modes - `plan`, `acceptEdits` and `dontAsk` as presets over
+ * Permission modes - `plan`, `acceptEdits` and `dontAsk` as presets over
  * the permission rules and `needsApproval`, applied after them in the gate.
  */
 
@@ -135,7 +135,7 @@ async function collect(run: AsyncIterable<AgentEvent>): Promise<AgentEvent[]> {
   return events;
 }
 
-describe('permission modes (N4)', () => {
+describe('permission modes', () => {
   it.each(CASES)('%s mode: a call of %s is %s', async (mode, toolName, expected) => {
     const { outcome } = await outcomeOf(mode as PermissionMode, toolName);
     expect(outcome).toBe(expected);
@@ -259,7 +259,7 @@ describe('permission modes (N4)', () => {
   });
 });
 
-describe('permission modes and sub-agents (N4)', () => {
+describe('permission modes and sub-agents', () => {
   function writer(workspace: MemoryWorkspace, permissionMode?: PermissionMode) {
     return createAgent({
       provider: mockModel([{ toolCalls: [{ name: 'write_file', args: { path: 'a.txt', content: 'x' } }] }, 'could not write'], { onExhausted: 'repeat-last' }),
@@ -329,7 +329,7 @@ describe('permission modes and sub-agents (N4)', () => {
   });
 });
 
-describe('permission modes in sessions (N4)', () => {
+describe('permission modes in sessions', () => {
   it("starts in plan; setPermissionMode('acceptEdits') from a tool.start listener applies to the next write_file of the same turn", async () => {
     const workspace = new MemoryWorkspace({ files: { 'notes.md': '# Notes\n' } });
     const changes: PermissionModeChange[] = [];
@@ -358,7 +358,7 @@ describe('permission modes in sessions (N4)', () => {
     expect(changes).toEqual([{ sessionId: session.id, from: 'plan', to: 'acceptEdits', at: expect.any(String) }]);
   });
 
-  it("LOU-R18: session.on() gets the turn's events; setPermissionMode('acceptEdits') from its tool.start applies to the next call", async () => {
+  it("session.on() gets the turn's events; setPermissionMode('acceptEdits') from its tool.start applies to the next call", async () => {
     // The docs/permission-modes.md example, with session.on() as the listener.
     const workspace = new MemoryWorkspace({ files: { 'notes.md': '# Notes\n' } });
     const agent = createAgent({
@@ -386,7 +386,7 @@ describe('permission modes in sessions (N4)', () => {
     expect(events.map((event) => event.type)).toEqual(expect.arrayContaining(['run.start', 'tool.start', 'tool.done', 'run.done']));
   });
 
-  it("LOU-R18: session.on() also gets the continued run's events when the paused turn is resolved", async () => {
+  it("session.on() also gets the continued run's events when the paused turn is resolved", async () => {
     const { deploy } = toolbox();
     const agent = createAgent({ provider: mockModel([{ toolCalls: [{ name: 'deploy', id: 'd1' }] }, 'done']), tools: [deploy.defined] });
     const session = agent.session();
@@ -405,7 +405,7 @@ describe('permission modes in sessions (N4)', () => {
     expect(events.at(-1)).toMatchObject({ type: 'run.done', finishReason: 'stop' });
   });
 
-  it('LOU-R18: a throwing session.on() listener does not break the turn', async () => {
+  it('a throwing session.on() listener does not break the turn', async () => {
     const agent = createAgent({ provider: mockModel(['hi']), onEvent: () => undefined });
     const session = agent.session();
     session.on(() => {

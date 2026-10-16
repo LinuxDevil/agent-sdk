@@ -5,7 +5,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 /**
- * tsup only bundles TS/JS entrypoints - src/cli/dev-ui/index.html (LOU-H7)
+ * tsup only bundles TS/JS entrypoints - src/cli/dev-ui/index.html
  * is a plain static asset dev.ts reads at runtime relative to its own
  * __dirname, so it has to be copied into dist/cli/dev-ui alongside the
  * compiled dev.js by hand.
@@ -74,13 +74,13 @@ export default defineConfig([
     // (their CJS build, which shares this build's chunks, is left out of the package: see "files").
     dts: { entry: { ...Object.fromEntries(Object.entries(entry).filter(([name]) => !name.startsWith('cli/'))), 'deploy/worker': 'src/deploy/worker.ts' } },
     splitting: true,
-    // No source maps (C4): ~3.7 MB of the tarball. `src/` stays published because `lousho build` bundles
+    // No source maps: ~3.7 MB of the tarball. `src/` stays published because `lousho build` bundles
     // src/deploy/*.worker.ts from it, but the maps do not.
     sourcemap: false,
     clean: true,
     treeshake: true,
     minify: false,
-    // Optional peers (LOU-D40) stay external too: tsup would externalize them from package.json anyway.
+    // Optional peers stay external too: tsup would externalize them from package.json anyway.
     external: ['ai', 'zod', '@opentelemetry/api', 'dockerode', '@modelcontextprotocol/sdk', 'prompts', 'quickjs-emscripten', '@earendil-works/pi-ai'],
     onSuccess: async () => {
       copyDevUi();

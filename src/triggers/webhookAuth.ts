@@ -1,5 +1,5 @@
 /**
- * Webhook request authentication (LOU-D13).
+ * Webhook request authentication.
  *
  * Pure verification helpers used by `webhookChannel()`. They never
  * throw for a bad request - they return the (internal) reason a request was

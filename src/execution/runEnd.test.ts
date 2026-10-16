@@ -1,5 +1,5 @@
 /**
- * LOU-Y4.2: `ExecuteOptions.onRunEnd` is called exactly once per run,
+ * `ExecuteOptions.onRunEnd` is called exactly once per run,
  * however the run ends.
  */
 
@@ -24,7 +24,7 @@ function options(script: MockTurn[], tools: DefinedTool[] = [ping, gated]) {
   return { agent, provider: mockModel(script), toolRegistry, input: 'go', onRunEnd } satisfies ExecuteOptions;
 }
 
-describe('ExecuteOptions.onRunEnd (LOU-Y4.2)', () => {
+describe('ExecuteOptions.onRunEnd', () => {
   it('is called once with the result when the run finishes', async () => {
     const run = options(['hi']);
     const result = await AgentExecutor.execute(run);

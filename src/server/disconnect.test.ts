@@ -8,7 +8,7 @@ import { createRouteHandler, type RouteHandlerOptions } from './routeHandler';
 import type { Message } from '../providers/llm';
 
 /**
- * B4 (support-desk F7): a client that goes away while a side-effecting tool
+ * A client that goes away while a side-effecting tool
  * runs. The refund happens once, and the session keeps the turn that made it.
  */
 
@@ -54,7 +54,7 @@ async function readUntil(response: Response, stopAt: string, controller: AbortCo
 const shape = (messages: readonly Message[]) =>
   messages.map((m) => (m.role === 'tool' ? `tool:${String(m.content)}` : m.toolCalls?.length ? `${m.role}:calls` : `${m.role}:${String(m.content)}`));
 
-describe('a client disconnect mid-turn (B4)', () => {
+describe('a client disconnect mid-turn', () => {
   it('lets the turn finish and persists it, with the side effect run once', async () => {
     const { agent, model, ledger, waited, routes } = refundDesk([
       { toolCalls: [{ name: 'issue_refund', args: { amountUsd: 20 } }] },

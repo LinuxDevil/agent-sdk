@@ -1,5 +1,5 @@
 /**
- * Live test for tool search (N2): 40 small tools marked `deferLoading` on
+ * Live test for tool search: 40 small tools marked `deferLoading` on
  * openai/gpt-4o-mini through OpenRouter, `toolSearch: { thresholdPercent: 0 }`,
  * `maxSteps: 4`. The model finds `convert_currency` with `tool_search`, calls
  * it and answers. One more call with the same 40 tools sent upfront measures
@@ -83,7 +83,7 @@ function tools(deferLoading: boolean): DefinedTool[] {
   );
 }
 
-describe.skipIf(!runnable)('tool search live (N2)', () => {
+describe.skipIf(!runnable)('tool search live', () => {
   it('the model finds convert_currency with tool_search, calls it and answers; deferral shrinks the first call', async () => {
     const provider = recordReplay(() => resolveProvider('openrouter/openai/gpt-4o-mini'), { cassette: CASSETTE, mode: recording ? 'record' : 'replay' });
     const instructions = 'You are a helpful assistant. Use tools to answer. Keep answers short.';

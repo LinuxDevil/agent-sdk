@@ -1,5 +1,5 @@
 /**
- * LOU-V12: send() / stream() take an AgentInput (a string, content parts or
+ * Send() / stream() take an AgentInput (a string, content parts or
  * a Message[]) on agents and sessions, and sessions keep the parts.
  */
 import { describe, it, expect } from 'vitest';
@@ -31,7 +31,7 @@ describe('toMessages()', () => {
   });
 });
 
-describe('agent.send() / agent.stream() with an AgentInput (LOU-V12)', () => {
+describe('agent.send() / agent.stream() with an AgentInput', () => {
   it('send(parts) reaches the provider as one user message with the parts', async () => {
     const model = mockModel(['A cat.']);
     const result = await createAgent({ prompt: 'Describe images.', provider: model }).send(parts);
@@ -89,7 +89,7 @@ const stores: Array<[string, () => AgentStore & { close?: () => void }]> = [
   [":memory: SqliteStore", () => new SqliteStore(':memory:')],
 ];
 
-describe.each(stores)('session.send() with parts through %s (LOU-V12)', (_name, makeStore) => {
+describe.each(stores)('session.send() with parts through %s', (_name, makeStore) => {
   it('keeps the parts in the transcript and shows them to the next turn', async () => {
     const store = makeStore();
     const first = mockModel(['A cat.']);

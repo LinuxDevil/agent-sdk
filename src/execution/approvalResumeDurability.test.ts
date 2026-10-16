@@ -65,7 +65,7 @@ describe('approval resume durability', () => {
     await expect(agent.approvals.resolve({ id: paused.approvalId!, approved: true })).rejects.toMatchObject({ code: 'LOUSHO_APPROVAL_NOT_FOUND' });
   });
 
-  it("a resumed run that pauses again on a step's several calls records every pending approval id (Eve2-F6)", async () => {
+  it("a resumed run that pauses again on a step's several calls records every pending approval id", async () => {
     const store = memoryStore();
     const log: string[] = [];
     const make = (name: string) =>

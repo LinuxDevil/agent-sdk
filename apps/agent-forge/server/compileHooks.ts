@@ -2,7 +2,7 @@
  * Compiles the hooks serialized onto an `AgentSpec` (via `spec.policy.hooks`
  * - see src/graph/graphToSpec.ts's doc comment for why they live there) into
  * a real SDK `HookRegistry` (src/execution/hooks.ts in the core SDK), ready
- * to pass as `AgentExecutor.execute()`'s new `hooks` option (LOU-Q1).
+ * to pass as `AgentExecutor.execute()`'s new `hooks` option.
  *
  * Each compiled `AgentHook` delegates its actual work to
  * `sandboxRunHook()` (hookSandbox.ts) rather than running the user's code
@@ -121,7 +121,7 @@ function generateHook(hook: SerializedHook, sandbox: SandboxAdapter, timeoutMs?:
 export function compileHooksFromSpecPolicy(
   policyHooks: unknown,
   sandbox: SandboxAdapter,
-  /** LOU-R3: configurable hook timeout (defaults to hookSandbox.ts's own 5s default when omitted - see settingsStore.ts's `SettingsProfile.hookTimeoutMs`). */
+  /** Configurable hook timeout (defaults to hookSandbox.ts's own 5s default when omitted - see settingsStore.ts's `SettingsProfile.hookTimeoutMs`). */
   timeoutMs?: number
 ): HookRegistry | undefined {
   if (!isSerializedHookList(policyHooks) || policyHooks.length === 0) return undefined;

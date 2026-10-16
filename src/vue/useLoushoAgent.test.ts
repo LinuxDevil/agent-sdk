@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * LOU-P2: the Vue useLoushoAgent() run inside an effectScope (no DOM needed),
+ * The Vue useLoushoAgent() run inside an effectScope (no DOM needed),
  * in process with mockModel and remote with a scripted fetch.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -55,7 +55,7 @@ function scriptedFetch(responses: { body: string; close?: boolean; status?: numb
   return { fetch: fetchMock as unknown as typeof fetch, fetchMock, signals };
 }
 
-describe('useLoushoAgent for Vue in process (LOU-P2)', () => {
+describe('useLoushoAgent for Vue in process', () => {
   it('send() streams the reply into messages and ends idle with usage', async () => {
     const chat = mount({ agent: createAgent({ provider: mockModel([{ text: 'Hello there!', usage: { inputTokens: 5, outputTokens: 3 } }]) }) });
     expect(chat.status.value).toBe('idle');
@@ -147,7 +147,7 @@ describe('useLoushoAgent for Vue in process (LOU-P2)', () => {
   });
 });
 
-describe('useLoushoAgent for Vue remote (LOU-P2)', () => {
+describe('useLoushoAgent for Vue remote', () => {
   it('POSTs { input } with headers, reads the stream and applies approval outcomes', async () => {
     const paused = sse([
       { ...base, seq: 0, type: 'approval.requested', approvalId: 'ap 1', toolCallId: 'c1', toolName: 'pay', args: {} },
@@ -203,7 +203,7 @@ describe('useLoushoAgent for Vue remote (LOU-P2)', () => {
 
 });
 
-describe('useTodos (N12)', () => {
+describe('useTodos', () => {
   const todoWrite = { name: 'todo_write', args: { todos: [{ content: 'Plan', status: 'completed' }, { content: 'Build', status: 'in_progress' }, { content: 'Ship', status: 'pending' }] } };
 
   it('follows the todo list of an in-process run', async () => {

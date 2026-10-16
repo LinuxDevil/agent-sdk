@@ -4,7 +4,7 @@ import { todoView } from './todos';
 
 const todo = (id: string, status: Todo['status']): Todo => ({ id, content: id, status });
 
-describe('todoView (N12)', () => {
+describe('todoView', () => {
   it('is empty for an empty list', () => {
     expect(todoView([])).toEqual({ todos: [], counts: { pending: 0, in_progress: 0, completed: 0, total: 0 }, current: undefined, progress: 0 });
   });

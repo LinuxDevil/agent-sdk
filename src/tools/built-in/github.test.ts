@@ -7,7 +7,7 @@ import { executeToolWithSandboxGuard } from '../../execution/sandboxGuard';
 import type { ToolExecutionContext } from '../../types';
 import { getToolExecute, getToolInputSchema } from '../toolContract';
 
-describe('GitHubTools scope enforcement (LOU-E14)', () => {
+describe('GitHubTools scope enforcement', () => {
   let githubTools: GitHubTools;
   let fetchSpy: ReturnType<typeof vi.fn>;
 
@@ -37,7 +37,7 @@ describe('GitHubTools scope enforcement (LOU-E14)', () => {
     'github_update_issue',
     'github_close_issue',
     'github_add_issue_comment',
-    // LOU-E fix: merging a PR needs "Contents: Read and write", which a
+    // Fix: merging a PR needs "Contents: Read and write", which a
     // PR-creation/reading-scoped token doesn't have.
     'github_merge_pull_request',
   ];
@@ -131,7 +131,7 @@ describe('GitHubTools scope enforcement (LOU-E14)', () => {
   });
 });
 
-describe('GitHubTools sandbox seam (LOU-K2)', () => {
+describe('GitHubTools sandbox seam', () => {
   let githubTools: GitHubTools;
 
   beforeEach(() => {

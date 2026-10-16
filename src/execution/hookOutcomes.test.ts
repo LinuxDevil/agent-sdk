@@ -1,5 +1,5 @@
 /**
- * LOU-X3: hook outcomes - a preToolCall hook may deny a call, supply its
+ * Hook outcomes - a preToolCall hook may deny a call, supply its
  * result or modify its input; a postToolCall hook may replace the result.
  */
 
@@ -43,7 +43,7 @@ async function collect(run: AsyncIterable<AgentEvent>): Promise<AgentEvent[]> {
   return events;
 }
 
-describe('preToolCall outcomes (LOU-X3)', () => {
+describe('preToolCall outcomes', () => {
   it('{ deny } skips the call, gives the model a denied result, streams tool.error and audits it', async () => {
     const search = searchTool();
     const model = mockModel([call('secrets'), 'ok']);
@@ -120,7 +120,7 @@ describe('preToolCall outcomes (LOU-X3)', () => {
   });
 });
 
-describe('postToolCall outcomes (LOU-X3)', () => {
+describe('postToolCall outcomes', () => {
   it('{ result } replaces what the model sees; later hooks see the replacement', async () => {
     const model = mockModel([call('cats'), 'ok']);
     const seen: unknown[] = [];
@@ -136,7 +136,7 @@ describe('postToolCall outcomes (LOU-X3)', () => {
   });
 });
 
-describe('order of evaluation (LOU-X3)', () => {
+describe('order of evaluation', () => {
   it('permission rules and needsApproval see the hook-modified input; the approval record shows it', async () => {
     const asked: unknown[] = [];
     const search = searchTool((args) => (asked.push(args), 'ask'));
@@ -191,7 +191,7 @@ describe('order of evaluation (LOU-X3)', () => {
   });
 });
 
-describe('sub-agents inherit hook outcomes (LOU-X3)', () => {
+describe('sub-agents inherit hook outcomes', () => {
   it("a lead's preToolCall deny reaches the sub-agent's model", async () => {
     const search = searchTool();
     const childModel = mockModel([call('cats'), 'could not search']);
@@ -206,7 +206,7 @@ describe('sub-agents inherit hook outcomes (LOU-X3)', () => {
   });
 });
 
-describe('ctx.metadata (LOU-R16)', () => {
+describe('ctx.metadata', () => {
   it("send(x, { metadata }) reaches every hook context as `ctx.metadata`", async () => {
     const search = searchTool();
     const seen: Array<Record<string, unknown> | undefined> = [];

@@ -1,5 +1,5 @@
 /**
- * plan-mode - plan first, then let the agent edit (N4).
+ * plan-mode - plan first, then let the agent edit.
  *
  * A coding agent works on an in-memory workspace. The first turn runs in
  * `plan` mode: the agent may read files but every write is refused, so it

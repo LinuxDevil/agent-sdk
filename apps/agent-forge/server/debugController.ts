@@ -1,5 +1,5 @@
 /**
- * LOU-O3 step-through debugger.
+ * Step-through debugger.
  *
  * `AgentExecutor.execute()` has no native breakpoint concept - there is no
  * per-node hook, and the loop inside `runAgentLoop()` is private. What it

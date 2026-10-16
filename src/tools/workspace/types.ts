@@ -1,5 +1,5 @@
 /**
- * Workspace provider interfaces (LOU-X6).
+ * Workspace provider interfaces.
  *
  * The file system and shell tools (`createFsTools`, `createShellTool`) never
  * touch `node:fs` or `node:child_process` themselves: they talk to these two
@@ -73,7 +73,7 @@ export interface FsProvider {
   /**
    * Optional: a file's permission bits (e.g. `0o755`), or `undefined` when
    * nothing exists at `path`. With `chmod`, it lets `WorkspaceCheckpoints`
-   * restore a file's mode as well as its content (N7). `NodeWorkspace` has both.
+   * restore a file's mode as well as its content. `NodeWorkspace` has both.
    */
   getMode?(path: string): Promise<number | undefined>;
   /** Optional: set a file's permission bits. See {@link FsProvider.getMode}. */

@@ -50,7 +50,7 @@ provider:
     expect(specResult.toolCalls).toEqual(directResult.toolCalls);
   });
 
-  it("resolves 'web-fetch' to the web_fetch built-in (N13a)", () => {
+  it("resolves 'web-fetch' to the web_fetch built-in", () => {
     expect(resolveSpecTool('web-fetch')).toBe(webFetchTool);
     const agent = specToAgent({ name: 'x', prompt: 'x', provider: { type: 'mock', model: 'm' }, tools: ['web-fetch'] });
     expect(agent).toBeDefined();
@@ -85,7 +85,7 @@ provider:
   });
 });
 
-describe('specToAgent model selection (LOU-U1)', () => {
+describe('specToAgent model selection', () => {
   it("sends the spec's provider.model to provider.generate()", async () => {
     const received: Array<string | undefined> = [];
     LLMProviderRegistry.register('mock', (config) => {
@@ -112,8 +112,8 @@ describe('specToAgent model selection (LOU-U1)', () => {
   });
 });
 
-describe('specToAgent mcpServers (LOU-D20)', () => {
-  it('exposes the parsed servers on the result (connecting is TODO(LOU-D20.2))', () => {
+describe('specToAgent mcpServers', () => {
+  it('exposes the parsed servers on the result (connecting is TODO)', () => {
     const mcpServers = { fs: { command: 'npx' }, docs: { url: 'https://example.com/mcp' } };
     const provider = { type: 'mock', model: 'm' };
     const agent = specToAgent({ name: 'mcp-agent', prompt: 'x', provider, mcpServers });

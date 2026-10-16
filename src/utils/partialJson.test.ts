@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parsePartialJson } from './partialJson';
 
-describe('parsePartialJson (Eve CORE-F13)', () => {
+describe('parsePartialJson', () => {
   it.each([
     ['', undefined],
     ['   ', undefined],

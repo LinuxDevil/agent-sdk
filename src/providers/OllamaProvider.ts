@@ -37,7 +37,7 @@ export class OllamaProvider extends AiSdkProvider<OllamaProviderConfig> {
 
   /**
    * Loads the Ollama package on first use (an optional peer): `ollama-ai-provider`
-   * on `ai` 4, `ollama-ai-provider-v2` on `ai` 6/7 (LOU-D28d).
+   * on `ai` 4, `ollama-ai-provider-v2` on `ai` 6/7.
    */
   private readonly loadProvider = lazyValue(async () => {
     const major = aiMajorOf(this.ai);
@@ -66,7 +66,7 @@ export class OllamaProvider extends AiSdkProvider<OllamaProviderConfig> {
     this.logger = logger;
   }
 
-  /** LOU-V13: `think` needs `ollama-ai-provider-v2` (`ai` 6/7); on `ai` 4 the option is ignored, with one warning. */
+  /** `think` needs `ollama-ai-provider-v2` (`ai` 6/7); on `ai` 4 the option is ignored, with one warning. */
   protected reasoningOptions(modelId: string, options: GenerateOptions): Record<string, unknown> | undefined {
     const sent = super.reasoningOptions(modelId, options);
     if (!sent || aiMajorOf(this.ai) !== 4) return sent;

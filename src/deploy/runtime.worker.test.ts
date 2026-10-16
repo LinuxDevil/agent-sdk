@@ -1,5 +1,5 @@
 /**
- * LOU-D51: the Worker's `/chat` API (sessions over KV, SSE, approvals, bearer
+ * The Worker's `/chat` API (sessions over KV, SSE, approvals, bearer
  * auth) in process: the shared Fetch routes over `createAgent({ store: KVStore })`
  * with a scripted model, and `handleWorkerRequest` over a fake KV binding.
  */
@@ -198,7 +198,7 @@ describe('handleWorkerRequest', () => {
     expect(workerStore({ AGENT_CHECKPOINTS: fakeKV() })).toBeInstanceOf(KVStore);
   });
 
-  it('encrypts OAuth tokens with the LOUSHO_TOKEN_KEY secret of env (N9a)', async () => {
+  it('encrypts OAuth tokens with the LOUSHO_TOKEN_KEY secret of env', async () => {
     const kv = fakeKV();
     const tokenKey = generateTokenKey();
     await workerStore({ AGENT_CHECKPOINTS: kv, LOUSHO_TOKEN_KEY: tokenKey }).tokens!.set('github', { owner: 'app' }, { accessToken: 'worker-token-1234' });

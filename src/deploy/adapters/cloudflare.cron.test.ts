@@ -1,5 +1,5 @@
 /**
- * LOU-P9: cron triggers of the spec become `[triggers] crons` of the generated
+ * Cron triggers of the spec become `[triggers] crons` of the generated
  * wrangler.toml, and the built Worker bundle's `scheduled()` runs them.
  */
 import { describe, it, expect, beforeAll, vi } from 'vitest';

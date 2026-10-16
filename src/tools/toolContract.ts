@@ -1,5 +1,5 @@
 /**
- * The one place runtime code reads a tool's schema and `execute` (LOU-D22).
+ * The one place runtime code reads a tool's schema and `execute`.
  * Prefers the descriptor's canonical `inputSchema` / `execute` and falls
  * back to the legacy `ai` v4 `tool.parameters` / `tool.execute`.
  */
@@ -59,7 +59,7 @@ export function toolDescriptorFromSchema(opts: ToolFromSchemaOptions): ToolDescr
  * parameters, execute }`; v4's `tool()` is the identity function). It is
  * typed as the installed `ai`'s `Tool`, which on `ai` v6/v7 has
  * `inputSchema` instead of `parameters`, hence the documented
- * `unknown` cast (LOU-D28a). The runtime reads `parameters` through
+ * `unknown` cast. The runtime reads `parameters` through
  * {@link getToolInputSchema} and the `execute` through {@link getToolExecute}.
  */
 export function legacyAiTool(description: string, parameters: unknown, execute: ToolExecuteFn): ToolDescriptor['tool'] {

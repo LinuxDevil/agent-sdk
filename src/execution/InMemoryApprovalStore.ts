@@ -1,5 +1,5 @@
 /**
- * In-memory ApprovalStore (LOU-D21): the default store of `createAgent()`
+ * In-memory ApprovalStore: the default store of `createAgent()`
  * agents. Pending approvals live only as long as the process; pass a durable
  * store (`StorageServiceApprovalStore`, `SqliteStore.approvals`) to resume
  * after a restart.
@@ -36,7 +36,7 @@ export class InMemoryApprovalStore implements ApprovalStore {
     return record ? structuredClone(record) : null;
   }
 
-  /** Eve TOOLS-F13: the pending approvals, oldest first. */
+  /** The pending approvals, oldest first. */
   async list(): Promise<PendingApproval[]> {
     return oldestFirst([...this.records.values()].map((record) => structuredClone(record.pending)));
   }

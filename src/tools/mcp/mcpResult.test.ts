@@ -20,8 +20,8 @@ async function run(callResult: unknown) {
   return tools['srv__do_it'].tool.execute!({}, {} as never);
 }
 
-describe('MCP result handling (LOU-Z2)', () => {
-  it('joins text parts; with only text the parts stay readable but are not serialized twice (audit D4)', async () => {
+describe('MCP result handling', () => {
+  it('joins text parts; with only text the parts stay readable but are not serialized twice', async () => {
     const result = (await run({
       content: [
         { type: 'text', text: 'line 1' },
@@ -36,7 +36,7 @@ describe('MCP result handling (LOU-Z2)', () => {
     expect(JSON.stringify(result)).toBe('{"text":"line 1\\nline 2"}');
   });
 
-  it('sends a text-only result to the model once, not twice (audit D4)', async () => {
+  it('sends a text-only result to the model once, not twice', async () => {
     const payload = JSON.stringify({ usage: Object.fromEntries(Array.from({ length: 50 }, (_, i) => [String(i), i * 1000])) });
     const toolRegistry = new ToolRegistry();
     toolRegistry.registerMany(await loadMcpTools(fakeClient({ content: [{ type: 'text', text: payload }] }), 'srv', { approval: 'never' }));
@@ -68,7 +68,7 @@ describe('MCP result handling (LOU-Z2)', () => {
         { type: 'hologram', depth: 3 },
       ],
     });
-    // Eve TOOLS-F8: the JSON (what the model gets) carries a placeholder for base64 data; the parts keep it.
+    // The JSON (what the model gets) carries a placeholder for base64 data; the parts keep it.
     expect(JSON.parse(JSON.stringify(result))).toEqual({
       text: 'here',
       content: [
@@ -83,7 +83,7 @@ describe('MCP result handling (LOU-Z2)', () => {
     });
   });
 
-  it('Eve TOOLS-F8: a 400 KB image reaches the JSON as a short placeholder; code still reads the data', async () => {
+  it('a 400 KB image reaches the JSON as a short placeholder; code still reads the data', async () => {
     const data = 'A'.repeat(400_000);
     const result = (await run({ content: [{ type: 'image', data, mimeType: 'image/png' }] })) as { content: Array<{ data: string }> };
     expect(result.content[0].data).toBe(data);
@@ -92,7 +92,7 @@ describe('MCP result handling (LOU-Z2)', () => {
     expect(json).toContain('[image: image/png, 400000 base64 characters, not sent to the model]');
   });
 
-  it('Eve TOOLS-F8: a tool description over 2,000 characters is cut', async () => {
+  it('a tool description over 2,000 characters is cut', async () => {
     const description = 'd'.repeat(680_000);
     const client = { listTools: async () => ({ tools: [{ name: 'huge', description, inputSchema: { type: 'object' } }] }) } as unknown as Client;
     const tools = await loadMcpTools(client, 's');

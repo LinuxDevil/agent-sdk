@@ -1,5 +1,5 @@
 /**
- * M5a: `lousho traces` against the fixture directory src/traces/__fixtures__/traces,
+ * `lousho traces` against the fixture directory src/traces/__fixtures__/traces,
  * with a fixed clock and no colour.
  */
 import * as fs from 'node:fs';
@@ -22,7 +22,7 @@ async function run(args: string[], options: { color?: boolean } = {}) {
 
 afterEach(() => { vi.restoreAllMocks(); });
 
-describe('lousho traces (M5a)', () => {
+describe('lousho traces', () => {
   it('lists the recent traces, newest first', async () => {
     const { code, out } = await run(['--dir', 'traces']);
     expect(code).toBe(0);
@@ -147,7 +147,7 @@ describe('lousho traces (M5a)', () => {
   });
 });
 
-describe('lousho traces: hosted tools (N1a)', () => {
+describe('lousho traces: hosted tools', () => {
   it('a chat span names the tools the provider ran in it', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'traces-hosted-'));
     try {

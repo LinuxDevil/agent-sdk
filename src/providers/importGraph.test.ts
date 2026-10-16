@@ -1,5 +1,5 @@
 /**
- * Import-graph test (LOU-D10, LOU-D19): importing a built entry point must
+ * Import-graph test: importing a built entry point must
  * not load any optional peer or heavy optional dependency. They are loaded on
  * first use instead, so a missing one cannot break `import`.
  *
@@ -19,18 +19,18 @@ const NEVER_LOADED_AT_IMPORT = [
   'undici',
   'dockerode',
   '@modelcontextprotocol/sdk',
-  'prompts', // LOU-D40: only `lousho init`'s interactive questions use it, on first ask
-  'react', // LOU-P2: only the ./react and ./vue subpaths import their framework, no other entry
+  'prompts', // only `lousho init`'s interactive questions use it, on first ask
+  'react', // only the ./react and ./vue subpaths import their framework, no other entry
   'vue',
-  'svelte', // LOU-P3: no entry imports it (the ./svelte store implements the store contract by hand)
-  'quickjs-emscripten', // N14: loaded when a codeMode run starts
+  'svelte', // no entry imports it (the ./svelte store implements the store contract by hand)
+  'quickjs-emscripten', // Loaded when a codeMode run starts
   '@earendil-works/pi-ai', // H2: the 'pi' provider lazy-loads it on the first pi/* call
-  'node:sqlite', // LOU-W5: only the lazily-loaded /sqlite subpath may use it, and only when a store is constructed
+  'node:sqlite', // only the lazily-loaded /sqlite subpath may use it, and only when a store is constructed
 ];
 
 const ENTRY_POINTS = ['index', 'executor/index', 'tools/index', 'tools/mcp/index', 'flows/index', 'integrations/index', 'utils/index', 'testing/index', 'storage/sqlite/index', 'svelte/index'];
 
-/** LOU-P2, LOU-P3: the react and vue entries import their own framework and not the others (`svelte/index` is in ENTRY_POINTS: it loads none). */
+/** The react and vue entries import their own framework and not the others (`svelte/index` is in ENTRY_POINTS: it loads none). */
 const OTHER_FRAMEWORKS: Record<string, string[]> = {
   'react/index': ['vue', 'svelte'],
   'vue/index': ['react', 'svelte'],
@@ -75,7 +75,7 @@ describe('built entry points load no optional peer at import time', () => {
   }
 });
 
-describe('UI binding entries load only their own framework (LOU-P2)', () => {
+describe('UI binding entries load only their own framework', () => {
   for (const format of ['cjs', 'esm'] as const) {
     for (const [entry, others] of Object.entries(OTHER_FRAMEWORKS)) {
       for (const other of others) {

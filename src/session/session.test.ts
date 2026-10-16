@@ -1,5 +1,5 @@
 /**
- * LOU-W4: sessions (multi-turn conversations) for createAgent().
+ * Sessions (multi-turn conversations) for createAgent().
  */
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
@@ -81,7 +81,7 @@ describe('AgentSession', () => {
   });
 
   it('serializes concurrent sends across session OBJECTS that share one transcript store', async () => {
-    // support-desk F3: two `agent.session({ id })` objects (e.g. two concurrent
+    // Two `agent.session({ id })` objects (e.g. two concurrent
     // HTTP requests on one session) each kept their own queue, so both turns
     // ran at once and the last commit silently overwrote the other.
     const store = new MemorySessionStore();
@@ -130,7 +130,7 @@ describe('AgentSession', () => {
     expect((await inner.load('shared'))!.map((m) => m.content)).toEqual(['second', 'fast answer']);
   });
 
-  // Eve DUR-F3: a session object cached its transcript after the first read, so once another object committed a turn it
+  // A session object cached its transcript after the first read, so once another object committed a turn it
   // stayed stale forever: load() returned the old transcript and every send() failed LOUSHO_SESSION_BUSY.
   it('a session object sees turns another object committed, and keeps sending (sequential use)', async () => {
     const agent = createAgent({ provider: mockModel([(r) => `ack ${String(r.messages.at(-1)?.content)}`], { onExhausted: 'repeat-last' }) });
@@ -225,7 +225,7 @@ describe('AgentSession', () => {
     expect(roles(convo(model.calls[2]))).toEqual(['user', 'assistant', 'user']);
   });
 
-  it('keeps only the tool calls that ran when a send is aborted (B4)', async () => {
+  it('keeps only the tool calls that ran when a send is aborted', async () => {
     const controller = new AbortController();
     const slow = defineTool({
       name: 'slow',
@@ -326,7 +326,7 @@ describe('AgentSession', () => {
       }
     });
 
-    it('round-trips image and file bytes through JSON as base64 (LOU-V11)', async () => {
+    it('round-trips image and file bytes through JSON as base64', async () => {
       const dir = mkdtempSync(join(tmpdir(), 'sessions-'));
       try {
         const store = new FileSessionStore(dir);
@@ -355,7 +355,7 @@ describe('AgentSession', () => {
       }
     });
 
-    it('rejects a corrupt session file with LOUSHO_SESSION_FILE_CORRUPT (LOU-D2)', async () => {
+    it('rejects a corrupt session file with LOUSHO_SESSION_FILE_CORRUPT', async () => {
       const dir = mkdtempSync(join(tmpdir(), 'sessions-'));
       try {
         writeFileSync(join(dir, 'bad.json'), '{"not":"an array"}');
@@ -391,7 +391,7 @@ describe('providerValidPrefix', () => {
   });
 });
 
-describe('AgentSession errors (LOU-D2)', () => {
+describe('AgentSession errors', () => {
   it('stream() without a streaming runner throws LOUSHO_SESSION_STREAM_UNSUPPORTED', () => {
     const session = new AgentSession(async () => {
       throw new Error('not called');

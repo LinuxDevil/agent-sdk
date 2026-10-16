@@ -1,5 +1,5 @@
 /**
- * Workspace tools (LOU-X6): file system and shell tools over pluggable
+ * Workspace tools: file system and shell tools over pluggable
  * providers. See docs/workspace-tools.md for the security model.
  */
 export type {

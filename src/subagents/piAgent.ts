@@ -324,7 +324,7 @@ function usageBeforeLastUser(session: PiSession): UsageTotals {
 }
 
 /**
- * Pi usage as the {@link AgentEventUsage} the lead rolls up (M10b). `base`
+ * Pi usage as the {@link AgentEventUsage} the lead rolls up. `base`
  * diffs against the stats the remote run started from: a call's own spend
  * normally, the whole paused run's spend on a continuation (the harness
  * subtracts what the pausing call already reported, `snapshot.usage`).

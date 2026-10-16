@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { extractSnippets, findDeprecatedPromptUse, isRunnableByDefault } from './verify-docs-snippets';
 
-describe('extractSnippets (Eve DUI-F19)', () => {
+describe('extractSnippets', () => {
   const md = [
     '# T',
     '',

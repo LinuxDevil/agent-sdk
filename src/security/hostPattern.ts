@@ -1,6 +1,6 @@
 /**
- * Host-name patterns shared by the sandbox network policy (LOU-X11) and the
- * credential broker (LOU-X12): an exact name (`api.github.com`) or a `*.`
+ * Host-name patterns shared by the sandbox network policy and the
+ * credential broker: an exact name (`api.github.com`) or a `*.`
  * wildcard over one (`*.npmjs.org`, which matches subdomains only).
  */
 

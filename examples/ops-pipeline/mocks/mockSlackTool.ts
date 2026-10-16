@@ -1,5 +1,5 @@
 /**
- * Mock Slack API (LOU-J8) - same call shape as the REAL Slack tool
+ * Mock Slack API - same call shape as the REAL Slack tool
  * (src/tools/built-in/slack.ts's createSlackTool()): takes
  * {channel, message, approvalId}, builds the exact same Block Kit payload
  * via the real buildSlackAlertPayload(), and records it instead of

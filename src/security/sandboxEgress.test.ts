@@ -1,5 +1,5 @@
 /**
- * LOU-X12.2: SubprocessSandbox routes `network: { allow }` through the
+ * SubprocessSandbox routes `network: { allow }` through the
  * credential broker on an internal Docker network. Runs against a dockerode
  * fake (no daemon) and a fake broker whose listen() calls are recorded.
  */
@@ -88,7 +88,7 @@ async function setup(fake: FakeOptions = {}) {
   return { calls, containers, networks, listens, broker, existing, SubprocessSandbox };
 }
 
-describe('SubprocessSandbox egress through the credential broker (LOU-X12.2)', () => {
+describe('SubprocessSandbox egress through the credential broker', () => {
   it('creates a labelled internal network, has the broker listen on its gateway for its subnet, and starts the container on it', async () => {
     const { calls, containers, networks, listens, broker, SubprocessSandbox } = await setup();
     const sandbox = new SubprocessSandbox({ network: { allow: ['registry.npmjs.org'] }, broker, networkName: 'lousho-egress-test' });

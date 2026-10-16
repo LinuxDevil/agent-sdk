@@ -63,7 +63,7 @@ Phase engineering on `FlowBuilder`: discuss → spec → plan → implement → 
 
 ## [plan-mode](./plan-mode)
 
-Plan first, then edit: a coding agent in `plan` mode reads and proposes, then `session.setPermissionMode('acceptEdits')` lets it apply the plan; runs offline with a mock model (N4).
+Plan first, then edit: a coding agent in `plan` mode reads and proposes, then `session.setPermissionMode('acceptEdits')` lets it apply the plan; runs offline with a mock model.
 
 ## [research-assistant](./research-assistant)
 

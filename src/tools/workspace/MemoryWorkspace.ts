@@ -1,5 +1,5 @@
 /**
- * MemoryWorkspace: an in-memory Workspace for tests and demos (LOU-X6).
+ * MemoryWorkspace: an in-memory Workspace for tests and demos.
  */
 import type {
   ShellExecOptions,

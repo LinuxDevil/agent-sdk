@@ -108,7 +108,7 @@ describe('secretScanCheck', () => {
     expect(result.pass).toBe(true);
   });
 
-  it('never puts the matched secret in the reason (LOU-R2): only the pattern label', async () => {
+  it('never puts the matched secret in the reason: only the pattern label', async () => {
     // One fake secret per SECRET_PATTERNS entry. The rejection reason (and
     // the failure runPatchChecks() reports from it) names the label only -
     // embedding the matched text would copy the secret into events, traces
@@ -137,7 +137,7 @@ describe('secretScanCheck', () => {
   });
 });
 
-describe('command patch checks (LOU-E11)', () => {
+describe('command patch checks', () => {
   const fixtureRepo = path.join(__dirname, '__fixtures__', 'sample-repo');
   let scratchDir: string;
   const dummyPatch: ProposedPatch = { diff: '' };
@@ -195,7 +195,7 @@ describe('command patch checks (LOU-E11)', () => {
     expect(result.reason).toContain('lint');
   }, 30000);
 
-  it('resolves to pass:false via the E9 timeout wrapper instead of hanging, for an artificially slow command', async () => {
+  it('resolves to pass:false via the timeout wrapper instead of hanging, for an artificially slow command', async () => {
     // A command that sleeps far longer than the configured timeout below.
     const slowCheck = createCommandCheck(
       'slow-command',
@@ -214,7 +214,7 @@ describe('command patch checks (LOU-E11)', () => {
     expect(elapsed).toBeLessThan(2000);
   }, 10000);
 
-  it('kills the underlying child process on timeout instead of leaking it (LOU-E fix)', async () => {
+  it('kills the underlying child process on timeout instead of leaking it', async () => {
     // A long-sleeping child that writes its own PID to a file as soon as
     // it starts, so the test can check afterwards whether that PID is
     // still alive - proving the process was actually terminated, not just
@@ -257,7 +257,7 @@ describe('command patch checks (LOU-E11)', () => {
     expect(alive).toBe(false);
   }, 10000);
 
-  it('applies action.diff to a scratch copy and evaluates the patched result, without mutating the fixture (LOU-E fix)', async () => {
+  it('applies action.diff to a scratch copy and evaluates the patched result, without mutating the fixture', async () => {
     // A small valid unified diff against the pristine fixture repo that
     // breaks the one existing test when applied.
     const diff = [
@@ -326,7 +326,7 @@ describe('command patch checks (LOU-E11)', () => {
   }, 30000);
 });
 
-describe('runPatchChecks (LOU-E12)', () => {
+describe('runPatchChecks', () => {
   it('runs all checks and reports overall fail naming the failing one', async () => {
     const passingA: PatchCheck = { name: 'a', check: async () => ({ pass: true }) };
     const passingB: PatchCheck = { name: 'b', check: async () => ({ pass: true }) };
@@ -341,7 +341,7 @@ describe('runPatchChecks (LOU-E12)', () => {
     expect(result.failures).toEqual([{ name: 'c', reason: 'c is broken' }]);
   });
 
-  it('treats a truthy-but-non-boolean pass value as a failure, not a pass (LOU-E fix)', async () => {
+  it('treats a truthy-but-non-boolean pass value as a failure, not a pass', async () => {
     const sloppy: PatchCheck = {
       name: 'sloppy',
       // Simulates a third-party/JS check that isn't well-typed and

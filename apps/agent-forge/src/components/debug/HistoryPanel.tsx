@@ -7,7 +7,7 @@ import type { ForkRunRequest, RunComparisonPayload, RunHistoryStep } from '../..
 
 type ForkPatch = NonNullable<ForkRunRequest['patch']>;
 
-/** LOU-D45: one row per checkpointed step of the run, each with an "Edit and replay from here" action. */
+/** One row per checkpointed step of the run, each with an "Edit and replay from here" action. */
 export function HistoryList({ steps, onReplay }: { steps: RunHistoryStep[]; onReplay: (step: RunHistoryStep) => void }) {
   return (
     <table className="history-table">
@@ -85,7 +85,7 @@ function StepCell({ step }: { step: TrajectoryStep | undefined }) {
   );
 }
 
-/** LOU-D45: two runs' model turns side by side, the first diverging turn and the drift entries highlighted. */
+/** Two runs' model turns side by side, the first diverging turn and the drift entries highlighted. */
 export function TrajectoryCompare({ comparison, a, b }: { comparison: RunComparisonPayload; a: string; b: string }) {
   const turns = Math.max(comparison.a.length, comparison.b.length);
   return (
@@ -175,7 +175,7 @@ function ForkResult({ fork, agentId }: { fork: ForkView | undefined; agentId: st
   return <TrajectoryCompare comparison={fork.comparison} a={agentId} b={fork.runId} />;
 }
 
-/** LOU-D45 time travel: the loaded agent's run history, "Edit and replay from here", and the fork next to the original. */
+/** Time travel: the loaded agent's run history, "Edit and replay from here", and the fork next to the original. */
 export function HistoryPanel() {
   const { agentId, runStatus } = useAppState();
   const steps = useRunHistory(agentId, runStatus?.updatedAt);

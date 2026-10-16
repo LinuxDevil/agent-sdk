@@ -1,5 +1,5 @@
 /**
- * LOU-P3: `loushoAgent()` for Svelte, a store over an agent's typed event
+ * `loushoAgent()` for Svelte, a store over an agent's typed event
  * stream. Same state and actions as the React hook and the Vue composable;
  * the logic lives in the framework-neutral reducer and run logic (src/ui).
  * The Svelte store contract is just `subscribe(run) => unsubscribe`, so it is

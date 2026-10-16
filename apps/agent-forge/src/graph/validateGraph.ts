@@ -145,7 +145,7 @@ function requiredFieldErrors(node: AgentGraphNode): ValidationError[] {
 }
 
 /**
- * LOU-T3: router branch checks - each router's OUTGOING edges are its
+ * Router branch checks - each router's OUTGOING edges are its
  * branches (see graph/types.ts's `AgentGraphEdge.condition`). A router
  * with fewer than two outgoing edges isn't actually branching (it's just
  * an expensive pass-through), and more than one edge with no condition
@@ -173,7 +173,7 @@ function routerBranchErrors(node: AgentGraphNode, edges: AgentGraphEdge[]): Vali
 }
 
 /**
- * LOU-Q3: an enabled hook with no code body would silently no-op at
+ * An enabled hook with no code body would silently no-op at
  * runtime (sandboxRunHook() would just run an empty function) - flag it
  * here so the Inspector's hook-chip list can surface it inline, the same
  * way a required node field is surfaced above.
@@ -204,7 +204,7 @@ function llmCountErrors(nodes: AgentGraphNode[]): ValidationError[] {
 /**
  * Structural + per-node-type validation for `AgentGraphSpec`. Returns
  * structured errors (node/edge id + message) rather than throwing, so the
- * canvas UI (LOU-M) can surface them inline per-node instead of a single
+ * canvas UI can surface them inline per-node instead of a single
  * crash.
  */
 export function validateGraph(graph: AgentGraphSpec): ValidationResult {

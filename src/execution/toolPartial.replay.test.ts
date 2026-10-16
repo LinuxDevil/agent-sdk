@@ -1,5 +1,5 @@
 /**
- * CI replay of the N13b live recording (gpt-4o-mini via OpenRouter, `__fixtures__/cassettes/n13b-tool-partial.json`):
+ * CI replay of the live recording (gpt-4o-mini via OpenRouter, `__fixtures__/cassettes/n13b-tool-partial.json`):
  * the model calls the generator tool `count_to({ n: 3 })`, its snapshots stream as `tool.partial`, and
  * the model answers from the final result. Replayed with `match: 'request'`, so the run must send the
  * recorded requests exactly: the second one carries only the final result, no snapshot. No key, no
@@ -14,7 +14,7 @@ import { countToTool, PROMPT, runCounting } from './__fixtures__/toolPartialLive
 
 const CASSETTE = join(__dirname, '__fixtures__', 'cassettes', 'n13b-tool-partial.json');
 
-describe.skipIf(!existsSync(CASSETTE))('generator tool, replayed from a real recording (N13b)', () => {
+describe.skipIf(!existsSync(CASSETTE))('generator tool, replayed from a real recording', () => {
   it('streams tool.partial snapshots; the model answers from the final result', async () => {
     const provider = recordReplay(undefined, { cassette: CASSETTE, mode: 'replay', match: 'request' });
     const agent = createAgent({ provider, tools: [countToTool()], maxSteps: 3 });

@@ -1,5 +1,5 @@
 /**
- * LOU-D15: parseEventStream() reads SSE and NDJSON framed event streams.
+ * ParseEventStream() reads SSE and NDJSON framed event streams.
  */
 import { describe, it, expect } from 'vitest';
 import { AGENT_EVENT_SCHEMA_VERSION, type AgentEvent } from '../execution/agentEvents';
@@ -30,7 +30,7 @@ async function collect(response: { body: ReadableStream<Uint8Array> | null }): P
   return out;
 }
 
-describe('parseEventStream (LOU-D15)', () => {
+describe('parseEventStream', () => {
   it('reads SSE framing, ignoring comments, event/id fields and blank lines', async () => {
     const sse = `: keep-alive\n\n${sample.map((e) => `event: message\nid: ${e.seq}\ndata: ${JSON.stringify(e)}\n\n`).join('')}`;
     expect(await collect(chunked(sse))).toEqual(sample);
@@ -65,7 +65,7 @@ describe('parseEventStream (LOU-D15)', () => {
     expect(cancelled).toBe(true);
   });
 
-  it('keeps agent.drift and todo.updated events (N12)', async () => {
+  it('keeps agent.drift and todo.updated events', async () => {
     const drift = { ...base, seq: 1, type: 'agent.drift', model: { from: 'a', to: 'b' }, toolsAdded: [], toolsRemoved: [], instructions: false };
     const todo = { ...base, seq: 2, type: 'todo.updated', todos: [], counts: { pending: 0, in_progress: 0, completed: 0, total: 0 }, toolCallId: 'w' };
     const text = [drift, todo].map((e) => `data: ${JSON.stringify(e)}\n\n`).join('');

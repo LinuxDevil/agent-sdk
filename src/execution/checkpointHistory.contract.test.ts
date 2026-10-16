@@ -1,5 +1,5 @@
 /**
- * LOU-D43: one contract suite for `CheckpointStore.history()`, run against
+ * One contract suite for `CheckpointStore.history()`, run against
  * every store that implements it (the in-memory store, `SqliteStore`,
  * `LocalStorageCheckpointStore`, `KVCheckpointStore` and `fileStore()`), plus the `getCheckpointHistory()` helper on
  * stores that do not.

@@ -110,21 +110,21 @@ describe('RunManager', () => {
     expect(checkpoint!.stepIndex).toBeGreaterThanOrEqual(1);
 
     // Running again picks the same checkpoint back up (AgentExecutor
-    // rehydrates from it; LOU-U8 appends the new `input` after the resumed
+    // rehydrates from it; the resumed run appends the new `input` after the resumed
     // turn) rather than starting a brand new conversation from scratch.
     await runManager.run(agentId, 'a follow-up appended on resume', SPEC);
     const resumed = await waitForStatus(runManager, agentId, (s) => s.status === 'done');
     expect(resumed.resultText).toBe('This is a mock response.');
 
     // And the checkpoint is kept, marked finished, once that resumed run
-    // completes successfully (LOU-U8: the next run continues the session).
+    // completes successfully (the next run continues the session).
     const afterResume = await checkpointStore.load(agentId);
     expect(afterResume?.status).toBe('finished');
     expect(afterResume?.messages.map((m) => m.content)).toContain('please use current-date');
     expect(afterResume?.messages.map((m) => m.content)).toContain('a follow-up appended on resume');
   });
 
-  it('streams each model step over the WebSocket: several text.delta, one text.done per step (M9)', async () => {
+  it('streams each model step over the WebSocket: several text.delta, one text.done per step', async () => {
     const server = http.createServer();
     const wss = attachWebSocketServer(server, runManager);
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -167,7 +167,7 @@ describe('RunManager', () => {
     }
   });
 
-  it('emits structured log entries derived from the AgentEvent stream (O1)', async () => {
+  it('emits structured log entries derived from the AgentEvent stream', async () => {
     const logs: any[] = [];
     runManager.on('log', (agentId: string, entry: any) => {
       if (agentId === 'agent-logs') logs.push(entry);
@@ -182,7 +182,7 @@ describe('RunManager', () => {
     expect(logs.some((l) => l.phase === 'tool' && l.toolName === 'current-date')).toBe(true);
   });
 
-  it('emits real span start/end events from the SDK TraceExporter hook (O2)', async () => {
+  it('emits real span start/end events from the SDK TraceExporter hook', async () => {
     const spans: any[] = [];
     runManager.on('span', (agentId: string, span: any) => {
       if (agentId === 'agent-spans') spans.push(span);
@@ -195,7 +195,7 @@ describe('RunManager', () => {
     expect(runSpans).toHaveLength(2); // start + end
     const [startSpan, endSpan] = runSpans;
     expect(startSpan.endTime).toBeUndefined();
-    // M5b: span kind is forwarded, and status when the SDK set one (only a failed span has it).
+    // Span kind is forwarded, and status when the SDK set one (only a failed span has it).
     expect(startSpan.kind).toBe('internal');
     expect(spans.every((s) => s.status === undefined)).toBe(true);
     expect(spans.find((s) => s.attributes['gen_ai.operation.name'] === 'chat')?.kind).toBe('client');
@@ -206,7 +206,7 @@ describe('RunManager', () => {
     ).toBe(true);
   });
 
-  it('pauses a run at a configured breakpoint and resumes on continueRun() (O3)', async () => {
+  it('pauses a run at a configured breakpoint and resumes on continueRun()', async () => {
     const debugStates: any[] = [];
     let pauseCount = 0;
     // The fixture SPEC's prompt drives the mock provider through a tool
@@ -245,7 +245,7 @@ describe('RunManager', () => {
     await expect(runManager.run('agent-4', 'hi', errorSpec)).rejects.toThrow();
   });
 
-  describe('LOU-T3: branching graphs run through FlowExecutor', () => {
+  describe('branching graphs run through FlowExecutor', () => {
     function branchingGraph(): AgentGraphSpec {
       return {
         version: 1,
@@ -299,7 +299,7 @@ describe('RunManager', () => {
       // SPEC (module-level, used by every other test in this file) has no
       // router node and therefore no spec.policy.flow - graphToSpec/
       // extractFlowFromSpec never touch it, so this is exactly the original
-      // pre-LOU-T3 code path with the exact original result text.
+      // original code path with the exact original result text.
       expect((SPEC.policy as { flow?: unknown } | undefined)?.flow).toBeUndefined();
       await runManager.run('flat-agent', 'please use current-date', SPEC);
       const final = await waitForStatus(runManager, 'flat-agent', (s) => s.status === 'done');

@@ -1,5 +1,5 @@
 /**
- * createShellTool: a `shell` tool over any ShellProvider (LOU-X6).
+ * createShellTool: a `shell` tool over any ShellProvider.
  */
 import { z } from 'zod';
 import { defineTool, type DefinedTool } from '../defineTool';

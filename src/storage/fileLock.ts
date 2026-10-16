@@ -1,5 +1,5 @@
 /**
- * Eve MEM-F8: a lock file that serializes a load-modify-save of one file
+ * A lock file that serializes a load-modify-save of one file
  * across every writer - other provider instances in this process and other
  * processes sharing the directory - so concurrent writers never drop each
  * other's changes. Taking the lock is an exclusive create of `<file>.lock`

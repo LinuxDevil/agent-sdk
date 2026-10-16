@@ -11,7 +11,7 @@ function makeSingleToolCallProvider(toolName: string) {
   return mockModel([{ toolCalls: [{ name: toolName }] }, 'done']);
 }
 
-describe('AgentExecutor sandbox wiring (LOU-F5 / LOU-F fix)', () => {
+describe('AgentExecutor sandbox wiring', () => {
   it("routes a requiresSandbox:true tool with sandboxExecute() through the configured SandboxAdapter, never touching tool.execute()", async () => {
     const toolExecute = vi.fn().mockResolvedValue({ done: true });
     const toolRegistry = new ToolRegistry();

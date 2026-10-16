@@ -1,5 +1,5 @@
 /**
- * N9c: OAuth for HTTP MCP servers against a local fake (authorization server
+ * OAuth for HTTP MCP servers against a local fake (authorization server
  * plus protected MCP resource, see `__fixtures__/fakeMcpOAuth.ts`): not signed
  * in is `needs-auth`, the operator's sign-in link carries PKCE, `state`,
  * `resource`, the registered client and the redirect URI, the callback stores
@@ -83,7 +83,7 @@ function rawOAuthRows(file: string): string {
   }
 }
 
-describe('MCP servers with OAuth (N9c)', () => {
+describe('MCP servers with OAuth', () => {
   it('not signed in: connect fails with LOUSHO_MCP_AUTH_REQUIRED and status needs-auth, without registering or starting a sign-in', async () => {
     const server = await fake();
     const tokens = memoryStore().tokens;
@@ -156,7 +156,7 @@ describe('MCP servers with OAuth (N9c)', () => {
     expect(mcpCalls.length).toBeGreaterThan(1);
   });
 
-  it('N2: a deferLoading server that needs a sign-in fails the run like any server; once signed in, its tools load through tool_search', async () => {
+  it('a deferLoading server that needs a sign-in fails the run like any server; once signed in, its tools load through tool_search', async () => {
     const server = await fake();
     const search = { toolCalls: [{ name: 'tool_search', id: 'call_search', args: { query: 'support' } }] };
     const model = mockModel([search, CALL, { text: 'Done.' }]);

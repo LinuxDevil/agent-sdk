@@ -1,6 +1,6 @@
 /**
  * resumeAfterApproval() for a run that paused because one of its sub-agents
- * paused (LOU-Y1). The decision is for the sub-agent's call, so instead of
+ * paused. The decision is for the sub-agent's call, so instead of
  * running a tool of this run, the parent's tool call (`task` or a delegate
  * tool) is re-entered: it resumes the sub-agent with the decision (which
  * runs or rejects the sub-agent's pending call and lets it finish), and the
@@ -34,20 +34,20 @@ export interface ResumeContext {
   messages: Message[];
   toolRegistry: ToolRegistry;
   executeOptions: ResumeExecuteOptions;
-  /** N14: the run's provider (a decided `run_code` call rebuilds its tool with it). */
+  /** The run's provider (a decided `run_code` call rebuilds its tool with it). */
   provider: LLMProvider;
-  /** The resumed run's usage so far: a resumed sub-agent's usage is added to it (LOU-V5). */
+  /** The resumed run's usage so far: a resumed sub-agent's usage is added to it. */
   usage: RunUsage;
   /** `AgentExecutor.execute` and `resumeAfterApproval`, for the sub-agent. */
   execute: (options: ExecuteOptions) => Promise<ExecutionResult>;
   resumeRun: ResumeRun;
-  /** N10b: who decided (`ResumeExecuteOptions.approver`), frozen. */
+  /** Who decided (`ResumeExecuteOptions.approver`), frozen. */
   approver?: Readonly<Principal>;
   /** #281: the continued run's `invoke_agent` span, the parent of the decided call's `execute_tool` span. */
   runSpanId?: string;
-  /** Eve TOOLS-F12: for a call of a decided group, whether it had expired when it was decided (else `expiresAt` is checked now). */
+  /** For a call of a decided group, whether it had expired when it was decided (else `expiresAt` is checked now). */
   expired?: boolean;
-  /** Eve TOOLS-F12: for a call of a decided group, the group's calls after it (a sign-in pause keeps them with it). */
+  /** For a call of a decided group, the group's calls after it (a sign-in pause keeps them with it). */
   laterInGroup?: ApprovalGroupMember[];
 }
 
@@ -65,7 +65,7 @@ export async function resumeSubagentCall(
 ): Promise<{ message: Message } | { paused: ExecutionResult }> {
   const { executeOptions } = ctx;
   // The `task` tool is per run: rebuild it from the same `subagents` option.
-  // LOU-Y6: under the paused run's sessionId, so the child's transcript is saved where the lead finds it.
+  // Under the paused run's sessionId, so the child's transcript is saved where the lead finds it.
   const { toolRegistry } = await withSubagents(ctx.snapshot.agent, ctx.toolRegistry, executeOptions.subagents, {
     maxSubagentDepth: executeOptions.maxSubagentDepth,
     sessionId: ctx.snapshot.sessionId,
@@ -92,8 +92,7 @@ export async function resumeSubagentCall(
 }
 
 /**
- * Saves a new approval record for the sub-agent's next pending call (Eve
- * TOOLS-F12: or for a sub-agent held while its step's other calls were
+ * Saves a new approval record for the sub-agent's next pending call (or for a sub-agent held while its step's other calls were
  * decided). The turn's calls still to run wait with it.
  */
 export async function pauseAgain(ctx: ResumeContext, suspension: SubagentSuspension): Promise<ExecutionResult> {
@@ -102,10 +101,10 @@ export async function pauseAgain(ctx: ResumeContext, suspension: SubagentSuspens
   const record = suspensionRecord(snapshot, { messages, steps: snapshot.steps, usage, fingerprint: snapshot.agentFingerprint }, suspension);
   if (snapshot.remainingToolCalls?.length) record.snapshot.remainingToolCalls = snapshot.remainingToolCalls;
   if (snapshot.contextSessionId !== undefined) record.snapshot.contextSessionId = snapshot.contextSessionId;
-  // Eve TOOLS-F12: one record per call of the sub-agent's paused step.
+  // One record per call of the sub-agent's paused step.
   const records = approvalRecords(record);
   for (const entry of records) await ctx.approvalStore.save(entry.pending, entry.snapshot);
-  // LOU-V14: a streamed resume reports the new pause like a fresh run does.
+  // A streamed resume reports the new pause like a fresh run does.
   for (const entry of records) runEventsOf(ctx.executeOptions as ExecuteOptions)?.approvalRequested(entry.pending);
   return {
     text: '',

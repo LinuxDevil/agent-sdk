@@ -1,5 +1,5 @@
 /**
- * JSON for Workers KV records that can hold image and file bytes (Eve DUR-F5):
+ * JSON for Workers KV records that can hold image and file bytes:
  * a `Uint8Array` is saved as `{ "$bytes": "<base64>" }`, the encoding of
  * `FileSessionStore`, so either store reads the other (see ../storage/jsonBytes).
  */

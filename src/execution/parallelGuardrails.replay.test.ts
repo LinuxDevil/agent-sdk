@@ -1,5 +1,5 @@
 /**
- * CI replay of the N5b live recording (gpt-4o-mini via OpenRouter): a streamed run with
+ * CI replay of the live recording (gpt-4o-mini via OpenRouter): a streamed run with
  * `moderationGuardrail({ runInParallel: true })` on a clean input (passes, the text arrives) and on a
  * moderation hit (blocked, no text). The agent's calls and the guardrail's calls are in two cassettes,
  * `__fixtures__/cassettes/n5b-parallel-guardrails-{agent,guardrail}.json`; in the recording the hit's agent
@@ -26,7 +26,7 @@ async function streamed(input: string) {
   return { text, result: await run.result };
 }
 
-describe('parallel input guardrails, replayed from a real recording (N5b)', () => {
+describe('parallel input guardrails, replayed from a real recording', () => {
   it('a clean input passes and its streamed text arrives', async () => {
     const { text, result } = await streamed(CLEAN);
     expect(result.finishReason).toBe('stop');

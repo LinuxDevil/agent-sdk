@@ -1,5 +1,5 @@
 /**
- * SandboxShell: a ShellProvider backed by a SandboxAdapter (LOU-X6).
+ * SandboxShell: a ShellProvider backed by a SandboxAdapter.
  */
 import type { SandboxAdapter } from '../../security/sandboxCore';
 import { commandEnv } from '../../security/commandEnv';
@@ -24,7 +24,7 @@ export interface SandboxShellOptions {
    * `['CI']`. Nothing else from the host is passed. A container brings its own
    * `PATH` and `HOME`; a host-process adapter (`NoopSandbox`) adds the same
    * small base `NodeWorkspace` uses. `true` lets a host-process adapter pass
-   * the whole host environment (the behavior before LOU-X11); a container
+   * the whole host environment (the behavior before); a container
    * still never gets it.
    */
   inheritEnv?: readonly string[] | true;

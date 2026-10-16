@@ -1,5 +1,5 @@
 /**
- * The contract every `OAuthTokenStore` keeps (N9a), run against the memory,
+ * The contract every `OAuthTokenStore` keeps, run against the memory,
  * file, SQLite and KV stores. `make` returns a fresh, empty store whose
  * persistent implementations already have a token key.
  */

@@ -10,7 +10,7 @@ const systemOf = (call: MockRequest | undefined): string =>
   String(call?.messages.find((m) => m.role === 'system')?.content ?? '');
 const toolsOf = (call: MockRequest | undefined): string[] => (call?.tools ?? []).map((t) => t.function.name);
 
-describe('memory/ in an agent directory (LOU-W6.3)', () => {
+describe('memory/ in an agent directory', () => {
   it('loads memory/*.ts: the name defaults to the file name, an explicit name wins', async () => {
     const { config, manifest } = await resolveAgentDir(fixture('memory'), { provider: mockModel(['x']) });
     expect(manifest.memory).toEqual(['notes', 'user-prefs']);

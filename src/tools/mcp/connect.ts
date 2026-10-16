@@ -1,5 +1,5 @@
 /**
- * connectMcp() - connect MCP servers from config (LOU-Z4).
+ * connectMcp() - connect MCP servers from config.
  *
  * Opens one `@modelcontextprotocol/sdk` client per `McpServerSpec` (stdio:
  * spawn `command`; HTTP: streamable HTTP to `url`), lists each server's
@@ -23,7 +23,7 @@ import { assertMcpOAuth, hasMcpOAuth, isMcpAuthError, mcpAuthRequired, mcpFetch,
 /**
  * Where one server's connection stands: not open (yet, or after `close()`),
  * open, failed (it could not connect, or its connection dropped without a
- * `close()`, e.g. the stdio process exited; Eve TOOLS-F18), or (N9c) waiting
+ * `close()`, e.g. the stdio process exited), or waiting
  * for an operator's OAuth sign-in.
  */
 export type McpServerStatus = 'idle' | 'connected' | 'failed' | 'needs-auth';
@@ -45,12 +45,12 @@ export interface ConnectMcpOptions {
   /** Receives skipped-server and skipped-tool warnings. Defaults to a no-op logger. */
   logger?: Logger;
   /**
-   * N9c: where servers with `oauth` keep their tokens (`AgentStore.tokens`);
+   * Where servers with `oauth` keep their tokens (`AgentStore.tokens`);
    * required when any server has `oauth` (`LOUSHO_OAUTH_STORE_MISSING`).
    */
   tokens?: OAuthTokenStore;
   /**
-   * Eve TOOLS-F18: called after a server sent `notifications/tools/list_changed`
+   * Called after a server sent `notifications/tools/list_changed`
    * and its tools were listed again; `tools` is the updated
    * {@link McpConnections.tools} record (updated in place).
    */
@@ -62,9 +62,9 @@ export interface McpConnections {
   /**
    * Every server's tools, keyed `<server>__<tool>` (also the `name` each
    * descriptor carries); pass them to `createAgent({ tools })` as the record
-   * they are, inside a `tools` array, or as `Object.values(tools)` (LOU-R12).
+   * they are, inside a `tools` array, or as `Object.values(tools)`.
    * A server's `notifications/tools/list_changed` lists its tools again and
-   * updates this record in place (Eve TOOLS-F18).
+   * updates this record in place.
    */
   readonly tools: Record<string, NamedToolDescriptor>;
   /** Disconnects every server (stops stdio processes). */
@@ -167,7 +167,7 @@ async function openTransport(server: McpServerSpec, authProvider?: OAuthClientPr
       PEER,
       () => import('@modelcontextprotocol/sdk/client/streamableHttp.js')
     );
-    // N9c: with OAuth, `headers` go only to the server's own origin (mcpFetch), never to its authorization server.
+    // With OAuth, `headers` go only to the server's own origin (mcpFetch), never to its authorization server.
     const options = authProvider ? { authProvider, fetch: mcpFetch(server) } : { requestInit: { headers: server.headers } };
     return new StreamableHTTPClientTransport(new URL(server.url), options);
   }
@@ -186,7 +186,7 @@ async function openTransport(server: McpServerSpec, authProvider?: OAuthClientPr
   });
 }
 
-/** N9c: the OAuth provider of a server with `oauth` (validated, and refused without a token store). */
+/** The OAuth provider of a server with `oauth` (validated, and refused without a token store). */
 function oauthProvider(name: string, server: McpServerSpec, tokens: OAuthTokenStore | undefined): OAuthClientProvider | undefined {
   if (!hasMcpOAuth(server)) return undefined;
   assertMcpOAuth(name, server);
@@ -204,7 +204,7 @@ class ServerConnection {
   status: McpServerStatus = 'idle';
   private client: Promise<Client> | undefined;
   private closed = false;
-  /** Eve TOOLS-F18: called when the server says its tool list changed. */
+  /** Called when the server says its tool list changed. */
   onToolsChanged: (() => void) | undefined;
 
   constructor(
@@ -247,7 +247,7 @@ class ServerConnection {
   }
 
   /**
-   * N9c: a call refused for want of a sign-in (a revoked grant) drops the
+   * A call refused for want of a sign-in (a revoked grant) drops the
    * client, so the next call reconnects with the token the operator stores.
    */
   private async failed(error: unknown): Promise<never> {
@@ -283,7 +283,7 @@ class ServerConnection {
         throw error;
       }
       const current = this.client;
-      // A dropped connection (e.g. the process exited) counts as closed, and as failed (Eve TOOLS-F18).
+      // A dropped connection (e.g. the process exited) counts as closed, and as failed.
       client.onclose = () => {
         if (this.client !== current) return;
         this.client = undefined;
@@ -310,7 +310,7 @@ class ServerConnection {
     }
   }
 
-  /** Eve TOOLS-F18: a connection that dropped without `close()` is logged, with the exit code and stderr tail. */
+  /** A connection that dropped without `close()` is logged, with the exit code and stderr tail. */
   private warnClosed(watch: StdioWatch | undefined): void {
     const { exitCode, signal } = watch?.exit() ?? {};
     const exit = exitCode !== undefined ? ` (exit code ${exitCode})` : signal ? ` (signal ${signal})` : '';
@@ -365,7 +365,7 @@ export async function connectMcp(
       approval: servers[connection.name].approval,
       timeoutMs: servers[connection.name].timeoutMs,
       tools: servers[connection.name].tools,
-      // N2: a server with `deferLoading` has all its tools withheld until `tool_search` finds them.
+      // A server with `deferLoading` has all its tools withheld until `tool_search` finds them.
       ...(servers[connection.name].deferLoading && { deferLoading: true }),
     });
   const loaded = await Promise.allSettled(connections.map(load));
@@ -389,7 +389,7 @@ export async function connectMcp(
     }
     owned.set(connection, keys);
   };
-  /** Eve TOOLS-F18: after `notifications/tools/list_changed`, list the server's tools again. */
+  /** After `notifications/tools/list_changed`, list the server's tools again. */
   const relist = async (connection: ServerConnection) => {
     try {
       const fresh = await load(connection);
@@ -418,7 +418,7 @@ export async function connectMcp(
     const reason = error instanceof Error ? error.message : String(error);
     if ((onError === 'throw' && !servers[name].optional) || error instanceof MissingPeerDependencyError) {
       await close();
-      // N9c: LOUSHO_MCP_AUTH_REQUIRED (and LOUSHO_MCP_START_FAILED) keep their code.
+      // LOUSHO_MCP_AUTH_REQUIRED (and LOUSHO_MCP_START_FAILED) keep their code.
       throw error instanceof MissingPeerDependencyError || error instanceof McpStartError || connections[index].status === 'needs-auth'
         ? error
         : new Error(`connectMcp: MCP server '${name}' failed to connect: ${reason}`, { cause: error });

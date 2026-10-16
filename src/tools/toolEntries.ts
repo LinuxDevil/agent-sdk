@@ -1,5 +1,5 @@
 /**
- * LOU-R12: `createAgent({ tools })` and `ToolRegistry.registerMany()` accept
+ * `createAgent({ tools })` and `ToolRegistry.registerMany()` accept
  * tools as a record keyed by name, as an array of named tools, or as an
  * array mixing named tools and records (e.g. `[mcp.tools, weatherTool]` or
  * `[...Object.values(mcp.tools), weatherTool]`). Every shape is flattened

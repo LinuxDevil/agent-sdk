@@ -33,7 +33,7 @@ export interface MigrateMemoryKeysResult {
 }
 
 /**
- * Eve MEM-F10: copies a slot's items from the provider key earlier alphas
+ * Copies a slot's items from the provider key earlier alphas
  * used - the bare scope key (`global`, `session:s1`, `user:u-42`) - to the key
  * it uses now, `<slot name>#<scope key>` (see {@link memoryKey}). Items are
  * added oldest first, so the newest stays newest; `add()` dedupes on text, so

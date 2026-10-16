@@ -1,7 +1,7 @@
 import { TriggerAdapter } from './types';
 
 /**
- * Trigger Registry (LOU-T5)
+ * Trigger Registry
  *
  * Manages registration and retrieval of TriggerAdapters. Deliberately
  * mirrors ToolRegistry's API shape (src/tools/ToolRegistry.ts) 1:1 -

@@ -12,11 +12,11 @@ import { ConfigurationError, SDKError } from './errors';
 import type { ApprovalKind } from './ApprovalGate';
 import type { Principal } from '../auth/types';
 
-/** Key of `AgentConfig.metadata` holding a dynamic run's `ctx` and model (LOU-V15): saved in approval snapshots and checkpoints. */
+/** Key of `AgentConfig.metadata` holding a dynamic run's `ctx` and model: saved in approval snapshots and checkpoints. */
 export const RUN_CONFIG_KEY = 'loushoRunConfig';
 
 /**
- * Where the run recorded in a {@link Checkpoint} stands (LOU-U8):
+ * Where the run recorded in a {@link Checkpoint} stands:
  *
  * - `'in-progress'`: the run has not finished (it crashed, was aborted, or
  *   is still running). `execute()` with the same `sessionId` resumes it.
@@ -29,7 +29,7 @@ export const RUN_CONFIG_KEY = 'loushoRunConfig';
  */
 export type CheckpointStatus = 'in-progress' | 'awaiting-approval' | 'finished';
 
-/** Eve DUR-F11: a failed attempt at a checkpointed session turn (`Checkpoint.lastError`). */
+/** A failed attempt at a checkpointed session turn (`Checkpoint.lastError`). */
 export interface CheckpointError {
   message: string;
   /** The error's `LOUSHO_*` code, when it has one. */
@@ -54,16 +54,16 @@ export interface Checkpoint {
   messages: Message[];
   toolCalls: unknown[];
   /**
-   * Running usage of the run so far (LOU-V5). A resumed run continues from
-   * these totals. Checkpoints written before LOU-V5 hold only the three
+   * Running usage of the run so far. A resumed run continues from
+   * these totals. Checkpoints written before hold only the three
    * token counts and still load (their tokens are kept, cost is unknown).
    */
   usage: CheckpointUsage;
-  /** Per-call usage so far (LOU-V5); absent on older checkpoints. */
+  /** Per-call usage so far; absent on older checkpoints. */
   stepUsage?: StepUsage[];
   finishReason?: string;
   /**
-   * LOU-T1: opaque, consumer-owned business/domain state co-located with
+   * Opaque, consumer-owned business/domain state co-located with
    * execution state on the same checkpoint record (an order id, a ticket
    * id, a workflow stage - whatever a caller's application needs to stay
    * aligned with this run across a crash or an approval pause/resume
@@ -98,27 +98,27 @@ export interface Checkpoint {
    */
   businessState?: unknown;
   /**
-   * LOU-U8: where the run stands - see {@link CheckpointStatus}. Absent on
+   * Where the run stands - see {@link CheckpointStatus}. Absent on
    * checkpoints written before this field existed, which are treated as
    * `'in-progress'` (the only kind that was ever kept).
    */
   status?: CheckpointStatus;
-  /** LOU-U8: with `status: 'awaiting-approval'`, the id of the pending approval (the first of `approvalIds`). */
+  /** With `status: 'awaiting-approval'`, the id of the pending approval (the first of `approvalIds`). */
   approvalId?: string;
   /**
-   * Eve TOOLS-F12: with `status: 'awaiting-approval'`, every approval of the
+   * With `status: 'awaiting-approval'`, every approval of the
    * paused step not decided yet, in call order, when there are several.
    * Absent for a step paused on one call and on older checkpoints.
    */
   approvalIds?: string[];
   /**
-   * Eve DUR-F11: why the last attempt at a session's turn failed, written by
+   * Why the last attempt at a session's turn failed, written by
    * the session when its run throws. A provider error that retrying cannot fix
    * (`retryable: false`, e.g. a 400) makes `send()` fail with
    * `LOUSHO_SESSION_TURN_FAILED` instead of replaying the turn.
    */
   lastError?: CheckpointError;
-  /** Eve DUR-F11: how many attempts at the session's turn failed so far. */
+  /** How many attempts at the session's turn failed so far. */
   attempts?: number;
   /**
    * Set by a session whose turn failed before the run saved any checkpoint
@@ -128,33 +128,33 @@ export interface Checkpoint {
    */
   unstarted?: boolean;
   /**
-   * M10a: with `status: 'awaiting-approval'`, `'question'` when the pending
+   * With `status: 'awaiting-approval'`, `'question'` when the pending
    * approval is an `ask_question` call (`PendingApproval.kind`), so a
    * process that did not make the pause can tell a question from a tool
    * approval. Absent for a tool approval and on older checkpoints.
    */
   approvalKind?: ApprovalKind;
   /**
-   * LOU-W9.2: the fingerprint of the agent that wrote this checkpoint. A
+   * The fingerprint of the agent that wrote this checkpoint. A
    * resume compares it with the resuming agent's (`onAgentDrift`). Absent on
    * older checkpoints, which resume without any check.
    */
   agentFingerprint?: AgentFingerprint;
   /**
-   * LOU-V15.2: with `createAgent({ model | instructions | tools: fn })`, the
+   * With `createAgent({ model | instructions | tools: fn })`, the
    * run's `ctx` and the model it chose, so a crash resume re-resolves the
    * agent the same way the run started. Opaque; absent for static agents.
    */
   runConfig?: unknown;
   /**
-   * N10b: who the run acts for (`ExecuteOptions.principal`, docs/auth.md), so a
+   * Who the run acts for (`ExecuteOptions.principal`, docs/auth.md), so a
    * resumed unfinished run acts for the same caller. It may hold personal data
    * from the token's claims, like the transcript. Absent for a run without
    * one and on older checkpoints (they resume with no principal).
    */
   principal?: Principal;
   /**
-   * LOU-R16: the run's `ExecuteOptions.metadata` (the hook contexts'
+   * The run's `ExecuteOptions.metadata` (the hook contexts'
    * `ctx.metadata`), so a resumed unfinished run's hooks keep seeing it when
    * the resuming call passes none. Absent for a run without one and on older
    * checkpoints.
@@ -169,7 +169,7 @@ export interface Checkpoint {
    */
   startedToolCallIds?: string[];
   /**
-   * H3-6: what the sub-agents still running when this was saved had spent
+   * What the sub-agents still running when this was saved had spent
    * so far, one entry per sub-agent run (updated after each of its model
    * calls). Not in `usage` yet: a run resumed from this checkpoint adds them
    * to its usage (as delegated runs), so a crash mid-sub-agent does not lose
@@ -177,14 +177,14 @@ export interface Checkpoint {
    */
   delegatedInFlight?: CheckpointUsage[];
   /**
-   * Eve DUR-F17: present on a flow run's checkpoint (`FlowExecutor` with a
+   * Present on a flow run's checkpoint (`FlowExecutor` with a
    * `checkpointStore` and `runId`): where the flow stands. Opaque to agent runs.
    */
   flow?: FlowCheckpointState;
 }
 
 /**
- * Eve TOOLS-F12: the approvals a paused checkpoint waits on - `approvalIds`
+ * The approvals a paused checkpoint waits on - `approvalIds`
  * when the step paused on several calls, else its one `approvalId`; empty
  * when it waits on none.
  */
@@ -193,7 +193,7 @@ export function pausedApprovalIds(checkpoint: Pick<Checkpoint, 'approvalId' | 'a
   return checkpoint.approvalId === undefined ? [] : [checkpoint.approvalId];
 }
 
-/** Eve DUR-F17: a flow run's state in its {@link Checkpoint} (`checkpoint.flow`). */
+/** A flow run's state in its {@link Checkpoint} (`checkpoint.flow`). */
 export interface FlowCheckpointState {
   /** The flow's `code`; a resume with another flow is refused. */
   code: string;
@@ -217,7 +217,7 @@ export interface FlowCheckpointState {
   pendingApproval?: FlowPendingApproval;
 }
 
-/** Eve DUR-F17: a flow `toolCall` step paused until its approval is decided. */
+/** A flow `toolCall` step paused until its approval is decided. */
 export interface FlowPendingApproval {
   /** Pass it back as `FlowExecutor.resume(flow, { ..., approval: { approvalId, approved } })`. */
   approvalId: string;
@@ -230,7 +230,7 @@ export interface FlowPendingApproval {
 }
 
 /**
- * One saved checkpoint in a session's history (LOU-D43).
+ * One saved checkpoint in a session's history.
  */
 export interface CheckpointHistoryEntry {
   /** `checkpoint.stepIndex` at the time of the save. */
@@ -255,7 +255,7 @@ export interface CheckpointDeleteOptions {
   keepHistory?: boolean;
 }
 
-/** Changes `AgentExecutor.fork()` applies to the forked checkpoint (LOU-D44), in this order. */
+/** Changes `AgentExecutor.fork()` applies to the forked checkpoint, in this order. */
 export interface ForkPatch {
   /** Rewrites the transcript (it gets a copy). */
   messages?: (messages: Message[]) => Message[];
@@ -272,7 +272,7 @@ export interface ForkPatch {
   appendInput?: string;
 }
 
-/** Options for `AgentExecutor.fork()` (LOU-D44). */
+/** Options for `AgentExecutor.fork()`. */
 export interface ForkOptions {
   /** The session to fork; it is not changed. */
   sessionId: string;
@@ -300,7 +300,7 @@ export const DEFAULT_CHECKPOINT_HISTORY_LIMIT = 50;
 /**
  * Storage-backend-agnostic interface for persisting/loading Checkpoints.
  *
- * `history` is optional (LOU-D43): a store that implements it also appends
+ * `history` is optional: a store that implements it also appends
  * every `save()` to a bounded per-session history (oldest dropped past the
  * store's `historyLimit`), and `delete()` clears that history unless called
  * with `{ keepHistory: true }`. Use {@link getCheckpointHistory} to read it
@@ -316,7 +316,7 @@ export interface CheckpointStore {
   /** Saved checkpoints of the session, newest first; `[]` when there are none. */
   history?(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]>;
   /**
-   * Eve DUR-F15: the latest checkpoint of every id the store holds, ordered by
+   * The latest checkpoint of every id the store holds, ordered by
    * id, optionally only those with a given `status` - e.g.
    * `list({ status: ['in-progress', 'awaiting-approval'] })` finds the runs a
    * crash interrupted. Optional; the file, SQLite, KV (when the namespace
@@ -357,13 +357,13 @@ export interface CheckpointStore {
   releaseLease?(sessionId: string, owner: string): Promise<void>;
 }
 
-/** Options for {@link CheckpointStore.list} (Eve DUR-F15). */
+/** Options for {@link CheckpointStore.list}. */
 export interface CheckpointListOptions {
   /** Only checkpoints with this status, or one of these (a checkpoint without one counts as `'in-progress'`). Default: all. */
   status?: CheckpointStatus | readonly CheckpointStatus[];
 }
 
-/** One checkpoint listed by {@link CheckpointStore.list} (Eve DUR-F15). */
+/** One checkpoint listed by {@link CheckpointStore.list}. */
 export interface CheckpointListEntry {
   /** The id it is saved under: `save(sessionId, checkpoint)`'s `sessionId`. */
   sessionId: string;
@@ -374,7 +374,7 @@ export interface CheckpointListEntry {
 }
 
 /**
- * Eve DUR-F15: the entries of `checkpoints` (`[id, checkpoint]` pairs) that
+ * The entries of `checkpoints` (`[id, checkpoint]` pairs) that
  * `options` selects, ordered by id - the shared body of the stores' `list()`.
  */
 export function listCheckpoints(checkpoints: Iterable<readonly [string, Checkpoint]>, options: CheckpointListOptions = {}): CheckpointListEntry[] {

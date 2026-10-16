@@ -114,7 +114,7 @@ function piToolCall(call: ToolCall): PiToolCallContent {
 
 /**
  * A Lousho `assistant` message as pi's `AssistantMessage`: reasoning blocks
- * (LOU-V13) become thinking parts first (so Anthropic can replay them), then
+ * become thinking parts first (so Anthropic can replay them), then
  * the text, then one `toolCall` part per call. pi requires api/model/usage
  * structurally; history reads only `content`, so they carry placeholders.
  */

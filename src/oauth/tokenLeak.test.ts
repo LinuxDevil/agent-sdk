@@ -1,6 +1,6 @@
 /**
- * N9a: a token in `AgentStore.tokens` never shows up anywhere a run writes.
- * A tool reads the stored token (as N9b's `ctx.getToken()` will) and uses it;
+ * A token in `AgentStore.tokens` never shows up anywhere a run writes.
+ * A tool reads the stored token (as `ctx.getToken()` will) and uses it;
  * then every output of the run is scanned for the token values: agent events,
  * the session transcript, checkpoints and their history, the trace file, the
  * recorded cassette, console output, the store's own files, and the errors of
@@ -70,7 +70,7 @@ function listRepos(store: Required<AgentStore>) {
   });
 }
 
-describe('OAuth tokens stay out of run outputs (N9a)', () => {
+describe('OAuth tokens stay out of run outputs', () => {
   it('a tool that uses a stored token leaks it into no event, transcript, checkpoint, trace, cassette, log or file', async () => {
     const dir = tempDir();
     const logs = captureConsole();

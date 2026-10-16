@@ -1,5 +1,5 @@
 /**
- * Deployment adapters (LOU-I1).
+ * Deployment adapters.
  *
  * A DeploymentAdapter turns an agent config into a deployable artifact for
  * one target platform (a plain Node http server, a Cloudflare Worker, a
@@ -8,7 +8,7 @@
  * lifecycle: scaffold() -> build() -> describe().
  */
 
-/** Options a caller of `scaffold()` can pass to a target (LOU-D14). */
+/** Options a caller of `scaffold()` can pass to a target. */
 export interface DeployOptions {
   /**
    * Bearer auth of the node-server and docker targets: `token` is baked into

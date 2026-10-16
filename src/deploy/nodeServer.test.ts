@@ -1,5 +1,5 @@
 /**
- * LOU-D14: the deployed node server's /chat API, in process with a scripted
+ * The deployed node server's /chat API, in process with a scripted
  * model - sessions, SSE, approvals, the legacy body, bearer auth and the store env.
  */
 import { describe, it, expect, afterEach } from 'vitest';
@@ -163,7 +163,7 @@ describe('deployed node server request checks from the environment', () => {
   });
 });
 
-describe('deployed node server auth list (N10a)', () => {
+describe('deployed node server auth list', () => {
   const basicHeader = (user: string, password: string) => ({ Authorization: `Basic ${btoa(`${user}:${password}`)}` });
 
   async function serveWithPrincipal(options: DeployedServerOptions) {
@@ -193,7 +193,7 @@ describe('deployed node server auth list (N10a)', () => {
   it('checks the list, then LOUSHO_API_TOKEN appended after it, and the run sees who called', async () => {
     const { chat, seen, authenticated } = await serveWithPrincipal({ auth: [basic({ users: { ops: 'pw' } })], env: { LOUSHO_API_TOKEN: 'env-token' } });
     expect(authenticated).toBe(true);
-    // each principal chats in its own session: route auth binds a session id to its first caller (N10b)
+    // each principal chats in its own session: route auth binds a session id to its first caller
     expect((await chat(basicHeader('ops', 'pw'), 's-ops')).status).toBe(200);
     expect((await chat({ Authorization: 'Bearer env-token' }, 's-svc')).status).toBe(200);
     const denied = await chat(basicHeader('ops', 'wrong'));

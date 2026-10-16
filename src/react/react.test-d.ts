@@ -1,5 +1,5 @@
 /**
- * LOU-D15: the public types of `@lousho/build-ai-agent/react`.
+ * The public types of `@lousho/build-ai-agent/react`.
  */
 import { describe, it, expectTypeOf } from 'vitest';
 import { createAgent } from '../createAgent';

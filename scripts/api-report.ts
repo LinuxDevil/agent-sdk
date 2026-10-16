@@ -1,5 +1,5 @@
 /**
- * api-report (A7, #245): one checked-in API report per `package.json` `exports`
+ * api-report (#245): one checked-in API report per `package.json` `exports`
  * entry, generated with @microsoft/api-extractor run programmatically on the
  * entry's `types` file (dist/*.d.ts). The report freezes the public surface
  * for 1.0: `npm run api:update` rewrites api/<name>.api.md, `npm run api:check`

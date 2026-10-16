@@ -1,5 +1,5 @@
 /**
- * LOU-D15: `useLoushoAgent()`, a React hook over an agent's typed event
+ * `useLoushoAgent()`, a React hook over an agent's typed event
  * stream. The state logic lives in the framework-neutral reducer and run
  * logic (src/ui); this file only holds the state in `useReducer`.
  */
@@ -19,7 +19,7 @@ export type { LocalAgentSource, LoushoAgentSource, RemoteAgentSource } from '../
 export type UseLoushoAgentOptions = LoushoAgentOptions;
 
 export interface UseLoushoAgentResult extends AgentUIState, AgentCommands {
-  /** Eve CORE-F17: aborts the run, forgets the in-process session and clears the chat (as in the Vue and Svelte bindings). */
+  /** Aborts the run, forgets the in-process session and clears the chat (as in the Vue and Svelte bindings). */
   reset(): void;
 }
 

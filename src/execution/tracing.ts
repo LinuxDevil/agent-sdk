@@ -1,12 +1,11 @@
 /**
  * Tracing
- * Minimal, exporter-agnostic span tracking for AgentExecutor runs
- * (LOU-E3/E4/E5).
+ * Minimal, exporter-agnostic span tracking for AgentExecutor runs.
  *
  * This intentionally does not depend on @opentelemetry/api or any other
  * tracing library - it is a small internal Span/TraceExporter abstraction
  * that a consumer can bridge into OpenTelemetry (or anything else) by
- * implementing TraceExporter themselves. See examples/tracing/ (LOU-E6)
+ * implementing TraceExporter themselves. See examples/tracing/
  * for a console bridge and a real OTel bridge.
  */
 
@@ -52,7 +51,7 @@ export function recordSpanError(span: Span, error: unknown): void {
   span.status = { code: 'error', message: error instanceof Error ? error.message : String(error) };
 }
 
-/** Cost and estimation of the finished child spans of one open span (LOU-D48). */
+/** Cost and estimation of the finished child spans of one open span. */
 interface UsageRollup {
   costUsd: number;
   /** At least one finished child carried a cost. */
@@ -69,7 +68,7 @@ interface UsageRollup {
  * One span tracked for the rollup. An ended span stays here while it still
  * has open descendants, so a span that outlives its parent (a background
  * sub-agent's run, whose `task` tool span has already ended) can still find
- * the nearest open ancestor (Eve MA-F2).
+ * the nearest open ancestor.
  */
 interface RollupNode {
   rollup: UsageRollup;
@@ -186,7 +185,7 @@ export interface TraceExporter {
  *   rethrown unchanged. The span also gets `error.type` and an error
  *   `status` (see {@link recordSpanError}).
  * - `parentId` lets callers thread parent/child span relationships
- *   (LOU-E5 uses this to nest `llm.generate`/`tool.call` spans under a
+ *   (uses this to nest `llm.generate`/`tool.call` spans under a
  *   top-level `agent.run` span).
  * - `fn` receives the span so callers can read its generated `id` (e.g.
  *   to pass as the `parentId` of a further-nested withSpan() call).
@@ -194,7 +193,7 @@ export interface TraceExporter {
  * - Before `onSpanEnd`, a span whose child spans carried `lousho.cost_usd`
  *   gets the sum as its own (cumulative) `lousho.cost_usd`, absent when a
  *   child with token usage had no known price, and `lousho.usage.estimated`
- *   when any child's tokens were estimated (LOU-D48). A span that ends after
+ *   when any child's tokens were estimated. A span that ends after
  *   its parent adds to the nearest ancestor still open instead.
  */
 export async function withSpan<T>(

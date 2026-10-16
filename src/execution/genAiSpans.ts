@@ -1,7 +1,7 @@
 /**
  * Builds the span names, kinds and attributes for agent runs, model calls
  * and tool executions following the OpenTelemetry GenAI semantic
- * conventions (LOU-D9), dual-emitting the SDK's older ad-hoc attribute
+ * conventions, dual-emitting the SDK's older ad-hoc attribute
  * names. See `semconv.ts` for the spec URL, retrieval date and stability.
  *
  * Message and argument CONTENT is sensitive: the `gen_ai.*` content
@@ -9,7 +9,7 @@
  * `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` environment variable
  * is `true` and `captureContent` was not set). The deprecated content
  * attributes (`input`, `prompt`, `args`, `result`) are only recorded when
- * `redactContent` is explicitly false (Eve MA-F4: they used to be on by
+ * `redactContent` is explicitly false (they used to be on by
  * default, which put prompts and tool output on disk via `fileTraceExporter`).
  */
 
@@ -119,8 +119,7 @@ function requestContent(messages: Message[]): Record<string, unknown> {
  * The run's input in the spec's message schema. A `Message[]` input maps
  * message-for-message; anything else becomes one user text part. Before this
  * a `Message[]` input was `JSON.stringify`'d into the text part's `content`,
- * so `gen_ai.input.messages` carried the messages double-JSON-encoded
- * (LOU-R3).
+ * so `gen_ai.input.messages` carried the messages double-JSON-encoded.
  */
 function agentInputMessages(input: unknown, text: string): unknown[] {
   if (Array.isArray(input)) return (input as Message[]).map(genAiMessage);
@@ -130,7 +129,7 @@ function agentInputMessages(input: unknown, text: string): unknown[] {
 /** The name `createAgent()` gives an agent without a `name`. */
 export const DEFAULT_AGENT_NAME = 'agent';
 
-/** Eve MA-F10: the execute option a sub-agent run carries, so its `invoke_agent` span says which sub-agent it is. */
+/** The execute option a sub-agent run carries, so its `invoke_agent` span says which sub-agent it is. */
 export const SUBAGENT_SPAN = Symbol('lousho.subagentSpan');
 
 /** What a sub-agent's `invoke_agent` span records about it. */

@@ -13,7 +13,7 @@ interface ItemStore {
   load(scopeKey: string): Promise<MemoryItem[]>;
   save(scopeKey: string, items: MemoryItem[]): Promise<void>;
   /**
-   * Eve MEM-F8: loads, changes and saves one key's items as one step that
+   * Loads, changes and saves one key's items as one step that
    * other writers of the same storage (other provider instances, other
    * processes) cannot interleave with. Without it, `itemsProvider` does
    * `load` then `save`, serialized only within this provider instance.
@@ -34,7 +34,7 @@ function wordsOf(text: string): string[] {
  * The newest `limit` items. With a non-blank `query`, only items sharing a
  * whole word with it (any case; its words of 3+ letters, or all its words
  * when it has none that long), the items matching more of its words first,
- * then newest first (Eve MEM-F1).
+ * then newest first.
  */
 function select(items: readonly MemoryItem[], { limit, query }: { limit?: number; query?: string } = {}): MemoryItem[] {
   const newest = items.slice().reverse();
@@ -58,7 +58,7 @@ function select(items: readonly MemoryItem[], { limit, query }: { limit?: number
  * so concurrent adds keep every item - within this provider instance, or
  * across instances and processes when `store` has an atomic `update`. `add`
  * dedupes on `text`: adding an item whose text is already stored returns the
- * stored one unchanged. `upsert` replaces an item by id (Eve MEM-F2).
+ * stored one unchanged. `upsert` replaces an item by id.
  */
 export function itemsProvider(store: ItemStore, { maxItems = 1000 }: MemoryProviderOptions = {}): MemoryProvider {
   const serial = keyedQueue();

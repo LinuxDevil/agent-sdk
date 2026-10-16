@@ -1,5 +1,5 @@
 /**
- * Built-in `ask_question` tool (LOU-X9).
+ * Built-in `ask_question` tool.
  *
  * Lets the agent ask the user a question and wait for the answer. The call
  * pauses the run through the approval mechanism (`needsApproval: true`), so
@@ -55,7 +55,7 @@ export interface AskQuestionResult {
  * ```
  */
 export function askQuestionTool(): DefinedTool<StandardSchemaV1<AskQuestionInput>, AskQuestionResult> {
-  // N4: asking changes nothing, so plan mode lets it through (it still pauses for the answer).
+  // Asking changes nothing, so plan mode lets it through (it still pauses for the answer).
   return allowInPlanMode(defineTool({
     name: ASK_QUESTION_TOOL_NAME,
     description:
@@ -78,7 +78,7 @@ export function askQuestionTool(): DefinedTool<StandardSchemaV1<AskQuestionInput
   }));
 }
 
-/** A run's local tools, as the `[name, descriptor]` entries `toolEntries()` normalizes `createAgent({ tools })` into (LOU-R12). */
+/** A run's local tools, as the `[name, descriptor]` entries `toolEntries()` normalizes `createAgent({ tools })` into. */
 export type ToolEntries = ReadonlyArray<readonly [string, ToolDescriptor]>;
 
 /** `tools` plus `ask_question` when `enabled` (`createAgent({ askQuestion: true })`). */
