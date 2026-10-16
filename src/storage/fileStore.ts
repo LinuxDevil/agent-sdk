@@ -562,7 +562,14 @@ async function pausedRuns(root: string): Promise<{ runs: Set<string>; sessions: 
     const id = name.includes(HASHED_NAME_MARK) ? checkpoint[ID_FIELD] : idFromCaseSafeName(name);
     if (typeof id === 'string') runs.add(id);
   }
-  const sessions = new Set([...runs].map((run) => SESSION_KEY.exec(run)?.[1] ?? run));
+  const sessions = new Set(
+    [...runs].map((run) => {
+      const session = SESSION_KEY.exec(run)?.[1] ?? run;
+      // Eve3-S4: a kept session keeps its turn counter (the numbering the next turn needs).
+      if (session !== run) runs.add(`${session}.turn-counter`);
+      return session;
+    })
+  );
   return { runs, sessions };
 }
 

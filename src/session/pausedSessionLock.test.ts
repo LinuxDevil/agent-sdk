@@ -56,7 +56,8 @@ describe('a paused session turn locks the session (Eve EVE-0 follow-up)', () => 
     const model = mockModel([calling('restart'), 'resumed', 'after']);
     const agent = createAgent({ provider: model, tools: [restart(runs)], store });
     const paused = await agent.session({ id: 'chat', store: new MemorySessionStore() }).send('restart it');
-    expect(await store.checkpoints.load('chat.turn-0')).toMatchObject({ status: 'awaiting-approval' });
+    // Eve3-S4: turn numbering is monotonic - the earlier 'hi' turn took turn-0, so this pause is turn-2.
+    expect(await store.checkpoints.load('chat.turn-2')).toMatchObject({ status: 'awaiting-approval' });
 
     const durable = agent.session({ id: 'chat' });
     expect(await durable.pending()).toEqual({ status: 'awaiting-approval', approvalId: paused.approvalId });
@@ -114,5 +115,44 @@ describe('a paused session turn locks the session (Eve EVE-0 follow-up)', () => 
     expect(runs.n).toBe(1);
     expect(await session.pending()).toBeNull();
     expect((await session.send('and now?')).text).toBe('Next.');
+  });
+
+  // Eve3-S1: without a checkpointStore the pause had no marker, so send()/compact() ran beside it and the resumed
+  // turn clobbered whatever they committed. An in-process marker on (store, id) closes that gap.
+  it('a paused non-checkpointed turn refuses send() and compact(), and resolve() keeps both turns', async () => {
+    const store = memoryStore();
+    const runs = { n: 0 };
+    const transcripts = new MemorySessionStore();
+    const model = mockModel([calling('restart'), 'Restarted.', 'After.']);
+    const agent = createAgent({ provider: model, tools: [restart(runs)], store });
+    const session = agent.session({ id: 'chat', store: transcripts }); // no checkpointStore
+    const paused = await session.send('restart it');
+    expect(paused.finishReason).toBe('awaiting-approval');
+
+    await expect(session.send('unrelated work')).rejects.toMatchObject({ code: 'LOUSHO_SESSION_AWAITING_APPROVAL', approvalId: paused.approvalId });
+    await expect(session.compact()).rejects.toMatchObject({ code: 'LOUSHO_SESSION_AWAITING_APPROVAL' });
+    await expect(session.clear()).rejects.toMatchObject({ code: 'LOUSHO_SESSION_AWAITING_APPROVAL' });
+    expect(await session.pending()).toMatchObject({ status: 'awaiting-approval', approvalId: paused.approvalId });
+    expect(model.calls).toHaveLength(1); // the refused send ran no turn
+
+    expect((await agent.approvals.resolve({ id: paused.approvalId!, approved: true })).text).toBe('Restarted.');
+    expect(runs.n).toBe(1);
+    expect(await session.pending()).toBeNull();
+    expect((await session.send('and now?')).text).toBe('After.');
+    expect(session.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'tool', 'assistant', 'user', 'assistant']);
+  });
+
+  it('discardPending() drops an in-memory pause and withdraws its approval', async () => {
+    const runs = { n: 0 };
+    const transcripts = new MemorySessionStore();
+    const agent = createAgent({ provider: mockModel([calling('restart'), 'fresh']), tools: [restart(runs)], store: memoryStore() });
+    const session = agent.session({ id: 'chat', store: transcripts });
+    const paused = await session.send('restart it');
+
+    await session.discardPending();
+    expect(await session.pending()).toBeNull();
+    await expect(agent.approvals.resolve({ id: paused.approvalId!, approved: true })).rejects.toThrow();
+    expect((await session.send('something else')).text).toBe('fresh');
+    expect(runs.n).toBe(0);
   });
 });
