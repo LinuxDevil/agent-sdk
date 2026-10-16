@@ -42,6 +42,13 @@ function aiSdkPeer(name: string): Record<AiMajor, PeerPairing> {
   };
 }
 
+/** Google: `@ai-sdk/google` 1.x is the `ai` 4 line (0.0.x predates it); 3.x pairs with `ai` 6, 4.x with `ai` 7. */
+const GOOGLE_PEERS: Record<AiMajor, PeerPairing> = {
+  4: { name: '@ai-sdk/google', range: '^1.2.0', accepts: '^1.0.0' },
+  6: { name: '@ai-sdk/google', range: '^3.0.0', accepts: '^3.0.0' },
+  7: { name: '@ai-sdk/google', range: '^4.0.0', accepts: '^4.0.0' },
+};
+
 const ZOD4_NOTE =
   'ollama-ai-provider-v2 needs zod 4 (npm install zod@^4.0.0); with zod 3, use ai@^4.3.19 with ollama-ai-provider@^1.2.0';
 
@@ -157,6 +164,14 @@ const PROVIDERS: Record<string, ProviderEntry> = {
     peers: aiSdkPeer('@ai-sdk/openai'),
     envDefaultModel: 'openai/gpt-4.1-mini',
   },
+  /** Gemini through `@ai-sdk/google`; the key variable is the one `@ai-sdk/google` itself reads. */
+  google: {
+    envKey: 'GOOGLE_GENERATIVE_AI_API_KEY',
+    configField: 'apiKey',
+    envRequired: true,
+    peers: GOOGLE_PEERS,
+    envDefaultModel: 'gemini-2.5-flash',
+  },
   ollama: {
     envKey: 'OLLAMA_BASE_URL',
     configField: 'baseURL',
@@ -195,12 +210,44 @@ const SPEC_PREFIXES = [...PROVIDER_NAMES, MOCK_PROVIDER].join(', ');
 /** Env var that overrides the automatic provider choice, e.g. `LOUSHO_MODEL=anthropic/claude-sonnet-4-5`. */
 const MODEL_ENV_VAR = 'LOUSHO_MODEL';
 
+/**
+ * Vendors `@earendil-works/pi-ai` serves that have no prefix of their own here
+ * (a test keeps each one in pi-ai's provider list), so an unknown prefix
+ * naming one can be suggested as `pi/<prefix>/<model>`.
+ */
+export const PI_NESTED_VENDORS: readonly string[] = [
+  'amazon-bedrock', 'azure', 'baseten', 'cerebras', 'cloudflare-workers-ai', 'deepseek', 'fireworks', 'github-copilot',
+  'google-vertex', 'groq', 'huggingface', 'meta', 'minimax', 'mistral', 'moonshotai', 'nvidia', 'together',
+  'vercel-ai-gateway', 'xai', 'zai',
+];
+
+/** `amazon-bedrock` -> `amazonBedrock`: the AI SDK factory name a prefix suggests. */
+function factoryName(providerName: string): string {
+  const camel = providerName.replace(/[^a-z0-9]+([a-z0-9])/gi, (_, letter: string) => letter.toUpperCase()).replace(/[^a-z0-9]/gi, '');
+  return /^[a-z]/i.test(camel) ? camel : 'provider';
+}
+
+/**
+ * The ways to reach a vendor that has no prefix: OpenRouter (which serves
+ * most vendors), pi when it knows the vendor, or the vendor's own AI SDK
+ * package through `fromAiSdk()`.
+ */
+function otherRoutes(providerName: string, model: string): string {
+  const lower = providerName.toLowerCase();
+  const routes = [`'openrouter/${lower}/${model}' (OpenRouter serves most vendors; needs OPENROUTER_API_KEY)`];
+  if (PI_NESTED_VENDORS.includes(lower)) routes.push(`'pi/${lower}/${model}' (through @earendil-works/pi-ai)`);
+  routes.push(`createAgent({ provider: fromAiSdk(${factoryName(lower)}('${model}')) }) with the vendor's own AI SDK provider package`);
+  return ` To use '${providerName}' anyway: ${routes.slice(0, -1).join(', ')}, or ${routes[routes.length - 1]}.`;
+}
+
 function unknownProviderError(caller: string, providerName: string, spec: string): Error {
-  const suggestion = closestMatch(providerName, PROVIDER_NAMES);
+  const model = spec.slice(providerName.length + 1);
+  // A vendor pi serves is not a typo of a built-in prefix ('xai' is two edits from 'pi').
+  const suggestion = PI_NESTED_VENDORS.includes(providerName.toLowerCase()) ? undefined : closestMatch(providerName, PROVIDER_NAMES);
   return new ConfigurationError(
     `${caller}: unrecognized provider '${providerName}' in spec '${spec}'. ` +
       `Supported prefixes: ${SPEC_PREFIXES}.` +
-      (suggestion ? ` Did you mean '${suggestion}/${spec.slice(providerName.length + 1)}'?` : ''),
+      (suggestion ? ` Did you mean '${suggestion}/${model}'?` : otherRoutes(providerName, model)),
     'model',
     'LOUSHO_PROVIDER_UNKNOWN'
   );
@@ -338,7 +385,7 @@ export function resolveProviderSpec(spec: string, caller: string, registry: Prov
 /**
  * Pick a "<provider>/<model>" spec from the environment: `LOUSHO_MODEL` if
  * set, otherwise the first provider (in the order openai, anthropic,
- * openrouter, ollama) whose env var is set. Throws, listing every fix, when
+ * openrouter, google, ollama) whose env var is set. Throws, listing every fix, when
  * nothing is configured.
  */
 export function modelFromEnv(caller: string, env: Record<string, string | undefined> = process.env): string {

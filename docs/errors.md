@@ -198,8 +198,11 @@ names the option and `error.cause` is what the function threw.
 **Means:** the provider prefix of a model string is not one the SDK knows. The
 message lists the supported prefixes and suggests the closest one.
 
-**Fix:** use a supported prefix (`openai`, `anthropic`, `openrouter`, `ollama`),
-or pass your own `provider` instance.
+**Fix:** use a supported prefix (`openai`, `anthropic`, `google`, `openrouter`,
+`ollama`, `pi`, `mock`), or pass your own `provider` instance. For a vendor with no
+prefix, the message lists the other routes: `openrouter/<vendor>/<model>`,
+`pi/<vendor>/<model>` when pi serves the vendor, or the vendor's AI SDK package
+through `fromAiSdk()` (see [Providers](./providers.md#vendors-without-a-prefix)).
 
 **Example:** `createAgent({ model: 'opnai/gpt-4o' })` says "Did you mean 'openai/gpt-4o'?".
 

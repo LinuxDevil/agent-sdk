@@ -16,6 +16,9 @@ opt-out.
 - `lousho eval` without vitest installed now says it runs `*.eval.ts` files through vitest, the directory it searched from, and the install command; [Evals](docs/evals.md) states the requirement up front.
 - `result.usage.delegated.toolErrors`: the tool calls that failed inside a run's sub-agents (and theirs), which the lead's own `result.toolErrors` does not count. `ToolCallContext.onDelegatedUsage` takes the child's `toolErrors` as an optional second argument.
 - The session HTTP API (`createRouteHandler()`, the deployed node server, the Worker, `lousho dev`) writes an SSE comment (`: ping`) after 15 seconds without an event, so proxies and client idle timeouts no longer drop a turn whose model or tool is slow; `heartbeatMs` changes the interval (`0` turns it off). See [HTTP API](docs/deployment.md#http-api).
+- `google/<model>` model strings (e.g. `createAgent({ model: 'google/gemini-2.5-flash' })`) and a `GoogleProvider`, backed by the optional peer `@ai-sdk/google` (`^1.2.0` with `ai` 4, `^3.0.0` with `ai` 6, `^4.0.0` with `ai` 7) and reading `GOOGLE_GENERATIVE_AI_API_KEY`. `lousho init --provider google`, `lousho doctor` (package pairing, key, `--ping`) and the missing-peer install hint cover it. See [Providers](docs/providers.md).
+- An unknown model prefix (`mistral/...`, `xai/...`) now says how to reach the vendor anyway: `openrouter/<vendor>/<model>`, `pi/<vendor>/<model>` when pi serves it, or `fromAiSdk()` with the vendor's AI SDK package. See [Vendors without a prefix](docs/providers.md#vendors-without-a-prefix).
+- `lousho doctor` fails an installed `ai` 5 (AI SDK v5 is not supported) with an upgrade hint to `ai` 6 or 7 and the matching `@ai-sdk/*` majors.
 
 ### Fixed
 - MCP tool schemas with OpenAPI's `nullable: true` (any type) now accept `null`; the model's valid `null` was rejected with `ToolArgumentsValidationError`.

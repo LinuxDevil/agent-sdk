@@ -23,6 +23,7 @@ const ENV_KEYS: Record<string, string> = {
   openai: 'OPENAI_API_KEY',
   anthropic: 'ANTHROPIC_API_KEY',
   openrouter: 'OPENROUTER_API_KEY',
+  google: 'GOOGLE_GENERATIVE_AI_API_KEY',
   ollama: 'OLLAMA_BASE_URL',
   pi: 'OPENROUTER_API_KEY',
 };
@@ -32,6 +33,7 @@ const SCAFFOLD_PAIRINGS: Record<string, Record<string, string>> = {
   openai: { ai: '^7.0.0', '@ai-sdk/openai': '^4.0.0' },
   anthropic: { ai: '^7.0.0', '@ai-sdk/anthropic': '^4.0.0' },
   openrouter: { ai: '^7.0.0', '@ai-sdk/openai': '^4.0.0' },
+  google: { ai: '^7.0.0', '@ai-sdk/google': '^4.0.0' },
   ollama: { ai: '^7.0.0', 'ollama-ai-provider-v2': '^4.0.0' },
   pi: { ai: '^7.0.0', '@earendil-works/pi-ai': '^1.0.3' },
 };

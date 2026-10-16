@@ -13,6 +13,7 @@ export * from './OpenAIProvider';
 export * from './OllamaProvider';
 export * from './OpenRouterProvider';
 export * from './AnthropicProvider';
+export * from './GoogleProvider';
 export { PiProvider, type PiProviderConfig } from './pi/PiProvider';
 export * from './resolveProvider';
 export * from './resilience';

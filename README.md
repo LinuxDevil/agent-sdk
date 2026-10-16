@@ -57,6 +57,7 @@ npm install @lousho/build-ai-agent ai@^7.0.0 zod
 npm install @ai-sdk/openai@^4.0.0 @ai-sdk/anthropic@^4.0.0
 ```
 
+Supported `ai` majors are 4 (`^4.3.19`), 6 and 7; AI SDK v5 is not supported. For Gemini add `@ai-sdk/google@^4.0.0` (`google/<model>`).
 For Ollama, use `ai@^7.0.0` with `ollama-ai-provider-v2@^4.0.0` and zod 4 (or
 `ai@^4.3.19` with `ollama-ai-provider@^1.2.0` and zod 3);
 [Installation](docs/installation.md#provider-packages) lists every pairing. `npx lousho doctor` checks Node, peers and API keys and

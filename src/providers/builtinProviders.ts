@@ -9,7 +9,7 @@
  *
  * Laziness is preserved: importing this module loads only
  * the provider *classes*. Each provider loads its optional peer SDK
- * ('@ai-sdk/openai', '@ai-sdk/anthropic', 'ollama-ai-provider(-v2)') through
+ * ('@ai-sdk/openai', '@ai-sdk/anthropic', '@ai-sdk/google', 'ollama-ai-provider(-v2)') through
  * `loadOptionalPeer()` on the first generate()/stream() call, never at
  * module scope - so nothing here imports (or requires) an optional peer.
  *
@@ -25,6 +25,7 @@ import type { ProviderFactory } from './llm';
 import { OpenAIProvider, type OpenAIProviderConfig } from './OpenAIProvider';
 import { AnthropicProvider, type AnthropicProviderConfig } from './AnthropicProvider';
 import { OpenRouterProvider, type OpenRouterProviderConfig } from './OpenRouterProvider';
+import { GoogleProvider, type GoogleProviderConfig } from './GoogleProvider';
 import { OllamaProvider, type OllamaProviderConfig } from './OllamaProvider';
 import { PiProvider, type PiProviderConfig } from './pi/PiProvider';
 import { MockLLMProvider, type MockProviderConfig } from './mock';
@@ -34,6 +35,7 @@ const BUILTIN_FACTORIES: ReadonlyArray<readonly [string, ProviderFactory]> = [
   ['openai', (config) => new OpenAIProvider(config as OpenAIProviderConfig)],
   ['anthropic', (config) => new AnthropicProvider(config as AnthropicProviderConfig)],
   ['openrouter', (config) => new OpenRouterProvider(config as OpenRouterProviderConfig)],
+  ['google', (config) => new GoogleProvider(config as GoogleProviderConfig)],
   ['ollama', (config) => new OllamaProvider(config as OllamaProviderConfig)],
   // H2: the pi provider loads '@earendil-works/pi-ai' through
   // loadOptionalPeer() on first use, like every other optional peer.

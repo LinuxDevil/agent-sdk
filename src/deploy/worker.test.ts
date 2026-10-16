@@ -50,6 +50,9 @@ describe('@lousho/build-ai-agent/worker (#289)', () => {
     expect(Object.keys(result.metafile.inputs).filter((file) => file.includes('ollama-ai-provider'))).toEqual([]);
     expect(result.outputFiles[0].text).not.toMatch(/(?:from|import\(|require\()\s*["'`]ollama-ai-provider/);
     expect(Object.keys(result.metafile.inputs).some((file) => file.endsWith('ollama.worker.ts'))).toBe(true);
+    // GoogleProvider's lazy `@ai-sdk/google` import gets the same shim treatment.
+    expect(result.outputFiles[0].text).not.toMatch(/(?:from|import\(|require\()\s*["'`]@ai-sdk\/google/);
+    expect(Object.keys(result.metafile.inputs).some((file) => file.endsWith('google.worker.ts'))).toBe(true);
     // The same goes for the optional @modelcontextprotocol/sdk peer that
     // createAgent({ mcpServers }) lazy-imports: bundled it would add ~700 KB
     // to every Worker, external it would fail the user's build when the peer

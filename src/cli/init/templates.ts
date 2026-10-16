@@ -35,7 +35,7 @@ function sortKeys(record: Record<string, string>): Record<string, string> {
  * Ollama is on 7 too since `ollama-ai-provider-v2` is installed and tested in CI
  * (`ai7-zod4`), and needs zod 4, so its scaffold narrows zod to `^4.0.0`.
  */
-const SCAFFOLD_AI_MAJOR: Readonly<Record<string, AiMajor>> = { openai: 7, anthropic: 7, openrouter: 7, ollama: 7, pi: 7 };
+const SCAFFOLD_AI_MAJOR: Readonly<Record<string, AiMajor>> = { openai: 7, anthropic: 7, google: 7, openrouter: 7, ollama: 7, pi: 7 };
 
 /** `ai` and only the chosen provider's package (the SDK loads provider packages on first use), as one pairing. */
 function aiPackages(provider: string): Record<string, string> {

@@ -33,11 +33,11 @@ provider packages declare zod 3 as a peer, so pair zod 4 with `ai` 6 or 7.
 Each real LLM provider is backed by an optional peer dependency, in the major
 that pairs with your `ai` major. Install the pair from one row:
 
-| `ai`      | OpenAI, OpenRouter: `@ai-sdk/openai` | Anthropic: `@ai-sdk/anthropic` | Ollama                                 |
-| --------- | ------------------------------------ | ------------------------------ | -------------------------------------- |
-| `^4.3.19` | `^0.0.42` (or `^1.0.0`)              | `^0.0.42` (or `^1.0.0`)        | `ollama-ai-provider@^1.2.0`            |
-| `^6.0.0`  | `^3.0.0`                             | `^3.0.0`                       | `ollama-ai-provider-v2@^3.0.0` (zod 4) |
-| `^7.0.0`  | `^4.0.0`                             | `^4.0.0`                       | `ollama-ai-provider-v2@^4.0.0` (zod 4) |
+| `ai`      | OpenAI, OpenRouter: `@ai-sdk/openai` | Anthropic: `@ai-sdk/anthropic` | Google: `@ai-sdk/google` | Ollama                                 |
+| --------- | ------------------------------------ | ------------------------------ | ------------------------ | -------------------------------------- |
+| `^4.3.19` | `^0.0.42` (or `^1.0.0`)              | `^0.0.42` (or `^1.0.0`)        | `^1.2.0`                 | `ollama-ai-provider@^1.2.0`            |
+| `^6.0.0`  | `^3.0.0`                             | `^3.0.0`                       | `^3.0.0`                 | `ollama-ai-provider-v2@^3.0.0` (zod 4) |
+| `^7.0.0`  | `^4.0.0`                             | `^4.0.0`                       | `^4.0.0`                 | `ollama-ai-provider-v2@^4.0.0` (zod 4) |
 
 For example, on the current `ai` major:
 

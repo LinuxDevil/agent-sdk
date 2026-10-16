@@ -66,6 +66,15 @@ function checkRequiredPeer(env: DoctorEnvironment, name: string): DoctorCheck {
     return { ...base, status: 'fail', finding: 'not installed', fix: installCommand(env, name) };
   }
   const range = env.sdk.peerDependencies?.[name];
+  if (name === 'ai' && Number.parseInt(version, 10) === 5) {
+    // AI SDK v5 sits between two supported majors, so say which way to go rather than only print the range.
+    return {
+      ...base,
+      status: 'fail',
+      finding: `${version} installed, but AI SDK v5 is not supported (the SDK runs on ai 4.3.19+, 6 or 7)`,
+      fix: `${installCommand(env, name)} (upgrade to ai 6 or 7, and move each @ai-sdk/* provider package to the matching major: 3.x for ai 6, 4.x for ai 7)`,
+    };
+  }
   if (range && !satisfiesRange(version, range)) {
     return {
       ...base,
@@ -287,6 +296,10 @@ function pingTargets(env: DoctorEnvironment): PingTarget[] {
   if (vars.ANTHROPIC_API_KEY) {
     const headers = { 'x-api-key': vars.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' };
     targets.push({ provider: 'anthropic', envKey: 'ANTHROPIC_API_KEY', base: 'https://api.anthropic.com/v1', headers });
+  }
+  if (vars.GOOGLE_GENERATIVE_AI_API_KEY) {
+    const headers = { 'x-goog-api-key': vars.GOOGLE_GENERATIVE_AI_API_KEY };
+    targets.push({ provider: 'google', envKey: 'GOOGLE_GENERATIVE_AI_API_KEY', base: 'https://generativelanguage.googleapis.com/v1beta', headers });
   }
   if (vars.OPENROUTER_API_KEY) {
     targets.push({ provider: 'openrouter', envKey: 'OPENROUTER_API_KEY', base: 'https://openrouter.ai/api/v1', headers: bearer(vars.OPENROUTER_API_KEY) });
