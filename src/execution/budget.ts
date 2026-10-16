@@ -175,6 +175,42 @@ export function startBudget(limits?: RunLimits, session?: SessionBudget, signal?
   };
 }
 
+/**
+ * A sub-agent run's view of its lead run's limits: called with what the sub-agent has spent so far, returns
+ * the limit the lead reaches with it (the lead's own spend and its other sub-agents' still running included).
+ */
+export type LeadBudget = (childUsage: RunUsage) => BudgetExceeded | undefined;
+
+/** An internal option of a sub-agent run: its {@link LeadBudget}, set by the lead's executor. */
+export const LEAD_BUDGET = Symbol('lousho.leadBudget');
+
+/** Options carrying {@link LEAD_BUDGET}. */
+export interface LeadBudgetOptions {
+  [LEAD_BUDGET]?: LeadBudget;
+}
+
+/**
+ * A sub-agent's budget: its own limits, then its lead's. A lead limit stops the sub-agent (`'stop'`, never
+ * `'throw'`: the lead decides how its own run ends) before its next model call or tools, so parallel sub-agents
+ * share the lead's budget instead of each spending all of it. `signal` is the run's own when it has no limits.
+ */
+export function withLeadBudget(own: RunBudget | undefined, lead: LeadBudget | undefined, signal: AbortSignal | undefined): RunBudget | undefined {
+  if (!lead) return own;
+  const fromLead = new WeakSet<BudgetExceeded>();
+  return {
+    signal: own ? own.signal : signal,
+    check: (usage, steps, afterModelCall, toolErrors) => {
+      const reached = own?.check(usage, steps, afterModelCall, toolErrors);
+      if (reached) return reached;
+      const leadReached = lead(usage);
+      if (leadReached) fromLead.add(leadReached);
+      return leadReached;
+    },
+    mode: (budget) => (fromLead.has(budget) || !own ? 'stop' : own.mode(budget)),
+    dispose: () => own?.dispose(),
+  };
+}
+
 /** Throws `LOUSHO_CONFIG_INVALID` unless `maxSteps` is unset or a whole number >= 1. */
 export function assertMaxSteps(value: unknown, caller: string): void {
   if (value === undefined || (typeof value === 'number' && Number.isInteger(value) && value >= 1)) return;

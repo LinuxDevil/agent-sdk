@@ -126,7 +126,7 @@ export function recordStepUsage(run: RunUsage, step: CallUsage): void {
   refreshDerived(run);
 }
 
-function delegatedTotals(before: DelegatedUsage | undefined, child: RunUsage): DelegatedUsage {
+function delegatedTotals(before: DelegatedUsage | undefined, child: RunUsage, childToolErrors: number): DelegatedUsage {
   const prior = before ?? {
     inputTokens: 0,
     outputTokens: 0,
@@ -137,6 +137,8 @@ function delegatedTotals(before: DelegatedUsage | undefined, child: RunUsage): D
     runs: 0,
   };
   const cost = before ? addCost(before, child) : { costUsd: child.costUsd, costPartial: child.costPartial };
+  // The child's own failed calls, plus the ones its own children reported to it.
+  const toolErrors = (before?.toolErrors ?? 0) + childToolErrors + (child.delegated?.toolErrors ?? 0);
   return {
     costUsd: cost.costUsd,
     inputTokens: prior.inputTokens + child.inputTokens,
@@ -146,6 +148,7 @@ function delegatedTotals(before: DelegatedUsage | undefined, child: RunUsage): D
     modelCalls: prior.modelCalls + child.modelCalls,
     estimated: prior.estimated || child.estimated,
     runs: prior.runs + 1,
+    ...(toolErrors > 0 && { toolErrors }),
   };
 }
 
@@ -176,8 +179,11 @@ export function runUsageOfError(error: unknown): RunUsage | undefined {
   return typeof error === 'object' && error !== null ? failedRunUsage.get(error) : undefined;
 }
 
-/** Rolls a finished child agent run's total into the parent's (mutates the parent). */
-export function mergeDelegatedUsage(run: RunUsage, child: RunUsage): void {
+/**
+ * Rolls a finished child agent run's total into the parent's (mutates the parent). `toolErrors`: the child's own
+ * failed tool calls (its `result.toolErrors`), added to `run.delegated.toolErrors`.
+ */
+export function mergeDelegatedUsage(run: RunUsage, child: RunUsage, toolErrors = 0): void {
   run.inputTokens += child.inputTokens;
   run.outputTokens += child.outputTokens;
   run.totalTokens += child.totalTokens;
@@ -188,7 +194,7 @@ export function mergeDelegatedUsage(run: RunUsage, child: RunUsage): void {
   addOptional(run, 'reasoningTokens', child.reasoningTokens);
   for (const [model, entry] of Object.entries(child.byModel)) addToModel(run, model, entry, entry.calls);
   addHostedCounts(run, child.hostedToolCalls);
-  run.delegated = delegatedTotals(run.delegated, child);
+  run.delegated = delegatedTotals(run.delegated, child, toolErrors);
   refreshDerived(run);
 }
 

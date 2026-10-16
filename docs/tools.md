@@ -178,7 +178,9 @@ its kind by carrying a `toolErrorKind` property. An error extending
 The model sees each failed call and may still answer as if it had worked,
 ending the run with `finishReason: 'stop'`. `result.toolErrors` counts the
 run's tool calls whose result is an error (any `kind` above except `not-run`);
-it is absent when none failed. Check it before trusting `text`, or cap it with
+it is absent when none failed. It counts only the run's own calls: the calls
+that failed inside its [sub-agents](./sub-agents.md) are counted on
+`result.usage.delegated.toolErrors`. Check it before trusting `text`, or cap it with
 `limits.maxToolErrors`: once that many calls have failed, the run stops before
 its next model call with `finishReason: 'budget-exceeded'` and
 `result.budget.limit` `'maxToolErrors'` (or rejects with `BudgetExceededError`

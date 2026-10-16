@@ -965,7 +965,7 @@ async function decidedToolMessage(
   const scope: ToolCallScope = {
     runtime: { ...executeOptions, approvalStore: ctx.approvalStore },
     toolCallId: pending.toolCallId,
-    onDelegatedUsage: (child) => mergeDelegatedUsage(ctx.usage, child),
+    onDelegatedUsage: (child, errors) => mergeDelegatedUsage(ctx.usage, child, errors),
     execute: ctx.execute,
   };
   // The tool sees the decision's note (an `ask_question` answer) as `ctx.approval`; and who decided as `by`.

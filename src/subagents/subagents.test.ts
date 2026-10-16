@@ -225,6 +225,71 @@ describe('subagents option and the task tool', () => {
     expect(toolResult.content).toContain('still working');
   });
 
+  it('returns the valid object of a sub-agent that ran out of steps and answered in its forced final call', async () => {
+    const looping = defineTool({ name: 'again', description: 'loops', input: z.object({}), execute: () => 'more' });
+    const researcher = createAgent({
+      provider: mockModel([{ toolCalls: [{ name: 'again' }] }, { toolCalls: [{ name: 'again' }] }, '{"n":42}']),
+      tools: [looping],
+      maxSteps: 2,
+      output: z.object({ n: z.number() }),
+      description: 'Researches',
+    });
+    const lead = createAgent({ provider: mockModel([{ toolCalls: [task('researcher', 'go')] }, 'ok']), subagents: { researcher } });
+
+    const [toolResult] = toolMessages((await lead.send('go')).messages);
+    const text = JSON.parse(toolResult.content as string) as string;
+
+    expect(toolResult.isError).toBeFalsy();
+    expect(text).toMatch(/^\{"n":42\}\n\n\[sub-agent 'researcher': \d+ step\(s\), finish reason 'max-steps'/);
+    expect(text).toContain('ran out of steps');
+    expect(text).not.toContain('without giving a final answer');
+  });
+
+  it('counts the tool calls that failed inside sub-agents on the lead usage.delegated.toolErrors', async () => {
+    const broken = defineTool({ name: 'broken', description: 'fails', input: z.object({}), execute: () => { throw new Error('boom'); } });
+    const failingTwice = (description: string) =>
+      createAgent({ provider: mockModel([{ toolCalls: [{ name: 'broken' }, { name: 'broken' }] }, 'done anyway']), tools: [broken], description });
+    const lead = createAgent({
+      provider: mockModel([{ toolCalls: [task('researcher', 'a'), task('writer', 'b')] }, 'ok']),
+      subagents: { researcher: failingTwice('Researches'), writer: failingTwice('Writes') },
+    });
+
+    const result = await lead.send('go');
+
+    // The lead's own calls succeeded; the children's four failed calls are counted apart.
+    expect(result.toolErrors).toBeUndefined();
+    expect(result.usage.delegated?.runs).toBe(2);
+    expect(result.usage.delegated?.toolErrors).toBe(4);
+  });
+
+  it("holds parallel sub-agents to the lead's maxCostUsd, shared, and keeps their results when it trips", async () => {
+    // gpt-4o-mini: (1000 * 0.15 + 500 * 0.6) / 1e6 = $0.00045 a call.
+    const usage = { inputTokens: 1000, outputTokens: 500 };
+    const looping = defineTool({ name: 'again', description: 'loops', input: z.object({}), execute: () => 'more' });
+    const researcher = createAgent({
+      provider: mockModel([{ text: 'still working', toolCalls: [{ name: 'again' }], usage }], { defaultModel: 'gpt-4o-mini', onExhausted: 'repeat-last' }),
+      tools: [looping],
+      description: 'Researches',
+    });
+    const lead = createAgent({
+      provider: mockModel([{ toolCalls: [task('researcher', 'a'), task('researcher', 'b')], usage }, '{"n":1}'], { defaultModel: 'gpt-4o-mini' }),
+      subagents: { researcher },
+      output: z.object({ n: z.number() }),
+      limits: { maxCostUsd: 0.002 },
+    });
+
+    const result = await lead.send('go');
+
+    expect(result.finishReason).toBe('budget-exceeded');
+    expect(result.budget).toMatchObject({ limit: 'maxCostUsd', scope: 'run' });
+    // Without the shared budget each child ran its 10 steps: 21 calls, $0.00945. Now at most one call per child over.
+    expect(result.usage.costUsd).toBeLessThan(0.002 + 3 * 0.00045);
+    // The children's results stay in the transcript: each says the lead's limit stopped it.
+    const results = toolMessages(result.messages);
+    expect(results).toHaveLength(2);
+    for (const message of results) expect(message.content).toContain("stopped at the maxCostUsd limit (0.002)");
+  });
+
   it('tells the lead when a sub-agent answer was cut off at the output token limit', async () => {
     const researcher = createAgent({
       provider: mockModel([{ text: 'The three causes are: first, the', finishReason: 'length' }]),

@@ -145,7 +145,8 @@ export async function runSubagent(
     if (spent) reportUsage?.(spent);
     throw error;
   }
-  reportUsage?.(result.usage);
+  // With its own failed tool calls, which the lead counts on `usage.delegated.toolErrors`.
+  reportUsage?.(result.usage, result.toolErrors);
   const paused = capture.saved();
   if (result.finishReason === 'awaiting-approval' && paused) {
     throw new SubagentApprovalPause(request.name, paused);

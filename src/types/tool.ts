@@ -55,8 +55,11 @@ export interface ToolExecutionContext {
   abortSignal?: AbortSignal;
   /** The session the run belongs to, when it has one. */
   sessionId?: string;
-  /** Called by the delegation core (the `task` tool) with a finished child run's usage, so the parent run adds it to its totals. */
-  onDelegatedUsage?: (usage: RunUsage) => void;
+  /**
+   * Called by the delegation core (the `task` tool) with a finished child run's usage, so the parent run adds it to its
+   * totals, and the child's own failed tool calls (its `result.toolErrors`), added to `usage.delegated.toolErrors`.
+   */
+  onDelegatedUsage?: (usage: RunUsage, toolErrors?: number) => void;
   /**
    * Who the run acts for - the caller route auth accepted, or a
    * channel's verified sender (docs/auth.md). Fixed for the whole run, also

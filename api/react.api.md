@@ -528,6 +528,7 @@ interface DelegatedUsage {
     // (undocumented)
     outputTokens: number;
     runs: number;
+    toolErrors?: number;
     // (undocumented)
     totalTokens: number;
 }
