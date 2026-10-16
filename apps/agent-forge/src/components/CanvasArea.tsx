@@ -48,7 +48,7 @@ function hasBreakpointOn(n: AgentGraphNode, breakpoints: string[]): boolean {
 }
 
 /**
- * Eve DUI-F22: each node's DOM size as React Flow measured it. The canvas is
+ * Each node's DOM size as React Flow measured it. The canvas is
  * controlled (nodes are rebuilt from `graph` every render), so the
  * `dimensions` changes React Flow reports must be fed back as `measured` -
  * without it the MiniMap has no node sizes and draws nothing.
@@ -113,7 +113,7 @@ function lastSelectionChange(changes: NodeChange[]): { id: string; selected: boo
 }
 
 /**
- * LOU-Q3: which `AgentGraphNode` (by id) the pointer is currently over,
+ * Which `AgentGraphNode` (by id) the pointer is currently over,
  * found by walking up the real DOM from `document.elementFromPoint()` to
  * the nearest element carrying AgentNode.tsx's `data-node-id` attribute.
  * Native HTML5 drag-and-drop only gives `onDrop` a client point, not
@@ -262,7 +262,7 @@ function useDropHandlers(graph: AgentGraphSpec, setGraph: SetGraph, flashError: 
 }
 
 /**
- * Eve DUI-F8: refit the graph when the window is resized (e.g. rotating a
+ * Refit the graph when the window is resized (e.g. rotating a
  * phone, or crossing the narrow-layout breakpoint), so it never sits
  * off-screen in a pane that changed size. Debounced to the last resize.
  */
@@ -302,7 +302,7 @@ function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefine
 
   // Ctrl/Cmd+D duplicates the selected node - a discoverable shortcut
   // alongside the toolbar button, matching common canvas-editor conventions.
-  // Eve DUI-F10: not while typing in a field (the Inspector, chat, the hook
+  // Not while typing in a field (the Inspector, chat, the hook
   // editor) - there the keystroke belongs to the field.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -350,7 +350,7 @@ function CanvasToolbar({
 }
 
 /**
- * Real ReactFlow canvas (LOU-M1/M2). `AppState.graph` is the single source
+ * Real ReactFlow canvas. `AppState.graph` is the single source
  * of truth: every handler below reads it and, on a real mutation, calls
  * `setGraph()` - ReactFlow's `nodes`/`edges` props are recomputed from
  * `graph` on every render rather than kept in separate ReactFlow-owned
@@ -424,8 +424,8 @@ function CanvasInner() {
 }
 
 /**
- * Real ReactFlow-based node-graph editor (LOU-M), replacing the LOU-L1
- * placeholder. Its `ReactFlowProvider` lives in App.tsx (Eve DUI-F9) so the
+ * Real ReactFlow-based node-graph editor, replacing the
+ * placeholder. Its `ReactFlowProvider` lives in App.tsx so the
  * left rail's palette can add a node at the viewport centre. `@xyflow/react` is this app's chosen package - `reactflow`
  * on npm is the predecessor name, now in maintenance mode pointing
  * adopters at `@xyflow/react` (same team, actively released); see the

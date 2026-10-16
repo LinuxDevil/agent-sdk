@@ -1,5 +1,5 @@
 /**
- * docker deployment adapter (LOU-I4).
+ * docker deployment adapter.
  *
  * A thin wrapper over NodeServerAdapter: scaffold() and build() delegate to
  * it (the same server.ts/agent.config.js/package.json and the same bundled

@@ -1,4 +1,4 @@
-/** LOU-P8: the node server runs the schedules of the agent directory it serves. */
+/** The node server runs the schedules of the agent directory it serves. */
 import { describe, it, expect, vi } from 'vitest';
 import { createAgent } from '../createAgent';
 import { mockModel } from '../testing';

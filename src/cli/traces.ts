@@ -1,7 +1,7 @@
 /**
  * `lousho traces [--dir D] [--limit N] [--json]` - the recent runs that
  * `fileTraceExporter()` saved, newest first; `lousho traces <id|prefix>
- * [--dir D] [--json] [--content]` - one run as a tree of spans (M5a).
+ * [--dir D] [--json] [--content]` - one run as a tree of spans.
  *
  * Reads files only: this module imports `src/traces/`, never the run loop.
  */
@@ -163,7 +163,7 @@ function attr(span: Span, key: string): unknown {
   return span.attributes[key];
 }
 
-/** N1a: the hosted tools the provider ran inside a `chat` span's call (they have no `execute_tool` span). */
+/** The hosted tools the provider ran inside a `chat` span's call (they have no `execute_tool` span). */
 function hostedDetail(span: Span): string[] {
   const hosted = attr(span, 'lousho.hosted_tool_calls');
   return Array.isArray(hosted) && hosted.length > 0 ? [`provider ran ${hosted.join(', ')}`] : [];

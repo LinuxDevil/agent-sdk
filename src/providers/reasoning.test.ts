@@ -1,5 +1,5 @@
 /**
- * LOU-V13: the `reasoning` option as each built-in provider sends it, on `ai`
+ * The `reasoning` option as each built-in provider sends it, on `ai`
  * v7 (the `ai-v7` alias, `MockLanguageModelV4`: `providerOptions`) and on the
  * installed `ai` v4 (`MockLanguageModelV1`: `providerMetadata`); the
  * reasoning a model returns; and Anthropic's signed thinking sent back with
@@ -23,7 +23,7 @@ type V7Options = Parameters<MockLanguageModelV4['doGenerate']>[0];
 type V7Result = Awaited<ReturnType<MockLanguageModelV4['doGenerate']>>;
 type V4Options = Parameters<MockLanguageModelV1['doGenerate']>[0];
 
-describe('reasoning that is set but not sent (Eve PROV-F10)', () => {
+describe('reasoning that is set but not sent', () => {
   it('sends it to Fable, gpt-oss and DeepSeek V3.x on OpenRouter and to Fable on Anthropic', () => {
     for (const model of ['anthropic/claude-fable-5.1', 'openai/gpt-oss-120b', 'deepseek/deepseek-v3.1-terminus']) {
       expect(openRouterReasoning(model, 'low')).toEqual({ reasoning: { effort: 'low' } });
@@ -87,7 +87,7 @@ function onV4(provider: LLMProvider, reasoning?: Array<{ type: 'text'; text: str
 
 const user: Message[] = [{ role: 'user', content: 'Think about it.' }];
 
-describe('reasoning options per provider (LOU-V13)', () => {
+describe('reasoning options per provider', () => {
   it('maps an effort to OpenAI reasoningEffort (and a summary), Anthropic thinking and Ollama think', () => {
     expect(reasoningProviderOptions('openai', 'o3', 'high')).toEqual({ openai: { reasoningEffort: 'high' } });
     expect(reasoningProviderOptions('openai', 'gpt-5-mini', { effort: 'minimal', summary: 'auto' })).toEqual({
@@ -170,7 +170,7 @@ describe('reasoning options per provider (LOU-V13)', () => {
   });
 });
 
-describe('reasoning returned and replayed (LOU-V13)', () => {
+describe('reasoning returned and replayed', () => {
   const turn: Message = {
     role: 'assistant',
     content: '',
@@ -227,7 +227,7 @@ describe('reasoning returned and replayed (LOU-V13)', () => {
   });
 });
 
-describe('image parts on ai v7 (LOU-V13 follow-up B)', () => {
+describe('image parts on ai v7 (follow-up B)', () => {
   it('sends `file` parts with a media type, never the deprecated `image` part', async () => {
     const provider = new OpenAIProvider({ apiKey: 'k', maxRetries: 0 });
     const generateText = vi.fn(aiV7.generateText);

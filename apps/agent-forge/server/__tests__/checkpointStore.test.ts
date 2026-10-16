@@ -1,5 +1,5 @@
 /**
- * LOU-D45: Forge's FileCheckpointStore keeps the same bounded history ring
+ * Forge's FileCheckpointStore keeps the same bounded history ring
  * as the SDK's stores - the SDK's own history contract suite, run against it.
  */
 import { afterAll, describe, expect, it } from 'vitest';
@@ -21,7 +21,7 @@ describeCheckpointHistoryContract('FileCheckpointStore (Agent Forge)', (options)
   return new FileCheckpointStore(dir, options);
 });
 
-describe('FileCheckpointStore history on disk (LOU-D43.2)', () => {
+describe('FileCheckpointStore history on disk', () => {
   const checkpoint = (stepIndex: number): Checkpoint => ({
     agentId: 'bot',
     sessionId: 'bot',

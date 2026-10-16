@@ -42,7 +42,7 @@ async function runThreeTurns(options: WorkspaceCheckpointsOptions = {}) {
   return { ...ctx, sessionId: session.id };
 }
 
-describe('WorkspaceCheckpoints through createAgent().session() (N7)', () => {
+describe('WorkspaceCheckpoints through createAgent().session()', () => {
   it('lists the changed paths per turn', async () => {
     const { checkpoints, sessionId, workspace } = await runThreeTurns();
     expect(workspace.snapshot()).toEqual({ 'a.txt': 'a2\n', 'b.txt': 'b2\n', 'c.txt': 'c2\n', 'd.txt': 'd1\n', 'e/f.txt': 'f2\n' });
@@ -195,7 +195,7 @@ describe('WorkspaceCheckpoints through createAgent().session() (N7)', () => {
   });
 });
 
-describe('WorkspaceCheckpoints details (N7)', () => {
+describe('WorkspaceCheckpoints details', () => {
   /** A MemoryWorkspace with permission bits, like NodeWorkspace on Linux. */
   class ModeWorkspace extends MemoryWorkspace {
     readonly modes = new Map<string, number>();

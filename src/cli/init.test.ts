@@ -56,7 +56,7 @@ describe('runInit --yes', () => {
     expect(text).toContain('npm run dev');
   });
 
-  it('says so when no API key is set, and stays quiet when one is (Eve CLI-F19)', async () => {
+  it('says so when no API key is set, and stays quiet when one is', async () => {
     const keyless = harness();
     await runInit(['a', '--yes', '--no-install', '--no-git'], keyless.environment);
     const text = keyless.out.join('');

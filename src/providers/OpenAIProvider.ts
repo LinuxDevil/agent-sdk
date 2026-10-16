@@ -11,7 +11,7 @@ import { mappedHostedOptions, type HostedOptionMapping } from './hostedToolMappi
 import { hostedToolUnsupported, type HostedTool, type HostedToolType } from '../tools/hosted';
 import type { GenerateOptions } from './llm';
 
-/** The `openai.tools` factories the hosted helpers map to (N1a). */
+/** The `openai.tools` factories the hosted helpers map to. */
 type OpenAIToolFactories = Partial<Record<'webSearch' | 'codeInterpreter' | 'fileSearch', (args: Record<string, unknown>) => unknown>>;
 
 /** How one helper maps to its factory: the factory, and each helper option to the factory's argument (`undefined`: OpenAI has none). */
@@ -121,7 +121,7 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
   }
 
   /**
-   * N1a: web search, code interpreter, file search and `hostedTool()`, on ai 6 (@ai-sdk/openai 3) and ai 7 (@ai-sdk/openai 4).
+   * Web search, code interpreter, file search and `hostedTool()`, on ai 6 (@ai-sdk/openai 3) and ai 7 (@ai-sdk/openai 4).
    * With `api: 'chat'` only `hostedTool()` pass-through: the built-in tools are Responses API tools.
    */
   supportsHostedTool(type: HostedToolType | 'custom'): boolean {
@@ -130,7 +130,7 @@ export class OpenAIProvider extends AiSdkProvider<OpenAIProviderConfig> {
   }
 
   /**
-   * N1a: the helpers as `@ai-sdk/openai`'s provider tools (`openai.tools.webSearch()`,
+   * The helpers as `@ai-sdk/openai`'s provider tools (`openai.tools.webSearch()`,
    * `.codeInterpreter()`, `.fileSearch()`), keyed `web_search`, `code_interpreter`
    * and `file_search`; `hostedTool()` objects pass through. The bare model is a
    * Responses API model from @ai-sdk/openai 2 on, which hosted tools need.

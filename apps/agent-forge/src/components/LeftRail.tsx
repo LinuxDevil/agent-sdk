@@ -28,7 +28,7 @@ const NODE_PALETTE: { section: string; items: { label: string; color: string; no
       { label: 'Approval gate', color: 'var(--warning)', nodeType: 'approval' },
     ],
   },
-  // LOU-T3: router/condition node - drag onto the canvas, then wire 2+
+  // Router/condition node - drag onto the canvas, then wire 2+
   // outgoing edges from it (each becomes a branch, edited in the Inspector)
   // to make the graph actually branch instead of following one fixed path.
   {
@@ -42,7 +42,7 @@ const NODE_PALETTE: { section: string; items: { label: string; color: string; no
 ];
 
 /**
- * Hooks (pre/post) palette entries (LOU-Q3). Unlike NODE_PALETTE's items,
+ * Hooks (pre/post) palette entries. Unlike NODE_PALETTE's items,
  * dropping one of these does NOT add a new `AgentGraphNode` - it attaches
  * an `AgentNodeHookInstance` onto whichever node the drop lands on (see
  * dnd.ts's HOOK_DRAG_MIME and CanvasArea.tsx's onDrop), so this list is
@@ -59,7 +59,7 @@ function UnsavedAgentCard() {
     <div className="agent-card selected">
       <div className="agent-card-top">
         <span className="agent-name">{spec.name}</span>
-        {/* Eve DUI-F21: "unsaved" is a warning, not a green "all good". */}
+        {/* "unsaved" is a warning, not a green "all good". */}
         <span className="status-pill status-unsaved">
           <span className="dot" aria-hidden="true" />
           unsaved
@@ -83,7 +83,7 @@ function toolCountOf(entry: AgentEntry): number {
   return entry.spec.tools?.length ?? 0;
 }
 
-/** Eve DUI-F21: inline rename of a saved agent, validated against the server's id rule. */
+/** Inline rename of a saved agent, validated against the server's id rule. */
 function RenameAgentForm({ entry, onDone }: { entry: AgentEntry; onDone: () => void }) {
   const { renameAgent } = useAppState();
   const [name, setName] = useState(entry.id);
@@ -137,7 +137,7 @@ function RenameAgentForm({ entry, onDone }: { entry: AgentEntry; onDone: () => v
   );
 }
 
-/** Eve DUI-F21: Rename/Delete for the open agent (`DELETE /agents/:id`). Not while it runs. */
+/** Rename/Delete for the open agent (`DELETE /agents/:id`). Not while it runs. */
 function AgentCardActions({ entry, busy, onRename }: { entry: AgentEntry; busy: boolean; onRename: () => void }) {
   const { deleteAgent } = useAppState();
   const [error, setError] = useState<string | undefined>(undefined);
@@ -185,8 +185,8 @@ function AgentCardActions({ entry, busy, onRename }: { entry: AgentEntry; busy: 
 function AgentCard({ entry }: { entry: AgentEntry }) {
   const { agentId, switchAgent, agentStatuses } = useAppState();
   const [renaming, setRenaming] = useState(false);
-  // LOU-N: real run status pushed over WS (see AppState's
-  // agentStatuses), replacing LOU-L/M's "active"/"idle"
+  // Real run status pushed over WS (see AppState's
+  // agentStatuses), replacing the static "active"/"idle"
   // placeholder derived only from which agent is loaded in the
   // canvas. An agent can be 'running' in the background even
   // while a different agent is selected in the canvas.
@@ -234,7 +234,7 @@ function NewAgentForm({ draft }: { draft: NewAgentDraft }) {
   const { setCreating, newName, setNewName, newTemplate, setNewTemplate } = draft;
   const [createError, setCreateError] = useState<string | undefined>(undefined);
   const trimmed = newName.trim();
-  // Eve DUI-F3: the same rule the server enforces on `:id` (shared/agentId.ts) -
+  // The same rule the server enforces on `:id` (shared/agentId.ts) -
   // an invalid name used to be saved locally, then crash the app on the
   // server's 400.
   const nameProblem = trimmed ? agentIdProblem(trimmed) : undefined;
@@ -334,7 +334,7 @@ function AgentsTab({ draft }: { draft: NewAgentDraft }) {
 }
 
 /**
- * Eve DUI-F9: a palette entry is a real button - drag it onto the canvas as
+ * A palette entry is a real button - drag it onto the canvas as
  * before, or activate it (click, Enter, Space) to add it without a mouse.
  */
 function PaletteItem({
@@ -370,7 +370,7 @@ function startPaletteDrag(e: DragEvent<HTMLButtonElement>, mime: string, payload
   e.dataTransfer.effectAllowed = 'move';
 }
 
-/** Click/keyboard equivalents of the palette's drag-and-drop (Eve DUI-F9). */
+/** Click/keyboard equivalents of the palette's drag-and-drop. */
 function usePaletteActions() {
   const { graph, setGraph, selectedNodeId, setSelectedNodeId } = useAppState();
   const flow = useStoreApi();
@@ -450,7 +450,7 @@ export function LeftRail() {
   const draft = useNewAgentDraft();
   const ids = tabIds('rail', railTab);
 
-  // Eve DUI-F9: a `nav` landmark with a real WAI-ARIA tablist.
+  // A `nav` landmark with a real WAI-ARIA tablist.
   return (
     <nav className="rail" id="studio-rail" aria-label="Agents and node palette">
       <div

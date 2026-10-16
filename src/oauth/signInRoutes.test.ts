@@ -1,5 +1,5 @@
 /**
- * N9b: the sign-in flow over HTTP - `createRouteHandler` (under a base path)
+ * The sign-in flow over HTTP - `createRouteHandler` (under a base path)
  * and `createDeployedServer` (node:http, with channels): the paused turn's
  * stream carries the link, approving early is 409, `GET .../oauth/callback`
  * answers a small HTML page outside route auth, a used or expired state is
@@ -103,7 +103,7 @@ async function expiredFlow(call: (path: string, init?: RequestInit) => Promise<R
   await expectPage(await call(`${prefix}/oauth/callback?state=${state}&code=code-bob`), 400, 'invalid, was already used, or expired');
 }
 
-describe('sign-in over HTTP (N9b)', () => {
+describe('sign-in over HTTP', () => {
   it('createRouteHandler: link in the stream, 409 before the callback, HTML callback outside auth, 400 for a used or expired state', async () => {
     const { agent, executions } = agentWithGitHub([CALL, { text: 'You have lousho-demo and agent-sdk.' }, CALL, { text: 'x' }]);
     const { handler } = createRouteHandler(agent, { basePath: '/api/agent', auth: [auth] });
@@ -169,7 +169,7 @@ describe('sign-in over HTTP (N9b)', () => {
   });
 });
 
-describe('continueChannelSignIn (N9b)', () => {
+describe('continueChannelSignIn', () => {
   it('ignores a sign-in no channel turn waits on, and logs any other failure without the details of the token', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const notFound = { resolveApproval: vi.fn(() => Promise.reject(new SDKError('no turn', 'LOUSHO_APPROVAL_NOT_FOUND'))) };

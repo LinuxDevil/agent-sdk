@@ -1,5 +1,5 @@
 /**
- * Agent directories as a node-server / docker deployment source (LOU-P8.2).
+ * Agent directories as a node-server / docker deployment source.
  *
  * Decision: the directory is pre-bundled, not copied as TypeScript. Its code
  * files (agent config, auth.ts, tools, schedules, channels, memory, and the same inside

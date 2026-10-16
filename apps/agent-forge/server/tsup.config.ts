@@ -1,9 +1,9 @@
 import { defineConfig } from 'tsup';
 
 /**
- * S1 (LOU-S): production build of the LOU-N runtime control server.
+ * Production build of the runtime control server.
  *
- * `server:dev`/`server:start` (LOU-N) run this server straight off its
+ * `server:dev`/`server:start` run this server straight off its
  * TypeScript source via `tsx`, which is fine for local development but not
  * for a published npm package: a consumer installing `@lousho/build-ai-agent`
  * has neither `tsx` nor this app's devDependencies (vite, vitest, jsdom, ...)

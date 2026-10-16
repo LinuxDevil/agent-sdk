@@ -1,7 +1,7 @@
 /**
- * cloudflare-worker deployment adapter (LOU-I3).
+ * cloudflare-worker deployment adapter.
  *
- * scaffold(): for an agent directory (M3b), see ./cloudflare-dir.ts: writes
+ * scaffold(): for an agent directory, see ./cloudflare-dir.ts: writes
  *   agent.module.ts (the directory as static imports and JSON), a worker.ts
  *   serving it, and wrangler.toml. For a spec file:
  *   loads + validates the AgentSpec (same loader as node-server),
@@ -9,7 +9,7 @@
  *     - agent.config.js  the validated spec as an ES module default export
  *     - worker.ts        a module Worker whose fetch(request, env) serves the
  *                        `/chat` API of the node server (sessions, SSE,
- *                        approvals, bearer auth; LOU-D51) - no node:* imports
+ *                        approvals, bearer auth) - no node:* imports
  *     - wrangler.toml    name / main / compatibility_date
  * build():    tsup, format 'esm', platform 'browser', everything bundled into
  *             dist/worker.js; then fails the build if any `node:` specifier
@@ -93,7 +93,7 @@ function cronsLiteral(crons: readonly string[]): string {
 }
 
 /**
- * Cloudflare Workers script size limit (LOU-I3 AC: "bundle size stays under
+ * Cloudflare Workers script size limit ("bundle size stays under
  * Workers' free-tier limit for a minimal agent").
  *
  * As of Cloudflare's 2026-09-04 Workers changelog
@@ -200,7 +200,7 @@ function cronProblem(schedule: DefinedSchedule, fields: string[]): string | unde
   return undefined;
 }
 
-/** The commented `[vars]` block for the `http` tool's allowlist (M3a), when the spec lists `http`. */
+/** The commented `[vars]` block for the `http` tool's allowlist, when the spec lists `http`. */
 function httpAllowVars(spec: { tools?: readonly string[] }): string[] {
   if (!(spec.tools ?? []).includes('http')) return [];
   return [
@@ -236,7 +236,7 @@ function tomlSource(name: string, crons: readonly string[], tools: readonly stri
     '',
     ...triggers,
     ...httpAllowVars({ tools }),
-    '# LOU-T2, LOU-D51: sessions (chat history), durable execution',
+    '# sessions (chat history), durable execution',
     '# (pause/resume, e.g. an approval-gated tool call) and paused approvals live',
     `# in one KV namespace bound under ${CHECKPOINT_KV_BINDING}. Uncomment and fill in the`,
     '# namespace id(s) below after creating the namespace yourself:',
@@ -311,7 +311,7 @@ export default { fetch, scheduled };
 `;
 
 /**
- * Runtime probes the leak check accepts (LOU-D28c). `ai` v6/v7 and their
+ * Runtime probes the leak check accepts. `ai` v6/v7 and their
  * `@ai-sdk/provider-utils` v4/v5 (v6 `loadNodeModule`, v7 `loadBuiltinModule`) ship one `dist/index.js` for every runtime (no
  * browser/worker/edge export condition to pick instead) and load these
  * builtins through `globalThis.process?.getBuiltinModule?.(id)`, never through
@@ -364,7 +364,7 @@ function displayPath(file: string): string {
 }
 
 /**
- * Who imported the leaked builtins (M3b), from what workerBuiltinImportersPlugin
+ * Who imported the leaked builtins, from what workerBuiltinImportersPlugin
  * recorded: e.g. ` ("node:fs" imported by my-agent/tools/files.ts). Workers ...`.
  * Empty when nothing was recorded (a builtin named in a string, not imported).
  */
@@ -397,7 +397,7 @@ export const CloudflareWorkerAdapter: DeploymentAdapter = {
   async build(outDir: string): Promise<void> {
     const { build } = await loadTsup();
     const builtinImporters = new Map<string, Set<string>>();
-    // Eve E14 (CLI-F7): buildBundle() turns esbuild's raw log into one coded error and removes a half-written dist/.
+    // BuildBundle() turns esbuild's raw log into one coded error and removes a half-written dist/.
     await buildBundle(build, {
       config: false,
       entry: { worker: path.join(outDir, 'worker.ts') },
@@ -437,7 +437,7 @@ export const CloudflareWorkerAdapter: DeploymentAdapter = {
       );
     }
 
-    // LOU-I3 AC: report the built bundle's size against Workers' script size
+    // Report the built bundle's size against Workers' script size
     // limit (see WORKER_SIZE_LIMIT_BYTES) right away, not just when
     // describe() is later called. A warning (not a thrown error) because
     // Cloudflare's limits vary by plan and have changed over time - a build

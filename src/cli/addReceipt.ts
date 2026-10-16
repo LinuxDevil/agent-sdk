@@ -1,5 +1,5 @@
 /**
- * The install receipt of `lousho add` (M7a): `<agent-dir>/lousho-registry.json`
+ * The install receipt of `lousho add`: `<agent-dir>/lousho-registry.json`
  * records each installed item's type, registry, install time, permission
  * manifest and the sha256 of every file written, so later tooling can tell
  * what came from a registry and whether it was edited since.

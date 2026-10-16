@@ -1,5 +1,5 @@
 /**
- * N13b: a tool whose `execute` is an `async function*` streams its output.
+ * A tool whose `execute` is an `async function*` streams its output.
  * Every `yield` is a complete snapshot, reported as `tool.partial`; the last
  * one is the result. Snapshots never reach the model, the transcript, a
  * checkpoint or a trace span.
@@ -58,7 +58,7 @@ const ofType = <T extends AgentEvent['type']>(events: AgentEvent[], type: T) =>
 
 const toolMessages = (messages: readonly Message[]) => messages.filter((m) => m.role === 'tool').map((m) => m.content);
 
-describe('generator tools stream tool.partial (N13b)', () => {
+describe('generator tools stream tool.partial', () => {
   it('three yields: three tool.partial (index 0..2) between tool.start and tool.done; only the last reaches the model', async () => {
     const model = mockModel([call('count_to', { n: 3 }, 'call_1'), 'Counted.']);
     const agent = createAgent({ provider: model, tools: [countTo()] });
@@ -276,7 +276,7 @@ describe('generator tools stream tool.partial (N13b)', () => {
   });
 });
 
-describe('generator tools on the resume path (N13b)', () => {
+describe('generator tools on the resume path', () => {
   it('an approved generator tool streams its partials on the resumed run (approvals.streamResolve)', async () => {
     const tool = defineTool({
       name: 'count_to',
@@ -356,7 +356,7 @@ describe('generator tools on the resume path (N13b)', () => {
   });
 });
 
-describe('the partial-stream runner (N13b)', () => {
+describe('the partial-stream runner', () => {
   it('only an async iterator that is also async iterable streams (a ReadableStream-like value is a result)', () => {
     async function* gen() {
       yield 1;
@@ -412,7 +412,7 @@ describe('the partial-stream runner (N13b)', () => {
   });
 });
 
-describe('partials and traces (N13b)', () => {
+describe('partials and traces', () => {
   it('a tool span records the final result only, never a snapshot', async () => {
     const spans: Span[] = [];
     const exporter: TraceExporter = { onSpanStart: (span) => spans.push(span), onSpanEnd: () => undefined };

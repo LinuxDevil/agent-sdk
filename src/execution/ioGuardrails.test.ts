@@ -1,5 +1,5 @@
 /**
- * LOU-X4: input, output and tool guardrails that stop a run with
+ * Input, output and tool guardrails that stop a run with
  * `finishReason: 'guardrail'` or rewrite its text.
  */
 
@@ -41,7 +41,7 @@ async function collect(run: AsyncIterable<AgentEvent>): Promise<AgentEvent[]> {
   return events;
 }
 
-describe('input guardrails (LOU-X4)', () => {
+describe('input guardrails', () => {
   it('a block ends the run with no model call', async () => {
     const model = mockModel(['never sent']);
     const { guardrail } = blockWord('bomb');
@@ -82,7 +82,7 @@ describe('input guardrails (LOU-X4)', () => {
   });
 });
 
-describe('output guardrails (LOU-X4)', () => {
+describe('output guardrails', () => {
   it('a block ends the run with finishReason guardrail and drops the reply', async () => {
     const { guardrail, seen } = blockWord('password');
     const agent = createAgent({ provider: mockModel(['the password is hunter2']), guardrails: { output: [guardrail] } });
@@ -143,7 +143,7 @@ describe('output guardrails (LOU-X4)', () => {
   });
 });
 
-describe('tool guardrails (LOU-X4)', () => {
+describe('tool guardrails', () => {
   function sendEmail() {
     const sent: unknown[] = [];
     const tool = defineTool({
@@ -196,7 +196,7 @@ describe('tool guardrails (LOU-X4)', () => {
   });
 });
 
-describe("onTripped: 'throw' (LOU-X4)", () => {
+describe("onTripped: 'throw'", () => {
   it('rejects with GuardrailError; a stream ends with error then run.done', async () => {
     const { guardrail } = blockWord('bomb');
     const agent = createAgent({ provider: mockModel(['x']), guardrails: { input: [guardrail], onTripped: 'throw' } });
@@ -212,7 +212,7 @@ describe("onTripped: 'throw' (LOU-X4)", () => {
   });
 });
 
-describe('sub-agents (LOU-X4)', () => {
+describe('sub-agents', () => {
   it("inherit the parent's guardrails", async () => {
     const child = createAgent({ provider: mockModel([`found ${KEY}`]), description: 'Finds keys' });
     const leadModel = mockModel([
@@ -233,7 +233,7 @@ describe('sub-agents (LOU-X4)', () => {
   });
 });
 
-describe('built-in guardrails (LOU-X4)', () => {
+describe('built-in guardrails', () => {
   const ctx = (text: string): IoGuardrailContext => ({ kind: 'output', text, messages: [] });
 
   it('maxLengthGuardrail', async () => {

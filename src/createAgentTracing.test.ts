@@ -1,5 +1,5 @@
 /**
- * M5a: createAgent({ exporter, captureContent }) traces every kind of run:
+ * CreateAgent({ exporter, captureContent }) traces every kind of run:
  * send(), stream(), agent.approvals.resolve() and agent.resume().
  */
 import * as fs from 'node:fs';
@@ -27,7 +27,7 @@ function recording(): TraceExporter & { ended: Span[] } {
 const op = (span: Span) => span.attributes['gen_ai.operation.name'];
 const ops = (spans: Span[]) => spans.map(op).sort();
 
-describe('createAgent({ exporter }) (M5a)', () => {
+describe('createAgent({ exporter })', () => {
   it('send() produces invoke_agent and chat spans', async () => {
     const exporter = recording();
     await createAgent({ name: 'a', provider: mockModel(['Hi.']), exporter }).send('Hello');
@@ -225,7 +225,7 @@ describe('createAgent({ exporter }) (M5a)', () => {
     expect(chat.attributes['gen_ai.output.messages']).toContain('Hi.');
   });
 
-  it('invoke_agent gen_ai.input.messages parses as JSON once - a Message[] input is not double-encoded (LOU-R3)', async () => {
+  it('invoke_agent gen_ai.input.messages parses as JSON once - a Message[] input is not double-encoded', async () => {
     const exporter = recording();
     await createAgent({ provider: mockModel(['Hi.']), exporter, captureContent: true }).send('Hello');
 
@@ -283,7 +283,7 @@ describe('createAgent({ exporter }) (M5a)', () => {
         .flatMap((day) => fs.readdirSync(path.join(dir, day)).map((name) => fs.readFileSync(path.join(dir, day, name), 'utf8')))
         .join('');
 
-    it('keeps prompt and tool IO out of the .lousho/traces files by default (Eve MA-F4)', async () => {
+    it('keeps prompt and tool IO out of the .lousho/traces files by default', async () => {
       const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-traces-'));
       try {
         await agent({ exporter: fileTraceExporter({ dir }), instructions: 'system-secret' }).send('the prompt');

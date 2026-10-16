@@ -1,7 +1,7 @@
 /**
  * Minimal, dependency-free "lint": rejects use of `var` in src/*.js.
  * Standing in for a real lint config so this fixture repo has zero
- * node_modules of its own (LOU-E11's tests mutate a scratch copy of this
+ * node_modules of its own (tests mutate a scratch copy of this
  * fixture and don't want to run `npm install` per test).
  */
 const fs = require('fs');

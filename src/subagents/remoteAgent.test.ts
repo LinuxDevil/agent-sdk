@@ -42,7 +42,7 @@ function lead(remote: ReturnType<typeof remoteAgent>, turns: MockTurn[] = [deleg
 const toolResult = (messages: readonly Message[]) => JSON.parse(messages.find((m) => m.role === 'tool')?.content as string) as unknown;
 const errorMessage = (messages: readonly Message[]) => (toolResult(messages) as { message: string }).message;
 
-describe('remoteAgent (LOU-Y7)', () => {
+describe('remoteAgent', () => {
   it('runs a task on the deployed agent through its session API and returns its final text', async () => {
     const remoteModel = mockModel(['The answer is 42.']);
     const server = deployed(createAgent({ provider: remoteModel, instructions: 'remote' }));
@@ -62,7 +62,7 @@ describe('remoteAgent (LOU-Y7)', () => {
     expect(body.sessionId).toMatch(/^task_/);
   });
 
-  it('resuming a task continues its remote session (LOU-Y7.2)', async () => {
+  it('resuming a task continues its remote session', async () => {
     const remoteModel = mockModel(['First answer.', 'Second answer.']);
     const server = deployed(createAgent({ provider: remoteModel, instructions: 'remote', store: memoryStore() }));
     const resume = { toolCalls: [{ name: 'task', args: { agent: 'remote', prompt: 'and then?', description: 'more', taskId: 'task_1' } }] };
@@ -167,7 +167,7 @@ describe('remoteAgent (LOU-Y7)', () => {
   });
 });
 
-describe('remote sub-agent approvals through the lead run (LOU-Y7.3)', () => {
+describe('remote sub-agent approvals through the lead run', () => {
   /** A deployed agent with a `deploy` tool that needs approval; `turns` are its model's. */
   function approvingRemote(turns: MockTurn[], auth: ServeAuth = TOKEN) {
     const runs: string[] = [];
@@ -206,7 +206,7 @@ describe('remote sub-agent approvals through the lead run (LOU-Y7.3)', () => {
     expect(await approval.json()).toEqual({ approved: true });
   });
 
-  it('works against a server whose auth is a list (N10a): the bearer token is its apiToken() entry, approvals included', async () => {
+  it('works against a server whose auth is a list: the bearer token is its apiToken() entry, approvals included', async () => {
     const authList = [basic({ users: { ops: 'pw' } }), jwt({ secret: 'a-jwt-secret-that-is-at-least-32-bytes', audience: 'agent' }), apiToken(TOKEN)];
     const { server, runs } = approvingRemote([deployCall(), 'Deployed to prod.'], authList);
     const { agent } = lead(remoteAgent({ url: 'https://remote.test', auth: TOKEN, fetch: server.fetch }));
@@ -248,7 +248,7 @@ describe('remote sub-agent approvals through the lead run (LOU-Y7.3)', () => {
     expect(taskResult(result.messages)).toMatch(/^Both deployed\./);
   });
 
-  it('a background remote task that pauses pauses the lead at agent_await, and approving it returns the answer there (M4)', async () => {
+  it('a background remote task that pauses pauses the lead at agent_await, and approving it returns the answer there', async () => {
     const { server, runs } = approvingRemote([deployCall(), 'Deployed in the background.']);
     const start = { name: 'task', args: { agent: 'remote', prompt: 'deploy', description: 'd', background: true } };
     const { agent } = lead(remoteAgent({ url: 'https://remote.test', auth: TOKEN, fetch: server.fetch }), [
@@ -355,7 +355,7 @@ describe('remote sub-agent approvals through the lead run (LOU-Y7.3)', () => {
     expect(JSON.stringify(remoteModel.calls[1].messages)).toContain('staging');
   });
 
-  it("returns a remote agent's output object as JSON with the footer (V4.2 shape)", async () => {
+  it("returns a remote agent's output object as JSON with the footer", async () => {
     const output = z.object({ city: z.string(), tempC: z.number() });
     const server = deployed(createAgent({ provider: mockModel(['{"city":"Oslo","tempC":-3}']), instructions: 'remote', output }));
     const { agent } = lead(remoteAgent({ url: 'https://remote.test', auth: TOKEN, fetch: server.fetch }));
@@ -364,8 +364,8 @@ describe('remote sub-agent approvals through the lead run (LOU-Y7.3)', () => {
   });
 });
 
-describe("remote sub-agent usage in the lead's totals (M10b)", () => {
-  it("adds the remote run's tokens behind an auth list too, and the remote run sees the api-token principal (N10a)", async () => {
+describe("remote sub-agent usage in the lead's totals", () => {
+  it("adds the remote run's tokens behind an auth list too, and the remote run sees the api-token principal", async () => {
     const seen: Array<Principal | undefined> = [];
     const remoteAgentServer = createAgent({
       provider: mockModel([{ text: 'The answer is 42.', ...used(100, 50) }]),

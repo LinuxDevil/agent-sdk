@@ -19,7 +19,7 @@ function toolResults(messages: Message[]): unknown[] {
   return messages.filter((m) => m.role === 'tool').map((m) => JSON.parse(String(m.content)));
 }
 
-describe('tool contract (LOU-D22)', () => {
+describe('tool contract', () => {
   it('defineTool sets inputSchema and execute and runs end-to-end without ai.tool()', async () => {
     vi.mocked(ai.tool).mockClear();
     const execute = vi.fn(async ({ city, unit }: z.output<typeof input>) => ({ city, temp: `21${unit}` }));

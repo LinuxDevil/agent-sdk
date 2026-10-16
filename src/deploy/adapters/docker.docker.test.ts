@@ -1,5 +1,5 @@
 /**
- * LOU-I4 / LOU-M6: the image `lousho build --target=docker` scaffolds builds,
+ * The image `lousho build --target=docker` scaffolds builds,
  * starts and serves /health and /chat on a real Docker daemon.
  *
  * Runs only through `npm run test:docker` (vitest.docker.config.ts); the Linux

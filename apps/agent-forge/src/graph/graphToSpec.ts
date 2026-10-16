@@ -17,12 +17,12 @@ export function hookNodeKey(node: AgentGraphNode): string {
 }
 
 /**
- * LOU-Q3: serialize every ENABLED hook on every node into `spec.policy`,
+ * Serialize every ENABLED hook on every node into `spec.policy`,
  * the one open/passthrough record `AgentSpec` already has (see
  * src/spec/schema.ts's doc comment on `AgentSpecPolicy` - `[key: string]:
  * unknown`, deliberately extensible without a core schema migration).
- * This is what lets the app's runtime control server (LOU-N,
- * server/runRegistry.ts) compile a real SDK `HookRegistry` and pass it
+ * This is what lets the app's runtime control server
+ * (server/runRegistry.ts) compile a real SDK `HookRegistry` and pass it
  * into `AgentExecutor.execute()`'s `hooks` option purely from the
  * `AgentSpec` it already transports over the wire - no separate endpoint
  * or second source of truth for "what hooks does this agent run with".
@@ -88,12 +88,12 @@ export function graphToSpec(graph: AgentGraphSpec): AgentSpec {
     spec.policy = { ...spec.policy, hooks: serializedHooks };
   }
 
-  // LOU-T3: a graph with a `router` node compiles to a real branching
+  // A graph with a `router` node compiles to a real branching
   // `AgentFlow` (graphToFlow.ts) rather than the fixed
   // trigger->llm->tool->[approval]->output pipeline shape `AgentSpec`
   // itself can express. There is nowhere else in `AgentSpec` to carry this
   // - it's stashed under `spec.policy.flow`, the same deliberately open
-  // passthrough record LOU-Q3 already uses for `spec.policy.hooks` above,
+  // passthrough record that is already used for `spec.policy.hooks` above,
   // so it round-trips over the exact same wire contract (PUT/POST
   // `AgentSpec` JSON) without any server API change. `server/buildAgent.ts`
   // reads it back to decide `AgentExecutor.execute()` vs. `FlowExecutor`.

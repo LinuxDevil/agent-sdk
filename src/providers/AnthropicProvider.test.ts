@@ -104,7 +104,7 @@ describe('AnthropicProvider', () => {
       generateTextMock.mockResolvedValue({
         text: 'Hello from Claude',
         finishReason: 'stop',
-        // Both majors' usage field names, so the test reads the same on ai v4 and v7 (LOU-D28b).
+        // Both majors' usage field names, so the test reads the same on ai v4 and v7.
         usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15, inputTokens: 10, outputTokens: 5 },
         toolCalls: [],
       });

@@ -1,4 +1,4 @@
-/** N10a: oidc() with a fake discovery document and key set. */
+/** Oidc() with a fake discovery document and key set. */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SDKError } from '../utils/sdkError';
 import { oidc } from './oidc';
@@ -11,7 +11,7 @@ const AUD = 'client-123';
 
 afterEach(() => { vi.restoreAllMocks(); });
 
-describe('oidc() (N10a)', () => {
+describe('oidc()', () => {
   it('discovers the key set once and accepts a token from the issuer', async () => {
     const rs = await rsaKey();
     const fetch = fakeFetch({ [DISCOVERY]: { issuer: ISSUER, jwks_uri: JWKS }, [JWKS]: { keys: [{ ...rs.jwk, kid: 'r1' }] } });

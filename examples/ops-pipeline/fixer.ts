@@ -1,5 +1,5 @@
 /**
- * Ops pipeline: fixer agent core (LOU-J6) - repo/log context in, unified
+ * Ops pipeline: fixer agent core - repo/log context in, unified
  * diff out.
  *
  * runFixer() diagnoses a FixRequest (built from an ErrorSignal, see
@@ -8,9 +8,9 @@
  * defineTool() tool (see createFixerTool() below) so the monitor agent can
  * delegate a fix request to it by ordinary tool-calling.
  *
- * See guardedPr.ts (LOU-J7) for what happens to the extracted patch next
+ * See guardedPr.ts for what happens to the extracted patch next
  * (patch-check-gated PR creation) - kept in a sibling file since it composes
- * this module's output with the LOU-E patch checks and LOU-J5 Slack tool
+ * this module's output with the patch checks and Slack tool
  * rather than being fixer-core itself.
  */
 import { z } from 'zod';

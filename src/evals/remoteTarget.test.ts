@@ -35,7 +35,7 @@ const target = (fetchImpl: typeof fetch, auth: string | undefined = TOKEN) => re
 const run = (agent: ReturnType<typeof remoteTarget>, test: (t: EvalTestContext) => void | Promise<void>) =>
   runTrajectoryCase({ name: 'remote refund', agent, test }, undefined, 'case 1', undefined);
 
-describe('remoteTarget (LOU-D47)', () => {
+describe('remoteTarget', () => {
   it('passes a case: tool call, reply, usage and steps come from the stream', async () => {
     const result = await run(target(deployment()), async (t) => {
       await t.send('Where is order 42?');
@@ -52,7 +52,7 @@ describe('remoteTarget (LOU-D47)', () => {
     expect(result.usage?.totalTokens).toBe(30);
   });
 
-  it('passes against a server whose auth is a list, with the token as its apiToken() entry (N10a)', async () => {
+  it('passes against a server whose auth is a list, with the token as its apiToken() entry', async () => {
     const result = await run(target(deployment(SCRIPT, [basic({ users: { ops: 'pw' } }), apiToken(TOKEN)])), async (t) => {
       await t.send('Where is order 42?');
       t.calledTool('lookup_order', { args: { orderId: '42' } });

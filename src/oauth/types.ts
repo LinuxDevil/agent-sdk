@@ -1,6 +1,6 @@
 /**
- * OAuth token storage types (N9a): the `tokens` part of an `AgentStore`.
- * Nothing here signs in; N9b adds the flow and N9c MCP server OAuth.
+ * OAuth token storage types: the `tokens` part of an `AgentStore`.
+ * Nothing here signs in; the sign-in flow and MCP server OAuth live elsewhere.
  */
 
 /** Who a stored credential belongs to: the agent itself, or one signed-in user. */
@@ -70,7 +70,7 @@ export interface OAuthTokenStore {
   /** Short-lived sign-in state (PKCE verifier and context), single use: `take` returns and deletes it. */
   putPending(state: string, value: PendingSignIn, ttlMs: number): Promise<void>;
   takePending(state: string): Promise<PendingSignIn | undefined>;
-  /** A client registered with an authorization server (dynamic client registration, used by N9c), per provider. */
+  /** A client registered with an authorization server (dynamic client registration, used by MCP server OAuth), per provider. */
   getClient(provider: string): Promise<Record<string, unknown> | undefined>;
   setClient(provider: string, client: Record<string, unknown>): Promise<void>;
 }

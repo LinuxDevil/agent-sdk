@@ -1,5 +1,5 @@
 /**
- * N14: without the optional peer `quickjs-emscripten`, a codeMode run fails at
+ * Without the optional peer `quickjs-emscripten`, a codeMode run fails at
  * its start with MissingPeerDependencyError naming the package and the command.
  * The import is made to fail the way Node reports a missing package.
  */
@@ -18,7 +18,7 @@ vi.mock('../providers/optionalPeer', async (importOriginal) => {
   };
 });
 
-describe('code mode (N14): the optional peer', () => {
+describe('code mode: the optional peer', () => {
   it('codeMode: true fails the first run with MissingPeerDependencyError naming quickjs-emscripten', async () => {
     const model = mockModel(['never']);
     const agent = createAgent({ provider: model, codeMode: true });

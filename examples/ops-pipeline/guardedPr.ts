@@ -1,13 +1,13 @@
 /**
- * Ops pipeline: patch-check-gated PR creation wiring (LOU-J7).
+ * Ops pipeline: patch-check-gated PR creation wiring.
  *
  * After fixer.ts's runFixer() returns {patch}, handleFixerPatch() gates
- * that patch through the REAL LOU-E12 runPatchChecks() (secret-scan +
+ * that patch through the REAL runPatchChecks() (secret-scan +
  * diff-size-cap by default) BEFORE ever considering the GitHub
  * PR-creation call. If the check result's `pass` is false, the GitHub
- * tool is NEVER called - instead the LOU-J5 Slack tool is called with a
+ * tool is NEVER called - instead the Slack tool is called with a
  * message naming which patch check(s) failed and why, reusing the original
- * approvalId/channel. If `pass` is true, the REAL LOU-E13/E14-hardened
+ * approvalId/channel. If `pass` is true, the REAL hardened
  * GitHub tool's PR-creation function is called exactly once with the
  * patch as diff content.
  *
@@ -29,9 +29,9 @@ import {
 import { ToolDescriptor } from '@lousho/build-ai-agent';
 
 export interface FixerPatchContext {
-  /** The REAL LOU-E13/E14-hardened GitHub tool's PR-creation ToolDescriptor. */
+  /** The REAL hardened GitHub tool's PR-creation ToolDescriptor. */
   githubCreatePrTool: ToolDescriptor;
-  /** The LOU-J5 Slack tool used to report a patch-check failure. */
+  /** The Slack tool used to report a patch-check failure. */
   slackTool: ToolDescriptor;
   /** Slack channel to notify on patch-check failure. */
   channel: string;

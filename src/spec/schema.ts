@@ -1,5 +1,5 @@
 /**
- * Declarative agent spec file format (LOU-H9).
+ * Declarative agent spec file format.
  *
  * A plain-data description of an agent - name, prompt, provider, tool
  * names - that can be authored as YAML or JSON and turned into a live
@@ -26,8 +26,8 @@ export interface AgentSpecCompaction {
 export { SPEC_GUARDRAIL_NAMES, type AgentSpecGuardrail, type SpecGuardrailName } from './guardrailOptions';
 
 /**
- * Optional cross-harness execution policy (LOU-J1+). The known fields below
- * are validated and compiled by specToAgent() (LOU-X5) into `createAgent()`
+ * Optional cross-harness execution policy. The known fields below
+ * are validated and compiled by specToAgent() into `createAgent()`
  * permissions, guardrails, limits, `askQuestion` and compaction. Other
  * fields stay an open record (`.passthrough()` on the zod side): different
  * target harnesses (Claude Code, Codex, Pi, ...) each honor a different
@@ -71,9 +71,9 @@ export interface McpStdioServerSpec {
    * `'capture'` only keeps them; `'inherit'` and `'ignore'` keep nothing.
    */
   stderr?: 'forward' | 'capture' | 'inherit' | 'ignore';
-  /** Which of this server's tools ask for approval (LOU-Z5). Default `'always'` (Eve TOOLS-F11). */
+  /** Which of this server's tools ask for approval. Default `'always'`. */
   approval?: McpApproval;
-  /** N2: withhold this server's tools from the model until `tool_search` finds them (docs/tool-search.md). */
+  /** Withhold this server's tools from the model until `tool_search` finds them (docs/tool-search.md). */
   deferLoading?: boolean;
   /** How long one tool call may take, in milliseconds. Default: the MCP SDK's 60 seconds. */
   timeoutMs?: number;
@@ -91,7 +91,7 @@ export interface McpStdioServerSpec {
 }
 
 /**
- * OAuth for an HTTP MCP server (N9c), per the MCP authorization spec: the SDK
+ * OAuth for an HTTP MCP server, per the MCP authorization spec: the SDK
  * discovers the authorization server, registers a client when no `clientId` is
  * given, and signs in with PKCE and a resource indicator. The grant belongs to
  * the app: an operator signs the agent in once (`agent.oauth.mcpSignInUrl()`).
@@ -112,9 +112,9 @@ export interface McpOAuthOptions {
 export interface McpHttpServerSpec {
   url: string;
   headers?: Record<string, string>;
-  /** Which of this server's tools ask for approval (LOU-Z5). Default `'always'` (Eve TOOLS-F11). */
+  /** Which of this server's tools ask for approval. Default `'always'`. */
   approval?: McpApproval;
-  /** N2: withhold this server's tools from the model until `tool_search` finds them (docs/tool-search.md). */
+  /** Withhold this server's tools from the model until `tool_search` finds them (docs/tool-search.md). */
   deferLoading?: boolean;
   /** How long one tool call may take, in milliseconds. Default: the MCP SDK's 60 seconds. */
   timeoutMs?: number;
@@ -122,7 +122,7 @@ export interface McpHttpServerSpec {
   connectTimeoutMs?: number;
   /** Load only some of this server's tools, by their MCP names: `{ include?, exclude? }`. */
   tools?: McpToolFilter;
-  /** Sign in to this server with OAuth (N9c); see {@link McpOAuthOptions}. */
+  /** Sign in to this server with OAuth; see {@link McpOAuthOptions}. */
   oauth?: McpOAuthOptions;
   /**
    * A server that fails to connect is left out (with a warning) instead of
@@ -134,7 +134,7 @@ export interface McpHttpServerSpec {
 }
 
 /**
- * One entry of `AgentSpec.mcpServers` (LOU-D20): stdio (`command`, optional
+ * One entry of `AgentSpec.mcpServers`: stdio (`command`, optional
  * `args`/`env`) or HTTP (`url`, optional `headers`). Exactly one of
  * `command` / `url` is set.
  */
@@ -146,15 +146,15 @@ export interface AgentSpec {
   provider: AgentSpecProvider;
   tools?: string[];
   /**
-   * Optional (LOU-J1+, backward-compatible with LOU-H9's original
+   * Optional (backward-compatible with original
    * {name, prompt, provider, tools} shape - existing specs that omit this
    * still validate and load unchanged).
    */
   policy?: AgentSpecPolicy;
-  /** Optional (LOU-J1+), same backward-compatibility note as `policy`. */
+  /** Optional, same backward-compatibility note as `policy`. */
   triggers?: AgentSpecTrigger[];
   /**
-   * Optional (LOU-D20), same backward-compatibility note as `policy`: MCP
+   * Optional, same backward-compatibility note as `policy`: MCP
    * servers this agent uses, keyed by a name that namespaces their tools.
    */
   mcpServers?: Record<string, McpServerSpec>;
@@ -219,7 +219,7 @@ const mcpApprovalSchema = z.union(
 const mcpOAuthText = (field: string) =>
   z.string(typeErrors({ invalid: `${MCP_PREFIX} 'oauth.${field}' must be a string` })).min(1, `${MCP_PREFIX} 'oauth.${field}' must not be empty`);
 
-/** `oauth` of an HTTP entry (N9c). */
+/** `oauth` of an HTTP entry. */
 const mcpOAuthSchema = z
   .object(
     {
@@ -312,7 +312,7 @@ const mcpServerSchema = z
   // superRefine has verified exactly one of command/url and no cross-shape fields.
   .transform((server): McpServerSpec => server as McpServerSpec);
 
-/** Also accepts the pre-LOU-D20 list form `[{ name, command | url }]` that `lousho doctor` read. */
+/** Also accepts the earlier list form `[{ name, command | url }]` that `lousho doctor` read. */
 const mcpServersSchema = z.preprocess(
   (value) =>
     Array.isArray(value)
@@ -338,7 +338,7 @@ const specSchema = z.object({
 
 /**
  * The spec schemas as published: structural types, not zod's, so their
- * declarations do not depend on the installed zod major (LOU-V4.2). `safeParse`
+ * declarations do not depend on the installed zod major. `safeParse`
  * and `parse` work as on a zod schema.
  */
 export interface SpecSchema<T> extends SafeParser<T> {

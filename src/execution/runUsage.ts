@@ -1,5 +1,5 @@
 /**
- * Accumulation of a run's usage (LOU-V5): per-call measurement (reported or
+ * Accumulation of a run's usage: per-call measurement (reported or
  * estimated), the running RunUsage, delegated-child roll-up, and
  * rehydration from a checkpoint.
  */
@@ -11,10 +11,10 @@ import type { CallUsage, DelegatedUsage, RunUsage, Usage } from '../models/usage
 import type { AgentEventUsage } from './agentEvents';
 import { addHostedCounts } from './hostedToolCalls';
 
-/** Model id that pre-LOU-V5 checkpoint tokens are attributed to. */
+/** Model id that earlier checkpoint tokens are attributed to. */
 const UNKNOWN_MODEL = 'unknown';
 
-/** M10b: prefix of the `byModel` key a remote sub-agent's usage is filed under (`remote:<agent name>`). */
+/** Prefix of the `byModel` key a remote sub-agent's usage is filed under (`remote:<agent name>`). */
 const REMOTE_MODEL_PREFIX = 'remote:';
 
 /** The `byModel` key of remote sub-agent `name`'s usage. */
@@ -149,7 +149,7 @@ function delegatedTotals(before: DelegatedUsage | undefined, child: RunUsage): D
   };
 }
 
-/** The usage a run had spent when it threw, by the error it threw (Eve MA-F1). */
+/** The usage a run had spent when it threw, by the error it threw. */
 const failedRunUsage = new WeakMap<object, RunUsage>();
 
 /**
@@ -162,7 +162,7 @@ export function attachRunUsage(error: unknown, usage: RunUsage): void {
   const hadOwn = Object.prototype.hasOwnProperty.call(error, 'usage') && !failedRunUsage.has(error);
   const spent = structuredClone(usage);
   failedRunUsage.set(error, spent);
-  // H3-6: and as `error.usage` (SDKError, PropagatingToolError, any error) - unless the error has a `usage` of its own.
+  // And as `error.usage` (SDKError, PropagatingToolError, any error) - unless the error has a `usage` of its own.
   if (hadOwn) return;
   try {
     Object.defineProperty(error, 'usage', { value: spent, writable: true, configurable: true, enumerable: false });
@@ -193,7 +193,7 @@ export function mergeDelegatedUsage(run: RunUsage, child: RunUsage): void {
 }
 
 /**
- * M10b: a remote sub-agent run's `run.done` usage as a {@link RunUsage}, to roll into the lead's totals. The remote
+ * A remote sub-agent run's `run.done` usage as a {@link RunUsage}, to roll into the lead's totals. The remote
  * sends no per-model breakdown, so `byModel` has one entry under `modelKey` (see {@link remoteModelKey}) holding the
  * totals and the remote's own cost estimate (`undefined` when it sent none).
  */
@@ -215,7 +215,7 @@ export function fromEventUsage(usage: AgentEventUsage, modelKey: string): RunUsa
   };
 }
 
-/** N1a: the per-tool hosted call counts of `now` after `before`; absent when none remain. */
+/** The per-tool hosted call counts of `now` after `before`; absent when none remain. */
 function hostedSince(now: RunUsage['hostedToolCalls'], before: RunUsage['hostedToolCalls']): Pick<RunUsage, 'hostedToolCalls'> {
   const counts = Object.entries(now ?? {})
     .map(([name, count]) => [name, since(count ?? 0, before?.[name])] as const)
@@ -226,7 +226,7 @@ function hostedSince(now: RunUsage['hostedToolCalls'], before: RunUsage['hostedT
 const since = (now: number, before: number | undefined): number => Math.max(0, now - (before ?? 0));
 
 /**
- * M10b: what a run spent after `before`, given its cumulative usage `now` (a remote run resumed after an approval
+ * What a run spent after `before`, given its cumulative usage `now` (a remote run resumed after an approval
  * reports its usage from its start, the turn before the pause included). Counts never go below zero.
  */
 export function usageSince(now: RunUsage, before: RunUsage | undefined): RunUsage {
@@ -255,12 +255,12 @@ export function usageSince(now: RunUsage, before: RunUsage | undefined): RunUsag
   };
 }
 
-/** What a checkpoint stores of a run's usage: always the pre-LOU-V5 fields, plus the rest of RunUsage on newer ones. */
+/** What a checkpoint stores of a run's usage: always the earlier fields, plus the rest of RunUsage on newer ones. */
 export type CheckpointUsage = Pick<RunUsage, 'promptTokens' | 'completionTokens' | 'totalTokens'> &
   Partial<RunUsage>;
 
 /**
- * Rehydrates a checkpointed run total. Checkpoints written before LOU-V5
+ * Rehydrates a checkpointed run total. Checkpoints written before
  * only carry token counts: those are kept (attributed to the `unknown`
  * model, so `costUsd` is `undefined` rather than a misleading partial sum).
  */

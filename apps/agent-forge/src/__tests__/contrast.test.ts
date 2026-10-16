@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 /**
- * Eve DUI-F9: text tokens must meet WCAG AA (4.5:1) against the surfaces
+ * Text tokens must meet WCAG AA (4.5:1) against the surfaces
  * they are drawn on, in both the light and the dark scheme. Reads the real
  * `light-dark(<light>, <dark>)` pairs out of theme.css.
  */
@@ -44,7 +44,7 @@ const PAIRS: [text: string, background: string][] = [
   ['on-accent', 'accent-solid'],
 ];
 
-describe('theme contrast (Eve DUI-F9)', () => {
+describe('theme contrast', () => {
   for (const scheme of ['light', 'dark'] as const) {
     for (const [text, background] of PAIRS) {
       it(`--${text} on --${background} is >= 4.5:1 (${scheme})`, () => {

@@ -5,7 +5,7 @@ import type { AgentNodeHookPhase, GraphPosition } from '../graph/types';
 const NODE_SIZE = { width: 190, height: 80 };
 
 /**
- * Eve DUI-F9: where a palette item added from the keyboard (or a click)
+ * Where a palette item added from the keyboard (or a click)
  * lands - the flow-space point under the centre of the visible canvas,
  * offset so the node itself is centred there. `transform` is React Flow's
  * `[x, y, zoom]` viewport transform and `width`/`height` the pane size.

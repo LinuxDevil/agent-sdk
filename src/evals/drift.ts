@@ -1,5 +1,5 @@
 /**
- * Trajectory drift (LOU-D46): what an eval case did, read from its cassette,
+ * Trajectory drift: what an eval case did, read from its cassette,
  * and how two such trajectories differ. Pure, so `lousho eval --drift` can
  * compare a committed cassette with a fresh recording of the same case.
  */
@@ -74,7 +74,7 @@ export function diffTrajectories(committed: Trajectory, current: Trajectory, opt
   return drift;
 }
 
-/** One model turn of a transcript (LOU-D44). */
+/** One model turn of a transcript. */
 export interface TrajectoryStep {
   /** The assistant's text this turn (`''` for none). */
   text: string;
@@ -82,7 +82,7 @@ export interface TrajectoryStep {
   tools: { id: string; name: string; args: string; result?: string }[];
 }
 
-/** How two runs differ (LOU-D44): e.g. a session and a fork of it, for side-by-side rendering. */
+/** How two runs differ: e.g. a session and a fork of it, for side-by-side rendering. */
 export interface TrajectoryComparison {
   /** Each run's model turns, in order (step `n` is index `n - 1`). */
   a: TrajectoryStep[];
@@ -120,7 +120,7 @@ function stepKey(step: TrajectoryStep | undefined): string {
 }
 
 /**
- * Compares two runs (LOU-D44) - checkpoints, such as a session's and its
+ * Compares two runs - checkpoints, such as a session's and its
  * `AgentExecutor.fork()`'s, or transcripts - turn by turn. A step is one
  * assistant turn of the transcript.
  */

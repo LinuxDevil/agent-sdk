@@ -1,5 +1,5 @@
 /**
- * Shared contract suites (LOU-W5): the same assertions run against every
+ * Shared contract suites: the same assertions run against every
  * implementation of SessionStore, CheckpointStore and ApprovalStore.
  * `factory` returns a fresh, empty store (and may be async).
  */
@@ -16,7 +16,7 @@ const convo: Message[] = [
   { role: 'assistant', content: 'hello' },
 ];
 
-/** A transcript holding image and file bytes (Eve DUR-F5): they must come back as `Uint8Array`, not `{ "0": 137, ... }`. */
+/** A transcript holding image and file bytes: they must come back as `Uint8Array`, not `{ "0": 137, ... }`. */
 const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]);
 export const convoWithBytes: Message[] = [
   {
@@ -72,7 +72,7 @@ export function describeSessionStoreContract(name: string, factory: Factory<Sess
       expect(await store.load('b')).toEqual([convo[0]]);
     });
 
-    it('keeps ids that differ only in case apart (Eve DUR-F7)', async () => {
+    it('keeps ids that differ only in case apart', async () => {
       const store = await factory();
       await store.save('Alice', convo);
       expect(await store.load('alice')).toBeUndefined();
@@ -91,7 +91,7 @@ export function describeSessionStoreContract(name: string, factory: Factory<Sess
       expect((await store.load('a'))?.[0].content).toBe('hi');
     });
 
-    it('round-trips image and file bytes as Uint8Array (Eve DUR-F5)', async () => {
+    it('round-trips image and file bytes as Uint8Array', async () => {
       const store = await factory();
       await store.save('a', convoWithBytes);
       expectBytesRoundTrip(await store.load('a'));
@@ -103,7 +103,7 @@ export function describeSessionStoreContract(name: string, factory: Factory<Sess
       await expect(store.load('a/b')).rejects.toThrow(/Invalid session id/);
     });
 
-    // Eve DUR-F4: the optional compare-and-swap a session commits through.
+    // The optional compare-and-swap a session commits through.
     it('saveIf saves only over the expected revision', async () => {
       const store = await factory();
       if (!store.saveIf) return;
@@ -171,7 +171,7 @@ export function describeCheckpointStoreContract(name: string, factory: Factory<C
       expect((await store.load('b'))?.sessionId).toBe('b');
     });
 
-    it('keeps ids that differ only in case apart (Eve DUR-F7)', async () => {
+    it('keeps ids that differ only in case apart', async () => {
       const store = await factory();
       await store.save('Run-1', makeCheckpoint({ sessionId: 'Run-1' }));
       expect(await store.load('run-1')).toBeNull();
@@ -187,7 +187,7 @@ export function describeCheckpointStoreContract(name: string, factory: Factory<C
       expect(await store.load('run-1')).toEqual(extended);
     });
 
-    it('list() returns the latest checkpoint of every id by id, filtered by status (Eve DUR-F15)', async () => {
+    it('list() returns the latest checkpoint of every id by id, filtered by status', async () => {
       const store = await factory();
       if (!store.list) return; // optional
       expect(await store.list()).toEqual([]);
@@ -208,7 +208,7 @@ export function describeCheckpointStoreContract(name: string, factory: Factory<C
       expect((await store.list({ status: 'in-progress' })).map((entry) => entry.sessionId)).toEqual([]);
     });
 
-    it('round-trips image and file bytes as Uint8Array (Eve DUR-F5)', async () => {
+    it('round-trips image and file bytes as Uint8Array', async () => {
       const store = await factory();
       await store.save('run-1', makeCheckpoint({ messages: convoWithBytes }));
       expectBytesRoundTrip((await store.load('run-1'))?.messages);
@@ -281,7 +281,7 @@ export function describeApprovalStoreContract(name: string, factory: Factory<App
       expect(await store.resolve('a')).toBeNull();
     });
 
-    it('keeps ids that differ only in case apart (Eve DUR-F7)', async () => {
+    it('keeps ids that differ only in case apart', async () => {
       const store = await factory();
       const upper = makePending('Pay-1');
       await store.save(upper, makeSnapshot(upper));
@@ -321,7 +321,7 @@ export function describeApprovalStoreContract(name: string, factory: Factory<App
       expect(await store.load!('a')).toBeNull();
     });
 
-    it('list() returns the unresolved approvals oldest first, without the resolved ones (Eve TOOLS-F13)', async () => {
+    it('list() returns the unresolved approvals oldest first, without the resolved ones', async () => {
       const store = await factory();
       if (!store.list) return; // optional: a store without it is listed by this process only
       expect(await store.list()).toEqual([]);
@@ -333,7 +333,7 @@ export function describeApprovalStoreContract(name: string, factory: Factory<App
       expect(await store.list()).toEqual([early, late]);
     });
 
-    it('round-trips image and file bytes in the snapshot as Uint8Array (Eve DUR-F5)', async () => {
+    it('round-trips image and file bytes in the snapshot as Uint8Array', async () => {
       const store = await factory();
       const pending = makePending('a');
       await store.save(pending, { ...makeSnapshot(pending), currentMessages: convoWithBytes });

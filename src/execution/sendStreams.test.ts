@@ -1,5 +1,5 @@
 /**
- * M9: `send()` and `AgentExecutor.execute()` with a listener stream their
+ * `send()` and `AgentExecutor.execute()` with a listener stream their
  * model calls like `stream()` does - a step's text reaches the listener as
  * several `text.delta` events - without changing what the run returns.
  */
@@ -60,7 +60,7 @@ function counting(model: MockModel, name = model.name): LLMProvider & { streamed
   return provider;
 }
 
-describe('send() with a listener streams model calls (M9)', () => {
+describe('send() with a listener streams model calls', () => {
   it('emits several text.delta per step that add up to the step text, with the usage of a generated run', async () => {
     const heard: AgentEvent[] = [];
     const provider = counting(mockModel(script()));
@@ -159,7 +159,7 @@ describe('send() with a listener streams model calls (M9)', () => {
   });
 });
 
-describe('send() with a listener: retry and fallback cover streamed calls (M9)', () => {
+describe('send() with a listener: retry and fallback cover streamed calls', () => {
   const ENV_VARS = ['LOUSHO_MODEL', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY', 'OLLAMA_BASE_URL'];
   const apiError = (statusCode: number) =>
     new APICallError({ message: `HTTP ${statusCode}`, url: 'https://api.example.com/v1/chat', requestBodyValues: {}, statusCode, isRetryable: true });

@@ -1,12 +1,12 @@
 /**
- * Codex generator (LOU-J2)
+ * Codex generator
  *
  * Turns an AgentSpec into a Codex-style agent-config JSON file.
  *
  * Uncertainty note: OpenAI Codex CLI's agent-config format is not something
  * this repo has a copy of or a dependency on to verify against precisely,
  * and no network research was performed as part of writing this generator.
- * The shape below follows the LOU-J2 ticket's own illustrative shape as the
+ * The shape below follows the ticket's own illustrative shape as the
  * best-effort baseline: a top-level `instructions` field carries the
  * prompt (matching Codex's documented convention of an `instructions`
  * field for agent system prompts, as opposed to Claude Code's `prompt`/

@@ -1,6 +1,6 @@
 /**
  * Runtime plumbing that lets a child agent run (a sub-agent started by the
- * `task` tool) inherit from the parent run that called it (LOU-Y1).
+ * `task` tool) inherit from the parent run that called it.
  *
  * The executor binds a {@link ToolCallScope} - the parent run's runtime
  * options, the calling tool call and its span - to the options object every
@@ -49,15 +49,15 @@ export type InheritedRuntime = Pick<
   | 'approvalTtlMs'
   | 'guardrails'
   | 'sessionId'
-  // M10c: a paused sub-agent's resume uses the top-level run's drift mode.
+  // A paused sub-agent's resume uses the top-level run's drift mode.
   | 'onAgentDrift'
-  // N10b: an in-process sub-agent acts for the same caller (a remote one is not told).
+  // An in-process sub-agent acts for the same caller (a remote one is not told).
   | 'principal'
-  // LOU-R16: and its hooks see the parent run's metadata.
+  // And its hooks see the parent run's metadata.
   | 'metadata'
-  // N9b: and reads that caller's OAuth tokens from the same store.
+  // And reads that caller's OAuth tokens from the same store.
   | 'tokens'
-  // Eve PROV-F14: and shares the lead's model-call budget.
+  // And shares the lead's model-call budget.
   | 'rateLimiter'
 >;
 
@@ -70,17 +70,17 @@ export interface ToolCallScope {
   /**
    * Adds a child run's usage to the parent's totals - set by
    * resumeAfterApproval(); the executor hands tools `onDelegatedUsage`
-   * in their execute options instead (LOU-V5).
+   * in their execute options instead.
    */
   onDelegatedUsage?: (usage: RunUsage) => void;
   /** Runs a child agent (`AgentExecutor.execute`). */
   execute: (options: ExecuteOptions) => Promise<ExecutionResult>;
   /**
    * Set by resumeAfterApproval() when this call re-enters a paused sub-agent;
-   * `approver` (N10b) is who decided, for the sub-agent's approved call.
+   * `approver` is who decided, for the sub-agent's approved call.
    */
   resume?: { decision: ApprovalDecision; suspension: SubagentSuspension; run: ResumeRun; approver?: Principal };
-  /** N14: set on a `run_code` call: runs one inner tool call of its script through this run's gate. */
+  /** Set on a `run_code` call: runs one inner tool call of its script through this run's gate. */
   callTool?: NestedToolCaller;
 }
 
@@ -125,9 +125,9 @@ export function subagentBudget(maxSubagentDepth: number | undefined): number {
  * pauses the parent run once the turn's tool calls are done.
  */
 export class SubagentApprovalPause extends PropagatingToolError {
-  /** Args the paused tool call is re-entered with on resume, over its own (LOU-Y6: the `task` call's taskId). */
+  /** Args the paused tool call is re-entered with on resume, over its own (the `task` call's taskId). */
   resumeArgs?: Record<string, unknown>;
-  /** M4: the background tasks an `agent_await` call pauses on, recorded on the suspension (never in its args). */
+  /** The background tasks an `agent_await` call pauses on, recorded on the suspension (never in its args). */
   background?: SuspendedBackgroundTasks;
 
   constructor(
@@ -180,7 +180,7 @@ export function toSuspension(
  */
 function pendingForSuspension(suspension: SubagentSuspension, principal: Principal | undefined, child: PendingApproval = leafPending(suspension.snapshot)): PendingApproval {
   const pending: PendingApproval = { ...child, subagentPath: [suspension.agentName, ...(child.subagentPath ?? [])] };
-  // N10b: the lead's principal (a remote sub-agent's pause has none of its own).
+  // The lead's principal (a remote sub-agent's pause has none of its own).
   if (principal) pending.principal = principal;
   else delete pending.principal;
   return pending;
@@ -192,7 +192,7 @@ export function suspensionRecord(
   state: { messages: Message[]; steps: number; usage: RunUsage; queuedInput?: Message[]; fingerprint?: AgentFingerprint },
   paused: SubagentSuspension
 ): { pending: PendingApproval; snapshot: ExecutionSnapshot } {
-  // Eve TOOLS-F12: a sub-agent step paused on several calls pauses the lead on all of them (same ids), first one first.
+  // A sub-agent step paused on several calls pauses the lead on all of them (same ids), first one first.
   const childGroup = paused.snapshot.approvalGroup;
   const grouped = childGroup !== undefined && childGroup.length > 1;
   const suspension = grouped ? { ...paused, snapshot: snapshotForMember(paused.snapshot, childGroup[0].pending.id) } : paused;
@@ -202,7 +202,7 @@ export function suspensionRecord(
     pending,
     snapshot: {
       agent: baseAgentOf(run.agent),
-      // LOU-U8: queued input rides at the end; resume moves it behind the results.
+      // Queued input rides at the end; resume moves it behind the results.
       currentMessages: [...state.messages, ...(state.queuedInput ?? [])],
       pendingToolCall: pending,
       steps: state.steps,
@@ -222,7 +222,7 @@ export function suspensionRecord(
  * first in call order - or none when `dropAll` (the run pauses for sign-in).
  * The result of every other suspended call is rewritten into an error saying
  * its sub-agent's call was never run (the sub-agent's paused state is
- * dropped). Eve TOOLS-F12: a turn that pauses on calls needing approval keeps
+ * dropped). a turn that pauses on calls needing approval keeps
  * the first suspension, to pause on once they are decided.
  */
 export function settleSuspensions(

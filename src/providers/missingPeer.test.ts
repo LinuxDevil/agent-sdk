@@ -1,5 +1,5 @@
 /**
- * Missing optional peers (LOU-D10, LOU-D19): constructing a provider always
+ * Missing optional peers: constructing a provider always
  * works; the first generate()/stream() rejects with a typed error carrying
  * the install command.
  */
@@ -30,7 +30,7 @@ interface Case {
   load: () => Promise<{ generate(o: { messages: typeof messages }): Promise<unknown>; stream(o: { messages: typeof messages }): Promise<unknown> }>;
 }
 
-// The hint names the provider package version that pairs with the installed `ai` (LOU-D28d).
+// The hint names the provider package version that pairs with the installed `ai`.
 const AI_SDK_RANGE = ({ 4: '^0.0.42', 6: '^3.0.0', 7: '^4.0.0' } as Record<number, string>)[installedAiMajor];
 const OLLAMA_PEER = installedAiMajor === 4 ? 'ollama-ai-provider@^1.2.0' : `ollama-ai-provider-v2@^${installedAiMajor === 6 ? 3 : 4}.0.0`;
 
@@ -110,7 +110,7 @@ describe('SubprocessSandbox with dockerode not installed', () => {
   });
 });
 
-describe('feature peers (LOU-D40)', () => {
+describe('feature peers', () => {
   const manifest = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
 
   it.each(Object.entries(FEATURE_PEERS))('%s is an optional peer whose range matches package.json', (name, peer) => {

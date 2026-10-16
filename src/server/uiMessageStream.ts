@@ -1,5 +1,5 @@
 /**
- * LOU-P1: render a Lousho run with the Vercel AI SDK's UI hooks (`useChat`).
+ * Render a Lousho run with the Vercel AI SDK's UI hooks (`useChat`).
  * `toUIMessageStream()` maps a run's typed events (docs/streaming.md) to the
  * AI SDK's "UI message stream" chunks, `toUIMessageStreamResponse()` frames
  * them as the protocol's Server-Sent Events, and `fromUIMessages()` turns the
@@ -23,11 +23,11 @@ export interface LoushoApprovalData {
   toolCallId: string;
   toolName: string;
   input: Record<string, unknown>;
-  /** `'question'` for an `ask_question` pause, `'sign-in'` (N9b) for a tool waiting on an OAuth sign-in; absent for a tool approval. */
+  /** `'question'` for an `ask_question` pause, `'sign-in'` for a tool waiting on an OAuth sign-in; absent for a tool approval. */
   kind?: string;
   /** The question's text and options, when `kind` is `'question'`. */
   question?: unknown;
-  /** N9b: `{ provider, displayName?, url }`, when `kind` is `'sign-in'`: show the link, approve once the user signed in. */
+  /** `{ provider, displayName?, url }`, when `kind` is `'sign-in'`: show the link, approve once the user signed in. */
   signIn?: unknown;
 }
 
@@ -57,7 +57,7 @@ export type LoushoUIMessageChunk =
   | { type: 'reasoning-delta'; id: string; delta: string }
   | { type: 'tool-input-start'; toolCallId: string; toolName: string; providerExecuted?: boolean }
   | { type: 'tool-input-available'; toolCallId: string; toolName: string; input: unknown; providerExecuted?: boolean }
-  /** N13b: `preliminary: true` for a snapshot of a streaming tool (`tool.partial`); the final output has no `preliminary`. */
+  /** `preliminary: true` for a snapshot of a streaming tool (`tool.partial`); the final output has no `preliminary`. */
   | { type: 'tool-output-available'; toolCallId: string; output: unknown; providerExecuted?: boolean; preliminary?: true }
   | { type: 'tool-output-error'; toolCallId: string; errorText: string; providerExecuted?: boolean }
   | { type: 'data-lousho-approval'; id: string; data: LoushoApprovalData }
@@ -78,7 +78,7 @@ interface MapState {
   /** Id of the open text part, if any. */
   openText: string | null;
   textCount: number;
-  /** LOU-V13: id of the reasoning part opened last. */
+  /** Id of the reasoning part opened last. */
   reasoning: string;
 }
 
@@ -97,7 +97,7 @@ function textDelta(state: MapState, delta: string): LoushoUIMessageChunk[] {
   return [...opened, { type: 'text-delta', id: state.openText, delta }];
 }
 
-/** LOU-V13: a `reasoning-delta`, or the `reasoning-end` of the part the last `reasoning.start` opened. */
+/** A `reasoning-delta`, or the `reasoning-end` of the part the last `reasoning.start` opened. */
 function reasoningChunk(event: Extract<AgentEvent, { type: 'reasoning.delta' | 'reasoning.done' }>, state: MapState): LoushoUIMessageChunk {
   if (event.type === 'reasoning.done') return { type: 'reasoning-end', id: state.reasoning };
   return { type: 'reasoning-delta', id: state.reasoning, delta: event.text };
@@ -136,7 +136,7 @@ function toolChunks(event: ToolEvent, state: MapState): LoushoUIMessageChunk[] {
         { type: 'tool-input-start', toolCallId: event.toolCallId, toolName: event.toolName, ...byProvider(event) },
         { type: 'tool-input-available', toolCallId: event.toolCallId, toolName: event.toolName, input: event.args, ...byProvider(event) },
       ];
-    // N13b: the AI SDK's preliminary tool output (AI SDK 5+); the `tool.done` chunk after it is final.
+    // The AI SDK's preliminary tool output (AI SDK 5+); the `tool.done` chunk after it is final.
     case 'tool.partial':
       return [{ type: 'tool-output-available', toolCallId: event.toolCallId, output: event.output, preliminary: true }];
     case 'tool.done':
@@ -171,7 +171,7 @@ function chunksFor(event: AgentEvent, state: MapState): LoushoUIMessageChunk[] {
       return textDelta(state, event.text);
     case 'text.done':
       return closeText(state);
-    // LOU-V13: one reasoning part per `reasoning.start` ... `reasoning.done`.
+    // One reasoning part per `reasoning.start` ... `reasoning.done`.
     case 'reasoning.start':
       state.reasoning = `reasoning-${event.seq}`;
       return [{ type: 'reasoning-start', id: state.reasoning }];
@@ -220,7 +220,7 @@ export function toUIMessageStream(run: AsyncIterable<AgentEvent>): ReadableStrea
         }
         controller.enqueue(pending.shift() as LoushoUIMessageChunk);
       } catch (error) {
-        // Eve CORE-F10: a failed run throws after `run.done`; its `error` event already made the chunk.
+        // A failed run throws after `run.done`; its `error` event already made the chunk.
         if (!finished) controller.enqueue({ type: 'error', errorText: error instanceof Error ? error.message : String(error) });
         controller.close();
       }
@@ -282,7 +282,7 @@ function toContentPart(part: UIMessagePartLike): ContentPart | undefined {
   return { type: 'file', data: part.url, mimeType: part.mediaType ?? 'application/octet-stream', ...(part.filename && { filename: part.filename }) };
 }
 
-/** Eve TOOLS-F9: a client-sent message the run may take: an object with role `user` or `assistant`. */
+/** A client-sent message the run may take: an object with role `user` or `assistant`. */
 function isClientMessage(message: unknown): message is UIMessageLike & { role: 'user' | 'assistant' } {
   if (typeof message !== 'object' || message === null) return false;
   const { role } = message as { role?: unknown };
@@ -299,7 +299,7 @@ function toContent(parts: UIMessagePartLike[]): string | ContentPart[] {
  * `image/*` file parts images and other file parts files (the part's `url`, a
  * `data:` URL or an `http(s)` URL, is the data); tool, reasoning, data and any
  * other parts are ignored, and messages left empty are dropped. Only `user`
- * and `assistant` messages are kept (Eve TOOLS-F9): the body comes from the
+ * and `assistant` messages are kept: the body comes from the
  * client, so a `system` (or any other) role it sends is dropped instead of
  * reaching the model as instructions. With
  * `lastUserOnly` (use it when the run has a `sessionId`, whose transcript
@@ -316,7 +316,7 @@ export function fromUIMessages(messages: readonly UIMessageLike[], options: { la
   return last ? last.content : '';
 }
 
-/** N1a: the AI SDK UI flag for a hosted tool the provider ran (`executedBy: 'provider'`). */
+/** The AI SDK UI flag for a hosted tool the provider ran (`executedBy: 'provider'`). */
 function byProvider(event: { executedBy?: 'provider' }): { providerExecuted?: true } {
   return event.executedBy === 'provider' ? { providerExecuted: true } : {};
 }

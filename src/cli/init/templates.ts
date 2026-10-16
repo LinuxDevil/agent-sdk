@@ -29,11 +29,11 @@ function sortKeys(record: Record<string, string>): Record<string, string> {
 }
 
 /**
- * The `ai` major a new project gets (LOU-D28d): the current one, 7, for the
+ * The `ai` major a new project gets: the current one, 7, for the
  * providers CI runs on it (`@ai-sdk/openai` and `@ai-sdk/anthropic` 4); OpenRouter
- * is one of them since it asks `@ai-sdk/openai` for its Chat Completions model
- * (LOU-D28f). Ollama is on 7 too since LOU-M8: `ollama-ai-provider-v2` is installed and tested in CI
- * (`ai7-zod4`), and needs zod 4 (accepted since LOU-D29), so its scaffold narrows zod to `^4.0.0`.
+ * is one of them since it asks `@ai-sdk/openai` for its Chat Completions model.
+ * Ollama is on 7 too since `ollama-ai-provider-v2` is installed and tested in CI
+ * (`ai7-zod4`), and needs zod 4, so its scaffold narrows zod to `^4.0.0`.
  */
 const SCAFFOLD_AI_MAJOR: Readonly<Record<string, AiMajor>> = { openai: 7, anthropic: 7, openrouter: 7, ollama: 7, pi: 7 };
 
@@ -46,7 +46,7 @@ function aiPackages(provider: string): Record<string, string> {
 
 /**
  * The SDK's zod range, narrowed to the one major the scaffolded provider packages peer on:
- * zod 3 for `ai` 4 (LOU-D29), zod 4 for Ollama's `ai` 6/7 package (LOU-M8).
+ * zod 3 for `ai` 4, zod 4 for Ollama's `ai` 6/7 package.
  */
 function zodRange(peerRange: string | undefined, provider: string): string {
   const range = peerRange ?? '^3.25.76';

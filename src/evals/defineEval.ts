@@ -71,7 +71,7 @@ export interface RepeatConfig {
 }
 
 /**
- * A trajectory eval (LOU-D7): `test(t, c)` sends messages to a real agent
+ * A trajectory eval: `test(t, c)` sends messages to a real agent
  * and asserts on how it behaved. Runs once per entry of `cases`.
  *
  * @example
@@ -254,7 +254,7 @@ function defineTrajectoryEval(config: TrajectoryEvalConfig<unknown>): void {
  * tsup bundle vitest itself into dist/index.js/.mjs, whose module-level
  * setup throws ("Vitest failed to access its internal state") as soon as
  * the SDK is imported anywhere outside a vitest worker - i.e. in every real
- * application (found by LOU-I7's docs snippet verification). Every vitest
+ * application (found by docs snippet verification). Every vitest
  * worker exposes its own API as globalThis.__vitest_index__, which is also
  * exactly the instance the running test file registers with; with vitest
  * `globals` enabled, the global test/expect are used as a fallback.

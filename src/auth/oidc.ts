@@ -1,5 +1,5 @@
 /**
- * N10a: `oidc()`, a `jwt()` whose keys come from the configured issuer's
+ * `oidc()`, a `jwt()` whose keys come from the configured issuer's
  * OpenID discovery document. The discovery URL is derived from configuration
  * (never from a token); the document must name exactly the configured issuer,
  * and its `jwks_uri` must be https (http only on localhost).

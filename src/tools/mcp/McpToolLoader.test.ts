@@ -56,7 +56,7 @@ describe('listRemoteTools', () => {
   });
 });
 
-describe('listRemoteTools pagination (Eve TOOLS-F18)', () => {
+describe('listRemoteTools pagination', () => {
   const tool = (name: string) => ({ name, inputSchema: { type: 'object' } });
   const logger = () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() });
 

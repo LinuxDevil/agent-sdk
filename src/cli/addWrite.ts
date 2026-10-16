@@ -1,5 +1,5 @@
 /**
- * The safe part of `lousho add` (LOU-D50): checks every file a registry item
+ * The safe part of `lousho add`: checks every file a registry item
  * wants to write and writes it. A path is rejected unless it is relative, free
  * of `..`, backslashes and drive letters, inside the folder its item type may
  * write to, and (after resolving symlinks) inside the agent directory.

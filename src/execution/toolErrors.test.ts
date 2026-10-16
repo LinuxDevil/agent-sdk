@@ -1,5 +1,5 @@
 /**
- * LOU-U14: every tool failure path hands the model the same
+ * Every tool failure path hands the model the same
  * `{ error, toolName, message, kind }` result, flagged `isError`.
  */
 
@@ -92,7 +92,7 @@ async function runResume(options: {
   approved: boolean;
   resumeTools?: DefinedTool[];
   dropRemaining?: boolean;
-  /** A snapshot saved before LOU-W9.2: no agent fingerprint. */
+  /** A snapshot saved before no agent fingerprint. */
   legacySnapshot?: boolean;
 }): Promise<Message[]> {
   const inner = new InMemoryApprovalStore();
@@ -270,7 +270,7 @@ const rows: Row[] = [
   },
 ];
 
-describe('one tool-error shape on every failure path (LOU-U14)', () => {
+describe('one tool-error shape on every failure path', () => {
   it.each(rows)('$path -> kind $kind', async (row) => {
     const { message, payload, observed } = await row.run();
 

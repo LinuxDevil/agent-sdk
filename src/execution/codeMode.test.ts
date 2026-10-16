@@ -1,5 +1,5 @@
 /**
- * N14: code mode, offline with mockModel. The scripted model returns a
+ * Code mode, offline with mockModel. The scripted model returns a
  * `run_code` call with fixed code; each test checks what the script could do,
  * what the gate did with its inner calls, and what reached the model.
  */
@@ -79,7 +79,7 @@ const TOTAL = `
   return { usd, eur: eur.amount };
 `;
 
-describe('code mode (N14): run_code', () => {
+describe('code mode: run_code', () => {
   it('a script calls two tools in a loop and returns a combined value; the model sees only run_code\'s result', async () => {
     const { getPrice, convert, calls } = shopTools();
     const model = scripted(TOTAL);
@@ -284,7 +284,7 @@ describe('code mode (N14): run_code', () => {
   });
 });
 
-describe('code mode (N14): limits', () => {
+describe('code mode: limits', () => {
   it('maxToolCalls exceeded is a tool error, even when the script catches it', async () => {
     const { getPrice, calls } = shopTools();
     const model = scripted(`for (let i = 0; i < 5; i++) { try { await tools.get_price({ item: 'apple' }); } catch {} } return 'kept going';`);
@@ -364,7 +364,7 @@ describe('code mode (N14): limits', () => {
   });
 });
 
-describe('code mode (N14): the isolate has no host access', () => {
+describe('code mode: the isolate has no host access', () => {
   it('require, process, fetch, timers and host globals are undefined; import() is rejected', async () => {
     const model = scripted(`
       let imported;
@@ -396,7 +396,7 @@ describe('code mode (N14): the isolate has no host access', () => {
   });
 });
 
-describe('code mode (N14): every inner call passes the run\'s gate', () => {
+describe('code mode: every inner call passes the run\'s gate', () => {
   it('plan mode refuses non-read-only inner calls; read-only ones and run_code itself run', async () => {
     const { getPrice, convert, calls } = shopTools();
     const model = scripted(`
@@ -538,7 +538,7 @@ describe('code mode (N14): every inner call passes the run\'s gate', () => {
   });
 });
 
-describe('code mode (N14): configuration', () => {
+describe('code mode: configuration', () => {
   it('rejects invalid options and a tool already named run_code', () => {
     expect(() => createAgent({ provider: mockModel(['x']), codeMode: { timeoutMs: 0 } })).toThrow(/'codeMode.timeoutMs' must be a whole number >= 1/);
     expect(() => createAgent({ provider: mockModel(['x']), codeMode: { tools: ['run_code'] } })).toThrow(/cannot name 'run_code'/);
@@ -558,7 +558,7 @@ describe('code mode (N14): configuration', () => {
   });
 });
 
-describe('code mode (N14): the isolate', () => {
+describe('code mode: the isolate', () => {
   const limits = { timeoutMs: 2_000, memoryLimitBytes: 16 * 1024 * 1024, maxToolCalls: 5, maxOutputChars: 1_000 };
   const host = (overrides: Partial<ScriptHost> = {}): ScriptHost => ({
     toolNames: ['echo'],

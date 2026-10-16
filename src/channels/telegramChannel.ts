@@ -1,5 +1,5 @@
 /**
- * The Telegram channel (N11a): bot webhooks (`setWebhook` with a secret token)
+ * The Telegram channel: bot webhooks (`setWebhook` with a secret token)
  * and inline-keyboard approvals. Only `fetch` and Web Crypto: no `node:*`
  * import and no Telegram library.
  */
@@ -145,7 +145,7 @@ export function telegramChannel(options: TelegramChannelOptions): Channel<Telegr
   const botUsername = options.botUsername?.replace(/^@/, '');
   const doFetch = options.fetch ?? ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init));
   const questions = new Map<string, string>();
-  /** Eve CH-F8: deliveries this channel already took. */
+  /** Deliveries this channel already took. */
   const delivered = deliveryLog();
   const mention = botUsername ? new RegExp(`@${escapeRegExp(botUsername)}(?![A-Za-z0-9_])`, 'gi') : undefined;
   const command = new RegExp(`^${COMMAND}${botUsername ? `(?:@${escapeRegExp(botUsername)})?` : ''}(?![A-Za-z0-9_@])`, 'i');
@@ -237,7 +237,7 @@ export function telegramChannel(options: TelegramChannelOptions): Channel<Telegr
     async parse(req, respond: ChannelRespond, ctx) {
       respond(200, { ok: true }); // Telegram retries a webhook that does not answer quickly
       const update = JSON.parse(req.text || '{}') as TelegramUpdate;
-      // Eve CH-F8: a redelivered update (the ack was lost, or came late) is acknowledged, not run again.
+      // A redelivered update (the ack was lost, or came late) is acknowledged, not run again.
       if (typeof update.update_id === 'number' && delivered(String(update.update_id))) return null;
       if (update.callback_query) return readClick(update.callback_query, ctx);
       return update.message ? readMessage(update.message, update, ctx) : null;
@@ -245,7 +245,7 @@ export function telegramChannel(options: TelegramChannelOptions): Channel<Telegr
     reply: ({ inbound, text }) => post(inbound.replyTo as TelegramTarget, text),
     async onApproval({ inbound, approval, text }) {
       const target = inbound.replyTo as TelegramTarget;
-      // N9b: a sign-in is its link as text, no Approve / Deny keyboard. Telegram has no message only one user sees, and
+      // A sign-in is its link as text, no Approve / Deny keyboard. Telegram has no message only one user sees, and
       // whoever opens the link binds their own account to the asker's grant: so the link is sent only in a 1:1 chat.
       if (approval.kind === 'sign-in') return post(target, target.private === true ? text : SIGN_IN_PRIVATELY);
       if (approval.question) {

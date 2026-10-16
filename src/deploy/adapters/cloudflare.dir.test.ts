@@ -1,5 +1,5 @@
 /**
- * M3b: the cloudflare-worker target builds an agent directory (config,
+ * The cloudflare-worker target builds an agent directory (config,
  * instructions.md, TypeScript tools, skills); #298 adds `subagents/`,
  * `schedules/`, `channels/`, `memory/` and `projectInstructions`. A real
  * scaffold + tsup build of __fixtures__/worker-agent-dir and
@@ -39,7 +39,7 @@ function outDirFor(dir: string): string {
 
 const MINIMAL = { 'instructions.md': 'Be brief.\n', 'agent.json': '{ "model": "mock/test" }\n' };
 
-describe('cloudflare-worker target: agent directories (M3b, #298)', () => {
+describe('cloudflare-worker target: agent directories (#298)', () => {
   describe('scaffold + build of the fixture', () => {
     let outDir: string;
     let handler: Handler;

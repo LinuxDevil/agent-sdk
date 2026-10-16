@@ -1,5 +1,5 @@
 /**
- * Test helper: is a Docker daemon answering? (LOU-M6)
+ * Test helper: is a Docker daemon answering?
  *
  * Tests that need a real daemon gate on {@link requireDocker} with a top-level
  * await (vitest evaluates `describe.skipIf` at collection time, before any

@@ -1,5 +1,5 @@
 /**
- * LOU-V7.2: createAgent({ retry, fallbackModels }) and the typed
+ * CreateAgent({ retry, fallbackModels }) and the typed
  * `provider.retry` / `provider.fallback` stream events. No network: the
  * registry's create() is stubbed, as in createAgent.test.ts.
  */
@@ -40,7 +40,7 @@ function named(model: MockModel, name: string): LLMProvider {
 /**
  * `provider` whose stream() resolves but whose stream fails on its first
  * read `failures` times, then delegates - the way streaming providers
- * report a request error inside the stream (LOU-R6).
+ * report a request error inside the stream.
  */
 function failInsideStream(provider: LLMProvider, failures: unknown[]): LLMProvider {
   const inner = provider.stream.bind(provider);
@@ -83,7 +83,7 @@ async function collect(run: AgentRun): Promise<AgentEvent[]> {
 
 const fast = { backoff: { initialMs: 1, jitter: false } };
 
-describe('createAgent retry and fallbackModels (LOU-V7.2)', () => {
+describe('createAgent retry and fallbackModels', () => {
   beforeEach(() => {
     for (const name of ENV_VARS) vi.stubEnv(name, '');
     vi.stubEnv('OPENAI_API_KEY', 'sk-openai');
@@ -173,7 +173,7 @@ describe('createAgent retry and fallbackModels (LOU-V7.2)', () => {
     expect(fallback.lastCall?.model).toBeUndefined(); // the fallback runs on its own default model
   });
 
-  it('C2: a streamed step that fails after reasoning only is retried; the failed reasoning is closed, not kept', async () => {
+  it('a streamed step that fails after reasoning only is retried; the failed reasoning is closed, not kept', async () => {
     const scripts: Array<Array<StreamChunk | Error>> = [
       [{ type: 'reasoning-delta', textDelta: 'first try' }, apiError(500)],
       [{ type: 'reasoning-delta', textDelta: 'second try' }, { type: 'text-delta', textDelta: 'done' }, { type: 'finish', finishReason: 'stop' }],
@@ -253,7 +253,7 @@ describe('createAgent retry and fallbackModels (LOU-V7.2)', () => {
     expect(events.some((e) => e.type === 'provider.retry' && e.provider === 'mock')).toBe(true);
   });
 
-  it('stream(): retries a failure reported inside the stream and emits provider.retry (LOU-R6)', async () => {
+  it('stream(): retries a failure reported inside the stream and emits provider.retry', async () => {
     const model = mockModel(['recovered']);
     const provider = failInsideStream(named(model, 'openai'), [apiError(503)]);
 
@@ -265,7 +265,7 @@ describe('createAgent retry and fallbackModels (LOU-V7.2)', () => {
     expect(events.map((e) => e.type)).toContain('text.delta');
   });
 
-  it('stream(): falls back on a failure reported inside the stream and emits provider.fallback (LOU-R6)', async () => {
+  it('stream(): falls back on a failure reported inside the stream and emits provider.fallback', async () => {
     const primary = failInsideStream(named(mockModel([]), 'openai'), [apiError(503), apiError(503), apiError(503)]);
     const fallback = mockModel(['from the fallback'], { defaultModel: 'claude-3-5-haiku-latest' });
     stubRegistry({ anthropic: named(fallback, 'anthropic') });
@@ -277,7 +277,7 @@ describe('createAgent retry and fallbackModels (LOU-V7.2)', () => {
     expect(events.find((e) => e.type === 'provider.fallback')).toMatchObject({ from: 'openai', to: 'anthropic' });
   });
 
-  it('stream(): a failure mid-stream, after the first chunk, is not retried (LOU-R6)', async () => {
+  it('stream(): a failure mid-stream, after the first chunk, is not retried', async () => {
     const model = mockModel(['unused']);
     const inner = named(model, 'openai');
     const boom = apiError(503);

@@ -1,5 +1,5 @@
 /**
- * The Microsoft Teams channel (N11c): Azure Bot messages (personal chats, group
+ * The Microsoft Teams channel: Azure Bot messages (personal chats, group
  * chats and channel mentions) and Adaptive Card approvals. The inbound Bot
  * Framework JWT is verified by the auth module's `oidc()` (`verifyJwt()` and a
  * cached `jwksKeySource()`); replies go through the Bot Framework Connector with
@@ -338,7 +338,7 @@ export function teamsChannel(options: TeamsChannelOptions): Channel<TeamsActivit
     reply: ({ inbound, text }) => post(inbound.replyTo as TeamsTarget, text),
     async onApproval({ inbound, approval, text }) {
       const target = inbound.replyTo as TeamsTarget;
-      // N9b: a sign-in is its link as text, no Approve / Deny card. Teams has no message only one user sees, and whoever
+      // A sign-in is its link as text, no Approve / Deny card. Teams has no message only one user sees, and whoever
       // opens the link binds their own account to the asker's grant: so the link is sent only in a 1:1 chat.
       if (approval.kind === 'sign-in') return post(target, target.private === true ? text : SIGN_IN_PRIVATELY);
       if (approval.question) {

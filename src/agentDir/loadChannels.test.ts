@@ -6,7 +6,7 @@ import { mockModel } from '../testing';
 
 const fixture = (name: string): string => path.join(__dirname, '__fixtures__', name);
 
-describe('channels/ in an agent directory (LOU-P7.2)', () => {
+describe('channels/ in an agent directory', () => {
   it('loads channels/*.ts: the name defaults to the file name, an explicit name wins', async () => {
     const { channels, manifest } = await resolveAgentDir(fixture('channels'), { provider: mockModel(['x']) });
     expect(channels.map((c) => c.name)).toEqual(['echo', 'webhook', 'custom-sms']);

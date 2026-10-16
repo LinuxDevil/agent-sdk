@@ -1,5 +1,5 @@
 /**
- * Record keys of the OAuth token store (N9a). Every component is validated or
+ * Record keys of the OAuth token store. Every component is validated or
  * percent-encoded, so a key is stable, injective and free of the `|`
  * separator inside a component: `a|b` as a principal id cannot collide with
  * another owner.

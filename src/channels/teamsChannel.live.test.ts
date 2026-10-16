@@ -1,5 +1,5 @@
 /**
- * Live test for `teamsChannel()` (N11c): one personal-chat turn through the
+ * Live test for `teamsChannel()`: one personal-chat turn through the
  * channel with a real model (gpt-4o-mini on OpenRouter), Microsoft faked (a key
  * pair made in the test signs the Bot Framework token).
  *
@@ -27,7 +27,7 @@ const CASSETTE = path.join(__dirname, '__cassettes__', 'teams-turn.json');
 const recording = Boolean(process.env.LOUSHO_RECORD);
 const runnable = recording ? Boolean(process.env.OPENROUTER_API_KEY) : fs.existsSync(CASSETTE);
 
-describe.skipIf(!runnable)('teamsChannel live (N11c)', () => {
+describe.skipIf(!runnable)('teamsChannel live', () => {
   it('a real model answers a personal message through the channel as one Connector reply', async () => {
     const key = await rsaKey();
     const appId = 'live-app-id';

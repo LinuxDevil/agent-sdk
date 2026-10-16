@@ -36,7 +36,7 @@ describe('handleScheduled', () => {
     expect(JSON.stringify(session)).toContain('Weekly report.');
   });
 
-  it('gives every fire its own session so the transcript does not grow (Eve DUR-F10)', async () => {
+  it('gives every fire its own session so the transcript does not grow', async () => {
     const store = memoryStore();
     const provider = mockModel(['Report sent.'], { onExhausted: 'repeat-last' });
     const agent = createAgent({ provider, prompt: 'You report.', store });

@@ -1,5 +1,5 @@
 /**
- * P2: shared approve/reject UI for a pending tool-call approval (LOU-N's
+ * Shared approve/reject UI for a pending tool-call approval (the
  * human-in-the-loop gate, `POST /agents/:id/approve`). Factored out of
  * Topbar.tsx's original inline `.approval-card` markup so the Chat tab's
  * inline-in-thread approval card (the epic brief's requirement) and the

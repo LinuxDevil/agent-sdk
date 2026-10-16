@@ -163,7 +163,7 @@ describe('bin/lousho.js build (subprocess smoke test)', () => {
     expect(result.stdout).toContain('lousho init');
   });
 
-  it('`lousho --help` lists the implemented flags (LOU-R19)', () => {
+  it('`lousho --help` lists the implemented flags', () => {
     const { stdout } = runBin(['--help']);
     expect(stdout).toContain('--no-schedules');
     expect(stdout).toContain('--traces[=dir]');

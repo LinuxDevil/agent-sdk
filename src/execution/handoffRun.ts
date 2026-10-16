@@ -1,5 +1,5 @@
 /**
- * N6: handoffs inside one run. A handoff tool call is not executed as a tool:
+ * Handoffs inside one run. A handoff tool call is not executed as a tool:
  * it passes the same gate a tool call gets (argument validation, pre-tool
  * hooks, permission rules - `deny` settles it as a tool error, `ask` pauses
  * the run for approval - and tool guardrails), and once the other calls of
@@ -275,7 +275,7 @@ export async function takeHandoffCalls(options: ExecuteOptions, state: AgentRunS
 /**
  * The honored call's settle, run once its handoff completed (the executor
  * switched `state.messages` to the target's view): the post-tool hooks see
- * its routing result and may replace what the target reads (LOU-X3), then
+ * its routing result and may replace what the target reads, then
  * `tool.done` and `onToolResult` report it like any settled call. A
  * replacement patches the result message when the transcript kept it.
  */
@@ -380,7 +380,7 @@ function offeringTools(agent: AgentConfig, names: readonly string[]): AgentConfi
 
 /** The run's options with the target's configuration in place of the agent's that handed off. */
 function targetOptions(options: ExecuteOptions, target: HandoffTarget): ExecuteOptions {
-  // N6: the run's per-run tools (memory slots bound to the run's scope keys)
+  // The run's per-run tools (memory slots bound to the run's scope keys)
   // follow the handoff like the run's hooks and stores do; a tool the target
   // has itself wins.
   const carried = runBoundTools(options.toolRegistry).filter(([name]) => target.toolRegistry?.has(name) !== true);
@@ -397,7 +397,7 @@ function targetOptions(options: ExecuteOptions, target: HandoffTarget): ExecuteO
     guardrails: target.guardrails,
     permissions: target.permissions,
     handoffs: target.handoffs,
-    // N2: the target's own tuning; what the lead loaded stays with the lead (see toolSearch.ts).
+    // The target's own tuning; what the lead loaded stays with the lead (see toolSearch.ts).
     toolSearch: target.toolSearch,
   };
 }
@@ -420,7 +420,7 @@ export async function handOff(
   const result: Message = { role: 'tool', content: JSON.stringify({ transferred_to: handoff.name }), name: toolName, toolCallId: toolCall.id, toolName, metadata: { handoff: marker } };
   const transcript = state.messages[0]?.role === 'system' ? state.messages.slice(1) : [...state.messages];
   insertToolResult(transcript, result);
-  // N6 follow-up: the target reads the call's validated arguments as a routing note, unless a filter drops it.
+  // The target reads the call's validated arguments as a routing note, unless a filter drops it.
   transcript.push(routingNote(marker, args));
   const target = await handoff.spec(lastUserText(transcript));
   const data: HandoffInputData = { messages: transcript, ...marker, args };

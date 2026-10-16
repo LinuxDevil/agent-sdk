@@ -1,5 +1,5 @@
 /**
- * LOU-V2: AgentExecutor.stream() through a real 'ai'-SDK-backed provider.
+ * AgentExecutor.stream() through a real 'ai'-SDK-backed provider.
  * Its stream reports tool calls only on the `toolCalls` promise (not as
  * chunks) and uses the SDK's `'tool-calls'` finish reason spelling.
  */

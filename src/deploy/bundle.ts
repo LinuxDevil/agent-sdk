@@ -1,5 +1,5 @@
 /**
- * Shared bundling helpers for the built-in deployment adapters (LOU-I2+).
+ * Shared bundling helpers for the built-in deployment adapters.
  *
  * Scaffolded entrypoints (server.ts / worker.ts) import the SDK through a
  * virtual specifier, `@lousho/build-ai-agent/deploy-runtime` (or
@@ -79,7 +79,7 @@ export function sdkRuntimePlugin({ sdkEntry = 'main' }: { sdkEntry?: 'main' | 'w
       build.onResolve({ filter: /^@lousho\/build-ai-agent$/ }, () => ({
         path: sdkEntry === 'worker' ? runtimeSourceFile('workerSdk.ts') : path.join(findSdkRoot(), 'src', 'index.ts'),
       }));
-      // N10a: an agent directory's auth.ts imports its helpers from the auth subpath.
+      // An agent directory's auth.ts imports its helpers from the auth subpath.
       build.onResolve({ filter: /^@lousho\/build-ai-agent\/auth$/ }, () => ({
         path: path.join(findSdkRoot(), 'src', 'auth', 'index.ts'),
       }));
@@ -91,7 +91,7 @@ export function sdkRuntimePlugin({ sdkEntry = 'main' }: { sdkEntry?: 'main' | 'w
  * esbuild plugin (cloudflare-worker target only) that redirects the SDK's
  * internal `security/sandboxCore` imports to the Worker-safe shim in
  * ./shims/sandboxCore.worker.ts - the real module's NoopSandbox needs
- * node:child_process, which Workers don't have. N14: and the optional peer
+ * node:child_process, which Workers don't have. And the optional peer
  * `quickjs-emscripten` (code mode) to ./shims/quickjs.worker.ts, so the
  * Emscripten runtime never lands in a Worker bundle.
  */
@@ -120,7 +120,7 @@ export const NODE_SHIMMED_IMPORTERS = ['createAgent', 'session/sessionStore', 's
 /**
  * esbuild plugin (cloudflare-worker target only) that redirects the `node:*`
  * and MCP stdio imports of the modules in NODE_SHIMMED_IMPORTERS to the
- * Worker-safe shim in ./shims/node.worker.ts (LOU-D51).
+ * Worker-safe shim in ./shims/node.worker.ts.
  */
 export function workerNodeShimPlugin(): Plugin {
   const shim = path.join(findSdkRoot(), 'src', 'deploy', 'shims', 'node.worker.ts');
@@ -139,7 +139,7 @@ export function workerNodeShimPlugin(): Plugin {
  * 'ollama-ai-provider' / 'ollama-ai-provider-v2' for 'ollama', the one
  * built-in provider not in WORKER_SUPPORTED_PROVIDERS.
  *
- * Needed since LOU-R1: llm.ts now imports ./builtinProviders.ts (lazy
+ * Needed since llm.ts now imports ./builtinProviders.ts (lazy
  * registration on a create() miss), which statically imports every built-in
  * provider module - so OllamaProvider and its lazy `import('ollama-ai-provider*')`
  * specifiers reach the Worker bundle, whose "inline everything" noExternal
@@ -235,7 +235,7 @@ const SKIP_BUILTIN_CHECK = 'lousho-skip-builtin-check';
  * builtins nothing else resolves: rather than failing the build with esbuild's
  * "Could not resolve", it leaves the import external and records who imported
  * it in `importers` (specifier -> importer paths), so the build's leak check
- * can name the file (M3b). A builtin that resolves normally (an npm polyfill,
+ * can name the file. A builtin that resolves normally (an npm polyfill,
  * a package's `browser` field) is resolved as before.
  */
 export function workerBuiltinImportersPlugin(importers: Map<string, Set<string>>): Plugin {

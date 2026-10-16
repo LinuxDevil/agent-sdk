@@ -1,5 +1,5 @@
 /**
- * GitHub App authentication (N11b), with `fetch` and Web Crypto only (no
+ * GitHub App authentication, with `fetch` and Web Crypto only (no
  * `node:*` import): the app's private key signs a short-lived RS256 JWT, which
  * is exchanged for an installation access token. Not exported from the package
  * root; `githubChannel({ app })` uses it.

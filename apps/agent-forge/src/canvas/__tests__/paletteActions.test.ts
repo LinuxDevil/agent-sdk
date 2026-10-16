@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { pickHookTemplate, viewportCentrePosition } from '../paletteActions';
 import { nextTabId, tabIds } from '../../components/tabs';
 
-describe('viewportCentrePosition (Eve DUI-F9)', () => {
+describe('viewportCentrePosition', () => {
   it('centres a node under the middle of an unpanned, unzoomed pane', () => {
     expect(viewportCentrePosition([0, 0, 1], 800, 600)).toEqual({ x: 305, y: 260 });
   });
@@ -26,7 +26,7 @@ describe('pickHookTemplate', () => {
   });
 });
 
-describe('tab keyboard model (Eve DUI-F9)', () => {
+describe('tab keyboard model', () => {
   const ids = ['chat', 'logs', 'trace'] as const;
 
   it('moves with the arrow keys, wrapping, and jumps with Home/End', () => {

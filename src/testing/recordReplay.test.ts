@@ -66,7 +66,7 @@ describe('recordReplay record then replay', () => {
     expect(replay.supportsTools('x') && replay.supportsStreaming('x')).toBe(true);
   });
 
-  it('replays a provider/model spec resolved without an API key (LOU-R10)', async () => {
+  it('replays a provider/model spec resolved without an API key', async () => {
     await recordReplay(mockModel(['ok']), { cassette: file, mode: 'record' }).generate(ask('hi', { model: 'gpt-4o-mini' }));
 
     vi.stubEnv('OPENAI_API_KEY', '');
@@ -202,7 +202,7 @@ describe('recordReplay mismatches', () => {
   });
 });
 
-describe('cassette errors through agent.send() (LOU-R13)', () => {
+describe('cassette errors through agent.send()', () => {
   const build = (provider: ReturnType<typeof recordReplay>) =>
     createAgent({ provider, prompt: 'You handle refunds.' });
 
@@ -343,7 +343,7 @@ describe('recordReplay normalization', () => {
   });
 });
 
-describe('recordReplay with multimodal content (LOU-V11)', () => {
+describe('recordReplay with multimodal content', () => {
   const look = (image: string | Uint8Array): GenerateOptions => ({
     messages: [{ role: 'user', content: [{ type: 'text', text: 'What is this?' }, { type: 'image', image, mimeType: 'image/png' }] }],
   });
@@ -457,7 +457,7 @@ describe('recordReplay persistence', () => {
     expect(readJson().entries).toHaveLength(1);
   });
 
-  it('re-recording an unchanged run rewrites the file byte for byte, keeping recordedAt (docs-qa F14)', async () => {
+  it('re-recording an unchanged run rewrites the file byte for byte, keeping recordedAt', async () => {
     await record(['a', 'b'], [ask('1'), ask('2')]);
     const header = JSON.parse(fs.readFileSync(file, 'utf8')) as { recordedAt: string };
     header.recordedAt = '2020-01-01T00:00:00.000Z';
@@ -588,7 +588,7 @@ describe('recordReplay stream()', () => {
   });
 });
 
-describe('recordReplay keeps reasoning and full usage (docs-qa F4)', () => {
+describe('recordReplay keeps reasoning and full usage', () => {
   const usage = { promptTokens: 40, completionTokens: 350, totalTokens: 390, cachedInputTokens: 32, reasoningTokens: 336, costUsd: 0.0012 };
   const reasoning = [{ text: '17 has no divisors but 1 and itself.', signature: 'sig-abc' }, { text: '', redactedData: 'ZW5jcnlwdGVk' }];
   const thinker = (): LLMProvider => ({
@@ -648,7 +648,7 @@ describe('recordReplay keeps reasoning and full usage (docs-qa F4)', () => {
   });
 });
 
-describe('recordReplay and tool order (docs-qa F7)', () => {
+describe('recordReplay and tool order', () => {
   const tool = (name: string) => ({ type: 'function' as const, function: { name, description: `the ${name} tool`, parameters: { type: 'object', properties: {} } } });
 
   it('replays when the agent registers the same tools in another order', async () => {

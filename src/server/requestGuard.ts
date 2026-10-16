@@ -191,7 +191,7 @@ export function sessionOwner(agent: object, sessionId: string): Principal | unde
  * Records `principal` as the owner of session `sessionId` of `agent` when it
  * has none, and answers whether `principal` holds the claim afterward: `true`
  * when it was just taken (or was `principal`'s already), `false` when another
- * principal owns it. Eve2-F1: the check-and-set is one synchronous step, so a
+ * principal owns it. The check-and-set is one synchronous step, so a
  * `false` answer means a concurrent first touch won the id and this caller
  * must be refused - never streamed a turn inside that principal's session.
  */

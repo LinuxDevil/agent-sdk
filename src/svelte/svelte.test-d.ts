@@ -1,5 +1,5 @@
 /**
- * LOU-P3: the public types of `@lousho/build-ai-agent/svelte`.
+ * The public types of `@lousho/build-ai-agent/svelte`.
  */
 import { describe, it, expectTypeOf } from 'vitest';
 import { createAgent } from '../createAgent';

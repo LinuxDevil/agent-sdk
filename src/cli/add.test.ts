@@ -469,7 +469,7 @@ describe('unsafe paths', () => {
   });
 });
 
-describe('agent directory checks (Eve CLI-F3, CLI-F18)', () => {
+describe('agent directory checks', () => {
   it('warns that nothing loads tools/ when --dir is not an agent directory', async () => {
     const result = await add(withRegistry('web-search', '--yes', '--allow', 'network,env'));
     expect(result.code).toBe(0);

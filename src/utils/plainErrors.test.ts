@@ -1,5 +1,5 @@
 /**
- * LOU-D2.3: user-reachable failures throw an `SDKError` with a registered code
+ * User-reachable failures throw an `SDKError` with a registered code
  * (docs/errors.md). This guard scans the non-test source for `throw new Error(`
  * so new plain Errors do not creep back in.
  */
@@ -55,7 +55,7 @@ function plainThrows(): Array<{ file: string; rest: string }> {
   });
 }
 
-describe('plain Errors (LOU-D2.3)', () => {
+describe('plain Errors', () => {
   const found = plainThrows();
   const isAllowed = (site: { file: string; rest: string }) =>
     ALLOWED.some((entry) => entry.file === site.file && site.rest.startsWith(entry.message));

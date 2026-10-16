@@ -1,5 +1,5 @@
 /**
- * Eve DUR-F6: `SqliteStore.prune()` keeps a session turn that is paused on an
+ * `SqliteStore.prune()` keeps a session turn that is paused on an
  * unresolved approval (its checkpoint and its session's transcript), and a
  * paused turn whose checkpoint is gone anyway fails with
  * `LOUSHO_APPROVAL_ORPHANED` instead of running the approved tool.
@@ -53,7 +53,7 @@ function age(store: SqliteStore): void {
   db.prepare('UPDATE approvals SET updated_at = updated_at - ?').run(AGE);
 }
 
-describe('SqliteStore.prune() and paused turns (Eve DUR-F6)', () => {
+describe('SqliteStore.prune() and paused turns', () => {
   it('keeps the checkpoint and transcript of a turn paused on an unresolved approval', async () => {
     const { store, agent, refunds } = setup();
     const session = agent.session({ id: 'cust-7' });

@@ -1,5 +1,5 @@
 /**
- * Static check (LOU-D24, LOU-D25): the built-in tools below are built with
+ * Static check: the built-in tools below are built with
  * `defineTool` (or `toolDescriptorFromSchema`) and must not import from `ai`.
  */
 import { describe, it, expect } from 'vitest';

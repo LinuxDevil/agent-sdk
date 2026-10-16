@@ -1,5 +1,5 @@
 /**
- * resolveProvider("provider/model") helper (LOU-F8)
+ * resolveProvider("provider/model") helper
  *
  * Parses a "<provider>/<model>" spec string (e.g. "openai/gpt-4o",
  * "anthropic/claude-sonnet-4-5"), looks up that provider's
@@ -8,7 +8,7 @@
  * AnthropicProvider, OllamaProvider and OpenRouterProvider register
  * themselves into - see providers/index.ts) to construct the provider
  * instance, pre-configured with `defaultModel` set to the parsed model.
- * The parsing, env table and error messages live in ./providerSpec (LOU-D1).
+ * The parsing, env table and error messages live in ./providerSpec.
  */
 
 import { LLMProviderRegistry, type LLMProvider } from './llm';

@@ -1,5 +1,5 @@
 /**
- * Glob matching and tree walking over any FsProvider (LOU-X6).
+ * Glob matching and tree walking over any FsProvider.
  */
 import type { FsProvider } from './types';
 import { joinWorkspacePath, WorkspaceError } from './paths';

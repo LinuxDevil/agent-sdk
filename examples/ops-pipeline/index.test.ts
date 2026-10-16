@@ -7,7 +7,7 @@ import { createMockSlackTool } from './mocks/mockSlackTool';
 import { createInMemoryApprovalStore } from './slackInteractions';
 import { exampleErrorSignal, sendSyntheticError } from './mocks/mockGrafanaSender';
 
-describe('ops-pipeline end-to-end (LOU-J8, against mocks - zero external network)', () => {
+describe('ops-pipeline end-to-end (against mocks - zero external network)', () => {
   let handle: OpsPipelineHandle | undefined;
 
   afterEach(async () => {
@@ -70,7 +70,7 @@ describe('ops-pipeline end-to-end (LOU-J8, against mocks - zero external network
   });
 });
 
-describe('ops-pipeline Slack signature verification (LOU-D18)', () => {
+describe('ops-pipeline Slack signature verification', () => {
   let handle: OpsPipelineHandle | undefined;
 
   afterEach(async () => {

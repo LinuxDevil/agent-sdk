@@ -375,16 +375,16 @@ function DeploySection({ deployAdapter, onAdapterChange }: DeploySectionProps) {
 }
 
 /**
- * LOU-R: real Settings tab content, replacing LOU-L/O's static placeholder
- * ("Provider keys and deploy target settings are wired up in LOU-R.").
+ * Real Settings tab content, replacing the static placeholder
+ * ("Provider keys and deploy target settings are wired up later.").
  *
  * Three sections, matching `.design-ref/agent-forge-mockup.html`'s
  * `#drawerSettings` layout:
- *  - Provider keys (R1): add/replace/remove a stored key per provider, with
+ *  - Provider keys: add/replace/remove a stored key per provider, with
  *    the input always rendered blank (never pre-filled with a real key -
  *    the server only ever returns a masked status, see runtimeClient.ts's
  *    `ProviderKeyStatus`) and the current masked value shown as a hint.
- *  - Settings profile (R3): pick the active local/staging/prod profile,
+ *  - Settings profile: pick the active local/staging/prod profile,
  *    edit its provider type / deploy adapter / OTel toggle / hook timeout.
  *  - Deploy (R2): pick an adapter and run `lousho build` against this
  *    agent's saved spec, with a simple stdout/stderr log panel.

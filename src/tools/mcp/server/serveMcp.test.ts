@@ -132,7 +132,7 @@ describe('serveMcp agent tool', () => {
     expect(textOf(result)).toMatch(/needs human approval.*cannot be approved over MCP/s);
   });
 
-  it('returns isError when a createAgent() agent pauses on an approval-gated tool (LOU-D21)', async () => {
+  it('returns isError when a createAgent() agent pauses on an approval-gated tool', async () => {
     const model = mockModel([{ toolCalls: [{ name: 'delete_all' }] }, 'done']);
     const agent = createAgent({ prompt: 'p', provider: model, tools: [deleteAll] });
     const client = await connect(spec(agent));
@@ -245,7 +245,7 @@ describe('serveMcp options', () => {
     await expect(serveMcp({ agent: {} as SimpleAgent, name: 'a' })).rejects.toThrow(/createAgent/);
     await expect(serveMcp({ agent, name: '' })).rejects.toThrow(/`name` is required/);
     await expect(serveMcp({ agent, name: 'search_docs', tools: [searchDocs] })).rejects.toThrow(/two tools are named/);
-    // defineTool itself now rejects a non-object root (Eve TOOLS-F10), so swap the schema in afterwards.
+    // defineTool itself now rejects a non-object root, so swap the schema in afterwards.
     const notObject = { ...defineTool({ name: 'str', description: 'd', input: z.object({}), execute: () => 'x' }), input: z.string() } as never;
     await expect(serveMcp({ agent, name: 'a', tools: [notObject] })).rejects.toThrow(/z\.object/);
   });
@@ -459,7 +459,7 @@ describe('serveMcp over HTTP', () => {
     });
   }
 
-  it('Eve TOOLS-F5: rejects a foreign Host or Origin on a loopback bind (DNS rebinding)', async () => {
+  it('rejects a foreign Host or Origin on a loopback bind (DNS rebinding)', async () => {
     const server = await start();
     const port = server.port!;
     expect(await rawPost(port, { Host: `evil.example:${port}`, Origin: `http://evil.example:${port}` })).toBe(403);
@@ -472,7 +472,7 @@ describe('serveMcp over HTTP', () => {
     expect(await rawPost(port, { Host: `127.0.0.1:${port}` })).toBe(200);
   });
 
-  it('Eve TOOLS-F5: allowedHosts replaces the loopback default and allowedOrigins adds origins', async () => {
+  it('allowedHosts replaces the loopback default and allowedOrigins adds origins', async () => {
     const server = await serveMcp({
       agent,
       name: 'a',

@@ -79,7 +79,7 @@ describe('diffTrajectories', () => {
   });
 });
 
-describe('compareTrajectories (LOU-D44)', () => {
+describe('compareTrajectories', () => {
   const transcript = (callId: string, args: string, result: string): Message[] => [
     { role: 'user', content: 'refund order 42' },
     { role: 'assistant', content: '', toolCalls: [{ id: callId, type: 'function', function: { name: 'lookup', arguments: args } }] },

@@ -1,5 +1,5 @@
 /**
- * `createAgent({ mcpServers })` wiring (LOU-Z4): connects the servers with
+ * `createAgent({ mcpServers })` wiring: connects the servers with
  * `connectMcp()` on first use and registers their tools on the agent.
  */
 import type { McpServerSpec } from '../../spec/schema';
@@ -18,12 +18,12 @@ import { assertMcpOAuth, completeMcpSignIn, hasMcpOAuth, mcpStoreMissing, startM
 export interface AgentMcp {
   ready(): Promise<void>;
   close(): Promise<void>;
-  /** N9c: the operator's sign-in to servers with `oauth` (`agent.oauth.mcpSignInUrl()` and the callback). */
+  /** The operator's sign-in to servers with `oauth` (`agent.oauth.mcpSignInUrl()` and the callback). */
   oauth?: McpOAuthSignIn;
 }
 
 /**
- * N9c: sign-ins to the servers with `oauth`. Nothing to reset after one: the
+ * Sign-ins to the servers with `oauth`. Nothing to reset after one: the
  * transport reads the token from the store on every request, and a server
  * that needed a sign-in has no open client, so the next `ready()` or tool
  * call connects with the new token.
@@ -69,7 +69,7 @@ export function agentMcp(
   }
   const oauth = mcpOAuthSignIn(servers, tokens);
   const connect = lazyValue(async (): Promise<McpConnections> => {
-    // Eve TOOLS-F18: a server's `tools/list_changed` hands the updated tools to `register` again.
+    // A server's `tools/list_changed` hands the updated tools to `register` again.
     const connections = await connectMcp(servers, {
       ...(tokens && { tokens }),
       onToolsChanged: (tools) => register(tools),
@@ -111,8 +111,8 @@ export function streamAfter(ready: () => Promise<void>, options: ExecuteOptions)
 }
 
 /**
- * `AgentExecutor.stream()` of the options `prepare()` resolves to (LOU-V15); a rejection fails the run.
- * `around` (Eve DUR-F2) wraps the preparation and the whole run, e.g. to queue it behind other runs.
+ * `AgentExecutor.stream()` of the options `prepare()` resolves to; a rejection fails the run.
+ * `around` wraps the preparation and the whole run, e.g. to queue it behind other runs.
  */
 export function streamPrepared(
   prepare: () => Promise<ExecuteOptions>,

@@ -1,5 +1,5 @@
 /**
- * `WS /agents/:id/stream` (N1/N2) - pushes `StreamMessage`s
+ * `WS /agents/:id/stream` - pushes `StreamMessage`s
  * (types.ts) to subscribers of one agent's run: a `status` message on every
  * RunManager status transition (immediately on connect, too, so a client
  * that connects mid-run sees the current state without waiting for the
@@ -42,7 +42,7 @@ function streamAgentId(req: IncomingMessage): string | undefined {
   return isValidAgentId(agentId) ? agentId : undefined;
 }
 
-/** Eve DUI-F1: the same Host/Origin/token gate as the HTTP API (see auth.ts); omitted `access` skips only the token. */
+/** The same Host/Origin/token gate as the HTTP API (see auth.ts); omitted `access` skips only the token. */
 function rejectUpgrade(req: IncomingMessage, socket: Socket, access: StudioAccessOptions | undefined): boolean {
   const decision = access ? checkApiAccess(req, access) : checkHostAndOrigin(req, { token: '' });
   if (decision.ok) return false;
@@ -70,7 +70,7 @@ export function attachWebSocketServer(
 
   runManager.on('status', (payload) => broadcast(payload.agentId, { type: 'status', payload }));
 
-  // 'event' plus O1/O2/O3 'log'/'span'/'debug' and P1 'chat' (the chat
+  // 'event' plus 'log'/'span'/'debug' and 'chat' (the chat
   // transcript, reconciled from the real ExecutionResult.messages - see
   // chatReconcile.ts): same fan-out pattern as 'status', over the same WS
   // connection - no second channel.
@@ -98,7 +98,7 @@ export function attachWebSocketServer(
       // Send current status immediately so a client connecting mid-run (or
       // after a pause) doesn't have to wait for the next transition.
       send(ws, { type: 'status', payload: runManager.status(agentId) });
-      // P1: same for the chat transcript, so opening the Chat tab shows
+      // Same for the chat transcript, so opening the Chat tab shows
       // history immediately rather than waiting for the next message.
       send(ws, { type: 'chat', payload: runManager.chatState(agentId) });
 

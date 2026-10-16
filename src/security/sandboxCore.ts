@@ -1,8 +1,8 @@
 /**
- * Sandbox adapter interface (LOU-F4) and its trusted-host, zero-isolation
+ * Sandbox adapter interface and its trusted-host, zero-isolation
  * implementation NoopSandbox.
  *
- * Split out of sandbox.ts (LOU-I2) so the execution core (AgentExecutor,
+ * Split out of sandbox.ts so the execution core (AgentExecutor,
  * resume, FlowExecutor, sandboxGuard, types) can depend on the interface and
  * the default NoopSandbox WITHOUT pulling in dockerode (and its native,
  * unbundleable ssh2/cpu-features subtree) - which is what lets `lousho build`
@@ -44,20 +44,20 @@ export interface SandboxRunOptions {
   /**
    * Host-process adapters only (`NoopSandbox`): `false` gives the command a
    * small base (`PATH`, `HOME`, temp dirs, locale; see `NodeWorkspace`) plus
-   * `env` instead of the whole host environment (LOU-X11). Defaults to
+   * `env` instead of the whole host environment. Defaults to
    * `true`. Container adapters never pass the host environment.
    */
   inheritEnv?: boolean;
   /** Timeout in milliseconds after which the command is killed. */
   timeoutMs?: number;
-  /** Aborts the command (LOU-U17); `run()` then rejects with an `AbortError`. Adapters may ignore it. */
+  /** Aborts the command; `run()` then rejects with an `AbortError`. Adapters may ignore it. */
   signal?: AbortSignal;
 }
 
 /**
  * A pluggable command-execution backend. Implementations range from "no
  * isolation at all" (NoopSandbox) to a fully isolated container
- * (SubprocessSandbox, LOU-F6).
+ * (SubprocessSandbox).
  */
 export interface SandboxAdapter {
   /** A short, human-readable identifier for the adapter (e.g. 'noop', 'docker'). */
@@ -84,7 +84,7 @@ export interface SandboxAdapter {
  * node:fs/promises.writeFile. This is exactly the "trusted host" behavior
  * the SDK had before any sandboxing existed - it exists so tools that
  * don't need real isolation (or environments without a sandbox backend
- * available, like this one without Docker - see LOU-F6) still have a
+ * available, like this one without Docker - see) still have a
  * SandboxAdapter to route through.
  */
 export const NoopSandbox: SandboxAdapter = {

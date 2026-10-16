@@ -1,5 +1,5 @@
 /**
- * Background sub-agents (LOU-Y4): `task` with `background: true` starts the
+ * Background sub-agents: `task` with `background: true` starts the
  * child and returns at once; `agent_status`, `agent_await` and `agent_cancel`
  * observe and steer it. One {@link BackgroundTasks} exists per lead run.
  */
@@ -24,14 +24,14 @@ export interface SubagentOptions {
    */
   awaitBackgroundOnFinish?: boolean;
   /**
-   * Eve MA-F14: `false` leaves background tasks out: the `task` tool has no
+   * `false` leaves background tasks out: the `task` tool has no
    * `background` argument and the lead gets no `agent_status`, `agent_await`
    * or `agent_cancel` tool, which saves their schemas and prompt text on every
    * lead request. Default `true`.
    */
   background?: boolean;
   /**
-   * H3-4: `false` leaves task continuation out: the `task` tool has no
+   * `false` leaves task continuation out: the `task` tool has no
    * `taskId` or `mode` argument, so every call starts a new sub-agent
    * conversation, and neither the tool nor the prompt block mentions
    * follow-ups. For leads that misuse taskIds (a weak model passing one task's
@@ -39,7 +39,7 @@ export interface SubagentOptions {
    */
   continuation?: boolean;
   /**
-   * LOU-Y6: where the child conversations of `task` calls are kept, so the
+   * Where the child conversations of `task` calls are kept, so the
    * lead can resume or fork them by `taskId` in later runs of its session
    * (also after a restart, with a durable store). Used by lead runs with a
    * `sessionId` (checkpointed `send()` and session turns); other runs keep
@@ -75,7 +75,7 @@ interface BackgroundTask extends BackgroundTaskView {
   settle: () => void;
   /** Resolves once the child run itself has returned (after a cancel, once it has wound down). */
   stopped: Promise<void>;
-  /** M4: the child's pause (`awaiting-approval`), which `agent_await` turns into a pause of the lead. */
+  /** The child's pause (`awaiting-approval`), which `agent_await` turns into a pause of the lead. */
   pause?: SubagentApprovalPause;
 }
 
@@ -173,7 +173,7 @@ export class BackgroundTasks {
     return tasks.map((task) => (isActive(task) ? { ...this.view(task), status: 'timeout' } : this.view(task)));
   }
 
-  /** M4: the pause of a task that is `awaiting-approval`. */
+  /** The pause of a task that is `awaiting-approval`. */
   pauseOf(taskId: string): SubagentApprovalPause | undefined {
     return this.tasks.get(taskId)?.pause;
   }
@@ -193,7 +193,7 @@ export class BackgroundTasks {
   }
 
   /**
-   * At the end of the lead run (LOU-Y4.2): cancels the tasks still queued or
+   * At the end of the lead run: cancels the tasks still queued or
    * running - or, with `awaitAll`, waits for them to end - then waits until
    * their runs have stopped, so none of their events comes after this. Returns
    * every task with its final status (none when no task was started).
@@ -247,7 +247,7 @@ function isActive(task: BackgroundTask): boolean {
   return task.status === 'queued' || task.status === 'running';
 }
 
-/** How a child run that threw is reported: paused for approval (the pause is kept, M4), or failed. */
+/** How a child run that threw is reported: paused for approval (the pause is kept), or failed. */
 function failure(error: unknown): Pick<BackgroundTask, 'status' | 'error' | 'approvalId' | 'toolName' | 'pause'> {
   if (error instanceof SubagentApprovalPause) {
     const pending = error.snapshot.pendingToolCall;

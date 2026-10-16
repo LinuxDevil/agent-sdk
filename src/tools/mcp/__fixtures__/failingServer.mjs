@@ -1,4 +1,4 @@
-// A stdio "MCP server" that never works, for connect.test.ts (audit D4).
+// A stdio "MCP server" that never works, for connect.test.ts.
 // FIXTURE_MODE=exit: writes to stderr and exits with code 3. FIXTURE_MODE=silent: never answers.
 if (process.env.FIXTURE_MODE === 'silent') {
   process.stdin.resume();

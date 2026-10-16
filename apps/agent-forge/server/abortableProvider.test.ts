@@ -4,7 +4,7 @@ import { RunAbortedError, withAbortSignal } from './abortableProvider';
 
 const request = { model: 'mock-1', messages: [{ role: 'user' as const, content: 'hi' }] };
 
-describe('withAbortSignal (M9: streamed calls)', () => {
+describe('withAbortSignal (streamed calls)', () => {
   it('passes a stream through chunk by chunk when not stopped', async () => {
     const provider = withAbortSignal(new MockLLMProvider({ name: 'mock' }), new AbortController().signal);
     const streamed = await provider.stream(request);

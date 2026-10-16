@@ -1,5 +1,5 @@
 /**
- * agent-dir - an agent defined as a directory (LOU-Y5).
+ * agent-dir - an agent defined as a directory.
  *
  * `loadAgentDir()` reads instructions.md, tools/, skills/ and agent.json from
  * this folder and returns the same object `createAgent()` does. The model is

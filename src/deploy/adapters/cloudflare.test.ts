@@ -1,5 +1,5 @@
 /**
- * LOU-I3: cloudflare-worker adapter.
+ * Cloudflare-worker adapter.
  *
  * Always runs (no external tooling needed):
  *  - scaffold()/wrangler.toml generation + Worker-compatibility checks
@@ -8,7 +8,7 @@
  *    handler with real Request objects.
  *
  * Runs only when the `wrangler` CLI is installed (it is a devDependency of
- * this repo; the guard mirrors LOU-F6's Docker-daemon guard in
+ * this repo; the guard mirrors the Docker-daemon guard in
  * src/security/SubprocessSandbox.test.ts so a missing tool skips rather
  * than fails):
  *  - `wrangler deploy --dry-run` (validates wrangler.toml + the bundle
@@ -70,7 +70,7 @@ const SPEC = {
 
 /**
  * The bundle minus `ai` v6/v7's runtime-guarded `getBuiltinModule("node:...")`
- * probes (LOU-D28c; which ids are allowed is findNodeBuiltinReferences' job).
+ * probes (which ids are allowed is findNodeBuiltinReferences' job).
  * On `ai` v4 there are none, so this is the whole bundle.
  */
 function withoutBuiltinProbes(bundle: string): string {
@@ -160,7 +160,7 @@ describe('CloudflareWorkerAdapter', () => {
     expect(findNodeBuiltinReferences('const x = "no builtins here"; import { x } from "./path";')).toEqual([]);
   });
 
-  it('findNodeBuiltinReferences accepts only the allowlisted getBuiltinModule probes of ai v6/v7 (LOU-D28c, LOU-M8)', () => {
+  it('findNodeBuiltinReferences accepts only the allowlisted getBuiltinModule probes of ai v6/v7', () => {
     const probes = 'loadBuiltinModule2("node:diagnostics_channel"); loadBuiltinModule4("node:dns"); process.getBuiltinModule?.("node:async_hooks"); loadBuiltinModule("node:module"); await loadNodeModule("node:dns");';
     expect(findNodeBuiltinReferences(probes)).toEqual([]);
     // Any other builtin, or an allowlisted id outside a probe call, is still a leak.
@@ -189,12 +189,12 @@ describe('CloudflareWorkerAdapter', () => {
     expect(WORKER_SUPPORTED_PROVIDERS).toEqual(['mock', 'openai', 'anthropic', 'openrouter']);
   });
 
-  it('adds a commented LOUSHO_HTTP_ALLOW under [vars] to wrangler.toml only when the spec lists http (M3a)', () => {
+  it('adds a commented LOUSHO_HTTP_ALLOW under [vars] to wrangler.toml only when the spec lists http', () => {
     expect(wranglerTomlSource({ ...SPEC, tools: ['http'] })).toContain('# [vars]\n# LOUSHO_HTTP_ALLOW = "api.example.com"\n');
     expect(wranglerTomlSource(SPEC)).not.toContain('LOUSHO_HTTP_ALLOW');
   });
 
-  it("registers 'openrouter' in the Worker's LLMProviderRegistry with the OPENROUTER_API_KEY binding (M3a)", () => {
+  it("registers 'openrouter' in the Worker's LLMProviderRegistry with the OPENROUTER_API_KEY binding", () => {
     expect(LLMProviderRegistry.has('openrouter')).toBe(true);
     const prepared = prepareWorkerSpec(
       { ...SPEC, provider: { type: 'openrouter', model: 'openai/gpt-4o-mini' } },
@@ -208,7 +208,7 @@ describe('CloudflareWorkerAdapter', () => {
     expect(() => prepareWorkerSpec({ ...SPEC, tools: ['web-fetch'] })).toThrow(/tool 'web-fetch' is not available on Cloudflare Workers/);
   });
 
-  it("registers 'openai' and 'anthropic' in the Worker's LLMProviderRegistry (LOU-K3)", () => {
+  it("registers 'openai' and 'anthropic' in the Worker's LLMProviderRegistry", () => {
     // Importing runtime.worker.ts (done at module load via the top-level
     // import above) must have registered both without throwing, and
     // constructing each provider (no network call happens until
@@ -268,7 +268,7 @@ describe('CloudflareWorkerAdapter', () => {
       expect(bundle.length).toBeGreaterThan(0);
       expect(findNodeBuiltinReferences(bundle)).toEqual([]);
       expect(withoutBuiltinProbes(bundle)).not.toMatch(/node:/);
-      // N14: code mode's QuickJS (Emscripten) runtime is swapped for a shim, never bundled.
+      // Code mode's QuickJS (Emscripten) runtime is swapped for a shim, never bundled.
       expect(bundle).not.toMatch(/MEMFS|quickjs-wasmfile/);
       expect(bundle).toContain('Code mode (createAgent({ codeMode })) is not supported on the cloudflare-worker target yet');
       expect(bundle).toMatch(/^export \{/m);
@@ -276,7 +276,7 @@ describe('CloudflareWorkerAdapter', () => {
       expect(bundle).not.toMatch(/^module\.exports/m);
     });
 
-    it("measures the built bundle's real size and reports it against Workers' free-tier limit (LOU-I3)", () => {
+    it("measures the built bundle's real size and reports it against Workers' free-tier limit", () => {
       const bundlePath = path.join(outDir, 'dist', 'worker.js');
 
       // Ground truth: fs.statSync directly on the file, independent of the
@@ -370,7 +370,7 @@ describe('CloudflareWorkerAdapter', () => {
       expect(oversized.status).toBe(413);
     });
 
-    it("the built bundle serves sessions, SSE and bearer auth like the node server (LOU-D51)", async () => {
+    it("the built bundle serves sessions, SSE and bearer auth like the node server", async () => {
       const mod = await import(pathToFileURL(path.join(outDir, 'dist', 'worker.js')).href);
       const handler = mod.default as { fetch: (r: Request, env?: Record<string, unknown>) => Promise<Response> };
       const env = { LOUSHO_API_TOKEN: 'tok' };
@@ -402,7 +402,7 @@ describe('CloudflareWorkerAdapter', () => {
         expect(output).toContain('--dry-run: exiting now.');
         expect(fs.existsSync(path.join(dryOut, 'worker.js'))).toBe(true);
 
-        // LOU-I3: cross-check our fs.statSync/gzip-based measurement against
+        // Cross-check our fs.statSync/gzip-based measurement against
         // wrangler's own reported "Total Upload" figures for the exact same
         // build, so the adapter's number is proven meaningful rather than
         // an arbitrary internal calculation.
@@ -460,7 +460,7 @@ describe('CloudflareWorkerAdapter', () => {
           expect(chat.status).toBe(200);
           expect((await chat.json()).text).toBe('This is a mock response.');
 
-          // LOU-D51: a streamed turn with a session, over the KV namespace wrangler dev simulates.
+          // A streamed turn with a session, over the KV namespace wrangler dev simulates.
           const streamed = await fetch(`${base}/chat`, {
             method: 'POST',
             headers: { Authorization: 'Bearer dev-token', 'Content-Type': 'application/json' },
@@ -482,7 +482,7 @@ describe('CloudflareWorkerAdapter', () => {
     });
   });
 
-  describe('scaffold + build with a real provider (LOU-K3, M3a)', () => {
+  describe('scaffold + build with a real provider', () => {
     const MODELS = { openai: 'gpt-4o-mini', anthropic: 'claude-3-5-sonnet-latest', openrouter: 'openai/gpt-4o-mini' } as const;
     const HOSTS = { openai: 'api.openai.com', anthropic: 'api.anthropic.com', openrouter: 'openrouter.ai' } as const;
 
@@ -508,7 +508,7 @@ describe('CloudflareWorkerAdapter', () => {
         // network replaced by a fetch that answers 401 (no request leaves the
         // machine). The provider must have been resolved and must have called
         // its own API: a registry/"not supported" error would mean the wiring
-        // is broken, which is what LOU-K3 and M3a fix.
+        // is broken, which is what the provider wiring fixes.
         const requested: string[] = [];
         const original = globalThis.fetch;
         globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -535,7 +535,7 @@ describe('CloudflareWorkerAdapter', () => {
     );
   });
 
-  describe("scaffold + build with the 'http' tool (M3a)", () => {
+  describe("scaffold + build with the 'http' tool", () => {
     let outDir: string;
 
     beforeAll(async () => {
@@ -628,7 +628,7 @@ describe('CloudflareWorkerAdapter', () => {
 
     it('returns the body when the binding lists the host', async () => {
       const { text, requested } = await chat({ LOUSHO_HTTP_ALLOW: 'api.github.com, *.example.com' });
-      // The OpenAI package of `ai` 4 sends a string tool result JSON-quoted; those of `ai` 6/7 send it as is (LOU-M8).
+      // The OpenAI package of `ai` 4 sends a string tool result JSON-quoted; those of `ai` 6/7 send it as is.
       expect(text).toMatch(/^tool said: "?the listed body"?$/);
       expect(requested).toContain('https://api.example.com/data');
     });

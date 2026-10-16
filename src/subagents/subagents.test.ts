@@ -19,7 +19,7 @@ function toolMessages(messages: readonly Message[]): Message[] {
   return messages.filter((m) => m.role === 'tool');
 }
 
-describe('subagents option and the task tool (LOU-Y3)', () => {
+describe('subagents option and the task tool', () => {
   it('runs a sub-agent on only the task prompt and returns its answer with a metadata footer', async () => {
     const researcherModel = mockModel(['Paris is the capital of France.']);
     const researcher = createAgent({
@@ -39,7 +39,7 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
     ]);
     expect(JSON.stringify(researcherModel.calls[0].messages)).not.toContain('secret');
 
-    // The lead sees the sub-agent list, the `task` tool and the background-task tools (LOU-Y4).
+    // The lead sees the sub-agent list, the `task` tool and the background-task tools.
     const leadRequest = leadModel.calls[0];
     expect(leadRequest.messages[0].content).toContain('## Available sub-agents');
     expect(leadRequest.messages[0].content).toContain('- researcher: Finds and summarizes sources');
@@ -225,7 +225,7 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
     expect(toolResult.content).toContain('still working');
   });
 
-  it('tells the lead when a sub-agent answer was cut off at the output token limit (Eve MA-F15)', async () => {
+  it('tells the lead when a sub-agent answer was cut off at the output token limit', async () => {
     const researcher = createAgent({
       provider: mockModel([{ text: 'The three causes are: first, the', finishReason: 'length' }]),
       description: 'Researches',
@@ -241,7 +241,7 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
     expect(text).toMatch(/cut off at the output token limit.*incomplete/);
   });
 
-  it('subagentOptions.background: false offers only the task tool, without a background argument (Eve MA-F14)', async () => {
+  it('subagentOptions.background: false offers only the task tool, without a background argument', async () => {
     const researcher = createAgent({ provider: mockModel(['found']), description: 'Researches' });
     const leadModel = mockModel([{ toolCalls: [task('researcher', 'go')] }, 'ok']);
     const lead = createAgent({ provider: leadModel, subagents: { researcher }, subagentOptions: { background: false } });
@@ -255,7 +255,7 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
     expect(result.text).toBe('ok');
   });
 
-  it('subagentOptions.continuation: false leaves taskId and mode out of the task tool and the prompt (H3-4)', async () => {
+  it('subagentOptions.continuation: false leaves taskId and mode out of the task tool and the prompt', async () => {
     const researcherModel = mockModel(['first', 'second']);
     const researcher = createAgent({ provider: researcherModel, description: 'Researches' });
     const leadModel = mockModel([{ toolCalls: [task('researcher', 'go')] }, { toolCalls: [task('researcher', 'again')] }, 'ok']);
@@ -277,7 +277,7 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
     expect(toolMessages(result.messages).map((m) => m.content)).toEqual([expect.stringContaining("taskId 'task_1'"), expect.stringContaining("taskId 'task_2'")]);
   });
 
-  it('offers taskId and mode on the task tool by default (LOU-Y6)', async () => {
+  it('offers taskId and mode on the task tool by default', async () => {
     const researcher = createAgent({ provider: mockModel(['found']), description: 'Researches' });
     const leadModel = mockModel(['ok']);
     await createAgent({ provider: leadModel, subagents: { researcher } }).send('go');
@@ -287,7 +287,7 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
     expect(leadModel.calls[0].messages[0].content).toContain('Omit `taskId` to start a new task.');
   });
 
-  it('accepts a task call without a description (Eve MA-F14)', async () => {
+  it('accepts a task call without a description', async () => {
     const researcher = createAgent({ provider: mockModel(['found it']), description: 'Researches' });
     const leadModel = mockModel([{ toolCalls: [{ name: 'task', args: { agent: 'researcher', prompt: 'go' } }] }, 'ok']);
     const lead = createAgent({ provider: leadModel, subagents: { researcher } });
@@ -298,7 +298,7 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
     expect(toolResult.content).toContain('found it');
   });
 
-  it("resolves a dynamic sub-agent's config with the caller's metadata, principal and sessionId (Eve CORE-F7)", async () => {
+  it("resolves a dynamic sub-agent's config with the caller's metadata, principal and sessionId", async () => {
     const seen: unknown[] = [];
     const researcher = createAgent({
       description: 'Researches',
@@ -397,7 +397,7 @@ describe('subagents option and the task tool (LOU-Y3)', () => {
   });
 });
 
-describe('usage of a sub-agent that fails (Eve MA-F1)', () => {
+describe('usage of a sub-agent that fails', () => {
   const noop = defineTool({ name: 'noop', description: 'Does nothing', input: z.object({}), execute: async () => 'ok' });
   const failingWorker = () =>
     createAgent({

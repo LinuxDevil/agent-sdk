@@ -6,7 +6,7 @@ import { fromAiSdk, type FromAiSdkOptions, type LLMProvider } from '../index';
 
 const model = createOpenAI({ apiKey: 'k' }).chat('gpt-4o-mini');
 
-describe('fromAiSdk() types (M2)', () => {
+describe('fromAiSdk() types', () => {
   it("takes the installed ai's LanguageModel and returns an LLMProvider that createAgent's provider accepts", () => {
     expectTypeOf(fromAiSdk).parameter(0).toEqualTypeOf<LanguageModel>();
     expectTypeOf(fromAiSdk(model)).toEqualTypeOf<LLMProvider>();

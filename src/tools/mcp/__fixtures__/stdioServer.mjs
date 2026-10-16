@@ -1,4 +1,4 @@
-// A tiny MCP server over stdio for connect.test.ts (LOU-Z4). Plain JS, run with `node`.
+// A tiny MCP server over stdio for connect.test.ts. Plain JS, run with `node`.
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
@@ -19,7 +19,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: 'wipe',
-      description: 'Pretends to delete everything (LOU-Z5: destructiveHint, so it asks for approval)',
+      description: 'Pretends to delete everything (destructiveHint, so it asks for approval)',
       inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
       annotations: { destructiveHint: true },
     },

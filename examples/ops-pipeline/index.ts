@@ -1,22 +1,22 @@
 /**
- * Ops pipeline (LOU-J8) - end-to-end demo entry point.
+ * Ops pipeline - end-to-end demo entry point.
  *
  * Wires, in order:
- *   1. LOU-J4's monitor webhook listener (POST /webhook)
- *   2. LOU-J5's Slack tool + interaction route (POST /slack/interactions)
- *   3. LOU-J6's fixer, delegated to from the monitor agent
- *   4. LOU-J7's patch-check-gated PR creation
+ *   1. the monitor webhook listener (POST /webhook)
+ *   2. the Slack tool + interaction route (POST /slack/interactions)
+ *   3. the fixer, delegated to from the monitor agent
+ *   4. the patch-check-gated PR creation
  * into one process.
  *
  * Safety property this wiring enforces (per the epic's own Implementation
  * Considerations): the fixer agent never runs without first passing
- * through the REAL LOU-C approval gate. The `delegate_to_fixer` tool
+ * through the REAL approval gate. The `delegate_to_fixer` tool
  * registered on the monitor agent is marked `needsApproval: true`, so
  * AgentExecutor.execute() pauses and saves a PendingApproval (via the REAL
  * ApprovalGate/ApprovalStore) the moment the monitor agent tries to call
  * it - the fixer agent's AgentExecutor.execute() call is only ever reached
  * from inside that tool's execute(), which only runs after a human clicks
- * "Fix it" in Slack and resumeAfterApproval() (LOU-C6, called for real by
+ * "Fix it" in Slack and resumeAfterApproval() (called for real by
  * slackInteractions.ts) resolves the approval and runs the deferred tool
  * call. There is no code path here that runs the fixer without that
  * approval round-trip.
@@ -96,7 +96,7 @@ export interface OpsPipelineDeps {
   /**
    * Guardrails to run before considering the GitHub PR call. Defaults to
    * handleFixerPatch()'s own defaults (real secretScanCheck + a
-   * diff-size cap) when omitted. Exposed here so callers (e.g. LOU-J9's
+   * diff-size cap) when omitted. Exposed here so callers (e.g. the
    * pipeline.eval.ts) can wrap the default patchChecks to observe/record
    * execution order without changing which patchChecks actually run.
    */
@@ -248,7 +248,7 @@ async function startSlackInteractionsServer(
  * small server exposing POST /slack/interactions (kept as a separate
  * listener from the monitor server rather than merged into one
  * http.Server, since startMonitorServer() already owns its own server
- * lifecycle from LOU-J4 - both are still started from this one process
+ * lifecycle - both are still started from this one process
  * entry point).
  */
 export async function startOpsPipeline(deps: OpsPipelineDeps = {}): Promise<OpsPipelineHandle> {

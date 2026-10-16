@@ -133,7 +133,7 @@ describe('optional provider peers', () => {
   });
 });
 
-describe('ai / provider package pairing (LOU-D28d)', () => {
+describe('ai / provider package pairing', () => {
   const WIDE_PEERS = {
     ai: '^4.3.19 || ^6.0.0 || ^7.0.0',
     zod: '^3.25.76',
@@ -182,7 +182,7 @@ describe('ai / provider package pairing (LOU-D28d)', () => {
   });
 });
 
-describe('optional feature peers (LOU-D40)', () => {
+describe('optional feature peers', () => {
   const without = (missing: string) => (n: string) => (n === missing ? null : INSTALLED[n] ?? null);
 
   it.each([
@@ -310,7 +310,7 @@ describe('spec checks', () => {
     expect(bad.status).toBe('fail');
     expect(bad.fix).toContain("Remove 'nope'");
   });
-  it('checks MCP server commands from the validated spec field (LOU-D20)', async () => {
+  it('checks MCP server commands from the validated spec field', async () => {
     const commandExists = (command: string) => command === 'npx';
     const env = withSpec(
       spec({
@@ -340,7 +340,7 @@ describe('spec checks', () => {
   });
 });
 
-describe('spec policy checks (LOU-X5)', () => {
+describe('spec policy checks', () => {
   const withPolicy = (policy: AgentSpec['policy']) =>
     makeEnv({ specPath: 'a.yaml', loadSpec: () => spec({ policy }) });
 
@@ -420,7 +420,7 @@ describe('ollama check', () => {
   });
 });
 
-describe('OpenAI base URL and --ping (audit C5)', () => {
+describe('OpenAI base URL and --ping', () => {
   it('shows OPENAI_BASE_URL when set, without credentials or query', async () => {
     const env = makeEnv({ env: { OPENAI_API_KEY: SECRET, OPENAI_BASE_URL: `http://user:${SECRET}@localhost:1234/v1/?key=${SECRET}` } });
     const result = await check(env, 'env.openai-base-url');

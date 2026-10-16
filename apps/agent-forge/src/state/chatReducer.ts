@@ -1,5 +1,5 @@
 /**
- * P1/P2: pure state-update logic for the live chat transcript, applied to
+ * Pure state-update logic for the live chat transcript, applied to
  * every `{type:'chat'}` WS push (see AppState.tsx's subscribe() handler and
  * runtimeClient.ts's `ChatStatePayload`). Kept separate and pure (same
  * pattern as logReducer.ts/spanReducer.ts) so it's independently testable

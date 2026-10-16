@@ -1,9 +1,9 @@
 /**
- * N2: the default ranking of the `tool_search` tool - keyword overlap of the
+ * The default ranking of the `tool_search` tool - keyword overlap of the
  * query with each deferred tool's name and description. No dependency, no
  * index: deferred tool sets are tens to a few hundred tools.
  *
- * Eve MEM-F13: besides exact words it gives partial credit for word-family
+ * Besides exact words it gives partial credit for word-family
  * matches (`create` / `created`, `send` / `sending`) and for a small
  * built-in table of common tool-verb and domain synonyms (`fetch` / `get`,
  * `share` / `stock` / `equity`), so a query that does not reuse a tool's exact

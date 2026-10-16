@@ -1,5 +1,5 @@
 /**
- * What the Slack and Discord channels share (LOU-P5.2): who may approve, the
+ * What the Slack and Discord channels share: who may approve, the
  * default error report, and the approval reference carried in a button.
  */
 import { SDKError } from '../execution/errors';
@@ -11,7 +11,7 @@ export interface ApproverRequest {
   toolName: string;
   input: Record<string, unknown>;
   sessionId: string;
-  /** N10b: who the paused run acts for (the turn's sender), when it has a principal. */
+  /** Who the paused run acts for (the turn's sender), when it has a principal. */
   principal?: Readonly<Principal>;
 }
 
@@ -71,7 +71,7 @@ export async function reportChannelError(onError: ChannelErrorHandler | undefine
 }
 
 /**
- * Eve CH-F8: remembers the delivery ids (Telegram `update_id`, GitHub `X-GitHub-Delivery`,
+ * Remembers the delivery ids (Telegram `update_id`, GitHub `X-GitHub-Delivery`,
  * Slack `event_id`) of the last `ttlMs` (default 1 hour), at most `max` of them (default 10 000),
  * so a surface's redelivery of a webhook this process already took does not run its turn twice.
  * The returned function answers whether `id` was seen before, and records it. In memory: it covers
@@ -114,11 +114,11 @@ export interface DeliveryStore {
   seen(id: string): boolean | Promise<boolean>;
 }
 
-/** Eve CH-F6: what a client sees of a channel 500, as on the session routes (A1); the detail goes to `onError`. */
+/** What a client sees of a channel 500, as on the session routes; the detail goes to `onError`. */
 const PUBLIC_ERROR_MESSAGE = 'The request failed. The server log has the details.';
 
 /**
- * Eve CH-F6: the JSON body of a channel request that failed before the surface was answered:
+ * The JSON body of a channel request that failed before the surface was answered:
  * a 413 or 400 (bad JSON) keeps its message, a 500 only says it failed (and the error's `code`).
  */
 export function channelFailureBody(status: number, error: unknown): Record<string, unknown> {

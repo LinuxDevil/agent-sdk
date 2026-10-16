@@ -1,5 +1,5 @@
 /**
- * What `lousho dev` serves and how it hot-reloads it (LOU-D31).
+ * What `lousho dev` serves and how it hot-reloads it.
  *
  * A target is a spec file (.yaml/.yml/.json), an agent directory, or a
  * .ts/.js module whose default (or `agent`) export is a `SimpleAgent` or a
@@ -33,9 +33,9 @@ export interface DevTarget {
 export interface DevState {
   agent: SimpleAgent;
   target: DevTarget;
-  /** Where `/chat` sessions live (LOU-D32): kept across reloads, so they continue on the new agent. */
+  /** Where `/chat` sessions live: kept across reloads, so they continue on the new agent. */
   store: ReturnType<typeof memoryStore>;
-  /** The agent directory's channels, mounted under `/channels` (LOU-P8.2); undefined when it has none. Replaced on reload. */
+  /** The agent directory's channels, mounted under `/channels`; undefined when it has none. Replaced on reload. */
   channels?: ChannelsHandler;
   /** Names of the mounted channels that authenticate their requests (`verify`): the dev server's `Host` check skips them. */
   verifiedChannels?: ReadonlySet<string>;
@@ -97,7 +97,7 @@ export function detectTarget(rawPath: string, command = 'dev'): DevTarget {
 /** Agents built with their own `store` (a config export's, or `overrides.store`): `/chat` sessions use it, not the dev store. */
 const storeOwners = new WeakSet<SimpleAgent>();
 
-/** Whether `agent` was configured with a `store` of its own (LOU-D32). */
+/** Whether `agent` was configured with a `store` of its own. */
 export function hasOwnStore(agent: SimpleAgent): boolean {
   return storeOwners.has(agent);
 }

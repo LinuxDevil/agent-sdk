@@ -8,7 +8,7 @@ import { importModule } from './importModule';
 const AUTH_FILE = /^auth\.[cm]?[jt]s$/;
 
 /**
- * N10a: the route auth of an agent directory, from its `auth.{ts,js,mjs,cjs,mts}`
+ * The route auth of an agent directory, from its `auth.{ts,js,mjs,cjs,mts}`
  * file, which default-exports an auth entry or an ordered list of them
  * (`jwt()`, `oidc()`, `basic()`, `apiToken()`, ... from `@lousho/build-ai-agent/auth`).
  * `undefined` when the directory has no such file.

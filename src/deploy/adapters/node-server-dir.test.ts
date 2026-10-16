@@ -1,5 +1,5 @@
 /**
- * LOU-P8.2: the node-server (and docker) targets deploy an agent directory:
+ * The node-server (and docker) targets deploy an agent directory:
  * scaffold + tsup build + the built dist/server.js as a real subprocess that
  * mounts the directory's channels and reports its schedules. Only the LLM is
  * the SDK's mock provider.
@@ -156,7 +156,7 @@ describe('NodeServerAdapter with an agent directory', () => {
       expect(hook.status).toBe(200);
       expect(((await hook.json()) as { reply: string }).reply.trim()).toBe('pong');
       expect((await fetch(`http://127.0.0.1:${port}/health`)).status).toBe(200);
-      // N10a: auth.ts guards the chat routes (the channel above was answered without it).
+      // Auth.ts guards the chat routes (the channel above was answered without it).
       const chat = (headers: Record<string, string>) =>
         fetch(`http://127.0.0.1:${port}/chat/s1`, { headers }).then((res) => res.status);
       expect(await chat({})).toBe(401);

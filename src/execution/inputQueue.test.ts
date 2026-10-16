@@ -1,5 +1,5 @@
 /**
- * LOU-V9: queued follow-up input - `run.enqueue()`, `ExecuteOptions.inputQueue`
+ * Queued follow-up input - `run.enqueue()`, `ExecuteOptions.inputQueue`
  * and `agent.session({ turnPolicy: 'queue' })`.
  */
 
@@ -236,7 +236,7 @@ describe("agent.session({ turnPolicy: 'queue' })", () => {
 
     expect((await first).finishReason).toBe('aborted');
     expect((await second).text).toBe('Own turn.');
-    // B4: the aborted turn keeps the tool call that ran (and its result); the rest of it is dropped.
+    // The aborted turn keeps the tool call that ran (and its result); the rest of it is dropped.
     expect(conversation(session.messages)).toEqual([
       'user:Start.',
       'assistant:',

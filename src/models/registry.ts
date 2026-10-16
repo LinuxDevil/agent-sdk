@@ -1,5 +1,5 @@
 /**
- * Model registry: context windows and prices (LOU-W1).
+ * Model registry: context windows and prices.
  */
 
 import { BUILT_IN_MODELS } from './modelData';
@@ -147,8 +147,8 @@ const countOf = (value: number | undefined): number => (typeof value === 'number
  * Estimate the USD cost of a request from its token usage. Returns
  * `undefined` (never 0) when the model, or either of its prices, is unknown.
  * `cachedInputTokens` and `cacheWriteTokens` are parts of `inputTokens` and
- * are priced at the model's `cachedInputCostPerMTok`/`cacheWriteCostPerMTok`
- * (Eve PROV-F4), or at the input price when the model has none.
+ * are priced at the model's `cachedInputCostPerMTok`/`cacheWriteCostPerMTok`,
+ * or at the input price when the model has none.
  * Built-in prices are a dated snapshot: register your own with
  * {@link registerModel} for billing-grade numbers.
  *

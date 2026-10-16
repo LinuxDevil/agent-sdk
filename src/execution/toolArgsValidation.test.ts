@@ -70,7 +70,7 @@ const schema = z.object({
   n: z.string().transform(Number).optional(),
 });
 
-describe('tool argument validation (LOU-U4)', () => {
+describe('tool argument validation', () => {
   it('rejects invalid args, tells the model, and lets it correct itself', async () => {
     const execute = vi.fn().mockResolvedValue({ ok: true });
     const { toolRegistry, agent } = setup({
@@ -181,7 +181,7 @@ describe('tool argument validation (LOU-U4)', () => {
   });
 });
 
-describe('malformed tool-call arguments (audit F7)', () => {
+describe('malformed tool-call arguments', () => {
   const pathSchema = z.object({ path: z.string().optional() });
 
   async function runRaw(raw: string, name = 'send') {
@@ -243,7 +243,7 @@ describe('malformed tool-call arguments (audit F7)', () => {
   });
 });
 
-describe('tool-not-found suggestions (audit F13)', () => {
+describe('tool-not-found suggestions', () => {
   it('resolves a model-added prefix to the real tool and runs it', async () => {
     const execute = vi.fn().mockResolvedValue('ok');
     const { toolRegistry, agent } = setup({ displayName: 'Send', tool: { parameters: z.object({}), execute } as Tool });

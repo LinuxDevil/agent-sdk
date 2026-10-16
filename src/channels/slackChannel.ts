@@ -1,5 +1,5 @@
 /**
- * The Slack channel (LOU-P5): a session per Slack thread (or DM), replies posted
+ * The Slack channel: a session per Slack thread (or DM), replies posted
  * in the thread with `chat.postMessage`, approvals as Block Kit buttons. Only
  * `fetch` and Web Crypto: no `node:*` import and no Slack SDK.
  */
@@ -63,7 +63,7 @@ interface SlackEnvelope {
   type?: string;
   challenge?: string;
   team_id?: string;
-  /** Eve CH-F8: the same on every delivery (and retry) of one event. */
+  /** The same on every delivery (and retry) of one event. */
   event_id?: string;
   event?: SlackChannelEvent;
   authorizations?: Array<{ user_id?: string }>;
@@ -121,7 +121,7 @@ function button(text: string, actionId: string, style: string, value: string) {
  * skipped. A tool approval is posted as Approve / Deny buttons that only
  * `approvers` (default: the user who asked) can use, and the message is
  * updated with the outcome; an `ask_question` as text, answered by the next
- * message in the thread. A sign-in (N9b) is sent with `chat.postEphemeral`
+ * message in the thread. A sign-in is sent with `chat.postEphemeral`
  * to the user who asked only, without buttons; the turn continues once the
  * OAuth callback stored the token.
  *
@@ -143,7 +143,7 @@ export function slackChannel(options: SlackChannelOptions): Channel<SlackChannel
   const name = options.name ?? 'slack';
   const doFetch = options.fetch ?? ((input: RequestInfo | URL, init?: RequestInit) => fetch(input, init));
   const questions = new Map<string, string>();
-  /** Eve CH-F8: deliveries this channel already took. */
+  /** Deliveries this channel already took. */
   const delivered = deliveryLog();
 
   async function post(thread: unknown, message: Record<string, unknown>): Promise<void> {
@@ -156,7 +156,7 @@ export function slackChannel(options: SlackChannelOptions): Channel<SlackChannel
     if (!body.ok) throw new SDKError(`slackChannel: chat.postMessage failed: ${body.error ?? res.status}`, 'LOUSHO_CHANNEL_REQUEST_FAILED');
   }
 
-  /** N9b: the sign-in link as an ephemeral message to `user` in the thread (`chat.postEphemeral`); never posted for everyone. */
+  /** The sign-in link as an ephemeral message to `user` in the thread (`chat.postEphemeral`); never posted for everyone. */
   async function postSignIn(thread: unknown, user: unknown, approval: PendingApproval, text: string): Promise<void> {
     const name = approval.signIn?.displayName ?? approval.signIn?.provider ?? 'the provider';
     if (typeof user !== 'string' || !user) return post(thread, { text: `This needs a sign-in to ${name}, but the user who asked is unknown, so no link was sent.` });
@@ -231,13 +231,13 @@ export function slackChannel(options: SlackChannelOptions): Channel<SlackChannel
       }
       const envelope = JSON.parse(req.text || '{}') as SlackEnvelope;
       respond(200, envelope.type === 'url_verification' ? { challenge: envelope.challenge } : { ok: true });
-      // Eve CH-F8: a retry runs unless this process already took that event (its first delivery may never have arrived).
+      // A retry runs unless this process already took that event (its first delivery may never have arrived).
       if (envelope.event_id !== undefined ? delivered(envelope.event_id) : retried) return null;
       return toInbound(envelope, ctx);
     },
     reply: ({ inbound, text }) => post(inbound.replyTo, { text }),
     async onApproval({ inbound, approval, text }) {
-      // N9b: the sign-in link goes only to the user who asked (ephemeral), with no buttons: whoever opens it binds their account.
+      // The sign-in link goes only to the user who asked (ephemeral), with no buttons: whoever opens it binds their account.
       if (approval.kind === 'sign-in') return postSignIn(inbound.replyTo, inbound.metadata?.user, approval, text);
       if (approval.question) {
         questions.set(inbound.sessionKey, approval.id);

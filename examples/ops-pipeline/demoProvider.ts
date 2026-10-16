@@ -1,6 +1,6 @@
 /**
  * Deterministic, zero-network scripted LLMProvider for the ops-pipeline
- * demo (LOU-J8). Not a "real" provider - it inspects the conversation
+ * demo. Not a "real" provider - it inspects the conversation
  * shape to decide what a real model would plausibly do at each step:
  *
  *  - Monitor agent turn (tools present, no tool result yet in the

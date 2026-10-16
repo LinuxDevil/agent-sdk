@@ -1,5 +1,5 @@
 /**
- * LOU-R8: reasoning on the OpenRouter provider. The request body carries the
+ * Reasoning on the OpenRouter provider. The request body carries the
  * unified `reasoning` field, and OpenRouter reports the reasoning back in
  * fields `@ai-sdk/openai` drops (`message`/`delta.reasoning`,
  * `reasoning_details`, `usage.completion_tokens_details.reasoning_tokens`):

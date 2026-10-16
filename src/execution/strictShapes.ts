@@ -1,5 +1,5 @@
 /**
- * Audit Eve PROV-F1/F2: JSON-Schema shapes that OpenAI and Anthropic strict
+ * Audit JSON-Schema shapes that OpenAI and Anthropic strict
  * structured output reject (a 400) or quietly mis-handle, rewritten in the
  * copy sent to the model into shapes both accept, and the model's reply
  * decoded back into the schema's own shape before validation:
@@ -7,7 +7,7 @@
  * - `oneOf` (zod's `z.discriminatedUnion`) becomes `anyOf`.
  * - A record (`z.record`: an object with an `additionalProperties` schema and
  *   no properties) becomes an array of `{ key, value }` objects. Claude
- *   answered the record form with `{}` every time (PROV-F2).
+ *   answered the record form with `{}` every time.
  * - A tuple (`z.tuple`: positional `items`/`prefixItems`) becomes an object
  *   with `_0`..`_n` (and `_rest` for a rest element).
  * - A root that is not an object (a root `z.union`, a root record) is

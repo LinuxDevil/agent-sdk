@@ -1,6 +1,6 @@
 /**
- * The one builder of the context a tool's `execute(args, ctx)` receives
- * (LOU-U15). Every path that runs a tool - the main loop, resume after an
+ * The one builder of the context a tool's `execute(args, ctx)` receives.
+ * Every path that runs a tool - the main loop, resume after an
  * approval, the sandbox route and FlowExecutor's tool-call node - goes
  * through {@link buildToolRunContext}, so the `ToolExecutionContext` the
  * type promises (`toolCallId`, `messages`, `abortSignal`) are always real.
@@ -28,14 +28,14 @@ export interface ToolRunInput extends Pick<ToolRunContext, 'toolCallId' | 'sessi
   messages?: readonly Message[];
   /** The run's cancellation signal; the tool gets it as `abortSignal`. */
   signal?: AbortSignal;
-  /** LOU-Y1: lets a delegate/`task` tool's sub-agent inherit from this run. */
+  /** Lets a delegate/`task` tool's sub-agent inherit from this run. */
   scope?: ToolCallScope;
-  /** N9b: where `ctx.getToken()` reads OAuth tokens (the agent's `store.tokens`). */
+  /** Where `ctx.getToken()` reads OAuth tokens (the agent's `store.tokens`). */
   tokens?: OAuthTokenStore;
-  /** N9b: collects the tokens `ctx.getToken()` handed out during this call (see redactHandedOutTokens()). */
+  /** Collects the tokens `ctx.getToken()` handed out during this call (see redactHandedOutTokens()). */
   handedOut?: Set<string>;
   /**
-   * N13b: told every snapshot a generator `execute` yields (a `tool.partial`),
+   * Told every snapshot a generator `execute` yields (a `tool.partial`),
    * after the same token redaction as the result. Not part of the tool's context.
    */
   onPartial?: (output: unknown) => void;
@@ -56,7 +56,7 @@ function transcriptBefore(messages: readonly Message[], toolCallId: string): rea
 /**
  * The context for one tool call: `{ toolCallId, messages, abortSignal }`
  * plus the optional `sessionId` and `onDelegatedUsage`. `toolCallId` falls back
- * to a generated id for callers with no model turn behind the call. N10b: the
+ * to a generated id for callers with no model turn behind the call. The
  * run's `principal` and the approver (`approval.by`) are frozen here.
  */
 export function buildToolRunContext(input: ToolRunInput): ToolExecutionContext {
@@ -71,7 +71,7 @@ export function buildToolRunContext(input: ToolRunInput): ToolExecutionContext {
     ...(principal && { principal }),
     ...(input.approval && { approval: approvalOf(input.approval) }),
   } as ToolExecutionContext;
-  // N9b: methods, not data - kept out of the enumerable fields a tool may log or spread.
+  // Methods, not data - kept out of the enumerable fields a tool may log or spread.
   const access = { tokens: input.tokens, principal, handedOut: input.handedOut };
   Object.defineProperties(ctx, {
     getToken: { value: (provider: Parameters<ToolExecutionContext['getToken']>[0]) => getToken(provider, access) },
@@ -81,7 +81,7 @@ export function buildToolRunContext(input: ToolRunInput): ToolExecutionContext {
   return ctx;
 }
 
-/** The decision a tool sees, with its approver frozen (N10b). */
+/** The decision a tool sees, with its approver frozen. */
 function approvalOf({ id, note, by }: NonNullable<ToolExecutionContext['approval']>): NonNullable<ToolExecutionContext['approval']> {
   const approver = readonlyPrincipal(by);
   return Object.freeze({ ...(id !== undefined && { id }), ...(note !== undefined && { note }), ...(approver && { by: approver }) });

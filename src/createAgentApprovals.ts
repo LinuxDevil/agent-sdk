@@ -1,5 +1,5 @@
 /**
- * Approvals for createAgent() agents (LOU-D21): a thin layer over an
+ * Approvals for createAgent() agents: a thin layer over an
  * ApprovalStore and resumeAfterApproval(). It records which approvals the
  * agent paused on (for `agent.approvals.list()`), continues a paused session
  * when its approval is resolved, and - with an `approve` callback - decides
@@ -18,7 +18,7 @@ import { AgentSession, type SessionOptions, type SessionRunner, type SessionSpaw
 import type { PermissionOptions } from './execution/permissions';
 import type { Principal } from './auth/types';
 
-/** N4: the mode a continued run uses: the paused session's (a getter), or undefined for the agent's. */
+/** The mode a continued run uses: the paused session's (a getter), or undefined for the agent's. */
 type ResumeMode = PermissionOptions['permissionMode'];
 
 /**
@@ -28,7 +28,7 @@ type ResumeMode = PermissionOptions['permissionMode'];
 export interface ResolveApprovalOptions {
   signal?: AbortSignal;
   /**
-   * N10b: who decides (route auth's principal, a channel's clicking user).
+   * Who decides (route auth's principal, a channel's clicking user).
    * The approved tool sees it as `ctx.approval.by`; the run itself goes on
    * as the principal it paused with, never as this one (docs/auth.md).
    */
@@ -39,9 +39,9 @@ export interface ResolveApprovalOptions {
  * Decides a tool call that needs approval without pausing the run: `true`
  * runs the tool, `false` gives the model a rejection as the tool's result.
  * A string approves with that string as the note - for an `ask_question`
- * call (`request.kind === 'question'`), it is the answer (LOU-X9). It is
- * never asked about a sign-in (`kind: 'sign-in'`, N9b): only the user can sign in.
- * `request.principal` (N10b) is who the paused run acts for.
+ * call (`request.kind === 'question'`), it is the answer. It is
+ * never asked about a sign-in (`kind: 'sign-in'`): only the user can sign in.
+ * `request.principal` is who the paused run acts for.
  *
  * The literal `'defer'` does not decide: the call stays pending (listed by
  * `agent.approvals.list()`, resolvable by `agent.approvals.resolve()`) and
@@ -97,7 +97,7 @@ export interface AgentApprovals {
    */
   resolve(decision: ApprovalDecision, options?: ResolveApprovalOptions): Promise<ExecutionResult>;
   /**
-   * Eve TOOLS-F12: decides several pending approvals in one call, in the
+   * Decides several pending approvals in one call, in the
    * order given - typically every call of a step that paused on several
    * (`result.approvalIds`). Each decision is `resolve()`'s (`args` to approve
    * with edits, `remember`); the step's approved calls run once the last of
@@ -115,7 +115,7 @@ export interface AgentApprovals {
    */
   resolveAll(decisions: readonly ApprovalDecision[], options?: ResolveApprovalOptions): Promise<ExecutionResult>;
   /**
-   * Answers a paused `ask_question` call (LOU-X9): the same as
+   * Answers a paused `ask_question` call: the same as
    * `resolve({ id, approved: true, note: answer })`. The model gets
    * `{ answer, option? }` as the tool's result.
    *
@@ -126,7 +126,7 @@ export interface AgentApprovals {
    */
   answer(reply: { id: string; answer: string }, options?: ResolveApprovalOptions): Promise<ExecutionResult>;
   /**
-   * LOU-V14: like `resolve()`, but streams the continued run as the
+   * Like `resolve()`, but streams the continued run as the
    * `AgentRun` that `agent.stream()` returns (see docs/streaming.md). Its
    * `result` is what `resolve()` resolves with, except that, like
    * `stream()`, it ends at the next pause even with an `approve` callback.
@@ -139,14 +139,14 @@ export interface AgentApprovals {
    * ```
    */
   streamResolve(decision: ApprovalDecision, options?: ResolveApprovalOptions): AgentRun;
-  /** LOU-V14: `answer()`, streamed like `streamResolve()`. */
+  /** `answer()`, streamed like `streamResolve()`. */
   streamAnswer(reply: { id: string; answer: string }, options?: ResolveApprovalOptions): AgentRun;
 }
 
 /**
  * resumeAfterApproval() bound to an agent's registry, provider and options;
  * `checkpointStore` is the paused session's, when its turns are checkpointed,
- * `permissionMode` (N4) the session's mode and `approver` (N10b) who decided.
+ * `permissionMode` the session's mode and `approver` who decided.
  */
 type ResumeRun = (
   store: ApprovalStore,
@@ -155,11 +155,11 @@ type ResumeRun = (
   checkpointStore?: CheckpointStore,
   permissionMode?: ResumeMode,
   approver?: Principal,
-  /** LOU-R18: the paused session's on() forwarder, when the run continues in one. */
+  /** The paused session's on() forwarder, when the run continues in one. */
   onAgentEvent?: (event: AgentEvent) => void
 ) => Promise<ExecutionResult>;
 
-/** {@link ResumeRun}, streamed (LOU-V14); `inputQueue` is what `run.enqueue()` pushes to. */
+/** {@link ResumeRun}, streamed; `inputQueue` is what `run.enqueue()` pushes to. */
 type StreamResumeRun = (
   store: ApprovalStore,
   decision: ApprovalDecision,
@@ -168,7 +168,7 @@ type StreamResumeRun = (
   inputQueue?: InputQueue,
   permissionMode?: ResumeMode,
   approver?: Principal,
-  /** LOU-R18: the paused session's on() forwarder, when the run continues in one. */
+  /** The paused session's on() forwarder, when the run continues in one. */
   onAgentEvent?: (event: AgentEvent) => void
 ) => AgentRun;
 
@@ -178,7 +178,7 @@ class ApprovalSession extends AgentSession {
   binds?: (approvalId: string) => void;
 
   /**
-   * coding-agent F2: finding a paused turn binds it - the natural
+   * Finding a paused turn binds it - the natural
    * "check pending(), then resolve()" flow then continues in this session
    * instead of falling back to a session-less resume.
    */
@@ -195,7 +195,7 @@ class ApprovalSession extends AgentSession {
   }
 
   /**
-   * Eve DUR-F6: a checkpointed session turn paused at `pausedAt`
+   * A checkpointed session turn paused at `pausedAt`
    * (`<id>.turn-<n>`) can only be continued while its checkpoint exists - it
    * holds the turn until it finishes. When it is gone (pruned, deleted) the
    * resume would run the approved tool and then have nothing to commit to, so
@@ -222,7 +222,7 @@ class ApprovalSession extends AgentSession {
     });
   }
 
-  /** LOU-V14: `resolveWith()`, streamed: `run.done` comes once the session has recorded the turn. */
+  /** `resolveWith()`, streamed: `run.done` comes once the session has recorded the turn. */
   streamResolveWith(
     next: (
       checkpointStore: CheckpointStore | undefined,
@@ -254,7 +254,7 @@ export function createAgentApprovals(options: {
   resume: ResumeRun;
   streamResume: StreamResumeRun;
   /**
-   * The agent's checkpoint store, when it has one (LOU-D30). Used to tell a
+   * The agent's checkpoint store, when it has one. Used to tell a
    * paused *session turn* apart from a `send(msg, { sessionId })` run when
    * `resolve()` must rebind a session it never saw (see `coldSession`).
    */
@@ -276,9 +276,9 @@ export function createAgentApprovals(options: {
    * not wired - it only exists once this process opened a session itself.
    */
   let sessionSpawner: SessionSpawner | undefined;
-  // A1: the session each pause belongs to, kept until the pause is claimed (unlike `sessions`, which a decision clears first).
+  // The session each pause belongs to, kept until the pause is claimed (unlike `sessions`, which a decision clears first).
   const sessionIds = new Map<string, string>();
-  // Eve TOOLS-F12: the calls the `approve` callback deferred, so deciding another call of their step does not ask it again.
+  // The calls the `approve` callback deferred, so deciding another call of their step does not ask it again.
   const deferred = new Set<string>();
   const bind = (id: string, session: ApprovalSession) => {
     sessions.set(id, session);
@@ -290,7 +290,7 @@ export function createAgentApprovals(options: {
   };
   const store: ApprovalStore = {
     async save(raw, snapshot) {
-      // LOU-X9: an `ask_question` call is recorded as `kind: 'question'`.
+      // An `ask_question` call is recorded as `kind: 'question'`.
       const request = describeApproval(raw);
       await options.store.save(request, snapshot);
       pending.set(request.id, request);
@@ -343,9 +343,9 @@ export function createAgentApprovals(options: {
     let current = result;
     for (;;) {
       if (!approve || current.finishReason !== 'awaiting-approval') return current;
-      // Eve TOOLS-F12: each call of a step paused on several is asked about, in call order.
+      // Each call of a step paused on several is asked about, in call order.
       const ids = current.approvalIds ?? (current.approvalId ? [current.approvalId] : []);
-      // N9b: only the user can sign in, so a sign-in pause is never decided by `approve`.
+      // Only the user can sign in, so a sign-in pause is never decided by `approve`.
       const request = ids.map((id) => pending.get(id)).find((entry) => entry !== undefined && entry.kind !== 'sign-in' && !deferred.has(entry.id));
       if (!request) return current;
       const verdict = await decide(request);
@@ -355,7 +355,7 @@ export function createAgentApprovals(options: {
         deferred.add(request.id);
         continue;
       }
-      // Eve TOOLS-F19: the callback's decision, which `once()` does not remember.
+      // The callback's decision, which `once()` does not remember.
       const decision = markAutomaticDecision(typeof verdict === 'string' ? { id: request.id, approved: true, note: verdict } : { id: request.id, approved: verdict });
       current = await resume(store, decision, signal, checkpointStore, permissionMode, undefined, onAgentEvent);
     }
@@ -363,7 +363,7 @@ export function createAgentApprovals(options: {
 
   function inSession(session: ApprovalSession | undefined, result: ExecutionResult): ExecutionResult {
     if (session && result.finishReason === 'awaiting-approval' && result.approvalId) {
-      // Eve TOOLS-F12: every call the step waits on continues this session.
+      // Every call the step waits on continues this session.
       for (const id of result.approvalIds ?? [result.approvalId]) bind(id, session);
     }
     return result;
@@ -385,7 +385,7 @@ export function createAgentApprovals(options: {
     };
   }
 
-  /** N9b: a sign-in pause approved too early stays paused, and stays bound to its session. */
+  /** A sign-in pause approved too early stays paused, and stays bound to its session. */
   function keepPendingSession(id: string, session: ApprovalSession | undefined, error: unknown): void {
     if (session && error instanceof Error && error.name === 'SignInPendingError') bind(id, session);
   }
@@ -396,7 +396,7 @@ export function createAgentApprovals(options: {
    * `sessions` map only knows pauses this process made or ran into. Without
    * this, the resume ran outside the session - the 'finished' checkpoint it
    * left behind was never committed to the transcript, which read as if the
-   * whole turn had been deleted (coding-agent F1).
+   * whole turn had been deleted.
    *
    * The pause record's `snapshot.sessionId` is read WITHOUT claiming it:
    * `<id>.turn-<n>` means a durable session turn (the session's id is `<id>`);
@@ -425,7 +425,7 @@ export function createAgentApprovals(options: {
     return opened instanceof ApprovalSession ? opened : undefined;
   }
 
-  /** Eve DUR-F6: fails with `LOUSHO_APPROVAL_ORPHANED` when the session turn the pause belongs to is gone. */
+  /** Fails with `LOUSHO_APPROVAL_ORPHANED` when the session turn the pause belongs to is gone. */
   async function turnKept(approvalId: string, session: ApprovalSession): Promise<void> {
     const record = await options.store.load?.(approvalId);
     try {
@@ -437,7 +437,7 @@ export function createAgentApprovals(options: {
     }
   }
 
-  // N10b: `principal` is the approver of this decision only; the `approve` callback's later decisions have none.
+  // `principal` is the approver of this decision only; the `approve` callback's later decisions have none.
   function resolve(decision: ApprovalDecision, { signal, principal }: ResolveApprovalOptions = {}): Promise<ExecutionResult> {
     deferred.delete(decision.id);
     let session = sessions.get(decision.id);
@@ -494,7 +494,7 @@ export function createAgentApprovals(options: {
   }
 
   /**
-   * Eve DUI-F15: forgets a pause of this process that the store no longer
+   * Forgets a pause of this process that the store no longer
    * holds - another process (or agent object) resolved it.
    */
   const forget = (id: string) => {
@@ -518,7 +518,7 @@ export function createAgentApprovals(options: {
   }
 
   const approvals: AgentApprovals = {
-    // Eve TOOLS-F13: a store that can `list` adds the pauses other processes (or this one before a restart) saved.
+    // A store that can `list` adds the pauses other processes (or this one before a restart) saved.
     list: async () => {
       const local = await livePending();
       if (!options.store.list) return local.map(withSession);
@@ -529,7 +529,7 @@ export function createAgentApprovals(options: {
       return oldestFirst([...merged.values()]).map(withSession);
     },
     // #280: the durable store answers too, so a pause this process did not make is found again.
-    // Eve DUI-F15: a store that can `load` is asked first, so a pause resolved elsewhere is not reported.
+    // A store that can `load` is asked first, so a pause resolved elsewhere is not reported.
     get: async (id) => {
       const { load } = options.store;
       if (!load) {
@@ -544,7 +544,7 @@ export function createAgentApprovals(options: {
       return withSession(pending.get(id) ?? describeApproval(record.pending));
     },
     resolve,
-    // Eve TOOLS-F12: one decision after the other; the last one runs the step.
+    // One decision after the other; the last one runs the step.
     resolveAll: async (decisions, resolveOptions) => {
       if (decisions.length === 0) throw new ConfigurationError('agent.approvals.resolveAll() needs at least one decision.', 'decisions');
       let result: ExecutionResult | undefined;
@@ -561,7 +561,7 @@ export function createAgentApprovals(options: {
     store,
     approvals,
     settle,
-    /** A session of the agent; `spawn` creates its forks (N3a), by default another session with the same `run` / `stream`. */
+    /** A session of the agent; `spawn` creates its forks, by default another session with the same `run` / `stream`. */
     session(run: SessionRunner, stream: SessionStreamRunner, sessionOptions?: SessionOptions, spawn?: SessionSpawner): AgentSession {
       // `spawn` is the agent's session factory (agentSession passes it): keep
       // one around so a resolve() that never saw the pause can open the

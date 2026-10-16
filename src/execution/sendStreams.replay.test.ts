@@ -1,5 +1,5 @@
 /**
- * CI replay of the M9 live recording (`__fixtures__/cassettes/send-streams.json`, gpt-4o-mini via OpenRouter):
+ * CI replay of the live recording (`__fixtures__/cassettes/send-streams.json`, gpt-4o-mini via OpenRouter):
  * `send()` with a listener streams the model call, so the reply arrives as several `text.delta` events that add up
  * to `result.text`. No key, no network. Re-record with `npm run test:live -- src/execution/sendStreams`.
  */
@@ -11,7 +11,7 @@ import type { AgentEvent } from './agentEvents';
 
 const CASSETTE = join(__dirname, '__fixtures__', 'cassettes', 'send-streams.json');
 
-describe('send() with a listener streams, replayed from a real recording (M9)', () => {
+describe('send() with a listener streams, replayed from a real recording', () => {
   it('delivers the reply as several text.delta events that add up to result.text', async () => {
     const provider = recordReplay(undefined, { cassette: CASSETTE, mode: 'replay' });
     const heard: AgentEvent[] = [];

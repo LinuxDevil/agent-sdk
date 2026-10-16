@@ -1,5 +1,5 @@
 /**
- * Live test for permission modes (N4): the examples/plan-mode flow with a real
+ * Live test for permission modes: the examples/plan-mode flow with a real
  * model (openai/gpt-4o-mini on OpenRouter), `maxSteps: 6`.
  *
  * - Replay (default): the model is served from
@@ -24,7 +24,7 @@ const CASSETTE = path.join(__dirname, '__fixtures__', 'cassettes', 'n4-plan-mode
 const recording = Boolean(process.env.LOUSHO_RECORD);
 const runnable = recording ? Boolean(process.env.OPENROUTER_API_KEY) : fs.existsSync(CASSETTE);
 
-describe.skipIf(!runnable)('permission modes live (N4)', () => {
+describe.skipIf(!runnable)('permission modes live', () => {
   it('plan mode leaves the workspace unchanged; after the switch to acceptEdits the agent writes the file', async () => {
     const workspace = new MemoryWorkspace({ files: { 'greet.ts': "export const greet = (name: string) => 'Hello ' + name;\n" } });
     const entries: PermissionDecisionEntry[] = [];

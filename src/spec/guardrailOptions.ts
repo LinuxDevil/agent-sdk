@@ -1,5 +1,5 @@
 /**
- * Guardrail entries of `AgentSpec.policy.guardrails` (LOU-X5): the built-in
+ * Guardrail entries of `AgentSpec.policy.guardrails`: the built-in
  * names, each one's options, and the entry's validation.
  */
 import { z } from 'zod';
@@ -7,7 +7,7 @@ import { MODERATION_CATEGORIES, PII_TYPES } from '../execution/guardrailStarterS
 import { closestMatch } from '../utils/closestMatch';
 import { anyError, issueMessage } from '../utils/zodCompat';
 
-/** The built-in guardrails `policy.guardrails` can name (LOU-X5); see `compilePolicy()`. */
+/** The built-in guardrails `policy.guardrails` can name; see `compilePolicy()`. */
 export const SPEC_GUARDRAIL_NAMES = [
   'max-length',
   'secret-scan',

@@ -1,5 +1,5 @@
 /**
- * Fork and replay (LOU-D44): a new session that starts from a checkpoint in
+ * Fork and replay: a new session that starts from a checkpoint in
  * another session's history, optionally patched, and resumes like any
  * unfinished run.
  */

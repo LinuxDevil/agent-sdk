@@ -1,9 +1,9 @@
 /**
  * Patch checks
  * Pluggable pre-flight checks run against a proposed patch (e.g. a diff
- * about to be committed/PR'd) before it's allowed through (LOU-E9+).
+ * about to be committed/PR'd) before it's allowed through.
  * Named "patch checks" - not "guardrails" - so "guardrail" keeps its one
- * meaning: the input/output/tool guardrails of ioGuardrails.ts (A5).
+ * meaning: the input/output/tool guardrails of ioGuardrails.ts.
  */
 
 import { execFile, ChildProcess } from 'node:child_process';
@@ -19,7 +19,7 @@ const execFileAsync = promisify(execFile);
  * Runs `command args...` in `cwd`, resolving to a PatchCheckResult that
  * passes iff the process exits 0 - and, if it doesn't settle within
  * `timeoutMs`, kills it and resolves pass:false instead of leaving it
- * running in the background (LOU-E fix; see createCommandCheck's own
+ * running in the background (fix; see createCommandCheck's own
  * doc comment for why this timeout lives here rather than as a second
  * mechanism competing with runPatchCheckSafely's outer race).
  *
@@ -202,7 +202,7 @@ export function createDiffSizeCheck(maxLines: number): PatchCheck {
  * (private key material, an OpenAI-style API key, or an AWS access key).
  *
  * The rejection reason names the pattern's label only, never the matched
- * text (LOU-R2): the reason travels into events, traces and logs, and
+ * text: the reason travels into events, traces and logs, and
  * copying the secret there would leak the very thing the check exists
  * to keep out - the same rule the ioGuardrails trip-info docs state.
  */
@@ -240,7 +240,7 @@ export interface CommandCheckOptions {
 /**
  * Builds a PatchCheck that:
  *  1. If `patch.diff` is a non-empty string, applies it to a fresh
- *     temporary copy of `cwd` via `git apply` (LOU-E fix: previously this
+ *     temporary copy of `cwd` via `git apply` (fix: previously this
  *     check ignored `patch.diff` entirely and just ran the command
  *     against whatever was already on disk at `cwd`, so it never actually
  *     gated the diff it was supposed to be checking). The diff is first
@@ -258,9 +258,9 @@ export interface CommandCheckOptions {
  * any other "run this command, pass on exit 0" check) so that logic isn't
  * duplicated per check.
  *
- * Process-leak note (LOU-E fix): runPatchCheckSafely() (LOU-E9) races every
+ * Process-leak note: runPatchCheckSafely() races every
  * check (including this one) against its own outer timeout, and
- * per LOU-E11's own design note, this function deliberately does NOT add a
+ * per own design note, this function deliberately does NOT add a
  * second, independent timeout mechanism competing with that race. Instead,
  * the single timeout owned here (see runCommandWithTimeout() below) is the
  * one that actually executes the command and is able to kill it: it holds
@@ -355,8 +355,8 @@ export interface RunPatchChecksResult {
 /**
  * Runs every check in `checks` against `patch` concurrently
  * (Promise.all, not a sequential loop - so total wall time tracks the
- * slowest check rather than their sum) via runPatchCheckSafely()
- * (LOU-E9), and rolls the results up into a single pass/fail plus the
+ * slowest check rather than their sum) via runPatchCheckSafely(),
+ * and rolls the results up into a single pass/fail plus the
  * list of checks that failed.
  */
 export async function runPatchChecks(

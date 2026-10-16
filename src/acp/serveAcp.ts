@@ -1,6 +1,6 @@
 /**
  * `serveAcp()` - serve an agent over the Agent Client Protocol (ACP v1,
- * agentclientprotocol.com): JSON-RPC 2.0, one JSON message per line (LOU-Z6).
+ * agentclientprotocol.com): JSON-RPC 2.0, one JSON message per line.
  * Transport-independent: it reads lines from `input` and hands each outgoing
  * line to `write`; `lousho acp` wires them to stdin and stdout.
  */
@@ -200,7 +200,7 @@ class AcpConnection {
   }
 
   /**
-   * N9b: a tool needs the user to sign in: shows the link, then asks for
+   * A tool needs the user to sign in: shows the link, then asks for
    * permission to continue (granting it means "I've signed in"; asked again
    * while the user has not), or cancels the call when it is rejected.
    */

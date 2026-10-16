@@ -1,5 +1,5 @@
 /**
- * LOU-R1: local, encrypted-at-rest storage for provider API keys.
+ * Local, encrypted-at-rest storage for provider API keys.
  *
  * Design and why:
  *  - Keys are NEVER written into an `AgentSpec` (the YAML this app's
@@ -8,7 +8,7 @@
  *    their agent's definition). They live in a completely separate file,
  *    `.lousho/secrets.json`, that this app never writes an `AgentSpec` into.
  *  - `.lousho/` is already listed in the repo root `.gitignore` (added for
- *    LOU-N's checkpoints/approvals/saved-agent-spec local state) - verified
+ *    the checkpoints/approvals/saved-agent-spec local state) - verified
  *    as part of this ticket rather than assumed, since an ungitignored
  *    secrets file would be the actual security bug this ticket is guarding
  *    against.

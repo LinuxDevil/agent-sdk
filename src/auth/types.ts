@@ -1,5 +1,5 @@
 /**
- * N10a: who is calling. A `Principal` is the caller a route's auth list
+ * Who is calling. A `Principal` is the caller a route's auth list
  * accepted; it rides into the run (`send()` / `stream()` / session turns, the
  * `model` / `instructions` / `tools` functions and memory scopes).
  *

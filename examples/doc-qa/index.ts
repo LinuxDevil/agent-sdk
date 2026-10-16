@@ -1,6 +1,6 @@
 /**
  * doc-qa - a question-answering agent scoped to a fixed document, built
- * with createAgent() (LOU-H1).
+ * with createAgent().
  *
  * Defaults to a free, local mock provider so it runs with zero setup and
  * zero API cost. Set OLLAMA_BASE_URL to run it against a local Ollama

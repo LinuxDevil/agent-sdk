@@ -1,9 +1,9 @@
 /**
- * Contract tests for multimodal message parts (LOU-V11): what each
+ * Contract tests for multimodal message parts: what each
  * 'ai'-SDK-backed provider hands the model (a mock language model of the
  * installed `ai` major, see aiShapes.testkit.ts) when a user message carries
  * image and file parts. Prompts are compared in one neutral shape on every
- * major (LOU-D28f): an image is an `image` part, a file a `file` part.
+ * major: an image is an `image` part, a file a `file` part.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -49,7 +49,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe.each(providers)('%s provider: multimodal user content (LOU-V11)', (_name, make) => {
+describe.each(providers)('%s provider: multimodal user content', (_name, make) => {
   it('sends text and image parts (bytes and data URL) to the model', async () => {
     const provider = make();
     const { prompts } = withMockModel(provider);
@@ -65,7 +65,7 @@ describe.each(providers)('%s provider: multimodal user content (LOU-V11)', (_nam
       },
     ];
 
-    // Without Eve PROV-F4's cache breakpoints, which the Anthropic provider adds by default (promptCaching.test.ts).
+    // Without cache breakpoints, which the Anthropic provider adds by default (promptCaching.test.ts).
     const result = await provider.generate({ messages, promptCaching: false });
 
     expect(result.text).toBe('a cat');
@@ -97,7 +97,7 @@ describe.each(providers)('%s provider: multimodal user content (LOU-V11)', (_nam
     });
   });
 
-  it('rejects a file part it cannot send (ai 4, Ollama) with LOUSHO_UNSUPPORTED_CONTENT by default (A9)', async () => {
+  it('rejects a file part it cannot send (ai 4, Ollama) with LOUSHO_UNSUPPORTED_CONTENT by default', async () => {
     const provider = make();
     const sendsPdf = installedAiMajor >= 6 && provider.name !== 'ollama';
     const { prompts } = withMockModel(provider);
@@ -169,7 +169,7 @@ describe.each(providers)('%s provider: multimodal user content (LOU-V11)', (_nam
   });
 });
 
-describe('file parts for a provider that accepts them (LOU-V11)', () => {
+describe('file parts for a provider that accepts them', () => {
   it('maps a file part to a model file part', async () => {
     class FileProvider extends OpenAIProvider {
       protected readonly acceptsFileParts = true;
@@ -188,7 +188,7 @@ describe('file parts for a provider that accepts them (LOU-V11)', () => {
   });
 });
 
-describe('textOf (LOU-V11)', () => {
+describe('textOf', () => {
   it('returns a string as is and concatenates text parts', () => {
     expect(textOf('plain')).toBe('plain');
     expect(textOf({ content: 'plain' })).toBe('plain');
@@ -205,7 +205,7 @@ describe('textOf (LOU-V11)', () => {
   });
 });
 
-describe('AgentExecutor with multimodal input messages (LOU-V11)', () => {
+describe('AgentExecutor with multimodal input messages', () => {
   it('hands the image part to the provider unchanged', async () => {
     const model = mockModel(['A cat.']);
     const agent = AgentBuilder.create().setName('vision').setPrompt('Describe images.').build();
@@ -262,7 +262,7 @@ describe.each([
     expect(prompts[0][0].content[0]).toMatchObject({ type: 'file', mediaType: 'application/pdf' });
   });
 
-  it('rejects an unsupported type with LOUSHO_UNSUPPORTED_CONTENT by default (A9)', async () => {
+  it('rejects an unsupported type with LOUSHO_UNSUPPORTED_CONTENT by default', async () => {
     const provider = make();
     const prompts = onAi7(provider);
     const xls = fileMessage('application/vnd.ms-excel', new Uint8Array([1, 2, 3]));

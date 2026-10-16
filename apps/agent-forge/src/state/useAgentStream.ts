@@ -14,7 +14,7 @@ import { appendLog } from './logReducer';
 import { upsertSpan } from './spanReducer';
 import { applyChatState, emptyChatState } from './chatReducer';
 
-/** Eve DUI-F21: how long to wait before re-opening a dropped stream. */
+/** How long to wait before re-opening a dropped stream. */
 const RECONNECT_DELAY_MS = 2000;
 
 type StreamHandlers = {
@@ -74,7 +74,7 @@ export function useAgentStream(agentId: string) {
   const [chatSessions, setChatSessions] = useState<ChatSessionMeta[]>([]);
   const [viewedChatSession, setViewedChatSession] = useState<ChatSessionRecord | undefined>(undefined);
 
-  // Eve DUI-F21: `connected` drops to false when the stream closes on its
+  // `connected` drops to false when the stream closes on its
   // own (server stopped or restarted); `attempt` then re-subscribes on a
   // timer until the socket opens again.
   const [connected, setConnected] = useState(true);

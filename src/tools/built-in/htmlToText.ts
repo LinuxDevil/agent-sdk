@@ -1,5 +1,5 @@
 /**
- * A small, dependency-free HTML-to-text converter for `web_fetch` (N13a).
+ * A small, dependency-free HTML-to-text converter for `web_fetch`.
  *
  * It is a single linear scan (no backtracking regular expressions over the
  * whole document), never executes or follows anything, and aims to be

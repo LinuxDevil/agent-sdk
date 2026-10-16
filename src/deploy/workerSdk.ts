@@ -1,6 +1,6 @@
 /**
  * What `import ... from '@lousho/build-ai-agent'` means inside an agent
- * directory built with `lousho build --target=cloudflare-worker` (M3b, and
+ * directory built with `lousho build --target=cloudflare-worker` (and
  * #298 for schedules, channels and memory).
  *
  * The package's main entry also exports file stores, the agent-directory

@@ -1,10 +1,10 @@
 /**
- * Sandboxed execution of user-authored hook code (LOU-Q2).
+ * Sandboxed execution of user-authored hook code.
  *
  * A hook's `code` (edited in the Inspector's CodeMirror editor, see
  * src/hooks/hookTemplates.ts and graph/types.ts's `AgentNodeHookInstance`)
  * is arbitrary JS a user typed into this local dev tool. It must NOT run
- * with full host privileges in this process - the same constraint LOU-K2
+ * with full host privileges in this process - the same constraint
  * already solved for tool execution (see src/tools/built-in/sandboxFetch.ts
  * in the core SDK for the established pattern this file follows).
  *
@@ -20,13 +20,13 @@
  * Under NoopSandbox (this server's default, zero-isolation adapter) this
  * still only grants the hook whatever a plain child `node` process can do
  * on this host - not full access to this server process's memory/state -
- * and a real isolation backend (SubprocessSandbox/Docker, LOU-F6) gets a
+ * and a real isolation backend (SubprocessSandbox/Docker) gets a
  * chance to mediate it exactly like it would for a sandboxed tool.
  */
 
 import type { SandboxAdapter } from '@lousho/build-ai-agent';
 
-/** Generic ctx payload shape a hook script receives/returns (LOU-Q1's HookContext family, minus non-serializable fields like `messages`/`toolCall`). */
+/** Generic ctx payload shape a hook script receives/returns (HookContext family, minus non-serializable fields like `messages`/`toolCall`). */
 export type HookSandboxCtx = Record<string, unknown>;
 
 /**

@@ -37,7 +37,7 @@ export function sqliteMemory(store: SqliteStore, options?: MemoryProviderOptions
     {
       load: async (key) => load(key),
       save: async (key, items) => save(key, items),
-      // Eve MEM-F8: read-change-write in one write transaction, so other
+      // Read-change-write in one write transaction, so other
       // providers on this database (in this process or another) never
       // interleave with it and drop an item.
       update: (key, change) => store.connection.transactionAsync(() => save(key, change(load(key)))),

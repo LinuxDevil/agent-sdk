@@ -1,5 +1,5 @@
 /**
- * LOU-V8: the `AgentRun` that `session.stream()` returns. A session has to
+ * The `AgentRun` that `session.stream()` returns. A session has to
  * queue behind earlier calls and load its history before it can start a turn,
  * but a run handle must exist at once, so this wraps the run the session
  * starts when its turn comes: same events, but under its own `runId`, and
@@ -17,7 +17,7 @@ import type { AgentInput } from '../providers/content';
 /**
  * Runs one session turn. Call `started` with the run as soon as it exists;
  * resolve with the turn's result once it is recorded (or reject). `inputs`
- * is what `run.enqueue()` pushes to (LOU-V9): start the turn's run with it.
+ * is what `run.enqueue()` pushes to: start the turn's run with it.
  */
 export type SessionTurn = (
   signal: AbortSignal,

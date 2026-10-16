@@ -1,5 +1,5 @@
 /**
- * LOU-V9: queued follow-up input. User input pushed while a run is going is
+ * Queued follow-up input. User input pushed while a run is going is
  * appended to the transcript at the run's next safe point - after the
  * current step's tool results, before the next model call - and the run
  * carries on as if the user had typed it.
@@ -25,7 +25,7 @@ export interface EnqueueResult {
 }
 
 /**
- * What `run.steer()` / `InputQueue.steer()` return (LOU-V10). `applied` is
+ * What `run.steer()` / `InputQueue.steer()` return. `applied` is
  * `'immediate'` when the in-flight model call had not produced any output
  * yet: it was aborted and is made again with the input; `'queued'` when it
  * had (or no model call was in flight): the input waits for the next safe
@@ -45,18 +45,18 @@ export interface QueuedInput {
   /** The input's user text (see `describeInput()`). */
   text: string;
   messages: Message[];
-  /** LOU-V10: how a steered input was taken; absent for `push()`. */
+  /** How a steered input was taken; absent for `push()`. */
   steered?: 'immediate' | 'queued';
 }
 
 type Entry = QueuedInput & { settle: (applied: boolean) => void };
 
-/** @internal LOU-V10: the run's signal and a steer's, as one (either may be absent). */
+/** @internal the run's signal and a steer's, as one (either may be absent). */
 export function withSteerSignal(signal: AbortSignal | undefined, steer: AbortSignal | undefined): AbortSignal | undefined {
   return signal && steer ? AbortSignal.any([signal, steer]) : (signal ?? steer);
 }
 
-/** LOU-V10: the reason a steer aborts the in-flight model call (or tool batch) with. */
+/** The reason a steer aborts the in-flight model call (or tool batch) with. */
 const steeredAbort = () => new DOMException('The run was steered: new user input replaces this model call', 'AbortError');
 
 /**
@@ -77,7 +77,7 @@ export class InputQueue {
   private entries: Entry[] = [];
   private closed = false;
   private listener: ((input: QueuedInput) => void) | undefined;
-  /** LOU-V10: the model call in flight (`output` once it emitted text or tool calls), or the running tool batch. */
+  /** The model call in flight (`output` once it emitted text or tool calls), or the running tool batch. */
   private call: { controller: AbortController; output: boolean } | undefined;
   private batch: AbortController | undefined;
 
@@ -88,7 +88,7 @@ export class InputQueue {
   }
 
   /**
-   * LOU-V10: queues `input` and redirects the run to it: a model call in
+   * Queues `input` and redirects the run to it: a model call in
    * flight that has not emitted text or tool calls yet is aborted (its
    * partial output discarded) and made again with the input; tool calls of
    * a running batch that have not started are not run. See {@link SteerResult}.
@@ -113,7 +113,7 @@ export class InputQueue {
     return applied;
   }
 
-  /** @internal LOU-V10: a model call starts; its signal aborts on `steer()` until `callOutput()`. */
+  /** @internal a model call starts; its signal aborts on `steer()` until `callOutput()`. */
   startCall(): AbortSignal {
     this.call = { controller: new AbortController(), output: false };
     return this.call.controller.signal;

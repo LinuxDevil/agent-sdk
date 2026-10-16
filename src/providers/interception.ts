@@ -1,5 +1,5 @@
 /**
- * The model-boundary interception seam (LOU-D46.2).
+ * The model-boundary interception seam.
  *
  * Every model call an agent run makes - `generate()` or `stream()`, from a
  * top-level run, a streamed run, a sub-agent or an approval resume - goes

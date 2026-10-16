@@ -169,7 +169,7 @@ class AgentSession<TObject = unknown> {
 
 // @public
 export type AgentUIAction =
-/** `input` may be multimodal (LOU-V12); the bubble shows its text and an `[image]` / `[file]` marker per other part. */
+/** `input` may be multimodal; the bubble shows its text and an `[image]` / `[file]` marker per other part. */
     {
     type: 'ui.send';
     input: AgentInput;
@@ -182,7 +182,7 @@ export type AgentUIAction =
 } | {
     type: 'ui.stopped';
 }
-/** LOU-P2: back to the empty chat. */
+/** Back to the empty chat. */
 | {
     type: 'ui.reset';
 } | {

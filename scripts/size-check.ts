@@ -1,5 +1,5 @@
 /**
- * size-check (C10)
+ * size-check
  *
  * Two size budgets, both committed in scripts/size-budget.json so growth shows
  * up as a reviewed diff instead of a surprise:

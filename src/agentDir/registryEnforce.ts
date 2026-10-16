@@ -1,6 +1,6 @@
 /**
  * Runtime enforcement of the installed permission manifest (#272, the
- * follow-up to M7a's install-time check).
+ * follow-up to the install-time check).
  *
  * `lousho add` records what it installed in `<agent-dir>/lousho-registry.json`
  * (addReceipt.ts): each item's declared `permissions` and the sha256 of every
@@ -240,7 +240,7 @@ function runConfined<T>(envelope: Envelope, fn: () => T): T {
 }
 
 /**
- * `execute` may resolve to an async generator (N13b): its body runs when the
+ * `execute` may resolve to an async generator: its body runs when the
  * runtime iterates it, outside this function's own `runConfined` scope, so each
  * `next()` of a wrapping iterator is confined instead.
  */

@@ -1,5 +1,5 @@
 /**
- * P1: reconciles the chat transcript RunManager keeps for one agent with a
+ * Reconciles the chat transcript RunManager keeps for one agent with a
  * fresh, authoritative `Message[]` from an `ExecutionResult` (the SDK's own
  * `AgentExecutor` conversation state - see AgentExecutor.ts).
  *
@@ -27,7 +27,7 @@ import { randomUUID } from 'node:crypto';
 import { textOf, type Message } from '@lousho/build-ai-agent';
 import type { ChatMessage } from '../shared/wireTypes';
 
-/** The transcript keeps text only (LOU-V11 content parts are flattened with `textOf()`). */
+/** The transcript keeps text only (content parts are flattened with `textOf()`). */
 function toChatMessage(m: Message, id: string, timestamp: string): ChatMessage {
   return { ...m, content: textOf(m), id, timestamp };
 }
@@ -83,7 +83,7 @@ export function reconcileChatMessages(
 }
 
 /**
- * Eve DUI-F21: tags the user turn a top-bar Run added (its `input`, new in
+ * Tags the user turn a top-bar Run added (its `input`, new in
  * this settle - not in `prev`) as `source: 'run'`, so the Chat tab labels it
  * "Run input" instead of showing it as something the user typed.
  */

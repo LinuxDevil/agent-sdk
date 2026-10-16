@@ -1,5 +1,5 @@
 /**
- * N11b: GitHub App authentication - PKCS#1 and PKCS#8 private keys, the RS256
+ * GitHub App authentication - PKCS#1 and PKCS#8 private keys, the RS256
  * JWT, and the installation token cache. A key pair is generated in the test;
  * a fake `fetch` stands in for the REST API.
  */

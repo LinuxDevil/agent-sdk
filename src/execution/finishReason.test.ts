@@ -1,4 +1,4 @@
-/** Eve CORE-F14: a finish reason a provider reports outside the known set is reported as 'other'. */
+/** A finish reason a provider reports outside the known set is reported as 'other'. */
 import { describe, it, expect } from 'vitest';
 import { createAgent } from '../createAgent';
 import type { GenerateResult, LLMProvider } from '../providers';
@@ -15,7 +15,7 @@ function endingWith(finishReason: string): LLMProvider {
   } as unknown as LLMProvider;
 }
 
-describe('finishReason normalization (Eve CORE-F14)', () => {
+describe('finishReason normalization', () => {
   it("maps an unknown provider reason to 'other' on the result and the step.done / run.done events", async () => {
     const events: AgentEvent[] = [];
     const result = await createAgent({ provider: endingWith('end_turn'), onEvent: (event) => events.push(event) }).send('x');

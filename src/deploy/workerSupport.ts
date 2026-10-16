@@ -6,14 +6,14 @@
 
 /**
  * Built-in tools that work without Node builtins (see runtime.worker.ts).
- * 'http' (M3a) is the Worker's own http_request: listed host names only, from
+ * 'http' is the Worker's own http_request: listed host names only, from
  * the LOUSHO_HTTP_ALLOW binding (src/tools/built-in/workerHttp.ts).
  */
 export const WORKER_SUPPORTED_TOOLS = ['current-date', 'day-name', 'http'];
 /**
  * Provider types registered in the Worker bundle (see runtime.worker.ts).
  *
- * 'openai', 'anthropic' (LOU-K3) and 'openrouter' (M3a) are real,
+ * 'openai', 'anthropic' and 'openrouter' are real,
  * network-calling providers - implemented on the Vercel `ai` SDK's
  * fetch()-based generateText/streamText plus @ai-sdk/openai /
  * @ai-sdk/anthropic, which have no `node:*` imports in their dependency

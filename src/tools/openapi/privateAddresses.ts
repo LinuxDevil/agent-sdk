@@ -1,6 +1,6 @@
 /**
  * `openApiTools({ privateAddresses: 'refuse' })` (#291): the private-address
- * policy of `http_request` and `web_fetch` (N13a) for the operation requests
+ * policy of `http_request` and `web_fetch` for the operation requests
  * and the document fetch.
  *
  * - IP literals and the `localhost` names (RFC 6761: always loopback) are
@@ -14,7 +14,7 @@
  *   answer.
  *
  * Node only (undici, node:dns). undici is loaded when tools with 'refuse' are
- * made, never at import time (LOU-D19); where it cannot load, making them
+ * made, never at import time; where it cannot load, making them
  * fails with a ConfigurationError instead of sending unchecked requests.
  */
 

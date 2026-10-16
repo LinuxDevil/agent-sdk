@@ -1,5 +1,5 @@
 /**
- * N1a: what the run loop does with hosted tool calls - the calls a provider
+ * What the run loop does with hosted tool calls - the calls a provider
  * ran inside a model request (`webSearch()` and the like). The SDK never
  * executes them: no permission rule, guardrail, approval, hook or
  * `onToolCall` sees them. They are reported (events with

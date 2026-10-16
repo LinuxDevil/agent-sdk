@@ -1,5 +1,5 @@
 /**
- * A1 (audit support-desk F5, F6, F10, F11): who may use a session and decide
+ * Who may use a session and decide
  * an approval over the session routes, consistent statuses for racing
  * decisions, and no provider error text on the wire.
  */
@@ -68,7 +68,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('approvals belong to their session (A1, F5)', () => {
+describe('approvals belong to their session', () => {
   it('a decision posted under another session is a 404 and runs nothing; under its own session it runs', async () => {
     const { handler, ledger } = refundDesk(['Hi.', ...refundTurn]);
     await events(await handler(call('POST', '/chat', 'bob', { sessionId: 'bob-other', input: 'hi' })));
@@ -101,7 +101,7 @@ describe('approvals belong to their session (A1, F5)', () => {
   });
 });
 
-describe('authorizeApproval (A1, F5)', () => {
+describe('authorizeApproval', () => {
   it("by default, a caller cannot decide another caller's approval, but can confirm their own", async () => {
     const { handler, ledger } = refundDesk(refundTurn);
     const id = await pausedRefund(handler, 'alice', 'alice-1');
@@ -145,7 +145,7 @@ describe('authorizeApproval (A1, F5)', () => {
   });
 });
 
-describe('authorizeSession (A1, F6)', () => {
+describe('authorizeSession', () => {
   const ownSessions: RouteHandlerOptions['authorizeSession'] = ({ principal, sessionId, action }) =>
     sessionId.startsWith(`${principal?.id}-`) || (action === 'approve' && principal?.claims?.role === 'supervisor');
 
@@ -190,7 +190,7 @@ describe('authorizeSession (A1, F6)', () => {
   });
 });
 
-describe('concurrent decisions (A1, F10)', () => {
+describe('concurrent decisions', () => {
   it('the request that loses the race for an approval gets a 409, a later one a 404', async () => {
     const { handler, ledger } = refundDesk(refundTurn);
     const id = await pausedRefund(handler, 'alice', 'alice-1');
@@ -207,7 +207,7 @@ describe('concurrent decisions (A1, F10)', () => {
   });
 });
 
-describe('error redaction (A1, F11)', () => {
+describe('error redaction', () => {
   const TEMPLATE_LEAK = "Jinja Exception: {{ raise_exception('System message must be at the beginning.') }}";
   const failing = () => Object.assign(new Error(`Upstream 500: ${TEMPLATE_LEAK}`), { code: 'LOUSHO_PROVIDER_REQUEST_FAILED' });
 
@@ -275,7 +275,7 @@ describe('error redaction (A1, F11)', () => {
   });
 });
 
-describe('an empty auth token (Eve CH-F16)', () => {
+describe('an empty auth token', () => {
   it('serveFetch fails closed instead of serving the routes open', async () => {
     const agent = createAgent({ provider: mockModel(['hi']), store: memoryStore() });
     const request = new Request('http://x/chat', { method: 'POST', body: JSON.stringify({ sessionId: 's', input: 'hi' }) });

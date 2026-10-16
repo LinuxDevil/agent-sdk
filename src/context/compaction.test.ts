@@ -129,7 +129,7 @@ function request(messages: Message[], model = 'compaction-test-model'): Generate
   return { model, messages };
 }
 
-describe('protectedTokens on a small context window (Eve MEM-F5)', () => {
+describe('protectedTokens on a small context window', () => {
   it('the default protectedTokens never covers a small window: an 8K local model still prunes', async () => {
     const messages = transcript(20); // about 20K tokens of tool results
     const result = await compactMessages(messages, { contextWindow: 8_192 });
@@ -156,7 +156,7 @@ describe('protectedTokens on a small context window (Eve MEM-F5)', () => {
   });
 });
 
-describe('compaction with multimodal content (LOU-V11)', () => {
+describe('compaction with multimodal content', () => {
   it('measures a tool result given as parts by its text and leaves user image parts alone', async () => {
     const original = transcript(4);
     original[1] = { role: 'user', content: [{ type: 'text', text: 'start' }, { type: 'image', image: 'https://example.com/a.png' }] };
@@ -288,7 +288,7 @@ describe('compaction in a run', () => {
   });
 });
 
-describe('compaction request size and context window (audit C3)', () => {
+describe('compaction request size and context window', () => {
   const messages = () => transcript(4);
   const bigSchema = z.object(Object.fromEntries(Array.from({ length: 60 }, (_, i) => [`field_${i}`, z.string().describe(`The value of field ${i}, as text`)])));
   const withTools = (req: GenerateOptions): GenerateOptions => ({

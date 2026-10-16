@@ -33,7 +33,7 @@ export const MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX approvals_resolved_at ON approvals (resolved_at);
   `,
-  // LOU-D43: bounded per-session checkpoint history. A new table, so a file
+  // Bounded per-session checkpoint history. A new table, so a file
   // written by an earlier release just gains it on open.
   `
   CREATE TABLE checkpoint_history (
@@ -47,7 +47,7 @@ export const MIGRATIONS: readonly string[] = [
   CREATE INDEX checkpoint_history_session ON checkpoint_history (session_id, id);
   CREATE INDEX checkpoint_history_saved_at ON checkpoint_history (saved_at);
   `,
-  // LOU-W6.2: cross-session memory items, one JSON array per scope key (the
+  // Cross-session memory items, one JSON array per scope key (the
   // same shape `fileMemory` writes). A new table, so older files just gain it.
   `
   CREATE TABLE memory_items (
@@ -56,7 +56,7 @@ export const MIGRATIONS: readonly string[] = [
     updated_at INTEGER NOT NULL
   );
   `,
-  // N9a: OAuth tokens and registered clients (`key` is tokenStoreKey() or
+  // OAuth tokens and registered clients (`key` is tokenStoreKey() or
   // `<provider>|client`) and pending sign-ins. Payloads are AES-256-GCM
   // sealed records (`v1.<iv>.<ciphertext>`), never plaintext tokens.
   `
@@ -71,7 +71,7 @@ export const MIGRATIONS: readonly string[] = [
     expires_at INTEGER NOT NULL
   );
   `,
-  // N15: semantic memory. One row per item with its embedding (little-endian
+  // Semantic memory. One row per item with its embedding (little-endian
   // Float32Array bytes, unit length) and the id of the embedder that made it.
   `
   CREATE TABLE memory_vectors (

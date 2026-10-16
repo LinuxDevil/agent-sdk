@@ -1,4 +1,4 @@
-/** LOU-Y7: `remoteAgent()`, a deployed agent used as a sub-agent. Built on the shared session client (LOU-D53); Worker-safe. */
+/** `remoteAgent()`, a deployed agent used as a sub-agent. Built on the shared session client; Worker-safe. */
 
 import { SDKError } from '../execution/errors';
 import { SubagentApprovalPause } from '../execution/subagentRuntime';
@@ -54,7 +54,7 @@ export function defineRemoteSubagent<T extends RemoteSubagent>(impl: T): T {
 }
 
 /**
- * LOU-Y7.3: a paused remote run as a sub-agent pause, which the lead run pauses on. Its snapshot holds no transcript:
+ * A paused remote run as a sub-agent pause, which the lead run pauses on. Its snapshot holds no transcript:
  * `sessionId` is the remote session and the pending call's `id` the remote approval id, all a resume needs (no token).
  */
 function remotePause(name: string, sessionId: string, approval: PendingApproval): SubagentApprovalPause {
@@ -95,13 +95,13 @@ function outcome(label: string, name: string, summary: SessionTurnSummary, { tas
  * Cloudflare Worker) as a sub-agent: put it in `createAgent({ subagents })`
  * next to local ones. Each delegated task opens a fresh session on the remote
  * agent over `POST <url>/chat` (a `task` call that resumes a task reuses its
- * session, LOU-Y6), sends the task prompt, reads the streamed run
+ * session), sends the task prompt, reads the streamed run
  * to its end and returns the remote agent's final text (its `output` object as
  * JSON when it has an `output` schema). The lead run's abort
  * signal aborts the request. Failures reach the lead as the usual structured
  * tool error with a `LOUSHO_REMOTE_REQUEST_FAILED` (or, for a 401,
  * `LOUSHO_REMOTE_UNAUTHORIZED`) code. A remote run that pauses for approval
- * pauses the lead run (LOU-Y7.3): deciding it on the lead decides it on the
+ * pauses the lead run: deciding it on the lead decides it on the
  * remote agent, and the continuation's answer is the task result.
  *
  * @example

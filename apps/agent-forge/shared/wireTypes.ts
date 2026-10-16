@@ -1,5 +1,5 @@
 /**
- * LOU-N runtime control server - shared wire types.
+ * Runtime control server - shared wire types.
  *
  * Single source of truth for the shapes exchanged between the server
  * (apps/agent-forge/server/**) and the browser client
@@ -13,9 +13,9 @@
 import type { CheckpointStatus, TrajectoryComparison, TrajectoryStep } from '@lousho/build-ai-agent';
 
 /**
- * Status pill states the app's agent list / topbar render (LOU-L/M's
+ * Status pill states the app's agent list / topbar render (as in the
  * mockup: running/stopped/error/paused).
- * Eve DUI-F21: `done` is a run that finished on its own; `stopped` is one the
+ * `done` is a run that finished on its own; `stopped` is one the
  * user stopped (`POST /agents/:id/stop`).
  */
 export type RunStatus = 'idle' | 'running' | 'done' | 'stopped' | 'error' | 'paused';
@@ -49,7 +49,7 @@ export interface AgentRunStatusPayload {
   /** Final assistant text, once a run completes successfully. */
   resultText?: string;
   /**
-   * O4: the full `ExecutionResult` (src/execution/AgentExecutor.ts -
+   * The full `ExecutionResult` (src/execution/AgentExecutor.ts -
    * `messages`/`toolCalls`/`usage`/`steps`/`finishReason`, not just the
    * final text) once a run completes OR pauses for approval - the Output
    * tab's JSON tree source. `unknown` here (rather than importing
@@ -57,20 +57,20 @@ export interface AgentRunStatusPayload {
    * (src/runtime/runtimeClient.ts) where it's rendered generically.
    */
   result?: unknown;
-  /** Eve DUI-F4: `<provider>/<model>` the latest run actually used (e.g. `openai/gpt-4o-mini`, `mock/mock-1`). */
+  /** `<provider>/<model>` the latest run actually used (e.g. `openai/gpt-4o-mini`, `mock/mock-1`). */
   provider?: string;
   updatedAt: string;
 }
 
 /**
- * O1: structured log line severity, shown in the Logs tab's filter bar.
+ * Structured log line severity, shown in the Logs tab's filter bar.
  * `tool` is its own level (not folded into `info`) so the filter bar can
  * isolate tool activity the way the mockup's log rows do.
  */
 export type LogLevel = 'info' | 'warn' | 'error' | 'tool';
 
 /**
- * O1: which part of the run a log line came from - reuses the same
+ * Which part of the run a log line came from - reuses the same
  * taxonomy the mockup's log rows are tagged with. Derived from
  * `AgentEvent.type` (see logEntries.ts's `toLogEntries()`), extended
  * with 'sandbox'/'checkpoint'/'debug' for events the AgentEvent
@@ -91,7 +91,7 @@ export interface LogEntry {
 }
 
 /**
- * O2: one span lifecycle notification, forwarded verbatim (real
+ * One span lifecycle notification, forwarded verbatim (real
  * `Date.now()` timestamps, not synthetic ones) from the SDK's
  * `TraceExporter.onSpanStart`/`onSpanEnd` (src/execution/tracing.ts).
  */
@@ -102,13 +102,13 @@ export interface SpanEvent {
   startTime: number;
   endTime?: number;
   attributes: Record<string, unknown>;
-  /** M5b: `internal` or `client` (a model call). */
+  /** `internal` or `client` (a model call). */
   kind?: 'internal' | 'client';
-  /** M5b: `error` when the span failed. */
+  /** `error` when the span failed. */
   status?: { code: 'ok' | 'error'; message?: string };
 }
 
-/** M5b: one persisted run in `GET /agents/:id/traces` (the SDK's `TraceSummary` without the server-side file path). */
+/** One persisted run in `GET /agents/:id/traces` (the SDK's `TraceSummary` without the server-side file path). */
 export interface TraceSummaryPayload {
   traceId: string;
   name: string;
@@ -123,14 +123,14 @@ export interface TraceSummaryPayload {
   costUsd?: number;
 }
 
-/** M5b: `GET /agents/:id/traces/:traceId`. */
+/** `GET /agents/:id/traces/:traceId`. */
 export interface TraceDetailPayload {
   traceId: string;
   spans: SpanEvent[];
 }
 
 /**
- * O3: live step-through debugger state for one agent's run (see
+ * Live step-through debugger state for one agent's run (see
  * debugController.ts for exactly what "paused"/"breakpoint" mean given
  * AgentExecutor's real control surface).
  */
@@ -144,7 +144,7 @@ export interface DebugStatePayload {
 }
 
 /**
- * P1/P2: one message in the chat thread, mapped 1:1 from the SDK's real
+ * One message in the chat thread, mapped 1:1 from the SDK's real
  * `Message` (src/providers/llm.ts) rather than a separate invented shape -
  * only `id`/`timestamp` are added (the SDK's `Message` carries neither),
  * for React keys and the mockup's per-bubble timestamp. `role: 'system'`
@@ -162,18 +162,18 @@ export interface ChatMessage {
   toolName?: string;
   toolCalls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
   timestamp: string;
-  /** Eve DUI-F21: `'run'` marks the user turn a top-bar Run added (shown as "Run input", not as a typed message). */
+  /** `'run'` marks the user turn a top-bar Run added (shown as "Run input", not as a typed message). */
   source?: 'run';
 }
 
-/** P1: the live chat transcript for one agent's current session, pushed over WS and returned by `GET /agents/:id/chat`. */
+/** The live chat transcript for one agent's current session, pushed over WS and returned by `GET /agents/:id/chat`. */
 export interface ChatStatePayload {
   agentId: string;
   sessionId: string;
   messages: ChatMessage[];
 }
 
-/** P3: metadata for one past (or current) chat session, as listed by `GET /agents/:id/chats`. */
+/** Metadata for one past (or current) chat session, as listed by `GET /agents/:id/chats`. */
 export interface ChatSessionMeta {
   sessionId: string;
   startedAt: string;
@@ -183,7 +183,7 @@ export interface ChatSessionMeta {
   preview: string;
 }
 
-/** P3: a full past chat session, as returned by `GET /agents/:id/chats/:sessionId`. */
+/** A full past chat session, as returned by `GET /agents/:id/chats/:sessionId`. */
 export interface ChatSessionRecord extends ChatSessionMeta {
   messages: ChatMessage[];
 }
@@ -194,10 +194,10 @@ export interface ChatSessionRecord extends ChatSessionMeta {
  * status transition, and once immediately on connect). `type: 'event'`
  * forwards one of the run's `AgentEvent`s (run.start/text.done/tool.start/
  * tool.done/run.done/...) for lightweight visibility into an in-progress
- * run. `type: 'log'`/`'span'`/`'debug'` are LOU-O's structured log stream
- * (O1), span waterfall (O2) and step-debugger state (O3), all derived from
+ * run. `type: 'log'`/`'span'`/`'debug'` are the structured log stream
+ *, span waterfall and step-debugger state, all derived from
  * the same run rather than a second parallel event system. `type: 'chat'`
- * (P1) is the live chat transcript, sent on every reconciled update and
+ * is the live chat transcript, sent on every reconciled update and
  * once immediately on connect (mirroring 'status').
  */
 export type StreamMessage =
@@ -208,7 +208,7 @@ export type StreamMessage =
   | { type: 'debug'; payload: DebugStatePayload }
   | { type: 'chat'; payload: ChatStatePayload };
 
-/** R1: masked provider key status. Never carries a real key. */
+/** Masked provider key status. Never carries a real key. */
 export interface ProviderKeyStatus {
   provider: 'openai' | 'anthropic';
   hasKey: boolean;
@@ -217,7 +217,7 @@ export interface ProviderKeyStatus {
 }
 
 /**
- * LOU-Q's hardcoded 5s hook-sandbox timeout, now configurable per profile
+ * The hardcoded 5s hook-sandbox timeout, now configurable per profile
  * (see hookSandbox.ts's `HookSandboxOptions.timeoutMs`). The sandbox
  * BACKEND stays NoopSandbox-only: `src/security/sandboxCore.ts` (the only
  * SandboxAdapter this SDK ships today) exports just `NoopSandbox` - there is
@@ -234,7 +234,7 @@ export interface SettingsProfile {
   providerKeyRef?: string;
   /** Deploy target name - see `src/deploy/index.ts`'s `registerBuiltInAdapters()` for the real registered names this must match. */
   deployAdapter: string;
-  /** Opt-in bundled OTel export toggle (LOU-R's brief: ADDITIONALLY export to a real collector via `src/execution/otel.ts`'s `createOtelTraceExporter()`, not a replacement for LOU-O's own trace panel). */
+  /** Opt-in bundled OTel export toggle (ADDITIONALLY exports to a real collector via `src/execution/otel.ts`'s `createOtelTraceExporter()`, not a replacement for the trace panel). */
   otelEnabled: boolean;
   /** Passed through to `hookSandbox.ts`'s `sandboxRunHook()` as `timeoutMs`. */
   hookTimeoutMs: number;
@@ -255,7 +255,7 @@ export interface DeployResult {
 }
 
 /**
- * LOU-D45: one step of a run's checkpoint history (`GET /runs/:id/history`,
+ * One step of a run's checkpoint history (`GET /runs/:id/history`,
  * where a run id is the session id: the agent id, or a fork's id) - the
  * newest checkpoint saved at that step of the latest execution.
  */
@@ -277,18 +277,18 @@ export interface RunHistoryPayload {
   steps: RunHistoryStep[];
 }
 
-/** LOU-D45: `POST /runs/:id/fork` body - see `ForkPatch` (src/execution/checkpoint.ts). */
+/** `POST /runs/:id/fork` body - see `ForkPatch` (src/execution/checkpoint.ts). */
 export interface ForkRunRequest {
   fromStep: number;
   patch?: { toolResult?: { toolCallId: string; result: unknown }; appendInput?: string; businessState?: unknown };
 }
 
-/** LOU-D45: the started fork; its live status streams on `WS /agents/<runId>/stream`. */
+/** The started fork; its live status streams on `WS /agents/<runId>/stream`. */
 export interface ForkRunResponse {
   runId: string;
   fromStep: number;
   status: AgentRunStatusPayload;
 }
 
-/** LOU-D45: `GET /runs/compare?a=&b=` - `compareTrajectories(a, b)`. */
+/** `GET /runs/compare?a=&b=` - `compareTrajectories(a, b)`. */
 export type RunComparisonPayload = TrajectoryComparison;

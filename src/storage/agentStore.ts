@@ -1,5 +1,5 @@
 /**
- * AgentStore (LOU-D30): the stores an agent persists to, given to
+ * AgentStore: the stores an agent persists to, given to
  * `createAgent({ store })` in one option. `SqliteStore` is one;
  * `memoryStore()` builds an in-memory one.
  */
@@ -87,7 +87,7 @@ class MemoryCheckpointStore implements CheckpointStore {
     return structuredClone(newestFirst(this.rings.get(sessionId) ?? [], options));
   }
 
-  /** Eve DUR-F15: the latest checkpoint of every id, by id. */
+  /** The latest checkpoint of every id, by id. */
   async list(options?: CheckpointListOptions): Promise<CheckpointListEntry[]> {
     return structuredClone(listCheckpoints(this.checkpoints, options));
   }

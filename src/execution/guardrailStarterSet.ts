@@ -1,5 +1,5 @@
 /**
- * Guardrail starter set (N5a): ready-made input / output / tool guardrails for
+ * Guardrail starter set: ready-made input / output / tool guardrails for
  * personal data, secrets, prompt injection and moderation. The PII, secret and
  * injection checks are heuristic pattern checks: they catch common cases and
  * miss others. They are a first filter, not a security boundary.
@@ -239,7 +239,7 @@ const INJECTION_PROMPT = [
  * prompt, chat-template role markers (`<|im_start|>`, `### System:`) and
  * invisible Unicode tag characters. With `model`, a text the heuristics pass
  * is also classified by the model (`SAFE` or `INJECTION: <reason>`); a reply
- * that is neither trips the guardrail. `runInParallel` (N5b, default `false`):
+ * that is neither trips the guardrail. `runInParallel` (default `false`):
  * as an input guardrail, check while the first model call is in flight.
  */
 export function promptInjectionGuardrail(options: { model?: LLMProvider | string; name?: string; runInParallel?: boolean } = {}): IoGuardrail {
@@ -295,7 +295,7 @@ function parseModeration(reply: string): ModerationCategory[] | undefined {
  * for `NONE` or the categories that apply. A listed category in `categories`
  * (default: all) blocks; a reply that is neither form blocks too (fail closed).
  * A prompt rather than a vendor moderation endpoint, so it works with every
- * provider. `runInParallel` (N5b, default `false`): as an input guardrail,
+ * provider. `runInParallel` (default `false`): as an input guardrail,
  * check while the first model call is in flight.
  */
 export function moderationGuardrail(options: {

@@ -1,5 +1,5 @@
 /**
- * Dependency-free token estimation (LOU-W1).
+ * Dependency-free token estimation.
  *
  * A heuristic, not a tokenizer: it exists so budgeting and context-compaction
  * code can answer "roughly how big is this prompt?" without shipping a
@@ -29,7 +29,7 @@ export interface EstimateTokensOptions {
 const MESSAGE_OVERHEAD_TOKENS = 4;
 
 /**
- * Tokens counted for each image or file part (LOU-V11). Providers bill an
+ * Tokens counted for each image or file part. Providers bill an
  * image by its size (roughly 85 to 1,600 tokens), so this is a flat guess.
  */
 const ATTACHMENT_TOKENS = 1_000;
@@ -141,7 +141,7 @@ export function setTokenEstimator(estimator?: TokenEstimator): void {
  * non-Latin scripts and 2 per emoji (code points are counted, not UTF-16
  * units), plus 4 tokens of overhead per message and the JSON length of tool
  * calls. Tool results are the message `content` (typically JSON) and are
- * counted as text. In multimodal content (LOU-V11) text parts count as
+ * counted as text. In multimodal content text parts count as
  * text and each image or file part as a flat 1,000 tokens.
  *
  * Accuracy: an estimate for budgeting and compaction decisions. It is

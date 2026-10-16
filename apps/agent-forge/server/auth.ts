@@ -1,5 +1,5 @@
 /**
- * Eve DUI-F1: access control for the studio's API and WebSocket.
+ * Access control for the studio's API and WebSocket.
  *
  * The studio stores provider keys, starts runs and executes hook code, so a
  * request is only served when it:

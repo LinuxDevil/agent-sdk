@@ -24,7 +24,7 @@ const usageSchema = z.object({
   costUsd: z.number().optional(),
 });
 
-/** LOU-V13: one block of the model's reasoning, as `GenerateResult.reasoning` holds it. */
+/** One block of the model's reasoning, as `GenerateResult.reasoning` holds it. */
 const reasoningSchema = z.object({ text: z.string(), signature: z.string().optional(), redactedData: z.string().optional() });
 
 const toolCallSchema = z.object({
@@ -35,7 +35,7 @@ const toolCallSchema = z.object({
 
 const errorSchema = z.object({ name: z.string(), message: z.string() });
 
-/** N1a: a call the provider ran (a hosted tool), as `GenerateResult.hostedToolCalls` holds it. */
+/** A call the provider ran (a hosted tool), as `GenerateResult.hostedToolCalls` holds it. */
 const hostedToolCallSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -190,7 +190,7 @@ export async function writeCassette(file: string, cassette: Cassette): Promise<v
 }
 
 /**
- * The directory holding this module, in both build formats (LOU-R10):
+ * The directory holding this module, in both build formats:
  * `__dirname` in the CJS build (and under vitest), `import.meta.url` in the
  * `.mjs` build where `__dirname` does not exist. `undefined` when neither is
  * available (the CJS build compiles `import.meta` to an empty object, so the

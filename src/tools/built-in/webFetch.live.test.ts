@@ -1,5 +1,5 @@
 /**
- * Live test for `web_fetch` (N13a): a real model (gpt-4o-mini on OpenRouter)
+ * Live test for `web_fetch`: a real model (gpt-4o-mini on OpenRouter)
  * calls the tool against https://example.com.
  *
  * - Replay (default): the model is served from the cassette and the tool gets

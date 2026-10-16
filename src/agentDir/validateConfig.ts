@@ -1,5 +1,5 @@
 /**
- * Validation of an agent directory's config object (LOU-Y5). Node-free: used by
+ * Validation of an agent directory's config object. Node-free: used by
  * `readConfig()` on a config read from disk and by the Cloudflare Worker
  * runtime (src/deploy/workerAgentDir.ts) on a config bundled at build time.
  */
@@ -44,7 +44,7 @@ export interface WhenArgMatcher {
 
 /**
  * A permission rule as an agent directory's config file may write it
- * (LOU-Y5 follow-up: the serializable half of `createAgent`'s
+ * (follow-up: the serializable half of `createAgent`'s
  * `permissions`). `tool` is a name, a list of names (`'*'` covers every
  * tool) or - in a code config file - a `RegExp`. `when` narrows the rule:
  * in JSON / YAML it is a record mapping an argument name to a matcher - a
@@ -489,7 +489,7 @@ function assertModelSetting(file: string, key: string, entry: unknown): void {
   } else if (!(typeof entry === 'number' && Number.isFinite(entry))) {
     fail(file, `'modelSettings.${key}' must be a number, got ${describeValue(entry)}.`);
   } else {
-    // Eve CORE-F13: the same ranges createAgent checks (temperature 0..2, maxTokens >= 1, ...).
+    // The same ranges createAgent checks (temperature 0..2, maxTokens >= 1, ...).
     const problem = modelSettingProblem(key, entry);
     if (problem) fail(file, `'modelSettings.${key}' ${problem}.`);
   }

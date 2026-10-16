@@ -1,5 +1,5 @@
 /**
- * A7 (#245): the `VERSION` constant the package exports must equal the
+ * The `VERSION` constant the package exports must equal the
  * `version` field of package.json - the release flow bumps one, and before
  * this test nothing checked they stayed in sync (alpha.9 shipped with
  * `VERSION` still reading `1.0.0-alpha.8`).

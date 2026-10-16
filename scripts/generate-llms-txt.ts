@@ -1,5 +1,5 @@
 /**
- * generate-llms-txt (LOU-D12)
+ * generate-llms-txt
  *
  * Generates `llms.txt` and `llms-full.txt` at the repo root from README.md,
  * the user-facing docs/*.md pages and examples/<name>/README.md. Both files

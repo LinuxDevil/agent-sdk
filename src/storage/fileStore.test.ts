@@ -209,7 +209,7 @@ describe('fileStore(dir) (R2)', () => {
   });
 });
 
-describe('fileStore(dir): case-safe file names (Eve DUR-F7)', () => {
+describe('fileStore(dir): case-safe file names', () => {
   const hi: Message[] = [{ role: 'user', content: 'hi' }];
 
   it("writes each uppercase letter as '^' and the letter, so an all-lowercase id keeps its old name", async () => {

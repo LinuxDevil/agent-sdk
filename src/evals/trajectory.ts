@@ -1,5 +1,5 @@
 /**
- * Trajectory evals (LOU-D7): the `t` test context handed to
+ * Trajectory evals: the `t` test context handed to
  * `defineEval({ async test(t, c) { ... } })`.
  *
  * Assertions never throw; each one is recorded on the context (gate or

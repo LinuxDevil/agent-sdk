@@ -1,7 +1,7 @@
 /**
  * Live test (costs money, needs OPENROUTER_API_KEY; at most 0.05 USD): `send()` with a listener on
  * `openrouter/openai/gpt-4o-mini` streams the model call, so the step's text arrives as several `text.delta`
- * events (M9). Records `__fixtures__/cassettes/send-streams.json` for a replay test. Run with
+ * events. Records `__fixtures__/cassettes/send-streams.json` for a replay test. Run with
  * `npm run test:live -- src/execution/sendStreams`.
  */
 import { describe, expect, it } from 'vitest';
@@ -11,7 +11,7 @@ import { resolveProvider } from '../providers/resolveProvider';
 import { recordReplay } from '../testing';
 import type { AgentEvent } from './agentEvents';
 
-describe.skipIf(!process.env.OPENROUTER_API_KEY)('send() with a listener streams live (M9)', () => {
+describe.skipIf(!process.env.OPENROUTER_API_KEY)('send() with a listener streams live', () => {
   it('delivers the reply as several text.delta events that add up to result.text', async () => {
     const provider = recordReplay(() => resolveProvider('openrouter/openai/gpt-4o-mini'), {
       cassette: 'src/execution/__fixtures__/cassettes/send-streams.json',

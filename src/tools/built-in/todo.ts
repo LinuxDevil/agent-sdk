@@ -1,5 +1,5 @@
 /**
- * Built-in todo tools (LOU-X7).
+ * Built-in todo tools.
  *
  * Lets a long-running agent plan and track multi-step work. `todo_write`
  * replaces the whole list, `todo_read` returns it, and both share one store.

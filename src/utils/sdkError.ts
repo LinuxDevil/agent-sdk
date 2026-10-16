@@ -48,7 +48,7 @@ function withHelp(message: string, code: string, hint?: string, docs?: string): 
  */
 export class SDKError extends Error {
   /**
-   * `instanceof SDKError` also holds for errors from another loaded copy of the SDK (LOU-D42), and so does
+   * `instanceof SDKError` also holds for errors from another loaded copy of the SDK, and so does
    * `instanceof` of each subclass the SDK exports (`ValidationError`, `TimeoutError`, ...).
    */
   static [Symbol.hasInstance](value: unknown): boolean {
@@ -65,7 +65,7 @@ export class SDKError extends Error {
   /** The message without the appended `[code] hint (docs)` line. */
   readonly detail: string;
   /**
-   * H3-6: on an error a run rejected with (`agent.send()`, `execute()`, a
+   * On an error a run rejected with (`agent.send()`, `execute()`, a
    * session turn), what the run had spent until it failed - its model calls
    * and its sub-agents', like `result.usage`. Absent when it failed before
    * spending anything it could count, and on errors not thrown out of a run.

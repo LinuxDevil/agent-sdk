@@ -1,5 +1,5 @@
 /**
- * LOU-V13: reasoning through a run - `reasoning.*` events in stream order on
+ * Reasoning through a run - `reasoning.*` events in stream order on
  * `ai` v7 and v4 (Anthropic provider, scripted model streams), the
  * `reasoning` option reaching the request (agent-level and per call),
  * `result.reasoning`, the signed thinking kept on the tool-call turn and
@@ -127,7 +127,7 @@ const EXPECTED_TRACE = [
   'step.done',
 ];
 
-describe('reasoning in a streamed run (LOU-V13)', () => {
+describe('reasoning in a streamed run', () => {
   it('ai v7: reports reasoning before text and tools, keeps it out of the text, and replays the signed thinking', async () => {
     const provider = new AnthropicProvider({ apiKey: 'k', maxRetries: 0 });
     const calls: V7Options[] = [];
@@ -204,7 +204,7 @@ function thinkingProvider(): LLMProvider & { calls: GenerateOptions[] } {
   };
 }
 
-describe('the reasoning option and result (LOU-V13)', () => {
+describe('the reasoning option and result', () => {
   it("sends the agent's reasoning on every call, a call's own instead, and returns the reasoning text", async () => {
     const provider = thinkingProvider();
     const agent = createAgent({ provider, reasoning: 'low' });

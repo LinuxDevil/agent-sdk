@@ -1,6 +1,6 @@
 /**
  * workflow-router - an agent whose job is to classify an incoming request
- * into one of a fixed set of routes/categories (LOU-H1's createAgent()).
+ * into one of a fixed set of routes/categories (createAgent()).
  *
  * Defaults to a free, local mock provider so it runs with zero setup and
  * zero API cost. Set OPENAI_API_KEY to run it against real OpenAI instead.

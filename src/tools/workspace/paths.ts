@@ -1,5 +1,5 @@
 /**
- * Workspace path validation shared by every provider and tool (LOU-X6).
+ * Workspace path validation shared by every provider and tool.
  */
 import { brandClass, instanceOfOwnBrand } from '../../utils/brand';
 

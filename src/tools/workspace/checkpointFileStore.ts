@@ -1,5 +1,5 @@
 /**
- * FileWorkspaceCheckpointStore (N7): workspace backups as one JSON file per
+ * FileWorkspaceCheckpointStore: workspace backups as one JSON file per
  * session, so a rewind still works after the process restarts.
  */
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';

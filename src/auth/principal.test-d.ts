@@ -1,4 +1,4 @@
-/** N10a: the principal's types on the run context, memory scopes, send options and routes. */
+/** The principal's types on the run context, memory scopes, send options and routes. */
 import { describe, expectTypeOf, it } from 'vitest';
 import { createAgent, type MemoryScopeContext, type Principal, type RunConfigContext, type SendOptions } from '../index';
 import type { Principal as AuthPrincipal, AuthFn } from './index';
@@ -6,7 +6,7 @@ import { createRouteHandler, type RouteHandlerOptions } from '../server/routeHan
 import { apiToken, basic, jwt } from './index';
 import { createMockProvider } from '../providers/mock';
 
-describe('Principal types (N10a)', () => {
+describe('Principal types', () => {
   it('is one type at the root and on the auth subpath', () => {
     expectTypeOf<Principal>().toEqualTypeOf<AuthPrincipal>();
     expectTypeOf<Principal['type']>().toEqualTypeOf<'user' | 'service'>();

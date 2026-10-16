@@ -1,5 +1,5 @@
 /**
- * LOU-D44: AgentExecutor.fork() / agent.fork() start a new session from a
+ * AgentExecutor.fork() / agent.fork() start a new session from a
  * step of another session's checkpoint history, optionally patched, and the
  * fork resumes like any unfinished run while the original stays as it was.
  */
@@ -68,7 +68,7 @@ async function runOriginal(env: ReturnType<typeof setup>) {
   return { checkpoint: await store.load('trip'), history: await store.history?.('trip') };
 }
 
-describe('AgentExecutor.fork (LOU-D44)', () => {
+describe('AgentExecutor.fork', () => {
   it('forks at step 1 with a patched tool result, resumes into a different trajectory and leaves the original untouched', async () => {
     const env = setup();
     const before = await runOriginal(env);
@@ -199,7 +199,7 @@ describe('AgentExecutor.fork (LOU-D44)', () => {
   });
 });
 
-describe('agent.fork (LOU-D44)', () => {
+describe('agent.fork', () => {
   it('forks a send() run in the agent store; agent.resume() continues the fork', async () => {
     const runs: Record<string, number> = {};
     const store = memoryStore();

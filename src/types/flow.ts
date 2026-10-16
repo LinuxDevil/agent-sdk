@@ -174,7 +174,7 @@ export interface StepNode {
   input: string;
 }
 
-/** Eve DUR-F17: a node's `retry` setting (see {@link NodeRunOptions.retry}). */
+/** A node's `retry` setting (see {@link NodeRunOptions.retry}). */
 export interface NodeRetry {
   /** Attempts in all, including the first (an integer >= 1). */
   maxAttempts: number;
@@ -183,7 +183,7 @@ export interface NodeRetry {
 }
 
 /**
- * Eve DUR-F17: how `FlowExecutor` runs a node - retries and a time limit. Any
+ * How `FlowExecutor` runs a node - retries and a time limit. Any
  * executor-side node (and `sequence` / `parallel`) takes them.
  *
  * @example

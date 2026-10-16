@@ -1,6 +1,6 @@
 /**
  * File-backed `ApprovalStore` (src/execution/ApprovalGate.ts, public SDK
- * API) for the LOU-N runtime control server, persisting pending approvals
+ * API) for the runtime control server, persisting pending approvals
  * under `<baseDir>/.lousho/agents/<agentId>/approvals/<approvalId>.json`.
  *
  * Sibling to FileCheckpointStore.ts - see its doc comment for why this is a

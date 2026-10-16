@@ -1,5 +1,5 @@
 /**
- * Eve CORE-F13: an `output` agent's stream carries `object.delta` events with
+ * An `output` agent's stream carries `object.delta` events with
  * the reply parsed so far.
  */
 import { describe, expect, it } from 'vitest';
@@ -16,7 +16,7 @@ async function collect(run: AsyncIterable<AgentEvent>): Promise<AgentEvent[]> {
   return seen;
 }
 
-describe('object.delta (Eve CORE-F13)', () => {
+describe('object.delta', () => {
   it('streams the partial object as the JSON reply arrives, each one different, ending at the validated object', async () => {
     const agent = createAgent({
       provider: mockModel([JSON.stringify(reply, null, 1)]),

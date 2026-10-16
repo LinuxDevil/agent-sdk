@@ -89,7 +89,7 @@ interface OptionalPeer {
   install: string;
   /** True when the agent spec cannot work without it (not installed becomes a failure). */
   required: boolean;
-  /** Provider packages: the versions that pair with the installed `ai` (LOU-D28d), e.g. `ai 7` and `^4.0.0`. */
+  /** Provider packages: the versions that pair with the installed `ai`, e.g. `ai 7` and `^4.0.0`. */
   pairing?: { ai: string; accepts: string; note?: string };
 }
 
@@ -112,7 +112,7 @@ function providerPeers(env: DoctorEnvironment, needs: SpecNeeds): Map<string, Op
   return peers;
 }
 
-/** The optional peers behind SDK features (LOU-D40); only Docker can be known from the spec. */
+/** The optional peers behind SDK features; only Docker can be known from the spec. */
 function featurePeers(needs: SpecNeeds): Map<string, OptionalPeer> {
   return new Map(
     Object.entries(FEATURE_PEERS).map(([name, peer]) => [
@@ -152,7 +152,7 @@ function checkOptionalPeer(env: DoctorEnvironment, name: string, peer: OptionalP
 
 /**
  * Why the installed version is wrong, or null: a provider package must pair with
- * the installed `ai` (LOU-D28d); any other peer must match the SDK's own range.
+ * the installed `ai`; any other peer must match the SDK's own range.
  */
 function versionMismatch(env: DoctorEnvironment, name: string, peer: OptionalPeer, version: string): string | null {
   const expected = peer.pairing

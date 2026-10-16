@@ -1,5 +1,5 @@
 /**
- * C8: `agent.recover()` finishes interrupted runs on its own, once their
+ * `agent.recover()` finishes interrupted runs on its own, once their
  * crashed holder's run lease expires, and leaves approval pauses alone.
  */
 import { afterEach, describe, it, expect, vi } from 'vitest';
@@ -46,7 +46,7 @@ afterEach(async () => {
   while (dirs.length) rmSync(dirs.pop() as string, { recursive: true, force: true });
 });
 
-describe('agent.recover() (C8)', () => {
+describe('agent.recover()', () => {
   it('finishes a crashed run once its lease expires, without re-running completed steps', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'lousho-recover-'));
     dirs.push(dir);

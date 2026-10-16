@@ -34,19 +34,19 @@ const FLUSH_TABS: ReadonlySet<DrawerTab> = new Set<DrawerTab>(['logs', 'trace', 
 const FLUSH_BODY_STYLE: CSSProperties = { padding: 0, overflow: 'hidden' };
 
 /**
- * Tab-switching chrome (LOU-L), now with real content for LOU-O's
- * Logs/Trace/Output tabs: `LogsPanel` (O1, a live filtered/virtualized log
- * feed), `TracePanel` (O2, a real span waterfall) and `OutputPanel` (O4, a
+ * Tab-switching chrome, now with real content for the
+ * Logs/Trace/Output tabs: `LogsPanel` (a live filtered/virtualized log
+ * feed), `TracePanel` (a real span waterfall) and `OutputPanel` (a
  * collapsible JSON tree of the final/paused ExecutionResult). `DebugBar`
- * (O3) surfaces above Trace whenever debug mode is on or a run is paused
- * at a breakpoint. Chat (LOU-P) and Settings (LOU-R) are still later
+ * surfaces above Trace whenever debug mode is on or a run is paused
+ * at a breakpoint. Chat and Settings are still later
  * epics' jobs.
  */
 export function BottomDrawer() {
   const { drawerTab, setDrawerTab } = useAppState();
   const ids = tabIds('drawer', drawerTab);
 
-  // Eve DUI-F9: a real WAI-ARIA tablist (roles, aria-selected, arrow keys).
+  // A real WAI-ARIA tablist (roles, aria-selected, arrow keys).
   return (
     <section className="drawer" aria-label="Run panels">
       <div

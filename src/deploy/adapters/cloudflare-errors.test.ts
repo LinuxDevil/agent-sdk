@@ -1,5 +1,5 @@
 /**
- * Eve E14 (CLI-F7 on the cloudflare-worker target): a bundling failure in
+ * On the cloudflare-worker target, a bundling failure in
  * `lousho build --target=cloudflare-worker` is a coded, actionable error, not
  * esbuild's raw log, and leaves no half-written dist/ - the buildBundle() path
  * the node-server target got in #488. tsup reports a failure by posting to its

@@ -1,5 +1,5 @@
 /**
- * MCP Tool Loader (LOU-F2 / LOU-F3 / LOU-Z1 / LOU-Z2)
+ * MCP Tool Loader
  *
  * Loads tools advertised by a remote MCP server (via an already-connected
  * `Client` from `@modelcontextprotocol/sdk`) and turns them into raw MCP
@@ -30,12 +30,12 @@ export interface RawMcpTool {
     required?: string[];
     [key: string]: unknown;
   };
-  /** The server's `ToolAnnotations` (hints), when it sends any (LOU-Z5). */
+  /** The server's `ToolAnnotations` (hints), when it sends any. */
   annotations?: McpToolAnnotations;
 }
 
 /**
- * Which MCP tools ask for approval (LOU-Z5). `'always'` (default, Eve TOOLS-F11)
+ * Which MCP tools ask for approval. `'always'` (default)
  * asks for every tool: a server's hints are its own word, not a guarantee.
  * `'annotations'` opts in to trusting them: `readOnlyHint: true` runs (and may run
  * in plan mode), `destructiveHint` true or absent (the MCP spec's default) asks,
@@ -105,12 +105,12 @@ export interface McpClientLike {
   callTool(params: { name: string; arguments?: Record<string, unknown> }, resultSchema?: unknown, options?: unknown): Promise<unknown>;
 }
 
-/** Eve TOOLS-F18: the most `tools/list` pages read from one server. */
+/** The most `tools/list` pages read from one server. */
 const MAX_MCP_TOOL_PAGES = 100;
 
 /**
  * List the tools a connected MCP client's server advertises, following
- * `nextCursor` through every page (Eve TOOLS-F18), up to
+ * `nextCursor` through every page, up to
  * 100 pages; a server that sends more, or repeats a
  * cursor, is cut off there with a warning through `options.logger`.
  *
@@ -157,7 +157,7 @@ export interface LoadMcpToolsOptions {
   onSkip?: (skipped: SkippedMcpTool) => void;
   /** Which tools ask for approval; see {@link McpApproval}. Default `'always'`. */
   approval?: McpApproval;
-  /** N2: mark every tool `deferLoading`, so an agent offers them through `tool_search` (docs/tool-search.md). */
+  /** Mark every tool `deferLoading`, so an agent offers them through `tool_search` (docs/tool-search.md). */
   deferLoading?: boolean;
   /**
    * How long one tool call may take, in milliseconds, before it fails with a
@@ -208,7 +208,7 @@ export async function loadMcpTools(
 
   for (const rawTool of rawTools) {
     try {
-      // LOU-R12: the descriptor carries its `<server>__<tool>` name, so
+      // The descriptor carries its `<server>__<tool>` name, so
       // `Object.values(tools)` also works in a `tools` array.
       const name = modelToolName(connectionName, rawTool.name, taken);
       if (!TOOL_NAME_PATTERN.test(`${connectionName}__${rawTool.name}`)) {
@@ -255,13 +255,13 @@ function callOptions(signal: AbortSignal | undefined, timeoutMs: number | undefi
 /**
  * Providers require a tool's argument schema to be an object. A root that
  * converts to anything else (a union, `z.any()`) becomes a passthrough
- * object so the tool still loads and the server validates (Eve TOOLS-F4).
+ * object so the tool still loads and the server validates.
  */
 function objectRoot(schema: ZodTypeAny): ZodTypeAny {
   return schema instanceof z.ZodObject ? schema : z.object({}).passthrough();
 }
 
-/** Eve TOOLS-F8: the most characters of a server's tool description sent to the model (on every request). */
+/** The most characters of a server's tool description sent to the model (on every request). */
 const MAX_DESCRIPTION_CHARS = 2_000;
 
 /** `description` cut to {@link MAX_DESCRIPTION_CHARS}, with a marker when it was longer. */
@@ -283,7 +283,7 @@ function buildDescriptor(
     description,
     inputSchema: objectRoot(jsonSchemaToZod(rawTool.inputSchema)),
     needsApproval: needsApproval(approval, rawTool.name, rawTool.annotations),
-    // Eve TOOLS-F11: plan mode trusts the server's `readOnlyHint` only when `approval` does.
+    // Plan mode trusts the server's `readOnlyHint` only when `approval` does.
     metadata: { mcp: { annotations: rawTool.annotations, server, tool: rawTool.name, ...(approval !== 'annotations' && { annotationsTrusted: false }) } },
     execute: async (args, ctx) =>
       handleCallToolResult(

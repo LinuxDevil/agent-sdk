@@ -1,5 +1,5 @@
 /**
- * Eve E14 (DUR-F14 follow-up): the SqliteStore stores write through
+ * The SqliteStore stores write through
  * `transactionAsync()`, so a write that meets another process's lock waits
  * with backoff (the event loop keeps running) and succeeds once the lock
  * clears, instead of failing at once with LOUSHO_STORAGE_BUSY.
@@ -41,7 +41,7 @@ function lockFor200ms(path: string): void {
   cleanup.push(() => (clearTimeout(timer), release()));
 }
 
-describe("SqliteStore writes wait out another connection's lock (Eve E14)", () => {
+describe("SqliteStore writes wait out another connection's lock", () => {
   it('checkpoints.save', async () => {
     const { store, path } = openStore();
     lockFor200ms(path);

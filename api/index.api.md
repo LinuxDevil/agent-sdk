@@ -3507,7 +3507,7 @@ export type LoushoUIMessageChunk = {
     input: unknown;
     providerExecuted?: boolean;
 }
-/** N13b: `preliminary: true` for a snapshot of a streaming tool (`tool.partial`); the final output has no `preliminary`. */
+/** `preliminary: true` for a snapshot of a streaming tool (`tool.partial`); the final output has no `preliminary`. */
 | {
     type: 'tool-output-available';
     toolCallId: string;

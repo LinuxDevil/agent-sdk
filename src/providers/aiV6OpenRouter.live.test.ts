@@ -1,5 +1,5 @@
 /**
- * Live test (costs money, needs OPENROUTER_API_KEY; at most 0.05 USD): the real `ai` 6 package through OpenRouter (M8).
+ * Live test (costs money, needs OPENROUTER_API_KEY; at most 0.05 USD): the real `ai` 6 package through OpenRouter.
  * One `createAgent({ model: 'openrouter/openai/gpt-4o-mini', maxSteps: 3 })` turn with one tool call through `send()`
  * and one through `stream()`. Run with `npm install --no-save ai@6 @ai-sdk/openai@3`, then
  * `npm run test:live -- src/providers/aiV6OpenRouter`, then `npm ci`. No cassette: a cassette replays at the provider
@@ -23,7 +23,7 @@ function setup() {
   return { agent, runs };
 }
 
-describe.skipIf(!process.env.OPENROUTER_API_KEY)('ai 6 through OpenRouter (live, M8)', () => {
+describe.skipIf(!process.env.OPENROUTER_API_KEY)('ai 6 through OpenRouter (live)', () => {
   it('send() runs the tool and answers', async () => {
     const { agent, runs } = setup();
     const result = await agent.send('Use the add tool to add 2 and 3, then reply with the number only.');

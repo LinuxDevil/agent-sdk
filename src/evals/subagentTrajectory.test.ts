@@ -33,7 +33,7 @@ function run(test: (t: EvalTestContext) => void | Promise<void>): Promise<EvalRe
   return runTrajectoryCase({ name: 'sub', agent: leadWithResearcher(), test }, {}, undefined, undefined);
 }
 
-describe('trajectory evals see sub-agent tool calls (Eve MA-F9)', () => {
+describe('trajectory evals see sub-agent tool calls', () => {
   it('lists sub-agent calls after the task call that started them, with subagentPath', async () => {
     const result = await run(async (t) => {
       await t.send('go');

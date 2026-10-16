@@ -1,5 +1,5 @@
 /**
- * Mock GitHub API (LOU-J8) - same call shape as the REAL github tool's
+ * Mock GitHub API - same call shape as the REAL github tool's
  * `github_create_pull_request` (src/tools/built-in/github.ts): takes
  * {title, body, head, base}, returns JSON matching {number, url, state}.
  * Never makes a real network call, so the ops-pipeline demo runs with zero

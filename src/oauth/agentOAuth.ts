@@ -1,5 +1,5 @@
 /**
- * N9b: `agent.oauth` - finishing a sign-in at the callback, and signing the
+ * `agent.oauth` - finishing a sign-in at the callback, and signing the
  * app itself in. Fetch-runtime safe: no `node:*` import.
  */
 import { ConfigurationError } from '../execution/errors';
@@ -37,7 +37,7 @@ export interface AgentOAuth {
    */
   signInUrl(provider: OAuthProvider): Promise<string>;
   /**
-   * N9c: an authorization URL that signs the app in to the HTTP MCP server
+   * An authorization URL that signs the app in to the HTTP MCP server
    * `server` (an `mcpServers` entry with `oauth`). It discovers the server's
    * authorization server, registers a client when no `clientId` is set, and
    * uses PKCE and a resource indicator. The operator opens it once; the
@@ -51,7 +51,7 @@ export interface AgentOAuth {
   mcpSignInUrl(server: string): Promise<string>;
 }
 
-/** The agent's MCP servers with `oauth` (N9c): starting and finishing their sign-ins. */
+/** The agent's MCP servers with `oauth`: starting and finishing their sign-ins. */
 export interface McpOAuthSignIn {
   signInUrl(server: string): Promise<string>;
   complete: McpSignInExchange;
@@ -66,7 +66,7 @@ async function markDeclined(store: ApprovalStore, id: string): Promise<void> {
   await store.save(mark(record.pending), { ...record.snapshot, pendingToolCall: mark(record.snapshot.pendingToolCall) });
 }
 
-/** `agent.oauth` over the agent's token store, approval store and (N9c) MCP servers. */
+/** `agent.oauth` over the agent's token store, approval store and MCP servers. */
 export function createAgentOAuth(tokens: OAuthTokenStore | undefined, approvals: ApprovalStore, mcp?: McpOAuthSignIn): AgentOAuth {
   return {
     async complete(params) {

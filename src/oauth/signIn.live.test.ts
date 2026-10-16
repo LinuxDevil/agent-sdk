@@ -1,5 +1,5 @@
 /**
- * N9b live test: a real model (openai/gpt-4o-mini on OpenRouter) handles a
+ * Live test: a real model (openai/gpt-4o-mini on OpenRouter) handles a
  * tool call that pauses for an OAuth sign-in and runs again after it.
  * `list_repos` calls `ctx.getToken()` on a provider whose token endpoint is the
  * in-test fake; the run pauses, the fake code is exchanged, the pause is
@@ -26,7 +26,7 @@ const CASSETTE = path.join(__dirname, '__cassettes__', 'sign-in.json');
 const recording = Boolean(process.env.LOUSHO_RECORD);
 const runnable = recording ? Boolean(process.env.OPENROUTER_API_KEY) : fs.existsSync(CASSETTE);
 
-describe.skipIf(!runnable)('OAuth sign-in live (N9b)', () => {
+describe.skipIf(!runnable)('OAuth sign-in live', () => {
   it('a real model handles a tool call that pauses for sign-in and runs after it', async () => {
     const { tool, executions } = listReposTool(githubProvider(fakeOAuthServer()));
     const agent = createAgent({

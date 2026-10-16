@@ -1,5 +1,5 @@
 /**
- * LOU-H11: verifies examples/README.md's `## [dirname](./dirname)`
+ * Verifies examples/README.md's `## [dirname](./dirname)`
  * headings exactly match the actual directory listing under examples/ -
  * no stale, no missing.
  */

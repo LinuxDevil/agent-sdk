@@ -1,5 +1,5 @@
 /**
- * Worker-safe stand-in for src/security/sandboxCore.ts (LOU-I3).
+ * Worker-safe stand-in for src/security/sandboxCore.ts.
  *
  * The cloudflare-worker adapter's build redirects every SDK-internal import
  * of security/sandboxCore to this file. The real NoopSandbox runs commands

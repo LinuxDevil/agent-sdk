@@ -1,12 +1,12 @@
 /**
- * LOU-R2: "Deploy this agent" action - actually shells out to the existing
+ * "Deploy this agent" action - actually shells out to the existing
  * `lousho build` CLI command (src/cli/build.ts, invoked via `bin/lousho.js`)
  * against the currently-selected agent's saved `AgentSpec` file, rather than
  * reimplementing scaffold/build/describe against the `DeploymentAdapter`
  * registry a second time in this server.
  *
  * Kept deliberately simple per the epic brief: buffers the child process's
- * stdout/stderr and returns them once it exits, rather than reusing LOU-O's
+ * stdout/stderr and returns them once it exits, rather than reusing the
  * full log-streaming infrastructure - a build is a one-shot action the user
  * triggers and waits on, not a long-lived run with its own status pills.
  */

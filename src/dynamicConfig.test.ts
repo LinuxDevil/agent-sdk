@@ -1,5 +1,5 @@
 /**
- * LOU-V15: createAgent()'s `model`, `instructions` and `tools` as functions
+ * CreateAgent()'s `model`, `instructions` and `tools` as functions
  * of the run, resolved once when each run (or session turn) starts.
  */
 import { describe, it, expect, vi } from 'vitest';
@@ -17,7 +17,7 @@ function namedTool(name: string, options: { needsApproval?: boolean } = {}): Def
 const systemPrompt = (model: MockModel, call: number) => textOf(model.calls[call].messages[0].content);
 const toolNames = (model: MockModel, call: number) => (model.calls[call].tools ?? []).map((t) => t.function.name);
 
-describe('createAgent dynamic config (LOU-V15)', () => {
+describe('createAgent dynamic config', () => {
   it('picks the model from the call metadata', async () => {
     const model = mockModel(['cheap', 'pro']);
     const agent = createAgent({ provider: model, model: ({ metadata }) => (metadata?.plan === 'pro' ? 'big-model' : 'small-model') });

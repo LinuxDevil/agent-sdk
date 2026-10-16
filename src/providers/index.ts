@@ -24,11 +24,11 @@ export { MissingPeerDependencyError } from './optionalPeer';
 // Auto-register built-in providers for consumers of this barrel, so
 // has()/getProviderNames() reflect them before the first create(). The
 // factories only construct provider objects; each provider loads its
-// optional peer SDK on first use (LOU-D10, LOU-D19), so this registration
+// optional peer SDK on first use, so this registration
 // never loads (or requires) a peer package. Every other entry point (deep
 // imports, the `lousho` CLI, deploy bundles) gets the same registrations
 // lazily: LLMProviderRegistry.create() calls ensureBuiltinProviders() on a
-// miss (LOU-R1).
+// miss.
 import { LLMProviderRegistry } from './llm';
 import { ensureBuiltinProviders } from './builtinProviders';
 

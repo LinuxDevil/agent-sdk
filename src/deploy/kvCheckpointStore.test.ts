@@ -1,5 +1,5 @@
 /**
- * LOU-T2: KVCheckpointStore unit tests, plus proof it satisfies whatever
+ * KVCheckpointStore unit tests, plus proof it satisfies whatever
  * resumeAfterApproval() expects from a CheckpointStore (the same contract
  * LocalStorageCheckpointStore/FileCheckpointStore already satisfy - see
  * src/execution/checkpoint.ts and apps/agent-forge/server/checkpointStore.ts).
@@ -75,7 +75,7 @@ describe('KVCheckpointStore', () => {
     expect(await store.load('session-1')).toEqual(checkpoint);
   });
 
-  it('round-trips the LOU-U8 status and approvalId fields', async () => {
+  it('round-trips the status and approvalId fields', async () => {
     const store = new KVCheckpointStore(createMockKV());
     const paused = makeCheckpoint({ status: 'awaiting-approval', approvalId: 'approval-1' });
 
@@ -130,8 +130,8 @@ describe('KVCheckpointStore', () => {
     expect(del).toHaveBeenCalledTimes(2);
   });
 
-  it("satisfies resumeAfterApproval()'s CheckpointStore contract: the resumed run keeps writing NEW checkpoints through this store for post-resume tool-call steps (LOU-K5, KV-backed)", async () => {
-    // Mirrors src/execution/resume.test.ts's LOU-K5
+  it("satisfies resumeAfterApproval()'s CheckpointStore contract: the resumed run keeps writing NEW checkpoints through this store for post-resume tool-call steps (KV-backed)", async () => {
+    // Mirrors src/execution/resume.test.ts's
     // "writes a NEW checkpoint for a tool-call step taken after a successful
     // resume" coverage, but backed by KVCheckpointStore + a mock KV binding
     // instead of a bespoke in-memory CheckpointStore - proving the KV-backed
@@ -142,7 +142,7 @@ describe('KVCheckpointStore', () => {
     // early-return in AgentExecutor.ts) does NOT write a checkpoint - only
     // ApprovalStore records the pending decision, so there is deliberately
     // no "checkpoint exists before resume" assertion here. What this test
-    // proves is the forward-checkpointing LOU-K5 fixed: once resumed, a
+    // proves is the forward checkpointing: once resumed, a
     // LATER tool-call step in the same run must still be checkpointed
     // through this exact KVCheckpointStore instance.
     const kv = createMockKV();
@@ -251,14 +251,14 @@ describe('KVCheckpointStore', () => {
     expect(lookupExecute).toHaveBeenCalledTimes(1);
 
     // The run reached a terminal state, so its checkpoint is kept, marked
-    // 'finished' (LOU-U8). The raw KV entry having been written via the
+    // 'finished'. The raw KV entry having been written via the
     // store's put is asserted below from the mock KV's call history.
     expect(kv.putCalls.some(([key]) => key === `${DEFAULT_KV_KEY_PREFIX}${sessionId}`)).toBe(true);
     expect((await checkpointStore.load(sessionId))?.status).toBe('finished');
   });
 });
 
-describe('KVCheckpointStore history layout (LOU-D43.2)', () => {
+describe('KVCheckpointStore history layout', () => {
   const sessionId = 'session-1';
   const base = `${DEFAULT_KV_KEY_PREFIX}${sessionId}`;
 

@@ -56,7 +56,7 @@ export interface FlowExecutionContext {
    * The plain agent config the flow's steps run under: `prompt` is the
    * system message of every `llmCall`, `settings.model` its default model.
    * A `createAgent()` result (a `SimpleAgent`, which runs itself) is NOT one
-   * and is rejected with `LOUSHO_CONFIG_INVALID` (LOU-R14).
+   * and is rejected with `LOUSHO_CONFIG_INVALID`.
    */
   agent: AgentConfig;
   session?: unknown;
@@ -68,8 +68,8 @@ export interface FlowExecutionContext {
   currentDepth?: number;
   /**
    * SandboxAdapter used for tool-call nodes whose tool is flagged
-   * `requiresSandbox` (LOU-F fix). Mirrors AgentExecutor's
-   * `ExecuteOptions.sandbox` (LOU-F5): read per-call
+   * `requiresSandbox`. Mirrors AgentExecutor's
+   * `ExecuteOptions.sandbox`: read per-call
    * (`context.sandbox ?? NoopSandbox`) rather than held as construction
    * state, since FlowExecutor is a static, instance-free API. Defaults to
    * NoopSandbox - the zero-isolation, trusted-host adapter - when omitted,
@@ -77,7 +77,7 @@ export interface FlowExecutionContext {
    */
   sandbox?: SandboxAdapter;
   /**
-   * Trace exporter (LOU-D9). When provided, the run is wrapped in an
+   * Trace exporter. When provided, the run is wrapped in an
    * `invoke_workflow {flow name}` span, every node execution in a
    * `flow.node {type}` span, and each `llmCall`/`toolCall` node's model/tool
    * call in a `chat {model}` / `execute_tool {tool}` span (OpenTelemetry
@@ -97,13 +97,13 @@ export interface FlowExecutionContext {
   /** Omit the deprecated `prompt`/`args`/`result` attributes. */
   redactContent?: boolean;
   /**
-   * A8: decides `toolCall` steps that need approval (the tool's
+   * Decides `toolCall` steps that need approval (the tool's
    * `needsApproval`, or an `ask` permission rule), as `createAgent({ approve })`
    * does: `true` (or a note) runs the tool, `false` fails the step with
    * `LOUSHO_FLOW_TOOL_DENIED`. `'defer'` - or no `approve` at all - refuses
    * the call too, except in a durable run (`checkpointStore` and `runId`),
    * which pauses instead (`result.status: 'awaiting-approval'`) until
-   * `FlowExecutor.resume()` brings the decision (DUR-F17). A call that needs
+   * `FlowExecutor.resume()` brings the decision. A call that needs
    * approval is never run unapproved.
    *
    * @example
@@ -112,14 +112,14 @@ export interface FlowExecutionContext {
    * ```
    */
   approve?: ApproveToolCall;
-  /** A8: permission rules for `toolCall` steps, checked as in an agent run (see `PermissionOptions.permissions`). */
+  /** Permission rules for `toolCall` steps, checked as in an agent run (see `PermissionOptions.permissions`). */
   permissions?: PermissionOptions['permissions'];
-  /** A8: the permission mode `toolCall` steps run under (see `PermissionOptions.permissionMode`). */
+  /** The permission mode `toolCall` steps run under (see `PermissionOptions.permissionMode`). */
   permissionMode?: PermissionOptions['permissionMode'];
-  /** A8: called with an audit entry for each `toolCall` step's permission decision. */
+  /** Called with an audit entry for each `toolCall` step's permission decision. */
   onPermissionDecision?: PermissionOptions['onPermissionDecision'];
   /**
-   * A8: cancels the run. It is checked before every step, so once it is
+   * Cancels the run. It is checked before every step, so once it is
    * aborted no further step starts and the flow fails with the signal's
    * `reason`; the step running then gets it too (`llmCall` as the request's
    * `signal`, `toolCall` as the tool's `ctx.abortSignal`).
@@ -131,7 +131,7 @@ export interface FlowExecutionContext {
    */
   signal?: AbortSignal;
   /**
-   * Eve DUR-F17: makes the run durable, with {@link FlowExecutionContext.runId}.
+   * Makes the run durable, with {@link FlowExecutionContext.runId}.
    * The run's variables, completed nodes and usage are saved under `runId`
    * after every node that completes, and when the flow finishes; continue an
    * interrupted or failed run with `FlowExecutor.resume()`. Any
@@ -147,7 +147,7 @@ export interface FlowExecutionContext {
    * ```
    */
   checkpointStore?: CheckpointStore;
-  /** Eve DUR-F17: the durable run's id in `checkpointStore` (see {@link FlowExecutionContext.checkpointStore}). */
+  /** The durable run's id in `checkpointStore` (see {@link FlowExecutionContext.checkpointStore}). */
   runId?: string;
 }
 
@@ -164,7 +164,7 @@ export type FlowResumeContext = Omit<FlowExecutionContext, 'variables' | 'checkp
   /** Ignored: the run continues with its saved variables. */
   variables?: Record<string, unknown>;
   /**
-   * DUR-F17: the decision on the approval a paused run waits for
+   * The decision on the approval a paused run waits for
    * (`result.approvalId`). Required to resume a run whose status is
    * `'awaiting-approval'`; approved, the paused `toolCall` runs, rejected, it
    * fails with `LOUSHO_FLOW_TOOL_DENIED`.
@@ -202,7 +202,7 @@ export interface FlowExecutionEventDataMap {
   'step-start': undefined;
   'step-complete': unknown;
   'step-error': undefined;
-  /** DUR-F17: attempt `attempt` of `maxAttempts` failed (the event's `error`); the next starts after `delayMs`. */
+  /** Attempt `attempt` of `maxAttempts` failed (the event's `error`); the next starts after `delayMs`. */
   'step-retry': FlowStepRetry;
   'variable-set': { variable: string; value: unknown };
   'llm-call': { model: string | undefined; prompt: string };
@@ -213,7 +213,7 @@ export interface FlowExecutionEventDataMap {
   'loop-iteration': { item: unknown; index: number };
 }
 
-/** DUR-F17: the `data` of a `step-retry` event. */
+/** The `data` of a `step-retry` event. */
 export interface FlowStepRetry {
   /** The attempt that failed (1 for the first). */
   attempt: number;
@@ -246,7 +246,7 @@ export type FlowExecutionEvent = {
  */
 export interface FlowExecutionResult {
   /**
-   * DUR-F17: `'completed'` (`success: true`), `'failed'` (`error` says why),
+   * `'completed'` (`success: true`), `'failed'` (`error` says why),
    * or `'awaiting-approval'`: a durable run paused on a `toolCall` that needs
    * approval. Continue it with `FlowExecutor.resume(flow, { ..., approval: { approvalId, approved } })`.
    */
@@ -262,7 +262,7 @@ export interface FlowExecutionResult {
   events: FlowExecutionEvent[];
   error?: Error;
   /**
-   * MA-F11: the model usage of every `llmCall` step of the run, summed (zeros
+   * The model usage of every `llmCall` step of the run, summed (zeros
    * when no step reported usage). `cachedInputTokens`, `cacheWriteTokens`, `reasoningTokens` and
    * `costUsd` are present only when some call reported them.
    */
@@ -320,7 +320,7 @@ type NodeHandler<N extends ExecutableNode = ExecutableNode> = (
 type NodeHandlers = { [T in ExecutableNode['type']]: NodeHandler<Extract<ExecutableNode, { type: T }>> };
 
 /**
- * DUR-F1: the scope objects of `forEach` iterations. Each iteration runs with
+ * The scope objects of `forEach` iterations. Each iteration runs with
  * its own variables object whose prototype is the enclosing scope, holding
  * only the loop's item/index variables, so parallel branches and iterations
  * never overwrite each other's `{{item}}`. Reads fall through to the enclosing
@@ -353,20 +353,20 @@ function flattenScope(variables: Record<string, unknown>): Record<string, unknow
   return { ...flattenScope(Object.getPrototypeOf(variables) as Record<string, unknown>), ...variables };
 }
 
-/** A8: the number of step ids handed out so far in each run, keyed by the run's event list. */
+/** The number of step ids handed out so far in each run, keyed by the run's event list. */
 const stepCounts = new WeakMap<FlowExecutionEvent[], number>();
 
-/** A8: a run-unique id for a node without one (`step-1`, `step-2`, ... in start order). */
+/** A run-unique id for a node without one (`step-1`, `step-2`, ... in start order). */
 function nextStepId(events: FlowExecutionEvent[]): string {
   const count = (stepCounts.get(events) ?? 0) + 1;
   stepCounts.set(events, count);
   return `step-${count}`;
 }
 
-/** DUR-F17: the durable state of each run, keyed by the run's event list. */
+/** The durable state of each run, keyed by the run's event list. */
 const flowRuns = new WeakMap<FlowExecutionEvent[], FlowRun>();
 
-/** DUR-F17: a node's place in the flow (`0`, `0.1`, ...), carried on its context. */
+/** A node's place in the flow (`0`, `0.1`, ...), carried on its context. */
 const NODE_PATH = Symbol('lousho.flowNodePath');
 type PathedContext = FlowExecutionContext & { [NODE_PATH]?: string };
 
@@ -410,7 +410,7 @@ export class FlowExecutor {
     if (!durable) {
       return this.traced(flow, { ...context, variables: { ...context.variables } }, onEvent, undefined);
     }
-    // H3-1: the lease is taken before the checkpoint is read, so two execute() calls with one new runId cannot both pass the check.
+    // The lease is taken before the checkpoint is read, so two execute() calls with one new runId cannot both pass the check.
     return this.leased(durable.store, durable.runId, async (store) => {
       const existing = await store.load(durable.runId);
       if (existing && existing.status !== 'finished') {
@@ -427,7 +427,7 @@ export class FlowExecutor {
   }
 
   /**
-   * H3-1: runs `body` holding the run lease on `runId` in `store`, as an agent
+   * Runs `body` holding the run lease on `runId` in `store`, as an agent
    * run does (see `acquireRunLease`): while another live run holds the id
    * (another process, replica or store object, or a concurrent call), this one
    * rejects with `LOUSHO_SESSION_BUSY` before anything runs. The lease renews
@@ -450,7 +450,7 @@ export class FlowExecutor {
   }
 
   /**
-   * Eve DUR-F17: continue a durable run started by `execute()` with the same
+   * Continue a durable run started by `execute()` with the same
    * `checkpointStore` and `runId` - after a crash, or after a step failed.
    * Nodes that completed are not run again (each returns its saved result,
    * and a `oneOf` takes the branch it took before); the rest run as usual,
@@ -472,7 +472,7 @@ export class FlowExecutor {
     this.assertRunnableAgent(context.agent);
     const durable = durableOptions(context, 'resume')!;
     const { runId } = durable;
-    // H3-1: one live run per runId; a concurrent resume rejects with LOUSHO_SESSION_BUSY.
+    // One live run per runId; a concurrent resume rejects with LOUSHO_SESSION_BUSY.
     return this.leased(durable.store, runId, (store) => this.resumeLeased(flow, context, onEvent, store, runId));
   }
 
@@ -563,8 +563,8 @@ export class FlowExecutor {
    * `context.agent` is the plain config `buildLLMMessages()`/`resolveLLMModel()`
    * read (`{ name, prompt?, settings }`); a `createAgent()` agent is a live
    * object that runs itself through `send()`, so its instructions, model and
-   * tools are not readable here - it was silently accepted and dropped before
-   * LOU-R14. Reject it, naming the expected shape.
+   * tools are not readable here - it was silently accepted and dropped before.
+   * Reject it, naming the expected shape.
    */
   private static assertRunnableAgent(agent: AgentConfig): void {
     if (isCreateAgentResult(agent)) {
@@ -598,7 +598,7 @@ export class FlowExecutor {
       flowRuns.set(events, run);
       run.progress = () => ({ usage: sumUsage(events), steps: this.countCompletedSteps(events) });
     }
-    // DUR-F17: the totals include a resumed run's earlier attempts.
+    // The totals include a resumed run's earlier attempts.
     const totals = () => run?.totals() ?? { usage: sumUsage(events), steps: this.countCompletedSteps(events) };
 
     // Emit flow start event
@@ -609,7 +609,7 @@ export class FlowExecutor {
     });
 
     try {
-      // A8: the flow's declared inputs (required ones, and their types) are checked before any step runs.
+      // The flow's declared inputs (required ones, and their types) are checked before any step runs.
       this.assertValidInputs(flow, variables);
 
       // Execute the flow
@@ -642,7 +642,7 @@ export class FlowExecutor {
       };
     } catch (error) {
       if (run && error instanceof FlowApprovalPause) {
-        // DUR-F17: not a failure - the run is saved, waiting for the decision.
+        // Not a failure - the run is saved, waiting for the decision.
         const { pending } = error;
         await run.save('awaiting-approval', { pendingApproval: pending });
         const { steps, usage } = totals();
@@ -720,7 +720,7 @@ export class FlowExecutor {
   ): unknown {
     const handler = this.nodeHandlers.get(node.type);
     if (!handler) {
-      // H3-7: `StepNode` is in the node union (editors produce it), but nothing runs it.
+      // `StepNode` is in the node union (editors produce it), but nothing runs it.
       const hint =
         node.type === 'step'
           ? ` ('step' nodes are an editor shape FlowExecutor does not run: to run a createAgent() agent in a flow, register a tool that calls agent.send() and use a 'toolCall' step, or use an 'llmCall' step)`
@@ -753,14 +753,14 @@ export class FlowExecutor {
     onEvent?: (event: FlowExecutionEvent) => void
   ): Promise<unknown> {
     this.assertWithinDepthLimit(context);
-    // A8: an aborted run starts no further step.
+    // An aborted run starts no further step.
     context.signal?.throwIfAborted();
 
-    // Editor-side shapes have no `id`; the executor-side ones may. A8: a
+    // Editor-side shapes have no `id`; the executor-side ones may. A
     // missing id is unique within the run (it was `step-${Date.now()}`, which collided).
     const stepId = (node as { id?: string }).id || nextStepId(events);
 
-    // DUR-F17: a node a resumed run already completed is not run again.
+    // A node a resumed run already completed is not run again.
     const run = flowRuns.get(events);
     const path = nodePath(context);
     if (run?.isCompleted(path)) {
@@ -817,13 +817,13 @@ export class FlowExecutor {
         data: result,
       });
 
-      // DUR-F17: a durable run saves its state after every completed node.
+      // A durable run saves its state after every completed node.
       await flowRuns.get(events)?.complete(nodePath(context), result);
 
       return result;
     } catch (error) {
       if (error instanceof FlowApprovalPause) {
-        // DUR-F17: a step paused for approval did not fail.
+        // A step paused for approval did not fail.
         throw error;
       }
       // Emit step error event
@@ -839,7 +839,7 @@ export class FlowExecutor {
     }
   }
 
-  /** DUR-F17: a node's `retry` / `timeoutMs`, checked; `undefined` when it has neither. */
+  /** A node's `retry` / `timeoutMs`, checked; `undefined` when it has neither. */
   private static runOptions(node: EditorStep, stepId: string): { maxAttempts: number; backoffMs: number; timeoutMs?: number } | undefined {
     const { retry, timeoutMs } = node as NodeRunOptions;
     if (retry === undefined && timeoutMs === undefined) {
@@ -858,7 +858,7 @@ export class FlowExecutor {
   }
 
   /**
-   * DUR-F17: run a node's handler up to `maxAttempts` times, each attempt
+   * Run a node's handler up to `maxAttempts` times, each attempt
    * limited to `timeoutMs`. A cancelled run is not retried. In a durable run,
    * the children an earlier attempt completed are not run again.
    */
@@ -965,7 +965,7 @@ export class FlowExecutor {
   ): Promise<unknown[]> {
     const steps = node.steps || [];
 
-    // DUR-F12 / MA-F11: the branches share a signal linked to the run's. The
+    // The branches share a signal linked to the run's. The
     // first branch to fail aborts it, so its siblings start no further step
     // and their in-flight model/tool calls get the abort; the node settles only
     // once every branch has, so nothing runs (or emits events) after the flow
@@ -1044,7 +1044,7 @@ export class FlowExecutor {
 
   /**
    * Index of the first option whose condition holds (or that has none), or -1.
-   * DUR-F17: a durable run remembers the pick, so a resume takes the same branch.
+   * A durable run remembers the pick, so a resume takes the same branch.
    */
   private static selectOption(
     node: OneOfOptionsNode,
@@ -1080,7 +1080,7 @@ export class FlowExecutor {
     const results: unknown[] = [];
 
     for (let i = 0; i < items.length; i++) {
-      // DUR-F1: the loop variables live in this iteration's own scope, not the
+      // The loop variables live in this iteration's own scope, not the
       // shared variables, so a parallel sibling cannot overwrite them.
       const variables = loopScope(context.variables, { [itemVar]: items[i], [indexVar]: i });
 
@@ -1272,7 +1272,7 @@ export class FlowExecutor {
       init.attributes,
       async (toolSpan) => {
         const start = Date.now();
-        // A8: the tool gets the run's signal as `ctx.abortSignal`, and the gate's call id.
+        // The tool gets the run's signal as `ctx.abortSignal`, and the gate's call id.
         const result = await executeToolWithSandboxGuard(toolName, toolDesc, args, sandbox, context.signal, { toolCallId });
         recordToolOutcome(
           toolSpan,
@@ -1303,10 +1303,10 @@ export class FlowExecutor {
     // Interpolate arguments (an object, so interpolation returns an object)
     const rawArgs = this.interpolateObject(node.arguments || {}, context.variables) as Record<string, unknown>;
 
-    // A8: the same gate as an agent run's tool call - schema validation,
+    // The same gate as an agent run's tool call - schema validation,
     // permission rules and modes, `needsApproval` (decided by `approve`, or
     // refused) - so a flow step cannot run a tool the agent would not.
-    // DUR-F17: a durable run pauses for an undecided approval; a resume brings
+    // A durable run pauses for an undecided approval; a resume brings
     // the decision, under the approval's id.
     const run = flowRuns.get(events);
     const durable = run && { nodeId: nodePath(context), decision: run.decisionFor(nodePath(context)) };
@@ -1323,8 +1323,8 @@ export class FlowExecutor {
     // Execute tool. Tools flagged `requiresSandbox` are routed through the
     // configured SandboxAdapter instead of being invoked directly here -
     // mirrors AgentExecutor.executeToolCall()'s fail-closed handling
-    // (LOU-F5) via the shared executeToolWithSandboxGuard() helper
-    // (LOU-F fix), so this entry point can't silently bypass the sandbox
+    // via the shared executeToolWithSandboxGuard() helper,
+    // so this entry point can't silently bypass the sandbox
     // seam the way it previously did.
     const sandbox = context.sandbox ?? NoopSandbox;
     const result = await this.executeToolInSpan(toolName, toolDesc, args, sandbox, context, toolCallId);
@@ -1397,7 +1397,7 @@ export class FlowExecutor {
   }
 
   /**
-   * Interpolate object with variables. H3-5: a string that is exactly one
+   * Interpolate object with variables. A string that is exactly one
    * `{{name}}` (or `$name`) of a defined variable is that variable's value,
    * not its text, so `{ n: '{{n}}' }` passes a number to a `z.number()` tool;
    * any other string is interpolated as text.

@@ -1,10 +1,10 @@
 import { defineConfig } from 'vitest/config';
 
-// Standalone config (NOT merged with vitest.config.ts) for LOU-G6 judge
+// Standalone config (NOT merged with vitest.config.ts) for judge
 // evals: llmJudge()-based evals call out to a real LLM provider and must
 // NEVER run as part of the default `vitest run` / `npm run test:coverage`
 // path. This config's `include` matches ONLY '**/*.judge.eval.ts', and the
-// main vitest.config.ts (LOU-G2) explicitly excludes that same pattern
+// main vitest.config.ts explicitly excludes that same pattern
 // from its own '**/*.eval.ts' include, so the two configs' file sets never
 // overlap.
 //

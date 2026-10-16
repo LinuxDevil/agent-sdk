@@ -9,7 +9,7 @@ import { findLlmNodeId, findToolNodeId } from './nodeLookup';
 import { LIVE_ENTRY, TraceHistory } from './TraceHistory';
 
 function nodeIdForSpan(graph: AgentGraphSpec, span: SpanEvent): string | undefined {
-  // SDK spans follow the OpenTelemetry GenAI conventions (LOU-D9): the operation is
+  // SDK spans follow the OpenTelemetry GenAI conventions: the operation is
   // `chat` (model call) or `execute_tool` (tool call).
   const operation = span.attributes['gen_ai.operation.name'];
   if (operation === 'chat') return findLlmNodeId(graph);
@@ -120,7 +120,7 @@ function Waterfall({ spans, jumpToLogs }: { spans: SpanEvent[]; jumpToLogs: bool
 }
 
 /**
- * O2: real span waterfall, driven by `{type:'span'}` WS messages forwarded
+ * Real span waterfall, driven by `{type:'span'}` WS messages forwarded
  * from the SDK's `TraceExporter.onSpanStart`/`onSpanEnd` hooks (see
  * server/runRegistry.ts's `makeTraceExporter()`) - bar position/width are
  * real `Date.now()` timestamps, not synthetic ones. Clicking a span
@@ -128,7 +128,7 @@ function Waterfall({ spans, jumpToLogs }: { spans: SpanEvent[]; jumpToLogs: bool
  * carries the tool name) and jumps the Logs tab's highlight to the same
  * node, via the shared `AppState.highlightedNodeId`.
  *
- * M5b: a list on the left holds the agent's persisted traces (the files
+ * A list on the left holds the agent's persisted traces (the files
  * `lousho traces` reads, served by `GET /agents/:id/traces`); choosing one
  * shows its spans in the same waterfall. While a run is active the list
  * starts with "Live", which is the WebSocket feed above. The list reloads

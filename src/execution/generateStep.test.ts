@@ -4,7 +4,7 @@ import { mockModel } from '../testing';
 import type { Message } from '../providers';
 import { withLeadingSystemOnly } from './generateStep';
 
-describe('withLeadingSystemOnly (audit A7)', () => {
+describe('withLeadingSystemOnly', () => {
   it('returns the messages unchanged when every system message leads', () => {
     const messages: Message[] = [
       { role: 'system', content: 'Prompt.' },

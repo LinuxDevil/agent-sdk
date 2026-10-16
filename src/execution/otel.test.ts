@@ -161,7 +161,7 @@ describe('createOtelTraceExporter', () => {
     expect(childParentContext).not.toBe(rootParentContext);
   });
 
-  it('parents a span under an already-ended parent until the root ends (Eve MA-F3)', () => {
+  it('parents a span under an already-ended parent until the root ends', () => {
     const exporter = createOtelTraceExporter({ tracer: fake.tracer, metrics: false });
     exporter.onSpanStart(makeSpan({ id: 'root' }));
     exporter.onSpanStart(makeSpan({ id: 'task', parentId: 'root' }));
@@ -245,7 +245,7 @@ describe('createOtelTraceExporter', () => {
   });
 });
 
-describe('createOtelTraceExporter with queued background sub-agents (Eve MA-F3)', () => {
+describe('createOtelTraceExporter with queued background sub-agents', () => {
   it('keeps a queued background sub-agent in the lead trace', async () => {
     const call = (n: number) => ({
       name: 'task',
@@ -276,7 +276,7 @@ describe('createOtelTraceExporter with queued background sub-agents (Eve MA-F3)'
   });
 });
 
-describe('createOtelTraceExporter kind, status and array attributes (LOU-D9)', () => {
+describe('createOtelTraceExporter kind, status and array attributes', () => {
   it('maps span kind client/internal to the OTel SpanKind on start', () => {
     const fake = makeFakeTracer();
     const exporter = createOtelTraceExporter({ tracer: fake.tracer });
@@ -319,7 +319,7 @@ describe('createOtelTraceExporter kind, status and array attributes (LOU-D9)', (
   });
 });
 
-describe('createOtelTraceExporter GenAI metrics (LOU-D48)', () => {
+describe('createOtelTraceExporter GenAI metrics', () => {
   interface Recorded {
     name: string;
     value: number;

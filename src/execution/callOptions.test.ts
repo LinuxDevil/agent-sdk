@@ -1,5 +1,5 @@
 /**
- * Eve CORE-F13: a `send()` / `stream()` call's own `maxSteps` and
+ * A `send()` / `stream()` call's own `maxSteps` and
  * `instructions` (appended to the agent's), validated like createAgent's.
  */
 import { describe, expect, it } from 'vitest';
@@ -15,7 +15,7 @@ import type { MockRequest } from '../testing';
 const ping = defineTool({ name: 'ping', description: 'Ping', input: z.object({}), execute: async () => 'pong' });
 const systemOf = (messages: readonly Message[] | MockRequest['messages']) => (messages as readonly Message[]).filter((message) => message.role === 'system').map((message) => textOf(message));
 
-describe('per-call maxSteps (Eve CORE-F13)', () => {
+describe('per-call maxSteps', () => {
   it("a call's maxSteps replaces the agent's for that run only", async () => {
     const model = mockModel([{ toolCalls: [{ name: 'ping' }] }], { onExhausted: 'repeat-last' });
     const agent = createAgent({ provider: model, tools: [ping], maxSteps: 10 });
@@ -46,7 +46,7 @@ describe('per-call maxSteps (Eve CORE-F13)', () => {
   });
 });
 
-describe('per-call instructions (Eve CORE-F13)', () => {
+describe('per-call instructions', () => {
   it("are appended to the agent's system prompt on every call of the run, not stored in the transcript", async () => {
     const model = mockModel([{ toolCalls: [{ name: 'ping' }] }, 'Bonjour.']);
     const agent = createAgent({ provider: model, tools: [ping], instructions: 'You are terse.' });

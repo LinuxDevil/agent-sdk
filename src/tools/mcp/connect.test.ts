@@ -35,7 +35,7 @@ function warnLogger(): Logger & { warn: ReturnType<typeof vi.fn> } {
   return { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 }
 
-describe('connectMcp (LOU-Z4)', () => {
+describe('connectMcp', () => {
   it('connects a stdio server, namespaces its tools and calls them with the given env', async () => {
     const mcp = await connect({ files: stdio('hi:') });
     expect(Object.keys(mcp.tools)).toEqual(['files__echo', 'files__wipe']);
@@ -99,7 +99,7 @@ describe('connectMcp (LOU-Z4)', () => {
     );
   });
 
-  it('passes each server its own approval and keeps the annotations on the descriptor (LOU-Z5)', async () => {
+  it('passes each server its own approval and keeps the annotations on the descriptor', async () => {
     const mcp = await connect({
       strict: { ...stdio(), approval: 'always' },
       loose: { ...stdio(), approval: 'never' },
@@ -108,19 +108,19 @@ describe('connectMcp (LOU-Z4)', () => {
     });
     const asks = (name: string) => mcp.tools[name].needsApproval;
     expect([asks('strict__echo'), asks('loose__wipe'), asks('auto__echo'), asks('auto__wipe')]).toEqual([true, false, false, true]);
-    // Eve TOOLS-F11: by default every MCP tool asks, whatever its server's hints say.
+    // By default every MCP tool asks, whatever its server's hints say.
     expect([asks('plain__echo'), asks('plain__wipe')]).toEqual([true, true]);
     expect(mcp.tools.auto__echo.displayName).toBe('Echo');
     expect(mcp.tools.auto__echo.metadata).toEqual({ mcp: { annotations: { title: 'Echo', readOnlyHint: true }, server: 'auto', tool: 'echo' } });
     expect(mcp.tools.plain__echo.metadata?.mcp?.annotationsTrusted).toBe(false);
   });
 
-  it('timeoutMs on the server entry bounds each tool call (audit D4)', async () => {
+  it('timeoutMs on the server entry bounds each tool call', async () => {
     const mcp = await connect({ slow: { ...stdio(), env: { FIXTURE_DELAY_MS: '5000' }, timeoutMs: 100 } });
     await expect(callEcho(mcp, 'slow__echo', 'x')).rejects.toThrow(/timed out/i);
   });
 
-  it('a server that exits while starting fails with LOUSHO_MCP_START_FAILED, its exit code and its last stderr lines (audit D4)', async () => {
+  it('a server that exits while starting fails with LOUSHO_MCP_START_FAILED, its exit code and its last stderr lines', async () => {
     const error = (await connectMcp({ broken: { command: process.execPath, args: [failing], env: { FIXTURE_MODE: 'exit' }, stderr: 'capture' } }).catch(
       (e: unknown) => e
     )) as McpStartError;
@@ -134,7 +134,7 @@ describe('connectMcp (LOU-Z4)', () => {
     expect(error.message).toContain('npm error 404');
   });
 
-  it('connectTimeoutMs bounds the start of a server that never answers (audit D4)', async () => {
+  it('connectTimeoutMs bounds the start of a server that never answers', async () => {
     const started = Date.now();
     const error = (await connectMcp({
       mute: { command: process.execPath, args: [failing], env: { FIXTURE_MODE: 'silent' }, connectTimeoutMs: 200 },
@@ -144,18 +144,18 @@ describe('connectMcp (LOU-Z4)', () => {
     expect(Date.now() - started).toBeLessThan(5000);
   });
 
-  it('cwd sets the working directory of a stdio server (audit D4)', async () => {
+  it('cwd sets the working directory of a stdio server', async () => {
     const dir = fileURLToPath(new URL('./__fixtures__/', import.meta.url));
     const mcp = await connect({ files: { command: process.execPath, args: ['stdioServer.mjs'], cwd: dir } });
     await expect(callEcho(mcp, 'files__echo', 'x')).resolves.toMatchObject({ text: 'x' });
   });
 
-  it('tools.include / tools.exclude on the server entry filter its tools (audit D4)', async () => {
+  it('tools.include / tools.exclude on the server entry filter its tools', async () => {
     const mcp = await connect({ ro: { ...stdio(), tools: { exclude: ['wipe'] } }, only: { ...stdio(), tools: { include: ['wipe'] } } });
     expect(Object.keys(mcp.tools)).toEqual(['ro__echo', 'only__wipe']);
   });
 
-  it('N2: a server with deferLoading marks every one of its tools deferLoading; others are not', async () => {
+  it('a server with deferLoading marks every one of its tools deferLoading; others are not', async () => {
     const mcp = await connect({ deferred: { ...stdio(), deferLoading: true }, plain: stdio() });
     expect([mcp.tools.deferred__echo.deferLoading, mcp.tools.deferred__wipe.deferLoading]).toEqual([true, true]);
     expect([mcp.tools.plain__echo.deferLoading, mcp.tools.plain__wipe.deferLoading]).toEqual([undefined, undefined]);
@@ -186,7 +186,7 @@ describe('connectMcp (LOU-Z4)', () => {
   });
 });
 
-describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
+describe('createAgent({ mcpServers })', () => {
   it('connects on the first send() and runs an MCP tool', async () => {
     const model = mockModel([{ toolCalls: [{ name: 'files__echo', args: { text: 'ping' } }] }, 'done']);
     const agent = createAgent({ provider: model, mcpServers: { files: { ...stdio('mcp:'), approval: 'annotations' } } });
@@ -212,7 +212,7 @@ describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
     await expect(plain.close()).resolves.toBeUndefined();
   });
 
-  it('ready() after close() reconnects the servers (audit D4)', async () => {
+  it('ready() after close() reconnects the servers', async () => {
     const log = join(mkdtempSync(join(tmpdir(), 'lousho-mcp-')), 'starts.log');
     closers.push(async () => rmSync(dirname(log), { recursive: true, force: true }));
     const agent = createAgent({ provider: mockModel(['a']), mcpServers: { files: { ...stdio(), env: { FIXTURE_START_LOG: log } } } });
@@ -248,7 +248,7 @@ describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
     }
   });
 
-  it("Eve TOOLS-F11: by default a readOnlyHint MCP tool still pauses for approval", async () => {
+  it("by default a readOnlyHint MCP tool still pauses for approval", async () => {
     const agent = createAgent({
       provider: mockModel([{ toolCalls: [{ name: 'files__echo', args: { text: 'hi' } }] }, 'done']),
       mcpServers: { files: stdio() },
@@ -258,7 +258,7 @@ describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
     expect(result.finishReason).toBe('awaiting-approval');
   });
 
-  it("Eve TOOLS-F11: plan mode refuses a server's readOnlyHint tool unless approval is 'annotations'", async () => {
+  it("plan mode refuses a server's readOnlyHint tool unless approval is 'annotations'", async () => {
     const echo = { toolCalls: [{ name: 'files__echo', args: { text: 'hi' }, id: 'call_echo' }] };
     const run = async (approval?: 'annotations') => {
       const model = mockModel([echo, 'done']);
@@ -275,7 +275,7 @@ describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
     expect(await run('annotations')).toContain('hi');
   });
 
-  it('Eve TOOLS-F11: an MCP tool with the name of a local tool is refused (LOUSHO_CONFIG_INVALID)', async () => {
+  it('an MCP tool with the name of a local tool is refused (LOUSHO_CONFIG_INVALID)', async () => {
     let ran = false;
     const local = defineTool({
       name: 'files__wipe',
@@ -297,7 +297,7 @@ describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
     expect(ran).toBe(false);
   });
 
-  it('a destructive MCP tool pauses the run for approval; a readOnly one runs (LOU-Z5)', async () => {
+  it('a destructive MCP tool pauses the run for approval; a readOnly one runs', async () => {
     const wipe = { toolCalls: [{ name: 'files__wipe', args: { path: '/data' }, id: 'call_wipe' }] };
     const agent = createAgent({
       provider: mockModel([{ toolCalls: [{ name: 'files__echo', args: { text: 'hi' } }] }, wipe, 'wiped.']),
@@ -316,7 +316,7 @@ describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
     expect(JSON.stringify(done.messages)).toContain('wiped /data');
   });
 
-  it("approval: 'never' on the server entry lets the destructive tool run (LOU-Z5)", async () => {
+  it("approval: 'never' on the server entry lets the destructive tool run", async () => {
     const wipe = { toolCalls: [{ name: 'files__wipe', args: { path: '/tmp/x' } }] };
     const agent = createAgent({
       provider: mockModel([wipe, 'done']),
@@ -328,7 +328,7 @@ describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
     expect(JSON.stringify(result.messages)).toContain('wiped /tmp/x');
   });
 
-  it('an approval function sees the call arguments (audit D4)', async () => {
+  it('an approval function sees the call arguments', async () => {
     const wipe = (path: string, id: string) => ({ toolCalls: [{ name: 'files__wipe', args: { path }, id }] });
     const agent = createAgent({
       provider: mockModel([wipe('/tmp/x', 'call_tmp'), wipe('/data', 'call_data'), 'done']),
@@ -342,7 +342,7 @@ describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
     expect(pending).toMatchObject({ toolName: 'files__wipe', args: { path: '/data' } });
   });
 
-  it("N2: a deferLoading server's tools are withheld until tool_search finds them; the prompt names the server", async () => {
+  it("a deferLoading server's tools are withheld until tool_search finds them; the prompt names the server", async () => {
     const model = mockModel([{ toolCalls: [{ name: 'tool_search', args: { query: 'echo text' }, id: 'call_search' }] }, 'done']);
     const agent = createAgent({ provider: model, mcpServers: { files: { ...stdio(), deferLoading: true } }, toolSearch: { thresholdPercent: 0 } });
     closers.push(() => agent.close());
@@ -362,7 +362,7 @@ describe('createAgent({ mcpServers }) (LOU-Z4)', () => {
   });
 });
 
-describe('MCP pagination, tools/list_changed and crashes (Eve TOOLS-F18)', () => {
+describe('MCP pagination, tools/list_changed and crashes', () => {
   const edgeFixture = fileURLToPath(new URL('./__fixtures__/edgeServer.mjs', import.meta.url));
   const edge = { command: process.execPath, args: [edgeFixture], approval: 'never' as const, stderr: 'capture' as const };
   const call = (mcp: McpConnections, name: string) => mcp.tools[name].tool.execute!({}, { toolCallId: 'c1', messages: [] });

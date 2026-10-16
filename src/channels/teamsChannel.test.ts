@@ -1,5 +1,5 @@
 /**
- * N11c: `teamsChannel()` - Bot Framework JWT verification (a key pair made in
+ * `teamsChannel()` - Bot Framework JWT verification (a key pair made in
  * the test), personal chats vs channel mentions, Markdown replies split at
  * 25,000 characters, Adaptive Card approvals bound to their conversation, and a
  * pending question or approval across a restart. A fake Bot Framework service
@@ -148,7 +148,7 @@ async function pause(t: Setup, extra: Partial<TeamsActivity> = {}) {
   return cardOf(t.calls[0]).actions?.[0].data as Record<string, string>;
 }
 
-describe('teamsChannel (N11c)', () => {
+describe('teamsChannel', () => {
   it('needs an app id and password', () => {
     expect(() => teamsChannel({ appId: '', appPassword: APP_PASSWORD })).toThrow(/appId/);
     expect(() => teamsChannel({ appId: APP_ID, appPassword: '' })).toThrow(/appPassword/);
@@ -225,7 +225,7 @@ describe('teamsChannel (N11c)', () => {
     expect(t.userTexts(1)).toEqual(['I am Sam', 'Who am I?']);
   });
 
-  it('runs the turn with the sender as its principal, which a memory scope sees (N10a)', async () => {
+  it('runs the turn with the sender as its principal, which a memory scope sees', async () => {
     const scopes: MemoryScopeContext[] = [];
     const notes = defineMemory({ name: 'notes', scope: (ctx) => (scopes.push(ctx), ctx.principal && `teams:${ctx.principal.id}`), provider: inMemoryMemory() });
     const t = setup(['Hi', 'Hi again'], { memory: [notes] });
@@ -510,7 +510,7 @@ describe('teamsChannel (N11c)', () => {
     expect(JSON.stringify(t.model.calls[1].messages)).toContain('Lisbon');
   });
 
-  describe('after a restart: a second channel over the same durable stores (M10a)', () => {
+  describe('after a restart: a second channel over the same durable stores', () => {
     it('a pending ask_question survives a restart', async () => {
       const stores = durableStores();
       const agentOptions = { askQuestion: true, approvalStore: stores.approvalStore };
@@ -620,7 +620,7 @@ describe('teamsChannel (N11c)', () => {
 });
 
 
-describe('teamsChannel sign-in (Eve TOOLS-F3)', () => {
+describe('teamsChannel sign-in', () => {
   const signInSetup = () => {
     const { tool } = listReposTool(githubProvider(fakeOAuthServer()));
     return setup([{ toolCalls: [{ name: 'list_repos', id: 'call_1', args: {} }] }, 'done'], { tools: [tool], store: memoryStore() });

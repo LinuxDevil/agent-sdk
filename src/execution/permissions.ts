@@ -1,11 +1,11 @@
 /**
- * LOU-X2: declarative permission policies. An ordered list of
+ * Declarative permission policies. An ordered list of
  * {@link PermissionRule}s is checked for every tool call, after argument
  * validation and the `preToolCall` hooks and before the tool's own
  * `needsApproval`: the first rule that matches decides whether the call runs
  * (`allow`), is refused (`deny`) or waits for a human (`ask`). No match keeps
  * the tool's own behaviour. A tool's own `needsApproval` deny still denies a
- * call an `allow` or `ask` rule matched (LOU-X8 follow-up).
+ * call an `allow` or `ask` rule matched.
  */
 
 import type { ExecuteOptions } from './AgentExecutor';
@@ -31,12 +31,12 @@ export interface PermissionContext {
   toolName: string;
   toolCallId: string;
   sessionId?: string;
-  /** N10b: who the run acts for (docs/auth.md), frozen; absent for a run without one. */
+  /** Who the run acts for (docs/auth.md), frozen; absent for a run without one. */
   principal?: Readonly<Principal>;
 }
 
 /**
- * N10b: the second argument of `onPermissionDecision`: who the run acts for.
+ * The second argument of `onPermissionDecision`: who the run acts for.
  * Kept out of the entry, which is also streamed as the `permission.decision`
  * event, so events and traces carry no caller identity.
  */
@@ -85,17 +85,17 @@ export interface PermissionDecisionEntry {
   /**
    * The rule that decided (its position in `permissions`). Absent for
    * `'default'`, and for a `'deny'` that came from the tool's own
-   * `needsApproval` (LOU-X8; its reason is then `reason`).
+   * `needsApproval` (its reason is then `reason`).
    */
   rule?: { index: number; reason?: string };
-  /** LOU-X8: the reason the tool's `needsApproval` (or a `preToolCall` hook) gave when it denied the call. */
+  /** The reason the tool's `needsApproval` (or a `preToolCall` hook) gave when it denied the call. */
   reason?: string;
-  /** LOU-X3: the `preToolCall` hook that denied the call. */
+  /** The `preToolCall` hook that denied the call. */
   hook?: string;
   /** The call's arguments; omitted when the run sets `redactContent`. */
   args?: Record<string, unknown>;
   /**
-   * N4: the permission mode, set when it changed the call's outcome - `'plan'`
+   * The permission mode, set when it changed the call's outcome - `'plan'`
    * or `'dontAsk'` denied it (`decision: 'deny'`), `'acceptEdits'` ran a file
    * edit without asking (`decision: 'allow'`).
    */
@@ -105,14 +105,14 @@ export interface PermissionDecisionEntry {
 }
 
 /**
- * N4: a named preset over the permission rules and `needsApproval`
+ * A named preset over the permission rules and `needsApproval`
  * (docs/permission-modes.md). `'default'` changes nothing; `'plan'` refuses
  * every tool that is not read-only; `'acceptEdits'` runs file edits that would
  * ask; `'dontAsk'` refuses every call that would ask.
  */
 export type PermissionMode = 'default' | 'plan' | 'acceptEdits' | 'dontAsk';
 
-/** N4: a session's permission mode was switched (`session.setPermissionMode()`); see `onPermissionModeChange`. */
+/** A session's permission mode was switched (`session.setPermissionMode()`); see `onPermissionModeChange`. */
 export interface PermissionModeChange {
   sessionId: string;
   from: PermissionMode;
@@ -124,7 +124,7 @@ export interface PermissionModeChange {
 /** Permission options of `createAgent()` and `AgentExecutor.execute()`. */
 export interface PermissionOptions {
   /**
-   * Permission rules (LOU-X2), checked in order before each tool's
+   * Permission rules, checked in order before each tool's
    * `needsApproval`. The first match decides: `allow` runs the call without
    * approval, `deny` gives the model a `kind: 'denied'` tool error with the
    * rule's `reason`, `ask` pauses the run for approval (or asks `approve`).
@@ -139,12 +139,12 @@ export interface PermissionOptions {
    */
   permissions?: readonly PermissionRule[];
   /**
-   * Called with an audit entry for every tool call's permission decision
-   * (LOU-X2); N10b: and, as the second argument, who the run acts for.
+   * Called with an audit entry for every tool call's permission decision;
+   * And, as the second argument, who the run acts for.
    */
   onPermissionDecision?: (entry: PermissionDecisionEntry, context: PermissionAuditContext) => void;
   /**
-   * N4: named preset over `permissions` and `needsApproval`. Default 'default'.
+   * Named preset over `permissions` and `needsApproval`. Default 'default'.
    * A function is read at every tool call, so a mode switched mid-run applies
    * to the next call. Sub-agents inherit it (see docs/permission-modes.md).
    *
@@ -157,7 +157,7 @@ export interface PermissionOptions {
    */
   permissionMode?: PermissionMode | (() => PermissionMode);
   /**
-   * N4: the audit log of mode switches, called by `session.setPermissionMode()`.
+   * The audit log of mode switches, called by `session.setPermissionMode()`.
    * Each tool call's own decision still goes to `onPermissionDecision`.
    */
   onPermissionModeChange?: (change: PermissionModeChange) => void;
@@ -165,7 +165,7 @@ export interface PermissionOptions {
 
 const PERMISSION_MODES: ReadonlySet<string> = new Set<PermissionMode>(['default', 'plan', 'acceptEdits', 'dontAsk']);
 
-/** N4: throws `LOUSHO_CONFIG_INVALID` unless `mode` is a {@link PermissionMode}. */
+/** Throws `LOUSHO_CONFIG_INVALID` unless `mode` is a {@link PermissionMode}. */
 export function assertPermissionMode(mode: unknown, where: string): asserts mode is PermissionMode {
   if (typeof mode !== 'string' || !PERMISSION_MODES.has(mode)) {
     throw new SDKError(
@@ -175,18 +175,18 @@ export function assertPermissionMode(mode: unknown, where: string): asserts mode
   }
 }
 
-/** N4: the run's permission mode now (a function is called; an unknown value throws). */
+/** The run's permission mode now (a function is called; an unknown value throws). */
 export function permissionModeOf(runtime: Pick<PermissionOptions, 'permissionMode'>): PermissionMode {
   const mode = typeof runtime.permissionMode === 'function' ? runtime.permissionMode() : (runtime.permissionMode ?? 'default');
   assertPermissionMode(mode, 'permissionMode');
   return mode;
 }
 
-/** N4: why plan mode refused a call (the model gets it as the tool error's reason). */
+/** Why plan mode refused a call (the model gets it as the tool error's reason). */
 export const PLAN_MODE_REASON = 'The agent is in plan mode: it may read but not change anything. Describe the change instead.';
-/** N4: why dontAsk mode refused a call. */
+/** Why dontAsk mode refused a call. */
 export const DONT_ASK_REASON = 'The agent is in dontAsk mode: calls that need approval are refused.';
-/** N4: the system-prompt paragraph of a run that starts in plan mode. */
+/** The system-prompt paragraph of a run that starts in plan mode. */
 export const PLAN_MODE_INSTRUCTION =
   'You are in plan mode: you may read but not change anything. Do not call tools that change files or anything else; describe the change instead.';
 
@@ -194,7 +194,7 @@ export const PLAN_MODE_INSTRUCTION =
 const planModeTools = new WeakSet<object>();
 
 /**
- * N4: marks a built-in tool as usable in plan mode although it is not
+ * Marks a built-in tool as usable in plan mode although it is not
  * read-only by itself: `ask_question` (it only asks) and `task` (its
  * sub-agent inherits plan mode). Not for user tools: they declare
  * `annotations: { readOnlyHint: true }`.
@@ -225,8 +225,8 @@ export function hasEnforcedApproval(tool: ToolDescriptor | undefined): boolean {
 }
 
 /**
- * N4: plan mode lets a tool run when it declares `readOnlyHint: true` or is a built-in marked by {@link allowInPlanMode}.
- * Eve TOOLS-F11: an MCP server's own hint counts only when its `approval` is `'annotations'`.
+ * Plan mode lets a tool run when it declares `readOnlyHint: true` or is a built-in marked by {@link allowInPlanMode}.
+ * An MCP server's own hint counts only when its `approval` is `'annotations'`.
  */
 function isReadOnlyTool(tool: ToolDescriptor): boolean {
   const mcp = tool.metadata?.mcp;
@@ -234,7 +234,7 @@ function isReadOnlyTool(tool: ToolDescriptor): boolean {
 }
 
 /**
- * N4: what the permission mode does with a call that rules, guardrails and
+ * What the permission mode does with a call that rules, guardrails and
  * `needsApproval` did not deny: `deny` it (with the reason), `approve` it
  * (it then runs without asking), or `undefined` for no change. `tool` is
  * undefined for an unknown tool, which keeps its normal not-found error.
@@ -251,11 +251,11 @@ export function permissionModeVerdict(
   return undefined;
 }
 
-/** N1a x N4: the hosted tool types that only read (`codeInterpreter()` runs code; `hostedTool()` is unknown). */
+/** The hosted tool types that only read (`codeInterpreter()` runs code; `hostedTool()` is unknown). */
 const READ_ONLY_HOSTED_TYPES: ReadonlySet<HostedTool['type']> = new Set<HostedTool['type']>(['web_search', 'file_search']);
 
 /**
- * N1a x N4: the hosted tools a model call may send under `mode`. The provider
+ * The hosted tools a model call may send under `mode`. The provider
  * runs a hosted tool inside the request, so no per-call check can stop it:
  * plan mode leaves out every hosted tool that is not read-only (`webSearch()`
  * and `fileSearch()` stay). The other modes send them all (a hosted call never
@@ -267,7 +267,7 @@ export function hostedToolsInMode(hostedTools: readonly HostedTool[] | undefined
 }
 
 /**
- * N4: a sub-agent's mode: the lead's while the lead's is not `'default'`,
+ * A sub-agent's mode: the lead's while the lead's is not `'default'`,
  * else the sub-agent's own - except that a sub-agent whose own mode is
  * `'plan'` stays in plan mode whatever the lead's is. A function, so a switch
  * of the lead's mode applies to the sub-agent's next tool call too.
@@ -382,7 +382,7 @@ function matchesTool(matcher: PermissionToolMatcher, toolName: string): boolean 
 /** The run options a permission check reads. */
 export type PermissionRuntime = Pick<ExecuteOptions, 'permissions' | 'onPermissionDecision' | 'redactContent' | 'permissionMode' | 'principal'>;
 
-/** Whether the run keeps an audit log: it sets `permissions` or `onPermissionDecision`, or (N4) a mode other than `'default'`. */
+/** Whether the run keeps an audit log: it sets `permissions` or `onPermissionDecision`, or a mode other than `'default'`. */
 function audited(runtime: PermissionRuntime, mode: PermissionMode): boolean {
   return runtime.permissions !== undefined || runtime.onPermissionDecision !== undefined || mode !== 'default';
 }
@@ -402,9 +402,9 @@ async function firstMatch(
 /**
  * Checks `call` against the run's permission rules and returns the audit
  * entry, which the caller reports with {@link reportPermission} once the
- * call is decided (LOU-X8: a `'default'` may become the tool's own `'deny'`).
+ * call is decided (a `'default'` may become the tool's own `'deny'`).
  * Returns undefined - nothing checked - when the run sets neither
- * `permissions` nor `onPermissionDecision` and `mode` (N4, the run's mode
+ * `permissions` nor `onPermissionDecision` and `mode` (the run's mode
  * for this call) is `'default'`. A throwing `when` propagates.
  */
 export async function checkPermission(
@@ -431,7 +431,7 @@ function decisionEntry(
   return { toolName, toolCallId, decision, ...(!redactContent && { args }), at: new Date().toISOString() };
 }
 
-/** LOU-X3: audits a call a `preToolCall` hook denied, when the run keeps an audit log. */
+/** Audits a call a `preToolCall` hook denied, when the run keeps an audit log. */
 export function reportHookDenial(
   runtime: PermissionRuntime,
   call: PermissionContext & { args: Record<string, unknown> },
@@ -455,7 +455,7 @@ export function reportApprovalExpiry(runtime: PermissionRuntime, call: Permissio
 }
 
 /**
- * N4: plan mode refuses a call a human approved before the switch to plan
+ * Plan mode refuses a call a human approved before the switch to plan
  * mode (it is resumed by `resumeAfterApproval()`) when its tool is not
  * read-only. Returns the reason, after auditing the denial; undefined when
  * the call may run.

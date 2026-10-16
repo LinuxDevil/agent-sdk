@@ -1,5 +1,5 @@
 /**
- * N2: tool search. Tools marked `deferLoading` (by `defineTool()` or by an MCP
+ * Tool search. Tools marked `deferLoading` (by `defineTool()` or by an MCP
  * server with `deferLoading: true`) are not sent to the model until it finds
  * them with the built-in `tool_search` tool.
  *
@@ -91,7 +91,7 @@ function isDeferred(name: string, descriptor: ToolDescriptor | undefined): boole
   return descriptor?.deferLoading === true && !NEVER_DEFERRED.has(name);
 }
 
-/** A tool's input schema as JSON Schema, for the token estimate (N14: and `run_code`'s signatures); `{}` when it cannot be converted. */
+/** A tool's input schema as JSON Schema, for the token estimate (and `run_code`'s signatures); `{}` when it cannot be converted. */
 export function jsonSchemaOf(parameters: unknown): unknown {
   try {
     return schemaToJsonSchema(parameters) ?? zodSchema(parameters as never).jsonSchema;
@@ -155,7 +155,7 @@ function createToolSearchTool(tools: readonly SearchableTool[], deferral: ToolDe
       'Search for more tools by what they do. Returns the matching tools (name and description); call them from your next step. ' +
       'Use a few words describing the capability you need, e.g. "currency conversion".',
     input: z.object({ query: z.string().describe('A few words describing the capability you need') }),
-    // N4: searching changes nothing, so plan mode can use it.
+    // Searching changes nothing, so plan mode can use it.
     annotations: { readOnlyHint: true, destructiveHint: false },
     execute: async ({ query }, ctx): Promise<ToolSearchResult> => {
       const ranked = await rank(query);

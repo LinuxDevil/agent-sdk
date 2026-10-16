@@ -1,6 +1,6 @@
 /**
  * The install-time check of a registry item against its permission manifest
- * (M7a): before `lousho add` writes anything, every JavaScript / TypeScript file
+ *: before `lousho add` writes anything, every JavaScript / TypeScript file
  * of the item is scanned, comments stripped, for what it visibly reaches for
  * (commands, the filesystem, the network, environment variables) and compared
  * with what `permissions` declares. It is a check of the code as written, not a

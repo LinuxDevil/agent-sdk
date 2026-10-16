@@ -1,5 +1,5 @@
 /**
- * LOU-Y1: a child agent run (the `task` tool) inherits the parent run's
+ * A child agent run (the `task` tool) inherits the parent run's
  * runtime.
  */
 import { describe, it, expect } from 'vitest';
@@ -84,7 +84,7 @@ function run(options: Omit<ExecuteOptions, 'agent' | 'input'> & { input?: string
   return AgentExecutor.execute({ agent: lead, input: 'go', ...options });
 }
 
-describe('sub-agents inherit the parent runtime (LOU-Y1)', () => {
+describe('sub-agents inherit the parent runtime', () => {
   it("runs the parent's hooks on the child's model and tool calls, tagged with ctx.subagent", async () => {
     const seen: string[] = [];
     const subagentsSeenBySecondHook: unknown[] = [];
@@ -286,7 +286,7 @@ describe('sub-agents inherit the parent runtime (LOU-Y1)', () => {
 
 });
 
-describe('approval inside a sub-agent (LOU-Y1)', () => {
+describe('approval inside a sub-agent', () => {
   it('pauses the whole run on the child call, and resume runs it exactly once and finishes both runs', async () => {
     const approvals = memoryApprovals();
     const { agent: researcher, model: childModel, sent } = approvingChild('researcher', [
@@ -461,7 +461,7 @@ describe('approval inside a sub-agent (LOU-Y1)', () => {
   });
 });
 
-describe('durable sessions with sub-agents (LOU-U7/U8 with LOU-Y1)', () => {
+describe('durable sessions with sub-agents', () => {
   function checkpoints() {
     const data = new Map<string, string>();
     const store = new KVCheckpointStore({
@@ -535,7 +535,7 @@ describe('durable sessions with sub-agents (LOU-U7/U8 with LOU-Y1)', () => {
     expect(await checkpointStore.load('s-2')).toMatchObject({ status: 'finished' });
   });
 
-  it('a task call of a step paused on an approval runs at once; its sub-agent pause follows the decision (Eve TOOLS-F12)', async () => {
+  it('a task call of a step paused on an approval runs at once; its sub-agent pause follows the decision', async () => {
     const approvals = memoryApprovals();
     const confirmed: string[] = [];
     const confirm = defineTool({

@@ -1,5 +1,5 @@
 /**
- * C8: `agent.recover()` - a background loop that finishes the runs a crash left
+ * `agent.recover()` - a background loop that finishes the runs a crash left
  * unfinished, so a durable agent does not need the caller to poll
  * `agent.pending()` and call `agent.resume()` by hand.
  *

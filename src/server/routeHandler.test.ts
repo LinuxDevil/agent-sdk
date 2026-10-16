@@ -31,7 +31,7 @@ async function frames(response: Response): Promise<Array<Record<string, unknown>
 const routes = (replies: Parameters<typeof mockModel>[0], options?: RouteHandlerOptions) =>
   createRouteHandler(createAgent({ provider: mockModel(replies), tools: [deploy], store: memoryStore() }), options);
 
-describe('createRouteHandler (LOU-P4)', () => {
+describe('createRouteHandler', () => {
   it('streams a chat turn through POST and serves the transcript through GET', async () => {
     const { POST, GET } = routes(['Hello there.']);
     const response = await POST(post('/api/agent/chat', { sessionId: 's1', input: 'hi' }));
@@ -52,7 +52,7 @@ describe('createRouteHandler (LOU-P4)', () => {
     expect(continued.at(-1)).toMatchObject({ finishReason: 'stop', text: 'Deployed.' });
   });
 
-  describe('a step paused on several calls (Eve TOOLS-F12)', () => {
+  describe('a step paused on several calls', () => {
     const release = defineTool({ name: 'release', description: 'Releases', input: z.object({}), needsApproval: true, execute: () => 'released' });
     const twoCalls = { toolCalls: [{ name: 'deploy', id: 'c1' }, { name: 'release', id: 'c2' }] };
 
@@ -99,7 +99,7 @@ describe('createRouteHandler (LOU-P4)', () => {
     expect(await (await handler(get('/api/agent/health'))).text()).toBe('ok');
   });
 
-  it("refuses an empty-string token at construction instead of locking every route (Eve CH-F16)", () => {
+  it("refuses an empty-string token at construction instead of locking every route", () => {
     expect(() => routes(['ok'], { auth: '' })).toThrow(expect.objectContaining({ code: 'LOUSHO_AUTH_CONFIG_INVALID' }));
   });
 
@@ -130,7 +130,7 @@ describe('createRouteHandler (LOU-P4)', () => {
     expect(seen).toEqual([{ id: 'anonymous', type: 'user', authenticator: 'custom' }]);
   });
 
-  describe('auth lists (N10a)', () => {
+  describe('auth lists', () => {
     const scopes: MemoryScopeContext[] = [];
     const seen: Array<Principal | undefined> = [];
     const agentWithPrincipal = (replies: string[]) =>
@@ -212,7 +212,7 @@ describe('createRouteHandler (LOU-P4)', () => {
     expect((await handler(get('/v1/bot/nope'))).status).toBe(404);
   });
 
-  describe('session ownership and approval decisions (N10b)', () => {
+  describe('session ownership and approval decisions', () => {
     /** `Bearer u-<id>` authenticates the user principal `{ id, type: 'user', authenticator: 'test' }`. */
     const userAuth: AuthFn = async (request) => {
       const id = /^Bearer u-(.+)$/.exec(request.headers.get('authorization') ?? '')?.[1];
@@ -362,7 +362,7 @@ describe('createRouteHandler (LOU-P4)', () => {
       expect((await routes(['ok']).handler(post('/api/agent/ui', { messages: [userMessage('hi')] }))).status).toBe(404);
     });
 
-    it('answers 400 for an invalid chat id, like POST /chat, before authorizeSession sees it (Eve CH-F11)', async () => {
+    it('answers 400 for an invalid chat id, like POST /chat, before authorizeSession sees it', async () => {
       const authorizeSession = vi.fn(() => true);
       const { handler } = routes(['ok'], { uiMessageStream: true, authorizeSession });
       const ui = await handler(post('/api/agent/ui', { id: 'bad/id!', messages: [userMessage('hi')] }));

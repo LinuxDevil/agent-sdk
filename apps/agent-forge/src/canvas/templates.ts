@@ -12,7 +12,7 @@ export interface AgentTemplate {
 }
 
 /**
- * Seed templates for the "New agent" flow (LOU-M3). `support-bot` mirrors
+ * Seed templates for the "New agent" flow. `support-bot` mirrors
  * the shape (and prompt) of this SDK's own examples/support-bot/index.ts,
  * extended with a trigger and a tool node so it demonstrates the full
  * trigger -> llm -> tool -> output pipeline shape on the canvas - the
@@ -47,7 +47,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
   },
 ];
 
-/** Eve DUI-F21: `name` (the id typed in "+ New agent") replaces the template's own spec name. */
+/** `name` (the id typed in "+ New agent") replaces the template's own spec name. */
 export function graphFromTemplate(id: TemplateId, name?: string): AgentGraphSpec {
   const template = AGENT_TEMPLATES.find((t) => t.id === id) ?? AGENT_TEMPLATES[0];
   return specToGraph(name ? { ...template.spec, name } : template.spec);

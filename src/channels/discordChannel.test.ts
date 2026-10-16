@@ -1,5 +1,5 @@
 /**
- * LOU-P6: `discordChannel()` - Ed25519 signatures (a real key pair, real
+ * `discordChannel()` - Ed25519 signatures (a real key pair, real
  * signatures), PING, a session per channel/thread, a deferred ack then an
  * edited reply, long-reply splitting and approvals as buttons. A fake `fetch`
  * stands in for the Discord API: no network.
@@ -97,7 +97,7 @@ function setup(responses: Parameters<typeof mockModel>[0], agentOptions: Partial
   return { ...discord, model, userTexts, send: (payload: unknown, options?: SendOptions) => send(handler, discord.log, payload, options) };
 }
 
-describe('discordChannel (LOU-P6)', () => {
+describe('discordChannel', () => {
   it('verifies Ed25519 signatures (401 when bad or missing) and answers PING with PONG', async () => {
     const t = setup(['never']);
 
@@ -110,7 +110,7 @@ describe('discordChannel (LOU-P6)', () => {
     expect(() => discordChannel({ publicKey, applicationId: '' })).toThrow(/applicationId/);
   });
 
-  it('rejects a validly signed request whose timestamp is more than five minutes old or ahead (Eve CH-F13)', async () => {
+  it('rejects a validly signed request whose timestamp is more than five minutes old or ahead', async () => {
     const t = setup(['never']);
     const now = Math.floor(Date.now() / 1000);
     expect((await t.send({ type: 1 }, { timestamp: now - 600 })).status).toBe(401);
@@ -138,7 +138,7 @@ describe('discordChannel (LOU-P6)', () => {
     expect(t.userTexts(2)).toEqual(['Who am I?']);
   });
 
-  it('runs the turn with the command sender as its principal (N10a)', async () => {
+  it('runs the turn with the command sender as its principal', async () => {
     const seen: unknown[] = [];
     const t = setup(['ok'], { instructions: ({ principal }) => (seen.push(principal), 'x') });
     await t.send(command('hello'));
@@ -280,7 +280,7 @@ describe('discordChannel (LOU-P6)', () => {
     expect(JSON.stringify(t.model.calls[1].messages)).toContain('Lisbon');
   });
 
-  describe('after a restart: a second channel over the same durable stores (M10a)', () => {
+  describe('after a restart: a second channel over the same durable stores', () => {
     const ask = { toolCalls: [{ name: 'ask_question', args: { question: 'Which city?' }, id: 'call_q' }] };
 
     it('a pending ask_question survives a restart', async () => {
@@ -389,7 +389,7 @@ describe('discordChannel (LOU-P6)', () => {
   });
 });
 
-describe('discordChannel sign-in (N9b)', () => {
+describe('discordChannel sign-in', () => {
   it('sends the sign-in link as an ephemeral follow-up with no buttons, and continues after the callback', async () => {
     const discord = fakeDiscord();
     const { tool, executions } = listReposTool(githubProvider(fakeOAuthServer()));

@@ -4,7 +4,7 @@ import { createAgent, type SimpleAgent } from '../createAgent';
 import type { ExecutionResult } from './AgentExecutor';
 import { mockModel } from '../testing';
 
-describe('createAgent({ output }) types (LOU-V4)', () => {
+describe('createAgent({ output }) types', () => {
   it('types result.object as z.output of the schema', () => {
     const output = z.object({ city: z.string(), tempC: z.number().default(0), at: z.string().transform((s) => new Date(s)) });
     const agent = createAgent({ provider: mockModel([]), output });

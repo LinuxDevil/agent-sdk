@@ -1,5 +1,5 @@
 /**
- * Usage and cost accounting types (LOU-V5).
+ * Usage and cost accounting types.
  *
  * `Usage` is the one normalized shape for "tokens spent"; `RunUsage` is the
  * running total an `ExecutionResult` carries. Providers report the 'ai' SDK's
@@ -95,14 +95,14 @@ export interface RunUsage {
   /** Present when the run delegated to child agents. */
   delegated?: DelegatedUsage;
   /**
-   * N1a: hosted tool calls the provider ran (`webSearch()` and the like), per
+   * Hosted tool calls the provider ran (`webSearch()` and the like), per
    * tool name; absent when there were none. Their fees are billed by the
    * provider and are not in `costUsd`.
    */
   hostedToolCalls?: Partial<Record<string, number>>;
-  /** @deprecated Alias of `inputTokens`, kept for code written before LOU-V5. */
+  /** @deprecated Alias of `inputTokens`, kept for code written before. */
   promptTokens: number;
-  /** @deprecated Alias of `outputTokens`, kept for code written before LOU-V5. */
+  /** @deprecated Alias of `outputTokens`, kept for code written before. */
   completionTokens: number;
 }
 
@@ -148,7 +148,7 @@ export function normalizeUsage(raw: ProviderUsage | undefined): Usage | undefine
 }
 
 function formatCost(costUsd: number): string {
-  // Eve CORE-F17: a tiny price keeps two significant digits instead of rounding to `$0.0000`.
+  // A tiny price keeps two significant digits instead of rounding to `$0.0000`.
   if (costUsd > 0 && costUsd < 0.0001) return `$${costUsd.toFixed(Math.min(20, 1 - Math.floor(Math.log10(costUsd))))}`;
   return `$${costUsd.toFixed(costUsd >= 1 ? 2 : 4)}`;
 }

@@ -9,7 +9,7 @@ import type { AgentInput } from './providers/content';
 const provider = createMockProvider();
 const lookup = defineTool({ name: 'lookup', description: 'Looks up', input: z.object({ q: z.string() }), execute: async ({ q }) => q });
 
-describe('createAgent dynamic config types (LOU-V15)', () => {
+describe('createAgent dynamic config types', () => {
   it('accepts model, instructions, prompt and tools as functions of the run', () => {
     createAgent({
       model: ({ metadata }) => (metadata?.plan === 'pro' ? 'openai/gpt-4o' : 'openai/gpt-4o-mini'),

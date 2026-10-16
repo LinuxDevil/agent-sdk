@@ -55,7 +55,7 @@ function waitingChild(tool: ReturnType<typeof gate>['tool'], answer = 'answer') 
   return createAgent({ provider: mockModel([turn], { onExhausted: 'repeat-last' }), tools: [tool], description: 'Researches' });
 }
 
-describe('background sub-agents (LOU-Y4)', () => {
+describe('background sub-agents', () => {
   it('returns a taskId at once; agent_status and agent_await report the answer', async () => {
     const { tool, release } = gate();
     const researcher = waitingChild(tool, 'Paris');
@@ -143,7 +143,7 @@ describe('background sub-agents (LOU-Y4)', () => {
     await aborted;
   });
 
-  it('reports a sub-agent paused for approval as awaiting-approval, with its approvalId (without agent_await, M4)', async () => {
+  it('reports a sub-agent paused for approval as awaiting-approval, with its approvalId (without agent_await)', async () => {
     let ran = false;
     let asked!: () => void;
     const approvalAsked = new Promise<void>((resolve) => (asked = resolve));
@@ -211,7 +211,7 @@ describe('background sub-agents (LOU-Y4)', () => {
   });
 });
 
-describe('background sub-agents at the end of the lead run (LOU-Y4.2)', () => {
+describe('background sub-agents at the end of the lead run', () => {
   const statuses = (tasks: readonly { status: string }[] | undefined) => tasks?.map((t) => t.status);
 
   it('cancels queued and running background sub-agents when the lead finishes, before the run resolves', async () => {
@@ -258,7 +258,7 @@ describe('background sub-agents at the end of the lead run (LOU-Y4.2)', () => {
     expect(result.backgroundTasks).toEqual([{ taskId: 'task_1', agent: 'researcher', status: 'done', elapsedMs: expect.any(Number) }]);
   });
 
-  it("rolls a background child's cost up to the lead's invoke_agent span (Eve MA-F2)", async () => {
+  it("rolls a background child's cost up to the lead's invoke_agent span", async () => {
     const MODEL = 'openai/gpt-4o-mini';
     const ended: Span[] = [];
     const exporter = { onSpanStart: () => {}, onSpanEnd: (span: Span) => void ended.push({ ...span }) };

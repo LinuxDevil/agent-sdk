@@ -1,5 +1,5 @@
 /**
- * N11b: `githubChannel()` - webhook signatures, issue / pull-request / review
+ * `githubChannel()` - webhook signatures, issue / pull-request / review
  * comments as sessions, replies as comments (split at 60,000 characters),
  * `/approve` and `/deny` approvals with the default "OWNER, MEMBER or
  * COLLABORATOR" rule, and a pending question across a restart. A fake GitHub
@@ -130,8 +130,8 @@ async function pause(t: ReturnType<typeof setup>, options: CommentOptions = {}) 
   return ID.exec(t.calls[0].body)?.[1] as string;
 }
 
-describe('githubChannel (N11b)', () => {
-  it('runs a redelivered webhook (same X-GitHub-Delivery) once (Eve CH-F8)', async () => {
+describe('githubChannel', () => {
+  it('runs a redelivered webhook (same X-GitHub-Delivery) once', async () => {
     const t = setup(['Hello', 'Again']);
     const body = issueComment('@my-agent hi');
 
@@ -217,7 +217,7 @@ describe('githubChannel (N11b)', () => {
     expect(t.calls[0].headers).toMatchObject({ accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', 'user-agent': 'lousho' });
   });
 
-  it('runs the turn with the commenter as its principal, which a memory scope sees (N10a)', async () => {
+  it('runs the turn with the commenter as its principal, which a memory scope sees', async () => {
     const scopes: MemoryScopeContext[] = [];
     const notes = defineMemory({ name: 'notes', scope: (ctx) => (scopes.push(ctx), ctx.principal && `github:${ctx.principal.id}`), provider: inMemoryMemory() });
     const t = setup(['Hi'], { memory: [notes] });
@@ -533,7 +533,7 @@ describe('githubChannel (N11b)', () => {
       expect(t.calls).toHaveLength(posts);
     });
 
-    it('a made-up id gets no reply and no "Approved by" confirmation, whoever sends it (Eve E17 / F5)', async () => {
+    it('a made-up id gets no reply and no "Approved by" confirmation, whoever sends it', async () => {
       const onError = vi.fn();
       const execute = vi.fn(async ({ to }: { to: string }) => `sent to ${to}`);
       const t = setup([emailCall], { tools: [emailTool(execute)] }, { channel: { onError } });

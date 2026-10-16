@@ -1,8 +1,8 @@
 /**
  * `lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge]`
- * - run eval files under vitest and report the results (LOU-D8).
- * `--record` / `--replay` / `--drift` run every case through a cassette (LOU-D46, src/evals/cassettes.ts).
- * `--url <base> [--token t]` runs the cases against a deployed agent instead (LOU-D47, src/evals/remoteTarget.ts).
+ * - run eval files under vitest and report the results.
+ * `--record` / `--replay` / `--drift` run every case through a cassette (src/evals/cassettes.ts).
+ * `--url <base> [--token t]` runs the cases against a deployed agent instead (src/evals/remoteTarget.ts).
  *
  * vitest is the user's dependency, not ours: it is resolved from the
  * project's own node_modules and the command exits 2 with the install
@@ -47,11 +47,11 @@ export interface EvalCliArgs {
    * keeps its own `testTimeout`. `defineEval({ timeoutMs })` wins over both.
    */
   timeout?: number;
-  /** Run the cases against the deployed agent at this base URL instead of in-process (LOU-D47). */
+  /** Run the cases against the deployed agent at this base URL instead of in-process. */
   url?: string;
   /** Bearer token for `url`; defaults to the `LOUSHO_EVAL_TOKEN` environment variable. Never printed. */
   token?: string;
-  /** Record a cassette per case from the real provider (LOU-D46). */
+  /** Record a cassette per case from the real provider. */
   record?: boolean;
   /** Replay every case from its cassette; a missing cassette fails the case. */
   replay?: boolean;

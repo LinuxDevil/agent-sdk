@@ -1,4 +1,4 @@
-/** LOU-P7.2: the node server mounts the channels of the agent directory it serves. */
+/** The node server mounts the channels of the agent directory it serves. */
 import { describe, it, expect } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import { createAgent } from '../createAgent';
@@ -37,7 +37,7 @@ describe('node server channels', () => {
     await agent.close();
   });
 
-  it("keeps channel transcripts in the agent's store (Eve channels-server F1)", async () => {
+  it("keeps channel transcripts in the agent's store", async () => {
     const store = memoryStore();
     const agent = createAgent({ provider: mockModel(['pong']), instructions: 'x', store });
     const sms = defineChannel({

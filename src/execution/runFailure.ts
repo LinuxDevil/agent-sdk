@@ -1,5 +1,5 @@
 /**
- * Eve DUR-F11 / H1-3: a failed attempt at a checkpointed run, recorded on its
+ * A failed attempt at a checkpointed run, recorded on its
  * `'in-progress'` checkpoint (`lastError`, `attempts`) so `agent.pending()`
  * can tell a run that keeps failing from one a crash interrupted.
  */
@@ -37,7 +37,7 @@ export function checkpointError(error: unknown): CheckpointError {
 }
 
 /**
- * H1-3: when a checkpointed run (`send(msg, { sessionId })`, `agent.resume()`)
+ * When a checkpointed run (`send(msg, { sessionId })`, `agent.resume()`)
  * rejects, stamps `lastError` and `attempts` on its `'in-progress'` checkpoint
  * - under the run's lease, so a run that lost it writes nothing. A run without
  * one (it failed before its first checkpoint) or that ended or paused is left

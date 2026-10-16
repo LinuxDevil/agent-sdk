@@ -1,5 +1,5 @@
 /**
- * N14: runs one code-mode script (the body of `run_code`) in a QuickJS
+ * Runs one code-mode script (the body of `run_code`) in a QuickJS
  * WebAssembly isolate from the optional peer `quickjs-emscripten`.
  *
  * - One runtime and context per script, with a memory limit, a stack limit

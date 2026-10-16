@@ -1,5 +1,5 @@
 /**
- * Eve DUR-F17: durable flow runs - checkpoint after each node, resume skips
+ * Durable flow runs - checkpoint after each node, resume skips
  * the completed ones.
  */
 
@@ -16,7 +16,7 @@ function flowOf(root: EditorStep, code = 'durable'): AgentFlow {
   return { code, name: 'Durable', flow: root };
 }
 
-describe('FlowExecutor durability (DUR-F17)', () => {
+describe('FlowExecutor durability', () => {
   let provider: MockLLMProvider;
   let toolRegistry: ToolRegistry;
   let store: CheckpointStore;

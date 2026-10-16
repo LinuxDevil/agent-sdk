@@ -121,7 +121,7 @@ describe('LLM Providers', () => {
       }
 
       expect(chunks.length).toBeGreaterThan(0);
-      // M9: the chunks add up to exactly the text generate() returns (no trailing space).
+      // The chunks add up to exactly the text generate() returns (no trailing space).
       expect(chunks.join('')).toBe('Hello, world!');
     });
 
@@ -141,7 +141,7 @@ describe('LLM Providers', () => {
       expect(chunks[chunks.length - 1].type).toBe('finish');
     });
 
-    it('streams the step generate() would return: text, tool calls, finish reason and usage (M9)', async () => {
+    it('streams the step generate() would return: text, tool calls, finish reason and usage', async () => {
       const request = {
         model: 'mock-model',
         messages: [{ role: 'user' as const, content: 'please use current-date' }],

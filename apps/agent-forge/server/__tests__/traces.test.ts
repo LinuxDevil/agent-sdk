@@ -1,5 +1,5 @@
 /**
- * M5b: persisted trace history - a run writes the SDK's trace files under the
+ * Persisted trace history - a run writes the SDK's trace files under the
  * agent's folder and `GET /agents/:id/traces[/:traceId]` reads them back.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -36,7 +36,7 @@ function stopped(runManager: RunManager, agentId: string): Promise<AgentRunStatu
   });
 }
 
-describe('M5b trace history routes', () => {
+describe('trace history routes', () => {
   let baseDir: string;
   let runManager: RunManager;
   let app: ReturnType<typeof createApp>;

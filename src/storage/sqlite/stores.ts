@@ -101,7 +101,7 @@ export class SqliteSessionStore implements SessionStore {
     this.sql.get('DELETE FROM sessions WHERE id = ?').run(id);
   }
 
-  /** Eve DUR-F4: the read, compare and write run in one `BEGIN IMMEDIATE` transaction, so another process cannot slip between. */
+  /** The read, compare and write run in one `BEGIN IMMEDIATE` transaction, so another process cannot slip between. */
   async saveIf(id: string, expectedRevision: string, messages: readonly Message[]): Promise<boolean> {
     assertSessionId(id);
     const payload = JSON.stringify(messages, encodeBytes);
@@ -179,7 +179,7 @@ export class SqliteCheckpointStore implements CheckpointStore {
       checkpoint: JSON.parse(String(row.payload), decodeBytes) as Checkpoint,
     }));
   }
-  /** Eve DUR-F15: the latest checkpoint of every id, by id. */
+  /** The latest checkpoint of every id, by id. */
   async list(options?: CheckpointListOptions): Promise<CheckpointListEntry[]> {
     const rows = this.sql.get('SELECT session_id, payload FROM checkpoints ORDER BY session_id').all();
     return listCheckpoints(
@@ -277,7 +277,7 @@ export class SqliteApprovalStore implements ApprovalStore {
     return parse<ResolvedApproval>(row) ?? null;
   }
 
-  /** Eve TOOLS-F13: every approval not resolved yet, oldest first. */
+  /** Every approval not resolved yet, oldest first. */
   async list(): Promise<PendingApproval[]> {
     const rows = this.sql.get('SELECT payload FROM approvals WHERE resolved_at IS NULL ORDER BY created_at, id').all();
     return oldestFirst(rows.flatMap((row) => parse<ResolvedApproval>(row)?.pending ?? []));

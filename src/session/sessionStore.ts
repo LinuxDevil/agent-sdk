@@ -1,5 +1,5 @@
 /**
- * Session stores (LOU-W4): where a session's transcript lives between
+ * Session stores: where a session's transcript lives between
  * `send()` calls (and, for `FileSessionStore`, between processes).
  */
 
@@ -12,7 +12,7 @@ import { findLegacyFile, removeLegacyFile } from '../storage/fileNames';
 import { fileNameOf, legacyNamesOf, readTextFile, writeFileAtomic } from '../storage/atomicFile';
 import { withFileLock } from '../storage/fileLock';
 
-/** How bytes (image and file parts, LOU-V11) are saved in a JSON transcript: `{ "$bytes": "<base64>" }`. */
+/** How bytes (image and file parts) are saved in a JSON transcript: `{ "$bytes": "<base64>" }`. */
 const BYTES_KEY = '$bytes';
 
 /** `JSON.stringify` replacer: a `Uint8Array` (a `Buffer` too, read before its `toJSON()`) becomes `{ $bytes }`. Shared with `SqliteStore`. */
@@ -29,7 +29,7 @@ export function decodeBytes(_key: string, value: unknown): unknown {
 }
 
 /**
- * Eve DUR-F4: the revision of a transcript, for {@link SessionStore.saveIf}: an opaque string that changes whenever
+ * The revision of a transcript, for {@link SessionStore.saveIf}: an opaque string that changes whenever
  * the transcript does (today its JSON, bytes as `$bytes`, as stores save it). A missing transcript has the revision
  * of an empty one. Compare revisions only for equality.
  *
@@ -61,7 +61,7 @@ export interface SessionStore {
   /** Remove the transcript saved under `id`; a missing id is not an error. */
   delete(id: string): Promise<void>;
   /**
-   * Optional compare-and-swap (Eve DUR-F4): atomically replace the transcript saved under `id` with `messages` only
+   * Optional compare-and-swap: atomically replace the transcript saved under `id` with `messages` only
    * if the saved one still has `expectedRevision` ({@link transcriptRevision}; a missing transcript counts as empty).
    * Resolves `false`, saving nothing, when another writer changed it first. A session commits each turn through it,
    * so two processes (or two store objects over the same data) finishing a turn at once cannot both commit: the

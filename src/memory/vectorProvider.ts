@@ -135,7 +135,7 @@ export function vectorMemory(store: VectorItemStore, options: VectorMemoryOption
       assertScopeKey(key, 'add');
       return serial(key, () => addRow(key, text, metadata));
     },
-    // Eve MEM-F2: replace a row by id (re-embedding only a changed text); the
+    // Replace a row by id (re-embedding only a changed text); the
     // row is written again with a new createdAt, so it lists as the newest.
     upsert: async (key, { id, text, metadata }) => {
       assertScopeKey(key, 'upsert');

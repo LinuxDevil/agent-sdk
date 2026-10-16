@@ -1,8 +1,8 @@
 /**
- * A1 (wave 4): pins the public-surface split across the package entries.
+ * Pins the public-surface split across the package entries.
  * Every name a breaking-change ticket moves or removes is asserted absent
  * from the root (and, for a move, present on its subpath). Later tickets
- * (A2a, A2b, A2c, A3, A5) append the names they remove or move here and in
+ * append the names they remove or move here and in
  * publicSurface.test-d.ts.
  */
 import { describe, it, expect, vi } from 'vitest';
@@ -91,7 +91,7 @@ const MOVED: Array<[mod: Entry, specifier: string, names: string[]]> = [
   ],
 ];
 
-describe('public surface (A1): moved values are on their subpath, off the root', () => {
+describe('public surface: moved values are on their subpath, off the root', () => {
   for (const [mod, specifier, names] of MOVED) {
     for (const name of names) {
       it(`${name}: on ${specifier}, not on the root`, () => {
@@ -102,7 +102,7 @@ describe('public surface (A1): moved values are on their subpath, off the root',
   }
 });
 
-/** A2a: runtime values removed from the package. */
+/** Runtime values removed from the package. */
 const REMOVED_A2A = [
   'AgentType',
   'DataLoadingStatus',
@@ -114,7 +114,7 @@ const REMOVED_A2A = [
   'validateAgentTools',
 ];
 
-describe('public surface (A2a): removed values are off the root', () => {
+describe('public surface: removed values are off the root', () => {
   for (const name of REMOVED_A2A) {
     it(`${name}: not on the root`, () => {
       expect(root, `the root should no longer export ${name}`).not.toHaveProperty(name);
@@ -122,10 +122,10 @@ describe('public surface (A2a): removed values are off the root', () => {
   }
 });
 
-/** A2c: runtime values removed from the package. */
+/** Runtime values removed from the package. */
 const REMOVED_A2C = ['createDelegateTool', 'DelegationDepthExceededError'];
 
-describe('public surface (A2c): removed values are off the root', () => {
+describe('public surface: removed values are off the root', () => {
   for (const name of REMOVED_A2C) {
     it(`${name}: not on the root`, () => {
       expect(root, `the root should no longer export ${name}`).not.toHaveProperty(name);
@@ -133,7 +133,7 @@ describe('public surface (A2c): removed values are off the root', () => {
   }
 });
 
-/** A5: the patch checks were renamed (old names gone, new names present). */
+/** The patch checks were renamed (old names gone, new names present). */
 const RENAMED_A5: Array<[oldName: string, newName: string]> = [
   ['runGuardrails', 'runPatchChecks'],
   ['runGuardrailSafely', 'runPatchCheckSafely'],
@@ -144,7 +144,7 @@ const RENAMED_A5: Array<[oldName: string, newName: string]> = [
   ['createLintGuardrail', 'createLintCheck'],
 ];
 
-describe('public surface (A5): the patch checks are renamed', () => {
+describe('public surface: the patch checks are renamed', () => {
   for (const [oldName, newName] of RENAMED_A5) {
     it(`${oldName} -> ${newName}`, () => {
       expect(root, `the root should no longer export ${oldName}`).not.toHaveProperty(oldName);
@@ -156,7 +156,7 @@ describe('public surface (A5): the patch checks are renamed', () => {
   });
 });
 
-describe('public surface (A2b): the legacy onEvent adapter is gone', () => {
+describe('public surface: the legacy onEvent adapter is gone', () => {
   it('a legacy onEvent option passed to AgentExecutor.execute() is never called', async () => {
     const onEvent = vi.fn();
     const agent: AgentConfig = { id: 'a', name: 'Agent', prompt: 'p', tools: {} };
@@ -165,7 +165,7 @@ describe('public surface (A2b): the legacy onEvent adapter is gone', () => {
       provider: mockModel(['done']),
       toolRegistry: new ToolRegistry(),
       input: 'go',
-      // @ts-expect-error - ExecuteOptions.onEvent was removed (A2b)
+      // @ts-expect-error - ExecuteOptions.onEvent was removed
       onEvent,
     });
     expect(onEvent).not.toHaveBeenCalled();

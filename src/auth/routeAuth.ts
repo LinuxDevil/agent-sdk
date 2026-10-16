@@ -1,5 +1,5 @@
 /**
- * N10a: run a route's auth list. Entries are tried in order: the first
+ * Run a route's auth list. Entries are tried in order: the first
  * `Principal` wins, `null` / `undefined` skips to the next entry, an
  * `AuthError` stops the walk with its status. When every entry skips (or the
  * list is empty) the answer is a generic 401 carrying one `WWW-Authenticate`

@@ -4,7 +4,7 @@
  * nested pi provider: `pi/<pi-provider>/<model>` - e.g.
  * `pi/openrouter/openai/gpt-4o-mini` for OpenRouter's `openai/gpt-4o-mini`.
  *
- * pi is an optional peer (LOU-D10/LOU-D19): nothing here imports it at
+ * pi is an optional peer: nothing here imports it at
  * module scope; `piModules()` loads the `compat` entrypoint and the
  * generated catalog on the first call, and a missing package becomes a
  * `LOUSHO_PEER_MISSING` `MissingPeerDependencyError` with the install
@@ -104,7 +104,7 @@ function finishReasonOf(message: PiAssistantMessage): GenerateResult['finishReas
 
 /**
  * pi `Usage` -> our provider-facing usage; `costUsd` keeps pi's own total (catalog-priced).
- * pi's `input` leaves out the cache reads and writes; `promptTokens` counts them (Eve PROV-F4).
+ * pi's `input` leaves out the cache reads and writes; `promptTokens` counts them.
  */
 function piUsage(usage: PiAssistantMessage['usage'] | undefined): ProviderUsage | undefined {
   if (!usage || typeof usage.input !== 'number' || typeof usage.output !== 'number') return undefined;
@@ -150,7 +150,7 @@ function assistantReasoning(message: PiAssistantMessage): GenerateResult['reason
 }
 
 /**
- * pi `reasoning`/`reasoningEffort` for our `reasoning` option (LOU-V13):
+ * pi `reasoning`/`reasoningEffort` for our `reasoning` option:
  * `effort` is already a pi thinking level; `budgetTokens` becomes the level's
  * `thinkingBudgets` entry. Sent only to models the catalog marks
  * `reasoning`, unless `force` - the same gate every built-in provider uses.
