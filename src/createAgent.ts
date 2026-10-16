@@ -535,7 +535,10 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    *
    * As `{ schema, promptSchema: false }` the schema goes only on
    * `responseFormat`, not into the system prompt too - for providers that
-   * enforce it, that saves sending the schema twice.
+   * enforce it, that saves sending the schema twice. `responseFormat` is
+   * sent only on calls that offer no tools unless
+   * `{ schema, responseFormat: 'always' }` (the default with
+   * `promptSchema: false`); see `OutputSpec`.
    *
    * @example
    * ```ts

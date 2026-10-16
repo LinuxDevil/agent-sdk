@@ -111,7 +111,101 @@ describe('structured output', () => {
     expect(result.object).toEqual({ city: 'Paris', tempC: 21 });
     expect(result.toolCalls).toHaveLength(1);
     expect(model.calls[0].tools).toHaveLength(1);
-    expect(model.calls[0].responseFormat?.type).toBe('json');
+    // A call that offers tools carries no strict response format (some models then call tools forever);
+    // the schema is in the system prompt instead.
+    expect(model.calls[0]).not.toHaveProperty('responseFormat');
+    expect(model.calls[1]).not.toHaveProperty('responseFormat');
+    expect(model.calls[0].messages[0].content).toContain('"tempC":{"type":"number"}');
+  });
+
+  describe('responseFormat and tools', () => {
+    const lookup = defineTool({
+      name: 'lookup',
+      description: 'Current temperature',
+      input: z.object({ city: z.string() }),
+      execute: async () => 21,
+    });
+    const toolCall = { toolCalls: [{ name: 'lookup', args: { city: 'Paris' } }] };
+
+    it('parses JSON embedded in a prose answer on a tool-offering step, with no repair', async () => {
+      const model = mockModel([toolCall, 'Here you go: {"city":"Paris","tempC":21}']);
+      const result = await createAgent({ provider: model, tools: [lookup], output: weather }).send('Weather in Paris?');
+
+      expect(result.object).toEqual({ city: 'Paris', tempC: 21 });
+      expect(result.steps).toBe(2);
+      expect(result.outputRepaired).toBeUndefined();
+    });
+
+    it('a plain-text answer on a tool-offering step is repaired by a call that does carry the response format', async () => {
+      const model = mockModel([toolCall, 'It is 21 degrees in Paris.', '{"city":"Paris","tempC":21}']);
+      const result = await createAgent({ provider: model, tools: [lookup], output: weather }).send('Weather in Paris?');
+
+      expect(result.object).toEqual({ city: 'Paris', tempC: 21 });
+      expect(result.outputRepaired).toBe(true);
+      expect(model.calls).toHaveLength(3);
+      expect(model.calls[1]).not.toHaveProperty('responseFormat');
+      // The repair step: tools still offered, the schema enforced.
+      expect(model.calls[2].tools).toHaveLength(1);
+      expect(model.calls[2].responseFormat).toMatchObject({ type: 'json', schema: { required: ['city', 'tempC'] } });
+    });
+
+    it('a step after the repair step goes without it again', async () => {
+      const model = mockModel([toolCall, 'It is warm.', toolCall, '{"city":"Paris","tempC":21}']);
+      const result = await createAgent({ provider: model, tools: [lookup], output: weather }).send('Weather in Paris?');
+
+      expect(result.object).toEqual({ city: 'Paris', tempC: 21 });
+      expect(model.calls[2].responseFormat?.type).toBe('json');
+      expect(model.calls[3]).not.toHaveProperty('responseFormat');
+    });
+
+    it('the forced answer at maxSteps (tools with toolChoice none) carries it', async () => {
+      const model = mockModel([toolCall, '{"city":"Paris","tempC":21}']);
+      const result = await createAgent({ provider: model, tools: [lookup], output: weather, maxSteps: 1 }).send('go');
+
+      expect(result.object).toEqual({ city: 'Paris', tempC: 21 });
+      expect(model.calls[0]).not.toHaveProperty('responseFormat');
+      expect(model.calls[1].toolChoice).toBe('none');
+      expect(model.calls[1].responseFormat?.type).toBe('json');
+    });
+
+    it("toolChoice 'none' counts as no tools offered", async () => {
+      const model = mockModel(['{"city":"Paris","tempC":21}']);
+      await createAgent({ provider: model, tools: [lookup], output: weather, modelSettings: { toolChoice: 'none' } }).send('go');
+
+      expect(model.calls[0].responseFormat?.type).toBe('json');
+    });
+
+    it("output { responseFormat: 'always' } sends it on tool-offering calls too", async () => {
+      const model = mockModel([toolCall, '{"city":"Paris","tempC":21}']);
+      await createAgent({ provider: model, tools: [lookup], output: { schema: weather, responseFormat: 'always' } }).send('go');
+
+      expect(model.calls[0].responseFormat?.type).toBe('json');
+      expect(model.calls[1].responseFormat?.type).toBe('json');
+    });
+
+    it("promptSchema: false defaults to 'always', the response format being the only copy of the schema", async () => {
+      const model = mockModel([toolCall, '{"city":"Paris","tempC":21}']);
+      await createAgent({ provider: model, tools: [lookup], output: { schema: weather, promptSchema: false } }).send('go');
+      expect(model.calls[0].responseFormat?.type).toBe('json');
+
+      const final = mockModel([toolCall, '{"city":"Paris","tempC":21}']);
+      await createAgent({ provider: final, tools: [lookup], output: { schema: weather, promptSchema: false, responseFormat: 'final' } }).send('go');
+      expect(final.calls[0]).not.toHaveProperty('responseFormat');
+    });
+
+    it('rejects an unknown responseFormat mode', () => {
+      expect(() => createAgent({ provider: mockModel([]), output: { schema: weather, responseFormat: 'sometimes' as never } })).toThrow(
+        /output\.responseFormat must be 'final' or 'always'/
+      );
+    });
+
+    it('streams object.delta for a final answer on a tool-offering step', async () => {
+      const run = createAgent({ provider: mockModel([toolCall, '{"city":"Paris","tempC":21}']), tools: [lookup], output: weather }).stream('go');
+      const objects: unknown[] = [];
+      for await (const event of run) if (event.type === 'object.delta') objects.push(event.object);
+
+      expect(objects.at(-1)).toEqual({ city: 'Paris', tempC: 21 });
+    });
   });
 
   it('makes one last tool-less call for the answer when maxSteps runs out', async () => {
