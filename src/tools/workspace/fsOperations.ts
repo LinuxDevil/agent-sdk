@@ -5,7 +5,7 @@
 import type { FsProvider } from './types';
 import { globToRegExp, walkFiles } from './glob';
 import { normalizeWorkspacePath, WorkspaceError } from './paths';
-import { assertSafePattern, createLineMatcher, GREP_TIMEOUT_MS, type LineMatcher } from './grepMatcher';
+import { assertSafePattern, createLineMatcher, GREP_TIMEOUT_MS, GrepTimeoutError, type LineMatcher } from './grepMatcher';
 
 /** Resolved limits shared by the file system tools. */
 export interface FsLimits {
@@ -14,7 +14,7 @@ export interface FsLimits {
   maxResults: number;
   maxFilesScanned: number;
   ignore: ReadonlySet<string>;
-  /** Wall-clock budget for one `grep` call's matching (Eve TOOLS-F6); default 10 s. */
+  /** Time one `grep` call may spend matching, not reading files (Eve TOOLS-F6); default 10 s. */
   grepTimeoutMs?: number;
 }
 
@@ -268,12 +268,18 @@ export async function grepFiles(
   const { files, truncated } = await grepTargets(fs, args, limits, signal);
   const matches: string[] = [];
   let capped = false;
+  let scanned = 0;
   // The regex runs off the event loop with a timeout, so a slow pattern cannot freeze the process.
   const matcher = await createLineMatcher(regex, limits.grepTimeoutMs ?? GREP_TIMEOUT_MS, signal);
   try {
     for (const file of files) {
       if (signal?.aborted) throw new WorkspaceError('The operation was cancelled.');
-      const found = await grepFile(fs, file, matcher, limits.maxResults - matches.length);
+      scanned++;
+      const found = await grepFile(fs, file, matcher, limits.maxResults - matches.length).catch((error: unknown) => {
+        throw error instanceof GrepTimeoutError
+          ? new WorkspaceError(`${error.message} (scanned ${scanned - 1} of ${files.length} files before ${file}.)`)
+          : error;
+      });
       if (found.length === 0) continue;
       matches.push(...found);
       if (matches.length >= limits.maxResults) {

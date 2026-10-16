@@ -19374,6 +19374,7 @@ const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistr
 | `maxOutputChars`  | 50,000                      | Most characters a tool returns per call. |
 | `maxResults`      | 200                         | Most paths, matches or entries `glob`, `grep` and `list_dir` return. |
 | `maxFilesScanned` | 20,000                      | Most files a `glob` or `grep` walk visits. |
+| `grepTimeoutMs`   | 10,000                      | Milliseconds `grep` may spend matching its regex across all files; time spent reading files does not count. A slow pattern stops with an error naming how many files were scanned. |
 | `ignore`          | `['.git', 'node_modules']`  | Directory names `glob` and `grep` skip. |
 | `checkpoints`     | none                        | A `WorkspaceCheckpoints`: back up every file `write_file` and `edit_file` change, so the changes can be rewound (see below). |
 

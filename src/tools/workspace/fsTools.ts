@@ -87,6 +87,12 @@ export interface FsToolsOptions {
   maxResults?: number;
   /** Most files a `glob`/`grep` walk visits before stopping. Defaults to 20,000. */
   maxFilesScanned?: number;
+  /**
+   * Milliseconds `grep` may spend matching its regex over all files (time
+   * reading files does not count), so a slow pattern cannot hang the run.
+   * Defaults to 10,000.
+   */
+  grepTimeoutMs?: number;
   /** Directory names `glob` and `grep` never descend into. Defaults to `['.git', 'node_modules']`. */
   ignore?: readonly string[];
   /**
@@ -104,6 +110,7 @@ function resolveLimits(options: FsToolsOptions): FsLimits {
     maxResults: options.maxResults ?? 200,
     maxFilesScanned: options.maxFilesScanned ?? 20_000,
     ignore: new Set(options.ignore ?? ['.git', 'node_modules']),
+    grepTimeoutMs: options.grepTimeoutMs,
   };
 }
 

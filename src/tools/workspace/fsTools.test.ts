@@ -250,10 +250,25 @@ describe('createFsTools on MemoryWorkspace (LOU-X6)', () => {
       const timer = setInterval(() => ticks++, 10);
       const started = Date.now();
       // Polynomial (not nested) backtracking: far too slow on 2000 tested characters.
-      await expect(grepFiles(ws, { pattern: '\\s*\\s*\\s*\\s*\\s*!' }, limits)).rejects.toThrow(/grep stopped after/);
+      await expect(grepFiles(ws, { pattern: '\\s*\\s*\\s*\\s*\\s*!' }, limits)).rejects.toThrow(/too slow on this input.*scanned 0 of 1 files/);
       clearInterval(timer);
       expect(Date.now() - started).toBeLessThan(5000);
       expect(ticks).toBeGreaterThan(5);
+    });
+
+    it('does not count time spent reading files against the matching budget', async () => {
+      const files = Object.fromEntries(Array.from({ length: 6 }, (_, i) => [`f${i}.txt`, 'hello world\n']));
+      const inner = new MemoryWorkspace({ files });
+      const slow = Object.create(inner) as MemoryWorkspace;
+      slow.readFile = async (path: string) => {
+        await new Promise((r) => setTimeout(r, 300));
+        return inner.readFile(path);
+      };
+      const limits = { maxReadLines: 2000, maxOutputChars: 30_000, maxResults: 100, maxFilesScanned: 10, ignore: new Set<string>(), grepTimeoutMs: 1000 };
+      const started = Date.now();
+      const out = await grepFiles(slow, { pattern: 'hello' }, limits);
+      expect(Date.now() - started).toBeGreaterThan(1500);
+      expect(out.split('\n')).toHaveLength(6);
     });
 
     it('an abort stops a running slow pattern at once', async () => {
