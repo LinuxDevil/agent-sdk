@@ -32,7 +32,8 @@ my-agent/
   schedules/*.{ts,mts,cts,js,mjs,cjs}              # defineSchedule() cron schedules (see schedules.md)
   channels/*.{ts,mts,cts,js,mjs,cjs}               # a channel each: defineChannel(), webhookChannel(), ... (see channels.md)
   memory/*.{ts,mts,cts,js,mjs,cjs}                 # a memory slot each: defineMemory() (see memory.md); part of the agent
-  auth.{ts,mts,cts,js,mjs,cjs}                     # route auth for the deployed server: jwt(), oidc(), basic(), ... (see auth.md)
+  auth.{ts,mts,cts,js,mjs,cjs}                     # route auth for the deployed server: jwt(), oidc(), basic(), ... (see auth.md),
+                                                   # plus optional named authorizeSession / authorizeApproval exports
 ```
 
 Only one config file may exist. Files inside `tools/` and the entries of
@@ -373,7 +374,11 @@ npx lousho build ./my-agent --target=node-server    # or docker
 The agent directory is the unit of deployment: the built server loads it with
 `resolveAgentDir()` at start-up, starts its `schedules/` and mounts its
 `channels/` under `/channels`, guards its chat routes with `auth.ts` when there
-is one ([Route auth and principals](auth.md)), and prints which it found. The code files (the
+is one ([Route auth and principals](auth.md)), and prints which it found. A
+function `auth.ts` exports as `authorizeSession` or `authorizeApproval`
+decides who may use a session and who may decide an approval, e.g. a manager
+approving a user's paused claim ([Who may decide an approval](auth.md#who-may-decide-an-approval));
+without them the server keeps the defaults (a session and its approvals belong to the caller that started it). The code files (the
 config, `auth.ts`, a root `hooks.*` / `approve.*` file, `tools/`, `schedules/`, `channels/`, `memory/`, and the same in each
 sub-agent) are bundled to `dist/agent/**.js`, and only `instructions.md` (with `instructions/<family>.md`), `skills/`
 and a JSON/YAML config (the same in each sub-agent) are copied next to them, so the server needs no TypeScript

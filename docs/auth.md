@@ -235,6 +235,14 @@ server uses it (`resolveAgentDir()` returns it as `auth`; the manifest says
 still is. The `cloudflare-worker` target serves spec files only and keeps the
 `LOUSHO_API_TOKEN` token; see [Deployment](./deployment.md#auth).
 
+`auth.ts` may also export functions named `authorizeSession` and
+`authorizeApproval`, next to its default export. The built server uses them as
+the rules of [Who may use a session](#who-may-use-a-session) and
+[Who may decide an approval](#who-may-decide-an-approval), and
+`resolveAgentDir()` returns them under those names. Any other value under
+those names fails the load (`LOUSHO_AGENT_DIR_INVALID`). `lousho dev` has no
+route auth, so neither the list nor these rules apply there.
+
 ## Reading the principal in the run
 
 The principal is on the run context next to `sessionId` and `metadata`. The
@@ -440,7 +448,8 @@ claimed again. So for anything that runs on more than one instance, or keeps
 sessions across restarts, check ownership yourself with `authorizeSession`.
 
 `createRouteHandler()` and the generated node server take `authorizeSession`,
-which replaces that default. It is asked before a caller reads a session
+which replaces that default (in an agent directory, export it from `auth.ts`:
+see the example under [Who may decide an approval](#who-may-decide-an-approval)). It is asked before a caller reads a session
 (`action: 'read'`), sends it a turn (`'chat'`, also `POST <basePath>` and the
 `useChat` endpoint) or decides one of its approvals (`'approve'`). Return
 `false` for a `403` (`LOUSHO_SESSION_FORBIDDEN`). Deriving the id from the
@@ -550,6 +559,40 @@ export const { GET, POST } = createRouteHandler(agent, {
   authorizeApproval: ({ principal }) => isSupervisor(principal),
 });
 ```
+
+In an agent directory built with `lousho build --target=node-server` (or
+`docker`), export the same rules from `auth.ts`. Here users file expense
+claims, a manager decides them, and nobody approves their own:
+
+```ts no-verify
+// my-agent/auth.ts
+import { apiToken } from '@lousho/build-ai-agent/auth';
+import type { ApprovalAccessRequest, SessionAccessRequest } from '@lousho/build-ai-agent';
+
+export default [
+  apiToken(process.env.ALICE_TOKEN!, { id: 'alice' }),
+  apiToken(process.env.BOB_TOKEN!, { id: 'bob' }),
+  apiToken(process.env.MANAGER_TOKEN!, { id: 'manager' }),
+];
+
+// Session ids are `<user id>-<suffix without '-'>`.
+const ownerOf = (sessionId: string) => sessionId.slice(0, Math.max(sessionId.lastIndexOf('-'), 0));
+
+// Users use their own sessions; the manager may open any session to review a claim.
+export function authorizeSession({ principal, sessionId }: SessionAccessRequest): boolean {
+  return principal?.id === 'manager' || (principal !== undefined && ownerOf(sessionId) === principal.id);
+}
+
+// Only the manager decides, and never on a claim of their own.
+export function authorizeApproval({ principal, approval }: ApprovalAccessRequest): boolean {
+  return principal?.id === 'manager' && approval.principal?.id !== 'manager';
+}
+```
+
+Alice's paused claim in session `alice-1` is then decided by
+`POST /chat/alice-1/approvals/:id` with the manager's token (`200`); with
+alice's own token it is a `403` (`LOUSHO_APPROVAL_FORBIDDEN`). Without these
+exports the built server keeps the defaults, so only alice could decide it.
 
 Two requests that decide the same approval get one continuation: while the
 winning decision's continuation is still running (on the same server process),

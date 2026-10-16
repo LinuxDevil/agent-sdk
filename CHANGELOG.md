@@ -48,6 +48,7 @@ opt-out.
 - `lousho doctor` fix lines use PowerShell syntax (`$env:NAME="<your key>"`) on Windows.
 - The `lousho eval` table shows the scores of passing scored gates (such as `t.check('words', n, atLeast(3))`), not only in `--json`.
 - **Behavior change.** An agent with `output` and tools no longer sends the strict `responseFormat` schema on calls that offer tools: `openai/gpt-4o-mini` via OpenRouter then called tools on every step until `maxSteps` and never answered. `responseFormat` now goes only on calls without tools (an agent without tools, the "answer now" call at `maxSteps`, the repair step); tool-offering calls answer from the schema in the prompt, with the existing parse and repair. `output: { schema, responseFormat: 'always' }` restores the old behavior, and is the default with `promptSchema: false`. `object.delta` events still stream on every step of an `output` run. See [Structured output](docs/structured-output.md#how-it-works).
+- An agent directory built with `lousho build --target=node-server` (or `docker`) can now change who may decide an approval and who may use a session: `auth.ts` may export functions named `authorizeApproval` and `authorizeSession` next to its default auth list, `resolveAgentDir()` returns them, and the built server applies them. Before, the built server always used the defaults, so a manager could not approve another user's paused call while that user could approve their own. See [Who may decide an approval](docs/auth.md#who-may-decide-an-approval).
 
 ### Documentation
 
