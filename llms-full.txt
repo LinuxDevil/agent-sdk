@@ -6236,7 +6236,7 @@ const agent = createAgent({ instructions: 'You are helpful.', provider });
 ```
 
 - `withRetry` retries `generate()` and `stream()` (default `maxRetries: 2`)
-  on rate limits, timeouts, network errors and 5xx responses, using the same
+  on rate limits, timeouts, network errors (including a dropped socket), malformed or truncated responses and 5xx responses, using the same
   classification as `compactProviderError()`. Auth failures, invalid requests
   and context-length errors are not retried; neither is a cancellation. A
   provider's `retryAfterMs` hint (`retry-after-ms` or `Retry-After`, on a 429 or
