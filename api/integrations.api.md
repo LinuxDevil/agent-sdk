@@ -79,6 +79,7 @@ interface DelegatedUsage {
     // (undocumented)
     outputTokens: number;
     runs: number;
+    toolErrors?: number;
     // (undocumented)
     totalTokens: number;
 }
@@ -579,7 +580,7 @@ interface ToolExecutionContext {
     };
     getToken(provider: OAuthProvider): Promise<OAuthToken>;
     messages: readonly Message[];
-    onDelegatedUsage?: (usage: RunUsage) => void;
+    onDelegatedUsage?: (usage: RunUsage, toolErrors?: number) => void;
     principal?: Readonly<Principal>;
     requireAuth(provider: OAuthProvider): never;
     sessionId?: string;

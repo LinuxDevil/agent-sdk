@@ -73,14 +73,21 @@ The first bicycles appeared in the 1810s ...
 [sub-agent 'researcher': 3 step(s), finish reason 'stop', taskId 'task_1']
 ```
 
-If the sub-agent does not finish - it throws, runs out of `maxSteps`, or is
-aborted - the lead gets an error result (`isError: true`) that says why, for
-example `Sub-agent 'researcher' used all 10 of its steps (maxSteps) without
-giving a final answer.` An unknown agent name is also an error result listing
-the valid names. An answer cut off at the sub-agent's output token limit
-(finish reason `'length'`) is still returned, with a line after the footer
-saying it may be incomplete. Sub-agent token usage is added to the lead's `result.usage`,
-a [remote sub-agent](#remote-sub-agents)'s too.
+If the sub-agent does not finish - it throws, runs out of `maxSteps`, stops at
+a budget limit, or is aborted - the lead gets an error result (`isError: true`)
+that says why, for example `Sub-agent 'researcher' used all 10 of its steps
+(maxSteps) without giving a final answer.` An unknown agent name is also an
+error result listing the valid names. An answer cut off at the sub-agent's
+output token limit (finish reason `'length'`) is still returned, with a line
+after the footer saying it may be incomplete. A sub-agent with an `output`
+schema that runs out of steps makes one last forced call
+([Out of steps](./structured-output.md#out-of-steps)): when that call returns
+a valid object, the `task` result is that object (finish reason `'max-steps'`
+in the footer, plus a line saying the steps ran out), not an error. Sub-agent
+token usage is added to the lead's `result.usage`, a
+[remote sub-agent](#remote-sub-agents)'s too. The lead's own `result.toolErrors`
+counts only the lead's tool calls; the calls that failed inside its sub-agents
+(and theirs) are counted on `result.usage.delegated.toolErrors`.
 
 Errors at setup time are thrown with a fix: a sub-agent without a
 `description`, a value that is not a `createAgent()` agent, or a tool of your
@@ -499,7 +506,8 @@ inherits:
 | Event listeners (`onAgentEvent`, `createAgent({ onEvent })`) and `stream()` | Yes | The sub-agent's events are forwarded with a `subagent` field. |
 | `toolConcurrency` | Yes, unless the sub-agent sets its own | |
 | `sandbox` | Yes | |
-| Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`) and counted against its `limits`, also when the sub-agent fails after spending tokens; a remote sub-agent's under `byModel['remote:<name>']`. |
+| Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`, whose `toolErrors` counts the sub-agents' failed tool calls) and counted against its `limits`, also when the sub-agent fails after spending tokens; a remote sub-agent's under `byModel['remote:<name>']`. |
+| Token, cost and duration `limits` | Shared | A sub-agent is also held to the lead's limits, counted with what the lead and its other sub-agents still running have spent: once they are reached, the sub-agent stops (`'budget-exceeded'`) before its next model call or tools, and the lead stops before its next model call. See [Budgets](./configuration.md#budgets). |
 | `maxSubagentDepth` | The remaining budget | See [Depth](#depth). |
 | `permissionMode` | Yes, unless the lead's is `'default'` | The sub-agent runs under the lead's [permission mode](./permission-modes.md#sub-agents), read at each of its tool calls; while the lead's is `'default'`, under its own (a sub-agent whose own mode is `'plan'` always stays in plan mode). A remote sub-agent does not inherit it: plan mode refuses a `task` call to one. |
 | `principal` | Yes | Who the lead's run acts for (route auth's caller, a channel's sender); a remote sub-agent is not told. |

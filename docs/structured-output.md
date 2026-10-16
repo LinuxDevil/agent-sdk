@@ -123,7 +123,10 @@ background task) is the object as JSON, then a blank line and the usual
 object rather than a prose rendering. If the sub-agent's reply is still invalid
 after its repair step, the `task` call fails with the structured tool error
 (`kind: 'execution'`, a message naming the schema issues) and the lead can
-retry or adapt.
+retry or adapt. A sub-agent that runs out of steps and then gives a valid
+object in its forced final call ([Out of steps](#out-of-steps)) answers the
+lead with that object, like a finished one; the footer shows finish reason
+`'max-steps'` and a line after it says the steps ran out.
 
 A sub-agent does **not** inherit the lead's `output`: each agent's output is its
 own, and a sub-agent without `output` returns text as before. A

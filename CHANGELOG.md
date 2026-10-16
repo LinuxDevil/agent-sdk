@@ -14,6 +14,7 @@ opt-out.
 ### Added
 - `fromAiSdkTools(record)` converts Vercel AI SDK tools (`tool({ ... })` or plain `{ description, inputSchema | parameters, execute, needsApproval? }` objects) into Lousho tools, keyed by name: zod and Standard Schemas are kept, `jsonSchema()` wrappers and plain JSON Schemas are converted (their own `validate` still runs), `needsApproval` (boolean or function) pauses the run for approval, and `execute` gets the call id and the run's abort signal. It imports nothing from `ai`, so tools built on `ai` 4 to 7 work with any installed version. New guide: [Migrating from the AI SDK](docs/migrating-from-ai-sdk.md).
 - `lousho eval` without vitest installed now says it runs `*.eval.ts` files through vitest, the directory it searched from, and the install command; [Evals](docs/evals.md) states the requirement up front.
+- `result.usage.delegated.toolErrors`: the tool calls that failed inside a run's sub-agents (and theirs), which the lead's own `result.toolErrors` does not count. `ToolCallContext.onDelegatedUsage` takes the child's `toolErrors` as an optional second argument.
 
 ### Fixed
 - MCP tool schemas with OpenAPI's `nullable: true` (any type) now accept `null`; the model's valid `null` was rejected with `ToolArgumentsValidationError`.
@@ -22,6 +23,8 @@ opt-out.
 - Flows: a durable run is saved before its first step, so a run whose first step failed can be `resume()`d instead of failing with `LOUSHO_CHECKPOINT_NOT_FOUND`, whose hint for a flow run now points at `FlowExecutor.execute()` rather than forking session history. A step's checkpoint is saved before its `step-complete` event, so a crash in between no longer re-runs a step reported complete.
 - Flows: an `llmCall` whose model request fails rejects with the same compacted `CompactedLLMProviderError` as an agent run (`LOUSHO_PROVIDER_*` code, `compacted.category`), not the provider SDK's raw `APICallError`, and its `retry` no longer retries a failure marked `retryable: false` (a 401, an exhausted quota, a too-long prompt).
 - A provider answering a streaming request with HTTP 200 and a body that is neither an event stream nor valid JSON (for example a truncated `{"choices": [ {"oops`) no longer ends as a silent empty reply. It now fails as a retryable 502, so `withRetry` retries it and an exhausted retry surfaces as a provider error.
+- A sub-agent with an `output` schema that ran out of steps and gave a valid object in its forced final call is now a `task` result (the object, with a line saying the steps ran out), not a failure telling the lead it gave no final answer - which made leads re-run the task.
+- Sub-agents are held to their lead's token, cost and duration `limits` while they run, counted with what the lead and its other running sub-agents have spent, so parallel sub-agents no longer each spend the lead's whole budget (a lead with `maxCostUsd` could end at several times it). A sub-agent stopped this way reports the limit to the lead. A spend limit stays a hard stop with no forced `output` answer; the finished tool results stay in `result.messages` ([Budgets](docs/configuration.md#budgets)).
 
 ### Documentation
 

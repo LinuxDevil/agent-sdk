@@ -6597,10 +6597,28 @@ agent) or on `AgentExecutor.execute()` / `stream()`:
 Limits are checked before every model call (so after every tool batch) and
 after a model call that asks for tools; `maxDurationMs` also aborts an
 in-flight model or tool call through the run's signal. A limit trips once the
-run reaches it. Usage of sub-agents counts toward their lead's budget: it is
-added when the sub-agent returns, so the lead stops before its next model call.
-A run that finishes on its own within the step that reached a limit keeps its
-own finish reason, like `maxSteps`.
+run reaches it. A run that finishes on its own within the step that reached a
+limit keeps its own finish reason, like `maxSteps`.
+
+**Sub-agents share their lead's budget.** Usage of sub-agents counts toward
+their lead's limits, and a sub-agent is held to them while it runs: before each
+of its model calls (and after a model call that asks for tools) it checks the
+lead's token, cost and duration limits against what the lead, the lead's other
+sub-agents still running, and it itself have spent - on top of its own
+`limits`. Once they are reached the sub-agent stops with `'budget-exceeded'`
+(always `'stop'`; the lead's `onExceeded` decides how the lead ends), the
+`task` call reports `Sub-agent '<name>' stopped at the <limit> limit`, and the
+lead stops before its next model call. Parallel sub-agents can still go over by
+the model calls they had in flight when the limit was reached (at most one
+each), not by a whole run each. A nested sub-agent is held to every lead above
+it. A sub-agent resumed after an approval is held to its own limits only.
+
+A spend limit (tokens, cost, duration) is a hard stop: a run with `output`
+that reaches one makes no forced answer call (that call would spend past the
+limit), so `result.object` is unset. What the run's tool calls returned before
+the limit tripped - finished sub-agents' answers included - stays in
+`result.messages` as tool results. Only running out of steps (`maxSteps` or
+`limits.maxSteps`) gets the forced answer call.
 
 When a limit trips, the run stops with `finishReason: 'budget-exceeded'` and
 `result.budget` (`{ limit, value, max, scope }`). Tool calls the model asked
@@ -12551,7 +12569,7 @@ console.log(formatUsage(result.usage)); // 1,234 in / 567 out tokens · $0.0042 
 - **Reported vs estimated.** Providers report `promptTokens`/`completionTokens`; the built-in providers also pass on `cachedInputTokens`/`cacheWriteTokens`/`reasoningTokens` when the provider reports them (`usage.cachedInputTokens`, `usage.cacheWriteTokens` and `usage.reasoningTokens` only appear then). `inputTokens` always counts the cached and cache-written tokens too. A backend that reports nothing gives `undefined` usage, never zeros. For that step the executor falls back to `estimateTokens` and sets `usage.estimated` (a leading `~` in `formatUsage`). A custom provider should leave `GenerateResult.usage` unset rather than fill in zeros.
 - **Cost.** `costUsd` is the sum of the per-call costs: the cost the provider reported (OpenRouter returns `usage.cost` for every model, priced or not), else `estimateCost` for the model. A call with no known price (a model missing from the registry whose provider reported no cost) is left out of the sum and sets `usage.costPartial: true`, so the total is a lower bound rather than being discarded; `byModel` shows which models are priced (`byModel[model].costPartial` marks a model with both priced and unpriced calls, and `usage.delegated.costPartial` does the same for children). `costUsd` is `undefined` only when no call has a known cost. `limits.maxCostUsd` is checked against the partial total. In `formatUsage` the cost prints with 4 decimals under $1 (2 at $1 or more), so a run under $0.00005 reads `$0.0000`.
 - **Hosted tools.** `usage.hostedToolCalls` counts the calls the provider ran for [hosted tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hosted-tools.md) per tool name (e.g. `{ web_search: 2 }`). Their per-call fees are billed by the provider and are not in `costUsd`.
-- **Delegation.** A delegated child's usage is added to the parent's totals and `byModel`, and is also shown on its own as `usage.delegated` (`{ inputTokens, outputTokens, totalTokens, costUsd, modelCalls, estimated, runs }`). A [remote sub-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md#remote-sub-agents)'s usage is what the remote agent reports, filed under `byModel['remote:<name>']` with the remote's own `costUsd`.
+- **Delegation.** A delegated child's usage is added to the parent's totals and `byModel`, and is also shown on its own as `usage.delegated` (`{ inputTokens, outputTokens, totalTokens, costUsd, modelCalls, estimated, runs }`, plus `toolErrors`: the children's tool calls that ended in an error result, absent when none did). A [remote sub-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md#remote-sub-agents)'s usage is what the remote agent reports, filed under `byModel['remote:<name>']` with the remote's own `costUsd`.
 - **Resume.** A run resumed from a checkpoint, or after an approval, continues from the saved totals instead of restarting at zero. Checkpoints written by older versions start from their saved token counts with an unknown cost.
 - **Events and traces.** The `finish` event (and every lifecycle event that carried `usage`) now carries the running totals; `text-complete` also has `stepUsage`, and `onLLMResponse` receives the call's usage as a third argument. The `chat` span's `gen_ai.usage.*` attributes use the same numbers, with `lousho.usage.estimated` set to `true` when they are estimates.
 - **Streaming.** `agent.stream()` events carry the same accounting: `step.done` and `run.done` have `usage` with `inputTokens`, `outputTokens`, `estimated` `costUsd` and `costPartial` when partial (run-level also `modelCalls`), alongside the older `promptTokens`/`completionTokens`.
@@ -17182,7 +17200,10 @@ background task) is the object as JSON, then a blank line and the usual
 object rather than a prose rendering. If the sub-agent's reply is still invalid
 after its repair step, the `task` call fails with the structured tool error
 (`kind: 'execution'`, a message naming the schema issues) and the lead can
-retry or adapt.
+retry or adapt. A sub-agent that runs out of steps and then gives a valid
+object in its forced final call ([Out of steps](#out-of-steps)) answers the
+lead with that object, like a finished one; the footer shows finish reason
+`'max-steps'` and a line after it says the steps ran out.
 
 A sub-agent does **not** inherit the lead's `output`: each agent's output is its
 own, and a sub-agent without `output` returns text as before. A
@@ -17488,14 +17509,21 @@ The first bicycles appeared in the 1810s ...
 [sub-agent 'researcher': 3 step(s), finish reason 'stop', taskId 'task_1']
 ```
 
-If the sub-agent does not finish - it throws, runs out of `maxSteps`, or is
-aborted - the lead gets an error result (`isError: true`) that says why, for
-example `Sub-agent 'researcher' used all 10 of its steps (maxSteps) without
-giving a final answer.` An unknown agent name is also an error result listing
-the valid names. An answer cut off at the sub-agent's output token limit
-(finish reason `'length'`) is still returned, with a line after the footer
-saying it may be incomplete. Sub-agent token usage is added to the lead's `result.usage`,
-a [remote sub-agent](#remote-sub-agents)'s too.
+If the sub-agent does not finish - it throws, runs out of `maxSteps`, stops at
+a budget limit, or is aborted - the lead gets an error result (`isError: true`)
+that says why, for example `Sub-agent 'researcher' used all 10 of its steps
+(maxSteps) without giving a final answer.` An unknown agent name is also an
+error result listing the valid names. An answer cut off at the sub-agent's
+output token limit (finish reason `'length'`) is still returned, with a line
+after the footer saying it may be incomplete. A sub-agent with an `output`
+schema that runs out of steps makes one last forced call
+([Out of steps](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md#out-of-steps)): when that call returns
+a valid object, the `task` result is that object (finish reason `'max-steps'`
+in the footer, plus a line saying the steps ran out), not an error. Sub-agent
+token usage is added to the lead's `result.usage`, a
+[remote sub-agent](#remote-sub-agents)'s too. The lead's own `result.toolErrors`
+counts only the lead's tool calls; the calls that failed inside its sub-agents
+(and theirs) are counted on `result.usage.delegated.toolErrors`.
 
 Errors at setup time are thrown with a fix: a sub-agent without a
 `description`, a value that is not a `createAgent()` agent, or a tool of your
@@ -17914,7 +17942,8 @@ inherits:
 | Event listeners (`onAgentEvent`, `createAgent({ onEvent })`) and `stream()` | Yes | The sub-agent's events are forwarded with a `subagent` field. |
 | `toolConcurrency` | Yes, unless the sub-agent sets its own | |
 | `sandbox` | Yes | |
-| Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`) and counted against its `limits`, also when the sub-agent fails after spending tokens; a remote sub-agent's under `byModel['remote:<name>']`. |
+| Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`, whose `toolErrors` counts the sub-agents' failed tool calls) and counted against its `limits`, also when the sub-agent fails after spending tokens; a remote sub-agent's under `byModel['remote:<name>']`. |
+| Token, cost and duration `limits` | Shared | A sub-agent is also held to the lead's limits, counted with what the lead and its other sub-agents still running have spent: once they are reached, the sub-agent stops (`'budget-exceeded'`) before its next model call or tools, and the lead stops before its next model call. See [Budgets](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets). |
 | `maxSubagentDepth` | The remaining budget | See [Depth](#depth). |
 | `permissionMode` | Yes, unless the lead's is `'default'` | The sub-agent runs under the lead's [permission mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md#sub-agents), read at each of its tool calls; while the lead's is `'default'`, under its own (a sub-agent whose own mode is `'plan'` always stays in plan mode). A remote sub-agent does not inherit it: plan mode refuses a `task` call to one. |
 | `principal` | Yes | Who the lead's run acts for (route auth's caller, a channel's sender); a remote sub-agent is not told. |
@@ -18822,7 +18851,9 @@ its kind by carrying a `toolErrorKind` property. An error extending
 The model sees each failed call and may still answer as if it had worked,
 ending the run with `finishReason: 'stop'`. `result.toolErrors` counts the
 run's tool calls whose result is an error (any `kind` above except `not-run`);
-it is absent when none failed. Check it before trusting `text`, or cap it with
+it is absent when none failed. It counts only the run's own calls: the calls
+that failed inside its [sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md) are counted on
+`result.usage.delegated.toolErrors`. Check it before trusting `text`, or cap it with
 `limits.maxToolErrors`: once that many calls have failed, the run stops before
 its next model call with `finishReason: 'budget-exceeded'` and
 `result.budget.limit` `'maxToolErrors'` (or rejects with `BudgetExceededError`

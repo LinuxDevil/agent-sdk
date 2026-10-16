@@ -110,6 +110,10 @@ import {
   assertMaxSteps,
   maxStepsOf,
   startBudget,
+  withLeadBudget,
+  LEAD_BUDGET,
+  type LeadBudget,
+  type LeadBudgetOptions,
 } from './budget';
 import {
   GuardrailError,
@@ -843,8 +847,9 @@ export class AgentExecutor {
   private static async runWithEnd(options: ExecuteOptions, agentSpanId: string): Promise<ExecutionResult> {
     let run = options;
     let end: { result?: ExecutionResult; error?: unknown } = {};
-    // A `maxDurationMs` budget aborts the run's signal.
-    const budget = startBudget(options.limits, options.sessionBudget, options.signal, isMockProvider(options.provider));
+    // A `maxDurationMs` budget aborts the run's signal. A sub-agent is held to its lead's limits too.
+    const own = startBudget(options.limits, options.sessionBudget, options.signal, isMockProvider(options.provider));
+    const budget = withLeadBudget(own, (options as LeadBudgetOptions)[LEAD_BUDGET], options.signal);
     try {
       run = await extendRunOptions(budget ? { ...options, signal: budget.signal } : options);
       const result = await this.runAgentLoop(run, agentSpanId, budget);
@@ -1732,7 +1737,7 @@ export class AgentExecutor {
           scope.callTool = nestedToolCaller({
             parentToolCallId: toolCall.id,
             parentSpanId: toolSpan.id,
-            base: { agent, toolRegistry, onToolCall, onToolResult, sandbox, hooks, sessionId, principal: options.principal, metadata: options.metadata, messages: state.messages, onDelegatedUsage: (child) => mergeDelegatedUsage(state.usage, child) },
+            base: { agent, toolRegistry, onToolCall, onToolResult, sandbox, hooks, sessionId, principal: options.principal, metadata: options.metadata, messages: state.messages, onDelegatedUsage: (child, errors) => mergeDelegatedUsage(state.usage, child, errors) },
             signal,
             runtime: options,
             execute: scope.execute,
@@ -1753,7 +1758,7 @@ export class AgentExecutor {
           signal,
           onPrepared,
           // A delegated child's usage is added to this run's totals.
-          (child) => mergeDelegatedUsage(state.usage, child),
+          (child, errors) => mergeDelegatedUsage(state.usage, child, errors),
           scope
         );
         const parsedArgs =
@@ -1792,12 +1797,31 @@ export class AgentExecutor {
       saveStepCheckpoint(options, state).catch(() => undefined);
     };
     try {
-      const reporting: ExecuteOptions & DelegatedProgressOptions = { ...child, [DELEGATED_PROGRESS]: progress };
+      const reporting: ExecuteOptions & DelegatedProgressOptions & LeadBudgetOptions = {
+        ...child,
+        [DELEGATED_PROGRESS]: progress,
+        // Held to this run's limits, shared with its other sub-agents.
+        ...(state.budget && { [LEAD_BUDGET]: this.leadBudget(state.budget, state, key) }),
+      };
       return await AgentExecutor.execute(reporting);
     } finally {
       running = false;
       state.delegatedInFlight?.delete(key);
     }
+  }
+
+  /**
+   * The limits a sub-agent of this run (`key` in `delegatedInFlight`) is held to: this run's budget, checked with
+   * what this run spent, what its other sub-agents still running spent so far and what the sub-agent spent. A run
+   * that is itself a sub-agent has its lead's limits in its budget (`withLeadBudget`), so this goes up the tree.
+   */
+  private static leadBudget(budget: RunBudget, state: AgentRunState, key: symbol): LeadBudget {
+    return (childUsage) => {
+      const total = structuredClone(state.usage);
+      for (const [other, usage] of state.delegatedInFlight ?? []) if (other !== key) mergeDelegatedUsage(total, usage);
+      mergeDelegatedUsage(total, childUsage);
+      return budget.check(total, state.steps, true);
+    };
   }
 
   /**
