@@ -29,6 +29,12 @@ opt-out.
 - **Behavior change:** `POST /chat` to a session paused on an approval is a `409` JSON body (`LOUSHO_SESSION_AWAITING_APPROVAL`, with `approvalId` and `approvalIds`) instead of a `200` stream ending in a generic error.
 - A decision on an approval whose winning decision is still streaming is a `409` (`LOUSHO_APPROVAL_CONFLICT`), as docs/auth.md says, instead of a `404`.
 - The session routes' `400` bodies carry a `code`: `LOUSHO_REQUEST_INVALID` (invalid JSON, missing or empty fields), `LOUSHO_APPROVAL_DECISION_INVALID` (an approval body with neither `approved` nor `answer`), `LOUSHO_SESSION_ID_INVALID`.
+- `lousho chat` prints a failed turn with its error code, the provider's failure category and HTTP status, and the fix (`error: User not found. (auth-failure, HTTP 401)` then `[LOUSHO_PROVIDER_REQUEST_FAILED] ...`), as docs/cli.md says, instead of the bare provider message. The terminal chat of a project scaffolded by `lousho init` / `create-lousho-agent` does the same.
+- A `.env` saved with a UTF-8 byte order mark (PowerShell 5.1's `Set-Content -Encoding utf8`) no longer loses its first variable: the `lousho` commands and the scaffolded `src/index.ts` drop the mark before parsing. Variables already set in the environment still win.
+- `lousho doctor src/agent.ts` loads a `.ts`/`.js` agent module the way `lousho dev` does instead of failing with `LOUSHO_SPEC_UNSUPPORTED_FORMAT`, and a missing key for the module's provider is a failure. A scaffolded project's `npm run doctor` now runs `lousho doctor src/agent.ts`, so it fails when the agent's key is missing.
+- `lousho doctor --ping` checks OpenRouter at `/api/v1/key`, which needs the key (its `/models` answers without one, so a wrong key passed); a key the provider rejects is now a failure, and a ping of a custom `OPENAI_BASE_URL` says it shows reachability only.
+- `lousho doctor` fix lines use PowerShell syntax (`$env:NAME="<your key>"`) on Windows.
+- The `lousho eval` table shows the scores of passing scored gates (such as `t.check('words', n, atLeast(3))`), not only in `--json`.
 
 ### Documentation
 

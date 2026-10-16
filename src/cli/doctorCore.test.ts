@@ -447,7 +447,7 @@ describe('OpenAI base URL and --ping', () => {
     expect(report.checks.find((c) => c.id === 'ping.openai')).toMatchObject({
       status: 'ok',
       title: 'openai endpoint (GET http://localhost:1234/v1/models)',
-      finding: 'reachable (HTTP 200)',
+      finding: 'reachable (HTTP 200; reachability only, the key is not checked)',
     });
   });
 
@@ -459,9 +459,25 @@ describe('OpenAI base URL and --ping', () => {
       fix: expect.stringContaining('OPENAI_BASE_URL'),
     });
     const rejected = makeEnv({ env: { OPENROUTER_API_KEY: SECRET }, fetch: async () => ({ ok: false, status: 401 }) });
-    const result = await runDoctor(rejected, { ping: true }).then((r) => r.checks.find((c) => c.id === 'ping.openrouter'));
-    expect(result).toMatchObject({ status: 'warn', fix: 'Check OPENROUTER_API_KEY.' });
+    const report = await runDoctor(rejected, { ping: true });
+    const result = report.checks.find((c) => c.id === 'ping.openrouter');
+    // A key the provider rejects is a failure: every model call would fail the same way.
+    expect(result).toMatchObject({ status: 'fail', fix: 'Check OPENROUTER_API_KEY.' });
     expect(result?.finding).toContain('key was rejected');
+    expect(report.exitCode).toBe(1);
+  });
+
+  it('--ping asks OpenRouter for the key itself (its /models answers without one)', async () => {
+    const fetch = vi.fn(async (_url: string, _init: { signal: AbortSignal; headers?: Record<string, string> }) => ({ ok: true, status: 200 }));
+    const report = await runDoctor(makeEnv({ env: { OPENROUTER_API_KEY: SECRET }, fetch }), { ping: true });
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual(['https://openrouter.ai/api/v1/key']);
+    expect(fetch.mock.calls[0][1].headers).toEqual({ Authorization: `Bearer ${SECRET}` });
+    expect(report.checks.find((c) => c.id === 'ping.openrouter')).toMatchObject({ status: 'ok', finding: 'reachable, key accepted (HTTP 200)' });
+  });
+
+  it('--ping says when an endpoint does not prove the key (a custom OPENAI_BASE_URL)', async () => {
+    const report = await runDoctor(makeEnv({ env: { OPENAI_BASE_URL: 'http://localhost:1234/v1' } }), { ping: true });
+    expect(report.checks.find((c) => c.id === 'ping.openai')?.finding).toBe('reachable (HTTP 200; reachability only, the key is not checked)');
   });
 
   it('--ping with no provider configured says so', async () => {
@@ -592,7 +608,60 @@ describe('agent directory', () => {
   });
 });
 
+describe('agent module', () => {
+  const moduleEnv = (overrides: Partial<DoctorEnvironment> = {}) =>
+    makeEnv({
+      specPath: '/p/src/agent.ts',
+      loadAgentModule: async () => ({ name: 'agent', model: 'openrouter/openai/gpt-4o-mini', tools: ['current_time'] }),
+      ...overrides,
+    });
+
+  it('loads a .ts module like `lousho dev` does instead of reading it as a spec file', async () => {
+    const loadSpec = vi.fn();
+    const env = moduleEnv({ loadSpec });
+    expect(await check(env, 'spec')).toMatchObject({ status: 'ok', title: 'Agent module', finding: "'agent' loads (1 tool(s): current_time)" });
+    expect(await check(env, 'spec.provider')).toMatchObject({ status: 'ok', finding: "'openrouter' with model 'openai/gpt-4o-mini'" });
+    expect(loadSpec).not.toHaveBeenCalled();
+  });
+
+  it("fails when the agent's provider key is missing", async () => {
+    const report = await runDoctor(moduleEnv());
+    expect(report.checks.find((c) => c.id === 'env.openrouter')).toMatchObject({ status: 'fail', finding: expect.stringContaining('the agent spec needs it') });
+    expect(report.exitCode).toBe(1);
+  });
+
+  it('reports a module that fails to load, naming the file', async () => {
+    const env = moduleEnv({
+      loadAgentModule: async () => {
+        throw new Error('it must export a SimpleAgent or a createAgent() config');
+      },
+    });
+    expect(await check(env, 'spec')).toMatchObject({ status: 'fail', title: 'Agent module', fix: 'Fix the file named above: /p/src/agent.ts.' });
+  });
+});
+
+describe('fix lines use the shell of the platform', () => {
+  it('PowerShell syntax on Windows, export elsewhere', async () => {
+    expect((await check(makeEnv({ platform: 'win32' }), 'env.anthropic')).fix).toBe(
+      'Set ANTHROPIC_API_KEY in your environment, e.g. $env:ANTHROPIC_API_KEY="<your key>" (PowerShell), or add it to .env'
+    );
+    expect((await check(makeEnv({ platform: 'linux' }), 'env.anthropic')).fix).toBe(
+      'Set ANTHROPIC_API_KEY in your environment, e.g. export ANTHROPIC_API_KEY=<your key>'
+    );
+  });
+});
+
 describe('spec load failure fix text', () => {
+  it('an unsupported file type lists what doctor accepts', async () => {
+    const env = makeEnv({
+      specPath: 'agent.toml',
+      loadSpec: () => {
+        throw Object.assign(new Error('unsupported'), { code: 'LOUSHO_SPEC_UNSUPPORTED_FORMAT' });
+      },
+    });
+    expect((await check(env, 'spec')).fix).toBe('Pass an agent spec (.yaml/.yml/.json), an agent directory, or a .ts/.js module that exports an agent.');
+  });
+
   it('a missing spec says to check the path, not to fix fields', async () => {
     const env = makeEnv({
       specPath: 'nope.yaml',

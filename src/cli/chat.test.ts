@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { APICallError } from 'ai';
 import { memoryStore } from '../storage/agentStore';
 import { SignInRequired } from '../oauth/signIn';
 import { fakeOAuthServer, githubProvider } from '../oauth/__fixtures__/fakeOAuth';
@@ -256,6 +257,15 @@ describe('lousho chat REPL', () => {
     expect(err).toContain('error: ');
     expect(err).toContain('boom');
     expect(out).toContain('Again.');
+  });
+
+  it('prints a provider failure with its code, category, HTTP status and fix', async () => {
+    const unauthorized = new APICallError({ message: 'User not found.', url: 'https://openrouter.ai/api/v1/chat/completions', requestBodyValues: {}, statusCode: 401 });
+    const { err } = await converse(['hi', '/quit'], [{ error: unauthorized }]);
+    expect(err).toContain('error: User not found. (auth-failure, HTTP 401)');
+    expect(err).toContain('[LOUSHO_PROVIDER_REQUEST_FAILED] Check the provider status, your API key');
+    // Printed once, not once for the `error` event and again for the rejected turn.
+    expect(err.match(/User not found/g)).toHaveLength(1);
   });
 
   it('streams the continuation after y, and asks again when it pauses a second time', async () => {

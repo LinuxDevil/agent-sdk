@@ -22,7 +22,7 @@ function summarize(checks: DoctorCheck[]): Record<CheckStatus, number> {
 }
 
 export interface DoctorOptions {
-  /** `--ping`: GET `<base>/models` for each configured provider. */
+  /** `--ping`: GET an endpoint of each configured provider (one that checks the key where there is one). */
   ping?: boolean;
 }
 

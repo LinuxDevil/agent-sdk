@@ -1,7 +1,7 @@
 /**
  * `lousho doctor <agent.yaml>`: validates the spec with the SDK's own loader
  * and checks what the spec references (provider, built-in tools, MCP servers).
- * `lousho doctor <agent-dir>` loads the directory and checks its model's provider.
+ * `lousho doctor <agent-dir>` and `lousho doctor <agent.ts>` load the agent and check its model's provider.
  */
 import * as fs from 'node:fs';
 import * as nodePath from 'node:path';
@@ -89,11 +89,17 @@ function checkPolicy(spec: AgentSpec): DoctorCheck[] {
   });
 }
 
-/** The fix line for a spec that failed to load: a missing file, a config of an agent directory, or bad fields. */
+const TARGET_HINT = 'Pass an agent spec (.yaml/.yml/.json), an agent directory, or a .ts/.js module that exports an agent.';
+/** What `lousho dev` loads as an agent module (src/cli/devReload.ts). */
+const MODULE_FILE = /\.[cm]?[tj]s$/i;
+
+/** The fix line for a spec that failed to load: a missing file, a config of an agent directory, an unsupported file type, or bad fields. */
 function loadFix(file: string, error: unknown): string {
-  if ((error as { code?: unknown }).code === 'LOUSHO_SPEC_NOT_FOUND') {
-    return `Check the path: ${file} does not exist (pass an agent.yaml / agent.json spec or an agent directory).`;
+  const code = (error as { code?: unknown }).code;
+  if (code === 'LOUSHO_SPEC_NOT_FOUND') {
+    return `Check the path: ${file} does not exist (pass an agent.yaml / agent.json spec, an agent directory or an agent.ts module).`;
   }
+  if (code === 'LOUSHO_SPEC_UNSUPPORTED_FORMAT') return TARGET_HINT;
   const dir = nodePath.dirname(file);
   if (/^agent\.(json|ya?ml)$/i.test(nodePath.basename(file)) && fs.existsSync(nodePath.join(dir, 'instructions.md'))) {
     return `${file} looks like the config of an agent directory, which is not an agent spec: run \`lousho doctor ${dir}\` instead.`;
@@ -112,17 +118,27 @@ function loadFailure(file: string, error: unknown): SpecInspection {
   return { checks: [check], needs: NO_SPEC_NEEDS };
 }
 
-/** `lousho doctor <agent-dir>`: loads the directory (config, instructions, tools, ...) and checks its model's provider. */
-async function inspectAgentDir(env: DoctorEnvironment, dir: string): Promise<SpecInspection> {
-  const title = 'Agent directory';
-  if (!env.loadAgentDir) {
-    return { checks: [{ id: 'spec', status: 'warn', title, finding: 'agent directories cannot be inspected here', fix: 'Pass a spec file instead.' }], needs: NO_SPEC_NEEDS };
+interface AgentLoader {
+  title: string;
+  load: ((path: string) => Promise<AgentDirSummary>) | undefined;
+  /** What cannot be inspected without `load`, e.g. 'agent directories'. */
+  what: string;
+  fix: string;
+}
+
+/**
+ * `lousho doctor <agent-dir>` or `lousho doctor <agent.ts>`: loads the agent like `lousho dev`
+ * does (config, instructions, tools, ...) and checks its model's provider.
+ */
+async function inspectLoadedAgent(path: string, { title, load, what, fix }: AgentLoader): Promise<SpecInspection> {
+  if (!load) {
+    return { checks: [{ id: 'spec', status: 'warn', title, finding: `${what} cannot be inspected here`, fix: 'Pass a spec file instead.' }], needs: NO_SPEC_NEEDS };
   }
   let summary: AgentDirSummary;
   try {
-    summary = await env.loadAgentDir(dir);
+    summary = await load(path);
   } catch (error) {
-    const check: DoctorCheck = { id: 'spec', status: 'fail', title, finding: message(error), fix: `Fix the file named above in ${dir}.` };
+    const check: DoctorCheck = { id: 'spec', status: 'fail', title, finding: message(error), fix };
     return { checks: [check], needs: NO_SPEC_NEEDS };
   }
   const tools = summary.tools.length === 0 ? 'no tools' : `${summary.tools.length} tool(s): ${summary.tools.join(', ')}`;
@@ -149,7 +165,12 @@ async function inspectAgentDir(env: DoctorEnvironment, dir: string): Promise<Spe
 export async function inspectSpec(env: DoctorEnvironment): Promise<SpecInspection> {
   const path = env.specPath;
   if (!path) return { checks: [], needs: NO_SPEC_NEEDS };
-  if (env.isDirectory?.(path)) return inspectAgentDir(env, path);
+  if (env.isDirectory?.(path)) {
+    return inspectLoadedAgent(path, { title: 'Agent directory', load: env.loadAgentDir, what: 'agent directories', fix: `Fix the file named above in ${path}.` });
+  }
+  if (MODULE_FILE.test(path)) {
+    return inspectLoadedAgent(path, { title: 'Agent module', load: env.loadAgentModule, what: 'agent modules', fix: `Fix the file named above: ${path}.` });
+  }
 
   let spec: AgentSpec;
   try {

@@ -8,7 +8,7 @@ Run it with `npx lousho <command>` inside a project that has the SDK installed.
 | Command | What it does | Details |
 | ------- | ------------ | ------- |
 | `lousho init [dir]` | Scaffold a project: an agent with an example tool, an offline test, `.env.example`; installs dependencies and runs `git init`. | [Installation](./installation.md#scaffolding-a-new-project) |
-| `lousho doctor [spec\|agent-dir] [--json] [--ping]` | Check Node, peer packages, provider keys, and optionally a spec file or agent directory; `--ping` also checks each configured provider endpoint answers. Prints a fix for every problem. | [Installation](./installation.md#troubleshooting-lousho-doctor) |
+| `lousho doctor [spec\|agent-dir\|agent.ts] [--json] [--ping]` | Check Node, peer packages, provider keys, and optionally a spec file, agent directory or agent module (its provider's key is then required); `--ping` also checks each configured provider endpoint answers and accepts the key. Prints a fix for every problem. | [Installation](./installation.md#troubleshooting-lousho-doctor) |
 | `lousho dev <path>` | Local dev server for a spec file, an agent directory or a TS agent: chat UI with a session per tab and streamed events, hot reload on save. | [Below](#lousho-dev) |
 | `lousho chat <path>` | Terminal REPL for a spec file, an agent directory or a TS agent: streams replies, shows tool calls, asks for approvals and questions. | [Below](#lousho-chat) |
 | `lousho acp <path>` | Serve a spec file, an agent directory or a TS agent to an editor (Zed and other ACP clients) over the Agent Client Protocol on stdio. | [ACP](./acp.md) |
@@ -33,7 +33,7 @@ lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allo
 lousho build <agent-dir|spec|agent.ts> --target=<node-server|cloudflare-worker|docker> [--out=<dir>]    (or --agent=<path>)
 lousho studio [--port N] [--host H] [--prod|--dev]
 lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]
-lousho doctor [agent.yaml|json|agent-dir] [--json] [--ping]
+lousho doctor [agent.yaml|json|agent-dir|agent.ts] [--json] [--ping]
 lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
 lousho --version
@@ -59,7 +59,8 @@ value, an extra argument, or a missing `--target` or agent path. `lousho build` 
 **`.env`.** The commands that run an agent (`dev`, `chat`, `acp`, `mcp`),
 `doctor`, `eval` (judge evals need provider keys) and `build` load `./.env` from the working directory when it exists, like
 `node --env-file-if-exists=.env`: a variable already set in the environment
-wins over the file.
+wins over the file. A UTF-8 byte order mark at the start of the file (which
+PowerShell 5.1's `Set-Content -Encoding utf8` writes) is ignored.
 
 `lousho init` is the exception: it parses its own flags, and a bad flag or
 value fails with `InitUsageError` — its message printed as-is, exit code 2 —
@@ -216,7 +217,9 @@ Done, the report is on its way.
 - After each turn `[usage]` shows the tokens and, when every model used has
   known pricing, the cost (`~` marks estimated tokens).
 - Errors from the SDK print with their `[LOUSHO_...]` code and fix, and the
-  session continues.
+  session continues. A provider failure also names its category and HTTP
+  status, e.g. `error: User not found. (auth-failure, HTTP 401)` for a wrong
+  API key.
 - `--traces` or `--traces=<dir>` writes the session's runs to local trace files,
   as for `lousho dev`; a line on stderr says where.
 

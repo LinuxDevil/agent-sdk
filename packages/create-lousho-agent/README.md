@@ -32,6 +32,8 @@ With npm, put the options after `--`:
 npm create lousho-agent my-agent -- --yes --provider anthropic --template tools
 ```
 
+Running a packed `.tgz` of this package on Windows: `npx C:\abs\path\create-lousho-agent-<version>.tgz` silently does nothing (an npm quirk with absolute drive-letter paths). Use a relative path (`npx ./create-lousho-agent-<version>.tgz my-agent`) or a `file:` spec (`npx file:C:/abs/path/create-lousho-agent-<version>.tgz my-agent`).
+
 This package is a thin wrapper: it runs `lousho init` from the SDK, so `npx @lousho/build-ai-agent init --help` lists every option.
 
 ## Links

@@ -162,6 +162,25 @@ describe('renderProject', () => {
     expect(index).toContain('console.error(`\\nerror: ${errorText(error)}`);');
   });
 
+  it('the terminal chat prints an SDK error with its code, HTTP status and fix', () => {
+    const index = renderProject(config('openai', 'minimal'))['src/index.ts']!;
+    expect(index).toContain('error instanceof SDKError');
+    expect(index).toContain('[${error.code}]');
+    expect(index).toContain('HTTP ${statusCode}');
+  });
+
+  it('the terminal chat loads a .env saved with a byte order mark without losing its first key', () => {
+    const index = renderProject(config('openai', 'minimal'))['src/index.ts']!;
+    expect(index).not.toContain('process.loadEnvFile()');
+    expect(index).toContain("parseEnv(readFileSync('.env', 'utf8').replace(/^\\uFEFF/, ''))");
+    expect(index).toContain('if (process.env[name] === undefined)');
+  });
+
+  it('the doctor script checks the agent module, so a missing provider key fails it', () => {
+    const pkg = JSON.parse(renderProject(config('openai', 'minimal'))['package.json']!);
+    expect(pkg.scripts.doctor).toBe('lousho doctor src/agent.ts');
+  });
+
   it('the terminal chat streams text deltas and waits for the turn in flight at end of input', () => {
     const index = renderProject(config('openai', 'minimal'))['src/index.ts']!;
     expect(index).toContain("event.type === 'text.delta'");
