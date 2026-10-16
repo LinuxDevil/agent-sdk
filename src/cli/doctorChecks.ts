@@ -312,7 +312,7 @@ function pingTargets(env: DoctorEnvironment): PingTarget[] {
   }
   if (vars.GOOGLE_GENERATIVE_AI_API_KEY) {
     const headers = { 'x-goog-api-key': vars.GOOGLE_GENERATIVE_AI_API_KEY };
-    targets.push({ provider: 'google', envKey: 'GOOGLE_GENERATIVE_AI_API_KEY', base: 'https://generativelanguage.googleapis.com/v1beta', headers });
+    targets.push({ provider: 'google', envKey: 'GOOGLE_GENERATIVE_AI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/models', headers, checksKey: true });
   }
   if (vars.OPENROUTER_API_KEY) {
     const url = 'https://openrouter.ai/api/v1/key';
