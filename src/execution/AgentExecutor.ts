@@ -85,6 +85,7 @@ import {
   saveStepCheckpoint,
   countToolErrors,
   DELEGATED_PROGRESS,
+  type DelegatedProgressOptions,
   toExecutionResult,
 } from './agentRunState';
 import { acquireRunLease, HELD_RUN_LEASE, type RunLeaseOptions } from './runLease';
@@ -1791,7 +1792,8 @@ export class AgentExecutor {
       saveStepCheckpoint(options, state).catch(() => undefined);
     };
     try {
-      return await AgentExecutor.execute({ ...child, [DELEGATED_PROGRESS]: progress } as ExecuteOptions);
+      const reporting: ExecuteOptions & DelegatedProgressOptions = { ...child, [DELEGATED_PROGRESS]: progress };
+      return await AgentExecutor.execute(reporting);
     } finally {
       running = false;
       state.delegatedInFlight?.delete(key);

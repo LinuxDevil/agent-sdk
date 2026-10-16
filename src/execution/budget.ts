@@ -124,6 +124,18 @@ export interface RunBudget {
   dispose(): void;
 }
 
+/** The first spend limit of `max` that `total` reaches; `afterModelCall` leaves out `maxSteps`, `quietUnknownCost` the unknown-cost warning. */
+function spendLimitReached(max: RunLimits, total: BudgetSpent, afterModelCall: boolean, quietUnknownCost: boolean): Omit<BudgetExceeded, 'scope'> | undefined {
+  for (const [limit, key] of Object.entries(SPENT_KEYS) as Array<[Exclude<BudgetLimit, 'maxToolErrors'>, keyof BudgetSpent]>) {
+    const value = total[key];
+    const cap = max[limit];
+    if (cap !== undefined && value === undefined && limit === 'maxCostUsd' && !quietUnknownCost) warnUnknownCost();
+    if (cap === undefined || value === undefined || (afterModelCall && limit === 'maxSteps')) continue;
+    if (value >= cap) return { limit, value, max: cap };
+  }
+  return undefined;
+}
+
 /** Starts the run's budget; `undefined` without limits. */
 /** `quietUnknownCost` (a scripted mock provider, which has no price) skips the unknown-cost warning. */
 export function startBudget(limits?: RunLimits, session?: SessionBudget, signal?: AbortSignal, quietUnknownCost = false): RunBudget | undefined {
@@ -138,14 +150,8 @@ export function startBudget(limits?: RunLimits, session?: SessionBudget, signal?
     for (const { scope, limits: max, spent } of scopes) {
       // H3-3: failed tool calls count per run, also under a session's limits.
       if (max.maxToolErrors !== undefined && toolErrors >= max.maxToolErrors) return { limit: 'maxToolErrors' as const, value: toolErrors, max: max.maxToolErrors, scope };
-      const total = addSpent(spent, now);
-      for (const [limit, key] of Object.entries(SPENT_KEYS) as Array<[Exclude<BudgetLimit, 'maxToolErrors'>, keyof BudgetSpent]>) {
-        const value = total[key];
-        const cap = max[limit];
-        if (cap !== undefined && value === undefined && limit === 'maxCostUsd' && !quietUnknownCost) warnUnknownCost();
-        if (cap === undefined || value === undefined || (afterModelCall && limit === 'maxSteps')) continue;
-        if (value >= cap) return { limit, value, max: cap, scope };
-      }
+      const reached = spendLimitReached(max, addSpent(spent, now), afterModelCall, quietUnknownCost);
+      if (reached) return { ...reached, scope };
     }
     return undefined;
   };

@@ -118,6 +118,22 @@ export interface DelegatedProgressOptions {
   [DELEGATED_PROGRESS]?: (usage: RunUsage) => void;
 }
 
+/**
+ * H3-6: a checkpoint that ends or pauses the run closes it to its sub-agents
+ * still running; an `'in-progress'` one of a sub-agent run tells its lead what
+ * it has spent so far.
+ */
+function noteProgress(options: ExecuteOptions, state: AgentRunState, status: CheckpointStatus): void {
+  if (status !== 'in-progress') state.closed = true;
+  else (options as DelegatedProgressOptions)[DELEGATED_PROGRESS]?.(usageWithInFlight(state));
+}
+
+/** H3-6: the checkpoint's `delegatedInFlight`, while the run is unfinished and has sub-agents running. */
+function inFlightOf(state: AgentRunState, status: CheckpointStatus): Pick<Checkpoint, 'delegatedInFlight'> {
+  if (status === 'finished' || !state.delegatedInFlight?.size) return {};
+  return { delegatedInFlight: [...state.delegatedInFlight.values()].map((usage) => structuredClone(usage)) };
+}
+
 /** The run's usage plus what its sub-agents still running spent so far. */
 function usageWithInFlight(state: AgentRunState): RunUsage {
   if (!state.delegatedInFlight?.size) return state.usage;
@@ -354,9 +370,7 @@ export async function saveStepCheckpoint(
   const { agent, sessionId, checkpointStore, inputQueue } = options;
   // LOU-V9: a run that stops here takes no more queued input, and keeps none it did not apply.
   if (status !== 'in-progress') inputQueue?.close();
-  if (status !== 'in-progress') state.closed = true;
-  // H3-6: a sub-agent run tells its lead what it has spent so far.
-  else (options as DelegatedProgressOptions)[DELEGATED_PROGRESS]?.(usageWithInFlight(state));
+  noteProgress(options, state, status);
   if (!sessionId || !checkpointStore) {
     return;
   }
@@ -382,7 +396,7 @@ export async function saveStepCheckpoint(
     ...(options.principal && { principal: options.principal }),
     // LOU-R16: so a crash resume's hooks keep seeing the run's metadata.
     ...(options.metadata !== undefined && { metadata: options.metadata }),
-    ...(status !== 'finished' && !!state.delegatedInFlight?.size && { delegatedInFlight: [...state.delegatedInFlight.values()].map((usage) => structuredClone(usage)) }),
+    ...inFlightOf(state, status),
   };
   // Under the run's lease, a save is fenced: a run that lost it (it stalled past it) fails instead of overwriting the new holder's progress.
   const { lease } = state;
