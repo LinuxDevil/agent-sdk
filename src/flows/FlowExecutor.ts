@@ -473,24 +473,41 @@ export class FlowExecutor {
     const durable = durableOptions(context, 'resume')!;
     const { runId } = durable;
     // H3-1: one live run per runId; a concurrent resume rejects with LOUSHO_SESSION_BUSY.
-    return this.leased(durable.store, runId, async (store) => {
-      const checkpoint = await store.load(runId);
-      const structure = flowStructure(flow.flow);
-      const saved = flowStateOf(checkpoint, runId, flow.code, structure);
-      if (checkpoint?.status === 'finished' && !context.approval) {
-        return { status: 'completed', success: true, output: saved.output, variables: saved.variables, steps: saved.steps, events: [], usage: saved.usage };
-      }
-      const variables = { ...saved.variables };
-      const run = new FlowRun(store, runId, flow.code, variables, saved, structure);
-      const pending = checkpoint?.status === 'awaiting-approval' ? saved.pendingApproval : undefined;
-      this.assertApprovalDecision(runId, pending, context.approval);
-      if (pending && context.approval) {
-        run.decide(pending.nodeId, context.approval);
-        // The decision is used once: the run is no longer waiting for it.
-        await run.save('in-progress');
-      }
-      return this.traced(flow, { ...context, variables }, onEvent, run);
-    });
+    return this.leased(durable.store, runId, (store) => this.resumeLeased(flow, context, onEvent, store, runId));
+  }
+
+  /** `resume()` once it holds the run lease; `store` is fenced by it. */
+  private static async resumeLeased(
+    flow: AgentFlow,
+    context: FlowResumeContext,
+    onEvent: ((event: FlowExecutionEvent) => void) | undefined,
+    store: CheckpointStore,
+    runId: string
+  ): Promise<FlowExecutionResult> {
+    const checkpoint = await store.load(runId);
+    const structure = flowStructure(flow.flow);
+    const saved = flowStateOf(checkpoint, runId, flow.code, structure);
+    if (checkpoint?.status === 'finished' && !context.approval) {
+      return { status: 'completed', success: true, output: saved.output, variables: saved.variables, steps: saved.steps, events: [], usage: saved.usage };
+    }
+    const variables = { ...saved.variables };
+    const run = new FlowRun(store, runId, flow.code, variables, saved, structure);
+    const pending = checkpoint?.status === 'awaiting-approval' ? saved.pendingApproval : undefined;
+    await this.applyApprovalDecision(run, pending, context.approval);
+    return this.traced(flow, { ...context, variables }, onEvent, run);
+  }
+
+  /** Checks the resume's decision against the pending approval, and applies it to `run`. */
+  private static async applyApprovalDecision(
+    run: FlowRun,
+    pending: FlowPendingApproval | undefined,
+    approval: FlowApprovalDecision | undefined
+  ): Promise<void> {
+    this.assertApprovalDecision(run.runId, pending, approval);
+    if (!pending || !approval) return;
+    run.decide(pending.nodeId, approval);
+    // The decision is used once: the run is no longer waiting for it.
+    await run.save('in-progress');
   }
 
   /** A paused run resumes only with a decision on its pending approval; a decision needs one. */
