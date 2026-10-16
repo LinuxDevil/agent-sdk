@@ -12,9 +12,9 @@ import type { ExecutionResult } from '../execution/AgentExecutor';
 import { startAgentRun, type AgentRun } from '../execution/agentRun';
 import { InputQueue } from '../execution/inputQueue';
 import { getCheckpointHistory, isCheckpointCorrupt, pausedApprovalIds, type Checkpoint, type CheckpointError, type CheckpointListEntry, type CheckpointStore } from '../execution/checkpoint';
-import { acquireRunLease, HELD_RUN_LEASE, type RunLease, type RunLeaseOptions } from '../execution/runLease';
+import { acquireRunLease, HELD_RUN_LEASE, REPLACES_CHECKPOINT, type RunLease, type RunLeaseOptions } from '../execution/runLease';
 import type { ApprovalKind } from '../execution/ApprovalGate';
-import { CompactedLLMProviderError, ConfigurationError, SDKError, SessionAwaitingApprovalError } from '../execution/errors';
+import { CompactedLLMProviderError, ConfigurationError, LLMProviderError, SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 import { streamSessionTurn } from './sessionStream';
 import { MemorySessionStore, assertSessionId, encodeBytes, transcriptRevision, type SessionStore } from './sessionStore';
 import { addSpent, runSpent, sessionSpent, type BudgetSpent, type RunLimits, type SessionBudget } from '../execution/budget';
@@ -134,6 +134,12 @@ export interface SessionTurnCall {
   metadata?: Record<string, unknown>;
   /** The turn's caller (N10a). */
   principal?: Principal;
+}
+
+/** A new turn's input and call, kept when its first model call fails (see `AgentSession.unstartedTurn`). */
+interface FailedTurnInput {
+  input: Message[];
+  call: SessionTurnCall;
 }
 
 /** Options of `session.send()` / `session.stream()`. */
@@ -616,7 +622,7 @@ export class AgentSession<TObject = unknown> {
             try {
               const run = streamRun([...this.transcript, ...messages], signal, turn, call);
               started(run);
-              return this.record(await this.attempt(() => run.result), messages);
+              return this.record(await this.attempt(() => run.result, { input: messages, call }), messages);
             } finally {
               await this.releaseRunLease();
             }
@@ -943,7 +949,7 @@ export class AgentSession<TObject = unknown> {
     const options = this.turnOptions(inputs);
     await this.holdRunLease(options);
     try {
-      return this.record(await this.attempt(() => this.run([...this.transcript, ...input], signal, options, call)), input);
+      return this.record(await this.attempt(() => this.run([...this.transcript, ...input], signal, options, call), { input, call }), input);
     } finally {
       await this.releaseRunLease();
     }
@@ -954,13 +960,24 @@ export class AgentSession<TObject = unknown> {
    * error (`lastError`) and the failed attempts (`attempts`), so a turn that failed for good is not replayed by
    * every later `send()` (see `resumePending`).
    */
-  private async attempt(run: () => Promise<ExecutionResult>): Promise<ExecutionResult> {
+  private async attempt(run: () => Promise<ExecutionResult>, turn?: FailedTurnInput): Promise<ExecutionResult> {
     try {
       return await run();
     } catch (error) {
-      await this.recordFailure(error).catch(() => undefined);
+      await this.recordFailure(error, turn).catch(() => undefined);
       throw error;
     }
+  }
+
+  /**
+   * Runs again a turn whose first model call failed before the run saved a checkpoint (`Checkpoint.unstarted`):
+   * a new run from its input (`REPLACES_CHECKPOINT`, so the agent's system prompt is added as on any new turn), with
+   * the metadata and principal it was sent with. Its first checkpoint replaces the one `recordFailure` wrote.
+   */
+  private rerunUnstarted(pending: Checkpoint, signal: AbortSignal | undefined, options: SessionTurnOptions | undefined): Promise<ExecutionResult> {
+    if (options) (options as SessionTurnOptions & RunLeaseOptions)[REPLACES_CHECKPOINT] = true;
+    const input = pending.messages.slice(this.transcript.length);
+    return this.run([...pending.messages], signal, options, { input, metadata: pending.metadata, principal: pending.principal });
   }
 
   /**
@@ -987,11 +1004,11 @@ export class AgentSession<TObject = unknown> {
     await lease?.release().catch(() => undefined);
   }
 
-  private async recordFailure(error: unknown): Promise<void> {
+  private async recordFailure(error: unknown, input?: FailedTurnInput): Promise<void> {
     // A turn refused because another process runs it (its run lease) did not run: the checkpoint is that process's.
     if (error instanceof SDKError && error.code === 'LOUSHO_SESSION_BUSY') return;
     const turn = this.turnCheckpoint();
-    const checkpoint = turn && (await turn.checkpointStore.load(turn.sessionId));
+    const checkpoint = turn && ((await turn.checkpointStore.load(turn.sessionId)) ?? this.unstartedTurn(turn.sessionId, error, input));
     if (!turn || !checkpoint || (checkpoint.status ?? 'in-progress') !== 'in-progress') return;
     const failed = { ...checkpoint, lastError: checkpointError(error), attempts: (checkpoint.attempts ?? 0) + 1 };
     // Eve2-F2: under the turn's own lease the write is fenced - it throws LOUSHO_SESSION_BUSY, writing
@@ -1001,6 +1018,29 @@ export class AgentSession<TObject = unknown> {
       return;
     }
     await turn.checkpointStore.save(turn.sessionId, failed);
+  }
+
+  /**
+   * The checkpoint a new turn whose first model call failed is kept in, before the run saved one (the run saves its
+   * first after a model response): the transcript plus the turn's input, so the next `send()` / `resume()` runs it
+   * again (see `rerunUnstarted`) instead of losing the message. Only for a provider failure: an error such as a bad
+   * configuration fails the call and leaves nothing to resume, as before.
+   */
+  private unstartedTurn(sessionId: string, error: unknown, turn: FailedTurnInput | undefined): Checkpoint | null {
+    if (!turn || turn.input.length === 0 || !(error instanceof LLMProviderError)) return null;
+    const { metadata, principal } = turn.call;
+    return {
+      agentId: '',
+      sessionId,
+      stepIndex: 0,
+      messages: [...this.transcript, ...turn.input],
+      toolCalls: [],
+      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+      status: 'in-progress',
+      unstarted: true,
+      ...(metadata !== undefined && { metadata }),
+      ...(principal && { principal }),
+    };
   }
 
   /**
@@ -1119,6 +1159,7 @@ export class AgentSession<TObject = unknown> {
     const options = this.turnOptions();
     await this.holdRunLease(options);
     try {
+      if (pending.unstarted) return this.record(await this.attempt(() => this.rerunUnstarted(pending, signal, options)));
       return this.record(await this.attempt(() => this.run([], signal, options)));
     } finally {
       await this.releaseRunLease();

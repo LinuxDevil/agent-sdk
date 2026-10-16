@@ -445,6 +445,7 @@ interface Checkpoint {
     stepUsage?: StepUsage[];
     // (undocumented)
     toolCalls: unknown[];
+    unstarted?: boolean;
     usage: CheckpointUsage;
 }
 

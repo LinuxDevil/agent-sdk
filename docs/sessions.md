@@ -249,7 +249,10 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   `send()` / `stream()` does not replay the turn: it fails with
   `LOUSHO_SESSION_TURN_FAILED`. Call `discardPending()` to drop the turn, or
   `resume()` to retry it once the cause is fixed. Other failures (a crash, a
-  5xx, a network error) are still resumed by the next `send()`.
+  5xx, a network error) are still resumed by the next `send()`. This holds
+  for a turn whose very first model call fails too: the run has saved no
+  checkpoint yet, so the session keeps the turn's input as the pending turn
+  (`pending()` reports it `in-progress`) and runs it again from that input.
 - A turn that pauses on a `needsApproval` tool stays in its checkpoint, not in
   the transcript, until it finishes. While it waits, `resume()`, `send()` and
   `stream()` throw `SessionAwaitingApprovalError` (with its `approvalId`), and
