@@ -127,6 +127,8 @@ function featurePeers(needs: SpecNeeds): Map<string, OptionalPeer> {
   );
 }
 
+const NOT_INSTALLED_OPTIONAL = 'not installed (optional)';
+
 function checkOptionalPeer(env: DoctorEnvironment, name: string, peer: OptionalPeer): DoctorCheck {
   const note = peer.pairing?.note;
   const fix = `npm install ${peer.install}` + (note ? ` (note: ${note})` : '');
@@ -139,7 +141,7 @@ function checkOptionalPeer(env: DoctorEnvironment, name: string, peer: OptionalP
       status: peer.required ? 'fail' : 'warn',
       finding: peer.required
         ? `not installed, and the agent spec needs it${enables}`
-        : `not installed (optional)${enables}`,
+        : `${NOT_INSTALLED_OPTIONAL}${enables}`,
       fix,
     };
   }
@@ -166,7 +168,22 @@ export function checkOptionalPeers(env: DoctorEnvironment, needs: SpecNeeds): Do
   // provider's package and the feature peer for `pi/...` specs) is reported
   // once, as the provider package.
   const features = [...featurePeers(needs)].filter(([name]) => !providers.has(name));
-  return [...providers, ...features].map(([name, peer]) => checkOptionalPeer(env, name, peer));
+  const checks = [...providers, ...features].map(([name, peer]) => [name, checkOptionalPeer(env, name, peer)] as const);
+  // Packages the agent does not use are not problems: one info line instead of a warning each, so real warnings stay visible.
+  const unused = checks.filter(([, check]) => check.status === 'warn' && check.finding.startsWith(NOT_INSTALLED_OPTIONAL));
+  const rest = checks.filter((entry) => !unused.includes(entry)).map(([, check]) => check);
+  if (unused.length === 0) return rest;
+  const names = unused.map(([name]) => name);
+  return [
+    ...rest,
+    {
+      id: 'optional-peers.unused',
+      title: 'Optional packages not installed',
+      status: 'ok',
+      finding: `${names.length} not needed by this agent (${names.join(', ')}); install one only if you use its feature`,
+      fix: unused.map(([, check]) => check.fix).join('; '),
+    },
+  ];
 }
 
 /** The env variable the provider reads for a custom endpoint (a local or OpenAI-compatible server), on every provider-package major. */

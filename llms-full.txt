@@ -43,6 +43,8 @@ cd my-agent                                          # copy .env.example to .env
 npm run dev                                          # chat in the terminal; `npm test` runs offline
 ```
 
+From a locally packed tarball: `npx --package=<absolute path to create-lousho-agent-x.y.z.tgz> create-lousho-agent my-agent` (`npx ../x.tgz` fails on Windows).
+
 To add it to an existing project, install the SDK with the current `ai` major
 and the provider packages that pair with it:
 
@@ -680,6 +682,8 @@ cd my-agent
 npm run dev              # chat with your agent in the terminal
 npm test                 # offline tests: no API key needed
 ```
+
+To try a locally packed `create-lousho-agent` (`npm pack`), pass the tarball's absolute path with `--package`: `npx --package=/abs/path/create-lousho-agent-x.y.z.tgz create-lousho-agent my-agent`. A bare `npx ../x.tgz` fails on Windows.
 
 `npx @lousho/build-ai-agent init my-agent` is equivalent (pass `--provider`
 and `--template`, since it runs without the interactive prompts). Inside a
@@ -1737,6 +1741,21 @@ const { manifest } = await resolveAgentDir('./my-agent', {
 console.log(manifest.memory); // names found in memory/
 ```
 
+A relative `dir` in a `memory/*.ts` file resolves against the process working directory, not the agent directory (unlike `store.dir` in `agent.ts`, which is relative to the agent directory). A bare `./.lousho/memory` therefore puts memory in a different tree from the sessions, and it moves when you start the agent from another directory or from a build. Anchor it to the module instead, so it always lands next to the agent's other state:
+
+```ts
+// memory/notes.ts
+import { fileURLToPath } from 'node:url';
+import { fileMemory } from '@lousho/build-ai-agent';
+
+export default {
+  scope: 'global',
+  provider: fileMemory({ dir: fileURLToPath(new URL('../.lousho/memory', import.meta.url)) }),
+};
+```
+
+The path follows the module: a copied or bundled build keeps its memory next to the build, so point it at a fixed absolute path (or a database provider) if memory must survive redeploys.
+
 ## How it maps to `createAgent()`
 
 | Directory | `createAgent()` option |
@@ -1836,10 +1855,10 @@ loader, sources or `node_modules`. Nothing else is copied: `.env` files, the `.l
 (or the config's `store.dir`) and any other file stay out of the build and its Docker image. See [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#agent-directories).
 The Cloudflare Worker target builds a directory too, embedding every folder: `subagents/` become `delegate_to_` tools, `schedules/` become cron triggers, `channels/` are mounted under `/channels` and `memory/` slots run on `kvMemory()` ([Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md#build-and-deploy)).
 
-## What is not covered
+## Serving over MCP
 
-`lousho mcp` still takes an agent spec file ([Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md)),
-not a directory.
+`lousho mcp` takes an agent directory as well as a spec file ([Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md)):
+`lousho mcp ./my-agent` serves it as an MCP server ([MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#serve-an-agent-over-mcp)).
 
 # Agent Forge
 
@@ -11518,6 +11537,11 @@ const userFacts = defineMemory({
 const agent = createAgent({ provider: mockModel(['Hello!']), memory: [userFacts] });
 await agent.send('Hi again!', { metadata: { userId: 'u-42' } });
 ```
+
+`lousho dev` and `lousho chat` cannot pass run `metadata`, so a scope function that
+reads `metadata.userId` is off there. To try per-user memory in the terminal, derive the
+scope from `sessionId` as well (for example `` `user:${metadata?.userId ?? sessionId}` ``, with
+`lousho chat --session <id>` as the "user"), or exercise it from a script with `send(..., { metadata })`.
 
 When a run has no scope key (a `'session'` slot in a `send()` without a
 `sessionId`, or a scope function that returns `undefined` or `null`), the slot is off

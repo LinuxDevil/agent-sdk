@@ -46,6 +46,8 @@ cd my-agent                                          # copy .env.example to .env
 npm run dev                                          # chat in the terminal; `npm test` runs offline
 ```
 
+From a locally packed tarball: `npx --package=<absolute path to create-lousho-agent-x.y.z.tgz> create-lousho-agent my-agent` (`npx ../x.tgz` fails on Windows).
+
 To add it to an existing project, install the SDK with the current `ai` major
 and the provider packages that pair with it:
 

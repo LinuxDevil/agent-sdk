@@ -18,6 +18,8 @@ npm run dev              # chat with your agent in the terminal
 npm test                 # offline tests: no API key needed
 ```
 
+To try a locally packed `create-lousho-agent` (`npm pack`), pass the tarball's absolute path with `--package`: `npx --package=/abs/path/create-lousho-agent-x.y.z.tgz create-lousho-agent my-agent`. A bare `npx ../x.tgz` fails on Windows.
+
 `npx @lousho/build-ai-agent init my-agent` is equivalent (pass `--provider`
 and `--template`, since it runs without the interactive prompts). Inside a
 project that already has the SDK installed, `npx lousho init` works too: the

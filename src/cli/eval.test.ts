@@ -309,6 +309,14 @@ describe('lousho eval --record / --replay / --drift (real vitest, mockModel as t
     expect(output).toContain(`npx lousho eval --record ${path.relative(process.cwd(), fixture)}`);
   }, 60_000);
 
+  it('--replay passes a plain mockModel eval with no cassette: mocks need no network', async () => {
+    vi.stubEnv('FIXTURE_MOCK', '1');
+    const { code, output } = await cli([fixture, '--replay']);
+    expect(output).not.toContain('no cassette');
+    expect(code).toBe(0);
+    expect(fs.existsSync(cassette)).toBe(false);
+  }, 60_000);
+
   it('--record writes one cassette per case; --replay (or a CI run) replays it with no provider call', async () => {
     expect((await cli([fixture, '--record'])).code).toBe(0);
     expect((JSON.parse(fs.readFileSync(cassette, 'utf8')) as { entries: unknown[] }).entries).toHaveLength(2);

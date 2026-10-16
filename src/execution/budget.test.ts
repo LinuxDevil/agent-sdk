@@ -223,4 +223,16 @@ describe('unknown cost under maxCostUsd (Eve PROV-F3)', () => {
     expect(budget.check(usage, 1)).toMatchObject({ limit: 'maxCostUsd', value: 1.5, max: 1 });
     budget.dispose();
   });
+
+  it('stays quiet for a scripted mockModel(), which has no price', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.resetModules();
+    const { startBudget: fresh } = await import('./budget');
+    const usage: RunUsage = { inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: undefined, modelCalls: 1, estimated: false, promptTokens: 1, completionTokens: 1, byModel: {} };
+    fresh({ maxCostUsd: 1 }, undefined, undefined, true)!.check(usage, 1);
+    expect(warn).not.toHaveBeenCalled();
+    fresh({ maxCostUsd: 1 })!.check(usage, 1);
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
 });

@@ -5,6 +5,7 @@
  * exact requests the agent sent. No network, no randomness.
  */
 
+import { MOCK_PROVIDER } from '../providers/mockMarker';
 import type {
   GenerateOptions,
   GenerateResult,
@@ -224,6 +225,7 @@ function chunkText(text: string): string[] {
 
 class ScriptedMockModel implements MockModel {
   readonly name = 'mock';
+  readonly [MOCK_PROVIDER] = true;
   readonly defaultModel: string;
   private readonly recorded: MockRequest[] = [];
   private index = 0;
