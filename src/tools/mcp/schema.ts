@@ -83,8 +83,8 @@ function convertKeywords(schema: JsonSchema, ctx: Context): ZodTypeAny {
  */
 function applyNullable(zodType: ZodTypeAny, schema: JsonSchema): ZodTypeAny {
   if (schema.nullable !== true) return zodType;
-  if (zodType instanceof z.ZodDefault) return zodType.removeDefault().nullable().default(schema.default);
-  return zodType.nullable();
+  if (zodType instanceof z.ZodDefault) return z.nullable(zodType.removeDefault()).default(schema.default);
+  return z.nullable(zodType);
 }
 
 function convertBase(schema: JsonSchema, ctx: Context): ZodTypeAny {

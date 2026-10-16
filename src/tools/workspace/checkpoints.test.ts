@@ -211,6 +211,10 @@ describe('WorkspaceCheckpoints details', () => {
     toolCallId: 'c',
     sessionId,
     messages: Array.from({ length: users }, () => ({ role: 'user' as const, content: 'x' })),
+    getToken: (): Promise<never> => Promise.reject(new Error('checkpoints.test.ts has no token store')),
+    requireAuth: (): never => {
+      throw new Error('checkpoints.test.ts has no token store');
+    },
   });
 
   it('restores the mode of a file deleted outside the agent (force)', async () => {
