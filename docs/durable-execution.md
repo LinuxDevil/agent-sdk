@@ -464,6 +464,16 @@ const chargeCard = defineTool({
 (`toolCallId` is set for every tool run, including tools that route through
 `sandboxExecute`.)
 
+The built-in file tools are safe to re-run. `write_file` writes the same
+content again; an `edit_file` whose edit is already in the file (`old_string`
+gone, a non-empty `new_string` present) succeeds and says the edit was already
+applied, instead of telling the model that an applied edit failed. With
+`WorkspaceCheckpoints`, each change's backup is stored before the file is
+written and a re-run keeps the first backup, so `rewind()` restores the
+original content after a crash too (see
+[Workspace tools](./workspace-tools.md#the-tools)). The `shell` tool is not:
+a command that was running when the process died runs again.
+
 `toolCallId` (and `ctx.approval.id` for an approved call) identifies one call
 the model made. It only protects against that call running twice. If the
 process dies before the call is recorded, the model may make the call again

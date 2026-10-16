@@ -32,6 +32,7 @@ export {
 export {
   WorkspaceCheckpoints,
   MemoryWorkspaceCheckpointStore,
+  type PreparedWorkspaceWrite,
   type RewindResult,
   type WorkspaceCheckpointStore,
   type WorkspaceCheckpointsOptions,

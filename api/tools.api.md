@@ -1878,6 +1878,14 @@ type PermissionToolMatcher = string | readonly string[] | RegExp;
 type PiiType = 'email' | 'phone' | 'credit-card' | 'iban' | 'us-ssn' | 'ip-address';
 
 // @public
+export interface PreparedWorkspaceWrite {
+    // (undocumented)
+    prepare(): Promise<string>;
+    // (undocumented)
+    write(content: string): Promise<void>;
+}
+
+// @public
 interface Principal {
     authenticator: string;
     claims?: Readonly<Record<string, unknown>>;
@@ -2869,7 +2877,7 @@ export class WorkspaceCheckpoints {
         dryRun?: boolean;
         force?: boolean;
     }): Promise<RewindResult>;
-    track(ctx: ToolExecutionContext | undefined, path: string, write: () => Promise<string>): Promise<void>;
+    track(ctx: ToolExecutionContext | undefined, path: string, write: (() => Promise<string>) | PreparedWorkspaceWrite): Promise<void>;
 }
 
 // @public

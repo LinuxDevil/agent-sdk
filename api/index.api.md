@@ -4784,6 +4784,14 @@ export function prepareCompaction(messages: Message[], options: CompactMessagesO
 };
 
 // @public
+export interface PreparedWorkspaceWrite {
+    // (undocumented)
+    prepare(): Promise<string>;
+    // (undocumented)
+    write(content: string): Promise<void>;
+}
+
+// @public
 export interface PreToolCallDecision {
     inputBy: string[];
     stop?: {
@@ -7202,7 +7210,7 @@ export class WorkspaceCheckpoints {
         dryRun?: boolean;
         force?: boolean;
     }): Promise<RewindResult>;
-    track(ctx: ToolExecutionContext | undefined, path: string, write: () => Promise<string>): Promise<void>;
+    track(ctx: ToolExecutionContext | undefined, path: string, write: (() => Promise<string>) | PreparedWorkspaceWrite): Promise<void>;
 }
 
 // @public

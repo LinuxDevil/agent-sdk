@@ -242,11 +242,8 @@ function mutatingTools(links: LinkGuard, limits: FsLimits, approvals: FsToolAppr
         const target = allowedPath(path, limits);
         // Before `track`, which would read the old content into a backup.
         await links.check(target);
-        const write = async () => {
-          await fs.writeFile(target, content);
-          return content;
-        };
-        await (checkpoints ? checkpoints.track(ctx, target, write) : write());
+        if (checkpoints) await checkpoints.track(ctx, target, { prepare: async () => content, write: (text) => fs.writeFile(target, text) });
+        else await fs.writeFile(target, content);
         return `Wrote ${Buffer.byteLength(content, 'utf8')} bytes to ${target}.`;
       },
     }),
@@ -258,14 +255,17 @@ function mutatingTools(links: LinkGuard, limits: FsLimits, approvals: FsToolAppr
       input: editFileInput,
       needsApproval: approvals.edit_file,
       async execute(args, ctx) {
-        await links.check(allowedPath(args.path, limits));
+        const target = allowedPath(args.path, limits);
+        await links.check(target);
         if (!checkpoints) return editFile(fs, args);
         let message = '';
-        await checkpoints.track(ctx, args.path, async () => {
-          const edit = await prepareEdit(fs, args);
-          await fs.writeFile(edit.path, edit.content);
-          message = edit.message;
-          return edit.content;
+        await checkpoints.track(ctx, target, {
+          async prepare() {
+            const edit = await prepareEdit(fs, args);
+            message = edit.message;
+            return edit.content;
+          },
+          write: (text) => fs.writeFile(target, text),
         });
         return message;
       },

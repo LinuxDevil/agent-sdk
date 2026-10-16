@@ -3841,6 +3841,34 @@ after each answer the program asks for the next line, and an empty line or
 keep a conversation across runs, give the agent a store (see
 [Choosing a store](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)).
 
+### Long turns and restarts
+
+- **Context.** A coding turn reads files, runs tests and edits over many
+  steps; every tool result stays in the transcript, so a 40-step turn can
+  outgrow a 128k-token window before it finishes. Pass
+  `createAgent({ compaction: true })` (or a summarizer, see
+  [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md)): it compacts before each model call,
+  between the steps of one turn too.
+- **Crashes.** With a durable store, a turn killed mid-way is finished by the
+  next `session.send()` or by `session.resume()`. A tool call that was running
+  when the process died runs again ([at-least-once](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#at-least-once-tools-make-side-effects-idempotent)).
+  The built-in `write_file` and `edit_file` are safe to re-run: `write_file`
+  writes the same content again, and an `edit_file` whose edit is already in
+  the file (`old_string` gone, `new_string` present) succeeds with "the edit
+  was already applied" instead of failing. With
+  [`WorkspaceCheckpoints`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md#the-tools), each change's backup is stored
+  before the file is written, and a re-run keeps the first backup, so
+  `rewind()` still restores the original after a crash.
+- **Progress while resuming.** `session.resume()` returns a result, not a
+  stream, and `session.stream()` does not stream the pending turn it finishes
+  before the new message. To show progress, register
+  `session.on((event) => ...)` before calling it, or pass
+  `createAgent({ onEvent })`: both get the resumed turn's `AgentEvent`s
+  (`tool.start`, `text.delta`, ..., `run.done`) as they happen.
+- **Approvals after a restart.** `agent.approvals.streamResolve({ id, approved })`
+  (or `resolve()`) from a fresh process, given the same durable store,
+  continues the paused turn in its session; no `session.resume()` first.
+
 ## 6. Test it without a model
 
 The agent needs no network to test. A `MemoryWorkspace` keeps the files in
@@ -7694,6 +7722,16 @@ const chargeCard = defineTool({
 
 (`toolCallId` is set for every tool run, including tools that route through
 `sandboxExecute`.)
+
+The built-in file tools are safe to re-run. `write_file` writes the same
+content again; an `edit_file` whose edit is already in the file (`old_string`
+gone, a non-empty `new_string` present) succeeds and says the edit was already
+applied, instead of telling the model that an applied edit failed. With
+`WorkspaceCheckpoints`, each change's backup is stored before the file is
+written and a re-run keeps the first backup, so `rewind()` restores the
+original content after a crash too (see
+[Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md#the-tools)). The `shell` tool is not:
+a command that was running when the process died runs again.
 
 `toolCallId` (and `ctx.approval.id` for an approved call) identifies one call
 the model made. It only protects against that call running twice. If the
@@ -16259,9 +16297,16 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   the transcript, until it finishes. While it waits, `resume()`, `send()` and
   `stream()` throw `SessionAwaitingApprovalError` (with its `approvalId`), and
   `agent.approvals.resolve({ id, approved })` continues the turn in this
-  session. After a restart, open the session and call `resume()` (or `send()`)
-  once before resolving, so the agent knows which session the approval belongs
-  to; give both agents the same durable `store` (or `approvalStore`).
+  session. After a restart, `agent.approvals.resolve()` or `streamResolve()`
+  from the new process continues it too: the agent finds the session from the
+  pause record (for session ids of letters, digits, `_` and `-`), so there is
+  no need to open the session or call `resume()` first. Give both agents the
+  same durable `store` (or `approvalStore`).
+- `resume()` returns the finished turn's result; it does not stream, and
+  `stream()` does not stream the pending turn it finishes first either. To
+  show a resumed turn's progress, register `session.on(listener)` before the
+  call (or pass `createAgent({ onEvent })`): it gets the turn's `AgentEvent`s
+  as they happen.
 - A paused turn locks the session id: the session records it under
   `<id>.paused` in the checkpoint store, so `agent.send(message, { sessionId: id })`,
   `agent.stream()` with that `sessionId`, and a session object over a different
@@ -20029,7 +20074,7 @@ const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistr
 | ------------ | ------------------------------------------------- | ------- |
 | `read_file`  | `path`, optional `offset` (1-based line), `limit` | Numbered lines (`"    12\tcode"`). When the output is cut, the last line says which lines were shown and the `offset` to continue from. Files over 10 MB are refused. |
 | `write_file` | `path`, `content`                                 | Creates or overwrites the file and creates missing parent directories. |
-| `edit_file`  | `path`, `old_string`, `new_string`, optional `replace_all` | Replaces the exact text. Fails with a message the model can act on when `old_string` is missing (including a hint about CRLF line endings) or appears more than once without `replace_all`. Refuses a file that is not UTF-8 (latin1, Windows-1252, UTF-16) and leaves it unchanged, when the provider has `readFileBytes` (as `NodeWorkspace` does). A UTF-8 BOM is kept. |
+| `edit_file`  | `path`, `old_string`, `new_string`, optional `replace_all` | Replaces the exact text. Fails with a message the model can act on when `old_string` is missing (including a hint about CRLF line endings) or appears more than once without `replace_all`. When `old_string` is missing but a non-empty `new_string` is in the file, the edit was already applied (a call re-run after a crash): it succeeds without writing and says so. Refuses a file that is not UTF-8 (latin1, Windows-1252, UTF-16) and leaves it unchanged, when the provider has `readFileBytes` (as `NodeWorkspace` does). A UTF-8 BOM is kept. |
 | `list_dir`   | optional `path`                                   | Sorted entries; directories end with `/`. |
 | `glob`       | `pattern`, optional `path`                        | Sorted paths of matching files. `*` stays within one directory, `**` crosses directories, plus `?`, `[abc]` and `{a,b}`. |
 | `grep`       | `pattern` (JavaScript regex), optional `path`, `glob`, `ignore_case` | `path:line: text` for each matching line. An invalid regex, or one with nested repetition like `(a+)+`, is a tool error. Binary files and files over 2 MB are skipped. |
@@ -20133,6 +20178,17 @@ well, fork the session with `session.fork({ fromStep })` (see
 [Forking a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#forking-a-session); a step's `turn` in
 `session.history()` is the turn number used here), or a single run with
 `agent.fork()` (see [Fork and replay](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#fork-and-replay)).
+
+Backups survive a crash. The backup is stored before the file is written, so
+a process killed between the two loses nothing: the file still holds the
+backed-up content, and rewind treats it as nothing to undo. A tool call that
+was running when the process died runs again on resume (see
+[At-least-once tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#at-least-once-tools-make-side-effects-idempotent));
+the re-run finds the turn's backup of that path and keeps it, so `rewind()`
+restores the content from before the first attempt, not the agent's own
+half-finished write. A `write_file` or `edit_file` that would leave the file
+as it is (the same content, an edit already applied) records and writes
+nothing.
 
 What is not tracked: changes made by the `shell` tool, files written by a
 sub-agent with its own file tools (unless it gets the same

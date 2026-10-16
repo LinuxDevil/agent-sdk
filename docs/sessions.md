@@ -257,9 +257,16 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   the transcript, until it finishes. While it waits, `resume()`, `send()` and
   `stream()` throw `SessionAwaitingApprovalError` (with its `approvalId`), and
   `agent.approvals.resolve({ id, approved })` continues the turn in this
-  session. After a restart, open the session and call `resume()` (or `send()`)
-  once before resolving, so the agent knows which session the approval belongs
-  to; give both agents the same durable `store` (or `approvalStore`).
+  session. After a restart, `agent.approvals.resolve()` or `streamResolve()`
+  from the new process continues it too: the agent finds the session from the
+  pause record (for session ids of letters, digits, `_` and `-`), so there is
+  no need to open the session or call `resume()` first. Give both agents the
+  same durable `store` (or `approvalStore`).
+- `resume()` returns the finished turn's result; it does not stream, and
+  `stream()` does not stream the pending turn it finishes first either. To
+  show a resumed turn's progress, register `session.on(listener)` before the
+  call (or pass `createAgent({ onEvent })`): it gets the turn's `AgentEvent`s
+  as they happen.
 - A paused turn locks the session id: the session records it under
   `<id>.paused` in the checkpoint store, so `agent.send(message, { sessionId: id })`,
   `agent.stream()` with that `sessionId`, and a session object over a different

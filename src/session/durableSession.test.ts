@@ -119,6 +119,24 @@ describe('checkpointed sessions', () => {
     expect(roles((await store.sessions.load('chat'))!)).toEqual(['user', 'assistant', 'tool', 'assistant']);
   });
 
+  it('resume() is not streamed, but session.on() and createAgent({ onEvent }) see the resumed turn as it runs', async () => {
+    const runs: Runs = {};
+    const tools = [tool('a', runs), tool('b', runs, { crashOnce: true })];
+    const store = { sessions: new MemorySessionStore(), checkpoints: checkpointStore() };
+    await expect(createAgent({ provider: mockModel([calling('a'), calling('b')]), tools }).session({ id: 'chat', store }).send('go')).rejects.toThrow(
+      'process died'
+    );
+
+    const fromConfig: string[] = [];
+    const session = createAgent({ provider: mockModel(['Done.']), tools, onEvent: (event) => fromConfig.push(event.type) }).session({ id: 'chat', store });
+    const seen: string[] = [];
+    session.on((event) => seen.push(event.type === 'tool.start' ? `tool.start:${event.toolName}` : event.type));
+    expect((await session.resume())?.text).toBe('Done.');
+    expect(seen).toContain('tool.start:b');
+    expect(seen.at(-1)).toBe('run.done');
+    expect(fromConfig).toContain('tool.start');
+  });
+
   it('send() while a turn is pending finishes that turn first, then sends the new message', async () => {
     const runs: Runs = {};
     const tools = [tool('a', runs), tool('b', runs, { crashOnce: true })];

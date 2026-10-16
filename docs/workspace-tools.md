@@ -81,7 +81,7 @@ const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistr
 | ------------ | ------------------------------------------------- | ------- |
 | `read_file`  | `path`, optional `offset` (1-based line), `limit` | Numbered lines (`"    12\tcode"`). When the output is cut, the last line says which lines were shown and the `offset` to continue from. Files over 10 MB are refused. |
 | `write_file` | `path`, `content`                                 | Creates or overwrites the file and creates missing parent directories. |
-| `edit_file`  | `path`, `old_string`, `new_string`, optional `replace_all` | Replaces the exact text. Fails with a message the model can act on when `old_string` is missing (including a hint about CRLF line endings) or appears more than once without `replace_all`. Refuses a file that is not UTF-8 (latin1, Windows-1252, UTF-16) and leaves it unchanged, when the provider has `readFileBytes` (as `NodeWorkspace` does). A UTF-8 BOM is kept. |
+| `edit_file`  | `path`, `old_string`, `new_string`, optional `replace_all` | Replaces the exact text. Fails with a message the model can act on when `old_string` is missing (including a hint about CRLF line endings) or appears more than once without `replace_all`. When `old_string` is missing but a non-empty `new_string` is in the file, the edit was already applied (a call re-run after a crash): it succeeds without writing and says so. Refuses a file that is not UTF-8 (latin1, Windows-1252, UTF-16) and leaves it unchanged, when the provider has `readFileBytes` (as `NodeWorkspace` does). A UTF-8 BOM is kept. |
 | `list_dir`   | optional `path`                                   | Sorted entries; directories end with `/`. |
 | `glob`       | `pattern`, optional `path`                        | Sorted paths of matching files. `*` stays within one directory, `**` crosses directories, plus `?`, `[abc]` and `{a,b}`. |
 | `grep`       | `pattern` (JavaScript regex), optional `path`, `glob`, `ignore_case` | `path:line: text` for each matching line. An invalid regex, or one with nested repetition like `(a+)+`, is a tool error. Binary files and files over 2 MB are skipped. |
@@ -185,6 +185,17 @@ well, fork the session with `session.fork({ fromStep })` (see
 [Forking a session](./sessions.md#forking-a-session); a step's `turn` in
 `session.history()` is the turn number used here), or a single run with
 `agent.fork()` (see [Fork and replay](./durable-execution.md#fork-and-replay)).
+
+Backups survive a crash. The backup is stored before the file is written, so
+a process killed between the two loses nothing: the file still holds the
+backed-up content, and rewind treats it as nothing to undo. A tool call that
+was running when the process died runs again on resume (see
+[At-least-once tools](./durable-execution.md#at-least-once-tools-make-side-effects-idempotent));
+the re-run finds the turn's backup of that path and keeps it, so `rewind()`
+restores the content from before the first attempt, not the agent's own
+half-finished write. A `write_file` or `edit_file` that would leave the file
+as it is (the same content, an edit already applied) records and writes
+nothing.
 
 What is not tracked: changes made by the `shell` tool, files written by a
 sub-agent with its own file tools (unless it gets the same
