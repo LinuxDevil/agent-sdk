@@ -95,7 +95,7 @@ exports[`renderProject > snapshot: minimal package.json 1`] = `
     "dev:ui": "lousho dev src/agent.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "doctor": "lousho doctor",
+    "doctor": "lousho doctor src/agent.ts",
     "build": "lousho build src/agent.ts --target=node-server"
   },
   "dependencies": {
@@ -466,7 +466,7 @@ exports[`renderProject > snapshot: tools package.json 1`] = `
     "dev:ui": "lousho dev src/agent.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "doctor": "lousho doctor",
+    "doctor": "lousho doctor src/agent.ts",
     "build": "lousho build src/agent.ts --target=node-server"
   },
   "dependencies": {

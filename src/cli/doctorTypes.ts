@@ -27,7 +27,7 @@ export interface SdkManifest {
   peerDependencies?: Record<string, string>;
 }
 
-/** What the doctor reports about a loaded agent directory. */
+/** What the doctor reports about a loaded agent directory or agent module. */
 export interface AgentDirSummary {
   name: string;
   /** The config's `provider/model` string; undefined when `agent.ts` sets a provider instance. */
@@ -54,6 +54,10 @@ export interface DoctorEnvironment {
   isDirectory?(path: string): boolean;
   /** Loads an agent directory like `lousho dev` does (no provider is created); throws with the file at fault. */
   loadAgentDir?(dir: string): Promise<AgentDirSummary>;
+  /** Loads a .ts/.js agent module like `lousho dev` does (no provider is created); throws with the file at fault. */
+  loadAgentModule?(file: string): Promise<AgentDirSummary>;
+  /** `process.platform`; on 'win32' fix lines use PowerShell syntax. Absent: POSIX shell syntax. */
+  platform?: string;
   /** Loads and validates a spec (the SDK's own loader); throws with field paths on invalid input. */
   loadSpec(path: string): AgentSpec;
   /** Resolves a built-in tool name; throws if unknown. */

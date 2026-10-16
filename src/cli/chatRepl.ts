@@ -7,7 +7,7 @@
 import * as readline from 'node:readline';
 import type { Readable, Writable } from 'node:stream';
 import type { SimpleAgent } from '../createAgent';
-import type { AgentEvent, AgentEventOf, AgentEventType, AgentEventUsage } from '../execution/agentEvents';
+import type { AgentEvent, AgentEventError, AgentEventOf, AgentEventType, AgentEventUsage } from '../execution/agentEvents';
 import type { ApprovalQuestion, PendingApproval } from '../execution/ApprovalGate';
 import { textOf } from '../providers/content';
 import type { Message } from '../providers/llm';
@@ -16,7 +16,8 @@ import { assertSessionId } from '../session/sessionStore';
 import { memoryStore, type AgentStore } from '../storage/agentStore';
 import { newId } from '../utils/id';
 import { hasOwnStore } from './devReload';
-import { SDKError } from '../execution/errors';
+import { SDKError, type CompactedProviderError } from '../execution/errors';
+import { errorHelp } from '../utils/errorCodes';
 import { awaitSignInGate } from '../oauth/signInPending';
 
 export interface ChatReplOptions {
@@ -51,8 +52,34 @@ function show(value: unknown): string {
   return clip(typeof value === 'string' ? value : (JSON.stringify(value) ?? 'undefined'));
 }
 
+/** `[code] hint (docs)`, the help line every SDKError carries. */
+function helpLine(code: string, hint = errorHelp(code)?.hint, docs = errorHelp(code)?.docs): string {
+  return [`[${code}]`, hint, docs && `(${docs})`].filter(Boolean).join(' ');
+}
+
+/**
+ * `error: <message>`, plus for an SDK error what kind of failure it was (a
+ * provider error's category and HTTP status) and its `[code] hint` line: a bare
+ * "User not found." from a provider does not say the API key is wrong.
+ */
 function describeError(error: unknown): string {
-  return `error: ${error instanceof Error ? error.message : String(error)}`;
+  if (!(error instanceof SDKError)) return `error: ${error instanceof Error ? error.message : String(error)}`;
+  const { compacted, statusCode } = error as { compacted?: CompactedProviderError; statusCode?: number };
+  const category = compacted?.category;
+  const status = statusCode ?? compacted?.statusCode;
+  const facts = [category && category !== 'unknown' && category, status !== undefined && `HTTP ${status}`].filter(Boolean);
+  return `error: ${error.detail}${facts.length ? ` (${facts.join(', ')})` : ''}\n${helpLine(error.code, error.hint, error.docs)}`;
+}
+
+/** An `error` event's error: its message and, when it has a code, the code's help line. */
+function describeEventError({ message, code }: AgentEventError): string {
+  return `error: ${message}${code && !message.includes(`[${code}]`) ? `\n${helpLine(code)}` : ''}`;
+}
+
+/** What failed the run behind `events` (its `result`'s rejection), when it is a run that failed. */
+async function runFailure(events: AsyncIterable<AgentEvent>): Promise<unknown> {
+  const result = (events as { result?: Promise<unknown> }).result;
+  return result?.then(() => undefined, (error: unknown) => error ?? new Error('The run failed.'));
 }
 
 function usageLine({ inputTokens, outputTokens, estimated, costUsd }: AgentEventUsage): string {
@@ -88,6 +115,19 @@ export async function runChatRepl(options: ChatReplOptions): Promise<number> {
     lineOpen = false;
   };
 
+  let heldErrors: AgentEventError[] = [];
+  /**
+   * Prints the held `error` events, then `failure` (the run's rejection) when the run failed. The events
+   * of that failure (the step's raw error and the run's compacted one share its message) are not repeated.
+   */
+  const flushErrors = (failure: unknown) => {
+    const held = heldErrors;
+    heldErrors = [];
+    const failed = failure instanceof SDKError ? [failure.detail, failure.message] : failure instanceof Error ? [failure.message] : [];
+    for (const error of held) if (!failed.includes(error.message)) errorOutput.write(`${describeEventError(error)}\n`);
+    if (failure !== undefined) fail(failure);
+  };
+
   type Printers = { [K in AgentEventType]?: (event: AgentEventOf<K>) => void };
   const printers: Printers = {
     'text.delta': (event) => {
@@ -114,9 +154,11 @@ export async function runChatRepl(options: ChatReplOptions): Promise<number> {
     },
     'tool.done': (event) => say(dim(`  -> ${show(event.result)}`)),
     'tool.error': (event) => say(dim(`  -> error: ${event.error.message}`)),
+    // Held until the run ends (see render()): the error that failed the run is printed from the run's
+    // rejection, which has the provider's category and HTTP status that the event leaves out.
     error: (event) => {
       endLine();
-      errorOutput.write(`error: ${event.error.message}\n`);
+      heldErrors.push(event.error);
     },
     'run.done': (event) => {
       endLine();
@@ -129,9 +171,11 @@ export async function runChatRepl(options: ChatReplOptions): Promise<number> {
   async function render(events: AsyncIterable<AgentEvent>): Promise<AgentEventOf<'approval.requested'> | undefined> {
     let paused: AgentEventOf<'approval.requested'> | undefined;
     for await (const event of events) {
+      if (event.type === 'run.done' && !event.subagent) flushErrors(event.finishReason === 'error' ? await runFailure(events) : undefined);
       (printers[event.type] as ((event: AgentEvent) => void) | undefined)?.(event);
       if (event.type === 'approval.requested') paused = event;
     }
+    flushErrors(undefined);
     return paused;
   }
 

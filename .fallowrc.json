@@ -23,6 +23,17 @@
     "examples/agent-dir/tools/*.ts",
     "registry/**/*.ts"
   ],
+  "ignoreUnresolvedImports": [
+    "../dist/index.js"
+  ],
+  "ignoreExports": [
+    {
+      "file": "packages/create-lousho-agent/src/index.ts",
+      "exports": [
+        "main"
+      ]
+    }
+  ],
   "ignoreDependencies": [
     "@ai-sdk/anthropic",
     "@ai-sdk/openai",

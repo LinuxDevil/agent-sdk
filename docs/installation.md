@@ -204,6 +204,11 @@ npm install ./lousho-build-ai-agent-<version>.tgz ai zod
 To scaffold a new project the same way, from the checkout:
 `node bin/lousho.js init ../my-agent --sdk-path .`.
 
+On Windows, `npx C:\abs\path\create-lousho-agent-<version>.tgz` silently does
+nothing (an npm quirk with absolute drive-letter paths). Use a relative path
+(`npx ./create-lousho-agent-<version>.tgz my-agent`) or a `file:` spec
+(`npx file:C:/abs/path/create-lousho-agent-<version>.tgz my-agent`) instead.
+
 `npm install github:LinuxDevil/agent-sdk` does **not** work: `dist/` is not in
 git and the repository has no `prepare` build step, so the install has no
 entry points.
@@ -287,13 +292,24 @@ What it checks:
 5. With a spec path (`lousho doctor agent.yaml`): the spec is validated with
    field paths for every error, its provider package and key are checked
    (missing ones become failures), its `tools` must be built-in tools, and any
-   `mcpServers` command must be resolvable.
+   `mcpServers` command must be resolvable. An agent directory or a `.ts`/`.js`
+   agent module (`lousho doctor src/agent.ts`, what a scaffolded project's
+   `npm run doctor` runs) is loaded the way `lousho dev` loads it, and its
+   model's provider package and key are checked the same way. Without a path
+   a missing key is only a warning, since doctor cannot know which provider
+   your agent uses.
 6. Ollama reachability, only when the spec uses Ollama or `OLLAMA_HOST` is set.
 7. Docker availability, a warning only when the spec uses a sandboxed tool.
-8. With `--ping`: `GET <base>/models` for each provider whose variable is set
-   (OpenAI at `OPENAI_BASE_URL` when set, Anthropic, OpenRouter), with a 5 s
-   timeout. An unreachable server or a rejected key is a warning. Keys are sent
-   to their own provider only and never printed.
+8. With `--ping`: a `GET` for each provider whose variable is set, with a 5 s
+   timeout, to an endpoint that needs the key: `/models` for OpenAI and
+   Anthropic, `/api/v1/key` for OpenRouter (its `/models` answers without a
+   key). A rejected key (HTTP 401/403) is a failure; an unreachable server is a
+   warning. With `OPENAI_BASE_URL` set, `<base>/models` is pinged and the line
+   says it shows reachability only, since a local server may not check keys.
+   Keys are sent to their own provider only and never printed.
+
+On Windows the fix lines use PowerShell syntax (`$env:OPENAI_API_KEY="<your key>"`)
+instead of `export`.
 
 The exit code is `1` if any check fails and `0` otherwise (warnings do not
 fail), so it can gate CI. Add `--json` for machine-readable output. Colour is
