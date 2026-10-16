@@ -15,6 +15,9 @@ import type { ApproveToolCall } from '../createAgentApprovals';
 import { APPROVAL_TTL_RULE, isApprovalTtl, type PermissionAction, type PermissionMode, type PermissionRule } from '../execution/permissions';
 import type { AgentStore } from '../storage/agentStore';
 import type { TokenKeyInput } from '../oauth/tokenCipher';
+import type { WithRetryOptions } from '../providers/resilience';
+import type { OutputSpec } from '../execution/structuredOutput';
+import type { StandardSchemaV1 } from '../utils/zodCompat';
 
 /**
  * The matcher a `when` entry may set on one argument. `eq` / `ne` compare
@@ -134,6 +137,20 @@ export interface AgentDirConfig {
   /** `createAgent`'s `modelSettings` (e.g. `{ "maxTokens": 1024, "temperature": 0.2 }`). */
   modelSettings?: ModelSettings;
   /**
+   * `createAgent`'s `retry`: `{ "maxRetries": 4, "timeoutMs": 30000 }` retries a
+   * failed model call, `timeoutMs` bounding each attempt; `false` sends each
+   * call once. The `retryOn` / `onRetry` / `signal` options only work in a
+   * code config.
+   */
+  retry?: WithRetryOptions | false;
+  /**
+   * `createAgent`'s `output`: a Standard Schema (e.g. a zod object) or an
+   * `OutputSpec` the final answer must match, so `result.object` is typed.
+   * Code config files only - JSON/YAML cannot hold a schema; use
+   * `loadAgentDir(dir, { output })` from code instead.
+   */
+  output?: StandardSchemaV1 | OutputSpec;
+  /**
    * `createAgent`'s `store`: `{ "dir": "./.lousho" }` (an
    * {@link AgentDirFileStore}, resolved against the agent directory) becomes
    * a `fileStore()`, so sessions, checkpoints and paused approvals survive a
@@ -167,6 +184,8 @@ const CONFIG_KEYS = [
   'approvalTtlMs',
   'limits',
   'modelSettings',
+  'retry',
+  'output',
   'store',
   'engine',
 ] as const;
@@ -399,6 +418,50 @@ function assertLimits(file: string, value: unknown): void {
   }
 }
 
+const RETRY_KEYS = ['maxRetries', 'backoff', 'retryOn', 'onRetry', 'signal', 'timeoutMs', 'idleTimeoutMs'] as const;
+const BACKOFF_KEYS = ['initialMs', 'maxMs', 'factor', 'jitter'] as const;
+
+function assertRetry(file: string, value: unknown): void {
+  if (value === undefined || value === false) return;
+  for (const [key, entry] of objectEntries(file, 'retry', '{ "maxRetries": 4, "timeoutMs": 30000 } (or false)', value)) {
+    if (!(RETRY_KEYS as readonly string[]).includes(key)) fail(file, `'retry.${key}' is not a known option. Allowed keys: ${RETRY_KEYS.join(', ')}.`);
+    if (key === 'backoff') {
+      assertBackoff(file, entry);
+    } else if (key === 'retryOn' || key === 'onRetry') {
+      if (typeof entry !== 'function') fail(file, `'retry.${key}' must be a function (code config only), got ${describeValue(entry)}.`);
+    } else if (key === 'signal') {
+      if (typeof entry !== 'object' || entry === null) fail(file, `'retry.signal' must be an AbortSignal (code config only), got ${describeValue(entry)}.`);
+    } else if (key === 'maxRetries') {
+      if (!(typeof entry === 'number' && Number.isInteger(entry) && entry >= 0)) fail(file, `'retry.maxRetries' must be a non-negative integer, got ${describeValue(entry)}.`);
+    } else if (!(typeof entry === 'number' && Number.isFinite(entry) && entry > 0)) {
+      fail(file, `'retry.${key}' must be a positive number, got ${describeValue(entry)}.`);
+    }
+  }
+}
+
+function assertBackoff(file: string, value: unknown): void {
+  for (const [key, entry] of objectEntries(file, 'retry.backoff', '{ "initialMs": 1000 }', value)) {
+    if (!(BACKOFF_KEYS as readonly string[]).includes(key)) fail(file, `'retry.backoff.${key}' is not a known option. Allowed keys: ${BACKOFF_KEYS.join(', ')}.`);
+    if (key === 'jitter') {
+      if (typeof entry !== 'boolean') fail(file, `'retry.backoff.jitter' must be a boolean, got ${describeValue(entry)}.`);
+    } else if (!(typeof entry === 'number' && Number.isFinite(entry) && entry > 0)) {
+      fail(file, `'retry.backoff.${key}' must be a positive number, got ${describeValue(entry)}.`);
+    }
+  }
+}
+
+function assertOutput(file: string, value: unknown): void {
+  if (value === undefined) return;
+  const schema = (value as { schema?: unknown } | null)?.schema ?? value;
+  if (typeof schema !== 'object' || schema === null || !('~standard' in schema)) {
+    fail(
+      file,
+      `'output' must be a Standard Schema (e.g. a zod object) or an output spec, got ${describeValue(value)}. ` +
+        "A JSON/YAML config cannot hold one: set 'output' in an agent.ts config, or pass loadAgentDir(dir, { output })."
+    );
+  }
+}
+
 function assertModelSettings(file: string, value: unknown): void {
   for (const [key, entry] of objectEntries(file, 'modelSettings', '{ "maxTokens": 1024 }', value)) {
     if (!(MODEL_SETTING_KEYS as readonly string[]).includes(key)) {
@@ -518,6 +581,8 @@ function assertValues(file: string, c: Record<string, unknown>): void {
   assertApprovalTtlMs(file, c.approvalTtlMs);
   assertLimits(file, c.limits);
   assertModelSettings(file, c.modelSettings);
+  assertRetry(file, c.retry);
+  assertOutput(file, c.output);
   assertStore(file, c.store);
   assertEngine(file, c.engine);
   try {

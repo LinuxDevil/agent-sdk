@@ -220,6 +220,32 @@ describe('store', () => {
   });
 });
 
+describe('retry and output', () => {
+  it('accepts the serializable retry options and false', () => {
+    const retry = { maxRetries: 4, timeoutMs: 30000, idleTimeoutMs: 5000, backoff: { initialMs: 1000, maxMs: 9000, factor: 2, jitter: false } };
+    expect(validateConfig(FILE, { retry }).retry).toEqual(retry);
+    expect(validateConfig(FILE, { retry: false }).retry).toBe(false);
+    expect(validateConfig(FILE, { retry: { maxRetries: 0 } }).retry).toEqual({ maxRetries: 0 });
+  });
+
+  it('rejects unknown and ill-typed retry options, naming them', () => {
+    expect(invalidConfig({ retry: 3 }).message).toContain("'retry' must be an object");
+    expect(invalidConfig({ retry: { retries: 3 } }).message).toContain("'retry.retries' is not a known option");
+    expect(invalidConfig({ retry: { maxRetries: 1.5 } }).message).toContain("'retry.maxRetries' must be a non-negative integer");
+    expect(invalidConfig({ retry: { timeoutMs: 0 } }).message).toContain("'retry.timeoutMs' must be a positive number");
+    expect(invalidConfig({ retry: { retryOn: 'always' } }).message).toContain("'retry.retryOn' must be a function");
+    expect(invalidConfig({ retry: { backoff: { base: 1 } } }).message).toContain("'retry.backoff.base' is not a known option");
+    expect(invalidConfig({ retry: { backoff: { jitter: 1 } } }).message).toContain("'retry.backoff.jitter' must be a boolean");
+  });
+
+  it('accepts a Standard Schema or an output spec and rejects plain JSON', () => {
+    const schema = { '~standard': { version: 1, vendor: 'test', validate: () => ({ value: {} }) } };
+    expect(validateConfig(FILE, { output: schema }).output).toBe(schema);
+    expect(validateConfig(FILE, { output: { schema } }).output).toEqual({ schema });
+    expect(invalidConfig({ output: { type: 'object' } }).message).toContain("'output' must be a Standard Schema");
+  });
+});
+
 describe('modelSettings (C6)', () => {
   it('accepts the known sampling settings', () => {
     const modelSettings = { maxTokens: 1024, temperature: 0.2, topP: 0.9, frequencyPenalty: 0, presencePenalty: 0.1, stop: ['END'], seed: 7 };

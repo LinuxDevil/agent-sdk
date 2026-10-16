@@ -303,7 +303,7 @@ function workerAgentParts(resolved: ResolvedWorkerAgentDir, env: WorkerEnv): { c
 
 /** The run settings `resolved` sets (`maxSteps` through `hooks`), leaving out the unset ones. */
 function workerAgentSettings(resolved: ResolvedWorkerAgentDir): Partial<CreateAgentConfig> {
-  const { maxSteps, toolConcurrency, permissionMode, permissions, compaction, limits, modelSettings, approvalTtlMs, hooks } = resolved;
+  const { maxSteps, toolConcurrency, permissionMode, permissions, compaction, limits, modelSettings, approvalTtlMs, retry, output, hooks } = resolved;
   return {
     ...(maxSteps === undefined ? {} : { maxSteps }),
     ...(toolConcurrency === undefined ? {} : { toolConcurrency }),
@@ -313,6 +313,8 @@ function workerAgentSettings(resolved: ResolvedWorkerAgentDir): Partial<CreateAg
     ...(limits === undefined ? {} : { limits }),
     ...(modelSettings === undefined ? {} : { modelSettings }),
     ...(approvalTtlMs === undefined ? {} : { approvalTtlMs }),
+    ...(retry === undefined ? {} : { retry }),
+    ...(output === undefined ? {} : { output }),
     ...(hooks === undefined ? {} : { hooks }),
   } as Partial<CreateAgentConfig>;
 }

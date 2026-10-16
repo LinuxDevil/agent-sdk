@@ -31,6 +31,8 @@ import { SDKError } from '../execution/errors';
 import type { AuthFn } from '../auth/types';
 import type { AgentHook } from '../execution/hooks';
 import type { ApproveToolCall } from '../createAgentApprovals';
+import type { OutputSpec } from '../execution/structuredOutput';
+import type { InferSchemaOutput, StandardSchemaV1 } from '../utils/zodCompat';
 import type { AgentStore } from '../storage/agentStore';
 import { fileStore } from '../storage/fileStore';
 import { loadAuth } from './loadAuth';
@@ -493,6 +495,8 @@ function configOptions(
     ...optional('compaction', overrides.compaction ?? config.compaction),
     ...optional('limits', overrides.limits ?? config.limits),
     ...optional('modelSettings', overrides.modelSettings ?? config.modelSettings),
+    ...optional('retry', overrides.retry ?? config.retry),
+    ...optional('output', overrides.output ?? config.output),
     ...optional('hooks', overrides.hooks ?? configured?.hooks),
     ...optional('approve', overrides.approve ?? approver?.approve),
     ...optional('approvalTtlMs', overrides.approvalTtlMs ?? config.approvalTtlMs),
@@ -664,6 +668,11 @@ export async function resolveAgentDir(
  * const testAgent = await loadAgentDir('./my-agent', { provider: mockModel(['hi']) });
  * ```
  */
+export async function loadAgentDir<TOutput extends StandardSchemaV1>(
+  dir: string,
+  overrides: Omit<AgentDirOverrides, 'output'> & { output: TOutput | OutputSpec<TOutput> }
+): Promise<SimpleAgent<InferSchemaOutput<TOutput>>>;
+export async function loadAgentDir(dir: string, overrides?: AgentDirOverrides): Promise<SimpleAgent>;
 export async function loadAgentDir(dir: string, overrides: AgentDirOverrides = {}): Promise<SimpleAgent> {
   return createAgent((await resolveAgentDir(dir, overrides)).config);
 }

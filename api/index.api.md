@@ -79,6 +79,7 @@ export interface AgentDirConfig {
     model?: string;
     modelSettings?: ModelSettings;
     name?: string;
+    output?: StandardSchemaV1 | OutputSpec;
     permissionMode?: PermissionMode | (() => PermissionMode);
     permissions?: readonly AgentDirPermissionRule[];
     projectInstructions?: boolean | {
@@ -86,6 +87,7 @@ export interface AgentDirConfig {
         files?: readonly string[];
     };
     provider?: LLMProvider;
+    retry?: WithRetryOptions | false;
     store?: AgentDirFileStore | AgentStore;
     toolConcurrency?: ToolConcurrency;
 }
@@ -3367,6 +3369,11 @@ export class LLMProviderRegistry {
 }
 
 // @public
+export function loadAgentDir<TOutput extends StandardSchemaV1>(dir: string, overrides: Omit<AgentDirOverrides, 'output'> & {
+    output: TOutput | OutputSpec<TOutput>;
+}): Promise<SimpleAgent<InferSchemaOutput<TOutput>>>;
+
+// @public (undocumented)
 export function loadAgentDir(dir: string, overrides?: AgentDirOverrides): Promise<SimpleAgent>;
 
 // @public
