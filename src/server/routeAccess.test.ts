@@ -326,7 +326,8 @@ describe('request hardening', () => {
     const ask = { toolCalls: [{ name: 'ask_question', args: { question: 'Which city?' }, id: 'q1' }] };
     const { handler } = refundDesk([ask], {}, memoryStore(), { askQuestion: true });
     const paused = await events(await handler(call('POST', '/chat', 'alice', { sessionId: 'q-1', input: 'Book a trip' })));
-    const id = (paused.find((event) => event.type === 'approval.requested') as { approvalId: string }).approvalId;
+    const requested = paused.find((event) => event.type === 'approval.requested') as { approvalId: string } | undefined;
+    const id = requested!.approvalId;
     const decided = await handler(call('POST', `/chat/q-1/approvals/${id}`, 'alice', { approved: true }));
     expect(decided.status).toBe(400);
     expect(await decided.json()).toMatchObject({ code: 'LOUSHO_APPROVAL_KIND_MISMATCH' });
