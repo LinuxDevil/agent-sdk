@@ -4944,6 +4944,14 @@ interface ReceiptEntry {
 export function recordSpanError(span: Span, error: unknown): void;
 
 // @public
+export interface RecoverOptions<TResult = unknown> {
+    intervalMs?: number;
+    onError?: (error: unknown, run?: PendingRun) => void;
+    onRecovered?: (run: PendingRun, result: TResult) => void;
+    signal?: AbortSignal;
+}
+
+// @public
 export interface RefusalAnswer {
     // (undocumented)
     name: string;
@@ -5248,6 +5256,12 @@ export interface RunPatchChecksResult {
     }[];
     // (undocumented)
     pass: boolean;
+}
+
+// @public
+export interface RunRecovery {
+    readonly done: Promise<void>;
+    stop(): Promise<void>;
 }
 
 // @public
@@ -5796,6 +5810,7 @@ export interface SimpleAgent<TObject = unknown> {
     oauth: AgentOAuth;
     pending: () => Promise<PendingRun[]>;
     ready: () => Promise<void>;
+    recover: (options?: RecoverOptions<ExecutionResult<TObject>>) => RunRecovery;
     resume: (sessionId: string, options?: {
         signal?: AbortSignal;
     }) => Promise<ExecutionResult<TObject> | null>;

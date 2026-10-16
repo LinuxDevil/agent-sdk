@@ -62,6 +62,7 @@ export * from './handoffs';
 export type { Principal } from './auth/types';
 export type { AgentApprovals, ApproveToolCall, ResolveApprovalOptions } from './createAgentApprovals';
 export type { PendingRun } from './agentPending';
+export type { RecoverOptions, RunRecovery } from './agentRecover';
 // One store for sessions, checkpoints and approvals: createAgent({ store }) (LOU-D30)
 export { memoryStore, type AgentStore, type MemoryStoreOptions } from './storage/agentStore';
 export { fileStore, type FileStore, type FileStoreOptions, type FileStorePruneOptions, type FileStorePruneResult } from './storage/fileStore';

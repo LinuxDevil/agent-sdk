@@ -43,25 +43,32 @@ const SESSION_TURN = /^(.+)\.turn-\d+$/;
 const PAUSED_POINTER = /\.paused$/;
 
 /**
- * The unfinished runs in `checkpoints`, by checkpoint id. Throws
+ * `checkpoints`, when it can list its runs; else throws
  * `LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE` without a store, and a
- * `ConfigurationError` when the store cannot `list()`.
+ * `ConfigurationError` when the store cannot `list()`. `api` names the caller.
  */
-export async function listPendingRuns(checkpoints: CheckpointStore | undefined): Promise<PendingRun[]> {
+export function assertListable(checkpoints: CheckpointStore | undefined, api: string): CheckpointStore & Required<Pick<CheckpointStore, 'list'>> {
   if (!checkpoints) {
     throw new ConfigurationError(
-      'agent.pending() needs a checkpoint store: pass createAgent({ store }) with `checkpoints` (fileStore(), SqliteStore, ...).',
+      `${api} needs a checkpoint store: pass createAgent({ store }) with \`checkpoints\` (fileStore(), SqliteStore, ...).`,
       'store',
       'LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE'
     );
   }
   if (!checkpoints.list) {
-    throw new ConfigurationError(
-      "agent.pending() needs a checkpoint store that implements list(); the built-in file, SQLite, KV and memory stores do.",
-      'store.checkpoints'
-    );
+    throw new ConfigurationError(`${api} needs a checkpoint store that implements list(); the built-in file, SQLite, KV and memory stores do.`, 'store.checkpoints');
   }
-  const entries = await checkpoints.list({ status: ['in-progress', 'awaiting-approval'] });
+  return checkpoints as CheckpointStore & Required<Pick<CheckpointStore, 'list'>>;
+}
+
+/**
+ * The unfinished runs in `checkpoints`, by checkpoint id. Throws
+ * `LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE` without a store, and a
+ * `ConfigurationError` when the store cannot `list()`.
+ */
+export async function listPendingRuns(checkpoints: CheckpointStore | undefined): Promise<PendingRun[]> {
+  const listable = assertListable(checkpoints, 'agent.pending()');
+  const entries = await listable.list({ status: ['in-progress', 'awaiting-approval'] });
   const runs: PendingRun[] = [];
   for (const { sessionId: checkpointId, status, checkpoint } of entries) {
     if (status === 'finished' || PAUSED_POINTER.test(checkpointId)) continue;
