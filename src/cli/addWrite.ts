@@ -85,7 +85,9 @@ async function lstatOrUndefined(file: string) {
 
 /** Refuses symlink escapes and (without `overwrite`) existing files. Call before writing anything. Marks `file.exists` for the report. */
 export async function checkTargets(item: RegistryItem, files: PlannedFile[], agentDir: string, overwrite: boolean): Promise<void> {
-  const root = await realpath(agentDir);
+  // A kit may install into a directory that does not exist yet (created after
+  // confirmation), so fall back to its nearest existing ancestor as the root.
+  const root = await realpath(agentDir).catch(() => realAncestor(agentDir));
   for (const file of files) {
     if (!inside(root, await realAncestor(file.absolute))) throw unsafe(item, file.relative, 'it resolves outside the agent directory (a symlink).');
     const stats = await lstatOrUndefined(file.absolute);

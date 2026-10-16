@@ -510,4 +510,27 @@ describe('agent directory checks', () => {
     expect(tool.code).toBe(1);
     expect(tool.err).toContain('does not exist');
   });
+
+  it('leaves no directory behind when a kit install is refused or declined', async () => {
+    writeJson(path.join(root, 'kit.json'), {
+      name: 'mini-kit',
+      type: 'kit',
+      description: 'A kit',
+      files: [{ path: 'agent.json', content: '{}' }],
+      permissions: {},
+    });
+    writeJson(registry, { items: [{ name: 'mini-kit', type: 'kit', description: 'A kit', path: 'kit.json' }] });
+    // A non-interactive run cannot ask, so it refuses; the target must not be created first.
+    const refused = path.join(root, 'refused-kit');
+    const no = await add(['mini-kit', '--registry', registry, '--dir', refused]);
+    expect(no.code).toBe(1);
+    expect(no.err).toContain('stdin is not interactive');
+    expect(fs.existsSync(refused)).toBe(false);
+    // A 'no' at the prompt prints "nothing was written"; that must be true for the directory too.
+    const declined = path.join(root, 'declined-kit');
+    const cancel = await add(['mini-kit', '--registry', registry, '--dir', declined], { tty: true, stdin: 'n\n' });
+    expect(cancel.code).toBe(1);
+    expect(cancel.out).toContain('Cancelled: nothing was written.');
+    expect(fs.existsSync(declined)).toBe(false);
+  });
 });
