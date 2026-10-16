@@ -248,6 +248,97 @@ describe('WorkspaceCheckpoints details', () => {
     expect(workspace.snapshot()).toEqual({ 'a.txt': 'a1\n' });
   });
 
+  /** A store whose next append fails once the backup is stored, like a process killed right after it. */
+  class CrashingStore extends MemoryWorkspaceCheckpointStore {
+    crashAfterAppend = false;
+    async append(backup: Parameters<MemoryWorkspaceCheckpointStore['append']>[0]): Promise<void> {
+      await super.append(backup);
+      if (this.crashAfterAppend) {
+        this.crashAfterAppend = false;
+        throw new Error('killed');
+      }
+    }
+  }
+
+  /** A workspace whose next writeFile fails after writing, like a process killed before the result was recorded. */
+  class CrashingWorkspace extends MemoryWorkspace {
+    crashAfterWrite = false;
+    async writeFile(path: string, content: string): Promise<void> {
+      await super.writeFile(path, content);
+      if (this.crashAfterWrite) {
+        this.crashAfterWrite = false;
+        throw new Error('killed');
+      }
+    }
+  }
+
+  function crashSetup(files: Record<string, string>) {
+    const workspace = new CrashingWorkspace({ files });
+    const store = new CrashingStore();
+    const checkpoints = new WorkspaceCheckpoints(workspace, { store });
+    const [, writeFile, editFile] = createFsTools(workspace, { checkpoints });
+    return { workspace, store, checkpoints, writeFile, editFile };
+  }
+
+  it('stores the backup before writing: a crash between the two changes nothing and leaves nothing to undo', async () => {
+    const { workspace, store, checkpoints, writeFile } = crashSetup({ 'a.txt': 'a0\n' });
+    store.crashAfterAppend = true;
+    await expect(writeFile.tool.execute!({ path: 'a.txt', content: 'a1\n' }, ctx('s', 1))).rejects.toThrow('killed');
+    expect(workspace.snapshot()).toEqual({ 'a.txt': 'a0\n' });
+    expect(await checkpoints.rewind(0, { sessionId: 's', dryRun: true })).toEqual({ dryRun: true, restored: [], deleted: [], skipped: [] });
+    // The resumed run re-runs the call; rewind then restores the original.
+    await writeFile.tool.execute!({ path: 'a.txt', content: 'a1\n' }, ctx('s', 1));
+    expect(await checkpoints.rewind(0, { sessionId: 's' })).toMatchObject({ restored: ['a.txt'] });
+    expect(workspace.snapshot()).toEqual({ 'a.txt': 'a0\n' });
+  });
+
+  it('a write_file re-run after a crash keeps the original backup, so rewind restores the original', async () => {
+    const { workspace, checkpoints, writeFile } = crashSetup({ 'a.txt': 'a0\n' });
+    workspace.crashAfterWrite = true;
+    await expect(writeFile.tool.execute!({ path: 'a.txt', content: 'a1\n' }, ctx('s', 1))).rejects.toThrow('killed');
+    expect(workspace.snapshot()).toEqual({ 'a.txt': 'a1\n' });
+    await writeFile.tool.execute!({ path: 'a.txt', content: 'a1\n' }, ctx('s', 1));
+    expect(await checkpoints.rewind(0, { sessionId: 's' })).toMatchObject({ restored: ['a.txt'], skipped: [] });
+    expect(workspace.snapshot()).toEqual({ 'a.txt': 'a0\n' });
+  });
+
+  it('an edit_file re-run after a crash succeeds as already applied, and rewind restores the original', async () => {
+    const { workspace, checkpoints, editFile } = crashSetup({ 'a.txt': 'x = 0\n' });
+    workspace.crashAfterWrite = true;
+    const args = { path: 'a.txt', old_string: 'x = 0', new_string: 'x = 1' };
+    await expect(editFile.tool.execute!(args, ctx('s', 1))).rejects.toThrow('killed');
+    expect(await editFile.tool.execute!(args, ctx('s', 1))).toMatch(/already applied/);
+    expect(workspace.snapshot()).toEqual({ 'a.txt': 'x = 1\n' });
+    expect(await checkpoints.rewind(0, { sessionId: 's' })).toMatchObject({ restored: ['a.txt'], skipped: [] });
+    expect(workspace.snapshot()).toEqual({ 'a.txt': 'x = 0\n' });
+  });
+
+  it('track() with a plain function stores the backup first, so a crash during the write keeps the original', async () => {
+    const workspace = new MemoryWorkspace({ files: { 'a.txt': 'a0\n' } });
+    const store = new MemoryWorkspaceCheckpointStore();
+    const checkpoints = new WorkspaceCheckpoints(workspace, { store });
+    const writeThenDie = async (): Promise<string> => {
+      await workspace.writeFile('a.txt', 'a1\n');
+      throw new Error('killed');
+    };
+    await expect(checkpoints.track(ctx('s', 1), 'a.txt', writeThenDie)).rejects.toThrow('killed');
+    expect((await store.list('s')).map((b) => b.before)).toEqual(['a0\n']);
+    // The written content's hash was never recorded, so rewind needs force - but the original is there.
+    expect((await checkpoints.rewind(0, { sessionId: 's', dryRun: true })).skipped).toEqual([{ path: 'a.txt', reason: 'changed-since' }]);
+    expect(await checkpoints.rewind(0, { sessionId: 's', force: true })).toMatchObject({ restored: ['a.txt'] });
+    expect(workspace.snapshot()).toEqual({ 'a.txt': 'a0\n' });
+    // A plain-function write that finishes adds a second record carrying the written content's hash.
+    await checkpoints.track(ctx('s', 1), 'a.txt', async () => {
+      await workspace.writeFile('a.txt', 'a2\n');
+      return 'a2\n';
+    });
+    expect((await store.list('s')).map((b) => [b.before, b.omitted])).toEqual([
+      ['a0\n', undefined],
+      [null, 'same-turn'],
+    ]);
+    expect(await checkpoints.rewind(0, { sessionId: 's' })).toMatchObject({ restored: ['a.txt'] });
+  });
+
   it('validates its options and arguments', async () => {
     const workspace = new MemoryWorkspace();
     expect(() => new WorkspaceCheckpoints(workspace, { maxFileBytes: 0 })).toThrow(/maxFileBytes/);

@@ -136,6 +136,8 @@ export interface PreparedEdit {
   path: string;
   content: string;
   message: string;
+  /** The edit was already applied: `content` is the file as it is, and nothing needs writing. */
+  unchanged?: boolean;
 }
 
 /** Reads the file and computes an `edit_file` change without writing it; throws for an edit that would fail. */
@@ -149,6 +151,12 @@ export async function prepareEdit(fs: FsProvider, args: EditArgs): Promise<Prepa
   }
   const content = await readEditableText(fs, path);
   const count = countOccurrences(content, args.old_string);
+  // Already applied (e.g. a resumed run re-running an interrupted call):
+  // old_string is gone and new_string is there, so the edit succeeds without
+  // changing anything rather than telling the model an applied edit failed.
+  if (count === 0 && args.new_string !== '' && content.includes(args.new_string)) {
+    return { path, content, message: `${path} already contains new_string and no old_string; the edit was already applied, so nothing changed.`, unchanged: true };
+  }
   if (count === 0) throw new WorkspaceError(notFoundMessage(path, content, args.old_string));
   if (count > 1 && !args.replace_all) {
     throw new WorkspaceError(
@@ -166,7 +174,7 @@ export async function prepareEdit(fs: FsProvider, args: EditArgs): Promise<Prepa
 /** `edit_file`: exact string replacement that refuses ambiguous edits unless `replace_all`. */
 export async function editFile(fs: FsProvider, args: EditArgs): Promise<string> {
   const edit = await prepareEdit(fs, args);
-  await fs.writeFile(edit.path, edit.content);
+  if (edit.unchanged !== true) await fs.writeFile(edit.path, edit.content);
   return edit.message;
 }
 
