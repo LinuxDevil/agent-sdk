@@ -160,8 +160,7 @@ export async function prepareGenerateRequest(
   // The tools of this call, from the transcript as it is now (deferred tools load through `tool_search`).
   const deferral = deferralOf(options);
   const sent = visibleTools(tools, messages, deferral);
-  // Tools the model may call on this call: function tools not disabled by `toolChoice: 'none'`, or hosted ones.
-  const offersTools = !answerOnly && ((sent.length > 0 && settings.toolChoice !== 'none') || Boolean(hostedTools?.length));
+  const offersTools = !answerOnly && callOffersTools(sent, settings.toolChoice, hostedTools);
   const responseFormat = options.output ? outputResponseFormat(options.output, offersTools) : undefined;
 
   const generateRequest: GenerateOptions = {
@@ -200,6 +199,11 @@ export async function prepareGenerateRequest(
     : generateRequest.messages;
   generateRequest.messages = withLeadingSystemOnly(outgoing);
   return generateRequest;
+}
+
+/** Tools the model may call on this call: function tools not disabled by `toolChoice: 'none'`, or hosted ones. */
+function callOffersTools(sent: ToolDefinition[], toolChoice: GenerateOptions['toolChoice'], hostedTools: readonly unknown[] | undefined): boolean {
+  return (sent.length > 0 && toolChoice !== 'none') || Boolean(hostedTools?.length);
 }
 
 /**
