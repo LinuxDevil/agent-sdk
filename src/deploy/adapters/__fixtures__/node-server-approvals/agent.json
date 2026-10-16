@@ -1,0 +1,5 @@
+{
+  "model": "mock/test",
+  "description": "Files expense claims a manager approves",
+  "maxSteps": 4
+}

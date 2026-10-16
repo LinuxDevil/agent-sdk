@@ -113,7 +113,9 @@ describe('NodeServerAdapter with an agent directory', () => {
   it('generates an entry that resolves the directory and passes its schedules and channels to the server', () => {
     const server = fs.readFileSync(path.join(outDir, 'server.ts'), 'utf8');
     expect(server).toContain('resolveAgentDir(');
-    expect(server).toContain('createDeployedServer(agent, { ...{}, ...(resolved.auth ? { auth: resolved.auth } : {}), schedules: resolved.schedules, channels: resolved.channels })');
+    expect(server).toContain(
+      'createDeployedServer(agent, { ...{}, ...(resolved.auth ? { auth: resolved.auth } : {}), authorizeSession: resolved.authorizeSession, authorizeApproval: resolved.authorizeApproval, schedules: resolved.schedules, channels: resolved.channels })'
+    );
     expect(fs.existsSync(path.join(outDir, 'agent.config.js'))).toBe(false);
   });
 

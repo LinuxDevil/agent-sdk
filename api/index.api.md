@@ -5189,6 +5189,8 @@ export interface ResolveApprovalOptions {
 // @public
 export interface ResolvedAgentDir {
     auth?: AuthFn | readonly AuthFn[];
+    authorizeApproval?: ChatRoutesAccess['authorizeApproval'];
+    authorizeSession?: ChatRoutesAccess['authorizeSession'];
     channels: Channel[];
     config: CreateAgentConfig;
     // (undocumented)

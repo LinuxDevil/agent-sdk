@@ -124,7 +124,12 @@ interval; `0` turns it off. With an auth list, a session belongs to the first pr
 it a turn, and a stored session whose owner the server no longer remembers
 (after a restart) is refused to everyone until `authorizeSession` says whose
 it is; with only `LOUSHO_API_TOKEN` there is one caller and no owner check
-([Who may use a session](./auth.md#who-may-use-a-session)).
+([Who may use a session](./auth.md#who-may-use-a-session)). An approval is
+decided only by the caller its run acts for unless `authorizeApproval` says
+otherwise. In an agent directory, export `authorizeSession` and
+`authorizeApproval` from `auth.ts` to change either rule (for example, to let
+a manager decide other users' approvals): see
+[Who may decide an approval](./auth.md#who-may-decide-an-approval).
 
 ```bash
 curl -N http://127.0.0.1:3000/chat \
