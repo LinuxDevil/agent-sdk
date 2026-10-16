@@ -226,11 +226,13 @@ async function confirmInstall(io: AddIo, item: RegistryItem, files: PlannedFile[
   return confirm(io, `Write ${files.length} file(s) into ${agentDir}? [y/N] `);
 }
 
-/** Creates the agent directory when needed (not on a dry run), checks the files' targets, and resolves with the directory's receipt. */
+/**
+ * Checks the files' targets and resolves with the directory's receipt. Nothing
+ * touches the disk here: the directory a kit creates is made only after the
+ * install is confirmed (install()), so a refusal or a 'no' leaves no empty
+ * directory behind while the output still says "nothing was written".
+ */
 async function prepareTarget(args: AddArgs, item: RegistryItem, files: PlannedFile[], agentDir: string, creating: boolean): Promise<Receipt> {
-  if (creating) {
-    if (!args.dryRun) fs.mkdirSync(agentDir, { recursive: true });
-  }
   // A dry run writes nothing, so an existing file is reported, not refused.
   if (!(creating && args.dryRun)) await checkTargets(item, files, agentDir, args.overwrite || args.dryRun);
   return creating && args.dryRun ? { v: 1 as const, items: {} } : await readReceipt(agentDir);
@@ -252,6 +254,7 @@ async function install(args: AddArgs, registry: string, item: RegistryItem, io: 
     io.stdout.write('Cancelled: nothing was written.\n');
     return 1;
   }
+  if (creating) fs.mkdirSync(agentDir, { recursive: true });
   await writeFiles(files);
   await writeReceipt(agentDir, receipt, item, files, registry);
   io.stdout.write(`Added ${item.name}: ${files.length} file(s) written, recorded in ${RECEIPT_FILE}.\n`);
