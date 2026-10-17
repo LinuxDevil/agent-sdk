@@ -196,6 +196,26 @@ export interface LoadMcpToolsOptions {
  *   onSkip: (s) => skipped.push(s),
  * });
  */
+/**
+ * The combined tool-schema size (chars of name + description + inputSchema)
+ * above which a server is warned about: every loaded tool's schema is sent
+ * on every model request, so a server advertising hundreds of tools (an
+ * "agent platform" MCP) can exceed a small model's whole context window
+ * before the conversation even starts.
+ */
+const SCHEMA_SIZE_WARN_CHARS = 64_000; // ~16K tokens
+
+/** Roughly how large the selected tools' prompt-injected schema is, in chars. A throwing schema getter counts nothing - the per-tool try below skips it. */
+function schemaChars(tools: RawMcpTool[]): number {
+  return tools.reduce((total, tool) => {
+    try {
+      return total + tool.name.length + (tool.description?.length ?? 0) + JSON.stringify(tool.inputSchema ?? {}).length;
+    } catch {
+      return total;
+    }
+  }, 0);
+}
+
 export async function loadMcpTools(
   client: McpClientLike,
   connectionName: string,
@@ -203,6 +223,16 @@ export async function loadMcpTools(
 ): Promise<Record<string, NamedToolDescriptor>> {
   const { logger = noopLogger, onSkip, approval = 'always', deferLoading, timeoutMs, tools: filter } = options;
   const rawTools = selectTools(await listRemoteTools(client, { logger, server: `MCP server '${connectionName}'` }), connectionName, filter, logger);
+  // Deferred tools are not injected into requests, so their size cannot overflow the prompt.
+  const size = deferLoading ? 0 : schemaChars(rawTools);
+  if (size > SCHEMA_SIZE_WARN_CHARS) {
+    logger.warn(
+      `MCP server '${connectionName}' loads ${rawTools.length} tools with ~${Math.round(size / 1_000)}K characters of schema ` +
+        `(~${Math.round(size / 4_000)}K tokens), sent on every request - enough to overflow a small or local model's context ` +
+        `window. Filter with mcpServers.${connectionName}.tools.include/exclude or set deferLoading: true.`,
+      { server: connectionName, tools: rawTools.length, schemaChars: size }
+    );
+  }
   const descriptors: Record<string, NamedToolDescriptor> = {};
   const taken = new Set<string>();
 

@@ -78,6 +78,24 @@ describe('memory tools and the recalled block', () => {
     expect(lastToolResult(model.calls[1])).toMatchObject({ items: [{ text: 'likes tea', metadata: { source: 'onboarding' } }] });
   });
 
+  it('recall_ with a query that matches nothing says the slot is not empty', async () => {
+    // A phrasing miss used to return `items: []` while the recalled <memory>
+    // block showed items - the model concluded the memory was empty.
+    const provider = inMemoryMemory();
+    await provider.add('notes#global', { text: 'likes tea' });
+    const notes = defineMemory({ name: 'notes', scope: 'global', provider, recall: { onSessionStart: false } });
+    const model = mockModel([{ toolCalls: [{ name: 'recall_notes', args: { query: 'zebras' } }] }, 'done']);
+    await createAgent({ provider: model, memory: [notes] }).send('hi');
+    expect(lastToolResult(model.calls[1])).toMatchObject({ items: [], note: expect.stringContaining('not empty') });
+  });
+
+  it('recall_ on a truly empty slot keeps a bare empty result', async () => {
+    const notes = defineMemory({ name: 'notes', scope: 'global', provider: inMemoryMemory(), recall: { onSessionStart: false } });
+    const model = mockModel([{ toolCalls: [{ name: 'recall_notes', args: { query: 'zebras' } }] }, 'done']);
+    await createAgent({ provider: model, memory: [notes] }).send('hi');
+    expect(lastToolResult(model.calls[1])).toEqual({ items: [] });
+  });
+
   it("describes remember_ by the slot's scope", async () => {
     const descriptions = async (scope: 'global' | 'session' | (() => string)) => {
       const model = mockModel(['ok']);

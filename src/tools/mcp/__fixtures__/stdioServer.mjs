@@ -7,6 +7,10 @@ import { appendFileSync } from 'node:fs';
 // FIXTURE_START_LOG: one line per start, for the reconnect test.
 if (process.env.FIXTURE_START_LOG) appendFileSync(process.env.FIXTURE_START_LOG, 'start\n');
 
+// FIXTURE_START_DELAY_MS: a server that takes this long to answer, for the
+// non-blocking optional-connect test.
+await new Promise((resolve) => setTimeout(resolve, Number(process.env.FIXTURE_START_DELAY_MS ?? 0)));
+
 const server = new Server({ name: 'fixture', version: '1.0.0' }, { capabilities: { tools: {} } });
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({

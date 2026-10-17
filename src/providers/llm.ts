@@ -130,6 +130,53 @@ export interface ToolCall {
 }
 
 /**
+ * A `ToolCall` in the flat `{ id, name, args }` shape most callers want -
+ * `args` is the parsed JSON arguments (`undefined` when the call's
+ * `function.arguments` was not valid JSON, `rawArgs` always keeps it).
+ */
+export interface NormalizedToolCall {
+  id: string;
+  name: string;
+  args?: Record<string, unknown>;
+  /** The untouched `function.arguments` JSON string. */
+  rawArgs: string;
+}
+
+/** The name of a tool call, whatever shape it was given in (wire `{function:{name}}` or flat `{name}`). */
+export function toolCallName(call: ToolCall | { id?: string; name?: string }): string {
+  return 'function' in call ? call.function.name : (call.name ?? '');
+}
+
+/**
+ * A tool call's parsed arguments. Accepts the wire shape
+ * (`{function:{arguments: '<json>'}}`) and the flat one mock-model scripts
+ * and approval decisions use (`{args}` / `{arguments}` already an object).
+ * Invalid JSON returns `undefined`.
+ */
+export function toolCallArgs(
+  call: ToolCall | { args?: unknown; arguments?: unknown; function?: { arguments?: unknown } }
+): Record<string, unknown> | undefined {
+  const raw = 'function' in call ? (call.function?.arguments as unknown) : (call.args ?? call.arguments);
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw === 'object') return raw as Record<string, unknown>;
+  if (typeof raw !== 'string') return undefined;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** {@link toolCallName} + {@link toolCallArgs} on one call. */
+export function normalizeToolCall(
+  call: ToolCall | { id?: string; name?: string; args?: unknown; arguments?: unknown; function?: { arguments?: unknown } }
+): NormalizedToolCall {
+  const raw = 'function' in call && typeof call.function?.arguments === 'string' ? call.function.arguments : '';
+  return { id: call.id ?? '', name: toolCallName(call), args: toolCallArgs(call), rawArgs: raw };
+}
+
+/**
  * A tool call the provider ran inside the request (a hosted tool such as
  * web search), with its result. The SDK never runs these calls; they are
  * reported in events (`executedBy: 'provider'`) and in the step's assistant

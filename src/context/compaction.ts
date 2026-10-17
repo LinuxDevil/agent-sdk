@@ -84,6 +84,54 @@ export function isPinned(message: Message): boolean {
 const DEFAULT_PROTECTED_TOKENS = 40_000;
 const DEFAULT_THRESHOLD_PERCENT = 0.9;
 
+/**
+ * Transcripts a provider rejected for context size, keyed on the run's
+ * transcript array (the same identity `ctx.request.messages` keeps across
+ * steps). The value is the context window the server reported
+ * (`observedContextWindow()`), or 0 when the error text did not name one -
+ * the hook then treats the request's own estimated size as the ceiling.
+ *
+ * A configured `contextWindow` that is larger than the model's real one (an
+ * LM Studio model loaded at 8K while the app believes 32K) is exactly the
+ * case the threshold estimate cannot catch, so the server's rejection is
+ * the only truthful signal. Once seen, the smaller window is kept for the
+ * rest of the run, so later calls compact proactively instead of failing
+ * again and again.
+ */
+const serverOverflow = new WeakMap<Message[], number>();
+
+/**
+ * The context window an error message reports, when it names one:
+ * llama.cpp / LM Studio ("exceeds the available context size (8192 tokens)",
+ * "n_ctx = 8192"), OpenAI ("maximum context length is 8192 tokens") and
+ * vLLM ("maximum sequence length is 8192").
+ */
+export function observedContextWindow(message: string): number | undefined {
+  const match =
+    /context size[^\d]*\(?\s*(\d[\d,_ ]*)/i.exec(message) ??
+    /n_ctx\s*[=:]\s*(\d[\d,_]*)/i.exec(message) ??
+    /(?:maximum|max)\s+(?:context|sequence)\s+length[^\d]*(\d[\d,_]*)/i.exec(message);
+  if (!match) return undefined;
+  const value = Number(match[1].replace(/[,_ ]/g, ''));
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+/**
+ * Called by the executor when `provider.generate()` failed with a
+ * 'context-length-exceeded' error: the compaction hook then compacts the
+ * transcript under the server's own window (or, when the error did not name
+ * one, under the size that was just rejected) on the next and later calls.
+ */
+export function markContextOverflow(messages: Message[], observedWindow?: number): void {
+  const previous = serverOverflow.get(messages);
+  // Keep the smallest known ceiling: a later rejection at a bigger size
+  // would mean the first number was wrong, a smaller one only tightens it.
+  if (previous !== undefined && previous > 0 && (observedWindow === undefined || observedWindow >= previous)) {
+    return;
+  }
+  serverOverflow.set(messages, observedWindow ?? 0);
+}
+
 /** A pruned result: `[pruned: search result, 18234 chars]`, or, in newer runs, with the call's arguments and a note. */
 const PRUNED_MARKER = /^\[pruned: [\s\S]* result, \d+ chars[\s\S]*\]$/;
 /** Longest arguments a pruned-result stub repeats. */
@@ -464,7 +512,20 @@ export function createCompactionHook(options: CompactionHookOptions = {}): Agent
     name: 'compaction',
     async preGenerate(ctx: GenerateHookContext) {
       const messages = ctx.request.messages;
-      const { strategy, input: prepared } = prepareCompaction(messages, { ...options, model: ctx.request.model }, ctx.request.signal);
+      // A server-side context rejection beats the configured window: the
+      // hook compacts under what the provider actually accepts from now on.
+      // When the error named no size (0), the request's own estimated size
+      // is the ceiling - it was just rejected at that size.
+      const overflow = serverOverflow.get(messages);
+      const firstPass = prepareCompaction(messages, { ...options, model: ctx.request.model }, ctx.request.signal);
+      const firstOverhead = requestOverheadTokens(ctx.request) + (underestimate.get(messages) ?? 0);
+      const estimated = firstPass.input.estimateTokens(messages) + firstOverhead;
+      const effectiveWindow =
+        overflow === undefined ? firstPass.input.contextWindow : Math.min(firstPass.input.contextWindow, overflow || estimated);
+      const { strategy, input: prepared } =
+        effectiveWindow === firstPass.input.contextWindow
+          ? firstPass
+          : prepareCompaction(messages, { ...options, contextWindow: effectiveWindow, model: ctx.request.model }, ctx.request.signal);
       const { contextWindow, thresholdTokens } = prepared;
       // Tool definitions, the output schema and the last call's underestimate count toward the
       // request but cannot be compacted: the conversation has to fit in what is left of the threshold.
