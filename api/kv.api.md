@@ -238,6 +238,7 @@ interface DelegatedUsage {
     // (undocumented)
     outputTokens: number;
     runs: number;
+    toolErrors?: number;
     // (undocumented)
     totalTokens: number;
 }
@@ -297,6 +298,7 @@ interface ExpressionEvaluatorNode extends NodeRunOptions {
     expression: string;
     // (undocumented)
     id?: string;
+    outputVariable?: string;
     // (undocumented)
     type: 'evaluator';
 }

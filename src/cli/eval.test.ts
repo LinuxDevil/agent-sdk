@@ -131,8 +131,11 @@ describe('runEval with a fake vitest', () => {
 
   it('exits 1 (not a usage error) and prints the install command when vitest is not installed', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect(await runEval([], { resolveVitest: () => undefined })).toBe(1);
-    expect(error.mock.calls[0][0]).toContain('npm install --save-dev vitest');
+    expect(await runEval([], { resolveVitest: () => undefined, cwd: '/proj' })).toBe(1);
+    const message = String(error.mock.calls[0][0]);
+    expect(message).toContain('vitest was not found from /proj');
+    expect(message).toContain('runs your *.eval.ts files through vitest');
+    expect(message).toContain('npm install --save-dev vitest');
   });
 
   it('exits 1, not 2, when a report cannot be written after a passing run', async () => {

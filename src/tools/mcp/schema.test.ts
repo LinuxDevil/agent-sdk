@@ -130,6 +130,35 @@ describe('jsonSchemaToZod', () => {
     }
   });
 
+  it.each([
+    ['string', { type: 'string', nullable: true }, 'a', 1],
+    ['number', { type: 'number', nullable: true }, 1.5, 'x'],
+    ['integer', { type: 'integer', nullable: true }, 2, 'x'],
+    ['boolean', { type: 'boolean', nullable: true }, true, 'x'],
+    ['object', { type: 'object', nullable: true, properties: { a: { type: 'string' } } }, { a: 'x' }, 'x'],
+    ['array', { type: 'array', nullable: true, items: { type: 'string' } }, ['x'], 'x'],
+    ['enum', { type: 'string', enum: ['a', 'b'], nullable: true }, 'a', 'c'],
+  ])('honours OpenAPI nullable: true on a %s', (_name, schema, good, bad) => {
+    expect(accepts(schema, null)).toBe(true);
+    expect(accepts(schema, good)).toBe(true);
+    expect(accepts(schema, bad)).toBe(false);
+  });
+
+  it('rejects null without nullable, and for nullable: false', () => {
+    expect(accepts({ type: 'string' }, null)).toBe(false);
+    expect(accepts({ type: 'string', nullable: false }, null)).toBe(false);
+  });
+
+  it('accepts null for nullable properties and keeps a default on a nullable one', () => {
+    const schema = {
+      type: 'object',
+      required: ['a'],
+      properties: { a: { type: 'string', nullable: true }, b: { type: 'integer', nullable: true, default: 3 } },
+    };
+    expect(accepts(schema, { a: null, b: null })).toBe(true);
+    expect(jsonSchemaToZod(schema).parse({ a: 'x' })).toEqual({ a: 'x', b: 3 });
+  });
+
   it('converts the nullable anyOf pattern with .nullable()', () => {
     const schema = { anyOf: [{ type: 'string' }, { type: 'null' }] };
     expect(accepts(schema, 'a')).toBe(true);

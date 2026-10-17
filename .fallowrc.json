@@ -17,14 +17,27 @@
     "src/deploy/shims/node.worker.ts",
     "src/deploy/shims/quickjs.worker.ts",
     "src/deploy/shims/ollama.worker.ts",
+    "src/deploy/shims/google.worker.ts",
     "src/deploy/shims/mcp.worker.ts",
     "src/deploy/shims/pi.worker.ts",
     "src/agentDir/__fixtures__/**/*.{ts,js}",
     "examples/agent-dir/tools/*.ts",
     "registry/**/*.ts"
   ],
+  "ignoreUnresolvedImports": [
+    "../dist/index.js"
+  ],
+  "ignoreExports": [
+    {
+      "file": "packages/create-lousho-agent/src/index.ts",
+      "exports": [
+        "main"
+      ]
+    }
+  ],
   "ignoreDependencies": [
     "@ai-sdk/anthropic",
+    "@ai-sdk/google",
     "@ai-sdk/openai",
     "ollama-ai-provider",
     "ollama-ai-provider-v2",
@@ -137,7 +150,7 @@
         ],
         "maxCyclomatic": 30,
         "maxCognitive": 32,
-        "reason": "These functions gate tool calls, normalize/repair structured output, compact, route chats and run steps - they grew through the audit-merge series (#412-#437) and are heavily covered, but their decision density sits just over the global ceilings. Ceiling exempts complexity only; CRAP still gates. Refactor candidates: see the fallow report."
+        "reason": "These functions gate tool calls, normalize/repair structured output, compact, route chats and run steps and are heavily covered, but their decision density sits just over the global ceilings. Ceiling exempts complexity only; CRAP still gates. Refactor candidates: see the fallow report."
       },
       {
         "files": [

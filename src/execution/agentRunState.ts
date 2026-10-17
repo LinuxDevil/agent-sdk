@@ -98,6 +98,12 @@ export interface AgentRunState {
    * of the finished checkpoint (the session transcript).
    */
   requestOnly?: Set<Message>;
+  /**
+   * Set when the structured-output repair step is queued: its model call
+   * sends the `output` schema as `responseFormat` even with tools offered.
+   * Cleared by that call.
+   */
+  outputRepair?: boolean;
   /** The run lease the run holds on its checkpoint id, when the store has leases (see `runLease.ts`). */
   lease?: RunLease;
   /** What each sub-agent run still running has spent so far (not in `usage` until it ends); checkpointed. */

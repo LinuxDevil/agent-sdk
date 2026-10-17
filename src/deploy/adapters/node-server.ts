@@ -123,7 +123,8 @@ import { createAgent, createDeployedServer, resolveAgentDir, storeFromEnv } from
   const agent = createAgent({ ...resolved.config, store });
   await agent.ready();`,
     // An agent directory's auth.ts replaces the baked token; LOUSHO_API_TOKEN is appended to it.
-    options: `{ ...${JSON.stringify(options)}, ...(resolved.auth ? { auth: resolved.auth } : {}), schedules: resolved.schedules, channels: resolved.channels }`,
+    // Its named authorizeSession / authorizeApproval exports decide who may use a session and decide an approval.
+    options: `{ ...${JSON.stringify(options)}, ...(resolved.auth ? { auth: resolved.auth } : {}), authorizeSession: resolved.authorizeSession, authorizeApproval: resolved.authorizeApproval, schedules: resolved.schedules, channels: resolved.channels }`,
     report: `console.log('lousho server: schedules: ' + (resolved.manifest.schedules.join(', ') || 'none') + '; channels: ' + (resolved.manifest.channels.join(', ') || 'none'));`,
   };
 }
@@ -152,6 +153,7 @@ import * as agentModule from ${file};`,
 const PROVIDER_CLASSES: Record<string, string> = {
   OpenAIProvider: 'openai',
   AnthropicProvider: 'anthropic',
+  GoogleProvider: 'google',
   OpenRouterProvider: 'openrouter',
   OllamaProvider: 'ollama',
   PiProvider: 'pi',

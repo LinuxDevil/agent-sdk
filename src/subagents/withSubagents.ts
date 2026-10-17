@@ -207,6 +207,9 @@ function failureReason(name: string, result: ExecutionResult, maxSteps: number):
   if (result.finishReason === 'aborted') {
     return `Sub-agent '${name}' was aborted before it finished.${last}`;
   }
+  if (result.finishReason === 'budget-exceeded' && result.budget) {
+    return `Sub-agent '${name}' stopped at the ${result.budget.limit} limit (${result.budget.max}) before it gave a final answer.${last}`;
+  }
   if (result.finishReason === 'max-steps' || result.steps >= maxSteps) {
     return `Sub-agent '${name}' used all ${maxSteps} of its steps (maxSteps) without giving a final answer.${last}`;
   }
@@ -214,17 +217,32 @@ function failureReason(name: string, result: ExecutionResult, maxSteps: number):
 }
 
 /**
+ * Whether a child run gave an answer the lead can use: it finished (`'stop'`, or `'length'` with a note), or it
+ * ran out of steps and the forced final call of its `output` schema returned a valid object.
+ */
+function answered(result: ExecutionResult): boolean {
+  if (result.finishReason === 'stop' || result.finishReason === 'length') return true;
+  return outOfStepsAnswer(result);
+}
+
+/** Whether the run ran out of steps (`maxSteps`, or `limits.maxSteps`) and then gave a valid object in its forced final call. */
+function outOfStepsAnswer(result: ExecutionResult): boolean {
+  if (result.object === undefined) return false;
+  return result.finishReason === 'max-steps' || (result.finishReason === 'budget-exceeded' && result.budget?.limit === 'maxSteps');
+}
+
+/**
  * The `task` tool result: the sub-agent's final text plus a metadata footer. A sub-agent with an `output` schema
  * answers with its validated object as JSON in place of the text, then the same footer. Throws when it did not finish.
  */
 function taskResult(name: string, result: ExecutionResult, maxSteps: number, taskId: string): string {
-  if (result.finishReason !== 'stop' && result.finishReason !== 'length') {
+  if (!answered(result)) {
     throw toolFailure(failureReason(name, result, maxSteps));
   }
   const footer = `[sub-agent '${name}': ${result.steps} step(s), finish reason '${result.finishReason}', taskId '${taskId}']`;
   const body = result.object === undefined ? result.text : JSON.stringify(result.object);
-  // Say so plainly, or the lead takes a cut-off answer for a whole one.
-  const note = result.finishReason === 'length' ? `\n${TRUNCATED_NOTE}` : '';
+  // Say so plainly, or the lead takes a cut-off answer for a whole one (or re-runs a valid one).
+  const note = result.finishReason === 'length' ? `\n${TRUNCATED_NOTE}` : outOfStepsAnswer(result) ? `\n${OUT_OF_STEPS_NOTE}` : '';
   return body ? `${body}\n\n${footer}${note}` : `${footer}${note}`;
 }
 
@@ -232,8 +250,12 @@ function taskResult(name: string, result: ExecutionResult, maxSteps: number, tas
 const TRUNCATED_NOTE =
   '[The answer was cut off at the output token limit and may be incomplete: ask a narrower question, or continue the task with its taskId.]';
 
+/** Appended to the result of a sub-agent that ran out of steps, then gave a valid object in its forced final answer. */
+const OUT_OF_STEPS_NOTE =
+  '[The sub-agent ran out of steps (maxSteps) and answered from what it had gathered so far: the object is valid, but its content may be less complete.]';
+
 type TaskArgs = { agent: string; prompt: string; description?: string; background?: boolean; taskId?: string; mode?: TaskMode };
-type ToolOptions = { abortSignal?: AbortSignal; onDelegatedUsage?: (usage: RunUsage) => void } | undefined;
+type ToolOptions = { abortSignal?: AbortSignal; onDelegatedUsage?: (usage: RunUsage, toolErrors?: number) => void } | undefined;
 
 /** The child conversation a `task` call runs in. */
 interface ChildTask {

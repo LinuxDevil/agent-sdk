@@ -10,7 +10,7 @@ export type Template = (typeof TEMPLATES)[number];
 export const PACKAGE_MANAGERS = ['npm', 'pnpm', 'yarn', 'bun'] as const;
 export type PackageManager = (typeof PACKAGE_MANAGERS)[number];
 
-/** Provider names `--provider` accepts (openai, anthropic, openrouter, ollama). */
+/** Provider names `--provider` accepts (openai, anthropic, openrouter, google, ollama, pi). */
 export const PROVIDER_NAMES: readonly string[] = listProviders().map((info) => info.name);
 
 export const INIT_USAGE = `Usage: lousho init [dir] [options]

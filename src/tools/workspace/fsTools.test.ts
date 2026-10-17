@@ -133,6 +133,28 @@ describe('createFsTools on MemoryWorkspace', () => {
       await expect(call(edit_file, { path: 'a.ts', old_string: 'one\ntwo', new_string: 'x' })).rejects.toThrow(/CRLF line endings/);
     });
 
+    it('succeeds without writing when the edit was already applied (a re-run after a crash), also with replace_all', async () => {
+      const ws = new MemoryWorkspace({ files: { 'a.ts': 'const b = 3;\nconst c = 3;\n' } });
+      let writes = 0;
+      const original = ws.writeFile.bind(ws);
+      ws.writeFile = async (path, content) => {
+        writes++;
+        return original(path, content);
+      };
+      const { edit_file } = toolsByName(ws);
+      const message = 'a.ts already contains new_string and no old_string; the edit was already applied, so nothing changed.';
+      expect(await call(edit_file, { path: 'a.ts', old_string: 'b = 2', new_string: 'b = 3' })).toBe(message);
+      expect(await call(edit_file, { path: 'a.ts', old_string: '= 2', new_string: '= 3', replace_all: true })).toBe(message);
+      expect(writes).toBe(0);
+      expect(ws.snapshot()['a.ts']).toBe('const b = 3;\nconst c = 3;\n');
+    });
+
+    it('still fails when old_string is missing and new_string is absent too, or empty', async () => {
+      const { edit_file } = toolsByName(new MemoryWorkspace({ files: { 'a.ts': 'one\n' } }));
+      await expect(call(edit_file, { path: 'a.ts', old_string: 'two', new_string: 'three' })).rejects.toThrow(/old_string was not found/);
+      await expect(call(edit_file, { path: 'a.ts', old_string: 'two', new_string: '' })).rejects.toThrow(/old_string was not found/);
+    });
+
     it('rejects empty and no-op edits', async () => {
       const { edit_file } = toolsByName(new MemoryWorkspace({ files: { 'a.ts': 'x' } }));
       await expect(call(edit_file, { path: 'a.ts', old_string: '', new_string: 'y' })).rejects.toThrow(/use write_file/);

@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 'use strict';
 
+const fs = require('node:fs');
 const path = require('node:path');
+const { parseEnv } = require('node:util');
 const { pathToFileURL } = require('node:url');
 
 const USAGE = [
@@ -24,8 +26,8 @@ const USAGE = [
   '      Open Agent Forge, the visual agent builder.',
   '  lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]',
   '      Serve an agent as an MCP server (stdio by default).',
-  '  lousho doctor [agent.yaml|json|agent-dir] [--json] [--ping]',
-  '      Check Node, peer dependencies, API keys and (optionally) an agent spec.',
+  '  lousho doctor [agent.yaml|json|agent-dir|agent.ts] [--json] [--ping]',
+  '      Check Node, peer dependencies, API keys and (optionally) an agent spec, directory or module.',
   '  lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]',
   '      Run *.eval.ts files under your vitest and report the results.',
   '  lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]',
@@ -73,13 +75,34 @@ const COMMANDS = new Map([
   ['traces', { module: 'traces', run: 'runTraces' }],
 ]);
 
-/** Loads ./.env into process.env (variables already set are kept), like `node --env-file-if-exists=.env`. */
+const BYTE_ORDER_MARK = 0xfeff;
+
+/**
+ * Loads ./.env into process.env (variables already set are kept), like `node --env-file-if-exists=.env`.
+ * Read by hand, not with process.loadEnvFile(): that keeps a leading byte order mark (PowerShell 5.1's
+ * `Set-Content -Encoding utf8` writes one), so the first key would be named with a U+FEFF prefix and
+ * silently missing.
+ */
 function loadDotEnv() {
+  const text = readDotEnv();
+  if (text === undefined) return;
+  for (const [name, value] of Object.entries(parseEnv(withoutByteOrderMark(text)))) {
+    if (process.env[name] === undefined) process.env[name] = value;
+  }
+}
+
+/** ./.env's text, or undefined when there is none (any other read error is reported). */
+function readDotEnv() {
   try {
-    process.loadEnvFile(path.resolve('.env'));
+    return fs.readFileSync(path.resolve('.env'), 'utf8');
   } catch (error) {
     if (error.code !== 'ENOENT') console.error(`lousho: could not load .env: ${error.message}`);
+    return undefined;
   }
+}
+
+function withoutByteOrderMark(text) {
+  return text.charCodeAt(0) === BYTE_ORDER_MARK ? text.slice(1) : text;
 }
 
 // `lousho --version` / `-v` / `version` print the package version (kept in sync with VERSION by scripts/sync-version.mjs).

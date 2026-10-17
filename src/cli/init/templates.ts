@@ -35,7 +35,7 @@ function sortKeys(record: Record<string, string>): Record<string, string> {
  * Ollama is on 7 too since `ollama-ai-provider-v2` is installed and tested in CI
  * (`ai7-zod4`), and needs zod 4, so its scaffold narrows zod to `^4.0.0`.
  */
-const SCAFFOLD_AI_MAJOR: Readonly<Record<string, AiMajor>> = { openai: 7, anthropic: 7, openrouter: 7, ollama: 7, pi: 7 };
+const SCAFFOLD_AI_MAJOR: Readonly<Record<string, AiMajor>> = { openai: 7, anthropic: 7, google: 7, openrouter: 7, ollama: 7, pi: 7 };
 
 /** `ai` and only the chosen provider's package (the SDK loads provider packages on first use), as one pairing. */
 function aiPackages(provider: string): Record<string, string> {
@@ -70,7 +70,7 @@ function packageJson(config: ProjectConfig): string {
       ...(yaml ? {} : { 'dev:ui': 'lousho dev src/agent.ts' }),
       test: 'vitest run',
       typecheck: 'tsc --noEmit',
-      doctor: yaml ? 'lousho doctor agent.yaml' : 'lousho doctor',
+      doctor: yaml ? 'lousho doctor agent.yaml' : 'lousho doctor src/agent.ts',
       // A self-contained HTTP server in .lousho/build/node-server (--target=docker adds a Dockerfile).
       build: `lousho build ${yaml ? 'agent.yaml' : 'src/agent.ts'} --target=node-server`,
     },
@@ -174,17 +174,31 @@ export function buildAgent(provider?: LLMProvider) {
 }
 
 function indexSource(): string {
-  return `import { createInterface } from 'node:readline/promises';
+  return `import { readFileSync } from 'node:fs';
+import { createInterface } from 'node:readline/promises';
+import { parseEnv } from 'node:util';
+import { SDKError } from '@lousho/build-ai-agent';
 import { buildAgent } from './agent.js';
 
-// Load .env when there is one; variables already set in the environment win.
+// Load .env when there is one; variables already set in the environment win. The byte order mark
+// some editors write (PowerShell's Set-Content -Encoding utf8) is dropped, or the first key is lost.
 try {
-  process.loadEnvFile();
+  const vars = parseEnv(readFileSync('.env', 'utf8').replace(/^\\uFEFF/, ''));
+  for (const [name, value] of Object.entries(vars)) {
+    if (process.env[name] === undefined) process.env[name] = value;
+  }
 } catch (error) {
   if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
 }
 
-const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+// An SDK error says what to do about it: its code and fix, and a provider's HTTP status
+// (a bare "User not found." from the provider means the API key is wrong).
+const errorText = (error: unknown) => {
+  if (!(error instanceof SDKError)) return error instanceof Error ? error.message : String(error);
+  const { statusCode, compacted } = error as SDKError & { statusCode?: number; compacted?: { category: string } };
+  const facts = [compacted && compacted.category !== 'unknown' && compacted.category, statusCode && \`HTTP \${statusCode}\`].filter(Boolean);
+  return \`\${error.detail}\${facts.length ? \` (\${facts.join(', ')})\` : ''}\\n[\${error.code}] \${error.hint ?? ''}\`;
+};
 
 let agent: ReturnType<typeof buildAgent>;
 try {

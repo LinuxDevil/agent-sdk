@@ -2,10 +2,53 @@ import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import type { ToolExecutionOptions } from 'ai';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { SDKError } from '../../utils/sdkError';
 import { loadMcpTools, type McpApproval } from './McpToolLoader';
 import { createConnectedClient } from './McpToolLoader.test';
 
 describe('loadMcpTools', () => {
+  describe('call failures', () => {
+    const load = async (callTool: (params: { name: string }) => Promise<unknown>) => {
+      const client = {
+        listTools: async () => ({ tools: [{ name: 'ping', inputSchema: { type: 'object', properties: {} } }] }),
+        callTool,
+      };
+      return (await loadMcpTools(client as never, 'srv'))['srv__ping'];
+    };
+
+    it('wraps a protocol error in an SDKError naming <server>__<tool>, keeping the cause and the MCP code', async () => {
+      const cause = Object.assign(new Error('MCP error -32000: Connection closed'), { code: -32000 });
+      const descriptor = await load(async () => {
+        throw cause;
+      });
+      const error = await Promise.resolve(descriptor.tool.execute!({}, {} as ToolExecutionOptions)).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(SDKError);
+      expect((error as SDKError).code).toBe('LOUSHO_MCP_CALL_FAILED');
+      expect((error as SDKError).message).toContain("'srv__ping'");
+      expect((error as SDKError).message).toContain('-32000');
+      expect((error as SDKError).message).toContain('Connection closed');
+      expect((error as SDKError).cause).toBe(cause);
+    });
+
+    it('lets an SDKError (such as a sign-in request) through unchanged', async () => {
+      const original = new SDKError('sign in', 'LOUSHO_MCP_AUTH_REQUIRED');
+      const descriptor = await load(async () => {
+        throw original;
+      });
+      await expect(descriptor.tool.execute!({}, {} as ToolExecutionOptions)).rejects.toBe(original);
+    });
+
+    it('lets an abort through unchanged', async () => {
+      const controller = new AbortController();
+      controller.abort();
+      const abort = new DOMException('aborted', 'AbortError');
+      const descriptor = await load(async () => {
+        throw abort;
+      });
+      await expect(descriptor.tool.execute!({}, { abortSignal: controller.signal } as ToolExecutionOptions)).rejects.toBe(abort);
+    });
+  });
+
   it('deferLoading marks every loaded tool; the server name is kept in metadata.mcp.server', async () => {
     const { client } = await createConnectedClient();
     const deferred = await loadMcpTools(client, 'myconn', { deferLoading: true });

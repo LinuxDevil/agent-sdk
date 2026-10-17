@@ -129,7 +129,7 @@ const INSTALL_FAILED_HINT =
   're-run with `--sdk-path <SDK checkout or packed .tgz>` (see docs/installation.md#installing-from-a-local-build).\n';
 
 /** Providers whose first run needs an API key from the environment (ollama and pi do not). */
-const KEYED_PROVIDERS = new Set(['openai', 'anthropic', 'openrouter']);
+const KEYED_PROVIDERS = new Set(['openai', 'anthropic', 'google', 'openrouter']);
 
 function nextSteps(dir: string, cwd: string, pm: PackageManager, envKey: string, installed: boolean, keyMissing: boolean): string {
   const relative = path.relative(cwd, dir) || '.';

@@ -39,7 +39,8 @@ const MAX_DEPTH = 64;
  * inner occurrence), `properties` / `required`, `additionalProperties`
  * (boolean or schema), `items`, `default`, `description`, and the
  * constraints `minimum` / `maximum` / `exclusiveMinimum` / `exclusiveMaximum`,
- * `minLength` / `maxLength` / `pattern` and `minItems` / `maxItems`. An
+ * `minLength` / `maxLength` / `pattern` and `minItems` / `maxItems`, and
+ * OpenAPI's `nullable: true` (any type, also accepts `null`). An
  * invalid `pattern` regex is skipped.
  *
  * Anything else (unknown keywords, empty or boolean schemas, unresolvable
@@ -72,6 +73,21 @@ function convert(schema: unknown, ctx: Context): ZodTypeAny {
 }
 
 function convertKeywords(schema: JsonSchema, ctx: Context): ZodTypeAny {
+  return applyNullable(convertBase(schema, ctx), schema);
+}
+
+/**
+ * OpenAPI 3.0's `nullable: true` (not JSON Schema, but common in MCP tool
+ * schemas generated from OpenAPI) also accepts `null`. A default stays the
+ * outermost wrapper so an omitted property still gets it.
+ */
+function applyNullable(zodType: ZodTypeAny, schema: JsonSchema): ZodTypeAny {
+  if (schema.nullable !== true) return zodType;
+  if (zodType instanceof z.ZodDefault) return z.nullable(zodType.removeDefault()).default(schema.default);
+  return z.nullable(zodType);
+}
+
+function convertBase(schema: JsonSchema, ctx: Context): ZodTypeAny {
   if (typeof schema.$ref === 'string') return convertRef(schema.$ref, ctx);
   if ('const' in schema) return convertConst(schema.const);
   if (Array.isArray(schema.enum)) return convertEnum(schema.enum);

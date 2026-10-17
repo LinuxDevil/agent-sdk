@@ -1,5 +1,5 @@
 /**
- * `lousho doctor [agent.yaml|json] [--json] [--ping]` - first-run diagnostic.
+ * `lousho doctor [agent.yaml|json|agent-dir|agent.ts] [--json] [--ping]` - first-run diagnostic.
  *
  * Thin wrapper over the pure core in doctorCore.ts: builds the real
  * DoctorEnvironment (process, fs, module resolution, fetch, Docker),
@@ -12,6 +12,7 @@ import { MissingPeerDependencyError, loadOptionalPeer } from '../providers/optio
 import { findSdkRoot } from '../deploy/bundle';
 import { loadSpec } from '../spec/loadSpec';
 import { resolveAgentDir } from '../agentDir';
+import { agentModuleConfig } from './devReload';
 import { resolveSpecTool } from '../spec/specToAgent';
 import { unknownPermissionToolMessage, unknownPermissionTools } from '../execution/permissions';
 import { exitCodeFor, parseCommand, type CommandSpec } from './args';
@@ -24,22 +25,22 @@ const DOCKER_TIMEOUT_MS = 2000;
 export interface DoctorArgs {
   specPath?: string;
   json: boolean;
-  /** `--ping`: GET `<base>/models` for each configured provider. */
+  /** `--ping`: GET an endpoint of each configured provider (one that checks the key where there is one). */
   ping?: boolean;
   /** `-h` / `--help` was given: print the usage, run nothing. */
   help?: boolean;
 }
 
-const USAGE = 'Usage: lousho doctor [agent.yaml|json|agent-dir] [--json] [--ping]';
+const USAGE = 'Usage: lousho doctor [agent.yaml|json|agent-dir|agent.ts] [--json] [--ping]';
 
 const HELP = `${USAGE}
 
-Checks Node, the SDK's peer packages, provider API keys and, given a path, an agent spec or agent directory.
+Checks Node, the SDK's peer packages, provider API keys and, given a path, an agent spec, agent directory or agent module.
 Prints a fix for every problem; exits 1 when a check fails. ./.env is loaded when it exists.
 
 Options:
   --json      print the report as JSON
-  --ping      also check that each configured provider endpoint answers
+  --ping      also check that each configured provider endpoint answers and accepts the key
   -h, --help  show this help`;
 
 const SPEC: CommandSpec = {
@@ -110,6 +111,14 @@ function readSdkManifest(): SdkManifest {
   return JSON.parse(fs.readFileSync(path.join(findSdkRoot(), 'package.json'), 'utf8'));
 }
 
+/** The names of a createAgent() `tools` option: tools, arrays and records of them (nested); none for a function of the run. */
+export function toolNames(tools: unknown): string[] {
+  if (Array.isArray(tools)) return tools.flatMap(toolNames);
+  if (typeof tools !== 'object' || tools === null) return [];
+  const { name } = tools as { name?: unknown };
+  return typeof name === 'string' ? [name] : Object.values(tools).flatMap(toolNames);
+}
+
 /** The real DoctorEnvironment for the current process. */
 export function buildEnvironment(args: DoctorArgs, cwd: string = process.cwd()): DoctorEnvironment {
   const resolveSpecFile = (file: string) => path.resolve(cwd, file);
@@ -125,6 +134,12 @@ export function buildEnvironment(args: DoctorArgs, cwd: string = process.cwd()):
       const permissionIssues = unknownPermissionTools(config.permissions, manifest.tools, { lenient: true }).map(unknownPermissionToolMessage);
       return { name: manifest.name, model: typeof config.model === 'string' ? config.model : undefined, tools: manifest.tools, permissionIssues };
     },
+    loadAgentModule: async (file) => {
+      const config = await agentModuleConfig(file, 'doctor');
+      if (!config) return { name: path.basename(file), tools: [] };
+      return { name: config.name ?? 'agent', model: typeof config.model === 'string' ? config.model : undefined, tools: toolNames(config.tools) };
+    },
+    platform: process.platform,
     loadSpec,
     resolveTool: resolveSpecTool,
     commandExists: (command) => commandExists(command, process.env),

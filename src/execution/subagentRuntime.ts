@@ -72,7 +72,7 @@ export interface ToolCallScope {
    * resumeAfterApproval(); the executor hands tools `onDelegatedUsage`
    * in their execute options instead.
    */
-  onDelegatedUsage?: (usage: RunUsage) => void;
+  onDelegatedUsage?: (usage: RunUsage, toolErrors?: number) => void;
   /** Runs a child agent (`AgentExecutor.execute`). */
   execute: (options: ExecuteOptions) => Promise<ExecutionResult>;
   /**

@@ -61,9 +61,14 @@ function formatScore(assertion: AssertionResult): string {
   return `${assertion.name}=${score}`;
 }
 
-/** Scored assertions (anything that is not a plain yes/no gate) for the table's SCORES column. */
+/** A plain yes/no check: scored 1 or 0 against the threshold 1 (or none). */
+function isYesNo({ score, threshold }: AssertionResult): boolean {
+  return (score === 0 || score === 1) && (threshold === undefined || threshold === 1);
+}
+
+/** Scored assertions (anything that is not a plain yes/no check, passing gates included) for the table's SCORES column. */
 function scoresColumn(result: EvalResult): string {
-  const scored = result.assertions.filter((a) => a.kind === 'soft' || !Number.isInteger(a.score) || a.name === 'score');
+  const scored = result.assertions.filter((a) => a.kind === 'soft' || !isYesNo(a) || a.name === 'score');
   return scored.map(formatScore).join(', ') || '-';
 }
 

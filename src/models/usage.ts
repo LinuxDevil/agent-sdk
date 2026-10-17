@@ -50,6 +50,11 @@ export interface DelegatedUsage {
   estimated: boolean;
   /** Number of child runs. */
   runs: number;
+  /**
+   * Tool calls inside the child runs (and their own children) that ended in an error result - their
+   * `result.toolErrors`, which the lead's own `toolErrors` does not count. Absent when none failed.
+   */
+  toolErrors?: number;
 }
 
 /**

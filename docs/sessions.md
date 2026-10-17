@@ -30,7 +30,7 @@ console.log(session.id, session.messages.length);
 | `compact(options?)` | Compacts the transcript now - see [Compacting a session](./compaction.md#compacting-a-session). |
 | `clear()` | Empties the transcript and saves it empty (the store holds no messages for the id). Keeps the session id, store and options; deletes every turn's checkpoint and checkpoint history (`<id>.turn-<n>`, which hold copies of the transcript), so `agent.fork('<id>.turn-<n>')` cannot bring the conversation back; memory slots are cross-session and untouched. Emits `context.cleared` to `on()` listeners. Rejects with `LOUSHO_SESSION_BUSY` while a turn is running, and with `LOUSHO_SESSION_AWAITING_APPROVAL` while a durable turn waits on an approval. |
 | `on(listener)` | Listens for the session's events: every turn's events as they happen (`send()` and `stream()` turns, and a paused turn continued by `agent.approvals.resolve()`), plus `compact()` / `clear()` events (`compaction.start`, `compaction.done`, `context.cleared`); returns a function that removes the listener. A turn's events are the `AgentEvent`s its `stream()` yields. |
-| `pending()` | In a [durable session](#durable-sessions), the turn that has not finished (`{ status, approvalId?, approvalKind? }`; `approvalKind` is `'question'` when the turn waits on an `ask_question`), or `null`. |
+| `pending()` | In a [durable session](#durable-sessions), the turn that has not finished (`{ status, approvalId?, approvalKind?, idempotencyKey? }`; `approvalKind` is `'question'` when the turn waits on an `ask_question`; `idempotencyKey` is the turn's HTTP `Idempotency-Key`, see [Resending a turn](./deployment.md#resending-a-turn)), or `null`. |
 | `resume({ signal })` | In a durable session, finishes an interrupted turn and resolves with its result, or `null` when none is pending. |
 | `discardPending()` | In a durable session, drops an unfinished turn without running it, and withdraws the approvals it waited on (they are no longer listed, and resolving one fails with `LOUSHO_APPROVAL_NOT_FOUND`). Also drops a turn checkpoint that cannot be read (`LOUSHO_CHECKPOINT_CORRUPT`). |
 | `history()` | The steps of the transcript (one per model response, with its tool calls and results) - see [Forking a session](#forking-a-session). |
@@ -257,9 +257,16 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   the transcript, until it finishes. While it waits, `resume()`, `send()` and
   `stream()` throw `SessionAwaitingApprovalError` (with its `approvalId`), and
   `agent.approvals.resolve({ id, approved })` continues the turn in this
-  session. After a restart, open the session and call `resume()` (or `send()`)
-  once before resolving, so the agent knows which session the approval belongs
-  to; give both agents the same durable `store` (or `approvalStore`).
+  session. After a restart, `agent.approvals.resolve()` or `streamResolve()`
+  from the new process continues it too: the agent finds the session from the
+  pause record (for session ids of letters, digits, `_` and `-`), so there is
+  no need to open the session or call `resume()` first. Give both agents the
+  same durable `store` (or `approvalStore`).
+- `resume()` returns the finished turn's result; it does not stream, and
+  `stream()` does not stream the pending turn it finishes first either. To
+  show a resumed turn's progress, register `session.on(listener)` before the
+  call (or pass `createAgent({ onEvent })`): it gets the turn's `AgentEvent`s
+  as they happen.
 - A paused turn locks the session id: the session records it under
   `<id>.paused` in the checkpoint store, so `agent.send(message, { sessionId: id })`,
   `agent.stream()` with that `sessionId`, and a session object over a different

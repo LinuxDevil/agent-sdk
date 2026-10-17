@@ -35,12 +35,28 @@ export interface OutputError {
  * the default (`true`, or a bare `output: schema`) when the provider takes
  * `responseFormat` as a JSON-mode hint only - the prompt copy is then the
  * only place the model sees the shape to answer with.
+ *
+ * `responseFormat` says which model calls carry the schema as
+ * `GenerateOptions.responseFormat`: `'final'` only those that offer no tools
+ * (an agent without tools, the salvage call at `maxSteps`, the repair step),
+ * `'always'` every call. A strict `json_schema` response format on a call
+ * that also offers tools makes some models (gpt-4o-mini via OpenRouter)
+ * call tools forever instead of answering, so `'final'` is the default; a
+ * tool-offering call relies on the schema in the prompt and the repair step.
+ * With `promptSchema: false` the default is `'always'`, since the response
+ * format is then the only place the model sees the schema.
  */
 export interface OutputSpec<TSchema extends StandardSchemaV1 = StandardSchemaV1> {
   /** The schema the final reply is validated into `result.object` with (what a bare `output` is). */
   schema: TSchema;
   /** Also write the JSON Schema into the system prompt (default `true`). */
   promptSchema?: boolean;
+  /**
+   * Which model calls send the schema as `responseFormat`: `'final'` (calls
+   * that offer no tools) or `'always'`. Default `'final'`, or `'always'`
+   * with `promptSchema: false`.
+   */
+  responseFormat?: 'final' | 'always';
 }
 
 /** `output` given as an {@link OutputSpec} vs a bare schema: the spec has a `schema` key and is not itself a schema. */
@@ -250,7 +266,12 @@ function assertNoDates(schema: StandardSchemaV1): void {
  * on the first model call.
  */
 export function assertOutputSchema(schema: StandardSchemaV1 | OutputSpec | undefined): void {
-  if (schema) jsonSchemasOf(outputSchemaOf(schema));
+  if (!schema) return;
+  const mode = isOutputSpec(schema) ? schema.responseFormat : undefined;
+  if (mode !== undefined && mode !== 'final' && mode !== 'always') {
+    throw new ConfigurationError(`output.responseFormat must be 'final' or 'always', got ${JSON.stringify(mode)}.`, 'output');
+  }
+  jsonSchemasOf(outputSchemaOf(schema));
 }
 
 function jsonSchemaOf(schema: StandardSchemaV1): Record<string, unknown> {
@@ -278,9 +299,20 @@ export function outputInstruction(output: StandardSchemaV1 | OutputSpec): string
   ].join('\n');
 }
 
-/** The `responseFormat` hint sent with every model call of the run. */
-export function outputResponseFormat(output: StandardSchemaV1 | OutputSpec): GenerateOptions['responseFormat'] {
+/**
+ * The `responseFormat` hint for one model call of an `output` run, or
+ * undefined when the call goes without it: a call that `offersTools` sends
+ * it only under `responseFormat: 'always'` (see {@link OutputSpec}).
+ */
+export function outputResponseFormat(output: StandardSchemaV1 | OutputSpec, offersTools = false): GenerateOptions['responseFormat'] {
+  if (offersTools && responseFormatMode(output) === 'final') return undefined;
   return { type: 'json', schema: jsonSchemaOf(outputSchemaOf(output)) };
+}
+
+/** An `output` option's `responseFormat` mode, its default applied. */
+function responseFormatMode(output: StandardSchemaV1 | OutputSpec): 'final' | 'always' {
+  if (!isOutputSpec(output)) return 'final';
+  return output.responseFormat ?? (output.promptSchema === false ? 'always' : 'final');
 }
 
 /** `text` without surrounding whitespace and a ```/```json code fence. */

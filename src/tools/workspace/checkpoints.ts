@@ -28,13 +28,17 @@ export interface WorkspaceFileBackup {
   /** Permission bits before the change, when the provider has `getMode` and the file existed. */
   mode?: number;
   /**
-   * Set when the file existed but its content was not kept: `'too-large'`
-   * (over `maxFileBytes`; rewind skips the file and never deletes it) or
-   * `'same-turn'` (a later write in a turn that already backed the path up;
-   * only the turn's first backup is needed to rewind).
+   * Set when the content was not kept: `'too-large'` (the file existed but
+   * was over `maxFileBytes`; rewind skips the file and never deletes it) or
+   * `'same-turn'` (the turn already backed the path up: a later write in
+   * that turn, or the record a write adds once it finished, carrying its
+   * `afterHash`; only the turn's first backup is needed to rewind).
    */
   omitted?: 'too-large' | 'same-turn';
-  /** sha256 (hex) of what the tool wrote. */
+  /**
+   * sha256 (hex) of what the tool wrote (for the first record of a
+   * plain-function `track` write, stored before it ran: of the content it found).
+   */
   afterHash: string;
   /** ISO time of the change. */
   at: string;
@@ -115,6 +119,16 @@ export interface RewindResult {
   skipped: Array<{ path: string; reason: 'changed-since' | 'too-large' | 'not-a-file' }>;
 }
 
+/**
+ * A change {@link WorkspaceCheckpoints.track} can back up before it happens:
+ * `prepare` computes the new content (throwing to refuse the change), and
+ * `write` stores it once the backup is recorded.
+ */
+export interface PreparedWorkspaceWrite {
+  prepare(): Promise<string>;
+  write(content: string): Promise<void>;
+}
+
 /** Options for {@link WorkspaceCheckpoints}. */
 export interface WorkspaceCheckpointsOptions {
   /** Where backups live. Defaults to a {@link MemoryWorkspaceCheckpointStore}. */
@@ -141,6 +155,12 @@ interface Captured {
   before: string | null;
   mode?: number;
   tooLarge: boolean;
+}
+
+/** What a backup leaves out: the content of a too-large file, or of a path the turn already backed up. */
+function omittedFor(captured: Captured, firstInTurn: boolean): WorkspaceFileBackup['omitted'] {
+  if (captured.tooLarge) return 'too-large';
+  return !firstInTurn && captured.before !== null ? 'same-turn' : undefined;
 }
 
 /** One file's planned rewind. */
@@ -245,17 +265,42 @@ export class WorkspaceCheckpoints {
   }
 
   /**
-   * Used by `createFsTools`: captures `path` as it is now, runs `write`
-   * (which returns the content it wrote), then records the backup. A write
-   * that throws records nothing. Writes to one path are serialized.
+   * Used by `createFsTools`: backs `path` up, then changes it. Writes to one
+   * path are serialized.
+   *
+   * With a {@link PreparedWorkspaceWrite}, `prepare` computes the new content
+   * (a `prepare` that throws records nothing; content equal to the file's
+   * records and writes nothing), the backup is stored, then `write` runs. The
+   * backup is stored before the file changes, so a crash in between never
+   * loses the original, and rewind treats a file still holding its backed-up
+   * content as nothing to undo.
+   *
+   * With a plain function (which writes and returns the content it wrote),
+   * the backup is stored first and a second record with the written
+   * content's hash is added after it returns.
+   *
+   * A path's first write in a turn records the backup; a later one -
+   * including a resumed run re-running an interrupted call, which finds the
+   * file already written - keeps that first backup.
    */
-  async track(ctx: ToolExecutionContext | undefined, path: string, write: () => Promise<string>): Promise<void> {
+  async track(ctx: ToolExecutionContext | undefined, path: string, write: (() => Promise<string>) | PreparedWorkspaceWrite): Promise<void> {
     const target = normalizeWorkspacePath(path);
     const origin = originOf(ctx);
     await this.paths.run(target, async () => {
       const captured = await this.capture(target);
-      const written = await write();
-      await this.record(origin, target, captured, written);
+      if (typeof write === 'function') {
+        const first = await this.isFirstInTurn(origin, target);
+        if (first) await this.record(origin, target, captured, captured.before ?? '', captured.tooLarge ? 'too-large' : undefined);
+        const written = await write();
+        const omitted = captured.tooLarge ? 'too-large' : first ? 'same-turn' : omittedFor(captured, false);
+        await this.record(origin, target, captured, written, omitted);
+      } else {
+        const content = await write.prepare();
+        if (content === captured.before) return;
+        await this.record(origin, target, captured, content, omittedFor(captured, await this.isFirstInTurn(origin, target)));
+        await write.write(content);
+      }
+      await this.prune(origin.sessionId, origin.turn);
     });
   }
 
@@ -315,20 +360,27 @@ export class WorkspaceCheckpoints {
     return { before, mode, tooLarge: false };
   }
 
-  private async record(origin: WriteOrigin, path: string, captured: Captured, written: string): Promise<void> {
-    const existing = await this.store.list(origin.sessionId);
-    const repeat = existing.some((b) => b.turn === origin.turn && b.path === path);
-    const omitted = captured.tooLarge ? 'too-large' : repeat && captured.before !== null ? 'same-turn' : undefined;
+  /** Whether this turn has no backup of `path` yet (so this write's backup is the one rewind restores). */
+  private async isFirstInTurn(origin: WriteOrigin, path: string): Promise<boolean> {
+    return !(await this.store.list(origin.sessionId)).some((b) => b.turn === origin.turn && b.path === path);
+  }
+
+  private async record(
+    origin: WriteOrigin,
+    path: string,
+    captured: Captured,
+    content: string,
+    omitted: WorkspaceFileBackup['omitted']
+  ): Promise<void> {
     await this.store.append({
       ...origin,
       path,
       before: omitted ? null : captured.before,
       ...(captured.mode !== undefined && { mode: captured.mode }),
       ...(omitted && { omitted }),
-      afterHash: hashContent(written),
+      afterHash: hashContent(content),
       at: new Date().toISOString(),
     });
-    await this.prune(origin.sessionId, origin.turn);
   }
 
   /** Retention: keeps the newest `maxTurns` turns. */
@@ -345,8 +397,10 @@ export class WorkspaceCheckpoints {
     const stat = await this.fs.stat(path);
     if (stat && stat.type !== 'file') return { kind: 'skip', path, reason: 'not-a-file' };
     const current = stat ? await this.fs.readFile(path) : undefined;
-    // Created by the agent and already gone: the file is as it was before the turn.
+    // Created by the agent and already gone, or holding its earlier content
+    // (e.g. a write that crashed after its backup was stored): nothing to undo.
     if (current === undefined && first.before === null) return undefined;
+    if (current !== undefined && current === first.before) return undefined;
     const untouched = current !== undefined && hashContent(current) === changes[changes.length - 1].afterHash;
     if (!untouched && !force) return { kind: 'skip', path, reason: 'changed-since' };
     if (first.before === null) return { kind: 'delete', path };

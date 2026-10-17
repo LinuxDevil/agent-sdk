@@ -269,7 +269,10 @@ This does not close the race across locations: two requests served by different
 edge locations within KV's propagation delay (up to about 60 seconds) can both
 read their own token and both run the call. For a tool with a side effect that
 must happen once (a payment, an email), pass `ctx.approval.id` on as an
-idempotency key. It is the same for every attempt to run one decided call:
+idempotency key. It is the same for every attempt to run one decided call. It
+does not identify the business event: after a crash the model may retry with a
+new call, which gets a new approval id, so a tool that must act once per
+invoice also needs a key from its own arguments (the invoice number here):
 
 ```ts
 import { defineTool } from '@lousho/build-ai-agent';
@@ -286,7 +289,7 @@ const payout = defineTool({
   input: z.object({ invoice: z.string(), cents: z.number() }),
   needsApproval: true,
   execute: async ({ invoice, cents }, ctx) =>
-    payments.create({ invoice, cents }, { idempotencyKey: ctx.approval?.id ?? ctx.toolCallId }),
+    payments.create({ invoice, cents }, { idempotencyKey: `payout:${invoice}` }),
 });
 ```
 

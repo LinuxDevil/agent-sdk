@@ -107,6 +107,18 @@ describe('renderTable', () => {
     `);
   });
 
+  it('shows the scores of passing scored gates, also whole-number ones', () => {
+    const scoredGates: EvalResult = {
+      ...passing,
+      assertions: [
+        { name: 'completed()', kind: 'gate', passed: true, score: 1, threshold: 1 },
+        { name: 'words', kind: 'gate', passed: true, score: 5, threshold: 3 },
+        { name: 'faithful', kind: 'gate', passed: true, score: 1, threshold: 0.8 },
+      ],
+    };
+    expect(renderTable([scoredGates], false).split('\n')[1]).toContain('words=5, faithful=1');
+  });
+
   it('marks soft failures as failing under --strict', () => {
     expect(renderTable([passing, softFail], true)).toMatchInlineSnapshot(`
       "EVAL         CASE             RESULT  SCORES        DURATION

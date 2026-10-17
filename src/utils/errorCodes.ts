@@ -22,7 +22,8 @@ export const ERROR_CODES = {
     'Pass createAgent({ store }) with `checkpoints` (e.g. memoryStore() or a SqliteStore), or drop `sessionId`.',
   LOUSHO_CONFIG_RESOLVER_FAILED: "Fix the createAgent() option function named in the message; its own error is the `cause`.",
   LOUSHO_PROVIDER_SPEC_INVALID: "Write the model as '<provider>/<model>', e.g. 'openai/gpt-4.1-mini'.",
-  LOUSHO_PROVIDER_UNKNOWN: 'Use one of the supported provider prefixes listed in the message.',
+  LOUSHO_PROVIDER_UNKNOWN:
+    'Use one of the supported provider prefixes listed in the message; reach any other vendor through openrouter/<vendor>/<model>, pi/<vendor>/<model> or fromAiSdk().',
   LOUSHO_PROVIDER_MISSING_API_KEY: 'Set the environment variable named in the message, or pass a provider instance.',
   LOUSHO_PROVIDER_REQUEST_FAILED: 'Check the provider status, your API key and the request; retryable failures are retried by withRetry().',
   LOUSHO_PROVIDER_RATE_LIMITED: 'Wait and retry (withRetry() honours Retry-After), or lower the request rate.',
@@ -69,10 +70,14 @@ export const ERROR_CODES = {
   LOUSHO_APPROVAL_ORPHANED: "The paused run (or session turn) was deleted or replaced by a newer one; the approval is withdrawn and cannot be continued - start a new turn instead.",
   LOUSHO_APPROVAL_CONFLICT:'Another request decided this approval at the same time; read the session to see the outcome instead of deciding again.',
   LOUSHO_APPROVAL_FORBIDDEN: 'Decide the approval as a caller the route\'s authorizeApproval accepts (by default, the caller the run acts for).',
+  /** The approvals route got a body without `approved` or `answer` (`400`). */
+  LOUSHO_APPROVAL_DECISION_INVALID: "Send a JSON body with 'approved' (true or false, and an optional 'note') or, for a question, 'answer'.",
   LOUSHO_APPROVAL_KIND_MISMATCH: "'answer' decides a question pause only; a tool-call pause takes 'approved' (a question also answers with 'approved' and the answer as 'note').",
   LOUSHO_SESSION_FORBIDDEN: 'Use a session the route\'s authorizeSession lets this caller read, continue or decide approvals in.',
   /** A session route refused a cross-site POST or a `Host` outside `allowedHosts` (`403`). */
   LOUSHO_REQUEST_FORBIDDEN: "Call from the server's own origin (or add the page's origin to allowedOrigins) and use a Host the server allows (allowedHosts).",
+  /** A session route got a body it cannot use: invalid JSON, or missing or empty fields (`400`). */
+  LOUSHO_REQUEST_INVALID: 'Send valid JSON with the fields the route names, e.g. POST /chat { "sessionId": "chat-1", "input": "Hello" }.',
   /** A session route refused a POST body that is not JSON (`415`). */
   LOUSHO_UNSUPPORTED_MEDIA_TYPE: "Send the request body as JSON with the header 'Content-Type: application/json'.",
   LOUSHO_SESSION_AWAITING_APPROVAL: 'Resolve the pending approval first (agent.approvals.resolve() or resumeAfterApproval()), then send again.',
@@ -124,6 +129,8 @@ export const ERROR_CODES = {
     "Check the provider's tokenUrl, clientId, clientSecret and redirectUri (it must match the one registered with the provider), then sign in again.",
   LOUSHO_MCP_START_FAILED:
     "Run the server's command yourself to see why it fails; the message has its exit code and last stderr lines, and `connectTimeoutMs` bounds a server that never answers.",
+  LOUSHO_MCP_CALL_FAILED:
+    "Read the message: it names the server and tool; the `cause` is the MCP error (its `code`, e.g. -32000 'Connection closed' when the server exited). Check the server is running.",
   LOUSHO_MCP_AUTH_REQUIRED: "Sign the app in to the MCP server once: open the URL from agent.oauth.mcpSignInUrl('<server>') and let the callback store the token.",
 } as const;
 

@@ -29,6 +29,8 @@ Tools the model provider runs itself (web search, code interpreter, file search)
 
 With many tools, mark them `deferLoading` so the model finds them with a built-in `tool_search` tool instead of receiving every definition on every call; see [Tool search](./tool-search.md).
 
+Tools written for the Vercel AI SDK (`tool({ description, inputSchema, execute })`) convert with `fromAiSdkTools({ weather, sendEmail })`, `needsApproval` included; see [Migrating from the AI SDK](./migrating-from-ai-sdk.md#tools-fromaisdktools).
+
 ## `defineTool()` options
 
 | Option | Required | Description |
@@ -109,12 +111,12 @@ node.
 
 | Field | Value |
 | --- | --- |
-| `ctx.toolCallId` | The model's id for this call. It stays the same when the call is re-run after a crash. A call with no model turn behind it (a flow node) gets a generated id. |
+| `ctx.toolCallId` | The model's id for this call. It stays the same when that same call is re-run after a crash, but a crash before the call was recorded can make the model issue a new call with a new id, so it is not a business idempotency key (see [At-least-once tools](./durable-execution.md#at-least-once-tools-make-side-effects-idempotent)). A call with no model turn behind it (a flow node) gets a generated id. |
 | `ctx.messages` | A read-only copy of the transcript the model had seen before it made the call: no system prompt and not the assistant turn that made the call. Empty for a flow node. |
 | `ctx.abortSignal` | The run's `AbortSignal`, set when the run has one. |
 | `ctx.sessionId` | The run's session id — `agent.session({ id })`'s id or `send()`'s / `AgentExecutor.execute()`'s `sessionId` (`send({ sessionId })` needs `createAgent({ store })` with checkpoints, else it throws `LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE`); absent when the run has none. |
 | `ctx.principal` | Who the run acts for (route auth's caller, a channel's sender), frozen; absent without one. See [Principals in tools and approvals](./auth.md#principals-in-tools-and-approvals). |
-| `ctx.approval` | Set when the call runs because a human approved it: the approval's `id` (an idempotency key for a side effect, see [Cloudflare Workers](cloudflare-workers.md#deciding-one-approval-twice)), the decision's `note`, and `by`, who decided, when the decision named them. |
+| `ctx.approval` | Set when the call runs because a human approved it: the approval's `id` (it dedupes repeated attempts to run one decided call, see [Cloudflare Workers](cloudflare-workers.md#deciding-one-approval-twice); a retried model turn gets a new approval, so a side effect that must happen once also needs a key from your own data, such as a claim id), the decision's `note`, and `by`, who decided, when the decision named them. |
 
 A `sandboxExecute(args, sandbox)` that ignores the third argument keeps working.
 
@@ -176,7 +178,9 @@ its kind by carrying a `toolErrorKind` property. An error extending
 The model sees each failed call and may still answer as if it had worked,
 ending the run with `finishReason: 'stop'`. `result.toolErrors` counts the
 run's tool calls whose result is an error (any `kind` above except `not-run`);
-it is absent when none failed. Check it before trusting `text`, or cap it with
+it is absent when none failed. It counts only the run's own calls: the calls
+that failed inside its [sub-agents](./sub-agents.md) are counted on
+`result.usage.delegated.toolErrors`. Check it before trusting `text`, or cap it with
 `limits.maxToolErrors`: once that many calls have failed, the run stops before
 its next model call with `finishReason: 'budget-exceeded'` and
 `result.budget.limit` `'maxToolErrors'` (or rejects with `BudgetExceededError`

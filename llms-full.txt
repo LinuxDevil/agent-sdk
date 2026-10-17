@@ -6,24 +6,25 @@ Open-source TypeScript SDK for agents that run in your own Node process: tool ca
 
 Install with `@lousho/build-ai-agent`.
 
-Four things set it apart:
+What still sets it apart (as of October 2026; see the
+[honest comparison](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/comparison.md) for where rivals are ahead):
 
-- **Durable sessions and approvals on any host.** Sessions, checkpoints and
-  approval pauses live in pluggable stores (memory, files, one SQLite file, or
-  Cloudflare KV on Workers), so a paused or interrupted run
-  resumes from another request or another process.
-- **Record/replay and trajectory evals.** `mockModel` scripts the model,
-  `recordReplay` cassettes replay real runs offline, and `defineEval()` asserts
-  on which tools were called, in what order, with which arguments, gating CI
-  through `lousho eval` with JUnit reports.
-- **Node and Cloudflare Workers, traced with OpenTelemetry.** `lousho build`
-  ships the same agent spec to a Node server, Docker or a Worker; runs emit
-  OpenTelemetry GenAI spans to any exporter, and every result reports token
-  usage and USD cost.
-- **Coding agents that ship.** Agents are plain directories (`agent.json`,
-  `instructions.md`, `tools/`, `subagents/`), registries install them as kits,
-  and `piAgent()` delegates real coding work to a Pi coding agent with durable
-  approvals - one `lousho add coding-pi` is a working coding harness.
+- **Record/replay evals with trajectory drift.** `lousho eval --record` runs
+  each case against the real provider once and saves a cassette, `--replay`
+  runs it in CI with no network or API key, and `--drift` re-records and
+  reports how the tool-call trajectory changed. `defineEval()` asserts on
+  which tools were called, in what order, with which arguments, with JUnit output.
+- **Durable approvals on your own stores, including Workers KV.** Sessions,
+  checkpoints and approval pauses live in memory, files, one SQLite file or
+  Cloudflare KV, so a paused run resumes from another request or process.
+  There is no Postgres store yet.
+- **One agent, many surfaces.** The same agent runs in Node, Docker or a
+  Worker (`lousho build`), serves editors over the Agent Client Protocol
+  (`lousho acp`) and MCP clients over `serveMcp`, and emits OpenTelemetry
+  GenAI spans with token usage and USD cost.
+- **Self-hosted single package across AI SDK majors.** No platform account or
+  hosted control plane; the `ai` peer accepts v4, v6 and v7. It is still
+  alpha, with fewer native providers and no hosted dashboard.
 
 [Quickstart](#quickstart) · [Features](#features) · [Examples](#examples) ·
 [TypeScript AI agent quickstart](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md) ·
@@ -53,6 +54,7 @@ npm install @lousho/build-ai-agent ai@^7.0.0 zod
 npm install @ai-sdk/openai@^4.0.0 @ai-sdk/anthropic@^4.0.0
 ```
 
+Supported `ai` majors are 4 (`^4.3.19`), 6 and 7; AI SDK v5 is not supported. For Gemini add `@ai-sdk/google@^4.0.0` (`google/<model>`).
 For Ollama, use `ai@^7.0.0` with `ollama-ai-provider-v2@^4.0.0` and zod 4 (or
 `ai@^4.3.19` with `ollama-ai-provider@^1.2.0` and zod 3);
 [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#provider-packages) lists every pairing. `npx lousho doctor` checks Node, peers and API keys and
@@ -205,6 +207,7 @@ offline with `npx vitest run scripts/buildACodingAgent.test.ts`.
 | [OpenAPI tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/openapi-tools.md) | `openApiTools()`: an OpenAPI 3.0 / 3.1 document becomes one tool per operation, with approval for mutating ones |
 | [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md) | Model strings, `resolveProvider()`, which model runs, custom providers |
 | [Comparison](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/comparison.md) | How lousho compares with the Vercel AI SDK, Mastra, the OpenAI Agents SDK, Vercel eve and LangGraph.js, including where it is weaker |
+| [Migrating from the AI SDK](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/migrating-from-ai-sdk.md) | From `ToolLoopAgent` / `generateText({ tools })`: a mapping table, models via `fromAiSdk()`, tools via `fromAiSdkTools()`, `useChat` |
 | [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md) | Every `lousho` command and its flags |
 | [ACP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md) | `lousho acp` / `serveAcp()`: drive an agent from Zed and other Agent Client Protocol editors |
 | [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md) | `defineTool()`, validation and errors, built-in tools, `ToolRegistry` |
@@ -390,11 +393,11 @@ provider packages declare zod 3 as a peer, so pair zod 4 with `ai` 6 or 7.
 Each real LLM provider is backed by an optional peer dependency, in the major
 that pairs with your `ai` major. Install the pair from one row:
 
-| `ai`      | OpenAI, OpenRouter: `@ai-sdk/openai` | Anthropic: `@ai-sdk/anthropic` | Ollama                                 |
-| --------- | ------------------------------------ | ------------------------------ | -------------------------------------- |
-| `^4.3.19` | `^0.0.42` (or `^1.0.0`)              | `^0.0.42` (or `^1.0.0`)        | `ollama-ai-provider@^1.2.0`            |
-| `^6.0.0`  | `^3.0.0`                             | `^3.0.0`                       | `ollama-ai-provider-v2@^3.0.0` (zod 4) |
-| `^7.0.0`  | `^4.0.0`                             | `^4.0.0`                       | `ollama-ai-provider-v2@^4.0.0` (zod 4) |
+| `ai`      | OpenAI, OpenRouter: `@ai-sdk/openai` | Anthropic: `@ai-sdk/anthropic` | Google: `@ai-sdk/google` | Ollama                                 |
+| --------- | ------------------------------------ | ------------------------------ | ------------------------ | -------------------------------------- |
+| `^4.3.19` | `^0.0.42` (or `^1.0.0`)              | `^0.0.42` (or `^1.0.0`)        | `^1.2.0`                 | `ollama-ai-provider@^1.2.0`            |
+| `^6.0.0`  | `^3.0.0`                             | `^3.0.0`                       | `^3.0.0`                 | `ollama-ai-provider-v2@^3.0.0` (zod 4) |
+| `^7.0.0`  | `^4.0.0`                             | `^4.0.0`                       | `^4.0.0`                 | `ollama-ai-provider-v2@^4.0.0` (zod 4) |
 
 For example, on the current `ai` major:
 
@@ -540,6 +543,21 @@ code import those types (error TS1479 inside the SDK's declarations). Use
 add `"type": "module"`, or keep `skipLibCheck: true` (what `lousho init`
 projects use).
 
+The root entry's declarations use Node types (`Buffer`, and imports from
+`node:crypto`, `node:http` and `node:net`), so install `@types/node`.
+TypeScript 6 no longer loads every `@types` package by default (`types`
+defaults to `[]`), so on TypeScript 6+ also list it in `tsconfig.json`,
+or `skipLibCheck: false` reports `Cannot find name 'Buffer'` and
+`Cannot find module 'node:http'` inside the SDK's declarations:
+
+```json
+{
+  "compilerOptions": {
+    "types": ["node"]
+  }
+}
+```
+
 ## Installing from a local build
 
 To try an unreleased commit, build and pack the SDK from a checkout of this
@@ -560,6 +578,11 @@ npm install ./lousho-build-ai-agent-<version>.tgz ai zod
 
 To scaffold a new project the same way, from the checkout:
 `node bin/lousho.js init ../my-agent --sdk-path .`.
+
+On Windows, `npx C:\abs\path\create-lousho-agent-<version>.tgz` silently does
+nothing (an npm quirk with absolute drive-letter paths). Use a relative path
+(`npx ./create-lousho-agent-<version>.tgz my-agent`) or a `file:` spec
+(`npx file:C:/abs/path/create-lousho-agent-<version>.tgz my-agent`) instead.
 
 `npm install github:LinuxDevil/agent-sdk` does **not** work: `dist/` is not in
 git and the repository has no `prepare` build step, so the install has no
@@ -644,13 +667,24 @@ What it checks:
 5. With a spec path (`lousho doctor agent.yaml`): the spec is validated with
    field paths for every error, its provider package and key are checked
    (missing ones become failures), its `tools` must be built-in tools, and any
-   `mcpServers` command must be resolvable.
+   `mcpServers` command must be resolvable. An agent directory or a `.ts`/`.js`
+   agent module (`lousho doctor src/agent.ts`, what a scaffolded project's
+   `npm run doctor` runs) is loaded the way `lousho dev` loads it, and its
+   model's provider package and key are checked the same way. Without a path
+   a missing key is only a warning, since doctor cannot know which provider
+   your agent uses.
 6. Ollama reachability, only when the spec uses Ollama or `OLLAMA_HOST` is set.
 7. Docker availability, a warning only when the spec uses a sandboxed tool.
-8. With `--ping`: `GET <base>/models` for each provider whose variable is set
-   (OpenAI at `OPENAI_BASE_URL` when set, Anthropic, OpenRouter), with a 5 s
-   timeout. An unreachable server or a rejected key is a warning. Keys are sent
-   to their own provider only and never printed.
+8. With `--ping`: a `GET` for each provider whose variable is set, with a 5 s
+   timeout, to an endpoint that needs the key: `/models` for OpenAI and
+   Anthropic, `/api/v1/key` for OpenRouter (its `/models` answers without a
+   key). A rejected key (HTTP 401/403) is a failure; an unreachable server is a
+   warning. With `OPENAI_BASE_URL` set, `<base>/models` is pinged and the line
+   says it shows reachability only, since a local server may not check keys.
+   Keys are sent to their own provider only and never printed.
+
+On Windows the fix lines use PowerShell syntax (`$env:OPENAI_API_KEY="<your key>"`)
+instead of `export`.
 
 The exit code is `1` if any check fails and `0` otherwise (warnings do not
 fail), so it can gate CI. Add `--json` for machine-readable output. Colour is
@@ -1506,7 +1540,8 @@ my-agent/
   schedules/*.{ts,mts,cts,js,mjs,cjs}              # defineSchedule() cron schedules (see schedules.md)
   channels/*.{ts,mts,cts,js,mjs,cjs}               # a channel each: defineChannel(), webhookChannel(), ... (see channels.md)
   memory/*.{ts,mts,cts,js,mjs,cjs}                 # a memory slot each: defineMemory() (see memory.md); part of the agent
-  auth.{ts,mts,cts,js,mjs,cjs}                     # route auth for the deployed server: jwt(), oidc(), basic(), ... (see auth.md)
+  auth.{ts,mts,cts,js,mjs,cjs}                     # route auth for the deployed server: jwt(), oidc(), basic(), ... (see auth.md),
+                                                   # plus optional named authorizeSession / authorizeApproval exports
 ```
 
 Only one config file may exist. Files inside `tools/` and the entries of
@@ -1847,7 +1882,11 @@ npx lousho build ./my-agent --target=node-server    # or docker
 The agent directory is the unit of deployment: the built server loads it with
 `resolveAgentDir()` at start-up, starts its `schedules/` and mounts its
 `channels/` under `/channels`, guards its chat routes with `auth.ts` when there
-is one ([Route auth and principals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md)), and prints which it found. The code files (the
+is one ([Route auth and principals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md)), and prints which it found. A
+function `auth.ts` exports as `authorizeSession` or `authorizeApproval`
+decides who may use a session and who may decide an approval, e.g. a manager
+approving a user's paused claim ([Who may decide an approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-decide-an-approval));
+without them the server keeps the defaults (a session and its approvals belong to the caller that started it). The code files (the
 config, `auth.ts`, a root `hooks.*` / `approve.*` file, `tools/`, `schedules/`, `channels/`, `memory/`, and the same in each
 sub-agent) are bundled to `dist/agent/**.js`, and only `instructions.md` (with `instructions/<family>.md`), `skills/`
 and a JSON/YAML config (the same in each sub-agent) are copied next to them, so the server needs no TypeScript
@@ -2728,6 +2767,38 @@ await agent.approvals.resolve({ id: paused.approvalId!, approved: true, args: { 
 `remember` and `args` are for decisions people make. An `approve` callback
 decides each call it is asked about, and `once()` does not count its yes.
 
+### Ending the run after a rejection
+
+A rejection is a tool result, not a stop: the model gets the `kind: 'rejected'`
+error (with your `note`) and the run continues, so a model that still wants the
+task done may call the tool again, with new arguments, and pause on a new
+approval. There is no option on `resolve()` that ends the run. To stop that:
+
+- Say it in the tool's `description` or the agent's `instructions`: "If the
+  reviewer rejects the call, do not call it again; tell the user it was not
+  done."
+- Enforce it with a `preToolCall` hook that denies the tool once the
+  transcript holds a rejection of it. A denial is not an approval pause, so the
+  model gets the reason and answers:
+
+```ts
+import { createAgent, type AgentHook } from '@lousho/build-ai-agent';
+
+const noRefile: AgentHook = {
+  name: 'no-refile',
+  preToolCall(ctx) {
+    const rejected = ctx.messages.some((m) => m.role === 'tool' && m.toolName === ctx.toolName && String(m.content).includes('"kind":"rejected"'));
+    return rejected ? { deny: 'A reviewer rejected this call. Do not call it again; tell the user it was not done.' } : undefined;
+  },
+};
+
+const agent = createAgent({ provider, instructions: 'You file claims.', tools: [emailTool], hooks: [noRefile] });
+```
+
+The rule is per run history: in a long session, a rejection earlier in the
+transcript also blocks later, unrelated calls of that tool, so narrow the check
+(for example to the messages after the latest user message) if that is too broad.
+
 ### Approval expiry
 
 `createAgent({ approvalTtlMs })` puts a deadline on every pause the agent
@@ -3201,6 +3272,14 @@ server uses it (`resolveAgentDir()` returns it as `auth`; the manifest says
 still is. The `cloudflare-worker` target serves spec files only and keeps the
 `LOUSHO_API_TOKEN` token; see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#auth).
 
+`auth.ts` may also export functions named `authorizeSession` and
+`authorizeApproval`, next to its default export. The built server uses them as
+the rules of [Who may use a session](#who-may-use-a-session) and
+[Who may decide an approval](#who-may-decide-an-approval), and
+`resolveAgentDir()` returns them under those names. Any other value under
+those names fails the load (`LOUSHO_AGENT_DIR_INVALID`). `lousho dev` has no
+route auth, so neither the list nor these rules apply there.
+
 ## Reading the principal in the run
 
 The principal is on the run context next to `sessionId` and `metadata`. The
@@ -3406,7 +3485,8 @@ claimed again. So for anything that runs on more than one instance, or keeps
 sessions across restarts, check ownership yourself with `authorizeSession`.
 
 `createRouteHandler()` and the generated node server take `authorizeSession`,
-which replaces that default. It is asked before a caller reads a session
+which replaces that default (in an agent directory, export it from `auth.ts`:
+see the example under [Who may decide an approval](#who-may-decide-an-approval)). It is asked before a caller reads a session
 (`action: 'read'`), sends it a turn (`'chat'`, also `POST <basePath>` and the
 `useChat` endpoint) or decides one of its approvals (`'approve'`). Return
 `false` for a `403` (`LOUSHO_SESSION_FORBIDDEN`). Deriving the id from the
@@ -3517,8 +3597,47 @@ export const { GET, POST } = createRouteHandler(agent, {
 });
 ```
 
-Two requests that decide the same approval at once get one continuation: the
-other request is a `409` (`LOUSHO_APPROVAL_CONFLICT`), and a later one a `404`.
+In an agent directory built with `lousho build --target=node-server` (or
+`docker`), export the same rules from `auth.ts`. Here users file expense
+claims, a manager decides them, and nobody approves their own:
+
+```ts no-verify
+// my-agent/auth.ts
+import { apiToken } from '@lousho/build-ai-agent/auth';
+import type { ApprovalAccessRequest, SessionAccessRequest } from '@lousho/build-ai-agent';
+
+export default [
+  apiToken(process.env.ALICE_TOKEN!, { id: 'alice' }),
+  apiToken(process.env.BOB_TOKEN!, { id: 'bob' }),
+  apiToken(process.env.MANAGER_TOKEN!, { id: 'manager' }),
+];
+
+// Session ids are `<user id>-<suffix without '-'>`.
+const ownerOf = (sessionId: string) => sessionId.slice(0, Math.max(sessionId.lastIndexOf('-'), 0));
+
+// Users use their own sessions; the manager may open any session to review a claim.
+export function authorizeSession({ principal, sessionId }: SessionAccessRequest): boolean {
+  return principal?.id === 'manager' || (principal !== undefined && ownerOf(sessionId) === principal.id);
+}
+
+// Only the manager decides, and never on a claim of their own.
+export function authorizeApproval({ principal, approval }: ApprovalAccessRequest): boolean {
+  return principal?.id === 'manager' && approval.principal?.id !== 'manager';
+}
+```
+
+Alice's paused claim in session `alice-1` is then decided by
+`POST /chat/alice-1/approvals/:id` with the manager's token (`200`); with
+alice's own token it is a `403` (`LOUSHO_APPROVAL_FORBIDDEN`). Without these
+exports the built server keeps the defaults, so only alice could decide it.
+
+Two requests that decide the same approval get one continuation: while the
+winning decision's continuation is still running (on the same server process),
+any other decision of that approval is a `409` (`LOUSHO_APPROVAL_CONFLICT`),
+whether it arrived at the same moment or while the decided tool was running;
+once that continuation has ended, a decision is a `404`
+(`LOUSHO_APPROVAL_NOT_FOUND`). A decision handled by another replica is a
+`404` there.
 
 ### Pauses, crashes and forks
 
@@ -3769,6 +3888,34 @@ after each answer the program asks for the next line, and an empty line or
 `exit` ends it. The session lives in memory, so it ends with the process; to
 keep a conversation across runs, give the agent a store (see
 [Choosing a store](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)).
+
+### Long turns and restarts
+
+- **Context.** A coding turn reads files, runs tests and edits over many
+  steps; every tool result stays in the transcript, so a 40-step turn can
+  outgrow a 128k-token window before it finishes. Pass
+  `createAgent({ compaction: true })` (or a summarizer, see
+  [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md)): it compacts before each model call,
+  between the steps of one turn too.
+- **Crashes.** With a durable store, a turn killed mid-way is finished by the
+  next `session.send()` or by `session.resume()`. A tool call that was running
+  when the process died runs again ([at-least-once](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#at-least-once-tools-make-side-effects-idempotent)).
+  The built-in `write_file` and `edit_file` are safe to re-run: `write_file`
+  writes the same content again, and an `edit_file` whose edit is already in
+  the file (`old_string` gone, `new_string` present) succeeds with "the edit
+  was already applied" instead of failing. With
+  [`WorkspaceCheckpoints`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md#the-tools), each change's backup is stored
+  before the file is written, and a re-run keeps the first backup, so
+  `rewind()` still restores the original after a crash.
+- **Progress while resuming.** `session.resume()` returns a result, not a
+  stream, and `session.stream()` does not stream the pending turn it finishes
+  before the new message. To show progress, register
+  `session.on((event) => ...)` before calling it, or pass
+  `createAgent({ onEvent })`: both get the resumed turn's `AgentEvent`s
+  (`tool.start`, `text.delta`, ..., `run.done`) as they happen.
+- **Approvals after a restart.** `agent.approvals.streamResolve({ id, approved })`
+  (or `resolve()`) from a fresh process, given the same durable store,
+  continues the paused turn in its session; no `session.resume()` first.
 
 ## 6. Test it without a model
 
@@ -4708,7 +4855,7 @@ Run it with `npx lousho <command>` inside a project that has the SDK installed.
 | Command | What it does | Details |
 | ------- | ------------ | ------- |
 | `lousho init [dir]` | Scaffold a project: an agent with an example tool, an offline test, `.env.example`; installs dependencies and runs `git init`. | [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#scaffolding-a-new-project) |
-| `lousho doctor [spec\|agent-dir] [--json] [--ping]` | Check Node, peer packages, provider keys, and optionally a spec file or agent directory; `--ping` also checks each configured provider endpoint answers. Prints a fix for every problem. | [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#troubleshooting-lousho-doctor) |
+| `lousho doctor [spec\|agent-dir\|agent.ts] [--json] [--ping]` | Check Node, peer packages, provider keys, and optionally a spec file, agent directory or agent module (its provider's key is then required); `--ping` also checks each configured provider endpoint answers and accepts the key. Prints a fix for every problem. | [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#troubleshooting-lousho-doctor) |
 | `lousho dev <path>` | Local dev server for a spec file, an agent directory or a TS agent: chat UI with a session per tab and streamed events, hot reload on save. | [Below](#lousho-dev) |
 | `lousho chat <path>` | Terminal REPL for a spec file, an agent directory or a TS agent: streams replies, shows tool calls, asks for approvals and questions. | [Below](#lousho-chat) |
 | `lousho acp <path>` | Serve a spec file, an agent directory or a TS agent to an editor (Zed and other ACP clients) over the Agent Client Protocol on stdio. | [ACP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md) |
@@ -4733,7 +4880,7 @@ lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allo
 lousho build <agent-dir|spec|agent.ts> --target=<node-server|cloudflare-worker|docker> [--out=<dir>]    (or --agent=<path>)
 lousho studio [--port N] [--host H] [--prod|--dev]
 lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]
-lousho doctor [agent.yaml|json|agent-dir] [--json] [--ping]
+lousho doctor [agent.yaml|json|agent-dir|agent.ts] [--json] [--ping]
 lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
 lousho --version
@@ -4759,7 +4906,8 @@ value, an extra argument, or a missing `--target` or agent path. `lousho build` 
 **`.env`.** The commands that run an agent (`dev`, `chat`, `acp`, `mcp`),
 `doctor`, `eval` (judge evals need provider keys) and `build` load `./.env` from the working directory when it exists, like
 `node --env-file-if-exists=.env`: a variable already set in the environment
-wins over the file.
+wins over the file. A UTF-8 byte order mark at the start of the file (which
+PowerShell 5.1's `Set-Content -Encoding utf8` writes) is ignored.
 
 `lousho init` is the exception: it parses its own flags, and a bad flag or
 value fails with `InitUsageError` — its message printed as-is, exit code 2 —
@@ -4916,7 +5064,9 @@ Done, the report is on its way.
 - After each turn `[usage]` shows the tokens and, when every model used has
   known pricing, the cost (`~` marks estimated tokens).
 - Errors from the SDK print with their `[LOUSHO_...]` code and fix, and the
-  session continues.
+  session continues. A provider failure also names its category and HTTP
+  status, e.g. `error: User not found. (auth-failure, HTTP 401)` for a wrong
+  API key.
 - `--traces` or `--traces=<dir>` writes the session's runs to local trace files,
   as for `lousho dev`; a line on stderr says where.
 
@@ -5234,7 +5384,10 @@ This does not close the race across locations: two requests served by different
 edge locations within KV's propagation delay (up to about 60 seconds) can both
 read their own token and both run the call. For a tool with a side effect that
 must happen once (a payment, an email), pass `ctx.approval.id` on as an
-idempotency key. It is the same for every attempt to run one decided call:
+idempotency key. It is the same for every attempt to run one decided call. It
+does not identify the business event: after a crash the model may retry with a
+new call, which gets a new approval id, so a tool that must act once per
+invoice also needs a key from its own arguments (the invoice number here):
 
 ```ts
 import { defineTool } from '@lousho/build-ai-agent';
@@ -5251,7 +5404,7 @@ const payout = defineTool({
   input: z.object({ invoice: z.string(), cents: z.number() }),
   needsApproval: true,
   execute: async ({ invoice, cents }, ctx) =>
-    payments.create({ invoice, cents }, { idempotencyKey: ctx.approval?.id ?? ctx.toolCallId }),
+    payments.create({ invoice, cents }, { idempotencyKey: `payout:${invoice}` }),
 });
 ```
 
@@ -6017,54 +6170,67 @@ the summary text and the `Error`.
 
 Source: docs/comparison.md
 
-This page is a short, factual orientation, not a benchmark. Competing projects
-move fast, so the rows about them describe their general shape; check their own
-documentation before deciding. The rows about lousho describe this repository.
+**As of October 2026.** This page is a short orientation, not a benchmark.
+The TypeScript agent space moves fast: most of the projects below now ship
+durable approvals, evals and coding-agent harnesses of their own, so check
+their documentation before deciding. Rows about lousho describe this
+repository and link to the page that documents each claim.
 
-## Where each one fits
+## Each project in one row
 
-| Project | Where it fits best |
-| ------- | ------------------ |
-| lousho (`@lousho/build-ai-agent`) | TypeScript agents that need durable human approvals, record/replay tests and trajectory evals, and coding-agent tooling, on top of providers you pick. |
-| [Vercel AI SDK](https://ai-sdk.dev) (`ToolLoopAgent`, `WorkflowAgent`) | The model and UI layer for TypeScript apps, with the largest provider and framework ecosystem. lousho uses it underneath for the standard providers. |
-| [Mastra](https://mastra.ai) | A full-stack TypeScript framework: agents, workflows, memory, RAG and a hosted/dev UI in one package. |
-| [OpenAI Agents SDK (JS)](https://openai.github.io/openai-agents-js/) | Agents built around OpenAI's APIs: handoffs, guardrails and tracing, with first-class access to OpenAI hosted tools. |
-| [Vercel eve](https://vercel.com) | Agents deployed on Vercel's platform. Platform-coupled by design. |
-| [LangGraph.js](https://langchain-ai.github.io/langgraphjs/) | Explicit graph-shaped, stateful workflows with checkpointing, when you want to draw the control flow yourself. |
+| Project | What it is | Approvals / human-in-the-loop | Evals | Coding agents | Where it is ahead of lousho |
+| ------- | ---------- | ----------------------------- | ----- | ------------- | --------------------------- |
+| lousho (`@lousho/build-ai-agent`) | Self-hosted TypeScript agent SDK, one npm package, alpha | `needsApproval` + `resumeAfterApproval()` on memory, file, SQLite or Cloudflare KV stores ([Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)) | `lousho eval`: trajectory assertions, record/replay cassettes, drift reports ([Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md)) | Workspace tools, permission rules, `piAgent()`, registry kits, ACP editor server ([Build a coding agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/build-a-coding-agent.md)) | - |
+| [Vercel AI SDK 7](https://ai-sdk.dev) | Model, agent and UI toolkit for TypeScript | `WorkflowAgent` tools take `needsApproval`; runs are durable through the open-source Workflow DevKit | Not built in | `HarnessAgent` (experimental) wraps existing runtimes such as Claude Code behind one API | By far the most providers and UI integrations; lousho uses it underneath for the standard providers |
+| [Mastra](https://mastra.ai) | Full-stack TypeScript framework: agents, workflows, memory, RAG, dev UI | Workflow `suspend()` / `resume()` with persisted snapshots | Scorers, datasets and experiments, with results stored | Build it from agents, tools and workflows | Postgres and many other storage adapters, a local dev playground, a larger community |
+| [LangGraph.js](https://langchain-ai.github.io/langgraphjs/) | Graph-shaped, stateful workflows with checkpointing | `interrupt()` + `Command({ resume })` on any checkpointer | Through LangSmith (hosted) | Build it as a graph | Postgres checkpointer, explicit control flow, LangSmith tracing and evals |
+| [OpenAI Agents SDK (JS)](https://openai.github.io/openai-agents-js/) | Agents around OpenAI's APIs: handoffs, guardrails, tracing | Tool approvals with run-state resume | Through OpenAI's platform | Sandbox agents (beta) that read files, run commands and apply patches | First-class OpenAI hosted tools and sandboxes, OpenAI tracing dashboard |
+| [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk/overview) | The Claude Code agent loop as a library | `canUseTool` callback, hooks, permission modes and rules | Not built in | It *is* a coding agent: file, shell and edit tools, sessions, subagents | A production coding harness out of the box; Claude models |
+| [eve](https://github.com/vercel/eve) | Vercel's filesystem-first agent framework (Apache-2.0, beta) | Human-in-the-loop prompts on durable runs | `eve eval` with `defineEval`, asserting on tool calls | Sandboxes, channels (Slack, Discord, HTTP), schedules | Deploy and operations on Vercel, AI Gateway models, channels. Its `agent/` directory layout (`instructions.md`, `tools/`, `skills/`) mirrors lousho's [agent directories](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-directories.md) |
+| [VoltAgent](https://voltagent.dev) | TypeScript framework: agents, memory, workflows | Workflow suspend/resume | Built-in evals | Build it from agents and tools | VoltOps observability console and dashboards |
+| [open-harness](https://github.com/MaxGfeller/open-harness) | MIT TypeScript SDK on the AI SDK, modelled on Claude Code and Codex | Tool permissions | Not built in | Filesystem and bash tools, subagents, skills, MCP, compaction | Small, composable harness core focused on coding agents |
 
-## Capabilities at a glance
+## What lousho still does differently
 
-"Yes" for lousho is checkable in this repository. For the others the column
-says what the project is generally used for, not an exhaustive feature list.
+Each item is checkable in this repository.
 
-| Capability | lousho | Others |
-| ---------- | ------ | ------ |
-| Durable tool approvals that survive a restart | Yes, vendor-neutral: `needsApproval`, `resumeAfterApproval()`, memory, file, SQLite and Cloudflare KV stores ([Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md), [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)) | Varies; most offer human-in-the-loop in some form, usually tied to their own runtime or store |
-| Record/replay test cassettes | Yes ([Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md#record-and-replay)) | Mock models are common; check each for recorded-response replay |
-| Trajectory evals in CI | Yes: `lousho eval` asserts tool order and arguments, with JUnit output ([Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md)) | Varies |
-| Coding-agent tooling | Workspace tools with checkpoint rewind, permission rules, loop guard, `piAgent()`, registry kits ([Build a coding agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/build-a-coding-agent.md)) | Mostly build it yourself |
-| UI bindings | React, Vue and Svelte ([React](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/react.md), [Vue](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/vue.md), [Svelte](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/svelte.md)) | The AI SDK has the broadest UI support |
-| Any provider | OpenAI, Anthropic, OpenRouter, Ollama, Pi catalog, custom | The AI SDK has the most providers; the OpenAI Agents SDK centres on OpenAI |
+- **Record/replay cassettes and trajectory drift in one CLI.** `lousho eval --record`
+  runs every case against the real provider once and writes a cassette,
+  `--replay` runs them in CI with no network and no API key, and `--drift`
+  re-records into a temp directory and reports how each case's tool-call
+  trajectory changed ([Evals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/evals.md#record-replay-and-drift),
+  [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md#record-and-replay)).
+- **Durable approvals on Cloudflare Workers KV** as well as memory, file and
+  SQLite, with the same `needsApproval` / `resumeAfterApproval()` code on each
+  ([Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md), [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md)).
+- **Editor and MCP surfaces from the same agent.** `lousho acp` serves any agent
+  to Zed and other Agent Client Protocol editors ([ACP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md)); `serveMcp`
+  exposes it as an MCP server to Claude Code, Cursor and other clients ([MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md)).
+- **Self-hosted, one package, no platform account.** Runs in your Node process
+  or a Worker; nothing calls home and there is no hosted control plane to sign up for.
+- **Spans AI SDK majors.** The `ai` peer dependency accepts `^4.3.19`, `^6` and
+  `^7`, so an existing app can adopt lousho without first upgrading the AI SDK
+  ([Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md)).
 
 ## Where lousho is weaker
 
-- **One maintainer, alpha releases.** The 1.0 line is still `1.0.0-alpha.*`. Expect API churn, a small community and few third-party integrations compared with the established projects.
-- **No Postgres store.** Checkpoint and approval stores ship for memory, file, SQLite and Cloudflare KV. For Postgres you implement the small `CheckpointStore` / `ApprovalStore` interfaces yourself.
-- **The root entry point is not edge-safe.** Cloudflare Workers use the dedicated `worker` build and subpaths ([Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md)); importing the root package in an edge runtime is not supported.
-- **Smaller ecosystem.** Fewer ready-made connectors, templates and tutorials than the AI SDK or LangGraph.
+- **Alpha, one maintainer.** The 1.0 line is still `1.0.0-alpha.*`. Expect API churn, a small community and few third-party integrations.
+- **No Postgres store.** Checkpoint and approval stores ship for memory, file, SQLite and Cloudflare KV. Mastra and LangGraph ship Postgres; here you implement the small `CheckpointStore` / `ApprovalStore` interfaces yourself.
+- **Fewer native providers.** OpenAI, Anthropic, OpenRouter, Ollama and the Pi catalog are built in; anything else goes through `fromAiSdk()` ([Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md)).
+- **No hosted dashboard.** Traces are OpenTelemetry spans you send to your own backend ([Observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md)); there is no equivalent of LangSmith, VoltOps or Mastra's playground.
+- **The root entry point is not edge-safe.** Cloudflare Workers use the dedicated `worker` build and subpaths ([Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md)).
 - **Live runs are manual.** CI runs offline tests and cassette replays; live-provider checks are run by hand.
 
-## Where lousho is stronger
+## Picking one
 
-- **Approvals that outlive the process**, with the same behaviour across four store backends rather than one tied to a single platform.
-- **Tests you can run offline**: record a real model run once, replay it in CI, and assert on tool-call trajectories.
-- **Coding agents as a first-class use case**: agent directories, kits you `lousho add`, checkpoints and permission rules.
-- **Vendor-neutral**: the same agent runs on any provider, and the same approvals code on any store.
-- **Frontend bindings** for React, Vue and Svelte over one stream protocol.
-
-If you only need a model call with streaming UI, the Vercel AI SDK alone is the
-simpler choice. If you want an all-in-one framework with a hosted UI, look at
-Mastra. If your control flow is a graph, look at LangGraph.js.
+If you only need model calls with streaming UI, the Vercel AI SDK alone is the
+simpler choice. If you want a ready-made coding agent, start from the Claude
+Agent SDK or an AI SDK harness. If you want an all-in-one framework with a dev
+UI and Postgres, look at Mastra; if your control flow is a graph, LangGraph.js;
+if you deploy on Vercel, eve. Pick lousho when you want offline
+record/replay evals, approvals that survive a restart on your own stores
+(including Workers KV), and one self-hosted package you can also serve over ACP
+and MCP.
 
 # Configuration
 
@@ -6547,10 +6713,28 @@ agent) or on `AgentExecutor.execute()` / `stream()`:
 Limits are checked before every model call (so after every tool batch) and
 after a model call that asks for tools; `maxDurationMs` also aborts an
 in-flight model or tool call through the run's signal. A limit trips once the
-run reaches it. Usage of sub-agents counts toward their lead's budget: it is
-added when the sub-agent returns, so the lead stops before its next model call.
-A run that finishes on its own within the step that reached a limit keeps its
-own finish reason, like `maxSteps`.
+run reaches it. A run that finishes on its own within the step that reached a
+limit keeps its own finish reason, like `maxSteps`.
+
+**Sub-agents share their lead's budget.** Usage of sub-agents counts toward
+their lead's limits, and a sub-agent is held to them while it runs: before each
+of its model calls (and after a model call that asks for tools) it checks the
+lead's token, cost and duration limits against what the lead, the lead's other
+sub-agents still running, and it itself have spent - on top of its own
+`limits`. Once they are reached the sub-agent stops with `'budget-exceeded'`
+(always `'stop'`; the lead's `onExceeded` decides how the lead ends), the
+`task` call reports `Sub-agent '<name>' stopped at the <limit> limit`, and the
+lead stops before its next model call. Parallel sub-agents can still go over by
+the model calls they had in flight when the limit was reached (at most one
+each), not by a whole run each. A nested sub-agent is held to every lead above
+it. A sub-agent resumed after an approval is held to its own limits only.
+
+A spend limit (tokens, cost, duration) is a hard stop: a run with `output`
+that reaches one makes no forced answer call (that call would spend past the
+limit), so `result.object` is unset. What the run's tool calls returned before
+the limit tripped - finished sub-agents' answers included - stays in
+`result.messages` as tool results. Only running out of steps (`maxSteps` or
+`limits.maxSteps`) gets the forced answer call.
 
 When a limit trips, the run stops with `finishReason: 'budget-exceeded'` and
 `result.budget` (`{ limit, value, max, scope }`). Tool calls the model asked
@@ -6941,24 +7125,74 @@ a page or script written against the dev server works against the deployed one.
 | `GET /health` | `200 ok`. Never needs auth: point load balancers and container health checks here. |
 | `POST /chat` `{ "sessionId", "input" }` | Runs a turn of session `sessionId` (1-128 characters of `A-Za-z0-9_-`; a new id starts a conversation, a known one continues it) and streams it as SSE: one `data: <AgentEvent JSON>` per event ([Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)), then `event: done`. `input` is a string or an array of content parts. |
 | `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`. A turn's messages are saved when it finishes, so `messages` does not hold a turn that is paused on an approval; `pending` says it is. |
-| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn live as SSE, in the same framing and event types as `POST /chat` (the decided call's `tool.resume` / `tool.done` or `tool.error`, text deltas, `approval.requested` if it pauses again, `run.done`), from `agent.approvals.streamResolve()` / `streamAnswer()`. `404` when `id` is not pending. When the turn's step paused on several calls, each id is decided on its own; a decision that leaves others pending streams `run.done` with `finishReason: 'awaiting-approval'`, and the last one runs the step. |
+| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn live as SSE, in the same framing and event types as `POST /chat` (the decided call's `tool.resume` / `tool.done` or `tool.error`, text deltas, `approval.requested` if it pauses again, `run.done`), from `agent.approvals.streamResolve()` / `streamAnswer()`. `404` when `id` is not pending; `409` (`LOUSHO_APPROVAL_CONFLICT`) while another request's decision of it is still streaming; `400` (`LOUSHO_APPROVAL_DECISION_INVALID`) for a body with neither field. When the turn's step paused on several calls, each id is decided on its own; a decision that leaves others pending streams `run.done` with `finishReason: 'awaiting-approval'`, and the last one runs the step. |
 | `POST /chat` `{ "message" }` | Legacy, single turn without history or streaming: returns the agent's `ExecutionResult` as JSON, with a `Deprecation: true` header. |
 
 Bodies over 1MB get `413`, invalid JSON `400`. A POST must send
 `Content-Type: application/json` (anything else is `415`,
 `LOUSHO_UNSUPPORTED_MEDIA_TYPE`), and a browser POST from another origin is
 `403` (`LOUSHO_REQUEST_FORBIDDEN`): see
-[Cross-site requests](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#cross-site-requests). An empty `input` is
-`400`. With an auth list, a session belongs to the first principal that sends
+[Cross-site requests](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#cross-site-requests). An empty `input`, or a
+body without `sessionId` and `input`, is `400` (`LOUSHO_REQUEST_INVALID`; an
+invalid session id is `LOUSHO_SESSION_ID_INVALID`). Every error body is JSON
+`{ error, code }`. A turn sent to a session that is paused on an approval is
+`409` with `code: 'LOUSHO_SESSION_AWAITING_APPROVAL'`, `approvalId` and
+`approvalIds` (every approval still to decide): decide them through the
+approvals route, which streams the paused turn's continuation, then send the
+new turn. With an auth list, a session belongs to the first principal that sends
 it a turn, and a stored session whose owner the server no longer remembers
 (after a restart) is refused to everyone until `authorizeSession` says whose
 it is; with only `LOUSHO_API_TOKEN` there is one caller and no owner check
-([Who may use a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-use-a-session)).
+([Who may use a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-use-a-session)). An approval is
+decided only by the caller its run acts for unless `authorizeApproval` says
+otherwise. In an agent directory, export `authorizeSession` and
+`authorizeApproval` from `auth.ts` to change either rule (for example, to let
+a manager decide other users' approvals): see
+[Who may decide an approval](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-decide-an-approval).
+
+While a turn streams, the server writes an SSE comment line (`: ping`) after
+every 15 seconds without an event, so a proxy (nginx closes an idle upstream
+after 60s) or a client (Node's `fetch` gives up after 300s without a byte)
+keeps the connection while a model or a tool is slow. SSE parsers ignore
+comment lines. `createRouteHandler(agent, { heartbeatMs })` changes the
+interval; `0` turns it off.
 
 ```bash
 curl -N http://127.0.0.1:3000/chat \
   -H 'Authorization: Bearer '"$LOUSHO_API_TOKEN" -H 'Content-Type: application/json' \
   -d '{ "sessionId": "alice", "input": "Hello" }'
+```
+
+### Resending a turn
+
+A `POST /chat` that the client sends again (a retry after a dropped
+connection or a timeout, a double click, a client that restarted) is, without
+more, a new turn: the user message is appended again and the model may call
+the same tools again. Send an `Idempotency-Key` header (1-255 visible ASCII
+characters, e.g. a UUID the client makes per message) and resend with the
+same key:
+
+| The turn of that key in that session | The resend gets |
+| ------------------------------------ | --------------- |
+| finished (it is in the transcript) | `200` SSE with one `run.done` carrying that turn's final reply (`text`, `finishReason`), and the header `Idempotent-Replayed: true`. Nothing runs. Read `GET /chat/:sessionId` for the whole turn. |
+| still running on this server process | `409` (`LOUSHO_SESSION_BUSY`). Retry later and get the replay. |
+| interrupted by a crash (a checkpointed turn left `in-progress`) | the turn resumed from its last checkpoint (`session.resume()`: finished steps and tool calls are not run again), streamed as SSE. |
+| none | a new turn, as without the header; its user message keeps the key (`metadata.idempotencyKey`). |
+
+A session paused on an approval answers `409`
+(`LOUSHO_SESSION_AWAITING_APPROVAL`) to a resend as to any turn. The key is
+stored with the turn in the session store (the transcript, or the turn's
+checkpoint until it finishes), so a replay works after a restart and on another
+replica that shares the store; `session.pending()` reports an interrupted
+turn's key as `idempotencyKey`. A key is looked up only in its own session,
+and only while its turn is in the transcript (a compaction that summarizes it
+away forgets it). The `409` for a running turn holds within one process; two
+replicas that receive the same key at the same instant can both run it.
+
+```bash
+curl -N http://127.0.0.1:3000/chat -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: 6f1c2b0e-7d4a-4c8e-9a51-2f0d3b6e8c11' \
+  -d '{ "sessionId": "alice", "input": "Refund order B-1" }'
 ```
 
 ### Auth
@@ -7284,6 +7518,19 @@ for (const run of await agent.pending()) {
 }
 ```
 
+`agent.resume()` resolves with the finished `ExecutionResult` (or `null` when
+nothing was pending); it does not return a stream. To watch a resumed run's
+events, stream it instead: `agent.stream([], { sessionId })` resumes an
+unfinished `kind: 'run'` checkpoint without new input (see
+[above](#what-happens-when-you-send-again-with-the-same-sessionid)) and
+returns the usual `AgentRun`. A paused run streams with
+`agent.approvals.streamResolve()`.
+
+`pending()` reads the shared checkpoint store, so it also lists runs that
+are still running right now in another process or replica (as
+`'in-progress'`, without `lastError`) - not only crashed ones. See below for
+why resuming one of those is safe.
+
 Each entry is `{ sessionId, kind, checkpointId, status, approvalId?,
 approvalKind?, step, lastError?, attempts? }`:
 
@@ -7539,9 +7786,9 @@ A tool that was **running** when the process died has no recorded result,
 so it runs again on resume. Tool execution is therefore at-least-once, not
 exactly-once. For tools with side effects (charging a card, sending an
 email), either gate them with `needsApproval` or make them idempotent.
-Each call's `toolCallId` (the model's id for the call, unchanged when it is
-re-run on resume) is passed to `execute`, so it works as an idempotency
-key:
+Each call's `toolCallId` (the model's id for the call, unchanged when that
+same call is re-run on resume) is passed to `execute`, so it works as an
+idempotency key against a re-run of one call:
 
 ```ts
 import { defineTool } from '@lousho/build-ai-agent';
@@ -7560,6 +7807,39 @@ const chargeCard = defineTool({
 
 (`toolCallId` is set for every tool run, including tools that route through
 `sandboxExecute`.)
+
+The built-in file tools are safe to re-run. `write_file` writes the same
+content again; an `edit_file` whose edit is already in the file (`old_string`
+gone, a non-empty `new_string` present) succeeds and says the edit was already
+applied, instead of telling the model that an applied edit failed. With
+`WorkspaceCheckpoints`, each change's backup is stored before the file is
+written and a re-run keeps the first backup, so `rewind()` restores the
+original content after a crash too (see
+[Workspace tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/workspace-tools.md#the-tools)). The `shell` tool is not:
+a command that was running when the process died runs again.
+
+`toolCallId` (and `ctx.approval.id` for an approved call) identifies one call
+the model made. It only protects against that call running twice. If the
+process dies before the call is recorded, the model may make the call again
+as a **new** call with a new id and a new approval, and the id no longer
+matches. A side effect that must happen once per business event (one claim,
+one invoice) needs an idempotency key from your own data, such as the claim id
+in the arguments, checked or passed on to the system you write to:
+
+```ts
+import { defineTool } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+declare const claims: { file(claim: { claimId: string }, opts: { idempotencyKey: string }): Promise<{ id: string }> };
+
+const fileClaim = defineTool({
+  name: 'file_claim',
+  description: 'File an insurance claim',
+  input: z.object({ claimId: z.string() }),
+  needsApproval: true,
+  execute: async ({ claimId }) => claims.file({ claimId }, { idempotencyKey: `claim:${claimId}` }), // a new call for the same claim cannot file twice
+});
+```
 
 ## Checkpoint history
 
@@ -7975,8 +8255,8 @@ Find a code by area:
 | [Configuration](#configuration) | [`LOUSHO_CONFIG_INVALID`](#lousho_config_invalid), [`LOUSHO_CONFIG_MISSING_PROVIDER`](#lousho_config_missing_provider), [`LOUSHO_CONFIG_MISSING_AGENT`](#lousho_config_missing_agent), [`LOUSHO_CONFIG_MISSING_INPUT`](#lousho_config_missing_input), [`LOUSHO_CONFIG_CONFLICTING_OPTIONS`](#lousho_config_conflicting_options), [`LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE`](#lousho_config_missing_checkpoint_store), [`LOUSHO_CONFIG_RESOLVER_FAILED`](#lousho_config_resolver_failed) | A `createAgent()` or executor call that is missing or mixing options, or a config resolver that failed. |
 | [Providers and peers](#providers-and-peers) | [`LOUSHO_PROVIDER_SPEC_INVALID`](#lousho_provider_spec_invalid), [`LOUSHO_PROVIDER_UNKNOWN`](#lousho_provider_unknown), [`LOUSHO_PROVIDER_MISSING_API_KEY`](#lousho_provider_missing_api_key), [`LOUSHO_PROVIDER_REQUEST_FAILED`](#lousho_provider_request_failed), [`LOUSHO_PROVIDER_RATE_LIMITED`](#lousho_provider_rate_limited), [`LOUSHO_PEER_MISSING`](#lousho_peer_missing), [`LOUSHO_HOSTED_TOOL_UNSUPPORTED`](#lousho_hosted_tool_unsupported), [`LOUSHO_UNSUPPORTED_CONTENT`](#lousho_unsupported_content) | Resolving a model string, a missing API key or peer package, a failed or rate-limited model request, a hosted tool the provider cannot run, a file the provider cannot send. |
 | [Agent spec files](#agent-spec-files) | [`LOUSHO_SPEC_NOT_FOUND`](#lousho_spec_not_found), [`LOUSHO_SPEC_INVALID`](#lousho_spec_invalid), [`LOUSHO_SPEC_UNKNOWN_FIELD`](#lousho_spec_unknown_field), [`LOUSHO_SPEC_UNSUPPORTED_FORMAT`](#lousho_spec_unsupported_format) | Loading an `AgentSpec` file with `loadSpec()` or `specToAgent()`. |
-| [Tools](#tools) | [`LOUSHO_TOOL_NOT_FOUND`](#lousho_tool_not_found), [`LOUSHO_TOOL_NEEDS_CREDENTIALS`](#lousho_tool_needs_credentials), [`LOUSHO_TOOL_EXECUTION_FAILED`](#lousho_tool_execution_failed), [`LOUSHO_TOOL_ARGS_INVALID`](#lousho_tool_args_invalid), [`LOUSHO_MCP_START_FAILED`](#lousho_mcp_start_failed) | A tool the model called is unknown, needs credentials, threw, or got invalid arguments; a stdio MCP server did not start. |
-| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_ORPHANED`](#lousho_approval_orphaned), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_APPROVAL_KIND_MISMATCH`](#lousho_approval_kind_mismatch), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_TURN_FAILED`](#lousho_session_turn_failed), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_CHECKPOINT_CORRUPT`](#lousho_checkpoint_corrupt), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
+| [Tools](#tools) | [`LOUSHO_TOOL_NOT_FOUND`](#lousho_tool_not_found), [`LOUSHO_TOOL_NEEDS_CREDENTIALS`](#lousho_tool_needs_credentials), [`LOUSHO_TOOL_EXECUTION_FAILED`](#lousho_tool_execution_failed), [`LOUSHO_TOOL_ARGS_INVALID`](#lousho_tool_args_invalid), [`LOUSHO_MCP_START_FAILED`](#lousho_mcp_start_failed), [`LOUSHO_MCP_CALL_FAILED`](#lousho_mcp_call_failed) | A tool the model called is unknown, needs credentials, threw, or got invalid arguments; a stdio MCP server did not start or a call to one failed. |
+| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_ORPHANED`](#lousho_approval_orphaned), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_APPROVAL_DECISION_INVALID`](#lousho_approval_decision_invalid), [`LOUSHO_APPROVAL_KIND_MISMATCH`](#lousho_approval_kind_mismatch), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_TURN_FAILED`](#lousho_session_turn_failed), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_CHECKPOINT_CORRUPT`](#lousho_checkpoint_corrupt), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
 | [Schedules](#schedules) | [`LOUSHO_SCHEDULE_INVALID`](#lousho_schedule_invalid), [`LOUSHO_SCHEDULE_RUN_INCOMPLETE`](#lousho_schedule_run_incomplete) | Defining or loading a schedule, or a scheduled turn that did not finish. |
 | [Channels](#channels) | [`LOUSHO_CHANNEL_INVALID`](#lousho_channel_invalid), [`LOUSHO_MEMORY_INVALID`](#lousho_memory_invalid) | Defining a channel or a memory slot. |
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
@@ -8082,8 +8362,11 @@ names the option and `error.cause` is what the function threw.
 **Means:** the provider prefix of a model string is not one the SDK knows. The
 message lists the supported prefixes and suggests the closest one.
 
-**Fix:** use a supported prefix (`openai`, `anthropic`, `openrouter`, `ollama`),
-or pass your own `provider` instance.
+**Fix:** use a supported prefix (`openai`, `anthropic`, `google`, `openrouter`,
+`ollama`, `pi`, `mock`), or pass your own `provider` instance. For a vendor with no
+prefix, the message lists the other routes: `openrouter/<vendor>/<model>`,
+`pi/<vendor>/<model>` when pi serves the vendor, or the vendor's AI SDK package
+through `fromAiSdk()` (see [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md#vendors-without-a-prefix)).
 
 **Example:** `createAgent({ model: 'opnai/gpt-4o' })` says "Did you mean 'openai/gpt-4o'?".
 
@@ -8298,6 +8581,26 @@ are no lines to show. See [MCP](https://github.com/LinuxDevil/agent-sdk/blob/mai
 **Example:** `npx -y some-mcp-server` for a package that does not exist exits
 with an `npm error 404` line on stderr.
 
+### LOUSHO_MCP_CALL_FAILED
+
+**Means:** a call to a loaded MCP tool failed at the protocol level: the
+server exited or closed the connection (`MCP error -32000: Connection
+closed`), the request timed out, or the server answered with a JSON-RPC
+error. The message names the tool as the model sees it (`<server>__<tool>`);
+`cause` is the MCP SDK's own error, whose numeric `code` is the JSON-RPC one.
+A tool that ran and reported `isError: true` is not this error (the model gets
+its text as an `McpToolError`), nor is a sign-in request
+([`LOUSHO_MCP_AUTH_REQUIRED`](#lousho_mcp_auth_required)) or an abort. During
+a run the result is a tool error and the run goes on; a flow step with
+`retry: { maxAttempts }` runs again, and a server connected with `lazy`
+(default) reconnects on the next call.
+
+**Fix:** check the server named in the message is running and answers; for a
+stdio server, run its command yourself and read its stderr. Raise the
+server's `timeoutMs` if the request timed out.
+
+**Example:** a stdio server crashes while handling `files__read`.
+
 ## Approvals and sessions
 
 ### LOUSHO_APPROVAL_STORE_MISSING
@@ -8346,7 +8649,8 @@ approving the refund that turn paused on.
 ### LOUSHO_APPROVAL_CONFLICT
 
 **Means:** a `409` from the approvals route: another request decided the same
-approval while this one was being checked, and won.
+approval first, and its continuation is still running (on this server
+process).
 
 **Fix:** do not decide again; read the session (`GET /chat/:sessionId`) to see
 how the turn went on.
@@ -8363,6 +8667,17 @@ decide it (see [Route auth](https://github.com/LinuxDevil/agent-sdk/blob/main/do
 `authorizeApproval`.
 
 **Example:** user `bob` posts a decision on an approval of `alice`'s run.
+
+### LOUSHO_APPROVAL_DECISION_INVALID
+
+**Means:** a `400` from the approvals route: the body has neither
+`approved` (a boolean) nor `answer` (a string).
+
+**Fix:** send `{ "approved": true }` (or `false`, with an optional `note`),
+or `{ "answer": "..." }` for an `ask_question` pause.
+
+**Example:** posting `{ "approve": "yes" }` to
+`/chat/alice-1/approvals/ap-1`.
 
 ### LOUSHO_APPROVAL_KIND_MISMATCH
 
@@ -8404,6 +8719,18 @@ names on `lousho dev`).
 **Example:** a page on `https://evil.example` posts to `/api/agent/chat` with
 the user's session cookie.
 
+### LOUSHO_REQUEST_INVALID
+
+**Means:** a `400` from a session route: the body is not valid JSON, or it
+lacks a field the route needs (`POST /chat` without `sessionId` and `input`,
+an empty `input`, an `input` with no `user` message).
+
+**Fix:** send the fields the error message names, e.g.
+`{ "sessionId": "chat-1", "input": "Hello" }` (see
+[HTTP API](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#http-api)).
+
+**Example:** `POST /chat` with `{ "sessionId": "chat-1", "input": [] }`.
+
 ### LOUSHO_UNSUPPORTED_MEDIA_TYPE
 
 **Means:** a `415` from a session route: a POST body was not sent as JSON.
@@ -8424,6 +8751,9 @@ paused on an approval (`error.approvalId`), so it cannot take new input yet.
 **Fix:** resolve the approval with `agent.approvals.resolve()` (or
 `resumeAfterApproval()` with the same `checkpointStore`), then send again. See
 [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md).
+
+Over HTTP, `POST /chat` to such a session is a `409` with this code and the
+approvals to decide (`approvalId`, `approvalIds`).
 
 **Example:** `session.send('next')` while the previous turn waits on an approval.
 
@@ -8468,7 +8798,9 @@ kept: the turn up to their results is added after the other writer's turn. Also 
 checkpointed run (or session turn) is running in another process, replica or store object right
 now, which holds its run lease (see
 [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases)); nothing ran here, and a resolved
-approval stays pending.
+approval stays pending. Over HTTP, a `409` from `POST /chat`: a request with the same
+`Idempotency-Key` is still running its turn of that session on this server (see
+[Resending a turn](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#resending-a-turn)).
 
 **Fix:** await the turn's `send()` (or abort it), then call again. After a `send()` that failed
 this way, send again: the session reads the current transcript at the start of every call. A
@@ -9187,6 +9519,12 @@ They are written with `defineEval()`, live in `*.eval.ts` files, run under
 [vitest](https://vitest.dev), and are best run in CI with `lousho eval`, which
 prints a summary and writes JUnit and JSON reports.
 
+> **vitest is required.** `lousho eval` does not run eval files itself: it runs
+> your `*.eval.ts` files through [vitest](https://vitest.dev), resolved from your
+> project's own `node_modules` (Lousho does not bundle it). Install it as a dev
+> dependency first; without it, `lousho eval` exits 1 with
+> `vitest was not found from <dir>` and the install command.
+
 ```bash
 npm install --save-dev vitest
 npx lousho eval
@@ -9748,6 +10086,12 @@ Describe the graph with `FlowBuilder` and run it with the static
 
 ```ts
 import { FlowBuilder, FlowExecutor, type EditorStep } from '@lousho/build-ai-agent/flows';
+import { resolveProvider, type AgentConfig } from '@lousho/build-ai-agent';
+
+// A flow calls an LLMProvider directly (reads OPENAI_API_KEY).
+const provider = resolveProvider('openai/gpt-4o-mini');
+// A plain agent config: `prompt` is every llmCall's system message.
+const agent: AgentConfig = { name: 'triage', prompt: 'You are a support triager.' };
 
 // FlowBuilder is a metadata builder: setCode/setName/setInputs/setFlow(...).build().
 // EditorStep covers every node type FlowExecutor runs ('sequence', 'llmCall',
@@ -9768,8 +10112,37 @@ const flow = new FlowBuilder()
   .build();
 
 // FlowExecutor is a static API too: execute(flow, context, onEvent?)
-const result = await FlowExecutor.execute(flow, { agent, provider, variables: { message: input } });
+const result = await FlowExecutor.execute(flow, { agent, provider, variables: { message: 'My invoice is wrong' } });
 ```
+
+An `llmCall` step's model is its own `model`, else the agent's
+`settings.model`, else the provider's default (`gpt-4o-mini` above). Either
+setting is the provider's bare model id, such as `'gpt-4o'`, handed to
+`provider.generate()` as is: not a `'openai/gpt-4o'` spec, which only
+`resolveProvider()` and `createAgent({ model })` read. An `llmCall` returns
+the reply text; it has no structured-output (schema) option. For a typed
+result, parse the text in a later step, or call an agent that has a
+structured output as a tool (see [Running an agent in a flow](#running-an-agent-in-a-flow)).
+
+### Template values
+
+A `{{name}}` placeholder in a prompt, a `throw` message or a tool argument
+is replaced by the variable's text:
+
+- A string is used as is; a number or boolean is its text (`0` is `'0'`); a
+  variable that is not set, or is `null`, is `''`.
+- An object whose only field is `text` (an [MCP tool](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md) result,
+  `{ text }`) is that text, and so is a raw MCP result
+  (`{ content: [{ type: 'text', text }] }`, its text parts joined by newlines).
+- Any other object or array is its JSON, so a `toolCall` result stored in
+  `outputVariable` reads `{"city":"Oslo","temp":4}` in the next prompt, not
+  `[object Object]`.
+- A dotted path reads into an object or array: `{{weather.city}}`,
+  `{{results.0.title}}`. Only own properties are read (`{{res.constructor}}`
+  is `''`), and a missing step on the path is `''`.
+
+An `evaluator` step stores its result in `outputVariable` too, like
+`llmCall` and `toolCall`.
 
 ## Node types
 
@@ -9779,12 +10152,12 @@ const result = await FlowExecutor.execute(flow, { agent, provider, variables: { 
 | ------ | ------------ |
 | `sequence` | Runs its `steps` one after another. |
 | `parallel` | Runs its steps at the same time. If one fails, the others are cancelled (see [Cancelling a flow](#cancelling-a-flow)). |
-| `llmCall` | Calls the model with a `prompt` (with `{{variable}}` placeholders); `outputVariable` stores the reply. |
+| `llmCall` | Calls the model with a `prompt` (with `{{variable}}` placeholders; see [Template values](#template-values)); `outputVariable` stores the reply text. |
 | `toolCall` | Calls a tool with `arguments` (placeholders interpolated; see [Argument values](#argument-values)). |
 | `setVariable` | Sets `variable` to `value`. |
 | `oneOf` | Takes the first branch whose condition matches. |
 | `forEach` | Runs a step for each item of `items`, one after another. The item and index (`itemVariable`, default `item`; `indexVariable`, default `index`) belong to that iteration only, so loops in `parallel` branches never see each other's item; other variables the step sets are written to the flow's variables. |
-| `evaluator` | Evaluates an expression over the flow's variables. |
+| `evaluator` | Evaluates an expression over the flow's variables; `outputVariable` stores the result. |
 | `return`, `end` | Produce the node's `value` as the result. |
 | `throw` | Fails the flow with the node's `message` (`{{variable}}` placeholders interpolated; default `'Flow error'`). |
 
@@ -9830,7 +10203,7 @@ const result = await FlowExecutor.execute(flow, {
 
 An argument string that is exactly one placeholder, `'{{name}}'` or
 `'$name'`, passes the variable's value as it is: a number stays a number, an
-object stays an object. So `arguments: { n: '{{n}}' }` with `n = 5` passes
+object stays an object; `'{{res.count}}'` passes that field's value. So `arguments: { n: '{{n}}' }` with `n = 5` passes
 `5` to a tool whose schema is `z.number()`. This also applies inside arrays
 and nested objects. Any other string is interpolated as text:
 `'n is {{n}}'` becomes `'n is 5'`. A placeholder of a variable that is not
@@ -9897,11 +10270,22 @@ Any node can have `retry` and `timeoutMs`. That includes `llmCall`,
   before each retry (default `0`). Each failed attempt that is retried emits a
   `step-retry` event with `{ attempt, maxAttempts, delayMs }` and the
   attempt's `error`. Only the last failure emits `step-error`. A cancelled run
-  (`signal`) is not retried.
+  (`signal`) is not retried, and neither is a model failure that retrying
+  cannot fix (see below).
 - `timeoutMs` fails an attempt that runs longer with `LOUSHO_OPERATION_TIMEOUT`
   (a `TimeoutError`). The attempt's model request or tool call gets an aborted
   signal. A timed-out attempt is retried like any other failure. A tool that
   ignores `ctx.abortSignal` keeps running in the background.
+
+An `llmCall` whose model request fails fails with the same
+`CompactedLLMProviderError` an agent run rejects with, not the provider SDK's
+raw error: `code` is `LOUSHO_PROVIDER_RATE_LIMITED` for a 429 and
+`LOUSHO_PROVIDER_REQUEST_FAILED` otherwise, and `compacted` holds
+`{ error, category, retryable, statusCode?, providerName? }`. A failure with
+`retryable: false` (an `'auth-failure'` such as a 401 or a bad API key, a
+`'quota-exceeded'`, a `'context-length-exceeded'`) fails the step at once,
+without using its remaining `retry` attempts; a rate limit, a timeout or a 5xx
+is retried.
 
 Invalid values (`maxAttempts` < 1 or not an integer, a negative `backoffMs`,
 a `timeoutMs` <= 0) fail the step with `LOUSHO_FLOW_INVALID`.
@@ -9927,7 +10311,9 @@ A retried container runs its children again. The exception is a durable run
 Pass a `checkpointStore` and a `runId` to make a run durable. The run's
 variables, the nodes that completed (with their results), the branch each
 `oneOf` took and the usage so far are saved under `runId` after every node
-that completes, and again when the flow finishes. Any `CheckpointStore` works,
+that completes, and again when the flow finishes. A new run is also saved
+once before its first step (after its inputs are checked), so a run whose
+first step fails can be resumed too. Any `CheckpointStore` works,
 such as `memoryStore().checkpoints` or a SQLite store (see
 [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)).
 
@@ -9964,7 +10350,9 @@ if (!first.success) {
   nothing. `execute()` with the `runId` of a finished run starts a new run.
   `execute()` with the `runId` of an unfinished run is refused with
   `LOUSHO_CONFIG_INVALID`; resume it instead, or use a new `runId`.
-- A run with no checkpoint is refused with `LOUSHO_CHECKPOINT_NOT_FOUND`.
+- A run with no checkpoint is refused with `LOUSHO_CHECKPOINT_NOT_FOUND`. A
+  run whose declared inputs were invalid saved none: call `execute()` again
+  with valid inputs.
 - Only one call runs a `runId` at a time. While `execute()` or `resume()`
   runs, it holds a run lease on the `runId` in the store, the same lease an
   agent run takes (see [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md)). Another
@@ -9975,7 +10363,9 @@ if (!first.success) {
   released when the call returns. If the process holding it died, the lease
   expires (in 60 s at most), and then the run can be resumed. A custom
   `CheckpointStore` without `acquireLease` runs without leases.
-- A node that completed is only skipped once its checkpoint was saved. A node
+- A node that completed is only skipped once its checkpoint was saved, and
+  its `step-complete` event is emitted after that save, so a step reported
+  complete is never run again on resume. A node
   interrupted while running (an `llmCall` or a `toolCall`) runs again, so make
   side-effecting tools idempotent.
 - Variables and node results must survive `structuredClone`, so no functions
@@ -11201,8 +11591,8 @@ What it does, step by step:
 
 1. **Verify the VM.** `GET /api/vps/v1/virtual-machines` finds the VM by id,
    hostname or IPv4 and refuses non-`running` machines. The
-   `hostinger-api-mcp` MCP server wraps this same API, so an agent (or this
-   session) can also drive it interactively — VM lifecycle, SSH keys,
+   `hostinger-api-mcp` MCP server wraps this same API, so an agent
+   can also drive it interactively — VM lifecycle, SSH keys,
    firewall rules, post-install scripts.
 2. **Build.** `lousho build ./agent --target=docker --out <dir>` produces a
    self-contained context (bundled `dist/server.js`, `Dockerfile`).
@@ -11268,8 +11658,14 @@ await agent.close();
 ```
 
 stdio entries are spawned with `command` and `args` (in `cwd`, when set); `env`
-is added to the default environment (`PATH` and the like), not a replacement for
-it. A server that does not start fails with
+is merged onto the MCP SDK's default allow-list (`PATH`, `HOME`, `USER`, `SHELL`, `TERM`
+and `LOGNAME` on POSIX; `PATH`, `SYSTEMROOT`, `APPDATA`, `TEMP`, `USERPROFILE` and a few
+more on Windows), not onto `process.env`. This holds with or without `env`, so
+any other variable the server needs (an API key, `NODE_ENV`, a proxy setting)
+is not inherited unless you list it: `env: { GITHUB_TOKEN: process.env.GITHUB_TOKEN }`. A failed
+tool call (the server exited, timed out or answered with a protocol error)
+rejects with [`LOUSHO_MCP_CALL_FAILED`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_mcp_call_failed), naming
+`<server>__<tool>`. A server that does not start fails with
 [`LOUSHO_MCP_START_FAILED`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_mcp_start_failed), whose message
 has the exit code and the last lines the process wrote to stderr.
 `stderr: 'forward'` (default) also copies the process's stderr to this one's,
@@ -12011,6 +12407,157 @@ Costs and limits:
 - `fileMemory()`, `sqliteMemory()` and the Cloudflare KV store have no vector
   support. Write your own `MemoryProvider` for a vector database.
 
+# Migrating from the Vercel AI SDK
+
+Source: docs/migrating-from-ai-sdk.md
+
+This page is for code built on the Vercel AI SDK's agent loop: `generateText({ tools })`
+or `streamText({ tools })` with a step limit, or `new ToolLoopAgent({ ... })`. You can keep
+your models, your tools and your `useChat` front end. Three adapters bring them over
+without a rewrite:
+
+| You have | Use | Covered in |
+| --- | --- | --- |
+| An AI SDK model (`openai('gpt-4o')`, `google(...)`, `bedrock(...)`, the Gateway) | `fromAiSdk(model)` | [Models](#models-fromaisdk) |
+| AI SDK tools (`tool({ ... })` or plain `{ description, inputSchema, execute }` objects) | `fromAiSdkTools(tools)` | [Tools](#tools-fromaisdktools) |
+| A `useChat` front end | `toUIMessageStreamResponse()` and `fromUIMessages()` | [useChat](#usechat) |
+
+What you get in return is what `createAgent()` adds on top of a model loop: durable
+approvals that survive a restart, sessions in memory, files or SQLite, crash resume,
+budgets, permission rules, sub-agents and handoffs, MCP servers, tracing and evals.
+
+## Mapping
+
+| AI SDK | Lousho |
+| --- | --- |
+| `new ToolLoopAgent({ model, instructions, tools })` | `createAgent({ provider: fromAiSdk(model), instructions, tools: fromAiSdkTools(tools) })` |
+| `generateText({ model, system, prompt, tools, stopWhen })` | `await agent.send(prompt)`; `system` is `instructions` |
+| `streamText({ ... })` / `agent.stream()` | `agent.stream(prompt)`: `for await` over typed events, or `await run.result` |
+| `result.text` | `result.text` |
+| `result.steps`, `onStepFinish` | `step.start` / `step.done` / `tool.done` events (`onEvent`, or iterate `agent.stream()`) ([Stream events](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/stream-events.md)) |
+| `result.usage` / `totalUsage` | `result.usage` (tokens of every call, plus `costUsd` for priced models) ([Models and cost](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/models-and-cost.md)) |
+| `stopWhen: stepCountIs(n)` / v4 `maxSteps: n` | `maxSteps: n`; token, cost and time budgets with `limits` ([Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets)) |
+| `temperature`, `maxOutputTokens`, `toolChoice`, ... | `modelSettings: { temperature, maxTokens, toolChoice, ... }` |
+| `output: Output.object({ schema })` / `experimental_output` | `output: schema`, read as `result.object` ([Structured output](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md)) |
+| `messages: [...]` (you keep the history) | `agent.session({ id })` keeps it for you, or pass the messages to `send()` ([Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md)) |
+| `abortSignal` | `send(input, { signal })` |
+| `tool({ needsApproval })` and `addToolApprovalResponse` | `needsApproval` (kept by `fromAiSdkTools()`); the run pauses with `finishReason: 'awaiting-approval'` and continues with `agent.approvals.resolve()`, also after a restart ([Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md)) |
+| Provider tools (`openai.tools.webSearch()`) | `webSearch()`, `codeInterpreter()`, `fileSearch()`, `hostedTool()` ([Hosted tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hosted-tools.md)) |
+| `experimental_createMCPClient()` | `createAgent({ mcpServers })` ([MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md)) |
+
+## Models: fromAiSdk()
+
+`fromAiSdk(model)` wraps any AI SDK `LanguageModel` as the agent's provider, so a model
+you already configured (keys, base URL, provider options) works as it is:
+
+```ts no-run
+import { createOpenAI } from '@ai-sdk/openai';
+import { createAgent, fromAiSdk } from '@lousho/build-ai-agent';
+
+const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const agent = createAgent({ provider: fromAiSdk(openai.chat('gpt-4o-mini')), instructions: 'You are helpful.' });
+```
+
+For the built-in vendors a model string is shorter: `createAgent({ model: 'openai/gpt-4o-mini' })`.
+See [Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md#any-ai-sdk-model-fromaisdk) for the options and which
+`ai` majors are supported.
+
+## Tools: fromAiSdkTools()
+
+`fromAiSdkTools()` takes the same record you pass to `generateText({ tools })` or
+`ToolLoopAgent`, and returns Lousho tools; each key becomes the tool's name:
+
+```ts no-verify
+import { tool } from 'ai';
+import { z } from 'zod';
+import { createAgent, fromAiSdk, fromAiSdkTools } from '@lousho/build-ai-agent';
+
+const weather = tool({
+  description: 'Get the weather in a city',
+  inputSchema: z.object({ city: z.string() }),
+  execute: async ({ city }, { abortSignal }) => fetchWeather(city, abortSignal),
+});
+const sendEmail = tool({
+  description: 'Send an email',
+  inputSchema: z.object({ to: z.string(), body: z.string() }),
+  needsApproval: async ({ to }) => !to.endsWith('@example.com'),
+  execute: async ({ to, body }) => mailer.send(to, body),
+});
+
+const agent = createAgent({
+  provider: fromAiSdk(model),
+  instructions: 'You are a helpful assistant.',
+  tools: fromAiSdkTools({ weather, sendEmail }),
+});
+```
+
+The conversion does not import `ai`, so a tool works whatever `ai` version built it,
+and a plain object works too. This one runs offline:
+
+```ts
+import { z } from 'zod';
+import { createAgent, fromAiSdkTools } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+
+const tools = fromAiSdkTools({
+  weather: {
+    description: 'Get the weather in a city',
+    inputSchema: z.object({ city: z.string() }),
+    execute: async ({ city }: { city: string }) => `Sunny in ${city}`,
+  },
+});
+const agent = createAgent({
+  provider: mockModel([{ toolCalls: [{ name: 'weather', args: { city: 'Paris' } }] }, 'It is sunny in Paris.']),
+  tools,
+});
+const result = await agent.send('Weather in Paris?');
+console.log(result.text); // It is sunny in Paris.
+```
+
+How each part of an AI SDK tool is carried over:
+
+| AI SDK tool | Lousho tool |
+| --- | --- |
+| `inputSchema` (`ai` 5+) or `parameters` (`ai` 4), a zod 3 / zod 4 schema or a Standard Schema | used as it is |
+| `inputSchema: jsonSchema({...})`, or a plain JSON Schema | converted to zod (the converter MCP tools use); the wrapper's own `validate` still runs before `execute` |
+| `execute(input, { toolCallId, messages, abortSignal })` | called with Lousho's call id, the run's abort signal, and the transcript as Lousho `Message`s (not AI SDK `ModelMessage`s) |
+| An `execute` that throws | a tool error the model sees; the run continues |
+| An `execute` that returns an async iterable (preliminary results) | each value is a `tool.partial` event; the last is the result |
+| `needsApproval: true` or a function of the input | `needsApproval`: the run pauses durably until `agent.approvals.resolve()` |
+| A `description` function (`ai` 7) | called once with an empty context |
+| No `execute` (a client-side tool) | rejected with `LOUSHO_CONFIG_INVALID`: give it an `execute`, or use `needsApproval` / the [`ask_question` tool](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#asking-the-user-a-question) |
+| A provider-defined tool | rejected: use [hosted tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hosted-tools.md) |
+
+`experimental_context`, `onInputStart` / `onInputDelta` / `onInputAvailable` and
+`toModelOutput` are not carried over. For a new tool, prefer `defineTool()`
+([Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md)): it also takes `timeoutMs`, `annotations`, `editsFiles` and
+`deferLoading`.
+
+## useChat
+
+A `useChat` front end keeps working: the route returns the agent's run as a UI message
+stream.
+
+```ts no-run
+import { createAgent, fromUIMessages, memoryStore, toUIMessageStreamResponse, type UIMessageLike } from '@lousho/build-ai-agent';
+
+const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are helpful.', store: memoryStore() });
+
+// app/api/chat/route.ts
+export async function POST(request: Request): Promise<Response> {
+  const { id, messages } = (await request.json()) as { id: string; messages: UIMessageLike[] };
+  return toUIMessageStreamResponse(agent.session({ id }).stream(fromUIMessages(messages, { lastUserOnly: true })));
+}
+```
+
+Approvals, tool parts and the client side are in [AI SDK UI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/ai-sdk-ui.md); a ready
+App Router route is `createRouteHandler(agent)` ([Next.js](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md)).
+
+## See also
+
+- [Comparison](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/comparison.md): where Lousho and the AI SDK differ, including where Lousho is weaker.
+- [Migrating to createAgent()](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/migrating-to-create-agent.md) is about Lousho's own older `AgentBuilder` / `AgentExecutor` API, not the AI SDK.
+
 # Migrating to createAgent()
 
 Source: docs/migrating-to-create-agent.md
@@ -12243,7 +12790,7 @@ console.log(formatUsage(result.usage)); // 1,234 in / 567 out tokens · $0.0042 
 - **Reported vs estimated.** Providers report `promptTokens`/`completionTokens`; the built-in providers also pass on `cachedInputTokens`/`cacheWriteTokens`/`reasoningTokens` when the provider reports them (`usage.cachedInputTokens`, `usage.cacheWriteTokens` and `usage.reasoningTokens` only appear then). `inputTokens` always counts the cached and cache-written tokens too. A backend that reports nothing gives `undefined` usage, never zeros. For that step the executor falls back to `estimateTokens` and sets `usage.estimated` (a leading `~` in `formatUsage`). A custom provider should leave `GenerateResult.usage` unset rather than fill in zeros.
 - **Cost.** `costUsd` is the sum of the per-call costs: the cost the provider reported (OpenRouter returns `usage.cost` for every model, priced or not), else `estimateCost` for the model. A call with no known price (a model missing from the registry whose provider reported no cost) is left out of the sum and sets `usage.costPartial: true`, so the total is a lower bound rather than being discarded; `byModel` shows which models are priced (`byModel[model].costPartial` marks a model with both priced and unpriced calls, and `usage.delegated.costPartial` does the same for children). `costUsd` is `undefined` only when no call has a known cost. `limits.maxCostUsd` is checked against the partial total. In `formatUsage` the cost prints with 4 decimals under $1 (2 at $1 or more), so a run under $0.00005 reads `$0.0000`.
 - **Hosted tools.** `usage.hostedToolCalls` counts the calls the provider ran for [hosted tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hosted-tools.md) per tool name (e.g. `{ web_search: 2 }`). Their per-call fees are billed by the provider and are not in `costUsd`.
-- **Delegation.** A delegated child's usage is added to the parent's totals and `byModel`, and is also shown on its own as `usage.delegated` (`{ inputTokens, outputTokens, totalTokens, costUsd, modelCalls, estimated, runs }`). A [remote sub-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md#remote-sub-agents)'s usage is what the remote agent reports, filed under `byModel['remote:<name>']` with the remote's own `costUsd`.
+- **Delegation.** A delegated child's usage is added to the parent's totals and `byModel`, and is also shown on its own as `usage.delegated` (`{ inputTokens, outputTokens, totalTokens, costUsd, modelCalls, estimated, runs }`, plus `toolErrors`: the children's tool calls that ended in an error result, absent when none did). A [remote sub-agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md#remote-sub-agents)'s usage is what the remote agent reports, filed under `byModel['remote:<name>']` with the remote's own `costUsd`.
 - **Resume.** A run resumed from a checkpoint, or after an approval, continues from the saved totals instead of restarting at zero. Checkpoints written by older versions start from their saved token counts with an unknown cost.
 - **Events and traces.** The `finish` event (and every lifecycle event that carried `usage`) now carries the running totals; `text-complete` also has `stepUsage`, and `onLLMResponse` receives the call's usage as a third argument. The `chat` span's `gen_ai.usage.*` attributes use the same numbers, with `lousho.usage.estimated` set to `true` when they are estimates.
 - **Streaming.** `agent.stream()` events carry the same accounting: `step.done` and `run.done` have `usage` with `inputTokens`, `outputTokens`, `estimated` `costUsd` and `costPartial` when partial (run-level also `modelCalls`), alongside the older `promptTokens`/`completionTokens`.
@@ -13873,7 +14420,7 @@ probability, choice with a distribution, rubric score — as one call, roughly
 Source: docs/providers.md
 
 An `LLMProvider` is what an agent generates with. The SDK ships OpenAI,
-Anthropic, OpenRouter, Ollama and `pi` providers (each backed by an optional
+Anthropic, Google (Gemini), OpenRouter, Ollama and `pi` providers (each backed by an optional
 peer package, see [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md#provider-packages)) and a
 deterministic mock for tests. Name one with a `provider/model` string, or pass
 a provider instance. The `vendor/` model prefix chooses the provider; with
@@ -13886,6 +14433,7 @@ import { resolveProvider, LLMProviderRegistry } from '@lousho/build-ai-agent';
 // The convenient way — reads the credential from the environment
 const openai = resolveProvider('openai/gpt-4o-mini');       // OPENAI_API_KEY
 const anthropic = resolveProvider('anthropic/claude-sonnet-5-5'); // ANTHROPIC_API_KEY
+const google = resolveProvider('google/gemini-2.5-flash');   // GOOGLE_GENERATIVE_AI_API_KEY
 const openrouter = resolveProvider('openrouter/openai/gpt-4o-mini'); // OPENROUTER_API_KEY
 const ollama = resolveProvider('ollama/llama3.1');           // OLLAMA_BASE_URL
 // pi runs one catalog through `pi/<pi-provider>/<model>` (nested slashes ok):
@@ -13897,6 +14445,26 @@ const custom = LLMProviderRegistry.create('openai', {
   defaultModel: 'gpt-4o-mini',
 });
 ```
+
+The `google/` prefix needs the optional `@ai-sdk/google` package (`^1.2.0` with
+`ai` 4, `^3.0.0` with `ai` 6, `^4.0.0` with `ai` 7) and reads
+`GOOGLE_GENERATIVE_AI_API_KEY`, the variable `@ai-sdk/google` itself uses.
+
+### Vendors without a prefix
+
+A prefix the SDK does not know fails with
+[`LOUSHO_PROVIDER_UNKNOWN`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_provider_unknown). A near-miss
+(`anthopic/...`) gets a "did you mean"; any other vendor gets the ways to reach
+it anyway:
+
+- `openrouter/<vendor>/<model>`: OpenRouter serves most vendors with one
+  `OPENROUTER_API_KEY` (e.g. `openrouter/mistralai/mistral-large`; OpenRouter's
+  own vendor names can differ from the AI SDK's).
+- `pi/<vendor>/<model>`, when pi serves that vendor (`xai`, `groq`, `mistral`,
+  `deepseek`, `amazon-bedrock`, `azure`, ...); see [the `pi` provider](#the-pi-provider).
+- the vendor's own AI SDK package with
+  [`fromAiSdk()`](#any-ai-sdk-model-fromaisdk), e.g.
+  `createAgent({ provider: fromAiSdk(mistral('mistral-large-latest')) })`.
 
 ## Choosing the provider in `createAgent()`
 
@@ -14020,6 +14588,7 @@ console.log(textOf(messages[0]), '->', result.text);
   | -------- | ------ | ---------- |
   | `openai` | none | `application/pdf` |
   | `anthropic` | none | `application/pdf`, `text/plain` |
+  | `google` | none | `application/pdf`, `text/plain` |
   | `openrouter` | none | `application/pdf` |
   | `ollama` | none | none |
   | `pi` | none (always a text note) | none (always a text note; pi has no file part) |
@@ -14073,7 +14642,7 @@ console.log(result.text);
 | ------ | ----------- |
 | `resolveProvider('p/model')` | Build a real provider from environment credentials. |
 | `LLMProviderRegistry` | Registry of provider factories: `create(type, config)`, `register(type, factory)`, `has(type)`. |
-| `OpenAIProvider`, `AnthropicProvider`, `OllamaProvider`, `OpenRouterProvider`, `PiProvider` | The provider classes. See [examples/openrouter](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/openrouter) for OpenRouter-specific features. `PiProvider` is the `pi/...` adapter below. |
+| `OpenAIProvider`, `AnthropicProvider`, `GoogleProvider`, `OllamaProvider`, `OpenRouterProvider`, `PiProvider` | The provider classes. See [examples/openrouter](https://github.com/LinuxDevil/agent-sdk/blob/main/examples/openrouter) for OpenRouter-specific features. `PiProvider` is the `pi/...` adapter below. |
 | `createMockProvider()`, `MockLLMProvider` | Canned responses for demos; simulates a tool call when the message names a tool. |
 | `mockModel(script)` | Scripted, asserting provider for tests (from `/testing`); see [Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md). |
 | `withRetry()`, `withFallback()` | Retry transient failures with backoff and fall back to the next provider; see [Provider retries and fallback](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#provider-retries-and-fallback). |
@@ -14090,7 +14659,7 @@ own credentials. A factory can take its own config type, an interface that
 extends `LLMProviderConfig` (for example `BedrockConfig` with a `region`):
 `register('bedrock', (config: BedrockConfig) => new BedrockProvider(config))`,
 then `LLMProviderRegistry.create('bedrock', { region: 'eu-west-1' })`.
-A built-in name (`'openai'`, `'anthropic'`, `'openrouter'`, `'ollama'`, `'pi'`,
+A built-in name (`'openai'`, `'anthropic'`, `'google'`, `'openrouter'`, `'ollama'`, `'pi'`,
 `'mock'`) takes that provider's own config type (`BuiltinProviderConfigs`), so
 `create('openai', { baseUrl: '...' })` is a type error; if you registered your
 own factory under a built-in name, pass its config type:
@@ -14224,6 +14793,9 @@ mapped). Each throws `LOUSHO_CONFIG_INVALID`:
 - a run with another `model` id than the wrapped one (inside a run it is the
   cause of the `LOUSHO_PROVIDER_REQUEST_FAILED` error): wrap each model with
   `fromAiSdk()` and combine them with `withFallback()`.
+
+Tools written for the AI SDK (`tool({ ... })`) come over with `fromAiSdkTools()`; see
+[Migrating from the AI SDK](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/migrating-from-ai-sdk.md#tools-fromaisdktools).
 
 ### The `pi` provider
 
@@ -14360,11 +14932,11 @@ on each major today:
 The peer ranges accept all three majors. Pair each with its
 provider packages:
 
-| `ai` | `@ai-sdk/openai`, `@ai-sdk/anthropic` | Ollama package |
-| ---- | ------------------------------------- | -------------- |
-| `^4.3.19` | `^0.0.42` or `^1.0.0` | `ollama-ai-provider@^1.2.0` |
-| `^6.0.0` | `^3.0.0` | `ollama-ai-provider-v2@^3.0.0` |
-| `^7.0.0` | `^4.0.0` | `ollama-ai-provider-v2@^4.0.0` |
+| `ai` | `@ai-sdk/openai`, `@ai-sdk/anthropic` | `@ai-sdk/google` | Ollama package |
+| ---- | ------------------------------------- | ---------------- | -------------- |
+| `^4.3.19` | `^0.0.42` or `^1.0.0` | `^1.0.0` | `ollama-ai-provider@^1.2.0` |
+| `^6.0.0` | `^3.0.0` | `^3.0.0` | `ollama-ai-provider-v2@^3.0.0` |
+| `^7.0.0` | `^4.0.0` | `^4.0.0` | `ollama-ai-provider-v2@^4.0.0` |
 
 The install hint of a missing provider package and `lousho doctor` name the
 version for the `ai` you have installed, and `lousho doctor` flags a mismatched
@@ -14375,7 +14947,7 @@ a mismatch before the first call. `OllamaProvider` loads
 `ollama-ai-provider` on `ai` 4 and `ollama-ai-provider-v2` on `ai` 6/7; the v2
 package peers on zod 4, which the SDK accepts, so install zod 4
 with it (zod 3 projects use Ollama with `ai` 4). `lousho init` scaffolds `ai@^7.0.0` with `@ai-sdk/*@^4.0.0` for
-OpenAI, Anthropic and OpenRouter, and `ai@^7.0.0` with `ollama-ai-provider-v2@^4.0.0` and zod 4 for Ollama.
+OpenAI, Anthropic, Google and OpenRouter, and `ai@^7.0.0` with `ollama-ai-provider-v2@^4.0.0` and zod 4 for Ollama.
 
 CI installs and tests `ai` 4, 6 and 7, each with zod 3 and zod 4 (six pairings;
 `ai` 4 with zod 4 is the one pairing the provider packages do not declare), with
@@ -14422,13 +14994,15 @@ or `StreamResult`:
 On v6/v7 the model must come from a provider package for that major (the
 table above); the `0.0.x`/`1.x` packages produce models `ai` v7 rejects. Image
 parts are sent as `file` parts with an image media type (the shape `ai` v6/v7
-takes for images, so there is no deprecation warning). `ai` v5 is not supported.
+takes for images, so there is no deprecation warning). `ai` v5 is not supported:
+`lousho doctor` fails an installed `ai` 5 with an upgrade hint (move to `ai` 6
+or 7 and the matching `@ai-sdk/*` major).
 
 ## Where each provider runs
 
 All providers run on Node. The `cloudflare-worker` deploy target supports
 `mock`, `openai`, `anthropic` and `openrouter` (key from the
-`OPENROUTER_API_KEY` binding); `ollama` and `pi` need the `node-server` or
+`OPENROUTER_API_KEY` binding); `google`, `ollama` and `pi` need the `node-server` or
 `docker` target (see [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md)).
 
 # Queued input and steering
@@ -15583,7 +16157,7 @@ console.log(session.id, session.messages.length);
 | `compact(options?)` | Compacts the transcript now - see [Compacting a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md#compacting-a-session). |
 | `clear()` | Empties the transcript and saves it empty (the store holds no messages for the id). Keeps the session id, store and options; deletes every turn's checkpoint and checkpoint history (`<id>.turn-<n>`, which hold copies of the transcript), so `agent.fork('<id>.turn-<n>')` cannot bring the conversation back; memory slots are cross-session and untouched. Emits `context.cleared` to `on()` listeners. Rejects with `LOUSHO_SESSION_BUSY` while a turn is running, and with `LOUSHO_SESSION_AWAITING_APPROVAL` while a durable turn waits on an approval. |
 | `on(listener)` | Listens for the session's events: every turn's events as they happen (`send()` and `stream()` turns, and a paused turn continued by `agent.approvals.resolve()`), plus `compact()` / `clear()` events (`compaction.start`, `compaction.done`, `context.cleared`); returns a function that removes the listener. A turn's events are the `AgentEvent`s its `stream()` yields. |
-| `pending()` | In a [durable session](#durable-sessions), the turn that has not finished (`{ status, approvalId?, approvalKind? }`; `approvalKind` is `'question'` when the turn waits on an `ask_question`), or `null`. |
+| `pending()` | In a [durable session](#durable-sessions), the turn that has not finished (`{ status, approvalId?, approvalKind?, idempotencyKey? }`; `approvalKind` is `'question'` when the turn waits on an `ask_question`; `idempotencyKey` is the turn's HTTP `Idempotency-Key`, see [Resending a turn](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#resending-a-turn)), or `null`. |
 | `resume({ signal })` | In a durable session, finishes an interrupted turn and resolves with its result, or `null` when none is pending. |
 | `discardPending()` | In a durable session, drops an unfinished turn without running it, and withdraws the approvals it waited on (they are no longer listed, and resolving one fails with `LOUSHO_APPROVAL_NOT_FOUND`). Also drops a turn checkpoint that cannot be read (`LOUSHO_CHECKPOINT_CORRUPT`). |
 | `history()` | The steps of the transcript (one per model response, with its tool calls and results) - see [Forking a session](#forking-a-session). |
@@ -15810,9 +16384,16 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
   the transcript, until it finishes. While it waits, `resume()`, `send()` and
   `stream()` throw `SessionAwaitingApprovalError` (with its `approvalId`), and
   `agent.approvals.resolve({ id, approved })` continues the turn in this
-  session. After a restart, open the session and call `resume()` (or `send()`)
-  once before resolving, so the agent knows which session the approval belongs
-  to; give both agents the same durable `store` (or `approvalStore`).
+  session. After a restart, `agent.approvals.resolve()` or `streamResolve()`
+  from the new process continues it too: the agent finds the session from the
+  pause record (for session ids of letters, digits, `_` and `-`), so there is
+  no need to open the session or call `resume()` first. Give both agents the
+  same durable `store` (or `approvalStore`).
+- `resume()` returns the finished turn's result; it does not stream, and
+  `stream()` does not stream the pending turn it finishes first either. To
+  show a resumed turn's progress, register `session.on(listener)` before the
+  call (or pass `createAgent({ onEvent })`): it gets the turn's `AgentEvent`s
+  as they happen.
 - A paused turn locks the session id: the session records it under
   `<id>.paused` in the checkpoint store, so `agent.send(message, { sessionId: id })`,
   `agent.stream()` with that `sessionId`, and a session object over a different
@@ -16818,6 +17399,34 @@ for (const comment of result.object?.comments ?? []) {
 }
 ```
 
+For extract, then approve, then act, keep the three steps apart. The agent
+only extracts into `output` (no side-effect tool). Your code shows the
+validated object to a person, and acts only on a yes, with an idempotency key
+from the data (a claim id), because a rerun of the whole flow extracts again:
+
+```ts
+import { z } from 'zod';
+import { createAgent } from '@lousho/build-ai-agent';
+
+declare function askReviewer(claim: { claimId: string; amountCents: number }): Promise<boolean>;
+declare const claims: { file(claim: { claimId: string; amountCents: number }, opts: { idempotencyKey: string }): Promise<void> };
+
+const extractor = createAgent({
+  model: 'openai/gpt-4o-mini',
+  instructions: 'Extract the claim from the email. Do not file it.',
+  output: z.object({ claimId: z.string(), amountCents: z.number() }),
+});
+
+const { object: claim } = await extractor.send('Email: ...');
+if (claim && (await askReviewer(claim))) {
+  await claims.file(claim, { idempotencyKey: `claim:${claim.claimId}` });
+}
+```
+
+If the model has to call the tool itself, gate it with `needsApproval` and see
+[Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#ending-the-run-after-a-rejection) for stopping the
+run on a rejection.
+
 ## Sessions
 
 `agent.session()` on an agent with `output` returns a session whose
@@ -16843,7 +17452,10 @@ background task) is the object as JSON, then a blank line and the usual
 object rather than a prose rendering. If the sub-agent's reply is still invalid
 after its repair step, the `task` call fails with the structured tool error
 (`kind: 'execution'`, a message naming the schema issues) and the lead can
-retry or adapt.
+retry or adapt. A sub-agent that runs out of steps and then gives a valid
+object in its forced final call ([Out of steps](#out-of-steps)) answers the
+lead with that object, like a finished one; the footer shows finish reason
+`'max-steps'` and a line after it says the steps ran out.
 
 A sub-agent does **not** inherit the lead's `output`: each agent's output is its
 own, and a sub-agent without `output` returns text as before. A
@@ -16893,10 +17505,18 @@ console.log(object?.note); // typed: string | undefined
 
 1. The system prompt gets an `## Output format` section asking for the final
    answer as only a JSON object matching the schema, rendered as JSON Schema.
-2. Every model call carries `responseFormat: { type: 'json', schema }` on
-   `GenerateOptions`. It is a hint: the built-in `ai`-SDK providers turn on
-   the model's JSON mode (with the schema, for models that support structured
-   outputs); a custom provider may use it or ignore it.
+2. Model calls that offer no tools carry `responseFormat: { type: 'json',
+   schema }` on `GenerateOptions`: every call of an agent without tools, the
+   "answer now" call when steps run out (see below), and the repair step. It
+   is a hint: the built-in `ai`-SDK providers turn on the model's JSON mode
+   (with the schema, for models that support structured outputs; OpenRouter
+   and the `pi` provider send a strict `json_schema` response format); a
+   custom provider may use it or ignore it. A call that offers tools goes
+   without it, and the model answers from the schema in the prompt: with a
+   strict response format next to tools, some models (`openai/gpt-4o-mini`
+   via OpenRouter) keep calling tools until `maxSteps` instead of answering.
+   `toolChoice: 'none'` counts as no tools offered. To send it on every
+   call anyway, pass `output: { schema, responseFormat: 'always' }`.
 3. When the model replies without tool calls, the reply is parsed as JSON (a
    ```` ```json ```` code fence around it is tolerated) and validated with
    the schema. A near miss is read without a repair call: when the whole
@@ -16938,13 +17558,15 @@ call only and is not kept in `result.messages` or the session transcript.
 
 ## The schema in the prompt
 
-Steps 1 and 2 send the schema twice: once inside the `## Output format`
-system-prompt block, and once on `responseFormat`. When the provider enforces
-`responseFormat` (OpenAI structured outputs, OpenRouter, the `pi` provider)
-the prompt copy is redundant - on a large schema it costs around a thousand
-tokens per call. Pass `output` as `{ schema, promptSchema: false }` to leave
-the schema out of the prompt; the JSON-only ask stays and `responseFormat` is
-sent unchanged:
+Steps 1 and 2 send the schema twice on a call without tools: once inside the
+`## Output format` system-prompt block, and once on `responseFormat`. When the
+provider enforces `responseFormat` (OpenAI structured outputs, OpenRouter, the
+`pi` provider) the prompt copy is redundant - on a large schema it costs
+around a thousand tokens per call. Pass `output` as `{ schema, promptSchema:
+false }` to leave the schema out of the prompt; the JSON-only ask stays, and
+since `responseFormat` is then the only copy of the schema it goes on every
+call, tool-offering ones included (`responseFormat` defaults to `'always'`
+here; set `'final'` to keep it off those calls):
 
 ```ts
 import { z } from 'zod';
@@ -16962,6 +17584,15 @@ provider - or model - treats `responseFormat` as a JSON-mode hint only (the
 built-in `ai`-SDK providers drop the schema for models without
 structured-outputs support; a custom provider may ignore it entirely). The
 prompt copy is then the only place the model sees the shape to answer with.
+Keep it too for an agent with tools: its tool-offering calls carry no
+`responseFormat` by default, so the prompt copy is what they answer from.
+
+| `output` | Schema in the prompt | `responseFormat` on calls offering tools | on calls without tools |
+| --- | --- | --- | --- |
+| `schema` or `{ schema }` | yes | no | yes |
+| `{ schema, responseFormat: 'always' }` | yes | yes | yes |
+| `{ schema, promptSchema: false }` | no | yes | yes |
+| `{ schema, promptSchema: false, responseFormat: 'final' }` | no | no | yes |
 
 ## Repaired output and business rules
 
@@ -17149,14 +17780,21 @@ The first bicycles appeared in the 1810s ...
 [sub-agent 'researcher': 3 step(s), finish reason 'stop', taskId 'task_1']
 ```
 
-If the sub-agent does not finish - it throws, runs out of `maxSteps`, or is
-aborted - the lead gets an error result (`isError: true`) that says why, for
-example `Sub-agent 'researcher' used all 10 of its steps (maxSteps) without
-giving a final answer.` An unknown agent name is also an error result listing
-the valid names. An answer cut off at the sub-agent's output token limit
-(finish reason `'length'`) is still returned, with a line after the footer
-saying it may be incomplete. Sub-agent token usage is added to the lead's `result.usage`,
-a [remote sub-agent](#remote-sub-agents)'s too.
+If the sub-agent does not finish - it throws, runs out of `maxSteps`, stops at
+a budget limit, or is aborted - the lead gets an error result (`isError: true`)
+that says why, for example `Sub-agent 'researcher' used all 10 of its steps
+(maxSteps) without giving a final answer.` An unknown agent name is also an
+error result listing the valid names. An answer cut off at the sub-agent's
+output token limit (finish reason `'length'`) is still returned, with a line
+after the footer saying it may be incomplete. A sub-agent with an `output`
+schema that runs out of steps makes one last forced call
+([Out of steps](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md#out-of-steps)): when that call returns
+a valid object, the `task` result is that object (finish reason `'max-steps'`
+in the footer, plus a line saying the steps ran out), not an error. Sub-agent
+token usage is added to the lead's `result.usage`, a
+[remote sub-agent](#remote-sub-agents)'s too. The lead's own `result.toolErrors`
+counts only the lead's tool calls; the calls that failed inside its sub-agents
+(and theirs) are counted on `result.usage.delegated.toolErrors`.
 
 Errors at setup time are thrown with a fix: a sub-agent without a
 `description`, a value that is not a `createAgent()` agent, or a tool of your
@@ -17575,7 +18213,8 @@ inherits:
 | Event listeners (`onAgentEvent`, `createAgent({ onEvent })`) and `stream()` | Yes | The sub-agent's events are forwarded with a `subagent` field. |
 | `toolConcurrency` | Yes, unless the sub-agent sets its own | |
 | `sandbox` | Yes | |
-| Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`) and counted against its `limits`, also when the sub-agent fails after spending tokens; a remote sub-agent's under `byModel['remote:<name>']`. |
+| Token usage | Rolls up | Added to the lead's `result.usage` (totals, `byModel`, and `usage.delegated`, whose `toolErrors` counts the sub-agents' failed tool calls) and counted against its `limits`, also when the sub-agent fails after spending tokens; a remote sub-agent's under `byModel['remote:<name>']`. |
+| Token, cost and duration `limits` | Shared | A sub-agent is also held to the lead's limits, counted with what the lead and its other sub-agents still running have spent: once they are reached, the sub-agent stops (`'budget-exceeded'`) before its next model call or tools, and the lead stops before its next model call. See [Budgets](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets). |
 | `maxSubagentDepth` | The remaining budget | See [Depth](#depth). |
 | `permissionMode` | Yes, unless the lead's is `'default'` | The sub-agent runs under the lead's [permission mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/permission-modes.md#sub-agents), read at each of its tool calls; while the lead's is `'default'`, under its own (a sub-agent whose own mode is `'plan'` always stays in plan mode). A remote sub-agent does not inherit it: plan mode refuses a `task` call to one. |
 | `principal` | Yes | Who the lead's run acts for (route auth's caller, a channel's sender); a remote sub-agent is not told. |
@@ -18334,6 +18973,8 @@ Tools the model provider runs itself (web search, code interpreter, file search)
 
 With many tools, mark them `deferLoading` so the model finds them with a built-in `tool_search` tool instead of receiving every definition on every call; see [Tool search](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tool-search.md).
 
+Tools written for the Vercel AI SDK (`tool({ description, inputSchema, execute })`) convert with `fromAiSdkTools({ weather, sendEmail })`, `needsApproval` included; see [Migrating from the AI SDK](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/migrating-from-ai-sdk.md#tools-fromaisdktools).
+
 ## `defineTool()` options
 
 | Option | Required | Description |
@@ -18414,12 +19055,12 @@ node.
 
 | Field | Value |
 | --- | --- |
-| `ctx.toolCallId` | The model's id for this call. It stays the same when the call is re-run after a crash. A call with no model turn behind it (a flow node) gets a generated id. |
+| `ctx.toolCallId` | The model's id for this call. It stays the same when that same call is re-run after a crash, but a crash before the call was recorded can make the model issue a new call with a new id, so it is not a business idempotency key (see [At-least-once tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#at-least-once-tools-make-side-effects-idempotent)). A call with no model turn behind it (a flow node) gets a generated id. |
 | `ctx.messages` | A read-only copy of the transcript the model had seen before it made the call: no system prompt and not the assistant turn that made the call. Empty for a flow node. |
 | `ctx.abortSignal` | The run's `AbortSignal`, set when the run has one. |
 | `ctx.sessionId` | The run's session id — `agent.session({ id })`'s id or `send()`'s / `AgentExecutor.execute()`'s `sessionId` (`send({ sessionId })` needs `createAgent({ store })` with checkpoints, else it throws `LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE`); absent when the run has none. |
 | `ctx.principal` | Who the run acts for (route auth's caller, a channel's sender), frozen; absent without one. See [Principals in tools and approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#principals-in-tools-and-approvals). |
-| `ctx.approval` | Set when the call runs because a human approved it: the approval's `id` (an idempotency key for a side effect, see [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md#deciding-one-approval-twice)), the decision's `note`, and `by`, who decided, when the decision named them. |
+| `ctx.approval` | Set when the call runs because a human approved it: the approval's `id` (it dedupes repeated attempts to run one decided call, see [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md#deciding-one-approval-twice); a retried model turn gets a new approval, so a side effect that must happen once also needs a key from your own data, such as a claim id), the decision's `note`, and `by`, who decided, when the decision named them. |
 
 A `sandboxExecute(args, sandbox)` that ignores the third argument keeps working.
 
@@ -18481,7 +19122,9 @@ its kind by carrying a `toolErrorKind` property. An error extending
 The model sees each failed call and may still answer as if it had worked,
 ending the run with `finishReason: 'stop'`. `result.toolErrors` counts the
 run's tool calls whose result is an error (any `kind` above except `not-run`);
-it is absent when none failed. Check it before trusting `text`, or cap it with
+it is absent when none failed. It counts only the run's own calls: the calls
+that failed inside its [sub-agents](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sub-agents.md) are counted on
+`result.usage.delegated.toolErrors`. Check it before trusting `text`, or cap it with
 `limits.maxToolErrors`: once that many calls have failed, the run stops before
 its next model call with `finishReason: 'budget-exceeded'` and
 `result.budget.limit` `'maxToolErrors'` (or rejects with `BudgetExceededError`
@@ -19191,6 +19834,7 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | With route auth and no `authorizeSession`, a session belongs to the first principal that sends it a turn (a read claims nothing); another principal gets `403 LOUSHO_SESSION_FORBIDDEN`. The owner is kept in memory per agent (the 100,000 most recently used sessions); a stored session whose owner is not on record (after a restart, past that cap) is refused to everyone, so pass `authorizeSession` on more than one instance or with a store that outlives the process. One bearer token is one caller and checks no owner. See [Who may use a session](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#who-may-use-a-session). | `authorizeSession: () => true` |
 | The session routes (`createRouteHandler()`, `createDeployedServer()`, the Worker, `lousho dev`) refuse a cross-site POST (`403 LOUSHO_REQUEST_FORBIDDEN`) and a POST body that is not `Content-Type: application/json` (`415 LOUSHO_UNSUPPORTED_MEDIA_TYPE`). The new `allowedHosts` (off by default) refuses unlisted `Host` headers. See [Cross-site requests](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md#cross-site-requests). | `allowedOrigins: ['*']`, `requireJsonBody: false` (or list the front end's origin in `allowedOrigins`) |
 | `POST /chat/:sessionId/approvals/:id` answers `404` unless the approval belongs to that session, and only the caller the paused run acts for may decide it. | `authorizeApproval` to let others (a supervisor) decide |
+| `POST /chat` to a session paused on an approval answers `409` JSON (`LOUSHO_SESSION_AWAITING_APPROVAL`, with `approvalId` and `approvalIds`) instead of a `200` stream that ends in an `error` event. | no opt-out (decide the approval first) |
 | The routes send an error's `name` and `code` with a generic message instead of its raw text (in `error` events, `500` bodies and `provider.retry` / `provider.fallback` events); the full error goes to `console.error`. | `exposeErrors: true` (`lousho dev` sets it) |
 | A client that disconnects mid-turn no longer aborts the turn: it runs to its end and is saved. See [Next.js routes](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/nextjs.md#routes). | `onDisconnect: 'abort'` |
 | `lousho dev` answers `403` to a request whose `Host` is not a loopback name (or, off loopback, an IP address or the `--host` name), against DNS rebinding; this covers `/channels/<name>` for a channel without `verify`. | `--allowed-hosts a,b` (adds to the defaults) |
@@ -19240,6 +19884,7 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | An aborted run ends `finishReason: 'aborted'` at once, even when the provider ignores the signal. See [Cancellation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/runs.md#cancellation). | no opt-out |
 | The `openrouter` provider created without `apiKey` reads `OPENROUTER_API_KEY` (it sent `OPENAI_API_KEY`). | pass `apiKey` |
 | The `@modelcontextprotocol/sdk` peer range is `^1.31.0`. | no opt-out |
+| With `output`, `responseFormat` is sent only on model calls that offer no tools (an agent without tools, the "answer now" call at `maxSteps`, the repair step); a call that offers tools relies on the schema in the prompt. A strict `json_schema` next to tools made `openai/gpt-4o-mini` via OpenRouter call tools until `maxSteps`. See [How it works](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/structured-output.md#how-it-works). | `output: { schema, responseFormat: 'always' }` (already the default with `promptSchema: false`) |
 
 ### Tools, MCP and tracing
 
@@ -19516,7 +20161,7 @@ const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistr
 | ------------ | ------------------------------------------------- | ------- |
 | `read_file`  | `path`, optional `offset` (1-based line), `limit` | Numbered lines (`"    12\tcode"`). When the output is cut, the last line says which lines were shown and the `offset` to continue from. Files over 10 MB are refused. |
 | `write_file` | `path`, `content`                                 | Creates or overwrites the file and creates missing parent directories. |
-| `edit_file`  | `path`, `old_string`, `new_string`, optional `replace_all` | Replaces the exact text. Fails with a message the model can act on when `old_string` is missing (including a hint about CRLF line endings) or appears more than once without `replace_all`. Refuses a file that is not UTF-8 (latin1, Windows-1252, UTF-16) and leaves it unchanged, when the provider has `readFileBytes` (as `NodeWorkspace` does). A UTF-8 BOM is kept. |
+| `edit_file`  | `path`, `old_string`, `new_string`, optional `replace_all` | Replaces the exact text. Fails with a message the model can act on when `old_string` is missing (including a hint about CRLF line endings) or appears more than once without `replace_all`. When `old_string` is missing but a non-empty `new_string` is in the file, the edit was already applied (a call re-run after a crash): it succeeds without writing and says so. Refuses a file that is not UTF-8 (latin1, Windows-1252, UTF-16) and leaves it unchanged, when the provider has `readFileBytes` (as `NodeWorkspace` does). A UTF-8 BOM is kept. |
 | `list_dir`   | optional `path`                                   | Sorted entries; directories end with `/`. |
 | `glob`       | `pattern`, optional `path`                        | Sorted paths of matching files. `*` stays within one directory, `**` crosses directories, plus `?`, `[abc]` and `{a,b}`. |
 | `grep`       | `pattern` (JavaScript regex), optional `path`, `glob`, `ignore_case` | `path:line: text` for each matching line. An invalid regex, or one with nested repetition like `(a+)+`, is a tool error. Binary files and files over 2 MB are skipped. |
@@ -19621,6 +20266,17 @@ well, fork the session with `session.fork({ fromStep })` (see
 `session.history()` is the turn number used here), or a single run with
 `agent.fork()` (see [Fork and replay](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#fork-and-replay)).
 
+Backups survive a crash. The backup is stored before the file is written, so
+a process killed between the two loses nothing: the file still holds the
+backed-up content, and rewind treats it as nothing to undo. A tool call that
+was running when the process died runs again on resume (see
+[At-least-once tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#at-least-once-tools-make-side-effects-idempotent));
+the re-run finds the turn's backup of that path and keeps it, so `rewind()`
+restores the content from before the first attempt, not the agent's own
+half-finished write. A `write_file` or `edit_file` that would leave the file
+as it is (the same content, an edit already applied) records and writes
+nothing.
+
 What is not tracked: changes made by the `shell` tool, files written by a
 sub-agent with its own file tools (unless it gets the same
 `WorkspaceCheckpoints`, in which case they are recorded under its own
@@ -19676,6 +20332,12 @@ path. This means:
 - `glob` and `grep` never follow links while walking the tree.
 - `rm` on a link removes the link itself and leaves its target alone.
 
+**Writes are atomic.** `NodeWorkspace` writes a file (for `write_file` and
+`edit_file` too) to a temp file in the same directory, flushes it and renames
+it over the target, so a process killed mid-write leaves the old file or the
+new one, never half of it. A replaced file keeps its permission bits, and a
+read-only file is still refused.
+
 **The file tools keep out of `.git`.** A checkout often has credentials in
 `.git/config`: `actions/checkout` keeps the job's token there as
 `http.https://github.com/.extraheader = AUTHORIZATION: basic ...`, and a
@@ -19699,9 +20361,19 @@ const workspace = new NodeWorkspace({ root: '.' });
 const tools = createFsTools(workspace, { readOnly: true, deny: ['.git', '.env'] });
 ```
 
-The check is by name, so a symlink elsewhere in the workspace that points
-into `.git` is not caught (`glob` and `grep` never follow links, but
-`read_file` on the link does). **The `shell` tool is not covered:** a command
+Links into `.git` are refused too. With `NodeWorkspace` (or any provider that
+implements `realPath`), the check also runs on where a path really leads, so a
+symlink or Windows junction elsewhere in the workspace that points at `.git`
+or into it (`gitj -> .git`, `hooks -> .git/hooks`, `cfg -> .git/config`)
+cannot be used to read, write or edit what is behind it: `read_file
+gitj/config`, `edit_file gitj/config` and `write_file gitj/PWNED` are tool
+errors, and so are `list_dir`, `glob` and `grep` given the link as their
+`path` (`grep` with `path: 'gitj'` or `path: 'gitj/config'`). `glob` and
+`grep` never follow links while walking the tree, so a search from the root
+does not reach `.git` through a link either. A provider without `realPath`
+(`MemoryWorkspace` has no links) gets the name check only.
+
+**The `shell` tool is not covered:** a command
 is free text, so it cannot be path-filtered, and `cat .git/config` or
 `git config --get-regexp extraheader` still works. Git commands that coding
 agents need (`git status`, `git diff`) go through the shell tool, so keep its
@@ -19910,8 +20582,8 @@ What this enforces, and where:
   the allowlist check. Raw IP connections have no route. Non-HTTP protocols
   (SSH, raw TCP, UDP) are blocked, because only the proxy is reachable, and
   `CONNECT` tunnels are checked against the allowlist like any request.
-  This is tested against a real daemon: the Docker Engine CI workflow
-  (`.github/workflows/docker.yml`, `npm run test:docker`) runs on GitHub's
+  This is tested against a real daemon: CI's `compat` job
+  (`npm run test:docker`) runs on GitHub's
   `ubuntu-latest` runner (rootful Docker Engine 28.0.4 on Ubuntu 24.04 when
   it was added) and checks that an allowed host answers through the broker,
   that other hosts get a 403, that bypassing the proxy or dialling a raw IP

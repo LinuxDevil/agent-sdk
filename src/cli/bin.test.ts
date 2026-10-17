@@ -21,7 +21,7 @@ describe('bin/lousho.js', () => {
 
   it('keeps the top-level usage in step with the commands', () => {
     const banner = lousho('--help').stdout;
-    expect(banner).toContain('lousho doctor [agent.yaml|json|agent-dir] [--json] [--ping]');
+    expect(banner).toContain('lousho doctor [agent.yaml|json|agent-dir|agent.ts] [--json] [--ping]');
     // One-line descriptions and the build targets (a usage line alone said neither).
     expect(banner).toContain('Chat with an agent in the terminal.');
     expect(banner).toContain('--target=<node-server|cloudflare-worker|docker>');
@@ -80,6 +80,26 @@ describe('bin/lousho.js loads ./.env for the agent commands', () => {
         const check = (JSON.parse(res.stdout) as { checks: { id: string; status: string }[] }).checks.find((c) => c.id === 'env.openai');
         expect(check?.status).toBe('ok');
         expect(res.stdout).not.toContain('sk-from-dotenv-file');
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  );
+
+  it.skipIf(!fs.existsSync(path.resolve(__dirname, '..', '..', 'dist', 'cli', 'doctor.mjs')))(
+    'keeps the first key of a .env saved with a byte order mark, and a variable already set wins (needs npm run build)',
+    () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-dotenv-bom-'));
+      try {
+        // What PowerShell 5.1's `Set-Content -Encoding utf8` writes.
+        fs.writeFileSync(path.join(dir, '.env'), String.fromCharCode(0xfeff) + 'OPENAI_API_KEY=sk-from-dotenv-file\nANTHROPIC_API_KEY=from-file\n');
+        const env: NodeJS.ProcessEnv = { ...process.env, ANTHROPIC_API_KEY: '' };
+        delete env.OPENAI_API_KEY;
+        const res = spawnSync(process.execPath, [BIN, 'doctor', '--json'], { cwd: dir, env, encoding: 'utf8' });
+        const checks = (JSON.parse(res.stdout) as { checks: { id: string; status: string }[] }).checks;
+        expect(checks.find((c) => c.id === 'env.openai')?.status).toBe('ok');
+        // Set (even to empty) in the environment: the file does not override it.
+        expect(checks.find((c) => c.id === 'env.anthropic')?.status).toBe('warn');
       } finally {
         fs.rmSync(dir, { recursive: true, force: true });
       }

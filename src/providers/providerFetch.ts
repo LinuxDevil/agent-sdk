@@ -250,10 +250,29 @@ async function watchedResponse(
     return new Response(watchedBody(replayed, { watch: watching, sse: true, url }), { ...init, headers });
   }
   const text = watching?.rewrite?.(read) ?? read;
-  const failure = watching?.data?.(text);
+  // A streaming request answered 200 with a body that is neither events nor JSON (a truncated or garbled reply) would read as an empty stream: fail it as a retryable 502 instead.
+  const failure = (replays && !isJson(read) ? unreadableBodyFailure(read) : undefined) ?? watching?.data?.(text);
   watching?.end?.(true);
   if (failure) return new Response(failureBody(failure), { status: failure.status, headers: { 'content-type': 'application/json' } });
   return new Response(text, init);
+}
+
+function isJson(text: string): boolean {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The failure for a 200 reply to a streaming request whose body is not an event stream and does not parse as JSON. */
+function unreadableBodyFailure(body: string): UpstreamFailure {
+  return {
+    status: 502,
+    message: `The provider answered 200 with a malformed response (neither an event stream nor valid JSON): ${body.slice(0, 200) || '(empty body)'}`,
+    body,
+  };
 }
 
 /** One choice of an OpenAI-compatible chat completion or chunk, as far as read here. */

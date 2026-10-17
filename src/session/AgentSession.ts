@@ -110,6 +110,12 @@ export interface PendingTurn {
   approvalIds?: string[];
   /** `'question'` when the turn waits on an `ask_question` call; absent for a tool approval (or a turn paused before this field existed). */
   approvalKind?: ApprovalKind;
+  /**
+   * The `metadata.idempotencyKey` of the turn's user message, when it was sent
+   * with one (the HTTP API's `Idempotency-Key` header), so a client retrying
+   * that request can tell its own unfinished turn from another.
+   */
+  idempotencyKey?: string;
 }
 
 /** Where a checkpointed session's turn is checkpointed: pass both to `AgentExecutor.execute()`. */
@@ -258,6 +264,21 @@ function markInMemoryPause(store: object, id: string, paused: InMemoryPause | un
 /** Every approval id of a pause (`approvalIds` when there are several, else `approvalId`). */
 function pauseApprovalIds(paused: InMemoryPause): string[] {
   return paused.approvalIds ?? (paused.approvalId ? [paused.approvalId] : []);
+}
+
+/** @internal The `metadata.idempotencyKey` of `message`, when it is a user message that has one. */
+export function idempotencyKeyOf(message: Message): string | undefined {
+  const key = message.role === 'user' ? message.metadata?.idempotencyKey : undefined;
+  return typeof key === 'string' ? key : undefined;
+}
+
+/** The idempotency key of a pending turn: the last one among its messages that the transcript does not hold yet. */
+function pendingIdempotencyKey(pending: readonly Message[], transcript: readonly Message[]): string | undefined {
+  const committed = new Set(transcript.map(idempotencyKeyOf));
+  return pending
+    .map(idempotencyKeyOf)
+    .filter((key) => key !== undefined && !committed.has(key))
+    .at(-1);
 }
 
 /** The `pending()` view of an in-process pause (no checkpoint store). */
@@ -712,7 +733,14 @@ export class AgentSession<TObject = unknown> {
       const status = checkpoint.status === 'awaiting-approval' ? 'awaiting-approval' : 'in-progress';
       const { approvalId, approvalKind } = checkpoint;
       const approvalIds = status === 'awaiting-approval' ? pausedApprovalIds(checkpoint) : [];
-      return { status, approvalId, ...(approvalIds.length > 1 && { approvalIds }), ...(status === 'awaiting-approval' && approvalKind && { approvalKind }) };
+      const idempotencyKey = pendingIdempotencyKey(checkpoint.messages, this.transcript);
+      return {
+        status,
+        approvalId,
+        ...(approvalIds.length > 1 && { approvalIds }),
+        ...(status === 'awaiting-approval' && approvalKind && { approvalKind }),
+        ...(idempotencyKey !== undefined && { idempotencyKey }),
+      };
     });
   }
 

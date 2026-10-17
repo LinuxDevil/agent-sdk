@@ -302,13 +302,15 @@ export interface ExpressionEvaluatorNode extends NodeRunOptions {
   type: 'evaluator';
   id?: string;
   expression: string;
+  /** Variable that receives the result. */
+  outputVariable?: string;
 }
 
 /** Calls the agent's provider with an interpolated prompt. */
 export interface LLMCallNode extends NodeRunOptions {
   type: 'llmCall';
   id?: string;
-  /** Prompt template; `{{var}}` placeholders are replaced by variable text. */
+  /** Prompt template; `{{var}}` / `{{var.path}}` placeholders are replaced by the value's text (an object's JSON, a `{ text }` result's text). */
   prompt?: string;
   model?: string;
   temperature?: number;

@@ -31,6 +31,29 @@ describe('agent directory auth.ts', () => {
     expect(manifest.auth).toBe(false);
   });
 
+  it('returns the named authorizeSession / authorizeApproval exports, and rejects ones that are not functions', async () => {
+    const dir = tempDir({
+      'instructions.md': 'x',
+      'auth.mjs': [
+        'export default () => null;',
+        "export const authorizeSession = ({ principal }) => principal?.id === 'manager';",
+        "export const authorizeApproval = ({ principal, approval }) => principal?.id === 'manager' && approval.principal?.id !== 'manager';",
+      ].join('\n'),
+    });
+    const resolved = await resolveAgentDir(dir, { provider: mockModel(['x']) });
+    const manager = { id: 'manager', type: 'user' as const, authenticator: 'custom' };
+    expect(resolved.authorizeSession?.({ principal: manager, sessionId: 's', action: 'read' })).toBe(true);
+    expect(resolved.authorizeApproval?.({ principal: manager, sessionId: 's', approval: { principal: { ...manager, id: 'alice' } } as never })).toBe(true);
+    expect(resolved.authorizeApproval?.({ principal: { ...manager, id: 'alice' }, sessionId: 's', approval: { principal: { ...manager, id: 'alice' } } as never })).toBe(false);
+
+    const without = await resolveAgentDir(fixture('auth'), { provider: mockModel(['x']) });
+    expect(without.authorizeSession).toBeUndefined();
+    expect(without.authorizeApproval).toBeUndefined();
+
+    const bad = tempDir({ 'instructions.md': 'x', 'auth.mjs': "export default () => null;\nexport const authorizeApproval = 'manager';" });
+    await expect(resolveAgentDir(bad, { provider: mockModel(['x']) })).rejects.toThrow(/authorizeApproval export must be a function/);
+  });
+
   it('takes a single function, and rejects other exports and two auth files', async () => {
     const single = tempDir({ 'instructions.md': 'x', 'auth.mjs': 'export default () => null;' });
     expect(typeof (await resolveAgentDir(single, { provider: mockModel(['x']) })).auth).toBe('function');

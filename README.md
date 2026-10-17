@@ -9,24 +9,25 @@ Open-source TypeScript SDK for agents that run in your own Node process: tool ca
 
 Install with `@lousho/build-ai-agent`.
 
-Four things set it apart:
+What still sets it apart (as of October 2026; see the
+[honest comparison](docs/comparison.md) for where rivals are ahead):
 
-- **Durable sessions and approvals on any host.** Sessions, checkpoints and
-  approval pauses live in pluggable stores (memory, files, one SQLite file, or
-  Cloudflare KV on Workers), so a paused or interrupted run
-  resumes from another request or another process.
-- **Record/replay and trajectory evals.** `mockModel` scripts the model,
-  `recordReplay` cassettes replay real runs offline, and `defineEval()` asserts
-  on which tools were called, in what order, with which arguments, gating CI
-  through `lousho eval` with JUnit reports.
-- **Node and Cloudflare Workers, traced with OpenTelemetry.** `lousho build`
-  ships the same agent spec to a Node server, Docker or a Worker; runs emit
-  OpenTelemetry GenAI spans to any exporter, and every result reports token
-  usage and USD cost.
-- **Coding agents that ship.** Agents are plain directories (`agent.json`,
-  `instructions.md`, `tools/`, `subagents/`), registries install them as kits,
-  and `piAgent()` delegates real coding work to a Pi coding agent with durable
-  approvals - one `lousho add coding-pi` is a working coding harness.
+- **Record/replay evals with trajectory drift.** `lousho eval --record` runs
+  each case against the real provider once and saves a cassette, `--replay`
+  runs it in CI with no network or API key, and `--drift` re-records and
+  reports how the tool-call trajectory changed. `defineEval()` asserts on
+  which tools were called, in what order, with which arguments, with JUnit output.
+- **Durable approvals on your own stores, including Workers KV.** Sessions,
+  checkpoints and approval pauses live in memory, files, one SQLite file or
+  Cloudflare KV, so a paused run resumes from another request or process.
+  There is no Postgres store yet.
+- **One agent, many surfaces.** The same agent runs in Node, Docker or a
+  Worker (`lousho build`), serves editors over the Agent Client Protocol
+  (`lousho acp`) and MCP clients over `serveMcp`, and emits OpenTelemetry
+  GenAI spans with token usage and USD cost.
+- **Self-hosted single package across AI SDK majors.** No platform account or
+  hosted control plane; the `ai` peer accepts v4, v6 and v7. It is still
+  alpha, with fewer native providers and no hosted dashboard.
 
 [Quickstart](#quickstart) · [Features](#features) · [Examples](#examples) ·
 [TypeScript AI agent quickstart](docs/quick-start.md) ·
@@ -56,6 +57,7 @@ npm install @lousho/build-ai-agent ai@^7.0.0 zod
 npm install @ai-sdk/openai@^4.0.0 @ai-sdk/anthropic@^4.0.0
 ```
 
+Supported `ai` majors are 4 (`^4.3.19`), 6 and 7; AI SDK v5 is not supported. For Gemini add `@ai-sdk/google@^4.0.0` (`google/<model>`).
 For Ollama, use `ai@^7.0.0` with `ollama-ai-provider-v2@^4.0.0` and zod 4 (or
 `ai@^4.3.19` with `ollama-ai-provider@^1.2.0` and zod 3);
 [Installation](docs/installation.md#provider-packages) lists every pairing. `npx lousho doctor` checks Node, peers and API keys and
@@ -208,6 +210,7 @@ offline with `npx vitest run scripts/buildACodingAgent.test.ts`.
 | [OpenAPI tools](docs/openapi-tools.md) | `openApiTools()`: an OpenAPI 3.0 / 3.1 document becomes one tool per operation, with approval for mutating ones |
 | [Providers](docs/providers.md) | Model strings, `resolveProvider()`, which model runs, custom providers |
 | [Comparison](docs/comparison.md) | How lousho compares with the Vercel AI SDK, Mastra, the OpenAI Agents SDK, Vercel eve and LangGraph.js, including where it is weaker |
+| [Migrating from the AI SDK](docs/migrating-from-ai-sdk.md) | From `ToolLoopAgent` / `generateText({ tools })`: a mapping table, models via `fromAiSdk()`, tools via `fromAiSdkTools()`, `useChat` |
 | [CLI](docs/cli.md) | Every `lousho` command and its flags |
 | [ACP](docs/acp.md) | `lousho acp` / `serveAcp()`: drive an agent from Zed and other Agent Client Protocol editors |
 | [Tools](docs/tools.md) | `defineTool()`, validation and errors, built-in tools, `ToolRegistry` |

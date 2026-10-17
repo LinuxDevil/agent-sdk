@@ -79,7 +79,7 @@ export async function resumeSubagentCall(
   const scope: ToolCallScope = {
     runtime: { ...executeOptions, approvalStore: ctx.approvalStore },
     toolCallId: suspension.toolCallId,
-    onDelegatedUsage: (child) => mergeDelegatedUsage(ctx.usage, child),
+    onDelegatedUsage: (child, errors) => mergeDelegatedUsage(ctx.usage, child, errors),
     execute: ctx.execute,
     resume: { decision: ctx.decision, suspension, run: ctx.resumeRun, ...(ctx.approver && { approver: ctx.approver }) },
   };

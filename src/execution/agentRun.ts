@@ -187,9 +187,17 @@ export interface RunEventSink {
   /**
    * Obtains one model step - streamed when the provider can; `onOutput` before its first text or tool call is reported.
    * With `hold`, the step's `text.delta`, `reasoning.*` and provider-run tool events wait for it: released
-   * in order when it resolves `true`, dropped when `false`.
+   * in order when it resolves `true`, dropped when `false`. `objectDeltas` (an `output` run) also reports
+   * the reply parsed so far as `object.delta` events.
    */
-  generate(provider: LLMProvider, request: GenerateOptions, onOutput?: () => void, hold?: Promise<boolean>, onText?: (text: string) => void): Promise<GenerateResult>;
+  generate(
+    provider: LLMProvider,
+    request: GenerateOptions,
+    onOutput?: () => void,
+    hold?: Promise<boolean>,
+    onText?: (text: string) => void,
+    objectDeltas?: boolean
+  ): Promise<GenerateResult>;
   /** The sink for a sub-agent's run, whose events carry `subagent`. */
   forSubagent(subagent: SubagentInfo): RunEventSink;
 }
@@ -509,9 +517,9 @@ class RunEvents {
       agentDrift: (drift) => this.emit({ type: 'agent.drift', ...drift }, subagent),
       handoff: (handoff) => this.emit({ type: 'handoff', ...handoff }, subagent),
       guardrail: (event) => this.emit(event, subagent),
-      generate: async (provider, request, onOutput, hold, onText) => {
+      generate: async (provider, request, onOutput, hold, onText, objectDeltas) => {
         const call = withProviderEvents(request, this.providerEvents(subagent));
-        const generated = settleHostedFinish(await this.generateStep(provider, call, subagent, onOutput, hold, onText));
+        const generated = settleHostedFinish(await this.generateStep(provider, call, subagent, onOutput, hold, onText, objectDeltas));
         const measured = measureUsage(generated.servedBy?.model ?? request.model ?? provider.name, request.messages, generated);
         const measuredStep = { finishReason: generated.finishReason, ...measured, usage: measured.usage };
         // A step a parallel input guardrail blocked reports only the usage the provider reported.
@@ -553,14 +561,15 @@ class RunEvents {
     subagent: SubagentInfo | undefined,
     onOutput?: () => void,
     hold?: Promise<boolean>,
-    onText?: (text: string) => void
+    onText?: (text: string) => void,
+    objectDeltas = Boolean(request.responseFormat)
   ): Promise<GenerateResult> {
     const held = heldUntil(hold);
     // A provider that ignores an abort may stream on after the run stopped waiting; that output is not reported.
     const report = (event: () => void) => {
       if (!request.signal?.aborted) held(event);
     };
-    const objectDelta = request.responseFormat ? partialObjects() : undefined;
+    const objectDelta = objectDeltas ? partialObjects() : undefined;
     const sink: StepSink = {
       onTextDelta: (text) => {
         onText?.(text);

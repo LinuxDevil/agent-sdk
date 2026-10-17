@@ -528,6 +528,7 @@ interface DelegatedUsage {
     // (undocumented)
     outputTokens: number;
     runs: number;
+    toolErrors?: number;
     // (undocumented)
     totalTokens: number;
 }
@@ -1027,6 +1028,7 @@ interface PendingTurn {
     approvalId?: string;
     approvalIds?: string[];
     approvalKind?: ApprovalKind;
+    idempotencyKey?: string;
     status: 'in-progress' | 'awaiting-approval';
 }
 

@@ -23,6 +23,7 @@ const ENV_KEYS: Record<string, string> = {
   openai: 'OPENAI_API_KEY',
   anthropic: 'ANTHROPIC_API_KEY',
   openrouter: 'OPENROUTER_API_KEY',
+  google: 'GOOGLE_GENERATIVE_AI_API_KEY',
   ollama: 'OLLAMA_BASE_URL',
   pi: 'OPENROUTER_API_KEY',
 };
@@ -32,6 +33,7 @@ const SCAFFOLD_PAIRINGS: Record<string, Record<string, string>> = {
   openai: { ai: '^7.0.0', '@ai-sdk/openai': '^4.0.0' },
   anthropic: { ai: '^7.0.0', '@ai-sdk/anthropic': '^4.0.0' },
   openrouter: { ai: '^7.0.0', '@ai-sdk/openai': '^4.0.0' },
+  google: { ai: '^7.0.0', '@ai-sdk/google': '^4.0.0' },
   ollama: { ai: '^7.0.0', 'ollama-ai-provider-v2': '^4.0.0' },
   pi: { ai: '^7.0.0', '@earendil-works/pi-ai': '^1.0.3' },
 };
@@ -160,6 +162,25 @@ describe('renderProject', () => {
     expect(index).toMatch(/try \{\n  agent = buildAgent\(\);/);
     expect(index).toMatch(/try \{\n      for await \(const event of agent\.stream\(message\)\)/);
     expect(index).toContain('console.error(`\\nerror: ${errorText(error)}`);');
+  });
+
+  it('the terminal chat prints an SDK error with its code, HTTP status and fix', () => {
+    const index = renderProject(config('openai', 'minimal'))['src/index.ts']!;
+    expect(index).toContain('error instanceof SDKError');
+    expect(index).toContain('[${error.code}]');
+    expect(index).toContain('HTTP ${statusCode}');
+  });
+
+  it('the terminal chat loads a .env saved with a byte order mark without losing its first key', () => {
+    const index = renderProject(config('openai', 'minimal'))['src/index.ts']!;
+    expect(index).not.toContain('process.loadEnvFile()');
+    expect(index).toContain("parseEnv(readFileSync('.env', 'utf8').replace(/^\\uFEFF/, ''))");
+    expect(index).toContain('if (process.env[name] === undefined)');
+  });
+
+  it('the doctor script checks the agent module, so a missing provider key fails it', () => {
+    const pkg = JSON.parse(renderProject(config('openai', 'minimal'))['package.json']!);
+    expect(pkg.scripts.doctor).toBe('lousho doctor src/agent.ts');
   });
 
   it('the terminal chat streams text deltas and waits for the turn in flight at end of input', () => {

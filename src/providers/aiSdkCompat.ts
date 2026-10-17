@@ -79,6 +79,11 @@ export function aiMajorOf(ai: AiSdkModule): AiMajor {
   return 'registerTelemetry' in ai ? 7 : 6;
 }
 
+/** The document file types (PDF, plain text) the `@ai-sdk/*` peers send as `file` parts: ai 6 and 7 only. */
+export function documentFileTypes(ai: AiSdkModule): readonly string[] {
+  return aiMajorOf(ai) >= 6 ? ['application/pdf', 'text/plain'] : [];
+}
+
 /** A tool call as `ai` v4 (`args`) or v5+ (`input`) returns it. */
 interface AiSdkToolCall {
   toolCallId: string;

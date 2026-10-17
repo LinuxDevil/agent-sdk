@@ -13,11 +13,13 @@ export * from './OpenAIProvider';
 export * from './OllamaProvider';
 export * from './OpenRouterProvider';
 export * from './AnthropicProvider';
+export * from './GoogleProvider';
 export { PiProvider, type PiProviderConfig } from './pi/PiProvider';
 export * from './resolveProvider';
 export * from './resilience';
 export * from './rateLimit';
 export { fromAiSdk, type FromAiSdkOptions } from './fromAiSdk';
+export { fromAiSdkTools, type AiSdkToolLike, type AiSdkToolCallOptions } from './fromAiSdkTools';
 export type { UnsupportedFiles } from './aiSdkProvider';
 export { MissingPeerDependencyError } from './optionalPeer';
 

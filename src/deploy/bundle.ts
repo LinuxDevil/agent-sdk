@@ -153,7 +153,8 @@ export function workerNodeShimPlugin(): Plugin {
 export function workerUnsupportedPeerPlugin(): Plugin {
   // H2 adds `@earendil-works/pi-ai` (subpaths included): same "stay a lazy
   // runtime specifier" treatment, and equally unreachable in a Worker.
-  const filter = /^(?:ollama-ai-provider(?:-v2)?|@earendil-works\/pi-ai)(?:\/.*)?$/;
+  // So is `@ai-sdk/google`: 'google' is not in WORKER_SUPPORTED_PROVIDERS either.
+  const filter = /^(?:ollama-ai-provider(?:-v2)?|@earendil-works\/pi-ai|@ai-sdk\/google)(?:\/.*)?$/;
   return {
     name: 'lousho-worker-unsupported-peer',
     setup(build) {
@@ -198,6 +199,7 @@ export function workerEntryPlugins(): Plugin[] {
   const ollama = path.join(findSdkRoot(), 'src', 'deploy', 'shims', 'ollama.worker.ts');
   const mcp = path.join(findSdkRoot(), 'src', 'deploy', 'shims', 'mcp.worker.ts');
   const pi = path.join(findSdkRoot(), 'src', 'deploy', 'shims', 'pi.worker.ts');
+  const google = path.join(findSdkRoot(), 'src', 'deploy', 'shims', 'google.worker.ts');
   return [
     workerSandboxShimPlugin(),
     workerNodeShimPlugin(),
@@ -205,6 +207,13 @@ export function workerEntryPlugins(): Plugin[] {
       name: 'lousho-worker-ollama-shim',
       setup(build) {
         build.onResolve({ filter: /^ollama-ai-provider(?:-v2)?$/ }, () => ({ path: ollama }));
+      },
+    },
+    {
+      // 'google' is not a Worker provider either: its lazy `@ai-sdk/google` import becomes the shim's coded failure.
+      name: 'lousho-worker-google-shim',
+      setup(build) {
+        build.onResolve({ filter: /^@ai-sdk\/google$/ }, () => ({ path: google }));
       },
     },
     {

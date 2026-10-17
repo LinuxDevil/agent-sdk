@@ -4,7 +4,7 @@
 import { z } from 'zod';
 import { defineTool, type DefinedTool } from '../defineTool';
 import type { FsProvider } from './types';
-import { createDenyTest } from './paths';
+import { assertResolvedPathAllowed, createDenyTest, type DeniedSegment } from './paths';
 import { allowedPath, editFile, globFiles, grepFiles, listDirectory, prepareEdit, readNumberedLines, type FsLimits } from './fsOperations';
 import { ConfigurationError } from '../../execution/errors';
 import type { WorkspaceCheckpoints } from './checkpoints';
@@ -102,7 +102,10 @@ export interface FsToolsOptions {
    * (`http.<url>.extraheader = AUTHORIZATION: basic ...`), and a worktree's
    * `.git` file names a host path. A path with a denied segment (`.git/config`,
    * `./.GIT`, `a/../.git/`, `sub\.git\HEAD`) is a `WorkspaceError`; `glob`,
-   * `grep` and `list_dir` leave such entries out. Names compare
+   * `grep` and `list_dir` leave such entries out. With a provider that has
+   * `realPath` (`NodeWorkspace`), a path that resolves through a symlink or
+   * junction to a denied entry (`gitj/config` with `gitj -> .git`) is refused
+   * too, for reads, writes and edits alike. Names compare
    * case-insensitively. Pass `[]` to allow everything. The `shell` tool is not
    * covered: a command can still run `cat .git/config`.
    */
@@ -138,6 +141,46 @@ function resolveDeny(deny: readonly string[] | undefined): readonly string[] {
     }
   }
   return deny;
+}
+
+/** A provider whose every path is also checked where it really leads, and that check on its own. */
+interface LinkGuard {
+  fs: FsProvider;
+  /** Rejects when `path` resolves through a link to a denied entry. */
+  check(path: string): Promise<void>;
+}
+
+/**
+ * `fs` with each path also checked against the deny list where it really
+ * leads: the lexical check sees `gitj/config`, but a symlink or junction
+ * `gitj -> .git` makes that `.git/config`. Only a provider with `realPath`
+ * (one that has links) needs it; `fs` itself is used otherwise, or when
+ * nothing is denied.
+ */
+function guardLinks(fs: FsProvider, isDenied: DeniedSegment, denyNames: readonly string[]): LinkGuard {
+  const realPath = fs.realPath?.bind(fs);
+  if (!realPath || denyNames.length === 0) return { fs, check: async () => undefined };
+  const check = async (path: string) => assertResolvedPathAllowed(path, await realPath(path), isDenied);
+  const guard =
+    <A extends unknown[], R>(op: (path: string, ...rest: A) => Promise<R>) =>
+    async (path: string, ...rest: A): Promise<R> => {
+      await check(path);
+      return op.call(fs, path, ...rest);
+    };
+  const guarded: FsProvider = {
+    readFile: guard(fs.readFile),
+    writeFile: guard(fs.writeFile),
+    stat: guard(fs.stat),
+    readdir: guard(fs.readdir),
+    mkdir: guard(fs.mkdir),
+    rm: guard(fs.rm),
+    glob: fs.glob?.bind(fs),
+    getMode: fs.getMode && guard(fs.getMode),
+    chmod: fs.chmod && guard(fs.chmod),
+    readFileBytes: fs.readFileBytes && guard(fs.readFileBytes),
+    realPath,
+  };
+  return { fs: guarded, check };
 }
 
 /** Caps a tool's text output at `maxOutputChars`, saying so. */
@@ -186,7 +229,8 @@ function readOnlyTools(fs: FsProvider, limits: FsLimits, approvals: FsToolApprov
   ];
 }
 
-function mutatingTools(fs: FsProvider, limits: FsLimits, approvals: FsToolApprovals, checkpoints: WorkspaceCheckpoints | undefined): DefinedTool[] {
+function mutatingTools(links: LinkGuard, limits: FsLimits, approvals: FsToolApprovals, checkpoints: WorkspaceCheckpoints | undefined): DefinedTool[] {
+  const fs = links.fs;
   return [
     defineTool({
       name: 'write_file',
@@ -196,11 +240,10 @@ function mutatingTools(fs: FsProvider, limits: FsLimits, approvals: FsToolApprov
       needsApproval: approvals.write_file,
       async execute({ path, content }, ctx) {
         const target = allowedPath(path, limits);
-        const write = async () => {
-          await fs.writeFile(target, content);
-          return content;
-        };
-        await (checkpoints ? checkpoints.track(ctx, target, write) : write());
+        // Before `track`, which would read the old content into a backup.
+        await links.check(target);
+        if (checkpoints) await checkpoints.track(ctx, target, { prepare: async () => content, write: (text) => fs.writeFile(target, text) });
+        else await fs.writeFile(target, content);
         return `Wrote ${Buffer.byteLength(content, 'utf8')} bytes to ${target}.`;
       },
     }),
@@ -212,14 +255,17 @@ function mutatingTools(fs: FsProvider, limits: FsLimits, approvals: FsToolApprov
       input: editFileInput,
       needsApproval: approvals.edit_file,
       async execute(args, ctx) {
-        allowedPath(args.path, limits);
+        const target = allowedPath(args.path, limits);
+        await links.check(target);
         if (!checkpoints) return editFile(fs, args);
         let message = '';
-        await checkpoints.track(ctx, args.path, async () => {
-          const edit = await prepareEdit(fs, args);
-          await fs.writeFile(edit.path, edit.content);
-          message = edit.message;
-          return edit.content;
+        await checkpoints.track(ctx, target, {
+          async prepare() {
+            const edit = await prepareEdit(fs, args);
+            message = edit.message;
+            return edit.content;
+          },
+          write: (text) => fs.writeFile(target, text),
         });
         return message;
       },
@@ -251,7 +297,8 @@ function mutatingTools(fs: FsProvider, limits: FsLimits, approvals: FsToolApprov
  */
 export function createFsTools(fs: FsProvider, options: FsToolsOptions = {}): DefinedTool[] {
   const limits = resolveLimits(options);
+  const links = guardLinks(fs, limits.isDenied ?? (() => undefined), resolveDeny(options.deny));
   const approvals = options.needsApproval ?? {};
-  const tools = readOnlyTools(fs, limits, approvals);
-  return options.readOnly ? tools : [tools[0], ...mutatingTools(fs, limits, approvals, options.checkpoints), ...tools.slice(1)];
+  const tools = readOnlyTools(links.fs, limits, approvals);
+  return options.readOnly ? tools : [tools[0], ...mutatingTools(links, limits, approvals, options.checkpoints), ...tools.slice(1)];
 }

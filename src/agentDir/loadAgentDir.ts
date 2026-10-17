@@ -36,6 +36,7 @@ import type { InferSchemaOutput, StandardSchemaV1 } from '../utils/zodCompat';
 import type { AgentStore } from '../storage/agentStore';
 import { fileStore } from '../storage/fileStore';
 import { loadAuth } from './loadAuth';
+import type { ChatRoutesAccess } from '../server/fetchRoutes';
 import { importModule } from './importModule';
 
 export type { AgentDirConfig } from './readConfig';
@@ -125,6 +126,17 @@ export interface ResolvedAgentDir {
    * `loadAgentDir()` does not use it.
    */
   auth?: AuthFn | readonly AuthFn[];
+  /**
+   * `auth.ts`'s named `authorizeSession` export (who may read, continue or
+   * decide approvals in a session; docs/auth.md): pass it with `auth`. The
+   * built node-server does.
+   */
+  authorizeSession?: ChatRoutesAccess['authorizeSession'];
+  /**
+   * `auth.ts`'s named `authorizeApproval` export (who may decide an approval,
+   * e.g. a manager; docs/auth.md): pass it with `auth`. The built node-server does.
+   */
+  authorizeApproval?: ChatRoutesAccess['authorizeApproval'];
 }
 
 /** The model source a parent hands down to sub-agents that do not choose their own. */
@@ -622,7 +634,8 @@ async function skillsFor(dir: string, overrides: AgentDirOverrides): Promise<Ski
  *   schedules/*.ts|js                                each default-exports defineSchedule(); run with startSchedules()
  *   channels/*.ts|js                                 each default-exports a channel (defineChannel(), webhookChannel(), ...)
  *   memory/*.ts|js                                   each default-exports a memory slot (defineMemory()); part of the agent
- *   auth.ts | auth.js                                default-exports route auth (jwt(), oidc(), basic(), ...); the deployed server uses it
+ *   auth.ts | auth.js                                default-exports route auth (jwt(), oidc(), basic(), ...); the deployed server uses it,
+ *                                                    and its named authorizeSession / authorizeApproval exports
  * ```
  *
  * Loading executes the directory's code. Only load directories you trust.
@@ -641,7 +654,8 @@ export async function resolveAgentDir(
   const resolved = await resolveWith(dir, overrides, {});
   const auth = await loadAuth(resolved.manifest.dir);
   if (!auth) return resolved;
-  return { ...resolved, auth: auth.auth, manifest: { ...resolved.manifest, auth: true, files: [...resolved.manifest.files, auth.file] } };
+  const { file, ...access } = auth;
+  return { ...resolved, ...access, manifest: { ...resolved.manifest, auth: true, files: [...resolved.manifest.files, file] } };
 }
 
 /**

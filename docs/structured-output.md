@@ -70,6 +70,34 @@ for (const comment of result.object?.comments ?? []) {
 }
 ```
 
+For extract, then approve, then act, keep the three steps apart. The agent
+only extracts into `output` (no side-effect tool). Your code shows the
+validated object to a person, and acts only on a yes, with an idempotency key
+from the data (a claim id), because a rerun of the whole flow extracts again:
+
+```ts
+import { z } from 'zod';
+import { createAgent } from '@lousho/build-ai-agent';
+
+declare function askReviewer(claim: { claimId: string; amountCents: number }): Promise<boolean>;
+declare const claims: { file(claim: { claimId: string; amountCents: number }, opts: { idempotencyKey: string }): Promise<void> };
+
+const extractor = createAgent({
+  model: 'openai/gpt-4o-mini',
+  instructions: 'Extract the claim from the email. Do not file it.',
+  output: z.object({ claimId: z.string(), amountCents: z.number() }),
+});
+
+const { object: claim } = await extractor.send('Email: ...');
+if (claim && (await askReviewer(claim))) {
+  await claims.file(claim, { idempotencyKey: `claim:${claim.claimId}` });
+}
+```
+
+If the model has to call the tool itself, gate it with `needsApproval` and see
+[Approvals](./approvals.md#ending-the-run-after-a-rejection) for stopping the
+run on a rejection.
+
 ## Sessions
 
 `agent.session()` on an agent with `output` returns a session whose
@@ -95,7 +123,10 @@ background task) is the object as JSON, then a blank line and the usual
 object rather than a prose rendering. If the sub-agent's reply is still invalid
 after its repair step, the `task` call fails with the structured tool error
 (`kind: 'execution'`, a message naming the schema issues) and the lead can
-retry or adapt.
+retry or adapt. A sub-agent that runs out of steps and then gives a valid
+object in its forced final call ([Out of steps](#out-of-steps)) answers the
+lead with that object, like a finished one; the footer shows finish reason
+`'max-steps'` and a line after it says the steps ran out.
 
 A sub-agent does **not** inherit the lead's `output`: each agent's output is its
 own, and a sub-agent without `output` returns text as before. A
@@ -145,10 +176,18 @@ console.log(object?.note); // typed: string | undefined
 
 1. The system prompt gets an `## Output format` section asking for the final
    answer as only a JSON object matching the schema, rendered as JSON Schema.
-2. Every model call carries `responseFormat: { type: 'json', schema }` on
-   `GenerateOptions`. It is a hint: the built-in `ai`-SDK providers turn on
-   the model's JSON mode (with the schema, for models that support structured
-   outputs); a custom provider may use it or ignore it.
+2. Model calls that offer no tools carry `responseFormat: { type: 'json',
+   schema }` on `GenerateOptions`: every call of an agent without tools, the
+   "answer now" call when steps run out (see below), and the repair step. It
+   is a hint: the built-in `ai`-SDK providers turn on the model's JSON mode
+   (with the schema, for models that support structured outputs; OpenRouter
+   and the `pi` provider send a strict `json_schema` response format); a
+   custom provider may use it or ignore it. A call that offers tools goes
+   without it, and the model answers from the schema in the prompt: with a
+   strict response format next to tools, some models (`openai/gpt-4o-mini`
+   via OpenRouter) keep calling tools until `maxSteps` instead of answering.
+   `toolChoice: 'none'` counts as no tools offered. To send it on every
+   call anyway, pass `output: { schema, responseFormat: 'always' }`.
 3. When the model replies without tool calls, the reply is parsed as JSON (a
    ```` ```json ```` code fence around it is tolerated) and validated with
    the schema. A near miss is read without a repair call: when the whole
@@ -190,13 +229,15 @@ call only and is not kept in `result.messages` or the session transcript.
 
 ## The schema in the prompt
 
-Steps 1 and 2 send the schema twice: once inside the `## Output format`
-system-prompt block, and once on `responseFormat`. When the provider enforces
-`responseFormat` (OpenAI structured outputs, OpenRouter, the `pi` provider)
-the prompt copy is redundant - on a large schema it costs around a thousand
-tokens per call. Pass `output` as `{ schema, promptSchema: false }` to leave
-the schema out of the prompt; the JSON-only ask stays and `responseFormat` is
-sent unchanged:
+Steps 1 and 2 send the schema twice on a call without tools: once inside the
+`## Output format` system-prompt block, and once on `responseFormat`. When the
+provider enforces `responseFormat` (OpenAI structured outputs, OpenRouter, the
+`pi` provider) the prompt copy is redundant - on a large schema it costs
+around a thousand tokens per call. Pass `output` as `{ schema, promptSchema:
+false }` to leave the schema out of the prompt; the JSON-only ask stays, and
+since `responseFormat` is then the only copy of the schema it goes on every
+call, tool-offering ones included (`responseFormat` defaults to `'always'`
+here; set `'final'` to keep it off those calls):
 
 ```ts
 import { z } from 'zod';
@@ -214,6 +255,15 @@ provider - or model - treats `responseFormat` as a JSON-mode hint only (the
 built-in `ai`-SDK providers drop the schema for models without
 structured-outputs support; a custom provider may ignore it entirely). The
 prompt copy is then the only place the model sees the shape to answer with.
+Keep it too for an agent with tools: its tool-offering calls carry no
+`responseFormat` by default, so the prompt copy is what they answer from.
+
+| `output` | Schema in the prompt | `responseFormat` on calls offering tools | on calls without tools |
+| --- | --- | --- | --- |
+| `schema` or `{ schema }` | yes | no | yes |
+| `{ schema, responseFormat: 'always' }` | yes | yes | yes |
+| `{ schema, promptSchema: false }` | no | yes | yes |
+| `{ schema, promptSchema: false, responseFormat: 'final' }` | no | no | yes |
 
 ## Repaired output and business rules
 

@@ -233,6 +233,152 @@ describe('NodeWorkspace file system', () => {
       expect(fs.existsSync(path.join(rootDir, 'src', 'a.ts'))).toBe(true);
     });
   });
+
+  // A link inside the workspace pointing at .git let edit_file set core.hooksPath in .git/config.
+  describe('deny list through links', () => {
+    const CONFIG = '[core]\n\tbare = false\n';
+    let gitRoot: string;
+    let gitWs: NodeWorkspace;
+    let gitTools: Record<string, DefinedTool>;
+
+    beforeAll(() => {
+      gitRoot = path.join(tmp, 'git-root');
+      fs.mkdirSync(path.join(gitRoot, '.git', 'hooks'), { recursive: true });
+      fs.writeFileSync(path.join(gitRoot, '.git', 'config'), CONFIG);
+      fs.writeFileSync(path.join(gitRoot, '.git', 'hooks', 'pre-commit.sample'), 'TOKEN\n');
+      fs.writeFileSync(path.join(gitRoot, 'readme.md'), 'hello\n');
+      gitWs = new NodeWorkspace({ root: gitRoot });
+      gitTools = Object.fromEntries(createFsTools(gitWs).map((t) => [t.name, t]));
+    });
+
+    const config = () => fs.readFileSync(path.join(gitRoot, '.git', 'config'), 'utf8');
+
+    /** Every way the file tools could reach `.git` through the directory link `name` (to `.git`) or `sub` (to `.git/hooks`). */
+    async function expectRefused(name: string, sub: string): Promise<void> {
+      const denied = /is denied: it resolves through a link/;
+      await expect(exec(gitTools.read_file, { path: `${name}/config` })).rejects.toThrow(denied);
+      await expect(exec(gitTools.edit_file, { path: `${name}/config`, old_string: 'bare = false', new_string: 'hooksPath = /tmp/x' })).rejects.toThrow(denied);
+      await expect(exec(gitTools.write_file, { path: `${name}/PWNED`, content: 'x' })).rejects.toThrow(denied);
+      await expect(exec(gitTools.write_file, { path: `${name}/new/dir/PWNED`, content: 'x' })).rejects.toThrow(denied);
+      await expect(exec(gitTools.write_file, { path: `${sub}/pre-commit`, content: 'x' })).rejects.toThrow(denied);
+      await expect(exec(gitTools.list_dir, { path: name })).rejects.toThrow(denied);
+      await expect(exec(gitTools.glob, { pattern: '**/*', path: name })).rejects.toThrow(denied);
+      await expect(exec(gitTools.grep, { pattern: 'TOKEN', path: name })).rejects.toThrow(denied);
+      await expect(exec(gitTools.grep, { pattern: 'bare', path: `${name}/config` })).rejects.toThrow(denied);
+      await expect(exec(gitTools.grep, { pattern: 'TOKEN', path: sub })).rejects.toThrow(denied);
+      // A walk from the root never follows the link.
+      expect(await exec(gitTools.grep, { pattern: 'TOKEN' })).toBe('No matches for "TOKEN".');
+      expect(config()).toBe(CONFIG);
+      expect(fs.existsSync(path.join(gitRoot, '.git', 'PWNED'))).toBe(false);
+      expect(fs.existsSync(path.join(gitRoot, '.git', 'new'))).toBe(false);
+      expect(fs.existsSync(path.join(gitRoot, '.git', 'hooks', 'pre-commit'))).toBe(false);
+    }
+
+    it('refuses reads, writes, edits, listings and searches through a junction to .git (or a directory symlink elsewhere)', async () => {
+      const type = IS_WINDOWS ? 'junction' : 'dir';
+      fs.symlinkSync(path.join(gitRoot, '.git'), path.join(gitRoot, 'gitj'), type);
+      fs.symlinkSync(path.join(gitRoot, '.git', 'hooks'), path.join(gitRoot, 'hooksj'), type);
+      try {
+        await expectRefused('gitj', 'hooksj');
+      } finally {
+        fs.rmSync(path.join(gitRoot, 'gitj'));
+        fs.rmSync(path.join(gitRoot, 'hooksj'));
+      }
+    });
+
+    it('refuses the same through a directory symlink', async (ctx) => {
+      const refused = trySymlink(path.join(gitRoot, '.git'), path.join(gitRoot, 'gits'), 'dir');
+      if (refused) {
+        console.warn(`Skipping .git directory-symlink test: the OS refused to create a symlink (${refused}).`);
+        ctx.skip();
+        return;
+      }
+      fs.symlinkSync(path.join(gitRoot, '.git', 'hooks'), path.join(gitRoot, 'hookss'), 'dir');
+      try {
+        await expectRefused('gits', 'hookss');
+      } finally {
+        fs.rmSync(path.join(gitRoot, 'gits'));
+        fs.rmSync(path.join(gitRoot, 'hookss'));
+      }
+    });
+
+    it('refuses a file symlink to .git/config', async (ctx) => {
+      const refused = trySymlink(path.join(gitRoot, '.git', 'config'), path.join(gitRoot, 'cfg'), 'file');
+      if (refused) {
+        console.warn(`Skipping .git file-symlink test: the OS refused to create a symlink (${refused}).`);
+        ctx.skip();
+        return;
+      }
+      try {
+        await expect(exec(gitTools.read_file, { path: 'cfg' })).rejects.toThrow(/is denied/);
+        await expect(exec(gitTools.edit_file, { path: 'cfg', old_string: 'bare', new_string: 'x' })).rejects.toThrow(/is denied/);
+        await expect(exec(gitTools.write_file, { path: 'cfg', content: 'x' })).rejects.toThrow(/is denied/);
+        expect(config()).toBe(CONFIG);
+      } finally {
+        fs.rmSync(path.join(gitRoot, 'cfg'));
+      }
+    });
+
+    it.runIf(IS_WINDOWS)('refuses a junction whose target is spelled .GIT', async () => {
+      fs.symlinkSync(path.join(gitRoot, '.GIT'), path.join(gitRoot, 'upper'), 'junction');
+      try {
+        await expect(exec(gitTools.write_file, { path: 'upper/PWNED', content: 'x' })).rejects.toThrow(/is denied/);
+        await expect(exec(gitTools.read_file, { path: 'upper/config' })).rejects.toThrow(/is denied/);
+      } finally {
+        fs.rmSync(path.join(gitRoot, 'upper'));
+      }
+    });
+
+    it('keeps links to allowed places working, and deny: [] opens .git through a link too', async () => {
+      const type = IS_WINDOWS ? 'junction' : 'dir';
+      fs.symlinkSync(path.join(gitRoot, '.git'), path.join(gitRoot, 'gitj'), type);
+      try {
+        expect(await gitWs.realPath('gitj/config')).toBe('.git/config');
+        expect(await gitWs.realPath('gitj/not/yet')).toBe('.git/not/yet');
+        expect(await gitWs.realPath('.')).toBe('.');
+        const open = Object.fromEntries(createFsTools(gitWs, { deny: [] }).map((t) => [t.name, t]));
+        expect(await exec(open.read_file, { path: 'gitj/config' })).toMatch(/bare = false/);
+        expect(await exec(gitTools.read_file, { path: 'readme.md' })).toBe('     1\thello');
+      } finally {
+        fs.rmSync(path.join(gitRoot, 'gitj'));
+      }
+    });
+  });
+
+  describe('writeFile replaces the file atomically', () => {
+    it('renames a new file into place: a hard link to the old file keeps the old content, and no temp file is left', async () => {
+      await ws.writeFile('atomic/a.txt', 'old');
+      fs.linkSync(path.join(rootDir, 'atomic', 'a.txt'), path.join(rootDir, 'atomic', 'old-link.txt'));
+      await ws.writeFile('atomic/a.txt', 'new');
+      expect(fs.readFileSync(path.join(rootDir, 'atomic', 'a.txt'), 'utf8')).toBe('new');
+      expect(fs.readFileSync(path.join(rootDir, 'atomic', 'old-link.txt'), 'utf8')).toBe('old');
+      expect(fs.readdirSync(path.join(rootDir, 'atomic')).sort()).toEqual(['a.txt', 'old-link.txt']);
+    });
+
+    it.skipIf(IS_WINDOWS)('keeps the permission bits of the file it replaces', async () => {
+      const file = path.join(rootDir, 'atomic', 'run.sh');
+      await ws.writeFile('atomic/run.sh', 'echo 1');
+      fs.chmodSync(file, 0o750);
+      await ws.writeFile('atomic/run.sh', 'echo 2');
+      expect(fs.statSync(file).mode & 0o777).toBe(0o750);
+    });
+
+    it('still refuses a read-only file and a directory', async () => {
+      const file = path.join(rootDir, 'atomic', 'locked.txt');
+      await ws.writeFile('atomic/locked.txt', 'keep');
+      fs.chmodSync(file, 0o444);
+      try {
+        // root may write any file, so there is nothing to refuse.
+        if (process.getuid?.() !== 0) {
+          await expect(ws.writeFile('atomic/locked.txt', 'x')).rejects.toThrow(/Permission denied|not permitted/);
+          expect(fs.readFileSync(file, 'utf8')).toBe('keep');
+        }
+      } finally {
+        fs.chmodSync(file, 0o644);
+      }
+      await expect(ws.writeFile('atomic', 'x')).rejects.toThrow('atomic is a directory, not a file.');
+    });
+  });
 });
 
 describe('NodeWorkspace shell', () => {

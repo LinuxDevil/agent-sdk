@@ -94,6 +94,8 @@ export function detectTarget(rawPath: string, command = 'dev'): DevTarget {
   );
 }
 
+let loads = 0;
+
 /** Agents built with their own `store` (a config export's, or `overrides.store`): `/chat` sessions use it, not the dev store. */
 const storeOwners = new WeakSet<SimpleAgent>();
 
@@ -111,14 +113,39 @@ function isAgentConfig(value: unknown): value is CreateAgentConfig {
   return typeof value === 'object' && value !== null && ('instructions' in value || 'prompt' in value);
 }
 
-async function loadModuleAgent(file: string, token: string, overrides: CreateAgentConfig, command = 'dev'): Promise<SimpleAgent> {
+/** The module's default (or `agent`) export, imported afresh (`?t=` cache-bust). */
+async function importAgentExport(file: string, token: string): Promise<unknown> {
   let mod: Record<string, unknown>;
   try {
     mod = (await import(`${pathToFileURL(file).href}?t=${token}`)) as Record<string, unknown>;
   } catch (error) {
     throw explainImportError(file, error);
   }
-  const exported = mod.default ?? mod.agent;
+  return mod.default ?? mod.agent;
+}
+
+function notAnAgent(file: string, command: string): SDKError {
+  return new SDKError(
+    `lousho ${command}: ${file} must export a SimpleAgent or a createAgent() config as its default export (or as 'agent').`,
+    'LOUSHO_CONFIG_INVALID',
+    { hint: "Add 'export default createAgent({ ... })', or export the createAgent() options object." }
+  );
+}
+
+/**
+ * The createAgent() options an agent module exports, imported as `lousho dev` imports it but
+ * without building the agent (`lousho doctor` inspects them); undefined for an exported agent
+ * that was not built by createAgent(). Throws like `lousho dev` for a module that exports no agent.
+ */
+export async function agentModuleConfig(file: string, command = 'dev'): Promise<CreateAgentConfig | undefined> {
+  const exported = await importAgentExport(file, `${Date.now()}-${loads++}`);
+  if (isSimpleAgent(exported)) return createAgentConfigOf(exported);
+  if (isAgentConfig(exported)) return exported;
+  throw notAnAgent(file, command);
+}
+
+async function loadModuleAgent(file: string, token: string, overrides: CreateAgentConfig, command = 'dev'): Promise<SimpleAgent> {
+  const exported = await importAgentExport(file, token);
   if (isSimpleAgent(exported)) {
     // A module can export an already-built agent. Its createAgent() options are
     // remembered by createAgentConfigOf(), so an `overrides.exporter` (--traces)
@@ -142,14 +169,8 @@ async function loadModuleAgent(file: string, token: string, overrides: CreateAge
     if (exported.store) storeOwners.add(agent);
     return agent;
   }
-  throw new SDKError(
-    `lousho ${command}: ${file} must export a SimpleAgent or a createAgent() config as its default export (or as 'agent').`,
-    'LOUSHO_CONFIG_INVALID',
-    { hint: "Add 'export default createAgent({ ... })', or export the createAgent() options object." }
-  );
+  throw notAnAgent(file, command);
 }
-
-let loads = 0;
 
 /**
  * Builds the agent a target describes. Directory and module loads import the

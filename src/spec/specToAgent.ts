@@ -16,7 +16,7 @@ import { webFetchTool } from '../tools/built-in/webFetch';
 import { ToolDescriptor } from '../types';
 import { compilePolicy } from './policy';
 
-const REAL_PROVIDER_TYPES = new Set(['openai', 'anthropic', 'ollama', 'openrouter']);
+const REAL_PROVIDER_TYPES = new Set(['openai', 'anthropic', 'google', 'ollama', 'openrouter']);
 
 /**
  * Resolves a spec's provider config to an LLMProvider. Real provider types

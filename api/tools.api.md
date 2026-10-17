@@ -612,6 +612,7 @@ interface DelegatedUsage {
     // (undocumented)
     outputTokens: number;
     runs: number;
+    toolErrors?: number;
     // (undocumented)
     totalTokens: number;
 }
@@ -633,7 +634,7 @@ const ERROR_CODES: {
     readonly LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE: "Pass createAgent({ store }) with `checkpoints` (e.g. memoryStore() or a SqliteStore), or drop `sessionId`.";
     readonly LOUSHO_CONFIG_RESOLVER_FAILED: "Fix the createAgent() option function named in the message; its own error is the `cause`.";
     readonly LOUSHO_PROVIDER_SPEC_INVALID: "Write the model as '<provider>/<model>', e.g. 'openai/gpt-4.1-mini'.";
-    readonly LOUSHO_PROVIDER_UNKNOWN: "Use one of the supported provider prefixes listed in the message.";
+    readonly LOUSHO_PROVIDER_UNKNOWN: "Use one of the supported provider prefixes listed in the message; reach any other vendor through openrouter/<vendor>/<model>, pi/<vendor>/<model> or fromAiSdk().";
     readonly LOUSHO_PROVIDER_MISSING_API_KEY: "Set the environment variable named in the message, or pass a provider instance.";
     readonly LOUSHO_PROVIDER_REQUEST_FAILED: "Check the provider status, your API key and the request; retryable failures are retried by withRetry().";
     readonly LOUSHO_PROVIDER_RATE_LIMITED: "Wait and retry (withRetry() honours Retry-After), or lower the request rate.";
@@ -676,9 +677,11 @@ const ERROR_CODES: {
     readonly LOUSHO_APPROVAL_ORPHANED: "The paused run (or session turn) was deleted or replaced by a newer one; the approval is withdrawn and cannot be continued - start a new turn instead.";
     readonly LOUSHO_APPROVAL_CONFLICT: "Another request decided this approval at the same time; read the session to see the outcome instead of deciding again.";
     readonly LOUSHO_APPROVAL_FORBIDDEN: "Decide the approval as a caller the route's authorizeApproval accepts (by default, the caller the run acts for).";
+    readonly LOUSHO_APPROVAL_DECISION_INVALID: "Send a JSON body with 'approved' (true or false, and an optional 'note') or, for a question, 'answer'.";
     readonly LOUSHO_APPROVAL_KIND_MISMATCH: "'answer' decides a question pause only; a tool-call pause takes 'approved' (a question also answers with 'approved' and the answer as 'note').";
     readonly LOUSHO_SESSION_FORBIDDEN: "Use a session the route's authorizeSession lets this caller read, continue or decide approvals in.";
     readonly LOUSHO_REQUEST_FORBIDDEN: "Call from the server's own origin (or add the page's origin to allowedOrigins) and use a Host the server allows (allowedHosts).";
+    readonly LOUSHO_REQUEST_INVALID: "Send valid JSON with the fields the route names, e.g. POST /chat { \"sessionId\": \"chat-1\", \"input\": \"Hello\" }.";
     readonly LOUSHO_UNSUPPORTED_MEDIA_TYPE: "Send the request body as JSON with the header 'Content-Type: application/json'.";
     readonly LOUSHO_SESSION_AWAITING_APPROVAL: "Resolve the pending approval first (agent.approvals.resolve() or resumeAfterApproval()), then send again.";
     readonly LOUSHO_SESSION_ID_INVALID: "Session ids (agent.session({ id }), POST /chat): 1-128 characters from A-Z, a-z, 0-9, '_' and '-'. Run ids (send({ sessionId })): up to 200 and '.' too, not ending in '.turn-<n>', '.paused' or '.fire'.";
@@ -718,6 +721,7 @@ const ERROR_CODES: {
     readonly LOUSHO_SIGNIN_PENDING: "Open the sign-in link first and let the provider redirect to the callback, then approve again (or approve with false to cancel).";
     readonly LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED: "Check the provider's tokenUrl, clientId, clientSecret and redirectUri (it must match the one registered with the provider), then sign in again.";
     readonly LOUSHO_MCP_START_FAILED: "Run the server's command yourself to see why it fails; the message has its exit code and last stderr lines, and `connectTimeoutMs` bounds a server that never answers.";
+    readonly LOUSHO_MCP_CALL_FAILED: "Read the message: it names the server and tool; the `cause` is the MCP error (its `code`, e.g. -32000 'Connection closed' when the server exited). Check the server is running.";
     readonly LOUSHO_MCP_AUTH_REQUIRED: "Sign the app in to the MCP server once: open the URL from agent.oauth.mcpSignInUrl('<server>') and let the callback store the token.";
 };
 
@@ -856,6 +860,7 @@ export interface FsProvider {
     readdir(path: string): Promise<WorkspaceDirEntry[]>;
     readFile(path: string): Promise<string>;
     readFileBytes?(path: string): Promise<Uint8Array>;
+    realPath?(path: string): Promise<string>;
     rm(path: string, options?: {
         recursive?: boolean;
     }): Promise<void>;
@@ -1530,6 +1535,7 @@ export class NodeWorkspace implements Workspace {
     readFile(path: string): Promise<string>;
     // (undocumented)
     readFileBytes(path: string): Promise<Uint8Array>;
+    realPath(path: string): Promise<string>;
     rm(path: string, options?: {
         recursive?: boolean;
     }): Promise<void>;
@@ -1537,7 +1543,6 @@ export class NodeWorkspace implements Workspace {
     readonly shell: string;
     // (undocumented)
     stat(path: string): Promise<WorkspaceStat | undefined>;
-    // (undocumented)
     writeFile(path: string, content: string): Promise<void>;
 }
 
@@ -1784,6 +1789,7 @@ interface PendingTurn {
     approvalId?: string;
     approvalIds?: string[];
     approvalKind?: ApprovalKind;
+    idempotencyKey?: string;
     status: 'in-progress' | 'awaiting-approval';
 }
 
@@ -1871,6 +1877,14 @@ type PermissionToolMatcher = string | readonly string[] | RegExp;
 
 // @public
 type PiiType = 'email' | 'phone' | 'credit-card' | 'iban' | 'us-ssn' | 'ip-address';
+
+// @public
+export interface PreparedWorkspaceWrite {
+    // (undocumented)
+    prepare(): Promise<string>;
+    // (undocumented)
+    write(content: string): Promise<void>;
+}
 
 // @public
 interface Principal {
@@ -2698,7 +2712,7 @@ interface ToolExecutionContext {
     };
     getToken(provider: OAuthProvider): Promise<OAuthToken>;
     messages: readonly Message[];
-    onDelegatedUsage?: (usage: RunUsage) => void;
+    onDelegatedUsage?: (usage: RunUsage, toolErrors?: number) => void;
     principal?: Readonly<Principal>;
     requireAuth(provider: OAuthProvider): never;
     sessionId?: string;
@@ -2864,7 +2878,7 @@ export class WorkspaceCheckpoints {
         dryRun?: boolean;
         force?: boolean;
     }): Promise<RewindResult>;
-    track(ctx: ToolExecutionContext | undefined, path: string, write: () => Promise<string>): Promise<void>;
+    track(ctx: ToolExecutionContext | undefined, path: string, write: (() => Promise<string>) | PreparedWorkspaceWrite): Promise<void>;
 }
 
 // @public

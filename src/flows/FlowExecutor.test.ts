@@ -1278,4 +1278,97 @@ describe('FlowExecutor loop variable scoping', () => {
   });
 });
 
+describe('FlowExecutor template interpolation of non-string values', () => {
+  function flowOf(root: unknown): AgentFlow {
+    return { code: 'interp', name: 'Interp', flow: root as EditorStep };
+  }
+
+  function registryWith(result: unknown): ToolRegistry {
+    const registry = new ToolRegistry();
+    registry.register('fetch', {
+      displayName: 'Fetch',
+      tool: { description: 'Returns a fixed result', parameters: z.object({}), execute: async () => result },
+    });
+    return registry;
+  }
+
+  /** The prompt the llmCall step sent, after a toolCall stored `result` in `res`. */
+  async function promptAfterTool(result: unknown, prompt: string): Promise<string> {
+    const events: FlowExecutionEvent[] = [];
+    const outcome = await FlowExecutor.execute(
+      flowOf({ type: 'sequence', steps: [
+        { type: 'toolCall', tool: 'fetch', arguments: {}, outputVariable: 'res' },
+        { type: 'llmCall', prompt },
+      ] }),
+      { agent: { name: 'f' }, provider: mockModel(['ok']), toolRegistry: registryWith(result), variables: {} },
+      (event) => events.push(event)
+    );
+    expect(outcome.success).toBe(true);
+    return (events.find((e) => e.type === 'llm-call')?.data as { prompt: string }).prompt;
+  }
+
+  it('renders an object result as JSON, not [object Object]', async () => {
+    const prompt = await promptAfterTool({ city: 'Oslo', temp: 4 }, 'Weather: {{res}}');
+    expect(prompt).toBe('Weather: {"city":"Oslo","temp":4}');
+  });
+
+  it('renders an array result as JSON', async () => {
+    expect(await promptAfterTool([1, 'two'], 'Got {{res}}')).toBe('Got [1,"two"]');
+  });
+
+  it('renders a { text } result (an MCP tool result) as its text', async () => {
+    expect(await promptAfterTool({ text: 'page body' }, 'Summarize: {{res}}')).toBe('Summarize: page body');
+    const mcp = Object.defineProperty({ text: 'hello' }, 'content', { value: [{ type: 'text', text: 'hello' }], enumerable: false });
+    expect(await promptAfterTool(mcp, '{{res}}')).toBe('hello');
+    const withMedia = { text: 'caption', content: [{ type: 'text', text: 'caption' }, { type: 'image', data: 'AAAA', mimeType: 'image/png' }] };
+    expect(await promptAfterTool(withMedia, '{{res}}')).toBe('caption');
+  });
+
+  it('renders a raw MCP content array as its joined text parts', async () => {
+    const raw = { content: [{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }] };
+    expect(await promptAfterTool(raw, '{{res}}')).toBe('a\nb');
+  });
+
+  it('reads dotted paths into objects and arrays; a missing path is empty', async () => {
+    const result = { user: { name: 'Ada', tags: ['x', 'y'] }, count: 0 };
+    expect(await promptAfterTool(result, '{{res.user.name}} {{res.user.tags.1}} {{res.count}} [{{res.missing.deep}}]')).toBe('Ada y 0 []');
+    expect(await promptAfterTool(result, '{{res.user}}')).toBe('{"name":"Ada","tags":["x","y"]}');
+  });
+
+  it('does not read inherited properties through a dotted path', async () => {
+    expect(await promptAfterTool({ a: 1 }, '[{{res.constructor}}][{{res.__proto__}}][{{res.toString}}]')).toBe('[][][]');
+  });
+
+  it('passes a whole dotted placeholder in tool arguments as the value', async () => {
+    const registry = registryWith({ n: 7 });
+    let received: unknown;
+    registry.register('echo', {
+      displayName: 'Echo',
+      tool: { description: 'Echo', parameters: z.object({ n: z.number() }), execute: async (args: unknown) => { received = args; return 'done'; } },
+    });
+    const outcome = await FlowExecutor.execute(
+      flowOf({ type: 'sequence', steps: [
+        { type: 'toolCall', tool: 'fetch', arguments: {}, outputVariable: 'res' },
+        { type: 'toolCall', tool: 'echo', arguments: { n: '{{res.n}}' } },
+      ] }),
+      { agent: { name: 'f' }, provider: mockModel(['ok']), toolRegistry: registry, variables: {} }
+    );
+    expect(outcome.success).toBe(true);
+    expect(received).toEqual({ n: 7 });
+  });
+
+  it('stores an evaluator result in its outputVariable', async () => {
+    const outcome = await FlowExecutor.execute(
+      flowOf({ type: 'sequence', steps: [
+        { type: 'evaluator', expression: '{{a}} * 2', outputVariable: 'doubled' },
+        { type: 'return', value: '$doubled' },
+      ] }),
+      { agent: { name: 'f' }, provider: mockModel(['ok']), variables: { a: 21 } }
+    );
+    expect(outcome.success).toBe(true);
+    expect(outcome.output).toBe(42);
+    expect(outcome.variables.doubled).toBe(42);
+  });
+});
+
 

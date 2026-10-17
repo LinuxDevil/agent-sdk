@@ -81,7 +81,7 @@ const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistr
 | ------------ | ------------------------------------------------- | ------- |
 | `read_file`  | `path`, optional `offset` (1-based line), `limit` | Numbered lines (`"    12\tcode"`). When the output is cut, the last line says which lines were shown and the `offset` to continue from. Files over 10 MB are refused. |
 | `write_file` | `path`, `content`                                 | Creates or overwrites the file and creates missing parent directories. |
-| `edit_file`  | `path`, `old_string`, `new_string`, optional `replace_all` | Replaces the exact text. Fails with a message the model can act on when `old_string` is missing (including a hint about CRLF line endings) or appears more than once without `replace_all`. Refuses a file that is not UTF-8 (latin1, Windows-1252, UTF-16) and leaves it unchanged, when the provider has `readFileBytes` (as `NodeWorkspace` does). A UTF-8 BOM is kept. |
+| `edit_file`  | `path`, `old_string`, `new_string`, optional `replace_all` | Replaces the exact text. Fails with a message the model can act on when `old_string` is missing (including a hint about CRLF line endings) or appears more than once without `replace_all`. When `old_string` is missing but a non-empty `new_string` is in the file, the edit was already applied (a call re-run after a crash): it succeeds without writing and says so. Refuses a file that is not UTF-8 (latin1, Windows-1252, UTF-16) and leaves it unchanged, when the provider has `readFileBytes` (as `NodeWorkspace` does). A UTF-8 BOM is kept. |
 | `list_dir`   | optional `path`                                   | Sorted entries; directories end with `/`. |
 | `glob`       | `pattern`, optional `path`                        | Sorted paths of matching files. `*` stays within one directory, `**` crosses directories, plus `?`, `[abc]` and `{a,b}`. |
 | `grep`       | `pattern` (JavaScript regex), optional `path`, `glob`, `ignore_case` | `path:line: text` for each matching line. An invalid regex, or one with nested repetition like `(a+)+`, is a tool error. Binary files and files over 2 MB are skipped. |
@@ -186,6 +186,17 @@ well, fork the session with `session.fork({ fromStep })` (see
 `session.history()` is the turn number used here), or a single run with
 `agent.fork()` (see [Fork and replay](./durable-execution.md#fork-and-replay)).
 
+Backups survive a crash. The backup is stored before the file is written, so
+a process killed between the two loses nothing: the file still holds the
+backed-up content, and rewind treats it as nothing to undo. A tool call that
+was running when the process died runs again on resume (see
+[At-least-once tools](./durable-execution.md#at-least-once-tools-make-side-effects-idempotent));
+the re-run finds the turn's backup of that path and keeps it, so `rewind()`
+restores the content from before the first attempt, not the agent's own
+half-finished write. A `write_file` or `edit_file` that would leave the file
+as it is (the same content, an edit already applied) records and writes
+nothing.
+
 What is not tracked: changes made by the `shell` tool, files written by a
 sub-agent with its own file tools (unless it gets the same
 `WorkspaceCheckpoints`, in which case they are recorded under its own
@@ -241,6 +252,12 @@ path. This means:
 - `glob` and `grep` never follow links while walking the tree.
 - `rm` on a link removes the link itself and leaves its target alone.
 
+**Writes are atomic.** `NodeWorkspace` writes a file (for `write_file` and
+`edit_file` too) to a temp file in the same directory, flushes it and renames
+it over the target, so a process killed mid-write leaves the old file or the
+new one, never half of it. A replaced file keeps its permission bits, and a
+read-only file is still refused.
+
 **The file tools keep out of `.git`.** A checkout often has credentials in
 `.git/config`: `actions/checkout` keeps the job's token there as
 `http.https://github.com/.extraheader = AUTHORIZATION: basic ...`, and a
@@ -264,9 +281,19 @@ const workspace = new NodeWorkspace({ root: '.' });
 const tools = createFsTools(workspace, { readOnly: true, deny: ['.git', '.env'] });
 ```
 
-The check is by name, so a symlink elsewhere in the workspace that points
-into `.git` is not caught (`glob` and `grep` never follow links, but
-`read_file` on the link does). **The `shell` tool is not covered:** a command
+Links into `.git` are refused too. With `NodeWorkspace` (or any provider that
+implements `realPath`), the check also runs on where a path really leads, so a
+symlink or Windows junction elsewhere in the workspace that points at `.git`
+or into it (`gitj -> .git`, `hooks -> .git/hooks`, `cfg -> .git/config`)
+cannot be used to read, write or edit what is behind it: `read_file
+gitj/config`, `edit_file gitj/config` and `write_file gitj/PWNED` are tool
+errors, and so are `list_dir`, `glob` and `grep` given the link as their
+`path` (`grep` with `path: 'gitj'` or `path: 'gitj/config'`). `glob` and
+`grep` never follow links while walking the tree, so a search from the root
+does not reach `.git` through a link either. A provider without `realPath`
+(`MemoryWorkspace` has no links) gets the name check only.
+
+**The `shell` tool is not covered:** a command
 is free text, so it cannot be path-filtered, and `cat .git/config` or
 `git config --get-regexp extraheader` still works. Git commands that coding
 agents need (`git status`, `git diff`) go through the shell tool, so keep its
@@ -475,8 +502,8 @@ What this enforces, and where:
   the allowlist check. Raw IP connections have no route. Non-HTTP protocols
   (SSH, raw TCP, UDP) are blocked, because only the proxy is reachable, and
   `CONNECT` tunnels are checked against the allowlist like any request.
-  This is tested against a real daemon: the Docker Engine CI workflow
-  (`.github/workflows/docker.yml`, `npm run test:docker`) runs on GitHub's
+  This is tested against a real daemon: CI's `compat` job
+  (`npm run test:docker`) runs on GitHub's
   `ubuntu-latest` runner (rootful Docker Engine 28.0.4 on Ubuntu 24.04 when
   it was added) and checks that an allowed host answers through the broker,
   that other hosts get a 403, that bypassing the proxy or dialling a raw IP

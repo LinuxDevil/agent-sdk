@@ -214,6 +214,34 @@ after each answer the program asks for the next line, and an empty line or
 keep a conversation across runs, give the agent a store (see
 [Choosing a store](./sessions.md#choosing-a-store)).
 
+### Long turns and restarts
+
+- **Context.** A coding turn reads files, runs tests and edits over many
+  steps; every tool result stays in the transcript, so a 40-step turn can
+  outgrow a 128k-token window before it finishes. Pass
+  `createAgent({ compaction: true })` (or a summarizer, see
+  [Context compaction](./compaction.md)): it compacts before each model call,
+  between the steps of one turn too.
+- **Crashes.** With a durable store, a turn killed mid-way is finished by the
+  next `session.send()` or by `session.resume()`. A tool call that was running
+  when the process died runs again ([at-least-once](./durable-execution.md#at-least-once-tools-make-side-effects-idempotent)).
+  The built-in `write_file` and `edit_file` are safe to re-run: `write_file`
+  writes the same content again, and an `edit_file` whose edit is already in
+  the file (`old_string` gone, `new_string` present) succeeds with "the edit
+  was already applied" instead of failing. With
+  [`WorkspaceCheckpoints`](./workspace-tools.md#the-tools), each change's backup is stored
+  before the file is written, and a re-run keeps the first backup, so
+  `rewind()` still restores the original after a crash.
+- **Progress while resuming.** `session.resume()` returns a result, not a
+  stream, and `session.stream()` does not stream the pending turn it finishes
+  before the new message. To show progress, register
+  `session.on((event) => ...)` before calling it, or pass
+  `createAgent({ onEvent })`: both get the resumed turn's `AgentEvent`s
+  (`tool.start`, `text.delta`, ..., `run.done`) as they happen.
+- **Approvals after a restart.** `agent.approvals.streamResolve({ id, approved })`
+  (or `resolve()`) from a fresh process, given the same durable store,
+  continues the paused turn in its session; no `session.resume()` first.
+
 ## 6. Test it without a model
 
 The agent needs no network to test. A `MemoryWorkspace` keeps the files in

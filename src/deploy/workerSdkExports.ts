@@ -27,6 +27,7 @@ export const WORKER_SDK_EXPORTS = [
   'defineTool',
   'discordChannel',
   'fromAiSdk',
+  'fromAiSdkTools',
   'githubChannel',
   'httpChannel',
   'inMemoryMemory',

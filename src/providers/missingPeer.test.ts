@@ -15,6 +15,7 @@ function moduleNotFound(packageName: string): Error {
 afterEach(() => {
   vi.doUnmock('@ai-sdk/openai');
   vi.doUnmock('@ai-sdk/anthropic');
+  vi.doUnmock('@ai-sdk/google');
   vi.doUnmock('ollama-ai-provider');
   vi.doUnmock('ollama-ai-provider-v2');
   vi.doUnmock('dockerode');
@@ -52,6 +53,12 @@ const CASES: Case[] = [
     packageName: '@ai-sdk/anthropic',
     installCommand: `npm install @ai-sdk/anthropic@${AI_SDK_RANGE}`,
     load: async () => new (await import('./AnthropicProvider')).AnthropicProvider({ name: 'anthropic', apiKey: 'k' }),
+  },
+  {
+    label: 'GoogleProvider',
+    packageName: '@ai-sdk/google',
+    installCommand: `npm install @ai-sdk/google@${installedAiMajor === 4 ? '^1.2.0' : AI_SDK_RANGE}`,
+    load: async () => new (await import('./GoogleProvider')).GoogleProvider({ name: 'google', apiKey: 'k' }),
   },
   {
     label: 'OllamaProvider',

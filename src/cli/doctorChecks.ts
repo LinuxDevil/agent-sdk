@@ -66,6 +66,15 @@ function checkRequiredPeer(env: DoctorEnvironment, name: string): DoctorCheck {
     return { ...base, status: 'fail', finding: 'not installed', fix: installCommand(env, name) };
   }
   const range = env.sdk.peerDependencies?.[name];
+  if (name === 'ai' && Number.parseInt(version, 10) === 5) {
+    // AI SDK v5 sits between two supported majors, so say which way to go rather than only print the range.
+    return {
+      ...base,
+      status: 'fail',
+      finding: `${version} installed, but AI SDK v5 is not supported (the SDK runs on ai 4.3.19+, 6 or 7)`,
+      fix: `${installCommand(env, name)} (upgrade to ai 6 or 7, and move each @ai-sdk/* provider package to the matching major: 3.x for ai 6, 4.x for ai 7)`,
+    };
+  }
   if (range && !satisfiesRange(version, range)) {
     return {
       ...base,
@@ -218,8 +227,13 @@ function checkApiKey(env: DoctorEnvironment, info: ProviderInfo, needs: SpecNeed
     ...base,
     status: needed ? 'fail' : 'warn',
     finding: `${needed ? 'not set, and the agent spec needs it' : 'not set'}${baseUrlNote(env, info.name)}`,
-    fix: `Set ${info.envKey} in your environment, e.g. export ${info.envKey}=<your key>`,
+    fix: `Set ${info.envKey} in your environment, e.g. ${setEnvExample(env, info.envKey)}`,
   };
+}
+
+/** How to set `name` in the user's shell: PowerShell on Windows (where `export` does nothing), POSIX elsewhere. */
+function setEnvExample(env: DoctorEnvironment, name: string): string {
+  return env.platform === 'win32' ? `$env:${name}="<your key>" (PowerShell), or add it to .env` : `export ${name}=<your key>`;
 }
 
 /** Which provider `createAgent()` would pick with no model or provider argument. */
@@ -271,38 +285,57 @@ interface PingTarget {
   envKey: string;
   /** The env var that moves the endpoint, named in the fix. */
   urlVar?: string;
-  base: string;
+  /** The URL to GET. */
+  url: string;
   headers: Record<string, string>;
+  /** True when the endpoint rejects a bad key, so a 200 proves the key; false for reachability only. */
+  checksKey: boolean;
 }
 
-/** The `/models` endpoints of the providers configured in the environment (Ollama has its own check). */
+/**
+ * The endpoints to ping for the providers configured in the environment (Ollama has its own check):
+ * one that needs the key where the provider has one (OpenRouter's /models answers without a key, its /key does not).
+ */
 function pingTargets(env: DoctorEnvironment): PingTarget[] {
   const vars = env.env;
   const bearer = (key: string | undefined): Record<string, string> => (key ? { Authorization: `Bearer ${key}` } : {});
   const targets: PingTarget[] = [];
   if (vars.OPENAI_API_KEY || vars.OPENAI_BASE_URL) {
     const base = (vars.OPENAI_BASE_URL || DEFAULT_OPENAI_URL).replace(/\/+$/, '');
-    targets.push({ provider: 'openai', envKey: 'OPENAI_API_KEY', urlVar: 'OPENAI_BASE_URL', base, headers: bearer(vars.OPENAI_API_KEY) });
+    // A local or compatible server may serve /models to anyone; OpenAI's own needs the key.
+    const checksKey = !vars.OPENAI_BASE_URL && Boolean(vars.OPENAI_API_KEY);
+    targets.push({ provider: 'openai', envKey: 'OPENAI_API_KEY', urlVar: 'OPENAI_BASE_URL', url: `${base}/models`, headers: bearer(vars.OPENAI_API_KEY), checksKey });
   }
   if (vars.ANTHROPIC_API_KEY) {
     const headers = { 'x-api-key': vars.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' };
-    targets.push({ provider: 'anthropic', envKey: 'ANTHROPIC_API_KEY', base: 'https://api.anthropic.com/v1', headers });
+    targets.push({ provider: 'anthropic', envKey: 'ANTHROPIC_API_KEY', url: 'https://api.anthropic.com/v1/models', headers, checksKey: true });
+  }
+  if (vars.GOOGLE_GENERATIVE_AI_API_KEY) {
+    const headers = { 'x-goog-api-key': vars.GOOGLE_GENERATIVE_AI_API_KEY };
+    targets.push({ provider: 'google', envKey: 'GOOGLE_GENERATIVE_AI_API_KEY', url: 'https://generativelanguage.googleapis.com/v1beta/models', headers, checksKey: true });
   }
   if (vars.OPENROUTER_API_KEY) {
-    targets.push({ provider: 'openrouter', envKey: 'OPENROUTER_API_KEY', base: 'https://openrouter.ai/api/v1', headers: bearer(vars.OPENROUTER_API_KEY) });
+    const url = 'https://openrouter.ai/api/v1/key';
+    targets.push({ provider: 'openrouter', envKey: 'OPENROUTER_API_KEY', url, headers: bearer(vars.OPENROUTER_API_KEY), checksKey: true });
   }
   return targets;
 }
 
 async function ping(env: DoctorEnvironment, target: PingTarget): Promise<DoctorCheck> {
-  const url = `${target.base}/models`;
+  const { url } = target;
   const base = { id: `ping.${target.provider}`, title: `${target.provider} endpoint (GET ${displayUrl(url) ?? 'invalid URL'})` };
   const where = target.urlVar ? `, and that ${target.urlVar} points at it` : '';
   try {
     const response = await env.fetch(url, { signal: AbortSignal.timeout(PING_TIMEOUT_MS), headers: target.headers });
-    if (response.ok) return { ...base, status: 'ok', finding: `reachable (HTTP ${response.status})` };
+    if (response.ok) {
+      const finding = target.checksKey
+        ? `reachable, key accepted (HTTP ${response.status})`
+        : `reachable (HTTP ${response.status}; reachability only, the key is not checked)`;
+      return { ...base, status: 'ok', finding };
+    }
+    // Every model call would be refused the same way.
     if (response.status === 401 || response.status === 403) {
-      return { ...base, status: 'warn', finding: `reachable, but the key was rejected (HTTP ${response.status})`, fix: `Check ${target.envKey}.` };
+      return { ...base, status: 'fail', finding: `reachable, but the key was rejected (HTTP ${response.status})`, fix: `Check ${target.envKey}.` };
     }
     return { ...base, status: 'warn', finding: `answered HTTP ${response.status}`, fix: `Check the server is up${where}.` };
   } catch (error) {
@@ -310,7 +343,7 @@ async function ping(env: DoctorEnvironment, target: PingTarget): Promise<DoctorC
   }
 }
 
-/** `--ping`: GET `<base>/models` for each configured provider. Never prints a key. */
+/** `--ping`: GET an endpoint of each configured provider, one that checks the key where there is one. Never prints a key. */
 export async function checkPings(env: DoctorEnvironment): Promise<DoctorCheck[]> {
   const targets = pingTargets(env);
   if (targets.length === 0) {

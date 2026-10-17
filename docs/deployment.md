@@ -99,24 +99,74 @@ a page or script written against the dev server works against the deployed one.
 | `GET /health` | `200 ok`. Never needs auth: point load balancers and container health checks here. |
 | `POST /chat` `{ "sessionId", "input" }` | Runs a turn of session `sessionId` (1-128 characters of `A-Za-z0-9_-`; a new id starts a conversation, a known one continues it) and streams it as SSE: one `data: <AgentEvent JSON>` per event ([Streaming](./streaming.md)), then `event: done`. `input` is a string or an array of content parts. |
 | `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`. A turn's messages are saved when it finishes, so `messages` does not hold a turn that is paused on an approval; `pending` says it is. |
-| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn live as SSE, in the same framing and event types as `POST /chat` (the decided call's `tool.resume` / `tool.done` or `tool.error`, text deltas, `approval.requested` if it pauses again, `run.done`), from `agent.approvals.streamResolve()` / `streamAnswer()`. `404` when `id` is not pending. When the turn's step paused on several calls, each id is decided on its own; a decision that leaves others pending streams `run.done` with `finishReason: 'awaiting-approval'`, and the last one runs the step. |
+| `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn live as SSE, in the same framing and event types as `POST /chat` (the decided call's `tool.resume` / `tool.done` or `tool.error`, text deltas, `approval.requested` if it pauses again, `run.done`), from `agent.approvals.streamResolve()` / `streamAnswer()`. `404` when `id` is not pending; `409` (`LOUSHO_APPROVAL_CONFLICT`) while another request's decision of it is still streaming; `400` (`LOUSHO_APPROVAL_DECISION_INVALID`) for a body with neither field. When the turn's step paused on several calls, each id is decided on its own; a decision that leaves others pending streams `run.done` with `finishReason: 'awaiting-approval'`, and the last one runs the step. |
 | `POST /chat` `{ "message" }` | Legacy, single turn without history or streaming: returns the agent's `ExecutionResult` as JSON, with a `Deprecation: true` header. |
 
 Bodies over 1MB get `413`, invalid JSON `400`. A POST must send
 `Content-Type: application/json` (anything else is `415`,
 `LOUSHO_UNSUPPORTED_MEDIA_TYPE`), and a browser POST from another origin is
 `403` (`LOUSHO_REQUEST_FORBIDDEN`): see
-[Cross-site requests](./auth.md#cross-site-requests). An empty `input` is
-`400`. With an auth list, a session belongs to the first principal that sends
+[Cross-site requests](./auth.md#cross-site-requests). An empty `input`, or a
+body without `sessionId` and `input`, is `400` (`LOUSHO_REQUEST_INVALID`; an
+invalid session id is `LOUSHO_SESSION_ID_INVALID`). Every error body is JSON
+`{ error, code }`. A turn sent to a session that is paused on an approval is
+`409` with `code: 'LOUSHO_SESSION_AWAITING_APPROVAL'`, `approvalId` and
+`approvalIds` (every approval still to decide): decide them through the
+approvals route, which streams the paused turn's continuation, then send the
+new turn. With an auth list, a session belongs to the first principal that sends
 it a turn, and a stored session whose owner the server no longer remembers
 (after a restart) is refused to everyone until `authorizeSession` says whose
 it is; with only `LOUSHO_API_TOKEN` there is one caller and no owner check
-([Who may use a session](./auth.md#who-may-use-a-session)).
+([Who may use a session](./auth.md#who-may-use-a-session)). An approval is
+decided only by the caller its run acts for unless `authorizeApproval` says
+otherwise. In an agent directory, export `authorizeSession` and
+`authorizeApproval` from `auth.ts` to change either rule (for example, to let
+a manager decide other users' approvals): see
+[Who may decide an approval](./auth.md#who-may-decide-an-approval).
+
+While a turn streams, the server writes an SSE comment line (`: ping`) after
+every 15 seconds without an event, so a proxy (nginx closes an idle upstream
+after 60s) or a client (Node's `fetch` gives up after 300s without a byte)
+keeps the connection while a model or a tool is slow. SSE parsers ignore
+comment lines. `createRouteHandler(agent, { heartbeatMs })` changes the
+interval; `0` turns it off.
 
 ```bash
 curl -N http://127.0.0.1:3000/chat \
   -H 'Authorization: Bearer '"$LOUSHO_API_TOKEN" -H 'Content-Type: application/json' \
   -d '{ "sessionId": "alice", "input": "Hello" }'
+```
+
+### Resending a turn
+
+A `POST /chat` that the client sends again (a retry after a dropped
+connection or a timeout, a double click, a client that restarted) is, without
+more, a new turn: the user message is appended again and the model may call
+the same tools again. Send an `Idempotency-Key` header (1-255 visible ASCII
+characters, e.g. a UUID the client makes per message) and resend with the
+same key:
+
+| The turn of that key in that session | The resend gets |
+| ------------------------------------ | --------------- |
+| finished (it is in the transcript) | `200` SSE with one `run.done` carrying that turn's final reply (`text`, `finishReason`), and the header `Idempotent-Replayed: true`. Nothing runs. Read `GET /chat/:sessionId` for the whole turn. |
+| still running on this server process | `409` (`LOUSHO_SESSION_BUSY`). Retry later and get the replay. |
+| interrupted by a crash (a checkpointed turn left `in-progress`) | the turn resumed from its last checkpoint (`session.resume()`: finished steps and tool calls are not run again), streamed as SSE. |
+| none | a new turn, as without the header; its user message keeps the key (`metadata.idempotencyKey`). |
+
+A session paused on an approval answers `409`
+(`LOUSHO_SESSION_AWAITING_APPROVAL`) to a resend as to any turn. The key is
+stored with the turn in the session store (the transcript, or the turn's
+checkpoint until it finishes), so a replay works after a restart and on another
+replica that shares the store; `session.pending()` reports an interrupted
+turn's key as `idempotencyKey`. A key is looked up only in its own session,
+and only while its turn is in the transcript (a compaction that summarizes it
+away forgets it). The `409` for a running turn holds within one process; two
+replicas that receive the same key at the same instant can both run it.
+
+```bash
+curl -N http://127.0.0.1:3000/chat -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: 6f1c2b0e-7d4a-4c8e-9a51-2f0d3b6e8c11' \
+  -d '{ "sessionId": "alice", "input": "Refund order B-1" }'
 ```
 
 ### Auth

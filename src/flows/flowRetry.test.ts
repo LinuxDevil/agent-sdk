@@ -9,6 +9,8 @@ import { FlowExecutor, type FlowExecutionContext, type FlowExecutionEvent } from
 import { MockLLMProvider } from '../providers/mock';
 import { ToolRegistry } from '../tools';
 import { memoryStore } from '../storage/agentStore';
+import { APICallError } from 'ai';
+import { CompactedLLMProviderError } from '../execution/errors';
 
 function flowOf(root: EditorStep): AgentFlow {
   return { code: 'retry', name: 'Retry', flow: root };
@@ -161,5 +163,62 @@ describe('FlowExecutor node retry and timeout', () => {
     );
     expect(result).toMatchObject({ success: true, output: 'ok after 2' });
     expect(before).toBe(1);
+  });
+});
+
+describe('FlowExecutor llmCall provider failures', () => {
+  function apiError(statusCode: number, message: string): APICallError {
+    return new APICallError({
+      message,
+      url: 'https://api.example.com/v1/chat/completions',
+      requestBodyValues: {},
+      statusCode,
+      isRetryable: statusCode === 429 || statusCode >= 500,
+    });
+  }
+
+  /** A provider whose generate() throws each of `failures` in turn, then answers. */
+  function failingProvider(...failures: unknown[]): { provider: MockLLMProvider; calls: () => number } {
+    const provider = new MockLLMProvider({ responses: ['answer'] });
+    let calls = 0;
+    const generate = provider.generate.bind(provider);
+    provider.generate = async (request) => {
+      const failure = failures[calls++];
+      if (failure !== undefined) throw failure;
+      return generate(request);
+    };
+    return { provider, calls: () => calls };
+  }
+
+  const llmFlow = flowOf({ type: 'llmCall', prompt: 'hi', retry: { maxAttempts: 3 } });
+
+  it('fails with a compacted LOUSHO_PROVIDER_* error, not the raw APICallError, and does not retry a 401', async () => {
+    const { provider, calls } = failingProvider(apiError(401, 'User not found.'), apiError(401, 'User not found.'));
+    const result = await FlowExecutor.execute(llmFlow, { agent: { name: 'f' }, provider, variables: {} });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBeInstanceOf(CompactedLLMProviderError);
+    expect(result.error).toMatchObject({
+      code: 'LOUSHO_PROVIDER_REQUEST_FAILED',
+      compacted: { category: 'auth-failure', retryable: false, statusCode: 401, providerName: provider.name },
+    });
+    expect(calls()).toBe(1);
+    expect(result.events.filter((event) => event.type === 'step-retry')).toHaveLength(0);
+  });
+
+  it('retries a retryable provider failure (a 429)', async () => {
+    const { provider, calls } = failingProvider(apiError(429, 'Rate limit reached'));
+    const result = await FlowExecutor.execute(llmFlow, { agent: { name: 'f' }, provider, variables: {} });
+
+    expect(result).toMatchObject({ success: true, output: 'answer' });
+    expect(calls()).toBe(2);
+    expect(result.events.find((event) => event.type === 'step-retry')?.error).toMatchObject({ code: 'LOUSHO_PROVIDER_RATE_LIMITED' });
+  });
+
+  it('passes a cancellation through uncompacted', async () => {
+    const abort = Object.assign(new Error('This operation was aborted'), { name: 'AbortError' });
+    const { provider } = failingProvider(abort);
+    const result = await FlowExecutor.execute(flowOf({ type: 'llmCall', prompt: 'hi' }), { agent: { name: 'f' }, provider, variables: {} });
+    expect(result.error).toBe(abort);
   });
 });

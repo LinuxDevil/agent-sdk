@@ -477,10 +477,28 @@ agent) or on `AgentExecutor.execute()` / `stream()`:
 Limits are checked before every model call (so after every tool batch) and
 after a model call that asks for tools; `maxDurationMs` also aborts an
 in-flight model or tool call through the run's signal. A limit trips once the
-run reaches it. Usage of sub-agents counts toward their lead's budget: it is
-added when the sub-agent returns, so the lead stops before its next model call.
-A run that finishes on its own within the step that reached a limit keeps its
-own finish reason, like `maxSteps`.
+run reaches it. A run that finishes on its own within the step that reached a
+limit keeps its own finish reason, like `maxSteps`.
+
+**Sub-agents share their lead's budget.** Usage of sub-agents counts toward
+their lead's limits, and a sub-agent is held to them while it runs: before each
+of its model calls (and after a model call that asks for tools) it checks the
+lead's token, cost and duration limits against what the lead, the lead's other
+sub-agents still running, and it itself have spent - on top of its own
+`limits`. Once they are reached the sub-agent stops with `'budget-exceeded'`
+(always `'stop'`; the lead's `onExceeded` decides how the lead ends), the
+`task` call reports `Sub-agent '<name>' stopped at the <limit> limit`, and the
+lead stops before its next model call. Parallel sub-agents can still go over by
+the model calls they had in flight when the limit was reached (at most one
+each), not by a whole run each. A nested sub-agent is held to every lead above
+it. A sub-agent resumed after an approval is held to its own limits only.
+
+A spend limit (tokens, cost, duration) is a hard stop: a run with `output`
+that reaches one makes no forced answer call (that call would spend past the
+limit), so `result.object` is unset. What the run's tool calls returned before
+the limit tripped - finished sub-agents' answers included - stays in
+`result.messages` as tool results. Only running out of steps (`maxSteps` or
+`limits.maxSteps`) gets the forced answer call.
 
 When a limit trips, the run stops with `finishReason: 'budget-exceeded'` and
 `result.budget` (`{ limit, value, max, scope }`). Tool calls the model asked

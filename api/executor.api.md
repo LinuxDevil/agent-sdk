@@ -657,6 +657,7 @@ interface DelegatedUsage {
     // (undocumented)
     outputTokens: number;
     runs: number;
+    toolErrors?: number;
     // (undocumented)
     totalTokens: number;
 }
@@ -829,6 +830,7 @@ interface ExpressionEvaluatorNode extends NodeRunOptions {
     expression: string;
     // (undocumented)
     id?: string;
+    outputVariable?: string;
     // (undocumented)
     type: 'evaluator';
 }
@@ -1537,6 +1539,7 @@ interface OutputError {
 // @public
 interface OutputSpec<TSchema extends StandardSchemaV1 = StandardSchemaV1> {
     promptSchema?: boolean;
+    responseFormat?: 'final' | 'always';
     schema: TSchema;
 }
 
@@ -1616,6 +1619,7 @@ interface PendingTurn {
     approvalId?: string;
     approvalIds?: string[];
     approvalKind?: ApprovalKind;
+    idempotencyKey?: string;
     status: 'in-progress' | 'awaiting-approval';
 }
 
@@ -2661,7 +2665,7 @@ interface ToolExecutionContext {
     };
     getToken(provider: OAuthProvider): Promise<OAuthToken>;
     messages: readonly Message[];
-    onDelegatedUsage?: (usage: RunUsage) => void;
+    onDelegatedUsage?: (usage: RunUsage, toolErrors?: number) => void;
     principal?: Readonly<Principal>;
     requireAuth(provider: OAuthProvider): never;
     sessionId?: string;
