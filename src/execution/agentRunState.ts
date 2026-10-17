@@ -208,9 +208,13 @@ function stateFromCheckpoint(checkpoint: Checkpoint, options: ExecuteOptions): I
   const { businessState } = options;
   const finished = checkpoint.status === 'finished';
   const added = newSessionMessages(checkpoint.messages, options.input, finished);
+  const seeded = collectToolCalls(checkpoint.messages);
+  const ids = new Set(seeded.map((call) => call.id));
   return {
     messages: [...checkpoint.messages, ...added],
-    toolCalls: finished ? [] : [...(checkpoint.toolCalls as ToolCall[])],
+    // Checkpoints that predate toolCalls (or that dropped them) still hold
+    // the calls inside their messages - the transcript is the source of truth.
+    toolCalls: finished ? [] : [...seeded, ...(checkpoint.toolCalls as ToolCall[]).filter((call) => !ids.has(call.id))],
     // An unfinished run continues from the checkpointed totals (older
     // checkpoints: token counts only); a new turn of a finished one starts at zero.
     usage: finished ? emptyRunUsage() : resumedUsage(checkpoint),
@@ -227,12 +231,38 @@ function resumedUsage(checkpoint: Checkpoint): RunUsage {
   return usage;
 }
 
+/**
+ * Every tool call a transcript's assistant turns made, in order, deduped by
+ * id. A run continued from a transcript (an approval resolve, a resumed
+ * turn) still owns those calls - the result's `toolCalls` must not pretend
+ * the run never made them.
+ */
+export function collectToolCalls(messages: readonly Message[]): ToolCall[] {
+  const seen = new Set<string>();
+  const calls: ToolCall[] = [];
+  for (const message of messages) {
+    if (message.role !== 'assistant') continue;
+    for (const call of message.toolCalls ?? []) {
+      if (seen.has(call.id)) continue;
+      seen.add(call.id);
+      calls.push(call);
+    }
+  }
+  return calls;
+}
+
 /** Builds messages from scratch (the no-checkpoint fallback path). */
 function freshState(options: ExecuteOptions): InitialRunState {
   const { agent, input, skipSystemPromptInjection, initialSteps, businessState } = options;
+  const messages = buildMessages(agent, input, skipSystemPromptInjection);
   return {
-    messages: buildMessages(agent, input, skipSystemPromptInjection),
-    toolCalls: [],
+    messages,
+    // A continued run's input transcript carries this run's earlier calls
+    // (initialSteps/initialUsage mark the continuation: resumeAfterApproval,
+    // continueHandoff). An ordinary new turn does not inherit its session
+    // history's calls - they belong to earlier turns (result.toolCalls,
+    // countToolErrors and limits.maxToolErrors are per-run).
+    toolCalls: initialSteps !== undefined || options.initialUsage !== undefined ? collectToolCalls(messages) : [],
     usage: options.initialUsage ? restoreRunUsage(options.initialUsage) : emptyRunUsage(),
     stepUsage: [],
     steps: initialSteps ?? 0,

@@ -41,6 +41,7 @@ import { ConfigurationError, SDKError } from './errors';
 import { toolErrorResult, type ToolErrorResult } from './toolErrors';
 import { toolResultContent } from './toolResult';
 import { insertToolResult, splitPendingTurn } from './transcript';
+import { collectToolCalls } from './agentRunState';
 import { replaceToolResult, type ToolCallScope } from './subagentRuntime';
 import type { RunUsage } from '../models/usage';
 import { emptyRunUsage, mergeDelegatedUsage, restoreRunUsage } from './runUsage';
@@ -629,7 +630,10 @@ function groupPaused(snapshot: ExecutionSnapshot, waiting: ResolvedApproval[]): 
   return {
     text: '',
     messages: [...snapshot.currentMessages],
-    toolCalls: [],
+    // The paused result still owns the calls of its turns, including the
+    // ones waiting on a decision - an empty list would say the run called
+    // nothing at all.
+    toolCalls: collectToolCalls(snapshot.currentMessages),
     usage: snapshot.usage ? restoreRunUsage(snapshot.usage) : emptyRunUsage(),
     finishReason: 'awaiting-approval',
     steps: snapshot.steps,
@@ -1259,7 +1263,7 @@ function turnCheckpoint(snapshot: ExecutionSnapshot, messages: Message[], busine
     sessionId: snapshot.sessionId as string,
     stepIndex: snapshot.steps,
     messages,
-    toolCalls: [],
+    toolCalls: collectToolCalls(messages),
     usage: structuredClone(usage),
     businessState,
     status: 'in-progress',
@@ -1332,7 +1336,7 @@ async function markAwaitingApproval(
     sessionId: snapshot.sessionId,
     stepIndex: paused.steps,
     messages: paused.messages,
-    toolCalls: [],
+    toolCalls: collectToolCalls(paused.messages),
     usage: structuredClone(paused.usage),
     finishReason: paused.finishReason,
     businessState,

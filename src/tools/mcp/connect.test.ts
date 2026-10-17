@@ -248,6 +248,42 @@ describe('createAgent({ mcpServers })', () => {
     }
   });
 
+  it('an optional server connects in the background: send() does not wait for it, its tools join when it lands', async () => {
+    const started = Date.now();
+    const model = mockModel(['done', 'done again']);
+    const agent = createAgent({
+      provider: model,
+      mcpServers: {
+        slow: { ...stdio(), optional: true, env: { FIXTURE_START_DELAY_MS: '1500' }, approval: 'never' },
+      },
+    });
+    closers.push(() => agent.close());
+
+    const result = await agent.send('hi');
+    expect(result.text).toBe('done');
+    // The 1.5s connect must not have been awaited by the first run...
+    expect(Date.now() - started).toBeLessThan(1500);
+    // ...so its model call saw no optional tools yet.
+    expect(model.calls[0].tools?.map((t) => t.function.name) ?? []).not.toContain('slow__echo');
+
+    // Once the background connect lands, the next run offers them.
+    await new Promise((resolve) => setTimeout(resolve, 2_500));
+    const again = await agent.send('again');
+    expect(again.text).toBe('done again');
+    expect(model.calls[1].tools?.map((t) => t.function.name)).toEqual(['slow__echo', 'slow__wipe']);
+  });
+
+  it('a required server still blocks the first send()', async () => {
+    const started = Date.now();
+    const agent = createAgent({
+      provider: mockModel(['done']),
+      mcpServers: { slow: { ...stdio(), env: { FIXTURE_START_DELAY_MS: '500' }, approval: 'never' } },
+    });
+    closers.push(() => agent.close());
+    await agent.send('hi');
+    expect(Date.now() - started).toBeGreaterThanOrEqual(500);
+  });
+
   it("by default a readOnlyHint MCP tool still pauses for approval", async () => {
     const agent = createAgent({
       provider: mockModel([{ toolCalls: [{ name: 'files__echo', args: { text: 'hi' } }] }, 'done']),

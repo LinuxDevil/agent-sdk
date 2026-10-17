@@ -142,9 +142,22 @@ function memoryTools([slot, key]: BoundSlot): DefinedTool[] {
       query: z.string().optional(),
       limit: z.number().int().positive().optional().describe(`Most items to return (at most ${MAX_RECALL_LIMIT})`),
     }),
-    execute: async ({ query, limit = slot.recall.maxItems }) => ({
-      items: (await slot.provider.list(key, { query, limit: Math.min(limit, MAX_RECALL_LIMIT) })).map((item) => recalledItem(slot, item)),
-    }),
+    execute: async ({ query, limit = slot.recall.maxItems }) => {
+      const items = await slot.provider.list(key, { query, limit: Math.min(limit, MAX_RECALL_LIMIT) });
+      if (items.length > 0 || !query?.trim()) {
+        return { items: items.map((item) => recalledItem(slot, item)) };
+      }
+      // A query can hide every stored item: providers filter by query words,
+      // so a phrasing miss reads as an empty slot while the <memory> block
+      // shows otherwise. Say so instead of letting the model conclude it.
+      const stored = await slot.provider.list(key, { limit: 1 });
+      return {
+        items: [],
+        ...(stored.length > 0 && {
+          note: `No items match this query, but the "${slot.name}" memory is not empty. Recall without a query to list its items.`,
+        }),
+      };
+    },
   });
   const forget = defineTool({
     name: `forget_${slot.name}`,

@@ -388,9 +388,16 @@ export function shouldSurfaceToModel(
   compacted: CompactedProviderError
 ): boolean {
   const { surfaceRetryableProviderErrors = false } = options;
+  if (surfaceRetryableProviderErrors && isModelActionableProviderErrorCategory(compacted.category)) {
+    return true;
+  }
+  // A 'context-length-exceeded' failure is actionable by the compaction
+  // hook itself, not just by the model: retrying only makes sense when a
+  // 'compaction' hook is there to shrink the next request (it is marked
+  // via markContextOverflow() so the hook compacts under the server's real
+  // window), so without one the error still rejects.
   return (
-    surfaceRetryableProviderErrors &&
-    isModelActionableProviderErrorCategory(compacted.category)
+    compacted.category === 'context-length-exceeded' && options.hooks?.has('compaction') === true
   );
 }
 

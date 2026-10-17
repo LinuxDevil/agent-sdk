@@ -272,6 +272,9 @@ export function getRetryDelay(error: Error): number | undefined {
  * - 'auth-failure': bad/missing/revoked API key, or a 401/403 response.
  *   Handling: fail immediately and surface to a human - no amount of
  *   retrying or context-shrinking fixes an invalid credential.
+ * - 'model-unloaded': a local server (LM Studio, Ollama) evicted the model
+ *   or is still loading it. Handling: retry with a short backoff - the
+ *   server loads it on demand or has already finished by the next attempt.
  * - 'unknown': anything this mapping doesn't recognize. Handling: treated
  *   conservatively (see `retryable` below) since we have no real evidence
  *   of what actually went wrong.
@@ -282,6 +285,7 @@ export type CompactedProviderErrorCategory =
   | 'context-length-exceeded'
   | 'quota-exceeded'
   | 'auth-failure'
+  | 'model-unloaded'
   | 'unknown';
 
 /**
@@ -345,6 +349,11 @@ const TIMEOUT_PATTERN = /\btimed?.?out\b|\betimedout\b|\babort(ed)?\b/i;
 // "quota" also appears in retryable per-minute limits).
 const QUOTA_PATTERN = /insufficient_quota|exceeded your current quota|insufficient credits|payment required/i;
 const RATE_LIMIT_PATTERN = /rate.?limit|too many requests/i;
+// A local model that is not there to serve: LM Studio ("Model 'x' is not
+// loaded", "model unloaded"), Ollama, llama.cpp. The server (re)loads on
+// demand, so a short backoff is exactly what the failure wants.
+const MODEL_UNLOADED_PATTERN =
+  /\bmodel\b[^\n]{0,80}\b(unloaded|not loaded|isn't loaded|no longer loaded|still loading)\b|\bno model (is )?loaded\b|\bmodel_unloaded\b/i;
 const AUTH_PATTERN =
   /unauthorized|invalid api key|incorrect api key|authentication|api key.*(missing|invalid|not found)|\bforbidden\b/i;
 
@@ -394,6 +403,9 @@ function categorizeMessage(message: string): {
   if (CONTEXT_LENGTH_PATTERN.test(message)) {
     return { category: 'context-length-exceeded', retryable: false };
   }
+  if (MODEL_UNLOADED_PATTERN.test(message)) {
+    return { category: 'model-unloaded', retryable: true };
+  }
   if (TIMEOUT_PATTERN.test(message)) {
     return { category: 'timeout', retryable: true };
   }
@@ -436,6 +448,11 @@ function categorizeApiCallError(err: APICallError): {
   // before the status fallbacks so a 5xx is not retried as transient.
   if (CONTEXT_LENGTH_PATTERN.test(text)) {
     return { category: 'context-length-exceeded', retryable: false };
+  }
+  // A 400/404/500 saying the model is not loaded is retryable whatever the
+  // status: the server is still starting it or evicted it on idle.
+  if (MODEL_UNLOADED_PATTERN.test(text)) {
+    return { category: 'model-unloaded', retryable: true };
   }
   if (status === 408) {
     return { category: 'timeout', retryable: true };

@@ -203,7 +203,7 @@ const INJECTION_SIGNALS: ReadonlyArray<{ signal: string; pattern: RegExp }> = [
   {
     signal: 'ignore-instructions',
     pattern:
-      /\b(?:ignore|disregard|forget|override)\s+(?:all\s+|any\s+)?(?:of\s+)?(?:the\s+|your\s+|my\s+)?(?:previous|prior|above|earlier|preceding|system|original)\s+(?:instructions|prompts?|rules|directions|messages|context)\b/i,
+      /\b(?:ignore|disregard|forget|override)\s+(?:all\s+|any\s+)?(?:of\s+)?(?:(?:the|your|my|these|those|her|his|their|our)\s+)?(?:(?:previous|prior|above|earlier|preceding|system|original)\s+)?(?:instructions|prompts?|rules|directions|messages|context)\b/i,
   },
   { signal: 'role-reassignment', pattern: /\b(?:you\s+are\s+now|from\s+now\s+on,?\s+you\s+(?:are|will))\b/i },
   {

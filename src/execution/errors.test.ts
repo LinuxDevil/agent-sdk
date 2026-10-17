@@ -378,6 +378,41 @@ describe('Error Classes', () => {
       expect(streamed.retryable).toBe(false);
     });
 
+    it('maps an LM Studio "model is not loaded" 400 to model-unloaded/retryable', () => {
+      // The model was just evicted on idle, or a `model:2` instance took
+      // over: the server (re)loads on demand, so a short backoff is the fix.
+      const raw = new APICallError({
+        message: "Model 'qwen3.5-9b-uncensored-hauhaucs-aggressive' is not loaded",
+        url: 'http://localhost:1234/v1/chat/completions',
+        requestBodyValues: {},
+        statusCode: 400,
+        isRetryable: false,
+      });
+
+      const compacted = compactProviderError(raw, 'lmstudio');
+      expect(compacted.category).toBe('model-unloaded');
+      expect(compacted.retryable).toBe(true);
+    });
+
+    it('maps a "no model loaded" 404 and a streamed "model unloaded" error to model-unloaded', () => {
+      const raw = new APICallError({
+        message: 'Not Found',
+        url: 'http://localhost:1234/v1/chat/completions',
+        requestBodyValues: {},
+        statusCode: 404,
+        responseBody: '{"error":{"message":"No model loaded"}}',
+        isRetryable: false,
+      });
+      expect(compactProviderError(raw, 'lmstudio')).toMatchObject({ category: 'model-unloaded', retryable: true });
+
+      const streamed = compactProviderError(new Error('model unloaded'), 'lmstudio');
+      expect(streamed).toMatchObject({ category: 'model-unloaded', retryable: true });
+    });
+
+    it('a model-unloaded failure is not model-actionable - the retry layer handles it', () => {
+      expect(isModelActionableProviderErrorCategory('model-unloaded')).toBe(false);
+    });
+
     it("folds the upstream provider's message (OpenRouter error.metadata.raw) into the compacted error", () => {
       // What OpenRouter returns when the upstream provider rejects the call:
       // the generic "Provider returned error", the upstream body verbatim in

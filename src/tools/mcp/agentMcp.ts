@@ -58,6 +58,13 @@ const optionalServerLogger: Logger = {
  * Connects `servers` on the first `ready()` (a failure is not cached, so the
  * next call retries) and hands their tools to `register`. Without servers,
  * both methods are no-ops. Servers with `oauth` keep their tokens in `tokens`.
+ *
+ * Servers with `optional: true` connect in the BACKGROUND: `ready()` - and so
+ * `send()`/`stream()` - does not wait for them, and their tools join the agent
+ * (through `register`, like a `tools/list_changed` update) whenever the
+ * connection lands. `optional` already means "the agent works without this
+ * server", so a slow or hanging optional server must not hold up the first
+ * run; a run started before it connects simply has no optional tools.
  */
 export function agentMcp(
   servers: Record<string, McpServerSpec> | undefined,
@@ -68,32 +75,60 @@ export function agentMcp(
     return { ready: () => Promise.resolve(), close: () => Promise.resolve() };
   }
   const oauth = mcpOAuthSignIn(servers, tokens);
-  const connect = lazyValue(async (): Promise<McpConnections> => {
-    // A server's `tools/list_changed` hands the updated tools to `register` again.
-    const connections = await connectMcp(servers, {
-      ...(tokens && { tokens }),
-      onToolsChanged: (tools) => register(tools),
-      // A server with `optional: true` that fails to connect is skipped with this warning.
-      logger: optionalServerLogger,
-    });
+  const entries = Object.entries(servers);
+  const required = Object.fromEntries(entries.filter(([, server]) => !server.optional));
+  const optional = Object.fromEntries(entries.filter(([, server]) => server.optional));
+  const hasOptional = Object.keys(optional).length > 0;
+  const shared = {
+    ...(tokens && { tokens }),
+    onToolsChanged: (tools: Record<string, ToolDescriptor>) => register(tools),
+    // A server with `optional: true` that fails to connect is skipped with this warning.
+    logger: optionalServerLogger,
+  };
+  // A server's `tools/list_changed` hands the updated tools to `register` again.
+  const connectRequired = lazyValue(async (): Promise<McpConnections> => {
+    const connections = await connectMcp(required, shared);
+    register(connections.tools);
+    return connections;
+  });
+  const connectOptional = lazyValue(async (): Promise<McpConnections> => {
+    const connections = await connectMcp(optional, shared);
     register(connections.tools);
     return connections;
   });
   let latest: Promise<McpConnections> | undefined;
-  let closed = false;
+  let optionalConnect: Promise<McpConnections> | undefined;
+  let closedRequired = false;
+  let closedOptional = false;
+  /** Ready's optional-server half: never awaited, so a slow server cannot block a run. */
+  const readyOptional = async (): Promise<void> => {
+    try {
+      const connections = await (optionalConnect ??= connectOptional());
+      if (!closedOptional) return;
+      closedOptional = false;
+      await connections.reconnect();
+    } catch {
+      // connectMcp already skips a failing optional server; this catches the
+      // rest (e.g. a missing peer) so a background connect never surfaces.
+    }
+  };
   // After close(), the next ready() reconnects the servers (their tools stay registered).
   const ready = async () => {
-    const connections = await (latest = connect());
-    if (!closed) return;
-    closed = false;
+    if (hasOptional) void readyOptional();
+    if (Object.keys(required).length === 0) return;
+    const connections = await (latest = connectRequired());
+    if (!closedRequired) return;
+    closedRequired = false;
     await connections.reconnect();
   };
   // Closes what the latest ready() opened; never starts a connection.
   const close = async () => {
+    const optionalConnections = await optionalConnect?.catch(() => undefined);
     const connections = await latest?.catch(() => undefined);
-    if (!connections) return;
-    closed = true;
-    await connections.close();
+    if (!connections && !optionalConnections) return;
+    closedRequired = true;
+    closedOptional = true;
+    await Promise.all([connections?.close(), optionalConnections?.close()]);
   };
   return { ready, close, ...(oauth && { oauth }) };
 }

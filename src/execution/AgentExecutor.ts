@@ -71,6 +71,7 @@ import {
   shouldSurfaceToModel,
   sideGenerator,
 } from './generateStep';
+import { markContextOverflow, observedContextWindow } from '../context/compaction';
 import {
   AgentRunState,
   assistantTurn,
@@ -1440,6 +1441,13 @@ export class AgentExecutor {
       options.provider.name
     );
 
+    // Tell the compaction hook the server rejected this transcript for
+    // context size - with the window it named when it did - so the retried
+    // call is compacted under the real limit (see markContextOverflow()).
+    if (compacted.category === 'context-length-exceeded') {
+      markContextOverflow(state.messages, observedContextWindow(compacted.error));
+    }
+
     if (!shouldSurfaceToModel(options, compacted)) {
       // Non-actionable category ('auth-failure', 'unknown'), or the
       // opt-in flag is off: reject execute() cleanly, exactly like
@@ -2048,7 +2056,16 @@ export class AgentExecutor {
     // resuming this run (or forgetting it).
     await saveStepCheckpoint(options, state, 'finished');
 
-    return { ...toExecutionResult(state, state.finalText, state.finishReason), ...output };
+    // A run cut off by its step or budget limit before the model wrote a
+    // final answer must still SAY so: an empty `text` reads as "nothing
+    // happened" to a caller that only prints the reply (denied approvals
+    // looping to max-steps produced exactly that in the field).
+    const text =
+      state.finalText === '' && (state.finishReason === 'max-steps' || state.finishReason === 'budget-exceeded')
+        ? `The run reached its ${state.finishReason === 'max-steps' ? 'step limit' : 'budget limit'} without a final answer${state.toolCalls.length > 0 ? ` after ${state.toolCalls.length} tool call(s)` : ''}.`
+        : state.finalText;
+
+    return { ...toExecutionResult(state, text, state.finishReason), ...output };
   }
 
   /**
