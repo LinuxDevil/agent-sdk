@@ -7161,6 +7161,7 @@ export function webhookChannel(options?: WebhookChannelOptions): WebhookChannel;
 // @public
 export interface WebhookChannelOptions {
     auth?: WebhookAuth;
+    fullResult?: boolean;
     name?: string;
     principal?: (body: unknown, req: ChannelRequest) => Principal | undefined;
     secret?: string;
