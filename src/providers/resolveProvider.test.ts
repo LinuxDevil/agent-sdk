@@ -190,7 +190,7 @@ describe('resolveProvider errors', () => {
         "'pi/xai/grok-4' (through @earendil-works/pi-ai), or createAgent({ provider: fromAiSdk(xai('grok-4')) })"
     );
     // The appended help line links the error code's docs section.
-    expect(error?.message).toMatch(/\[LOUSHO_PROVIDER_UNKNOWN\].*docs\/errors\.md#lousho_provider_unknown/);
+    expect(error?.message).toMatch(/\[LOUSHO_PROVIDER_UNKNOWN\].*lousho\.com\/errors#lousho_provider_unknown/);
   });
 
   it('turns a dashed vendor into a valid AI SDK factory name', () => {

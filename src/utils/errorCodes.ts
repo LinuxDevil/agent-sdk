@@ -6,8 +6,8 @@
  * keeps this table, the codes used in src/ and docs/errors.md in sync.
  */
 
-/** Where every code is documented; each code has the anchor `#<code in lowercase>`. */
-export const ERROR_DOCS_URL = 'https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md';
+/** Where every code is documented; the site serves docs/errors.md as /errors; each code has the anchor `#<code in lowercase>`. */
+export const ERROR_DOCS_URL = 'https://lousho.com/errors';
 
 /** Every stable error code, mapped to its one-sentence "how to fix" hint. */
 export const ERROR_CODES = {

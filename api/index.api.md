@@ -1991,7 +1991,7 @@ export const ERROR_CODES: {
 };
 
 // @public
-export const ERROR_DOCS_URL = "https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md";
+export const ERROR_DOCS_URL = "https://lousho.com/errors";
 
 // @public
 export const ErrorAttr: {
