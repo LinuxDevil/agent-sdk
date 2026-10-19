@@ -13,7 +13,7 @@ import type * as http from 'node:http';
 import type { SimpleAgent } from '../createAgent';
 import type { SessionStore } from '../session/sessionStore';
 import type { SessionStores } from '../session/AgentSession';
-import { readRawBody, sendJson } from '../server/chatRoutes';
+import { readRawBody } from '../server/chatRoutes';
 import { PayloadTooLargeError } from '../server/fetchRoutes';
 import {
   toChannelRequest,
@@ -24,7 +24,7 @@ import {
   type ChannelRespond,
 } from './defineChannel';
 import { channelFailureBody, reportChannelError } from './channelSupport';
-import { channelCore, type ChannelCore } from './channelCore';
+import { channelCore, type ChannelCore, type ChannelCoreRespond } from './channelCore';
 import { decodeParam } from '../server/requestGuard';
 import { SDKError } from '../execution/errors';
 
@@ -89,8 +89,11 @@ export function mountChannels(
     if (!match) return false;
     const { channel, approvalId } = match;
     let responded = false;
-    const respond: ChannelRespond = (status, body) => {
-      if (!responded) sendJson(res, status, body);
+    const respond: ChannelCoreRespond = (status, body, headers) => {
+      if (!responded) {
+        res.writeHead(status, { 'Content-Type': 'application/json', ...headers });
+        res.end(JSON.stringify(body));
+      }
       responded = true;
     };
     try {

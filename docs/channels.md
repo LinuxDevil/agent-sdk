@@ -108,7 +108,14 @@ acknowledge the request. An error thrown by `verify` or `parse` answers 400
 for a `SyntaxError` (bad JSON) and 500 otherwise; a body over 1MB gets 413. A
 500 body is only `{ "error": "The request failed. The server log has the
 details.", "code"? }`, as on the session routes: the error itself goes to
-`onError` (stage `'parse'`), never to the caller.
+`onError` (stage `'parse'`), never to the caller. A turn that fails before the
+channel acknowledged the request goes to `onError` with stage `'turn'`; when
+another process or replica is running that conversation's turn
+([`LOUSHO_SESSION_BUSY`](errors.md#lousho_session_busy)) the answer is
+`409 { "error", "code": "LOUSHO_SESSION_BUSY" }` with a `Retry-After` header,
+so the sender can resend shortly. A channel that acknowledges in `parse` (Slack,
+Discord, Telegram, Teams, GitHub) keeps its own answer and tells the user the
+request failed in the conversation.
 
 ```ts
 import { createAgent, defineChannel, mountChannels } from '@lousho/build-ai-agent';
