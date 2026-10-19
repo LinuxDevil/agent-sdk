@@ -197,6 +197,15 @@ describe('renderProject', () => {
     expect(files['README.md']).not.toMatch(/(^|\s)npm run/);
   });
 
+  it.each(combos.filter(([, template]) => template !== 'yaml'))(
+    'caps output tokens so a low-credit key does not fail its first run: %s / %s',
+    (provider, template) => {
+      const files = renderProject(config(provider, template));
+      expect(files['src/agent.ts']).toMatch(/const modelSettings = \{ maxTokens: 4096 \};[\s\S]*tools, modelSettings \}/);
+      expect(files['README.md']).toContain('requires more credits');
+    }
+  );
+
   it.each(TEMPLATES)('snapshot: %s package.json', (template) => {
     expect(renderProject(config('openai', template))['package.json']).toMatchSnapshot();
   });
