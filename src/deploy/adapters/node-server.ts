@@ -107,7 +107,8 @@ import agentConfig from './agent.config.js';`,
   const agent = await createDeployedAgent(spec);
   const schedules = specSchedules(spec.triggers);`,
     options: `{ ...${JSON.stringify(options)}, schedules }`,
-    report: `console.log('lousho server: schedules: ' + (schedules.map((s) => s.name).join(', ') || 'none'));`,
+    report: `const guards = { 'self-verified': 'verifies its own requests', 'server-auth': 'behind the server auth', open: 'open' };
+    console.log('lousho server: schedules: ' + (schedules.map((s) => s.name).join(', ') || 'none'));`,
   };
 }
 
@@ -125,7 +126,12 @@ import { createAgent, createDeployedServer, resolveAgentDir, storeFromEnv } from
     // An agent directory's auth.ts replaces the baked token; LOUSHO_API_TOKEN is appended to it.
     // Its named authorizeSession / authorizeApproval exports decide who may use a session and decide an approval.
     options: `{ ...${JSON.stringify(options)}, ...(resolved.auth ? { auth: resolved.auth } : {}), authorizeSession: resolved.authorizeSession, authorizeApproval: resolved.authorizeApproval, schedules: resolved.schedules, channels: resolved.channels }`,
-    report: `console.log('lousho server: schedules: ' + (resolved.manifest.schedules.join(', ') || 'none') + '; channels: ' + (resolved.manifest.channels.join(', ') || 'none'));`,
+    // Each channel route with its guard: its own verify, the server's auth (LOUSHO_API_TOKEN / auth.ts), or open.
+    report: `const guards = { 'self-verified': 'verifies its own requests', 'server-auth': 'behind the server auth', open: 'open' };
+    console.log('lousho server: schedules: ' + (resolved.manifest.schedules.join(', ') || 'none') + '; channels: ' + (channelRoutes.map((route) => route.name + ' (' + guards[route.auth] + ')').join(', ') || 'none'));
+    if (channelRoutes.some((route) => route.auth === 'open')) {
+      console.warn('[lousho server] warning: channel routes marked "open" have no verify and no LOUSHO_API_TOKEN guards them, so anyone who can reach this server can call them.');
+    }`,
   };
 }
 
@@ -221,7 +227,7 @@ const LOOPBACK = ['127.0.0.1', 'localhost', '::1'];
 
 async function main(): Promise<void> {
   ${variant.boot}
-  const { server, authenticated, shutdown } = createDeployedServer(agent, ${variant.options});
+  const { server, authenticated, channelRoutes, shutdown } = createDeployedServer(agent, ${variant.options});
 
   server.on('error', (err: NodeJS.ErrnoException) => {
     console.error(

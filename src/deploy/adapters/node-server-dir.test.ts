@@ -153,12 +153,14 @@ describe('NodeServerAdapter with an agent directory', () => {
   it('the built server mounts the channel, answers it and reports the schedule', async () => {
     const { stop, port, stdout } = await startServer(outDir);
     try {
-      expect(stdout).toContain('schedules: daily; channels: echo');
-      const hook = await fetch(`http://127.0.0.1:${port}/channels/echo`, { method: 'POST', body: 'ping' });
+      expect(stdout).toContain('schedules: daily; channels: echo (behind the server auth)');
+      // The channel has no verify, so auth.ts guards it like the chat routes.
+      expect((await fetch(`http://127.0.0.1:${port}/channels/echo`, { method: 'POST', body: 'ping' })).status).toBe(401);
+      const hook = await fetch(`http://127.0.0.1:${port}/channels/echo`, { method: 'POST', headers: { Authorization: 'Bearer dir-token' }, body: 'ping' });
       expect(hook.status).toBe(200);
       expect(((await hook.json()) as { reply: string }).reply.trim()).toBe('pong');
       expect((await fetch(`http://127.0.0.1:${port}/health`)).status).toBe(200);
-      // Auth.ts guards the chat routes (the channel above was answered without it).
+      // Auth.ts guards the chat routes too.
       const chat = (headers: Record<string, string>) =>
         fetch(`http://127.0.0.1:${port}/chat/s1`, { headers }).then((res) => res.status);
       expect(await chat({})).toBe(401);

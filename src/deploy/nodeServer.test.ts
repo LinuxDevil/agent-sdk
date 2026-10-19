@@ -215,9 +215,11 @@ describe('deployed node server auth list', () => {
     expect((await closed.chat({ Authorization: 'Bearer t' })).status).toBe(401);
   });
 
-  it('channels are answered without the route auth (they verify themselves)', async () => {
+  it('a channel without its own verify is behind the route auth list', async () => {
     const { base, replies } = await serveWithPrincipal({ auth: [basic({ users: { ops: 'pw' } })], env: {} });
-    const hook = await fetch(`${base}/channels/sms`, { method: 'POST', body: 'ping' });
+    expect((await fetch(`${base}/channels/sms`, { method: 'POST', body: 'ping' })).status).toBe(401);
+    expect(replies).toEqual([]);
+    const hook = await fetch(`${base}/channels/sms`, { method: 'POST', headers: basicHeader('ops', 'pw'), body: 'ping' });
     expect(hook.status).toBe(200);
     expect(replies).toEqual(['ok']);
     expect((await fetch(`${base}/health`)).status).toBe(200);

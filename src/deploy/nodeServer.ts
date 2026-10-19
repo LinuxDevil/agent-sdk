@@ -6,7 +6,9 @@
  * and shared with the Worker target): `GET /health`, sessions, SSE streaming,
  * approvals and the legacy `POST /chat { message }`. When auth is configured (a bearer
  * token, or an auth list from `@lousho/build-ai-agent/auth`), every route except
- * `/health` and the channels requires it.
+ * `/health` requires it, including a channel route, unless that channel
+ * authenticates its own requests (it has a `verify`: a signed platform channel,
+ * a webhook with a secret, an `httpChannel({ verify })`).
  *
  * Node-only (the Worker target has its own runtime, runtime.worker.ts).
  */
@@ -26,6 +28,7 @@ import { SDKError } from '../execution/errors';
 import type { AuthFn } from '../auth/types';
 import { apiToken } from '../auth/basic';
 import { requestGuardFromEnv } from '../server/requestGuard';
+import { routeAuth } from '../auth/routeAuth';
 
 /** Environment variable holding the bearer token; wins over a token baked in at build time. */
 const API_TOKEN_ENV = 'LOUSHO_API_TOKEN';
@@ -95,6 +98,47 @@ function definedOnly<T extends Record<string, unknown>>(values: T): Partial<T> {
   return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined)) as Partial<T>;
 }
 
+/**
+ * How a channel route of the deployed server is guarded: `self-verified` (the
+ * channel has its own `verify`: a platform signature, a webhook secret, ...),
+ * `server-auth` (no `verify`, so the server's auth - `LOUSHO_API_TOKEN`, the
+ * build's token or the agent directory's `auth.ts` - guards it, as it guards
+ * `/chat`), or `open` (no `verify` and no server auth: anyone can call it).
+ */
+export type ChannelRouteAuth = 'self-verified' | 'server-auth' | 'open';
+
+/** The channel routes' guards, in channel order. */
+function channelRoutesOf(channels: readonly Channel[], authenticated: boolean): { name: string; auth: ChannelRouteAuth }[] {
+  return channels.map((channel) => ({ name: channel.name, auth: channel.verify ? 'self-verified' : authenticated ? 'server-auth' : 'open' }));
+}
+
+/** Whether `req` is a `POST /channels/<name>[/...]` for one of `names`. */
+function guardedChannelRoute(req: http.IncomingMessage, names: ReadonlySet<string>): boolean {
+  if (req.method !== 'POST') return false;
+  const { pathname } = new URL(req.url ?? '/', 'http://localhost');
+  return pathname.startsWith('/channels/') && names.has(pathname.slice('/channels/'.length).split('/')[0]);
+}
+
+/**
+ * Runs the server's auth on the headers of `req` (its body is left unread for
+ * the channel) and writes the 401 / 403 / 500 when it refuses; `true` when the
+ * request may go on.
+ */
+async function channelRequestAllowed(req: http.IncomingMessage, res: http.ServerResponse, auth: ServeAuth): Promise<boolean> {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    for (const item of Array.isArray(value) ? value : value === undefined ? [] : [value]) headers.append(name, item);
+  }
+  const request = new Request(new URL(req.url ?? '/', 'http://localhost'), { method: req.method, headers });
+  const outcome = await routeAuth(request, typeof auth === 'string' ? apiToken(auth) : auth);
+  if (outcome.ok) return true;
+  const responseHeaders: Record<string, string> = {};
+  outcome.response.headers.forEach((value, name) => (responseHeaders[name] = value));
+  res.writeHead(outcome.response.status, responseHeaders);
+  res.end(await outcome.response.text());
+  return false;
+}
+
 /** Default bound of {@link DeployedServer.shutdown}'s wait for in-flight turns; `LOUSHO_SHUTDOWN_TIMEOUT_MS` overrides it in the generated server. */
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -103,6 +147,8 @@ export interface DeployedServer {
   server: http.Server;
   /** Whether requests are checked (a token or an auth list), so the caller can warn when it listens publicly without. */
   authenticated: boolean;
+  /** Each channel route and how it is guarded (see {@link ChannelRouteAuth}), for the start-up report. */
+  channelRoutes: { name: string; auth: ChannelRouteAuth }[];
   /**
    * A graceful stop, for SIGTERM. Stops accepting connections
    * (`server.close()`), stops the schedules (no new fires), then waits for
@@ -121,8 +167,11 @@ export interface DeployedServer {
  */
 export function createDeployedServer(agent: SimpleAgent, options: DeployedServerOptions = {}): DeployedServer {
   const auth = serverAuth(options);
-  // Channels authenticate themselves (their own verify), so they sit beside the bearer-protected chat routes.
   const channels = options.channels?.length ? mountChannels(agent, options.channels) : undefined;
+  // A channel with its own verify authenticates its callers (a platform's signature: they cannot send our token);
+  // one without it sits behind the server's auth, like the chat routes.
+  const channelRoutes = channelRoutesOf(options.channels ?? [], auth !== undefined);
+  const guarded = new Set(channelRoutes.filter((route) => route.auth === 'server-auth').map((route) => route.name));
   // Requests being handled, and turns that outlived their client, for shutdown() to wait for.
   const inFlight = new Set<Promise<unknown>>();
   const track = (work: Promise<unknown>): void => {
@@ -155,6 +204,7 @@ export function createDeployedServer(agent: SimpleAgent, options: DeployedServer
     },
   };
   const handle = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
+    if (auth !== undefined && guardedChannelRoute(req, guarded) && !(await channelRequestAllowed(req, res, auth))) return;
     if (await channels?.(req, res)) return;
     await relayFetch(req, res, (request) => serveFetch(request, chat, auth));
   };
@@ -183,5 +233,5 @@ export function createDeployedServer(agent: SimpleAgent, options: DeployedServer
     }
     server.closeAllConnections();
   };
-  return { server, authenticated: auth !== undefined, shutdown };
+  return { server, authenticated: auth !== undefined, channelRoutes, shutdown };
 }
