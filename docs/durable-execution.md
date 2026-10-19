@@ -7,6 +7,8 @@ days. Nothing here depends on a particular host: any `CheckpointStore`
 `cloudflare-worker` build wires up, or your own three-method implementation)
 and any `ApprovalStore` work the same way.
 
+See also: [Pause, restart, resume](./pause-and-resume.md), a short end-to-end tutorial.
+
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
 import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
