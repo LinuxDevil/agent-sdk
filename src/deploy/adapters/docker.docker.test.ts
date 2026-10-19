@@ -86,4 +86,44 @@ describe.skipIf(!hasDocker)('DockerAdapter image (real Docker daemon)', () => {
       dockerOutput(['rmi', '-f', tag]);
     }
   }, 300_000);
+
+  it('starts on a fresh named volume with LOUSHO_STORE=sqlite: and persists a session', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-docker-vol-'));
+    const outDir = path.join(dir, 'out');
+    await DockerAdapter.scaffold(writeSpec(dir), outDir);
+    await withBuildLock(() => DockerAdapter.build(outDir));
+
+    const stamp = Date.now();
+    const tag = `lousho-agent-vol-test-${stamp}`;
+    const volume = `lousho-vol-test-${stamp}`;
+    execFileSync('docker', ['build', '-t', tag, '.'], { cwd: outDir, stdio: 'inherit' });
+    execFileSync('docker', ['volume', 'create', volume]);
+    const containerId = execFileSync(
+      'docker',
+      ['run', '-d', '-p', '127.0.0.1::3000', '-v', `${volume}:/app/data`, '-e', 'LOUSHO_STORE=sqlite:/app/data/lousho.db', tag],
+      { encoding: 'utf8' }
+    ).trim();
+    try {
+      const mapping = execFileSync('docker', ['port', containerId, '3000'], { encoding: 'utf8' });
+      const base = `http://127.0.0.1:${Number(mapping.trim().split('\n')[0].split(':').pop())}`;
+      const health = await poll(`${base}/health`, 60);
+      if (health?.status !== 200) console.error(`docker logs:
+${dockerOutput(['logs', containerId])}`);
+      expect(health?.status).toBe(200);
+
+      const chat = await fetch(`${base}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: 'hello volume', sessionId: 'vol-1' }),
+      });
+      expect(chat.status).toBe(200);
+      // The database file landed on the volume, written by the unprivileged user.
+      const ls = execFileSync('docker', ['exec', containerId, 'ls', '-l', '/app/data'], { encoding: 'utf8' });
+      expect(ls).toMatch(/lousho\.db/);
+    } finally {
+      dockerOutput(['rm', '-f', containerId]);
+      dockerOutput(['rmi', '-f', tag]);
+      dockerOutput(['volume', 'rm', '-f', volume]);
+    }
+  }, 300_000);
 });
