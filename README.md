@@ -354,6 +354,8 @@ Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) for setup and
 the checks a pull request must pass (`npm run typecheck`, `npm run lint`,
 `npm test`, `npm run test:coverage && npm run fallow`).
 
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
+
 ## License
 
 MIT © [Lousho Team](LICENSE)
