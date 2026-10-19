@@ -23,6 +23,14 @@ export interface WebhookChannelOptions {
    * `req` carries the headers. Set it only from data `auth` vouched for.
    */
   principal?: (body: unknown, req: ChannelRequest) => Principal | undefined;
+  /**
+   * Reply with the turn's whole `ExecutionResult` (messages, tool calls,
+   * usage) instead of the trimmed default `{ sessionId, text, finishReason,
+   * approval }`. The full result carries the system prompt and the whole
+   * transcript, so enable it only when every caller is trusted with them.
+   * Default `false`.
+   */
+  fullResult?: boolean;
 }
 
 /** A webhook channel: `verify` (set when `secret` or `auth` is) resolves a `ChannelAuthResult`. */
@@ -64,7 +72,8 @@ async function verifyWebhook(auth: WebhookAuth | undefined, req: ChannelRequest)
 
 /**
  * A generic webhook: the body's JSON `input` string (or the whole body) is
- * the input, and the response is the turn's `ExecutionResult` as JSON. Each request is a one-shot session unless the
+ * the input, and the response is JSON `{ sessionId, text, finishReason, approval? }` (the whole
+ * `ExecutionResult` with `fullResult: true`). Each request is a one-shot session unless the
  * JSON body has a `sessionKey` string. With `secret` or `auth`, a request
  * that fails the check gets 401. `principal` names the caller of the turn
  * (an alerting system, an integration user) from the verified request.
@@ -96,12 +105,20 @@ export function webhookChannel(options: WebhookChannelOptions = {}): WebhookChan
       const principal = options.principal?.(body, req);
       return { sessionKey: typeof sessionKey === 'string' && sessionKey ? sessionKey : newId(), input, ...(principal && { principal }), replyTo: null };
     },
-    async reply({ text, result, respond }) {
+    async reply({ sessionId, text, result, approval, approvals, respond }) {
       // On an approval pause `result.text` is empty (the last turn was a bare
       // tool call), so the human-readable prompt the channel computed is sent
       // too: a consumer can render it instead of rebuilding it from `approvalId`.
-      if (result?.finishReason === 'awaiting-approval') return respond?.(200, { ...result, approvalPrompt: text });
-      respond?.(200, result ?? { text });
+      const paused = result?.finishReason === 'awaiting-approval';
+      if (options.fullResult) return respond?.(200, paused ? { ...result, approvalPrompt: text } : (result ?? { text }));
+      respond?.(200, {
+        sessionId,
+        text,
+        finishReason: result?.finishReason,
+        ...(approval && { approval }),
+        ...(approvals && { approvals }),
+        ...(paused && { approvalPrompt: text }),
+      });
     },
   };
   defineChannel(channel);
