@@ -56,6 +56,23 @@ opt-out.
 - Tool idempotency: `toolCallId` and `ctx.approval.id` identify one call; after a crash the model may retry with a new call, so side effects that must happen once need a key from your own data. New guidance for ending a run after a rejected approval, and for extract-then-approve-then-act with structured output.
 - [Durable execution](docs/durable-execution.md#recovering-after-a-crash): `agent.resume()` resolves with a result, not a stream (stream a resumed run with `agent.stream([], { sessionId })`), and `agent.pending()` also lists runs still active in another process. [Installation](docs/installation.md#typescript-settings): TypeScript 6+ projects need `"types": ["node"]` for the SDK's declarations.
 
+## [1.0.0-alpha.24] - 2026-10-17
+
+Two fixes on top of 1.0.0-alpha.23, published from the release branch.
+
+### Added
+- `model-unloaded` provider error category: "model is not loaded/unloaded" replies from a local server (LM Studio, Ollama) classify as retryable, so `withRetry()` rides out the server evicting or still loading a model.
+- A run ended by `maxSteps` or a budget without a final answer now returns explanatory text instead of an empty string.
+
+### Changed
+- MCP: a warning is logged when a server's tool schemas exceed about 16K tokens (deferred tools excluded). A server marked `optional: true` connects in the background, so a slow or failing optional server no longer blocks the first `send()`.
+
+### Fixed
+- Compaction: when the provider rejects a request for context size and the configured `contextWindow` is larger than the model's real one, the error is marked on the transcript and folded into it for a retry when a compaction hook exists; the hook compacts under the server's observed window (or the rejected request size when unnamed) for the rest of the run.
+- `toolCalls` of a run continued from a transcript (approval resolve, resume) are collected from its messages, so they no longer disappear from the result.
+- `recall_<slot>` with a query that matches nothing now says the slot is not empty, instead of returning a bare `[]` that contradicted the injected `<memory>` block.
+- The guardrail starter set's `ignore-instructions` signal also catches "ignore these/those/her/his/their/our instructions" and "ignore your instructions", without a qualifier such as "previous".
+
 ## [1.0.0-alpha.23] - 2026-10-16
 
 The same tree as 1.0.0-alpha.21; no code changes. create-lousho-agent

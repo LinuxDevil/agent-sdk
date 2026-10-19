@@ -370,7 +370,7 @@ interface CheckpointStore {
 type CheckpointUsage = Pick<RunUsage, 'promptTokens' | 'completionTokens' | 'totalTokens'> & Partial<RunUsage>;
 
 // @public
-type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length-exceeded' | 'quota-exceeded' | 'auth-failure' | 'unknown';
+type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length-exceeded' | 'quota-exceeded' | 'auth-failure' | 'model-unloaded' | 'unknown';
 
 // @public
 interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
@@ -953,7 +953,7 @@ interface LLMProvider {
     supportsTools(model: string): boolean;
 }
 
-// @public
+// @public (undocumented)
 export function loadMcpTools(client: McpClientLike, connectionName: string, options?: LoadMcpToolsOptions): Promise<Record<string, NamedToolDescriptor>>;
 
 // @public
