@@ -424,6 +424,35 @@ describe('createFsTools deny list (consumer harness H1-2)', () => {
     expect(() => createFsTools(new MemoryWorkspace(), { deny: ['.git/config'] })).toThrow(/entry names such as ".git", not paths/);
   });
 
+  it.each(['.env', 'sub/.env', '.env.local', '.env.production', 'pkg/.env.staging', '.ENV', 'sub/.Env.Local', '.env.'])(
+    'read_file refuses %j by default',
+    async (path) => {
+      const ws = new MemoryWorkspace({ files: { '.env': 'K=1', 'sub/.env': 'K=1', '.env.local': 'K=1', '.env.production': 'K=1', 'pkg/.env.staging': 'K=1' } });
+      const { read_file } = toolsByName(ws, { readOnly: true });
+      await expect(call(read_file, { path })).rejects.toThrow(/is denied: the file tools never open/);
+    }
+  );
+
+  it('leaves .env.example, .env.sample and .env.template readable, and hides .env from glob and list_dir', async () => {
+    const ws = new MemoryWorkspace({ files: { '.env': 'SECRET=1', '.env.local': 'SECRET=1', '.env.example': 'KEY=', '.env.sample': 'KEY=', 'sub/.env.template': 'KEY=', '.environment': 'x' } });
+    const { read_file, list_dir } = toolsByName(ws, { readOnly: true });
+    for (const path of ['.env.example', '.env.sample', 'sub/.env.template', '.environment']) {
+      expect(await call(read_file, { path })).toBeDefined();
+    }
+    const listing = String(await call(list_dir, { path: '.' }));
+    expect(listing).toContain('.env.example');
+    expect(listing).not.toMatch(/\.env(\.local)?(?!\.)/);
+  });
+
+  it('a custom deny replaces the defaults, so .env is readable unless listed', async () => {
+    const ws = new MemoryWorkspace({ files: { '.env': 'K=1', '.env.local': 'K=2' } });
+    const open = toolsByName(ws, { deny: ['.git'] });
+    expect(await call(open.read_file, { path: '.env' })).toContain('K=1');
+    const wild = toolsByName(ws, { deny: ['.env.*'] });
+    await expect(call(wild.read_file, { path: '.env.local' })).rejects.toThrow(/is denied/);
+    expect(await call(wild.read_file, { path: '.env' })).toContain('K=1');
+  });
+
   it('allows names that only contain a denied name', async () => {
     const ws = new MemoryWorkspace({ files: { '.gitignore': 'dist\n', '.github/ci.yml': 'on: push\n', 'my.git/x': 'y\n' } });
     const { read_file } = toolsByName(ws);
