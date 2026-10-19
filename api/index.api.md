@@ -1238,7 +1238,7 @@ export interface CompactedProviderError {
 }
 
 // @public
-export type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length-exceeded' | 'quota-exceeded' | 'auth-failure' | 'unknown';
+export type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length-exceeded' | 'quota-exceeded' | 'auth-failure' | 'model-unloaded' | 'unknown';
 
 // @public
 interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
@@ -3434,7 +3434,7 @@ export function loadAgentDir(dir: string, overrides?: AgentDirOverrides): Promis
 // @public
 export function loadChannels(dir: string): Promise<Channel[]>;
 
-// @public
+// @public (undocumented)
 export function loadMcpTools(client: McpClientLike, connectionName: string, options?: LoadMcpToolsOptions): Promise<Record<string, NamedToolDescriptor>>;
 
 // @public
@@ -3596,6 +3596,9 @@ export function makeHttpRequestViaSandbox(args: HttpRequestArgs, sandbox: Sandbo
 
 // @public
 export function manualCompactionOptions(compaction: AgentCompaction | undefined): CompactMessagesOptions;
+
+// @public
+export function markContextOverflow(messages: Message[], observedWindow?: number): void;
 
 // @public
 export type Matcher = string | RegExp | ((text: string) => boolean);
@@ -4154,6 +4157,28 @@ export const noopLogger: Logger;
 export const NoopSandbox: SandboxAdapter;
 
 // @public
+export interface NormalizedToolCall {
+    // (undocumented)
+    args?: Record<string, unknown>;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    name: string;
+    rawArgs: string;
+}
+
+// @public
+export function normalizeToolCall(call: ToolCall | {
+    id?: string;
+    name?: string;
+    args?: unknown;
+    arguments?: unknown;
+    function?: {
+        arguments?: unknown;
+    };
+}): NormalizedToolCall;
+
+// @public
 export function normalizeUsage(raw: ProviderUsage | undefined): Usage | undefined;
 
 // @public
@@ -4272,6 +4297,9 @@ export interface OAuthTokenStore {
 export interface ObjectDeltaEvent extends AgentEventBase<'object.delta'> {
     object: unknown;
 }
+
+// @public
+export function observedContextWindow(message: string): number | undefined;
 
 // @public
 export class OllamaProvider extends AiSdkProvider<OllamaProviderConfig> {
@@ -6633,6 +6661,15 @@ export interface ToolCall {
 }
 
 // @public
+export function toolCallArgs(call: ToolCall | {
+    args?: unknown;
+    arguments?: unknown;
+    function?: {
+        arguments?: unknown;
+    };
+}): Record<string, unknown> | undefined;
+
+// @public
 export interface ToolCallHookContext extends HookContext {
     args: Record<string, unknown>;
     principal?: Readonly<Principal>;
@@ -6653,6 +6690,12 @@ export interface ToolCallHookResult {
     // (undocumented)
     result: unknown;
 }
+
+// @public
+export function toolCallName(call: ToolCall | {
+    id?: string;
+    name?: string;
+}): string;
 
 // @public
 interface ToolCallNode extends NodeRunOptions {
@@ -7055,7 +7098,7 @@ export type VectorMemoryProvider = MemoryProvider & {
 };
 
 // @public
-export const VERSION = "1.0.0-alpha.23";
+export const VERSION = "1.0.0-alpha.24";
 
 // @public
 export function warnUnknownContextWindow(feature: string, model: string | undefined, assumed: number): void;
