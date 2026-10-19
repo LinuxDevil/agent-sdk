@@ -220,6 +220,9 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | Slack and Discord signature checks accept a timestamp at most a minute ahead (was five minutes either way), read in seconds. | no opt-out |
 | `telegramChannel` and `teamsChannel` no longer post an OAuth sign-in link in a group chat. | no opt-out |
 | Channels without a `store` keep their transcripts in the agent's `createAgent({ store })` when it has `sessions`. | pass the channel its own `store` |
+| The built node-server (and Docker image) requires `LOUSHO_API_TOKEN` / `auth.ts` on `/channels/<name>` for a channel without `verify` when a token or `auth.ts` is set; self-verifying channels are unchanged. | give the channel a `verify` |
+| `webhookChannel` replies `{ sessionId, text, finishReason, approval? }` instead of the full `ExecutionResult`. | `webhookChannel({ fullResult: true })` |
+| A channel turn on a session another process is running answers `409` (`LOUSHO_SESSION_BUSY`, `Retry-After: 2`) instead of `500`. | no opt-out (retry after the delay) |
 
 ### Sessions, approvals and durability
 
