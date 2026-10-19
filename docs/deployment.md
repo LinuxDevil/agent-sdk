@@ -214,6 +214,33 @@ directory's `auth.ts`, with `LOUSHO_API_TOKEN` appended to it: see
 
 SQLite is one file on one disk, so run a single instance per database file.
 
+### Crash recovery
+
+When the `node-server` or `docker` server starts listening, it finishes the
+runs that a crash or a kill left unfinished in the store. It calls
+[`agent.recover()`](./durable-execution.md), which resumes every
+`in-progress` run and session turn from its last checkpoint. Steps that
+completed are not run again. A tool call that was in flight when the process
+died runs again, so make such tools idempotent. The server logs
+`lousho server: resuming N interrupted run(s)` when it finds any, and one
+`recovered interrupted run '<id>'` line per run it finishes. It then checks
+the store again every 30 seconds until it shuts down.
+
+- Runs paused on an approval or a question are left alone. Decide them
+  through `POST /chat/:sessionId/approvals/:id`.
+- A run whose [run lease](./durable-execution.md#run-leases) another live
+  process holds is skipped and retried on a later check. So is a run whose
+  crashed process's lease has not expired yet.
+- With the default `memory` store there is nothing to recover after a
+  restart, and the check finds nothing.
+- A resend of the same turn that arrives while the server is still resuming
+  it runs after the resumed turn, as a new turn. Send an `Idempotency-Key`
+  ([Resending a turn](#resending-a-turn)) to get the resumed turn's reply
+  instead.
+
+Set `LOUSHO_RECOVER_ON_START=0` to turn this off, for example when another
+process already runs `agent.recover()` for the same store.
+
 ## `node-server`
 
 `dist/server.js` is a single self-contained bundle (the SDK and its

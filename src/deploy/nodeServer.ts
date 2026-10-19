@@ -9,11 +9,14 @@
  * `/health` requires it, including a channel route, unless that channel
  * authenticates its own requests (it has a `verify`: a signed platform channel,
  * a webhook with a secret, an `httpChannel({ verify })`).
+ * Once it listens it finishes the runs a crash left interrupted
+ * (`agent.recover()`), unless `LOUSHO_RECOVER_ON_START=0`.
  *
  * Node-only (the Worker target has its own runtime, runtime.worker.ts).
  */
 import * as http from 'node:http';
 import type { SimpleAgent } from '../createAgent';
+import type { RunRecovery } from '../agentRecover';
 import { relayFetch } from '../server/chatRoutes';
 import { serveFetch, type ChatRoutesAccess, type ChatRoutesContext, type ServeAuth } from '../server/fetchRoutes';
 import { startSchedules, type StartSchedulesOptions } from '../schedules/startSchedules';
@@ -34,6 +37,8 @@ import { routeAuth } from '../auth/routeAuth';
 const API_TOKEN_ENV = 'LOUSHO_API_TOKEN';
 /** Environment variable choosing where sessions live: `memory` (default) or `sqlite:<path>`. */
 const STORE_ENV = 'LOUSHO_STORE';
+/** Environment variable that turns off crash recovery at start-up when `0` or `false`. */
+const RECOVER_ENV = 'LOUSHO_RECOVER_ON_START';
 
 /**
  * `authorizeSession`, `authorizeApproval` and `exposeErrors` work as on
@@ -58,6 +63,14 @@ export interface DeployedServerOptions extends ChatRoutesAccess {
   scheduler?: StartSchedulesOptions;
   /** Channels of the served agent directory (`resolveAgentDir()`'s `channels`): mounted under `/channels` next to the chat routes. */
   channels?: readonly Channel[];
+  /**
+   * Crash recovery: once the server listens, `agent.recover()` resumes the
+   * runs a crash left `in-progress` in the store (runs paused on an approval
+   * are left alone), and keeps sweeping every `intervalMs` (default 30 s) until
+   * the server shuts down. On by default; `false`, or `LOUSHO_RECOVER_ON_START=0`
+   * in `env`, turns it off. `intervalMs` is mainly for tests.
+   */
+  recovery?: false | { intervalMs?: number };
 }
 
 /** The store `LOUSHO_STORE` names: `memory` (the default, lost on restart) or `sqlite:<path>` (Node >= 22). */
@@ -139,6 +152,38 @@ async function channelRequestAllowed(req: http.IncomingMessage, res: http.Server
   return false;
 }
 
+/** Whether crash recovery runs at start-up: not with `recovery: false` or `LOUSHO_RECOVER_ON_START=0` / `false`. */
+function recoveryEnabled(options: DeployedServerOptions): boolean {
+  const value = (options.env ?? process.env)[RECOVER_ENV]?.trim().toLowerCase();
+  return options.recovery !== false && value !== '0' && value !== 'false';
+}
+
+/** Codes of `agent.pending()` / `agent.recover()` for a store that keeps no listable checkpoints: nothing to recover. */
+const NOT_RECOVERABLE = new Set(['LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE', 'LOUSHO_CONFIG_INVALID']);
+
+/**
+ * Starts `agent.recover()` (stopped by `signal`), after logging how many
+ * interrupted runs it found. Never throws: a store that cannot list its
+ * checkpoints (none, or a custom one without `list()`) has nothing to
+ * recover, and any other failure is logged without stopping the server.
+ */
+async function startRunRecovery(agent: SimpleAgent, signal: AbortSignal, intervalMs: number | undefined): Promise<RunRecovery | undefined> {
+  try {
+    const interrupted = (await agent.pending()).filter((run) => run.status === 'in-progress' && run.lastError?.retryable !== false);
+    if (signal.aborted) return undefined;
+    if (interrupted.length > 0) console.log(`lousho server: resuming ${interrupted.length} interrupted run(s)`);
+    return agent.recover({
+      signal,
+      ...(intervalMs !== undefined && { intervalMs }),
+      onRecovered: (run) => console.log(`lousho server: recovered interrupted run '${run.sessionId}'`),
+      onError: (error, run) => console.error(`[lousho server] recovery${run ? ` of run '${run.sessionId}'` : ''} failed:`, error),
+    });
+  } catch (error) {
+    if (!NOT_RECOVERABLE.has((error as { code?: string } | null)?.code ?? '')) console.error('[lousho server] recovery failed to start:', error);
+    return undefined;
+  }
+}
+
 /** Default bound of {@link DeployedServer.shutdown}'s wait for in-flight turns; `LOUSHO_SHUTDOWN_TIMEOUT_MS` overrides it in the generated server. */
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
 
@@ -151,7 +196,9 @@ export interface DeployedServer {
   channelRoutes: { name: string; auth: ChannelRouteAuth }[];
   /**
    * A graceful stop, for SIGTERM. Stops accepting connections
-   * (`server.close()`), stops the schedules (no new fires), then waits for
+   * (`server.close()`), stops the schedules (no new fires) and crash recovery
+   * (its resumes in flight are aborted; their checkpoints stay for the next
+   * start), then waits for
    * what is in flight - requests and their turns (a channel turn, a stream),
    * turns that outlived a disconnected client, and schedule fires - for at
    * most `timeoutMs` (default 10 s), and finally closes the connections left.
@@ -216,6 +263,18 @@ export function createDeployedServer(agent: SimpleAgent, options: DeployedServer
     server.on('listening', () => (running = startSchedules(agent, options.schedules ?? [], options.scheduler)));
     server.on('close', () => void stopSchedules());
   }
+  // Crash recovery: the runs a crash left in-progress are resumed once the server listens.
+  const recoveryAbort = new AbortController();
+  let recovering: Promise<RunRecovery | undefined> | undefined;
+  const stopRecovery = async (): Promise<void> => {
+    recoveryAbort.abort();
+    await (await recovering)?.done;
+  };
+  if (recoveryEnabled(options)) {
+    const intervalMs = options.recovery === false ? undefined : options.recovery?.intervalMs;
+    server.on('listening', () => (recovering ??= startRunRecovery(agent, recoveryAbort.signal, intervalMs)));
+    server.on('close', () => void stopRecovery());
+  }
   const shutdown = async ({ timeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS }: { timeoutMs?: number } = {}): Promise<void> => {
     if (server.listening) server.close();
     server.closeIdleConnections();
@@ -223,6 +282,7 @@ export function createDeployedServer(agent: SimpleAgent, options: DeployedServer
     const timedOut = new Promise<'timeout'>((done) => (timer = setTimeout(() => done('timeout'), timeoutMs)));
     const drained = (async () => {
       await stopSchedules();
+      await stopRecovery();
       // A request can start a detached turn while it ends: wait until nothing is left.
       while (inFlight.size > 0) await Promise.all(inFlight);
     })();
