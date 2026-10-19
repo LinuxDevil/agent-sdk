@@ -77,7 +77,7 @@ const FAILED_TEXT = 'Sorry, that request failed.';
  * replica is running (`Retry-After` of the `409`). The other run holds the lease
  * until its turn ends; a short wait lets a typical turn finish without hammering it.
  */
-const SESSION_BUSY_RETRY_AFTER_S = 2;
+export const SESSION_BUSY_RETRY_AFTER_S = 2;
 
 /** Whether `error` is a run another process, replica or store object holds the lease of. */
 function isSessionBusy(error: unknown): boolean {

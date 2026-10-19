@@ -113,7 +113,10 @@ invalid session id is `LOUSHO_SESSION_ID_INVALID`). Every error body is JSON
 `409` with `code: 'LOUSHO_SESSION_AWAITING_APPROVAL'`, `approvalId` and
 `approvalIds` (every approval still to decide): decide them through the
 approvals route, which streams the paused turn's continuation, then send the
-new turn. With an auth list, a session belongs to the first principal that sends
+new turn. A turn sent to a session that another process or replica is running a
+turn of (it holds the session's run lease) is `409` with
+`code: 'LOUSHO_SESSION_BUSY'` and a `Retry-After: 2` header, answered before
+any stream starts; resend after the wait. With an auth list, a session belongs to the first principal that sends
 it a turn, and a stored session whose owner the server no longer remembers
 (after a restart) is refused to everyone until `authorizeSession` says whose
 it is; with only `LOUSHO_API_TOKEN` there is one caller and no owner check
@@ -149,7 +152,7 @@ same key:
 | The turn of that key in that session | The resend gets |
 | ------------------------------------ | --------------- |
 | finished (it is in the transcript) | `200` SSE with one `run.done` carrying that turn's final reply (`text`, `finishReason`), and the header `Idempotent-Replayed: true`. Nothing runs. Read `GET /chat/:sessionId` for the whole turn. |
-| still running on this server process | `409` (`LOUSHO_SESSION_BUSY`). Retry later and get the replay. |
+| still running, on this server process or on another replica that shares the store | `409` (`LOUSHO_SESSION_BUSY`) with `Retry-After: 2`. Retry after the wait and get the replay. |
 | interrupted by a crash (a checkpointed turn left `in-progress`) | the turn resumed from its last checkpoint (`session.resume()`: finished steps and tool calls are not run again), streamed as SSE. |
 | none | a new turn, as without the header; its user message keeps the key (`metadata.idempotencyKey`). |
 
@@ -160,8 +163,9 @@ checkpoint until it finishes), so a replay works after a restart and on another
 replica that shares the store; `session.pending()` reports an interrupted
 turn's key as `idempotencyKey`. A key is looked up only in its own session,
 and only while its turn is in the transcript (a compaction that summarizes it
-away forgets it). The `409` for a running turn holds within one process; two
-replicas that receive the same key at the same instant can both run it.
+away forgets it). Across replicas the `409` rests on the session's run lease, so it needs a
+store that supports leases; two replicas that receive the same key at the same
+instant on a store without them can both run it.
 
 ```bash
 curl -N http://127.0.0.1:3000/chat -H 'Content-Type: application/json' \
