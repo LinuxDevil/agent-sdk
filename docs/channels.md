@@ -46,20 +46,31 @@ import * as http from 'node:http';
 import { createAgent, createMockProvider, httpChannel, mountChannels } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
-const channels = mountChannels(agent, [httpChannel()]);
+const channels = mountChannels(agent, [
+  httpChannel({ verify: async (req) => req.headers.authorization === `Bearer ${process.env.API_TOKEN}` }),
+]);
 
 const server = http.createServer((req, res) => {
   void channels(req, res).then((handled) => {
     if (!handled) res.writeHead(404).end();
   });
 });
-server.listen(3000);
+server.listen(3000, '127.0.0.1');
 ```
 
 ```bash
-curl -s localhost:3000/channels/http -H 'Content-Type: application/json' -d '{"sessionKey":"user-42","input":"Hi, I am Ali"}'
+curl -s localhost:3000/channels/http -H "Authorization: Bearer $API_TOKEN" -H 'Content-Type: application/json' -d '{"sessionKey":"user-42","input":"Hi, I am Ali"}'
 # {"sessionId":"http_user-42-...","text":"...","finishReason":"stop"}
 ```
+
+### Securing the http channel
+
+Sessions are keyed by the `sessionKey` the caller sends, so an `httpChannel()`
+without `verify` lets anyone who can reach the port read or continue another
+user's conversation by guessing a key. It logs a warning once when created.
+Always pass `verify` (a bearer-token check, as above, or your own session
+check), bind to `127.0.0.1` unless a proxy or firewall fronts it, and derive
+`sessionKey` from the authenticated user rather than trusting the client.
 
 The handler resolves `true` when it served the request and `false` (nothing
 written) for any other route, like the `/chat` routes of `lousho dev`, so you
