@@ -117,7 +117,27 @@ describe('webhookChannel auth (test vectors)', () => {
     expect(res.json).toMatchObject({ finishReason: 'awaiting-approval' });
     expect(res.json.approvalPrompt).toContain('Approve restart_service');
     expect(res.json.approvalPrompt).toContain('checkout');
-    expect(res.json.approvalPrompt).toContain(String(res.json.approvalId));
+    expect(res.json.approvalPrompt).toContain((res.json.approval as { id: string }).id);
+    expect(res.json).not.toHaveProperty('messages');
+  });
+
+  it('replies with a trimmed body by default: no transcript, system prompt or usage', async () => {
+    const agent = createAgent({ provider: mockModel(['hi there']), instructions: 'SECRET-SYSTEM-PROMPT' });
+    const res = await viaChannel(webhookChannel({}), body, {}, agent);
+
+    expect(res.status).toBe(200);
+    expect(res.json).toMatchObject({ text: 'hi there', finishReason: 'stop' });
+    expect(typeof res.json.sessionId).toBe('string');
+    for (const key of ['messages', 'stepUsage', 'usage', 'toolCalls']) expect(res.json).not.toHaveProperty(key);
+    expect(JSON.stringify(res.json)).not.toContain('SECRET-SYSTEM-PROMPT');
+  });
+
+  it('`fullResult: true` restores the whole ExecutionResult', async () => {
+    const agent = createAgent({ provider: mockModel(['hi there']), instructions: 'SECRET-SYSTEM-PROMPT' });
+    const res = await viaChannel(webhookChannel({ fullResult: true }), body, {}, agent);
+
+    expect(res.json).toHaveProperty('messages');
+    expect(JSON.stringify(res.json)).toContain('SECRET-SYSTEM-PROMPT');
   });
 
   it('a body without what `principal` needs runs without one', async () => {
