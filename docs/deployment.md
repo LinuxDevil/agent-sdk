@@ -172,9 +172,11 @@ curl -N http://127.0.0.1:3000/chat -H 'Content-Type: application/json' \
 ### Auth
 
 Set `LOUSHO_API_TOKEN` (on the Worker target, as a secret: `npx wrangler secret
-put LOUSHO_API_TOKEN`) and every route except `/health` requires
-`Authorization: Bearer <token>`; anything else gets `401` with a JSON error
-(the token is compared in constant time). Without it the server is open: that
+put LOUSHO_API_TOKEN`) and the `/chat` routes and any channel without its
+own `verify` require `Authorization: Bearer <token>`; anything else gets `401`
+with a JSON error (the token is compared in constant time). `/health` is
+open, and channels that authenticate themselves (a `verify` function, or a
+platform signature check such as Slack's) are not gated by the token. Without it the server is open: that
 is fine on `127.0.0.1`, but **treat the token as required for anything that is
 not on localhost** (the server logs a warning when it listens on another
 interface without one, and the `docker` image listens on all interfaces).

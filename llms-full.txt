@@ -4034,20 +4034,31 @@ import * as http from 'node:http';
 import { createAgent, createMockProvider, httpChannel, mountChannels } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
-const channels = mountChannels(agent, [httpChannel()]);
+const channels = mountChannels(agent, [
+  httpChannel({ verify: async (req) => req.headers.authorization === `Bearer ${process.env.API_TOKEN}` }),
+]);
 
 const server = http.createServer((req, res) => {
   void channels(req, res).then((handled) => {
     if (!handled) res.writeHead(404).end();
   });
 });
-server.listen(3000);
+server.listen(3000, '127.0.0.1');
 ```
 
 ```bash
-curl -s localhost:3000/channels/http -H 'Content-Type: application/json' -d '{"sessionKey":"user-42","input":"Hi, I am Ali"}'
+curl -s localhost:3000/channels/http -H "Authorization: Bearer $API_TOKEN" -H 'Content-Type: application/json' -d '{"sessionKey":"user-42","input":"Hi, I am Ali"}'
 # {"sessionId":"http_user-42-...","text":"...","finishReason":"stop"}
 ```
+
+### Securing the http channel
+
+Sessions are keyed by the `sessionKey` the caller sends, so an `httpChannel()`
+without `verify` lets anyone who can reach the port read or continue another
+user's conversation by guessing a key. It logs a warning once when created.
+Always pass `verify` (a bearer-token check, as above, or your own session
+check), bind to `127.0.0.1` unless a proxy or firewall fronts it, and derive
+`sessionKey` from the authenticated user rather than trusting the client.
 
 The handler resolves `true` when it served the request and `false` (nothing
 written) for any other route, like the `/chat` routes of `lousho dev`, so you
@@ -7193,9 +7204,11 @@ curl -N http://127.0.0.1:3000/chat -H 'Content-Type: application/json' \
 ### Auth
 
 Set `LOUSHO_API_TOKEN` (on the Worker target, as a secret: `npx wrangler secret
-put LOUSHO_API_TOKEN`) and every route except `/health` requires
-`Authorization: Bearer <token>`; anything else gets `401` with a JSON error
-(the token is compared in constant time). Without it the server is open: that
+put LOUSHO_API_TOKEN`) and the `/chat` routes and any channel without its
+own `verify` require `Authorization: Bearer <token>`; anything else gets `401`
+with a JSON error (the token is compared in constant time). `/health` is
+open, and channels that authenticate themselves (a `verify` function, or a
+platform signature check such as Slack's) are not gated by the token. Without it the server is open: that
 is fine on `127.0.0.1`, but **treat the token as required for anything that is
 not on localhost** (the server logs a warning when it listens on another
 interface without one, and the `docker` image listens on all interfaces).
