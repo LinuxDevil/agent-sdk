@@ -20416,7 +20416,7 @@ const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistr
 | `maxFilesScanned` | 20,000                      | Most files a `glob` or `grep` walk visits. |
 | `grepTimeoutMs`   | 10,000                      | Milliseconds `grep` may spend matching its regex across all files; time spent reading files does not count. A slow pattern stops with an error naming how many files were scanned. |
 | `ignore`          | `['.git', 'node_modules']`  | Directory names `glob` and `grep` skip. |
-| `deny`            | `['.git']`                  | Entry names no tool reads, lists, searches or writes, at any depth. A path through one is a tool error. `[]` turns it off. See [Security model](#security-model). |
+| `deny`            | `['.git', '.env', '.env.*']` | Entry names no tool reads, lists, searches or writes, at any depth. A trailing `*` is a prefix. A path through one is a tool error. `[]` turns it off. See [Security model](#security-model). |
 | `checkpoints`     | none                        | A `WorkspaceCheckpoints`: back up every file `write_file` and `edit_file` change, so the changes can be rewound (see below). |
 
 `createShellTool(shell, options?)` returns one tool, `shell`, that takes
@@ -20590,15 +20590,21 @@ with `ignore: []`. The check runs after normalization, so `./.git`,
 `a/../.git`, `.git\config` and `.git/` are refused too. Names compare
 case-insensitively (`.GIT`), trailing dots and spaces are ignored (Windows
 opens `.git.` as `.git`), and on Windows 8.3 short names such as `GIT~1` are
-refused. `.gitignore` and `.github/` are not affected. Add names with the
-`deny` option, for example `deny: ['.git', '.env', 'secrets']` (entry names,
-not paths), or pass `deny: []` to turn the check off.
+refused. `.gitignore` and `.github/` are not affected.
+
+The default list also covers `.env` and `.env.*` (`.env.local`,
+`.env.production`), so a prompt-injected model cannot read secrets from them.
+`.env.example`, `.env.sample` and `.env.template` stay readable. An entry
+ending in `*` is a prefix match that spares those three template suffixes.
+A `deny` you pass **replaces** the defaults, it does not extend them: list
+`.git` and `.env` again, for example `deny: ['.git', '.env', '.env.*',
+'secrets']` (entry names, not paths), or pass `deny: []` to turn the check off.
 
 ```ts
 import { createFsTools, NodeWorkspace } from '@lousho/build-ai-agent';
 
 const workspace = new NodeWorkspace({ root: '.' });
-const tools = createFsTools(workspace, { readOnly: true, deny: ['.git', '.env'] });
+const tools = createFsTools(workspace, { readOnly: true, deny: ['.git', '.env', '.env.*'] });
 ```
 
 Links into `.git` are refused too. With `NodeWorkspace` (or any provider that

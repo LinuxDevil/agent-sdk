@@ -98,9 +98,12 @@ export interface FsToolsOptions {
   ignore?: readonly string[];
   /**
    * Entry names no tool opens, lists, searches or writes, at any depth.
-   * Defaults to `['.git']`: `.git/config` can hold a CI checkout token
-   * (`http.<url>.extraheader = AUTHORIZATION: basic ...`), and a worktree's
-   * `.git` file names a host path. A path with a denied segment (`.git/config`,
+   * Defaults to `['.git', '.env', '.env.*']`: `.git/config` can hold a CI
+   * checkout token (`http.<url>.extraheader = AUTHORIZATION: basic ...`), a
+   * worktree's `.git` file names a host path, and `.env` files hold secrets.
+   * An entry ending in `*` is a prefix: `.env.*` covers `.env.local` and
+   * `.env.production` but never `.env.example`, `.env.sample` or `.env.template`.
+   * A `deny` you pass replaces the defaults, so list `.git` and `.env` again. A path with a denied segment (`.git/config`,
    * `./.GIT`, `a/../.git/`, `sub\.git\HEAD`) is a `WorkspaceError`; `glob`,
    * `grep` and `list_dir` leave such entries out. With a provider that has
    * `realPath` (`NodeWorkspace`), a path that resolves through a symlink or
@@ -131,7 +134,7 @@ function resolveLimits(options: FsToolsOptions): FsLimits {
 }
 
 function resolveDeny(deny: readonly string[] | undefined): readonly string[] {
-  if (deny === undefined) return ['.git'];
+  if (deny === undefined) return ['.git', '.env', '.env.*'];
   for (const name of deny) {
     if (typeof name !== 'string' || /[/\\]/.test(name)) {
       throw new ConfigurationError(
