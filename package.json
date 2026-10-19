@@ -298,7 +298,8 @@
     "docs/*.md",
     "LICENSE",
     "CHANGELOG.md",
-    "CONTRIBUTING.md"
+    "CONTRIBUTING.md",
+    "SECURITY.md"
   ],
   "sideEffects": [
     "./src/providers/index.ts",
