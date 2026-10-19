@@ -6651,6 +6651,13 @@ variable (`createAgent: OPENAI_API_KEY is not set. ...`), an unknown prefix
 lists the supported ones and suggests the closest, and a missing optional peer
 dependency prints the exact `npm install` command.
 
+An option `createAgent()` does not know is an error (`LOUSHO_CONFIG_INVALID`),
+not silently ignored, so a typo fails from JavaScript or YAML too.
+The message suggests the closest option, or the Lousho name for one other SDKs
+use: `'maxOutputTokens' is not a known option (did you mean 'modelSettings.maxTokens'?)`,
+and `system` points to `instructions`. A key set to `undefined` is ignored, and
+the `manifest` of a spread `claudeProject()` result is accepted.
+
 ## Model settings
 
 `modelSettings` sets the sampling options of every model call an agent makes.
@@ -19280,6 +19287,12 @@ Tools written for the Vercel AI SDK (`tool({ description, inputSchema, execute }
 `defineTool()` checks the name, the description and the zod `input` when it is
 called, and throws an error that says how to fix a bad value. Registering two
 tools with the same name throws an error naming the conflict.
+
+An option not in the table above is an error (`LOUSHO_CONFIG_INVALID`) with a
+suggestion, so a misspelled safety option cannot leave a tool running without
+approval: `requireApproval: true` gives `'requireApproval' is not a known option (did you mean 'needsApproval'?)`,
+and `inputSchema` or `parameters` points to `input`. A defined tool spread back
+in (`defineTool({ ...tool, execute })`) is accepted.
 
 It also refuses (`LOUSHO_CONFIG_INVALID`) an `input` no model can satisfy:
 

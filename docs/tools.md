@@ -52,6 +52,12 @@ Tools written for the Vercel AI SDK (`tool({ description, inputSchema, execute }
 called, and throws an error that says how to fix a bad value. Registering two
 tools with the same name throws an error naming the conflict.
 
+An option not in the table above is an error (`LOUSHO_CONFIG_INVALID`) with a
+suggestion, so a misspelled safety option cannot leave a tool running without
+approval: `requireApproval: true` gives `'requireApproval' is not a known option (did you mean 'needsApproval'?)`,
+and `inputSchema` or `parameters` points to `input`. A defined tool spread back
+in (`defineTool({ ...tool, execute })`) is accepted.
+
 It also refuses (`LOUSHO_CONFIG_INVALID`) an `input` no model can satisfy:
 
 - **The root must be an object.** Providers send tool arguments as a JSON

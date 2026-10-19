@@ -39,7 +39,7 @@ const SETTING_RANGES: Readonly<Partial<Record<string, readonly [number, number]>
 };
 
 /** AI SDK (and provider API) names people reach for, mapped to ours. */
-const SETTING_SYNONYMS: Readonly<Record<string, keyof ModelSettings>> = {
+export const SETTING_SYNONYMS: Readonly<Record<string, keyof ModelSettings>> = {
   maxOutputTokens: 'maxTokens',
   max_tokens: 'maxTokens',
   max_completion_tokens: 'maxTokens',
