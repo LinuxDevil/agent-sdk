@@ -33,11 +33,8 @@ Each item is checkable in this repository.
 - **Durable approvals on Cloudflare Workers KV** as well as memory, file and
   SQLite, with the same `needsApproval` / `resumeAfterApproval()` code on each
   ([Durable execution](./durable-execution.md), [Cloudflare Workers](./cloudflare-workers.md)).
-- **Editor and MCP surfaces from the same agent.** `lousho acp` serves any agent
-  to Zed and other Agent Client Protocol editors ([ACP](./acp.md)); `serveMcp`
-  exposes it as an MCP server to Claude Code, Cursor and other clients ([MCP](./mcp.md)).
-- **Self-hosted, one package, no platform account.** Runs in your Node process
-  or a Worker; nothing calls home and there is no hosted control plane to sign up for.
+- **Self-hosted, one package, no platform account.** Runs in your Node process,
+  Docker or a Worker; nothing calls home and there is no hosted control plane to sign up for.
 - **Spans AI SDK majors.** The `ai` peer dependency accepts `^4.3.19`, `^6` and
   `^7`, so an existing app can adopt lousho without first upgrading the AI SDK
   ([Installation](./installation.md)).
@@ -47,7 +44,7 @@ Each item is checkable in this repository.
 - **Alpha, one maintainer.** The 1.0 line is still `1.0.0-alpha.*`. Expect API churn, a small community and few third-party integrations.
 - **No Postgres store.** Checkpoint and approval stores ship for memory, file, SQLite and Cloudflare KV. Mastra and LangGraph ship Postgres; here you implement the small `CheckpointStore` / `ApprovalStore` interfaces yourself.
 - **Fewer native providers.** OpenAI, Anthropic, OpenRouter, Ollama and the Pi catalog are built in; anything else goes through `fromAiSdk()` ([Providers](./providers.md)).
-- **No hosted dashboard.** Traces are OpenTelemetry spans you send to your own backend ([Observability](./observability.md)); there is no equivalent of LangSmith, VoltOps or Mastra's playground.
+- **No hosted dashboard.** Traces are OpenTelemetry spans you send to your own backend ([Observability](./observability.md)); there is no hosted equivalent of LangSmith or VoltOps. Agent Forge (`lousho studio`) is a local visual console, not a hosted service ([Agent Forge](./agent-forge.md)).
 - **The root entry point is not edge-safe.** Cloudflare Workers use the dedicated `worker` build and subpaths ([Cloudflare Workers](./cloudflare-workers.md)).
 - **Live runs are manual.** CI runs offline tests and cassette replays; live-provider checks are run by hand.
 
@@ -59,5 +56,4 @@ Agent SDK or an AI SDK harness. If you want an all-in-one framework with a dev
 UI and Postgres, look at Mastra; if your control flow is a graph, LangGraph.js;
 if you deploy on Vercel, eve. Pick lousho when you want offline
 record/replay evals, approvals that survive a restart on your own stores
-(including Workers KV), and one self-hosted package you can also serve over ACP
-and MCP.
+(including Workers KV), and one self-hosted package with no platform account.
