@@ -214,7 +214,7 @@ directory's `auth.ts`, with `LOUSHO_API_TOKEN` appended to it: see
 | Value | Store |
 | ----- | ----- |
 | `memory` (default) | `memoryStore()`: gone when the process restarts, and not shared between instances. |
-| `sqlite:<path>` | A [`SqliteStore`](./sessions.md) file (created with its directory): sessions survive restarts. Needs Node 22 (`node:sqlite`); the `docker` image uses `node:22-slim`. Mount the file's directory as a volume. |
+| `sqlite:<path>` | A [`SqliteStore`](./sessions.md) file (created with its directory): sessions survive restarts. Needs Node 22 (`node:sqlite`); the `docker` image uses `node:22-slim`. Mount the file's directory as a volume (the `docker` image owns `/app/data` for this). |
 
 SQLite is one file on one disk, so run a single instance per database file.
 
@@ -311,6 +311,18 @@ cd .lousho/build/docker
 docker build -t lousho-agent .
 docker run -p 3000:3000 -e OPENAI_API_KEY=... lousho-agent
 ```
+
+The image creates `/app/data`, owned by `node`, and declares it a `VOLUME`. Docker
+copies that ownership into a fresh named volume, so the unprivileged server can write
+there without a manual `chown`. Keep sessions across restarts by mounting a volume and
+pointing the store at it:
+
+```bash
+docker run -p 3000:3000 -e OPENAI_API_KEY=...   -v lousho-data:/app/data -e LOUSHO_STORE=sqlite:/app/data/lousho.db lousho-agent
+```
+
+A bind mount (`-v ./data:/app/data`) keeps the host directory's own ownership, so
+`chown` it to uid 1000 first.
 
 ## `cloudflare-worker`
 

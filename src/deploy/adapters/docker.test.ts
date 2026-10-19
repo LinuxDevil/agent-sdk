@@ -75,6 +75,14 @@ describe('DockerAdapter', () => {
     expect(lines).toContain('ENV HOST=0.0.0.0');
   });
 
+  it('creates and chowns /app/data before dropping to the node user, so a fresh named volume is writable', () => {
+    const lines = DOCKERFILE.split('\n');
+    const mkdir = lines.findIndex((l) => /^RUN mkdir -p \/app\/data && chown node:node \/app\/data$/.test(l));
+    expect(mkdir).toBeGreaterThan(-1);
+    expect(mkdir).toBeLessThan(lines.indexOf('USER node'));
+    expect(lines).toContain('VOLUME /app/data');
+  });
+
   it('writes a package.json shipping the SDK and the peers the spec needs', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-docker-'));
     const specPath = path.join(dir, 'agent.yaml');
