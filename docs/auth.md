@@ -8,7 +8,7 @@ accepts the request returns a **principal**, and that principal goes into the
 run, where your `model` / `instructions` / `tools` functions and memory scopes
 can read it.
 
-```ts
+```ts no-run
 import { createAgent, createRouteHandler } from '@lousho/build-ai-agent';
 import { apiToken, jwt } from '@lousho/build-ai-agent/auth';
 import { mockModel } from '@lousho/build-ai-agent/testing';
@@ -18,10 +18,18 @@ const agent = createAgent({
   instructions: ({ principal }) => `You are helping ${principal?.id ?? 'a guest'}.`,
 });
 
+// Read secrets from the environment and fail at startup when one is missing.
+// Never fall back to a literal: a default in your source is a secret everyone can read.
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is not set`);
+  return value;
+}
+
 export const { GET, POST } = createRouteHandler(agent, {
   auth: [
-    jwt({ secret: process.env.JWT_SECRET ?? 'a-development-secret-of-32-bytes!!', issuer: 'https://auth.example.com', audience: 'agent-api' }),
-    apiToken(process.env.CI_TOKEN ?? 'ci-token', { id: 'ci' }),
+    jwt({ secret: requireEnv('JWT_SECRET'), issuer: 'https://auth.example.com', audience: 'agent-api' }),
+    apiToken(requireEnv('CI_TOKEN'), { id: 'ci' }),
   ],
 });
 ```
@@ -133,9 +141,9 @@ show their login prompt.
 ```ts
 import { basic } from '@lousho/build-ai-agent/auth';
 
-const operators = basic({ users: { ops: process.env.OPS_PASSWORD ?? 'change-me' }, realm: 'agent' });
+const operators = basic({ users: { ops: process.env.OPS_PASSWORD! }, realm: 'agent' });
 // Or check against your own store (compare in constant time there):
-const fromDatabase = basic({ users: async (user, password) => user === 'svc' && password === (process.env.SVC_PASSWORD ?? '') });
+const fromDatabase = basic({ users: async (user, password) => user === 'svc' && password === process.env.SVC_PASSWORD });
 ```
 
 **Only use `basic()` over HTTPS**: the password travels with every request.

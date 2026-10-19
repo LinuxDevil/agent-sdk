@@ -101,6 +101,8 @@ describe('jwt()', () => {
         { publicKey: '-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----', audience: AUD },
         { publicKey: { kty: 'oct', k: 'c2VjcmV0' }, audience: AUD },
         { secret: SECRET, audience: '' },
+        { secret: undefined, audience: AUD }, // an unset env var must not silently disable the key
+        { secret: '', audience: AUD },
       ];
       for (const options of cases) expect(invalid(() => jwt(options)), JSON.stringify(options)).toBe('LOUSHO_AUTH_CONFIG_INVALID');
     });
