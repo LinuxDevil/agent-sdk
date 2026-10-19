@@ -209,6 +209,11 @@ function serverSource(variant: ServerVariant): string {
  * LOUSHO_ALLOWED_HOSTS (comma-separated) and LOUSHO_REQUIRE_JSON_BODY=false
  * set the routes' cross-site, Host and body checks (docs/auth.md).
  *
+ * Crash recovery: once listening, the server resumes the runs a crash left
+ * in-progress in the store (agent.recover(): completed steps do not run again,
+ * runs paused on an approval are left alone) and logs how many it found.
+ * LOUSHO_RECOVER_ON_START=0 turns it off.
+ *
  * Binds to 127.0.0.1 by default; pass --host=<h> (or HOST=<h>) to opt in to
  * listening on other interfaces. Port: --port=<n> / PORT, default 3000.
  */
