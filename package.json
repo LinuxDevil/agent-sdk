@@ -288,6 +288,7 @@
     "!src/**/__snapshots__",
     "!src/**/__cassettes__",
     "bin",
+    "registry/dist",
     "apps/agent-forge/package.json",
     "apps/agent-forge/dist",
     "apps/agent-forge/dist-server",
