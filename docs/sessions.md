@@ -4,6 +4,8 @@
 **session** is a multi-turn conversation: it keeps the transcript and passes it
 to the model on every `send()`.
 
+See also: [Pause, restart, resume](./pause-and-resume.md), a short end-to-end tutorial.
+
 > Snippets on this page leave some names to you: `provider` is any `LLMProvider` (offline: `createMockProvider()`).
 
 ```ts
