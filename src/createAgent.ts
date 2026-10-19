@@ -21,6 +21,7 @@ import { streamResumed, throwingRun, type AgentRun } from './execution/agentRun'
 import type { AgentEvent } from './execution/agentEvents';
 import type { TraceExporter } from './execution/tracing';
 import { assertModelSettings, mergeModelSettings } from './execution/modelSettings';
+import { assertKnownCreateAgentKeys } from './createAgentKeys';
 import { DEFAULT_AGENT_NAME } from './execution/genAiSpans';
 import { LLMProvider, LLMProviderRegistry } from './providers/llm';
 import { ToolRegistry } from './tools/ToolRegistry';
@@ -942,6 +943,7 @@ export function createAgentConfigOf(agent: SimpleAgent): CreateAgentConfig | und
 export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>(
   config: CreateAgentConfig<TOutput> = {}
 ): SimpleAgent<InferSchemaOutput<TOutput>> {
+  assertKnownCreateAgentKeys(config);
   assertToolConcurrency(config.toolConcurrency, 'createAgent');
   assertMaxSteps(config.maxSteps, 'createAgent');
   assertModelSettings(config.modelSettings, 'createAgent');

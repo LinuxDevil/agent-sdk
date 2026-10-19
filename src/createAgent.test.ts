@@ -135,6 +135,31 @@ describe('createAgent', () => {
     });
   });
 
+  describe('unknown options', () => {
+    const provider = createMockProvider();
+    it.each([
+      ['maxOutputTokens', 'modelSettings.maxTokens'],
+      ['max_tokens', 'modelSettings.maxTokens'],
+      ['temperature', 'modelSettings.temperature'],
+      ['system', 'instructions'],
+      ['systemPrompt', 'instructions'],
+      ['maxStep', 'maxSteps'],
+      ['permisions', 'permissions'],
+    ])("rejects '%s' and suggests '%s'", (key, suggestion) => {
+      expect(() => createAgent({ provider, [key]: 100 } as never)).toThrow(
+        expect.objectContaining({ code: 'LOUSHO_CONFIG_INVALID', message: expect.stringContaining(`createAgent: '${key}' is not a known option (did you mean '${suggestion}'?)`) })
+      );
+    });
+
+    it('rejects an unknown option with no plausible match, listing the allowed ones', () => {
+      expect(() => createAgent({ provider, frobnicate: true } as never)).toThrow(/'frobnicate' is not a known option\. Allowed options: tools, /);
+    });
+
+    it('ignores an unknown option whose value is undefined', () => {
+      expect(() => createAgent({ provider, system: undefined } as never)).not.toThrow();
+    });
+  });
+
   describe('error messages', () => {
     it('names the missing API key and the provider escape hatch', () => {
       expect(() => createAgent({ model: 'openai/gpt-4o-mini' })).toThrow(

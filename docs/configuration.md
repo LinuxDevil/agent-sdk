@@ -390,6 +390,13 @@ variable (`createAgent: OPENAI_API_KEY is not set. ...`), an unknown prefix
 lists the supported ones and suggests the closest, and a missing optional peer
 dependency prints the exact `npm install` command.
 
+An option `createAgent()` does not know is an error (`LOUSHO_CONFIG_INVALID`),
+not silently ignored, so a typo fails from JavaScript or YAML too.
+The message suggests the closest option, or the Lousho name for one other SDKs
+use: `'maxOutputTokens' is not a known option (did you mean 'modelSettings.maxTokens'?)`,
+and `system` points to `instructions`. A key set to `undefined` is ignored, and
+the `manifest` of a spread `claudeProject()` result is accepted.
+
 ## Model settings
 
 `modelSettings` sets the sampling options of every model call an agent makes.
