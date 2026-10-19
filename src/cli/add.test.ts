@@ -245,12 +245,23 @@ describe('lousho add', () => {
     expect(explicit.code).toBe(1);
     expect(explicit.err).toContain('LOUSHO_REGISTRY_UNREACHABLE');
 
-    // Everything down: one error naming every URL tried.
-    const down = await add(['--list'], { fetch: stubWhere(undefined, []) });
-    expect(down.code).toBe(1);
-    expect(down.err).toContain('the default registry is unreachable');
-    for (const url of [DEFAULT_REGISTRY, ...DEFAULT_REGISTRY_FALLBACKS]) expect(down.err).toContain(url);
-    expect(down.err).toContain('--registry');
+    // Everything down: the registry bundled in the package answers (index and item), with a notice.
+    const seenDown: string[] = [];
+    const down = await add(['--list'], { fetch: stubWhere(undefined, seenDown) });
+    expect(down.code).toBe(0);
+    expect(seenDown).toEqual([DEFAULT_REGISTRY, ...DEFAULT_REGISTRY_FALLBACKS]);
+    expect(down.err).toContain('using the registry bundled with this lousho version');
+    expect(down.out).toContain('changelog');
+    const offline = await add(['code-review', '--yes', '--dir', 'agent'], { fetch: stubWhere(undefined, []) });
+    expect(offline.code).toBe(0);
+    expect(offline.out).toContain('Added code-review');
+    expect(readReceipt().items['code-review'].registry).toBe(path.join(dist, 'index.json'));
+
+    // An explicit registry still fails when it is down, with no bundled fallback.
+    const explicitDown = await add(['--list', '--registry', 'https://example.invalid/index.json'], { fetch: stubWhere(undefined, []) });
+    expect(explicitDown.code).toBe(1);
+    expect(explicitDown.err).toContain('LOUSHO_REGISTRY_UNREACHABLE');
+    expect(explicitDown.err).not.toContain('bundled');
   });
 
   it('suggests the closest name for an unknown item', async () => {
