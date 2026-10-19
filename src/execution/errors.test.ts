@@ -37,9 +37,9 @@ describe('Error Classes', () => {
       const error = new SDKError('Boom', 'LOUSHO_CONFIG_INVALID');
       const help =
         '[LOUSHO_CONFIG_INVALID] Fix the option named in the message. ' +
-        '(https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_config_invalid)';
+        '(https://lousho.com/errors#lousho_config_invalid)';
       expect(error.hint).toBe('Fix the option named in the message.');
-      expect(error.docs).toBe('https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_config_invalid');
+      expect(error.docs).toBe('https://lousho.com/errors#lousho_config_invalid');
       expect(error.message).toBe(`Boom\n${help}`);
       expect(error.toString()).toBe(`SDKError: Boom\n${help}`);
       expect(new SDKError('x').code).toBe('LOUSHO_GENERIC_ERROR');

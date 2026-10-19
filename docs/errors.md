@@ -18,7 +18,7 @@ error tells you what to do:
 
 ```text
 ConfigurationError: createAgent: no model configured. Do one of the following: (1) pass a model: ...
-[LOUSHO_CONFIG_MISSING_PROVIDER] Pass a model string such as createAgent({ model: 'openai/gpt-4.1-mini' }), a provider instance, or set LOUSHO_MODEL or a provider API key. (https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_config_missing_provider)
+[LOUSHO_CONFIG_MISSING_PROVIDER] Pass a model string such as createAgent({ model: 'openai/gpt-4.1-mini' }), a provider instance, or set LOUSHO_MODEL or a provider API key. (https://lousho.com/errors#lousho_config_missing_provider)
 ```
 
 A run that rejects (`send()`, `stream()`'s `result`, a session turn,
