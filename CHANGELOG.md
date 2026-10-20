@@ -13,6 +13,11 @@ opt-out.
 
 ### Changed
 
+- **Behavior change:** the built node-server and Docker image refuse to start on a non-loopback host when no auth is configured (no `LOUSHO_API_TOKEN`, build token or `auth.ts`), with `LOUSHO_SERVER_UNPROTECTED`. Set a token, add `auth.ts`, bind to `127.0.0.1`, or set `LOUSHO_ALLOW_PUBLIC=1` to serve an open agent on purpose. `lousho build --target=docker` prints the run command with `-e LOUSHO_API_TOKEN=<token>`.
+- The `limits.maxCostUsd` warning for a model with no known price names the model, says the limit is not enforced for it, and shows the `registerModel()` call that fixes it. It is printed once per model instead of on every step.
+- Scaffolded READMEs link to the docs site (`https://lousho.com/quickstart`) instead of the GitHub file on `main`.
+- [Sessions](docs/sessions.md#sharing-a-sqlite-file) has one statement on sharing a SQLite store, used across the docs: several processes on one host and a local disk are fine; network filesystems and multiple hosts are not.
+
 - **Behavior change:** the built node-server and Docker image resume runs a crash left in progress when they start (`agent.recover()`), and check again every 30 seconds until shutdown. Runs paused on an approval or a question are left alone, and a run another replica holds is skipped. `LOUSHO_RECOVER_ON_START=0` turns it off. See [Crash recovery](docs/deployment.md#crash-recovery).
 - **Behavior change:** `createAgent()` and `defineTool()` reject an option key they don't know with `LOUSHO_CONFIG_INVALID` and a suggestion (`requireApproval` → `needsApproval`, `maxOutputTokens` → `modelSettings.maxTokens`) instead of ignoring it. A mistyped `needsApproval` used to run the tool unapproved. Keys set to `undefined` are ignored.
 - **Behavior change:** the workspace file tools deny `.env` and `.env.*` by default as well as `.git`. `.env.example`, `.env.sample` and `.env.template` stay readable. A `deny` list you pass still replaces the defaults.
@@ -30,6 +35,10 @@ opt-out.
 - CI is one workflow with two jobs: `ci` (type checks, lint, build, tests with coverage, docs, API and fallow gates, pack-smoke, size check, and a zod 4 type check) and `compat` (the newest peers, `ai` 7 with zod 4, plus the real-Docker sandbox tests). The separate Docker Engine, Agent Forge E2E and weekly registry-smoke workflows and the `ai` 6 / zod 3 matrix entries are gone; `npm run registry-smoke` and `npm run test:e2e:studio` still run locally. When the fallow gate fails, CI now prints its full health and duplication reports.
 
 ### Added
+- `GET /ready` on the built node-server and Docker image: `200 {"status":"ready"}` while serving, `503 {"status":"draining"}` once shutdown starts. `/health` is unchanged. See [Deployment](docs/deployment.md).
+- The built server exports OpenTelemetry traces over OTLP/HTTP when `OTEL_EXPORTER_OTLP_ENDPOINT` (or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`) is set, next to any exporter the agent already has. It loads `@opentelemetry/sdk-trace-node`, `@opentelemetry/resources` and `@opentelemetry/exporter-trace-otlp-http` only then, says how to install them when missing, and honours `OTEL_SERVICE_NAME`. See [Observability](docs/observability.md).
+- `createAgent({ toolErrorMessage })` replaces the text of a thrown tool error (`kind: 'execution'`) before it reaches the model, `tool.error` events and hooks; a sanitizer that throws gives "The tool failed.". See [Tools](docs/tools.md).
+- `lousho init` and `create-lousho-agent` generate an `AGENTS.md` for coding agents (the project's real scripts, conventions and docs links) and a `CLAUDE.md` that imports it.
 - `lousho add` falls back to the registry bundled in the npm package (`registry/dist`) when `registry.lousho.com` and its GitHub fallbacks are unreachable, with a notice that the bundled copy may be older.
 - [Pause, restart and resume](docs/pause-and-resume.md): one tutorial for an approval that waits across a restart, crash recovery, and resending over HTTP.
 - `SECURITY.md`: supported versions, private reporting through GitHub, and the disclosure policy.
