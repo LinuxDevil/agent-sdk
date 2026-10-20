@@ -317,6 +317,37 @@ export function workerMissingPeerPlugin(): Plugin {
   };
 }
 
+const RUNTIME_PEER_NAMESPACE = 'lousho-runtime-peer';
+
+/**
+ * esbuild plugin (node-server / docker builds) for `@opentelemetry/api`, an
+ * optional peer the SDK's OTel exporter imports (the built server loads that
+ * exporter lazily, only when OTEL_EXPORTER_OTLP_ENDPOINT is set). Installed
+ * where the build can resolve it from the SDK, it is bundled as before; when
+ * it is not, the build does not fail: the import becomes a `require()` that
+ * runs only when the exporter module is loaded, so the server starts without
+ * it and reports the packages to install when traces are asked for.
+ */
+export function runtimePeerPlugin(): Plugin {
+  const filter = /^@opentelemetry\/api(?:\/.*)?$/;
+  return {
+    name: 'lousho-runtime-peer',
+    setup(build) {
+      build.onResolve({ filter }, async (args) => {
+        if (args.namespace === RUNTIME_PEER_NAMESPACE) return { path: args.path, external: true };
+        if (isBuiltinCheck(args.pluginData)) return undefined;
+        const resolved = await resolveNormally(build, args);
+        if (resolved.errors.length === 0) return resolvedAs(resolved);
+        return { path: args.path, namespace: RUNTIME_PEER_NAMESPACE };
+      });
+      build.onLoad({ filter: /.*/, namespace: RUNTIME_PEER_NAMESPACE }, (args) => ({
+        contents: `module.exports = require(${JSON.stringify(args.path)});\n`,
+        loader: 'js',
+      }));
+    },
+  };
+}
+
 /**
  * The SDK's optional peers: the keys of `peerDependenciesMeta` in its own
  * package.json whose `optional` is true. The SDK imports them lazily and

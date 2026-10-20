@@ -37,7 +37,7 @@ import { specSchedules } from '../../schedules/specSchedules';
 import { resolveSpecTool } from '../../spec/specToAgent';
 import { listProviders, type AiMajor } from '../../providers/providerSpec';
 import { findConfigFile, isCodeConfigFile } from '../../agentDir/readConfig';
-import { RUNTIME_SPECIFIER, buildBundle, bundleExternals, findSdkRoot, loadTsup, sdkRuntimePlugin, writeFile } from '../bundle';
+import { RUNTIME_SPECIFIER, buildBundle, bundleExternals, findSdkRoot, loadTsup, runtimePeerPlugin, sdkRuntimePlugin, writeFile } from '../bundle';
 import { agentDirEntries, copyAgentDirAssets, isAgentDir, scaffoldedAgentDir, writeAgentDirPointer } from './node-server-dir';
 
 const SPEC_EXTENSIONS = new Set(['.yaml', '.yml', '.json']);
@@ -456,7 +456,7 @@ export const NodeServerAdapter: DeploymentAdapter = {
       // except the SDK's optional peers (dockerode, provider packages, MCP, ...): they are imported
       // lazily and a missing one raises the SDK's coded missing-peer error where it is needed.
       ...bundleExternals(),
-      esbuildPlugins: [sdkRuntimePlugin()],
+      esbuildPlugins: [sdkRuntimePlugin(), runtimePeerPlugin()],
       clean: true,
       sourcemap: false,
       dts: false,

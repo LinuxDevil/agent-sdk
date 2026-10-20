@@ -3,13 +3,15 @@
  * a project in a FRESH TEMP DIRECTORY (never inside this checkout) with
  * `--sdk-path` pointing at this checkout, so the generator `npm pack`s the
  * local SDK build instead of fetching a published version. It lets `init`
- * run the real `npm install`, then typechecks the generated project and runs
- * its own `npm test` offline. Slow (a real install), hence the long timeout.
+ * run the real `npm install`, then typechecks the generated project, runs
+ * its own `npm test` offline, and builds it with `npm run build` (`lousho
+ * build`), starting the built server to check /health. Slow (a real install),
+ * hence the long timeout.
  *
  * Needs the SDK built first: `npm run build` at the repository root.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync, execSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -30,6 +32,44 @@ function npm(args: string[], cwd: string): string {
   return execSync(`npm ${args.join(' ')}`, { cwd, encoding: 'utf8', env: offlineEnv() });
 }
 
+/**
+ * Starts the built server (`node dist/server.js`) on a free port and resolves with its /health status.
+ * Probes once and settles once, after the server has exited (so its temp dir can be removed on
+ * Windows); a failure carries the server's output.
+ */
+function healthOfBuiltServer(buildDir: string, env: NodeJS.ProcessEnv): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['dist/server.js', '--port=0'], { cwd: buildDir, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    let probing = false;
+    let finished = false;
+    const timer = setTimeout(() => finish(new Error('server did not start')), 30_000);
+    const finish = (error: Error | undefined, status?: number) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      const settle = () => (error ? reject(new Error(`${error.message}\n--- server output ---\n${output}`, { cause: error })) : resolve(status!));
+      if (child.exitCode !== null || child.signalCode !== null) return settle();
+      child.once('exit', settle);
+      child.kill();
+    };
+    const onData = (chunk: Buffer) => {
+      output += chunk;
+      // The whole line, so a port split across chunks is not read short.
+      const match = /listening on http:\/\/[^:\s]+:(\d+)\r?\n/.exec(output);
+      if (!match || probing) return;
+      probing = true;
+      fetch(`http://127.0.0.1:${match[1]}/health`).then(
+        (res) => finish(undefined, res.status),
+        (error: Error) => finish(error)
+      );
+    };
+    child.stdout.on('data', onData);
+    child.stderr.on('data', onData);
+    child.on('exit', (code, signal) => finish(new Error(`server exited early (code ${code}, signal ${signal})`)));
+  });
+}
+
 describe('end-to-end scaffold + install + typecheck + test', () => {
   let base: string | undefined;
 
@@ -40,8 +80,8 @@ describe('end-to-end scaffold + install + typecheck + test', () => {
 
   // OpenRouter runs on `@ai-sdk/openai` 4 through its Chat Completions model, like OpenAI.
   it.each(['openai', 'openrouter'])(
-    '%s: generates a project that installs from the locally packed SDK, typechecks, and passes its own tests',
-    (provider) => {
+    '%s: generates a project that installs from the locally packed SDK, typechecks, passes its own tests and builds a server that starts',
+    async (provider) => {
       base = fs.mkdtempSync(path.join(os.tmpdir(), `create-lousho-agent-e2e-${provider}-`));
       const dir = path.join(base, 'test-agent');
 
@@ -70,6 +110,14 @@ describe('end-to-end scaffold + install + typecheck + test', () => {
         JSON.parse(fs.readFileSync(path.join(dir, 'node_modules', name, 'package.json'), 'utf8')).version as string;
       expect(versionOf('ai')).toMatch(/^7\./);
       expect(versionOf('@ai-sdk/openai')).toMatch(/^4\./);
+
+      // `lousho build` bundles the project without the optional OTel packages (not installed here),
+      // and the built server starts. A placeholder key: starting the server makes no provider call.
+      npm(['run', 'build'], dir);
+      const buildDir = path.join(dir, '.lousho', 'build', 'node-server');
+      expect(fs.existsSync(path.join(buildDir, 'dist', 'server.js'))).toBe(true);
+      const keyVar = provider === 'openrouter' ? 'OPENROUTER_API_KEY' : 'OPENAI_API_KEY';
+      expect(await healthOfBuiltServer(buildDir, { ...offlineEnv(), [keyVar]: 'placeholder-key' })).toBe(200);
     },
     300_000
   );
