@@ -15,7 +15,7 @@ export interface HttpChannelOptions {
    * JSON `Content-Type` (else `415`), so a web page cannot post to it with a
    * form; under `lousho dev` its `Host` is checked like the dev routes'.
    * Omitting it logs a one-time warning: sessions are keyed by the
-   * caller-chosen `sessionKey`, so an unauthenticated channel exposes them.
+   * caller-chosen `sessionKey`, so without a `verify` (or auth in the host in front of it) anyone who can reach it can guess them.
    */
   verify?: (req: ChannelRequest) => Promise<boolean>;
 }
@@ -38,9 +38,9 @@ export interface HttpChannelOptions {
 export function httpChannel(options: HttpChannelOptions = {}): Channel {
   if (!options.verify) {
     console.warn(
-      '[lousho] httpChannel() has no `verify`: the channel is unauthenticated, and sessions are keyed by the caller-chosen `sessionKey`, ' +
-        "so anyone who can reach it can read or continue another user's conversation by guessing a key. " +
-        'Pass `verify: async (req) => req.headers.authorization === `Bearer ${token}`` (see docs/channels.md#securing-the-http-channel).'
+      '[lousho] httpChannel() has no `verify`: unless the server in front of it checks auth (the built node-server does when LOUSHO_API_TOKEN or auth.ts is set), ' +
+        'anyone who can reach it can use the agent and guess `sessionKey` values to read or continue other conversations. ' +
+        'Pass `verify: async (req) => req.headers.authorization === `Bearer ${token}`` to authenticate requests yourself (see docs/channels.md#securing-the-http-channel).'
     );
   }
   return defineChannel({
