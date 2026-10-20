@@ -97,8 +97,8 @@ describe('otelTracingFromEnv', () => {
     otelEnv({ OTEL_EXPORTER_OTLP_ENDPOINT: 'http://c:4318' });
     expect(await otelTracingFromEnv({ serviceName: 'a', load, log })).toBeUndefined();
     const message = log.error.mock.calls[0][0] as string;
-    expect(message).toContain('@opentelemetry/sdk-trace-node, @opentelemetry/resources, @opentelemetry/exporter-trace-otlp-http');
-    expect(message).toContain('npm install @opentelemetry/sdk-trace-node@^2 @opentelemetry/resources@^2 @opentelemetry/exporter-trace-otlp-http');
+    expect(message).toContain('@opentelemetry/api, @opentelemetry/sdk-trace-node, @opentelemetry/resources, @opentelemetry/exporter-trace-otlp-http');
+    expect(message).toContain('npm install @opentelemetry/api @opentelemetry/sdk-trace-node@^2 @opentelemetry/resources@^2 @opentelemetry/exporter-trace-otlp-http');
   });
 
   it('logs any other start-up error and returns undefined', async () => {

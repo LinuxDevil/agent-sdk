@@ -10,13 +10,16 @@
  * not bundle them: the server imports them from its node_modules at start-up, only
  * when the variable is set. When they are missing it logs the packages to install
  * and serves without exporting traces. With the variable unset nothing here runs.
+ * The exporter module (and with it `@opentelemetry/api`, an optional peer) is
+ * imported lazily too, so a build without the OTel packages installed still builds
+ * and runs (see runtimePeerPlugin() in ./bundle.ts).
  */
-import { createOtelTraceExporter } from '../execution/otel';
+import type { createOtelTraceExporter } from '../execution/otel';
 import type { Span, TraceExporter } from '../execution/tracing';
 import { createAgent, createAgentConfigOf, type CreateAgentConfig, type SimpleAgent } from '../createAgent';
 
 /** The packages the server imports to export traces, as `npm install` takes them. */
-const OTEL_TRACE_PACKAGES = ['@opentelemetry/sdk-trace-node@^2', '@opentelemetry/resources@^2', '@opentelemetry/exporter-trace-otlp-http'] as const;
+const OTEL_TRACE_PACKAGES = ['@opentelemetry/api', '@opentelemetry/sdk-trace-node@^2', '@opentelemetry/resources@^2', '@opentelemetry/exporter-trace-otlp-http'] as const;
 
 /** A running trace export: the exporter to give the agent, and `shutdown()` to flush it before exit. */
 export interface OtelTracing {
@@ -100,6 +103,7 @@ export async function otelTracingFromEnv(options: OtelTracingOptions): Promise<O
   if (!endpoint) return undefined;
   const load = options.load ?? importPackage;
   try {
+    const { createOtelTraceExporter } = await import('../execution/otel');
     const { NodeTracerProvider, BatchSpanProcessor } = await exportsOf<SdkTraceNode>(load, '@opentelemetry/sdk-trace-node');
     const resources = await exportsOf<Resources>(load, '@opentelemetry/resources');
     const { OTLPTraceExporter } = await exportsOf<OtlpHttp>(load, '@opentelemetry/exporter-trace-otlp-http');
