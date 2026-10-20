@@ -1440,6 +1440,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
     subagentOptions?: SubagentOptions;
     subagents?: Subagents;
     toolConcurrency?: ToolConcurrency;
+    toolErrorMessage?: ToolErrorMessageFn;
     tools?: PerRun<AgentToolsOption>;
     toolSearch?: false | ToolSearchOptions;
 }
@@ -2190,6 +2191,7 @@ interface ExecuteOptions extends PermissionOptions {
     temperature?: number;
     tokens?: OAuthTokenStore;
     toolConcurrency?: ToolConcurrency;
+    toolErrorMessage?: ToolErrorMessageFn;
     toolRegistry?: ToolRegistry;
     toolSearch?: false | ToolSearchOptions;
 }
@@ -6794,6 +6796,12 @@ export interface ToolErrorInput {
 
 // @public
 export type ToolErrorKind = 'execution' | 'validation' | 'not-found' | 'rejected' | 'not-run' | 'mcp' | 'sandbox' | 'denied' | 'interrupted';
+
+// @public
+export type ToolErrorMessageFn = (error: unknown, ctx: {
+    toolName: string;
+    toolCallId: string;
+}) => string;
 
 // @public
 export interface ToolErrorResult {

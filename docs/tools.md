@@ -153,6 +153,31 @@ The transcript message carries `isError: true`; `tool-result` events, `onToolRes
 | `sandbox` | `SandboxRequiredError` | The tool has `requiresSandbox` but no `sandboxExecute`, so it was refused rather than run unsandboxed. |
 | `denied` | `ToolDeniedError` | A `deny` [permission rule](./approvals.md#permission-policies), the tool's `needsApproval` returning `'deny'`, a `preToolCall` hook's `deny`, or the permission mode refused the call; `execute` did not run. Adds `reason` when given. |
 
+**Hiding exception text.** A thrown error's message goes to the model as it is, so
+`new Error('DB password=hunter2 connection refused')` reaches it verbatim. Pass
+`toolErrorMessage` to `createAgent` to replace the text of `execution` errors:
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({
+  instructions: 'You answer questions about orders.',
+  model: 'openai/gpt-4o-mini',
+  tools: [],
+  toolErrorMessage: (error, { toolName, toolCallId }) => {
+    console.error(`tool ${toolName} (${toolCallId}) failed`, error); // the original error stays here
+    return `${toolName} failed. Try again later or use another approach.`;
+  },
+});
+```
+
+The string becomes `message` in the result above (`kind` stays `execution`). The same text
+reaches `tool.error` events, `onToolResult` and `postToolCall` hooks, so a client-facing stream
+never carries the original; only your function sees the thrown error. Sub-agents inherit it. It
+does not touch `validation` errors (they describe the model's own bad arguments) or the other
+kinds. If the function throws or returns a non-string, the message is `The tool failed.` and the run
+carries on. Without the option, nothing changes.
+
 **Argument validation.** The model's arguments are parsed with the tool's zod
 `inputSchema` (for a legacy descriptor, `tool.parameters`) before the tool runs, so pre-tool hooks, the
 `needsApproval` predicate and `execute` all receive the **parsed** value. Tools without a zod schema are

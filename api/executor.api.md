@@ -765,6 +765,7 @@ export interface ExecuteOptions extends PermissionOptions {
     temperature?: number;
     tokens?: OAuthTokenStore;
     toolConcurrency?: ToolConcurrency;
+    toolErrorMessage?: ToolErrorMessageFn;
     toolRegistry?: ToolRegistry;
     toolSearch?: false | ToolSearchOptions;
 }
@@ -2654,6 +2655,12 @@ interface ToolErrorEvent extends AgentEventBase<'tool.error'> {
     // (undocumented)
     toolName: string;
 }
+
+// @public
+type ToolErrorMessageFn = (error: unknown, ctx: {
+    toolName: string;
+    toolCallId: string;
+}) => string;
 
 // @public
 interface ToolExecutionContext {

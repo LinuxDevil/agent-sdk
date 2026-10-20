@@ -36,6 +36,7 @@ import { withAskQuestion, type ToolEntries } from './tools/built-in/askQuestion'
 import { toolEntries, type ToolsOption } from './tools/toolEntries';
 import { ToolConcurrency, assertToolConcurrency } from './execution/toolBatch';
 import { assertMaxToolResultChars } from './execution/toolResult';
+import type { ToolErrorMessageFn } from './execution/toolErrors';
 import type { Skill } from './skills/defineSkill';
 import { assertUsable as assertSkillsUsable } from './skills/withSkills';
 import type { Message, ModelSettings } from './providers/llm';
@@ -305,6 +306,21 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    * ```
    */
   maxToolResultChars?: number;
+  /**
+   * Rewrites the text of an exception a tool throws before it reaches the
+   * model, the event stream (`tool.done`) and `postToolCall` hooks. The
+   * result's `message` becomes your string; `kind` stays `'execution'`.
+   * Receives the original error, so log it here. Argument-validation errors
+   * and other kinds (MCP, sandbox, ...) are not rewritten. If it throws, the
+   * message is a generic "The tool failed." and the run continues. Unset, the
+   * error's own message is sent. See docs/tools.md.
+   *
+   * @example
+   * ```ts
+   * const agent = createAgent({ instructions: '...', provider, tools, toolErrorMessage: (error, { toolName }) => `${toolName} failed` });
+   * ```
+   */
+  toolErrorMessage?: ToolErrorMessageFn;
   /**
    * What a resume does when this agent differs from the one that
    * paused or crashed the run (another model, tools with other names or
@@ -987,6 +1003,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     toolConcurrency: config.toolConcurrency,
     // Also for resumed runs.
     maxToolResultChars: config.maxToolResultChars,
+    toolErrorMessage: config.toolErrorMessage,
     // TTL: the default pause deadline; an `ask` rule's `ttlMs` overrides it.
     approvalTtlMs: config.approvalTtlMs,
     onAgentDrift: config.onAgentDrift,

@@ -145,3 +145,76 @@ describe('thrown tool errors reach the model', () => {
     ).rejects.toThrow('stop everything');
   });
 });
+
+describe('toolErrorMessage sanitizer', () => {
+  const secret = 'DB password=hunter2 connection refused';
+
+  it('replaces the text of a thrown error for the model, events and hooks', async () => {
+    const { toolRegistry, agent } = setup(async () => {
+      throw new Error(secret);
+    });
+    const { provider, seenMessages } = scriptedProvider(1);
+    const events: AgentEvent[] = [];
+    const toolErrorMessage = vi.fn(() => 'the database is unavailable');
+
+    await AgentExecutor.execute({ agent, input: 'go', provider, toolRegistry, toolErrorMessage, onAgentEvent: e => events.push(e) });
+
+    expect(toolErrorMessage).toHaveBeenCalledWith(expect.objectContaining({ message: secret }), { toolName: 'boom', toolCallId: 'call-1' });
+    const payload = JSON.parse(seenMessages[1].find(m => m.role === 'tool')!.content);
+    expect(payload).toEqual({ error: 'Error', toolName: 'boom', message: 'the database is unavailable', kind: 'execution' });
+    expect(JSON.stringify(seenMessages[1])).not.toContain('hunter2');
+    expect(events.find(e => e.type === 'tool.error')!.error.message).toBe('the database is unavailable');
+  });
+
+  it('leaves argument validation errors unchanged', async () => {
+    const toolRegistry = new ToolRegistry();
+    toolRegistry.register('boom', {
+      displayName: 'Boom',
+      tool: { parameters: z.object({ n: z.number() }), execute: async () => ({ ok: true }) } as Tool,
+    });
+    const agent = AgentBuilder.create().setName('Test Agent').addTool('boom', { tool: 'boom', options: {} }).build();
+    const { provider, seenMessages } = scriptedProvider(1);
+    const toolErrorMessage = vi.fn(() => 'hidden');
+
+    await AgentExecutor.execute({ agent, input: 'go', provider, toolRegistry, toolErrorMessage });
+
+    const payload = JSON.parse(seenMessages[1].find(m => m.role === 'tool')!.content);
+    expect(payload.kind).toBe('validation');
+    expect(payload.message).not.toBe('hidden');
+    expect(toolErrorMessage).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a generic message when the sanitizer throws, and the run continues', async () => {
+    const { toolRegistry, agent } = setup(async () => {
+      throw new Error(secret);
+    });
+    const { provider, seenMessages } = scriptedProvider(1);
+
+    const result = await AgentExecutor.execute({
+      agent,
+      input: 'go',
+      provider,
+      toolRegistry,
+      toolErrorMessage: () => {
+        throw new Error('sanitizer bug');
+      },
+    });
+
+    expect(result.text).toBe('done');
+    const payload = JSON.parse(seenMessages[1].find(m => m.role === 'tool')!.content);
+    expect(payload).toMatchObject({ message: 'The tool failed.', kind: 'execution' });
+    expect(JSON.stringify(seenMessages[1])).not.toContain('hunter2');
+  });
+
+  it('is identical to today without the option', async () => {
+    const { toolRegistry, agent } = setup(async () => {
+      throw new Error(secret);
+    });
+    const { provider, seenMessages } = scriptedProvider(1);
+
+    await AgentExecutor.execute({ agent, input: 'go', provider, toolRegistry });
+
+    const payload = JSON.parse(seenMessages[1].find(m => m.role === 'tool')!.content);
+    expect(payload).toEqual({ error: 'Error', toolName: 'boom', message: secret, kind: 'execution' });
+  });
+});

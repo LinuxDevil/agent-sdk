@@ -28,6 +28,7 @@ const CREATE_AGENT_KEYS = {
   guardrails: true,
   toolConcurrency: true,
   maxToolResultChars: true,
+  toolErrorMessage: true,
   onAgentDrift: true,
   reasoning: true,
   modelSettings: true,
