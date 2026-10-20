@@ -7075,7 +7075,7 @@ deploy the result). `tsup` must be installed (`npm install --save-dev tsup`).
 | Target              | Output                                                   | Printed command                                                        |
 | ------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------- |
 | `node-server`       | `server.ts`, `agent.config.js`, `package.json`, `dist/server.js` | `node dist/server.js`                                                  |
-| `docker`            | everything `node-server` writes, plus `Dockerfile`       | `docker build -t lousho-agent . && docker run -p 3000:3000 lousho-agent` |
+| `docker`            | everything `node-server` writes, plus `Dockerfile`       | `docker build -t lousho-agent . && docker run -p 3000:3000 -e LOUSHO_API_TOKEN=<token> lousho-agent` |
 | `cloudflare-worker` | `worker.ts`, `agent.config.js`, `wrangler.toml`, `dist/worker.js` | `wrangler deploy`                                                      |
 
 Every target answers `GET /health` (`200 ok`) and serves the full
@@ -7242,9 +7242,14 @@ own `verify` require `Authorization: Bearer <token>`; anything else gets `401`
 with a JSON error (the token is compared in constant time). `/health` is
 open, and channels that authenticate themselves (a `verify` function, or a
 platform signature check such as Slack's) are not gated by the token. Without it the server is open: that
-is fine on `127.0.0.1`, but **treat the token as required for anything that is
-not on localhost** (the server logs a warning when it listens on another
-interface without one, and the `docker` image listens on all interfaces).
+is fine on `127.0.0.1`, but on any other interface the built `node-server`
+(and so the `docker` image, which listens on `0.0.0.0`) **refuses to start**
+with no auth: it exits with
+[`LOUSHO_SERVER_UNPROTECTED`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_server_unprotected). Set
+`LOUSHO_API_TOKEN`, add an [`auth.ts`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md), or bind to `127.0.0.1`. To
+serve an open agent on a public interface on purpose (a private network, auth
+at a proxy in front), set `LOUSHO_ALLOW_PUBLIC=1`: the server then starts and
+logs a warning instead.
 Terminate TLS in front of the server, since a bearer token travels in clear
 text over plain HTTP. Pass the token at run time (`docker run -e
 LOUSHO_API_TOKEN=...`).
@@ -7318,12 +7323,14 @@ dependencies are included), so it runs without `npm install`:
 ```bash
 cd .lousho/build/node-server
 node dist/server.js                   # http://127.0.0.1:3000
-node dist/server.js --port=8080 --host=0.0.0.0
+LOUSHO_API_TOKEN=... node dist/server.js --port=8080 --host=0.0.0.0
 ```
 
 Like `lousho dev`, it binds to `127.0.0.1` unless you opt in to another
 interface with `--host=<h>` (or `HOST=<h>`); the port comes from `--port`,
-`PORT`, or defaults to `3000`.
+`PORT`, or defaults to `3000`. On any interface but loopback it needs auth
+(`LOUSHO_API_TOKEN` or an `auth.ts`) or `LOUSHO_ALLOW_PUBLIC=1`, or it refuses
+to start ([Auth](#auth)).
 
 On SIGINT or SIGTERM (a `docker stop`, a rolling deploy) the server drains
 before it exits:
@@ -7374,15 +7381,17 @@ Reuses the `node-server` scaffold and bundle and adds a `Dockerfile` based
 on `node:22-slim` that copies `dist/` and runs `node dist/server.js` on port
 3000 as the image's unprivileged `node` user. The image sets `HOST=0.0.0.0` -
 inside a container the server has to listen on all interfaces for
-`docker run -p` to reach it. For a reproducible image, run
+`docker run -p` to reach it, so the container refuses to start without auth:
+pass `LOUSHO_API_TOKEN` (or ship an `auth.ts`), or `LOUSHO_ALLOW_PUBLIC=1` for an
+open agent on purpose ([Auth](#auth)). For a reproducible image, run
 `npm install --package-lock-only` in the output directory once and keep the
-`package-lock.json`: the Dockerfile then installs with `npm ci`. Pass provider
-credentials at run time:
+`package-lock.json`: the Dockerfile then installs with `npm ci`. Pass the token
+and provider credentials at run time:
 
 ```bash
 cd .lousho/build/docker
 docker build -t lousho-agent .
-docker run -p 3000:3000 -e OPENAI_API_KEY=... lousho-agent
+docker run -p 3000:3000 -e LOUSHO_API_TOKEN=... -e OPENAI_API_KEY=... lousho-agent
 ```
 
 The image creates `/app/data`, owned by `node`, and declares it a `VOLUME`. Docker
@@ -7391,7 +7400,7 @@ there without a manual `chown`. Keep sessions across restarts by mounting a volu
 pointing the store at it:
 
 ```bash
-docker run -p 3000:3000 -e OPENAI_API_KEY=...   -v lousho-data:/app/data -e LOUSHO_STORE=sqlite:/app/data/lousho.db lousho-agent
+docker run -p 3000:3000 -e LOUSHO_API_TOKEN=... -e OPENAI_API_KEY=... -v lousho-data:/app/data -e LOUSHO_STORE=sqlite:/app/data/lousho.db lousho-agent
 ```
 
 A bind mount (`-v ./data:/app/data`) keeps the host directory's own ownership, so
@@ -8361,7 +8370,7 @@ Find a code by area:
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
 | [Sandbox](#sandbox) | [`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`](#lousho_sandbox_egress_unsupported), [`LOUSHO_SANDBOX_PATH_DENIED`](#lousho_sandbox_path_denied) | Asking a sandbox for something it cannot do on the current platform, or to write outside its root. |
 | [Agent directories, skills and flows](#agent-directories-skills-and-flows) | [`LOUSHO_AGENT_DIR_INVALID`](#lousho_agent_dir_invalid), [`LOUSHO_SKILL_INVALID`](#lousho_skill_invalid), [`LOUSHO_FLOW_INVALID`](#lousho_flow_invalid), [`LOUSHO_FLOW_TOOL_DENIED`](#lousho_flow_tool_denied), [`LOUSHO_FLOW_CHANGED`](#lousho_flow_changed) | Loading an agent directory, a skill, or a flow definition, and gating a flow's tool calls. |
-| [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_STORAGE_BUSY`](#lousho_storage_busy), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed) | A storage backend, a trigger, a channel request or `lousho build`. |
+| [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_STORAGE_BUSY`](#lousho_storage_busy), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed), [`LOUSHO_SERVER_UNPROTECTED`](#lousho_server_unprotected) | A storage backend, a trigger, a channel request, `lousho build` or the built server's start-up. |
 | [Tests and evals](#tests-and-evals) | [`LOUSHO_EVALS_INVALID`](#lousho_evals_invalid), [`LOUSHO_TEST_FAILED`](#lousho_test_failed), [`LOUSHO_CASSETTE_INVALID`](#lousho_cassette_invalid) | `defineEval()`, `mockModel` and cassettes. |
 | [General](#general) | [`LOUSHO_GENERIC_ERROR`](#lousho_generic_error), [`LOUSHO_AGENT_EXECUTION_FAILED`](#lousho_agent_execution_failed), [`LOUSHO_FLOW_EXECUTION_FAILED`](#lousho_flow_execution_failed), [`LOUSHO_VALIDATION_FAILED`](#lousho_validation_failed), [`LOUSHO_OPERATION_TIMEOUT`](#lousho_operation_timeout), [`LOUSHO_OUTPUT_INVALID`](#lousho_output_invalid), [`LOUSHO_BUDGET_EXCEEDED`](#lousho_budget_exceeded), [`LOUSHO_GUARDRAIL_TRIPPED`](#lousho_guardrail_tripped) | Run-level failures: a timeout, a budget or guardrail stop, invalid output, and the catch-all codes. |
 | [Auth](#auth) | [`LOUSHO_AUTH_CONFIG_INVALID`](#lousho_auth_config_invalid) | A route auth helper (`jwt()`, `oidc()`, `basic()`, `apiToken()`) got options it cannot verify with. |
@@ -9341,6 +9350,20 @@ Cloudflare Worker target does not have.
 **Fix:** follow the message. See [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md).
 
 **Example:** `lousho build --target node-server` without `--agent`.
+
+### LOUSHO_SERVER_UNPROTECTED
+
+**Means:** the built `node-server` (or the `docker` image) was asked to listen
+on an interface other than loopback (`localhost`, `127.x.x.x`, `::1`) with no
+route auth: no `LOUSHO_API_TOKEN`, no build token and no `auth.ts`. Anyone who
+could reach that interface could use the agent, so it refuses to start.
+
+**Fix:** set `LOUSHO_API_TOKEN`, add an [`auth.ts`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md) to the agent
+directory, or bind to `127.0.0.1` (`HOST` / `--host`). To serve an open agent
+on purpose (a private network, auth at a proxy in front), set
+`LOUSHO_ALLOW_PUBLIC=1`. See [Deployment: Auth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#auth).
+
+**Example:** `docker run -p 3000:3000 lousho-agent` with no `-e LOUSHO_API_TOKEN=...`.
 
 ## Tests and evals
 
@@ -11706,7 +11729,8 @@ The example's environment flags are worth copying:
 - `-e LOUSHO_STORE=sqlite:/data/lousho.db -v lousho-data:/data` — sessions and
   paused approvals survive container restarts (`/data` is a named volume).
 - `-e LOUSHO_API_TOKEN=...` — required: every route except `/health` is then
-  bearer-authed. Port 3000 is plain HTTP; put Traefik (the VPS template
+  bearer-authed. The image listens on `0.0.0.0`, so without a token (or an
+  `auth.ts`) the container refuses to start (`LOUSHO_SERVER_UNPROTECTED`). Port 3000 is plain HTTP; put Traefik (the VPS template
   installs it) or another TLS terminator in front.
 
 Provisioning itself — purchasing, recreating, resizing a VM — is deliberately
@@ -20250,6 +20274,7 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | A channel turn on a session another process is running answers `409` (`LOUSHO_SESSION_BUSY`, `Retry-After: 2`) instead of `500`. | no opt-out (retry after the delay) |
 | `POST /chat` on a session another process is running answers `409` (`LOUSHO_SESSION_BUSY`, `Retry-After: 2`) instead of a `200` stream holding only the error. | no opt-out (retry after the delay) |
 | The built server resumes runs a crash left in progress when it starts, and every 30 seconds. | `LOUSHO_RECOVER_ON_START=0` |
+| The built node-server (and so the Docker image, which sets `HOST=0.0.0.0`) refuses to start on a non-loopback host with no auth (no `LOUSHO_API_TOKEN`, build token or `auth.ts`): it exits with `LOUSHO_SERVER_UNPROTECTED` instead of serving an open agent with a warning. Loopback hosts are unchanged. See [Auth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#auth). | set `LOUSHO_API_TOKEN` (or add `auth.ts`), or `LOUSHO_ALLOW_PUBLIC=1` to serve the open agent on purpose |
 
 ### Sessions, approvals and durability
 

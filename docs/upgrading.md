@@ -225,6 +225,7 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | A channel turn on a session another process is running answers `409` (`LOUSHO_SESSION_BUSY`, `Retry-After: 2`) instead of `500`. | no opt-out (retry after the delay) |
 | `POST /chat` on a session another process is running answers `409` (`LOUSHO_SESSION_BUSY`, `Retry-After: 2`) instead of a `200` stream holding only the error. | no opt-out (retry after the delay) |
 | The built server resumes runs a crash left in progress when it starts, and every 30 seconds. | `LOUSHO_RECOVER_ON_START=0` |
+| The built node-server (and so the Docker image, which sets `HOST=0.0.0.0`) refuses to start on a non-loopback host with no auth (no `LOUSHO_API_TOKEN`, build token or `auth.ts`): it exits with `LOUSHO_SERVER_UNPROTECTED` instead of serving an open agent with a warning. Loopback hosts are unchanged. See [Auth](./deployment.md#auth). | set `LOUSHO_API_TOKEN` (or add `auth.ts`), or `LOUSHO_ALLOW_PUBLIC=1` to serve the open agent on purpose |
 
 ### Sessions, approvals and durability
 

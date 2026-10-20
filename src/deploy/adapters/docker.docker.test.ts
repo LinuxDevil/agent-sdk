@@ -58,7 +58,8 @@ describe.skipIf(!hasDocker)('DockerAdapter image (real Docker daemon)', () => {
 
     const tag = `lousho-agent-test-${Date.now()}`;
     execFileSync('docker', ['build', '-t', tag, '.'], { cwd: outDir, stdio: 'inherit' });
-    const containerId = execFileSync('docker', ['run', '-d', '-p', '127.0.0.1::3000', tag], {
+    // The image binds 0.0.0.0 and this test calls /chat without a token: opt in to the open agent.
+    const containerId = execFileSync('docker', ['run', '-d', '-p', '127.0.0.1::3000', '-e', 'LOUSHO_ALLOW_PUBLIC=1', tag], {
       encoding: 'utf8',
     }).trim();
     try {
@@ -100,7 +101,7 @@ describe.skipIf(!hasDocker)('DockerAdapter image (real Docker daemon)', () => {
     execFileSync('docker', ['volume', 'create', volume]);
     const containerId = execFileSync(
       'docker',
-      ['run', '-d', '-p', '127.0.0.1::3000', '-v', `${volume}:/app/data`, '-e', 'LOUSHO_STORE=sqlite:/app/data/lousho.db', tag],
+      ['run', '-d', '-p', '127.0.0.1::3000', '-v', `${volume}:/app/data`, '-e', 'LOUSHO_STORE=sqlite:/app/data/lousho.db', '-e', 'LOUSHO_ALLOW_PUBLIC=1', tag],
       { encoding: 'utf8' }
     ).trim();
     try {

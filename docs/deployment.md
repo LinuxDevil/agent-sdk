@@ -15,7 +15,7 @@ deploy the result). `tsup` must be installed (`npm install --save-dev tsup`).
 | Target              | Output                                                   | Printed command                                                        |
 | ------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------- |
 | `node-server`       | `server.ts`, `agent.config.js`, `package.json`, `dist/server.js` | `node dist/server.js`                                                  |
-| `docker`            | everything `node-server` writes, plus `Dockerfile`       | `docker build -t lousho-agent . && docker run -p 3000:3000 lousho-agent` |
+| `docker`            | everything `node-server` writes, plus `Dockerfile`       | `docker build -t lousho-agent . && docker run -p 3000:3000 -e LOUSHO_API_TOKEN=<token> lousho-agent` |
 | `cloudflare-worker` | `worker.ts`, `agent.config.js`, `wrangler.toml`, `dist/worker.js` | `wrangler deploy`                                                      |
 
 Every target answers `GET /health` (`200 ok`) and serves the full
@@ -182,9 +182,14 @@ own `verify` require `Authorization: Bearer <token>`; anything else gets `401`
 with a JSON error (the token is compared in constant time). `/health` is
 open, and channels that authenticate themselves (a `verify` function, or a
 platform signature check such as Slack's) are not gated by the token. Without it the server is open: that
-is fine on `127.0.0.1`, but **treat the token as required for anything that is
-not on localhost** (the server logs a warning when it listens on another
-interface without one, and the `docker` image listens on all interfaces).
+is fine on `127.0.0.1`, but on any other interface the built `node-server`
+(and so the `docker` image, which listens on `0.0.0.0`) **refuses to start**
+with no auth: it exits with
+[`LOUSHO_SERVER_UNPROTECTED`](./errors.md#lousho_server_unprotected). Set
+`LOUSHO_API_TOKEN`, add an [`auth.ts`](./auth.md), or bind to `127.0.0.1`. To
+serve an open agent on a public interface on purpose (a private network, auth
+at a proxy in front), set `LOUSHO_ALLOW_PUBLIC=1`: the server then starts and
+logs a warning instead.
 Terminate TLS in front of the server, since a bearer token travels in clear
 text over plain HTTP. Pass the token at run time (`docker run -e
 LOUSHO_API_TOKEN=...`).
@@ -258,12 +263,14 @@ dependencies are included), so it runs without `npm install`:
 ```bash
 cd .lousho/build/node-server
 node dist/server.js                   # http://127.0.0.1:3000
-node dist/server.js --port=8080 --host=0.0.0.0
+LOUSHO_API_TOKEN=... node dist/server.js --port=8080 --host=0.0.0.0
 ```
 
 Like `lousho dev`, it binds to `127.0.0.1` unless you opt in to another
 interface with `--host=<h>` (or `HOST=<h>`); the port comes from `--port`,
-`PORT`, or defaults to `3000`.
+`PORT`, or defaults to `3000`. On any interface but loopback it needs auth
+(`LOUSHO_API_TOKEN` or an `auth.ts`) or `LOUSHO_ALLOW_PUBLIC=1`, or it refuses
+to start ([Auth](#auth)).
 
 On SIGINT or SIGTERM (a `docker stop`, a rolling deploy) the server drains
 before it exits:
@@ -314,15 +321,17 @@ Reuses the `node-server` scaffold and bundle and adds a `Dockerfile` based
 on `node:22-slim` that copies `dist/` and runs `node dist/server.js` on port
 3000 as the image's unprivileged `node` user. The image sets `HOST=0.0.0.0` -
 inside a container the server has to listen on all interfaces for
-`docker run -p` to reach it. For a reproducible image, run
+`docker run -p` to reach it, so the container refuses to start without auth:
+pass `LOUSHO_API_TOKEN` (or ship an `auth.ts`), or `LOUSHO_ALLOW_PUBLIC=1` for an
+open agent on purpose ([Auth](#auth)). For a reproducible image, run
 `npm install --package-lock-only` in the output directory once and keep the
-`package-lock.json`: the Dockerfile then installs with `npm ci`. Pass provider
-credentials at run time:
+`package-lock.json`: the Dockerfile then installs with `npm ci`. Pass the token
+and provider credentials at run time:
 
 ```bash
 cd .lousho/build/docker
 docker build -t lousho-agent .
-docker run -p 3000:3000 -e OPENAI_API_KEY=... lousho-agent
+docker run -p 3000:3000 -e LOUSHO_API_TOKEN=... -e OPENAI_API_KEY=... lousho-agent
 ```
 
 The image creates `/app/data`, owned by `node`, and declares it a `VOLUME`. Docker
@@ -331,7 +340,7 @@ there without a manual `chown`. Keep sessions across restarts by mounting a volu
 pointing the store at it:
 
 ```bash
-docker run -p 3000:3000 -e OPENAI_API_KEY=...   -v lousho-data:/app/data -e LOUSHO_STORE=sqlite:/app/data/lousho.db lousho-agent
+docker run -p 3000:3000 -e LOUSHO_API_TOKEN=... -e OPENAI_API_KEY=... -v lousho-data:/app/data -e LOUSHO_STORE=sqlite:/app/data/lousho.db lousho-agent
 ```
 
 A bind mount (`-v ./data:/app/data`) keeps the host directory's own ownership, so

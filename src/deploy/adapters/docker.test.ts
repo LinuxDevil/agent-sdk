@@ -35,7 +35,7 @@ describe('DockerAdapter', () => {
     registerBuiltInAdapters();
     expect(getAdapter('docker')).toBe(DockerAdapter);
     expect(DockerAdapter.describe('/anywhere')).toBe(
-      'docker build -t lousho-agent . && docker run -p 3000:3000 lousho-agent'
+      'docker build -t lousho-agent . && docker run -p 3000:3000 -e LOUSHO_API_TOKEN=<token> lousho-agent'
     );
   });
 
