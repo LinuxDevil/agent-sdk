@@ -349,7 +349,7 @@ implementation by where the process runs:
 | --- | --- | --- | --- | --- |
 | In memory (`memoryStore()`) | `MemorySessionStore` | in memory | `InMemoryApprovalStore` | Tests, scripts, one process that never restarts |
 | Files (`fileStore(dir)`) | `<dir>/sessions/<id>.json` | `<dir>/checkpoints/`, `<dir>/checkpoint-history/` | `<dir>/approvals/<id>.json` | One machine, you want plain inspectable files |
-| SQLite | `store.sessions` | `store.checkpoints` | `store.approvals` | A Node server: one durable, transactional file, shared safely by several processes |
+| SQLite | `store.sessions` | `store.checkpoints` | `store.approvals` | A Node server: one durable, transactional file, shared by several processes on one host (see [Sharing a SQLite file](#sharing-a-sqlite-file)) |
 | Cloudflare KV (`KVStore` from `@lousho/build-ai-agent/kv`) | `store.sessions` | `store.checkpoints` | `store.approvals` | Workers deployments (see [Deployment](deployment.md)) |
 
 Each one is an `AgentStore` part: pass them together as
@@ -433,8 +433,9 @@ With the executor directly, pass `store.checkpoints` as `checkpointStore` and
 - The directory is created if missing. The schema is versioned with
   `PRAGMA user_version` and migrated on open; a database written by a newer
   release is refused.
-- WAL mode and a 5 s busy timeout let two processes share the file. An approval
-  can be resolved by only one of them.
+- WAL mode and a short lock wait with retries (about 5 s in all, then
+  `LOUSHO_STORAGE_BUSY`) let several processes share the file. An approval can
+  be resolved by only one of them. See [Sharing a SQLite file](#sharing-a-sqlite-file).
 - Checkpoints and approval snapshots are stored as opaque JSON, so new fields
   round-trip unchanged.
 - `prune()` removes sessions and checkpoints not updated within `olderThanMs`,
@@ -446,6 +447,27 @@ With the executor directly, pass `store.checkpoints` as `checkpointStore` and
   without running the tool.
 - A file that is not a SQLite database fails with an error naming the path;
   using the store after `close()` throws a clear error.
+
+### Sharing a SQLite file
+
+This is the one statement the other pages link to.
+
+- **Supported:** several processes (for example two Docker replicas on one
+  named volume, or a server and a CLI) on **one host**, sharing one SQLite file
+  on a **local disk**. The file runs in WAL mode, and each session turn holds a
+  [run lease](./durable-execution.md#run-leases), so replicas can alternate
+  messages on one session. A write to a session another process is running
+  fails with `LOUSHO_SESSION_BUSY`; `POST /chat` and the channels answer that
+  with `409` and a `Retry-After` header, so retry.
+- **Not supported:** a SQLite file on a network filesystem (NFS, EFS, SMB),
+  whose locking SQLite cannot rely on, and several hosts. For several hosts,
+  implement `SessionStore`, `CheckpointStore` and `ApprovalStore` over a shared
+  database such as Postgres or Redis. The SDK ships no network store.
+- **Clocks and PIDs:** leases are judged by each process's own clock, so keep
+  replica clocks in sync (NTP). A crashed run is taken over early only when
+  its process is provably gone on the same host (boot id, PID namespace and
+  process start time are checked); otherwise it waits 30 to 60 seconds for the
+  lease to expire. See [Run leases](./durable-execution.md#run-leases).
 
 ## Project instructions
 

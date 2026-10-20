@@ -302,6 +302,11 @@ before any tool runs or any model is called (a resolved approval stays
 pending). Two replicas behind a load balancer therefore never run one turn's
 tool calls twice.
 
+This holds for replicas on one host sharing one SQLite file on a local disk, or
+for a store you implement over a shared database; SQLite on a network
+filesystem or across hosts is not supported. See
+[Sharing a SQLite file](./sessions.md#sharing-a-sqlite-file).
+
 A lease whose holder died is taken over once it expires. Expiry is judged by
 the clock of the process that wants the lease against the expiry the holder
 wrote with its own clock, so the file and SQLite stores wait one more lease
