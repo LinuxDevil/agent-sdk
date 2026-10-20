@@ -300,6 +300,14 @@ process.once('SIGTERM', () => {
 Provider credentials are read from the same
 environment variables as everywhere else (`OPENAI_API_KEY`, ...).
 
+Set `OTEL_EXPORTER_OTLP_ENDPOINT` (or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`) to
+export the agent's OpenTelemetry traces over OTLP/HTTP, with `OTEL_SERVICE_NAME`
+as the service name (the agent's name by default). It needs
+`@opentelemetry/sdk-trace-node`, `@opentelemetry/resources` and
+`@opentelemetry/exporter-trace-otlp-http` installed next to `dist/server.js`
+(for the docker image, in the generated `package.json`): see
+[Tracing: the built server](observability.md#the-built-server).
+
 ## `docker`
 
 Reuses the `node-server` scaffold and bundle and adds a `Dockerfile` based
