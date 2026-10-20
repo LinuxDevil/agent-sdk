@@ -366,6 +366,7 @@ createAgent({ model: 'openai/gpt-4o-mini', subagents: { researcher }, rateLimit:
 | `codeMode` | `true` or `CodeModeOptions`: adds a `run_code` tool that lets the model call the agent's tools from one short script in a QuickJS sandbox. See [Code mode](./code-mode.md). |
 | `guardrails` | Input, output and tool guardrails of each run; sub-agents inherit them. See [Guardrails](./guardrails.md). |
 | `maxToolResultChars` | The most characters of one tool result the model gets (default `50_000`; `Infinity` turns the cap off). See [Tools](./tools.md). |
+| `toolErrorMessage` | `(error, { toolName, toolCallId }) => string`: replaces the text of a thrown tool error before the model, events and hooks see it (default: the error's own message). See [Tools](./tools.md#errors). |
 | `onAgentDrift` | What a resume does when the agent differs from the one that paused the run: `'warn'` (default), `'error'` or `'ignore'`. See [Durable execution](./durable-execution.md#resuming-with-a-changed-agent). |
 | `reasoning` | How much the model reasons before it answers: an effort, or `{ effort, budgetTokens, summary, force }`. See [Reasoning](./reasoning.md). |
 | `promptCaching` | `'auto'` (default) marks Anthropic `cache_control` breakpoints for Claude models; `false` marks none. See [Prompt caching](./models-and-cost.md#prompt-caching). |

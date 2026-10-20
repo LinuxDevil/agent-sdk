@@ -6627,6 +6627,7 @@ createAgent({ model: 'openai/gpt-4o-mini', subagents: { researcher }, rateLimit:
 | `codeMode` | `true` or `CodeModeOptions`: adds a `run_code` tool that lets the model call the agent's tools from one short script in a QuickJS sandbox. See [Code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md). |
 | `guardrails` | Input, output and tool guardrails of each run; sub-agents inherit them. See [Guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md). |
 | `maxToolResultChars` | The most characters of one tool result the model gets (default `50_000`; `Infinity` turns the cap off). See [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md). |
+| `toolErrorMessage` | `(error, { toolName, toolCallId }) => string`: replaces the text of a thrown tool error before the model, events and hooks see it (default: the error's own message). See [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#errors). |
 | `onAgentDrift` | What a resume does when the agent differs from the one that paused the run: `'warn'` (default), `'error'` or `'ignore'`. See [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#resuming-with-a-changed-agent). |
 | `reasoning` | How much the model reasons before it answers: an effort, or `{ effort, budgetTokens, summary, force }`. See [Reasoning](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md). |
 | `promptCaching` | `'auto'` (default) marks Anthropic `cache_control` breakpoints for Claude models; `false` marks none. See [Prompt caching](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/models-and-cost.md#prompt-caching). |
@@ -19462,6 +19463,31 @@ The transcript message carries `isError: true`; `tool-result` events, `onToolRes
 | `mcp` | `McpToolError` | An MCP server answered `isError: true`; `message` is the server's text. |
 | `sandbox` | `SandboxRequiredError` | The tool has `requiresSandbox` but no `sandboxExecute`, so it was refused rather than run unsandboxed. |
 | `denied` | `ToolDeniedError` | A `deny` [permission rule](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies), the tool's `needsApproval` returning `'deny'`, a `preToolCall` hook's `deny`, or the permission mode refused the call; `execute` did not run. Adds `reason` when given. |
+
+**Hiding exception text.** A thrown error's message goes to the model as it is, so
+`new Error('DB password=hunter2 connection refused')` reaches it verbatim. Pass
+`toolErrorMessage` to `createAgent` to replace the text of `execution` errors:
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({
+  instructions: 'You answer questions about orders.',
+  provider,
+  tools,
+  toolErrorMessage: (error, { toolName, toolCallId }) => {
+    console.error(`tool ${toolName} (${toolCallId}) failed`, error); // the original error stays here
+    return `${toolName} failed. Try again later or use another approach.`;
+  },
+});
+```
+
+The string becomes `message` in the result above (`kind` stays `execution`). The same text
+reaches `tool.error` events, `onToolResult` and `postToolCall` hooks, so a client-facing stream
+never carries the original; only your function sees the thrown error. Sub-agents inherit it. It
+does not touch `validation` errors (they describe the model's own bad arguments) or the other
+kinds. If the function throws or returns a non-string, the message is `The tool failed.` and the run
+carries on. Without the option, nothing changes.
 
 **Argument validation.** The model's arguments are parsed with the tool's zod
 `inputSchema` (for a legacy descriptor, `tool.parameters`) before the tool runs, so pre-tool hooks, the

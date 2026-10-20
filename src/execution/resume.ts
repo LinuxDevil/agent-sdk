@@ -38,7 +38,7 @@ import { runPreToolHooks, type ToolCallOutcome } from './toolCallExecution';
 import { activeAgentOf, handOff, handoffNamed, handoffToolRegistry, type HandoffMarker, type ResolvedHandoff } from './handoffRun';
 import { markPropagating, toolErrorMessage } from './propagatingToolError';
 import { ConfigurationError, SDKError } from './errors';
-import { toolErrorResult, type ToolErrorResult } from './toolErrors';
+import { toolErrorResult, thrownToolError, type ToolErrorResult } from './toolErrors';
 import { toolResultContent } from './toolResult';
 import { insertToolResult, splitPendingTurn } from './transcript';
 import { collectToolCalls } from './agentRunState';
@@ -1545,11 +1545,11 @@ async function executeApprovedTool(
     // here would mean the whole resume just fails with no retry path.
     // The model gets the same structured error as in the main loop;
     // `toolError` keeps the plain message for the postToolCall hook.
-    return {
-      result: undefined,
-      toolError: toolErrorMessage(error),
-      errorResult: toolErrorResult({ toolName: pending.toolName, error }),
-    };
+    const { message, result } = thrownToolError(
+      { toolName: pending.toolName, toolCallId: pending.toolCallId, error, plainMessage: toolErrorMessage(error) },
+      executeOptions.toolErrorMessage
+    );
+    return { result: undefined, toolError: message, errorResult: result };
   }
 }
 

@@ -14,7 +14,7 @@ import { executeToolWithSandboxGuard } from './sandboxGuard';
 import type { ToolRunContext } from './toolRunContext';
 import { HookRegistry, ToolCallHookContext, type PreToolCallDecision } from './hooks';
 import { toolErrorMessage } from './propagatingToolError';
-import { toolErrorResult, type ToolErrorKind } from './toolErrors';
+import { toolErrorResult, thrownToolError, type ToolErrorKind } from './toolErrors';
 import { ToolArgumentsValidationError, decodeToolArguments, invalidJsonMessage, parseToolArguments, validateToolArguments } from './toolArgsValidation';
 import { toolNotFoundMessage } from './toolNames';
 import {
@@ -338,7 +338,7 @@ async function checkPermissionRules(
     const gate = entry?.decision === 'allow' ? { requiresApproval: false } : undefined;
     return { entry, gate };
   } catch (error) {
-    return { gate: { requiresApproval: false, rejection: thrownToolFailure(toolCall, error) } };
+    return { gate: { requiresApproval: false, rejection: thrownToolFailure(toolCall, error, ctx) } };
   }
 }
 
@@ -376,7 +376,7 @@ async function checkNeedsApproval(
     if ((outcome === true || outcome === 'ask') && rememberedApproval(ctx.messages, toolCall.function.name, args)) return { requiresApproval: false };
     return approvalGate(toolCall, outcome);
   } catch (error) {
-    return { requiresApproval: false, rejection: thrownToolFailure(toolCall, error) };
+    return { requiresApproval: false, rejection: thrownToolFailure(toolCall, error, ctx) };
   }
 }
 
@@ -548,11 +548,12 @@ function approvalOutcome(prepared: PreparedToolCall): ToolCallOutcome {
  * The model gets a structured error (not the string "null"),
  * while `outcome.error` keeps the plain message for events/hooks.
  */
-function thrownToolFailure(toolCall: ToolCall, error: unknown): ToolCallOutcome {
-  return {
-    ...toolFailure(toolCall, 'execution', toolErrorMessage(error)),
-    result: toolErrorResult({ toolName: toolCall.function.name, error }),
-  };
+function thrownToolFailure(toolCall: ToolCall, error: unknown, ctx: ToolCallContext): ToolCallOutcome {
+  const { message, result } = thrownToolError(
+    { toolName: toolCall.function.name, toolCallId: toolCall.id, error, plainMessage: toolErrorMessage(error) },
+    ctx.scope?.runtime.toolErrorMessage
+  );
+  return { ...toolFailure(toolCall, 'execution', message), result };
 }
 
 /**
@@ -625,7 +626,7 @@ async function doExecuteToolCall(
     if (isSignInRequired(error)) {
       return signInOutcome(toolCall, overrideArgs ?? {}, error, ctx);
     }
-    return thrownToolFailure(toolCall, error);
+    return thrownToolFailure(toolCall, error, ctx);
   }
 }
 
@@ -640,7 +641,7 @@ function partialReporter(report: NonNullable<ToolCallContext['onToolPartial']>, 
  */
 async function signInOutcome(toolCall: ToolCall, args: Record<string, unknown>, signal: SignInRequired, ctx: ToolCallContext): Promise<ToolCallOutcome> {
   const settled = await settleSignInRequired(signal, ctx.scope?.runtime.tokens);
-  if ('error' in settled) return thrownToolFailure(toolCall, settled.error);
+  if ('error' in settled) return thrownToolFailure(toolCall, settled.error, ctx);
   return { toolCallId: toolCall.id, toolName: toolCall.function.name, result: null, args, signIn: settled.pause };
 }
 

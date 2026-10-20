@@ -102,3 +102,35 @@ export function toolErrorResult(input: ToolErrorInput): ToolErrorResult {
     ...(toolCallId !== undefined && { toolCallId }),
   };
 }
+
+/**
+ * Replaces the text of a tool's thrown error before the model (and the
+ * event stream) sees it. See `createAgent({ toolErrorMessage })`.
+ */
+export type ToolErrorMessageFn = (error: unknown, ctx: { toolName: string; toolCallId: string }) => string;
+
+/** What the model gets when a `toolErrorMessage` sanitizer throws or returns a non-string. */
+const SANITIZER_FALLBACK_MESSAGE = 'The tool failed.';
+
+/**
+ * The model-facing result of a thrown tool error, plus the message the events
+ * and `postToolCall` hooks carry. With a sanitizer, an `'execution'` error's
+ * message is the sanitizer's string (a throwing sanitizer yields a generic one,
+ * never a crash); other kinds (`mcp`, `sandbox`, ...) are left as they are.
+ */
+export function thrownToolError(
+  input: { toolName: string; toolCallId: string; error: unknown; plainMessage: string },
+  sanitize: ToolErrorMessageFn | undefined
+): { message: string; result: ToolErrorResult } {
+  const { toolName, toolCallId, error, plainMessage } = input;
+  const result = toolErrorResult({ toolName, error });
+  if (!sanitize || result.kind !== 'execution') return { message: plainMessage, result };
+  let message = SANITIZER_FALLBACK_MESSAGE;
+  try {
+    const sanitized = sanitize(error, { toolName, toolCallId });
+    if (typeof sanitized === 'string') message = sanitized;
+  } catch {
+    // Keep the generic message: a broken sanitizer must not crash the run or leak the original.
+  }
+  return { message, result: toolErrorResult({ toolName, error: { name: result.error, message }, kind: 'execution' }) };
+}

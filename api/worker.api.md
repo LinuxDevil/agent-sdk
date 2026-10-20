@@ -1039,6 +1039,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
     subagentOptions?: SubagentOptions;
     subagents?: Subagents;
     toolConcurrency?: ToolConcurrency;
+    toolErrorMessage?: ToolErrorMessageFn;
     tools?: PerRun<AgentToolsOption>;
     toolSearch?: false | ToolSearchOptions;
 }
@@ -3984,6 +3985,12 @@ interface ToolErrorEvent extends AgentEventBase<'tool.error'> {
     // (undocumented)
     toolName: string;
 }
+
+// @public
+type ToolErrorMessageFn = (error: unknown, ctx: {
+    toolName: string;
+    toolCallId: string;
+}) => string;
 
 // @public
 interface ToolExecutionContext {
