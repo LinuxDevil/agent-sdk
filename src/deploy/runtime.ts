@@ -17,3 +17,5 @@ export { specSchedules } from '../schedules/specSchedules';
 export { createAgent } from '../createAgent';
 export { resolveAgentDir } from '../agentDir';
 export type { DeployedServerOptions } from './nodeServer';
+export { specToAgent } from '../spec/specToAgent';
+export { otelTracingFromEnv, withOtelTracing, agentWithOtelTracing } from './otelTracing';
