@@ -44,7 +44,7 @@ describe('renderProject', () => {
   it.each(combos)('%s / %s: file set and key contents', (provider, template) => {
     const files = renderProject(config(provider, template));
 
-    const expected = ['.env.example', '.gitignore', 'README.md', 'package.json', 'src/agent.test.ts', 'tsconfig.json'];
+    const expected = ['.env.example', '.gitignore', 'AGENTS.md', 'CLAUDE.md', 'README.md', 'package.json', 'src/agent.test.ts', 'tsconfig.json'];
     expected.push(...(template === 'yaml' ? ['agent.yaml'] : ['src/agent.ts', 'src/index.ts']));
     expect(Object.keys(files).sort()).toEqual(expected.sort());
 
@@ -97,6 +97,30 @@ describe('renderProject', () => {
       expect(JSON.parse(files['package.json']!).scripts.dev).toContain('src/index.ts');
     }
   );
+
+  it.each(combos)('%s / %s: AGENTS.md is short, lists the real scripts and only lousho.com links', (provider, template) => {
+    const files = renderProject(config(provider, template));
+    const agents = files['AGENTS.md']!;
+    expect(agents.trimEnd().split('\n').length).toBeLessThanOrEqual(60);
+    const scripts = JSON.parse(files['package.json']!).scripts as Record<string, string>;
+    const listed = [...agents.matchAll(/^- `npm run ([\w:-]+)`/gm)].map((m) => m[1]);
+    expect(listed.sort()).toEqual(Object.keys(scripts).sort());
+    expect(agents).toContain(ENV_KEYS[provider]);
+    expect(agents).toContain(template === 'yaml' ? 'agent.yaml' : 'defineTool');
+    if (template !== 'yaml') {
+      for (const word of ['needsApproval', 'mockModel', 'maxTokens', `${provider}/`]) expect(agents).toContain(word);
+    }
+    const urls = [...agents.matchAll(/https?:\/\/[^\s)]+/g)].map((m) => m[0]);
+    expect(urls).toContain('https://lousho.com/llms.txt');
+    for (const url of urls) expect(url).toMatch(/^https:\/\/lousho\.com\//);
+    expect(files['CLAUDE.md']).toBe('@AGENTS.md\n');
+  });
+
+  it('AGENTS.md uses the chosen package manager', () => {
+    const agents = renderProject({ ...config('openai', 'minimal'), packageManager: 'pnpm' })['AGENTS.md']!;
+    expect(agents).toContain('`pnpm run test`');
+    expect(agents).not.toMatch(/(^|[s`])npm run/);
+  });
 
   it('the tools template defines more tools than minimal', () => {
     const count = (template: Template) =>
