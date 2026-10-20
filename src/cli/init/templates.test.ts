@@ -64,6 +64,10 @@ describe('renderProject', () => {
     expect(JSON.parse(files['tsconfig.json']!).compilerOptions).toMatchObject({ strict: true, module: 'NodeNext' });
     expect(files['README.md']).toContain(ENV_KEYS[provider]);
     expect(files['README.md']).toContain('npm run dev');
+
+    // Docs links point at the docs site, never at GitHub's raw markdown for main.
+    expect(files['README.md']).toContain('Docs: https://lousho.com/quickstart');
+    for (const [file, content] of Object.entries(files)) expect(content, file).not.toContain('blob/main/docs');
   });
 
   it.each(PROVIDER_NAMES)('%s: zod pairs with the scaffolded ai major', (provider) => {

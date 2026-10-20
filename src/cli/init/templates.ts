@@ -365,7 +365,7 @@ Run \`${run(pm, 'doctor')}\` if something does not work: it checks Node, package
 ${files}
 - \`.env.example\` - the environment variable your provider needs
 
-${yaml ? '' : TROUBLESHOOTING}Docs: https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md
+${yaml ? '' : TROUBLESHOOTING}Docs: https://lousho.com/quickstart
 `;
 }
 
