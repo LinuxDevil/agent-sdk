@@ -217,6 +217,23 @@ describe('unknown cost under maxCostUsd', () => {
     warn.mockRestore();
   });
 
+  it('names the model, the option and the docs link, once per model across repeated steps', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.resetModules();
+    const { startBudget: fresh } = await import('./budget');
+    const byModel = { 'lmstudio/qwen': { inputTokens: 1, outputTokens: 1, calls: 1 } };
+    const usage: RunUsage = { inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: undefined, modelCalls: 1, estimated: false, promptTokens: 1, completionTokens: 1, byModel };
+    const budget = fresh({ maxCostUsd: 1 })!;
+    for (let step = 1; step <= 3; step++) budget.check(usage, step);
+    expect(warn).toHaveBeenCalledTimes(1);
+    const text = String(warn.mock.calls[0][0]);
+    expect(text).toContain('lmstudio/qwen');
+    expect(text).toContain('NOT enforced');
+    expect(text).toContain('registerModel(');
+    expect(text).toContain('https://lousho.com/models-and-cost#models-and-the-price-table');
+    warn.mockRestore();
+  });
+
   it('enforces the cap on the partial total when only some steps have a known price', () => {
     const budget = startBudget({ maxCostUsd: 1 })!;
     const usage: RunUsage = { inputTokens: 1, outputTokens: 1, totalTokens: 2, costUsd: 1.5, costPartial: true, modelCalls: 2, estimated: false, promptTokens: 1, completionTokens: 1, byModel: {} };
