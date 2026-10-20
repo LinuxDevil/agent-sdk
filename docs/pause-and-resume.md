@@ -32,7 +32,7 @@ policies.
 
 Pauses and checkpoints live in the agent's `store`. The default is in memory,
 which a restart loses. Use a durable one: `SqliteStore` (one transactional file,
-shared safely by several processes) or `fileStore(dir)` (plain JSON files). See
+shared by several processes on one host) or `fileStore(dir)` (plain JSON files). See
 [Choosing a store](./sessions.md#choosing-a-store).
 
 ## 3. Send: the run pauses

@@ -568,7 +568,7 @@ continued run as an `AgentRun` (see
 | `InMemoryApprovalStore` | This process only; the default for `createAgent()`. |
 | `StorageServiceApprovalStore(storage)` | JSON files through a `StorageService`. |
 | `fileStore(dir)` | One JSON file per pause, `<dir>/approvals/<id>.json`, on one machine; an approval can be resolved by only one process (see [Choosing a store](./sessions.md#choosing-a-store)). |
-| `SqliteStore.approvals` | One SQLite file, shared safely by several processes; an approval can be resolved by only one of them. |
+| `SqliteStore.approvals` | One SQLite file, shared by several processes on one host ([details](./sessions.md#sharing-a-sqlite-file)); an approval can be resolved by only one of them. |
 
 An `ApprovalStore` needs `save()` and `resolve()`. `load(id)` (read a pause
 without claiming it) and `list()` (every pause not resolved yet, oldest first)

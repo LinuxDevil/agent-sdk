@@ -216,7 +216,11 @@ directory's `auth.ts`, with `LOUSHO_API_TOKEN` appended to it: see
 | `memory` (default) | `memoryStore()`: gone when the process restarts, and not shared between instances. |
 | `sqlite:<path>` | A [`SqliteStore`](./sessions.md) file (created with its directory): sessions survive restarts. Needs Node 22 (`node:sqlite`); the `docker` image uses `node:22-slim`. Mount the file's directory as a volume (the `docker` image owns `/app/data` for this). |
 
-SQLite is one file on one disk, so run a single instance per database file.
+Several instances on one host may share one `sqlite:` file on a local disk (for
+example two replicas on one Docker volume); a busy session answers `409` with
+`Retry-After`. A network filesystem (NFS, EFS, SMB) or several hosts are not
+supported: use a store you implement. See
+[Sharing a SQLite file](./sessions.md#sharing-a-sqlite-file).
 
 ### Crash recovery
 
