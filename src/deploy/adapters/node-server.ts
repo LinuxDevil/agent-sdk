@@ -103,7 +103,7 @@ interface ServerVariant {
 
 function specVariant(options: DeployOptions, serviceName: string): ServerVariant {
   return {
-    imports: `import { agentSpecSchema, createDeployedAgent, createDeployedServer, otelTracingFromEnv, specSchedules, specToAgent, storeFromEnv } from '${RUNTIME_SPECIFIER}';
+    imports: `import { agentSpecSchema, checkServerExposure, createDeployedAgent, createDeployedServer, otelTracingFromEnv, specSchedules, specToAgent, storeFromEnv } from '${RUNTIME_SPECIFIER}';
 import agentConfig from './agent.config.js';`,
     boot: `const spec = agentSpecSchema.parse(agentConfig);
   const agent = tracing ? specToAgent(spec, { store: storeFromEnv(), exporter: tracing.exporter }) : await createDeployedAgent(spec);
@@ -121,7 +121,7 @@ function agentDirVariant(options: DeployOptions, serviceName: string): ServerVar
   return {
     imports: `import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createAgent, createDeployedServer, otelTracingFromEnv, resolveAgentDir, storeFromEnv, withOtelTracing } from '${RUNTIME_SPECIFIER}';`,
+import { checkServerExposure, createAgent, createDeployedServer, otelTracingFromEnv, resolveAgentDir, storeFromEnv, withOtelTracing } from '${RUNTIME_SPECIFIER}';`,
     boot: `const resolved = await resolveAgentDir(path.join(path.dirname(fileURLToPath(import.meta.url)), 'agent'));
   // A 'store' the directory's config declares wins over the LOUSHO_STORE default; an explicit LOUSHO_STORE still wins.
   const store = process.env.LOUSHO_STORE === undefined ? (resolved.config.store ?? storeFromEnv()) : storeFromEnv();
@@ -144,7 +144,7 @@ import { createAgent, createDeployedServer, otelTracingFromEnv, resolveAgentDir,
 function agentModuleVariant(agentPath: string, options: DeployOptions, serviceName: string): ServerVariant {
   const file = JSON.stringify(agentPath.split(path.sep).join('/'));
   return {
-    imports: `import { agentWithOtelTracing, createAgent, createDeployedServer, otelTracingFromEnv, storeFromEnv, withOtelTracing } from '${RUNTIME_SPECIFIER}';
+    imports: `import { agentWithOtelTracing, checkServerExposure, createAgent, createDeployedServer, otelTracingFromEnv, storeFromEnv, withOtelTracing } from '${RUNTIME_SPECIFIER}';
 import * as agentModule from ${file};`,
     boot: `const exported: any = (agentModule as any).default ?? (agentModule as any).agent;
   if (typeof exported !== 'object' || exported === null) {
@@ -228,7 +228,9 @@ function serverSource(variant: ServerVariant): string {
  * they are imported only when the variable is set (docs/observability.md).
  *
  * Binds to 127.0.0.1 by default; pass --host=<h> (or HOST=<h>) to opt in to
- * listening on other interfaces. Port: --port=<n> / PORT, default 3000.
+ * listening on other interfaces. On a non-loopback host it refuses to start
+ * without auth (LOUSHO_API_TOKEN or auth.ts) unless LOUSHO_ALLOW_PUBLIC=1.
+ * Port: --port=<n> / PORT, default 3000.
  */
 ${variant.imports}
 
@@ -241,13 +243,14 @@ function readFlag(name: string): string | undefined {
 
 const port = Number(readFlag('port') || process.env.PORT || 3000);
 const host = readFlag('host') || process.env.HOST || '127.0.0.1';
-const LOOPBACK = ['127.0.0.1', 'localhost', '::1'];
 
 async function main(): Promise<void> {
   // Set only when OTEL_EXPORTER_OTLP_ENDPOINT / OTEL_EXPORTER_OTLP_TRACES_ENDPOINT is.
   const tracing = await otelTracingFromEnv({ serviceName: ${JSON.stringify(variant.serviceName)} });
   ${variant.boot}
   const { server, authenticated, channelRoutes, shutdown } = createDeployedServer(agent, ${variant.options});
+  // No route auth on a public interface: refuse to start (LOUSHO_SERVER_UNPROTECTED) unless LOUSHO_ALLOW_PUBLIC=1.
+  const exposureWarning = checkServerExposure(host, authenticated);
 
   server.on('error', (err: NodeJS.ErrnoException) => {
     console.error(
@@ -261,9 +264,7 @@ async function main(): Promise<void> {
     const actualPort = addr && typeof addr === 'object' ? addr.port : port;
     console.log('lousho server: listening on http://' + host + ':' + actualPort);
     ${variant.report}
-    if (!authenticated && !LOOPBACK.includes(host)) {
-      console.warn('[lousho server] warning: no LOUSHO_API_TOKEN set, so anyone who can reach ' + host + ' can use this agent.');
-    }
+    if (exposureWarning) console.warn(exposureWarning);
   });
 
   // Stop accepting, stop the schedules, let in-flight turns finish (bounded), then close the agent.

@@ -41,6 +41,35 @@ const API_TOKEN_ENV = 'LOUSHO_API_TOKEN';
 const STORE_ENV = 'LOUSHO_STORE';
 /** Environment variable that turns off crash recovery at start-up when `0` or `false`. */
 const RECOVER_ENV = 'LOUSHO_RECOVER_ON_START';
+/** Environment variable that, when `1` or `true`, lets the server listen on a public interface with no auth. */
+const ALLOW_PUBLIC_ENV = 'LOUSHO_ALLOW_PUBLIC';
+
+/** Whether `host` only takes connections from this machine: `localhost`, `::1` or an address in 127.0.0.0/8. */
+function isLoopbackHost(host: string): boolean {
+  const name = host.trim().toLowerCase().replace(/^\[(.*)\]$/, '$1');
+  return name === 'localhost' || name === '::1' || /^127(\.\d{1,3}){3}$/.test(name);
+}
+
+/**
+ * The built server's start-up check, before it listens on `host`. With no
+ * route auth (`authenticated` false: no `LOUSHO_API_TOKEN`, no build token,
+ * no `auth.ts`) on a non-loopback host, it throws `LOUSHO_SERVER_UNPROTECTED`,
+ * unless `LOUSHO_ALLOW_PUBLIC=1` in `env` serves the open agent on purpose:
+ * then it returns the warning to log. `undefined` when there is nothing to say.
+ */
+export function checkServerExposure(host: string, authenticated: boolean, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  if (authenticated || isLoopbackHost(host)) return undefined;
+  const allowPublic = env[ALLOW_PUBLIC_ENV]?.trim().toLowerCase();
+  if (allowPublic === '1' || allowPublic === 'true') {
+    return `[lousho server] warning: no ${API_TOKEN_ENV} set, so anyone who can reach ${host} can use this agent.`;
+  }
+  throw new SDKError(
+    `refusing to listen on ${host} with no auth: anyone who can reach it could use this agent. ` +
+      `Set ${API_TOKEN_ENV}, add an auth.ts to the agent directory, bind to 127.0.0.1 (HOST / --host), ` +
+      `or set ${ALLOW_PUBLIC_ENV}=1 to serve an open agent on purpose.`,
+    'LOUSHO_SERVER_UNPROTECTED'
+  );
+}
 
 /**
  * `authorizeSession`, `authorizeApproval` and `exposeErrors` work as on
