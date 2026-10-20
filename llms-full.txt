@@ -19473,8 +19473,8 @@ import { createAgent } from '@lousho/build-ai-agent';
 
 const agent = createAgent({
   instructions: 'You answer questions about orders.',
-  provider,
-  tools,
+  model: 'openai/gpt-4o-mini',
+  tools: [],
   toolErrorMessage: (error, { toolName, toolCallId }) => {
     console.error(`tool ${toolName} (${toolCallId}) failed`, error); // the original error stays here
     return `${toolName} failed. Try again later or use another approach.`;
