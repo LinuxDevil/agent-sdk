@@ -12,7 +12,9 @@ describe('httpChannel verify warning', () => {
     expect(warn).toHaveBeenCalledTimes(1);
     const message = String(warn.mock.calls[0]?.[0]);
     expect(message).toContain('[lousho]');
-    expect(message).toMatch(/unauthenticated/);
+    expect(message).toMatch(/unless the server in front of it checks auth/);
+    expect(message).toMatch(/LOUSHO_API_TOKEN/);
+    expect(message).not.toMatch(/is unauthenticated/);
     expect(message).toMatch(/sessionKey/);
     expect(message).toMatch(/verify/);
   });
