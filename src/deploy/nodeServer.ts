@@ -4,9 +4,11 @@
  * Serves the `/chat` API shared with `lousho dev` (src/server/chatRoutes.ts)
  * over a `node:http` server (the routes are Fetch-native, src/server/fetchRoutes.ts,
  * and shared with the Worker target): `GET /health`, sessions, SSE streaming,
- * approvals and the legacy `POST /chat { message }`. When auth is configured (a bearer
+ * approvals and the legacy `POST /chat { message }`, plus `GET /ready`
+ * (readiness: 200 while serving, 503 once `shutdown()` has begun; `/health` stays
+ * the liveness probe). When auth is configured (a bearer
  * token, or an auth list from `@lousho/build-ai-agent/auth`), every route except
- * `/health` requires it, including a channel route, unless that channel
+ * `/health` and `/ready` requires it, including a channel route, unless that channel
  * authenticates its own requests (it has a `verify`: a signed platform channel,
  * a webhook with a secret, an `httpChannel({ verify })`).
  * Once it listens it finishes the runs a crash left interrupted
@@ -250,7 +252,14 @@ export function createDeployedServer(agent: SimpleAgent, options: DeployedServer
       waitUntil?.(promise);
     },
   };
+  // Readiness: flips once shutdown() begins, so a keep-alive probe sees it before the sockets close.
+  let draining = false;
   const handle = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
+    if (req.method === 'GET' && new URL(req.url ?? '/', 'http://localhost').pathname === '/ready') {
+      res.writeHead(draining ? 503 : 200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
+      res.end(JSON.stringify({ status: draining ? 'draining' : 'ready' }));
+      return;
+    }
     if (auth !== undefined && guardedChannelRoute(req, guarded) && !(await channelRequestAllowed(req, res, auth))) return;
     if (await channels?.(req, res)) return;
     await relayFetch(req, res, (request) => serveFetch(request, chat, auth));
@@ -276,6 +285,7 @@ export function createDeployedServer(agent: SimpleAgent, options: DeployedServer
     server.on('close', () => void stopRecovery());
   }
   const shutdown = async ({ timeoutMs = DEFAULT_SHUTDOWN_TIMEOUT_MS }: { timeoutMs?: number } = {}): Promise<void> => {
+    draining = true;
     if (server.listening) server.close();
     server.closeIdleConnections();
     let timer: ReturnType<typeof setTimeout> | undefined;
