@@ -32,29 +32,41 @@ function npm(args: string[], cwd: string): string {
   return execSync(`npm ${args.join(' ')}`, { cwd, encoding: 'utf8', env: offlineEnv() });
 }
 
-/** Starts the built server (`node dist/server.js`) on a free port and resolves with its /health status. */
+/**
+ * Starts the built server (`node dist/server.js`) on a free port and resolves with its /health status.
+ * Probes once and settles once, after the server has exited (so its temp dir can be removed on
+ * Windows); a failure carries the server's output.
+ */
 function healthOfBuiltServer(buildDir: string, env: NodeJS.ProcessEnv): Promise<number> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['dist/server.js', '--port=0'], { cwd: buildDir, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
-    const timer = setTimeout(() => finish(new Error(`server did not start: ${output}`)), 30_000);
-    // Settles once the server has exited, so the temp dir is no longer in use when it is removed (Windows).
+    let probing = false;
+    let finished = false;
+    const timer = setTimeout(() => finish(new Error('server did not start')), 30_000);
     const finish = (error: Error | undefined, status?: number) => {
+      if (finished) return;
+      finished = true;
       clearTimeout(timer);
-      child.removeAllListeners('exit');
-      const settle = () => (error ? reject(error) : resolve(status!));
+      const settle = () => (error ? reject(new Error(`${error.message}\n--- server output ---\n${output}`, { cause: error })) : resolve(status!));
       if (child.exitCode !== null || child.signalCode !== null) return settle();
       child.once('exit', settle);
       child.kill();
     };
     const onData = (chunk: Buffer) => {
       output += chunk;
-      const match = /listening on http:\/\/[^:]+:(\d+)/.exec(output);
-      if (match) fetch(`http://127.0.0.1:${match[1]}/health`).then((res) => finish(undefined, res.status), finish);
+      // The whole line, so a port split across chunks is not read short.
+      const match = /listening on http:\/\/[^:\s]+:(\d+)\r?\n/.exec(output);
+      if (!match || probing) return;
+      probing = true;
+      fetch(`http://127.0.0.1:${match[1]}/health`).then(
+        (res) => finish(undefined, res.status),
+        (error: Error) => finish(error)
+      );
     };
     child.stdout.on('data', onData);
     child.stderr.on('data', onData);
-    child.on('exit', (code) => finish(new Error(`server exited early (code ${code}): ${output}`)));
+    child.on('exit', (code, signal) => finish(new Error(`server exited early (code ${code}, signal ${signal})`)));
   });
 }
 
