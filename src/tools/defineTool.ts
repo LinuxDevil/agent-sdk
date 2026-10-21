@@ -4,6 +4,7 @@ import { legacyAiTool } from './toolContract';
 import { isModelSchema, nonObjectRoot, unrepresentableFields, type InferSchemaOutput, type StandardSchemaV1 } from '../utils/zodCompat';
 import { sharedWeakSet } from '../utils/brand';
 import { SDKError, ToolExecutionError } from '../execution/errors';
+import { unknownOptionKey } from '../utils/knownOptionKeys';
 
 /** Tool names must satisfy the constraint LLM providers impose on function names. */
 const TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
@@ -114,12 +115,62 @@ export function isDefinedTool(value: unknown): value is DefinedTool {
   return typeof value === 'object' && value !== null && definedTools.has(value);
 }
 
+/** Every {@link DefineToolOptions} key; `satisfies` keeps it in step with the type. */
+const DEFINE_TOOL_KEYS = {
+  name: true,
+  description: true,
+  input: true,
+  displayName: true,
+  needsApproval: true,
+  annotations: true,
+  editsFiles: true,
+  deferLoading: true,
+  timeoutMs: true,
+  requiresSandbox: true,
+  sandboxExecute: true,
+  execute: true,
+} as const satisfies Record<keyof DefineToolOptions<StandardSchemaV1, unknown>, true>;
+
+/** The keys a {@link DefinedTool} has beyond its options, accepted when one is spread back into defineTool(). */
+const DEFINED_TOOL_KEYS = { inputSchema: true, tool: true, metadata: true } as const;
+
+/** Names other tool APIs (AI SDK, MCP, OpenAI Agents) use, mapped to ours. */
+const DEFINE_TOOL_ALIASES: Readonly<Record<string, string>> = {
+  requireApproval: 'needsApproval',
+  requiresApproval: 'needsApproval',
+  needApproval: 'needsApproval',
+  inputSchema: 'input',
+  parameters: 'input',
+  schema: 'input',
+  args: 'input',
+  handler: 'execute',
+  run: 'execute',
+  invoke: 'execute',
+  title: 'displayName',
+  timeout: 'timeoutMs',
+};
+
 function fail(problem: string, fix: string): never {
   throw new SDKError(`defineTool: ${problem}. ${fix}`, 'LOUSHO_CONFIG_INVALID');
 }
 
+/**
+ * An unknown option (a typo, or another SDK's name such as `requireApproval`)
+ * fails instead of being ignored. `defineTool({ ...existingTool, execute })`
+ * re-defines a tool, so the keys a defined tool adds are accepted when its
+ * `inputSchema` is the `input`, as on a spread tool.
+ */
+function assertKnownKeys(opts: { name?: unknown; input?: unknown; inputSchema?: unknown }): void {
+  const spread = opts.inputSchema === opts.input ? DEFINED_TOOL_KEYS : {};
+  const unknown = unknownOptionKey(opts, { ...DEFINE_TOOL_KEYS, ...spread }, DEFINE_TOOL_ALIASES);
+  if (!unknown) return;
+  const tool = typeof opts.name === 'string' && opts.name !== '' ? `tool '${opts.name}': ` : '';
+  fail(`${tool}${unknown.problem}`, `Allowed options: ${Object.keys(DEFINE_TOOL_KEYS).join(', ')}`);
+}
+
 function assertValidOptions(opts: { name?: unknown; description?: unknown; input?: unknown; execute?: unknown }): void {
   const { name, description, input, execute } = opts;
+  assertKnownKeys(opts);
   if (typeof name !== 'string' || name === '') {
     fail("'name' is required", "Example: defineTool({ name: 'send_email', ... })");
   }

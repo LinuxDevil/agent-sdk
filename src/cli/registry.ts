@@ -3,9 +3,11 @@
  * document per item, at a URL or a local path. Reading is all this does; nothing
  * from a registry is executed or imported. See docs/registry.md.
  */
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import { z } from 'zod';
+import { findSdkRoot } from '../deploy/bundle';
 import { SDKError } from '../execution/errors';
 import { isHostPattern } from '../security/hostPattern';
 import { closestMatch } from '../utils/closestMatch';
@@ -28,14 +30,21 @@ const itemType = z.enum(['tool', 'skill', 'channel', 'schedule', 'memory', 'kit'
  */
 export const DEFAULT_REGISTRY = 'https://registry.lousho.com/index.json';
 
+const RAW_BASE = 'https://raw.githubusercontent.com/LinuxDevil/agent-sdk';
+
 /**
  * Where the default registry is read from when `DEFAULT_REGISTRY` cannot be
- * reached: the same committed `registry/dist/` folder, served raw from the
- * release tag of the installed SDK version (not a moving branch, so what is
- * installed is what was released with it). Only the default falls back; an
- * explicit `--registry` or `LOUSHO_REGISTRY` never does.
+ * reached: the same committed `registry/dist/` folder, served raw from GitHub.
+ * Tried in order: the release tag of the installed SDK version as it is named
+ * today (bare, `1.0.0-alpha.24`), the same tag with a `v` prefix (older
+ * releases, `v1.0.0-alpha.19`), and `main` as a last resort. Only the default
+ * falls back; an explicit `--registry` or `LOUSHO_REGISTRY` never does.
  */
-export const DEFAULT_REGISTRY_FALLBACK = `https://raw.githubusercontent.com/LinuxDevil/agent-sdk/v${VERSION}/registry/dist/index.json`;
+export const DEFAULT_REGISTRY_FALLBACKS: readonly string[] = [
+  `${RAW_BASE}/${VERSION}/registry/dist/index.json`,
+  `${RAW_BASE}/v${VERSION}/registry/dist/index.json`,
+  `${RAW_BASE}/main/registry/dist/index.json`,
+];
 
 /** The registry index document; also what `scripts/build-registry.ts` writes as `registry/dist/index.json`. */
 export const IndexSchema = z.object({
@@ -105,6 +114,8 @@ export interface RegistryOptions {
   registry?: string;
   env?: Record<string, string | undefined>;
   fetch?: typeof fetch;
+  /** Called with a one-line notice when the default registry is served from the copy bundled in the package. */
+  onNotice?: (message: string) => void;
 }
 
 const isHttp = (source: string): boolean => /^https?:\/\//i.test(source);
@@ -163,6 +174,16 @@ function registrySource(options: RegistryOptions): string {
   return source || DEFAULT_REGISTRY;
 }
 
+/** The `registry/dist/index.json` shipped inside the installed package, or undefined when this copy has none (e.g. a trimmed install). */
+function bundledIndexPath(): string | undefined {
+  try {
+    const file = path.join(findSdkRoot(), 'registry', 'dist', 'index.json');
+    return existsSync(file) ? file : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function loadIndex(registry: string, options: RegistryOptions): Promise<RegistryIndex> {
   return readJson(registry, IndexSchema, options);
 }
@@ -170,8 +191,9 @@ async function loadIndex(registry: string, options: RegistryOptions): Promise<Re
 /**
  * Loads the index of the configured registry (see `registrySource`) and
  * returns it with the location that answered, which item references resolve
- * against. The default registry falls back to `DEFAULT_REGISTRY_FALLBACK`
- * when its host is unreachable.
+ * against. The default registry falls back to `DEFAULT_REGISTRY_FALLBACKS`
+ * when its host is unreachable, and then to the `registry/dist/` copy bundled
+ * in the package (announced through `onNotice`).
  */
 export async function openRegistry(options: RegistryOptions): Promise<{ registry: string; index: RegistryIndex }> {
   const registry = registrySource(options);
@@ -179,18 +201,40 @@ export async function openRegistry(options: RegistryOptions): Promise<{ registry
     return { registry, index: await loadIndex(registry, options) };
   } catch (error) {
     if (registry !== DEFAULT_REGISTRY || !(error instanceof SDKError) || error.code !== 'LOUSHO_REGISTRY_UNREACHABLE') throw error;
+    return openDefaultFallback(error, options);
+  }
+}
+
+const reasonOf = (error: SDKError): string => error.detail.replace(/^lousho add: /, '');
+
+/** The default registry's host is down: try each GitHub fallback, then the copy bundled in the package. */
+async function openDefaultFallback(unreachableError: SDKError, options: RegistryOptions): Promise<{ registry: string; index: RegistryIndex }> {
+  const failures: string[] = [];
+  for (const fallback of DEFAULT_REGISTRY_FALLBACKS) {
     try {
-      return { registry: DEFAULT_REGISTRY_FALLBACK, index: await loadIndex(DEFAULT_REGISTRY_FALLBACK, options) };
+      return { registry: fallback, index: await loadIndex(fallback, options) };
     } catch (fallbackError) {
       if (!(fallbackError instanceof SDKError) || fallbackError.code !== 'LOUSHO_REGISTRY_UNREACHABLE') throw fallbackError;
-      const reason = (e: SDKError) => e.detail.replace(/^lousho add: /, '');
-      throw new SDKError(
-        `lousho add: the default registry is unreachable: ${reason(error)}; and its fallback: ${reason(fallbackError)}`,
-        'LOUSHO_REGISTRY_UNREACHABLE',
-        { cause: fallbackError, hint: 'Check that you are online, or pass --registry <url-or-path> (e.g. a local copy of registry/dist/index.json).' }
-      );
+      failures.push(reasonOf(fallbackError));
     }
   }
+  const bundled = bundledIndexPath();
+  if (bundled) {
+    try {
+      const index = await loadIndex(bundled, options);
+      options.onNotice?.(
+        `lousho add: the default registry is unreachable; using the registry bundled with this lousho version (${VERSION}), which may be older than the online one.`
+      );
+      return { registry: bundled, index };
+    } catch {
+      // an unreadable bundled copy is the same as none: report the network failure below
+    }
+  }
+  throw new SDKError(
+    `lousho add: the default registry is unreachable: ${reasonOf(unreachableError)}; and its fallbacks: ${failures.join('; ')}`,
+    'LOUSHO_REGISTRY_UNREACHABLE',
+    { cause: unreachableError, hint: 'Check that you are online, or pass --registry <url-or-path> (e.g. a local copy of registry/dist/index.json).' }
+  );
 }
 
 /** Resolves an index entry's `url` / `path` against the registry's own location. */

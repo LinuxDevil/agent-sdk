@@ -7,7 +7,7 @@ import { PassThrough, Writable } from 'node:stream';
 import { resolveAgentDir } from '../agentDir';
 import { runAdd, parseAddArgs, type AddIo } from './add';
 import { planFiles } from './addWrite';
-import { DEFAULT_REGISTRY, DEFAULT_REGISTRY_FALLBACK, type RegistryItem } from './registry';
+import { DEFAULT_REGISTRY, DEFAULT_REGISTRY_FALLBACKS, type RegistryItem } from './registry';
 import { VERSION } from '../version';
 
 function sink() {
@@ -206,33 +206,62 @@ describe('lousho add', () => {
 
   it('falls back to the raw GitHub copy when the default registry host is unreachable, and only for the default', async () => {
     const dist = path.join(__dirname, '..', '..', 'registry', 'dist');
-    const fallbackBase = DEFAULT_REGISTRY_FALLBACK.replace(/index\.json$/, '');
-    // Pinned to the installed version's release tag, not a moving branch.
-    expect(DEFAULT_REGISTRY_FALLBACK).toBe(`https://raw.githubusercontent.com/LinuxDevil/agent-sdk/v${VERSION}/registry/dist/index.json`);
-    const seen: string[] = [];
-    const fetchStub = (async (input: string | URL | Request) => {
-      const url = String(input);
-      seen.push(url);
-      if (url.startsWith(fallbackBase)) return new Response(fs.readFileSync(path.join(dist, url.slice(fallbackBase.length)), 'utf8'));
-      throw new TypeError('fetch failed: getaddrinfo ENOTFOUND registry.lousho.com');
-    }) as typeof fetch;
-    const added = await add(['changelog', '--yes', '--dir', 'agent'], { fetch: fetchStub });
+    const [bare, vPrefixed, main] = DEFAULT_REGISTRY_FALLBACKS;
+    // The release tag as named today (bare), then the v-prefixed older form, then main.
+    expect(bare).toBe(`https://raw.githubusercontent.com/LinuxDevil/agent-sdk/${VERSION}/registry/dist/index.json`);
+    expect(vPrefixed).toBe(`https://raw.githubusercontent.com/LinuxDevil/agent-sdk/v${VERSION}/registry/dist/index.json`);
+    expect(main).toBe('https://raw.githubusercontent.com/LinuxDevil/agent-sdk/main/registry/dist/index.json');
+    const baseOf = (url: string) => url.replace(/index\.json$/, '');
+    const stubWhere = (live: string | undefined, seen: string[]) =>
+      (async (input: string | URL | Request) => {
+        const url = String(input);
+        seen.push(url);
+        if (live !== undefined && url.startsWith(baseOf(live))) return new Response(fs.readFileSync(path.join(dist, url.slice(baseOf(live).length)), 'utf8'));
+        if (url.startsWith('https://raw.githubusercontent.com/')) return new Response('Not Found', { status: 404 });
+        throw new TypeError('fetch failed: getaddrinfo ENOTFOUND registry.lousho.com');
+      }) as typeof fetch;
+
+    // Bare tag answers.
+    const seenBare: string[] = [];
+    const added = await add(['changelog', '--yes', '--dir', 'agent'], { fetch: stubWhere(bare, seenBare) });
     expect(added.code).toBe(0);
-    expect(seen).toEqual([DEFAULT_REGISTRY, DEFAULT_REGISTRY_FALLBACK, `${fallbackBase}items/changelog.json`]);
-    expect(readReceipt().items.changelog.registry).toBe(DEFAULT_REGISTRY_FALLBACK);
+    expect(seenBare).toEqual([DEFAULT_REGISTRY, bare, `${baseOf(bare)}items/changelog.json`]);
+    expect(readReceipt().items.changelog.registry).toBe(bare);
+
+    // Bare tag 404s, the v-prefixed tag answers.
+    const seenV: string[] = [];
+    const viaV = await add(['--list'], { fetch: stubWhere(vPrefixed, seenV) });
+    expect(viaV.code).toBe(0);
+    expect(seenV).toEqual([DEFAULT_REGISTRY, bare, vPrefixed]);
+
+    // Both tags 404, main answers.
+    const seenMain: string[] = [];
+    const viaMain = await add(['--list'], { fetch: stubWhere(main, seenMain) });
+    expect(viaMain.code).toBe(0);
+    expect(seenMain).toEqual([DEFAULT_REGISTRY, bare, vPrefixed, main]);
+
     // An explicit registry never falls back.
-    const explicit = await add(['--list', '--registry', DEFAULT_REGISTRY.replace('index.json', 'other.json')], { fetch: fetchStub });
+    const explicit = await add(['--list', '--registry', DEFAULT_REGISTRY.replace('index.json', 'other.json')], { fetch: stubWhere(bare, []) });
     expect(explicit.code).toBe(1);
     expect(explicit.err).toContain('LOUSHO_REGISTRY_UNREACHABLE');
-    // Both down: one error naming both.
-    const offline = (async () => {
-      throw new TypeError('fetch failed');
-    }) as typeof fetch;
-    const down = await add(['--list'], { fetch: offline });
-    expect(down.code).toBe(1);
-    expect(down.err).toContain('the default registry is unreachable');
-    expect(down.err).toContain(DEFAULT_REGISTRY_FALLBACK);
-    expect(down.err).toContain('--registry');
+
+    // Everything down: the registry bundled in the package answers (index and item), with a notice.
+    const seenDown: string[] = [];
+    const down = await add(['--list'], { fetch: stubWhere(undefined, seenDown) });
+    expect(down.code).toBe(0);
+    expect(seenDown).toEqual([DEFAULT_REGISTRY, ...DEFAULT_REGISTRY_FALLBACKS]);
+    expect(down.err).toContain('using the registry bundled with this lousho version');
+    expect(down.out).toContain('changelog');
+    const offline = await add(['code-review', '--yes', '--dir', 'agent'], { fetch: stubWhere(undefined, []) });
+    expect(offline.code).toBe(0);
+    expect(offline.out).toContain('Added code-review');
+    expect(readReceipt().items['code-review'].registry).toBe(path.join(dist, 'index.json'));
+
+    // An explicit registry still fails when it is down, with no bundled fallback.
+    const explicitDown = await add(['--list', '--registry', 'https://example.invalid/index.json'], { fetch: stubWhere(undefined, []) });
+    expect(explicitDown.code).toBe(1);
+    expect(explicitDown.err).toContain('LOUSHO_REGISTRY_UNREACHABLE');
+    expect(explicitDown.err).not.toContain('bundled');
   });
 
   it('suggests the closest name for an unknown item', async () => {

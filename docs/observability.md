@@ -379,6 +379,40 @@ and prompt and tool content only if the agent sets `redactContent: false` or
 `captureContent: true`, so nothing is written to disk unless you ask. The spec file format has no
 traces setting.
 
+## The built server
+
+The server `lousho build --target=node-server` or `--target=docker` generates
+exports traces with no code when the standard `OTEL_EXPORTER_OTLP_ENDPOINT`
+(or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`) variable is set where it runs. It
+registers an OpenTelemetry tracer provider that sends spans over OTLP/HTTP,
+and gives the agent `createOtelTraceExporter()`, so every `/chat` turn arrives
+as the `invoke_agent` / `chat` / `execute_tool` tree above. An `exporter` the
+agent's config already has (an agent directory's or a module's) keeps
+running: both receive every span.
+
+The OpenTelemetry SDK is not bundled. Install these packages next to
+`dist/server.js`, or add them to the build's `package.json` dependencies
+before you build the docker image:
+
+```bash
+npm install @opentelemetry/api @opentelemetry/sdk-trace-node@^2 @opentelemetry/resources@^2 @opentelemetry/exporter-trace-otlp-http
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 OTEL_SERVICE_NAME=support-agent node dist/server.js
+```
+
+- The server imports them at start-up only when the variable is set. When one
+  is missing it logs which packages to install and serves without exporting
+  traces.
+- `service.name` is `OTEL_SERVICE_NAME` when set, otherwise the agent's name.
+  `OTEL_RESOURCE_ATTRIBUTES`, `OTEL_EXPORTER_OTLP_HEADERS` (for an API key)
+  and the batch settings (`OTEL_BSP_SCHEDULE_DELAY`, ...) work as the OTel SDK
+  documents them.
+- On SIGINT or SIGTERM the server sends the spans it still holds before it
+  exits.
+- With neither variable set, nothing is imported and the server runs as before.
+
+Message content follows the agent's own settings
+([Message and argument content is opt-in](#message-and-argument-content-is-opt-in)).
+
 ## Backends
 
 Any backend that ingests OpenTelemetry traces (OTLP) receives these spans.

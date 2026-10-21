@@ -18,7 +18,7 @@ error tells you what to do:
 
 ```text
 ConfigurationError: createAgent: no model configured. Do one of the following: (1) pass a model: ...
-[LOUSHO_CONFIG_MISSING_PROVIDER] Pass a model string such as createAgent({ model: 'openai/gpt-4.1-mini' }), a provider instance, or set LOUSHO_MODEL or a provider API key. (https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_config_missing_provider)
+[LOUSHO_CONFIG_MISSING_PROVIDER] Pass a model string such as createAgent({ model: 'openai/gpt-4.1-mini' }), a provider instance, or set LOUSHO_MODEL or a provider API key. (https://lousho.com/errors#lousho_config_missing_provider)
 ```
 
 A run that rejects (`send()`, `stream()`'s `result`, a session turn,
@@ -98,7 +98,7 @@ Find a code by area:
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
 | [Sandbox](#sandbox) | [`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`](#lousho_sandbox_egress_unsupported), [`LOUSHO_SANDBOX_PATH_DENIED`](#lousho_sandbox_path_denied) | Asking a sandbox for something it cannot do on the current platform, or to write outside its root. |
 | [Agent directories, skills and flows](#agent-directories-skills-and-flows) | [`LOUSHO_AGENT_DIR_INVALID`](#lousho_agent_dir_invalid), [`LOUSHO_SKILL_INVALID`](#lousho_skill_invalid), [`LOUSHO_FLOW_INVALID`](#lousho_flow_invalid), [`LOUSHO_FLOW_TOOL_DENIED`](#lousho_flow_tool_denied), [`LOUSHO_FLOW_CHANGED`](#lousho_flow_changed) | Loading an agent directory, a skill, or a flow definition, and gating a flow's tool calls. |
-| [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_STORAGE_BUSY`](#lousho_storage_busy), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed) | A storage backend, a trigger, a channel request or `lousho build`. |
+| [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_STORAGE_BUSY`](#lousho_storage_busy), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed), [`LOUSHO_SERVER_UNPROTECTED`](#lousho_server_unprotected) | A storage backend, a trigger, a channel request, `lousho build` or the built server's start-up. |
 | [Tests and evals](#tests-and-evals) | [`LOUSHO_EVALS_INVALID`](#lousho_evals_invalid), [`LOUSHO_TEST_FAILED`](#lousho_test_failed), [`LOUSHO_CASSETTE_INVALID`](#lousho_cassette_invalid) | `defineEval()`, `mockModel` and cassettes. |
 | [General](#general) | [`LOUSHO_GENERIC_ERROR`](#lousho_generic_error), [`LOUSHO_AGENT_EXECUTION_FAILED`](#lousho_agent_execution_failed), [`LOUSHO_FLOW_EXECUTION_FAILED`](#lousho_flow_execution_failed), [`LOUSHO_VALIDATION_FAILED`](#lousho_validation_failed), [`LOUSHO_OPERATION_TIMEOUT`](#lousho_operation_timeout), [`LOUSHO_OUTPUT_INVALID`](#lousho_output_invalid), [`LOUSHO_BUDGET_EXCEEDED`](#lousho_budget_exceeded), [`LOUSHO_GUARDRAIL_TRIPPED`](#lousho_guardrail_tripped) | Run-level failures: a timeout, a budget or guardrail stop, invalid output, and the catch-all codes. |
 | [Auth](#auth) | [`LOUSHO_AUTH_CONFIG_INVALID`](#lousho_auth_config_invalid) | A route auth helper (`jwt()`, `oidc()`, `basic()`, `apiToken()`) got options it cannot verify with. |
@@ -634,9 +634,9 @@ kept: the turn up to their results is added after the other writer's turn. Also 
 checkpointed run (or session turn) is running in another process, replica or store object right
 now, which holds its run lease (see
 [Durable execution](./durable-execution.md#run-leases)); nothing ran here, and a resolved
-approval stays pending. Over HTTP, a `409` from `POST /chat`: a request with the same
-`Idempotency-Key` is still running its turn of that session on this server (see
-[Resending a turn](./deployment.md#resending-a-turn)).
+approval stays pending. Over HTTP, a `409` with `Retry-After` from `POST /chat`: another process or replica holds
+the session's lease, or a request with the same `Idempotency-Key` is still running its turn of
+that session (see [Resending a turn](./deployment.md#resending-a-turn)).
 
 **Fix:** await the turn's `send()` (or abort it), then call again. After a `send()` that failed
 this way, send again: the session reads the current transcript at the start of every call. A
@@ -1078,6 +1078,20 @@ Cloudflare Worker target does not have.
 **Fix:** follow the message. See [Deployment](./deployment.md).
 
 **Example:** `lousho build --target node-server` without `--agent`.
+
+### LOUSHO_SERVER_UNPROTECTED
+
+**Means:** the built `node-server` (or the `docker` image) was asked to listen
+on an interface other than loopback (`localhost`, `127.x.x.x`, `::1`) with no
+route auth: no `LOUSHO_API_TOKEN`, no build token and no `auth.ts`. Anyone who
+could reach that interface could use the agent, so it refuses to start.
+
+**Fix:** set `LOUSHO_API_TOKEN`, add an [`auth.ts`](./auth.md) to the agent
+directory, or bind to `127.0.0.1` (`HOST` / `--host`). To serve an open agent
+on purpose (a private network, auth at a proxy in front), set
+`LOUSHO_ALLOW_PUBLIC=1`. See [Deployment: Auth](./deployment.md#auth).
+
+**Example:** `docker run -p 3000:3000 lousho-agent` with no `-e LOUSHO_API_TOKEN=...`.
 
 ## Tests and evals
 

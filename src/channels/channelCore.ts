@@ -23,7 +23,7 @@ import {
   type ChannelRespond,
   type ChannelUser,
 } from './defineChannel';
-import { reportChannelError } from './channelSupport';
+import { channelFailureBody, reportChannelError } from './channelSupport';
 import type { Principal } from '../auth/types';
 import { describeApproval, type ApprovalStore, type PendingApproval, type ResolvedApproval } from '../execution/ApprovalGate';
 import { SDKError, SessionAwaitingApprovalError } from '../execution/errors';
@@ -44,14 +44,23 @@ export interface ChannelCoreOptions {
   onDecision?(event: { decision: ChannelApprovalDecision; approver: NonNullable<ChannelDecision['approver']>; sessionId: string; channel: string }): void | Promise<void>;
 }
 
+/**
+ * How a host answers a channel request: a channel's {@link ChannelRespond}, plus
+ * response headers the core may set (`Retry-After` on a busy session's `409`).
+ */
+export type ChannelCoreRespond = (status: number, body: unknown, headers?: Record<string, string>) => void;
+
 /** What a host's mount returns: the channel logic, request/response plumbing left to the host. */
 export interface ChannelCore {
   /**
    * Runs `channel`'s verify -> parse -> turn (or a decision on `approvalId`),
-   * answering through `respond`. Throws before the surface was acknowledged;
-   * failures after that are reported to `onError` (and a failure text replied).
+   * answering through `respond`. Throws before the surface was acknowledged,
+   * except a turn that fails then: it is reported to `onError` (stage `turn`) and
+   * answered here - `409` with `Retry-After` when another process or replica runs the
+   * session (`LOUSHO_SESSION_BUSY`), else a `500`. Failures after the ack are reported
+   * to `onError` (and a failure text replied).
    */
-  handle(channel: Channel, approvalId: string | undefined, req: ChannelRequest, respond: ChannelRespond): Promise<void>;
+  handle(channel: Channel, approvalId: string | undefined, req: ChannelRequest, respond: ChannelCoreRespond): Promise<void>;
   /**
    * Decides a pause a channel turn stopped on (e.g. from a surface's button
    * callback) and delivers the continuation through the same channel's
@@ -62,6 +71,18 @@ export interface ChannelCore {
 }
 
 const FAILED_TEXT = 'Sorry, that request failed.';
+
+/**
+ * Seconds a client waits before resending a turn to a session another process or
+ * replica is running (`Retry-After` of the `409`). The other run holds the lease
+ * until its turn ends; a short wait lets a typical turn finish without hammering it.
+ */
+export const SESSION_BUSY_RETRY_AFTER_S = 2;
+
+/** Whether `error` is a run another process, replica or store object holds the lease of. */
+function isSessionBusy(error: unknown): boolean {
+  return error instanceof SDKError && error.code === 'LOUSHO_SESSION_BUSY';
+}
 
 /** The reply to a decision that leaves other calls of its step undecided. */
 function stillWaiting(approvals: readonly PendingApproval[]): string {
@@ -258,9 +279,22 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
     }
   }
 
-  function runTurn(turn: PausedTurn, respond: ChannelRespond): Promise<void> {
+  /**
+   * A turn that failed before the surface was answered: reported as a failed turn and
+   * answered here (`409` + `Retry-After` for a session busy elsewhere, else a `500` that
+   * keeps only the error's code), so the host does not report it as a failed parse.
+   */
+  async function failTurn(turn: PausedTurn, error: unknown, respond: ChannelCoreRespond): Promise<void> {
+    if (answered.has(respond)) throw error;
+    await reportChannelError(turn.channel.onError ?? options.onError, error, { channel: turn.channel.name, stage: 'turn', sessionId: turn.sessionId });
+    if (!isSessionBusy(error)) return respond(500, channelFailureBody(500, error));
+    const body = { error: 'This conversation is running a turn elsewhere; retry shortly.', code: 'LOUSHO_SESSION_BUSY' };
+    respond(409, body, { 'Retry-After': String(SESSION_BUSY_RETRY_AFTER_S) });
+  }
+
+  function runTurn(turn: PausedTurn, respond: ChannelCoreRespond): Promise<void> {
     const { channel, inbound, sessionId } = turn;
-    return guard(turn, 'turn', respond, async () => {
+    const done = guard(turn, 'turn', respond, async () => {
       const run = agent.session({ id: sessionId, store }).stream(inbound.input, { principal: inbound.principal, metadata: inbound.metadata });
       const events: AgentEvent[] = [];
       let text = '';
@@ -272,6 +306,7 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
       }
       await finish(turn, await run.result, events, respond);
     });
+    return done.catch((error: unknown) => failTurn(turn, error, respond));
   }
 
   /**
@@ -391,11 +426,12 @@ export function channelCore(agent: Pick<SimpleAgent, 'session' | 'approvals'>, c
     await claiming(decision.id, () => continueTurn(turn, decision, respond));
   }
 
-  async function handle(channel: Channel, approvalId: string | undefined, req: ChannelRequest, respond: ChannelRespond): Promise<void> {
+  async function handle(channel: Channel, approvalId: string | undefined, req: ChannelRequest, respond: ChannelCoreRespond): Promise<void> {
     /** `respond`, marked in `answered` on its first call, so `guard` can tell a pre-ack failure from a post-ack one. */
-    const tracked: ChannelRespond = (status, body) => {
+    const tracked: ChannelCoreRespond = (status, body, headers) => {
       answered.add(tracked);
-      respond(status, body);
+      if (headers) respond(status, body, headers);
+      else respond(status, body);
     };
     if (crossSiteToOpenChannel(channel, req)) {
       const error = `Cross-site request refused: channel '${channel.name}' has no verify. To accept a page on another site, add a verify that authenticates its requests (e.g. a bearer token).`;

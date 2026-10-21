@@ -35,7 +35,7 @@ describe('DockerAdapter', () => {
     registerBuiltInAdapters();
     expect(getAdapter('docker')).toBe(DockerAdapter);
     expect(DockerAdapter.describe('/anywhere')).toBe(
-      'docker build -t lousho-agent . && docker run -p 3000:3000 lousho-agent'
+      'docker build -t lousho-agent . && docker run -p 3000:3000 -e LOUSHO_API_TOKEN=<token> lousho-agent'
     );
   });
 
@@ -73,6 +73,14 @@ describe('DockerAdapter', () => {
     expect(DOCKERFILE).toMatch(/^HEALTHCHECK .*\\\n\s+CMD \["node", "-e", "fetch\('http:\/\/127\.0\.0\.1:' \+ \(process\.env\.PORT \|\| 3000\) \+ '\/health'\)/m);
     // Container needs an explicit all-interfaces opt-in to be reachable via -p.
     expect(lines).toContain('ENV HOST=0.0.0.0');
+  });
+
+  it('creates and chowns /app/data before dropping to the node user, so a fresh named volume is writable', () => {
+    const lines = DOCKERFILE.split('\n');
+    const mkdir = lines.findIndex((l) => /^RUN mkdir -p \/app\/data && chown node:node \/app\/data$/.test(l));
+    expect(mkdir).toBeGreaterThan(-1);
+    expect(mkdir).toBeLessThan(lines.indexOf('USER node'));
+    expect(lines).toContain('VOLUME /app/data');
   });
 
   it('writes a package.json shipping the SDK and the peers the spec needs', async () => {

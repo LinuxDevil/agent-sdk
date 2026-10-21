@@ -44,6 +44,13 @@ describe('error codes', () => {
     expect([...headings].sort()).toEqual([...CODES].sort());
   });
 
+  it('links to the lousho.com page, whose anchors keep the underscores of the heading', () => {
+    expect(ERROR_DOCS_URL).toBe('https://lousho.com/errors');
+    expect(errorDocsUrl('LOUSHO_REGISTRY_UNREACHABLE')).toBe('https://lousho.com/errors#lousho_registry_unreachable');
+    // Mintlify slugifies `## LOUSHO_X` to `lousho_x`, which is the code in lowercase.
+    for (const code of CODES) expect(DOCS).toContain(`## ${code}`);
+  });
+
   it('docs links point at the code section anchors', () => {
     expect(errorDocsUrl('LOUSHO_PEER_MISSING')).toBe(`${ERROR_DOCS_URL}#lousho_peer_missing`);
     expect(errorHelp('LOUSHO_PEER_MISSING')).toEqual({

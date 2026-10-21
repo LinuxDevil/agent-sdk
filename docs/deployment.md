@@ -15,7 +15,7 @@ deploy the result). `tsup` must be installed (`npm install --save-dev tsup`).
 | Target              | Output                                                   | Printed command                                                        |
 | ------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------- |
 | `node-server`       | `server.ts`, `agent.config.js`, `package.json`, `dist/server.js` | `node dist/server.js`                                                  |
-| `docker`            | everything `node-server` writes, plus `Dockerfile`       | `docker build -t lousho-agent . && docker run -p 3000:3000 lousho-agent` |
+| `docker`            | everything `node-server` writes, plus `Dockerfile`       | `docker build -t lousho-agent . && docker run -p 3000:3000 -e LOUSHO_API_TOKEN=<token> lousho-agent` |
 | `cloudflare-worker` | `worker.ts`, `agent.config.js`, `wrangler.toml`, `dist/worker.js` | `wrangler deploy`                                                      |
 
 Every target answers `GET /health` (`200 ok`) and serves the full
@@ -96,7 +96,8 @@ a page or script written against the dev server works against the deployed one.
 
 | Endpoint | What it does |
 | -------- | ------------ |
-| `GET /health` | `200 ok`. Never needs auth: point load balancers and container health checks here. |
+| `GET /health` | `200 ok`. Liveness: the process is up. Never needs auth: point load balancers and container health checks here. |
+| `GET /ready` | Readiness (`node-server` and `docker` only): `200 {"status":"ready"}` while the server takes traffic, `503 {"status":"draining"}` once a graceful shutdown (SIGTERM) has begun. Never needs auth, and the body carries no detail. Point a Kubernetes `readinessProbe` or a load balancer here, and keep `livenessProbe` and the Docker `HEALTHCHECK` on `/health`. It does not probe the session store (the store interface has no cheap check). |
 | `POST /chat` `{ "sessionId", "input" }` | Runs a turn of session `sessionId` (1-128 characters of `A-Za-z0-9_-`; a new id starts a conversation, a known one continues it) and streams it as SSE: one `data: <AgentEvent JSON>` per event ([Streaming](./streaming.md)), then `event: done`. `input` is a string or an array of content parts. |
 | `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`. A turn's messages are saved when it finishes, so `messages` does not hold a turn that is paused on an approval; `pending` says it is. |
 | `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn live as SSE, in the same framing and event types as `POST /chat` (the decided call's `tool.resume` / `tool.done` or `tool.error`, text deltas, `approval.requested` if it pauses again, `run.done`), from `agent.approvals.streamResolve()` / `streamAnswer()`. `404` when `id` is not pending; `409` (`LOUSHO_APPROVAL_CONFLICT`) while another request's decision of it is still streaming; `400` (`LOUSHO_APPROVAL_DECISION_INVALID`) for a body with neither field. When the turn's step paused on several calls, each id is decided on its own; a decision that leaves others pending streams `run.done` with `finishReason: 'awaiting-approval'`, and the last one runs the step. |
@@ -113,7 +114,10 @@ invalid session id is `LOUSHO_SESSION_ID_INVALID`). Every error body is JSON
 `409` with `code: 'LOUSHO_SESSION_AWAITING_APPROVAL'`, `approvalId` and
 `approvalIds` (every approval still to decide): decide them through the
 approvals route, which streams the paused turn's continuation, then send the
-new turn. With an auth list, a session belongs to the first principal that sends
+new turn. A turn sent to a session that another process or replica is running a
+turn of (it holds the session's run lease) is `409` with
+`code: 'LOUSHO_SESSION_BUSY'` and a `Retry-After: 2` header, answered before
+any stream starts; resend after the wait. With an auth list, a session belongs to the first principal that sends
 it a turn, and a stored session whose owner the server no longer remembers
 (after a restart) is refused to everyone until `authorizeSession` says whose
 it is; with only `LOUSHO_API_TOKEN` there is one caller and no owner check
@@ -149,7 +153,7 @@ same key:
 | The turn of that key in that session | The resend gets |
 | ------------------------------------ | --------------- |
 | finished (it is in the transcript) | `200` SSE with one `run.done` carrying that turn's final reply (`text`, `finishReason`), and the header `Idempotent-Replayed: true`. Nothing runs. Read `GET /chat/:sessionId` for the whole turn. |
-| still running on this server process | `409` (`LOUSHO_SESSION_BUSY`). Retry later and get the replay. |
+| still running, on this server process or on another replica that shares the store | `409` (`LOUSHO_SESSION_BUSY`) with `Retry-After: 2`. Retry after the wait and get the replay. |
 | interrupted by a crash (a checkpointed turn left `in-progress`) | the turn resumed from its last checkpoint (`session.resume()`: finished steps and tool calls are not run again), streamed as SSE. |
 | none | a new turn, as without the header; its user message keeps the key (`metadata.idempotencyKey`). |
 
@@ -160,8 +164,9 @@ checkpoint until it finishes), so a replay works after a restart and on another
 replica that shares the store; `session.pending()` reports an interrupted
 turn's key as `idempotencyKey`. A key is looked up only in its own session,
 and only while its turn is in the transcript (a compaction that summarizes it
-away forgets it). The `409` for a running turn holds within one process; two
-replicas that receive the same key at the same instant can both run it.
+away forgets it). Across replicas the `409` rests on the session's run lease, so it needs a
+store that supports leases; two replicas that receive the same key at the same
+instant on a store without them can both run it.
 
 ```bash
 curl -N http://127.0.0.1:3000/chat -H 'Content-Type: application/json' \
@@ -172,12 +177,19 @@ curl -N http://127.0.0.1:3000/chat -H 'Content-Type: application/json' \
 ### Auth
 
 Set `LOUSHO_API_TOKEN` (on the Worker target, as a secret: `npx wrangler secret
-put LOUSHO_API_TOKEN`) and every route except `/health` requires
-`Authorization: Bearer <token>`; anything else gets `401` with a JSON error
-(the token is compared in constant time). Without it the server is open: that
-is fine on `127.0.0.1`, but **treat the token as required for anything that is
-not on localhost** (the server logs a warning when it listens on another
-interface without one, and the `docker` image listens on all interfaces).
+put LOUSHO_API_TOKEN`) and the `/chat` routes and any channel without its
+own `verify` require `Authorization: Bearer <token>`; anything else gets `401`
+with a JSON error (the token is compared in constant time). `/health` is
+open, and channels that authenticate themselves (a `verify` function, or a
+platform signature check such as Slack's) are not gated by the token. Without it the server is open: that
+is fine on `127.0.0.1`, but on any other interface the built `node-server`
+(and so the `docker` image, which listens on `0.0.0.0`) **refuses to start**
+with no auth: it exits with
+[`LOUSHO_SERVER_UNPROTECTED`](./errors.md#lousho_server_unprotected). Set
+`LOUSHO_API_TOKEN`, add an [`auth.ts`](./auth.md), or bind to `127.0.0.1`. To
+serve an open agent on a public interface on purpose (a private network, auth
+at a proxy in front), set `LOUSHO_ALLOW_PUBLIC=1`: the server then starts and
+logs a warning instead.
 Terminate TLS in front of the server, since a bearer token travels in clear
 text over plain HTTP. Pass the token at run time (`docker run -e
 LOUSHO_API_TOKEN=...`).
@@ -208,9 +220,40 @@ directory's `auth.ts`, with `LOUSHO_API_TOKEN` appended to it: see
 | Value | Store |
 | ----- | ----- |
 | `memory` (default) | `memoryStore()`: gone when the process restarts, and not shared between instances. |
-| `sqlite:<path>` | A [`SqliteStore`](./sessions.md) file (created with its directory): sessions survive restarts. Needs Node 22 (`node:sqlite`); the `docker` image uses `node:22-slim`. Mount the file's directory as a volume. |
+| `sqlite:<path>` | A [`SqliteStore`](./sessions.md) file (created with its directory): sessions survive restarts. Needs Node 22 (`node:sqlite`); the `docker` image uses `node:22-slim`. Mount the file's directory as a volume (the `docker` image owns `/app/data` for this). |
 
-SQLite is one file on one disk, so run a single instance per database file.
+Several instances on one host may share one `sqlite:` file on a local disk (for
+example two replicas on one Docker volume); a busy session answers `409` with
+`Retry-After`. A network filesystem (NFS, EFS, SMB) or several hosts are not
+supported: use a store you implement. See
+[Sharing a SQLite file](./sessions.md#sharing-a-sqlite-file).
+
+### Crash recovery
+
+When the `node-server` or `docker` server starts listening, it finishes the
+runs that a crash or a kill left unfinished in the store. It calls
+[`agent.recover()`](./durable-execution.md), which resumes every
+`in-progress` run and session turn from its last checkpoint. Steps that
+completed are not run again. A tool call that was in flight when the process
+died runs again, so make such tools idempotent. The server logs
+`lousho server: resuming N interrupted run(s)` when it finds any, and one
+`recovered interrupted run '<id>'` line per run it finishes. It then checks
+the store again every 30 seconds until it shuts down.
+
+- Runs paused on an approval or a question are left alone. Decide them
+  through `POST /chat/:sessionId/approvals/:id`.
+- A run whose [run lease](./durable-execution.md#run-leases) another live
+  process holds is skipped and retried on a later check. So is a run whose
+  crashed process's lease has not expired yet.
+- With the default `memory` store there is nothing to recover after a
+  restart, and the check finds nothing.
+- A resend of the same turn that arrives while the server is still resuming
+  it runs after the resumed turn, as a new turn. Send an `Idempotency-Key`
+  ([Resending a turn](#resending-a-turn)) to get the resumed turn's reply
+  instead.
+
+Set `LOUSHO_RECOVER_ON_START=0` to turn this off, for example when another
+process already runs `agent.recover()` for the same store.
 
 ## `node-server`
 
@@ -220,12 +263,14 @@ dependencies are included), so it runs without `npm install`:
 ```bash
 cd .lousho/build/node-server
 node dist/server.js                   # http://127.0.0.1:3000
-node dist/server.js --port=8080 --host=0.0.0.0
+LOUSHO_API_TOKEN=... node dist/server.js --port=8080 --host=0.0.0.0
 ```
 
 Like `lousho dev`, it binds to `127.0.0.1` unless you opt in to another
 interface with `--host=<h>` (or `HOST=<h>`); the port comes from `--port`,
-`PORT`, or defaults to `3000`.
+`PORT`, or defaults to `3000`. On any interface but loopback it needs auth
+(`LOUSHO_API_TOKEN` or an `auth.ts`) or `LOUSHO_ALLOW_PUBLIC=1`, or it refuses
+to start ([Auth](#auth)).
 
 On SIGINT or SIGTERM (a `docker stop`, a rolling deploy) the server drains
 before it exits:
@@ -262,22 +307,44 @@ process.once('SIGTERM', () => {
 Provider credentials are read from the same
 environment variables as everywhere else (`OPENAI_API_KEY`, ...).
 
+Set `OTEL_EXPORTER_OTLP_ENDPOINT` (or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`) to
+export the agent's OpenTelemetry traces over OTLP/HTTP, with `OTEL_SERVICE_NAME`
+as the service name (the agent's name by default). It needs
+`@opentelemetry/sdk-trace-node`, `@opentelemetry/resources` and
+`@opentelemetry/exporter-trace-otlp-http` installed next to `dist/server.js`
+(for the docker image, in the generated `package.json`): see
+[Tracing: the built server](observability.md#the-built-server).
+
 ## `docker`
 
 Reuses the `node-server` scaffold and bundle and adds a `Dockerfile` based
 on `node:22-slim` that copies `dist/` and runs `node dist/server.js` on port
 3000 as the image's unprivileged `node` user. The image sets `HOST=0.0.0.0` -
 inside a container the server has to listen on all interfaces for
-`docker run -p` to reach it. For a reproducible image, run
+`docker run -p` to reach it, so the container refuses to start without auth:
+pass `LOUSHO_API_TOKEN` (or ship an `auth.ts`), or `LOUSHO_ALLOW_PUBLIC=1` for an
+open agent on purpose ([Auth](#auth)). For a reproducible image, run
 `npm install --package-lock-only` in the output directory once and keep the
-`package-lock.json`: the Dockerfile then installs with `npm ci`. Pass provider
-credentials at run time:
+`package-lock.json`: the Dockerfile then installs with `npm ci`. Pass the token
+and provider credentials at run time:
 
 ```bash
 cd .lousho/build/docker
 docker build -t lousho-agent .
-docker run -p 3000:3000 -e OPENAI_API_KEY=... lousho-agent
+docker run -p 3000:3000 -e LOUSHO_API_TOKEN=... -e OPENAI_API_KEY=... lousho-agent
 ```
+
+The image creates `/app/data`, owned by `node`, and declares it a `VOLUME`. Docker
+copies that ownership into a fresh named volume, so the unprivileged server can write
+there without a manual `chown`. Keep sessions across restarts by mounting a volume and
+pointing the store at it:
+
+```bash
+docker run -p 3000:3000 -e LOUSHO_API_TOKEN=... -e OPENAI_API_KEY=... -v lousho-data:/app/data -e LOUSHO_STORE=sqlite:/app/data/lousho.db lousho-agent
+```
+
+A bind mount (`-v ./data:/app/data`) keeps the host directory's own ownership, so
+`chown` it to uid 1000 first.
 
 ## `cloudflare-worker`
 

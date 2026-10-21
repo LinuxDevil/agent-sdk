@@ -37,7 +37,7 @@ import { specSchedules } from '../../schedules/specSchedules';
 import { resolveSpecTool } from '../../spec/specToAgent';
 import { listProviders, type AiMajor } from '../../providers/providerSpec';
 import { findConfigFile, isCodeConfigFile } from '../../agentDir/readConfig';
-import { RUNTIME_SPECIFIER, buildBundle, bundleExternals, findSdkRoot, loadTsup, sdkRuntimePlugin, writeFile } from '../bundle';
+import { RUNTIME_SPECIFIER, buildBundle, bundleExternals, findSdkRoot, loadTsup, runtimePeerPlugin, sdkRuntimePlugin, writeFile } from '../bundle';
 import { agentDirEntries, copyAgentDirAssets, isAgentDir, scaffoldedAgentDir, writeAgentDirPointer } from './node-server-dir';
 
 const SPEC_EXTENSIONS = new Set(['.yaml', '.yml', '.json']);
@@ -97,43 +97,54 @@ interface ServerVariant {
   options: string;
   /** Extra start-up lines, run once the server listens. */
   report: string;
+  /** `service.name` of exported traces unless OTEL_SERVICE_NAME sets one: the agent's name. */
+  serviceName: string;
 }
 
-function specVariant(options: DeployOptions): ServerVariant {
+function specVariant(options: DeployOptions, serviceName: string): ServerVariant {
   return {
-    imports: `import { agentSpecSchema, createDeployedAgent, createDeployedServer, specSchedules } from '${RUNTIME_SPECIFIER}';
+    imports: `import { agentSpecSchema, checkServerExposure, createDeployedAgent, createDeployedServer, otelTracingFromEnv, specSchedules, specToAgent, storeFromEnv } from '${RUNTIME_SPECIFIER}';
 import agentConfig from './agent.config.js';`,
     boot: `const spec = agentSpecSchema.parse(agentConfig);
-  const agent = await createDeployedAgent(spec);
+  const agent = tracing ? specToAgent(spec, { store: storeFromEnv(), exporter: tracing.exporter }) : await createDeployedAgent(spec);
+  await agent.ready();
   const schedules = specSchedules(spec.triggers);`,
     options: `{ ...${JSON.stringify(options)}, schedules }`,
-    report: `console.log('lousho server: schedules: ' + (schedules.map((s) => s.name).join(', ') || 'none'));`,
+    report: `const guards = { 'self-verified': 'verifies its own requests', 'server-auth': 'behind the server auth', open: 'open' };
+    console.log('lousho server: schedules: ' + (schedules.map((s) => s.name).join(', ') || 'none'));`,
+    serviceName,
   };
 }
 
 /** An agent directory: dist/agent is resolved at start-up, its schedules start and its channels mount (see node-server-dir.ts). */
-function agentDirVariant(options: DeployOptions): ServerVariant {
+function agentDirVariant(options: DeployOptions, serviceName: string): ServerVariant {
   return {
     imports: `import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createAgent, createDeployedServer, resolveAgentDir, storeFromEnv } from '${RUNTIME_SPECIFIER}';`,
+import { checkServerExposure, createAgent, createDeployedServer, otelTracingFromEnv, resolveAgentDir, storeFromEnv, withOtelTracing } from '${RUNTIME_SPECIFIER}';`,
     boot: `const resolved = await resolveAgentDir(path.join(path.dirname(fileURLToPath(import.meta.url)), 'agent'));
   // A 'store' the directory's config declares wins over the LOUSHO_STORE default; an explicit LOUSHO_STORE still wins.
   const store = process.env.LOUSHO_STORE === undefined ? (resolved.config.store ?? storeFromEnv()) : storeFromEnv();
-  const agent = createAgent({ ...resolved.config, store });
+  const agent = createAgent(withOtelTracing({ ...resolved.config, store }, tracing));
   await agent.ready();`,
     // An agent directory's auth.ts replaces the baked token; LOUSHO_API_TOKEN is appended to it.
     // Its named authorizeSession / authorizeApproval exports decide who may use a session and decide an approval.
     options: `{ ...${JSON.stringify(options)}, ...(resolved.auth ? { auth: resolved.auth } : {}), authorizeSession: resolved.authorizeSession, authorizeApproval: resolved.authorizeApproval, schedules: resolved.schedules, channels: resolved.channels }`,
-    report: `console.log('lousho server: schedules: ' + (resolved.manifest.schedules.join(', ') || 'none') + '; channels: ' + (resolved.manifest.channels.join(', ') || 'none'));`,
+    // Each channel route with its guard: its own verify, the server's auth (LOUSHO_API_TOKEN / auth.ts), or open.
+    report: `const guards = { 'self-verified': 'verifies its own requests', 'server-auth': 'behind the server auth', open: 'open' };
+    console.log('lousho server: schedules: ' + (resolved.manifest.schedules.join(', ') || 'none') + '; channels: ' + (channelRoutes.map((route) => route.name + ' (' + guards[route.auth] + ')').join(', ') || 'none'));
+    if (channelRoutes.some((route) => route.auth === 'open')) {
+      console.warn('[lousho server] warning: channel routes marked "open" have no verify and no LOUSHO_API_TOKEN guards them, so anyone who can reach this server can call them.');
+    }`,
+    serviceName,
   };
 }
 
 /** A .ts/.js module (what `lousho dev <file>` serves): its default or `agent` export, a createAgent() config or a built agent. */
-function agentModuleVariant(agentPath: string, options: DeployOptions): ServerVariant {
+function agentModuleVariant(agentPath: string, options: DeployOptions, serviceName: string): ServerVariant {
   const file = JSON.stringify(agentPath.split(path.sep).join('/'));
   return {
-    imports: `import { createAgent, createDeployedServer, storeFromEnv } from '${RUNTIME_SPECIFIER}';
+    imports: `import { agentWithOtelTracing, checkServerExposure, createAgent, createDeployedServer, otelTracingFromEnv, storeFromEnv, withOtelTracing } from '${RUNTIME_SPECIFIER}';
 import * as agentModule from ${file};`,
     boot: `const exported: any = (agentModule as any).default ?? (agentModule as any).agent;
   if (typeof exported !== 'object' || exported === null) {
@@ -142,10 +153,11 @@ import * as agentModule from ${file};`,
   }
   // A config's own 'store' wins over the LOUSHO_STORE default; an explicit LOUSHO_STORE still wins. A built agent keeps its own.
   const store = process.env.LOUSHO_STORE === undefined ? (exported.store ?? storeFromEnv()) : storeFromEnv();
-  const agent = typeof exported.send === 'function' ? exported : createAgent({ ...exported, store });
+  const agent = typeof exported.send === 'function' ? agentWithOtelTracing(exported, tracing) : createAgent(withOtelTracing({ ...exported, store }, tracing));
   await agent.ready();`,
     options: JSON.stringify(options),
     report: '',
+    serviceName,
   };
 }
 
@@ -203,8 +215,22 @@ function serverSource(variant: ServerVariant): string {
  * LOUSHO_ALLOWED_HOSTS (comma-separated) and LOUSHO_REQUIRE_JSON_BODY=false
  * set the routes' cross-site, Host and body checks (docs/auth.md).
  *
+ * Crash recovery: once listening, the server resumes the runs a crash left
+ * in-progress in the store (agent.recover(): completed steps do not run again,
+ * runs paused on an approval are left alone) and logs how many it found.
+ * LOUSHO_RECOVER_ON_START=0 turns it off.
+ *
+ * OpenTelemetry: with OTEL_EXPORTER_OTLP_ENDPOINT (or
+ * OTEL_EXPORTER_OTLP_TRACES_ENDPOINT) set, the agent's spans are exported over
+ * OTLP/HTTP (service.name: OTEL_SERVICE_NAME, else the agent's name). It needs
+ * @opentelemetry/sdk-trace-node, @opentelemetry/resources and
+ * @opentelemetry/exporter-trace-otlp-http installed next to dist/server.js;
+ * they are imported only when the variable is set (docs/observability.md).
+ *
  * Binds to 127.0.0.1 by default; pass --host=<h> (or HOST=<h>) to opt in to
- * listening on other interfaces. Port: --port=<n> / PORT, default 3000.
+ * listening on other interfaces. On a non-loopback host it refuses to start
+ * without auth (LOUSHO_API_TOKEN or auth.ts) unless LOUSHO_ALLOW_PUBLIC=1.
+ * Port: --port=<n> / PORT, default 3000.
  */
 ${variant.imports}
 
@@ -217,11 +243,14 @@ function readFlag(name: string): string | undefined {
 
 const port = Number(readFlag('port') || process.env.PORT || 3000);
 const host = readFlag('host') || process.env.HOST || '127.0.0.1';
-const LOOPBACK = ['127.0.0.1', 'localhost', '::1'];
 
 async function main(): Promise<void> {
+  // Set only when OTEL_EXPORTER_OTLP_ENDPOINT / OTEL_EXPORTER_OTLP_TRACES_ENDPOINT is.
+  const tracing = await otelTracingFromEnv({ serviceName: ${JSON.stringify(variant.serviceName)} });
   ${variant.boot}
-  const { server, authenticated, shutdown } = createDeployedServer(agent, ${variant.options});
+  const { server, authenticated, channelRoutes, shutdown } = createDeployedServer(agent, ${variant.options});
+  // No route auth on a public interface: refuse to start (LOUSHO_SERVER_UNPROTECTED) unless LOUSHO_ALLOW_PUBLIC=1.
+  const exposureWarning = checkServerExposure(host, authenticated);
 
   server.on('error', (err: NodeJS.ErrnoException) => {
     console.error(
@@ -235,9 +264,7 @@ async function main(): Promise<void> {
     const actualPort = addr && typeof addr === 'object' ? addr.port : port;
     console.log('lousho server: listening on http://' + host + ':' + actualPort);
     ${variant.report}
-    if (!authenticated && !LOOPBACK.includes(host)) {
-      console.warn('[lousho server] warning: no LOUSHO_API_TOKEN set, so anyone who can reach ' + host + ' can use this agent.');
-    }
+    if (exposureWarning) console.warn(exposureWarning);
   });
 
   // Stop accepting, stop the schedules, let in-flight turns finish (bounded), then close the agent.
@@ -248,6 +275,7 @@ async function main(): Promise<void> {
       void shutdown({ timeoutMs: shutdownTimeoutMs })
         .catch((error: Error) => console.error('[lousho server] shutdown failed: ' + error.message))
         .finally(() => agent.close())
+        .finally(() => tracing?.shutdown().catch((error: Error) => console.error('[lousho server] trace export shutdown failed: ' + error.message)))
         .finally(() => process.exit(0));
     });
   }
@@ -362,15 +390,15 @@ function writeAgentModulePointer(outDir: string, agentPath: string | undefined):
 function scaffoldAgentModule(agentPath: string, outDir: string, options: DeployOptions): void {
   writeAgentDirPointer(outDir, undefined);
   writeAgentModulePointer(outDir, agentPath);
-  writeFile(path.join(outDir, 'server.ts'), serverSource(agentModuleVariant(agentPath, options)));
   const name = projectName(agentPath) ?? path.basename(agentPath, path.extname(agentPath));
+  writeFile(path.join(outDir, 'server.ts'), serverSource(agentModuleVariant(agentPath, options, name)));
   writeFile(path.join(outDir, 'package.json'), packageJsonSource(name, deployDependencies(moduleProviders(agentPath))));
 }
 
 async function scaffoldAgentDir(agentPath: string, outDir: string, options: DeployOptions): Promise<void> {
   writeAgentModulePointer(outDir, undefined);
   writeAgentDirPointer(outDir, agentPath);
-  writeFile(path.join(outDir, 'server.ts'), serverSource(agentDirVariant(options)));
+  writeFile(path.join(outDir, 'server.ts'), serverSource(agentDirVariant(options, path.basename(agentPath))));
   // A code config can name any provider; a data config's `model` ('openai/...') tells us the peer to ship.
   const model = await agentDirModel(agentPath);
   let providers = [providerTypeOf(model)].filter((p): p is string => p !== undefined);
@@ -395,7 +423,7 @@ export const NodeServerAdapter: DeploymentAdapter = {
     writeAgentDirPointer(outDir, undefined);
     writeAgentModulePointer(outDir, undefined);
     writeFile(path.join(outDir, 'agent.config.js'), agentConfigModuleSource(spec));
-    writeFile(path.join(outDir, 'server.ts'), serverSource(specVariant(options)));
+    writeFile(path.join(outDir, 'server.ts'), serverSource(specVariant(options, spec.name)));
     writeFile(
       path.join(outDir, 'package.json'),
       packageJsonSource(spec.name, deployDependencies(providerTypeOf(spec.provider.type), Object.keys(spec.mcpServers ?? {}).length > 0))
@@ -428,7 +456,7 @@ export const NodeServerAdapter: DeploymentAdapter = {
       // except the SDK's optional peers (dockerode, provider packages, MCP, ...): they are imported
       // lazily and a missing one raises the SDK's coded missing-peer error where it is needed.
       ...bundleExternals(),
-      esbuildPlugins: [sdkRuntimePlugin()],
+      esbuildPlugins: [sdkRuntimePlugin(), runtimePeerPlugin()],
       clean: true,
       sourcemap: false,
       dts: false,

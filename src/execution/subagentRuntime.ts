@@ -39,6 +39,8 @@ export type InheritedRuntime = Pick<
   | 'redactContent'
   | 'approvalStore'
   | 'toolConcurrency'
+  // And its tools' error text is sanitized the same way.
+  | 'toolErrorMessage'
   | 'sandbox'
   | 'signal'
   | 'maxSubagentDepth'

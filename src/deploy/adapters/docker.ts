@@ -5,12 +5,15 @@
  * it (the same server.ts/agent.config.js/package.json and the same bundled
  * dist/server.js), and scaffold() additionally writes a Dockerfile (plus a
  * .dockerignore) that packages dist/ into a node:22-slim image (22 has the node:sqlite that LOUSHO_STORE=sqlite:<path> needs).
- * describe(): 'docker build -t lousho-agent . && docker run -p 3000:3000 lousho-agent'.
+ * describe(): 'docker build -t lousho-agent . && docker run -p 3000:3000 -e LOUSHO_API_TOKEN=<token> lousho-agent'.
+ * The image also owns /app/data (declared a VOLUME) for LOUSHO_STORE=sqlite:/app/data/<file>.
  *
  * The image sets HOST=0.0.0.0: inside a container, the server's default
  * 127.0.0.1 binding would be unreachable through `docker run -p`, so the
  * image explicitly opts in to all-interfaces binding (the network boundary
- * is then the container's published port, chosen by whoever runs it).
+ * is then the container's published port, chosen by whoever runs it). On
+ * that public interface the server refuses to start without auth
+ * (LOUSHO_API_TOKEN or an auth.ts) unless LOUSHO_ALLOW_PUBLIC=1.
  */
 import * as path from 'node:path';
 import { DeploymentAdapter, DeployOptions } from '../types';
@@ -26,9 +29,17 @@ COPY package.json package-lock.json* ./
 RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi && npm cache clean --force
 COPY dist/ ./dist/
 ENV NODE_ENV=production
+# Docker copies an image directory's ownership into a fresh named volume, so the
+# data directory must exist and belong to node before USER node and VOLUME, or
+# \`-v lousho-data:/app/data\` mounts a root-owned dir the server cannot write to.
+# Point LOUSHO_STORE at it, e.g. sqlite:/app/data/lousho.db.
+RUN mkdir -p /app/data && chown node:node /app/data
+VOLUME /app/data
 # Run as the image's unprivileged node user, not root.
 USER node
 # Listen on all interfaces inside the container so \`docker run -p\` can reach it.
+# On 0.0.0.0 the server refuses to start without auth: pass -e LOUSHO_API_TOKEN=<token>
+# (or ship an auth.ts), or -e LOUSHO_ALLOW_PUBLIC=1 to serve an open agent on purpose.
 ENV HOST=0.0.0.0
 ENV PORT=3000
 EXPOSE 3000
@@ -61,6 +72,6 @@ export const DockerAdapter: DeploymentAdapter = {
   },
 
   describe(): string {
-    return 'docker build -t lousho-agent . && docker run -p 3000:3000 lousho-agent';
+    return 'docker build -t lousho-agent . && docker run -p 3000:3000 -e LOUSHO_API_TOKEN=<token> lousho-agent';
   },
 };

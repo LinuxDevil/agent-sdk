@@ -220,6 +220,12 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | Slack and Discord signature checks accept a timestamp at most a minute ahead (was five minutes either way), read in seconds. | no opt-out |
 | `telegramChannel` and `teamsChannel` no longer post an OAuth sign-in link in a group chat. | no opt-out |
 | Channels without a `store` keep their transcripts in the agent's `createAgent({ store })` when it has `sessions`. | pass the channel its own `store` |
+| The built node-server (and Docker image) requires `LOUSHO_API_TOKEN` / `auth.ts` on `/channels/<name>` for a channel without `verify` when a token or `auth.ts` is set; self-verifying channels are unchanged. | give the channel a `verify` |
+| `webhookChannel` replies `{ sessionId, text, finishReason, approval? }` instead of the full `ExecutionResult`. | `webhookChannel({ fullResult: true })` |
+| A channel turn on a session another process is running answers `409` (`LOUSHO_SESSION_BUSY`, `Retry-After: 2`) instead of `500`. | no opt-out (retry after the delay) |
+| `POST /chat` on a session another process is running answers `409` (`LOUSHO_SESSION_BUSY`, `Retry-After: 2`) instead of a `200` stream holding only the error. | no opt-out (retry after the delay) |
+| The built server resumes runs a crash left in progress when it starts, and every 30 seconds. | `LOUSHO_RECOVER_ON_START=0` |
+| The built node-server (and so the Docker image, which sets `HOST=0.0.0.0`) refuses to start on a non-loopback host with no auth (no `LOUSHO_API_TOKEN`, build token or `auth.ts`): it exits with `LOUSHO_SERVER_UNPROTECTED` instead of serving an open agent with a warning. Loopback hosts are unchanged. See [Auth](./deployment.md#auth). | set `LOUSHO_API_TOKEN` (or add `auth.ts`), or `LOUSHO_ALLOW_PUBLIC=1` to serve the open agent on purpose |
 
 ### Sessions, approvals and durability
 
@@ -266,6 +272,8 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | ------ | ------- |
 | MCP tools ask for approval by default (`approval: 'always'`); an MCP tool whose name equals a local tool's is refused. See [Approval for MCP tools](./mcp.md#approval-for-mcp-tools). | `approval: 'annotations'` on servers you trust |
 | Tool results are capped at 50,000 characters (head and tail kept). | `maxToolResultChars: Infinity` |
+| `createAgent()` and `defineTool()` throw `LOUSHO_CONFIG_INVALID` for an option key they don't know, with a suggestion. | no opt-out (remove or rename the key) |
+| The workspace file tools deny `.env` and `.env.*` by default (not `.env.example`, `.env.sample`, `.env.template`). | pass your own `deny` list (it replaces the defaults) |
 | `defineTool()` throws `LOUSHO_CONFIG_INVALID` for a non-object `input` root or a `z.date()` / `z.bigint()` field; tool-call arguments that are not valid JSON reach the model as `LOUSHO_TOOL_ARGS_INVALID` instead of running the tool with `{}`. | no opt-out |
 | A flow `toolCall` step passes the agent's gate (`permissions`, `permissionMode`, approval) and validates its arguments; a call that needs approval fails with `LOUSHO_FLOW_TOOL_DENIED` without `approve`. See [Flows](./flows.md#tool-calls). | pass `approve` in the flow context |
 | `createShellTool` `allow` string patterns refuse arguments that leave the workspace (`..`, `~`, absolute paths), also through quotes. | an `allow` `CommandRule` with an `args` check |

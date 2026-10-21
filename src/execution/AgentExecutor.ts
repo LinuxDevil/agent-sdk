@@ -53,6 +53,7 @@ import {
 } from './toolCallExecution';
 import { resolveToolCallNames } from './toolNames';
 import { assertMaxToolResultChars } from './toolResult';
+import type { ToolErrorMessageFn } from './toolErrors';
 import {
   StartedToolCall,
   ToolBatchResult,
@@ -631,6 +632,12 @@ export interface ExecuteOptions extends PermissionOptions {
    * `tool.done` events still get the whole result.
    */
   maxToolResultChars?: number;
+  /**
+   * Rewrites the text of a thrown tool error before the model, the event
+   * stream (`tool.done`) and `postToolCall` hooks see it. See
+   * `createAgent({ toolErrorMessage })`.
+   */
+  toolErrorMessage?: ToolErrorMessageFn;
   /**
    * A zod schema the final reply must match, as JSON (tools can
    * still be called first). It is validated into `result.object`; an invalid

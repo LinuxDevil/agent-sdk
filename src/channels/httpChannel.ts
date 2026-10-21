@@ -14,6 +14,8 @@ export interface HttpChannelOptions {
    * every request that is not a browser's cross-site one (`403`) and has a
    * JSON `Content-Type` (else `415`), so a web page cannot post to it with a
    * form; under `lousho dev` its `Host` is checked like the dev routes'.
+   * Omitting it logs a one-time warning: sessions are keyed by the
+   * caller-chosen `sessionKey`, so without a `verify` (or auth in the host in front of it) anyone who can reach it can guess them.
    */
   verify?: (req: ChannelRequest) => Promise<boolean>;
 }
@@ -34,6 +36,13 @@ export interface HttpChannelOptions {
  * ```
  */
 export function httpChannel(options: HttpChannelOptions = {}): Channel {
+  if (!options.verify) {
+    console.warn(
+      '[lousho] httpChannel() has no `verify`: unless the server in front of it checks auth (the built node-server does when LOUSHO_API_TOKEN or auth.ts is set), ' +
+        'anyone who can reach it can use the agent and guess `sessionKey` values to read or continue other conversations. ' +
+        'Pass `verify: async (req) => req.headers.authorization === `Bearer ${token}`` to authenticate requests yourself (see docs/channels.md#securing-the-http-channel).'
+    );
+  }
   return defineChannel({
     name: options.name ?? 'http',
     verify: options.verify,

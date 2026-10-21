@@ -215,6 +215,7 @@ function childOptions(
     sandbox: runtime.sandbox,
     signal: abortSignal ?? runtime.signal,
     toolConcurrency: spec.toolConcurrency ?? runtime.toolConcurrency,
+    toolErrorMessage: runtime.toolErrorMessage,
     skills: spec.skills,
     subagents: spec.subagents,
     // The top-level run's limit bounds the whole tree: one level used up here.

@@ -18,13 +18,12 @@ What still sets it apart (as of October 2026; see the
   checkpoints and approval pauses live in memory, files, one SQLite file or
   Cloudflare KV, so a paused run resumes from another request or process.
   There is no Postgres store yet.
-- **One agent, many surfaces.** The same agent runs in Node, Docker or a
-  Worker (`lousho build`), serves editors over the Agent Client Protocol
-  (`lousho acp`) and MCP clients over `serveMcp`, and emits OpenTelemetry
-  GenAI spans with token usage and USD cost.
 - **Self-hosted single package across AI SDK majors.** No platform account or
-  hosted control plane; the `ai` peer accepts v4, v6 and v7. It is still
-  alpha, with fewer native providers and no hosted dashboard.
+  hosted control plane; the `ai` peer accepts v4, v6 and v7, and the same
+  agent runs in Node, Docker or a Worker (`lousho build`). It is still
+  alpha, with fewer native providers and no hosted dashboard; Agent Forge
+  (`lousho studio`) is a local visual console. ACP and MCP serving are
+  features here, not differentiators: other frameworks ship them too.
 
 [Quickstart](#quickstart) · [Features](#features) · [Examples](#examples) ·
 [TypeScript AI agent quickstart](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md) ·
@@ -352,6 +351,8 @@ Contributions are welcome: see [CONTRIBUTING.md](https://github.com/LinuxDevil/a
 the checks a pull request must pass (`npm run typecheck`, `npm run lint`,
 `npm test`, `npm run test:coverage && npm run fallow`).
 
+To report a vulnerability, see [SECURITY.md](https://github.com/LinuxDevil/agent-sdk/blob/main/SECURITY.md).
+
 ## License
 
 MIT © [Lousho Team](https://github.com/LinuxDevil/agent-sdk/blob/main/LICENSE)
@@ -594,8 +595,9 @@ entry points.
 on this SDK by version range), a strict `tsconfig.json`, `src/agent.ts` calling
 `createAgent({ model, instructions })` with an example `defineTool()` tool, an
 offline `src/agent.test.ts` using `mockModel`, a `.env.example` naming your
-provider's key variable, `.gitignore` and a README. It then installs the
-dependencies and runs `git init`.
+provider's key variable, `.gitignore`, a README, and an `AGENTS.md` (plus a
+one-line `CLAUDE.md` importing it) telling coding agents the project's files,
+scripts and conventions. It then installs the dependencies and runs `git init`.
 
 ```bash
 npm create lousho-agent my-agent         # or: npx @lousho/build-ai-agent init my-agent
@@ -2451,6 +2453,8 @@ Flag a tool `needsApproval` and the run pauses before calling it, until a human
 `ApprovalStore`, so the decision can come minutes or days later, from another
 request or another process, and the run then continues where it stopped.
 
+See also: [Pause, restart, resume](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/pause-and-resume.md), a short end-to-end tutorial.
+
 > Snippets on this page leave some names to you: `provider` is any `LLMProvider` (offline: `createMockProvider()`); `agent` is a `createAgent()` result; `input` is the user's text, a `string`; `emailTool` is a tool built with `defineTool()`; `storage` is a `StorageService`; `toolRegistry` is a `ToolRegistry`.
 
 ```ts
@@ -3012,7 +3016,7 @@ continued run as an `AgentRun` (see
 | `InMemoryApprovalStore` | This process only; the default for `createAgent()`. |
 | `StorageServiceApprovalStore(storage)` | JSON files through a `StorageService`. |
 | `fileStore(dir)` | One JSON file per pause, `<dir>/approvals/<id>.json`, on one machine; an approval can be resolved by only one process (see [Choosing a store](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store)). |
-| `SqliteStore.approvals` | One SQLite file, shared safely by several processes; an approval can be resolved by only one of them. |
+| `SqliteStore.approvals` | One SQLite file, shared by several processes on one host ([details](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#sharing-a-sqlite-file)); an approval can be resolved by only one of them. |
 
 An `ApprovalStore` needs `save()` and `resolve()`. `load(id)` (read a pause
 without claiming it) and `list()` (every pause not resolved yet, oldest first)
@@ -3045,7 +3049,7 @@ accepts the request returns a **principal**, and that principal goes into the
 run, where your `model` / `instructions` / `tools` functions and memory scopes
 can read it.
 
-```ts
+```ts no-run
 import { createAgent, createRouteHandler } from '@lousho/build-ai-agent';
 import { apiToken, jwt } from '@lousho/build-ai-agent/auth';
 import { mockModel } from '@lousho/build-ai-agent/testing';
@@ -3055,10 +3059,18 @@ const agent = createAgent({
   instructions: ({ principal }) => `You are helping ${principal?.id ?? 'a guest'}.`,
 });
 
+// Read secrets from the environment and fail at startup when one is missing.
+// Never fall back to a literal: a default in your source is a secret everyone can read.
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is not set`);
+  return value;
+}
+
 export const { GET, POST } = createRouteHandler(agent, {
   auth: [
-    jwt({ secret: process.env.JWT_SECRET ?? 'a-development-secret-of-32-bytes!!', issuer: 'https://auth.example.com', audience: 'agent-api' }),
-    apiToken(process.env.CI_TOKEN ?? 'ci-token', { id: 'ci' }),
+    jwt({ secret: requireEnv('JWT_SECRET'), issuer: 'https://auth.example.com', audience: 'agent-api' }),
+    apiToken(requireEnv('CI_TOKEN'), { id: 'ci' }),
   ],
 });
 ```
@@ -3170,9 +3182,9 @@ show their login prompt.
 ```ts
 import { basic } from '@lousho/build-ai-agent/auth';
 
-const operators = basic({ users: { ops: process.env.OPS_PASSWORD ?? 'change-me' }, realm: 'agent' });
+const operators = basic({ users: { ops: process.env.OPS_PASSWORD! }, realm: 'agent' });
 // Or check against your own store (compare in constant time there):
-const fromDatabase = basic({ users: async (user, password) => user === 'svc' && password === (process.env.SVC_PASSWORD ?? '') });
+const fromDatabase = basic({ users: async (user, password) => user === 'svc' && password === process.env.SVC_PASSWORD });
 ```
 
 **Only use `basic()` over HTTPS**: the password travels with every request.
@@ -4035,20 +4047,31 @@ import * as http from 'node:http';
 import { createAgent, createMockProvider, httpChannel, mountChannels } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
-const channels = mountChannels(agent, [httpChannel()]);
+const channels = mountChannels(agent, [
+  httpChannel({ verify: async (req) => req.headers.authorization === `Bearer ${process.env.API_TOKEN}` }),
+]);
 
 const server = http.createServer((req, res) => {
   void channels(req, res).then((handled) => {
     if (!handled) res.writeHead(404).end();
   });
 });
-server.listen(3000);
+server.listen(3000, '127.0.0.1');
 ```
 
 ```bash
-curl -s localhost:3000/channels/http -H 'Content-Type: application/json' -d '{"sessionKey":"user-42","input":"Hi, I am Ali"}'
+curl -s localhost:3000/channels/http -H "Authorization: Bearer $API_TOKEN" -H 'Content-Type: application/json' -d '{"sessionKey":"user-42","input":"Hi, I am Ali"}'
 # {"sessionId":"http_user-42-...","text":"...","finishReason":"stop"}
 ```
+
+### Securing the http channel
+
+Sessions are keyed by the `sessionKey` the caller sends, so an `httpChannel()`
+without `verify` lets anyone who can reach the port read or continue another
+user's conversation by guessing a key. It logs a warning once when created.
+Always pass `verify` (a bearer-token check, as above, or your own session
+check), bind to `127.0.0.1` unless a proxy or firewall fronts it, and derive
+`sessionKey` from the authenticated user rather than trusting the client.
 
 The handler resolves `true` when it served the request and `false` (nothing
 written) for any other route, like the `/chat` routes of `lousho dev`, so you
@@ -4086,7 +4109,14 @@ acknowledge the request. An error thrown by `verify` or `parse` answers 400
 for a `SyntaxError` (bad JSON) and 500 otherwise; a body over 1MB gets 413. A
 500 body is only `{ "error": "The request failed. The server log has the
 details.", "code"? }`, as on the session routes: the error itself goes to
-`onError` (stage `'parse'`), never to the caller.
+`onError` (stage `'parse'`), never to the caller. A turn that fails before the
+channel acknowledged the request goes to `onError` with stage `'turn'`; when
+another process or replica is running that conversation's turn
+([`LOUSHO_SESSION_BUSY`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_session_busy)) the answer is
+`409 { "error", "code": "LOUSHO_SESSION_BUSY" }` with a `Retry-After` header,
+so the sender can resend shortly. A channel that acknowledges in `parse` (Slack,
+Discord, Telegram, Teams, GitHub) keeps its own answer and tells the user the
+request failed in the conversation.
 
 ```ts
 import { createAgent, defineChannel, mountChannels } from '@lousho/build-ai-agent';
@@ -4201,7 +4231,7 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 | Channel | Request | Response |
 | ------- | ------- | -------- |
 | `httpChannel({ name?, verify? })` | JSON `{ sessionKey, input }` (`input` a string or content parts); anything else is a 400. Without `verify`, a body sent without `Content-Type: application/json` is a `415` (`LOUSHO_UNSUPPORTED_MEDIA_TYPE`), so a web page cannot post a form to it | `200 { sessionId, text, finishReason }`; when paused, `approval` too and `text` is the prompt |
-| `webhookChannel({ secret?, auth?, name?, principal? })` | The JSON body's `input` string, or the whole body; a one-shot session unless the body has a `sessionKey` | `200` with the turn's `ExecutionResult` |
+| `webhookChannel({ secret?, auth?, name?, principal?, fullResult? })` | The JSON body's `input` string, or the whole body; a one-shot session unless the body has a `sessionKey` | `200` with `{ sessionId, text, finishReason, approval? }` (the full `ExecutionResult` with `fullResult: true`) |
 | `slackChannel({ signingSecret, botToken, name?, fetch?, approvers?, onError? })` | Slack Events API and interactivity requests (see [Slack](#slack)) | `200` at once; replies are posted in the Slack thread |
 | `discordChannel({ publicKey, applicationId, botToken?, name?, fetch?, approvers?, onError? })` | Discord slash-command and button interactions (see [Discord](#discord)) | Deferred ack at once; the reply edits the original response |
 | `telegramChannel({ botToken, secretToken, botUsername?, name?, fetch?, approvers?, onError? })` | Telegram bot webhook updates: messages and inline-keyboard taps (see [Telegram](#telegram)) | `200` at once; replies are sent with `sendMessage` as plain text |
@@ -6203,11 +6233,8 @@ Each item is checkable in this repository.
 - **Durable approvals on Cloudflare Workers KV** as well as memory, file and
   SQLite, with the same `needsApproval` / `resumeAfterApproval()` code on each
   ([Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md), [Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md)).
-- **Editor and MCP surfaces from the same agent.** `lousho acp` serves any agent
-  to Zed and other Agent Client Protocol editors ([ACP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/acp.md)); `serveMcp`
-  exposes it as an MCP server to Claude Code, Cursor and other clients ([MCP](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md)).
-- **Self-hosted, one package, no platform account.** Runs in your Node process
-  or a Worker; nothing calls home and there is no hosted control plane to sign up for.
+- **Self-hosted, one package, no platform account.** Runs in your Node process,
+  Docker or a Worker; nothing calls home and there is no hosted control plane to sign up for.
 - **Spans AI SDK majors.** The `ai` peer dependency accepts `^4.3.19`, `^6` and
   `^7`, so an existing app can adopt lousho without first upgrading the AI SDK
   ([Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md)).
@@ -6217,7 +6244,7 @@ Each item is checkable in this repository.
 - **Alpha, one maintainer.** The 1.0 line is still `1.0.0-alpha.*`. Expect API churn, a small community and few third-party integrations.
 - **No Postgres store.** Checkpoint and approval stores ship for memory, file, SQLite and Cloudflare KV. Mastra and LangGraph ship Postgres; here you implement the small `CheckpointStore` / `ApprovalStore` interfaces yourself.
 - **Fewer native providers.** OpenAI, Anthropic, OpenRouter, Ollama and the Pi catalog are built in; anything else goes through `fromAiSdk()` ([Providers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/providers.md)).
-- **No hosted dashboard.** Traces are OpenTelemetry spans you send to your own backend ([Observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md)); there is no equivalent of LangSmith, VoltOps or Mastra's playground.
+- **No hosted dashboard.** Traces are OpenTelemetry spans you send to your own backend ([Observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md)); there is no hosted equivalent of LangSmith or VoltOps. Agent Forge (`lousho studio`) is a local visual console, not a hosted service ([Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md)).
 - **The root entry point is not edge-safe.** Cloudflare Workers use the dedicated `worker` build and subpaths ([Cloudflare Workers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cloudflare-workers.md)).
 - **Live runs are manual.** CI runs offline tests and cassette replays; live-provider checks are run by hand.
 
@@ -6229,8 +6256,7 @@ Agent SDK or an AI SDK harness. If you want an all-in-one framework with a dev
 UI and Postgres, look at Mastra; if your control flow is a graph, LangGraph.js;
 if you deploy on Vercel, eve. Pick lousho when you want offline
 record/replay evals, approvals that survive a restart on your own stores
-(including Workers KV), and one self-hosted package you can also serve over ACP
-and MCP.
+(including Workers KV), and one self-hosted package with no platform account.
 
 # Configuration
 
@@ -6602,6 +6628,7 @@ createAgent({ model: 'openai/gpt-4o-mini', subagents: { researcher }, rateLimit:
 | `codeMode` | `true` or `CodeModeOptions`: adds a `run_code` tool that lets the model call the agent's tools from one short script in a QuickJS sandbox. See [Code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md). |
 | `guardrails` | Input, output and tool guardrails of each run; sub-agents inherit them. See [Guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md). |
 | `maxToolResultChars` | The most characters of one tool result the model gets (default `50_000`; `Infinity` turns the cap off). See [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md). |
+| `toolErrorMessage` | `(error, { toolName, toolCallId }) => string`: replaces the text of a thrown tool error before the model, events and hooks see it (default: the error's own message). See [Tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/tools.md#errors). |
 | `onAgentDrift` | What a resume does when the agent differs from the one that paused the run: `'warn'` (default), `'error'` or `'ignore'`. See [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#resuming-with-a-changed-agent). |
 | `reasoning` | How much the model reasons before it answers: an effort, or `{ effort, budgetTokens, summary, force }`. See [Reasoning](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/reasoning.md). |
 | `promptCaching` | `'auto'` (default) marks Anthropic `cache_control` breakpoints for Claude models; `false` marks none. See [Prompt caching](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/models-and-cost.md#prompt-caching). |
@@ -6625,6 +6652,13 @@ Misconfiguration errors say how to fix themselves: a missing key names the
 variable (`createAgent: OPENAI_API_KEY is not set. ...`), an unknown prefix
 lists the supported ones and suggests the closest, and a missing optional peer
 dependency prints the exact `npm install` command.
+
+An option `createAgent()` does not know is an error (`LOUSHO_CONFIG_INVALID`),
+not silently ignored, so a typo fails from JavaScript or YAML too.
+The message suggests the closest option, or the Lousho name for one other SDKs
+use: `'maxOutputTokens' is not a known option (did you mean 'modelSettings.maxTokens'?)`,
+and `system` points to `instructions`. A key set to `undefined` is ignored, and
+the `manifest` of a spread `claudeProject()` result is accepted.
 
 ## Model settings
 
@@ -7041,7 +7075,7 @@ deploy the result). `tsup` must be installed (`npm install --save-dev tsup`).
 | Target              | Output                                                   | Printed command                                                        |
 | ------------------- | -------------------------------------------------------- | ---------------------------------------------------------------------- |
 | `node-server`       | `server.ts`, `agent.config.js`, `package.json`, `dist/server.js` | `node dist/server.js`                                                  |
-| `docker`            | everything `node-server` writes, plus `Dockerfile`       | `docker build -t lousho-agent . && docker run -p 3000:3000 lousho-agent` |
+| `docker`            | everything `node-server` writes, plus `Dockerfile`       | `docker build -t lousho-agent . && docker run -p 3000:3000 -e LOUSHO_API_TOKEN=<token> lousho-agent` |
 | `cloudflare-worker` | `worker.ts`, `agent.config.js`, `wrangler.toml`, `dist/worker.js` | `wrangler deploy`                                                      |
 
 Every target answers `GET /health` (`200 ok`) and serves the full
@@ -7122,7 +7156,8 @@ a page or script written against the dev server works against the deployed one.
 
 | Endpoint | What it does |
 | -------- | ------------ |
-| `GET /health` | `200 ok`. Never needs auth: point load balancers and container health checks here. |
+| `GET /health` | `200 ok`. Liveness: the process is up. Never needs auth: point load balancers and container health checks here. |
+| `GET /ready` | Readiness (`node-server` and `docker` only): `200 {"status":"ready"}` while the server takes traffic, `503 {"status":"draining"}` once a graceful shutdown (SIGTERM) has begun. Never needs auth, and the body carries no detail. Point a Kubernetes `readinessProbe` or a load balancer here, and keep `livenessProbe` and the Docker `HEALTHCHECK` on `/health`. It does not probe the session store (the store interface has no cheap check). |
 | `POST /chat` `{ "sessionId", "input" }` | Runs a turn of session `sessionId` (1-128 characters of `A-Za-z0-9_-`; a new id starts a conversation, a known one continues it) and streams it as SSE: one `data: <AgentEvent JSON>` per event ([Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md)), then `event: done`. `input` is a string or an array of content parts. |
 | `GET /chat/:sessionId` | The session's transcript: `{ sessionId, messages, pending }`. A turn's messages are saved when it finishes, so `messages` does not hold a turn that is paused on an approval; `pending` says it is. |
 | `POST /chat/:sessionId/approvals/:id` `{ "approved", "note"? }` or `{ "answer" }` | Decides a pending tool approval, or answers an `ask_question`, and streams the continued turn live as SSE, in the same framing and event types as `POST /chat` (the decided call's `tool.resume` / `tool.done` or `tool.error`, text deltas, `approval.requested` if it pauses again, `run.done`), from `agent.approvals.streamResolve()` / `streamAnswer()`. `404` when `id` is not pending; `409` (`LOUSHO_APPROVAL_CONFLICT`) while another request's decision of it is still streaming; `400` (`LOUSHO_APPROVAL_DECISION_INVALID`) for a body with neither field. When the turn's step paused on several calls, each id is decided on its own; a decision that leaves others pending streams `run.done` with `finishReason: 'awaiting-approval'`, and the last one runs the step. |
@@ -7139,7 +7174,10 @@ invalid session id is `LOUSHO_SESSION_ID_INVALID`). Every error body is JSON
 `409` with `code: 'LOUSHO_SESSION_AWAITING_APPROVAL'`, `approvalId` and
 `approvalIds` (every approval still to decide): decide them through the
 approvals route, which streams the paused turn's continuation, then send the
-new turn. With an auth list, a session belongs to the first principal that sends
+new turn. A turn sent to a session that another process or replica is running a
+turn of (it holds the session's run lease) is `409` with
+`code: 'LOUSHO_SESSION_BUSY'` and a `Retry-After: 2` header, answered before
+any stream starts; resend after the wait. With an auth list, a session belongs to the first principal that sends
 it a turn, and a stored session whose owner the server no longer remembers
 (after a restart) is refused to everyone until `authorizeSession` says whose
 it is; with only `LOUSHO_API_TOKEN` there is one caller and no owner check
@@ -7175,7 +7213,7 @@ same key:
 | The turn of that key in that session | The resend gets |
 | ------------------------------------ | --------------- |
 | finished (it is in the transcript) | `200` SSE with one `run.done` carrying that turn's final reply (`text`, `finishReason`), and the header `Idempotent-Replayed: true`. Nothing runs. Read `GET /chat/:sessionId` for the whole turn. |
-| still running on this server process | `409` (`LOUSHO_SESSION_BUSY`). Retry later and get the replay. |
+| still running, on this server process or on another replica that shares the store | `409` (`LOUSHO_SESSION_BUSY`) with `Retry-After: 2`. Retry after the wait and get the replay. |
 | interrupted by a crash (a checkpointed turn left `in-progress`) | the turn resumed from its last checkpoint (`session.resume()`: finished steps and tool calls are not run again), streamed as SSE. |
 | none | a new turn, as without the header; its user message keeps the key (`metadata.idempotencyKey`). |
 
@@ -7186,8 +7224,9 @@ checkpoint until it finishes), so a replay works after a restart and on another
 replica that shares the store; `session.pending()` reports an interrupted
 turn's key as `idempotencyKey`. A key is looked up only in its own session,
 and only while its turn is in the transcript (a compaction that summarizes it
-away forgets it). The `409` for a running turn holds within one process; two
-replicas that receive the same key at the same instant can both run it.
+away forgets it). Across replicas the `409` rests on the session's run lease, so it needs a
+store that supports leases; two replicas that receive the same key at the same
+instant on a store without them can both run it.
 
 ```bash
 curl -N http://127.0.0.1:3000/chat -H 'Content-Type: application/json' \
@@ -7198,12 +7237,19 @@ curl -N http://127.0.0.1:3000/chat -H 'Content-Type: application/json' \
 ### Auth
 
 Set `LOUSHO_API_TOKEN` (on the Worker target, as a secret: `npx wrangler secret
-put LOUSHO_API_TOKEN`) and every route except `/health` requires
-`Authorization: Bearer <token>`; anything else gets `401` with a JSON error
-(the token is compared in constant time). Without it the server is open: that
-is fine on `127.0.0.1`, but **treat the token as required for anything that is
-not on localhost** (the server logs a warning when it listens on another
-interface without one, and the `docker` image listens on all interfaces).
+put LOUSHO_API_TOKEN`) and the `/chat` routes and any channel without its
+own `verify` require `Authorization: Bearer <token>`; anything else gets `401`
+with a JSON error (the token is compared in constant time). `/health` is
+open, and channels that authenticate themselves (a `verify` function, or a
+platform signature check such as Slack's) are not gated by the token. Without it the server is open: that
+is fine on `127.0.0.1`, but on any other interface the built `node-server`
+(and so the `docker` image, which listens on `0.0.0.0`) **refuses to start**
+with no auth: it exits with
+[`LOUSHO_SERVER_UNPROTECTED`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_server_unprotected). Set
+`LOUSHO_API_TOKEN`, add an [`auth.ts`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md), or bind to `127.0.0.1`. To
+serve an open agent on a public interface on purpose (a private network, auth
+at a proxy in front), set `LOUSHO_ALLOW_PUBLIC=1`: the server then starts and
+logs a warning instead.
 Terminate TLS in front of the server, since a bearer token travels in clear
 text over plain HTTP. Pass the token at run time (`docker run -e
 LOUSHO_API_TOKEN=...`).
@@ -7234,9 +7280,40 @@ directory's `auth.ts`, with `LOUSHO_API_TOKEN` appended to it: see
 | Value | Store |
 | ----- | ----- |
 | `memory` (default) | `memoryStore()`: gone when the process restarts, and not shared between instances. |
-| `sqlite:<path>` | A [`SqliteStore`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md) file (created with its directory): sessions survive restarts. Needs Node 22 (`node:sqlite`); the `docker` image uses `node:22-slim`. Mount the file's directory as a volume. |
+| `sqlite:<path>` | A [`SqliteStore`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md) file (created with its directory): sessions survive restarts. Needs Node 22 (`node:sqlite`); the `docker` image uses `node:22-slim`. Mount the file's directory as a volume (the `docker` image owns `/app/data` for this). |
 
-SQLite is one file on one disk, so run a single instance per database file.
+Several instances on one host may share one `sqlite:` file on a local disk (for
+example two replicas on one Docker volume); a busy session answers `409` with
+`Retry-After`. A network filesystem (NFS, EFS, SMB) or several hosts are not
+supported: use a store you implement. See
+[Sharing a SQLite file](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#sharing-a-sqlite-file).
+
+### Crash recovery
+
+When the `node-server` or `docker` server starts listening, it finishes the
+runs that a crash or a kill left unfinished in the store. It calls
+[`agent.recover()`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md), which resumes every
+`in-progress` run and session turn from its last checkpoint. Steps that
+completed are not run again. A tool call that was in flight when the process
+died runs again, so make such tools idempotent. The server logs
+`lousho server: resuming N interrupted run(s)` when it finds any, and one
+`recovered interrupted run '<id>'` line per run it finishes. It then checks
+the store again every 30 seconds until it shuts down.
+
+- Runs paused on an approval or a question are left alone. Decide them
+  through `POST /chat/:sessionId/approvals/:id`.
+- A run whose [run lease](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases) another live
+  process holds is skipped and retried on a later check. So is a run whose
+  crashed process's lease has not expired yet.
+- With the default `memory` store there is nothing to recover after a
+  restart, and the check finds nothing.
+- A resend of the same turn that arrives while the server is still resuming
+  it runs after the resumed turn, as a new turn. Send an `Idempotency-Key`
+  ([Resending a turn](#resending-a-turn)) to get the resumed turn's reply
+  instead.
+
+Set `LOUSHO_RECOVER_ON_START=0` to turn this off, for example when another
+process already runs `agent.recover()` for the same store.
 
 ## `node-server`
 
@@ -7246,12 +7323,14 @@ dependencies are included), so it runs without `npm install`:
 ```bash
 cd .lousho/build/node-server
 node dist/server.js                   # http://127.0.0.1:3000
-node dist/server.js --port=8080 --host=0.0.0.0
+LOUSHO_API_TOKEN=... node dist/server.js --port=8080 --host=0.0.0.0
 ```
 
 Like `lousho dev`, it binds to `127.0.0.1` unless you opt in to another
 interface with `--host=<h>` (or `HOST=<h>`); the port comes from `--port`,
-`PORT`, or defaults to `3000`.
+`PORT`, or defaults to `3000`. On any interface but loopback it needs auth
+(`LOUSHO_API_TOKEN` or an `auth.ts`) or `LOUSHO_ALLOW_PUBLIC=1`, or it refuses
+to start ([Auth](#auth)).
 
 On SIGINT or SIGTERM (a `docker stop`, a rolling deploy) the server drains
 before it exits:
@@ -7288,22 +7367,44 @@ process.once('SIGTERM', () => {
 Provider credentials are read from the same
 environment variables as everywhere else (`OPENAI_API_KEY`, ...).
 
+Set `OTEL_EXPORTER_OTLP_ENDPOINT` (or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`) to
+export the agent's OpenTelemetry traces over OTLP/HTTP, with `OTEL_SERVICE_NAME`
+as the service name (the agent's name by default). It needs
+`@opentelemetry/sdk-trace-node`, `@opentelemetry/resources` and
+`@opentelemetry/exporter-trace-otlp-http` installed next to `dist/server.js`
+(for the docker image, in the generated `package.json`): see
+[Tracing: the built server](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md#the-built-server).
+
 ## `docker`
 
 Reuses the `node-server` scaffold and bundle and adds a `Dockerfile` based
 on `node:22-slim` that copies `dist/` and runs `node dist/server.js` on port
 3000 as the image's unprivileged `node` user. The image sets `HOST=0.0.0.0` -
 inside a container the server has to listen on all interfaces for
-`docker run -p` to reach it. For a reproducible image, run
+`docker run -p` to reach it, so the container refuses to start without auth:
+pass `LOUSHO_API_TOKEN` (or ship an `auth.ts`), or `LOUSHO_ALLOW_PUBLIC=1` for an
+open agent on purpose ([Auth](#auth)). For a reproducible image, run
 `npm install --package-lock-only` in the output directory once and keep the
-`package-lock.json`: the Dockerfile then installs with `npm ci`. Pass provider
-credentials at run time:
+`package-lock.json`: the Dockerfile then installs with `npm ci`. Pass the token
+and provider credentials at run time:
 
 ```bash
 cd .lousho/build/docker
 docker build -t lousho-agent .
-docker run -p 3000:3000 -e OPENAI_API_KEY=... lousho-agent
+docker run -p 3000:3000 -e LOUSHO_API_TOKEN=... -e OPENAI_API_KEY=... lousho-agent
 ```
+
+The image creates `/app/data`, owned by `node`, and declares it a `VOLUME`. Docker
+copies that ownership into a fresh named volume, so the unprivileged server can write
+there without a manual `chown`. Keep sessions across restarts by mounting a volume and
+pointing the store at it:
+
+```bash
+docker run -p 3000:3000 -e LOUSHO_API_TOKEN=... -e OPENAI_API_KEY=... -v lousho-data:/app/data -e LOUSHO_STORE=sqlite:/app/data/lousho.db lousho-agent
+```
+
+A bind mount (`-v ./data:/app/data`) keeps the host directory's own ownership, so
+`chown` it to uid 1000 first.
 
 ## `cloudflare-worker`
 
@@ -7350,6 +7451,8 @@ days. Nothing here depends on a particular host: any `CheckpointStore`
 (`memoryStore()`, `SqliteStore`, the Cloudflare KV store the
 `cloudflare-worker` build wires up, or your own three-method implementation)
 and any `ApprovalStore` work the same way.
+
+See also: [Pause, restart, resume](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/pause-and-resume.md), a short end-to-end tutorial.
 
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
@@ -7643,6 +7746,11 @@ the same id meanwhile - a `send()` that would resume the pending turn first,
 before any tool runs or any model is called (a resolved approval stays
 pending). Two replicas behind a load balancer therefore never run one turn's
 tool calls twice.
+
+This holds for replicas on one host sharing one SQLite file on a local disk, or
+for a store you implement over a shared database; SQLite on a network
+filesystem or across hosts is not supported. See
+[Sharing a SQLite file](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#sharing-a-sqlite-file).
 
 A lease whose holder died is taken over once it expires. Expiry is judged by
 the clock of the process that wants the lease against the expiry the holder
@@ -8182,7 +8290,7 @@ error tells you what to do:
 
 ```text
 ConfigurationError: createAgent: no model configured. Do one of the following: (1) pass a model: ...
-[LOUSHO_CONFIG_MISSING_PROVIDER] Pass a model string such as createAgent({ model: 'openai/gpt-4.1-mini' }), a provider instance, or set LOUSHO_MODEL or a provider API key. (https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md#lousho_config_missing_provider)
+[LOUSHO_CONFIG_MISSING_PROVIDER] Pass a model string such as createAgent({ model: 'openai/gpt-4.1-mini' }), a provider instance, or set LOUSHO_MODEL or a provider API key. (https://lousho.com/errors#lousho_config_missing_provider)
 ```
 
 A run that rejects (`send()`, `stream()`'s `result`, a session turn,
@@ -8262,7 +8370,7 @@ Find a code by area:
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
 | [Sandbox](#sandbox) | [`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`](#lousho_sandbox_egress_unsupported), [`LOUSHO_SANDBOX_PATH_DENIED`](#lousho_sandbox_path_denied) | Asking a sandbox for something it cannot do on the current platform, or to write outside its root. |
 | [Agent directories, skills and flows](#agent-directories-skills-and-flows) | [`LOUSHO_AGENT_DIR_INVALID`](#lousho_agent_dir_invalid), [`LOUSHO_SKILL_INVALID`](#lousho_skill_invalid), [`LOUSHO_FLOW_INVALID`](#lousho_flow_invalid), [`LOUSHO_FLOW_TOOL_DENIED`](#lousho_flow_tool_denied), [`LOUSHO_FLOW_CHANGED`](#lousho_flow_changed) | Loading an agent directory, a skill, or a flow definition, and gating a flow's tool calls. |
-| [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_STORAGE_BUSY`](#lousho_storage_busy), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed) | A storage backend, a trigger, a channel request or `lousho build`. |
+| [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_STORAGE_BUSY`](#lousho_storage_busy), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed), [`LOUSHO_SERVER_UNPROTECTED`](#lousho_server_unprotected) | A storage backend, a trigger, a channel request, `lousho build` or the built server's start-up. |
 | [Tests and evals](#tests-and-evals) | [`LOUSHO_EVALS_INVALID`](#lousho_evals_invalid), [`LOUSHO_TEST_FAILED`](#lousho_test_failed), [`LOUSHO_CASSETTE_INVALID`](#lousho_cassette_invalid) | `defineEval()`, `mockModel` and cassettes. |
 | [General](#general) | [`LOUSHO_GENERIC_ERROR`](#lousho_generic_error), [`LOUSHO_AGENT_EXECUTION_FAILED`](#lousho_agent_execution_failed), [`LOUSHO_FLOW_EXECUTION_FAILED`](#lousho_flow_execution_failed), [`LOUSHO_VALIDATION_FAILED`](#lousho_validation_failed), [`LOUSHO_OPERATION_TIMEOUT`](#lousho_operation_timeout), [`LOUSHO_OUTPUT_INVALID`](#lousho_output_invalid), [`LOUSHO_BUDGET_EXCEEDED`](#lousho_budget_exceeded), [`LOUSHO_GUARDRAIL_TRIPPED`](#lousho_guardrail_tripped) | Run-level failures: a timeout, a budget or guardrail stop, invalid output, and the catch-all codes. |
 | [Auth](#auth) | [`LOUSHO_AUTH_CONFIG_INVALID`](#lousho_auth_config_invalid) | A route auth helper (`jwt()`, `oidc()`, `basic()`, `apiToken()`) got options it cannot verify with. |
@@ -8798,9 +8906,9 @@ kept: the turn up to their results is added after the other writer's turn. Also 
 checkpointed run (or session turn) is running in another process, replica or store object right
 now, which holds its run lease (see
 [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases)); nothing ran here, and a resolved
-approval stays pending. Over HTTP, a `409` from `POST /chat`: a request with the same
-`Idempotency-Key` is still running its turn of that session on this server (see
-[Resending a turn](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#resending-a-turn)).
+approval stays pending. Over HTTP, a `409` with `Retry-After` from `POST /chat`: another process or replica holds
+the session's lease, or a request with the same `Idempotency-Key` is still running its turn of
+that session (see [Resending a turn](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#resending-a-turn)).
 
 **Fix:** await the turn's `send()` (or abort it), then call again. After a `send()` that failed
 this way, send again: the session reads the current transcript at the start of every call. A
@@ -9242,6 +9350,20 @@ Cloudflare Worker target does not have.
 **Fix:** follow the message. See [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md).
 
 **Example:** `lousho build --target node-server` without `--agent`.
+
+### LOUSHO_SERVER_UNPROTECTED
+
+**Means:** the built `node-server` (or the `docker` image) was asked to listen
+on an interface other than loopback (`localhost`, `127.x.x.x`, `::1`) with no
+route auth: no `LOUSHO_API_TOKEN`, no build token and no `auth.ts`. Anyone who
+could reach that interface could use the agent, so it refuses to start.
+
+**Fix:** set `LOUSHO_API_TOKEN`, add an [`auth.ts`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/auth.md) to the agent
+directory, or bind to `127.0.0.1` (`HOST` / `--host`). To serve an open agent
+on purpose (a private network, auth at a proxy in front), set
+`LOUSHO_ALLOW_PUBLIC=1`. See [Deployment: Auth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#auth).
+
+**Example:** `docker run -p 3000:3000 lousho-agent` with no `-e LOUSHO_API_TOKEN=...`.
 
 ## Tests and evals
 
@@ -11607,7 +11729,8 @@ The example's environment flags are worth copying:
 - `-e LOUSHO_STORE=sqlite:/data/lousho.db -v lousho-data:/data` — sessions and
   paused approvals survive container restarts (`/data` is a named volume).
 - `-e LOUSHO_API_TOKEN=...` — required: every route except `/health` is then
-  bearer-authed. Port 3000 is plain HTTP; put Traefik (the VPS template
+  bearer-authed. The image listens on `0.0.0.0`, so without a token (or an
+  `auth.ts`) the container refuses to start (`LOUSHO_SERVER_UNPROTECTED`). Port 3000 is plain HTTP; put Traefik (the VPS template
   installs it) or another TLS terminator in front.
 
 Provisioning itself — purchasing, recreating, resizing a VM — is deliberately
@@ -13868,6 +13991,40 @@ and prompt and tool content only if the agent sets `redactContent: false` or
 `captureContent: true`, so nothing is written to disk unless you ask. The spec file format has no
 traces setting.
 
+## The built server
+
+The server `lousho build --target=node-server` or `--target=docker` generates
+exports traces with no code when the standard `OTEL_EXPORTER_OTLP_ENDPOINT`
+(or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`) variable is set where it runs. It
+registers an OpenTelemetry tracer provider that sends spans over OTLP/HTTP,
+and gives the agent `createOtelTraceExporter()`, so every `/chat` turn arrives
+as the `invoke_agent` / `chat` / `execute_tool` tree above. An `exporter` the
+agent's config already has (an agent directory's or a module's) keeps
+running: both receive every span.
+
+The OpenTelemetry SDK is not bundled. Install these packages next to
+`dist/server.js`, or add them to the build's `package.json` dependencies
+before you build the docker image:
+
+```bash
+npm install @opentelemetry/api @opentelemetry/sdk-trace-node@^2 @opentelemetry/resources@^2 @opentelemetry/exporter-trace-otlp-http
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 OTEL_SERVICE_NAME=support-agent node dist/server.js
+```
+
+- The server imports them at start-up only when the variable is set. When one
+  is missing it logs which packages to install and serves without exporting
+  traces.
+- `service.name` is `OTEL_SERVICE_NAME` when set, otherwise the agent's name.
+  `OTEL_RESOURCE_ATTRIBUTES`, `OTEL_EXPORTER_OTLP_HEADERS` (for an API key)
+  and the batch settings (`OTEL_BSP_SCHEDULE_DELAY`, ...) work as the OTel SDK
+  documents them.
+- On SIGINT or SIGTERM the server sends the spans it still holds before it
+  exits.
+- With neither variable set, nothing is imported and the server runs as before.
+
+Message content follows the agent's own settings
+([Message and argument content is opt-in](#message-and-argument-content-is-opt-in)).
+
 ## Backends
 
 Any backend that ingests OpenTelemetry traces (OTLP) receives these spans.
@@ -14065,6 +14222,214 @@ const tools = await openApiTools(spec, { include: (op) => op.tags.includes('orde
 - No OAuth flows. `bearerToken` and `headers` cover static and per-request
   credentials.
 - Response bodies are read as text, and responses are not streamed.
+
+# Pause, restart, resume
+
+Source: docs/pause-and-resume.md
+
+A tutorial for one job: an agent that stops to ask a human before a risky tool
+call, survives a process restart while it waits, and carries on once someone
+decides. Then what happens when the process dies in the middle of a tool.
+
+The snippets use `mockModel` so they run as pasted, with no API key. Swap in a
+real `provider` or `model` for your own agent; nothing else changes. Each
+section links to the page that has the full detail.
+
+## 1. A tool that needs approval
+
+Set `needsApproval` on the tool. The run pauses before the tool executes:
+
+```ts
+import { defineTool } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+export const refund = defineTool({
+  name: 'refund',
+  description: 'Refund an order',
+  input: z.object({ orderId: z.string() }),
+  needsApproval: true, // or a predicate over the arguments
+  execute: async ({ orderId }) => `refunded ${orderId}`,
+});
+```
+
+See [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#which-calls-pause) for predicates and permission
+policies.
+
+## 2. Give the agent a durable store
+
+Pauses and checkpoints live in the agent's `store`. The default is in memory,
+which a restart loses. Use a durable one: `SqliteStore` (one transactional file,
+shared by several processes on one host) or `fileStore(dir)` (plain JSON files). See
+[Choosing a store](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#choosing-a-store).
+
+## 3. Send: the run pauses
+
+`send()` does not throw at a pause. It resolves with
+`finishReason: 'awaiting-approval'` and the id to decide:
+
+```ts
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+import { z } from 'zod';
+
+const refund = defineTool({
+  name: 'refund',
+  description: 'Refund an order',
+  input: z.object({ orderId: z.string() }),
+  needsApproval: true,
+  execute: async ({ orderId }) => `refunded ${orderId}`,
+});
+
+const agent = createAgent({
+  provider: mockModel([{ toolCalls: [{ name: 'refund', args: { orderId: 'B-1' } }] }]),
+  tools: [refund],
+  store: new SqliteStore('./pause-and-resume.db'),
+});
+
+// `sessionId` makes the run durable: its progress is checkpointed under this id.
+const paused = await agent.send('Refund order B-1', { sessionId: 'refund-B-1' });
+console.log(paused.finishReason, paused.approvalId); // 'awaiting-approval', '...'
+// The process can exit now. The pause is in the store.
+```
+
+Use `agent.session({ id })` instead of `sessionId` when the conversation should
+keep a transcript across turns (see [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#durable-sessions));
+the pause and resume calls below are the same.
+
+## 4. In a new process: list the pauses and decide one
+
+Start the process again with the same store. `agent.approvals.list()` returns
+the pending calls, oldest first, including the ones another process or an earlier
+run left in the store. `agent.approvals.resolve()` runs the call (or rejects it),
+continues the run, and resolves with the result:
+
+```ts
+import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+import { z } from 'zod';
+
+const refund = defineTool({
+  name: 'refund',
+  description: 'Refund an order',
+  input: z.object({ orderId: z.string() }),
+  needsApproval: true,
+  execute: async ({ orderId }) => `refunded ${orderId}`,
+});
+
+// The same agent definition and the same store. Here the mock model only has
+// the final reply left to give; a real provider needs no script.
+const agent = createAgent({
+  provider: mockModel(['Order B-1 is refunded.']),
+  tools: [refund],
+  store: new SqliteStore('./pause-and-resume.db'),
+});
+
+for (const call of await agent.approvals.list()) {
+  console.log(`${call.toolName}`, call.args); // refund { orderId: 'B-1' }
+  const result = await agent.approvals.resolve({ id: call.id, approved: true });
+  console.log(result.finishReason, result.text); // 'stop', 'Order B-1 is refunded.'
+}
+```
+
+- To reject, pass `approved: false` and a `note` the model sees as the reason.
+- A session that paused is found from its pause record, so you do not need to
+  open it or call `resume()` first.
+- `resolve()` throws when the id is unknown or already decided, so two processes
+  racing on one pause cannot both run the tool.
+- A pause from `send(msg, { sessionId })` shows in `agent.pending()` with
+  `status: 'awaiting-approval'` and its `approvalId`.
+
+## 5. See the run finish
+
+`resolve()` resolves with the continued run's result. The tool ran, the model got
+its output and answered, and `finishReason` is `'stop'`. If the continued run
+pauses again (another `needsApproval` call), you get `'awaiting-approval'` and a
+new id: list and decide again. To show progress to a user instead, use
+`agent.approvals.streamResolve()`. Everything else about decisions (several calls
+in one step, "don't ask again", approve with edited arguments, expiry) is in
+[Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#createagent-agents).
+
+## 6. When the process dies mid-run
+
+A crash or a kill leaves the run's checkpoint in the store with status
+`'in-progress'`. A restarted process finds it with `agent.pending()` and finishes
+it with `agent.resume(sessionId)`, or hands the whole job to `agent.recover()`.
+
+This snippet stands in for the crash with a tool that throws
+`PropagatingToolError` the first time (the way a dying process would stop the
+step), then recovers:
+
+```ts
+import { createAgent, defineTool, memoryStore, PropagatingToolError } from '@lousho/build-ai-agent';
+import { mockModel } from '@lousho/build-ai-agent/testing';
+import { z } from 'zod';
+
+let charges = 0;
+let attempts = 0;
+const tools = [
+  defineTool({ name: 'charge', description: 'Charge the card', input: z.object({}), execute: async () => `charged ${++charges}` }),
+  defineTool({
+    name: 'ship',
+    description: 'Ship the order',
+    input: z.object({}),
+    execute: async () => {
+      if (++attempts === 1) throw new PropagatingToolError('process died'); // the "crash"
+      return 'shipped';
+    },
+  }),
+];
+// Use fileStore(dir) or a SqliteStore in real code: memoryStore() does not survive a restart.
+const agent = createAgent({
+  provider: mockModel([{ toolCalls: [{ name: 'charge' }] }, { toolCalls: [{ name: 'ship' }] }, 'Order charged and shipped.']),
+  tools,
+  store: memoryStore(),
+});
+await agent.send('Charge and ship order 7', { sessionId: 'order-7' }).catch(() => undefined);
+
+// After the restart: what is unfinished?
+for (const run of await agent.pending()) {
+  console.log(run.sessionId, run.status); // order-7 in-progress
+}
+
+// Finish it. Completed steps are not run again.
+const finished = await agent.resume('order-7'); // ExecutionResult, or null when nothing was pending
+console.log(finished?.text, charges); // Order charged and shipped. 1
+```
+
+To do this without writing the loop, start `agent.recover()` once per process at
+startup: it polls `pending()` and resumes every `'in-progress'` run, leaves
+approvals for a human, and is safe to run on every replica (run leases make sure
+one process resumes each run). See
+[Recovering automatically](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#recovering-automatically).
+
+**At-least-once for the step that was running.** Recorded model responses and
+finished tool results are never repeated: that is why `charge` ran once above.
+But a tool that was mid-call when the process died runs again on resume, so its
+side effect can happen twice. Make such tools idempotent (an idempotency key
+passed to the payment API, a "have I done this" check). See
+[At-least-once tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#at-least-once-tools-make-side-effects-idempotent).
+A tool with `needsApproval` is not affected by this while it waits: a pause
+records no work, it only waits for the decision.
+
+## 7. Over HTTP
+
+The built server (see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)) does this for you. A client
+that resends a `POST /chat` after a dropped connection can send the same
+`Idempotency-Key` header: a finished turn is replayed without running anything,
+and a turn interrupted by a crash is resumed from its last checkpoint instead of
+starting over. A session paused on an approval answers `409`
+(`LOUSHO_SESSION_AWAITING_APPROVAL`) until it is decided. The table of outcomes
+is in [Resending a turn](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#resending-a-turn).
+
+## Where to go next
+
+- [Approvals](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md): permission policies, several calls in one step,
+  expiry, deciding in code.
+- [Sessions](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/sessions.md#durable-sessions): durable session turns and stores.
+- [Durable execution](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md): checkpoints, run leases, the
+  guarantees, fork and replay.
 
 # Permission modes
 
@@ -15509,10 +15874,13 @@ while adding it.
 reads the default registry at `https://registry.lousho.com/index.json`, which
 is the `registry/dist/` folder of the SDK's repository served as static JSON.
 When that host cannot be reached, `lousho add` reads the same committed folder
-from the release tag of the installed SDK version instead
-(`https://raw.githubusercontent.com/LinuxDevil/agent-sdk/v<version>/registry/dist/index.json`,
-for example `v1.0.0-alpha.19`);
-only the default falls back, never a registry you named.
+from GitHub instead: the release tag of the installed SDK version
+(`https://raw.githubusercontent.com/LinuxDevil/agent-sdk/<version>/registry/dist/index.json`),
+then the same tag with a `v` prefix (older releases), then `main`.
+If GitHub cannot be reached either (offline, an outage, a version whose tag was
+never pushed), `lousho add` reads the copy of `registry/dist/` that ships inside
+the installed package and prints a one-line notice that this bundled registry
+may be older than the online one. Only the default falls back, never a registry you named.
 `--registry` and `LOUSHO_REGISTRY` point it at another registry, and the value
 `none` (in either place) disables the registry entirely — `lousho add` then
 fails with `LOUSHO_CONFIG_INVALID`, for offline or locked-down use.
@@ -16131,6 +16499,8 @@ Source: docs/sessions.md
 **session** is a multi-turn conversation: it keeps the transcript and passes it
 to the model on every `send()`.
 
+See also: [Pause, restart, resume](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/pause-and-resume.md), a short end-to-end tutorial.
+
 > Snippets on this page leave some names to you: `provider` is any `LLMProvider` (offline: `createMockProvider()`).
 
 ```ts
@@ -16474,7 +16844,7 @@ implementation by where the process runs:
 | --- | --- | --- | --- | --- |
 | In memory (`memoryStore()`) | `MemorySessionStore` | in memory | `InMemoryApprovalStore` | Tests, scripts, one process that never restarts |
 | Files (`fileStore(dir)`) | `<dir>/sessions/<id>.json` | `<dir>/checkpoints/`, `<dir>/checkpoint-history/` | `<dir>/approvals/<id>.json` | One machine, you want plain inspectable files |
-| SQLite | `store.sessions` | `store.checkpoints` | `store.approvals` | A Node server: one durable, transactional file, shared safely by several processes |
+| SQLite | `store.sessions` | `store.checkpoints` | `store.approvals` | A Node server: one durable, transactional file, shared by several processes on one host (see [Sharing a SQLite file](#sharing-a-sqlite-file)) |
 | Cloudflare KV (`KVStore` from `@lousho/build-ai-agent/kv`) | `store.sessions` | `store.checkpoints` | `store.approvals` | Workers deployments (see [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md)) |
 
 Each one is an `AgentStore` part: pass them together as
@@ -16558,8 +16928,9 @@ With the executor directly, pass `store.checkpoints` as `checkpointStore` and
 - The directory is created if missing. The schema is versioned with
   `PRAGMA user_version` and migrated on open; a database written by a newer
   release is refused.
-- WAL mode and a 5 s busy timeout let two processes share the file. An approval
-  can be resolved by only one of them.
+- WAL mode and a short lock wait with retries (about 5 s in all, then
+  `LOUSHO_STORAGE_BUSY`) let several processes share the file. An approval can
+  be resolved by only one of them. See [Sharing a SQLite file](#sharing-a-sqlite-file).
 - Checkpoints and approval snapshots are stored as opaque JSON, so new fields
   round-trip unchanged.
 - `prune()` removes sessions and checkpoints not updated within `olderThanMs`,
@@ -16571,6 +16942,27 @@ With the executor directly, pass `store.checkpoints` as `checkpointStore` and
   without running the tool.
 - A file that is not a SQLite database fails with an error naming the path;
   using the store after `close()` throws a clear error.
+
+### Sharing a SQLite file
+
+This is the one statement the other pages link to.
+
+- **Supported:** several processes (for example two Docker replicas on one
+  named volume, or a server and a CLI) on **one host**, sharing one SQLite file
+  on a **local disk**. The file runs in WAL mode, and each session turn holds a
+  [run lease](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases), so replicas can alternate
+  messages on one session. A write to a session another process is running
+  fails with `LOUSHO_SESSION_BUSY`; `POST /chat` and the channels answer that
+  with `409` and a `Retry-After` header, so retry.
+- **Not supported:** a SQLite file on a network filesystem (NFS, EFS, SMB),
+  whose locking SQLite cannot rely on, and several hosts. For several hosts,
+  implement `SessionStore`, `CheckpointStore` and `ApprovalStore` over a shared
+  database such as Postgres or Redis. The SDK ships no network store.
+- **Clocks and PIDs:** leases are judged by each process's own clock, so keep
+  replica clocks in sync (NTP). A crashed run is taken over early only when
+  its process is provably gone on the same host (boot id, PID namespace and
+  process start time are checked); otherwise it waits 30 to 60 seconds for the
+  lease to expire. See [Run leases](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases).
 
 ## Project instructions
 
@@ -18996,6 +19388,12 @@ Tools written for the Vercel AI SDK (`tool({ description, inputSchema, execute }
 called, and throws an error that says how to fix a bad value. Registering two
 tools with the same name throws an error naming the conflict.
 
+An option not in the table above is an error (`LOUSHO_CONFIG_INVALID`) with a
+suggestion, so a misspelled safety option cannot leave a tool running without
+approval: `requireApproval: true` gives `'requireApproval' is not a known option (did you mean 'needsApproval'?)`,
+and `inputSchema` or `parameters` points to `input`. A defined tool spread back
+in (`defineTool({ ...tool, execute })`) is accepted.
+
 It also refuses (`LOUSHO_CONFIG_INVALID`) an `input` no model can satisfy:
 
 - **The root must be an object.** Providers send tool arguments as a JSON
@@ -19090,6 +19488,31 @@ The transcript message carries `isError: true`; `tool-result` events, `onToolRes
 | `mcp` | `McpToolError` | An MCP server answered `isError: true`; `message` is the server's text. |
 | `sandbox` | `SandboxRequiredError` | The tool has `requiresSandbox` but no `sandboxExecute`, so it was refused rather than run unsandboxed. |
 | `denied` | `ToolDeniedError` | A `deny` [permission rule](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/approvals.md#permission-policies), the tool's `needsApproval` returning `'deny'`, a `preToolCall` hook's `deny`, or the permission mode refused the call; `execute` did not run. Adds `reason` when given. |
+
+**Hiding exception text.** A thrown error's message goes to the model as it is, so
+`new Error('DB password=hunter2 connection refused')` reaches it verbatim. Pass
+`toolErrorMessage` to `createAgent` to replace the text of `execution` errors:
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({
+  instructions: 'You answer questions about orders.',
+  model: 'openai/gpt-4o-mini',
+  tools: [],
+  toolErrorMessage: (error, { toolName, toolCallId }) => {
+    console.error(`tool ${toolName} (${toolCallId}) failed`, error); // the original error stays here
+    return `${toolName} failed. Try again later or use another approach.`;
+  },
+});
+```
+
+The string becomes `message` in the result above (`kind` stays `execution`). The same text
+reaches `tool.error` events, `onToolResult` and `postToolCall` hooks, so a client-facing stream
+never carries the original; only your function sees the thrown error. Sub-agents inherit it. It
+does not touch `validation` errors (they describe the model's own bad arguments) or the other
+kinds. If the function throws or returns a non-string, the message is `The tool failed.` and the run
+carries on. Without the option, nothing changes.
 
 **Argument validation.** The model's arguments are parsed with the tool's zod
 `inputSchema` (for a legacy descriptor, `tool.parameters`) before the tool runs, so pre-tool hooks, the
@@ -19846,6 +20269,12 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | Slack and Discord signature checks accept a timestamp at most a minute ahead (was five minutes either way), read in seconds. | no opt-out |
 | `telegramChannel` and `teamsChannel` no longer post an OAuth sign-in link in a group chat. | no opt-out |
 | Channels without a `store` keep their transcripts in the agent's `createAgent({ store })` when it has `sessions`. | pass the channel its own `store` |
+| The built node-server (and Docker image) requires `LOUSHO_API_TOKEN` / `auth.ts` on `/channels/<name>` for a channel without `verify` when a token or `auth.ts` is set; self-verifying channels are unchanged. | give the channel a `verify` |
+| `webhookChannel` replies `{ sessionId, text, finishReason, approval? }` instead of the full `ExecutionResult`. | `webhookChannel({ fullResult: true })` |
+| A channel turn on a session another process is running answers `409` (`LOUSHO_SESSION_BUSY`, `Retry-After: 2`) instead of `500`. | no opt-out (retry after the delay) |
+| `POST /chat` on a session another process is running answers `409` (`LOUSHO_SESSION_BUSY`, `Retry-After: 2`) instead of a `200` stream holding only the error. | no opt-out (retry after the delay) |
+| The built server resumes runs a crash left in progress when it starts, and every 30 seconds. | `LOUSHO_RECOVER_ON_START=0` |
+| The built node-server (and so the Docker image, which sets `HOST=0.0.0.0`) refuses to start on a non-loopback host with no auth (no `LOUSHO_API_TOKEN`, build token or `auth.ts`): it exits with `LOUSHO_SERVER_UNPROTECTED` instead of serving an open agent with a warning. Loopback hosts are unchanged. See [Auth](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md#auth). | set `LOUSHO_API_TOKEN` (or add `auth.ts`), or `LOUSHO_ALLOW_PUBLIC=1` to serve the open agent on purpose |
 
 ### Sessions, approvals and durability
 
@@ -19892,6 +20321,8 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | ------ | ------- |
 | MCP tools ask for approval by default (`approval: 'always'`); an MCP tool whose name equals a local tool's is refused. See [Approval for MCP tools](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/mcp.md#approval-for-mcp-tools). | `approval: 'annotations'` on servers you trust |
 | Tool results are capped at 50,000 characters (head and tail kept). | `maxToolResultChars: Infinity` |
+| `createAgent()` and `defineTool()` throw `LOUSHO_CONFIG_INVALID` for an option key they don't know, with a suggestion. | no opt-out (remove or rename the key) |
+| The workspace file tools deny `.env` and `.env.*` by default (not `.env.example`, `.env.sample`, `.env.template`). | pass your own `deny` list (it replaces the defaults) |
 | `defineTool()` throws `LOUSHO_CONFIG_INVALID` for a non-object `input` root or a `z.date()` / `z.bigint()` field; tool-call arguments that are not valid JSON reach the model as `LOUSHO_TOOL_ARGS_INVALID` instead of running the tool with `{}`. | no opt-out |
 | A flow `toolCall` step passes the agent's gate (`permissions`, `permissionMode`, approval) and validates its arguments; a call that needs approval fails with `LOUSHO_FLOW_TOOL_DENIED` without `approve`. See [Flows](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/flows.md#tool-calls). | pass `approve` in the flow context |
 | `createShellTool` `allow` string patterns refuse arguments that leave the workspace (`..`, `~`, absolute paths), also through quotes. | an `allow` `CommandRule` with an `args` check |
@@ -20176,7 +20607,7 @@ const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistr
 | `maxFilesScanned` | 20,000                      | Most files a `glob` or `grep` walk visits. |
 | `grepTimeoutMs`   | 10,000                      | Milliseconds `grep` may spend matching its regex across all files; time spent reading files does not count. A slow pattern stops with an error naming how many files were scanned. |
 | `ignore`          | `['.git', 'node_modules']`  | Directory names `glob` and `grep` skip. |
-| `deny`            | `['.git']`                  | Entry names no tool reads, lists, searches or writes, at any depth. A path through one is a tool error. `[]` turns it off. See [Security model](#security-model). |
+| `deny`            | `['.git', '.env', '.env.*']` | Entry names no tool reads, lists, searches or writes, at any depth. A trailing `*` is a prefix. A path through one is a tool error. `[]` turns it off. See [Security model](#security-model). |
 | `checkpoints`     | none                        | A `WorkspaceCheckpoints`: back up every file `write_file` and `edit_file` change, so the changes can be rewound (see below). |
 
 `createShellTool(shell, options?)` returns one tool, `shell`, that takes
@@ -20350,15 +20781,21 @@ with `ignore: []`. The check runs after normalization, so `./.git`,
 `a/../.git`, `.git\config` and `.git/` are refused too. Names compare
 case-insensitively (`.GIT`), trailing dots and spaces are ignored (Windows
 opens `.git.` as `.git`), and on Windows 8.3 short names such as `GIT~1` are
-refused. `.gitignore` and `.github/` are not affected. Add names with the
-`deny` option, for example `deny: ['.git', '.env', 'secrets']` (entry names,
-not paths), or pass `deny: []` to turn the check off.
+refused. `.gitignore` and `.github/` are not affected.
+
+The default list also covers `.env` and `.env.*` (`.env.local`,
+`.env.production`), so a prompt-injected model cannot read secrets from them.
+`.env.example`, `.env.sample` and `.env.template` stay readable. An entry
+ending in `*` is a prefix match that spares those three template suffixes.
+A `deny` you pass **replaces** the defaults, it does not extend them: list
+`.git` and `.env` again, for example `deny: ['.git', '.env', '.env.*',
+'secrets']` (entry names, not paths), or pass `deny: []` to turn the check off.
 
 ```ts
 import { createFsTools, NodeWorkspace } from '@lousho/build-ai-agent';
 
 const workspace = new NodeWorkspace({ root: '.' });
-const tools = createFsTools(workspace, { readOnly: true, deny: ['.git', '.env'] });
+const tools = createFsTools(workspace, { readOnly: true, deny: ['.git', '.env', '.env.*'] });
 ```
 
 Links into `.git` are refused too. With `NodeWorkspace` (or any provider that

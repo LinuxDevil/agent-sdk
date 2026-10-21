@@ -234,8 +234,9 @@ entry points.
 on this SDK by version range), a strict `tsconfig.json`, `src/agent.ts` calling
 `createAgent({ model, instructions })` with an example `defineTool()` tool, an
 offline `src/agent.test.ts` using `mockModel`, a `.env.example` naming your
-provider's key variable, `.gitignore` and a README. It then installs the
-dependencies and runs `git init`.
+provider's key variable, `.gitignore`, a README, and an `AGENTS.md` (plus a
+one-line `CLAUDE.md` importing it) telling coding agents the project's files,
+scripts and conventions. It then installs the dependencies and runs `git init`.
 
 ```bash
 npm create lousho-agent my-agent         # or: npx @lousho/build-ai-agent init my-agent

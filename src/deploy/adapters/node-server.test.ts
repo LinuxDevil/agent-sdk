@@ -167,7 +167,7 @@ describe('NodeServerAdapter', () => {
       }
     }, 60_000);
 
-    it('requires LOUSHO_API_TOKEN as a bearer token on every route but /health, and warns when public without one', async () => {
+    it('requires LOUSHO_API_TOKEN as a bearer token on every route but /health, and refuses to serve publicly without one unless LOUSHO_ALLOW_PUBLIC=1', async () => {
       const { child, port } = await startServer(outDir, [], { LOUSHO_API_TOKEN: 'deploy-secret' });
       try {
         const base = `http://127.0.0.1:${port}`;
@@ -184,9 +184,23 @@ describe('NodeServerAdapter', () => {
         child.kill();
       }
 
+      // No auth on a public interface: the server refuses to start ...
+      const refused = spawn(process.execPath, ['dist/server.js', '--port=0', '--host=0.0.0.0'], {
+        cwd: outDir,
+        env: { ...process.env, LOUSHO_API_TOKEN: '', LOUSHO_ALLOW_PUBLIC: '' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let refusedErr = '';
+      refused.stderr!.on('data', (chunk) => (refusedErr += chunk));
+      const code = await new Promise<number | null>((resolve) => refused.on('exit', resolve));
+      expect(code).not.toBe(0);
+      expect(refusedErr).toContain('LOUSHO_SERVER_UNPROTECTED');
+      expect(refusedErr).toContain('LOUSHO_ALLOW_PUBLIC=1');
+
+      // ... unless LOUSHO_ALLOW_PUBLIC=1 serves the open agent on purpose, with the warning.
       const open = spawn(process.execPath, ['dist/server.js', '--port=0', '--host=0.0.0.0'], {
         cwd: outDir,
-        env: { ...process.env, LOUSHO_API_TOKEN: '' },
+        env: { ...process.env, LOUSHO_API_TOKEN: '', LOUSHO_ALLOW_PUBLIC: '1' },
         stdio: ['ignore', 'pipe', 'pipe'],
       });
       try {
@@ -204,7 +218,7 @@ describe('NodeServerAdapter', () => {
     }, 60_000);
 
     it('binds to an explicitly opted-in host via --host', async () => {
-      const { child, host } = await startServer(outDir, ['--host=0.0.0.0']);
+      const { child, host } = await startServer(outDir, ['--host=0.0.0.0'], { LOUSHO_API_TOKEN: 'deploy-secret' });
       try {
         expect(host).toBe('0.0.0.0');
       } finally {

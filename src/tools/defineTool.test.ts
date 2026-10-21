@@ -92,6 +92,34 @@ describe('defineTool', () => {
       expect(message).toContain('z.coerce.bigint()');
     });
 
+    // A misspelled safety key would otherwise run the tool without approval.
+    it.each([
+      ['requireApproval', 'needsApproval'],
+      ['needApproval', 'needsApproval'],
+      ['inputSchema', 'input'],
+      ['parameters', 'input'],
+      ['handler', 'execute'],
+      ['deferLoad', 'deferLoading'],
+    ])("rejects the unknown option '%s' and suggests '%s'", (key, suggestion) => {
+      expect(() => defineTool({ ...base, [key]: true } as never)).toThrow(
+        expect.objectContaining({ code: 'LOUSHO_CONFIG_INVALID', message: expect.stringContaining(`tool 'ok': '${key}' is not a known option (did you mean '${suggestion}'?)`) })
+      );
+    });
+
+    it('rejects an unknown option with no plausible match, listing the allowed ones', () => {
+      expect(() => defineTool({ ...base, frobnicate: 1 } as never)).toThrow(/'frobnicate' is not a known option\. Allowed options: name, description, input, /);
+    });
+
+    it('ignores an unknown option whose value is undefined', () => {
+      expect(() => defineTool({ ...base, requireApproval: undefined } as never)).not.toThrow();
+    });
+
+    it('accepts a defined tool spread back in, but not a stray inputSchema', () => {
+      const tool = defineTool(base);
+      expect(defineTool({ ...tool, execute: () => 2 }).name).toBe('ok');
+      expect(() => defineTool({ ...base, inputSchema: z.object({}) } as never)).toThrow(/'inputSchema' is not a known option \(did you mean 'input'\?\)/);
+    });
+
     it('accepts z.coerce.date(), z.coerce.bigint(), refined objects and object unions', () => {
       expect(() => defineTool({ ...base, input: z.object({ when: z.coerce.date(), n: z.coerce.bigint() }) })).not.toThrow();
       expect(() => defineTool({ ...base, input: z4.object({ when: z4.coerce.date(), n: z4.coerce.bigint() }) })).not.toThrow();

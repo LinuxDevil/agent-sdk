@@ -638,12 +638,15 @@ function agentSource(config: ProjectConfig, bot: BotOptions): string {
     "].join('\\n\\n');",
     '',
     'const tools = [currentTime];',
+    '// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the',
+    "// model's full output limit up front). Raise it when you need longer answers.",
+    'const modelSettings = { maxTokens: 4096 };',
     '',
     '/**',
     ' * The agent\'s options. The default export is what `lousho dev src/agent.ts`',
     ' * (and `lousho chat`, `mcp`, `acp`, `build`) serve.',
     ' */',
-    `const config: CreateAgentConfig = { model: '${config.provider}/${info.defaultModel}', instructions, tools };`,
+    `const config: CreateAgentConfig = { model: '${config.provider}/${info.defaultModel}', instructions, tools, modelSettings };`,
     'export default config;',
     '',
     '/**',
@@ -651,7 +654,7 @@ function agentSource(config: ProjectConfig, bot: BotOptions): string {
     ' * optional `provider` lets tests swap in a scripted model (see agent.test.ts).',
     ' */',
     'export function buildAgent(provider?: LLMProvider) {',
-    '  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);',
+    '  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);',
     '}',
     '',
   ];
@@ -759,7 +762,11 @@ Approvals: tools that set \`needsApproval\` pause and send allow/deny/always but
 
 Provider key: \`${info.envKey}\` goes in \`.env\`. Run \`${run('doctor')}\` if something does not work.
 
-Docs: https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md
+## Troubleshooting
+
+- \`This request requires more credits, or fewer max_tokens\` (OpenRouter and other credit-metered providers): the account cannot afford the model's full output limit. \`src/agent.ts\` caps replies with \`modelSettings: { maxTokens: 4096 }\`; lower it, or add credits and raise it.
+
+Docs: https://lousho.com/quickstart
 `;
 }
 

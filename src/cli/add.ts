@@ -263,7 +263,8 @@ async function install(args: AddArgs, registry: string, item: RegistryItem, io: 
 }
 
 async function runParsed(args: AddArgs, io: AddIo): Promise<number> {
-  const { registry, index } = await openRegistry({ registry: args.registry, env: io.env, fetch: io.fetch });
+  const { registry, index } = await openRegistry({ registry: args.registry, env: io.env, fetch: io.fetch, onNotice: (message) => io.stderr.write(`${message}
+`) });
   if (args.list || !args.name) {
     io.stdout.write(`${listLines(index).join('\n')}\n`);
     return 0;

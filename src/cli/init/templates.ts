@@ -60,29 +60,34 @@ function zodRange(peerRange: string | undefined, provider: string): string {
   return provider === 'ollama' ? (alternatives.find((part) => part.startsWith('^4')) ?? '^4.0.0') : range;
 }
 
+/** The generated package.json's scripts; AGENTS.md lists exactly these. */
+function scripts(config: ProjectConfig): Record<string, string> {
+  const yaml = config.template === 'yaml';
+  return {
+    // `lousho dev` loads .env itself, and so does src/index.ts (tsx --env-file-if-exists prints "not found" twice).
+    dev: yaml ? 'lousho dev agent.yaml' : 'tsx src/index.ts',
+    // The chat UI with hot reload; it serves src/agent.ts's default export.
+    ...(yaml ? {} : { 'dev:ui': 'lousho dev src/agent.ts' }),
+    // The Telegram bridge + a one-shot delegation entry point.
+    ...(config.template === 'telegram'
+      ? { telegram: 'tsx src/index.ts --telegram', task: 'tsx src/index.ts --task-file' }
+      : {}),
+    test: 'vitest run',
+    typecheck: 'tsc --noEmit',
+    doctor: yaml ? 'lousho doctor agent.yaml' : 'lousho doctor src/agent.ts',
+    // A self-contained HTTP server in .lousho/build/node-server (--target=docker adds a Dockerfile).
+    build: `lousho build ${yaml ? 'agent.yaml' : 'src/agent.ts'} --target=node-server`,
+  };
+}
+
 function packageJson(config: ProjectConfig): string {
   const peers = config.sdk.peerDependencies ?? {};
-  const yaml = config.template === 'yaml';
   const pkg = {
     name: config.name,
     version: '0.1.0',
     private: true,
     type: 'module',
-    scripts: {
-      // `lousho dev` loads .env itself, and so does src/index.ts (tsx --env-file-if-exists prints "not found" twice).
-      dev: yaml ? 'lousho dev agent.yaml' : 'tsx src/index.ts',
-      // The chat UI with hot reload; it serves src/agent.ts's default export.
-      ...(yaml ? {} : { 'dev:ui': 'lousho dev src/agent.ts' }),
-      // The Telegram bridge + a one-shot delegation entry point.
-      ...(config.template === 'telegram'
-        ? { telegram: 'tsx src/index.ts --telegram', task: 'tsx src/index.ts --task-file' }
-        : {}),
-      test: 'vitest run',
-      typecheck: 'tsc --noEmit',
-      doctor: yaml ? 'lousho doctor agent.yaml' : 'lousho doctor src/agent.ts',
-      // A self-contained HTTP server in .lousho/build/node-server (--target=docker adds a Dockerfile).
-      build: `lousho build ${yaml ? 'agent.yaml' : 'src/agent.ts'} --target=node-server`,
-    },
+    scripts: scripts(config),
     dependencies: sortKeys({
       '@lousho/build-ai-agent': config.sdkDependency,
       zod: zodRange(peers.zod, config.provider),
@@ -164,12 +169,15 @@ ${TIME_TOOL}${extra}
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
 const tools = [${toolNames(config.template).join(', ')}];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
 
 /**
  * The agent's options. The default export is what \`lousho dev src/agent.ts\`
  * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
  */
-const config: CreateAgentConfig = { model: '${config.provider}/${info.defaultModel}', instructions, tools };
+const config: CreateAgentConfig = { model: '${config.provider}/${info.defaultModel}', instructions, tools, modelSettings };
 export default config;
 
 /**
@@ -177,7 +185,7 @@ export default config;
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
 }
 `;
 }
@@ -335,6 +343,71 @@ function run(pm: PackageManager, script: string): string {
   return `${pm} run ${script}`;
 }
 
+const TROUBLESHOOTING = `## Troubleshooting
+
+- \`This request requires more credits, or fewer max_tokens\` (OpenRouter and other credit-metered providers): the account cannot afford the model's full output limit. \`src/agent.ts\` caps replies with \`modelSettings: { maxTokens: 4096 }\`; lower it, or add credits and raise it.
+
+`;
+
+const SCRIPT_NOTES: Record<string, string> = {
+  dev: 'chat with the agent',
+  'dev:ui': 'chat UI with hot reload',
+  telegram: 'long-poll Telegram (needs TELEGRAM_BOT_TOKEN in .env)',
+  task: 'one-shot run from a task file — other agents delegate through this',
+  test: 'offline tests (vitest), no API key needed',
+  typecheck: 'tsc --noEmit',
+  doctor: 'check Node, packages and the API key',
+  build: 'bundle a deployable HTTP server into .lousho/build/node-server',
+};
+
+/** AGENTS.md: short, project-specific guidance for coding agents (Claude Code, Cursor, Codex). */
+function agentsMd(config: ProjectConfig): string {
+  const pm = config.packageManager;
+  const info = providerInfo(config.provider);
+  const yaml = config.template === 'yaml';
+  const commands = Object.keys(scripts(config))
+    .map((name) => `- \`${run(pm, name)}\` - ${SCRIPT_NOTES[name] ?? name}`)
+    .join('\n');
+  const files = yaml
+    ? '- `agent.yaml` - the agent: prompt, provider, model and tools (built-in tool names, e.g. `current-date`)\n- `src/agent.test.ts` - checks the spec loads, offline'
+    : '- `src/agent.ts` - the agent (default export is its config) and its tools\n- `src/agent.test.ts` - tests with `mockModel`, offline\n- `src/index.ts` - the terminal chat (`dev`)';
+  const conventions = yaml
+    ? `- Edit \`agent.yaml\` to change the agent; \`model\` is a model id of the \`${config.provider}\` provider.
+- Keep tests offline: \`loadSpec\` the YAML and assert on it; never call a live model in tests.`
+    : `- Define tools with \`defineTool({ name, description, input: z.object(...), execute })\`; \`input\` is a zod schema.
+- Give any tool with side effects \`needsApproval: true\` (or a predicate) so a human approves the call.
+- The model string is \`provider/model\`, here \`${config.provider}/${info.defaultModel}\`.
+- Replies are capped by \`modelSettings.maxTokens\` (4096) in \`src/agent.ts\`; raise it for longer answers.
+- Test offline with \`mockModel([...])\` from \`@lousho/build-ai-agent/testing\`; never call a live model in tests.`;
+  return `# ${config.name}
+
+An agent built with \`@lousho/build-ai-agent\` (provider: ${config.provider}). Read this before changing code.
+
+## Files
+
+${files}
+- \`.env\` - secrets (${info.envKey}); copy from \`.env.example\`, never commit it
+
+## Commands
+
+${commands}
+
+Run \`${run(pm, 'test')}\` and \`${run(pm, 'typecheck')}\` after every change.
+
+## Conventions
+
+${conventions}
+
+## Docs
+
+- https://lousho.com/llms.txt - index of the docs, written for coding agents
+- https://lousho.com/quickstart
+- https://lousho.com/tools
+- https://lousho.com/approvals
+- https://lousho.com/testing
+`;
+}
+
 function readme(config: ProjectConfig): string {
   const pm = config.packageManager;
   const info = providerInfo(config.provider);
@@ -368,7 +441,7 @@ Run \`${run(pm, 'doctor')}\` if something does not work: it checks Node, package
 ${files}
 - \`.env.example\` - the environment variable your provider needs
 
-Docs: https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md
+${yaml ? '' : TROUBLESHOOTING}Docs: https://lousho.com/quickstart
 `;
 }
 
@@ -381,6 +454,9 @@ export function renderProject(config: ProjectConfig): Record<string, string> {
       'package.json': packageJson(config),
       'tsconfig.json': tsconfig(),
       '.gitignore': gitignore(config),
+      'AGENTS.md': agentsMd(config),
+      // Claude Code reads CLAUDE.md, not AGENTS.md; `@AGENTS.md` imports it.
+      'CLAUDE.md': '@AGENTS.md\n',
       ...telegramFiles(config, config.bot ?? {}),
     };
   }
@@ -390,6 +466,9 @@ export function renderProject(config: ProjectConfig): Record<string, string> {
     '.gitignore': gitignore(config),
     '.env.example': envExample(config),
     'README.md': readme(config),
+    'AGENTS.md': agentsMd(config),
+    // Claude Code reads CLAUDE.md, not AGENTS.md; `@AGENTS.md` imports it.
+    'CLAUDE.md': '@AGENTS.md\n',
     'src/agent.test.ts': yaml ? yamlTestSource(config) : testSource(),
   };
   if (yaml) {

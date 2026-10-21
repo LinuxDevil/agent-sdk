@@ -26,6 +26,7 @@ import { idempotencyKeyOf, type AgentSession } from '../session/AgentSession';
 import type { Message } from '../providers/llm';
 import { toMessages } from '../providers/content';
 import { SDKError, SessionAwaitingApprovalError } from '../execution/errors';
+import { SESSION_BUSY_RETRY_AFTER_S } from '../channels/channelCore';
 import { errorEvents, replayEvents } from '../cli/devEvents';
 import type { AuthFn, Principal } from '../auth/types';
 import { routeAuth } from '../auth/routeAuth';
@@ -508,6 +509,54 @@ async function awaitingApproval(session: AgentSession): Promise<Response | undef
   });
 }
 
+/** The `409` for a session another process or replica (or an earlier request) is running a turn of. */
+function sessionBusy(error: string): Response {
+  return jsonResponse(409, { error, code: 'LOUSHO_SESSION_BUSY' }, { 'Retry-After': String(SESSION_BUSY_RETRY_AFTER_S) });
+}
+
+/** Whether a turn's first event, or the error that ended it, is a refusal because another process holds the session's lease. */
+function isBusyRefusal(first: IteratorResult<AgentEvent> | { failure: unknown }): boolean {
+  const error = 'failure' in first ? first.failure : first.done || first.value.type !== 'error' ? undefined : first.value.error;
+  return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'LOUSHO_SESSION_BUSY';
+}
+
+/**
+ * {@link sseResponse} for a turn, except that a turn refused because another process
+ * or replica holds the session's lease (`LOUSHO_SESSION_BUSY`, which fails the turn
+ * before it runs anything) is answered with a `409` and `Retry-After` instead of a
+ * `200` stream whose only events are the error. The turn's first event decides, so
+ * the response starts once the turn has; a failure later in the turn is still in-band.
+ */
+async function turnResponse(request: Request, ctx: ChatRoutesContext, events: (signal: AbortSignal) => AsyncIterable<AgentEvent>): Promise<Response> {
+  const controller = new AbortController();
+  if (disconnectAborts(ctx)) request.signal.addEventListener('abort', () => controller.abort());
+  const iterator = events(controller.signal)[Symbol.asyncIterator]();
+  let head: IteratorResult<AgentEvent> | { failure: unknown };
+  try {
+    head = await iterator.next();
+  } catch (failure) {
+    head = { failure };
+  }
+  if (isBusyRefusal(head)) {
+    await iterator.return?.();
+    return sessionBusy('This session is running a turn elsewhere; retry shortly.');
+  }
+  let unread: typeof head | undefined = head;
+  const replay: AsyncIterable<AgentEvent> = {
+    [Symbol.asyncIterator]: () => ({
+      next: async () => {
+        const first = unread;
+        unread = undefined;
+        if (!first) return iterator.next();
+        if ('failure' in first) throw first.failure;
+        return first;
+      },
+      return: async () => (await iterator.return?.()) ?? { done: true, value: undefined },
+    }),
+  };
+  return sseResponse(request, ctx, () => replay, controller);
+}
+
 /** What an `Idempotency-Key` header may hold: 1-255 visible ASCII characters (a UUID, a ULID, a hash). */
 const IDEMPOTENCY_KEY = /^[\x21-\x7e]{1,255}$/;
 
@@ -560,7 +609,7 @@ async function idempotentTurn(request: Request, ctx: ChatRoutesContext, principa
   const keys = keysOf(ctx.agent());
   const claim = `${session.id} ${key}`;
   if (keys.has(claim)) {
-    return jsonResponse(409, { error: `A request with this Idempotency-Key is still running its turn of session '${session.id}'`, code: 'LOUSHO_SESSION_BUSY' });
+    return sessionBusy(`A request with this Idempotency-Key is still running its turn of session '${session.id}'`);
   }
   keys.add(claim);
   const release = () => void keys.delete(claim);
@@ -571,7 +620,7 @@ async function idempotentTurn(request: Request, ctx: ChatRoutesContext, principa
       return (await awaitingApproval(session))!;
     }
     if (pending?.status === 'in-progress' && pending.idempotencyKey === key) {
-      return sseResponse(request, ctx, (signal) => releasing(claimOnCommit(ctx, principal, session, resumedTurn(session, signal)), release));
+      return turnResponse(request, ctx, (signal) => releasing(claimOnCommit(ctx, principal, session, resumedTurn(session, signal)), release));
     }
     const turn = keyedTurn(await session.load(), key);
     if (turn) {
@@ -584,7 +633,7 @@ async function idempotentTurn(request: Request, ctx: ChatRoutesContext, principa
       response.headers.set('Idempotent-Replayed', 'true');
       return response;
     }
-    return sseResponse(request, ctx, (signal) => releasing(claimOnCommit(ctx, principal, session, session.stream(keyedInput(input, key), { signal, principal })), release));
+    return turnResponse(request, ctx, (signal) => releasing(claimOnCommit(ctx, principal, session, session.stream(keyedInput(input, key), { signal, principal })), release));
   } catch (error) {
     release();
     throw error;
@@ -679,7 +728,7 @@ async function sessionTurn(request: Request, ctx: ChatRoutesContext, principal: 
   const forbidden = await sessionForbidden(ctx, principal, sessionId, 'chat', session);
   if (forbidden) return forbidden;
   if (key !== null) return idempotentTurn(request, ctx, principal, session, input, key);
-  return (await awaitingApproval(session)) ?? sseResponse(request, ctx, (signal) => claimOnCommit(ctx, principal, session, session.stream(input, { signal, principal })));
+  return (await awaitingApproval(session)) ?? turnResponse(request, ctx, (signal) => claimOnCommit(ctx, principal, session, session.stream(input, { signal, principal })));
 }
 
 const runChat: RouteHandler = async (request, ctx, _params, principal) => {

@@ -16,7 +16,7 @@ export interface RunLimits {
   maxTokens?: number;
   maxInputTokens?: number;
   maxOutputTokens?: number;
-  /** USD (`usage.costUsd`): the provider-reported cost, else the registry's estimate; not checked (a warning is logged once) while a model used has unknown pricing. */
+  /** USD (`usage.costUsd`): the provider-reported cost, else the registry's estimate; not checked (a warning naming the model is logged once) while a model used has unknown pricing. */
   maxCostUsd?: number;
   /** Wall-clock time; an in-flight model or tool call is aborted when it runs out. */
   maxDurationMs?: number;
@@ -78,16 +78,23 @@ const SPENT_KEYS: Record<Exclude<BudgetLimit, 'maxToolErrors'>, keyof BudgetSpen
   maxSteps: 'steps',
 };
 
-let warnedUnknownCost = false;
+const warnedUnknownCost = new Set<string>();
 
-/** Warns (once per process) that `maxCostUsd` cannot be enforced because a model used has no known price. */
-function warnUnknownCost(): void {
-  if (warnedUnknownCost) return;
-  warnedUnknownCost = true;
+/** Warns (once per process and model) that `maxCostUsd` cannot be enforced because `model` has no known price. */
+function warnUnknownCost(model: string): void {
+  if (warnedUnknownCost.has(model)) return;
+  warnedUnknownCost.add(model);
   console.warn(
-    '[lousho] limits.maxCostUsd is set, but the cost of a model call is unknown (the model is not in the price registry and the provider reported no cost), ' +
-      'so the cost limit is not enforced. Register a price with registerModel({ id, provider, inputCostPerMTok, outputCostPerMTok }), or use a provider that reports cost (OpenRouter does).'
+    `[lousho] limits.maxCostUsd is set, but the price of model '${model}' is unknown (it is not in the price registry and the provider reported no cost), ` +
+      `so the cost limit is NOT enforced for it. Register a price: registerModel({ id: '${model}', provider: '<provider>', contextWindow: 8192, inputCostPerMTok: 0, outputCostPerMTok: 0 }) ` +
+      '(0 counts the model as free), or use a provider that reports cost (OpenRouter does). See https://lousho.com/models-and-cost#models-and-the-price-table'
   );
+}
+
+/** The models of `byModel` with no known cost, else `'unknown'` when none is recorded. */
+function unpricedModels(byModel: RunUsage['byModel'] | undefined): string[] {
+  const ids = Object.entries(byModel ?? {}).filter(([, m]) => m.costUsd === undefined).map(([id]) => id);
+  return ids.length > 0 ? ids : ['unknown'];
 }
 
 const NOTHING_SPENT: BudgetSpent = { inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0, steps: 0, durationMs: 0 };
@@ -125,11 +132,11 @@ export interface RunBudget {
 }
 
 /** The first spend limit of `max` that `total` reaches; `afterModelCall` leaves out `maxSteps`, `quietUnknownCost` the unknown-cost warning. */
-function spendLimitReached(max: RunLimits, total: BudgetSpent, afterModelCall: boolean, quietUnknownCost: boolean): Omit<BudgetExceeded, 'scope'> | undefined {
+function spendLimitReached(max: RunLimits, total: BudgetSpent, afterModelCall: boolean, quietUnknownCost: boolean, byModel?: RunUsage['byModel']): Omit<BudgetExceeded, 'scope'> | undefined {
   for (const [limit, key] of Object.entries(SPENT_KEYS) as Array<[Exclude<BudgetLimit, 'maxToolErrors'>, keyof BudgetSpent]>) {
     const value = total[key];
     const cap = max[limit];
-    if (cap !== undefined && value === undefined && limit === 'maxCostUsd' && !quietUnknownCost) warnUnknownCost();
+    if (cap !== undefined && value === undefined && limit === 'maxCostUsd' && !quietUnknownCost) unpricedModels(byModel).forEach(warnUnknownCost);
     if (cap === undefined || value === undefined || (afterModelCall && limit === 'maxSteps')) continue;
     if (value >= cap) return { limit, value, max: cap };
   }
@@ -145,12 +152,12 @@ export function startBudget(limits?: RunLimits, session?: SessionBudget, signal?
   ];
   if (scopes.length === 0) return undefined;
   const startedAt = Date.now();
-  const check = (usage: Pick<RunUsage, 'inputTokens' | 'outputTokens' | 'totalTokens' | 'costUsd'>, steps: number, afterModelCall = false, toolErrors = 0) => {
+  const check = (usage: Pick<RunUsage, 'inputTokens' | 'outputTokens' | 'totalTokens' | 'costUsd'> & Partial<Pick<RunUsage, 'byModel'>>, steps: number, afterModelCall = false, toolErrors = 0) => {
     const now = runSpent(usage, steps, Date.now() - startedAt);
     for (const { scope, limits: max, spent } of scopes) {
       // Failed tool calls count per run, also under a session's limits.
       if (max.maxToolErrors !== undefined && toolErrors >= max.maxToolErrors) return { limit: 'maxToolErrors' as const, value: toolErrors, max: max.maxToolErrors, scope };
-      const reached = spendLimitReached(max, addSpent(spent, now), afterModelCall, quietUnknownCost);
+      const reached = spendLimitReached(max, addSpent(spent, now), afterModelCall, quietUnknownCost, usage.byModel);
       if (reached) return { ...reached, scope };
     }
     return undefined;

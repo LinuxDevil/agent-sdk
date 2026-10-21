@@ -21,13 +21,12 @@ What still sets it apart (as of October 2026; see the
   checkpoints and approval pauses live in memory, files, one SQLite file or
   Cloudflare KV, so a paused run resumes from another request or process.
   There is no Postgres store yet.
-- **One agent, many surfaces.** The same agent runs in Node, Docker or a
-  Worker (`lousho build`), serves editors over the Agent Client Protocol
-  (`lousho acp`) and MCP clients over `serveMcp`, and emits OpenTelemetry
-  GenAI spans with token usage and USD cost.
 - **Self-hosted single package across AI SDK majors.** No platform account or
-  hosted control plane; the `ai` peer accepts v4, v6 and v7. It is still
-  alpha, with fewer native providers and no hosted dashboard.
+  hosted control plane; the `ai` peer accepts v4, v6 and v7, and the same
+  agent runs in Node, Docker or a Worker (`lousho build`). It is still
+  alpha, with fewer native providers and no hosted dashboard; Agent Forge
+  (`lousho studio`) is a local visual console. ACP and MCP serving are
+  features here, not differentiators: other frameworks ship them too.
 
 [Quickstart](#quickstart) · [Features](#features) · [Examples](#examples) ·
 [TypeScript AI agent quickstart](docs/quick-start.md) ·
@@ -354,6 +353,8 @@ notes. Known gaps:
 Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) for setup and
 the checks a pull request must pass (`npm run typecheck`, `npm run lint`,
 `npm test`, `npm run test:coverage && npm run fallow`).
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## License
 

@@ -12,8 +12,10 @@
  */
 export { agentSpecSchema } from '../spec/schema';
 export type { AgentSpec } from '../spec/schema';
-export { createDeployedAgent, createDeployedServer, storeFromEnv } from './nodeServer';
+export { checkServerExposure, createDeployedAgent, createDeployedServer, storeFromEnv } from './nodeServer';
 export { specSchedules } from '../schedules/specSchedules';
 export { createAgent } from '../createAgent';
 export { resolveAgentDir } from '../agentDir';
 export type { DeployedServerOptions } from './nodeServer';
+export { specToAgent } from '../spec/specToAgent';
+export { otelTracingFromEnv, withOtelTracing, agentWithOtelTracing } from './otelTracing';

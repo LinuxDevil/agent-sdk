@@ -52,6 +52,12 @@ Tools written for the Vercel AI SDK (`tool({ description, inputSchema, execute }
 called, and throws an error that says how to fix a bad value. Registering two
 tools with the same name throws an error naming the conflict.
 
+An option not in the table above is an error (`LOUSHO_CONFIG_INVALID`) with a
+suggestion, so a misspelled safety option cannot leave a tool running without
+approval: `requireApproval: true` gives `'requireApproval' is not a known option (did you mean 'needsApproval'?)`,
+and `inputSchema` or `parameters` points to `input`. A defined tool spread back
+in (`defineTool({ ...tool, execute })`) is accepted.
+
 It also refuses (`LOUSHO_CONFIG_INVALID`) an `input` no model can satisfy:
 
 - **The root must be an object.** Providers send tool arguments as a JSON
@@ -146,6 +152,31 @@ The transcript message carries `isError: true`; `tool-result` events, `onToolRes
 | `mcp` | `McpToolError` | An MCP server answered `isError: true`; `message` is the server's text. |
 | `sandbox` | `SandboxRequiredError` | The tool has `requiresSandbox` but no `sandboxExecute`, so it was refused rather than run unsandboxed. |
 | `denied` | `ToolDeniedError` | A `deny` [permission rule](./approvals.md#permission-policies), the tool's `needsApproval` returning `'deny'`, a `preToolCall` hook's `deny`, or the permission mode refused the call; `execute` did not run. Adds `reason` when given. |
+
+**Hiding exception text.** A thrown error's message goes to the model as it is, so
+`new Error('DB password=hunter2 connection refused')` reaches it verbatim. Pass
+`toolErrorMessage` to `createAgent` to replace the text of `execution` errors:
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+const agent = createAgent({
+  instructions: 'You answer questions about orders.',
+  model: 'openai/gpt-4o-mini',
+  tools: [],
+  toolErrorMessage: (error, { toolName, toolCallId }) => {
+    console.error(`tool ${toolName} (${toolCallId}) failed`, error); // the original error stays here
+    return `${toolName} failed. Try again later or use another approach.`;
+  },
+});
+```
+
+The string becomes `message` in the result above (`kind` stays `execution`). The same text
+reaches `tool.error` events, `onToolResult` and `postToolCall` hooks, so a client-facing stream
+never carries the original; only your function sees the thrown error. Sub-agents inherit it. It
+does not touch `validation` errors (they describe the model's own bad arguments) or the other
+kinds. If the function throws or returns a non-string, the message is `The tool failed.` and the run
+carries on. Without the option, nothing changes.
 
 **Argument validation.** The model's arguments are parsed with the tool's zod
 `inputSchema` (for a legacy descriptor, `tool.parameters`) before the tool runs, so pre-tool hooks, the

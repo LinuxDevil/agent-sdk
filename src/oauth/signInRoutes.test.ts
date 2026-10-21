@@ -153,7 +153,7 @@ describe('sign-in over HTTP', () => {
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     try {
-      expect((await fetch(`${base}/channels/chat`, { method: 'POST', body: JSON.stringify({ user: 'alice', text: 'List my repositories.' }) })).status).toBe(200);
+      expect((await fetch(`${base}/channels/chat`, { method: 'POST', headers: { authorization: 'Bearer secret' }, body: JSON.stringify({ user: 'alice', text: 'List my repositories.' }) })).status).toBe(200);
       expect(prompts).toHaveLength(1);
       expect(prompts[0]).toMatch(/^Sign in to GitHub to continue: https:\/\/github\.example\.com\/login\/oauth\/authorize\?/);
       const state = stateOf(prompts[0].slice(prompts[0].indexOf('https://')));

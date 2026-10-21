@@ -34,7 +34,8 @@ The example's environment flags are worth copying:
 - `-e LOUSHO_STORE=sqlite:/data/lousho.db -v lousho-data:/data` — sessions and
   paused approvals survive container restarts (`/data` is a named volume).
 - `-e LOUSHO_API_TOKEN=...` — required: every route except `/health` is then
-  bearer-authed. Port 3000 is plain HTTP; put Traefik (the VPS template
+  bearer-authed. The image listens on `0.0.0.0`, so without a token (or an
+  `auth.ts`) the container refuses to start (`LOUSHO_SERVER_UNPROTECTED`). Port 3000 is plain HTTP; put Traefik (the VPS template
   installs it) or another TLS terminator in front.
 
 Provisioning itself — purchasing, recreating, resizing a VM — is deliberately

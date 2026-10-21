@@ -20,7 +20,7 @@ import {
   type ChannelRespond,
 } from './defineChannel';
 import { channelFailureBody, reportChannelError } from './channelSupport';
-import { channelCore } from './channelCore';
+import { channelCore, type ChannelCoreRespond } from './channelCore';
 import { decodeParam } from '../server/requestGuard';
 import { SDKError } from '../execution/errors';
 
@@ -88,8 +88,8 @@ async function readRequestBytes(request: Request): Promise<Uint8Array> {
   return body;
 }
 
-function jsonResponse(status: number, value: unknown): Response {
-  return new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
+function jsonResponse(status: number, value: unknown, headers?: Record<string, string>): Response {
+  return new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json', ...headers } });
 }
 
 /** The error status for a failed handler: 413 over the size cap, 400 for bad JSON, else 500 (its message reported, not sent). */
@@ -101,7 +101,7 @@ async function failureResponse(error: unknown, report: (error: unknown) => Promi
 
 /** The answer a channel's first `respond` call wrote, once `acknowledged` settles. */
 interface PendingAnswer {
-  current?: { status: number; body: unknown };
+  current?: { status: number; body: unknown; headers?: Record<string, string> };
 }
 
 /**
@@ -129,18 +129,18 @@ async function settledResponse(
       warnHeld();
       await tail;
     }
-    const answered = answer.current as { status: number; body: unknown };
-    return jsonResponse(answered.status, answered.body);
+    const answered = answer.current as NonNullable<PendingAnswer['current']>;
+    return jsonResponse(answered.status, answered.body, answered.headers);
   }
   if (settled !== 'done') {
     // `handle` threw: acknowledged already -> report, else a JSON failure.
     if (answer.current !== undefined) {
       await report(settled.error);
-      return jsonResponse(answer.current.status, answer.current.body);
+      return jsonResponse(answer.current.status, answer.current.body, answer.current.headers);
     }
     return failureResponse(settled.error, report);
   }
-  return jsonResponse(answer.current?.status ?? 200, answer.current?.body ?? { ok: true });
+  return jsonResponse(answer.current?.status ?? 200, answer.current?.body ?? { ok: true }, answer.current?.headers);
 }
 
 /**
@@ -194,9 +194,9 @@ export function mountFetchChannels(
     const answer: PendingAnswer = {};
     let acknowledge!: () => void;
     const acknowledged = new Promise<void>((resolve) => (acknowledge = resolve));
-    const respond: ChannelRespond = (status, body) => {
+    const respond: ChannelCoreRespond = (status, body, headers) => {
       if (answer.current !== undefined) return;
-      answer.current = { status, body };
+      answer.current = { status, body, ...(headers && { headers }) };
       acknowledge();
     };
     let turn: Promise<void>;

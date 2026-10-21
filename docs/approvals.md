@@ -5,6 +5,8 @@ Flag a tool `needsApproval` and the run pauses before calling it, until a human
 `ApprovalStore`, so the decision can come minutes or days later, from another
 request or another process, and the run then continues where it stopped.
 
+See also: [Pause, restart, resume](./pause-and-resume.md), a short end-to-end tutorial.
+
 > Snippets on this page leave some names to you: `provider` is any `LLMProvider` (offline: `createMockProvider()`); `agent` is a `createAgent()` result; `input` is the user's text, a `string`; `emailTool` is a tool built with `defineTool()`; `storage` is a `StorageService`; `toolRegistry` is a `ToolRegistry`.
 
 ```ts
@@ -566,7 +568,7 @@ continued run as an `AgentRun` (see
 | `InMemoryApprovalStore` | This process only; the default for `createAgent()`. |
 | `StorageServiceApprovalStore(storage)` | JSON files through a `StorageService`. |
 | `fileStore(dir)` | One JSON file per pause, `<dir>/approvals/<id>.json`, on one machine; an approval can be resolved by only one process (see [Choosing a store](./sessions.md#choosing-a-store)). |
-| `SqliteStore.approvals` | One SQLite file, shared safely by several processes; an approval can be resolved by only one of them. |
+| `SqliteStore.approvals` | One SQLite file, shared by several processes on one host ([details](./sessions.md#sharing-a-sqlite-file)); an approval can be resolved by only one of them. |
 
 An `ApprovalStore` needs `save()` and `resolve()`. `load(id)` (read a pause
 without claiming it) and `list()` (every pause not resolved yet, oldest first)

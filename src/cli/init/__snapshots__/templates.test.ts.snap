@@ -16,12 +16,15 @@ export const currentTime = defineTool({
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
 const tools = [currentTime];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
 
 /**
  * The agent's options. The default export is what \`lousho dev src/agent.ts\`
  * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
  */
-const config: CreateAgentConfig = { model: 'anthropic/claude-sonnet-4-5', instructions, tools };
+const config: CreateAgentConfig = { model: 'anthropic/claude-sonnet-4-5', instructions, tools, modelSettings };
 export default config;
 
 /**
@@ -29,7 +32,7 @@ export default config;
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
 }
 "
 `;
@@ -57,12 +60,15 @@ const instructions = [
 ].join('\\n\\n');
 
 const tools = [currentTime];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
 
 /**
  * The agent's options. The default export is what \`lousho dev src/agent.ts\`
  * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
  */
-const config: CreateAgentConfig = { model: 'anthropic/claude-sonnet-4-5', instructions, tools };
+const config: CreateAgentConfig = { model: 'anthropic/claude-sonnet-4-5', instructions, tools, modelSettings };
 export default config;
 
 /**
@@ -70,7 +76,7 @@ export default config;
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
 }
 "
 `;
@@ -107,12 +113,15 @@ export const wordCount = defineTool({
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
 const tools = [currentTime, rollDie, wordCount];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
 
 /**
  * The agent's options. The default export is what \`lousho dev src/agent.ts\`
  * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
  */
-const config: CreateAgentConfig = { model: 'anthropic/claude-sonnet-4-5', instructions, tools };
+const config: CreateAgentConfig = { model: 'anthropic/claude-sonnet-4-5', instructions, tools, modelSettings };
 export default config;
 
 /**
@@ -120,7 +129,7 @@ export default config;
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
 }
 "
 `;
@@ -141,12 +150,15 @@ export const currentTime = defineTool({
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
 const tools = [currentTime];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
 
 /**
  * The agent's options. The default export is what \`lousho dev src/agent.ts\`
  * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
  */
-const config: CreateAgentConfig = { model: 'google/gemini-2.5-flash', instructions, tools };
+const config: CreateAgentConfig = { model: 'google/gemini-2.5-flash', instructions, tools, modelSettings };
 export default config;
 
 /**
@@ -154,7 +166,7 @@ export default config;
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
 }
 "
 `;
@@ -182,12 +194,15 @@ const instructions = [
 ].join('\\n\\n');
 
 const tools = [currentTime];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
 
 /**
  * The agent's options. The default export is what \`lousho dev src/agent.ts\`
  * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
  */
-const config: CreateAgentConfig = { model: 'google/gemini-2.5-flash', instructions, tools };
+const config: CreateAgentConfig = { model: 'google/gemini-2.5-flash', instructions, tools, modelSettings };
 export default config;
 
 /**
@@ -195,7 +210,7 @@ export default config;
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
 }
 "
 `;
@@ -232,12 +247,15 @@ export const wordCount = defineTool({
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
 const tools = [currentTime, rollDie, wordCount];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
 
 /**
  * The agent's options. The default export is what \`lousho dev src/agent.ts\`
  * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
  */
-const config: CreateAgentConfig = { model: 'google/gemini-2.5-flash', instructions, tools };
+const config: CreateAgentConfig = { model: 'google/gemini-2.5-flash', instructions, tools, modelSettings };
 export default config;
 
 /**
@@ -245,7 +263,7 @@ export default config;
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
 }
 "
 `;
@@ -301,12 +319,15 @@ export const currentTime = defineTool({
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
 const tools = [currentTime];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
 
 /**
  * The agent's options. The default export is what \`lousho dev src/agent.ts\`
  * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
  */
-const config: CreateAgentConfig = { model: 'ollama/llama3', instructions, tools };
+const config: CreateAgentConfig = { model: 'ollama/llama3', instructions, tools, modelSettings };
 export default config;
 
 /**
@@ -314,7 +335,7 @@ export default config;
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
 }
 "
 `;
@@ -342,12 +363,15 @@ const instructions = [
 ].join('\\n\\n');
 
 const tools = [currentTime];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
 
 /**
  * The agent's options. The default export is what \`lousho dev src/agent.ts\`
  * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
  */
-const config: CreateAgentConfig = { model: 'ollama/llama3', instructions, tools };
+const config: CreateAgentConfig = { model: 'ollama/llama3', instructions, tools, modelSettings };
 export default config;
 
 /**
@@ -355,7 +379,7 @@ export default config;
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
 }
 "
 `;
@@ -392,12 +416,15 @@ export const wordCount = defineTool({
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
 const tools = [currentTime, rollDie, wordCount];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
 
 /**
  * The agent's options. The default export is what \`lousho dev src/agent.ts\`
  * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
  */
-const config: CreateAgentConfig = { model: 'ollama/llama3', instructions, tools };
+const config: CreateAgentConfig = { model: 'ollama/llama3', instructions, tools, modelSettings };
 export default config;
 
 /**
@@ -405,7 +432,7 @@ export default config;
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
 }
 "
 `;
@@ -426,12 +453,15 @@ export const currentTime = defineTool({
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
 const tools = [currentTime];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
 
 /**
  * The agent's options. The default export is what \`lousho dev src/agent.ts\`
  * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
  */
-const config: CreateAgentConfig = { model: 'openai/gpt-4.1-mini', instructions, tools };
+const config: CreateAgentConfig = { model: 'openai/gpt-4.1-mini', instructions, tools, modelSettings };
 export default config;
 
 /**
@@ -439,7 +469,7 @@ export default config;
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
 }
 "
 `;
@@ -467,12 +497,15 @@ const instructions = [
 ].join('\\n\\n');
 
 const tools = [currentTime];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
 
 /**
  * The agent's options. The default export is what \`lousho dev src/agent.ts\`
  * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
  */
-const config: CreateAgentConfig = { model: 'openai/gpt-4.1-mini', instructions, tools };
+const config: CreateAgentConfig = { model: 'openai/gpt-4.1-mini', instructions, tools, modelSettings };
 export default config;
 
 /**
@@ -480,7 +513,7 @@ export default config;
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
 }
 "
 `;
@@ -517,12 +550,15 @@ export const wordCount = defineTool({
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
 const tools = [currentTime, rollDie, wordCount];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
 
 /**
  * The agent's options. The default export is what \`lousho dev src/agent.ts\`
  * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
  */
-const config: CreateAgentConfig = { model: 'openai/gpt-4.1-mini', instructions, tools };
+const config: CreateAgentConfig = { model: 'openai/gpt-4.1-mini', instructions, tools, modelSettings };
 export default config;
 
 /**
@@ -530,7 +566,7 @@ export default config;
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
 }
 "
 `;
@@ -551,12 +587,15 @@ export const currentTime = defineTool({
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
 const tools = [currentTime];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
 
 /**
  * The agent's options. The default export is what \`lousho dev src/agent.ts\`
  * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
  */
-const config: CreateAgentConfig = { model: 'openrouter/openai/gpt-4.1-mini', instructions, tools };
+const config: CreateAgentConfig = { model: 'openrouter/openai/gpt-4.1-mini', instructions, tools, modelSettings };
 export default config;
 
 /**
@@ -564,7 +603,7 @@ export default config;
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
 }
 "
 `;
@@ -592,12 +631,15 @@ const instructions = [
 ].join('\\n\\n');
 
 const tools = [currentTime];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
 
 /**
  * The agent's options. The default export is what \`lousho dev src/agent.ts\`
  * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
  */
-const config: CreateAgentConfig = { model: 'openrouter/openai/gpt-4.1-mini', instructions, tools };
+const config: CreateAgentConfig = { model: 'openrouter/openai/gpt-4.1-mini', instructions, tools, modelSettings };
 export default config;
 
 /**
@@ -605,7 +647,7 @@ export default config;
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
 }
 "
 `;
@@ -642,12 +684,15 @@ export const wordCount = defineTool({
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
 const tools = [currentTime, rollDie, wordCount];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
 
 /**
  * The agent's options. The default export is what \`lousho dev src/agent.ts\`
  * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
  */
-const config: CreateAgentConfig = { model: 'openrouter/openai/gpt-4.1-mini', instructions, tools };
+const config: CreateAgentConfig = { model: 'openrouter/openai/gpt-4.1-mini', instructions, tools, modelSettings };
 export default config;
 
 /**
@@ -655,7 +700,7 @@ export default config;
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
 }
 "
 `;
@@ -676,12 +721,15 @@ export const currentTime = defineTool({
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
 const tools = [currentTime];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
 
 /**
  * The agent's options. The default export is what \`lousho dev src/agent.ts\`
  * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
  */
-const config: CreateAgentConfig = { model: 'pi/openrouter/openai/gpt-4.1-mini', instructions, tools };
+const config: CreateAgentConfig = { model: 'pi/openrouter/openai/gpt-4.1-mini', instructions, tools, modelSettings };
 export default config;
 
 /**
@@ -689,7 +737,7 @@ export default config;
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
 }
 "
 `;
@@ -717,12 +765,15 @@ const instructions = [
 ].join('\\n\\n');
 
 const tools = [currentTime];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
 
 /**
  * The agent's options. The default export is what \`lousho dev src/agent.ts\`
  * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
  */
-const config: CreateAgentConfig = { model: 'pi/openrouter/openai/gpt-4.1-mini', instructions, tools };
+const config: CreateAgentConfig = { model: 'pi/openrouter/openai/gpt-4.1-mini', instructions, tools, modelSettings };
 export default config;
 
 /**
@@ -730,7 +781,7 @@ export default config;
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
 }
 "
 `;
@@ -767,12 +818,15 @@ export const wordCount = defineTool({
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
 const tools = [currentTime, rollDie, wordCount];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
 
 /**
  * The agent's options. The default export is what \`lousho dev src/agent.ts\`
  * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
  */
-const config: CreateAgentConfig = { model: 'pi/openrouter/openai/gpt-4.1-mini', instructions, tools };
+const config: CreateAgentConfig = { model: 'pi/openrouter/openai/gpt-4.1-mini', instructions, tools, modelSettings };
 export default config;
 
 /**
@@ -780,7 +834,7 @@ export default config;
  * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
  */
 export function buildAgent(provider?: LLMProvider) {
-  return provider ? createAgent({ provider, instructions, tools }) : createAgent(config);
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
 }
 "
 `;

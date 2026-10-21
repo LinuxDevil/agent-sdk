@@ -874,7 +874,7 @@ interface CodeModeOptions {
 }
 
 // @public
-type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length-exceeded' | 'quota-exceeded' | 'auth-failure' | 'unknown';
+type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length-exceeded' | 'quota-exceeded' | 'auth-failure' | 'model-unloaded' | 'unknown';
 
 // @public
 interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
@@ -1039,6 +1039,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
     subagentOptions?: SubagentOptions;
     subagents?: Subagents;
     toolConcurrency?: ToolConcurrency;
+    toolErrorMessage?: ToolErrorMessageFn;
     tools?: PerRun<AgentToolsOption>;
     toolSearch?: false | ToolSearchOptions;
 }
@@ -1308,6 +1309,7 @@ const ERROR_CODES: {
     readonly LOUSHO_STORAGE_BUSY: "Another process holds the SQLite write lock; retry the call, or find what keeps the lock (a long transaction, a backup, a second replica).";
     readonly LOUSHO_TRIGGER_INVALID: "Fix the trigger option the message names; the message shows a working example.";
     readonly LOUSHO_DEPLOY_FAILED: "Read the message: it names the missing option, file or unsupported feature; docs/deployment.md covers each target.";
+    readonly LOUSHO_SERVER_UNPROTECTED: "Set LOUSHO_API_TOKEN, add an auth.ts to the agent directory, bind to 127.0.0.1, or set LOUSHO_ALLOW_PUBLIC=1 to serve an open agent on purpose.";
     readonly LOUSHO_EVALS_INVALID: "Call the eval helper the way the message says (inside a vitest file, after t.send(), with a judge configured).";
     readonly LOUSHO_TEST_FAILED: "Read the message: an eval or a mockModel() script did not hold; fix the agent, or the expectation.";
     readonly LOUSHO_CASSETTE_INVALID: "Record the cassette again (lousho eval --record, or recordReplay mode: record), or fix the file the message names.";
@@ -3984,6 +3986,12 @@ interface ToolErrorEvent extends AgentEventBase<'tool.error'> {
     // (undocumented)
     toolName: string;
 }
+
+// @public
+type ToolErrorMessageFn = (error: unknown, ctx: {
+    toolName: string;
+    toolCallId: string;
+}) => string;
 
 // @public
 interface ToolExecutionContext {

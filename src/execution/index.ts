@@ -76,7 +76,7 @@ export * from './hooks';
 export { ToolArgumentsValidationError } from './toolArgsValidation';
 export type { ToolArgumentIssue } from './toolArgsValidation';
 export { toolErrorResult } from './toolErrors';
-export type { ToolErrorKind, ToolErrorResult, ToolErrorInput } from './toolErrors';
+export type { ToolErrorKind, ToolErrorResult, ToolErrorInput, ToolErrorMessageFn } from './toolErrors';
 export { allow, ask, deny, APPROVAL_EXPIRED_REASON } from './permissions';
 export type {
   PermissionAction,

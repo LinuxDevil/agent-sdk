@@ -13,9 +13,36 @@ opt-out.
 
 ### Changed
 
+- **Behavior change:** the built node-server and Docker image refuse to start on a non-loopback host when no auth is configured (no `LOUSHO_API_TOKEN`, build token or `auth.ts`), with `LOUSHO_SERVER_UNPROTECTED`. Set a token, add `auth.ts`, bind to `127.0.0.1`, or set `LOUSHO_ALLOW_PUBLIC=1` to serve an open agent on purpose. `lousho build --target=docker` prints the run command with `-e LOUSHO_API_TOKEN=<token>`.
+- The `limits.maxCostUsd` warning for a model with no known price names the model, says the limit is not enforced for it, and shows the `registerModel()` call that fixes it. It is printed once per model instead of on every step.
+- Scaffolded READMEs link to the docs site (`https://lousho.com/quickstart`) instead of the GitHub file on `main`.
+- [Sessions](docs/sessions.md#sharing-a-sqlite-file) has one statement on sharing a SQLite store, used across the docs: several processes on one host and a local disk are fine; network filesystems and multiple hosts are not.
+
+- **Behavior change:** the built node-server and Docker image resume runs a crash left in progress when they start (`agent.recover()`), and check again every 30 seconds until shutdown. Runs paused on an approval or a question are left alone, and a run another replica holds is skipped. `LOUSHO_RECOVER_ON_START=0` turns it off. See [Crash recovery](docs/deployment.md#crash-recovery).
+- **Behavior change:** `createAgent()` and `defineTool()` reject an option key they don't know with `LOUSHO_CONFIG_INVALID` and a suggestion (`requireApproval` → `needsApproval`, `maxOutputTokens` → `modelSettings.maxTokens`) instead of ignoring it. A mistyped `needsApproval` used to run the tool unapproved. Keys set to `undefined` are ignored.
+- **Behavior change:** the workspace file tools deny `.env` and `.env.*` by default as well as `.git`. `.env.example`, `.env.sample` and `.env.template` stay readable. A `deny` list you pass still replaces the defaults.
+- `POST /chat` answers `409` with `Retry-After: 2` and `code: LOUSHO_SESSION_BUSY` when another process or replica is running the session, instead of a `200` stream holding only the error. An `Idempotency-Key` resend that hits a running turn gets the same `409`.
+- Scaffolded agents (`lousho init`, `create-lousho-agent`) set `modelSettings: { maxTokens: 4096 }`, so a first run on a low-credit OpenRouter key no longer fails with "requires more credits, or fewer max_tokens". The generated README explains the error.
+- Error `docs` links point to `https://lousho.com/errors#<code>` instead of the GitHub file on `main`.
+- The Docker image creates `/app/data` owned by `node` and declares it a `VOLUME`, so a fresh named volume works with `LOUSHO_STORE=sqlite:/app/data/lousho.db`.
+- The [Authentication](docs/auth.md) examples read secrets from the environment and fail at startup when they are missing, instead of falling back to a literal secret.
+
+- **Behavior change:** the built node-server (and the Docker image) now guards `POST /channels/<name>` and its approvals route for a channel without `verify` with `LOUSHO_API_TOKEN` / `auth.ts`, the same as `/chat`. Before, such a channel answered anyone even with a token set. Channels that verify their own requests (Slack, Discord, Telegram, GitHub, Teams, `webhookChannel` with a secret, any channel with `verify`) are unchanged, and the start-up log lists each channel route's guard (`self-verified`, `server-auth` or `open`).
+- **Behavior change:** `webhookChannel` replies with `{ sessionId, text, finishReason, approval? }` (plus `approvalPrompt` on a pause), as `httpChannel` does, instead of the full `ExecutionResult`. The full result echoed the system prompt and the whole transcript to the caller. `fullResult: true` restores the old body.
+- Channels answer a turn on a session that another process or replica is running (`LOUSHO_SESSION_BUSY`) with `409` and `Retry-After: 2` instead of a `500`, and report a turn that fails before the request is acknowledged to `onError` with stage `'turn'` (it said `'parse'`).
+- README and [Comparison](docs/comparison.md) no longer list ACP and MCP as differentiators, and describe Agent Forge as a local visual console.
+
 - CI is one workflow with two jobs: `ci` (type checks, lint, build, tests with coverage, docs, API and fallow gates, pack-smoke, size check, and a zod 4 type check) and `compat` (the newest peers, `ai` 7 with zod 4, plus the real-Docker sandbox tests). The separate Docker Engine, Agent Forge E2E and weekly registry-smoke workflows and the `ai` 6 / zod 3 matrix entries are gone; `npm run registry-smoke` and `npm run test:e2e:studio` still run locally. When the fallow gate fails, CI now prints its full health and duplication reports.
 
 ### Added
+- `GET /ready` on the built node-server and Docker image: `200 {"status":"ready"}` while serving, `503 {"status":"draining"}` once shutdown starts. `/health` is unchanged. See [Deployment](docs/deployment.md).
+- The built server exports OpenTelemetry traces over OTLP/HTTP when `OTEL_EXPORTER_OTLP_ENDPOINT` (or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`) is set, next to any exporter the agent already has. It loads `@opentelemetry/sdk-trace-node`, `@opentelemetry/resources` and `@opentelemetry/exporter-trace-otlp-http` only then, says how to install them when missing, and honours `OTEL_SERVICE_NAME`. See [Observability](docs/observability.md).
+- `createAgent({ toolErrorMessage })` replaces the text of a thrown tool error (`kind: 'execution'`) before it reaches the model, `tool.error` events and hooks; a sanitizer that throws gives "The tool failed.". See [Tools](docs/tools.md).
+- `lousho init` and `create-lousho-agent` generate an `AGENTS.md` for coding agents (the project's real scripts, conventions and docs links) and a `CLAUDE.md` that imports it.
+- `lousho add` falls back to the registry bundled in the npm package (`registry/dist`) when `registry.lousho.com` and its GitHub fallbacks are unreachable, with a notice that the bundled copy may be older.
+- [Pause, restart and resume](docs/pause-and-resume.md): one tutorial for an approval that waits across a restart, crash recovery, and resending over HTTP.
+- `SECURITY.md`: supported versions, private reporting through GitHub, and the disclosure policy.
+- `httpChannel()` created without `verify` logs one warning that the channel is unauthenticated and its `sessionKey` values are guessable. [Channels](docs/channels.md) shows `verify` in the quick start, and [Deployment](docs/deployment.md) says which routes `LOUSHO_API_TOKEN` guards.
 - `POST /chat` accepts an `Idempotency-Key` header: a resend with the same key replays the finished turn's reply (`Idempotent-Replayed: true`, nothing runs), resumes a turn a crash interrupted instead of appending the message again, and is a `409` (`LOUSHO_SESSION_BUSY`) while that turn still runs. The key is stored on the turn's user message (`metadata.idempotencyKey`), so it survives restarts; `session.pending()` reports it as `idempotencyKey`. See [Resending a turn](docs/deployment.md#resending-a-turn).
 - `fromAiSdkTools(record)` converts Vercel AI SDK tools (`tool({ ... })` or plain `{ description, inputSchema | parameters, execute, needsApproval? }` objects) into Lousho tools, keyed by name: zod and Standard Schemas are kept, `jsonSchema()` wrappers and plain JSON Schemas are converted (their own `validate` still runs), `needsApproval` (boolean or function) pauses the run for approval, and `execute` gets the call id and the run's abort signal. It imports nothing from `ai`, so tools built on `ai` 4 to 7 work with any installed version. New guide: [Migrating from the AI SDK](docs/migrating-from-ai-sdk.md).
 - `lousho eval` without vitest installed now says it runs `*.eval.ts` files through vitest, the directory it searched from, and the install command; [Evals](docs/evals.md) states the requirement up front.
@@ -26,6 +53,9 @@ opt-out.
 - `lousho doctor` fails an installed `ai` 5 (AI SDK v5 is not supported) with an upgrade hint to `ai` 6 or 7 and the matching `@ai-sdk/*` majors.
 
 ### Fixed
+- `lousho build` works again in a project without the optional `@opentelemetry/*` packages (every fresh scaffold): the OTel exporter added for the built server is loaded only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, and the build leaves those packages unresolved instead of failing with `Could not resolve "@opentelemetry/api"`. The scaffold end-to-end test now builds the server and checks `/health`.
+- The `httpChannel()` "no verify" warning no longer says the channel is unauthenticated when the built server guards it with `LOUSHO_API_TOKEN` or `auth.ts`, and [Channels](docs/channels.md) shows `webhookChannel`'s trimmed reply.
+- `lousho add` works again when `registry.lousho.com` is unreachable: the fallback now tries the release tag as the repository names it (`1.0.0-alpha.24`), then the `v`-prefixed tag, then `main`. It asked only for `v<version>`, which 404'd.
 - The file tools' `deny` list (`.git` by default) is now also checked where a path really leads: a symlink or Windows junction inside the workspace pointing at `.git` or into it (`gitj -> .git`) let `edit_file gitj/config` rewrite `.git/config` (for example `core.hooksPath`, which runs code on the next git command) and `write_file gitj/PWNED` create files in `.git`. Reads, writes, edits, `list_dir`, and `glob`/`grep` given such a link as `path` are now refused. Providers with links can implement the new optional `FsProvider.realPath(path)`; `NodeWorkspace` does. See [Workspace tools](docs/workspace-tools.md#security-model).
 - `NodeWorkspace.writeFile` (and so `write_file` / `edit_file`) writes a temp file in the same directory and renames it into place, so a process killed mid-write no longer leaves a truncated file. A replaced file keeps its permission bits; a read-only file is still refused.
 - `WorkspaceCheckpoints` stores a file's backup before `write_file` / `edit_file` writes it, not after. A process killed between the write and the backup lost the original: on resume the re-run call backed up the agent's own content, so `rewind()` reported `restored` but put back the agent's version (or, for `edit_file`, recorded nothing). A re-run now keeps the turn's first backup, and rewind treats a file still holding its backed-up content as nothing to undo. `track()` also accepts a `PreparedWorkspaceWrite` (`{ prepare, write }`), which the built-in tools use.
@@ -55,6 +85,23 @@ opt-out.
 
 - Tool idempotency: `toolCallId` and `ctx.approval.id` identify one call; after a crash the model may retry with a new call, so side effects that must happen once need a key from your own data. New guidance for ending a run after a rejected approval, and for extract-then-approve-then-act with structured output.
 - [Durable execution](docs/durable-execution.md#recovering-after-a-crash): `agent.resume()` resolves with a result, not a stream (stream a resumed run with `agent.stream([], { sessionId })`), and `agent.pending()` also lists runs still active in another process. [Installation](docs/installation.md#typescript-settings): TypeScript 6+ projects need `"types": ["node"]` for the SDK's declarations.
+
+## [1.0.0-alpha.24] - 2026-10-17
+
+Two fixes on top of 1.0.0-alpha.23, published from the release branch.
+
+### Added
+- `model-unloaded` provider error category: "model is not loaded/unloaded" replies from a local server (LM Studio, Ollama) classify as retryable, so `withRetry()` rides out the server evicting or still loading a model.
+- A run ended by `maxSteps` or a budget without a final answer now returns explanatory text instead of an empty string.
+
+### Changed
+- MCP: a warning is logged when a server's tool schemas exceed about 16K tokens (deferred tools excluded). A server marked `optional: true` connects in the background, so a slow or failing optional server no longer blocks the first `send()`.
+
+### Fixed
+- Compaction: when the provider rejects a request for context size and the configured `contextWindow` is larger than the model's real one, the error is marked on the transcript and folded into it for a retry when a compaction hook exists; the hook compacts under the server's observed window (or the rejected request size when unnamed) for the rest of the run.
+- `toolCalls` of a run continued from a transcript (approval resolve, resume) are collected from its messages, so they no longer disappear from the result.
+- `recall_<slot>` with a query that matches nothing now says the slot is not empty, instead of returning a bare `[]` that contradicted the injected `<memory>` block.
+- The guardrail starter set's `ignore-instructions` signal also catches "ignore these/those/her/his/their/our instructions" and "ignore your instructions", without a qualifier such as "previous".
 
 ## [1.0.0-alpha.23] - 2026-10-16
 

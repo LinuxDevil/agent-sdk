@@ -44,7 +44,7 @@ describe('renderProject', () => {
   it.each(combos)('%s / %s: file set and key contents', (provider, template) => {
     const files = renderProject(config(provider, template));
 
-    const expected = ['.env.example', '.gitignore', 'README.md', 'package.json', 'src/agent.test.ts', 'tsconfig.json'];
+    const expected = ['.env.example', '.gitignore', 'AGENTS.md', 'CLAUDE.md', 'README.md', 'package.json', 'src/agent.test.ts', 'tsconfig.json'];
     if (template === 'yaml') {
       expected.push('agent.yaml');
     } else if (template === 'telegram') {
@@ -79,6 +79,10 @@ describe('renderProject', () => {
     expect(JSON.parse(files['tsconfig.json']!).compilerOptions).toMatchObject({ strict: true, module: 'NodeNext' });
     expect(files['README.md']).toContain(ENV_KEYS[provider]);
     expect(files['README.md']).toContain('npm run dev');
+
+    // Docs links point at the docs site, never at GitHub's raw markdown for main.
+    expect(files['README.md']).toContain('Docs: https://lousho.com/quickstart');
+    for (const [file, content] of Object.entries(files)) expect(content, file).not.toContain('blob/main/docs');
   });
 
   it.each(PROVIDER_NAMES)('%s: zod pairs with the scaffolded ai major', (provider) => {
@@ -108,6 +112,30 @@ describe('renderProject', () => {
       expect(JSON.parse(files['package.json']!).scripts.dev).toContain('src/index.ts');
     }
   );
+
+  it.each(combos)('%s / %s: AGENTS.md is short, lists the real scripts and only lousho.com links', (provider, template) => {
+    const files = renderProject(config(provider, template));
+    const agents = files['AGENTS.md']!;
+    expect(agents.trimEnd().split('\n').length).toBeLessThanOrEqual(60);
+    const scripts = JSON.parse(files['package.json']!).scripts as Record<string, string>;
+    const listed = [...agents.matchAll(/^- `npm run ([\w:-]+)`/gm)].map((m) => m[1]);
+    expect(listed.sort()).toEqual(Object.keys(scripts).sort());
+    expect(agents).toContain(ENV_KEYS[provider]);
+    expect(agents).toContain(template === 'yaml' ? 'agent.yaml' : 'defineTool');
+    if (template !== 'yaml') {
+      for (const word of ['needsApproval', 'mockModel', 'maxTokens', `${provider}/`]) expect(agents).toContain(word);
+    }
+    const urls = [...agents.matchAll(/https?:\/\/[^\s)]+/g)].map((m) => m[0]);
+    expect(urls).toContain('https://lousho.com/llms.txt');
+    for (const url of urls) expect(url).toMatch(/^https:\/\/lousho\.com\//);
+    expect(files['CLAUDE.md']).toBe('@AGENTS.md\n');
+  });
+
+  it('AGENTS.md uses the chosen package manager', () => {
+    const agents = renderProject({ ...config('openai', 'minimal'), packageManager: 'pnpm' })['AGENTS.md']!;
+    expect(agents).toContain('`pnpm run test`');
+    expect(agents).not.toMatch(/(^|[s`])npm run/);
+  });
 
   it('the tools template defines more tools than minimal', () => {
     const count = (template: Template) =>
@@ -211,6 +239,15 @@ describe('renderProject', () => {
     expect(files['README.md']).toContain('pnpm run dev');
     expect(files['README.md']).not.toMatch(/(^|\s)npm run/);
   });
+
+  it.each(combos.filter(([, template]) => template !== 'yaml'))(
+    'caps output tokens so a low-credit key does not fail its first run: %s / %s',
+    (provider, template) => {
+      const files = renderProject(config(provider, template));
+      expect(files['src/agent.ts']).toMatch(/const modelSettings = \{ maxTokens: 4096 \};[\s\S]*tools, modelSettings \}/);
+      expect(files['README.md']).toContain('requires more credits');
+    }
+  );
 
   it.each(TEMPLATES)('snapshot: %s package.json', (template) => {
     expect(renderProject(config('openai', template))['package.json']).toMatchSnapshot();

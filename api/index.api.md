@@ -1238,7 +1238,7 @@ export interface CompactedProviderError {
 }
 
 // @public
-export type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length-exceeded' | 'quota-exceeded' | 'auth-failure' | 'unknown';
+export type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length-exceeded' | 'quota-exceeded' | 'auth-failure' | 'model-unloaded' | 'unknown';
 
 // @public
 interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
@@ -1440,6 +1440,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
     subagentOptions?: SubagentOptions;
     subagents?: Subagents;
     toolConcurrency?: ToolConcurrency;
+    toolErrorMessage?: ToolErrorMessageFn;
     tools?: PerRun<AgentToolsOption>;
     toolSearch?: false | ToolSearchOptions;
 }
@@ -1933,6 +1934,7 @@ export const ERROR_CODES: {
     readonly LOUSHO_STORAGE_BUSY: "Another process holds the SQLite write lock; retry the call, or find what keeps the lock (a long transaction, a backup, a second replica).";
     readonly LOUSHO_TRIGGER_INVALID: "Fix the trigger option the message names; the message shows a working example.";
     readonly LOUSHO_DEPLOY_FAILED: "Read the message: it names the missing option, file or unsupported feature; docs/deployment.md covers each target.";
+    readonly LOUSHO_SERVER_UNPROTECTED: "Set LOUSHO_API_TOKEN, add an auth.ts to the agent directory, bind to 127.0.0.1, or set LOUSHO_ALLOW_PUBLIC=1 to serve an open agent on purpose.";
     readonly LOUSHO_EVALS_INVALID: "Call the eval helper the way the message says (inside a vitest file, after t.send(), with a judge configured).";
     readonly LOUSHO_TEST_FAILED: "Read the message: an eval or a mockModel() script did not hold; fix the agent, or the expectation.";
     readonly LOUSHO_CASSETTE_INVALID: "Record the cassette again (lousho eval --record, or recordReplay mode: record), or fix the file the message names.";
@@ -1991,7 +1993,7 @@ export const ERROR_CODES: {
 };
 
 // @public
-export const ERROR_DOCS_URL = "https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md";
+export const ERROR_DOCS_URL = "https://lousho.com/errors";
 
 // @public
 export const ErrorAttr: {
@@ -2190,6 +2192,7 @@ interface ExecuteOptions extends PermissionOptions {
     temperature?: number;
     tokens?: OAuthTokenStore;
     toolConcurrency?: ToolConcurrency;
+    toolErrorMessage?: ToolErrorMessageFn;
     toolRegistry?: ToolRegistry;
     toolSearch?: false | ToolSearchOptions;
 }
@@ -3434,7 +3437,7 @@ export function loadAgentDir(dir: string, overrides?: AgentDirOverrides): Promis
 // @public
 export function loadChannels(dir: string): Promise<Channel[]>;
 
-// @public
+// @public (undocumented)
 export function loadMcpTools(client: McpClientLike, connectionName: string, options?: LoadMcpToolsOptions): Promise<Record<string, NamedToolDescriptor>>;
 
 // @public
@@ -3596,6 +3599,9 @@ export function makeHttpRequestViaSandbox(args: HttpRequestArgs, sandbox: Sandbo
 
 // @public
 export function manualCompactionOptions(compaction: AgentCompaction | undefined): CompactMessagesOptions;
+
+// @public
+export function markContextOverflow(messages: Message[], observedWindow?: number): void;
 
 // @public
 export type Matcher = string | RegExp | ((text: string) => boolean);
@@ -4154,6 +4160,28 @@ export const noopLogger: Logger;
 export const NoopSandbox: SandboxAdapter;
 
 // @public
+export interface NormalizedToolCall {
+    // (undocumented)
+    args?: Record<string, unknown>;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    name: string;
+    rawArgs: string;
+}
+
+// @public
+export function normalizeToolCall(call: ToolCall | {
+    id?: string;
+    name?: string;
+    args?: unknown;
+    arguments?: unknown;
+    function?: {
+        arguments?: unknown;
+    };
+}): NormalizedToolCall;
+
+// @public
 export function normalizeUsage(raw: ProviderUsage | undefined): Usage | undefined;
 
 // @public
@@ -4272,6 +4300,9 @@ export interface OAuthTokenStore {
 export interface ObjectDeltaEvent extends AgentEventBase<'object.delta'> {
     object: unknown;
 }
+
+// @public
+export function observedContextWindow(message: string): number | undefined;
 
 // @public
 export class OllamaProvider extends AiSdkProvider<OllamaProviderConfig> {
@@ -6633,6 +6664,15 @@ export interface ToolCall {
 }
 
 // @public
+export function toolCallArgs(call: ToolCall | {
+    args?: unknown;
+    arguments?: unknown;
+    function?: {
+        arguments?: unknown;
+    };
+}): Record<string, unknown> | undefined;
+
+// @public
 export interface ToolCallHookContext extends HookContext {
     args: Record<string, unknown>;
     principal?: Readonly<Principal>;
@@ -6653,6 +6693,12 @@ export interface ToolCallHookResult {
     // (undocumented)
     result: unknown;
 }
+
+// @public
+export function toolCallName(call: ToolCall | {
+    id?: string;
+    name?: string;
+}): string;
 
 // @public
 interface ToolCallNode extends NodeRunOptions {
@@ -6751,6 +6797,12 @@ export interface ToolErrorInput {
 
 // @public
 export type ToolErrorKind = 'execution' | 'validation' | 'not-found' | 'rejected' | 'not-run' | 'mcp' | 'sandbox' | 'denied' | 'interrupted';
+
+// @public
+export type ToolErrorMessageFn = (error: unknown, ctx: {
+    toolName: string;
+    toolCallId: string;
+}) => string;
 
 // @public
 export interface ToolErrorResult {
@@ -7055,7 +7107,7 @@ export type VectorMemoryProvider = MemoryProvider & {
 };
 
 // @public
-export const VERSION = "1.0.0-alpha.23";
+export const VERSION = "1.0.0-alpha.24";
 
 // @public
 export function warnUnknownContextWindow(feature: string, model: string | undefined, assumed: number): void;
@@ -7118,6 +7170,7 @@ export function webhookChannel(options?: WebhookChannelOptions): WebhookChannel;
 // @public
 export interface WebhookChannelOptions {
     auth?: WebhookAuth;
+    fullResult?: boolean;
     name?: string;
     principal?: (body: unknown, req: ChannelRequest) => Principal | undefined;
     secret?: string;

@@ -46,20 +46,31 @@ import * as http from 'node:http';
 import { createAgent, createMockProvider, httpChannel, mountChannels } from '@lousho/build-ai-agent';
 
 const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
-const channels = mountChannels(agent, [httpChannel()]);
+const channels = mountChannels(agent, [
+  httpChannel({ verify: async (req) => req.headers.authorization === `Bearer ${process.env.API_TOKEN}` }),
+]);
 
 const server = http.createServer((req, res) => {
   void channels(req, res).then((handled) => {
     if (!handled) res.writeHead(404).end();
   });
 });
-server.listen(3000);
+server.listen(3000, '127.0.0.1');
 ```
 
 ```bash
-curl -s localhost:3000/channels/http -H 'Content-Type: application/json' -d '{"sessionKey":"user-42","input":"Hi, I am Ali"}'
+curl -s localhost:3000/channels/http -H "Authorization: Bearer $API_TOKEN" -H 'Content-Type: application/json' -d '{"sessionKey":"user-42","input":"Hi, I am Ali"}'
 # {"sessionId":"http_user-42-...","text":"...","finishReason":"stop"}
 ```
+
+### Securing the http channel
+
+Sessions are keyed by the `sessionKey` the caller sends, so an `httpChannel()`
+without `verify` lets anyone who can reach the port read or continue another
+user's conversation by guessing a key. It logs a warning once when created.
+Always pass `verify` (a bearer-token check, as above, or your own session
+check), bind to `127.0.0.1` unless a proxy or firewall fronts it, and derive
+`sessionKey` from the authenticated user rather than trusting the client.
 
 The handler resolves `true` when it served the request and `false` (nothing
 written) for any other route, like the `/chat` routes of `lousho dev`, so you
@@ -97,7 +108,14 @@ acknowledge the request. An error thrown by `verify` or `parse` answers 400
 for a `SyntaxError` (bad JSON) and 500 otherwise; a body over 1MB gets 413. A
 500 body is only `{ "error": "The request failed. The server log has the
 details.", "code"? }`, as on the session routes: the error itself goes to
-`onError` (stage `'parse'`), never to the caller.
+`onError` (stage `'parse'`), never to the caller. A turn that fails before the
+channel acknowledged the request goes to `onError` with stage `'turn'`; when
+another process or replica is running that conversation's turn
+([`LOUSHO_SESSION_BUSY`](errors.md#lousho_session_busy)) the answer is
+`409 { "error", "code": "LOUSHO_SESSION_BUSY" }` with a `Retry-After` header,
+so the sender can resend shortly. A channel that acknowledges in `parse` (Slack,
+Discord, Telegram, Teams, GitHub) keeps its own answer and tells the user the
+request failed in the conversation.
 
 ```ts
 import { createAgent, defineChannel, mountChannels } from '@lousho/build-ai-agent';
@@ -212,7 +230,7 @@ await channels.resolveApproval({ id: 'the-approval-id', approved: true });
 | Channel | Request | Response |
 | ------- | ------- | -------- |
 | `httpChannel({ name?, verify? })` | JSON `{ sessionKey, input }` (`input` a string or content parts); anything else is a 400. Without `verify`, a body sent without `Content-Type: application/json` is a `415` (`LOUSHO_UNSUPPORTED_MEDIA_TYPE`), so a web page cannot post a form to it | `200 { sessionId, text, finishReason }`; when paused, `approval` too and `text` is the prompt |
-| `webhookChannel({ secret?, auth?, name?, principal? })` | The JSON body's `input` string, or the whole body; a one-shot session unless the body has a `sessionKey` | `200` with the turn's `ExecutionResult` |
+| `webhookChannel({ secret?, auth?, name?, principal?, fullResult? })` | The JSON body's `input` string, or the whole body; a one-shot session unless the body has a `sessionKey` | `200` with `{ sessionId, text, finishReason, approval? }` (the full `ExecutionResult` with `fullResult: true`) |
 | `slackChannel({ signingSecret, botToken, name?, fetch?, approvers?, onError? })` | Slack Events API and interactivity requests (see [Slack](#slack)) | `200` at once; replies are posted in the Slack thread |
 | `discordChannel({ publicKey, applicationId, botToken?, name?, fetch?, approvers?, onError? })` | Discord slash-command and button interactions (see [Discord](#discord)) | Deferred ack at once; the reply edits the original response |
 | `telegramChannel({ botToken, secretToken, botUsername?, name?, fetch?, approvers?, onError? })` | Telegram bot webhook updates: messages and inline-keyboard taps (see [Telegram](#telegram)) | `200` at once; replies are sent with `sendMessage` as plain text |

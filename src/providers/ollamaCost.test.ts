@@ -87,7 +87,7 @@ describe.skipIf(installedAiMajor !== 4 && !ollamaV2Installed)('Ollama llama3 cos
     expect(toolRuns).toBe(1);
     expect(result.usage).toMatchObject({ inputTokens: 2000, outputTokens: 1000, modelCalls: 2, estimated: false });
     expect(result.usage.costUsd).toBeUndefined();
-    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/maxCostUsd is set, but the cost of a model call is unknown/));
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/maxCostUsd is set, but the price of model 'llama3' is unknown.*NOT enforced/));
   });
 
   it('with a registered price, maxCostUsd is enforced on an Ollama run', async () => {

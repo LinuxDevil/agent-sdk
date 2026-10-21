@@ -7,6 +7,8 @@ days. Nothing here depends on a particular host: any `CheckpointStore`
 `cloudflare-worker` build wires up, or your own three-method implementation)
 and any `ApprovalStore` work the same way.
 
+See also: [Pause, restart, resume](./pause-and-resume.md), a short end-to-end tutorial.
+
 ```ts
 import { createAgent } from '@lousho/build-ai-agent';
 import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
@@ -299,6 +301,11 @@ the same id meanwhile - a `send()` that would resume the pending turn first,
 before any tool runs or any model is called (a resolved approval stays
 pending). Two replicas behind a load balancer therefore never run one turn's
 tool calls twice.
+
+This holds for replicas on one host sharing one SQLite file on a local disk, or
+for a store you implement over a shared database; SQLite on a network
+filesystem or across hosts is not supported. See
+[Sharing a SQLite file](./sessions.md#sharing-a-sqlite-file).
 
 A lease whose holder died is taken over once it expires. Expiry is judged by
 the clock of the process that wants the lease against the expiry the holder

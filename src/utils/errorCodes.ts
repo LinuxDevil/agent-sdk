@@ -6,8 +6,8 @@
  * keeps this table, the codes used in src/ and docs/errors.md in sync.
  */
 
-/** Where every code is documented; each code has the anchor `#<code in lowercase>`. */
-export const ERROR_DOCS_URL = 'https://github.com/LinuxDevil/agent-sdk/blob/main/docs/errors.md';
+/** Where every code is documented; the site serves docs/errors.md as /errors; each code has the anchor `#<code in lowercase>`. */
+export const ERROR_DOCS_URL = 'https://lousho.com/errors';
 
 /** Every stable error code, mapped to its one-sentence "how to fix" hint. */
 export const ERROR_CODES = {
@@ -61,6 +61,9 @@ export const ERROR_CODES = {
   LOUSHO_STORAGE_BUSY: 'Another process holds the SQLite write lock; retry the call, or find what keeps the lock (a long transaction, a backup, a second replica).',
   LOUSHO_TRIGGER_INVALID: 'Fix the trigger option the message names; the message shows a working example.',
   LOUSHO_DEPLOY_FAILED: 'Read the message: it names the missing option, file or unsupported feature; docs/deployment.md covers each target.',
+  /** The built server was asked to listen on a non-loopback host with no route auth. */
+  LOUSHO_SERVER_UNPROTECTED:
+    'Set LOUSHO_API_TOKEN, add an auth.ts to the agent directory, bind to 127.0.0.1, or set LOUSHO_ALLOW_PUBLIC=1 to serve an open agent on purpose.',
   LOUSHO_EVALS_INVALID: 'Call the eval helper the way the message says (inside a vitest file, after t.send(), with a judge configured).',
   LOUSHO_TEST_FAILED: 'Read the message: an eval or a mockModel() script did not hold; fix the agent, or the expectation.',
   LOUSHO_CASSETTE_INVALID: 'Record the cassette again (lousho eval --record, or recordReplay mode: record), or fix the file the message names.',
