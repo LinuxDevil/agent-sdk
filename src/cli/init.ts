@@ -16,6 +16,7 @@ import {
   PACKAGE_MANAGERS,
   PROVIDER_NAMES,
   TEMPLATES,
+  botFlagsUsed,
   detectPackageManager,
   expectOneOf,
   parseInitArgs,
@@ -161,6 +162,11 @@ async function scaffold(options: InitOptions, environment: InitEnvironment): Pro
   const dir = path.resolve(environment.cwd, choices.dir);
   assertWritable(dir, options.force);
 
+  const botFlags = botFlagsUsed(options);
+  if (choices.template !== 'telegram' && botFlags.length) {
+    throw new InitUsageError(`lousho init: ${botFlags.join(', ')} only work with --template telegram.`);
+  }
+
   const sdkDependency = resolveSdkDependency(environment.sdk.version, dir, options.sdkPath);
   const files = renderProject({
     name: packageNameFor(dir),
@@ -169,6 +175,13 @@ async function scaffold(options: InitOptions, environment: InitEnvironment): Pro
     packageManager: choices.packageManager,
     sdkDependency,
     sdk: environment.sdk,
+    bot: {
+      name: options.botName,
+      token: options.botToken,
+      username: options.botUsername,
+      allowedChats: options.allowedChats,
+      persona: options.persona,
+    },
   });
   environment.write(`Creating ${choices.template} ${choices.provider} agent in ${dir}\n`);
   writeFiles(dir, files);

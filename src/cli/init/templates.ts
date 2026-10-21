@@ -6,6 +6,9 @@ import { AI_RANGES, listProviders, type AiMajor } from '../../providers/provider
 import type { PackageManager, Template } from './options';
 import type { SdkManifest } from './sdkDependency';
 import { ConfigurationError } from '../../execution/errors';
+import { telegramFiles, type BotOptions } from './telegramTemplate';
+
+export { type BotOptions } from './telegramTemplate';
 
 export interface ProjectConfig {
   /** npm package name (also the directory's base name). */
@@ -16,9 +19,11 @@ export interface ProjectConfig {
   /** `dependencies["@lousho/build-ai-agent"]`: a range, or `file:./<tarball>`. */
   sdkDependency: string;
   sdk: SdkManifest;
+  /** Telegram template only: --bot-* / --persona flag values baked into .env and the persona. */
+  bot?: BotOptions;
 }
 
-function providerInfo(provider: string) {
+export function providerInfo(provider: string) {
   const info = listProviders().find((candidate) => candidate.name === provider);
   if (!info) throw new ConfigurationError(`lousho init: unknown provider '${provider}'.`, 'provider', 'LOUSHO_PROVIDER_UNKNOWN');
   return info;
@@ -68,6 +73,10 @@ function packageJson(config: ProjectConfig): string {
       dev: yaml ? 'lousho dev agent.yaml' : 'tsx src/index.ts',
       // The chat UI with hot reload; it serves src/agent.ts's default export.
       ...(yaml ? {} : { 'dev:ui': 'lousho dev src/agent.ts' }),
+      // The Telegram bridge + a one-shot delegation entry point.
+      ...(config.template === 'telegram'
+        ? { telegram: 'tsx src/index.ts --telegram', task: 'tsx src/index.ts --task-file' }
+        : {}),
       test: 'vitest run',
       typecheck: 'tsc --noEmit',
       doctor: yaml ? 'lousho doctor agent.yaml' : 'lousho doctor src/agent.ts',
@@ -330,10 +339,13 @@ function readme(config: ProjectConfig): string {
   const pm = config.packageManager;
   const info = providerInfo(config.provider);
   const yaml = config.template === 'yaml';
+  const telegram = config.template === 'telegram';
   const tools = config.template === 'tools' ? 'three example tools' : 'an example tool';
   const files = yaml
     ? '- `agent.yaml` - the agent: prompt, provider and tools\n- `src/agent.test.ts` - checks the spec loads, offline'
-    : `- \`src/agent.ts\` - the agent and ${tools}\n- \`src/agent.test.ts\` - tests with a scripted model, offline\n- \`src/index.ts\` - a tiny terminal chat`;
+    : telegram
+      ? '- `src/agent.ts` - the agent and an example tool\n- `src/telegram/` - the polling bridge, Bot API wrapper and markdown renderer\n- `src/index.ts` - terminal, `--telegram` and `--task-file` modes\n- `src/agent.test.ts` - tests with a scripted model, offline'
+      : `- \`src/agent.ts\` - the agent and ${tools}\n- \`src/agent.test.ts\` - tests with a scripted model, offline\n- \`src/index.ts\` - a tiny terminal chat`;
   return `# ${config.name}
 
 An agent built with [@lousho/build-ai-agent](https://github.com/LinuxDevil/agent-sdk).
@@ -344,7 +356,7 @@ An agent built with [@lousho/build-ai-agent](https://github.com/LinuxDevil/agent
 # copy .env.example to .env (cp on macOS/Linux, copy on Windows), then put your ${info.envKey} in it${yaml ? ' (or export it)' : ''}
 ${run(pm, 'dev')}${yaml ? '          # chat UI with hot reload' : '          # chat with the agent in your terminal'}
 ${run(pm, 'test')}         # offline tests, no API key needed
-${yaml ? `${run(pm, 'build')}        # a deployable server in .lousho/build/node-server` : `${run(pm, 'dev:ui')}       # chat UI with hot reload (lousho dev)`}
+${yaml ? `${run(pm, 'build')}        # a deployable server in .lousho/build/node-server` : telegram ? `${run(pm, 'telegram')}     # long-poll Telegram once TELEGRAM_BOT_TOKEN is in .env` : `${run(pm, 'dev:ui')}       # chat UI with hot reload (lousho dev)`}
 \`\`\`
 
 \`${run(pm, 'build')}\` bundles the agent into a self-contained HTTP server (\`node .lousho/build/node-server/dist/server.js\`); \`lousho build ${yaml ? 'agent.yaml' : 'src/agent.ts'} --target=docker\` adds a Dockerfile.
@@ -363,6 +375,15 @@ Docs: https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md
 /** Every file of the project, keyed by its path relative to the project directory. */
 export function renderProject(config: ProjectConfig): Record<string, string> {
   const yaml = config.template === 'yaml';
+  const telegram = config.template === 'telegram';
+  if (telegram) {
+    return {
+      'package.json': packageJson(config),
+      'tsconfig.json': tsconfig(),
+      '.gitignore': gitignore(config),
+      ...telegramFiles(config, config.bot ?? {}),
+    };
+  }
   const files: Record<string, string> = {
     'package.json': packageJson(config),
     'tsconfig.json': tsconfig(),
