@@ -2,32 +2,12 @@
  * File contents for the generated project. Pure functions: a
  * {@link ProjectConfig} in, strings out, so every combination is snapshot-testable.
  */
-import { AI_RANGES, listProviders, type AiMajor } from '../../providers/providerSpec';
+import { AI_RANGES, type AiMajor } from '../../providers/providerSpec';
 import type { PackageManager, Template } from './options';
-import type { SdkManifest } from './sdkDependency';
-import { ConfigurationError } from '../../execution/errors';
-import { telegramFiles, type BotOptions } from './telegramTemplate';
+import { telegramFiles } from './telegramTemplate';
+import { providerInfo, type ProjectConfig } from './projectConfig';
 
-export { type BotOptions } from './telegramTemplate';
-
-export interface ProjectConfig {
-  /** npm package name (also the directory's base name). */
-  name: string;
-  provider: string;
-  template: Template;
-  packageManager: PackageManager;
-  /** `dependencies["@lousho/build-ai-agent"]`: a range, or `file:./<tarball>`. */
-  sdkDependency: string;
-  sdk: SdkManifest;
-  /** Telegram template only: --bot-* / --persona flag values baked into .env and the persona. */
-  bot?: BotOptions;
-}
-
-export function providerInfo(provider: string) {
-  const info = listProviders().find((candidate) => candidate.name === provider);
-  if (!info) throw new ConfigurationError(`lousho init: unknown provider '${provider}'.`, 'provider', 'LOUSHO_PROVIDER_UNKNOWN');
-  return info;
-}
+export { type ProjectConfig } from './projectConfig';
 
 function sortKeys(record: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)));

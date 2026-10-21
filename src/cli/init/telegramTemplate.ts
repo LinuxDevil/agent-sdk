@@ -4,16 +4,9 @@
  * whitelist, approval buttons, markdown→Telegram-HTML rendering, photo/file
  * intake, terminal and `--task-file` one-shot modes.
  */
-import { providerInfo, type ProjectConfig } from './templates';
+import { providerInfo, type BotOptions, type ProjectConfig } from './projectConfig';
 
-/** Bot options collected from `--bot-*`/`--persona` flags. */
-export interface BotOptions {
-  name?: string;
-  token?: string;
-  username?: string;
-  allowedChats?: string;
-  persona?: string;
-}
+export type { BotOptions } from './projectConfig';
 
 const MD_TS = [
   '/**',

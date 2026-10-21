@@ -110,17 +110,19 @@ export function parseInitArgs(argv: readonly string[], env: NodeJS.ProcessEnv = 
   };
 }
 
-/** The telegram-template flags; used to reject them on other templates. */
-export const BOT_FLAGS = ['--bot-name', '--bot-token', '--bot-username', '--allowed-chats', '--persona'] as const;
+/** The telegram-template flags → the InitOptions field each sets; used to reject them on other templates. */
+const BOT_FLAG_FIELDS = {
+  '--bot-name': 'botName',
+  '--bot-token': 'botToken',
+  '--bot-username': 'botUsername',
+  '--allowed-chats': 'allowedChats',
+  '--persona': 'persona',
+} as const satisfies Record<string, keyof InitOptions>;
+
+const BOT_FLAGS = Object.keys(BOT_FLAG_FIELDS) as Array<keyof typeof BOT_FLAG_FIELDS>;
 
 export function botFlagsUsed(options: InitOptions): string[] {
-  const used: string[] = [];
-  if (options.botName !== undefined) used.push('--bot-name');
-  if (options.botToken !== undefined) used.push('--bot-token');
-  if (options.botUsername !== undefined) used.push('--bot-username');
-  if (options.allowedChats !== undefined) used.push('--allowed-chats');
-  if (options.persona !== undefined) used.push('--persona');
-  return used;
+  return BOT_FLAGS.filter((flag) => options[BOT_FLAG_FIELDS[flag]] !== undefined);
 }
 
 /** Returns `value` if it is one of `allowed`, otherwise throws naming the flag and the allowed set. */

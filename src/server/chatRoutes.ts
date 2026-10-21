@@ -21,14 +21,20 @@ export function sendJson(res: http.ServerResponse, status: number, value: unknow
   res.end(JSON.stringify(value));
 }
 
-/** `req` as a Fetch `Request` (its body streamed, not buffered) that aborts when `res` closes. */
-function toRequest(req: http.IncomingMessage, res: http.ServerResponse): Request {
-  const abort = new AbortController();
-  res.on('close', () => abort.abort());
+/** `req.headers` (Node `IncomingMessage`) as Fetch `Headers` — multi-values flattened. */
+export function incomingHeaders(req: http.IncomingMessage): Headers {
   const headers = new Headers();
   for (const [name, value] of Object.entries(req.headers)) {
     for (const item of Array.isArray(value) ? value : value === undefined ? [] : [value]) headers.append(name, item);
   }
+  return headers;
+}
+
+/** `req` as a Fetch `Request` (its body streamed, not buffered) that aborts when `res` closes. */
+function toRequest(req: http.IncomingMessage, res: http.ServerResponse): Request {
+  const abort = new AbortController();
+  res.on('close', () => abort.abort());
+  const headers = incomingHeaders(req);
   const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
   return new Request(new URL(req.url ?? '/', 'http://localhost'), {
     method: req.method,
