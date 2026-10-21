@@ -11,6 +11,8 @@ What is on `main` and not yet on npm. Entries marked **Behavior change** can
 break working code; [Upgrading](docs/upgrading.md) lists each one with its
 opt-out.
 
+## [1.0.0-alpha.28] - 2026-10-21
+
 ### Changed
 
 - **Behavior change:** the built node-server and Docker image refuse to start on a non-loopback host when no auth is configured (no `LOUSHO_API_TOKEN`, build token or `auth.ts`), with `LOUSHO_SERVER_UNPROTECTED`. Set a token, add `auth.ts`, bind to `127.0.0.1`, or set `LOUSHO_ALLOW_PUBLIC=1` to serve an open agent on purpose. `lousho build --target=docker` prints the run command with `-e LOUSHO_API_TOKEN=<token>`.
