@@ -25,7 +25,7 @@ Every command that takes a `<spec>` reads an agent spec file (`.yaml`,
 ## Usage
 
 ```text
-lousho init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force] [--sdk-path <dir|tgz>]
+lousho init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force] [--sdk-path <dir|tgz>] [--bot-name <name>] [--bot-token <token>] [--bot-username <handle>] [--allowed-chats <ids>] [--persona <text>]
 lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--allowed-hosts a,b] [--no-schedules] [--traces[=dir]]
 lousho chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>] [--traces[=dir]]
 lousho acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]

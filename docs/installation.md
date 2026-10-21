@@ -246,12 +246,21 @@ npx @lousho/build-ai-agent init my-agent --yes --provider anthropic --template t
 | Flag | Meaning |
 | ---- | ------- |
 | `--provider openai\|anthropic\|openrouter\|ollama` | Default: the provider whose API key variable is set, else `openai`. |
-| `--template minimal\|tools\|yaml` | `minimal` (one tool), `tools` (three tools) or `yaml` (an `agent.yaml` spec run by `lousho dev`). Default `minimal`. |
+| `--template minimal\|tools\|yaml\|telegram` | `minimal` (one tool), `tools` (three tools), `yaml` (an `agent.yaml` spec run by `lousho dev`) or `telegram` (a long-polling Telegram bot — see below). Default `minimal`. |
+| `--bot-name <name>`, `--bot-token <token>`, `--bot-username <handle>`, `--allowed-chats <ids>`, `--persona <text>` | `--template telegram` only — written into the generated `.env` and the agent's instructions. Using any of them on another template is a usage error. |
 | `--package-manager npm\|pnpm\|yarn\|bun` | Default: the one that launched the command (`npm_config_user_agent`), else `npm`. |
 | `--yes`, `-y` | Never prompt; use defaults for anything not given. Prompts only appear on a terminal. |
 | `--no-install`, `--no-git` | Skip installing dependencies / `git init`. |
 | `--force` | Write into a directory that is not empty (otherwise `init` refuses). |
 | `--sdk-path <dir\|tarball>` | For SDK development: depend on a checkout (it is `npm pack`ed) or a packed `.tgz` instead of the published version. Also read from `LOUSHO_SDK_PATH`. |
+
+The `telegram` template adds `src/telegram/` — a long-polling Bot API bridge
+with an owner lock (the first chat to message the bot claims it; other DMs are
+ignored unless their chat id is in `ALLOWED_CHATS`), group `@mention`/reply
+triggers when `ALLOW_GROUPS=true`, and allow/deny/always approval buttons
+backed by saved rules (`src/approvals.ts`) — plus photo, file and voice intake
+and markdown→Telegram-HTML rendering. `npm run telegram` polls;
+`npm run task` runs the `--task-file` one-shot mode other agents delegate to.
 
 `create-lousho-agent` (`packages/create-lousho-agent`) is a thin wrapper that
 runs `lousho init` with the same arguments.
