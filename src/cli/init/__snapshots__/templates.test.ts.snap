@@ -37,6 +37,50 @@ export function buildAgent(provider?: LLMProvider) {
 "
 `;
 
+exports[`renderProject > snapshot: anthropic / telegram agent.ts 1`] = `
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+/** An example tool: the model calls it when it needs the current date or time. */
+export const currentTime = defineTool({
+  name: 'current_time',
+  description: 'Get the current date and time, optionally in an IANA time zone.',
+  input: z.object({
+    timeZone: z.string().optional().describe('IANA time zone, e.g. "Europe/Paris". Defaults to UTC.'),
+  }),
+  execute: async ({ timeZone }) => ({ now: new Date().toLocaleString('en-US', { timeZone: timeZone ?? 'UTC' }) }),
+});
+
+const BOT = process.env.BOT_NAME ?? "Bot";
+const persona = "a helpful assistant that lives on Telegram";
+
+const instructions = [
+  \`You are \${BOT}, \${persona}.\`,
+  'You talk over Telegram — short, natural messages, plain text the way people actually text. Markdown renders for you: bold, italic, code spans, bullets, links. Never say you are an AI. The owner is whoever claimed this bot first; other chats may reach you in groups or through the whitelist — answer them, but approvals and dangerous tools are the owner\\'s call.',
+].join('\\n\\n');
+
+const tools = [currentTime];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
+
+/**
+ * The agent's options. The default export is what \`lousho dev src/agent.ts\`
+ * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
+ */
+const config: CreateAgentConfig = { model: 'anthropic/claude-sonnet-4-5', instructions, tools, modelSettings };
+export default config;
+
+/**
+ * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
+ * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
+ */
+export function buildAgent(provider?: LLMProvider) {
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
+}
+"
+`;
+
 exports[`renderProject > snapshot: anthropic / tools agent.ts 1`] = `
 "import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
@@ -105,6 +149,50 @@ export const currentTime = defineTool({
 });
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
+const tools = [currentTime];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
+
+/**
+ * The agent's options. The default export is what \`lousho dev src/agent.ts\`
+ * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
+ */
+const config: CreateAgentConfig = { model: 'google/gemini-2.5-flash', instructions, tools, modelSettings };
+export default config;
+
+/**
+ * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
+ * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
+ */
+export function buildAgent(provider?: LLMProvider) {
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
+}
+"
+`;
+
+exports[`renderProject > snapshot: google / telegram agent.ts 1`] = `
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+/** An example tool: the model calls it when it needs the current date or time. */
+export const currentTime = defineTool({
+  name: 'current_time',
+  description: 'Get the current date and time, optionally in an IANA time zone.',
+  input: z.object({
+    timeZone: z.string().optional().describe('IANA time zone, e.g. "Europe/Paris". Defaults to UTC.'),
+  }),
+  execute: async ({ timeZone }) => ({ now: new Date().toLocaleString('en-US', { timeZone: timeZone ?? 'UTC' }) }),
+});
+
+const BOT = process.env.BOT_NAME ?? "Bot";
+const persona = "a helpful assistant that lives on Telegram";
+
+const instructions = [
+  \`You are \${BOT}, \${persona}.\`,
+  'You talk over Telegram — short, natural messages, plain text the way people actually text. Markdown renders for you: bold, italic, code spans, bullets, links. Never say you are an AI. The owner is whoever claimed this bot first; other chats may reach you in groups or through the whitelist — answer them, but approvals and dangerous tools are the owner\\'s call.',
+].join('\\n\\n');
+
 const tools = [currentTime];
 // Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
 // model's full output limit up front). Raise it when you need longer answers.
@@ -252,6 +340,50 @@ export function buildAgent(provider?: LLMProvider) {
 "
 `;
 
+exports[`renderProject > snapshot: ollama / telegram agent.ts 1`] = `
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+/** An example tool: the model calls it when it needs the current date or time. */
+export const currentTime = defineTool({
+  name: 'current_time',
+  description: 'Get the current date and time, optionally in an IANA time zone.',
+  input: z.object({
+    timeZone: z.string().optional().describe('IANA time zone, e.g. "Europe/Paris". Defaults to UTC.'),
+  }),
+  execute: async ({ timeZone }) => ({ now: new Date().toLocaleString('en-US', { timeZone: timeZone ?? 'UTC' }) }),
+});
+
+const BOT = process.env.BOT_NAME ?? "Bot";
+const persona = "a helpful assistant that lives on Telegram";
+
+const instructions = [
+  \`You are \${BOT}, \${persona}.\`,
+  'You talk over Telegram — short, natural messages, plain text the way people actually text. Markdown renders for you: bold, italic, code spans, bullets, links. Never say you are an AI. The owner is whoever claimed this bot first; other chats may reach you in groups or through the whitelist — answer them, but approvals and dangerous tools are the owner\\'s call.',
+].join('\\n\\n');
+
+const tools = [currentTime];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
+
+/**
+ * The agent's options. The default export is what \`lousho dev src/agent.ts\`
+ * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
+ */
+const config: CreateAgentConfig = { model: 'ollama/llama3', instructions, tools, modelSettings };
+export default config;
+
+/**
+ * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
+ * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
+ */
+export function buildAgent(provider?: LLMProvider) {
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
+}
+"
+`;
+
 exports[`renderProject > snapshot: ollama / tools agent.ts 1`] = `
 "import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
@@ -320,6 +452,50 @@ export const currentTime = defineTool({
 });
 
 const instructions = 'You are a helpful assistant. Use your tools when they help.';
+const tools = [currentTime];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
+
+/**
+ * The agent's options. The default export is what \`lousho dev src/agent.ts\`
+ * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
+ */
+const config: CreateAgentConfig = { model: 'openai/gpt-4.1-mini', instructions, tools, modelSettings };
+export default config;
+
+/**
+ * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
+ * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
+ */
+export function buildAgent(provider?: LLMProvider) {
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
+}
+"
+`;
+
+exports[`renderProject > snapshot: openai / telegram agent.ts 1`] = `
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+/** An example tool: the model calls it when it needs the current date or time. */
+export const currentTime = defineTool({
+  name: 'current_time',
+  description: 'Get the current date and time, optionally in an IANA time zone.',
+  input: z.object({
+    timeZone: z.string().optional().describe('IANA time zone, e.g. "Europe/Paris". Defaults to UTC.'),
+  }),
+  execute: async ({ timeZone }) => ({ now: new Date().toLocaleString('en-US', { timeZone: timeZone ?? 'UTC' }) }),
+});
+
+const BOT = process.env.BOT_NAME ?? "Bot";
+const persona = "a helpful assistant that lives on Telegram";
+
+const instructions = [
+  \`You are \${BOT}, \${persona}.\`,
+  'You talk over Telegram — short, natural messages, plain text the way people actually text. Markdown renders for you: bold, italic, code spans, bullets, links. Never say you are an AI. The owner is whoever claimed this bot first; other chats may reach you in groups or through the whitelist — answer them, but approvals and dangerous tools are the owner\\'s call.',
+].join('\\n\\n');
+
 const tools = [currentTime];
 // Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
 // model's full output limit up front). Raise it when you need longer answers.
@@ -432,6 +608,50 @@ export function buildAgent(provider?: LLMProvider) {
 "
 `;
 
+exports[`renderProject > snapshot: openrouter / telegram agent.ts 1`] = `
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+/** An example tool: the model calls it when it needs the current date or time. */
+export const currentTime = defineTool({
+  name: 'current_time',
+  description: 'Get the current date and time, optionally in an IANA time zone.',
+  input: z.object({
+    timeZone: z.string().optional().describe('IANA time zone, e.g. "Europe/Paris". Defaults to UTC.'),
+  }),
+  execute: async ({ timeZone }) => ({ now: new Date().toLocaleString('en-US', { timeZone: timeZone ?? 'UTC' }) }),
+});
+
+const BOT = process.env.BOT_NAME ?? "Bot";
+const persona = "a helpful assistant that lives on Telegram";
+
+const instructions = [
+  \`You are \${BOT}, \${persona}.\`,
+  'You talk over Telegram — short, natural messages, plain text the way people actually text. Markdown renders for you: bold, italic, code spans, bullets, links. Never say you are an AI. The owner is whoever claimed this bot first; other chats may reach you in groups or through the whitelist — answer them, but approvals and dangerous tools are the owner\\'s call.',
+].join('\\n\\n');
+
+const tools = [currentTime];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
+
+/**
+ * The agent's options. The default export is what \`lousho dev src/agent.ts\`
+ * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
+ */
+const config: CreateAgentConfig = { model: 'openrouter/openai/gpt-4.1-mini', instructions, tools, modelSettings };
+export default config;
+
+/**
+ * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
+ * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
+ */
+export function buildAgent(provider?: LLMProvider) {
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
+}
+"
+`;
+
 exports[`renderProject > snapshot: openrouter / tools agent.ts 1`] = `
 "import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
@@ -522,6 +742,50 @@ export function buildAgent(provider?: LLMProvider) {
 "
 `;
 
+exports[`renderProject > snapshot: pi / telegram agent.ts 1`] = `
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+import { z } from 'zod';
+
+/** An example tool: the model calls it when it needs the current date or time. */
+export const currentTime = defineTool({
+  name: 'current_time',
+  description: 'Get the current date and time, optionally in an IANA time zone.',
+  input: z.object({
+    timeZone: z.string().optional().describe('IANA time zone, e.g. "Europe/Paris". Defaults to UTC.'),
+  }),
+  execute: async ({ timeZone }) => ({ now: new Date().toLocaleString('en-US', { timeZone: timeZone ?? 'UTC' }) }),
+});
+
+const BOT = process.env.BOT_NAME ?? "Bot";
+const persona = "a helpful assistant that lives on Telegram";
+
+const instructions = [
+  \`You are \${BOT}, \${persona}.\`,
+  'You talk over Telegram — short, natural messages, plain text the way people actually text. Markdown renders for you: bold, italic, code spans, bullets, links. Never say you are an AI. The owner is whoever claimed this bot first; other chats may reach you in groups or through the whitelist — answer them, but approvals and dangerous tools are the owner\\'s call.',
+].join('\\n\\n');
+
+const tools = [currentTime];
+// Caps each reply so a first run works on a low-credit key (providers such as OpenRouter reserve the
+// model's full output limit up front). Raise it when you need longer answers.
+const modelSettings = { maxTokens: 4096 };
+
+/**
+ * The agent's options. The default export is what \`lousho dev src/agent.ts\`
+ * (and \`lousho chat\`, \`mcp\`, \`acp\`, \`build\`) serve.
+ */
+const config: CreateAgentConfig = { model: 'pi/openrouter/openai/gpt-4.1-mini', instructions, tools, modelSettings };
+export default config;
+
+/**
+ * The agent. \`createAgent({ model, instructions })\` is the whole idea; the
+ * optional \`provider\` lets tests swap in a scripted model (see agent.test.ts).
+ */
+export function buildAgent(provider?: LLMProvider) {
+  return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
+}
+"
+`;
+
 exports[`renderProject > snapshot: pi / tools agent.ts 1`] = `
 "import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
 import { z } from 'zod';
@@ -571,6 +835,43 @@ export default config;
  */
 export function buildAgent(provider?: LLMProvider) {
   return provider ? createAgent({ provider, instructions, tools, modelSettings }) : createAgent(config);
+}
+"
+`;
+
+exports[`renderProject > snapshot: telegram package.json 1`] = `
+"{
+  "name": "demo-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "dev:ui": "lousho dev src/agent.ts",
+    "telegram": "tsx src/index.ts --telegram",
+    "task": "tsx src/index.ts --task-file",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "doctor": "lousho doctor src/agent.ts",
+    "build": "lousho build src/agent.ts --target=node-server"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^4.0.0",
+    "@lousho/build-ai-agent": "^1.0.0-alpha.8",
+    "ai": "^7.0.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vite": "^8.0.0",
+    "vitest": "^5.0.3"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  }
 }
 "
 `;

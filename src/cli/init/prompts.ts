@@ -20,6 +20,7 @@ const TEMPLATE_HINTS: Record<string, string> = {
   minimal: 'one agent, one example tool, an offline test',
   tools: 'several example tools',
   yaml: 'an agent.yaml spec, run with `lousho dev`',
+  telegram: 'a Telegram bot: polling bridge, owner lock, approvals',
 };
 
 function choices(values: readonly string[], hints: Record<string, string> = {}) {

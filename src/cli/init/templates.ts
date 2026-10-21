@@ -2,27 +2,12 @@
  * File contents for the generated project. Pure functions: a
  * {@link ProjectConfig} in, strings out, so every combination is snapshot-testable.
  */
-import { AI_RANGES, listProviders, type AiMajor } from '../../providers/providerSpec';
+import { AI_RANGES, type AiMajor } from '../../providers/providerSpec';
 import type { PackageManager, Template } from './options';
-import type { SdkManifest } from './sdkDependency';
-import { ConfigurationError } from '../../execution/errors';
+import { telegramFiles } from './telegramTemplate';
+import { providerInfo, type ProjectConfig } from './projectConfig';
 
-export interface ProjectConfig {
-  /** npm package name (also the directory's base name). */
-  name: string;
-  provider: string;
-  template: Template;
-  packageManager: PackageManager;
-  /** `dependencies["@lousho/build-ai-agent"]`: a range, or `file:./<tarball>`. */
-  sdkDependency: string;
-  sdk: SdkManifest;
-}
-
-function providerInfo(provider: string) {
-  const info = listProviders().find((candidate) => candidate.name === provider);
-  if (!info) throw new ConfigurationError(`lousho init: unknown provider '${provider}'.`, 'provider', 'LOUSHO_PROVIDER_UNKNOWN');
-  return info;
-}
+export { type ProjectConfig } from './projectConfig';
 
 function sortKeys(record: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(record).sort(([a], [b]) => a.localeCompare(b)));
@@ -63,6 +48,10 @@ function scripts(config: ProjectConfig): Record<string, string> {
     dev: yaml ? 'lousho dev agent.yaml' : 'tsx src/index.ts',
     // The chat UI with hot reload; it serves src/agent.ts's default export.
     ...(yaml ? {} : { 'dev:ui': 'lousho dev src/agent.ts' }),
+    // The Telegram bridge + a one-shot delegation entry point.
+    ...(config.template === 'telegram'
+      ? { telegram: 'tsx src/index.ts --telegram', task: 'tsx src/index.ts --task-file' }
+      : {}),
     test: 'vitest run',
     typecheck: 'tsc --noEmit',
     doctor: yaml ? 'lousho doctor agent.yaml' : 'lousho doctor src/agent.ts',
@@ -343,6 +332,8 @@ const TROUBLESHOOTING = `## Troubleshooting
 const SCRIPT_NOTES: Record<string, string> = {
   dev: 'chat with the agent',
   'dev:ui': 'chat UI with hot reload',
+  telegram: 'long-poll Telegram (needs TELEGRAM_BOT_TOKEN in .env)',
+  task: 'one-shot run from a task file — other agents delegate through this',
   test: 'offline tests (vitest), no API key needed',
   typecheck: 'tsc --noEmit',
   doctor: 'check Node, packages and the API key',
@@ -401,10 +392,13 @@ function readme(config: ProjectConfig): string {
   const pm = config.packageManager;
   const info = providerInfo(config.provider);
   const yaml = config.template === 'yaml';
+  const telegram = config.template === 'telegram';
   const tools = config.template === 'tools' ? 'three example tools' : 'an example tool';
   const files = yaml
     ? '- `agent.yaml` - the agent: prompt, provider and tools\n- `src/agent.test.ts` - checks the spec loads, offline'
-    : `- \`src/agent.ts\` - the agent and ${tools}\n- \`src/agent.test.ts\` - tests with a scripted model, offline\n- \`src/index.ts\` - a tiny terminal chat`;
+    : telegram
+      ? '- `src/agent.ts` - the agent and an example tool\n- `src/telegram/` - the polling bridge, Bot API wrapper and markdown renderer\n- `src/index.ts` - terminal, `--telegram` and `--task-file` modes\n- `src/agent.test.ts` - tests with a scripted model, offline'
+      : `- \`src/agent.ts\` - the agent and ${tools}\n- \`src/agent.test.ts\` - tests with a scripted model, offline\n- \`src/index.ts\` - a tiny terminal chat`;
   return `# ${config.name}
 
 An agent built with [@lousho/build-ai-agent](https://github.com/LinuxDevil/agent-sdk).
@@ -415,7 +409,7 @@ An agent built with [@lousho/build-ai-agent](https://github.com/LinuxDevil/agent
 # copy .env.example to .env (cp on macOS/Linux, copy on Windows), then put your ${info.envKey} in it${yaml ? ' (or export it)' : ''}
 ${run(pm, 'dev')}${yaml ? '          # chat UI with hot reload' : '          # chat with the agent in your terminal'}
 ${run(pm, 'test')}         # offline tests, no API key needed
-${yaml ? `${run(pm, 'build')}        # a deployable server in .lousho/build/node-server` : `${run(pm, 'dev:ui')}       # chat UI with hot reload (lousho dev)`}
+${yaml ? `${run(pm, 'build')}        # a deployable server in .lousho/build/node-server` : telegram ? `${run(pm, 'telegram')}     # long-poll Telegram once TELEGRAM_BOT_TOKEN is in .env` : `${run(pm, 'dev:ui')}       # chat UI with hot reload (lousho dev)`}
 \`\`\`
 
 \`${run(pm, 'build')}\` bundles the agent into a self-contained HTTP server (\`node .lousho/build/node-server/dist/server.js\`); \`lousho build ${yaml ? 'agent.yaml' : 'src/agent.ts'} --target=docker\` adds a Dockerfile.
@@ -434,6 +428,18 @@ ${yaml ? '' : TROUBLESHOOTING}Docs: https://lousho.com/quickstart
 /** Every file of the project, keyed by its path relative to the project directory. */
 export function renderProject(config: ProjectConfig): Record<string, string> {
   const yaml = config.template === 'yaml';
+  const telegram = config.template === 'telegram';
+  if (telegram) {
+    return {
+      'package.json': packageJson(config),
+      'tsconfig.json': tsconfig(),
+      '.gitignore': gitignore(config),
+      'AGENTS.md': agentsMd(config),
+      // Claude Code reads CLAUDE.md, not AGENTS.md; `@AGENTS.md` imports it.
+      'CLAUDE.md': '@AGENTS.md\n',
+      ...telegramFiles(config, config.bot ?? {}),
+    };
+  }
   const files: Record<string, string> = {
     'package.json': packageJson(config),
     'tsconfig.json': tsconfig(),

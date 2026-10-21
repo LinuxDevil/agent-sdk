@@ -45,7 +45,22 @@ describe('renderProject', () => {
     const files = renderProject(config(provider, template));
 
     const expected = ['.env.example', '.gitignore', 'AGENTS.md', 'CLAUDE.md', 'README.md', 'package.json', 'src/agent.test.ts', 'tsconfig.json'];
-    expected.push(...(template === 'yaml' ? ['agent.yaml'] : ['src/agent.ts', 'src/index.ts']));
+    if (template === 'yaml') {
+      expected.push('agent.yaml');
+    } else if (template === 'telegram') {
+      expected.push(
+        'src/agent.ts',
+        'src/index.ts',
+        'src/approvals.ts',
+        'src/telegram/api.ts',
+        'src/telegram/md.ts',
+        'src/telegram/bridge.ts',
+        'src/telegram/md.test.ts',
+        '.env',
+      );
+    } else {
+      expected.push('src/agent.ts', 'src/index.ts');
+    }
     expect(Object.keys(files).sort()).toEqual(expected.sort());
 
     expect(files['.env.example']).toMatch(new RegExp(`^${ENV_KEYS[provider]}=$`, 'm'));

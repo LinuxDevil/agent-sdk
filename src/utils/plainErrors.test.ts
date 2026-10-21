@@ -31,6 +31,21 @@ const ALLOWED: Array<{ file: string; message: string; reason: string }> = [
     message: "'LOUSHO_DOCKER_TESTS=1 is set",
     reason: 'a test helper (never bundled or exported): it fails the Docker CI suite when no daemon answers',
   },
+  {
+    file: 'cli/init/telegramTemplate.ts',
+    message: "'TELEGRAM_BOT_TOKEN is not set",
+    reason: 'a string literal that becomes generated-project source; a scaffolded app must not import SDK internals such as SDKError',
+  },
+  {
+    file: 'cli/init/telegramTemplate.ts',
+    message: '`telegram ${method} failed:',
+    reason: 'a string literal that becomes generated-project source; a scaffolded app must not import SDK internals such as SDKError',
+  },
+  {
+    file: 'cli/init/telegramTemplate.ts',
+    message: '`telegram file download failed:',
+    reason: 'a string literal that becomes generated-project source; a scaffolded app must not import SDK internals such as SDKError',
+  },
 ];
 
 function sourceFiles(dir: string): string[] {

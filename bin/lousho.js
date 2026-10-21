@@ -11,6 +11,7 @@ const USAGE = [
   '',
   'Commands:',
   '  lousho init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force] [--sdk-path <dir|tgz>]',
+  '      [--bot-name N --bot-token T --bot-username U --allowed-chats IDS --persona TXT]  (telegram template only)',
   '      Scaffold a new agent project (what `npm create lousho-agent` runs).',
   '  lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--allowed-hosts a,b] [--no-schedules] [--traces[=dir]]',
   '      Serve an agent with a local chat UI and HTTP API; reloads on file changes.',

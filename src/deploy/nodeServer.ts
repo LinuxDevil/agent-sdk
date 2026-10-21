@@ -19,7 +19,7 @@
 import * as http from 'node:http';
 import type { SimpleAgent } from '../createAgent';
 import type { RunRecovery } from '../agentRecover';
-import { relayFetch } from '../server/chatRoutes';
+import { incomingHeaders, relayFetch } from '../server/chatRoutes';
 import { serveFetch, type ChatRoutesAccess, type ChatRoutesContext, type ServeAuth } from '../server/fetchRoutes';
 import { startSchedules, type StartSchedulesOptions } from '../schedules/startSchedules';
 import type { DefinedSchedule } from '../schedules/defineSchedule';
@@ -169,10 +169,7 @@ function guardedChannelRoute(req: http.IncomingMessage, names: ReadonlySet<strin
  * request may go on.
  */
 async function channelRequestAllowed(req: http.IncomingMessage, res: http.ServerResponse, auth: ServeAuth): Promise<boolean> {
-  const headers = new Headers();
-  for (const [name, value] of Object.entries(req.headers)) {
-    for (const item of Array.isArray(value) ? value : value === undefined ? [] : [value]) headers.append(name, item);
-  }
+  const headers = incomingHeaders(req);
   const request = new Request(new URL(req.url ?? '/', 'http://localhost'), { method: req.method, headers });
   const outcome = await routeAuth(request, typeof auth === 'string' ? apiToken(auth) : auth);
   if (outcome.ok) return true;
