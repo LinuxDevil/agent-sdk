@@ -13,6 +13,8 @@ import type * as Vitest from 'vitest';
 import { AgentExecutor, ExecuteOptions, ExecutionResult } from '../execution/AgentExecutor';
 import { withEvalCassettes } from './cassettes';
 import { scoreAssertion, type EvalResult } from './evalResult';
+import { isJudgeScorer } from './llmJudge';
+import { evalCaseObservation } from './observe';
 import { matchesTagFilter, recordEvalResult } from './recorder';
 import { remoteTargetFromEnv } from './remoteTarget';
 import { SDKError } from '../execution/errors';
@@ -282,10 +284,20 @@ function defineClassicEval(config: EvalConfig): void {
     const file = currentTestPath(expect);
     const evalResult = await runCase({ name, tags: tags ?? [] }, file, context, async () => {
       const started = Date.now();
+      // The exercised run parents under the eval's own span, so its trace is
+      // the one the emitted score rows name (LOUSHO_OBSERVE / --observe only).
+      const observation = evalCaseObservation({ evalName: name, agent: executeFields.agent, parentSpanId: executeFields.parentSpanId });
       const nested: NestedCall[] = [];
-      const result = await AgentExecutor.execute({ ...executeFields, onAgentEvent: (event) => collectNested(event, nested) });
+      const result = await observation.run((parentSpanId) =>
+        AgentExecutor.execute({
+          ...executeFields,
+          parentSpanId: parentSpanId ?? executeFields.parentSpanId,
+          onAgentEvent: (event) => collectNested(event, nested),
+        })
+      );
       const assertion = scoreAssertion(await score(result), threshold);
-      return {
+      if (isJudgeScorer(score)) assertion.source = 'judge';
+      const evalResult: EvalResult = {
         name,
         tags: tags ?? [],
         passed: assertion.passed,
@@ -296,6 +308,8 @@ function defineClassicEval(config: EvalConfig): void {
         usage: result.usage,
         file,
       };
+      observation.emit(evalResult);
+      return evalResult;
     });
     expect(evalResult.assertions[0].score).toBeGreaterThanOrEqual(threshold);
   }, timeoutMs);

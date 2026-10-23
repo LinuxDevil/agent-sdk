@@ -15,6 +15,12 @@ export interface AssertionResult {
   name: string;
   kind: AssertionKind;
   passed: boolean;
+  /**
+   * Where the verdict came from: `'judge'` when an llmJudge() call produced
+   * the scored value, `'eval'` (absent) for everything else. The observability
+   * platform's `score` ingest events carry it as their `source` field.
+   */
+  source?: 'eval' | 'judge';
   /** 1 or 0 for yes/no assertions, the measured value for scored ones (judge, atLeast). */
   score: number;
   /** Minimum score for the assertion to pass, when it has one. */
