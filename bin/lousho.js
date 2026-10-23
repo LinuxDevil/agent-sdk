@@ -33,6 +33,8 @@ const USAGE = [
   '      Run *.eval.ts files under your vitest and report the results.',
   '  lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]',
   '      List saved traces (fileTraceExporter) or print one as a span tree.',
+  '  lousho observe <start|status|stop|rebuild-rollups|token> [--port N] [--db path] [--host H] [--require-token] [--project X]',
+  '      Run the observability collector agents emit to when LOUSHO_OBSERVE=1.',
   '  lousho --version',
   '      Print the package version.',
   '',
@@ -74,6 +76,8 @@ const COMMANDS = new Map([
   ['eval', { module: 'eval', run: 'runEval', env: true }],
   // Lists the runs fileTraceExporter() saved, or prints one as a span tree; see src/cli/traces.ts.
   ['traces', { module: 'traces', run: 'runTraces' }],
+  // The observability collector daemon (src/observe); see src/cli/observe.ts.
+  ['observe', { module: 'observe', run: 'runObserve' }],
 ]);
 
 const BYTE_ORDER_MARK = 0xfeff;

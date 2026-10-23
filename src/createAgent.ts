@@ -20,6 +20,7 @@ import { AgentExecutor, ExecuteOptions, ExecutionResult } from './execution/Agen
 import { streamResumed, throwingRun, type AgentRun } from './execution/agentRun';
 import type { AgentEvent } from './execution/agentEvents';
 import type { TraceExporter } from './execution/tracing';
+import { withObserveExporter } from './observe/reporter';
 import { assertModelSettings, mergeModelSettings } from './execution/modelSettings';
 import { assertKnownCreateAgentKeys } from './createAgentKeys';
 import { DEFAULT_AGENT_NAME } from './execution/genAiSpans';
@@ -1043,8 +1044,11 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   );
   const hooks = agentHooks(config);
   // Every run of this agent (send, stream, sessions, resume, approvals) is traced.
+  // `LOUSHO_OBSERVE` fans the config's exporter out with the collector reporter;
+  // unset means the env half is a no-op (see src/observe/reporter.ts).
+  const exporter = withObserveExporter(config.exporter, agentName);
   const tracing: Pick<ExecuteOptions, 'exporter' | 'captureContent' | 'redactContent'> = {
-    ...(config.exporter && { exporter: config.exporter }),
+    ...(exporter && { exporter }),
     ...(config.captureContent !== undefined && { captureContent: config.captureContent }),
     ...(config.redactContent !== undefined && { redactContent: config.redactContent }),
   };

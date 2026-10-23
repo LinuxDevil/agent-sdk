@@ -40,6 +40,7 @@ const entry = {
     'cli/eval': 'src/cli/eval.ts',
     'cli/init': 'src/cli/init.ts',
     'cli/traces': 'src/cli/traces.ts',
+    'cli/observe': 'src/cli/observe.ts',
     'execution/otel': 'src/execution/otel.ts',
     'execution/hooks': 'src/execution/hooks.ts',
     'storage/sqlite/index': 'src/storage/sqlite/index.ts',

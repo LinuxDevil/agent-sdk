@@ -8,6 +8,9 @@
 export const DEFAULT_TRACE_DIR = ".lousho/traces";
 
 // @public
+export function fanOutExporters(exporters: readonly (TraceExporter | undefined | null)[]): TraceExporter | undefined;
+
+// @public
 export function fileTraceExporter(options?: FileTraceExporterOptions): TraceExporter;
 
 // @public (undocumented)
@@ -22,6 +25,42 @@ export function listTraces(options?: ListTracesOptions): Promise<TraceSummary[]>
 export interface ListTracesOptions {
     dir?: string;
     limit?: number;
+}
+
+// @public
+export function observeExporter(options?: ObserveExporterOptions): ObserveReporter;
+
+// @public
+export function observeExporterFromEnv(options?: {
+    agentName?: string;
+    env?: NodeJS.ProcessEnv;
+}): ObserveReporter | undefined;
+
+// @public
+export interface ObserveExporterOptions {
+    agentName?: string;
+    cwd?: string;
+    fetchFn?: typeof fetch;
+    flushIntervalMs?: number;
+    flushSize?: number;
+    heartbeatIntervalMs?: number;
+    maxBuffered?: number;
+    now?: () => number;
+    project?: string;
+    registerExitHooks?: boolean;
+    requestTimeoutMs?: number;
+    sessionId?: string;
+    token?: string;
+    url?: string;
+    version?: string;
+}
+
+// @public (undocumented)
+export interface ObserveReporter extends TraceExporter {
+    readonly agentId: string;
+    close(): Promise<void>;
+    readonly dropped: number;
+    readonly sessionId: string;
 }
 
 // @public
@@ -106,6 +145,9 @@ export interface TraceSummary {
     // (undocumented)
     traceId: string;
 }
+
+// @public
+export function withObserveExporter(explicit: TraceExporter | undefined, agentName: string | undefined): TraceExporter | undefined;
 
 // (No @packageDocumentation comment for this package)
 

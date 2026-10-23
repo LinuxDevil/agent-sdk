@@ -26,6 +26,7 @@ import type { CallUsage, RunUsage, StepUsage } from '../models/usage';
 import { attachRunUsage, mergeDelegatedUsage, recordStepUsage } from './runUsage';
 import { recordRunFailure } from './runFailure';
 import { TraceExporter, withSpan } from './tracing';
+import { withObserveExporter } from '../observe/reporter';
 import {
   agentRunSpanInit,
   recordToolOutcome,
@@ -829,8 +830,14 @@ export class AgentExecutor {
     // throwing because `provider` was never checked).
     this.validateExecuteOptions(options);
 
+    // `LOUSHO_OBSERVE` fans the run's exporter out with the collector
+    // reporter (a no-op when unset); a delegated child already carries its
+    // lead's composed exporter, so it is not wired twice (src/observe/reporter.ts).
+    const exporter = withObserveExporter(options.exporter, options.agent?.name);
+    const run = exporter === options.exporter ? options : { ...options, exporter };
+
     // The run reports to its listeners through its event sink.
-    return observeRun(options, (observed) => {
+    return observeRun(run, (observed) => {
       // The entire run is wrapped in a top-level 'agent.run' span,
       // whose `id` is threaded as `parentId` into the nested 'llm.generate'
       // and 'tool.call' spans, giving the 3-level span tree its parent/child
