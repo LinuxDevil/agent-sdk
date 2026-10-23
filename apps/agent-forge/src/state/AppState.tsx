@@ -22,6 +22,8 @@ import { useActiveProfile, useChatControls, useRunControls } from './useAgentCon
 
 type RailTab = 'agents' | 'nodes';
 export type DrawerTab = 'chat' | 'logs' | 'trace' | 'output' | 'history' | 'settings';
+/** Top-level surface: the builder canvas, or the observability panels (Traces/Insights/Monitoring/Scores). */
+export type StudioView = 'build' | 'observe';
 
 interface AppState {
   store: AgentStore;
@@ -53,6 +55,9 @@ interface AppState {
   setRailTab: (tab: RailTab) => void;
   drawerTab: DrawerTab;
   setDrawerTab: (tab: DrawerTab) => void;
+  /** Which surface the middle of the app shows - the agent builder canvas or the observe panels. */
+  view: StudioView;
+  setView: (view: StudioView) => void;
   /** Every agent currently known to `store`, refreshed after save/create/switch. */
   agents: AgentStoreEntry[];
   /** Loads a different agent's graph into the canvas - a full state swap, not a visual pan. */
@@ -150,6 +155,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const store = useMemo(() => new HttpAgentStore(runtimeClient), []);
   const [railTab, setRailTab] = useState<RailTab>('agents');
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('chat');
+  const [view, setView] = useState<StudioView>('build');
   const doc = useAgentDocument(store);
   const { agentId, spec } = doc;
   const agentStatuses = useAgentStatuses(doc.agents);
@@ -165,6 +171,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setRailTab,
     drawerTab,
     setDrawerTab,
+    view,
+    setView,
     ...run,
     agentStatuses,
     ...stream,

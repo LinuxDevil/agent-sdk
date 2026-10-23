@@ -11,6 +11,29 @@
   display: grid;
   grid-template-rows: 48px 1fr 240px;
 }
+/* Observe mode: the panels take the whole content area, no run drawer. */
+.app-observe {
+  grid-template-rows: 48px 1fr;
+}
+
+/* Build/Observe surface switcher (Topbar.tsx's ViewToggle). */
+.view-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  flex: none;
+}
+.view-toggle .btn {
+  border: none;
+  border-radius: 0;
+  padding: 5px 10px;
+  font-size: 11.5px;
+}
+.view-toggle .btn.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
 
 /* read by screen readers, not drawn (the page h1, status prefixes). */
 .visually-hidden {
