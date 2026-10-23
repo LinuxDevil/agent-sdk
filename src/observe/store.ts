@@ -274,7 +274,7 @@ function recomputeBucket(db: SqlDatabase, granularity: RollupGranularity, bucket
      )
      INSERT INTO rollups (bucket_start, granularity, agent_id, metric, value)
      SELECT ?, ?, agent_id, 'runs', COUNT(*) FROM roots GROUP BY agent_id
-     UNION ALL SELECT ?, ?, agent_id, 'errors', SUM(status = 'error') FROM roots GROUP BY agent_id
+     UNION ALL SELECT ?, ?, agent_id, 'errors', COALESCE(SUM(status = 'error'), 0) FROM roots GROUP BY agent_id
      UNION ALL SELECT ?, ?, agent_id, 'cost_usd', SUM(COALESCE(cost_usd, 0)) FROM roots GROUP BY agent_id
      UNION ALL SELECT ?, ?, agent_id, 'input_tokens', SUM(COALESCE(usage_input_tokens, 0)) FROM roots GROUP BY agent_id
      UNION ALL SELECT ?, ?, agent_id, 'output_tokens', SUM(COALESCE(usage_output_tokens, 0)) FROM roots GROUP BY agent_id
@@ -317,6 +317,62 @@ export function ingestBatch(db: SqlDatabase, batch: readonly IngestEvent[], now:
     }
     return { received: batch.length };
   });
+}
+
+/* --------------------------------------------------- monitoring (sweep) */
+
+/**
+ * Heartbeat freshness thresholds, in multiples of the agent's own heartbeat
+ * interval (default 60s when the reporter did not declare one): `healthy`
+ * while the age stays within 2 intervals plus a small slack for scheduling
+ * jitter (60s -> ~130s), `stale` until 5 intervals (300s), `down` beyond.
+ * `listAgents` derives the same answer the sweep persists, so the read path
+ * and the stored status can never disagree.
+ */
+export const HEARTBEAT_INTERVAL_DEFAULT_MS = 60_000;
+export const FRESHNESS_STALE_FACTOR = 2;
+export const FRESHNESS_SLACK_MS = 10_000;
+export const FRESHNESS_DOWN_FACTOR = 5;
+
+/** `healthy`/`stale`/`down` from a heartbeat age; the sweep's and `listAgents`' shared rule. */
+export function freshnessStatus(ageMs: number, intervalMs: number): 'healthy' | 'stale' | 'down' {
+  if (ageMs <= FRESHNESS_STALE_FACTOR * intervalMs + FRESHNESS_SLACK_MS) return 'healthy';
+  if (ageMs <= FRESHNESS_DOWN_FACTOR * intervalMs) return 'stale';
+  return 'down';
+}
+
+/** The reporter's `heartbeat_interval_ms` out of a stored `agents.meta` JSON blob. */
+export function heartbeatIntervalFromMeta(metaJson: unknown): number | null {
+  if (typeof metaJson !== 'string') return null;
+  try {
+    const meta = JSON.parse(metaJson) as { heartbeat_interval_ms?: unknown };
+    return typeof meta.heartbeat_interval_ms === 'number' ? meta.heartbeat_interval_ms : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Persist a sweep-computed status. Called only on transitions - a quiet pass writes nothing. */
+export function setAgentStatus(db: SqlDatabase, agentId: string, status: string, now: number): void {
+  db.prepare('UPDATE agents SET status = ?, updated_at = ? WHERE agent_id = ?').run(status, now, agentId);
+}
+
+/**
+ * A crashed agent's leftover work: open sessions and still-unfinished
+ * observations (`end IS NULL`) flip to 'interrupted' so dead runs do not
+ * look alive. Called by the sweep on a transition to 'down' without a prior
+ * `agent.deregister`.
+ */
+export function interruptAgentWork(db: SqlDatabase, agentId: string, now: number): { sessions: number; observations: number } {
+  const sessions = db
+    .prepare(
+      "UPDATE sessions SET status = 'interrupted', ended_at = COALESCE(ended_at, ?), updated_at = ? WHERE agent_id = ? AND status = 'active'"
+    )
+    .run(now, now, agentId);
+  const observations = db
+    .prepare('UPDATE observations SET status = \'interrupted\', updated_at = ? WHERE agent_id = ? AND "end" IS NULL')
+    .run(now, agentId);
+  return { sessions: Number(sessions.changes), observations: Number(observations.changes) };
 }
 
 /**
@@ -593,10 +649,22 @@ export interface ScoreRow {
   created_at: number;
 }
 
-export function listScores(
-  db: SqlDatabase,
-  filter: { trace_id?: string; name?: string; agent_id?: string; limit: number }
-): { scores: ScoreRow[] } {
+export interface ScoreFilter {
+  trace_id?: string;
+  /** Exact score name (`<evalName>/<assertionName>`); `eval` is the prefix version. */
+  name?: string;
+  /** Prefix match on the eval name: the score's own name or `<eval>/...`. */
+  eval?: string;
+  agent_id?: string;
+  source?: string;
+  /** created_at bounds, milliseconds since the epoch (`since` inclusive, `until` exclusive). */
+  since?: number;
+  until?: number;
+  limit: number;
+}
+
+/** The WHERE fragment every scores read shares; `params` fills in parallel. */
+function scoreFilterWhere(filter: ScoreFilter): { where: string; params: (string | number)[] } {
   let where = '1 = 1';
   const params: (string | number)[] = [];
   if (filter.trace_id !== undefined) {
@@ -607,10 +675,32 @@ export function listScores(
     where += ' AND name = ?';
     params.push(filter.name);
   }
+  if (filter.eval !== undefined) {
+    // Score names are '<evalName>/<assertionName>'; the eval's family is the exact name plus the prefix.
+    where += ' AND (name = ? OR name LIKE ? ESCAPE \'\\\')';
+    params.push(filter.eval, `${filter.eval.replace(/[\\%_]/g, (c) => `\\${c}`)}/%`);
+  }
   if (filter.agent_id !== undefined) {
     where += ' AND agent_id = ?';
     params.push(filter.agent_id);
   }
+  if (filter.source !== undefined) {
+    where += ' AND source = ?';
+    params.push(filter.source);
+  }
+  if (filter.since !== undefined) {
+    where += ' AND created_at >= ?';
+    params.push(filter.since);
+  }
+  if (filter.until !== undefined) {
+    where += ' AND created_at < ?';
+    params.push(filter.until);
+  }
+  return { where, params };
+}
+
+export function listScores(db: SqlDatabase, filter: ScoreFilter): { scores: ScoreRow[] } {
+  const { where, params } = scoreFilterWhere(filter);
   const rows = db
     .prepare(`SELECT * FROM scores WHERE ${where} ORDER BY created_at DESC LIMIT ?`)
     .all(...params, filter.limit)
@@ -628,6 +718,61 @@ export function listScores(
   return { scores: rows };
 }
 
+/** Pass-rate aggregate for one eval name (the score name's part before the first '/'), for the Studio eval-history view. */
+export interface ScorePassRate {
+  /** The eval name the group aggregates. */
+  name: string;
+  /** Score rows in the group. */
+  count: number;
+  /** Rows that passed: an assertion row passes when it carries no failure comment (or a perfect 1, e.g. a skipped gate). */
+  passed: number;
+  /** `passed / count`. */
+  pass_rate: number;
+  /** Mean `value` across the group's rows (null when every value is NULL). */
+  avg_value: number | null;
+  /** Newest row's `created_at`. */
+  last_ts: number;
+}
+
+/**
+ * Pass-rate per eval name, for the eval-history view: score rows group by
+ * their `<evalName>` prefix and each group reports its count, pass count and
+ * rate, mean value and last-seen time. A row counts as passed when it has no
+ * failure comment (assertions always write a message when they fail) or its
+ * value is exactly 1 (a perfect score, which covers skipped gates).
+ */
+export function scorePassRates(
+  db: SqlDatabase,
+  filter: { eval?: string; agent_id?: string; source?: string; since?: number; until?: number }
+): ScorePassRate[] {
+  const { where, params } = scoreFilterWhere({ ...filter, limit: 0 });
+  const rows = db
+    .prepare(
+      `SELECT
+         CASE WHEN instr(name, '/') > 0 THEN substr(name, 1, instr(name, '/') - 1) ELSE name END AS eval_name,
+         COUNT(*) AS n,
+         SUM(CASE WHEN comment IS NULL OR comment = '' OR value = 1 THEN 1 ELSE 0 END) AS passed,
+         AVG(value) AS avg_value,
+         MAX(created_at) AS last_ts
+       FROM scores WHERE ${where}
+       GROUP BY eval_name
+       ORDER BY last_ts DESC`
+    )
+    .all(...params);
+  return rows.map((row) => {
+    const count = Number(row.n);
+    const passed = Number(row.passed ?? 0);
+    return {
+      name: String(row.eval_name),
+      count,
+      passed,
+      pass_rate: count > 0 ? passed / count : 0,
+      avg_value: row.avg_value === null || row.avg_value === undefined ? null : Number(row.avg_value),
+      last_ts: Number(row.last_ts),
+    };
+  });
+}
+
 export interface AgentRow {
   agent_id: string;
   project: string | null;
@@ -643,34 +788,32 @@ export interface AgentRow {
 }
 
 /**
- * Fleet registry rows plus read-time freshness. The monitoring child owns the
- * periodic sweep that rewrites `agents.status`; until then the read path
- * derives it: stored 'stopped' wins (a graceful exit), else the row ages
- * `healthy` -> `stale` -> `down` against its heartbeat interval (default 60s:
- * stale past 2 intervals, down past 10).
+ * Fleet registry rows plus read-time freshness. The sweep (sweep.ts) rewrites
+ * `agents.status` on its interval; the read path derives the same value with
+ * the same {@link freshnessStatus} rule, so a row answers correctly between
+ * sweeps too: stored 'stopped' wins (a graceful exit), else the row ages
+ * `healthy` -> `stale` -> `down` against its heartbeat interval.
  */
 export function listAgents(db: SqlDatabase, now: number = Date.now()): AgentRow[] {
   const rows = db.prepare('SELECT * FROM agents ORDER BY COALESCE(last_heartbeat, first_seen) DESC').all();
   return rows.map((row) => {
-    let interval: number | null = null;
     let hostname: string | null = null;
     let pid: number | null = null;
     if (typeof row.meta === 'string') {
       try {
-        const meta = JSON.parse(row.meta) as { heartbeat_interval_ms?: unknown; hostname?: unknown; pid?: unknown };
-        interval = typeof meta.heartbeat_interval_ms === 'number' ? meta.heartbeat_interval_ms : null;
+        const meta = JSON.parse(row.meta) as { hostname?: unknown; pid?: unknown };
         hostname = typeof meta.hostname === 'string' ? meta.hostname : null;
         pid = typeof meta.pid === 'number' ? meta.pid : null;
       } catch {
         // malformed meta: freshness still derives from defaults
       }
     }
+    const interval = heartbeatIntervalFromMeta(row.meta);
     const lastHeartbeat = row.last_heartbeat === null ? null : Number(row.last_heartbeat);
     const age = lastHeartbeat === null ? null : Math.max(0, now - lastHeartbeat);
-    const step = interval ?? 60_000;
+    const step = interval ?? HEARTBEAT_INTERVAL_DEFAULT_MS;
     const stored = String(row.status ?? 'healthy');
-    const status =
-      stored === 'stopped' ? 'stopped' : age === null ? stored : age < 2 * step ? 'healthy' : age < 10 * step ? 'stale' : 'down';
+    const status = stored === 'stopped' ? 'stopped' : age === null ? stored : freshnessStatus(age, step);
     return {
       agent_id: String(row.agent_id),
       project: (row.project as string | null) ?? null,

@@ -25,6 +25,8 @@ import { isLoopbackHost } from '../server/hostCheck';
 import type { SqlDatabase } from '../storage/sqlite/driver';
 import { OBSERVE_DEFAULT_PORT, OBSERVE_SERVICE } from './envelope';
 import { BodyTooLargeError, matchRoute, sendJson, type RouteContext } from './routes/index';
+import { createAlerter, resolveAlertConfig, type AlertConfig } from './alerts';
+import { startStatusSweep, type StatusSweep } from './sweep';
 import { openDb, verifyToken } from './store';
 
 /** `~/.lousho/observe.db`. */
@@ -54,8 +56,14 @@ export interface ObserveDaemonOptions {
   pidPath?: string;
   /** An already-open db (tests inject one); otherwise `openDb(dbPath)`. */
   db?: SqlDatabase;
-  /** Injectable for tests; defaults to the global fetch. */
+  /** Injectable for tests; defaults to the global fetch. Used by the alert webhooks. */
   fetchFn?: typeof fetch;
+  /** Extra alert webhooks (repeatable `--webhook`); merged with `alerts.json` beside the db. */
+  webhooks?: string[];
+  /** Status-sweep cadence in ms (default 30s); `<= 0` leaves the sweep manual-only (tests). */
+  sweepIntervalMs?: number;
+  /** Injectable clock for the sweep (tests); default `Date.now`. */
+  nowFn?: () => number;
 }
 
 export interface ObserveDaemon {
@@ -67,6 +75,10 @@ export interface ObserveDaemon {
   server: http.Server;
   db: SqlDatabase;
   pidPath?: string;
+  /** The resolved alert config (`alerts.json` + `--webhook` flags). */
+  alerts: AlertConfig;
+  /** The running status sweep (`run()` forces a pass; `stop()` is called by `close()`). */
+  sweep: StatusSweep;
   close(): Promise<void>;
 }
 
@@ -123,6 +135,9 @@ export async function startObserveDaemon(options: ObserveDaemonOptions = {}): Pr
   const dbPath = options.dbPath ?? defaultDbPath();
   const host = options.host ?? '127.0.0.1';
   const port = options.port ?? OBSERVE_DEFAULT_PORT;
+  // Resolve before opening anything: a malformed alerts.json should fail the
+  // start loudly (silently dropping it would leave alerts "configured" but dead).
+  const alertConfig = resolveAlertConfig(dbPath, options.webhooks ?? []);
   const db = options.db ?? openDb(dbPath);
   const requireToken = options.requireToken === true || !isLoopbackHost(host);
 
@@ -185,6 +200,17 @@ export async function startObserveDaemon(options: ObserveDaemonOptions = {}): Pr
     fs.writeFileSync(pidPath, String(process.pid), 'utf8');
   }
 
+  // The monitoring sweep: rewrites agents.status from heartbeat freshness,
+  // interrupts a crashed agent's open work, and posts alerts to webhooks
+  // (fire-and-forget; delivery lives in alerts.ts).
+  const alerter = createAlerter(alertConfig, options.fetchFn ?? fetch);
+  const sweep = startStatusSweep(db, {
+    intervalMs: options.sweepIntervalMs,
+    now: options.nowFn,
+    errorRateThreshold: alertConfig.errorRateThreshold,
+    onAlerts: (alerts) => alerter.post(alerts),
+  });
+
   return {
     port: boundPort,
     host,
@@ -192,8 +218,11 @@ export async function startObserveDaemon(options: ObserveDaemonOptions = {}): Pr
     requireToken,
     server,
     db,
+    alerts: alertConfig,
+    sweep,
     ...(pidPath !== undefined ? { pidPath } : {}),
     close: async () => {
+      sweep.stop();
       if (pidPath !== undefined) {
         try {
           fs.rmSync(pidPath, { force: true });

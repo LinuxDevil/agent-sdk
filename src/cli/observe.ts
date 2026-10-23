@@ -31,7 +31,7 @@ import { VERSION } from '../version';
 import { exitCodeFor, parseCommand, portValue, stringValue, usageError, type CommandSpec } from './args';
 
 const USAGE = `Usage: lousho observe <command> [options]
-  observe start [--port N] [--db path] [--host H] [--require-token]
+  observe start [--port N] [--db path] [--host H] [--require-token] [--webhook URL]
   observe status [--port N] [--url U]
   observe stop [--db path]
   observe rebuild-rollups [--db path]
@@ -47,6 +47,9 @@ Options:
   --db path         the SQLite file (default ~/.lousho/observe.db)
   --host H          bind address (default 127.0.0.1; a non-loopback bind requires a token and turns auth on)
   --require-token   require 'Authorization: Bearer <token>' on /api/v1/* even on loopback
+  --webhook URL     'start': POST alert JSON to this URL when an agent goes down or its error
+                    rate spikes (repeatable). Also reads 'alerts.json' beside the db:
+                    {"webhooks": [...], "errorRateThreshold": 0.5}
   --url U           'status': the daemon's base URL (default http://127.0.0.1:<port>)
   --project X       'token create': the project the token is labeled for
   -h, --help        show this help`;
@@ -56,12 +59,13 @@ type ObserveSubcommand = 'start' | 'status' | 'stop' | 'rebuild-rollups' | 'toke
 const SUB_SPECS: Record<ObserveSubcommand, CommandSpec> = {
   start: {
     command: 'observe start',
-    usage: 'Usage: lousho observe start [--port N] [--db path] [--host H] [--require-token]',
+    usage: 'Usage: lousho observe start [--port N] [--db path] [--host H] [--require-token] [--webhook URL]',
     options: {
       port: { type: 'string' },
       db: { type: 'string' },
       host: { type: 'string' },
       'require-token': { type: 'boolean' },
+      webhook: { type: 'string', multiple: true },
     },
   },
   status: {
@@ -94,6 +98,13 @@ function dbPathOf(value: string | boolean | (string | boolean)[] | undefined): s
   return given === undefined ? defaultDbPath() : path.resolve(given);
 }
 
+/** A `multiple: true` string flag's values (a single use still lands as one element). */
+function stringListValue(value: string | boolean | (string | boolean)[] | undefined): string[] {
+  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === 'string');
+  const single = stringValue(value);
+  return single === undefined ? [] : [single];
+}
+
 function envPort(): number {
   const raw = process.env.LOUSHO_OBSERVE_PORT;
   if (raw === undefined) return OBSERVE_DEFAULT_PORT;
@@ -114,11 +125,12 @@ async function runStart(args: string[]): Promise<number> {
   const dbPath = dbPathOf(values.db);
   const host = stringValue(values.host) ?? '127.0.0.1';
   const requireToken = values['require-token'] === true;
+  const webhooks = stringListValue(values.webhook);
   const pidPath = defaultPidPath(dbPath);
 
   let daemon;
   try {
-    daemon = await startObserveDaemon({ dbPath, port, host, requireToken, pidPath });
+    daemon = await startObserveDaemon({ dbPath, port, host, requireToken, pidPath, webhooks });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
       const health = await probeHealth(port, host);
@@ -144,6 +156,17 @@ async function runStart(args: string[]): Promise<number> {
     );
   } else {
     console.log('lousho observe: agents emit with LOUSHO_OBSERVE=1 (no auth on loopback).');
+  }
+  if (daemon.alerts.webhooks.length > 0 || daemon.alerts.errorRateThreshold !== undefined) {
+    const parts = [
+      daemon.alerts.webhooks.length > 0
+        ? `${daemon.alerts.webhooks.length} alert webhook${daemon.alerts.webhooks.length === 1 ? '' : 's'}`
+        : 'no alert webhooks',
+      daemon.alerts.errorRateThreshold !== undefined
+        ? `error-rate alert at ${Math.round(daemon.alerts.errorRateThreshold * 100)}%`
+        : undefined,
+    ].filter(Boolean);
+    console.log(`lousho observe: alerts on - ${parts.join(', ')}.`);
   }
   // The listening server keeps the process alive, like `lousho dev`.
   return 0;
