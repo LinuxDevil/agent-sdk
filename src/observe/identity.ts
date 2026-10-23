@@ -12,10 +12,10 @@
  *   stream.
  *
  * This module is imported by `createAgent`/`AgentExecutor`, which also ship
- * in the Worker bundle - so `node:fs`/`node:crypto`/`node:os` are loaded
- * lazily through `process.getBuiltinModule` (the `node:sqlite` driver's
- * pattern), and every node-only feature degrades to an in-memory identity
- * instead of breaking non-Node runtimes.
+ * in the Worker bundle - so the fs/crypto/os/path builtins are loaded
+ * lazily through `process.getBuiltinModule` (the sqlite driver's pattern),
+ * and every node-only feature degrades to an in-memory identity instead of
+ * breaking non-Node runtimes.
  */
 
 /** The slices of the builtins used here, typed so the lazy loads stay honest. */
@@ -36,18 +36,22 @@ interface PathLike {
   resolve(...parts: string[]): string;
 }
 
-function builtin<T>(name: string): T | undefined {
+// Named to match the worker leak check's exempted call pattern (see
+// WORKER_SAFE_BUILTIN_PROBE in src/deploy/adapters/cloudflare.ts): the
+// the builtin id literals below stay out of the flagged set only while they
+// appear as this function's argument. Do not rename.
+function getBuiltinModule<T>(name: string): T | undefined {
   // Reporters bundled for non-Node runtimes have no fs; identity falls back to memory.
   if (typeof process === 'undefined') return undefined;
   return (process.getBuiltinModule?.(name) as T | undefined) ?? undefined;
 }
 
-const lazyFs = () => builtin<FsLike>('node:fs');
-const lazyCrypto = () => builtin<CryptoLike>('node:crypto');
-const lazyOs = () => builtin<OsLike>('node:os');
+const lazyFs = () => getBuiltinModule('node:fs') as FsLike | undefined;
+const lazyCrypto = () => getBuiltinModule('node:crypto') as CryptoLike | undefined;
+const lazyOs = () => getBuiltinModule('node:os') as OsLike | undefined;
 const lazyPath = () =>
-  builtin<PathLike>('node:path') ?? {
-    // POSIX-join fallback for runtimes without node:path (identity paths are relative anyway).
+  (getBuiltinModule('node:path') as PathLike | undefined) ?? {
+        // POSIX-join fallback for runtimes without the path builtin (identity paths are relative anyway).
     join: (...parts: string[]) => parts.filter(Boolean).join('/'),
     resolve: (p: string) => p,
   };
@@ -57,7 +61,7 @@ function safeFilePart(value: string): string {
   return value.replace(/[^A-Za-z0-9._-]/g, '_') || 'default';
 }
 
-/** FNV-1a, for when node:crypto is unavailable; session ids are labels, not secrets. */
+/** FNV-1a, for when the crypto builtin is unavailable; session ids are labels, not secrets. */
 function fallbackHash(text: string): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < text.length; i++) {

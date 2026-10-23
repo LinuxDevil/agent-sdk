@@ -321,10 +321,14 @@ export default { fetch, scheduled };
  *  - node:diagnostics_channel, node:async_hooks: `ai`'s telemetry tracing
  *    channel, used only when `process.release.name === 'node'`, and a missing
  *    module is treated as "no subscribers".
+ *  - node:fs, node:crypto, node:os, node:path: src/observe/identity.ts reaches
+ *    the worker graph via createAgent's LOUSHO_OBSERVE wiring; every access is
+ *    guarded by `typeof process === 'undefined'` and degrades to an
+ *    in-memory reporter identity on runtimes without builtins.
  * Only these ids, and only as the argument of a `getBuiltinModule` /
  * `loadBuiltinModule` / `loadNodeModule` call, are exempt; any other `node:` string still fails.
  */
-const WORKER_SAFE_BUILTIN_PROBE = /\b(?:get|load)(?:Node|Builtin)Module\d*(?:\?\.)?\(\s*(["'`])node:(?:module|dns|diagnostics_channel|async_hooks)\1\s*\)/g;
+const WORKER_SAFE_BUILTIN_PROBE = /\b(?:get|load)(?:Node|Builtin)Module\d*(?:\?\.)?\(\s*(["'`])node:(?:module|dns|diagnostics_channel|async_hooks|fs|crypto|os|path)\1\s*\)/g;
 
 /** Returns every `node:`-prefixed module specifier referenced in `source`. */
 export function findNodeBuiltinReferences(source: string): string[] {

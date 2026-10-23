@@ -160,12 +160,13 @@ describe('CloudflareWorkerAdapter', () => {
     expect(findNodeBuiltinReferences('const x = "no builtins here"; import { x } from "./path";')).toEqual([]);
   });
 
-  it('findNodeBuiltinReferences accepts only the allowlisted getBuiltinModule probes of ai v6/v7', () => {
-    const probes = 'loadBuiltinModule2("node:diagnostics_channel"); loadBuiltinModule4("node:dns"); process.getBuiltinModule?.("node:async_hooks"); loadBuiltinModule("node:module"); await loadNodeModule("node:dns");';
+  it('findNodeBuiltinReferences accepts only the allowlisted getBuiltinModule probes', () => {
+    const probes =
+      'loadBuiltinModule2("node:diagnostics_channel"); loadBuiltinModule4("node:dns"); process.getBuiltinModule?.("node:async_hooks"); loadBuiltinModule("node:module"); await loadNodeModule("node:dns"); getBuiltinModule("node:fs");';
     expect(findNodeBuiltinReferences(probes)).toEqual([]);
     // Any other builtin, or an allowlisted id outside a probe call, is still a leak.
-    expect(findNodeBuiltinReferences('loadBuiltinModule("node:fs"); const id = "node:dns"; import("node:async_hooks");')).toEqual([
-      '"node:fs"',
+    expect(findNodeBuiltinReferences('loadBuiltinModule("node:net"); const id = "node:dns"; import("node:async_hooks");')).toEqual([
+      '"node:net"',
       '"node:dns"',
       '"node:async_hooks"',
     ]);
