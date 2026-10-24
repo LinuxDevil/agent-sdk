@@ -8,7 +8,7 @@
 
 import { VERSION } from '../../version';
 import { observeCounts } from '../store';
-import { sendJson, type Route } from './index';
+import { sendJson, type Route } from './httpKit';
 
 export const statusRoutes: readonly Route[] = [
   {

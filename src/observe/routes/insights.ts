@@ -7,7 +7,7 @@
  */
 
 import { insightsAgents, rollupSeries, type RollupGranularity } from '../store';
-import { intParam, sendJson, timeParam, type Route } from './index';
+import { intParam, sendJson, timeParam, type Route } from './httpKit';
 
 const DAY_MS = 86_400_000;
 

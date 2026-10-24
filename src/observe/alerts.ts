@@ -18,10 +18,10 @@ import * as path from 'node:path';
 import { SDKError } from '../execution/errors';
 
 /** The alerts config file, read from the directory holding the observe db. */
-export const ALERTS_FILENAME = 'alerts.json';
+const ALERTS_FILENAME = 'alerts.json';
 
 /** A webhook call is abandoned after this; the sweep must not wait on a hung endpoint. */
-export const ALERT_TIMEOUT_MS = 5000;
+const ALERT_TIMEOUT_MS = 5000;
 
 /** One alert, POSTed verbatim as the JSON body to every configured webhook. */
 export interface AlertEvent {
@@ -44,7 +44,7 @@ export interface AlertConfig {
 }
 
 /** `alerts.json`'s path for a given db path (`observe.db` -> sibling `alerts.json`). */
-export function alertsPathFor(dbPath: string): string {
+function alertsPathFor(dbPath: string): string {
   return path.join(path.dirname(path.resolve(dbPath)), ALERTS_FILENAME);
 }
 

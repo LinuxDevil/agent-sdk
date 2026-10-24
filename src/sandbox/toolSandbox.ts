@@ -66,7 +66,7 @@ export function toolSandboxSource(toolName: string, execute: unknown): string {
  * members (`abortSignal`, `getToken`, `requireAuth`, `onDelegatedUsage`) are
  * left out.
  */
-export function sandboxableContext(ctx: ToolExecutionContext): Record<string, unknown> {
+function sandboxableContext(ctx: ToolExecutionContext): Record<string, unknown> {
   return {
     toolCallId: ctx.toolCallId,
     messages: ctx.messages,

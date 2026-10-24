@@ -8,17 +8,14 @@
 import type * as http from 'node:http';
 import { Readable } from 'node:stream';
 import { handleChatFetch, PayloadTooLargeError, type ChatRoutesContext } from './fetchRoutes';
+import { sendJson } from './sendJson';
 
 export type { ChatRoutesContext } from './fetchRoutes';
+export { sendJson };
 
 export function sendText(res: http.ServerResponse, status: number, text: string): void {
   res.writeHead(status, { 'Content-Type': 'text/plain' });
   res.end(text);
-}
-
-export function sendJson(res: http.ServerResponse, status: number, value: unknown): void {
-  res.writeHead(status, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify(value));
 }
 
 /** `req.headers` (Node `IncomingMessage`) as Fetch `Headers` — multi-values flattened. */

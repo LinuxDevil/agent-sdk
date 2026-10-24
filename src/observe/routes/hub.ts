@@ -20,11 +20,9 @@
 
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { SDKError } from '../../execution/errors';
-import { intParam, parseJsonBody, sendJson, type Route } from './index';
+import { intParam, requireJsonBody, sendJson, type Route } from './httpKit';
 
-export const HUB_SCOPES = ['private', 'fleet'] as const;
-export type HubScope = (typeof HUB_SCOPES)[number];
+const HUB_SCOPES = ['private', 'fleet'] as const;
 
 const publishBody = z.object({
   agent_id: z.string().min(1),
@@ -37,7 +35,7 @@ const publishBody = z.object({
   ttl: z.number().int().positive().optional(),
 });
 
-export interface HubEntryRow {
+interface HubEntryRow {
   entry_id: string;
   namespace: string;
   agent_id: string | null;
@@ -81,16 +79,11 @@ export const hubRoutes: readonly Route[] = [
     method: 'POST',
     path: '/api/v1/hub',
     handle: async ({ db, res, readBody }) => {
-      const parsed = publishBody.safeParse(parseJsonBody(await readBody(1024 * 1024)));
-      if (!parsed.success) {
-        const issue = parsed.error.issues[0];
-        throw new SDKError(
-          `Invalid hub publish body: ${issue ? `${issue.path.join('.') || 'body'}: ${issue.message}` : 'bad shape'}.`,
-          'LOUSHO_REQUEST_INVALID',
-          { appendHelp: false }
-        );
-      }
-      const { agent_id, namespace, key, value, scope, ttl } = parsed.data;
+      const { agent_id, namespace, key, value, scope, ttl } = requireJsonBody(
+        publishBody,
+        await readBody(1024 * 1024),
+        'hub publish'
+      );
       const stored = typeof value === 'string' ? value : JSON.stringify(value ?? null);
       // JSON-encoded parts so ('a b','c') and ('a','b c') hash differently.
       const entryId = createHash('sha256').update(JSON.stringify([namespace, agent_id, key])).digest('hex');

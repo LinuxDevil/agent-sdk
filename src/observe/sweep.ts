@@ -29,7 +29,7 @@ import {
 } from './store';
 
 /** How often the daemon sweeps; shorter than any freshness threshold. */
-export const SWEEP_INTERVAL_MS = 30_000;
+const SWEEP_INTERVAL_MS = 30_000;
 
 const DAY_MS = 86_400_000;
 

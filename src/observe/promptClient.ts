@@ -14,8 +14,7 @@
  * lifetime, and hands the reporter a `prompt_use` ref once the fetch landed.
  */
 
-import { SDKError } from '../execution/errors';
-import { OBSERVE_SERVICE } from './envelope';
+import { observeRequest } from './httpClient';
 import { observeUrlFromEnv, type PromptUseProvider } from './reporter';
 
 /** A `name@version` reference; `version` is an integer or the daemon-side movable `latest`. */
@@ -63,24 +62,9 @@ export interface PromptClientOptions {
 
 const DEFAULT_TIMEOUT_MS = 2500;
 
-function headersOf(token: string | undefined): Record<string, string> {
-  return token ? { authorization: `Bearer ${token}` } : {};
-}
-
 /** Error body shape the daemon answers; the message is surfaced verbatim. */
-async function request<T>(baseUrl: string, path: string, init: RequestInit, options: PromptClientOptions): Promise<T> {
-  const res = await (options.fetchFn ?? fetch)(`${baseUrl.replace(/\/+$/, '')}${path}`, {
-    ...init,
-    headers: { ...headersOf(options.token), ...(init.headers as Record<string, string> | undefined) },
-    signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-  });
-  const body = (await res.json().catch(() => undefined)) as ({ error?: string } & T) | undefined;
-  if (!res.ok) {
-    throw new SDKError(`The observe daemon answered ${res.status} for ${path}: ${body?.error ?? res.statusText}.`, 'LOUSHO_REMOTE_REQUEST_FAILED', {
-      appendHelp: false,
-    });
-  }
-  return body as T;
+function request<T>(baseUrl: string, path: string, init: RequestInit, options: PromptClientOptions): Promise<T> {
+  return observeRequest<T>(baseUrl, path, init, options.timeoutMs ?? DEFAULT_TIMEOUT_MS, options);
 }
 
 /** `GET /api/v1/prompts/:name/:version`. Throws `LOUSHO_REMOTE_REQUEST_FAILED` on a non-200 (404 included). */
@@ -116,34 +100,6 @@ export async function listPrompts(baseUrl: string, filter: { name?: string; limi
   const qs = params.toString();
   const body = await request<{ prompts: PromptSummary[] }>(baseUrl, `/api/v1/prompts${qs ? `?${qs}` : ''}`, { method: 'GET' }, options);
   return body.prompts;
-}
-
-export interface PromptVersionRow extends ResolvedPrompt {
-  uses: number;
-}
-
-/** `GET /api/v1/prompts/:name` - the version history, text included (diff-friendly). */
-export async function promptHistory(baseUrl: string, name: string, options: PromptClientOptions = {}): Promise<PromptVersionRow[]> {
-  const body = await request<{ name: string; versions: PromptVersionRow[] }>(
-    baseUrl,
-    `/api/v1/prompts/${encodeURIComponent(name)}`,
-    { method: 'GET' },
-    options
-  );
-  return body.versions;
-}
-
-/** A `GET /health` probe: whether `baseUrl` is a running collector. */
-export async function isObserveDaemonUrl(baseUrl: string, options: PromptClientOptions = {}): Promise<boolean> {
-  try {
-    const res = await (options.fetchFn ?? fetch)(`${baseUrl.replace(/\/+$/, '')}/health`, {
-      signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-    });
-    const body = (await res.json().catch(() => undefined)) as { service?: string; ok?: boolean } | undefined;
-    return res.ok && body?.service === OBSERVE_SERVICE && body.ok === true;
-  } catch {
-    return false;
-  }
 }
 
 /**

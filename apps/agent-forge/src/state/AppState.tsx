@@ -23,7 +23,7 @@ import { useActiveProfile, useChatControls, useRunControls } from './useAgentCon
 type RailTab = 'agents' | 'nodes';
 export type DrawerTab = 'chat' | 'logs' | 'trace' | 'output' | 'history' | 'settings';
 /** Top-level surface: the builder canvas, or the observability panels (Traces/Insights/Monitoring/Scores). */
-export type StudioView = 'build' | 'observe';
+type StudioView = 'build' | 'observe';
 
 interface AppState {
   store: AgentStore;

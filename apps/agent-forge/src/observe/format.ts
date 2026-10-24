@@ -23,12 +23,6 @@ export function fmtCost(usd: number | null | undefined): string {
   return usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`;
 }
 
-/** `12:04:31` local time for an epoch-ms timestamp. */
-export function fmtTime(epochMs: number | null | undefined): string {
-  if (epochMs === null || epochMs === undefined) return '-';
-  return new Date(epochMs).toTimeString().slice(0, 8);
-}
-
 /** Compact `Feb 12, 12:04` for table cells. */
 export function fmtDateTime(epochMs: number | null | undefined): string {
   if (epochMs === null || epochMs === undefined) return '-';

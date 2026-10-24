@@ -20,9 +20,6 @@ import { issueMessage, issuePath } from '../utils/zodCompat';
 /** The daemon's default port; `LOUSHO_OBSERVE=1` points reporters at it. */
 export const OBSERVE_DEFAULT_PORT = 7777;
 
-/** Default SQLite file for the daemon (`~/.lousho/observe.db`); `defaultDbPath()` computes the concrete path. */
-export const OBSERVE_DEFAULT_DB_NAME = 'observe.db';
-
 /** The `service` value `GET /health` answers; `lousho observe start` probes it to tell "already running" from a real port collision. */
 export const OBSERVE_SERVICE = 'lousho-observe';
 
@@ -36,15 +33,14 @@ export const OBSERVE_TRUNCATE_CHARS = 64 * 1024;
 export const OBSERVE_MAX_BATCH_EVENTS = 1000;
 
 /** The `kind` values of an observation row (the wide table's one discriminator). */
-export const OBSERVATION_KINDS = ['span', 'generation', 'tool', 'event'] as const;
+const OBSERVATION_KINDS = ['span', 'generation', 'tool', 'event'] as const;
 export type ObservationKind = (typeof OBSERVATION_KINDS)[number];
 
 /** A score's origin: an eval assertion, an llmJudge verdict, or human feedback. */
 export const SCORE_SOURCES = ['eval', 'judge', 'human'] as const;
-export type ScoreSource = (typeof SCORE_SOURCES)[number];
 
 /** `agent.heartbeat` - one row of the fleet registry, refreshed on the reporter's interval. */
-export const agentHeartbeatData = z.object({
+const agentHeartbeatData = z.object({
   agent_id: z.string().min(1),
   project: z.string().optional(),
   name: z.string().optional(),
@@ -57,16 +53,12 @@ export const agentHeartbeatData = z.object({
   pid: z.number().optional(),
   meta: z.record(z.unknown()).optional(),
 });
-export type AgentHeartbeatData = z.infer<typeof agentHeartbeatData>;
-
 /** `agent.deregister` - a graceful exit; the registry row flips to `stopped` instead of aging into `down`. */
-export const agentDeregisterData = z.object({
+const agentDeregisterData = z.object({
   agent_id: z.string().min(1),
   ts: z.number().optional(),
   reason: z.string().optional(),
 });
-export type AgentDeregisterData = z.infer<typeof agentDeregisterData>;
-
 /**
  * `observation` - one finished span (`obs_id` is the SDK's `TraceLine.id`, so a
  * resent batch upserts by key and `updated_at` gives last-writer-wins). The
@@ -74,7 +66,7 @@ export type AgentDeregisterData = z.infer<typeof agentDeregisterData>;
  * and never recomputes - `cost_partial` and `usage_estimated` must reach
  * Studio untouched or cost numbers lie.
  */
-export const observationData = z.object({
+const observationData = z.object({
   obs_id: z.string().min(1),
   trace_id: z.string().min(1),
   session_id: z.string().optional(),
@@ -103,7 +95,7 @@ export const observationData = z.object({
 export type ObservationData = z.infer<typeof observationData>;
 
 /** `prompt_use` - links a run's observation to the registry prompt version it ran with. */
-export const promptUseData = z.object({
+const promptUseData = z.object({
   obs_id: z.string().min(1),
   prompt_id: z.string().min(1),
   version: z.number().int().optional(),
@@ -111,7 +103,7 @@ export const promptUseData = z.object({
 export type PromptUseData = z.infer<typeof promptUseData>;
 
 /** `score` - one eval/judge/human verdict attached to a trace (and optionally one observation in it). */
-export const scoreData = z.object({
+const scoreData = z.object({
   score_id: z.string().min(1),
   trace_id: z.string().min(1),
   obs_id: z.string().optional(),
@@ -123,10 +115,8 @@ export const scoreData = z.object({
   agent_id: z.string().optional(),
   ts: z.number().optional(),
 });
-export type ScoreData = z.infer<typeof scoreData>;
-
 /** One event of the batch. The `type` discriminator decides which `data` schema applies. */
-export const ingestEvent = z.discriminatedUnion('type', [
+const ingestEvent = z.discriminatedUnion('type', [
   z.object({ type: z.literal('agent.heartbeat'), data: agentHeartbeatData }),
   z.object({ type: z.literal('agent.deregister'), data: agentDeregisterData }),
   z.object({ type: z.literal('observation'), data: observationData }),
@@ -136,7 +126,7 @@ export const ingestEvent = z.discriminatedUnion('type', [
 export type IngestEvent = z.infer<typeof ingestEvent>;
 
 /** The request body of `POST /api/v1/ingest`. */
-export const ingestEnvelope = z.object({
+const ingestEnvelope = z.object({
   batch: z.array(ingestEvent).max(OBSERVE_MAX_BATCH_EVENTS),
 });
 export type IngestEnvelope = z.infer<typeof ingestEnvelope>;

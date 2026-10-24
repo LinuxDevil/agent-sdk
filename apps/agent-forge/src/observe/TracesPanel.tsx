@@ -3,7 +3,7 @@ import type { TraceListFilter } from './observeClient';
 import { useAgents, useTraces } from './useObserve';
 import type { ObserveTraceRow } from './types';
 import { fmtCost, fmtDateTime, fmtDuration, fmtInt } from './format';
-import { ObserveError, ObserveStatusPill } from './chrome';
+import { AgentSelect, ObserveError, ObserveStatusPill } from './chrome';
 
 const PAGE_SIZE = 50;
 const STATUS_OPTIONS = ['', 'ok', 'error', 'interrupted'] as const;
@@ -23,18 +23,11 @@ function FilterBar({
     <div className="observe-filter-bar">
       <label>
         Agent
-        <select
-          className="select"
+        <AgentSelect
+          agents={agents.data}
           value={filter.agent_id ?? ''}
-          onChange={(e) => set({ agent_id: e.target.value || undefined })}
-        >
-          <option value="">All agents</option>
-          {(agents.data ?? []).map((agent) => (
-            <option key={agent.agent_id} value={agent.agent_id}>
-              {agent.name ?? agent.agent_id.slice(0, 8)}
-            </option>
-          ))}
-        </select>
+          onChange={(agentId) => set({ agent_id: agentId || undefined })}
+        />
       </label>
       <label>
         Project

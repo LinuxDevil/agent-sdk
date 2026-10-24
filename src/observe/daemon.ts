@@ -182,14 +182,22 @@ export async function startObserveDaemon(options: ObserveDaemonOptions = {}): Pr
     void onRequest(req, res);
   });
 
-  await new Promise<void>((resolvePromise, rejectPromise) => {
-    server.once('error', rejectPromise);
-    server.once('listening', () => {
-      server.removeListener('error', rejectPromise);
-      resolvePromise();
+  try {
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      server.once('error', rejectPromise);
+      server.once('listening', () => {
+        server.removeListener('error', rejectPromise);
+        resolvePromise();
+      });
+      server.listen(port, host);
     });
-    server.listen(port, host);
-  });
+  } catch (error) {
+    // A failed bind (EADDRINUSE and friends) must not leak the db handle the
+    // daemon opened above - the CLI exits on the error, but tests and embedded
+    // callers would keep the WAL lock forever.
+    if (!options.db) db.close();
+    throw error;
+  }
 
   const address = server.address();
   const boundPort = typeof address === 'object' && address !== null ? address.port : port;

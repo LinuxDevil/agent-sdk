@@ -10,10 +10,9 @@
  *   ({@link observeTargetFromEnv} returns `undefined`).
  * - One `POST /api/v1/ingest` per call, `{ batch: [...] }` as the envelope
  *   declares; the daemon's ingest is the only write path.
- * - Drop-and-count, never throw: an unreachable daemon or a non-2xx answer
- *   lands in a `dropped` counter and warns ONCE. An eval run, a human
- *   feedback widget, anything calling this must never fail because
- *   telemetry did.
+ * - Drop, never throw: an unreachable daemon or a non-2xx answer warns ONCE
+ *   and resolves 0. An eval run, a human feedback widget, anything calling
+ *   this must never fail because telemetry did.
  * - The POST is plain `fetch` outside any span, like the reporter's own.
  */
 
@@ -65,18 +64,12 @@ export interface EmitObserveOptions {
   timeoutMs?: number;
 }
 
-let dropped = 0;
 let warned = false;
-
-/** Events dropped because the daemon was unreachable or answered non-2xx. */
-export function observeEmitDropped(): number {
-  return dropped;
-}
 
 /**
  * POST `events` as one ingest batch and resolve with the count delivered
- * (0 when emission is off or the POST failed). Never throws: failures are
- * counted into `dropped` and warned about once, like the reporter.
+ * (0 when emission is off or the POST failed). Never throws: failures warn
+ * once, like the reporter.
  */
 export async function emitObserveEvents(events: readonly IngestEvent[], options: EmitObserveOptions = {}): Promise<number> {
   const target = options.target ?? observeTargetFromEnv(options.env);
@@ -95,12 +88,11 @@ export async function emitObserveEvents(events: readonly IngestEvent[], options:
     }
     return events.length;
   } catch (error) {
-    dropped += events.length;
     if (!warned) {
       warned = true;
       const reason = error instanceof Error ? error.message : String(error);
       console.warn(
-        `[lousho] observe: could not reach the observe daemon at ${target.url} (${reason}); events are counted in 'dropped' and the run is unaffected.`
+        `[lousho] observe: could not reach the observe daemon at ${target.url} (${reason}); ${events.length} event(s) dropped and the run is unaffected.`
       );
     }
     return 0;

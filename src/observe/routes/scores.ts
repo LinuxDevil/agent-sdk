@@ -12,7 +12,7 @@
 
 import { SCORE_SOURCES } from '../envelope';
 import { listScores, scorePassRates, type ScoreFilter } from '../store';
-import { badRequest, intParam, sendJson, timeParam, type Route } from './index';
+import { badRequest, intParam, sendJson, timeParam, type Route } from './httpKit';
 
 export const scoresRoutes: readonly Route[] = [
   {

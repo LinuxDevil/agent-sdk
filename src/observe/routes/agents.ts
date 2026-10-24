@@ -8,7 +8,7 @@
 
 import type { SqlDatabase } from '../../storage/sqlite/driver';
 import { listAgents } from '../store';
-import { sendJson, type Route } from './index';
+import { sendJson, type Route } from './httpKit';
 
 const DAY_MS = 86_400_000;
 

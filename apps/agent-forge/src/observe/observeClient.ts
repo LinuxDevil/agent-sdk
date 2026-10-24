@@ -23,7 +23,7 @@ const LOCAL_STORAGE_KEY = 'lousho.observe.url';
 const DEFAULT_BASE = '/observe';
 
 /** The observe base URL: localStorage override > build env > the same-origin proxy. */
-export function observeBaseUrl(): string {
+function observeBaseUrl(): string {
   try {
     const stored = window.localStorage.getItem(LOCAL_STORAGE_KEY);
     if (stored && stored.trim()) return stored.trim().replace(/\/+$/, '');

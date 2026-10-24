@@ -6,7 +6,7 @@
  */
 
 import { listTraces, traceDetail, type TraceFilter } from '../store';
-import { intParam, sendJson, timeParam, type Route } from './index';
+import { intParam, sendJson, timeParam, type Route } from './httpKit';
 
 const LIST_LIMIT = { min: 1, max: 500 };
 

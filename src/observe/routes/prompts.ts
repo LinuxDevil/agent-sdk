@@ -22,9 +22,8 @@
 
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { SDKError } from '../../execution/errors';
 import type { SqlDatabase } from '../../storage/sqlite/driver';
-import { intParam, parseJsonBody, sendJson, type Route } from './index';
+import { intParam, requireJsonBody, sendJson, type Route } from './httpKit';
 
 /** A prompt name is a URL path segment and the left half of a `name@version` ref. */
 const NAME_PATTERN = /^[^\s@/]{1,200}$/;
@@ -38,7 +37,7 @@ const publishBody = z.object({
   variables: z.array(z.string()).optional(),
 });
 
-export interface PromptRow {
+interface PromptRow {
   prompt_id: string;
   name: string;
   version: number;
@@ -98,16 +97,11 @@ export const promptsRoutes: readonly Route[] = [
     method: 'POST',
     path: '/api/v1/prompts',
     handle: async ({ db, res, readBody }) => {
-      const parsed = publishBody.safeParse(parseJsonBody(await readBody(1024 * 1024)));
-      if (!parsed.success) {
-        const issue = parsed.error.issues[0];
-        throw new SDKError(
-          `Invalid prompt publish body: ${issue ? `${issue.path.join('.') || 'body'}: ${issue.message}` : 'bad shape'}.`,
-          'LOUSHO_REQUEST_INVALID',
-          { appendHelp: false }
-        );
-      }
-      const { name, text, labels, variables } = parsed.data;
+      const { name, text, labels, variables } = requireJsonBody(
+        publishBody,
+        await readBody(1024 * 1024),
+        'prompt publish'
+      );
       const hash = sha256(text);
       const labelsJson = labels === undefined ? null : JSON.stringify(labels);
       const variablesJson = variables === undefined ? null : JSON.stringify(variables);

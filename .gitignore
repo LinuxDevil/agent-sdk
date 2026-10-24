@@ -71,3 +71,6 @@ audit/
 tmp-*/
 npmci-*.log
 snip.txt
+
+# Smoke-test artifacts
+.smoke/shots/

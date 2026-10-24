@@ -1,4 +1,28 @@
-/** Shared bits of the observe panels' chrome: the daemon-down empty state, inline API errors, status pills. */
+/** Shared bits of the observe panels' chrome: the daemon-down empty state, inline API errors, status pills, filter controls. */
+
+import type { ObserveAgentRow } from './types';
+
+/** The "All agents" filter select the panels share. */
+export function AgentSelect({
+  agents,
+  value,
+  onChange,
+}: {
+  agents: ObserveAgentRow[] | undefined;
+  value: string;
+  onChange: (agentId: string) => void;
+}) {
+  return (
+    <select className="select" value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">All agents</option>
+      {(agents ?? []).map((agent) => (
+        <option key={agent.agent_id} value={agent.agent_id}>
+          {agent.name ?? agent.agent_id.slice(0, 8)}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 /**
  * The "daemon not running" state every panel shares: the hint is the
@@ -28,7 +52,7 @@ export function ObserveError({ error }: { error: Error | undefined }) {
 }
 
 /** `ok`/`error`/`interrupted`/`healthy`/… -> the status-pill colour classes shared with the rest of the app. */
-export function statusClass(status: string | null | undefined): string {
+function statusClass(status: string | null | undefined): string {
   switch (status) {
     case 'ok':
     case 'healthy':

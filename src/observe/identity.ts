@@ -71,7 +71,7 @@ function fallbackHash(text: string): string {
   return (h >>> 0).toString(16).padStart(8, '0').repeat(4);
 }
 
-export function sha256Hex(text: string): string {
+function sha256Hex(text: string): string {
   const crypto = lazyCrypto();
   if (crypto) return crypto.createHash('sha256').update(text).digest('hex');
   return fallbackHash(text);

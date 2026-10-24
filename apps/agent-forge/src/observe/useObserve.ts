@@ -26,7 +26,7 @@ export interface ObserveQuery<T> {
   refresh: () => void;
 }
 
-export function useObserveQuery<T>(fetcher: () => Promise<T>, deps: readonly unknown[]): ObserveQuery<T> {
+function useObserveQuery<T>(fetcher: () => Promise<T>, deps: readonly unknown[]): ObserveQuery<T> {
   const [data, setData] = useState<T | undefined>(undefined);
   const [error, setError] = useState<Error | undefined>(undefined);
   const [loading, setLoading] = useState(true);

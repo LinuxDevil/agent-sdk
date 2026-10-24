@@ -33,11 +33,12 @@ const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 
 /** Granularity labels as stored in `rollups.granularity`. */
-export const ROLLUP_GRANULARITIES = { hour: HOUR_MS, day: DAY_MS } as const;
+const ROLLUP_GRANULARITIES = { hour: HOUR_MS, day: DAY_MS } as const;
 export type RollupGranularity = keyof typeof ROLLUP_GRANULARITIES;
 
-/** The metrics `rollups` keeps per (bucket, agent); all over root observations (a run's `invoke_agent` span). */
-export const ROLLUP_METRICS = ['runs', 'errors', 'cost_usd', 'input_tokens', 'output_tokens', 'latency_ms'] as const;
+// The metrics `rollups` keeps per (bucket, agent) - runs, errors, cost_usd,
+// input/output tokens, latency_ms - all over root observations (a run's
+// `invoke_agent` span); the SELECT list in the rollup SQL is the source of truth.
 
 /** Open (creating the directory and file as needed), configure and migrate the observe database. */
 export function openDb(path: string): SqlDatabase {
@@ -330,9 +331,9 @@ export function ingestBatch(db: SqlDatabase, batch: readonly IngestEvent[], now:
  * and the stored status can never disagree.
  */
 export const HEARTBEAT_INTERVAL_DEFAULT_MS = 60_000;
-export const FRESHNESS_STALE_FACTOR = 2;
-export const FRESHNESS_SLACK_MS = 10_000;
-export const FRESHNESS_DOWN_FACTOR = 5;
+const FRESHNESS_STALE_FACTOR = 2;
+const FRESHNESS_SLACK_MS = 10_000;
+const FRESHNESS_DOWN_FACTOR = 5;
 
 /** `healthy`/`stale`/`down` from a heartbeat age; the sweep's and `listAgents`' shared rule. */
 export function freshnessStatus(ageMs: number, intervalMs: number): 'healthy' | 'stale' | 'down' {
@@ -408,7 +409,7 @@ export function rebuildRollups(db: SqlDatabase): { buckets: number } {
 /** `lso_` = lousho observe; 24 random bytes is 32 base64url characters. */
 const TOKEN_PREFIX = 'lso_';
 
-export function hashTokenKey(key: string): string {
+function hashTokenKey(key: string): string {
   return createHash('sha256').update(key).digest('hex');
 }
 

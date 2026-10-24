@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useAgents, useScores } from './useObserve';
 import type { ObserveScoreRow } from './types';
 import { fmtDateTime, fmtInt, fmtPercent } from './format';
-import { ObserveDaemonDown, ObserveError } from './chrome';
+import { AgentSelect, ObserveDaemonDown, ObserveError } from './chrome';
 import { ObserveDaemonDownError } from './observeClient';
 
 const LIMIT = 200;
@@ -105,14 +105,7 @@ export function ScoresPanel({ onOpenTrace }: { onOpenTrace: (traceId: string) =>
         </label>
         <label>
           Agent
-          <select className="select" value={agentId} onChange={(e) => setAgentId(e.target.value)}>
-            <option value="">All agents</option>
-            {(agents.data ?? []).map((agent) => (
-              <option key={agent.agent_id} value={agent.agent_id}>
-                {agent.name ?? agent.agent_id.slice(0, 8)}
-              </option>
-            ))}
-          </select>
+          <AgentSelect agents={agents.data} value={agentId} onChange={setAgentId} />
         </label>
       </div>
       <ObserveError error={error} />

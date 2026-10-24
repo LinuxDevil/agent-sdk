@@ -8,7 +8,7 @@
 
 import { OBSERVE_MAX_BODY_BYTES, parseIngestEnvelope } from '../envelope';
 import { ingestBatch } from '../store';
-import { sendJson, parseJsonBody, type Route } from './index';
+import { sendJson, parseJsonBody, type Route } from './httpKit';
 
 export const ingestRoutes: readonly Route[] = [
   {

@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
   "entry": [
-    "src/cli/{dev,chat,build,studio,mcp,doctor,init,eval}.ts",
+    "src/cli/{dev,chat,build,studio,mcp,doctor,init,eval,observe,prompt}.ts",
     "**/*.test-d.ts",
     "**/*.{test,spec}.{ts,tsx}",
     "**/*.eval.ts",
@@ -20,6 +20,7 @@
     "src/deploy/shims/google.worker.ts",
     "src/deploy/shims/mcp.worker.ts",
     "src/deploy/shims/pi.worker.ts",
+    "src/deploy/shims/isolatedVm.worker.ts",
     "src/agentDir/__fixtures__/**/*.{ts,js}",
     "examples/agent-dir/tools/*.ts",
     "registry/**/*.ts"
@@ -94,7 +95,8 @@
     "ignore": [
       "**/*.test-d.ts",
       "registry/**",
-      "examples/**"
+      "examples/**",
+      "apps/agent-forge/src/observe/types.ts"
     ]
   },
   "health": {
@@ -183,6 +185,58 @@
         ],
         "maxCrap": 80,
         "reason": "Low-complexity helpers whose per-function CRAP is inflated because fallow's coverage matching scores parts of them 0%-covered despite tests exercising them through higher-level calls (eval reporting, dev event formatting, the warn-once path). Ceiling exempts only the coverage term; cyclomatic/cognitive/unit-size still gate."
+      },
+      {
+        "files": [
+          "src/observe/reporter.ts"
+        ],
+        "maxCyclomatic": 35,
+        "maxCognitive": 30,
+        "maxCrap": 35,
+        "reason": "observationOf is a flat attribute-mapping ladder (~15 optional gen_ai.* fields, one conditional each) and observeExporter a reporter factory; both are covered by reporter.test.ts (at 100% the CRAP floor equals cyclomatic). Splitting the ladder would scatter one schema across helpers without removing a decision. Unit-size still gates."
+      },
+      {
+        "files": [
+          "src/observe/sweep.ts"
+        ],
+        "maxCyclomatic": 25,
+        "maxCognitive": 32,
+        "maxCrap": 140,
+        "reason": "sweepAgents' healthy/stale/down/interrupt status ladder is exercised by sweep.test.ts, but fallow scores its nested row callbacks at the uncovered estimate. Ceilings exempt the status-derivation density and the coverage term; unit-size still gates."
+      },
+      {
+        "files": [
+          "src/observe/store.ts"
+        ],
+        "maxCognitive": 20,
+        "maxCrap": 220,
+        "reason": "The row mappers in listAgents/insightsAgents and the upsert/rollup SQL in writeObservation/observationRow run under store.test.ts and the route tests, but fallow's per-function matching scores nested arrows 0%-covered. Ceilings exempt the coverage term and the dense SQL assembly; cyclomatic and unit-size still gate."
+      },
+      {
+        "files": [
+          "src/observe/identity.ts"
+        ],
+        "maxCognitive": 28,
+        "reason": "resolveIdentity's hostname/pid/git/persisted-uuid ladder is covered through the reporter tests; each rung is one guarded probe. CRAP still gates."
+      },
+      {
+        "files": [
+          "src/observe/emit.ts",
+          "src/observe/daemon.ts",
+          "src/observe/routes/hub.ts",
+          "src/observe/routes/prompts.ts"
+        ],
+        "maxCrap": 100,
+        "reason": "Covered by the emit/daemon/hub/prompts test files; the flagged handlers and nested callbacks fall below fallow's function-level coverage matching so it scores them at the uncovered estimate. Ceiling exempts only the coverage term; cyclomatic/cognitive/unit-size still gate."
+      },
+      {
+        "files": [
+          "src/cli/observe.ts",
+          "src/cli/prompt.ts"
+        ],
+        "maxCognitive": 28,
+        "maxCrap": 60,
+        "reason": "CLI glue: observe.test.ts covers status/stop/token/rebuild/collision and prompt.test.ts covers push/list/get/env-port, but runStart's post-listen announce lines can't run in-process (a started daemon has no closeable handle and keeps the temp db locked). Ceiling exempts the arg-handling density and the coverage term; cyclomatic/unit-size still gate."
       }
     ]
   }

@@ -25,7 +25,7 @@ import { migrate } from '../storage/sqlite/migrations';
  * Forward-only migrations for the observe database. `OBSERVE_MIGRATIONS[n]`
  * upgrades a database from `user_version` n to n + 1.
  */
-export const OBSERVE_MIGRATIONS: readonly string[] = [
+const OBSERVE_MIGRATIONS: readonly string[] = [
   `
   -- Fleet registry: one row per reporting agent. status is the last known
   -- state ('healthy' on heartbeat, 'stopped' on deregister); monitoring

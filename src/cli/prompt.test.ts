@@ -88,6 +88,25 @@ describe('lousho prompt', () => {
     expect(await runPrompt(['list', '--url', 'http://127.0.0.1:1'], deps())).toBe(1);
   });
 
+  it('finds the daemon via --port or LOUSHO_OBSERVE_PORT when --url is absent', async () => {
+    const daemon = await start();
+    fs.writeFileSync(path.join(cwd, 'p.txt'), 'text');
+    expect(await runPrompt(['push', 'p.txt', '--name', 'p', '--port', String(daemon.port)], deps())).toBe(0);
+    const d = deps({ env: { LOUSHO_OBSERVE_PORT: String(daemon.port) } as NodeJS.ProcessEnv });
+    expect(await runPrompt(['get', 'p'], d)).toBe(0);
+    // an unparseable env port falls back to the default (7777) rather than crashing
+    const urls: string[] = [];
+    const bad = deps({
+      env: { LOUSHO_OBSERVE_PORT: 'nope' } as NodeJS.ProcessEnv,
+      fetchFn: (async (input: RequestInfo | URL) => {
+        urls.push(String(input));
+        throw new Error('fetch failed');
+      }) as typeof fetch,
+    });
+    expect(await runPrompt(['list'], bad)).toBe(1);
+    expect(urls[0]).toContain('127.0.0.1:7777');
+  });
+
   it('usage errors exit 2; --help prints the help', async () => {
     expect(await runPrompt(['bogus'], deps())).toBe(2);
     expect(await runPrompt(['--help'], deps())).toBe(0);

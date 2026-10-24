@@ -15,9 +15,9 @@
  */
 
 import { z } from 'zod';
-import { SDKError } from '../execution/errors';
 import { defineTool, type DefinedTool } from '../tools/defineTool';
 import { toolFailure } from '../tools/built-in/toolFailure';
+import { observeRequest } from './httpClient';
 import { resolveIdentity, resolveProject } from './identity';
 import { observeUrlFromEnv } from './reporter';
 
@@ -137,22 +137,8 @@ export function hub(options: HubOptions = {}): Hub | undefined {
     return id;
   };
 
-  const request = async <T>(path: string, init: RequestInit): Promise<T> => {
-    const res = await fetchFn(`${url}${path}`, {
-      ...init,
-      headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...(init.headers as Record<string, string> | undefined) },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    const body = (await res.json().catch(() => undefined)) as ({ error?: string } & T) | undefined;
-    if (!res.ok) {
-      throw new SDKError(
-        `The observe daemon answered ${res.status} for ${path}: ${body?.error ?? res.statusText}.`,
-        'LOUSHO_REMOTE_REQUEST_FAILED',
-        { appendHelp: false }
-      );
-    }
-    return body as T;
-  };
+  const request = <T>(path: string, init: RequestInit): Promise<T> =>
+    observeRequest<T>(url, path, init, timeoutMs, { ...(token ? { token } : {}), fetchFn });
 
   return {
     get agentId() {
