@@ -76,6 +76,31 @@ export function observeTargetFromEnv(env: NodeJS.ProcessEnv | undefined = typeof
   };
 }
 
+/**
+ * Whether `target` is this machine's own collector (host `127.0.0.1`,
+ * `localhost` or `::1`). A loopback collector is auth-free and its db never
+ * leaves the machine, so content capture defaults on for it.
+ */
+export function isLoopbackTarget(target: ObserveTarget): boolean {
+  try {
+    const host = new URL(target.url).hostname.toLowerCase();
+    return host === '127.0.0.1' || host === 'localhost' || host === '[::1]';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The `captureContent` an agent runs with: the explicit setting when there is
+ * one, else on when the env collector is loopback, else `undefined` (the
+ * executor then follows the OTel content env var).
+ */
+export function defaultCaptureContent(explicit: boolean | undefined, env?: NodeJS.ProcessEnv): boolean | undefined {
+  if (explicit !== undefined) return explicit;
+  const target = observeTargetFromEnv(env);
+  return target && isLoopbackTarget(target) ? true : undefined;
+}
+
 export interface EmitObserveOptions {
   /** Explicit target; default the env's (`observeTargetFromEnv`). */
   target?: ObserveTarget;

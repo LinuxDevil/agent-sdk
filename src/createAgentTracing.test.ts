@@ -6,7 +6,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import type { Tracer } from '@opentelemetry/api';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { createAgent } from './createAgent';
 import { PropagatingToolError } from './execution/AgentExecutor';
@@ -329,5 +329,80 @@ describe('createAgent({ exporter })', () => {
         fs.rmSync(dir, { recursive: true, force: true });
       }
     });
+  });
+});
+
+describe('captureContent default on a local collector', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+  const observe = (value: string) => {
+    vi.stubEnv('LOUSHO_OBSERVE', value);
+    vi.stubGlobal('fetch', async () => new Response('{}', { status: 200 }));
+  };
+  const chatInput = async (options: { captureContent?: boolean; redactContent?: boolean } = {}) => {
+    const exporter = recording();
+    await createAgent({ provider: mockModel(['Hi.']), exporter, ...options }).send('my key is sk-secret123');
+    return exporter.ended.find((span) => op(span) === 'chat')!;
+  };
+
+  it('captures content by default when LOUSHO_OBSERVE points at loopback', async () => {
+    observe('1');
+    const chat = await chatInput();
+    expect(chat.attributes['gen_ai.input.messages']).toContain('my key is');
+    expect(chat.attributes['gen_ai.output.messages']).toContain('Hi.');
+  });
+
+  it('does not capture by default for a non-loopback collector', async () => {
+    observe('http://collector.test:7777');
+    expect((await chatInput()).attributes['gen_ai.input.messages']).toBeUndefined();
+  });
+
+  it('does not capture by default when LOUSHO_OBSERVE is unset', async () => {
+    vi.stubEnv('LOUSHO_OBSERVE', '');
+    expect((await chatInput()).attributes['gen_ai.input.messages']).toBeUndefined();
+  });
+
+  it('captureContent: false wins over the loopback default', async () => {
+    observe('1');
+    expect((await chatInput({ captureContent: false })).attributes['gen_ai.input.messages']).toBeUndefined();
+  });
+
+  it('redactContent: false records the deprecated prompt next to the loopback-captured content', async () => {
+    observe('1');
+    const chat = await chatInput({ redactContent: false });
+    expect(chat.attributes['gen_ai.input.messages']).toContain('my key is');
+    expect(chat.attributes.prompt).toBeDefined();
+  });
+
+  it('redactContent: true keeps the deprecated prompt off while gen_ai content is still captured', async () => {
+    observe('1');
+    const chat = await chatInput({ redactContent: true });
+    expect(chat.attributes['gen_ai.input.messages']).toContain('my key is');
+    expect(chat.attributes.prompt).toBeUndefined();
+  });
+
+  it('resume() captures content by default on loopback', async () => {
+    observe('1');
+    const store = memoryStore();
+    let crashed = false;
+    const flaky = defineTool({
+      name: 'flaky',
+      description: 'Dies once',
+      input: z.object({}),
+      execute: async () => {
+        if (!crashed) {
+          crashed = true;
+          throw new PropagatingToolError('process died');
+        }
+        return 'ok';
+      },
+    });
+    const crashing = createAgent({ provider: mockModel([{ toolCalls: [{ name: 'flaky', id: 'c1' }] }]), tools: [flaky], store });
+    await expect(crashing.send('Go', { sessionId: 'job' })).rejects.toThrow('process died');
+    const exporter = recording();
+    await createAgent({ provider: mockModel(['Done.']), tools: [flaky], store, exporter }).resume('job');
+    expect(exporter.ended.find((span) => op(span) === 'chat')!.attributes['gen_ai.output.messages']).toContain('Done.');
   });
 });

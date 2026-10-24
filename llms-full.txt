@@ -13902,6 +13902,19 @@ Prompts, model output and tool arguments/results are sensitive and large, so
 the `gen_ai.*` content attributes are **never recorded by default**. Opt in
 per agent with `createAgent({ exporter, captureContent: true })`.
 
+The exception is a local collector: when `LOUSHO_OBSERVE` points at loopback
+(`1`/`true`, or a URL whose host is `127.0.0.1`, `localhost` or `::1`),
+`createAgent` defaults `captureContent` to `true`, so the daemon's trace view
+shows the prompt, the model output and the tool arguments and results that
+explain a failure. The data stays in the daemon's db on your machine. Turn it
+off with `captureContent: false`; a collector beyond loopback keeps the
+opt-in default. The default applies to agents built with `createAgent`.
+
+`redactContent` keeps only the legacy `input`/`prompt`/`args`/`result`
+attributes off; it does not scrub `gen_ai.*` message content. On a loopback
+collector the message text, including any secret typed into a prompt, is
+stored in the local db, so set `captureContent: false` if that is not wanted.
+
 #### Advanced: the executor API
 
 With the executor, opt in per run:

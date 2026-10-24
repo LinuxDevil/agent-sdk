@@ -5,7 +5,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { IngestEvent } from './envelope';
-import { emitObserveEvent, emitObserveEvents, observeTargetFromEnv, resetObserveEnvWarning } from './emit';
+import { emitObserveEvent, emitObserveEvents, isLoopbackTarget, observeTargetFromEnv, resetObserveEnvWarning } from './emit';
 
 const score = (id: string): IngestEvent => ({
   type: 'score',
@@ -110,5 +110,14 @@ describe('emitObserveEvents', () => {
     } finally {
       warn.mockRestore();
     }
+  });
+});
+
+describe('isLoopbackTarget', () => {
+  it.each(['http://127.0.0.1:7777', 'http://localhost:1234', 'http://[::1]:7777', 'https://LOCALHOST'])('%s is loopback', (url) => {
+    expect(isLoopbackTarget({ url })).toBe(true);
+  });
+  it.each(['http://collector.test:7777', 'https://observe.example.com', 'http://0.0.0.0:7777', 'http://localhost.evil.com', 'not a url'])('%s is not', (url) => {
+    expect(isLoopbackTarget({ url })).toBe(false);
   });
 });
