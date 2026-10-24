@@ -557,6 +557,33 @@ the score is attributed to the trace's agent. An unknown `trace_id` (or an
 `obs_id` that is not in that trace) is a `404`, an empty `name` a `400`. It
 takes the same token as ingest, and `GET /api/v1/scores?trace_id=...` lists it.
 
+### Datasets
+
+A dataset is a named set of examples to run evals over. Each example is an
+`input` and an optional `expected` value, both any JSON value. The routes take
+the same token as ingest:
+
+| Route | Answer |
+| --- | --- |
+| `POST /api/v1/datasets` `{ "name", "description"? }` | `201 { dataset }`. `name` is 1-200 letters, digits, `.`, `_` or `-`, starting with a letter or digit (else `400`). A taken name is a `409`. |
+| `GET /api/v1/datasets?limit&offset` | `{ datasets, total, limit, offset }`, newest first. `limit` defaults to 100 (max 1000). |
+| `GET /api/v1/datasets/:name?limit&offset` | `{ dataset, examples, total, limit, offset }`, examples oldest first. `limit` defaults to 1000 (max 10 000). |
+| `POST /api/v1/datasets/:name/examples` | `201 { example }`. The body is `{ "input", "expected"? }` or `{ "from_trace_id" }`, never both. |
+| `DELETE /api/v1/datasets/:name/examples/:id` | `204`. |
+
+A dataset row is `{ dataset_id, name, description, created_at, example_count }`
+and an example row is `{ example_id, dataset_id, input, expected,
+source_trace_id, created_at }`, with `expected` and `source_trace_id` `null`
+when unset. `from_trace_id` copies the trace's root observation: its input
+becomes `input` and its output `expected`. Stored text that is valid JSON is
+copied as that value, and any other text as a JSON string. A trace whose root
+has no captured input (content capture was off) is a `400`. An unknown
+dataset, trace or example is a `404` with code `LOUSHO_REQUEST_INVALID`. The
+example body may be up to 1 MiB.
+
+Retention never deletes datasets or examples. An example keeps its
+`source_trace_id` after that trace is pruned.
+
 ### Retention
 
 The daemon keeps 30 days of runs by default. On its first sweep after start,
