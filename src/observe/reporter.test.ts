@@ -105,6 +105,24 @@ describe('observeExporter', () => {
     expect(allEvents(posted).at(-1)?.type).toBe('agent.deregister');
   });
 
+  it('maps an ended span with unset status to ok', async () => {
+    const { r, posted } = reporter();
+    const span = makeSpan({ id: 'ended', endTime: 150 });
+    r.onSpanStart(span);
+    r.onSpanEnd(span);
+    await r.close();
+    expect(observations(posted).find((o) => o.data.obs_id === 'ended')?.data.status).toBe('ok');
+  });
+
+  it('keeps an open span status unset', async () => {
+    const { r, posted } = reporter();
+    const span = makeSpan({ id: 'open', endTime: undefined });
+    r.onSpanStart(span);
+    r.onSpanEnd(span);
+    await r.close();
+    expect(observations(posted).find((o) => o.data.obs_id === 'open')?.data.status).toBeUndefined();
+  });
+
   it('carries usage/cost/flags verbatim from gen_ai + lousho attrs', async () => {
     const { r, posted } = reporter();
     const span = makeSpan({

@@ -154,7 +154,9 @@ const GENERIC_OUTPUT_KEYS = [GenAiAttr.OUTPUT_MESSAGES, LegacyAttr.RESULT] as co
 function observationOf(span: Span, traceId: string, agentId: string, fallbackSessionId: string, now: () => number): ObservationData {
   const attrs = span.attributes;
   const op = str(attrs[GenAiAttr.OPERATION_NAME]) ?? '';
-  const status = span.status?.code;
+  const code = span.status?.code;
+  // An ended span nobody marked failed succeeded; only a still-open span stays unset.
+  const status = code === 'error' ? 'error' : span.endTime !== undefined ? 'ok' : undefined;
   return {
     obs_id: span.id,
     trace_id: traceId,
@@ -165,7 +167,7 @@ function observationOf(span: Span, traceId: string, agentId: string, fallbackSes
     name: span.name,
     start: span.startTime,
     end: span.endTime ?? now(),
-    ...(status === 'ok' || status === 'error' ? { status } : {}),
+    ...(status !== undefined ? { status } : {}),
     ...(pickAttr(attrs, INPUT_KEYS[op] ?? GENERIC_INPUT_KEYS) !== undefined
       ? { input: pickAttr(attrs, INPUT_KEYS[op] ?? GENERIC_INPUT_KEYS) }
       : {}),
