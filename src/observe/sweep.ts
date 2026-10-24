@@ -12,10 +12,12 @@
  * - On a transition to `down` the agent crashed (no deregister landed): its
  *   open sessions and unfinished observations flip to `interrupted`, so dead
  *   runs do not look alive.
- * - Per instance (one reporter process of an agent): an instance whose own
- *   heartbeats went quiet past the same `down` threshold gets its open runs
- *   flipped to `interrupted` and is forgotten - even while another process
- *   of the same agent keeps the agent itself healthy.
+ * - Per instance (one reporter process of an agent): while the agent is
+ *   healthy - some process of it still heartbeats - an instance whose own
+ *   heartbeats went quiet past the `stale` boundary (~2 missed beats) is
+ *   dead, not slow: its open runs flip to `interrupted` and it is
+ *   forgotten. When no process of the agent is healthy the agent-level
+ *   `down` path above decides instead.
  * - Check today's error rate (day rollups) against the configured threshold;
  *   the crossing alert fires once per agent per day bucket, so a fleet stuck
  *   over the line warns once, not every 30s.
@@ -63,13 +65,22 @@ export interface SweepPassOptions {
   errorRateState?: Map<string, number>;
 }
 
-/** Interrupt the open runs of every instance whose heartbeats aged past `down`, and forget it. */
+/**
+ * Interrupt the open runs of every instance gone quiet past `stale` while
+ * its agent is still healthy, and forget it. The agent's own heartbeat is
+ * the newest from any of its processes, so a healthy agent with a stale
+ * instance means another process is alive and this one is not.
+ */
 function sweepInstances(db: SqlDatabase, now: number): void {
   for (const row of db
-    .prepare('SELECT i.agent_id, i.instance_id, i.last_heartbeat, a.meta FROM agent_instances i LEFT JOIN agents a ON a.agent_id = i.agent_id')
+    .prepare(
+      'SELECT i.agent_id, i.instance_id, i.last_heartbeat, a.last_heartbeat AS agent_heartbeat, a.meta FROM agent_instances i JOIN agents a ON a.agent_id = i.agent_id'
+    )
     .all()) {
     const interval = heartbeatIntervalFromMeta(row.meta) ?? HEARTBEAT_INTERVAL_DEFAULT_MS;
-    if (freshnessStatus(Math.max(0, now - Number(row.last_heartbeat)), interval) !== 'down') continue;
+    const age = (ts: unknown): number => Math.max(0, now - Number(ts ?? 0));
+    if (freshnessStatus(age(row.agent_heartbeat), interval) !== 'healthy') continue;
+    if (freshnessStatus(age(row.last_heartbeat), interval) === 'healthy') continue;
     interruptInstance(db, String(row.agent_id), String(row.instance_id), now);
   }
 }

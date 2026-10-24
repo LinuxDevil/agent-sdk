@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { SqlDatabase } from '../storage/sqlite/driver';
-import type { IngestEvent } from './envelope';
+import { parseIngestEnvelope, type IngestEvent } from './envelope';
 import {
   createToken,
   hasTokens,
@@ -405,48 +405,103 @@ describe('eager root start (end NULL until the end event lands)', () => {
 });
 
 describe('agent instances (one agent_id, several processes over time)', () => {
-  const beat = (instance: string | undefined, ts: number, intervalMs = 60_000): IngestEvent => ({
+  /** A heartbeat of agent a1 from one process: `instance` on `host`/`pid`. */
+  const beat = (instance: string | undefined, ts: number, proc: { host?: string; pid?: number } = {}): IngestEvent => ({
     type: 'agent.heartbeat',
-    data: { agent_id: 'a1', project: 'proj', name: 'a', ts, heartbeat_interval_ms: intervalMs, ...(instance ? { instance_id: instance } : {}) },
+    data: {
+      agent_id: 'a1',
+      project: 'proj',
+      name: 'a',
+      ts,
+      heartbeat_interval_ms: 60_000,
+      ...(instance !== undefined ? { instance_id: instance } : {}),
+      ...(proc.host !== undefined ? { hostname: proc.host } : {}),
+      ...(proc.pid !== undefined ? { pid: proc.pid } : {}),
+    },
   });
   /** An open run root started by `instance` (the reporter stamps it in attrs). */
   const openRoot = (obsId: string, instance?: string): IngestEvent =>
-    obs({ obs_id: obsId, trace_id: `t-${obsId}`, end: undefined, status: undefined, attrs: instance ? { 'lousho.instance_id': instance } : {} });
+    obs({ obs_id: obsId, trace_id: `t-${obsId}`, end: undefined, status: undefined, attrs: instance !== undefined ? { 'lousho.instance_id': instance } : {} });
   const statusOf = (database: SqlDatabase, obsId: string) =>
     database.prepare('SELECT status FROM observations WHERE obs_id = ?').get(obsId)?.status ?? null;
   const traceStatus = (database: SqlDatabase, obsId: string) =>
     listTraces(database, { limit: 50, offset: 0 }).traces.find((t) => t.trace_id === `t-${obsId}`)?.status;
+  const instances = (database: SqlDatabase) =>
+    database.prepare('SELECT instance_id FROM agent_instances ORDER BY instance_id').all().map((r) => r.instance_id);
+  const hostA = { host: 'h1', pid: 100 };
+  const hostB = { host: 'h1', pid: 200 };
 
-  it("a new instance's first heartbeat interrupts the previous instance's open runs, not its own", () => {
+  it('siblings heartbeating side by side never interrupt each other', () => {
     const database = db();
     try {
-      // instance A starts a run, then is SIGKILLed (stops heartbeating)
-      ingestBatch(database, [beat('A', T0), openRoot('runA', 'A')], T0);
-      // a supervisor restarts the agent at once: instance B, same agent_id, well inside the down window
-      ingestBatch(database, [beat('B', T0 + 1_000), openRoot('runB', 'B')], T0 + 1_000);
-      expect(traceStatus(database, 'runA')).toBe('interrupted');
-      expect(traceStatus(database, 'runB')).toBe('running');
-      // B's later heartbeats change nothing; a late requeued heartbeat from A is not a new instance either
-      ingestBatch(database, [beat('B', T0 + 61_000), beat('A', T0 + 500)], T0 + 61_000);
-      expect(traceStatus(database, 'runB')).toBe('running');
-      expect(listAgents(database, T0 + 61_000)[0].status).toBe('healthy');
+      ingestBatch(database, [beat('A', T0, hostA), openRoot('runA', 'A')], T0);
+      ingestBatch(database, [beat('B', T0 + 1_000, hostB), openRoot('runB', 'B')], T0 + 1_000);
+      for (let t = 60_000; t <= 600_000; t += 60_000) {
+        ingestBatch(database, [beat('A', T0 + t, hostA), beat('B', T0 + t + 1_000, hostB)], T0 + t + 1_000);
+        sweepAgents(database, T0 + t + 30_000);
+      }
+      expect([traceStatus(database, 'runA'), traceStatus(database, 'runB')]).toEqual(['running', 'running']);
+      expect(instances(database)).toEqual(['A', 'B']);
     } finally {
       database.close();
     }
   });
 
-  it("the sweep interrupts a silent instance's open runs while another instance keeps the agent healthy", () => {
+  it('a restart on the same host and pid (a container restart, pid reuse) interrupts the old instance at once', () => {
     const database = db();
     try {
-      // two siblings of one agent run side by side
-      ingestBatch(database, [beat('A', T0), beat('B', T0), openRoot('runA', 'A'), openRoot('runB', 'B')], T0);
-      // A dies; B keeps heartbeating
-      for (let t = 60_000; t <= 360_000; t += 60_000) ingestBatch(database, [beat('B', T0 + t)], T0 + t);
-      sweepAgents(database, T0 + 250_000); // A is 250s quiet: not past 5 x 60s yet
+      ingestBatch(database, [beat('A', T0, { host: 'c1', pid: 1 }), openRoot('runA', 'A')], T0);
+      ingestBatch(database, [beat('B', T0 + 1_000, { host: 'c1', pid: 1 }), openRoot('runB', 'B')], T0 + 1_000);
+      expect(traceStatus(database, 'runA')).toBe('interrupted');
+      expect(traceStatus(database, 'runB')).toBe('running');
+      expect(instances(database)).toEqual(['B']);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('a restart under a new pid interrupts the old instance once it passes stale while the new one is healthy', () => {
+    const database = db();
+    try {
+      ingestBatch(database, [beat('A', T0, hostA), openRoot('runA', 'A')], T0);
+      // A is SIGKILLed; B starts at once and keeps heartbeating
+      for (let t = 1_000; t <= 241_000; t += 60_000) ingestBatch(database, [beat('B', T0 + t, hostB)], T0 + t);
+      ingestBatch(database, [openRoot('runB', 'B')], T0 + 1_000);
+      sweepAgents(database, T0 + 125_000); // A 125s quiet: within 2 x 60s + 10s
       expect(statusOf(database, 'runA')).toBeNull();
-      const result = sweepAgents(database, T0 + 360_000);
+      const result = sweepAgents(database, T0 + 135_000); // past the stale boundary
       expect(result.transitions).toHaveLength(0); // the agent itself stays healthy
+      expect(traceStatus(database, 'runA')).toBe('interrupted');
+      expect(traceStatus(database, 'runB')).toBe('running');
+      expect(instances(database)).toEqual(['B']);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('leaves a silent instance to the agent-level down path when no process of the agent is healthy', () => {
+    const database = db();
+    try {
+      ingestBatch(database, [beat('A', T0, hostA), openRoot('runA', 'A')], T0);
+      sweepAgents(database, T0 + 200_000); // stale, but nobody else is alive: not a verdict yet
+      expect(statusOf(database, 'runA')).toBeNull();
+      const result = sweepAgents(database, T0 + 400_000);
+      expect(result.transitions[0]).toMatchObject({ to: 'down', crashed: true });
       expect(statusOf(database, 'runA')).toBe('interrupted');
+      expect(instances(database)).toEqual([]); // a down agent's instances are all gone
+    } finally {
+      database.close();
+    }
+  });
+
+  it('a late heartbeat from an instance already forgotten interrupts nothing', () => {
+    const database = db();
+    try {
+      ingestBatch(database, [beat('A', T0, hostA), beat('B', T0, hostB), openRoot('runB', 'B')], T0);
+      ingestBatch(database, [{ type: 'agent.deregister', data: { agent_id: 'a1', ts: T0 + 1_000, instance_id: 'A' } }], T0 + 1_000);
+      expect(instances(database)).toEqual(['B']);
+      // a requeued heartbeat of A lands after its deregister: A looks new again
+      ingestBatch(database, [beat('A', T0 + 500, hostA)], T0 + 2_000);
       expect(traceStatus(database, 'runB')).toBe('running');
     } finally {
       database.close();
@@ -456,7 +511,7 @@ describe('agent instances (one agent_id, several processes over time)', () => {
   it('a deregister interrupts only the closing instance', () => {
     const database = db();
     try {
-      ingestBatch(database, [beat('A', T0), beat('B', T0), openRoot('runA', 'A'), openRoot('runB', 'B')], T0);
+      ingestBatch(database, [beat('A', T0, hostA), beat('B', T0, hostB), openRoot('runA', 'A'), openRoot('runB', 'B')], T0);
       ingestBatch(database, [{ type: 'agent.deregister', data: { agent_id: 'a1', ts: T0 + 5_000, instance_id: 'A' } }], T0 + 5_000);
       expect(statusOf(database, 'runA')).toBe('interrupted');
       expect(traceStatus(database, 'runB')).toBe('running');
@@ -470,11 +525,24 @@ describe('agent instances (one agent_id, several processes over time)', () => {
     try {
       ingestBatch(database, [beat(undefined, T0), openRoot('old')], T0);
       // a new instance appearing does not touch it: nothing says which process started it
-      ingestBatch(database, [beat('B', T0 + 1_000)], T0 + 1_000);
+      ingestBatch(database, [beat('B', T0 + 1_000, hostB)], T0 + 1_000);
+      sweepAgents(database, T0 + 135_000);
       expect(statusOf(database, 'old')).toBeNull();
       // the agent going down still interrupts it
       sweepAgents(database, T0 + 400_000);
       expect(statusOf(database, 'old')).toBe('interrupted');
+    } finally {
+      database.close();
+    }
+  });
+
+  it('treats an empty instance_id as absent instead of refusing the batch', () => {
+    expect(parseIngestEnvelope({ batch: [beat('', T0, hostA)] }).ok).toBe(true);
+    const database = db();
+    try {
+      ingestBatch(database, [beat('', T0, hostA), openRoot('blank', '')], T0);
+      expect(instances(database)).toEqual([]);
+      expect(database.prepare("SELECT instance_id FROM observations WHERE obs_id = 'blank'").get()?.instance_id).toBeNull();
     } finally {
       database.close();
     }

@@ -61,7 +61,8 @@ const agentHeartbeatData = z.object({
   pid: z.number().optional(),
   /**
    * The reporting process (random per process; `agent_id` is shared by a
-   * restart and by sibling processes). Older daemons strip it.
+   * restart and by sibling processes). An empty string counts as absent.
+   * Older daemons strip it.
    */
   instance_id: z.string().optional(),
   meta: z.record(z.string(), z.unknown()).optional(),
@@ -71,7 +72,7 @@ const agentDeregisterData = z.object({
   agent_id: z.string().min(1),
   ts: z.number().optional(),
   reason: z.string().optional(),
-  /** The process that is exiting; only its open runs are interrupted. Older daemons strip it. */
+  /** The process that is exiting; only its open runs are interrupted. Empty counts as absent; older daemons strip it. */
   instance_id: z.string().optional(),
 });
 /**

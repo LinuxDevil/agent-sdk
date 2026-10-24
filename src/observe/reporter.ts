@@ -132,13 +132,18 @@ const EXIT_FLUSH_TIMEOUT_MS = 2000;
 const CRASH_FLUSH_TIMEOUT_MS = 1000;
 const RETRY_BASE_MS = 1000;
 
-let instanceId: string | undefined;
+const INSTANCE_KEY = Symbol.for('lousho.observeInstance');
 /**
- * This process's reporter instance: one per process, shared by every reporter
- * in it. Drawn on first use, not at import: Cloudflare Workers refuse random
- * values in global scope.
+ * This process's reporter instance: one per realm, shared by every reporter in
+ * it - and by a second copy of this module (dual ESM/CJS load), hence the
+ * global symbol. Drawn on first use, not at import: Cloudflare Workers refuse
+ * random values in global scope.
  */
-const processInstance = (): string => (instanceId ??= globalThis.crypto.randomUUID());
+function processInstance(): string {
+  const holder = globalThis as { [INSTANCE_KEY]?: string };
+  holder[INSTANCE_KEY] ??= globalThis.crypto.randomUUID();
+  return holder[INSTANCE_KEY];
+}
 const RETRY_CAP_MS = 30_000;
 
 /** Wait before the next send after `failures` consecutive failed ones (0-based): 1s, 2s, 4s ... capped at 30s. */

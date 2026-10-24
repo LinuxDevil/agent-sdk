@@ -183,35 +183,44 @@ const PROMPT_USE_UPSERT = `
 `;
 
 const INSTANCE_UPSERT = `
-  INSERT INTO agent_instances (agent_id, instance_id, first_seen, last_heartbeat)
-  VALUES (?, ?, ?, ?)
+  INSERT INTO agent_instances (agent_id, instance_id, hostname, pid, first_seen, last_heartbeat)
+  VALUES (?, ?, ?, ?, ?, ?)
   ON CONFLICT(agent_id, instance_id) DO UPDATE SET
+    hostname = COALESCE(excluded.hostname, agent_instances.hostname),
+    pid = COALESCE(excluded.pid, agent_instances.pid),
     last_heartbeat = MAX(agent_instances.last_heartbeat, excluded.last_heartbeat)
 `;
 
+/** The process a heartbeat came from. */
+interface InstanceBeat {
+  instanceId: string;
+  hostname: string | undefined;
+  pid: number | undefined;
+}
+
 /**
- * A heartbeat from `instanceId`. The first one from an instance means the
- * agent (re)started in a new process: the open runs of its earlier instances
- * can never finish - a supervisor restart or a re-run comes back well inside
- * the window the sweep needs to call the agent down - so they flip to
- * 'interrupted'. A sibling process starting up does the same to a live
- * sibling's runs; their end event settles them again.
+ * Record a heartbeat from one process of `agentId`. A new instance on the
+ * same host AND pid as a known one means that one is dead (a container
+ * restarted as pid 1, a reused pid): its open runs flip to 'interrupted' at
+ * once. Any other instance - a sibling, a restart under a new pid, an
+ * instance already forgotten coming back - interrupts nothing here; the
+ * sweep decides once an instance goes quiet (sweep.ts).
  */
-function recordInstance(db: SqlDatabase, agentId: string, instanceId: string, ts: number, now: number): void {
-  const known = db.prepare('SELECT 1 AS k FROM agent_instances WHERE agent_id = ? AND instance_id = ?').get(agentId, instanceId);
-  if (!known) {
-    db.prepare(
-      `UPDATE observations SET status = 'interrupted', updated_at = ?
-       WHERE agent_id = ? AND "end" IS NULL AND instance_id IS NOT NULL AND instance_id != ?`
-    ).run(now, agentId, instanceId);
+function recordInstance(db: SqlDatabase, agentId: string, beat: InstanceBeat, ts: number, now: number): void {
+  if (beat.hostname !== undefined && beat.pid !== undefined) {
+    for (const row of db
+      .prepare('SELECT instance_id FROM agent_instances WHERE agent_id = ? AND instance_id != ? AND hostname = ? AND pid = ?')
+      .all(agentId, beat.instanceId, beat.hostname, beat.pid)) {
+      interruptInstance(db, agentId, String(row.instance_id), now);
+    }
   }
-  db.prepare(INSTANCE_UPSERT).run(agentId, instanceId, ts, ts);
+  db.prepare(INSTANCE_UPSERT).run(agentId, beat.instanceId, beat.hostname ?? null, beat.pid ?? null, ts, ts);
 }
 
 /** The reporter instance that started this observation's run (root rows only; older SDKs send none). */
 function instanceOf(data: ObservationData): string | null {
   const id = data.attrs?.[OBSERVE_INSTANCE_ATTR];
-  return typeof id === 'string' ? id : null;
+  return typeof id === 'string' && id !== '' ? id : null; // '' is no instance, like an older SDK
 }
 
 const bool = (value: boolean | undefined): number | null => (value === undefined ? null : value ? 1 : 0);
@@ -266,7 +275,8 @@ function writeEvent(db: SqlDatabase, now: number, event: IngestEvent): void {
         JSON.stringify({ heartbeat_interval_ms: d.heartbeat_interval_ms, hostname: d.hostname, pid: d.pid, ...d.meta }),
         now
       );
-      if (d.instance_id !== undefined) recordInstance(db, d.agent_id, d.instance_id, ts, now);
+      // An empty instance_id counts as absent (an older SDK) rather than failing the batch.
+      if (d.instance_id) recordInstance(db, d.agent_id, { instanceId: d.instance_id, hostname: d.hostname, pid: d.pid }, ts, now);
       return;
     }
     case 'agent.deregister': {
@@ -275,7 +285,7 @@ function writeEvent(db: SqlDatabase, now: number, event: IngestEvent): void {
       db.prepare(DEREGISTER_UPSERT).run(d.agent_id, ts, ts, now);
       // A graceful exit with a run still open (SIGINT mid-run): its end never comes.
       // Only the exiting process's runs: a sibling under the same agent_id lives on.
-      if (d.instance_id === undefined) interruptOpenObservations(db, d.agent_id, now);
+      if (!d.instance_id) interruptOpenObservations(db, d.agent_id, now);
       else interruptInstance(db, d.agent_id, d.instance_id, now);
       return;
     }
@@ -415,6 +425,8 @@ export function interruptAgentWork(db: SqlDatabase, agentId: string, now: number
       "UPDATE sessions SET status = 'interrupted', ended_at = COALESCE(ended_at, ?), updated_at = ? WHERE agent_id = ? AND status = 'active'"
     )
     .run(now, now, agentId);
+  // Nobody of this agent heartbeats any more: every instance it had is gone.
+  db.prepare('DELETE FROM agent_instances WHERE agent_id = ?').run(agentId);
   return { sessions: Number(sessions.changes), observations: interruptOpenObservations(db, agentId, now) };
 }
 

@@ -627,6 +627,8 @@ describe('observeExporter', () => {
       await other.r.close();
       const hb2 = allEvents(other.posted).find((e) => e.type === 'agent.heartbeat');
       expect(hb2?.type === 'agent.heartbeat' && hb2.data.instance_id).toBe(instance);
+      // realm-global: a second copy of this module (dual ESM/CJS load) reads the same id
+      expect((globalThis as Record<symbol, unknown>)[Symbol.for('lousho.observeInstance')]).toBe(instance);
     });
   });
 
