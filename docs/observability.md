@@ -447,6 +447,9 @@ past the newest 16 MB when a crash flushes; events still unsent after the exit f
 event too large for any request (over 5 MB serialized, for example with
 content capture on); and a batch the daemon refuses outright (`400`/`413`),
 which is never retried.
+The count rides on every heartbeat as `meta.dropped` (cumulative for the process),
+and each row of the daemon's `/api/v1/agents` fleet list exposes the latest one as
+`dropped`: a number, or `null` for an agent on an older SDK that sent none.
 
 A process that dies of an uncaught exception or an unhandled rejection still
 reports its last run: the reporter watches `uncaughtExceptionMonitor` and

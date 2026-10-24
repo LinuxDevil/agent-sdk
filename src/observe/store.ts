@@ -889,6 +889,8 @@ export interface AgentRow {
   heartbeat_interval_ms: number | null;
   hostname: string | null;
   pid: number | null;
+  /** Cumulative telemetry events the agent's reporter dropped, from its latest heartbeat; `null` from an older SDK. */
+  dropped: number | null;
 }
 
 /**
@@ -903,11 +905,13 @@ export function listAgents(db: SqlDatabase, now: number = Date.now()): AgentRow[
   return rows.map((row) => {
     let hostname: string | null = null;
     let pid: number | null = null;
+    let dropped: number | null = null;
     if (typeof row.meta === 'string') {
       try {
-        const meta = JSON.parse(row.meta) as { hostname?: unknown; pid?: unknown };
+        const meta = JSON.parse(row.meta) as { hostname?: unknown; pid?: unknown; dropped?: unknown };
         hostname = typeof meta.hostname === 'string' ? meta.hostname : null;
         pid = typeof meta.pid === 'number' ? meta.pid : null;
+        dropped = typeof meta.dropped === 'number' ? meta.dropped : null;
       } catch {
         // malformed meta: freshness still derives from defaults
       }
@@ -930,6 +934,7 @@ export function listAgents(db: SqlDatabase, now: number = Date.now()): AgentRow[
       heartbeat_interval_ms: interval,
       hostname,
       pid,
+      dropped,
     };
   });
 }
