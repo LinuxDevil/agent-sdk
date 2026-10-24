@@ -22,6 +22,7 @@
     "src/deploy/shims/pi.worker.ts",
     "src/deploy/shims/isolatedVm.worker.ts",
     "src/agentDir/__fixtures__/**/*.{ts,js}",
+    "src/observe/__fixtures__/*.mts",
     "examples/agent-dir/tools/*.ts",
     "registry/**/*.ts"
   ],

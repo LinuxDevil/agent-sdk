@@ -5,12 +5,16 @@
  * drops-and-counts without ever throwing into the run, and the env
  * (`LOUSHO_OBSERVE`) wiring composes with an explicit exporter.
  */
+import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
+import * as http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GenAiAttr, GenAiOperation, LegacyAttr, SdkAttr } from '../execution/semconv';
 import type { Span, TraceExporter } from '../execution/tracing';
+import { blockingPost } from './blockingPost';
 import type { IngestEvent } from './envelope';
 import { fanOutExporters, observeExporter, observeExporterFromEnv, withObserveExporter, type ObserveReporter } from './reporter';
 
@@ -326,33 +330,133 @@ describe('observeExporter', () => {
       expect(r.dropped).toBe(3);
     });
 
-    it('requeues a batch too large to spread into call arguments, and the flush chain survives', async () => {
+    it('drains a backlog past the daemon batch cap in successive capped batches, and the flush chain survives', async () => {
       const unhandled: unknown[] = [];
       const onUnhandled = (reason: unknown) => unhandled.push(reason);
       process.on('unhandledRejection', onUnhandled);
       try {
-        // Count events without JSON.parse-ing a ~50MB body twice.
         const sizes: number[] = [];
+        const ids: string[] = [];
         const fetchFn = vi.fn(async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-          sizes.push(String(init?.body).split('"type":').length - 1);
-          if (sizes.length === 1) throw new TypeError('fetch failed');
+          const batch = (JSON.parse(String(init?.body)) as { batch: IngestEvent[] }).batch;
+          sizes.push(batch.length);
+          if (sizes.length === 1) throw new TypeError('fetch failed'); // the daemon is down
+          for (const e of batch) if (e.type === 'observation') ids.push(e.data.obs_id);
           return new Response('{}', { status: 202 });
         }) as unknown as typeof fetch;
-        const total = 500_000; // past the spread limit even on a worker thread's larger stack (200k fits there)
-        const { r } = reporter({ fetchFn, maxBuffered: total, flushSize: total + 1, flushIntervalMs: 1000 });
+        const total = 2500;
+        const { r } = reporter({ fetchFn, flushSize: total + 1, flushIntervalMs: 1000 });
         for (let i = 0; i < total; i++) r.onSpanEnd({ id: `s${i}`, name: 'n', attributes: {}, startTime: 1, endTime: 2 });
-        await vi.advanceTimersByTimeAsync(1000); // rejected: the whole batch is requeued
-        await vi.advanceTimersByTimeAsync(1000); // the retry still runs and carries all of it
-        expect(sizes).toEqual([total, total]);
+        await vi.advanceTimersByTimeAsync(1000); // rejected: the oldest 1000 are requeued
+        await vi.advanceTimersByTimeAsync(1000); // the daemon is back: one flush drains it all, batch after batch
+        expect(sizes).toEqual([1000, 1000, 1000, 500]);
+        expect(ids).toEqual(Array.from({ length: total }, (_, i) => `s${i}`)); // every event, oldest first
         expect(r.dropped).toBe(0);
         await r.close();
-        expect(sizes).toHaveLength(3); // the chain still runs close()'s flush (the deregister)
+        expect(sizes).toHaveLength(5); // the chain still runs close()'s flush (the deregister)
         await vi.advanceTimersByTimeAsync(10); // let any stray rejection surface
         expect(unhandled).toEqual([]);
       } finally {
         process.off('unhandledRejection', onUnhandled);
       }
-    }, 60_000);
+    });
+
+    it("close()'s final attempt sends a backlog in capped batches and drops the rest when one fails", async () => {
+      const sizes: number[] = [];
+      const fetchFn = vi.fn(async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        sizes.push((JSON.parse(String(init?.body)) as { batch: IngestEvent[] }).batch.length);
+        return new Response('{}', { status: sizes.length === 2 ? 500 : 202 });
+      }) as unknown as typeof fetch;
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { r } = reporter({ fetchFn, flushSize: 10_000 });
+      for (let i = 0; i < 2500; i++) r.onSpanEnd({ id: `s${i}`, name: 'n', attributes: {}, startTime: 1, endTime: 2 });
+      await r.close();
+      expect(sizes).toEqual([1000, 1000]); // the second failed: it and the remaining 501 (500 + the deregister) are dropped
+      expect(r.dropped).toBe(1501);
+    });
+  });
+
+  describe('byte cap', () => {
+    const BUDGET = 4 * 1024 * 1024; // BATCH_BUDGET_BYTES
+    /** A finished span whose input is `bytes` of ASCII. */
+    const bigSpan = (id: string, bytes: number): Span =>
+      makeSpan({ id, attributes: { [GenAiAttr.OPERATION_NAME]: GenAiOperation.CHAT, [GenAiAttr.INPUT_MESSAGES]: 'x'.repeat(bytes) } });
+    /** A fetch that records each body's size and ids, answering `status(n)` to the n-th call (1-based). */
+    function sizedFetch(status: (n: number) => number = () => 202) {
+      const calls: { bytes: number; ids: string[] }[] = [];
+      const fetchFn = vi.fn(async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        const body = String(init?.body);
+        const batch = (JSON.parse(body) as { batch: IngestEvent[] }).batch;
+        calls.push({ bytes: Buffer.byteLength(body), ids: batch.flatMap((e) => (e.type === 'observation' ? [e.data.obs_id] : [])) });
+        return new Response('{}', { status: status(calls.length) });
+      }) as unknown as typeof fetch;
+      return { fetchFn, calls };
+    }
+
+    it('cuts batches of large events at the byte budget, all delivered in order', async () => {
+      const { fetchFn, calls } = sizedFetch();
+      const { r } = reporter({ fetchFn, flushSize: 1000 });
+      for (let i = 0; i < 50; i++) {
+        const span = bigSpan(`big${i}`, 200 * 1024);
+        r.onSpanStart(span);
+        r.onSpanEnd(span);
+      }
+      await r.close();
+      expect(calls.length).toBeGreaterThanOrEqual(3); // ~10MB of events
+      for (const call of calls) expect(call.bytes).toBeLessThanOrEqual(BUDGET);
+      expect(calls.flatMap((c) => c.ids)).toEqual(Array.from({ length: 50 }, (_, i) => `big${i}`));
+      expect(r.dropped).toBe(0);
+    });
+
+    it('drops and counts one event too large for any request, and keeps delivering', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { fetchFn, calls } = sizedFetch();
+      const { r } = reporter({ fetchFn, flushSize: 1000 });
+      for (const span of [bigSpan('huge', 6 * 1024 * 1024), makeSpan({ id: 'after' })]) {
+        r.onSpanStart(span);
+        r.onSpanEnd(span);
+      }
+      expect(r.dropped).toBe(1);
+      expect(warn).toHaveBeenCalledOnce();
+      expect(String(warn.mock.calls[0][0])).toMatch(/larger than the daemon's 5242880-byte request cap/);
+      await r.close();
+      expect(calls.flatMap((c) => c.ids)).toEqual(['after']);
+      expect(r.dropped).toBe(1);
+    });
+
+    it('sends one event over the budget but under the hard cap on its own', async () => {
+      // The input is carried twice (input + attrs): ~4.4MB of event, over the 4MB budget, under the 5MB cap.
+      const { fetchFn, calls } = sizedFetch();
+      const { r } = reporter({ fetchFn, flushSize: 1000 });
+      for (const span of [makeSpan({ id: 'before' }), bigSpan('large', 2.2 * 1024 * 1024), makeSpan({ id: 'after' })]) {
+        r.onSpanStart(span);
+        r.onSpanEnd(span);
+      }
+      await r.close();
+      expect(calls.map((c) => c.ids)).toEqual([['before'], ['large'], ['after']]);
+      expect(r.dropped).toBe(0);
+    });
+
+    it('drops and counts a batch the daemon answers 413, and keeps delivering', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { fetchFn, calls } = sizedFetch((n) => (n === 1 ? 413 : 202));
+      const { r } = reporter({ fetchFn, flushSize: 2 });
+      const finish = (id: string) => {
+        const span = makeSpan({ id });
+        r.onSpanStart(span);
+        r.onSpanEnd(span);
+      };
+      finish('a');
+      finish('b'); // a size flush: answered 413
+      await vi.waitFor(() => expect(r.dropped).toBe(2));
+      finish('c');
+      finish('d');
+      await r.close();
+      expect(calls[0].ids).toEqual(['a', 'b']);
+      expect(calls.flatMap((c) => c.ids)).toEqual(['a', 'b', 'c', 'd']); // the refused batch is not resent
+      expect(r.dropped).toBe(2); // the refused batch, not requeued
+      expect(String(warn.mock.calls[0][0])).toContain('refused a batch of 2 events (413)');
+    });
   });
 
   it('clamps maxBuffered to 1 so the deregister survives', async () => {
@@ -442,6 +546,137 @@ describe('observeExporter', () => {
     r.onSpanStart(span);
     r.onSpanEnd(span);
     expect(r.dropped).toBe(1);
+  });
+});
+
+describe('crash flush', () => {
+  const fixture = path.join(__dirname, '__fixtures__', 'crashAfterRun.mts');
+  const repoRoot = path.resolve(__dirname, '..', '..');
+  type Mode = 'throw' | 'reject' | 'inflight' | 'handled' | 'capture' | 'backlog' | 'bigbacklog';
+
+  /**
+   * Run the fixture against an in-test collector; resolves with its exit and
+   * the batch of every ingest request received. `holdFirst` never answers the
+   * first request (a POST still in flight when the process dies).
+   */
+  async function crash(mode: Mode, holdFirst = false): Promise<{ code: number | null; stderr: string; batches: IngestEvent[][] }> {
+    const batches: IngestEvent[][] = [];
+    const server = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (chunk: Buffer) => (body += chunk.toString()));
+      req.on('end', () => {
+        if (req.url === '/api/v1/ingest') batches.push((JSON.parse(body) as { batch: IngestEvent[] }).batch);
+        if (holdFirst && batches.length === 1) return;
+        res.writeHead(202, { 'content-type': 'application/json' }).end('{}');
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as AddressInfo;
+    try {
+      const child = spawn(process.execPath, ['--import', 'tsx', fixture, mode], {
+        cwd: repoRoot,
+        env: { ...process.env, LOUSHO_OBSERVE: `http://127.0.0.1:${port}`, LOUSHO_FIXTURE_CWD: cwd },
+        stdio: ['ignore', 'ignore', 'pipe'],
+      });
+      let stderr = '';
+      child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
+      const code = await new Promise<number | null>((resolve) => child.on('close', resolve));
+      return { code, stderr, batches };
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }
+  const obsIds = (batch: IngestEvent[]): string[] => batch.flatMap((e) => (e.type === 'observation' ? [e.data.obs_id] : []));
+
+  it('flushes pending events when the process dies of an uncaught exception', async () => {
+    const { code, stderr, batches } = await crash('throw');
+    expect(code).toBe(1); // Node's own crash exit code, unchanged
+    expect(stderr).toContain('fixture: uncaught exception after run');
+    expect(batches.flatMap(obsIds)).toEqual(['crash-span']);
+    expect(batches.flat().map((e) => e.type)).toContain('agent.deregister');
+  }, 30_000);
+
+  it('flushes pending events when the process dies of an unhandled rejection', async () => {
+    const { code, stderr, batches } = await crash('reject');
+    expect(code).toBe(1);
+    expect(stderr).toContain('fixture: unhandled rejection after run');
+    expect(batches.flatMap(obsIds)).toEqual(['crash-span']);
+  }, 30_000);
+
+  it('sends a crash backlog past the daemon batch cap as successive capped POSTs', async () => {
+    const { code, batches } = await crash('backlog');
+    expect(code).toBe(1);
+    expect(batches.map((b) => b.length)).toEqual([1000, 501]); // 1500 observations + the deregister, oldest first
+    expect(batches.flatMap(obsIds)).toEqual(['crash-span', ...Array.from({ length: 1499 }, (_, i) => `crash-span-${i + 1}`)]);
+  }, 30_000);
+
+  it('cuts a crash backlog of large events at the byte budget', async () => {
+    const { code, batches } = await crash('bigbacklog');
+    expect(code).toBe(1);
+    expect(batches.length).toBeGreaterThanOrEqual(2); // 30 x 200KB = ~6MB
+    for (const batch of batches) expect(Buffer.byteLength(JSON.stringify({ batch }))).toBeLessThanOrEqual(4 * 1024 * 1024);
+    expect(batches.flatMap(obsIds)).toEqual(['crash-span', ...Array.from({ length: 30 }, (_, i) => `big-${i}`)]);
+  }, 30_000);
+
+  it('resends the batch a POST still in flight was carrying when the process died', async () => {
+    const { code, batches } = await crash('inflight', true);
+    expect(code).toBe(1);
+    expect(batches.map(obsIds)).toEqual([['crash-span'], ['crash-span']]);
+  }, 30_000);
+
+  it.each([['handled'], ['capture']] as const)('keeps reporting when the script survives the throw itself (%s)', async (mode) => {
+    const { code, stderr, batches } = await crash(mode);
+    expect(code).toBe(0); // the user's listener / capture callback kept the process alive; the reporter did not exit it
+    expect(stderr).toContain('handled: fixture: uncaught exception after run');
+    expect(batches.flatMap(obsIds)).toEqual(['crash-span', 'after-span']);
+  }, 30_000);
+
+  it('only flushes, and stays hooked, when an uncaughtException listener keeps the process alive', async () => {
+    // vitest itself listens for 'uncaughtException', so this is the survivable-throw path.
+    const before = process.listenerCount('uncaughtExceptionMonitor');
+    const { r, posted } = reporter({ registerExitHooks: true });
+    for (const id of ['one', 'two']) {
+      const span = makeSpan({ id });
+      r.onSpanStart(span);
+      r.onSpanEnd(span);
+      // Call the listeners directly: emitting the event for real would also reach vitest's own monitors.
+      const monitor = process.listeners('uncaughtExceptionMonitor').at(-1);
+      monitor?.(new Error('survived'), 'uncaughtException');
+      await vi.waitFor(() => expect(observations(posted).map((e) => e.data.obs_id)).toContain(id));
+    }
+    expect(process.listenerCount('uncaughtExceptionMonitor')).toBe(before + 1);
+    expect(allEvents(posted).map((e) => e.type)).not.toContain('agent.deregister'); // not closed
+  });
+
+  it('removes the crash hook on close()', async () => {
+    const before = process.listenerCount('uncaughtExceptionMonitor');
+    const { r } = reporter({ registerExitHooks: true });
+    expect(process.listenerCount('uncaughtExceptionMonitor')).toBe(before + 1);
+    await r.close();
+    expect(process.listenerCount('uncaughtExceptionMonitor')).toBe(before);
+  });
+});
+
+describe('blockingPost', () => {
+  it('delivers nothing to an unreachable collector', () => {
+    expect(blockingPost('http://127.0.0.1:1/api/v1/ingest', {}, ['{}', '{}'], 1000)).toEqual([false, false]);
+    expect(blockingPost('http://127.0.0.1:1/api/v1/ingest', {}, [], 1000)).toEqual([]);
+  });
+
+  it('gives up after its timeout', async () => {
+    // Blocking this thread means an in-process server can never answer: the wait must end on its own.
+    const server = http.createServer(() => undefined);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as AddressInfo;
+    try {
+      const t0 = Date.now();
+      expect(blockingPost(`http://127.0.0.1:${port}/`, {}, ['{}'], 200)).toEqual([false]);
+      expect(Date.now() - t0).toBeLessThan(1000);
+    } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 });
 

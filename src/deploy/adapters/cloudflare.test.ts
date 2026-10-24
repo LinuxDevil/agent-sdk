@@ -162,7 +162,7 @@ describe('CloudflareWorkerAdapter', () => {
 
   it('findNodeBuiltinReferences accepts only the allowlisted getBuiltinModule probes', () => {
     const probes =
-      'loadBuiltinModule2("node:diagnostics_channel"); loadBuiltinModule4("node:dns"); process.getBuiltinModule?.("node:async_hooks"); loadBuiltinModule("node:module"); await loadNodeModule("node:dns"); getBuiltinModule("node:fs");';
+      'loadBuiltinModule2("node:diagnostics_channel"); loadBuiltinModule4("node:dns"); process.getBuiltinModule?.("node:async_hooks"); loadBuiltinModule("node:module"); await loadNodeModule("node:dns"); getBuiltinModule("node:fs"); getBuiltinModule(\'node:worker_threads\');';
     expect(findNodeBuiltinReferences(probes)).toEqual([]);
     // Any other builtin, or an allowlisted id outside a probe call, is still a leak.
     expect(findNodeBuiltinReferences('loadBuiltinModule("node:net"); const id = "node:dns"; import("node:async_hooks");')).toEqual([

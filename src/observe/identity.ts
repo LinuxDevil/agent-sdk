@@ -18,6 +18,8 @@
  * breaking non-Node runtimes.
  */
 
+import { getBuiltinModule } from './builtins';
+
 /** The slices of the builtins used here, typed so the lazy loads stay honest. */
 interface FsLike {
   existsSync(path: string): boolean;
@@ -36,15 +38,8 @@ interface PathLike {
   resolve(...parts: string[]): string;
 }
 
-// Named to match the worker leak check's exempted call pattern (see
-// WORKER_SAFE_BUILTIN_PROBE in src/deploy/adapters/cloudflare.ts): the
-// the builtin id literals below stay out of the flagged set only while they
-// appear as this function's argument. Do not rename.
-function getBuiltinModule<T>(name: string): T | undefined {
-  // Reporters bundled for non-Node runtimes have no fs; identity falls back to memory.
-  if (typeof process === 'undefined') return undefined;
-  return (process.getBuiltinModule?.(name) as T | undefined) ?? undefined;
-}
+// Reporters bundled for non-Node runtimes have no fs; identity falls back to memory.
+// Keep each id literal as getBuiltinModule's direct argument (see builtins.ts).
 
 const lazyFs = () => getBuiltinModule('node:fs') as FsLike | undefined;
 const lazyCrypto = () => getBuiltinModule('node:crypto') as CryptoLike | undefined;
