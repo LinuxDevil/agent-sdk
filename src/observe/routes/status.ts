@@ -22,7 +22,7 @@ const unmapped = (address: string | undefined): string | undefined => address?.r
  * from the very address it reached (the CLI probing a daemon bound to this
  * machine's LAN address). Anyone else is told the service marker only.
  */
-export function isLocalCaller(req: http.IncomingMessage): boolean {
+function isLocalCaller(req: http.IncomingMessage): boolean {
   const remote = unmapped(req.socket.remoteAddress);
   if (remote === undefined) return false;
   return isLoopbackHost(remote) || remote === unmapped(req.socket.localAddress);

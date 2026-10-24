@@ -41,7 +41,7 @@
  * `gen_ai.conversation.id` when the run has a real session.
  */
 
-import { GenAiAttr, GenAiOperation, LegacyAttr, SdkAttr } from '../execution/semconv';
+import { CAPTURE_CONTENT_ENV, GenAiAttr, GenAiOperation, LegacyAttr, SdkAttr } from '../execution/semconv';
 import { SDKError } from '../execution/errors';
 import type { Span, TraceExporter } from '../execution/tracing';
 import { VERSION } from '../version';
@@ -864,15 +864,24 @@ function withoutCapturedContent(span: Span): Span {
   return { ...span, attributes };
 }
 
+/** The OTel content env var asks for content on every exporter. */
+const otelContentEnvOn = (): boolean =>
+  typeof process !== 'undefined' && process.env?.[CAPTURE_CONTENT_ENV]?.toLowerCase() === 'true';
+
 /**
- * `exporter` with the captured `gen_ai.*` content kept for its `LOUSHO_OBSERVE`
- * reporters only: every other part (a `fileTraceExporter()`, an OTLP or vendor
- * exporter) sees each span without it. createAgent applies this when content
- * capture is on only because the env collector is loopback - that default is
- * for the local daemon, not for every exporter the agent has.
+ * The config exporter an agent reports with, given its content settings: when
+ * capture is on only because the env collector is loopback (`captureContent`
+ * true but no `explicit` setting and no OTel content env var), the captured
+ * `gen_ai.*` content is kept for the `LOUSHO_OBSERVE` reporters alone and every
+ * other part (a `fileTraceExporter()`, an OTLP or vendor exporter) sees each
+ * span without it - that default is for the local daemon, not for every
+ * exporter the agent has. Otherwise `exporter` itself.
  */
-export function capturedContentForObserveOnly(exporter: TraceExporter | undefined): TraceExporter | undefined {
-  if (!exporter) return undefined;
+export function capturedContentForObserveOnly(
+  exporter: TraceExporter | undefined,
+  content: { explicit: boolean | undefined; captureContent: boolean | undefined }
+): TraceExporter | undefined {
+  if (!exporter || content.explicit !== undefined || content.captureContent !== true || otelContentEnvOn()) return exporter;
   return fanOutExporters(
     exporterParts(exporter).map((part): TraceExporter =>
       envReporterSet.has(part)

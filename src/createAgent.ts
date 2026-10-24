@@ -25,7 +25,7 @@ import { capturedContentForObserveOnly, withObserveExporter, type PromptUseProvi
 import { parsePromptRef, registryPrompt } from './observe/promptClient';
 import { assertModelSettings, mergeModelSettings } from './execution/modelSettings';
 import { assertKnownCreateAgentKeys } from './createAgentKeys';
-import { DEFAULT_AGENT_NAME, resolveCaptureContent } from './execution/genAiSpans';
+import { DEFAULT_AGENT_NAME } from './execution/genAiSpans';
 import { LLMProvider, LLMProviderRegistry } from './providers/llm';
 import { ToolRegistry } from './tools/ToolRegistry';
 import { ToolDescriptor } from './types';
@@ -1074,9 +1074,8 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   // That default is for the local daemon only: the config's own exporters
   // (trace files, OTLP, a vendor) keep the content-free default unless the
   // agent or the OTel content env var asked for content.
-  const contentForObserveOnly = config.captureContent === undefined && captureContent === true && !resolveCaptureContent(undefined);
   const exporter = withObserveExporter(
-    contentForObserveOnly ? capturedContentForObserveOnly(config.exporter) : config.exporter,
+    capturedContentForObserveOnly(config.exporter, { explicit: config.captureContent, captureContent }),
     agentName,
     resolvedInstructions.promptUse !== undefined ? { promptUse: resolvedInstructions.promptUse } : {}
   );
