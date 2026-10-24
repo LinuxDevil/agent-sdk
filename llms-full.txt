@@ -5177,7 +5177,9 @@ open, and a session that is still `active`, is kept whatever its age. Rollups,
 prompts and hub entries are never pruned. `prune --older-than <N>d` (whole
 days, N >= 1) does the same pass now, prints the observation, score and session
 counts it deleted, and then runs `VACUUM` to reclaim disk space (the daily pass
-never does). It is safe to run while the daemon is up. A bad N is a usage
+never does). If only the `VACUUM` fails (for example, the db is busy), the
+prune stays committed, the error goes to stderr and the exit code is 0. It is
+safe to run while the daemon is up. A bad N is a usage
 error (exit 2). See [Retention](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md#retention).
 
 ## `lousho prompt`

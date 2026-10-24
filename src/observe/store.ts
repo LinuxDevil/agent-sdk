@@ -542,10 +542,14 @@ export function rebuildRollups(db: SqlDatabase): { buckets: number } {
  * The traces retention may drop: every observation finished (`end IS NOT
  * NULL`) and the last one ended before the cutoff. A trace with anything
  * still open is kept whole - pruning runs while agents report, and half a
- * live run must never vanish.
+ * live run must never vanish. Pre-narrowed by `start < cutoff` (a trace that
+ * ended before the cutoff started before it) so `observations_start` limits
+ * the GROUP BY to old traces. Materialised once per prune into a TEMP table.
  */
 const PRUNABLE_TRACES = `
+  INSERT INTO temp.prune_traces (trace_id)
   SELECT trace_id FROM observations
+  WHERE trace_id IN (SELECT trace_id FROM observations WHERE start < ?)
   GROUP BY trace_id
   HAVING SUM("end" IS NULL) = 0 AND MAX("end") < ?
 `;
@@ -568,12 +572,17 @@ export interface PruneResult {
  */
 export function pruneBefore(db: SqlDatabase, cutoffMs: number): PruneResult {
   return transaction(db, () => {
-    // Children before observations: both select through PRUNABLE_TRACES, which reads observations.
-    db.prepare(`DELETE FROM prompt_uses WHERE obs_id IN (SELECT obs_id FROM observations WHERE trace_id IN (${PRUNABLE_TRACES}))`).run(
-      cutoffMs
-    );
-    const traceScores = db.prepare(`DELETE FROM scores WHERE trace_id IN (${PRUNABLE_TRACES})`).run(cutoffMs);
-    const observations = db.prepare(`DELETE FROM observations WHERE trace_id IN (${PRUNABLE_TRACES})`).run(cutoffMs);
+    // TEMP DDL is transactional: a rollback drops it too.
+    db.exec('CREATE TEMP TABLE IF NOT EXISTS prune_traces (trace_id TEXT PRIMARY KEY)');
+    db.exec('DELETE FROM temp.prune_traces');
+    db.prepare(PRUNABLE_TRACES).run(cutoffMs, cutoffMs);
+    // Children before observations: the link rows are found through them.
+    db.prepare(
+      'DELETE FROM prompt_uses WHERE obs_id IN (SELECT obs_id FROM observations WHERE trace_id IN (SELECT trace_id FROM temp.prune_traces))'
+    ).run();
+    const traceScores = db.prepare('DELETE FROM scores WHERE trace_id IN (SELECT trace_id FROM temp.prune_traces)').run();
+    const observations = db.prepare('DELETE FROM observations WHERE trace_id IN (SELECT trace_id FROM temp.prune_traces)').run();
+    db.exec('DROP TABLE temp.prune_traces');
     const orphanScores = db
       .prepare('DELETE FROM scores WHERE created_at < ? AND NOT EXISTS (SELECT 1 FROM observations o WHERE o.trace_id = scores.trace_id)')
       .run(cutoffMs);

@@ -339,6 +339,9 @@ describe('retention: pruneBefore', () => {
         // an old trace whose child is still open: kept whole
         obs({ obs_id: 'mixed-root', trace_id: 't-mixed', session_id: 's-mixed', start: OLD, end: OLD + 100 }),
         obs({ obs_id: 'mixed-child', trace_id: 't-mixed', session_id: 's-mixed', parent_obs_id: 'mixed-root', start: OLD + 10, end: undefined }),
+        // the reverse: an old open root whose children all finished long ago - kept whole
+        obs({ obs_id: 'rev-root', trace_id: 't-rev', session_id: 's-rev', start: OLD, end: undefined }),
+        obs({ obs_id: 'rev-child', trace_id: 't-rev', session_id: 's-rev', parent_obs_id: 'rev-root', start: OLD + 10, end: OLD + 20 }),
         // an old open root on its own
         obs({ obs_id: 'open-root', trace_id: 't-open', session_id: 's-active', start: OLD, end: undefined }),
         // a fresh trace
@@ -351,6 +354,10 @@ describe('retention: pruneBefore', () => {
     );
     // s-old / s-mixed were interrupted long ago; s-active is an old but still active thread
     database.prepare("UPDATE sessions SET status = 'interrupted' WHERE session_id IN ('s-old', 's-mixed')").run();
+    // an old, ended, still-'active' session no observation references: only the status guard keeps it
+    database
+      .prepare("INSERT INTO sessions (session_id, agent_id, started_at, ended_at, status, updated_at) VALUES ('s-lonely', 'a1', ?, ?, 'active', ?)")
+      .run(OLD, OLD + 5, OLD);
     database.prepare("INSERT INTO prompts (prompt_id, name, version, created_at) VALUES ('p1', 'greet', 1, ?)").run(OLD);
     database.prepare(`INSERT INTO hub_entries (entry_id, namespace, "key", value, created_at) VALUES ('h1', 'ns', 'k', 'v', ?)`).run(OLD);
   }
@@ -368,6 +375,7 @@ describe('retention: pruneBefore', () => {
     expect(count(database, "scores WHERE score_id IN ('sc-old', 'sc-orphan')")).toBe(0);
     expect(count(database, "scores WHERE score_id = 'sc-orphan-new'")).toBe(1);
     expect(count(database, "sessions WHERE session_id = 's-old'")).toBe(0);
+    expect(count(database, "sessions WHERE session_id = 's-lonely'")).toBe(1);
     expect(count(database, "observations WHERE trace_id = 't-new'")).toBe(1);
     // rollups for the pruned days, prompt versions and hub entries are never touched
     expect(count(database, 'rollups')).toBe(rollupsBefore);
@@ -378,10 +386,15 @@ describe('retention: pruneBefore', () => {
   it('keeps open observations, a trace with one open child, and active sessions regardless of age', () => {
     const database = db();
     seed(database);
-    pruneBefore(database, T0 + 100 * DAY);
+    // t-old + t-new; sc-old + both orphans; s-old (s-new is still 'active')
+    expect(pruneBefore(database, T0 + 100 * DAY)).toEqual({ observations: 3, scores: 3, sessions: 1 });
     expect(count(database, "observations WHERE obs_id = 'open-root'")).toBe(1);
-    // not partially deleted: the closed root stays beside its open child
+    // not partially deleted: the closed root stays beside its open child, and closed children beside an open root
     expect(count(database, "observations WHERE trace_id = 't-mixed'")).toBe(2);
+    expect(count(database, "observations WHERE trace_id = 't-rev'")).toBe(2);
+    // the status guard alone keeps an unreferenced old active session
+    expect(count(database, "sessions WHERE session_id = 's-lonely'")).toBe(1);
+    expect(count(database, "sessions WHERE session_id = 's-new'")).toBe(1);
     // s-mixed is interrupted and old, but its observations still reference it
     expect(count(database, "sessions WHERE session_id = 's-mixed'")).toBe(1);
     expect(count(database, "sessions WHERE session_id = 's-active'")).toBe(1);
@@ -420,8 +433,8 @@ describe('retention: the sweep prune pass', () => {
     expect(traceCount(database, 'tb')).toBe(0);
   });
 
-  it('retentionDays 0 (or unset) never prunes', () => {
-    for (const retentionDays of [0, undefined]) {
+  it('retentionDays 0, unset, negative or NaN never prunes', () => {
+    for (const retentionDays of [0, undefined, -5, Number.NaN, Number.POSITIVE_INFINITY]) {
       const database = db();
       ingestBatch(database, [obs({ obs_id: 'a', trace_id: 'ta', start: T0 - 400 * DAY, end: T0 - 400 * DAY + 1 })], T0);
       const sweep = startStatusSweep(database, { intervalMs: 0, now: () => T0, ...(retentionDays !== undefined ? { retentionDays } : {}) });

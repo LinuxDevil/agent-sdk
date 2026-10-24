@@ -213,7 +213,8 @@ export interface StatusSweepOptions {
   onAlerts?: (alerts: readonly AlertEvent[]) => void;
   /**
    * Retention window in days: finished traces older than this are pruned on
-   * the first pass and then at most once per 24h. Unset or `0` never prunes.
+   * the first pass and then at most once per 24h. Only a finite number `> 0`
+   * enables it: unset, `0`, a negative value or `NaN` never prunes.
    */
   retentionDays?: number;
 }
@@ -234,7 +235,9 @@ export function startStatusSweep(db: SqlDatabase, options: StatusSweepOptions = 
   const intervalMs = options.intervalMs ?? SWEEP_INTERVAL_MS;
   const now = options.now ?? Date.now;
   const errorRateSeen = new Map<string, number>();
-  const retentionMs = (options.retentionDays ?? 0) * DAY_MS;
+  const days = options.retentionDays;
+  // Anything but a finite positive number (unset, 0, negative, NaN) disables retention.
+  const retentionMs = days !== undefined && Number.isFinite(days) && days > 0 ? days * DAY_MS : 0;
   let lastPruneAt: number | undefined;
   // Kept apart from the status pass: a failed prune is logged and retried a
   // day later (not every 30s), and never costs the pass its transitions/alerts.

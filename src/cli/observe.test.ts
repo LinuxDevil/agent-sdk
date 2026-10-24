@@ -12,6 +12,7 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultPidPath, startObserveDaemon, type ObserveDaemon } from '../observe/daemon';
 import { ingestBatch, openDb } from '../observe/store';
+import { loadDatabaseSync, type SqlDatabase } from '../storage/sqlite/driver';
 import { reporterHint, runObserve } from './observe';
 
 const daemons: ObserveDaemon[] = [];
@@ -170,6 +171,30 @@ describe('lousho observe', () => {
     const after = openDb(file);
     try {
       expect(after.prepare('SELECT obs_id FROM observations').all().map((r) => r.obs_id)).toEqual(['o2']);
+    } finally {
+      after.close();
+    }
+  });
+
+  it('prune exits 0 with the counts when only the VACUUM after the committed prune fails', async () => {
+    const file = dbPath();
+    const db = openDb(file);
+    const old = Date.now() - 40 * 86_400_000;
+    ingestBatch(db, [{ type: 'observation', data: { obs_id: 'o1', trace_id: 't1', kind: 'span', name: 'x', start: old, end: old + 5, status: 'ok' } }]);
+    db.close();
+    const proto = loadDatabaseSync().prototype as SqlDatabase;
+    const realExec = proto.exec;
+    vi.spyOn(proto, 'exec').mockImplementation(function (this: SqlDatabase, sql: string) {
+      if (/^\s*VACUUM/i.test(sql)) throw new Error('database is locked');
+      return realExec.call(this, sql);
+    });
+    expect(await runObserve(['prune', '--older-than=30d', '--db', file])).toBe(0);
+    expect(logs.join('\n')).toContain('pruned 1 observations, 0 scores, 0 sessions');
+    expect(errors.at(-1)).toContain('pruned, but VACUUM failed: database is locked');
+    vi.restoreAllMocks();
+    const after = openDb(file);
+    try {
+      expect(after.prepare('SELECT COUNT(*) AS n FROM observations').get()?.n).toBe(0);
     } finally {
       after.close();
     }

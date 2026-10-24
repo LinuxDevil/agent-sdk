@@ -78,7 +78,11 @@ export interface ObserveDaemonOptions {
   sweepIntervalMs?: number;
   /** Injectable clock for the sweep (tests); default `Date.now`. */
   nowFn?: () => number;
-  /** Retention window in days for the sweep's daily prune (default {@link OBSERVE_RETENTION_DAYS_DEFAULT}); `0` disables it. */
+  /**
+   * Retention window in days for the sweep's daily prune (default
+   * {@link OBSERVE_RETENTION_DAYS_DEFAULT}). Only a finite number `> 0` enables
+   * it; `0`, a negative value or `NaN` disables pruning.
+   */
   retentionDays?: number;
 }
 

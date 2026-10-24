@@ -376,7 +376,12 @@ async function runPrune(args: string[]): Promise<number> {
     console.log(
       `lousho observe: pruned ${counts.observations} observations, ${counts.scores} scores, ${counts.sessions} sessions older than ${days}d.`
     );
-    db.exec('VACUUM');
+    // The prune is committed: a failed VACUUM (busy, disk full) only costs the space back.
+    try {
+      db.exec('VACUUM');
+    } catch (error) {
+      console.error(`lousho observe: pruned, but VACUUM failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
     return 0;
   } finally {
     db.close();
