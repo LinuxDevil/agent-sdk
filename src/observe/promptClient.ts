@@ -11,7 +11,7 @@
  *
  * `registryPrompt()` is the createAgent wiring: it starts the fetch when the
  * agent is BUILT (the spec's "fetch at build"), memoizes a successful fetch for the
- * agent's lifetime (a failed one is retried by the next run), and hands the reporter a `prompt_use` ref once the fetch landed.
+ * agent's lifetime (a failed one is retried by the first run after PROMPT_RETRY_WINDOW_MS), and hands the reporter a `prompt_use` ref once the fetch landed.
  */
 
 import { observeRequest } from './httpClient';
@@ -62,6 +62,9 @@ export interface PromptClientOptions {
 
 const DEFAULT_TIMEOUT_MS = 2500;
 
+/** After a failed prompt fetch, runs resolve as failed immediately for this long before one run retries. */
+export const PROMPT_RETRY_WINDOW_MS = 30_000;
+
 /** Error body shape the daemon answers; the message is surfaced verbatim. */
 function request<T>(baseUrl: string, path: string, init: RequestInit, options: PromptClientOptions): Promise<T> {
   return observeRequest<T>(baseUrl, path, init, options.timeoutMs ?? DEFAULT_TIMEOUT_MS, options);
@@ -105,8 +108,9 @@ export async function listPrompts(baseUrl: string, filter: { name?: string; limi
 /**
  * The resolved-or-fallback prompt a `prompt` ref produces for one agent. The
  * fetch starts at construction (agent build) and is memoized for the agent's
- * lifetime; a failure warns once, that run uses the embedded instructions and
- * the next run retries the fetch.
+ * lifetime; a failure warns once, runs in the next
+ * PROMPT_RETRY_WINDOW_MS use the embedded instructions without a network await,
+ * then one run retries the fetch.
  */
 export interface RegistryPrompt {
   /** The fetched text, or `fallback()` when the fetch failed. */
@@ -153,10 +157,13 @@ export function registryPrompt(
               : 'the embedded instructions are used instead.')
         );
       }
+      failedAt = Date.now();
       return undefined;
     }
   };
-  // A success stays cached; a failure is dropped so the next run retries (a daemon that was briefly down at build recovers).
+  // A success stays cached. A failure is remembered for PROMPT_RETRY_WINDOW_MS (runs in it fail at once, no network await),
+  // then one run retries - so a daemon that was briefly down at build recovers without a restart.
+  let failedAt: number | undefined;
   let pending: Promise<ResolvedPrompt | undefined> | undefined;
   const start = (): Promise<ResolvedPrompt | undefined> => {
     const current = attempt();
@@ -169,7 +176,11 @@ export function registryPrompt(
   void start();
   return {
     ref: parsed,
-    text: async (fallback) => (await (pending ?? start()))?.text ?? (await fallback()),
+    text: async (fallback) => {
+      const inBackoff = pending === undefined && failedAt !== undefined && Date.now() - failedAt < PROMPT_RETRY_WINDOW_MS;
+      const prompt = inBackoff ? undefined : await (pending ?? start());
+      return prompt?.text ?? (await fallback());
+    },
     use: () => (resolved !== undefined ? { prompt_id: resolved.prompt_id, version: resolved.version } : undefined),
   };
 }

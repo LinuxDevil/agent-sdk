@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAgent } from './createAgent';
 import { startObserveDaemon, type ObserveDaemon } from './observe/daemon';
-import { publishPrompt } from './observe/promptClient';
+import { PROMPT_RETRY_WINDOW_MS, publishPrompt } from './observe/promptClient';
 import { observeExporterFromEnv } from './observe/reporter';
 import { mockModel, type MockModel } from './testing';
 import { textOf } from './providers/content';
@@ -20,6 +20,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
   while (daemons.length > 0) await daemons.pop()?.close();
@@ -159,6 +160,7 @@ describe('createAgent({ prompt }) - fallback + conflicts', () => {
     const url = `http://127.0.0.1:${port}`;
     vi.stubEnv('LOUSHO_OBSERVE', url);
     vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.useFakeTimers({ toFake: ['Date'] });
     const model = mockModel(['ok']);
     const agent = createAgent({ name: 'prompt-agent-retry', provider: model, prompt: 'mira@latest' });
     await expect(agent.send('hi')).rejects.toMatchObject({ code: 'LOUSHO_PROMPT_UNRESOLVED' });
@@ -166,9 +168,48 @@ describe('createAgent({ prompt }) - fallback + conflicts', () => {
     const daemon = await startObserveDaemon({ dbPath: ':memory:', port });
     daemons.push(daemon);
     await publishPrompt(url, { name: 'mira', text: 'Registry text after recovery.' });
+    // Inside the retry window the failure stands, even though the daemon is back.
+    await expect(agent.send('hi')).rejects.toMatchObject({ code: 'LOUSHO_PROMPT_UNRESOLVED' });
+    vi.setSystemTime(Date.now() + PROMPT_RETRY_WINDOW_MS + 1);
     await agent.send('hi');
     expect(systemPrompt(model)).toContain('Registry text after recovery.');
     await closeReporter('prompt-agent-retry', url);
+  });
+
+  it('with a fallback and the daemon down, runs inside the retry window make no network call; the first run after it retries', async () => {
+    const first = await start();
+    const port = first.port;
+    await first.close();
+    daemons.splice(daemons.indexOf(first), 1);
+    const url = `http://127.0.0.1:${port}`;
+    vi.stubEnv('LOUSHO_OBSERVE', url);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const realFetch = globalThis.fetch;
+    const promptFetches = vi.fn();
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      if (String(input).includes('/api/v1/prompts')) promptFetches();
+      return realFetch(input, init);
+    });
+    const model = mockModel(['ok', 'ok', 'ok']);
+    const agent = createAgent({ name: 'prompt-agent-window', provider: model, prompt: 'mira@latest', instructions: 'You are embedded.' });
+    await agent.send('hi');
+    expect(systemPrompt(model, 0)).toContain('You are embedded.');
+    const afterFirst = promptFetches.mock.calls.length;
+
+    const started = performance.now();
+    await agent.send('hi again');
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(promptFetches.mock.calls.length).toBe(afterFirst);
+    expect(systemPrompt(model, 1)).toContain('You are embedded.');
+
+    const daemon = await startObserveDaemon({ dbPath: ':memory:', port });
+    daemons.push(daemon);
+    await publishPrompt(url, { name: 'mira', text: 'Registry text after the window.' });
+    vi.setSystemTime(Date.now() + PROMPT_RETRY_WINDOW_MS + 1);
+    await agent.send('hi once more');
+    expect(systemPrompt(model, 2)).toContain('Registry text after the window.');
+    await closeReporter('prompt-agent-window', url);
   });
 
   it('falls back to instructions when they exist (no collector: warning text unchanged)', async () => {

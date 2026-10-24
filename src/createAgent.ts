@@ -1779,11 +1779,11 @@ function agentInstructions(config: CreateAgentConfig): AgentInstructions {
   const ref = promptIsRef ? (config.prompt as string) : config.prompt === undefined ? env?.LOUSHO_PROMPT : undefined;
   const embedded = promptIsRef ? config.instructions : (config.instructions ?? config.prompt);
   if (ref === undefined) return { instructions: embedded, option: config.prompt === undefined ? 'instructions' : 'prompt' };
-  return registryInstructions(ref, embedded, env);
+  return registryInstructions(ref, embedded, env, config.prompt === undefined ? 'instructions' : 'prompt');
 }
 
 /** The instructions of an agent with a registry `ref`: the fetched text, `embedded` as the fallback, or (without it) a run-time LOUSHO_PROMPT_UNRESOLVED. */
-function registryInstructions(ref: string, embedded: PerRun<string | undefined> | undefined, env: NodeJS.ProcessEnv | undefined): AgentInstructions {
+function registryInstructions(ref: string, embedded: PerRun<string | undefined> | undefined, env: NodeJS.ProcessEnv | undefined, option: AgentInstructions['option']): AgentInstructions {
   // No embedded fallback: an unresolvable ref fails the run rather than running with no system prompt.
   const failClosed = embedded === undefined;
   const fetched = registryPrompt(ref, { env, hasFallback: !failClosed });
@@ -1792,7 +1792,7 @@ function registryInstructions(ref: string, embedded: PerRun<string | undefined> 
     console.warn(
       `[lousho] prompt: '${ref}' needs a collector to resolve - set LOUSHO_OBSERVE=1 (or a daemon URL); the embedded instructions are used instead.`
     );
-    return { instructions: embedded, option: 'instructions' };
+    return { instructions: embedded, option };
   }
   return {
     option: 'instructions',
