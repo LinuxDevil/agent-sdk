@@ -60,7 +60,18 @@ export interface ObserveClientOptions {
   fetchFn?: typeof fetch;
 }
 
-export interface TraceListFilter {
+/** The O12 trace-list params: a half-open `[from, to)` window (ms epoch), search over the root's name/input/output, and server-side order (daemon default `start` + `desc`). */
+interface TraceListQuery {
+  from?: number;
+  to?: number;
+  q?: string;
+  min_duration_ms?: number;
+  model?: string;
+  sort?: TraceSort;
+  order?: 'asc' | 'desc';
+}
+
+export interface TraceListFilter extends TraceListQuery {
   agent_id?: string;
   project?: string;
   status?: string;
@@ -70,6 +81,9 @@ export interface TraceListFilter {
   limit?: number;
   offset?: number;
 }
+
+/** The trace list's server-side sort keys. */
+export type TraceSort = 'start' | 'duration' | 'tokens' | 'cost';
 
 export interface ScoreListFilter {
   trace_id?: string;

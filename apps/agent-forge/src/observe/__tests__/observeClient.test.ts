@@ -17,6 +17,16 @@ describe('ObserveClient', () => {
     expect(fetchFn).toHaveBeenCalledWith('/observe/api/v1/traces?agent_id=a1&status=error&limit=25&offset=50', expect.anything());
   });
 
+  it('passes the O12 window, search, model and sort params through', async () => {
+    const fetchFn = vi.fn(async () => jsonResponse(200, { traces: [], total: 0, limit: 50, offset: 0 }));
+    const client = clientWith(fetchFn as typeof fetch);
+    await client.listTraces({ from: 1000, to: 2000, q: 'refund', min_duration_ms: 500, model: 'gpt-4o', sort: 'duration', order: 'asc' });
+    expect(fetchFn).toHaveBeenCalledWith(
+      '/observe/api/v1/traces?from=1000&to=2000&q=refund&min_duration_ms=500&model=gpt-4o&sort=duration&order=asc',
+      expect.anything()
+    );
+  });
+
   it('maps a proxy 502 and a network failure to ObserveDaemonDownError', async () => {
     const via502 = clientWith((async () => jsonResponse(502, { error: 'unreachable' })) as typeof fetch);
     await expect(via502.listTraces()).rejects.toBeInstanceOf(ObserveDaemonDownError);

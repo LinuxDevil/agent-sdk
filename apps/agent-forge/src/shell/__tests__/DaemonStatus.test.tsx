@@ -2,7 +2,8 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DaemonStatus } from '../DaemonStatus';
-import { ObserveView } from '../../observe/ObserveView';
+import { TracesScreen } from '../../screens/traces/TracesScreen';
+import { TraceScreen } from '../../screens/traces/TraceScreen';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -17,6 +18,7 @@ function stubProxy() {
     if (!daemon.up) return new Response('', { status: 502 });
     if (url.endsWith('/health')) return new Response(JSON.stringify({ service: 'lousho-observe', ok: true }), { status: 200 });
     if (url.includes('/api/v1/agents')) return new Response(JSON.stringify({ agents: [] }), { status: 200 });
+    if (url.includes('/api/v1/traces/')) return new Response(JSON.stringify({ error: 'not found' }), { status: 404 });
     return new Response(JSON.stringify({ traces: [], total: 0, limit: 50, offset: 0 }), { status: 200 });
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -104,24 +106,29 @@ describe('DaemonStatus', () => {
 });
 
 describe('observe screens with the daemon down', () => {
-  it('keeps the deep-linked URL, shows the down state, and re-fetches the list in place on recovery', async () => {
-    window.location.hash = '#/traces/abc';
+  // The list stays quiet while down (it waits for the health probe); the trace screen re-polls its detail by design.
+  it.each([
+    { hash: '#/traces?status=error', node: () => <TracesScreen />, recovered: 'No traces match', quiet: true },
+    { hash: '#/traces/abc', node: () => <TraceScreen traceId="abc" />, recovered: 'Trace not found', quiet: false },
+  ])('keeps the deep-linked URL $hash, shows the down state, and re-fetches in place on recovery', async ({ hash, node, recovered, quiet }) => {
+    window.location.hash = hash;
     const { daemon, listCalls } = stubProxy();
-    await render(<ObserveView tab="traces" onTabChange={() => {}} />);
+    await render(node());
     await flush();
     expect(container.textContent).toContain('the observe daemon is not reachable');
-    // The panels may try once while the first probe is pending; after that, polls must not wake them.
+    // The screen may try once while the first probe is pending; after that, polls must not wake the list.
     const whileDown = listCalls();
     await poll();
     await poll();
     expect(container.textContent).toContain('the observe daemon is not reachable');
-    expect(listCalls()).toBe(whileDown);
-    expect(window.location.hash).toBe('#/traces/abc');
+    if (quiet) expect(listCalls()).toBe(whileDown);
+    expect(window.location.hash).toBe(hash);
 
     daemon.up = true;
+    const beforeUp = listCalls();
     await poll();
-    expect(listCalls()).toBeGreaterThan(whileDown);
-    expect(container.textContent).toContain('No traces match');
-    expect(window.location.hash).toBe('#/traces/abc');
+    expect(listCalls()).toBeGreaterThan(beforeUp);
+    expect(container.textContent).toContain(recovered);
+    expect(window.location.hash).toBe(hash);
   });
 });

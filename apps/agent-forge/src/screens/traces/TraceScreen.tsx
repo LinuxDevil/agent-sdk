@@ -7,6 +7,7 @@ import { useAgents, useDaemonDown, useDaemonHealth, useTraceDetail } from '../..
 import { navigate } from '../../router/router';
 import { useQueryState } from '../../router/useRoute';
 import { EmptyState } from '../../ui/EmptyState';
+import { tracesListPath } from './tracesUrl';
 import { TraceViewer, type TraceViewMode } from '../../ui/run/TraceViewer';
 import { TraceFeedback } from './TraceFeedback';
 import { TraceHeader } from './TraceHeader';
@@ -41,7 +42,7 @@ function MissingTrace({ traceId }: { traceId: string }) {
       title="Trace not found"
       hint={`No trace '${traceId}'. Eval traces can be missing if the run's reporter never flushed.`}
       action={
-        <button type="button" className="btn" onClick={() => navigate('/traces')}>
+        <button type="button" className="btn" onClick={() => navigate(tracesListPath())}>
           Back to traces
         </button>
       }

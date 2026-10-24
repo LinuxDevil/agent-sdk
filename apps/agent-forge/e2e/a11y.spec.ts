@@ -113,7 +113,7 @@ test('Ctrl+K opens the command palette; ? lists the shortcuts', async ({ page })
 });
 
 // One <main>, one h1, the banner and the primary nav on every screen, not just Agents.
-for (const route of ['#/traces', '#/traces/e2e-trace?obs=e2e-obs', '#/monitoring', '#/evals/scores', '#/settings', '#/playground']) {
+for (const route of ['#/traces', '#/traces?status=error', '#/traces/e2e-trace?obs=e2e-obs', '#/monitoring', '#/evals/scores', '#/settings', '#/playground']) {
   test(`${route} keeps the landmarks and exactly one main`, async ({ page }) => {
     await page.goto(`/?token=e2e-studio-token${route}`);
     await expect(page.locator('.screen-main')).toBeVisible();

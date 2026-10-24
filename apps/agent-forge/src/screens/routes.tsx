@@ -3,7 +3,7 @@ import { matchRoute, navigate } from '../router/router';
 import { useRoute } from '../router/useRoute';
 import { Topbar } from '../components/Topbar';
 import { SettingsPanel } from '../components/SettingsPanel';
-import { ObserveView, type ObserveTab } from '../observe/ObserveView';
+import { TracesScreen } from './traces/TracesScreen';
 import { AgentsScreen } from './agents/AgentsScreen';
 import { TraceScreen } from './traces/TraceScreen';
 import { MonitoringScreen } from './monitoring/MonitoringScreen';
@@ -65,13 +65,6 @@ export function useScreen(): ScreenId {
   return screen ?? 'agents';
 }
 
-/** Until its Phase 3 screen lands, Traces is the existing observe panel (Scores has its own screen now). */
-const OBSERVE_TAB: Partial<Record<ScreenId, ObserveTab>> = { traces: 'traces' };
-const TAB_PATH: Record<ObserveTab, string> = {
-  traces: '/traces',
-  scores: '/evals/scores',
-};
-
 const PLACEHOLDERS: Partial<Record<ScreenId, { title: string; blurb: string }>> = {
   threads: { title: 'Threads', blurb: 'Multi-turn conversations grouped by session, with every run in each thread.' },
   evals: { title: 'Evaluations', blurb: 'Datasets, evaluators and annotation queues for scoring runs.' },
@@ -102,15 +95,13 @@ export function Screens() {
   const screen = useLeaveAgentsGuard(useScreen());
   if (screen === 'agents') return <AgentsScreen />;
 
-  const observeTab = OBSERVE_TAB[screen];
   const placeholder = PLACEHOLDERS[screen];
   let content: ReactNode;
-  // Same element type at the same position for all three, so the drill-down filter survives a route change.
-  if (screen === 'trace') content = <TraceRoute />;
+  if (screen === 'traces') content = <TracesScreen />;
+  else if (screen === 'trace') content = <TraceRoute />;
   else if (screen === 'monitoring') content = <MonitoringScreen />;
   else if (screen === 'scores') content = <ScoresScreen />;
   else if (screen === 'playground') content = <PlaygroundRoute />;
-  else if (observeTab) content = <ObserveView tab={observeTab} onTabChange={(tab) => navigate(TAB_PATH[tab])} />;
   else if (placeholder) content = <Placeholder {...placeholder} />;
   else
     content = (
