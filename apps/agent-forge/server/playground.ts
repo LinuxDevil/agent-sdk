@@ -19,7 +19,14 @@
  */
 import type { Express, Response } from 'express';
 import { AgentExecutor } from '@lousho/build-ai-agent/executor';
-import { InMemoryApprovalStore, SDKError, type AgentEvent, type AgentSpec, type Message } from '@lousho/build-ai-agent';
+import {
+  InMemoryApprovalStore,
+  SDKError,
+  type AgentEvent,
+  type AgentEventUsage,
+  type AgentSpec,
+  type Message,
+} from '@lousho/build-ai-agent';
 import {
   fanOutExporters,
   observeExporter,
@@ -60,7 +67,7 @@ interface PlaygroundRunRequest {
 export type PlaygroundEvent =
   | { type: 'delta'; text: string }
   | { type: 'tool_call'; id: string; name: string; args: Record<string, unknown> }
-  | { type: 'done'; finishReason: string; text: string; traceId?: string; usage?: unknown }
+  | { type: 'done'; finishReason: string; text: string; traceId?: string; usage?: AgentEventUsage }
   | { type: 'error'; message: string; code?: string };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -167,19 +174,47 @@ function playgroundReporting(options: PlaygroundOptions): PlaygroundReporting {
   return {
     exporter: () =>
       fromEnv() ??
-      (own ??= observeExporter({ cwd: options.baseDir, ...options.observe, url: url(), agentName: PLAYGROUND_AGENT_NAME })),
+      (own ??= observeExporter({
+        cwd: options.baseDir,
+        // Parity with the LOUSHO_OBSERVE reporter: a daemon bound beyond loopback demands the bearer.
+        ...(process.env.LOUSHO_OBSERVE_TOKEN ? { token: process.env.LOUSHO_OBSERVE_TOKEN } : {}),
+        ...options.observe,
+        url: url(),
+        agentName: PLAYGROUND_AGENT_NAME,
+      })),
     captureContent: () => (fromEnv() ? envTargetIsLoopback() : isLoopbackUrl(url())),
   };
 }
 
-function openSse(res: Response): (event: PlaygroundEvent) => void {
+/** The SSE response of one run; `send` stops after the first terminal (`done` / `error`) event. */
+export interface SseStream {
+  send(event: PlaygroundEvent): void;
+  /** A terminal event was sent. */
+  readonly ended: boolean;
+}
+
+function openSse(res: Response): SseStream {
   res.status(200);
   res.setHeader('content-type', 'text/event-stream; charset=utf-8');
   res.setHeader('cache-control', 'no-cache, no-transform');
   res.setHeader('connection', 'keep-alive');
   res.flushHeaders();
-  return (event) => {
-    if (!res.writableEnded) res.write(`data: ${JSON.stringify(event)}\n\n`);
+  return sseWriter(res);
+}
+
+function sseWriter(res: Response): SseStream {
+  let ended = false;
+  return {
+    get ended() {
+      return ended;
+    },
+    send(event) {
+      if (ended) return;
+      ended = event.type === 'done' || event.type === 'error';
+      if (!res.writableEnded) res.write(`data: ${JSON.stringify(event)}
+
+`);
+    },
   };
 }
 
@@ -209,9 +244,24 @@ function playgroundSpec(request: PlaygroundRunRequest): AgentSpec {
   return { name: PLAYGROUND_AGENT_NAME, prompt: '', provider: providerOf(request.model), ...(request.tools?.length ? { tools: request.tools } : {}) };
 }
 
-async function streamRun(res: Response, request: PlaygroundRunRequest, options: PlaygroundOptions, reporting: PlaygroundReporting): Promise<void> {
-  const send = openSse(res);
+/**
+ * Forwards a run's events to `stream` and guarantees one terminal event: a
+ * run that failed (`run.done` 'error') or stopped without `run.done` ends
+ * with an `error` carrying its first error's message.
+ */
+export async function pumpRunEvents(events: AsyncIterable<AgentEvent>, stream: SseStream, traceId: () => string | undefined): Promise<void> {
+  let failure: string | undefined;
+  for await (const event of events) {
+    if (event.type === 'error') failure ??= event.error.message;
+    const mapped = playgroundEventOf(event, traceId());
+    if (mapped) stream.send(mapped);
+  }
+  if (!stream.ended) stream.send({ type: 'error', message: failure ?? 'The run ended without a result' });
+}
+
+async function streamRun(res: Response, stream: SseStream, request: PlaygroundRunRequest, options: PlaygroundOptions, reporting: PlaygroundReporting): Promise<void> {
   const abort = new AbortController();
+  // The client went away: abort the run (the reporter still records it, as aborted).
   res.on('close', () => abort.abort());
   let traceId: string | undefined;
   try {
@@ -229,19 +279,27 @@ async function streamRun(res: Response, request: PlaygroundRunRequest, options: 
       captureContent: reporting.captureContent(),
       exporter: fanOutExporters([rootSpanStamper(request.promptRef, (id) => (traceId = id)), reporting.exporter()]),
     });
-    let failure: PlaygroundEvent | undefined;
-    for await (const event of run) {
-      if (event.type === 'error') failure ??= { type: 'error', message: event.error.message };
-      const mapped = playgroundEventOf(event, traceId);
-      if (mapped) send(mapped);
-      else if (event.type === 'run.done' && event.finishReason === 'error') send(failure ?? { type: 'error', message: 'The run failed' });
-    }
+    await pumpRunEvents(run, stream, () => traceId);
     await run.result.catch(() => undefined);
   } catch (error) {
-    // Unknown provider, missing key, unknown tool: the run never started.
-    send(errorEvent(error));
+    // Unknown provider, missing key, unknown tool (the run never started), or a throw mid-stream.
+    stream.send(errorEvent(error));
   }
   res.end();
+}
+
+/**
+ * A failure past the SSE headers cannot become app.ts's 500 JSON (headers
+ * are sent): it ends the stream with an `error` event (unless a terminal
+ * event already went out) instead of reaching the error handler.
+ */
+function failStream(res: Response, stream: SseStream, error: unknown, next: (error: unknown) => void): void {
+  if (!res.headersSent) {
+    next(error);
+    return;
+  }
+  stream.send(errorEvent(error));
+  if (!res.writableEnded) res.end();
 }
 
 /** Registers `POST /playground/run`. */
@@ -253,6 +311,7 @@ export function registerPlaygroundRoute(app: Express, options: PlaygroundOptions
       res.status(400).json({ error: parsed });
       return;
     }
-    streamRun(res, parsed, options, reporting).catch(next);
+    const stream = openSse(res);
+    streamRun(res, stream, parsed, options, reporting).catch((error) => failStream(res, stream, error, next));
   });
 }

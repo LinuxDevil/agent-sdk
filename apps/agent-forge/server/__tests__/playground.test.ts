@@ -2,6 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import * as http from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { LLMProviderRegistry, createMockProvider, type AgentEvent } from '@lousho/build-ai-agent';
 import request from 'supertest';
 import { createApp } from '../app';
 import { RunManager } from '../runRegistry';
@@ -9,7 +12,7 @@ import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { SecretsStore } from '../secretsStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
-import { substituteVariables, type PlaygroundEvent } from '../playground';
+import { pumpRunEvents, substituteVariables, type PlaygroundEvent, type SseStream } from '../playground';
 
 type Ingested = { type: string; data: Record<string, unknown> };
 
@@ -37,6 +40,7 @@ describe('POST /playground/run', () => {
   let baseDir: string;
   let app: ReturnType<typeof createApp>;
   let ingested: Ingested[];
+  let authHeaders: (string | undefined)[];
   const savedObserve = process.env.LOUSHO_OBSERVE;
 
   beforeEach(() => {
@@ -45,9 +49,12 @@ describe('POST /playground/run', () => {
     // Each test's reporter writes to its own array: an earlier test's reporter may still flush.
     const sink: Ingested[] = [];
     ingested = sink;
+    const auth: (string | undefined)[] = [];
+    authHeaders = auth;
     const fetchFn = (async (_url: string, init?: RequestInit) => {
       const body = JSON.parse(String(init?.body ?? '{}')) as { batch?: Ingested[] };
       sink.push(...(body.batch ?? []));
+      auth.push((init?.headers as Record<string, string> | undefined)?.authorization);
       return new Response(JSON.stringify({ accepted: body.batch?.length ?? 0 }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -73,6 +80,7 @@ describe('POST /playground/run', () => {
   });
 
   afterEach(() => {
+    delete process.env.LOUSHO_OBSERVE_TOKEN;
     if (savedObserve === undefined) delete process.env.LOUSHO_OBSERVE;
     else process.env.LOUSHO_OBSERVE = savedObserve;
     fs.rmSync(baseDir, { recursive: true, force: true });
@@ -137,6 +145,47 @@ describe('POST /playground/run', () => {
     expect(attrs['lousho.prompt.ref']).toBe('greeter@prod');
   });
 
+  it('sends LOUSHO_OBSERVE_TOKEN as the bearer, like the env reporter', async () => {
+    process.env.LOUSHO_OBSERVE_TOKEN = 'test-observe-token';
+    await runPlayground(app, { model: 'mock', messages: [{ role: 'user', content: 'hi' }] });
+    await vi.waitFor(() => expect(rootEnd()).toBeDefined());
+    expect(authHeaders.length).toBeGreaterThan(0);
+    expect(authHeaders.every((h) => h === 'Bearer test-observe-token')).toBe(true);
+  });
+
+  it('aborts the run when the client disconnects mid-stream', async () => {
+    // A provider that waits 10s before answering: only an abort ends the run sooner.
+    LLMProviderRegistry.register('slowmock', (config) => createMockProvider({ ...config, name: 'slowmock', delay: 10_000 }));
+    const server = http.createServer(app).listen(0, '127.0.0.1');
+    await new Promise((resolve) => server.once('listening', resolve));
+    const { port } = server.address() as AddressInfo;
+    let received = '';
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const req = http.request(
+          { host: '127.0.0.1', port, path: '/playground/run', method: 'POST', headers: { 'content-type': 'application/json' } },
+          (res) => {
+            res.setEncoding('utf8');
+            res.on('data', (chunk: string) => (received += chunk));
+            // Headers are flushed before the model call: hang up while the run is in flight.
+            setTimeout(() => {
+              req.destroy();
+              resolve();
+            }, 100);
+          }
+        );
+        req.on('error', () => undefined);
+        req.on('timeout', reject);
+        req.end(JSON.stringify({ model: 'slowmock', messages: [{ role: 'user', content: 'hi' }] }));
+      });
+      // The run's root span closes well before the provider's 10s delay.
+      await vi.waitFor(() => expect(rootEnd()).toBeDefined(), { timeout: 4000 });
+      expect(received).not.toContain('"type":"done"');
+    } finally {
+      server.close();
+    }
+  });
+
   it('streams a tool_call event for a requested tool', async () => {
     const { events } = await runPlayground(app, {
       model: 'mock',
@@ -183,5 +232,49 @@ describe('substituteVariables', () => {
     expect(substituteVariables('{a} and {b} and {a}', { a: 'x' })).toBe('x and {b} and x');
     expect(substituteVariables('no vars', undefined)).toBe('no vars');
     expect(substituteVariables('{toString}', {})).toBe('{toString}');
+  });
+});
+
+describe('pumpRunEvents', () => {
+  const recorder = () => {
+    const sent: PlaygroundEvent[] = [];
+    const stream: SseStream = {
+      send: (event) => {
+        if (!stream.ended) sent.push(event);
+      },
+      get ended() {
+        return sent.some((e) => e.type === 'done' || e.type === 'error');
+      },
+    };
+    return { sent, stream };
+  };
+  async function* events(...list: Partial<AgentEvent>[]): AsyncIterable<AgentEvent> {
+    for (const event of list) yield event as AgentEvent;
+  }
+
+  it('ends with an error event when the run stops after an error without run.done', async () => {
+    const { sent, stream } = recorder();
+    await pumpRunEvents(events({ type: 'text.delta', text: 'par' } as Partial<AgentEvent>, { type: 'error', error: { name: 'Error', message: 'boom' } } as Partial<AgentEvent>), stream, () => undefined);
+    expect(sent).toEqual([{ type: 'delta', text: 'par' }, { type: 'error', message: 'boom' }]);
+  });
+
+  it('ends with an error event when the stream has no events at all', async () => {
+    const { sent, stream } = recorder();
+    await pumpRunEvents(events(), stream, () => undefined);
+    expect(sent).toEqual([{ type: 'error', message: 'The run ended without a result' }]);
+  });
+
+  it("turns run.done 'error' into one error event with the run's first error", async () => {
+    const { sent, stream } = recorder();
+    await pumpRunEvents(
+      events(
+        { type: 'error', error: { name: 'Error', message: 'first' } } as Partial<AgentEvent>,
+        { type: 'error', error: { name: 'Error', message: 'second' } } as Partial<AgentEvent>,
+        { type: 'run.done', finishReason: 'error', text: '' } as Partial<AgentEvent>
+      ),
+      stream,
+      () => 't1'
+    );
+    expect(sent).toEqual([{ type: 'error', message: 'first' }]);
   });
 });

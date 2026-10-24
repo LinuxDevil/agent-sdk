@@ -2245,11 +2245,16 @@ A bad body gets `400 { error }`. Otherwise the response is `200` with
 | `done` | `finishReason`, `text` (the whole reply), `traceId` (the run's trace in the observe daemon), `usage` when known. Last event of a run that finished. |
 | `error` | `message`, `code` when it is an SDK error (`LOUSHO_PROVIDER_UNKNOWN` for an unknown provider, `LOUSHO_PROVIDER_MISSING_API_KEY`, ...). Last event of a run that failed or never started. |
 
+Every stream ends with exactly one `done` or `error`, even a run that stops
+without a result. `usage` has the `run.done` event's usage shape
+(`AgentEventUsage`).
+
 Closing the connection aborts the run. Every run reports to the observe
 daemon the Studio reads (`LOUSHO_OBSERVE_URL`, default
 `http://127.0.0.1:7777`, or `LOUSHO_OBSERVE` when set) as agent
 `playground`, with `lousho.prompt.ref` on the run's root span when
-`promptRef` is given. A daemon that is down does not slow or fail the run.
+`promptRef` is given. `LOUSHO_OBSERVE_TOKEN` is sent as the bearer token, for a
+daemon bound beyond loopback. A daemon that is down does not slow or fail the run.
 
 ## Settings, secrets and deploy wiring
 
