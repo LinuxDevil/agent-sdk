@@ -4,7 +4,8 @@ import { useRoute } from '../router/useRoute';
 import { Topbar } from '../components/Topbar';
 import { SettingsPanel } from '../components/SettingsPanel';
 import { ObserveView, type ObserveTab } from '../observe/ObserveView';
-import { AgentsScreen } from './AgentsScreen';
+import { AgentsScreen } from './agents/AgentsScreen';
+import { useLeaveAgentsGuard } from './agents/useLeaveAgentsGuard';
 import { Placeholder } from './Placeholder';
 
 export type ScreenId =
@@ -90,9 +91,9 @@ function ScreenFrame({ children }: { children: ReactNode }) {
   );
 }
 
-/** Renders the screen the hash route names. */
+/** Renders the screen the hash route names; leaving Agents with unsaved changes asks first. */
 export function Screens() {
-  const screen = useScreen();
+  const screen = useLeaveAgentsGuard(useScreen());
   if (screen === 'agents') return <AgentsScreen />;
 
   const observeTab = OBSERVE_TAB[screen];

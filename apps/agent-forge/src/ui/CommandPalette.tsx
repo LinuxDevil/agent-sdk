@@ -5,7 +5,6 @@ import { NAV_ITEMS } from '../shell/NavRail';
 import { SHORTCUTS, matchShortcut } from '../shell/shortcuts';
 import { toggleTheme } from '../shell/theme';
 import { useAppState } from '../state/AppState';
-import { useToast } from './Toast';
 
 /** One runnable entry in the command palette. */
 interface Command {
@@ -192,19 +191,11 @@ function ShortcutSheet({ onClose }: { onClose: () => void }) {
  * in the app shell; it owns the window keydown listener for both.
  */
 export function CommandPalette() {
-  const { agents, switchAgent } = useAppState();
-  const toast = useToast();
+  const { agents } = useAppState();
   const [open, setOpen] = useState<'palette' | 'help' | null>(null);
   const agentRefs = useMemo(() => agents.map((a) => ({ id: a.id, name: a.spec.name || a.id })), [agents]);
-  const openAgent = useCallback(
-    (id: string) => {
-      navigate(`/agents/${encodeURIComponent(id)}`);
-      switchAgent(id).catch((err: unknown) =>
-        toast.show({ tone: 'error', message: `Could not open agent ${id}: ${err instanceof Error ? err.message : String(err)}` }),
-      );
-    },
-    [switchAgent, toast],
-  );
+  // The hash drives selection (screens/agents/useAgentRouteSync.ts): it asks about unsaved changes and reports a failed open.
+  const openAgent = useCallback((id: string) => navigate(`/agents/${encodeURIComponent(id)}`), []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {

@@ -7,6 +7,7 @@ import { AGENT_TEMPLATES, type TemplateId } from '../canvas/templates';
 import { addHookToNode, addNode } from '../canvas/graphMutations';
 import { pickHookTemplate, viewportCentrePosition } from '../canvas/paletteActions';
 import { StatusPill } from '../ui/StatusPill';
+import { navigate } from '../router/router';
 import { errorMessage } from './errorMessage';
 import { tabIds, tabListKeyDown } from './tabs';
 import { agentIdProblem } from '../../shared/agentId';
@@ -180,7 +181,7 @@ function AgentCardActions({ entry, busy, onRename }: { entry: AgentEntry; busy: 
 }
 
 function AgentCard({ entry }: { entry: AgentEntry }) {
-  const { agentId, switchAgent, agentStatuses } = useAppState();
+  const { agentId, agentStatuses } = useAppState();
   const [renaming, setRenaming] = useState(false);
   // Real run status pushed over WS (see AppState's
   // agentStatuses), replacing the static "active"/"idle"
@@ -196,7 +197,8 @@ function AgentCard({ entry }: { entry: AgentEntry }) {
         type="button"
         className="agent-card-main"
         aria-current={selected ? 'true' : undefined}
-        onClick={() => void switchAgent(entry.id)}
+        // The hash drives selection (screens/agents/agentRoute.ts), so back/forward and reload follow it.
+        onClick={() => navigate(`/agents/${encodeURIComponent(entry.id)}`)}
       >
         <span className="agent-card-top">
           <span className="agent-name">{entry.id}</span>

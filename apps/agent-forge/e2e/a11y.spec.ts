@@ -111,3 +111,24 @@ test('Ctrl+K opens the command palette; ? lists the shortcuts', async ({ page })
   await page.keyboard.press('Escape');
   await expect(sheet).toHaveCount(0);
 });
+
+// One <main>, one h1, the banner and the primary nav on every screen, not just Agents.
+for (const route of ['#/traces', '#/monitoring', '#/settings', '#/playground']) {
+  test(`${route} keeps the landmarks and exactly one main`, async ({ page }) => {
+    await page.goto(`/?token=e2e-studio-token${route}`);
+    await expect(page.locator('.screen-main')).toBeVisible();
+    await expect(page.getByRole('main')).toHaveCount(1);
+    await expect(page.locator('main')).toHaveCount(1);
+    await expect(page.getByRole('banner')).toHaveCount(1);
+    await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(1);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Agent Forge');
+    await expect(page.getByRole('navigation', { name: 'Primary' }).locator('[aria-current="page"]')).toHaveCount(1);
+  });
+}
+
+test('#/settings shows the settings panel inside the screen', async ({ page }) => {
+  await page.goto('/?token=e2e-studio-token#/settings');
+  const main = page.getByRole('main');
+  await expect(main.getByRole('heading', { name: 'Settings' })).toBeAttached();
+  await expect(main.getByRole('combobox', { name: 'Active profile' })).toBeVisible();
+});

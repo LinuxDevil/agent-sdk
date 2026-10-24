@@ -110,7 +110,8 @@ describe('CommandPalette', () => {
     key('ArrowUp', {}, input());
     key('Enter', {}, input());
     expect(window.location.hash).toBe('#/agents/researcher');
-    expect(appState.switchAgent).toHaveBeenCalledWith('researcher');
+    // Only the hash: the Agents screen's route sync opens it (and asks about unsaved changes).
+    expect(appState.switchAgent).not.toHaveBeenCalled();
   });
 
   it('pasting a trace id offers "Open trace <id>" first', () => {
@@ -171,15 +172,14 @@ describe('CommandPalette', () => {
 });
 
 describe('CommandPalette edge cases', () => {
-  it('surfaces a failed agent switch as an error toast', async () => {
-    appState.switchAgent.mockImplementation(() => Promise.reject(new Error('not found')));
+  // A failed open is reported by the Agents route sync (screens/agents/__tests__/agentRoute.test.tsx).
+  it('opening an agent never switches it directly', () => {
     mount();
     key('k', { ctrlKey: true });
     type('support bot');
     key('Enter', {}, input());
-    await act(async () => {});
-    expect(appState.switchAgent).toHaveBeenCalledWith('support-bot');
-    expect(document.querySelector('[role="alert"]')?.textContent).toContain('Could not open agent support-bot: not found');
+    expect(window.location.hash).toBe('#/agents/support-bot');
+    expect(appState.switchAgent).not.toHaveBeenCalled();
   });
 
   it('ignores Enter while an IME composition is in progress', () => {
