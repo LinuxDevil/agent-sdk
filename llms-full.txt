@@ -13964,7 +13964,7 @@ with `[redacted]`:
 | `sk-…` (OpenAI, OpenRouter `sk-or-v1-…`, Anthropic `sk-ant-…`) | `sk-or-v1-0123…` |
 | `lsv2_…` (LangSmith) | `lsv2_pt_0123…` |
 | `ghp_…`, `gho_…`, `ghu_…`, `ghs_…`, `ghr_…`, `github_pat_…` (GitHub) | `ghp_0123…` |
-| `AKIA` + 16 characters (AWS access key id) | `AKIAIOSFODNN7EXAMPLE` |
+| `AKIA` + 16 uppercase letters or digits (AWS access key id) | `AKIA…EXAMPLE` |
 | `Bearer <token>` (the word stays: `Bearer [redacted]`) | `Bearer eyJhbGci…` |
 
 Each shape needs a long token (16+ characters) after its prefix, so words like
