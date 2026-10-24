@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { ObserveView } from '../ObserveView';
+import { TraceDetailView } from '../TraceDetailView';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -64,5 +65,27 @@ describe('ObserveView', () => {
     await flush();
     expect(container.textContent).not.toContain('the observe daemon is not reachable');
     expect(container.textContent).toContain('No traces match');
+  });
+
+  it('a missing trace keeps a Traces button that goes back, plus the flush hint', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ error: "No trace 'gone'." }), { status: 404 }))
+    );
+    const onBack = vi.fn();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root!.render(<TraceDetailView traceId="gone" onBack={onBack} />);
+    });
+    await flush();
+    await flush();
+    expect(container.textContent).toContain("No trace 'gone'");
+    expect(container.textContent).toContain('reporter never flushed');
+    const back = Array.from(container.querySelectorAll('button')).find((b) => /Traces/.test(b.textContent ?? ''));
+    expect(back).toBeDefined();
+    act(() => back!.click());
+    expect(onBack).toHaveBeenCalledTimes(1);
   });
 });

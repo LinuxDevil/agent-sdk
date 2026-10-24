@@ -173,7 +173,21 @@ export function TraceDetailView({ traceId, onBack }: { traceId: string; onBack: 
 
   if (loading && data === undefined) return <div className="observe-loading">Loading trace...</div>;
   if (error) return error instanceof ObserveDaemonDownError ? <ObserveDaemonDown /> : <ObserveError error={error} />;
-  if (!data) return <div className="observe-empty"><p>No trace '{traceId}'.</p></div>;
+  if (!data) {
+    return (
+      <div className="obs-detail">
+        <div className="observe-panel-head">
+          <button className="btn btn-ghost" onClick={onBack}>
+            &larr; Traces
+          </button>
+        </div>
+        <div className="observe-empty">
+          <p>No trace '{traceId}'.</p>
+          <p className="observe-meta">Eval traces can be missing if the run's reporter never flushed.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="obs-detail">
