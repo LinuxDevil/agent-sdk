@@ -30,6 +30,7 @@ import { SDKError } from '../execution/errors';
 import type { Span, TraceExporter } from '../execution/tracing';
 import { VERSION } from '../version';
 import { OBSERVE_DEFAULT_PORT, type IngestEvent, type ObservationData, type ObservationKind, type PromptUseData } from './envelope';
+import { observeTargetFromEnv } from './emit';
 import { hostName, resolveIdentity, resolveProject } from './identity';
 
 /** The registry prompt a run used (`prompt_use` minus its `obs_id`, which the reporter fills with the root span's id). */
@@ -460,11 +461,7 @@ const envReporterSet = new WeakSet<TraceExporter>();
 export function observeUrlFromEnv(
   env: NodeJS.ProcessEnv | undefined = typeof process !== 'undefined' ? process.env : undefined
 ): string | undefined {
-  const flag = env?.LOUSHO_OBSERVE?.trim();
-  if (!flag || flag === '0' || flag.toLowerCase() === 'false' || env === undefined) return undefined;
-  return flag === '1' || flag.toLowerCase() === 'true'
-    ? `http://127.0.0.1:${env.LOUSHO_OBSERVE_PORT || String(OBSERVE_DEFAULT_PORT)}`
-    : flag;
+  return observeTargetFromEnv(env)?.url;
 }
 
 /**

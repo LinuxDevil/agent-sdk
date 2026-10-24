@@ -6,7 +6,7 @@
  * The rules mirror the reporter's (src/observe/reporter.ts) because the
  * contract is the same:
  * - `LOUSHO_OBSERVE` decides where events go: `1`/`true` -> the loopback
- *   default, a URL -> that collector, unset/`0`/`false` -> nothing is sent
+ *   default, a URL -> that collector, unset/`0`/`false`/`off` -> nothing is sent
  *   ({@link observeTargetFromEnv} returns `undefined`).
  * - One `POST /api/v1/ingest` per call, `{ batch: [...] }` as the envelope
  *   declares; the daemon's ingest is the only write path.
@@ -29,11 +29,22 @@ export interface ObserveTarget {
 
 const DEFAULT_TIMEOUT_MS = 5000;
 
+const OFF_WORDS = new Set(['', '0', 'false', 'off', 'no', 'none', 'disabled']);
+const ON_WORDS = new Set(['1', 'true', 'on', 'yes']);
+let warnedInvalidFlag = false;
+
+/** Test hook: re-arm the once-per-process invalid `LOUSHO_OBSERVE` warning. */
+export function resetObserveEnvWarning(): void {
+  warnedInvalidFlag = false;
+}
+
 /**
  * The collector `LOUSHO_OBSERVE` points at, with the same resolution the
- * reporter applies (`observeExporterFromEnv`): `1`/`true` -> the loopback
- * daemon (`LOUSHO_OBSERVE_PORT`, default 7777), a URL -> that collector,
- * unset/`0`/`false` -> `undefined` (emission is off).
+ * reporter applies (`observeExporterFromEnv`): `1`/`true`/`on`/`yes` -> the
+ * loopback daemon (`LOUSHO_OBSERVE_PORT`, default 7777), an `http(s)://` URL
+ * -> that collector, unset/`0`/`false`/`off`/`no`/`none`/`disabled`
+ * (any case) -> `undefined` (emission is off). Anything else is a typo: it
+ * warns once per process and disables, rather than being posted to as a URL.
  *
  * `lousho eval --observe` sets `LOUSHO_OBSERVE=1` inside the vitest worker
  * when the variable is unset, so this one check covers both the env-driven
@@ -41,11 +52,23 @@ const DEFAULT_TIMEOUT_MS = 5000;
  */
 export function observeTargetFromEnv(env: NodeJS.ProcessEnv | undefined = typeof process !== 'undefined' ? process.env : undefined): ObserveTarget | undefined {
   const flag = env?.LOUSHO_OBSERVE?.trim();
-  if (!env || !flag || flag === '0' || flag.toLowerCase() === 'false') return undefined;
-  const url =
-    flag === '1' || flag.toLowerCase() === 'true'
-      ? `http://127.0.0.1:${env.LOUSHO_OBSERVE_PORT || String(OBSERVE_DEFAULT_PORT)}`
-      : flag;
+  if (!env || flag === undefined) return undefined;
+  const word = flag.toLowerCase();
+  if (OFF_WORDS.has(word)) return undefined;
+  let url: string;
+  if (ON_WORDS.has(word)) {
+    url = `http://127.0.0.1:${env.LOUSHO_OBSERVE_PORT || String(OBSERVE_DEFAULT_PORT)}`;
+  } else if (/^https?:\/\//i.test(flag)) {
+    url = flag;
+  } else {
+    if (!warnedInvalidFlag) {
+      warnedInvalidFlag = true;
+      console.warn(
+        `[lousho observe] ignoring LOUSHO_OBSERVE=${JSON.stringify(flag)}: expected 1/true/on/yes, an http(s):// URL, or 0/false/off/no/none/disabled. Reporting is disabled.`
+      );
+    }
+    return undefined;
+  }
   return {
     url: url.replace(/\/+$/, ''),
     ...(env.LOUSHO_OBSERVE_TOKEN ? { token: env.LOUSHO_OBSERVE_TOKEN } : {}),

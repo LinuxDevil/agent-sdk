@@ -20,6 +20,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fetchPrompt, listPrompts, parsePromptRef, publishPrompt, type PromptRef } from '../observe/promptClient';
 import { OBSERVE_DEFAULT_PORT } from '../observe/envelope';
+import { observeTargetFromEnv } from '../observe/emit';
 import { exitCodeFor, parseCommand, portValue, stringValue, usageError, type CommandSpec } from './args';
 
 const USAGE = `Usage: lousho prompt <command> [options]
@@ -91,10 +92,9 @@ function daemonUrl(values: Record<string, string | boolean | (string | boolean)[
   const url = stringValue(values.url);
   if (url !== undefined) return url.replace(/\/+$/, '');
   const port = portValue(spec, values.port, envPort(env));
-  const flag = env.LOUSHO_OBSERVE?.trim();
-  if (flag && flag !== '0' && flag.toLowerCase() !== 'false' && flag !== '1' && flag.toLowerCase() !== 'true') {
-    return flag.replace(/\/+$/, '');
-  }
+  const fromEnv = observeTargetFromEnv(env)?.url;
+  // A bare on-word resolves to the env port, which --port must still override.
+  if (fromEnv !== undefined && !/^http:\/\/127\.0\.0\.1:\d+$/.test(fromEnv)) return fromEnv;
   return `http://127.0.0.1:${port}`;
 }
 
