@@ -11,6 +11,7 @@ import type {
   ObserveAgentRow,
   ObserveHealth,
   ObserveInsights,
+  ObserveScorePassRate,
   ObserveScoreRow,
   ObserveTraceDetail,
   ObserveTraceList,
@@ -106,4 +107,52 @@ export function useInsights(filter: InsightsFilter, refreshKey?: unknown): Obser
 
 export function useScores(filter: ScoreListFilter, refreshKey?: unknown): ObserveQuery<ObserveScoreRow[]> {
   return useObserveQuery(() => observeClient.listScores(filter), [JSON.stringify(filter), refreshKey]);
+}
+
+/**
+ * One eval's score rows (`eval=<name>` plus `filter`); no request while
+ * `evalName` is empty. `data` is only ever rows of the current `evalName`:
+ * after a switch it stays undefined (loading) until the new eval's rows land.
+ */
+export function useEvalScores(
+  evalName: string,
+  filter: Omit<ScoreListFilter, 'eval'>,
+  refreshKey?: unknown
+): ObserveQuery<ObserveScoreRow[] | undefined> {
+  const query = useObserveQuery(
+    async () => (evalName ? { evalName, rows: await observeClient.listScores({ ...filter, eval: evalName }) } : undefined),
+    [evalName, JSON.stringify(filter), refreshKey]
+  );
+  return { ...query, data: query.data?.evalName === evalName ? query.data.rows : undefined };
+}
+
+export function useScorePassRates(
+  filter: Omit<ScoreListFilter, 'limit'>,
+  refreshKey?: unknown
+): ObserveQuery<ObserveScorePassRate[]> {
+  return useObserveQuery(() => observeClient.scorePassRates(filter), [JSON.stringify(filter), refreshKey]);
+}
+
+/**
+ * The observe screens' shared "daemon down" verdict: the health probe says so,
+ * or one of `queries` failed to reach it. While down, every query re-runs each
+ * `pollMs`, so the screen recovers in place (URL untouched) once the daemon is
+ * back even if the health probe never saw it go.
+ */
+export function useDaemonDown(
+  healthDown: boolean,
+  queries: readonly Pick<ObserveQuery<unknown>, 'error' | 'refresh'>[],
+  pollMs = 5000
+): boolean {
+  const down = healthDown || queries.some((q) => q.error instanceof ObserveDaemonDownError);
+  const latest = useRef(queries);
+  latest.current = queries;
+  useEffect(() => {
+    if (!down || pollMs <= 0) return undefined;
+    const timer = setInterval(() => {
+      for (const q of latest.current) q.refresh();
+    }, pollMs);
+    return () => clearInterval(timer);
+  }, [down, pollMs]);
+  return down;
 }

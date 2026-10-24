@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { AgentSelect, ObserveDaemonDown, ObserveError } from '../../observe/chrome';
-import { ObserveDaemonDownError } from '../../observe/observeClient';
-import { useAgents, useDaemonHealth, useInsights } from '../../observe/useObserve';
+import { useAgents, useDaemonDown, useDaemonHealth, useInsights } from '../../observe/useObserve';
 import { navigate } from '../../router/router';
 import { useQueryState } from '../../router/useRoute';
 import { EmptyState } from '../../ui/EmptyState';
@@ -68,9 +67,9 @@ function useMonitoringData(win: MonitoringWindow, agentId: string) {
     { since: chart.from, until: chart.to, agent_id: agentId || undefined, granularity: chart.granularity },
     refreshKey,
   );
-  const errors = [agents.error, fleetInsights.error, insights.error];
-  const down = health.down || errors.some((e) => e instanceof ObserveDaemonDownError);
-  return { agents, fleetInsights, insights, chart, down, error: errors.find((e) => e !== undefined) };
+  const queries = [agents, fleetInsights, insights];
+  const down = useDaemonDown(health.down, queries);
+  return { agents, fleetInsights, insights, chart, down, error: queries.find((q) => q.error)?.error };
 }
 
 /**

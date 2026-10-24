@@ -90,4 +90,15 @@ describe('ObserveClient', () => {
     const down = clientWith((async () => jsonResponse(502, {})) as typeof fetch);
     await expect(down.postScore({ trace_id: 'x', name: 'feedback', value: 0 })).rejects.toBeInstanceOf(ObserveDaemonDownError);
   });
+
+  it('scorePassRates asks for the eval aggregate with the score filters', async () => {
+    const evals = [{ name: 'support', count: 2, passed: 1, pass_rate: 0.5, avg_value: 0.5, last_ts: 1 }];
+    const fetchFn = vi.fn(async () => jsonResponse(200, { evals }));
+    const client = clientWith(fetchFn as typeof fetch);
+    expect(await client.scorePassRates({ agent_id: 'a1', source: 'eval', since: 10, until: 20 })).toEqual(evals);
+    expect(fetchFn).toHaveBeenCalledWith(
+      '/observe/api/v1/scores?agent_id=a1&source=eval&since=10&until=20&aggregate=eval',
+      expect.anything()
+    );
+  });
 });

@@ -76,6 +76,22 @@ export interface ObserveScoreRow {
   created_at: number;
 }
 
+/** One row of `GET /api/v1/scores?aggregate=eval`: every score whose name is `<eval>` or `<eval>/*`, folded. */
+export interface ObserveScorePassRate {
+  /** The eval name (the score-name prefix before the first '/'). */
+  name: string;
+  /** Score rows in the group (the eval-level row of each case plus its per-check rows). */
+  count: number;
+  /** Rows that passed: no failure comment, or a perfect 1. */
+  passed: number;
+  /** `passed / count`. */
+  pass_rate: number;
+  /** Mean value over the group's non-null values; null when every value is null. */
+  avg_value: number | null;
+  /** Newest row's `created_at`. */
+  last_ts: number;
+}
+
 export interface ObserveTraceDetail {
   trace_id: string;
   observations: ObserveObservationRow[];

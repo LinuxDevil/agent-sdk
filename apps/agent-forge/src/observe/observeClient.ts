@@ -14,6 +14,7 @@ import type {
   ObserveAgentRow,
   ObserveHealth,
   ObserveInsights,
+  ObserveScorePassRate,
   ObserveScoreRow,
   ObserveTraceDetail,
   ObserveTraceList,
@@ -72,8 +73,17 @@ export interface TraceListFilter {
 
 export interface ScoreListFilter {
   trace_id?: string;
+  /** Exact score name (`<evalName>` is the eval-level row of each case). */
   name?: string;
+  /** Eval name: every score named `<eval>` or `<eval>/<check>`. */
+  eval?: string;
   agent_id?: string;
+  /** `eval` | `judge` | `human`. */
+  source?: string;
+  /** `created_at` lower bound (epoch ms). */
+  since?: number;
+  /** `created_at` upper bound (epoch ms). */
+  until?: number;
   limit?: number;
 }
 
@@ -198,6 +208,14 @@ export class ObserveClient {
   async listScores(filter: ScoreListFilter = {}): Promise<ObserveScoreRow[]> {
     const body = await this.request<{ scores: ObserveScoreRow[] }>('/api/v1/scores', { query: { ...filter } });
     return body.scores;
+  }
+
+  /** `GET /api/v1/scores?aggregate=eval` - pass rate, mean and last seen per eval name (same filters as {@link listScores}). */
+  async scorePassRates(filter: Omit<ScoreListFilter, 'limit'> = {}): Promise<ObserveScorePassRate[]> {
+    const body = await this.request<{ evals: ObserveScorePassRate[] }>('/api/v1/scores', {
+      query: { ...filter, aggregate: 'eval' },
+    });
+    return body.evals;
   }
 
   /** `POST /api/v1/scores` - a human feedback score (append-only); the daemon's 404/400 surface as `ObserveApiError`. */

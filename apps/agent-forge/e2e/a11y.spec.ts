@@ -113,7 +113,7 @@ test('Ctrl+K opens the command palette; ? lists the shortcuts', async ({ page })
 });
 
 // One <main>, one h1, the banner and the primary nav on every screen, not just Agents.
-for (const route of ['#/traces', '#/traces/e2e-trace?obs=e2e-obs', '#/monitoring', '#/settings', '#/playground']) {
+for (const route of ['#/traces', '#/traces/e2e-trace?obs=e2e-obs', '#/monitoring', '#/evals/scores', '#/settings', '#/playground']) {
   test(`${route} keeps the landmarks and exactly one main`, async ({ page }) => {
     await page.goto(`/?token=e2e-studio-token${route}`);
     await expect(page.locator('.screen-main')).toBeVisible();
@@ -143,6 +143,15 @@ test('#/monitoring with no daemon shows the down state and keeps window/agent in
   await page.goto('/?token=e2e-studio-token#/monitoring?window=7d&agent=e2e-agent');
   await expect(page.getByRole('main').getByText('lousho observe start')).toBeVisible();
   expect(new URL(page.url()).hash).toBe('#/monitoring?window=7d&agent=e2e-agent');
+});
+
+test('#/evals/scores with no daemon shows the down state and keeps the filters in the URL', async ({ page }) => {
+  await page.route('**/observe/**', (route) =>
+    route.fulfill({ status: 502, contentType: 'application/json', body: '{"error":"down"}' }),
+  );
+  await page.goto('/?token=e2e-studio-token#/evals/scores?eval=e2e-eval&source=eval&range=7d');
+  await expect(page.getByRole('main').getByText('lousho observe start')).toBeVisible();
+  expect(new URL(page.url()).hash).toBe('#/evals/scores?eval=e2e-eval&source=eval&range=7d');
 });
 
 test('#/settings shows the settings panel inside the screen', async ({ page }) => {
