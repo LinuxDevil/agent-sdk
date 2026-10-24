@@ -1,59 +1,67 @@
 /**
- * A POST that blocks the calling thread until it settles - the reporter's
+ * POSTs that block the calling thread until they settle - the reporter's
  * crash flush. `uncaughtExceptionMonitor` listeners run synchronously and
  * Node exits the moment they return, so an ordinary `fetch` started there
- * never even opens its socket (measured: 0 connections). Here the request
- * runs in a throwaway worker thread with its own event loop while this
- * thread sleeps on `Atomics.wait`; the worker flips a shared flag when the
- * response (or an error) arrives.
+ * never even opens its socket (measured: 0 connections). Here the requests
+ * run in a throwaway worker thread with its own event loop while this
+ * thread sleeps on `Atomics.wait`; the worker counts each delivered body
+ * into a shared flag and wakes this thread when it is done.
  *
  * The worker is given no `execArgv` (no loaders such as tsx: it only needs
  * the global `fetch`) and is left running when this returns: the process is
  * about to exit, which terminates it.
  *
- * Builtins load through `process.getBuiltinModule`: this module ships in the
- * Cloudflare Worker bundle (see WORKER_SAFE_BUILTIN_PROBE), where it reports
- * `false` instead of breaking the bundle.
+ * Builtins load through `getBuiltinModule` (builtins.ts): this module ships
+ * in the Cloudflare Worker bundle, where it reports nothing delivered
+ * instead of breaking the bundle.
  */
+import { getBuiltinModule } from './builtins';
 
 interface WorkerThreadsLike {
   Worker: new (code: string, options: { eval: true; execArgv: string[]; workerData: unknown }) => { unref(): void };
 }
 
-// Named to match the worker leak check's exempted call pattern (see
-// WORKER_SAFE_BUILTIN_PROBE in src/deploy/adapters/cloudflare.ts). Do not rename.
-function getBuiltinModule<T>(name: string): T | undefined {
-  if (typeof process === 'undefined') return undefined;
-  return (process.getBuiltinModule?.(name) as T | undefined) ?? undefined;
-}
+/** Shared flag slots: [0] 0 while the worker runs, 1 once it stopped; [1] bodies delivered so far. */
+const DONE = 0;
+const DELIVERED = 1;
 
-const PENDING = 0;
-const OK = 1;
-
-/** The worker's whole program (CommonJS, `eval: true`): one fetch, then publish the outcome. */
+/**
+ * The worker's whole program (CommonJS, `eval: true`): the bodies in order,
+ * one at a time, all inside the one deadline; the first failure stops it.
+ * The id literal is double-quoted so the bundle check's probe matcher sees it.
+ */
 const WORKER_SOURCE = `
 const { workerData: d } = process.getBuiltinModule("node:worker_threads");
 const flag = new Int32Array(d.flag);
-const done = (state) => { Atomics.store(flag, 0, state); Atomics.notify(flag, 0); };
-fetch(d.url, { method: 'POST', headers: d.headers, body: d.body, signal: AbortSignal.timeout(d.timeoutMs) })
-  .then((res) => done(res.ok ? ${OK} : 2), () => done(2));
+(async () => {
+  for (const body of d.bodies) {
+    const left = d.deadline - Date.now();
+    if (left <= 0) break;
+    const res = await fetch(d.url, { method: 'POST', headers: d.headers, body, signal: AbortSignal.timeout(left) });
+    if (!res.ok) break;
+    Atomics.add(flag, ${DELIVERED}, 1);
+  }
+})().catch(() => undefined).finally(() => { Atomics.store(flag, ${DONE}, 1); Atomics.notify(flag, ${DONE}); });
 `;
 
 /**
- * POST `body` to `url`, blocking at most `timeoutMs` (worker start-up
- * included). True only when the server answered 2xx in time; false on any
- * failure, a timeout, or a runtime without worker threads.
+ * POST each of `bodies` to `url` in order, blocking at most `timeoutMs` in
+ * all (worker start-up included). Returns how many leading bodies the server
+ * answered 2xx in time: the rest were not delivered (a failure, the
+ * deadline, or a runtime without worker threads, which delivers 0).
  */
-export function blockingPost(url: string, headers: Record<string, string>, body: string, timeoutMs: number): boolean {
-  const threads = getBuiltinModule<WorkerThreadsLike>('node:worker_threads');
-  if (!threads || typeof SharedArrayBuffer === 'undefined') return false;
+export function blockingPost(url: string, headers: Record<string, string>, bodies: readonly string[], timeoutMs: number): number {
+  if (bodies.length === 0) return 0;
   try {
-    const flag = new SharedArrayBuffer(4);
-    const worker = new threads.Worker(WORKER_SOURCE, { eval: true, execArgv: [], workerData: { flag, url, headers, body, timeoutMs } });
+    const threads = getBuiltinModule<WorkerThreadsLike>('node:worker_threads');
+    if (!threads) return 0;
+    const flag = new Int32Array(new SharedArrayBuffer(8));
+    const deadline = Date.now() + timeoutMs;
+    const worker = new threads.Worker(WORKER_SOURCE, { eval: true, execArgv: [], workerData: { flag: flag.buffer, url, headers, bodies, deadline } });
     worker.unref(); // never keeps a process alive past a timed-out wait
-    Atomics.wait(new Int32Array(flag), 0, PENDING, timeoutMs);
-    return Atomics.load(new Int32Array(flag), 0) === OK;
+    Atomics.wait(flag, DONE, 0, timeoutMs);
+    return Atomics.load(flag, DELIVERED);
   } catch {
-    return false;
+    return 0;
   }
 }

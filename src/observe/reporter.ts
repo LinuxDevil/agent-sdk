@@ -36,7 +36,7 @@ import { SDKError } from '../execution/errors';
 import type { Span, TraceExporter } from '../execution/tracing';
 import { VERSION } from '../version';
 import { blockingPost } from './blockingPost';
-import { OBSERVE_DEFAULT_PORT, type IngestEvent, type ObservationData, type ObservationKind, type PromptUseData } from './envelope';
+import { OBSERVE_DEFAULT_PORT, OBSERVE_MAX_BATCH_EVENTS, type IngestEvent, type ObservationData, type ObservationKind, type PromptUseData } from './envelope';
 import { observeTargetFromEnv } from './emit';
 import { hostName, resolveIdentity, resolveProject } from './identity';
 
@@ -124,7 +124,8 @@ const retryDelayMs = (failures: number): number => Math.min(RETRY_BASE_MS * 2 **
  * evicted first, reported through `onEvict`), and gated by a retry backoff
  * after a failed send. Every send path - size, interval, exit - goes through
  * `take` / `delivered` / `failed`, so a failed batch is never lost while
- * there is room to keep it.
+ * there is room to keep it. A batch is at most OBSERVE_MAX_BATCH_EVENTS
+ * events (the daemon rejects larger ones), oldest first.
  */
 function createOutbox(cap: number, now: () => number, onEvict: (count: number) => void) {
   let items: IngestEvent[] = [];
@@ -148,9 +149,13 @@ function createOutbox(cap: number, now: () => number, onEvict: (count: number) =
       items.push(event);
       trim();
     },
-    /** Everything pending, for one send - or nothing while backing off, unless `force` (the final attempt). */
+    /** The oldest batch's worth, for one send - or nothing while backing off, unless `force` (the final attempt). */
     take(force = false): IngestEvent[] {
-      return force || now() >= retryAt ? items.splice(0, items.length) : [];
+      return force || now() >= retryAt ? items.splice(0, OBSERVE_MAX_BATCH_EVENTS) : [];
+    },
+    /** Everything pending, uncapped (the crash flush; counting what a failed final attempt leaves). */
+    drain(): IngestEvent[] {
+      return items.splice(0, items.length);
     },
     delivered(): void {
       failures = 0;
@@ -344,21 +349,35 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
   let chain: Promise<void> = Promise.resolve();
   /** The batch a POST is carrying right now: a crash resends it, since that POST can never finish. */
   let inFlight: IngestEvent[] = [];
-  const send = async (timeoutMs: number, final: boolean): Promise<void> => {
-    const batch = outbox.take(final);
-    if (batch.length === 0) return;
+  /** One POST; false when it failed (the batch is then requeued, or - final - dropped with everything left). */
+  const sendBatch = async (batch: IngestEvent[], timeoutMs: number, final: boolean): Promise<boolean> => {
     inFlight = batch;
     try {
       await post(batch, timeoutMs, final);
       outbox.delivered();
+      return true;
     } catch (error) {
       // Never slow or fail a run: requeue for a later retry, drop-and-count only as the last resort.
       // close() aborting a regular flush is not an outage: its batch rides along in the final attempt.
       if (final || !closing.signal.aborted) warnOnce(`could not reach the observe daemon at ${url}`, error);
-      if (final) droppedCount += batch.length;
+      if (final) droppedCount += batch.length + outbox.drain().length;
       else outbox.failed(batch);
+      return false;
     } finally {
       inFlight = [];
+    }
+  };
+  /**
+   * Send batch after batch while the last one was full: a backlog (after an
+   * outage) drains at once instead of one batch per interval. Regular flushes
+   * give each POST its own timeout; the final attempt shares one deadline.
+   */
+  const send = async (timeoutMs: number, final: boolean): Promise<void> => {
+    const deadline = Date.now() + timeoutMs;
+    let batch = outbox.take(final);
+    while (batch.length > 0) {
+      if (!(await sendBatch(batch, final ? Math.max(1, deadline - Date.now()) : timeoutMs, final))) return;
+      batch = batch.length < OBSERVE_MAX_BATCH_EVENTS ? [] : outbox.take(final);
     }
   };
   const flush = (timeoutMs: number, final = false): Promise<void> => {
@@ -430,15 +449,18 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
   /**
    * The process is dying of an uncaught exception or unhandled rejection:
    * Node exits as soon as the monitor returns, so no async send can finish.
-   * Send everything pending - the batch a regular POST was carrying included
-   * (re-sent events upsert by key) - in one POST that blocks for at most 1s.
+   * Send everything pending, oldest first - the batch a regular POST was
+   * carrying included (re-sent events upsert by key) - as successive
+   * batch-sized POSTs that together block for at most 1s.
    */
   const crashFlush = (): void => {
     if (!shutdown()) return;
-    const batch = inFlight.concat(outbox.take(true));
-    if (!blockingPost(`${url}/api/v1/ingest`, headers, JSON.stringify({ batch }), CRASH_FLUSH_TIMEOUT_MS)) {
-      droppedCount += batch.length;
-    }
+    const pending = inFlight.concat(outbox.drain());
+    const batches: IngestEvent[][] = [];
+    for (let i = 0; i < pending.length; i += OBSERVE_MAX_BATCH_EVENTS) batches.push(pending.slice(i, i + OBSERVE_MAX_BATCH_EVENTS));
+    const bodies = batches.map((batch) => JSON.stringify({ batch }));
+    const delivered = blockingPost(`${url}/api/v1/ingest`, headers, bodies, CRASH_FLUSH_TIMEOUT_MS);
+    for (const batch of batches.slice(delivered)) droppedCount += batch.length;
   };
 
   const exitHooks: Array<[string, () => void]> = [];
@@ -455,10 +477,11 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
     // rejection that crashes the process (origin 'unhandledRejection'), and stays
     // silent when one does not (--unhandled-rejections=warn, or a user listener),
     // so no 'unhandledRejection' listener is added - adding one would itself stop
-    // the crash. With an 'uncaughtException' listener the process survives: keep
-    // reporting, just flush now.
+    // the crash. With an 'uncaughtException' listener or a capture callback
+    // (REPL, domains) the process survives: keep reporting, just flush now.
+    const survives = () => process.listenerCount('uncaughtException') > 0 || process.hasUncaughtExceptionCaptureCallback?.() === true;
     const onCrash = () => {
-      if (process.listenerCount('uncaughtException') > 0) void flush(requestTimeoutMs);
+      if (survives()) void flush(requestTimeoutMs);
       else crashFlush();
     };
     const hooks: Array<[string, () => void]> = [

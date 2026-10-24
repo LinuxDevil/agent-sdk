@@ -330,33 +330,50 @@ describe('observeExporter', () => {
       expect(r.dropped).toBe(3);
     });
 
-    it('requeues a batch too large to spread into call arguments, and the flush chain survives', async () => {
+    it('drains a backlog past the daemon batch cap in successive capped batches, and the flush chain survives', async () => {
       const unhandled: unknown[] = [];
       const onUnhandled = (reason: unknown) => unhandled.push(reason);
       process.on('unhandledRejection', onUnhandled);
       try {
-        // Count events without JSON.parse-ing a ~50MB body twice.
         const sizes: number[] = [];
+        const ids: string[] = [];
         const fetchFn = vi.fn(async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-          sizes.push(String(init?.body).split('"type":').length - 1);
-          if (sizes.length === 1) throw new TypeError('fetch failed');
+          const batch = (JSON.parse(String(init?.body)) as { batch: IngestEvent[] }).batch;
+          sizes.push(batch.length);
+          if (sizes.length === 1) throw new TypeError('fetch failed'); // the daemon is down
+          for (const e of batch) if (e.type === 'observation') ids.push(e.data.obs_id);
           return new Response('{}', { status: 202 });
         }) as unknown as typeof fetch;
-        const total = 500_000; // past the spread limit even on a worker thread's larger stack (200k fits there)
-        const { r } = reporter({ fetchFn, maxBuffered: total, flushSize: total + 1, flushIntervalMs: 1000 });
+        const total = 2500;
+        const { r } = reporter({ fetchFn, flushSize: total + 1, flushIntervalMs: 1000 });
         for (let i = 0; i < total; i++) r.onSpanEnd({ id: `s${i}`, name: 'n', attributes: {}, startTime: 1, endTime: 2 });
-        await vi.advanceTimersByTimeAsync(1000); // rejected: the whole batch is requeued
-        await vi.advanceTimersByTimeAsync(1000); // the retry still runs and carries all of it
-        expect(sizes).toEqual([total, total]);
+        await vi.advanceTimersByTimeAsync(1000); // rejected: the oldest 1000 are requeued
+        await vi.advanceTimersByTimeAsync(1000); // the daemon is back: one flush drains it all, batch after batch
+        expect(sizes).toEqual([1000, 1000, 1000, 500]);
+        expect(ids).toEqual(Array.from({ length: total }, (_, i) => `s${i}`)); // every event, oldest first
         expect(r.dropped).toBe(0);
         await r.close();
-        expect(sizes).toHaveLength(3); // the chain still runs close()'s flush (the deregister)
+        expect(sizes).toHaveLength(5); // the chain still runs close()'s flush (the deregister)
         await vi.advanceTimersByTimeAsync(10); // let any stray rejection surface
         expect(unhandled).toEqual([]);
       } finally {
         process.off('unhandledRejection', onUnhandled);
       }
-    }, 60_000);
+    });
+
+    it("close()'s final attempt sends a backlog in capped batches and drops the rest when one fails", async () => {
+      const sizes: number[] = [];
+      const fetchFn = vi.fn(async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        sizes.push((JSON.parse(String(init?.body)) as { batch: IngestEvent[] }).batch.length);
+        return new Response('{}', { status: sizes.length === 2 ? 500 : 202 });
+      }) as unknown as typeof fetch;
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { r } = reporter({ fetchFn, flushSize: 10_000 });
+      for (let i = 0; i < 2500; i++) r.onSpanEnd({ id: `s${i}`, name: 'n', attributes: {}, startTime: 1, endTime: 2 });
+      await r.close();
+      expect(sizes).toEqual([1000, 1000]); // the second failed: it and the remaining 501 (500 + the deregister) are dropped
+      expect(r.dropped).toBe(1501);
+    });
   });
 
   it('clamps maxBuffered to 1 so the deregister survives', async () => {
@@ -452,7 +469,7 @@ describe('observeExporter', () => {
 describe('crash flush', () => {
   const fixture = path.join(__dirname, '__fixtures__', 'crashAfterRun.mts');
   const repoRoot = path.resolve(__dirname, '..', '..');
-  type Mode = 'throw' | 'reject' | 'inflight' | 'handled';
+  type Mode = 'throw' | 'reject' | 'inflight' | 'handled' | 'capture' | 'backlog';
 
   /**
    * Run the fixture against an in-test collector; resolves with its exit and
@@ -504,15 +521,22 @@ describe('crash flush', () => {
     expect(batches.flatMap(obsIds)).toEqual(['crash-span']);
   }, 30_000);
 
+  it('sends a crash backlog past the daemon batch cap as successive capped POSTs', async () => {
+    const { code, batches } = await crash('backlog');
+    expect(code).toBe(1);
+    expect(batches.map((b) => b.length)).toEqual([1000, 501]); // 1500 observations + the deregister, oldest first
+    expect(batches.flatMap(obsIds)).toEqual(['crash-span', ...Array.from({ length: 1499 }, (_, i) => `crash-span-${i + 1}`)]);
+  }, 30_000);
+
   it('resends the batch a POST still in flight was carrying when the process died', async () => {
     const { code, batches } = await crash('inflight', true);
     expect(code).toBe(1);
     expect(batches.map(obsIds)).toEqual([['crash-span'], ['crash-span']]);
   }, 30_000);
 
-  it('keeps reporting when the script handles uncaughtException itself', async () => {
-    const { code, stderr, batches } = await crash('handled');
-    expect(code).toBe(0); // the user's listener kept the process alive; the reporter did not exit it
+  it.each([['handled'], ['capture']] as const)('keeps reporting when the script survives the throw itself (%s)', async (mode) => {
+    const { code, stderr, batches } = await crash(mode);
+    expect(code).toBe(0); // the user's listener / capture callback kept the process alive; the reporter did not exit it
     expect(stderr).toContain('handled: fixture: uncaught exception after run');
     expect(batches.flatMap(obsIds)).toEqual(['crash-span', 'after-span']);
   }, 30_000);
@@ -544,8 +568,9 @@ describe('crash flush', () => {
 });
 
 describe('blockingPost', () => {
-  it('reports false for an unreachable collector', () => {
-    expect(blockingPost('http://127.0.0.1:1/api/v1/ingest', {}, '{}', 1000)).toBe(false);
+  it('delivers nothing to an unreachable collector', () => {
+    expect(blockingPost('http://127.0.0.1:1/api/v1/ingest', {}, ['{}', '{}'], 1000)).toBe(0);
+    expect(blockingPost('http://127.0.0.1:1/api/v1/ingest', {}, [], 1000)).toBe(0);
   });
 
   it('gives up after its timeout', async () => {
@@ -555,7 +580,7 @@ describe('blockingPost', () => {
     const { port } = server.address() as AddressInfo;
     try {
       const t0 = Date.now();
-      expect(blockingPost(`http://127.0.0.1:${port}/`, {}, '{}', 200)).toBe(false);
+      expect(blockingPost(`http://127.0.0.1:${port}/`, {}, ['{}'], 200)).toBe(0);
       expect(Date.now() - t0).toBeLessThan(1000);
     } finally {
       server.closeAllConnections();
