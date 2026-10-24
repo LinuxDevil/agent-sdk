@@ -63,10 +63,12 @@ const REPO_ROOT = path.resolve(__dirname, '..');
  * 774 entries / 15,116,044 bytes (~14.4 MiB) unpacked / 4,307,099 bytes
  * (~4.1 MiB) packed; budgets cut to 16 MiB unpacked / 4.5 MiB packed.
  * scripts/size-check.ts holds the tighter, committed budget.
+ * Measured 4,721,107 bytes (~4.5 MiB) packed after the observe parity work
+ * (2026-10-24); packed budget raised to 5 MiB (~10% headroom).
  */
 const MAX_ENTRIES = 850;
 const MAX_UNPACKED_BYTES = 16 * 1024 * 1024;
-const MAX_PACKED_BYTES = 4.5 * 1024 * 1024;
+const MAX_PACKED_BYTES = 5 * 1024 * 1024;
 
 const DEFAULT_PEERS = 'ai@7 zod@4 @ai-sdk/openai@4 react@19 vue@3 @opentelemetry/api@1';
 const FORBIDDEN_PATHS = [
