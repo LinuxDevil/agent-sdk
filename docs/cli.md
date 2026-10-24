@@ -37,7 +37,7 @@ lousho doctor [agent.yaml|json|agent-dir|agent.ts] [--json] [--ping]
 lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
 lousho observe <start|status|stop|rebuild-rollups|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL]
-lousho prompt <push <file|->|list|get <name[@version]>> [--url U] [--port N] [--token T] [--json] [--name N]
+lousho prompt <push <file|->|list|get <name[@version|@label]>|label <name> <label> <version>> [--url U] [--port N] [--token T] [--json] [--name N]
 lousho --version
 ```
 
@@ -298,8 +298,22 @@ tells which db a daemon serves only to callers on the same machine. See
 npx lousho prompt push prompt.md --name mira    # publishes a new version
 npx lousho prompt list
 npx lousho prompt get mira@latest
+npx lousho prompt label mira prod 3             # mira@prod -> 3 (was 2)
+npx lousho prompt get mira@prod
 ```
 
 Publishes and reads prompt versions in the observe daemon's registry. Agents
-resolve them with `createAgent({ prompt: 'mira@latest' })` or
-`LOUSHO_PROMPT`. See [The observe daemon](./observability.md#the-observe-daemon).
+resolve them with `createAgent({ prompt: 'mira@latest' })` (or a label,
+`'mira@prod'`) or `LOUSHO_PROMPT`.
+
+- `push` publishes the file (`-` reads stdin) as the next version. A push
+  whose text and `--variables` equal the latest version's mints nothing and
+  prints `mira@2 is unchanged` (exit 0). `--labels prod,canary` points those
+  labels at the resulting version, the new one or the unchanged latest.
+- `get <name>[@ref]` prints a version's text; `ref` is an integer, `latest`
+  (the default) or a label. `--json` prints the row, whose `labels` are the
+  labels currently pointing at that version.
+- `label <name> <label> <version>` moves a label: a label points at exactly
+  one version, so this takes it off the one that held it, and prints
+  `mira@prod -> 3 (was 2)` (or `(was unset)` for a new label). A label is a
+  name without whitespace, `@` or `/`, and not `latest` or all digits. See [The observe daemon](./observability.md#the-observe-daemon).

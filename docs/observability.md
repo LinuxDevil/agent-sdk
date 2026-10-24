@@ -421,16 +421,24 @@ open sessions flip to `interrupted`), and eval score history. Alerts on
 
 The daemon also serves two stores agents can use at runtime:
 
-- **Prompt registry.** `createAgent({ prompt: 'name@version' })` or
-  `LOUSHO_PROMPT` fetches instructions from it at build (`@latest` resolves
-  on the daemon; an unreachable daemon falls back to `instructions`; with no
+- **Prompt registry.** `createAgent({ prompt: 'name@version' })` (or
+  `'name@label'`) or `LOUSHO_PROMPT` fetches instructions from it at build
+  (`@latest` and labels resolve on the daemon; an unreachable daemon falls back to `instructions`; with no
   `instructions`, the run fails with `LOUSHO_PROMPT_UNRESOLVED`). A failed
   fetch is not cached for good: runs in the next 30 seconds resolve at once
   (using `instructions`, or failing), then the next run retries it, so a
   daemon that was briefly down at build recovers without a restart. That one
   run waits for the retry fetch, up to 2.5 seconds. Every run logs the exact version
   used. `lousho prompt push` publishes a new
-  version.
+  version; a push whose text and variables equal the latest version's mints
+  nothing (`200 { unchanged: true, version }`). A label (`prod`, `staging`)
+  points at exactly one version: `lousho prompt label mira prod 3` (or `PUT
+  /api/v1/prompts/:name/labels/:label` with `{ version }`) moves it, `push
+  --labels` moves it onto the pushed version, and `GET
+  /api/v1/prompts/:name/:ref` takes an integer, `latest` or a label. A
+  label ref takes the same path as a version: unresolvable means the
+  `instructions` fallback or `LOUSHO_PROMPT_UNRESOLVED`, with the same
+  30-second retry window.
 - **Context hub.** `hub()` / `hubTools()` let agents publish and query
   namespaced key-values scoped `private` (the writing agent only) or
   `fleet` (every agent on the daemon).

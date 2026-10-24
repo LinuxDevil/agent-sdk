@@ -99,13 +99,14 @@ describe('GET /api/v1/prompts reads', () => {
     ]);
   });
 
-  it('404s a missing prompt or version and 400s a non-integer non-latest version', async () => {
+  it('404s a missing prompt, version or label and 400s a ref that is not a valid label', async () => {
     const daemon = await start();
     await publishPrompt(base(daemon), { name: 'mira', text: 't' });
     expect((await get(daemon, '/api/v1/prompts/nope/latest')).status).toBe(404);
     expect((await get(daemon, '/api/v1/prompts/mira/9')).status).toBe(404);
     expect((await get(daemon, '/api/v1/prompts/nope')).status).toBe(404);
-    expect((await get(daemon, '/api/v1/prompts/mira/abc')).status).toBe(400);
+    expect((await get(daemon, '/api/v1/prompts/mira/abc')).status).toBe(404);
+    expect((await get(daemon, '/api/v1/prompts/mira/a%20b')).status).toBe(400);
   });
 
   it('counts prompt_uses rows as runs that used each version', async () => {
@@ -124,10 +125,101 @@ describe('GET /api/v1/prompts reads', () => {
   });
 });
 
+const put = (daemon: ObserveDaemon, path: string, body: unknown): Promise<Response> =>
+  fetch(url(daemon, path), { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+const labelsOf = async (daemon: ObserveDaemon, ref: string): Promise<{ version: number; labels: unknown }> =>
+  ((await (await get(daemon, `/api/v1/prompts/mira/${ref}`)).json()) as { prompt: { version: number; labels: unknown } }).prompt;
+
+describe('prompt labels', () => {
+  it('resolves name/:label, and a row serves the sorted labels pointing at it', async () => {
+    const daemon = await start();
+    await publishPrompt(base(daemon), { name: 'mira', text: 'v1', labels: ['prod', 'canary'] });
+    await publishPrompt(base(daemon), { name: 'mira', text: 'v2' });
+    expect(await labelsOf(daemon, 'prod')).toMatchObject({ version: 1, labels: ['canary', 'prod'] });
+    expect(await labelsOf(daemon, 'latest')).toMatchObject({ version: 2, labels: [] });
+    const history = (await (await get(daemon, '/api/v1/prompts/mira')).json()) as { versions: { version: number; labels: unknown }[] };
+    expect(history.versions.map((v) => [v.version, v.labels])).toEqual([
+      [2, []],
+      [1, ['canary', 'prod']],
+    ]);
+    const list = (await (await get(daemon, '/api/v1/prompts')).json()) as { prompts: { labels: unknown }[] };
+    expect(list.prompts[0].labels).toEqual([]);
+    expect((await get(daemon, '/api/v1/prompts/mira/staging')).status).toBe(404);
+  });
+
+  it('PUT moves a label (it lives on exactly one version) and reports the previous version', async () => {
+    const daemon = await start();
+    await publishPrompt(base(daemon), { name: 'mira', text: 'v1', labels: ['prod'] });
+    await publishPrompt(base(daemon), { name: 'mira', text: 'v2' });
+    const moved = await put(daemon, '/api/v1/prompts/mira/labels/prod', { version: 2 });
+    expect(moved.status).toBe(200);
+    expect(await moved.json()).toEqual({ name: 'mira', label: 'prod', version: 2, previous_version: 1 });
+    expect(await labelsOf(daemon, 'prod')).toMatchObject({ version: 2, labels: ['prod'] });
+    expect(await labelsOf(daemon, '1')).toMatchObject({ labels: [] });
+
+    const fresh = await put(daemon, '/api/v1/prompts/mira/labels/staging', { version: 1 });
+    expect(await fresh.json()).toEqual({ name: 'mira', label: 'staging', version: 1, previous_version: null });
+    expect(Number(daemon.db.prepare("SELECT COUNT(*) AS n FROM prompt_labels WHERE name = 'mira' AND label = 'prod'").get()?.n)).toBe(1);
+  });
+
+  it('PUT 404s an unknown name@version and 400s a bad label or body', async () => {
+    const daemon = await start();
+    await publishPrompt(base(daemon), { name: 'mira', text: 'v1' });
+    expect((await put(daemon, '/api/v1/prompts/mira/labels/prod', { version: 9 })).status).toBe(404);
+    expect((await put(daemon, '/api/v1/prompts/nope/labels/prod', { version: 1 })).status).toBe(404);
+    for (const label of ['latest', '12', 'a%20b']) {
+      const res = await put(daemon, `/api/v1/prompts/mira/labels/${label}`, { version: 1 });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({ code: 'LOUSHO_REQUEST_INVALID' });
+    }
+    expect((await put(daemon, '/api/v1/prompts/mira/labels/prod', { version: 0 })).status).toBe(400);
+    expect((await put(daemon, '/api/v1/prompts/mira/labels/prod', { version: 1.5 })).status).toBe(400);
+    expect((await put(daemon, '/api/v1/prompts/mira/labels/prod', {})).status).toBe(400);
+  });
+
+  it('push labels move onto the new version; a push label that is a ref is a 400', async () => {
+    const daemon = await start();
+    await publishPrompt(base(daemon), { name: 'mira', text: 'v1', labels: ['prod'] });
+    await publishPrompt(base(daemon), { name: 'mira', text: 'v2', labels: ['prod'] });
+    expect(await labelsOf(daemon, 'prod')).toMatchObject({ version: 2 });
+    expect(await labelsOf(daemon, '1')).toMatchObject({ labels: [] });
+    expect((await post(daemon, '/api/v1/prompts', { name: 'mira', text: 'v3', labels: ['latest'] })).status).toBe(400);
+    expect((await post(daemon, '/api/v1/prompts', { name: 'mira', text: 'v3', labels: ['7'] })).status).toBe(400);
+  });
+
+  it('an unchanged push (same text + variables) mints no row, answers unchanged, and still assigns its labels', async () => {
+    const daemon = await start();
+    const first = (await (await post(daemon, '/api/v1/prompts', { name: 'mira', text: 'v1', variables: ['who'] })).json()) as Record<string, unknown>;
+    expect(first).toMatchObject({ created: true, version: 1, unchanged: false });
+    await publishPrompt(base(daemon), { name: 'mira', text: 'v2' });
+    const again = await post(daemon, '/api/v1/prompts', { name: 'mira', text: 'v2', labels: ['prod'] });
+    expect(again.status).toBe(200);
+    expect(await again.json()).toMatchObject({ created: false, version: 2, unchanged: true, prompt: { version: 2, labels: ['prod'] } });
+    expect(Number(daemon.db.prepare("SELECT COUNT(*) AS n FROM prompts WHERE name = 'mira'").get()?.n)).toBe(2);
+    // different variables are a change
+    const changed = await post(daemon, '/api/v1/prompts', { name: 'mira', text: 'v2', variables: ['who'] });
+    expect(await changed.json()).toMatchObject({ created: true, version: 3, unchanged: false });
+  });
+
+  it('fetchPrompt and registryPrompt resolve a name@label ref', async () => {
+    const daemon = await start();
+    await publishPrompt(base(daemon), { name: 'mira', text: 'prod text', labels: ['prod'] });
+    await publishPrompt(base(daemon), { name: 'mira', text: 'newer text' });
+    expect((await fetchPrompt(base(daemon), { name: 'mira', label: 'prod' })).text).toBe('prod text');
+    const source = registryPrompt('mira@prod', { env: { LOUSHO_OBSERVE: base(daemon) } as NodeJS.ProcessEnv });
+    await expect(source!.text(async () => 'embedded')).resolves.toBe('prod text');
+    expect(source!.ref).toEqual({ name: 'mira', label: 'prod' });
+  });
+});
+
 describe('parsePromptRef + fetchPrompt', () => {
-  it('parses name@int and name@latest, rejects bare names and prose', () => {
+  it('parses name@int, name@latest and name@label, rejects bare names and prose', () => {
     expect(parsePromptRef('mira@3')).toEqual({ name: 'mira', version: 3 });
     expect(parsePromptRef('mira@latest')).toEqual({ name: 'mira', version: 'latest' });
+    expect(parsePromptRef('mira@prod')).toEqual({ name: 'mira', label: 'prod' });
+    expect(parsePromptRef('mira@a@b')).toBeUndefined();
+    expect(parsePromptRef('mira@')).toBeUndefined();
     expect(parsePromptRef('mira')).toBeUndefined();
     expect(parsePromptRef('You are helpful.')).toBeUndefined();
     expect(parsePromptRef('a/b@1')).toBeUndefined();

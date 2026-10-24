@@ -78,8 +78,43 @@ describe('lousho prompt', () => {
     await runPrompt(['push', 'p.txt', '--name', 'p', '--labels', 'prod,canary', '--variables', 'who', '--url', base(daemon)], d);
     expect(await runPrompt(['get', 'p', '--json', '--url', base(daemon)], d)).toBe(0);
     const row = JSON.parse(out.at(-1) ?? '{}') as { labels: string[]; variables: string[] };
-    expect(row.labels).toEqual(['prod', 'canary']);
+    expect(row.labels).toEqual(['canary', 'prod']);
     expect(row.variables).toEqual(['who']);
+  });
+
+  it('push of unchanged text prints <name>@<version> is unchanged and exits 0', async () => {
+    const daemon = await start();
+    fs.writeFileSync(path.join(cwd, 'observe-test.txt'), 'one');
+    const d = deps();
+    await runPrompt(['push', 'observe-test.txt', '--url', base(daemon)], d);
+    fs.writeFileSync(path.join(cwd, 'observe-test.txt'), 'two');
+    await runPrompt(['push', 'observe-test.txt', '--url', base(daemon)], d);
+    expect(await runPrompt(['push', 'observe-test.txt', '--url', base(daemon)], d)).toBe(0);
+    expect(out.at(-1)).toBe('observe-test@2 is unchanged');
+  });
+
+  it('label moves a label; get name@label resolves it', async () => {
+    const daemon = await start();
+    const file = path.join(cwd, 'observe-test.txt');
+    const d = deps();
+    fs.writeFileSync(file, 'text one');
+    await runPrompt(['push', 'observe-test.txt', '--url', base(daemon)], d);
+    fs.writeFileSync(file, 'text two');
+    await runPrompt(['push', 'observe-test.txt', '--url', base(daemon)], d);
+
+    expect(await runPrompt(['label', 'observe-test', 'prod', '1', '--url', base(daemon)], d)).toBe(0);
+    expect(out.at(-1)).toBe('observe-test@prod -> 1 (was unset)');
+    expect(await runPrompt(['get', 'observe-test@prod', '--url', base(daemon)], d)).toBe(0);
+    expect(out.at(-1)).toBe('text one');
+
+    expect(await runPrompt(['label', 'observe-test', 'prod', '2', '--url', base(daemon)], d)).toBe(0);
+    expect(out.at(-1)).toBe('observe-test@prod -> 2 (was 1)');
+    expect(await runPrompt(['get', 'observe-test@prod', '--url', base(daemon)], d)).toBe(0);
+    expect(out.at(-1)).toBe('text two');
+
+    // a non-integer version is a usage error; an unknown version is a command failure
+    expect(await runPrompt(['label', 'observe-test', 'prod', 'x', '--url', base(daemon)], d)).toBe(2);
+    expect(await runPrompt(['label', 'observe-test', 'prod', '9', '--url', base(daemon)], d)).toBe(1);
   });
 
   it('exits 1 for a missing prompt and for an unreachable daemon', async () => {
