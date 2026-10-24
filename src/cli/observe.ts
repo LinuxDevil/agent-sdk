@@ -24,6 +24,7 @@ import {
   sameDbPath,
   probeHealth,
   startObserveDaemon,
+  urlHost,
   type HealthProbe,
 } from '../observe/daemon';
 import { createToken, hasTokens, openDb, rebuildRollups } from '../observe/store';
@@ -115,7 +116,7 @@ function envPort(): number {
 
 /** The banner line telling agents how to reach this daemon: `=1` only reaches the default loopback port. */
 export function reporterHint(host: string, port: number): string {
-  const value = host === '127.0.0.1' && port === OBSERVE_DEFAULT_PORT ? '1' : `http://${host}:${port}`;
+  const value = host === '127.0.0.1' && port === OBSERVE_DEFAULT_PORT ? '1' : `http://${urlHost(host)}:${port}`;
   return `lousho observe: agents emit with LOUSHO_OBSERVE=${value} (no auth on loopback).`;
 }
 
@@ -136,7 +137,7 @@ async function reportPortInUse(port: number, host: string, dbPath: string): Prom
     );
     return 1;
   }
-  console.log(`lousho observe: already running on http://${host}:${port} (service ${OBSERVE_SERVICE}, version ${health.version ?? 'unknown'}).`);
+  console.log(`lousho observe: already running on http://${urlHost(host)}:${port} (service ${OBSERVE_SERVICE}, version ${health.version ?? 'unknown'}).`);
   return 0;
 }
 
@@ -162,7 +163,7 @@ async function runStart(args: string[]): Promise<number> {
     throw error;
   }
 
-  console.log(`lousho observe: ${OBSERVE_SERVICE} v${VERSION} listening on http://${host}:${daemon.port}`);
+  console.log(`lousho observe: ${OBSERVE_SERVICE} v${VERSION} listening on http://${urlHost(host)}:${daemon.port}`);
   console.log(`lousho observe: db ${dbPath}`);
   if (daemon.requireToken) {
     console.log(

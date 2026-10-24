@@ -187,8 +187,11 @@ names the option and `error.cause` is what the function threw.
 **Means:** `createAgent({ prompt: 'name@version' })` (or `LOUSHO_PROMPT`) has no
 `instructions` fallback and the prompt could not be fetched: the observe daemon
 is unreachable, answered 404 for that name and version, or `LOUSHO_OBSERVE` is
-not set. The first `send()` rejects and `stream()` ends with an `error` event;
-the model is never called, so the agent never runs without a system prompt. The
+not set. Every run rejects while the prompt stays unresolved (`send()` rejects,
+`stream()` ends with an `error` event): the runs inside the 30-second retry
+window at once, and each later run after its retry fetch fails while the
+daemon stays down. The model is never called, so the agent never runs without
+a system prompt. The
 message names the prompt ref.
 
 **Fix:** start the daemon (`lousho observe`) and set `LOUSHO_OBSERVE` to its URL,

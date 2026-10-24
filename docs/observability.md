@@ -237,7 +237,9 @@ the `gen_ai.*` content attributes are **never recorded by default**. Opt in
 per agent with `createAgent({ exporter, captureContent: true })`.
 
 The exception is a local collector: when `LOUSHO_OBSERVE` points at loopback
-(`1`/`true`, or a URL whose host is `127.0.0.1`, `localhost` or `::1`),
+(`1`/`true`, or a URL whose host is `127.0.0.1`, `localhost` or `::1`;
+a `localhost` port that an SSH tunnel forwards to a remote daemon counts as
+loopback too, so set `captureContent: false` if that daemon must not get content),
 `createAgent` defaults `captureContent` to `true`, so the daemon's trace view
 shows the prompt, the model output and the tool arguments and results that
 explain a failure. Only the daemon gets that content, and it stays in the
@@ -425,7 +427,8 @@ The daemon also serves two stores agents can use at runtime:
   `instructions`, the run fails with `LOUSHO_PROMPT_UNRESOLVED`). A failed
   fetch is not cached for good: runs in the next 30 seconds resolve at once
   (using `instructions`, or failing), then the next run retries it, so a
-  daemon that was briefly down at build recovers without a restart. Every run logs the exact version
+  daemon that was briefly down at build recovers without a restart. That one
+  run waits for the retry fetch, up to 2.5 seconds. Every run logs the exact version
   used. `lousho prompt push` publishes a new
   version.
 - **Context hub.** `hub()` / `hubTools()` let agents publish and query
@@ -470,8 +473,10 @@ several workers died), the sweep marks the quiet process's open runs
 `interrupted` once it has missed about two heartbeats (the `stale` mark),
 judged on that process's own heartbeat interval and on the daemon's clock. A
 restart on the same host with the same pid (a container's pid 1) marks them
-sooner: at the new process's second heartbeat, if the old process has been
-silent since the new one appeared. With no process of the agent left, the
+sooner: at the first heartbeat of the new process (after its first) that
+comes more than one heartbeat interval plus 10 seconds after the old
+process's last, if the old process has been silent since the new one
+appeared. With no process of the agent left, the
 agent goes `down` and its open runs are marked as above. A process that exits gracefully mid-run
 (SIGINT, SIGTERM) marks its own open runs `interrupted` right away. An agent
 with heartbeats turned off (`heartbeatIntervalMs: 0`) is never swept, so its

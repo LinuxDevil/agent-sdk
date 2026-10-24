@@ -46,9 +46,10 @@ export function matchRoute(hash: string, patterns: string[]): Route | null {
   return null;
 }
 
-/** Go to `to` (`/traces?status=error`). `replace` swaps the current history entry. Fires `hashchange` once. */
+/** Go to `to` (`/traces?status=error`, a leading `#` allowed). `replace` swaps the current history entry. Fires `hashchange` once. */
 export function navigate(to: string, opts?: { replace?: boolean }): void {
-  const hash = `#${to.startsWith('/') ? to : `/${to}`}`;
+  const path = to.startsWith('#') ? to.slice(1) : to;
+  const hash = `#${path.startsWith('/') ? path : `/${path}`}`;
   if (window.location.hash === hash) return;
   if (opts?.replace) window.location.replace(hash);
   else window.location.hash = hash;

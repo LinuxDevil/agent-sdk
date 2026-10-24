@@ -447,7 +447,7 @@ describe('agent instances (one agent_id, several processes over time)', () => {
     }
   });
 
-  it('a restart on the same host and pid interrupts the silent old instance at the new one\'s second heartbeat', () => {
+  it('a restart on the same host and pid interrupts the silent old instance once it missed a beat (interval + slack)', () => {
     const database = db();
     try {
       const c1 = { host: 'c1', pid: 1 }; // a container restarted: pid 1 again
@@ -456,7 +456,10 @@ describe('agent instances (one agent_id, several processes over time)', () => {
       // one heartbeat proves nothing: a live twin in another pid namespace looks the same
       expect(traceStatus(database, 'runA')).toBe('running');
       ingestBatch(database, [beat('B', T0 + 61_000, c1)], T0 + 61_000);
-      // A stayed silent since before B was first seen: it is the process B replaced
+      // 61s since A's last beat is still a live gap (beats ride the 5s flush tick)
+      expect(traceStatus(database, 'runA')).toBe('running');
+      ingestBatch(database, [beat('B', T0 + 121_000, c1)], T0 + 121_000);
+      // A stayed silent since before B was first seen, past interval + slack: it is the process B replaced
       expect(traceStatus(database, 'runA')).toBe('interrupted');
       expect(traceStatus(database, 'runB')).toBe('running');
       expect(instances(database)).toEqual(['B']);
@@ -475,6 +478,24 @@ describe('agent instances (one agent_id, several processes over time)', () => {
         ingestBatch(database, [beat('A', T0 + t, pid1)], T0 + t);
         ingestBatch(database, [beat('B', T0 + t + 30_000, pid1)], T0 + t + 30_000);
         sweepAgents(database, T0 + t + 45_000);
+      }
+      expect([traceStatus(database, 'runA'), traceStatus(database, 'runB')]).toEqual(['running', 'running']);
+      expect(instances(database)).toEqual(['A', 'B']);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('twins started 300ms apart never interrupt each other when one beat lands a flush tick late', () => {
+    const database = db();
+    try {
+      const pid1 = { host: 'node-1', pid: 1 };
+      ingestBatch(database, [beat('A', T0, pid1), openRoot('runA', 'A')], T0);
+      ingestBatch(database, [beat('B', T0 + 300, pid1), openRoot('runB', 'B')], T0 + 300);
+      for (let t = 60_000; t <= 600_000; t += 60_000) {
+        // B's beat lands first; A's rides its next 5s flush tick, ~4s late
+        ingestBatch(database, [beat('B', T0 + t + 300, pid1)], T0 + t + 300);
+        ingestBatch(database, [beat('A', T0 + t + 4_300, pid1)], T0 + t + 4_300);
       }
       expect([traceStatus(database, 'runA'), traceStatus(database, 'runB')]).toEqual(['running', 'running']);
       expect(instances(database)).toEqual(['A', 'B']);

@@ -31,7 +31,7 @@
  *   exponential backoff (1s base, 30s cap); only events evicted past the
  *   buffer cap (5000 events or 32MB, whichever comes first), events past the
  *   crash flush's 16MB, or still unsent after close()'s final attempt, drop into a
- *   `dropped` counter. It warns ONCE and never blocks or throws into a run.
+ *   `dropped` counter. It warns ONCE per kind (an outage, a drop) and never blocks or throws into a run.
  *   Timers are unref'd so observation never keeps a process alive.
  * - Its own HTTP calls are plain `fetch`, outside any span: instrumenting
  *   them would recurse.
@@ -427,32 +427,36 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
 
   let droppedCount = 0;
   let closed = false;
-  let warned = false;
+  let warnedOutage = false;
+  let warnedDrop = false;
 
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (token) headers.authorization = `Bearer ${token}`;
 
-  const warnOnce = (what: string, error: unknown) => {
-    if (warned) return;
-    warned = true;
+  // Outages and drops warn once each: a drop warning must not hide a later outage.
+  const warnOutageOnce = (what: string, error: unknown) => {
+    if (warnedOutage) return;
+    warnedOutage = true;
     const reason = error instanceof Error ? error.message : String(error);
     console.warn(
       `[lousho] observe: ${what} (${reason}); retrying with backoff, events past the buffer cap are counted in 'dropped' and the run is unaffected.`
     );
   };
+  const warnDropOnce = (what: string) => {
+    if (warnedDrop) return;
+    warnedDrop = true;
+    console.warn(`[lousho] observe: ${what}; dropped events are counted in 'dropped' and the run is unaffected.`);
+  };
 
   const outbox = createOutbox(maxBuffered, MAX_BUFFERED_BYTES, now, (count) => {
     droppedCount += count;
-    warnOnce(
-      `buffer is full (${maxBuffered} events or ${MAX_BUFFERED_BYTES / (1024 * 1024)}MB); dropping the oldest`,
-      new SDKError('observe buffer full', 'LOUSHO_REMOTE_REQUEST_FAILED', { appendHelp: false })
-    );
+    warnDropOnce(`buffer is full (${maxBuffered} events or ${MAX_BUFFERED_BYTES / (1024 * 1024)}MB); dropping the oldest`);
   });
 
   /** Count events the daemon will never take - too large, or a batch it refused - and warn once. */
   const discard = (count: number, why: string): void => {
     droppedCount += count;
-    warnOnce(why, new SDKError('observe event rejected', 'LOUSHO_REMOTE_REQUEST_FAILED', { appendHelp: false }));
+    warnDropOnce(why);
   };
 
   const push = (event: IngestEvent) => {
@@ -508,7 +512,7 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
     } catch (error) {
       // Never slow or fail a run: requeue for a later retry, drop-and-count only as the last resort.
       // close() aborting a regular flush is not an outage: its batch rides along in the final attempt.
-      if (final || !closing.signal.aborted) warnOnce(`could not reach the observe daemon at ${url}`, error);
+      if (final || !closing.signal.aborted) warnOutageOnce(`could not reach the observe daemon at ${url}`, error);
       if (final) droppedCount += batch.length + outbox.drain().length;
       else outbox.failed(batch);
       return false;

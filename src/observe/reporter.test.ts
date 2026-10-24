@@ -495,6 +495,22 @@ describe('observeExporter', () => {
       expect(r.dropped).toBe(2); // the refused batch, not requeued
       expect(String(warn.mock.calls[0][0])).toContain('refused a batch of 2 events (413)');
     });
+
+    it('warns about a drop without promising a retry, and still warns about a later outage', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { fetchFn } = sizedFetch((n) => (n === 1 ? 413 : 503));
+      const { r } = reporter({ fetchFn, flushSize: 1000 });
+      r.onSpanEnd(makeSpan({ id: 'refused' }));
+      await r.flush(); // 413: dropped
+      r.onSpanEnd(makeSpan({ id: 'later' }));
+      await r.flush(); // 503: an outage, requeued
+      expect(warn).toHaveBeenCalledTimes(2);
+      const [drop, outage] = warn.mock.calls.map((call) => String(call[0]));
+      expect(drop).toContain('refused a batch');
+      expect(drop).not.toContain('retrying');
+      expect(outage).toContain('could not reach the observe daemon');
+      expect(outage).toContain('retrying with backoff');
+    });
   });
 
   it('clamps maxBuffered to 1 so the deregister survives', async () => {
