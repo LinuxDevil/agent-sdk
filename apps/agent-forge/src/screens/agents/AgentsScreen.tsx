@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Topbar, type SidePanel } from '../components/Topbar';
-import { LeftRail } from '../components/LeftRail';
-import { CanvasArea } from '../components/CanvasArea';
-import { Inspector } from '../components/Inspector';
-import { BottomDrawer } from '../components/BottomDrawer';
-import { NARROW_QUERY, useMediaQuery } from '../components/useMediaQuery';
-import { useShell } from '../shell/AppShell';
+import { Topbar, type SidePanel } from '../../components/Topbar';
+import { LeftRail } from '../../components/LeftRail';
+import { CanvasArea } from '../../components/CanvasArea';
+import { Inspector } from '../../components/Inspector';
+import { BottomDrawer } from '../../components/BottomDrawer';
+import { NARROW_QUERY, useMediaQuery } from '../../components/useMediaQuery';
+import { useShell } from '../../shell/AppShell';
+import { useAgentRouteSync } from './useAgentRouteSync';
 
 /**
  * Below 860px the rail and the Inspector are slide-over drawers,
@@ -36,8 +37,12 @@ function useSidePanels() {
   return { narrow, open, toggle, close: () => setOpen(undefined) };
 }
 
-/** `#/agents` - the builder: agent rail, canvas, Inspector and the run drawer, under the Build toolbar. */
+/**
+ * `#/agents` and `#/agents/:id` - the builder: agent rail, canvas, Inspector and the run drawer,
+ * under the Build toolbar. The hash names the open agent (see `useAgentRouteSync`).
+ */
 export function AgentsScreen() {
+  useAgentRouteSync();
   const panels = useSidePanels();
   const shellClass = `shell${panels.open ? ` ${panels.open}-open` : ''}`;
   return (

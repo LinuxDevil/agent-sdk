@@ -164,6 +164,7 @@ async function deleteSavedAgent(
  */
 function useAgentList(store: AgentStore, initialId: string, doc: DocumentSetters) {
   const [agents, setAgents] = useState<AgentStoreEntry[]>([]);
+  const [agentsLoaded, setAgentsLoaded] = useState(false);
 
   const refreshAgents = useCallback(async () => {
     try {
@@ -177,7 +178,9 @@ function useAgentList(store: AgentStore, initialId: string, doc: DocumentSetters
   // first saved agent - or, when there is none, an unsaved 'untitled-agent'.
   useEffect(() => {
     let cancelled = false;
-    void loadInitialAgent(store, initialId, () => cancelled, setAgents, doc);
+    void loadInitialAgent(store, initialId, () => cancelled, setAgents, doc).finally(() => {
+      if (!cancelled) setAgentsLoaded(true);
+    });
     return () => {
       cancelled = true;
     };
@@ -185,7 +188,7 @@ function useAgentList(store: AgentStore, initialId: string, doc: DocumentSetters
     // agent changes explicitly rather than re-running this on agentId writes.
   }, []);
 
-  return { agents, setAgents, refreshAgents };
+  return { agents, setAgents, refreshAgents, agentsLoaded };
 }
 
 /** `setGraph` / `setSpec`: edit the document's graph directly or through its derived spec, marking it dirty. */
@@ -258,16 +261,17 @@ function useAgentActions(context: AgentListContext, spec: AgentSpec, setAgents: 
 /**
  * The editable document for the currently-loaded agent: its id, canonical
  * graph, derived spec, dirty flag, selection, and the saved-agent list -
- * plus load/save/autosave and switching/creating agents.
+ * plus load/save/autosave and switching/creating agents. On mount it opens
+ * `initialId` when that agent is saved (the `#/agents/:id` of a reload).
  */
-export function useAgentDocument(store: AgentStore) {
+export function useAgentDocument(store: AgentStore, initialId?: string) {
   const [agentId, setAgentId] = useState('untitled-agent');
   const [graph, setGraphState] = useState<AgentGraphSpec>(() => specToGraph(DEFAULT_SPEC));
   const [dirty, setDirty] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>(undefined);
   const lastValidSpec = useRef<AgentSpec>(DEFAULT_SPEC);
   const doc: DocumentSetters = { setAgentId, setGraphState, lastValidSpec, setSelectedNodeId, setDirty };
-  const { agents, setAgents, refreshAgents } = useAgentList(store, agentId, doc);
+  const { agents, setAgents, refreshAgents, agentsLoaded } = useAgentList(store, initialId ?? agentId, doc);
 
   const spec = useMemo(() => {
     const derived = deriveSpec(graph, lastValidSpec.current);
@@ -300,6 +304,7 @@ export function useAgentDocument(store: AgentStore) {
     selectedNodeId,
     setSelectedNodeId,
     agents,
+    agentsLoaded,
     switchAgent,
     createAgent,
   };

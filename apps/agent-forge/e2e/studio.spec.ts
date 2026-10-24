@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 /**
  * S3: full-stack smoke test against the real, BUILT `lousho studio`
@@ -87,4 +87,79 @@ test('create an agent, hit an approval gate via chat, approve it, and complete t
   await expect(approvalCard).toHaveCount(0, { timeout: 15_000 });
   await expect(chatInput).toBeEnabled();
   await expect(page.locator('.chat-msg.agent').last()).toBeVisible();
+});
+
+/** F5: the builder is the Agents screen, and `#/agents/:id` names the open agent. */
+async function createAgent(page: Page, id: string) {
+  await page.getByRole('button', { name: '+ New agent' }).click();
+  await page.locator('#new-agent-name').fill(id);
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.locator('.crumbs b')).toHaveText(id);
+}
+
+test('selecting an agent updates the URL, a reload restores it, an unknown id falls back to #/agents', async ({ page }) => {
+  const first = `e2e-url-a-${Date.now()}`;
+  const second = `e2e-url-b-${Date.now()}`;
+  await page.goto('/?token=e2e-studio-token');
+  await expect(page.locator('.app')).toBeVisible();
+
+  await createAgent(page, first);
+  await expect(page).toHaveURL(new RegExp(`#/agents/${first}$`));
+  await createAgent(page, second);
+  await expect(page).toHaveURL(new RegExp(`#/agents/${second}$`));
+
+  await page.locator('.agent-card-main', { hasText: first }).click();
+  await expect(page).toHaveURL(new RegExp(`#/agents/${first}$`));
+  await expect(page.locator('.crumbs b')).toHaveText(first);
+
+  // The token moved to sessionStorage on the first load, so the reload has none in the URL.
+  await page.reload();
+  await expect(page.locator('.crumbs b')).toHaveText(first);
+  await expect(page.locator('.agent-card.selected')).toContainText(first);
+  await expect(page).toHaveURL(new RegExp(`#/agents/${first}$`));
+
+  await page.goto(`/?token=e2e-studio-token#/agents/${second}`);
+  await expect(page.locator('.crumbs b')).toHaveText(second);
+
+  await page.goto('/#/agents/no-such-agent');
+  await expect(page).toHaveURL(/#\/agents$/);
+  await expect(page.locator('.canvas-wrap')).toBeVisible();
+});
+
+test('unsaved changes ask before switching agents or leaving Agents; cancelling keeps the URL', async ({ page }) => {
+  const first = `e2e-dirty-a-${Date.now()}`;
+  const second = `e2e-dirty-b-${Date.now()}`;
+  await page.goto('/?token=e2e-studio-token');
+  await createAgent(page, first);
+  await createAgent(page, second);
+
+  // Fail autosave for the open agent so its edit stays unsaved.
+  await page.route(`**/agents/${second}`, (route) =>
+    route.request().method() === 'PUT' ? route.fulfill({ status: 500, body: 'no' }) : route.continue(),
+  );
+  await page.getByRole('tab', { name: 'Nodes' }).click();
+  await page.getByRole('button', { name: 'LLM step' }).click();
+  await expect(page.locator('.dirty-dot').first()).toBeVisible();
+
+  const dialogs: string[] = [];
+  page.once('dialog', (d) => {
+    dialogs.push(d.message());
+    void d.dismiss();
+  });
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Traces' }).click();
+  await expect.poll(() => dialogs.length).toBe(1);
+  expect(dialogs[0]).toContain(second);
+  await expect(page).toHaveURL(new RegExp(`#/agents/${second}$`));
+  await expect(page.locator('.canvas-wrap')).toBeVisible();
+
+  await page.getByRole('tab', { name: 'Agents' }).click();
+  page.once('dialog', (d) => void d.dismiss());
+  await page.locator('.agent-card-main', { hasText: first }).click();
+  await expect(page).toHaveURL(new RegExp(`#/agents/${second}$`));
+  await expect(page.locator('.crumbs b')).toHaveText(second);
+
+  page.once('dialog', (d) => void d.accept());
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Traces' }).click();
+  await expect(page).toHaveURL(/#\/traces$/);
+  await expect(page.locator('.canvas-wrap')).toHaveCount(0);
 });

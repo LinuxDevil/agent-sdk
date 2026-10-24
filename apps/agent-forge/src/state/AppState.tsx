@@ -17,6 +17,7 @@ import type {
 } from '../../shared/wireTypes';
 import type { ChatState } from './chatReducer';
 import { useAgentDocument } from './useAgentDocument';
+import { agentRouteId } from '../screens/agents/agentRoute';
 import { useAgentStatuses, useAgentStream } from './useAgentStream';
 import { useActiveProfile, useChatControls, useRunControls } from './useAgentControls';
 
@@ -55,6 +56,8 @@ interface AppState {
   setDrawerTab: (tab: DrawerTab) => void;
   /** Every agent currently known to `store`, refreshed after save/create/switch. */
   agents: AgentStoreEntry[];
+  /** False until the first `agents` fetch (and opening the initial agent) has finished, failed included. */
+  agentsLoaded: boolean;
   /** Loads a different agent's graph into the canvas - a full state swap, not a visual pan. */
   switchAgent: (id: string) => Promise<void>;
   /** Creates a new agent from a seed template and switches to it. */
@@ -150,7 +153,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const store = useMemo(() => new HttpAgentStore(runtimeClient), []);
   const [railTab, setRailTab] = useState<RailTab>('agents');
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('chat');
-  const doc = useAgentDocument(store);
+  // A reload of `#/agents/:id` reopens that agent.
+  const [initialAgentId] = useState(() => agentRouteId(window.location.hash));
+  const doc = useAgentDocument(store, initialAgentId);
   const { agentId, spec } = doc;
   const agentStatuses = useAgentStatuses(doc.agents);
   const stream = useAgentStream(agentId);
