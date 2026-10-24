@@ -95,12 +95,18 @@ const observationData = z.object({
 export type ObservationData = z.infer<typeof observationData>;
 
 /** `prompt_use` - links a run's observation to the registry prompt version it ran with. */
-const promptUseData = z.object({
+export interface PromptUseData {
+  obs_id: string;
+  prompt_id: string;
+  version?: number;
+}
+// Explicit annotation: the DTS rollup emits this const next to the public
+// type, and zod 3's expanded ZodObject generics are not valid under zod 4.
+const promptUseData: z.ZodType<PromptUseData> = z.object({
   obs_id: z.string().min(1),
   prompt_id: z.string().min(1),
   version: z.number().int().optional(),
 });
-export type PromptUseData = z.infer<typeof promptUseData>;
 
 /** `score` - one eval/judge/human verdict attached to a trace (and optionally one observation in it). */
 const scoreData = z.object({
