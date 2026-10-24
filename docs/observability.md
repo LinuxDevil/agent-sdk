@@ -417,7 +417,8 @@ The daemon also serves two stores agents can use at runtime:
 
 - **Prompt registry.** `createAgent({ prompt: 'name@version' })` or
   `LOUSHO_PROMPT` fetches instructions from it at build (`@latest` resolves
-  on the daemon; an unreachable daemon falls back to `instructions`). Every
+  on the daemon; an unreachable daemon falls back to `instructions`; with no
+  `instructions`, the first run fails with `LOUSHO_PROMPT_UNRESOLVED`). Every
   run logs the exact version used. `lousho prompt push` publishes a new
   version.
 - **Context hub.** `hub()` / `hubTools()` let agents publish and query

@@ -656,6 +656,7 @@ const ERROR_CODES: {
     readonly LOUSHO_REGISTRY_UNSAFE_PATH: "Do not install this item; it asks to write outside its allowed folder or is too large, so tell the registry owner.";
     readonly LOUSHO_REGISTRY_FILE_EXISTS: "Pass --overwrite to replace the existing file, or move your file away first.";
     readonly LOUSHO_REGISTRY_MANIFEST_MISMATCH: "Do not install this item: its code reaches for something its permission manifest does not declare; tell the registry owner, who fixes the code or the manifest.";
+    readonly LOUSHO_PROMPT_UNRESOLVED: "Start the observe daemon (set LOUSHO_OBSERVE to its URL), or pass `instructions` as a fallback.";
     readonly LOUSHO_TOOL_NOT_FOUND: "Use one of the tool names listed in the message, or register the tool yourself.";
     readonly LOUSHO_TOOL_NEEDS_CREDENTIALS: "Build the agent with createAgent() and pass the configured tool.";
     readonly LOUSHO_TOOL_EXECUTION_FAILED: "Look at the tool's own error (the `cause`) and fix the tool or its input.";

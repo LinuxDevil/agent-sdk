@@ -120,11 +120,12 @@ export interface RegistryPrompt {
 /**
  * Resolve `ref` (`'name@version'`) against the daemon `env`'s
  * `LOUSHO_OBSERVE` points at. Returns `undefined` - the opt-in does not
- * apply - when the env names no daemon; `LOUSHO_OBSERVE_TOKEN` is sent when set.
+ * apply - when the env names no daemon (`hasFallback: false` - no embedded
+ * instructions - only changes the warning's wording); `LOUSHO_OBSERVE_TOKEN` is sent when set.
  */
 export function registryPrompt(
   ref: string,
-  options: { env?: NodeJS.ProcessEnv; fetchFn?: typeof fetch; timeoutMs?: number } = {}
+  options: { env?: NodeJS.ProcessEnv; fetchFn?: typeof fetch; timeoutMs?: number; hasFallback?: boolean } = {}
 ): RegistryPrompt | undefined {
   const parsed = parsePromptRef(ref);
   const env = options.env ?? (typeof process !== 'undefined' ? process.env : undefined);
@@ -147,7 +148,9 @@ export function registryPrompt(
         warned = true;
         console.warn(
           `[lousho] prompt: could not resolve '${ref}' at ${url} (${error instanceof Error ? error.message : String(error)}); ` +
-            'the embedded instructions are used instead.'
+            (options.hasFallback === false
+              ? 'there are no embedded instructions, so runs fail with LOUSHO_PROMPT_UNRESOLVED.'
+              : 'the embedded instructions are used instead.')
         );
       }
       return undefined;

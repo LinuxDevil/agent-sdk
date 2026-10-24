@@ -104,13 +104,47 @@ describe('createAgent({ prompt }) - fallback + conflicts', () => {
     expect(warn.mock.calls.filter((c) => String(c[0]).includes('prompt'))).toHaveLength(1);
   });
 
-  it('falls back to the default instructions when a ref is set but nothing is embedded', async () => {
+  it('rejects with LOUSHO_PROMPT_UNRESOLVED when the prompt cannot be fetched and there is no fallback', async () => {
     vi.stubEnv('LOUSHO_OBSERVE', 'http://127.0.0.1:1');
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const model = mockModel(['ok']);
-    await createAgent({ name: 'prompt-agent-e', provider: model, prompt: 'mira@1' }).send('hi');
+    const agent = createAgent({ name: 'prompt-agent-e', provider: model, prompt: 'mira@latest' });
+    await expect(agent.send('hi')).rejects.toMatchObject({ code: 'LOUSHO_PROMPT_UNRESOLVED', message: expect.stringContaining('mira@latest') });
+    await expect(agent.send('hi')).rejects.toThrow(/start the daemon|`instructions`/);
+    await expect(agent.stream('hi').result).rejects.toMatchObject({ code: 'LOUSHO_PROMPT_UNRESOLVED' });
+    expect(model.calls).toHaveLength(0);
     await closeReporter('prompt-agent-e', 'http://127.0.0.1:1');
-    expect(systemPrompt(model)).toContain('You are a helpful assistant.');
+  });
+
+  it('rejects with LOUSHO_PROMPT_UNRESOLVED when the daemon answers 404 for the prompt', async () => {
+    const daemon = await start();
+    vi.stubEnv('LOUSHO_OBSERVE', base(daemon));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const model = mockModel(['ok']);
+    await expect(createAgent({ name: 'prompt-agent-404', provider: model, prompt: 'ghost@latest' }).send('hi')).rejects.toMatchObject({
+      code: 'LOUSHO_PROMPT_UNRESOLVED',
+    });
+    expect(model.calls).toHaveLength(0);
+    await closeReporter('prompt-agent-404', base(daemon));
+  });
+
+  it('rejects with LOUSHO_PROMPT_UNRESOLVED when no collector is configured and there is no fallback', async () => {
+    vi.stubEnv('LOUSHO_OBSERVE', '');
+    const model = mockModel(['ok']);
+    await expect(createAgent({ name: 'prompt-agent-nocollector', provider: model, prompt: 'mira@latest' }).send('hi')).rejects.toMatchObject({
+      code: 'LOUSHO_PROMPT_UNRESOLVED',
+      message: expect.stringContaining('LOUSHO_OBSERVE'),
+    });
+    expect(model.calls).toHaveLength(0);
+  });
+
+  it('falls back to instructions when they exist (no collector: warning text unchanged)', async () => {
+    vi.stubEnv('LOUSHO_OBSERVE', '');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const model = mockModel(['ok']);
+    await createAgent({ name: 'prompt-agent-fb', provider: model, prompt: 'mira@1', instructions: 'You are embedded.' }).send('hi');
+    expect(systemPrompt(model)).toContain('You are embedded.');
+    expect(String(warn.mock.calls[0][0])).toContain('the embedded instructions are used instead.');
   });
 
   it('still treats a non-ref prompt + instructions as the conflicting-aliases error', () => {
