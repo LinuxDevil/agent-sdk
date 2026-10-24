@@ -125,7 +125,7 @@ describe('evalCaseObservation', () => {
       spanId = parentSpanId;
     });
     expect(spanId).toEqual(expect.any(String));
-    observation.emit(result());
+    await observation.emit(result());
     await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
     const scores = scoreEvents(calls);
     expect(scores).toHaveLength(2);
@@ -134,6 +134,46 @@ describe('evalCaseObservation', () => {
       expect(event.data.agent_id).toEqual(expect.any(String));
     }
     expect(scores[0].data.name).toBe('refund eval/completed()');
+  });
+
+  it('posts the eval span before the score rows, with the same trace_id', async () => {
+    const { fetchFn, calls } = noopFetch();
+    vi.stubGlobal('fetch', fetchFn);
+    const observation = evalCaseObservation({ evalName: 'e', agent: { name: 'eval-flush-scored' }, env: { LOUSHO_OBSERVE: 'http://x' } });
+    await observation.run(async () => {});
+    await observation.emit(result());
+    const spanBatch = calls.findIndex((c) => c.batch.some((e) => e.type === 'observation'));
+    const scoreBatch = calls.findIndex((c) => c.batch.some((e) => e.type === 'score'));
+    expect(spanBatch).toBeGreaterThanOrEqual(0);
+    expect(spanBatch).toBeLessThan(scoreBatch);
+    const span = calls[spanBatch].batch.find((e) => e.type === 'observation' && e.data.name === 'eval e');
+    expect(span).toBeDefined();
+    const scores = scoreEvents(calls);
+    expect(scores).toHaveLength(2);
+    for (const event of scores) expect(event.data.trace_id).toBe((span as Extract<IngestEvent, { type: 'observation' }>).data.obs_id);
+  });
+
+  it('adds at most ~2.5s per case when the daemon accepts but never answers, then skips the waits', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})));
+    const observation = () => evalCaseObservation({ evalName: 'e', agent: { name: 'eval-blackhole' }, env: { LOUSHO_OBSERVE: 'http://x' } });
+    const first = observation();
+    const started = Date.now();
+    await expect(first.run(async () => 'ok')).resolves.toBe('ok');
+    await first.emit(result());
+    expect(Date.now() - started).toBeLessThan(2500);
+    const second = observation();
+    const again = Date.now();
+    await second.run(async () => 'ok');
+    await second.emit(result());
+    expect(Date.now() - again).toBeLessThan(200);
+  });
+
+  it('lets the case pass and resolves emit when every request is refused', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new Error('connect ECONNREFUSED'))));
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const observation = evalCaseObservation({ evalName: 'e', agent: { name: 'eval-refused' }, env: { LOUSHO_OBSERVE: 'http://x' } });
+    await expect(observation.run(async () => 'ok')).resolves.toBe('ok');
+    await expect(observation.emit(result())).resolves.toBeUndefined();
   });
 });
 

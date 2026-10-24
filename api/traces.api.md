@@ -62,6 +62,7 @@ export interface ObserveReporter extends TraceExporter {
     readonly agentId: string;
     close(): Promise<void>;
     readonly dropped: number;
+    flush(timeoutMs?: number): Promise<void>;
     promptUse?: PromptUseProvider;
     readonly sessionId: string;
 }

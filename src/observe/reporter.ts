@@ -101,6 +101,14 @@ export interface ObserveReporter extends TraceExporter {
    * on the shared reporter.
    */
   promptUse?: PromptUseProvider;
+  /**
+   * Send everything pending now, batch after batch, without closing. Resolves
+   * once the outbox is drained or a batch failed (it is then requeued for the
+   * normal retry); never rejects. Callers that must see their spans land
+   * before the process may exit (eval workers) await this.
+   * @param timeoutMs Per-request timeout; default the reporter's own.
+   */
+  flush(timeoutMs?: number): Promise<void>;
   /** Deregister, flush once, and release timers/hooks. Idempotent. */
   close(): Promise<void>;
 }
@@ -606,6 +614,7 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
       // The root ended: forget every span of this trace so the map does not grow forever.
       for (const [id, tid] of targets) if (tid === traceId) targets.delete(id);
     },
+    flush: (timeoutMs) => flush(timeoutMs ?? requestTimeoutMs),
     close,
   };
 }

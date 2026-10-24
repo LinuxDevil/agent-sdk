@@ -388,7 +388,7 @@ export async function runTrajectoryCase(
   }
   const base = { name: spec.name, case: label, tags: spec.tags ?? [], file };
   const result = context.toResult(base, Date.now() - started, error);
-  observation.emit(result);
+  await observation.emit(result);
   return result;
 }
 

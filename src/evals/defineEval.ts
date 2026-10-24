@@ -308,7 +308,7 @@ function defineClassicEval(config: EvalConfig): void {
         usage: result.usage,
         file,
       };
-      observation.emit(evalResult);
+      await observation.emit(evalResult);
       return evalResult;
     });
     expect(evalResult.assertions[0].score).toBeGreaterThanOrEqual(threshold);
