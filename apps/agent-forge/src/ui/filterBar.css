@@ -1,0 +1,105 @@
+/* FilterBar, facet popovers and TimeRangePicker. Tokens only; the bar wraps at narrow widths. */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.filter-search {
+  flex: 1 1 200px;
+  min-width: 0;
+  padding: 6px 10px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--font-ui);
+}
+.facet {
+  position: relative;
+}
+.facet-btn,
+.seg-btn,
+.facet-clear {
+  padding: 6px 10px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+.seg-btn[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.seg-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.facet-count {
+  margin-left: 6px;
+  padding: 0 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 8px;
+  font-size: 12px;
+}
+.facet-pop {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 180px;
+  max-width: calc(100vw - 32px);
+  max-height: 280px;
+  overflow: auto;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+.facet-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  color: var(--text);
+  cursor: pointer;
+}
+.facet-opt-count {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.facet-clear {
+  width: 100%;
+  margin-top: 4px;
+  color: var(--text-muted);
+}
+.time-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.time-range-custom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+.time-range-custom input {
+  margin-left: 4px;
+  padding: 4px 6px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--font-ui);
+}
