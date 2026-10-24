@@ -1,0 +1,9 @@
+/* Shared list-screen cells (#/traces, #/threads). Tokens only. */
+/* Preview cells: one line, ellipsis; the full text is in the title attribute. */
+.list-clip {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
+}

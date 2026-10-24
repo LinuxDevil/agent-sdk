@@ -6,14 +6,6 @@
   min-width: 0;
   padding: 12px 16px;
 }
-/* Preview cells: one line, ellipsis; the full text is in the title attribute. */
-.traces-clip {
-  display: block;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
 .traces-error {
   color: var(--danger);
 }

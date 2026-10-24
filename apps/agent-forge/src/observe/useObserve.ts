@@ -6,13 +6,15 @@
  * duplicating effect logic.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { observeClient, ObserveDaemonDownError, type InsightsFilter, type ScoreListFilter, type TraceListFilter } from './observeClient';
+import { observeClient, ObserveDaemonDownError, type InsightsFilter, type ScoreListFilter, type SessionListFilter, type TraceListFilter } from './observeClient';
 import type {
   ObserveAgentRow,
   ObserveHealth,
   ObserveInsights,
   ObserveScorePassRate,
   ObserveScoreRow,
+  ObserveSessionDetail,
+  ObserveSessionList,
   ObserveTraceDetail,
   ObserveTraceList,
 } from './types';
@@ -95,6 +97,14 @@ export function useTraceDetail(traceId: string | undefined, refreshKey?: unknown
     () => (traceId === undefined ? Promise.resolve(undefined) : observeClient.traceDetail(traceId)),
     [traceId, refreshKey]
   );
+}
+
+export function useSessions(filter: SessionListFilter, refreshKey?: unknown): ObserveQuery<ObserveSessionList> {
+  return useObserveQuery(() => observeClient.listSessions(filter), [JSON.stringify(filter), refreshKey]);
+}
+
+export function useSession(sessionId: string, refreshKey?: unknown): ObserveQuery<ObserveSessionDetail | undefined> {
+  return useObserveQuery(() => observeClient.session(sessionId), [sessionId, refreshKey]);
 }
 
 export function useAgents(project?: string, refreshKey?: unknown): ObserveQuery<ObserveAgentRow[]> {

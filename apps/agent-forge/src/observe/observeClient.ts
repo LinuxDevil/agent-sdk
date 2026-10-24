@@ -16,6 +16,8 @@ import type {
   ObserveInsights,
   ObserveScorePassRate,
   ObserveScoreRow,
+  ObserveSessionDetail,
+  ObserveSessionList,
   ObserveTraceDetail,
   ObserveTraceList,
 } from './types';
@@ -84,6 +86,16 @@ export interface TraceListFilter extends TraceListQuery {
 
 /** The trace list's server-side sort keys. */
 export type TraceSort = 'start' | 'duration' | 'tokens' | 'cost';
+
+/** `GET /api/v1/sessions` params: sessions whose `started_at` is in the half-open `[from, to)` window (ms epoch). */
+export interface SessionListFilter {
+  agent_id?: string;
+  status?: string;
+  from?: number;
+  to?: number;
+  limit?: number;
+  offset?: number;
+}
 
 export interface ScoreListFilter {
   trace_id?: string;
@@ -201,6 +213,21 @@ export class ObserveClient {
   async traceDetail(traceId: string): Promise<ObserveTraceDetail | undefined> {
     try {
       return await this.request(`/api/v1/traces/${encodeURIComponent(traceId)}`);
+    } catch (error) {
+      if (error instanceof ObserveApiError && error.status === 404) return undefined;
+      throw error;
+    }
+  }
+
+  /** `GET /api/v1/sessions` - the paginated thread list, newest first. */
+  listSessions(filter: SessionListFilter = {}): Promise<ObserveSessionList> {
+    return this.request('/api/v1/sessions', { query: { ...filter } });
+  }
+
+  /** `GET /api/v1/sessions/:id` - one thread plus its traces, oldest first; `undefined` on the daemon's 404. */
+  async session(sessionId: string): Promise<ObserveSessionDetail | undefined> {
+    try {
+      return await this.request(`/api/v1/sessions/${encodeURIComponent(sessionId)}`);
     } catch (error) {
       if (error instanceof ObserveApiError && error.status === 404) return undefined;
       throw error;

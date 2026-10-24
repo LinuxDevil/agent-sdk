@@ -48,6 +48,39 @@ export interface ObserveTraceList {
   offset: number;
 }
 
+/** One row of `GET /api/v1/sessions`: a conversation thread with its run totals (`traces` = turns). */
+export interface ObserveSessionRow {
+  session_id: string;
+  agent_id: string | null;
+  /** The agent's registered name, or null. */
+  agent_name: string | null;
+  /** `active` until the agent's crash sweep marks it `interrupted`. */
+  status: string;
+  started_at: number;
+  /** The latest observation end seen in the session, or null while nothing has finished. */
+  ended_at: number | null;
+  /** Distinct traces (turns) in the session. */
+  traces: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  /** The latest turn's root input, first 200 chars. */
+  last_input_preview: string | null;
+}
+
+export interface ObserveSessionList {
+  sessions: ObserveSessionRow[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/** `GET /api/v1/sessions/:id`: the thread and its traces, oldest first (capped at 500). */
+export interface ObserveSessionDetail {
+  session: ObserveSessionRow;
+  traces: ObserveTraceRow[];
+}
+
 /** One flat observation row of `GET /api/v1/traces/:id` - the client nests them by `parent_obs_id`. */
 export interface ObserveObservationRow {
   obs_id: string;
