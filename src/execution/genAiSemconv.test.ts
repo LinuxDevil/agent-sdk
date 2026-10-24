@@ -50,7 +50,7 @@ function modelWithOneToolCall() {
   ]);
 }
 
-async function runAgent(extra: { captureContent?: boolean; redactContent?: boolean } = {}) {
+async function runAgent(extra: { captureContent?: boolean; redactContent?: boolean | ((text: string) => string) } = {}) {
   const { agent, toolRegistry } = setup();
   const { exporter, spans } = memoryExporter();
   const provider = modelWithOneToolCall();
@@ -281,6 +281,103 @@ describe('OpenTelemetry GenAI semantic conventions', () => {
     expect(spans[1].attributes['gen_ai.usage.input_tokens']).toBe(10);
   });
 
+  it('scrubs API-key shapes from captured content when redactContent is true', async () => {
+    const key = 'sk-or-v1-0123456789abcdef0123456789abcdef';
+    const { agent, toolRegistry } = setup();
+    const { exporter, spans } = memoryExporter();
+    await AgentExecutor.execute({
+      agent: { ...agent, prompt: `Use ${key} when asked.` },
+      input: `My key is ${key}`,
+      provider: mockModel([
+        { toolCalls: [{ id: 'call_k', name: 'get_weather', args: { city: key } }] },
+        { text: `Done with ${key}` },
+      ]),
+      toolRegistry,
+      exporter,
+      captureContent: true,
+      redactContent: true,
+    });
+
+    const content = spans.flatMap((s) => Object.entries(s.attributes).filter(([k]) => k.startsWith('gen_ai.')));
+    expect(JSON.stringify(content)).not.toContain(key);
+    const chat = spans.find((s) => s.name.startsWith('chat'))!;
+    expect(JSON.parse(chat.attributes['gen_ai.input.messages'] as string)).toEqual([
+      { role: 'user', parts: [{ type: 'text', content: 'My key is [redacted]' }] },
+    ]);
+    expect(JSON.parse(chat.attributes['gen_ai.system_instructions'] as string)[0].content).toBe('Use [redacted] when asked.');
+    const tool = spans.find((s) => s.name.startsWith('execute_tool'))!;
+    expect(JSON.parse(tool.attributes['gen_ai.tool.call.arguments'] as string)).toEqual({ city: '[redacted]' });
+  });
+
+  it('scrubs captured content when redactContent is not set', async () => {
+    const key = 'ghp_0123456789abcdefABCDEF0123456789';
+    const { agent, toolRegistry } = setup();
+    const { exporter, spans } = memoryExporter();
+    await AgentExecutor.execute({ agent, input: `token ${key}`, provider: mockModel(['ok']), toolRegistry, exporter, captureContent: true });
+    expect(JSON.parse(spans[0].attributes['gen_ai.input.messages'] as string)[0].parts[0].content).toBe('token [redacted]');
+  });
+
+  it('applies a custom redactor function', async () => {
+    const seen: string[] = [];
+    const { spans } = await runAgent({
+      captureContent: true,
+      redactContent: (text) => {
+        seen.push(text);
+        return text.replace(/Paris/g, '<city>');
+      },
+    });
+
+    expect(seen).toContain('Weather in Paris?');
+    expect(JSON.parse(spans[0].attributes['gen_ai.input.messages'] as string)[0].parts[0].content).toBe('Weather in <city>?');
+    expect(JSON.parse(spans[2].attributes['gen_ai.tool.call.arguments'] as string)).toEqual({ city: '<city>' });
+    expect(JSON.parse(spans[2].attributes['gen_ai.tool.call.result'] as string)).toEqual({ city: '<city>', tempC: 21 });
+    // A function counts as redaction on: the deprecated attributes stay off.
+    expect(spans[1].attributes).not.toHaveProperty('prompt');
+  });
+
+  it('falls back to [redacted] when a custom redactor throws, without failing the run', async () => {
+    const { spans } = await runAgent({
+      captureContent: true,
+      redactContent: () => {
+        throw new Error('boom');
+      },
+    });
+    expect(JSON.parse(spans[0].attributes['gen_ai.input.messages'] as string)[0].parts[0].content).toBe('[redacted]');
+  });
+
+  it('does not scrub captured content when redactContent is false', async () => {
+    const key = 'sk-or-v1-0123456789abcdef0123456789abcdef';
+    const { agent, toolRegistry } = setup();
+    const { exporter, spans } = memoryExporter();
+    await AgentExecutor.execute({ agent, input: key, provider: mockModel(['ok']), toolRegistry, exporter, captureContent: true, redactContent: false });
+    expect(spans[0].attributes['gen_ai.input.messages']).toContain(key);
+  });
+
+  it.each([false, true, (text: string) => text] as const)(
+    'encodes tool args and results as JSON.stringify does (Date as ISO, toJSON honored) with redactContent %s',
+    async (redactContent) => {
+      const { recordToolOutcome } = await import('./genAiSpans');
+      const at = new Date('2026-10-24T12:00:00.000Z');
+      const span: Span = { id: 's', name: 'execute_tool t', attributes: {}, startTime: 0 };
+      const money = { toJSON: () => '12.50' };
+      recordToolOutcome(span, { args: { at }, result: { at, money }, latencyMs: 1 }, { captureContent: true, redactContent });
+      expect(span.attributes['gen_ai.tool.call.arguments']).toBe('{"at":"2026-10-24T12:00:00.000Z"}');
+      expect(span.attributes['gen_ai.tool.call.result']).toBe('{"at":"2026-10-24T12:00:00.000Z","money":"12.50"}');
+    }
+  );
+
+  it('fails on a cyclic tool result the way JSON.stringify does, whatever redactContent is', async () => {
+    const { recordToolOutcome } = await import('./genAiSpans');
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    for (const redactContent of [false, true]) {
+      const span: Span = { id: 's', name: 'execute_tool t', attributes: {}, startTime: 0 };
+      expect(() =>
+        recordToolOutcome(span, { args: {}, result: cyclic, latencyMs: 1 }, { captureContent: true, redactContent })
+      ).toThrow(TypeError);
+    }
+  });
+
   it('emits a Message[] input on invoke_agent as message parts, not a double-encoded string', async () => {
     const { agent, toolRegistry } = setup();
     const { exporter, spans } = memoryExporter();
@@ -471,13 +568,13 @@ describe('gen_ai.response.id on chat spans', () => {
     const { recordLlmResult } = await import('./genAiSpans');
     const span = (): Span => ({ id: 's', name: 'chat m', attributes: { 'gen_ai.request.model': 'm' }, startTime: 0 });
     const aiSdk = span();
-    recordLlmResult(aiSdk, { text: 'hi', finishReason: 'stop', rawResponse: { response: { id: 'resp_1', modelId: 'm-1' } } }, false);
+    recordLlmResult(aiSdk, { text: 'hi', finishReason: 'stop', rawResponse: { response: { id: 'resp_1', modelId: 'm-1' } } }, { captureContent: false });
     expect(aiSdk.attributes).toMatchObject({ 'gen_ai.response.id': 'resp_1', 'gen_ai.response.model': 'm-1' });
     const openAi = span();
-    recordLlmResult(openAi, { text: 'hi', finishReason: 'stop', rawResponse: { id: 'chatcmpl-2' } }, false);
+    recordLlmResult(openAi, { text: 'hi', finishReason: 'stop', rawResponse: { id: 'chatcmpl-2' } }, { captureContent: false });
     expect(openAi.attributes['gen_ai.response.id']).toBe('chatcmpl-2');
     const none = span();
-    recordLlmResult(none, { text: 'hi', finishReason: 'stop' }, false);
+    recordLlmResult(none, { text: 'hi', finishReason: 'stop' }, { captureContent: false });
     expect(none.attributes).not.toHaveProperty('gen_ai.response.id');
   });
 });

@@ -92,7 +92,7 @@ export interface PermissionDecisionEntry {
   reason?: string;
   /** The `preToolCall` hook that denied the call. */
   hook?: string;
-  /** The call's arguments; omitted when the run sets `redactContent`. */
+  /** The call's arguments; omitted when the run sets `redactContent` (true or a function). */
   args?: Record<string, unknown>;
   /**
    * The permission mode, set when it changed the call's outcome - `'plan'`

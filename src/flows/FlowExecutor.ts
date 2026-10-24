@@ -104,8 +104,11 @@ export interface FlowExecutionContext {
    * default; see `ExecuteOptions.captureContent`.
    */
   captureContent?: boolean;
-  /** Omit the deprecated `prompt`/`args`/`result` attributes. */
-  redactContent?: boolean;
+  /**
+   * Omit the deprecated `prompt`/`args`/`result` attributes and scrub secrets
+   * from captured content; see `ExecuteOptions.redactContent`.
+   */
+  redactContent?: boolean | ((text: string) => string);
   /**
    * Decides `toolCall` steps that need approval (the tool's
    * `needsApproval`, or an `ask` permission rule), as `createAgent({ approve })`
@@ -1284,7 +1287,7 @@ export class FlowExecutor {
         const generated = await context.provider.generate(request).catch((error: unknown) => {
           throw this.compactLLMCallError(error, context);
         });
-        recordLlmResult(llmSpan, generated, captureContent);
+        recordLlmResult(llmSpan, generated, { redactContent: context.redactContent, captureContent });
         return generated;
       },
       context.parentSpanId,

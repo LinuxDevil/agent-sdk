@@ -120,7 +120,7 @@ export function sideGenerator(
       async (span) => {
         const generated = await provider.generate(request);
         const measured = measureUsage(request.model || provider.defaultModel || provider.name, request.messages, generated);
-        recordLlmResult(span, generated, captureContent, measured);
+        recordLlmResult(span, generated, { redactContent, captureContent }, measured);
         record(measured);
         return generated;
       },
@@ -319,7 +319,7 @@ export function generateInSpan(
         await inputCheck.verdict;
         callSignal?.throwIfAborted();
       }
-      recordLlmResult(llmSpan, generated, captureContent, measured);
+      recordLlmResult(llmSpan, generated, { redactContent, captureContent }, measured);
 
       if (onLLMResponse) {
         await onLLMResponse(generated, llmLatencyMs, measured);

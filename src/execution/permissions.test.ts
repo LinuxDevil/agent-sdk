@@ -204,7 +204,7 @@ describe('permission policies', () => {
 
   it('writes an audit entry per call, with the args unless redactContent is set', async () => {
     const lookup = tool('lookup');
-    const entries = async (redactContent: boolean) => {
+    const entries = async (redactContent: boolean | ((text: string) => string)) => {
       const audit: PermissionDecisionEntry[] = [];
       const toolRegistry = new ToolRegistry();
       toolRegistry.registerMany([lookup.defined]);
@@ -224,6 +224,8 @@ describe('permission policies', () => {
     expect(entry).toEqual({ toolName: 'lookup', toolCallId: 'x1', decision: 'default', args: { value: 'secret' }, at: expect.any(String) });
     expect(new Date(entry.at).toISOString()).toBe(entry.at);
     expect(await entries(true)).toEqual([{ toolName: 'lookup', toolCallId: 'x1', decision: 'default', at: expect.any(String) }]);
+    // A custom redactor counts as redaction on.
+    expect((await entries((text) => text))[0]).not.toHaveProperty('args');
   });
 
   it('streams no permission.decision events when no policy is configured', async () => {

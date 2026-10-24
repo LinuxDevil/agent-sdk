@@ -11,6 +11,9 @@
  * attributes (`input`, `prompt`, `args`, `result`) are only recorded when
  * `redactContent` is explicitly false (they used to be on by
  * default, which put prompts and tool output on disk via `fileTraceExporter`).
+ * Captured `gen_ai.*` content text goes through `redactContent` first: the
+ * built-in secret scrubber, a custom function in its place, or nothing when
+ * `redactContent` is `false`.
  */
 
 import type { GenerateOptions, GenerateResult, LLMProvider, Message, ToolCall } from '../providers';
@@ -23,6 +26,7 @@ import type { Span, SpanKind } from './tracing';
 import { estimateCost } from '../models';
 import { normalizeUsage } from '../models/usage';
 import type { Usage } from '../models/usage';
+import { REDACTED, scrubSecrets } from './scrubSecrets';
 
 /** Name, kind and starting attributes for a span about to be opened. */
 interface SpanInit {
@@ -47,10 +51,56 @@ interface ContentOptions {
    */
   captureContent?: boolean;
   /**
-   * Omit the deprecated `input`/`prompt`/`args`/`result` attributes. Defaults
-   * to true: only an explicit `false` records them.
+   * Omit the deprecated `input`/`prompt`/`args`/`result` attributes and scrub
+   * secrets from captured content. Defaults to true: only an explicit `false`
+   * records them and skips scrubbing. A function replaces the built-in
+   * scrubber on captured content text.
    */
-  redactContent?: boolean;
+  redactContent?: boolean | ((text: string) => string);
+}
+
+/** Maps one piece of captured content text before it is encoded. */
+type Redact = (text: string) => string;
+
+const keepText: Redact = (text) => text;
+
+/** A custom redactor that throws redacts that text whole: telemetry never fails a run. */
+function safeRedactor(redact: Redact): Redact {
+  return (text) => {
+    try {
+      return redact(text);
+    } catch {
+      return REDACTED;
+    }
+  };
+}
+
+/** The text mapping `redactContent` asks for on captured `gen_ai.*` content. */
+function contentRedactor(content: ContentOptions): Redact {
+  const { redactContent } = content;
+  if (redactContent === false) return keepText;
+  return typeof redactContent === 'function' ? safeRedactor(redactContent) : scrubSecrets;
+}
+
+/**
+ * JSON-encodes an arbitrary value (a tool's args or result) with `redact` on
+ * every string. Redacting in the replacer keeps `JSON.stringify`'s own
+ * semantics (`toJSON`, so a Date is its ISO string; its TypeError on a cycle);
+ * `false` encodes exactly as before.
+ */
+function encodeContent(value: unknown, redact: Redact): string | undefined {
+  if (redact === keepText) return JSON.stringify(value);
+  return JSON.stringify(value, (_key, item: unknown) => (typeof item === 'string' ? redact(item) : item));
+}
+
+/** Applies `redact` to every string inside parsed JSON (plain data: no toJSON, no cycles). */
+function redactValue(value: unknown, redact: Redact): unknown {
+  if (typeof value === 'string') return redact(value);
+  if (Array.isArray(value)) return value.map((item) => redactValue(item, redact));
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactValue(item, redact)]));
+  }
+  return value;
 }
 
 /** The deprecated content attributes are recorded only on an explicit opt-out of redaction. */
@@ -71,8 +121,8 @@ export function defined(attributes: Record<string, unknown>): Record<string, unk
   return Object.fromEntries(Object.entries(attributes).filter(([, value]) => value !== undefined));
 }
 
-function textPart(content: string) {
-  return { type: 'text', content };
+function textPart(content: string, redact: Redact) {
+  return { type: 'text', content: redact(content) };
 }
 
 function parseJson(text: string): unknown {
@@ -83,36 +133,34 @@ function parseJson(text: string): unknown {
   }
 }
 
-function toolCallPart(call: ToolCall) {
+function toolCallPart(call: ToolCall, redact: Redact) {
   return {
     type: 'tool_call',
     id: call.id,
     name: call.function.name,
-    arguments: parseJson(call.function.arguments),
+    arguments: redactValue(parseJson(call.function.arguments), redact),
   };
 }
 
-function genAiMessage(message: Message) {
+function genAiMessage(message: Message, redact: Redact) {
   if (message.role === 'tool') {
-    return {
-      role: 'tool',
-      parts: [{ type: 'tool_call_response', id: message.toolCallId, response: parseJson(textOf(message)) }],
-    };
+    const response = redactValue(parseJson(textOf(message)), redact);
+    return { role: 'tool', parts: [{ type: 'tool_call_response', id: message.toolCallId, response }] };
   }
   const text = textOf(message);
-  const parts: unknown[] = text ? [textPart(text)] : [];
-  parts.push(...(message.toolCalls ?? []).map(toolCallPart));
+  const parts: unknown[] = text ? [textPart(text, redact)] : [];
+  parts.push(...(message.toolCalls ?? []).map((call) => toolCallPart(call, redact)));
   return { role: message.role, parts };
 }
 
 /** Content attributes for a model call's request (JSON strings, per spec fallback for spans). */
-function requestContent(messages: Message[]): Record<string, unknown> {
+function requestContent(messages: Message[], redact: Redact): Record<string, unknown> {
   const system = messages.filter((m) => m.role === 'system');
   const rest = messages.filter((m) => m.role !== 'system');
   return defined({
     [GenAiAttr.SYSTEM_INSTRUCTIONS]:
-      system.length > 0 ? JSON.stringify(system.map((m) => textPart(textOf(m)))) : undefined,
-    [GenAiAttr.INPUT_MESSAGES]: JSON.stringify(rest.map(genAiMessage)),
+      system.length > 0 ? JSON.stringify(system.map((m) => textPart(textOf(m), redact))) : undefined,
+    [GenAiAttr.INPUT_MESSAGES]: JSON.stringify(rest.map((m) => genAiMessage(m, redact))),
   });
 }
 
@@ -122,9 +170,9 @@ function requestContent(messages: Message[]): Record<string, unknown> {
  * a `Message[]` input was `JSON.stringify`'d into the text part's `content`,
  * so `gen_ai.input.messages` carried the messages double-JSON-encoded.
  */
-function agentInputMessages(input: unknown, text: string): unknown[] {
-  if (Array.isArray(input)) return (input as Message[]).map(genAiMessage);
-  return [{ role: 'user', parts: [textPart(text)] }];
+function agentInputMessages(input: unknown, text: string, redact: Redact): unknown[] {
+  if (Array.isArray(input)) return (input as Message[]).map((m) => genAiMessage(m, redact));
+  return [{ role: 'user', parts: [textPart(text, redact)] }];
 }
 
 /** The name `createAgent()` gives an agent without a `name`. */
@@ -149,7 +197,7 @@ export function agentRunSpanInit(
   const { agent, provider, sessionId, input } = options;
   const subagent = options[SUBAGENT_SPAN];
   const text = typeof input === 'string' ? input : JSON.stringify(input);
-  const inputMessages = agentInputMessages(input, text);
+  const inputMessages = content.captureContent ? agentInputMessages(input, text, contentRedactor(content)) : [];
   // An unnamed sub-agent is called by the key the lead knows it by.
   const name = subagent && agent.name === DEFAULT_AGENT_NAME ? subagent.name : agent.name;
   return {
@@ -189,7 +237,7 @@ export function llmSpanInit(
       [GenAiAttr.REQUEST_MAX_TOKENS]: request.maxTokens,
       [LegacyAttr.MODEL]: request.model,
       ...(!keepLegacyContent(content) ? {} : { [LegacyAttr.PROMPT]: JSON.stringify(request.messages) }),
-      ...(content.captureContent ? requestContent(request.messages) : {}),
+      ...(content.captureContent ? requestContent(request.messages, contentRedactor(content)) : {}),
     }),
   };
 }
@@ -226,15 +274,16 @@ function responseModel(generated: GenerateResult): string | undefined {
 export function recordLlmResult(
   span: Span,
   generated: GenerateResult,
-  captureContent: boolean,
+  content: ContentOptions & { captureContent: boolean },
   measured?: { usage: Usage; estimated: boolean; costUsd?: number }
 ): void {
   const usage = measured?.usage ?? normalizeUsage(generated.usage);
   const model = span.attributes[GenAiAttr.REQUEST_MODEL];
   const costUsd =
     measured?.costUsd ?? (usage && typeof model === 'string' ? estimateCost(usage, model) : undefined);
-  const parts: unknown[] = generated.text ? [textPart(generated.text)] : [];
-  parts.push(...(generated.toolCalls ?? []).map(toolCallPart));
+  const redact = contentRedactor(content);
+  const parts: unknown[] = generated.text ? [textPart(generated.text, redact)] : [];
+  parts.push(...(generated.toolCalls ?? []).map((call) => toolCallPart(call, redact)));
   // Token counts and finish reason are never redacted.
   span.attributes = {
     ...span.attributes,
@@ -252,7 +301,7 @@ export function recordLlmResult(
       [SdkAttr.USAGE_REASONING_TOKENS]: usage?.reasoningTokens,
       [SdkAttr.HOSTED_TOOL_CALLS]: generated.hostedToolCalls?.length ? generated.hostedToolCalls.map((call) => call.name) : undefined,
       [LegacyAttr.FINISH_REASON]: generated.finishReason,
-      [GenAiAttr.OUTPUT_MESSAGES]: captureContent
+      [GenAiAttr.OUTPUT_MESSAGES]: content.captureContent
         ? JSON.stringify([{ role: 'assistant', parts }])
         : undefined,
     }),
@@ -290,6 +339,7 @@ export function recordToolOutcome(
   outcome: { args: unknown; result: unknown; error?: string; sandboxError?: string; latencyMs: number },
   content: ContentOptions & { captureContent: boolean }
 ): void {
+  const redact = contentRedactor(content);
   span.attributes = {
     ...span.attributes,
     ...defined({
@@ -300,9 +350,9 @@ export function recordToolOutcome(
       [SandboxAttr.ERROR]: outcome.sandboxError,
       [LegacyAttr.LATENCY_MS]: outcome.latencyMs,
       [ErrorAttr.TYPE]: outcome.error ? 'tool_error' : undefined,
-      [GenAiAttr.TOOL_CALL_ARGUMENTS]: content.captureContent ? JSON.stringify(outcome.args) : undefined,
+      [GenAiAttr.TOOL_CALL_ARGUMENTS]: content.captureContent ? encodeContent(outcome.args, redact) : undefined,
       [GenAiAttr.TOOL_CALL_RESULT]:
-        content.captureContent && !outcome.error ? JSON.stringify(outcome.result) : undefined,
+        content.captureContent && !outcome.error ? encodeContent(outcome.result, redact) : undefined,
     }),
   };
   if (outcome.error) {

@@ -232,7 +232,7 @@ describe('the reasoning option and result', () => {
 
   it('the chat span records the reasoning tokens', () => {
     const span = { id: 's', name: 'chat thinker', attributes: {}, startTime: 0 };
-    recordLlmResult(span, { text: 'Hi.', finishReason: 'stop', usage: { promptTokens: 1, completionTokens: 5, totalTokens: 6, reasoningTokens: 3 } }, false);
+    recordLlmResult(span, { text: 'Hi.', finishReason: 'stop', usage: { promptTokens: 1, completionTokens: 5, totalTokens: 6, reasoningTokens: 3 } }, { captureContent: false });
     expect(span.attributes).toMatchObject({ [SdkAttr.USAGE_REASONING_TOKENS]: 3 });
   });
 

@@ -480,7 +480,7 @@ export interface FlowExecutionContext {
     permissions?: PermissionOptions['permissions'];
     // (undocumented)
     provider: LLMProvider;
-    redactContent?: boolean;
+    redactContent?: boolean | ((text: string) => string);
     runId?: string;
     sandbox?: SandboxAdapter;
     // (undocumented)

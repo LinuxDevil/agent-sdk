@@ -420,16 +420,21 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    * Keep prompt and tool content off the spans (the deprecated
    * `input`/`prompt`/`args`/`result` attributes are omitted). Defaults to
    * true, so `fileTraceExporter()` files hold no message or tool content;
-   * pass `false` to record them. Only matters with an `exporter`. See
-   * `ExecuteOptions.redactContent`.
+   * pass `false` to record them. Unset or `true` also scrubs API-key shapes
+   * (`sk-…`, `lsv2_…`, `ghp_…`, `AKIA…`, bearer tokens) to `[redacted]` in
+   * captured `gen_ai.*` content; a function runs instead of that scrubber on
+   * each piece of captured text; `false` scrubs nothing. Only matters with an
+   * `exporter`. See `ExecuteOptions.redactContent`.
    *
    * @example
    * ```ts
    * import { fileTraceExporter } from '@lousho/build-ai-agent/traces';
    * createAgent({ model: 'openai/gpt-4o-mini', exporter: fileTraceExporter(), redactContent: false });
+   * // Your own redaction of captured content (replaces the built-in scrubber):
+   * createAgent({ model: 'openai/gpt-4o-mini', redactContent: (text) => text.replace(/\b\d{16}\b/g, '[card]') });
    * ```
    */
-  redactContent?: boolean;
+  redactContent?: boolean | ((text: string) => string);
   /**
    * Opt in to appending the nearest `AGENTS.md` / `CLAUDE.md` (found by
    * walking up from `cwd`, see `loadProjectInstructions()`) to the agent's
