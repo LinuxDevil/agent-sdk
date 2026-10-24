@@ -41,6 +41,27 @@ describe('ObserveView', () => {
     expect(container.querySelector('[role="status"]')).not.toBeNull();
   });
 
+  it('names the proxy target in the down hint when the daemon is on another port', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).endsWith('/__target')) {
+          return new Response(JSON.stringify({ url: 'http://127.0.0.1:7795' }), { status: 200 });
+        }
+        throw new TypeError('fetch failed');
+      })
+    );
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root!.render(<ObserveView />);
+    });
+    await flush();
+    await flush();
+    expect(container.textContent).toContain('LOUSHO_OBSERVE=http://127.0.0.1:7795');
+  });
+
   it('renders the trace list once the daemon answers', async () => {
     vi.stubGlobal(
       'fetch',
