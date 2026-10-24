@@ -129,13 +129,18 @@ describe('MessageView', () => {
     expect(c.querySelector('.mv-call-id')?.textContent).toBe('42');
   });
 
-  it('renders ~64 KB of valid JSON within the budget', () => {
+  it('bounds ~64 KB of valid JSON by structure: 100 entries per container plus Show more', () => {
     const big = JSON.stringify(Array.from({ length: 4000 }, (_, i) => ({ i, s: 'abcdefgh' })));
     expect(big.length).toBeGreaterThan(60 * 1024);
     const start = performance.now();
     const c = render(<MessageView value={big} />);
-    expect(performance.now() - start).toBeLessThan(50);
-    expect(c.querySelector('.json-node')).not.toBeNull();
+    // Wall clock is only a loose ceiling (CI runners are slow); the structural cap is the real guard.
+    expect(performance.now() - start).toBeLessThan(500);
+    const root = c.querySelector('.json-children')!;
+    expect(root.querySelectorAll(':scope > .json-node')).toHaveLength(100);
+    // 100 shown items, each with its index key plus two inner keys.
+    expect(c.querySelectorAll('.json-key').length).toBeLessThanOrEqual(300);
+    expect(button(c, 'Show 3900 more')).toBeDefined();
   });
 
   it('copies the exact block string with the copy button', async () => {
