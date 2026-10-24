@@ -379,6 +379,39 @@ and prompt and tool content only if the agent sets `redactContent: false` or
 `captureContent: true`, so nothing is written to disk unless you ask. The spec file format has no
 traces setting.
 
+## The observe daemon
+
+`lousho observe start` runs a local collector on `http://127.0.0.1:7777`
+(loopback only, no auth needed). When `LOUSHO_OBSERVE` is set, every agent
+built on this SDK reports spans to it automatically — `1` (or `true`) emits
+to the default URL, a URL value emits there. `LOUSHO_OBSERVE_PROJECT` labels
+the rows; `LOUSHO_OBSERVE_TOKEN` sends a bearer token for daemons bound
+beyond loopback (`--require-token` plus `lousho observe token create`).
+
+One SQLite file (default `~/.lousho/observe.db`, WAL mode) holds the fleet's
+observations, sessions, eval scores, prompt versions and shared context.
+`npx lousho studio` renders it in the Observe tabs: trace trees with latency
+waterfalls, per-agent insights (runs/day, p50/p95 latency, cost, error
+rate), a live fleet monitor (heartbeat-derived status — a crashed agent's
+open sessions flip to `interrupted`), and eval score history. Alerts on
+`down` transitions or error-rate thresholds POST to `--webhook` URLs or an
+`alerts.json` next to the db.
+
+The daemon also serves two stores agents can use at runtime:
+
+- **Prompt registry.** `createAgent({ prompt: 'name@version' })` or
+  `LOUSHO_PROMPT` fetches instructions from it at build (`@latest` resolves
+  on the daemon; an unreachable daemon falls back to `instructions`). Every
+  run logs the exact version used. `lousho prompt push` publishes a new
+  version.
+- **Context hub.** `hub()` / `hubTools()` let agents publish and query
+  namespaced key-values scoped `private` (the writing agent only) or
+  `fleet` (every agent on the daemon).
+
+Reporting is fire-and-forget: a down daemon drops and counts events, it
+never blocks a run. Eval scores flow through the same pipe —
+`lousho eval --observe` emits them even when `LOUSHO_OBSERVE` is unset.
+
 ## The built server
 
 The server `lousho build --target=node-server` or `--target=docker` generates

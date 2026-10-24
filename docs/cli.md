@@ -36,6 +36,8 @@ lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]
 lousho doctor [agent.yaml|json|agent-dir|agent.ts] [--json] [--ping]
 lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
+lousho observe <start|status|stop|rebuild-rollups|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL]
+lousho prompt <push <file|->|list|get <name[@version]>> [--url U] [--port N] [--token T] [--json] [--name N]
 lousho --version
 ```
 
@@ -265,3 +267,32 @@ npx lousho studio --port 5000
 Starts one local server for the Agent Forge API and UI. Agents and run state
 are stored under `.lousho/` in the current directory. See
 [Agent Forge](./agent-forge.md) for the walkthrough.
+
+## `lousho observe`
+
+```bash
+npx lousho observe start                        # collector on http://127.0.0.1:7777
+npx lousho observe status                       # health + fleet counts
+npx lousho observe stop                         # pidfile + SIGTERM
+npx lousho observe rebuild-rollups              # recompute insight aggregates
+npx lousho observe token create --project myapp # bearer key for non-loopback auth
+```
+
+Runs the local collector every agent reports to when `LOUSHO_OBSERVE` is
+set: traces, fleet monitoring, eval scores, the prompt registry and the
+context hub in one SQLite file (default `~/.lousho/observe.db`). The Studio
+Observe tabs read it. `start` takes `--port` (or `LOUSHO_OBSERVE_PORT`),
+`--db`, `--host`, `--require-token` and a repeatable `--webhook` for alert
+hooks. See [The observe daemon](./observability.md#the-observe-daemon).
+
+## `lousho prompt`
+
+```bash
+npx lousho prompt push prompt.md --name mira    # publishes a new version
+npx lousho prompt list
+npx lousho prompt get mira@latest
+```
+
+Publishes and reads prompt versions in the observe daemon's registry. Agents
+resolve them with `createAgent({ prompt: 'mira@latest' })` or
+`LOUSHO_PROMPT`. See [The observe daemon](./observability.md#the-observe-daemon).
