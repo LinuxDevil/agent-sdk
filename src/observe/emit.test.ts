@@ -5,7 +5,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { IngestEvent } from './envelope';
-import { emitObserveEvent, emitObserveEvents, observeTargetFromEnv } from './emit';
+import { emitObserveEvent, emitObserveEvents, observeTargetFromEnv, resetObserveEnvWarning } from './emit';
 
 const score = (id: string): IngestEvent => ({
   type: 'score',
@@ -42,6 +42,36 @@ describe('observeTargetFromEnv', () => {
   it('carries the token and project', () => {
     const target = observeTargetFromEnv({ LOUSHO_OBSERVE: '1', LOUSHO_OBSERVE_TOKEN: 'lso_x', LOUSHO_OBSERVE_PROJECT: 'p' });
     expect(target).toMatchObject({ token: 'lso_x', project: 'p' });
+  });
+});
+
+describe('observeTargetFromEnv value parsing', () => {
+  it.each(['', '0', 'false', 'FALSE', 'off', 'Off', 'no', 'NO', 'none', 'None', 'disabled', 'DISABLED'])('treats %j as disabled without a warning', (value) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    resetObserveEnvWarning();
+    expect(observeTargetFromEnv({ LOUSHO_OBSERVE: value })).toBeUndefined();
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it.each(['1', 'true', 'TRUE', 'on', 'On', 'yes', 'YES'])('maps %j to the loopback default', (value) => {
+    expect(observeTargetFromEnv({ LOUSHO_OBSERVE: value })?.url).toBe('http://127.0.0.1:7777');
+  });
+
+  it.each(['http://h:1', 'https://h', 'HTTPS://H.test/'])('passes the URL %j through', (value) => {
+    expect(observeTargetFromEnv({ LOUSHO_OBSERVE: value })?.url).toBe(value.replace(/\/+$/, ''));
+  });
+
+  it('disables and warns ONCE per process on a junk value', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    resetObserveEnvWarning();
+    expect(observeTargetFromEnv({ LOUSHO_OBSERVE: 'banana' })).toBeUndefined();
+    expect(observeTargetFromEnv({ LOUSHO_OBSERVE: 'banana' })).toBeUndefined();
+    expect(observeTargetFromEnv({ LOUSHO_OBSERVE: 'ftp://x' })).toBeUndefined();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain('LOUSHO_OBSERVE');
+    expect(String(warn.mock.calls[0][0])).toContain('banana');
+    warn.mockRestore();
   });
 });
 

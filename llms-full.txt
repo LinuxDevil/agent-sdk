@@ -14043,8 +14043,11 @@ traces setting.
 
 `lousho observe start` runs a local collector on `http://127.0.0.1:7777`
 (loopback only, no auth needed). When `LOUSHO_OBSERVE` is set, every agent
-built on this SDK reports spans to it automatically — `1` (or `true`) emits
-to the default URL, a URL value emits there. `LOUSHO_OBSERVE_PROJECT` labels
+built on this SDK reports spans to it automatically — `1`, `true`, `on` or `yes`
+emits to the default URL, an `http://`/`https://` URL emits there, and
+`0`, `false`, `off`, `no`, `none`, `disabled` or empty (any case) turn reporting
+off. Any other value is treated as a typo: one warning naming `LOUSHO_OBSERVE`
+is printed per process and reporting stays off. `LOUSHO_OBSERVE_PROJECT` labels
 the rows; `LOUSHO_OBSERVE_TOKEN` sends a bearer token for daemons bound
 beyond loopback (`--require-token` plus `lousho observe token create`).
 

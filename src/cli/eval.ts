@@ -20,6 +20,7 @@ import type { EvalResult } from '../evals/evalResult';
 import { RESULTS_ENV, TAGS_ENV } from '../evals/recorder';
 import { REMOTE_TOKEN_ENV, REMOTE_URL_ENV } from '../evals/remoteTarget';
 import { SDKError } from '../execution/errors';
+import { observeTargetFromEnv } from '../observe/emit';
 import { readCassette } from '../testing/cassette';
 import { USAGE_EXIT_CODE, parseCommand, stringValue, usageError, type CommandSpec } from './args';
 import { failsRun, parseResults, renderDriftTable, renderJson, renderJunit, renderTable, unreportedFailures, vitestError, type DriftRow } from './evalReport';
@@ -257,10 +258,9 @@ export function toRootRelativeGlob(glob: string, cwd: string): string {
   return relative.split(path.sep).join('/');
 }
 
-/** `LOUSHO_OBSERVE` is on unless unset, '0' or 'false' (the reporter's own rule). */
+/** `LOUSHO_OBSERVE` is on when it resolves to a collector (the reporter's own rule). */
 function observeEnabled(flag: string | undefined): boolean {
-  const value = flag?.trim();
-  return value !== undefined && value !== '' && value !== '0' && value.toLowerCase() !== 'false';
+  return observeTargetFromEnv({ LOUSHO_OBSERVE: flag }) !== undefined;
 }
 
 function prepareInvocation(args: EvalCliArgs, cwd: string, workDir: string): VitestInvocation {
