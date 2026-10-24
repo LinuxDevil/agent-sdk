@@ -353,6 +353,31 @@ describe('OpenTelemetry GenAI semantic conventions', () => {
     expect(spans[0].attributes['gen_ai.input.messages']).toContain(key);
   });
 
+  it.each([false, true, (text: string) => text] as const)(
+    'encodes tool args and results as JSON.stringify does (Date as ISO, toJSON honored) with redactContent %s',
+    async (redactContent) => {
+      const { recordToolOutcome } = await import('./genAiSpans');
+      const at = new Date('2026-10-24T12:00:00.000Z');
+      const span: Span = { id: 's', name: 'execute_tool t', attributes: {}, startTime: 0 };
+      const money = { toJSON: () => '12.50' };
+      recordToolOutcome(span, { args: { at }, result: { at, money }, latencyMs: 1 }, { captureContent: true, redactContent });
+      expect(span.attributes['gen_ai.tool.call.arguments']).toBe('{"at":"2026-10-24T12:00:00.000Z"}');
+      expect(span.attributes['gen_ai.tool.call.result']).toBe('{"at":"2026-10-24T12:00:00.000Z","money":"12.50"}');
+    }
+  );
+
+  it('fails on a cyclic tool result the way JSON.stringify does, whatever redactContent is', async () => {
+    const { recordToolOutcome } = await import('./genAiSpans');
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    for (const redactContent of [false, true]) {
+      const span: Span = { id: 's', name: 'execute_tool t', attributes: {}, startTime: 0 };
+      expect(() =>
+        recordToolOutcome(span, { args: {}, result: cyclic, latencyMs: 1 }, { captureContent: true, redactContent })
+      ).toThrow(TypeError);
+    }
+  });
+
   it('emits a Message[] input on invoke_agent as message parts, not a double-encoded string', async () => {
     const { agent, toolRegistry } = setup();
     const { exporter, spans } = memoryExporter();

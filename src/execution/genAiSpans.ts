@@ -82,7 +82,18 @@ function contentRedactor(content: ContentOptions): Redact {
   return typeof redactContent === 'function' ? safeRedactor(redactContent) : scrubSecrets;
 }
 
-/** Applies `redact` to every string inside a JSON-shaped value (tool args and results). */
+/**
+ * JSON-encodes an arbitrary value (a tool's args or result) with `redact` on
+ * every string. Redacting in the replacer keeps `JSON.stringify`'s own
+ * semantics (`toJSON`, so a Date is its ISO string; its TypeError on a cycle);
+ * `false` encodes exactly as before.
+ */
+function encodeContent(value: unknown, redact: Redact): string | undefined {
+  if (redact === keepText) return JSON.stringify(value);
+  return JSON.stringify(value, (_key, item: unknown) => (typeof item === 'string' ? redact(item) : item));
+}
+
+/** Applies `redact` to every string inside parsed JSON (plain data: no toJSON, no cycles). */
 function redactValue(value: unknown, redact: Redact): unknown {
   if (typeof value === 'string') return redact(value);
   if (Array.isArray(value)) return value.map((item) => redactValue(item, redact));
@@ -339,9 +350,9 @@ export function recordToolOutcome(
       [SandboxAttr.ERROR]: outcome.sandboxError,
       [LegacyAttr.LATENCY_MS]: outcome.latencyMs,
       [ErrorAttr.TYPE]: outcome.error ? 'tool_error' : undefined,
-      [GenAiAttr.TOOL_CALL_ARGUMENTS]: content.captureContent ? JSON.stringify(redactValue(outcome.args, redact)) : undefined,
+      [GenAiAttr.TOOL_CALL_ARGUMENTS]: content.captureContent ? encodeContent(outcome.args, redact) : undefined,
       [GenAiAttr.TOOL_CALL_RESULT]:
-        content.captureContent && !outcome.error ? JSON.stringify(redactValue(outcome.result, redact)) : undefined,
+        content.captureContent && !outcome.error ? encodeContent(outcome.result, redact) : undefined,
     }),
   };
   if (outcome.error) {

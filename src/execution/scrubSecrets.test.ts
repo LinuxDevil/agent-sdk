@@ -22,4 +22,16 @@ describe('scrubSecrets', () => {
     const text = 'use sk-learn for the task-runner-0123456789abcdef, a bearer of news, AKIA123, ghp_short';
     expect(scrubSecrets(text)).toBe(text);
   });
+
+  it.each([
+    ['repeated sk- prefixes', 'sk-'.repeat(100_000)],
+    ['a long digit-free sk- run', `sk-${'a'.repeat(300_000)}`],
+    ['repeated gh/lsv2/github_pat prefixes', 'ghp_lsv2_github_pat_'.repeat(20_000)],
+    ['repeated Bearer words', 'Bearer '.repeat(50_000)],
+    ['repeated AKIA prefixes', 'AKIA'.repeat(80_000)],
+  ])('scrubs %s in linear time', (_name, text) => {
+    const start = performance.now();
+    scrubSecrets(text);
+    expect(performance.now() - start).toBeLessThan(100);
+  });
 });
