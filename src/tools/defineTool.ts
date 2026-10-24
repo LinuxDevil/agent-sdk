@@ -5,6 +5,9 @@ import { isModelSchema, nonObjectRoot, unrepresentableFields, type InferSchemaOu
 import { sharedWeakSet } from '../utils/brand';
 import { SDKError, ToolExecutionError } from '../execution/errors';
 import { unknownOptionKey } from '../utils/knownOptionKeys';
+import { sandbox } from '../sandbox/sandbox';
+import type { Sandbox, ToolSandboxOptions } from '../sandbox/types';
+import { runToolInSandbox, toolSandboxSource } from '../sandbox/toolSandbox';
 
 /** Tool names must satisfy the constraint LLM providers impose on function names. */
 const TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
@@ -65,6 +68,21 @@ export interface DefineToolOptions<S extends StandardSchemaV1, R> {
   requiresSandbox?: boolean;
   /** Sandboxed execution path used instead of `execute` when `requiresSandbox` is true. */
   sandboxExecute?: (args: InferSchemaOutput<S>, sandbox: SandboxAdapter) => Promise<unknown>;
+  /**
+   * Run `execute` inside a code sandbox instead of in-process (spec
+   * 0001-sandboxing). `{ driver: 'isolate' }` (the default) uses the
+   * optional `isolated-vm` peer; `{ driver }` may also be a `SandboxDriver`
+   * instance (`'docker'`/`'e2b'` are reserved). `execute`'s source crosses
+   * the boundary and is called there with `(args, ctxSubset)` - everything
+   * crossing is structured-cloned, so `execute` must be self-contained (no
+   * host closures), and `ctx` inside the box only has the cloneable fields
+   * (`toolCallId`, `messages`, `sessionId`, `principal`, `approval`; no
+   * `abortSignal`/`getToken`/`requireAuth`). `memoryMb`/`timeoutMs` bound
+   * each call; a breach fails the call with a `kind: 'sandbox'` tool error.
+   * Cannot be combined with `requiresSandbox`/`sandboxExecute` or a
+   * streaming (generator) `execute`.
+   */
+  sandbox?: ToolSandboxOptions;
   /**
    * Runs the tool. Arguments are typed from `input`; the return type is preserved on the result.
    * May be an `async function*`: each `yield` is a complete snapshot of the output, streamed
@@ -128,6 +146,7 @@ const DEFINE_TOOL_KEYS = {
   timeoutMs: true,
   requiresSandbox: true,
   sandboxExecute: true,
+  sandbox: true,
   execute: true,
 } as const satisfies Record<keyof DefineToolOptions<StandardSchemaV1, unknown>, true>;
 
@@ -200,6 +219,29 @@ function assertValidOptions(opts: { name?: unknown; description?: unknown; input
   if (timeoutMs !== undefined && !(typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0)) {
     fail(`tool '${name}': 'timeoutMs' must be a positive number of milliseconds, got ${String(timeoutMs)}`, 'Example: timeoutMs: 30_000');
   }
+}
+
+/**
+ * The sandbox a `{ sandbox }` tool runs in, built now so a bad driver name or
+ * limit fails at definition time; `isolated-vm` itself still loads on first
+ * call. Also returns `execute`'s source text (what crosses the boundary).
+ */
+function sandboxedExecute(
+  opts: { name: string; sandbox?: ToolSandboxOptions; requiresSandbox?: boolean; sandboxExecute?: unknown; execute: unknown }
+): { box: Sandbox; source: string } | undefined {
+  if (opts.sandbox === undefined) return undefined;
+  if (typeof opts.sandbox !== 'object' || opts.sandbox === null) {
+    fail(`tool '${opts.name}': 'sandbox' must be an object like { driver: 'isolate' }`, `Example: sandbox: { driver: 'isolate', memoryMb: 128, timeoutMs: 5_000 }`);
+  }
+  if (opts.requiresSandbox || opts.sandboxExecute !== undefined) {
+    fail(
+      `tool '${opts.name}': 'sandbox' cannot be combined with 'requiresSandbox'/'sandboxExecute' - those route to a SandboxAdapter, this one runs the execute source in a code sandbox`,
+      `Keep 'sandbox' (code isolation), or drop it and use 'requiresSandbox' + 'sandboxExecute' (a SandboxAdapter path the tool drives itself)`
+    );
+  }
+  const source = toolSandboxSource(opts.name, opts.execute);
+  const box = sandbox({ driver: opts.sandbox.driver ?? 'isolate', memoryMb: opts.sandbox.memoryMb, timeoutMs: opts.sandbox.timeoutMs });
+  return { box, source };
 }
 
 /**
@@ -298,10 +340,18 @@ export function defineTool<S extends StandardSchemaV1, R>(
 ): DefinedTool<S, ToolResultOf<R>, Awaited<R>> {
   assertValidOptions(opts);
 
+  // `sandbox` sends `execute`'s source into the box on each call; a reserved
+  // driver name or a non-serializable `execute` fails here, at definition time.
+  const sandboxed = sandboxedExecute(opts);
   // An async generator passes through unchanged (it is not thenable); the runtime iterates it.
   const { timeoutMs } = opts;
-  const execute = async (args: InferSchemaOutput<S>, ctx: ToolExecutionContext): Promise<Awaited<R>> =>
-    timeoutMs === undefined ? await opts.execute(args, ctx) : await withTimeout(opts.name, timeoutMs, ctx, (timed) => opts.execute(args, timed));
+  const execute = async (args: InferSchemaOutput<S>, ctx: ToolExecutionContext): Promise<Awaited<R>> => {
+    const call = (c: ToolExecutionContext): Promise<unknown> =>
+      sandboxed === undefined ? Promise.resolve(opts.execute(args, c)) : runToolInSandbox(sandboxed.box, sandboxed.source, args, c);
+    const result: unknown =
+      timeoutMs === undefined ? await call(ctx) : await withTimeout(opts.name, timeoutMs, ctx, call);
+    return result as Awaited<R>;
+  };
   // legacy (.tool): the `ai` v4 Tool shape. Removed in D26.
   const legacyTool = legacyAiTool(opts.description, opts.input, execute as NonNullable<ToolDescriptor['execute']>);
   const defined: DefinedTool<S, ToolResultOf<R>, Awaited<R>> = {
@@ -315,6 +365,7 @@ export function defineTool<S extends StandardSchemaV1, R>(
     needsApproval: opts.needsApproval,
     requiresSandbox: opts.requiresSandbox,
     sandboxExecute: opts.sandboxExecute as ToolDescriptor['sandboxExecute'],
+    ...(opts.sandbox !== undefined && { sandbox: opts.sandbox }),
     ...(opts.deferLoading !== undefined && { deferLoading: opts.deferLoading }),
     ...toolMetadata(opts),
   };

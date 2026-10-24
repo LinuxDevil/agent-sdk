@@ -17,7 +17,8 @@ import type { GenerateOptions, GenerateResult, LLMProvider, Message, ToolCall } 
 import { textOf } from '../providers/content';
 import type { ToolRegistry } from '../tools';
 import type { AgentConfig } from '../types';
-import { ErrorAttr, GenAiAttr, GenAiOperation, LegacyAttr, SdkAttr, TOOL_TYPE_FUNCTION, CAPTURE_CONTENT_ENV } from './semconv';
+import { ErrorAttr, GenAiAttr, GenAiOperation, LegacyAttr, SandboxAttr, SdkAttr, TOOL_TYPE_FUNCTION, CAPTURE_CONTENT_ENV } from './semconv';
+import { sandboxDriverName } from '../sandbox/types';
 import type { Span, SpanKind } from './tracing';
 import { estimateCost } from '../models';
 import { normalizeUsage } from '../models/usage';
@@ -264,6 +265,7 @@ export function toolSpanInit(
   context: { agent: AgentConfig; toolRegistry?: ToolRegistry; sessionId?: string }
 ): SpanInit {
   const toolName = toolCall.name;
+  const desc = context.toolRegistry?.get(toolName);
   return {
     name: `${GenAiOperation.EXECUTE_TOOL} ${toolName}`,
     kind: 'internal',
@@ -271,11 +273,13 @@ export function toolSpanInit(
       [GenAiAttr.OPERATION_NAME]: GenAiOperation.EXECUTE_TOOL,
       [GenAiAttr.TOOL_NAME]: toolName,
       [GenAiAttr.TOOL_CALL_ID]: toolCall.id,
-      [GenAiAttr.TOOL_DESCRIPTION]: context.toolRegistry?.get(toolName)?.tool?.description,
+      [GenAiAttr.TOOL_DESCRIPTION]: desc?.tool?.description,
       [GenAiAttr.TOOL_TYPE]: TOOL_TYPE_FUNCTION,
       [GenAiAttr.AGENT_NAME]: context.agent.name,
       [GenAiAttr.CONVERSATION_ID]: context.sessionId,
       [LegacyAttr.TOOL_NAME]: toolName,
+      // A `defineTool({ sandbox })` tool: which driver ran it (`'isolate'` by default).
+      [SandboxAttr.DRIVER]: desc?.sandbox !== undefined ? sandboxDriverName(desc.sandbox.driver) : undefined,
     }),
   };
 }
@@ -283,7 +287,7 @@ export function toolSpanInit(
 /** Records args/result (content), error and latency on an `execute_tool` span. */
 export function recordToolOutcome(
   span: Span,
-  outcome: { args: unknown; result: unknown; error?: string; latencyMs: number },
+  outcome: { args: unknown; result: unknown; error?: string; sandboxError?: string; latencyMs: number },
   content: ContentOptions & { captureContent: boolean }
 ): void {
   span.attributes = {
@@ -292,6 +296,8 @@ export function recordToolOutcome(
       ...(!keepLegacyContent(content) ? {} : { [LegacyAttr.ARGS]: outcome.args, [LegacyAttr.RESULT]: outcome.result }),
       // The message, as on every other span's `error`; absent when the tool succeeded.
       [LegacyAttr.ERROR]: outcome.error,
+      // The sandbox boundary's failure kind ('timeout' | 'oom' | 'driver'), absent for the tool's own errors.
+      [SandboxAttr.ERROR]: outcome.sandboxError,
       [LegacyAttr.LATENCY_MS]: outcome.latencyMs,
       [ErrorAttr.TYPE]: outcome.error ? 'tool_error' : undefined,
       [GenAiAttr.TOOL_CALL_ARGUMENTS]: content.captureContent ? JSON.stringify(outcome.args) : undefined,

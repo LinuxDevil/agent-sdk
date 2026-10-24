@@ -33,6 +33,12 @@ export * from './evals';
 // Security
 export * from './security';
 
+// Code sandboxing: sandbox({ driver }) runs code isolated ('isolate' via the
+// optional isolated-vm peer, custom SandboxDriver, reserved 'docker'/'e2b');
+// defineTool({ sandbox }) routes a tool's execute through it. An execution
+// boundary, not a security boundary - see docs/specs/0001-observability-platform/0001-sandboxing.md.
+export * from './sandbox';
+
 // Storage moved to '@lousho/build-ai-agent/utils'.
 
 
@@ -117,3 +123,8 @@ export * from './server/uiMessageStream';
 
 // Route handler for Next.js and other Fetch-API frameworks.
 export * from './server/routeHandler';
+
+// Context Hub client (spec 0001 observability platform): `hub()` builds the
+// shared-memory client when LOUSHO_OBSERVE names a collector; `hubTools()`
+// adapts it into hub_publish/hub_query agent tools.
+export { hub, hubTools, HUB_SCOPES, type Hub, type HubOptions, type HubEntry, type HubScope, type HubPublishInput, type HubQuery } from './observe/hubClient';

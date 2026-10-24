@@ -20,6 +20,8 @@ import { AgentExecutor, ExecuteOptions, ExecutionResult } from './execution/Agen
 import { streamResumed, throwingRun, type AgentRun } from './execution/agentRun';
 import type { AgentEvent } from './execution/agentEvents';
 import type { TraceExporter } from './execution/tracing';
+import { withObserveExporter, type PromptUseProvider } from './observe/reporter';
+import { parsePromptRef, registryPrompt } from './observe/promptClient';
 import { assertModelSettings, mergeModelSettings } from './execution/modelSettings';
 import { assertKnownCreateAgentKeys } from './createAgentKeys';
 import { DEFAULT_AGENT_NAME } from './execution/genAiSpans';
@@ -608,22 +610,36 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
 }
 
 /**
+ * A prompt-registry reference as a string type: `'name@3'` or `'name@latest'`.
+ * The type is intentionally wider than the runtime parser (see
+ * `parsePromptRef`: the name may not contain whitespace, `/` or `@`, and the
+ * version is an integer) - it exists so the {@link CreateAgentInstructions}
+ * union can tell the ref apart from the deprecated `prompt` alias.
+ */
+export type PromptRefString = `${string}@${number}` | `${string}@latest`;
+
+/**
  * The system prompt. `instructions` is the name to use; `prompt` is a
- * deprecated alias kept for older code. Give at most one - both is an error. Omit both for a
- * minimal default ("You are a helpful assistant."). Either may be a function
- * of the run (see `PerRun`).
+ * deprecated alias kept for older code. Give at most one - both is an error
+ * - UNLESS `prompt` is a `'name@version'` prompt-registry reference: that is
+ * the prompts-context-hub opt-in (spec 0001), fetched from the observe
+ * daemon (`LOUSHO_OBSERVE`, or set `LOUSHO_PROMPT` to opt in without config)
+ * at agent build. The fetched text then replaces `instructions` (the opt-in
+ * means the registry owns the text) and `instructions` stays the embedded
+ * fallback for when the daemon cannot be reached. Omit both for a minimal
+ * default ("You are a helpful assistant."). Either may be a function of the
+ * run (see `PerRun`), though a function `prompt` can only be the alias.
  */
 export type CreateAgentInstructions =
   | {
-      /** System prompt for the agent (preferred name). */
+      /** System prompt for the agent (preferred name); also the embedded fallback of a `prompt` registry ref. */
       instructions?: PerRun<string>;
-      /** @deprecated Use `instructions`. Do not pass both. */
-      prompt?: undefined;
+      /** A `'name@version'` registry ref (`version` an integer or `latest`, resolved daemon side). */
+      prompt?: PromptRefString;
     }
   | {
-      /** Preferred name of `prompt`; do not pass both. */
       instructions?: undefined;
-      /** @deprecated Use `instructions`; `prompt` is a legacy alias for it. */
+      /** @deprecated Use `instructions`; a non-`'name@version'` `prompt` is a legacy alias for it. */
       prompt?: PerRun<string>;
     };
 
@@ -1017,7 +1033,11 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     // Also for resumed runs and when this agent is a sub-agent.
     ...codeModeOption(config.codeMode),
   };
-  const specs = agentSpecs(config, toolsFor, runOptions);
+  // The prompt-registry opt-in (config.prompt as 'name@version', or
+  // LOUSHO_PROMPT) starts its daemon fetch HERE - at agent build, per the
+  // spec - and the resolved instructions below await it per run.
+  const resolvedInstructions = agentInstructions(config);
+  const specs = agentSpecs(config, toolsFor, runOptions, resolvedInstructions);
   const staticSpec = specs.static;
   if (staticSpec && config.subagents) assertNoTaskTool(staticSpec.agent, staticSpec.toolRegistry);
   // Like `task`: a tool named `load_skill` clashes with `skills` here, not at the first send().
@@ -1043,8 +1063,15 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   );
   const hooks = agentHooks(config);
   // Every run of this agent (send, stream, sessions, resume, approvals) is traced.
+  // `LOUSHO_OBSERVE` fans the config's exporter out with the collector reporter;
+  // unset means the env half is a no-op (see src/observe/reporter.ts).
+  const exporter = withObserveExporter(
+    config.exporter,
+    agentName,
+    resolvedInstructions.promptUse !== undefined ? { promptUse: resolvedInstructions.promptUse } : {}
+  );
   const tracing: Pick<ExecuteOptions, 'exporter' | 'captureContent' | 'redactContent'> = {
-    ...(config.exporter && { exporter: config.exporter }),
+    ...(exporter && { exporter }),
     ...(config.captureContent !== undefined && { captureContent: config.captureContent }),
     ...(config.redactContent !== undefined && { redactContent: config.redactContent }),
   };
@@ -1481,8 +1508,13 @@ interface AgentSpecs {
   resolve: (ctx: RunConfigContext, pinned?: PinnedRunConfig) => Promise<SubagentSpec>;
 }
 
-function agentSpecs(config: CreateAgentConfig, toolsFor: (tools: AgentToolsOption | undefined) => RunTools, runOptions: RunOptions): AgentSpecs {
-  const instructions = instructionsOption(config);
+function agentSpecs(
+  config: CreateAgentConfig,
+  toolsFor: (tools: AgentToolsOption | undefined) => RunTools,
+  runOptions: RunOptions,
+  resolved: AgentInstructions
+): AgentSpecs {
+  const { instructions, option } = resolved;
   const projectBlock = projectInstructionsBlock(config.projectInstructions);
   const provider = isPerRun(config.model) ? undefined : resolveModelSource(config, config.model);
   const staticTools = isPerRun(config.tools) ? undefined : toolsFor(config.tools);
@@ -1505,7 +1537,7 @@ function agentSpecs(config: CreateAgentConfig, toolsFor: (tools: AgentToolsOptio
   };
   const resolve = async (ctx: RunConfigContext, pinned?: PinnedRunConfig): Promise<SubagentSpec> => {
     const model = pinned ? pinned.model : await resolveOption('model', config.model, ctx);
-    const prompt = await resolveOption(config.prompt === undefined ? 'instructions' : 'prompt', instructions, ctx);
+    const prompt = await resolveOption(option, instructions, ctx);
     const tools = staticTools ?? toolsFor(await resolveOption('tools', config.tools, ctx));
     const spec = specOf(prompt, model, provider ?? resolveModelSource(config, model), tools);
     spec.agent.metadata = { [RUN_CONFIG_KEY]: { ctx, model } satisfies PinnedRunConfig };
@@ -1705,16 +1737,55 @@ ${found.content}`;
 /** Used when neither `instructions` nor `prompt` is given. */
 const DEFAULT_INSTRUCTIONS = 'You are a helpful assistant.';
 
-function instructionsOption(config: CreateAgentConfig): PerRun<string> | undefined {
-  if (config.instructions !== undefined && config.prompt !== undefined) {
+/** The instructions the agent resolves per run, and how they got there. */
+interface AgentInstructions {
+  /** `PerRun` the run resolves: fetched registry text, the embedded value, or a function of the run (undefined = the default). */
+  instructions: PerRun<string | undefined> | undefined;
+  /** The option name resolver errors blame ('prompt' only when the legacy alias carries the instructions). */
+  option: 'instructions' | 'prompt';
+  /** The reporter's `prompt_use` provider when a registry prompt is in play. */
+  promptUse?: PromptUseProvider;
+}
+
+/**
+ * The system prompt the agent runs with: embedded `instructions` (or the
+ * deprecated `prompt` alias), UNLESS a registry ref is in play -
+ * `createAgent({ prompt: 'name@version' })`, or `LOUSHO_PROMPT` when
+ * `prompt` is unset. Then the daemon's text wins and the embedded value is
+ * the fallback for an unreachable daemon (`LOUSHO_OBSERVE` names it; the
+ * fetch starts at build and is memoized - see promptClient.registryPrompt).
+ *
+ * An explicit `prompt` always beats `LOUSHO_PROMPT`; both `instructions`
+ * and `prompt` together are an error unless `prompt` is a registry ref
+ * (then `instructions` is the documented fallback).
+ */
+function agentInstructions(config: CreateAgentConfig): AgentInstructions {
+  const promptIsRef = typeof config.prompt === 'string' && parsePromptRef(config.prompt) !== undefined;
+  if (config.instructions !== undefined && config.prompt !== undefined && !promptIsRef) {
     throw new ConfigurationError(
       "createAgent: both 'instructions' and 'prompt' were given. They are the same option - " +
-        "use 'instructions' (and drop 'prompt', its alias).",
+        "use 'instructions' (and drop 'prompt', its alias - it only differs from it as a 'name@version' registry reference).",
       'prompt',
       'LOUSHO_CONFIG_CONFLICTING_OPTIONS'
     );
   }
-  return config.instructions ?? config.prompt;
+  const env = typeof process !== 'undefined' ? process.env : undefined;
+  const ref = promptIsRef ? (config.prompt as string) : config.prompt === undefined ? env?.LOUSHO_PROMPT : undefined;
+  const fetched = ref !== undefined ? registryPrompt(ref, { env }) : undefined;
+  if (ref !== undefined && fetched === undefined) {
+    console.warn(
+      `[lousho] prompt: '${ref}' needs a collector to resolve - set LOUSHO_OBSERVE=1 (or a daemon URL); the embedded instructions are used instead.`
+    );
+  }
+  const embedded = promptIsRef ? config.instructions : (config.instructions ?? config.prompt);
+  if (fetched === undefined) {
+    return { instructions: embedded, option: config.prompt === undefined ? 'instructions' : 'prompt' };
+  }
+  return {
+    option: 'instructions',
+    promptUse: fetched.use,
+    instructions: (ctx) => fetched.text(() => (embedded === undefined ? Promise.resolve(undefined) : resolveOption('instructions', embedded, ctx))),
+  };
 }
 
 /** The default `retry` for models given as strings: as many retries as the `ai` SDK makes on its own. */

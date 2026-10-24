@@ -1,0 +1,395 @@
+/*
+ * Observe view (Traces / Insights / Monitoring / Scores) - styles for the
+ * panels reading the observe daemon. Reuses layout.css's primitives (.btn,
+ * .select, .status-pill, .trace-row/.trace-bar waterfall, .agent-card) and
+ * only adds what the panels themselves need.
+ */
+
+.observe {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--bg);
+}
+
+/* The same tab chrome as the bottom drawer. */
+.observe-tabs {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex: none;
+  padding: 0 10px;
+}
+.observe-tab {
+  padding: 9px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  background: none;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+}
+.observe-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+.observe-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.observe-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.observe-panel {
+  padding: 12px 16px;
+  max-width: 1200px;
+}
+
+.observe-filter-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.observe-filter-bar label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.observe-filter-bar .select {
+  width: auto;
+  min-width: 150px;
+}
+
+.observe-table-wrap {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.observe-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.observe-table th {
+  text-align: left;
+  color: var(--text-faint);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.observe-table td {
+  color: var(--text);
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.observe-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.observe-table.clickable tbody tr {
+  cursor: pointer;
+}
+.observe-table tbody tr:hover {
+  background: var(--surface-2);
+}
+.observe-num {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+.observe-cell-name {
+  font-weight: 600;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.observe-cell-muted {
+  color: var(--text-muted);
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.observe-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.observe-meta {
+  color: var(--text-faint);
+  font-size: 11.5px;
+}
+
+.observe-empty {
+  max-width: 560px;
+  margin: 48px auto;
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.observe-empty-title {
+  font-weight: 700;
+  color: var(--text);
+  margin-top: 0;
+}
+.observe-empty code {
+  font-family: var(--font-mono);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+  border-radius: 5px;
+  color: var(--text);
+}
+.observe-loading {
+  padding: 24px;
+  color: var(--text-faint);
+}
+.observe-error {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 12px;
+}
+.observe-pager {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.observe-pager span {
+  flex: 1;
+  text-align: center;
+}
+.observe-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex: none;
+}
+
+/* Statuses the daemon reports that the run-status pill set didn't cover yet. */
+.status-pill.status-ok,
+.status-pill.status-healthy {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.status-pill.status-stale,
+.status-pill.status-interrupted {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.status-pill.status-down {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* ---------- Trace detail: observation waterfall + inspector ---------- */
+.obs-detail {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.obs-detail-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.obs-waterfall {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 8px;
+}
+.obs-row .trace-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.obs-kind-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  flex: none;
+}
+.obs-inspector {
+  width: 340px;
+  flex: none;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  overflow-y: auto;
+  padding: 12px;
+}
+.obs-inspector-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+.obs-inspector-head b {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.obs-kind {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.obs-field {
+  margin-bottom: 12px;
+}
+.obs-field-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-faint);
+  margin-bottom: 4px;
+}
+.obs-field-value {
+  font-size: 12px;
+  color: var(--text);
+}
+.obs-io {
+  margin: 0;
+  padding: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.obs-scores {
+  margin-top: 14px;
+}
+
+/* ---------- Insights ---------- */
+.insight-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.insight-card {
+  cursor: default;
+  margin-bottom: 0;
+}
+.insight-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+.insight-stat {
+  display: flex;
+  flex-direction: column;
+}
+.insight-value {
+  font-weight: 700;
+  font-size: 14px;
+  font-family: var(--font-mono);
+}
+.insight-bad {
+  color: var(--danger);
+}
+.insight-label {
+  font-size: 10px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.insight-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 120px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+}
+.insight-bar {
+  flex: 1;
+  min-width: 3px;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+}
+
+/* ---------- Scores ---------- */
+.score-trends {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.score-trend {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  padding: 10px 12px;
+}
+.score-trend-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12.5px;
+}
+.score-trend-strip {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 36px;
+}
+.score-trend-day {
+  flex: 1;
+  min-width: 4px;
+  border-radius: 2px 2px 0 0;
+}
+.score-trend-day.pass {
+  background: var(--success);
+}
+.score-trend-day.fail {
+  background: var(--danger);
+}

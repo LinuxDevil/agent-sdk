@@ -9,7 +9,7 @@
  * Node-only (`lousho build`); nothing here reaches a Worker bundle.
  */
 import { SDKError } from '../execution/errors';
-import { sdkRuntimePlugin, workerUnsupportedPeerPlugin } from './bundle';
+import { sdkRuntimePlugin, workerSandboxShimPlugin, workerUnsupportedPeerPlugin } from './bundle';
 import { explainWorkerBuildError } from './workerSdkExports';
 
 /** esbuild, lazily: like tsup, only `lousho build` needs it (it comes with tsup). */
@@ -49,7 +49,7 @@ export async function evalModule(file: string): Promise<Record<string, unknown>>
       platform: 'node',
       target: 'es2022',
       logLevel: 'silent',
-      plugins: [sdkRuntimePlugin({ sdkEntry: 'worker' }), workerUnsupportedPeerPlugin()],
+      plugins: [sdkRuntimePlugin({ sdkEntry: 'worker' }), workerSandboxShimPlugin(), workerUnsupportedPeerPlugin()],
     })
     .catch((error: unknown) => {
       throw explainWorkerBuildError(error);

@@ -9,6 +9,7 @@ import { Inspector } from './components/Inspector';
 import { BottomDrawer } from './components/BottomDrawer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { NARROW_QUERY, useMediaQuery } from './components/useMediaQuery';
+import { ObserveView } from './observe/ObserveView';
 
 /**
  * Below 860px the rail and the Inspector are slide-over drawers,
@@ -46,7 +47,20 @@ function ConnectionBanner() {
 
 function Studio() {
   const panels = useSidePanels();
+  const { view } = useAppState();
   const shellClass = `shell${panels.open ? ` ${panels.open}-open` : ''}`;
+  // Observe mode: the daemon-backed panels take the whole content area
+  // (builder rail/canvas/inspector and the run drawer are build-mode chrome).
+  if (view === 'observe') {
+    return (
+      <div className="app app-observe">
+        <h1 className="visually-hidden">Agent Forge</h1>
+        <ConnectionBanner />
+        <Topbar narrow={panels.narrow} openPanel={panels.open} onTogglePanel={panels.toggle} />
+        <ObserveView />
+      </div>
+    );
+  }
   return (
     <div className="app">
       <h1 className="visually-hidden">Agent Forge</h1>

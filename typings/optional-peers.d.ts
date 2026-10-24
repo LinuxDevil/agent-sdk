@@ -34,3 +34,28 @@ declare module 'ollama-ai-provider-v2' {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   export function createOllama(options?: Record<string, any>): any;
 }
+
+// The 'isolate' sandbox driver's optional peer (src/sandbox/isolate.ts) - a
+// native module, so it is an optional peer but NOT a devDependency; the
+// driver lazy-loads it and tests inject a fake module. Only the surface the
+// driver uses is declared; the real package's types fill in when installed.
+declare module 'isolated-vm' {
+  /** Options of Context.evalClosure (the parts src/sandbox/isolate.ts passes). */
+  export interface EvalClosureOptions {
+    /** Structured-clone the arguments into the isolate. */
+    arguments?: { copy?: boolean };
+    /** Structured-clone the result back; `promise` awaits a returned promise inside the isolate. */
+    result?: { copy?: boolean; promise?: boolean };
+    /** Interrupt synchronous execution after this many ms. */
+    timeout?: number;
+  }
+  export class Context {
+    evalClosure(code: string, args?: unknown[], options?: EvalClosureOptions): Promise<unknown>;
+  }
+  export class Isolate {
+    constructor(options?: { memoryLimit?: number });
+    createContext(): Promise<Context>;
+    dispose(): void;
+    readonly isDisposed: boolean;
+  }
+}

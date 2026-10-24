@@ -91,13 +91,16 @@ export function sdkRuntimePlugin({ sdkEntry = 'main' }: { sdkEntry?: 'main' | 'w
  * esbuild plugin (cloudflare-worker target only) that redirects the SDK's
  * internal `security/sandboxCore` imports to the Worker-safe shim in
  * ./shims/sandboxCore.worker.ts - the real module's NoopSandbox needs
- * node:child_process, which Workers don't have. And the optional peer
- * `quickjs-emscripten` (code mode) to ./shims/quickjs.worker.ts, so the
- * Emscripten runtime never lands in a Worker bundle.
+ * node:child_process, which Workers don't have. And the optional peers
+ * `quickjs-emscripten` (code mode) and `isolated-vm` (the 'isolate' code
+ * sandbox driver) to ./shims/quickjs.worker.ts and
+ * ./shims/isolatedVm.worker.ts, so neither the Emscripten runtime nor the
+ * native addon lands in a Worker bundle.
  */
 export function workerSandboxShimPlugin(): Plugin {
   const shim = path.join(findSdkRoot(), 'src', 'deploy', 'shims', 'sandboxCore.worker.ts');
   const quickjs = path.join(findSdkRoot(), 'src', 'deploy', 'shims', 'quickjs.worker.ts');
+  const isolatedVm = path.join(findSdkRoot(), 'src', 'deploy', 'shims', 'isolatedVm.worker.ts');
   return {
     name: 'lousho-worker-sandbox-shim',
     setup(build) {
@@ -106,6 +109,9 @@ export function workerSandboxShimPlugin(): Plugin {
         return { path: shim };
       });
       build.onResolve({ filter: /^quickjs-emscripten$/ }, () => ({ path: quickjs }));
+      // The 'isolate' sandbox driver's lazy `import('isolated-vm')` becomes
+      // the shim's coded failure (the native addon cannot run in a Worker).
+      build.onResolve({ filter: /^isolated-vm$/ }, () => ({ path: isolatedVm }));
     },
   };
 }

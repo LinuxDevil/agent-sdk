@@ -1163,6 +1163,23 @@ interface SandboxAdapter {
 }
 
 // @public
+interface SandboxCallOptions {
+    args?: unknown[];
+}
+
+// @public
+interface SandboxDriver {
+    readonly name?: string;
+    run(code: string, opts?: SandboxCallOptions): Promise<unknown>;
+}
+
+// @public
+type SandboxDriverName = 'isolate' | 'docker' | 'e2b';
+
+// @public
+type SandboxDriverRef = SandboxDriverName | SandboxDriver;
+
+// @public
 interface SandboxResult {
     // (undocumented)
     exitCode: number;
@@ -1407,6 +1424,7 @@ interface ToolDescriptor {
     // (undocumented)
     needsApproval?: boolean | ApprovalPredicate;
     requiresSandbox?: boolean;
+    sandbox?: ToolSandboxOptions;
     sandboxExecute?: (args: unknown, sandbox: SandboxAdapter, ctx?: ToolExecutionContext) => Promise<unknown>;
     tool: Tool;
     transient?: boolean;
@@ -1466,13 +1484,18 @@ class ToolRegistry {
 }
 
 // @public
+interface ToolSandboxOptions {
+    driver?: SandboxDriverRef;
+    memoryMb?: number;
+    timeoutMs?: number;
+}
+
+// @public
 type ToolsOption = ReadonlyArray<ToolArrayEntry> | Record<string, ToolDescriptor | HostedTool>;
 
 // @public
 interface TraceExporter {
-    // (undocumented)
     onSpanEnd(span: Span): void;
-    // (undocumented)
     onSpanStart(span: Span): void;
 }
 

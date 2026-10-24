@@ -4913,6 +4913,8 @@ lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]
 lousho doctor [agent.yaml|json|agent-dir|agent.ts] [--json] [--ping]
 lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
+lousho observe <start|status|stop|rebuild-rollups|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL]
+lousho prompt <push <file|->|list|get <name[@version]>> [--url U] [--port N] [--token T] [--json] [--name N]
 lousho --version
 ```
 
@@ -5142,6 +5144,35 @@ npx lousho studio --port 5000
 Starts one local server for the Agent Forge API and UI. Agents and run state
 are stored under `.lousho/` in the current directory. See
 [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md) for the walkthrough.
+
+## `lousho observe`
+
+```bash
+npx lousho observe start                        # collector on http://127.0.0.1:7777
+npx lousho observe status                       # health + fleet counts
+npx lousho observe stop                         # pidfile + SIGTERM
+npx lousho observe rebuild-rollups              # recompute insight aggregates
+npx lousho observe token create --project myapp # bearer key for non-loopback auth
+```
+
+Runs the local collector every agent reports to when `LOUSHO_OBSERVE` is
+set: traces, fleet monitoring, eval scores, the prompt registry and the
+context hub in one SQLite file (default `~/.lousho/observe.db`). The Studio
+Observe tabs read it. `start` takes `--port` (or `LOUSHO_OBSERVE_PORT`),
+`--db`, `--host`, `--require-token` and a repeatable `--webhook` for alert
+hooks. See [The observe daemon](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md#the-observe-daemon).
+
+## `lousho prompt`
+
+```bash
+npx lousho prompt push prompt.md --name mira    # publishes a new version
+npx lousho prompt list
+npx lousho prompt get mira@latest
+```
+
+Publishes and reads prompt versions in the observe daemon's registry. Agents
+resolve them with `createAgent({ prompt: 'mira@latest' })` or
+`LOUSHO_PROMPT`. See [The observe daemon](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md#the-observe-daemon).
 
 # Cloudflare Workers
 
@@ -8368,7 +8399,7 @@ Find a code by area:
 | [Schedules](#schedules) | [`LOUSHO_SCHEDULE_INVALID`](#lousho_schedule_invalid), [`LOUSHO_SCHEDULE_RUN_INCOMPLETE`](#lousho_schedule_run_incomplete) | Defining or loading a schedule, or a scheduled turn that did not finish. |
 | [Channels](#channels) | [`LOUSHO_CHANNEL_INVALID`](#lousho_channel_invalid), [`LOUSHO_MEMORY_INVALID`](#lousho_memory_invalid) | Defining a channel or a memory slot. |
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
-| [Sandbox](#sandbox) | [`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`](#lousho_sandbox_egress_unsupported), [`LOUSHO_SANDBOX_PATH_DENIED`](#lousho_sandbox_path_denied) | Asking a sandbox for something it cannot do on the current platform, or to write outside its root. |
+| [Sandbox](#sandbox) | [`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`](#lousho_sandbox_egress_unsupported), [`LOUSHO_SANDBOX_PATH_DENIED`](#lousho_sandbox_path_denied), [`LOUSHO_SANDBOX_FAILED`](#lousho_sandbox_failed) | Asking a sandbox for something it cannot do on the current platform, writing outside its root, or a code-sandbox boundary (timeout / OOM / driver) failing a run. |
 | [Agent directories, skills and flows](#agent-directories-skills-and-flows) | [`LOUSHO_AGENT_DIR_INVALID`](#lousho_agent_dir_invalid), [`LOUSHO_SKILL_INVALID`](#lousho_skill_invalid), [`LOUSHO_FLOW_INVALID`](#lousho_flow_invalid), [`LOUSHO_FLOW_TOOL_DENIED`](#lousho_flow_tool_denied), [`LOUSHO_FLOW_CHANGED`](#lousho_flow_changed) | Loading an agent directory, a skill, or a flow definition, and gating a flow's tool calls. |
 | [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_STORAGE_BUSY`](#lousho_storage_busy), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed), [`LOUSHO_SERVER_UNPROTECTED`](#lousho_server_unprotected) | A storage backend, a trigger, a channel request, `lousho build` or the built server's start-up. |
 | [Tests and evals](#tests-and-evals) | [`LOUSHO_EVALS_INVALID`](#lousho_evals_invalid), [`LOUSHO_TEST_FAILED`](#lousho_test_failed), [`LOUSHO_CASSETTE_INVALID`](#lousho_cassette_invalid) | `defineEval()`, `mockModel` and cassettes. |
@@ -9233,6 +9264,23 @@ contain the file (`new SubprocessSandbox({ root })`; the default is the working
 directory at construction). See [Guardrails](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/guardrails.md#sandboxed-tools).
 
 **Example:** `sandbox.writeFile('/etc/profile.d/x.sh', ...)` with the default root.
+
+### LOUSHO_SANDBOX_FAILED
+
+**Means:** a `sandbox()` / `defineTool({ sandbox })` run failed at the
+sandbox boundary - not in the tool's own code, whose errors cross back
+unchanged. The `SandboxError`'s `kind` names which boundary: `'timeout'`
+(the run outlasted `timeoutMs`), `'oom'` (the driver killed it for its
+memory cap - with the `'isolate'` driver this can also take the host
+process, since the isolate is an execution boundary, not a security one)
+or `'driver'` (the driver itself failed). The tool span carries the same
+kind as `sandbox.error`.
+
+**Fix:** raise `memoryMb`/`timeoutMs`, or fix the driver; for a missing
+`isolated-vm` install the optional peer or pass another `SandboxDriver`.
+
+**Example:** `sandbox({ driver: 'isolate', timeoutMs: 5_000 })` running code
+that does not return in five seconds.
 
 ## Agent directories, skills and flows
 
@@ -13990,6 +14038,39 @@ opt-in on purpose: the files persist span timings, token counts and costs,
 and prompt and tool content only if the agent sets `redactContent: false` or
 `captureContent: true`, so nothing is written to disk unless you ask. The spec file format has no
 traces setting.
+
+## The observe daemon
+
+`lousho observe start` runs a local collector on `http://127.0.0.1:7777`
+(loopback only, no auth needed). When `LOUSHO_OBSERVE` is set, every agent
+built on this SDK reports spans to it automatically — `1` (or `true`) emits
+to the default URL, a URL value emits there. `LOUSHO_OBSERVE_PROJECT` labels
+the rows; `LOUSHO_OBSERVE_TOKEN` sends a bearer token for daemons bound
+beyond loopback (`--require-token` plus `lousho observe token create`).
+
+One SQLite file (default `~/.lousho/observe.db`, WAL mode) holds the fleet's
+observations, sessions, eval scores, prompt versions and shared context.
+`npx lousho studio` renders it in the Observe tabs: trace trees with latency
+waterfalls, per-agent insights (runs/day, p50/p95 latency, cost, error
+rate), a live fleet monitor (heartbeat-derived status — a crashed agent's
+open sessions flip to `interrupted`), and eval score history. Alerts on
+`down` transitions or error-rate thresholds POST to `--webhook` URLs or an
+`alerts.json` next to the db.
+
+The daemon also serves two stores agents can use at runtime:
+
+- **Prompt registry.** `createAgent({ prompt: 'name@version' })` or
+  `LOUSHO_PROMPT` fetches instructions from it at build (`@latest` resolves
+  on the daemon; an unreachable daemon falls back to `instructions`). Every
+  run logs the exact version used. `lousho prompt push` publishes a new
+  version.
+- **Context hub.** `hub()` / `hubTools()` let agents publish and query
+  namespaced key-values scoped `private` (the writing agent only) or
+  `fleet` (every agent on the daemon).
+
+Reporting is fire-and-forget: a down daemon drops and counts events, it
+never blocks a run. Eval scores flow through the same pipe —
+`lousho eval --observe` emits them even when `LOUSHO_OBSERVE` is unset.
 
 ## The built server
 

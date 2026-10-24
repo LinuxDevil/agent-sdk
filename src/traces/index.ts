@@ -6,3 +6,13 @@ export { fileTraceExporter, type FileTraceExporterOptions } from './fileTraceExp
 export { listTraces, readTrace, type ListTracesOptions, type TraceSummary } from './readTraces';
 export { DEFAULT_TRACE_DIR, type TraceLine } from './format';
 export type { Span, SpanKind, SpanStatus, TraceExporter } from '../execution/tracing';
+// The collector reporter (LOUSHO_OBSERVE): node builtins are lazy inside, so
+// this export stays Worker-bundle-safe while letting runs wire it explicitly.
+export {
+  observeExporter,
+  observeExporterFromEnv,
+  fanOutExporters,
+  withObserveExporter,
+  type ObserveExporterOptions,
+  type ObserveReporter,
+} from '../observe/reporter';

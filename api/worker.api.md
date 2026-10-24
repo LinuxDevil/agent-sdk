@@ -1053,7 +1053,7 @@ export function createAgentConfigOf(agent: SimpleAgent): CreateAgentConfig | und
 // @public
 export type CreateAgentInstructions = {
     instructions?: PerRun<string>;
-    prompt?: undefined;
+    prompt?: PromptRefString;
 } | {
     instructions?: undefined;
     prompt?: PerRun<string>;
@@ -1154,6 +1154,7 @@ interface DefineToolOptions<S extends StandardSchemaV1, R> {
     name: string;
     needsApproval?: boolean | ((args: InferSchemaOutput<S>, ctx: ApprovalCheckContext) => ApprovalOutcome | Promise<ApprovalOutcome>);
     requiresSandbox?: boolean;
+    sandbox?: ToolSandboxOptions;
     sandboxExecute?: (args: InferSchemaOutput<S>, sandbox: SandboxAdapter) => Promise<unknown>;
     timeoutMs?: number;
 }
@@ -1346,6 +1347,7 @@ const ERROR_CODES: {
     readonly LOUSHO_RUN_ALREADY_ITERATED: "Iterate an AgentRun once; call stream() again for a new run.";
     readonly LOUSHO_SANDBOX_PATH_DENIED: "Write under the sandbox's root (SubprocessSandbox({ root })), or pass the root that should contain the path.";
     readonly LOUSHO_SANDBOX_EGRESS_UNSUPPORTED: "Run on Docker Engine 25.0.5+ for Linux on this host (not Docker Desktop, rootless or a remote daemon), or use network: 'none'.";
+    readonly LOUSHO_SANDBOX_FAILED: "The error's `kind` says which boundary failed ('timeout', 'oom' or 'driver'); raise the limit in sandbox()/defineTool({ sandbox }), or check the driver.";
     readonly LOUSHO_AGENT_EXECUTION_FAILED: "Look at the `cause` for the underlying failure.";
     readonly LOUSHO_FLOW_EXECUTION_FAILED: "Look at the failing `step` and the `cause`.";
     readonly LOUSHO_VALIDATION_FAILED: "Fix the fields listed in `errors`.";
@@ -2840,6 +2842,9 @@ interface Principal {
 type PromptCachingOption = 'auto' | false;
 
 // @public
+type PromptRefString = `${string}@${number}` | `${string}@latest`;
+
+// @public
 export interface PromptScheduleInput extends ScheduleBase {
     // (undocumented)
     prompt: string;
@@ -3133,6 +3138,23 @@ interface SandboxAdapter {
     run(cmd: string, args: string[], opts?: SandboxRunOptions): Promise<SandboxResult>;
     writeFile(path: string, content: string): Promise<void>;
 }
+
+// @public
+interface SandboxCallOptions {
+    args?: unknown[];
+}
+
+// @public
+interface SandboxDriver {
+    readonly name?: string;
+    run(code: string, opts?: SandboxCallOptions): Promise<unknown>;
+}
+
+// @public
+type SandboxDriverName = 'isolate' | 'docker' | 'e2b';
+
+// @public
+type SandboxDriverRef = SandboxDriverName | SandboxDriver;
 
 // @public
 interface SandboxResult {
@@ -3956,6 +3978,7 @@ export interface ToolDescriptor {
     // (undocumented)
     needsApproval?: boolean | ApprovalPredicate;
     requiresSandbox?: boolean;
+    sandbox?: ToolSandboxOptions;
     sandboxExecute?: (args: unknown, sandbox: SandboxAdapter, ctx?: ToolExecutionContext) => Promise<unknown>;
     tool: Tool;
     transient?: boolean;
@@ -4066,6 +4089,13 @@ interface ToolResumeEvent extends AgentEventBase<'tool.resume'> {
 }
 
 // @public
+interface ToolSandboxOptions {
+    driver?: SandboxDriverRef;
+    memoryMb?: number;
+    timeoutMs?: number;
+}
+
+// @public
 interface ToolSearchOptions {
     contextWindow?: number;
     maxResults?: number;
@@ -4093,9 +4123,7 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
 
 // @public
 interface TraceExporter {
-    // (undocumented)
     onSpanEnd(span: Span): void;
-    // (undocumented)
     onSpanStart(span: Span): void;
 }
 

@@ -96,7 +96,7 @@ Find a code by area:
 | [Schedules](#schedules) | [`LOUSHO_SCHEDULE_INVALID`](#lousho_schedule_invalid), [`LOUSHO_SCHEDULE_RUN_INCOMPLETE`](#lousho_schedule_run_incomplete) | Defining or loading a schedule, or a scheduled turn that did not finish. |
 | [Channels](#channels) | [`LOUSHO_CHANNEL_INVALID`](#lousho_channel_invalid), [`LOUSHO_MEMORY_INVALID`](#lousho_memory_invalid) | Defining a channel or a memory slot. |
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
-| [Sandbox](#sandbox) | [`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`](#lousho_sandbox_egress_unsupported), [`LOUSHO_SANDBOX_PATH_DENIED`](#lousho_sandbox_path_denied) | Asking a sandbox for something it cannot do on the current platform, or to write outside its root. |
+| [Sandbox](#sandbox) | [`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`](#lousho_sandbox_egress_unsupported), [`LOUSHO_SANDBOX_PATH_DENIED`](#lousho_sandbox_path_denied), [`LOUSHO_SANDBOX_FAILED`](#lousho_sandbox_failed) | Asking a sandbox for something it cannot do on the current platform, writing outside its root, or a code-sandbox boundary (timeout / OOM / driver) failing a run. |
 | [Agent directories, skills and flows](#agent-directories-skills-and-flows) | [`LOUSHO_AGENT_DIR_INVALID`](#lousho_agent_dir_invalid), [`LOUSHO_SKILL_INVALID`](#lousho_skill_invalid), [`LOUSHO_FLOW_INVALID`](#lousho_flow_invalid), [`LOUSHO_FLOW_TOOL_DENIED`](#lousho_flow_tool_denied), [`LOUSHO_FLOW_CHANGED`](#lousho_flow_changed) | Loading an agent directory, a skill, or a flow definition, and gating a flow's tool calls. |
 | [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_STORAGE_BUSY`](#lousho_storage_busy), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed), [`LOUSHO_SERVER_UNPROTECTED`](#lousho_server_unprotected) | A storage backend, a trigger, a channel request, `lousho build` or the built server's start-up. |
 | [Tests and evals](#tests-and-evals) | [`LOUSHO_EVALS_INVALID`](#lousho_evals_invalid), [`LOUSHO_TEST_FAILED`](#lousho_test_failed), [`LOUSHO_CASSETTE_INVALID`](#lousho_cassette_invalid) | `defineEval()`, `mockModel` and cassettes. |
@@ -961,6 +961,23 @@ contain the file (`new SubprocessSandbox({ root })`; the default is the working
 directory at construction). See [Guardrails](./guardrails.md#sandboxed-tools).
 
 **Example:** `sandbox.writeFile('/etc/profile.d/x.sh', ...)` with the default root.
+
+### LOUSHO_SANDBOX_FAILED
+
+**Means:** a `sandbox()` / `defineTool({ sandbox })` run failed at the
+sandbox boundary - not in the tool's own code, whose errors cross back
+unchanged. The `SandboxError`'s `kind` names which boundary: `'timeout'`
+(the run outlasted `timeoutMs`), `'oom'` (the driver killed it for its
+memory cap - with the `'isolate'` driver this can also take the host
+process, since the isolate is an execution boundary, not a security one)
+or `'driver'` (the driver itself failed). The tool span carries the same
+kind as `sandbox.error`.
+
+**Fix:** raise `memoryMb`/`timeoutMs`, or fix the driver; for a missing
+`isolated-vm` install the optional peer or pass another `SandboxDriver`.
+
+**Example:** `sandbox({ driver: 'isolate', timeoutMs: 5_000 })` running code
+that does not return in five seconds.
 
 ## Agent directories, skills and flows
 

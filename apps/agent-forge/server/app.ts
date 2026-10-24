@@ -17,6 +17,7 @@
  *   GET  /runs/:id/history           -> RunHistoryPayload
  *   POST /runs/:id/fork              -> body: ForkRunRequest; starts the fork, 202 ForkRunResponse
  *   GET  /runs/compare?a=&b=         -> RunComparisonPayload (compareTrajectories)
+ *   GET  /observe/**                 -> proxied to the `lousho observe` daemon's read API (observeProxy.ts)
  *
  * `WS /agents/:id/stream` is wired separately in wsServer.ts (attached to
  * the same underlying http.Server, since `ws` needs the raw HTTP upgrade
@@ -58,6 +59,7 @@ import {
 } from './traceStore';
 import { DEPLOY_ADAPTERS, isDeployAdapter, runDeploy } from './deployRunner';
 import { checkApiAccess, checkHostAndOrigin, type StudioAccessOptions } from './auth';
+import { registerObserveProxy } from './observeProxy';
 
 export interface CreateAppOptions {
   agentStore: AgentStore;
@@ -90,7 +92,7 @@ export interface CreateAppOptions {
 }
 
 /** Path prefixes of the API (everything except `/health` and the static client). */
-const API_PREFIXES = ['/agents', '/runs', '/settings', '/workspace'];
+const API_PREFIXES = ['/agents', '/runs', '/settings', '/workspace', '/observe'];
 
 function asyncRoute(fn: (req: Request, res: Response) => Promise<void>) {
   return (req: Request, res: Response, next: NextFunction) => {
@@ -594,7 +596,7 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
     // `App.tsx` view state, but still refresh-safe) - serve `index.html` and
     // let the client app take over, the same as `vite preview`/most SPA
     // hosts do.
-    app.get(/^(?!\/health|\/agents|\/runs).*/, (_req, res) => {
+    app.get(/^(?!\/health|\/agents|\/runs|\/observe).*/, (_req, res) => {
       res.sendFile(indexHtml);
     });
   }
@@ -664,6 +666,10 @@ export function createApp({
   registerProviderKeyRoutes(app, secrets);
   registerProfileRoutes(app, settings);
   registerDeployRoutes(app, agentStore, baseDir);
+  // The observe panels' read path: `/observe/**` -> the `lousho observe`
+  // daemon (see observeProxy.ts) - before the SPA fallback so a proxied
+  // GET never gets index.html.
+  registerObserveProxy(app);
   registerStaticClient(app, staticDir);
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars

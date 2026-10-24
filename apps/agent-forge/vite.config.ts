@@ -22,6 +22,10 @@ export default defineConfig({
       },
       // Time-travel routes (history, fork, compare).
       '/runs': { target: process.env.LOUSHO_STUDIO_API_URL ?? 'http://127.0.0.1:4750', changeOrigin: true },
+      // The observe panels' read path - proxied through the studio API
+      // server (same as prod; it forwards to the `lousho observe` daemon,
+      // which serves no CORS headers of its own).
+      '/observe': { target: process.env.LOUSHO_STUDIO_API_URL ?? 'http://127.0.0.1:4750', changeOrigin: true },
     },
   },
   test: {
