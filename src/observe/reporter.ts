@@ -111,10 +111,11 @@ export interface ObserveReporter extends TraceExporter {
    */
   promptUse?: PromptUseProvider;
   /**
-   * Send everything pending now, batch after batch, without closing. Resolves
-   * once the outbox is drained or a batch failed (it is then requeued for the
-   * normal retry); never rejects. Callers that must see their spans land
-   * before the process may exit (eval workers) await this.
+   * Send everything pending now, batch after batch, without closing - even
+   * while backing off from a failed send. Resolves once the outbox is drained
+   * or a batch failed (it is then requeued for the normal retry); never
+   * rejects. Callers that must see their spans land before the process may
+   * exit (eval workers) await this.
    * @param timeoutMs Per-request timeout; default the reporter's own.
    */
   flush(timeoutMs?: number): Promise<void>;
@@ -483,21 +484,22 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
    * Regular flushes give each POST its own timeout; the final attempt shares
    * one deadline.
    */
-  const send = async (timeoutMs: number, final: boolean): Promise<void> => {
+  const send = async (timeoutMs: number, final: boolean, force: boolean): Promise<void> => {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
-      const batch = outbox.take(final);
+      const batch = outbox.take(final || force);
       const cut = outbox.size > 0; // read before the await: events queued meanwhile wait for their own trigger
       if (batch.length === 0) return;
       if (!(await sendBatch(batch, final ? Math.max(1, deadline - Date.now()) : timeoutMs, final))) return;
       if (!cut) return;
     }
   };
-  const flush = (timeoutMs: number, final = false, starting?: () => void): Promise<void> => {
+  /** `force` skips the backoff (an explicit flush(); the final attempt always does). */
+  const flush = (timeoutMs: number, final = false, starting?: () => void, force = false): Promise<void> => {
     const run = chain
       .then(() => {
         starting?.();
-        return send(timeoutMs, final);
+        return send(timeoutMs, final, force);
       })
       .catch(() => undefined);
     chain = run;
@@ -629,7 +631,7 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
     }
   }
 
-  return {
+  const reporter: ObserveReporter = {
     get dropped() {
       return droppedCount;
     },
@@ -666,9 +668,28 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
       // The root ended: forget every span of this trace so the map does not grow forever.
       for (const [id, tid] of targets) if (tid === traceId) targets.delete(id);
     },
-    flush: (timeoutMs) => flush(timeoutMs ?? requestTimeoutMs),
+    flush: (timeoutMs) => flush(timeoutMs ?? requestTimeoutMs, false, undefined, true),
     close,
   };
+  queues.set(reporter, (events) => {
+    for (const event of events) enqueue(event);
+  });
+  return reporter;
+}
+
+/** Each reporter's own enqueue, for {@link queueObserveEvents}. */
+const queues = new WeakMap<ObserveReporter, (events: readonly IngestEvent[]) => void>();
+
+/**
+ * Queue ingest events that are not spans (eval scores) on `reporter`'s outbox:
+ * they go out after everything queued before them, and share its retry with
+ * backoff, buffer cap and exit and crash flushes. `false` when `reporter` was
+ * not made by {@link observeExporter}.
+ */
+export function queueObserveEvents(reporter: ObserveReporter, events: readonly IngestEvent[]): boolean {
+  const queue = queues.get(reporter);
+  queue?.(events);
+  return queue !== undefined;
 }
 
 /* ------------------------------------------------------- env wiring + fanout */

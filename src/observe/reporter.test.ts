@@ -16,7 +16,7 @@ import { GenAiAttr, GenAiOperation, LegacyAttr, SdkAttr } from '../execution/sem
 import type { Span, TraceExporter } from '../execution/tracing';
 import { blockingPost } from './blockingPost';
 import type { IngestEvent } from './envelope';
-import { fanOutExporters, observeExporter, observeExporterFromEnv, withObserveExporter, type ObserveReporter } from './reporter';
+import { fanOutExporters, observeExporter, observeExporterFromEnv, queueObserveEvents, withObserveExporter, type ObserveReporter } from './reporter';
 
 interface PostedBatch {
   url: string;
@@ -317,6 +317,31 @@ describe('observeExporter', () => {
         failedAt = Date.now();
       }
       expect(r.dropped).toBe(0);
+    });
+
+    it('flush() sends at once even while backing off, and a failure there is requeued', async () => {
+      const { fetchFn, posted } = scriptedFetch(['fail', 'fail', 'ok']);
+      const { r } = reporter({ fetchFn, flushIntervalMs: 1000 });
+      emit(r, ['a']);
+      await vi.advanceTimersByTimeAsync(1000); // rejected; the interval waits until t=2000
+      await r.flush(); // explicit: no backoff wait, fails again, requeued
+      expect(posted).toHaveLength(2);
+      await r.flush();
+      expect(posted).toHaveLength(3);
+      expect(posted[2]!.events.map((e) => e.type === 'observation' && e.data.obs_id)).toEqual(['a']);
+      expect(r.dropped).toBe(0);
+    });
+
+    it('queueObserveEvents() puts non-span events behind the spans queued before them, retried with them', async () => {
+      const { fetchFn, posted } = scriptedFetch(['fail', 'ok']);
+      const { r } = reporter({ fetchFn });
+      emit(r, ['span-1']);
+      const score: IngestEvent = { type: 'score', data: { score_id: 'sc', trace_id: 'span-1', name: 'e/a', value: 1, source: 'eval', ts: 1 } };
+      expect(queueObserveEvents(r, [score])).toBe(true);
+      await r.flush();
+      await r.flush();
+      expect(posted[1]!.events.map((e) => e.type)).toEqual(['observation', 'score']);
+      expect(queueObserveEvents({} as ObserveReporter, [score])).toBe(false);
     });
 
     it('close() makes one final attempt despite the backoff and counts leftovers as dropped', async () => {

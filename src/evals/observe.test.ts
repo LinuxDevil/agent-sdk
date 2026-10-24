@@ -168,6 +168,79 @@ describe('evalCaseObservation', () => {
     expect(Date.now() - again).toBeLessThan(200);
   });
 
+  /**
+   * A daemon whose behaviour the test switches: `hang` accepts and never answers
+   * (until the request's abort, like real fetch, or a restart), `refuse` fails at once.
+   */
+  const switchableDaemon = () => {
+    const hung: Array<() => void> = [];
+    const state = {
+      mode: 'ok' as 'ok' | 'hang' | 'refuse',
+      calls: [] as { url: string; batch: IngestEvent[] }[],
+      /** The daemon restarts healthy: the connections it held open are reset. */
+      restart() {
+        state.mode = 'ok';
+        for (const reset of hung.splice(0)) reset();
+      },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        if (state.mode === 'refuse') throw new TypeError('connect ECONNREFUSED');
+        if (state.mode === 'hang') {
+          return new Promise<Response>((_, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(init.signal!.reason));
+            hung.push(() => reject(new TypeError('socket hang up')));
+          });
+        }
+        state.calls.push({ url: String(input), batch: (JSON.parse(String(init?.body)) as { batch: IngestEvent[] }).batch });
+        return new Response('{}', { status: 202 });
+      })
+    );
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    return state;
+  };
+
+  it("sends later cases' scores once a slow flush is past: the skip-the-waits latch expires", async () => {
+    const daemon = switchableDaemon();
+    let clock = 1_000_000;
+    const observation = () =>
+      evalCaseObservation({ evalName: 'e', agent: { name: 'eval-slow-then-healthy' }, env: { LOUSHO_OBSERVE: 'http://x' }, now: () => clock });
+    daemon.mode = 'hang';
+    const first = observation();
+    await first.run(async () => 'ok');
+    await first.emit(result());
+    daemon.restart();
+    clock += 31_000;
+    const second = observation();
+    await second.run(async () => 'ok');
+    await second.emit(result());
+    const scores = scoreEvents(daemon.calls);
+    expect(scores).toHaveLength(4); // the slow case's scores were queued, not lost
+    expect(new Set(scores.map((e) => e.data.trace_id)).size).toBe(2);
+  });
+
+  it('sends the scores of a case run during a daemon outage once the daemon is back', async () => {
+    const daemon = switchableDaemon();
+    const observation = () => evalCaseObservation({ evalName: 'e', agent: { name: 'eval-outage' }, env: { LOUSHO_OBSERVE: 'http://x' } });
+    daemon.mode = 'refuse';
+    const first = observation();
+    await first.run(async () => 'ok');
+    await first.emit(result());
+    expect(daemon.calls).toHaveLength(0);
+    daemon.mode = 'ok';
+    const second = observation();
+    await second.run(async () => 'ok');
+    await second.emit(result());
+    const events = daemon.calls.flatMap((c) => c.batch);
+    expect(scoreEvents(daemon.calls)).toHaveLength(4);
+    // Each case's eval span lands before its own scores.
+    const spanAt = (name: string) => events.findIndex((e) => e.type === 'observation' && e.data.name === name && e.data.end !== undefined);
+    const firstScoreAt = events.findIndex((e) => e.type === 'score');
+    expect(spanAt('eval e')).toBeGreaterThanOrEqual(0);
+    expect(spanAt('eval e')).toBeLessThan(firstScoreAt);
+  });
+
   it('lets the case pass and resolves emit when every request is refused', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => Promise.reject(new Error('connect ECONNREFUSED'))));
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);

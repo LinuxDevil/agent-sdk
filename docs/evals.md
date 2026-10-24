@@ -279,7 +279,7 @@ the `LOUSHO_EVAL_RESULTS` environment variable, which `lousho eval` sets and
 reads back. This is more robust than a custom vitest reporter: it works across
 vitest versions and worker pools, and needs no module loaded from your project.
 
-With `LOUSHO_OBSERVE` set (or `lousho eval --observe`), each case's `eval` span and score rows are flushed to the collector when the case finishes, each wait capped at 1 second; a collector that is down or silent never fails or noticeably slows a case.
+With `LOUSHO_OBSERVE` set (or `lousho eval --observe`), each case's `eval` span and score rows are flushed to the collector when the case finishes, each wait capped at 1 second; a collector that is down or silent never fails or noticeably slows a case. The score rows ride the same queue as the spans: they go out after the case's span and, while the collector is down, are kept and retried with it (and sent on exit or crash) instead of being dropped. When a wait runs out, the cases of the next 30 seconds skip the wait (their rows still queue), then the next case tries again.
 
 ### Time limits
 
