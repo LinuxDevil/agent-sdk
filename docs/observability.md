@@ -504,6 +504,20 @@ trace, newest first. Query parameters (all optional):
 | `order` | `desc` (default) or `asc`. |
 | `limit`, `offset` | Page size (1-500, default 50) and offset. |
 
+An unknown `sort` or `order`, or a non-numeric `min_duration_ms`, answers
+`400` with code `LOUSHO_REQUEST_INVALID`.
+
+Each row has `trace_id`, `name`, `agent_id`, `session_id`, `start`, `end`,
+`status`, the counts `observations`, `generations`, `tools` and `errors`, the
+sums `input_tokens`, `output_tokens` and `cost_usd`, and:
+
+- `agent_name`: the agent's name from its heartbeat, or `null`.
+- `model`: the first model call's model, or `null`.
+- `error_message`: the first failed observation's `error` attribute (for
+  example `upstream 529 overloaded`), or `null`.
+- `input_preview` / `output_preview`: the first 200 characters of the run's
+  stored input and output, or `null` when none was captured.
+
 ### Sessions (threads) API
 
 `GET /api/v1/sessions` returns `{ sessions, total, limit, offset }`, newest
@@ -519,20 +533,6 @@ input of its latest trace.
 `GET /api/v1/sessions/:id` returns `{ session, traces }` with the traces
 (same rows as the trace list) ordered by start ascending, capped at 500; an
 unknown id is a 404 with code `LOUSHO_REQUEST_INVALID`.
-
-An unknown `sort` or `order`, or a non-numeric `min_duration_ms`, answers
-`400` with code `LOUSHO_REQUEST_INVALID`.
-
-Each row has `trace_id`, `name`, `agent_id`, `session_id`, `start`, `end`,
-`status`, the counts `observations`, `generations`, `tools` and `errors`, the
-sums `input_tokens`, `output_tokens` and `cost_usd`, and:
-
-- `agent_name`: the agent's name from its heartbeat, or `null`.
-- `model`: the first model call's model, or `null`.
-- `error_message`: the first failed observation's `error` attribute (for
-  example `upstream 529 overloaded`), or `null`.
-- `input_preview` / `output_preview`: the first 200 characters of the run's
-  stored input and output, or `null` when none was captured.
 
 ## The built server
 

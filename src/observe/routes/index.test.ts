@@ -148,7 +148,7 @@ describe('sessions API', () => {
       expect(call('/api/v1/sessions', 'status=interrupted', db).body.total).toBe(1);
       expect(call('/api/v1/sessions', 'from=1000&to=5000', db).body.sessions.map((s) => s.session_id)).toEqual(['s1']);
       expect(call('/api/v1/sessions', 'agent_id=nope', db).body.total).toBe(0);
-      expect(call('/api/v1/sessions', 'limit=1&offset=1', db).body.sessions).toHaveLength(1);
+      expect(call('/api/v1/sessions', 'limit=1&offset=1', db).body.sessions.map((s) => s.session_id)).toEqual(['s1']);
     } finally {
       db.close();
     }
