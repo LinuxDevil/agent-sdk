@@ -414,10 +414,14 @@ The daemon also serves two stores agents can use at runtime:
 Reporting is fire-and-forget and never blocks a run: when the daemon is
 down, the failed batch is requeued and retried with exponential backoff (1 s,
 2 s, 4 s ... capped at 30 s), so a daemon restart mid-run loses nothing. A
-backlog drains in batches of at most 1000 events (the daemon's per-request
-cap), one right after another. Only events evicted past the buffer cap
-(`maxBuffered`, default 5000, oldest first) or still unsent after the exit
-flush's final attempt are dropped and counted in the reporter's `dropped`.
+backlog drains in batches one right after another, each at most 1000 events
+and 4 MB of JSON (under the daemon's per-request caps of 1000 events and
+5 MB). Only these are dropped and counted in the reporter's `dropped`:
+events evicted past the buffer cap (`maxBuffered`, default 5000, oldest
+first); events still unsent after the exit flush's final attempt; a single
+event too large for any request (over 5 MB serialized, for example with
+content capture on); and a batch the daemon refuses outright (`400`/`413`),
+which is never retried.
 
 A process that dies of an uncaught exception or an unhandled rejection still
 reports its last run: the reporter watches `uncaughtExceptionMonitor` and

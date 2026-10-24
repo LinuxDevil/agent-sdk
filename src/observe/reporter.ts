@@ -36,7 +36,7 @@ import { SDKError } from '../execution/errors';
 import type { Span, TraceExporter } from '../execution/tracing';
 import { VERSION } from '../version';
 import { blockingPost } from './blockingPost';
-import { OBSERVE_DEFAULT_PORT, OBSERVE_MAX_BATCH_EVENTS, type IngestEvent, type ObservationData, type ObservationKind, type PromptUseData } from './envelope';
+import { OBSERVE_DEFAULT_PORT, OBSERVE_MAX_BATCH_EVENTS, OBSERVE_MAX_BODY_BYTES, type IngestEvent, type ObservationData, type ObservationKind, type PromptUseData } from './envelope';
 import { observeTargetFromEnv } from './emit';
 import { hostName, resolveIdentity, resolveProject } from './identity';
 
@@ -120,15 +120,72 @@ const RETRY_CAP_MS = 30_000;
 const retryDelayMs = (failures: number): number => Math.min(RETRY_BASE_MS * 2 ** failures, RETRY_CAP_MS);
 
 /**
+ * The JSON a POST carries for `entries`: byte for byte what
+ * `JSON.stringify({ batch: events })` would produce, built from each event's
+ * JSON serialized once on arrival.
+ */
+const bodyOf = (entries: readonly OutboxEntry[]): string => `{"batch":[${entries.map((e) => e.json).join(',')}]}`;
+
+/** `{"batch":[]}`: the envelope's bytes around the events. */
+const ENVELOPE_BYTES = 12;
+/**
+ * A batch stops growing before its body would pass this - kept under the
+ * daemon's OBSERVE_MAX_BODY_BYTES (5MB, a `413` past it) with room to spare.
+ */
+const BATCH_BUDGET_BYTES = 4 * 1024 * 1024;
+
+/** One pending event, serialized once when queued so batching can measure it. */
+interface OutboxEntry {
+  json: string;
+  bytes: number;
+}
+
+const utf8 = new TextEncoder();
+
+/** An event as an outbox entry; `undefined` when its body alone would pass the daemon's hard cap. */
+function entryOf(event: IngestEvent): OutboxEntry | undefined {
+  const json = JSON.stringify(event);
+  const bytes = utf8.encode(json).length;
+  return ENVELOPE_BYTES + bytes > OBSERVE_MAX_BODY_BYTES ? undefined : { json, bytes };
+}
+
+/**
+ * Where the batch starting at `start` ends: at most OBSERVE_MAX_BATCH_EVENTS
+ * events (the daemon rejects more) and BATCH_BUDGET_BYTES of body, measured
+ * incrementally. The first event is always taken, so one event over the
+ * budget (but under the hard cap) goes out alone instead of wedging the queue.
+ */
+function batchEnd(entries: readonly OutboxEntry[], start: number): number {
+  let end = start;
+  let bytes = ENVELOPE_BYTES;
+  while (end < entries.length && end - start < OBSERVE_MAX_BATCH_EVENTS) {
+    bytes += entries[end].bytes + (end > start ? 1 : 0); // the comma
+    if (end > start && bytes > BATCH_BUDGET_BYTES) break;
+    end++;
+  }
+  return end;
+}
+
+/** `entries` cut into consecutive batches, oldest first. */
+function batchesOf(entries: readonly OutboxEntry[]): OutboxEntry[][] {
+  const batches: OutboxEntry[][] = [];
+  for (let start = 0; start < entries.length; ) {
+    const end = batchEnd(entries, start);
+    batches.push(entries.slice(start, end));
+    start = end;
+  }
+  return batches;
+}
+
+/**
  * The reporter's pending events: FIFO, capped at `cap` (the oldest are
  * evicted first, reported through `onEvict`), and gated by a retry backoff
  * after a failed send. Every send path - size, interval, exit - goes through
  * `take` / `delivered` / `failed`, so a failed batch is never lost while
- * there is room to keep it. A batch is at most OBSERVE_MAX_BATCH_EVENTS
- * events (the daemon rejects larger ones), oldest first.
+ * there is room to keep it. A batch is cut by {@link batchEnd}, oldest first.
  */
 function createOutbox(cap: number, now: () => number, onEvict: (count: number) => void) {
-  let items: IngestEvent[] = [];
+  let items: OutboxEntry[] = [];
   let failures = 0;
   let retryAt = 0;
   const trim = (): void => {
@@ -145,16 +202,20 @@ function createOutbox(cap: number, now: () => number, onEvict: (count: number) =
     ready(): boolean {
       return now() >= retryAt;
     },
-    push(event: IngestEvent): void {
-      items.push(event);
+    /** Queue `event`; false (nothing queued) when it is too large for any request. */
+    push(event: IngestEvent): boolean {
+      const entry = entryOf(event);
+      if (!entry) return false;
+      items.push(entry);
       trim();
+      return true;
     },
-    /** The oldest batch's worth, for one send - or nothing while backing off, unless `force` (the final attempt). */
-    take(force = false): IngestEvent[] {
-      return force || now() >= retryAt ? items.splice(0, OBSERVE_MAX_BATCH_EVENTS) : [];
+    /** The oldest batch, for one send - or nothing while backing off, unless `force` (the final attempt). */
+    take(force = false): OutboxEntry[] {
+      return force || now() >= retryAt ? items.splice(0, batchEnd(items, 0)) : [];
     },
-    /** Everything pending, uncapped (the crash flush; counting what a failed final attempt leaves). */
-    drain(): IngestEvent[] {
+    /** Everything pending, uncut (the crash flush; counting what a failed final attempt leaves). */
+    drain(): OutboxEntry[] {
       return items.splice(0, items.length);
     },
     delivered(): void {
@@ -162,8 +223,8 @@ function createOutbox(cap: number, now: () => number, onEvict: (count: number) =
       retryAt = 0;
     },
     /** Put a failed batch back in front of anything queued since, trim to the cap, and back off. */
-    failed(batch: IngestEvent[]): void {
-      items = batch.concat(items); // no spread: a batch can hold up to `cap` events, too many for call arguments
+    failed(batch: OutboxEntry[]): void {
+      items = batch.concat(items); // no spread: keeps call arguments bounded whatever the batch size
       trim();
       retryAt = now() + retryDelayMs(failures++);
     },
@@ -310,8 +371,14 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
     );
   });
 
+  /** Count events the daemon will never take - too large, or a batch it refused - and warn once. */
+  const discard = (count: number, why: string): void => {
+    droppedCount += count;
+    warnOnce(why, new SDKError('observe event rejected', 'LOUSHO_REMOTE_REQUEST_FAILED', { appendHelp: false }));
+  };
+
   const push = (event: IngestEvent) => {
-    outbox.push(event);
+    if (!outbox.push(event)) discard(1, `an event is larger than the daemon's ${OBSERVE_MAX_BODY_BYTES}-byte request cap; dropping it`);
     if (outbox.size >= flushSize && outbox.ready()) void flush(requestTimeoutMs);
   };
 
@@ -327,17 +394,16 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
   /** Aborted by close() so a regular flush in flight can't hold the exit flush past its ~2s cap. */
   const closing = new AbortController();
 
-  const post = async (events: IngestEvent[], timeoutMs: number, final: boolean): Promise<void> => {
+  /** One ingest POST; resolves with the status, rejects only when no answer arrived. */
+  const post = async (entries: OutboxEntry[], timeoutMs: number, final: boolean): Promise<number> => {
     const timeout = AbortSignal.timeout(timeoutMs);
     const res = await fetchFn(`${url}/api/v1/ingest`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ batch: events }),
+      body: bodyOf(entries),
       signal: final ? timeout : AbortSignal.any([timeout, closing.signal]),
     });
-    if (!res.ok) {
-      throw new SDKError(`ingest answered ${res.status}`, 'LOUSHO_REMOTE_REQUEST_FAILED', { appendHelp: false });
-    }
+    return res.status;
   };
 
   // Flushes are serialized on a chain: a fire-and-forget size flush and the
@@ -348,12 +414,17 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
   // as an unhandled rejection at the `void flush()` call sites.
   let chain: Promise<void> = Promise.resolve();
   /** The batch a POST is carrying right now: a crash resends it, since that POST can never finish. */
-  let inFlight: IngestEvent[] = [];
+  let inFlight: OutboxEntry[] = [];
   /** One POST; false when it failed (the batch is then requeued, or - final - dropped with everything left). */
-  const sendBatch = async (batch: IngestEvent[], timeoutMs: number, final: boolean): Promise<boolean> => {
+  const sendBatch = async (batch: OutboxEntry[], timeoutMs: number, final: boolean): Promise<boolean> => {
     inFlight = batch;
     try {
-      await post(batch, timeoutMs, final);
+      const status = await post(batch, timeoutMs, final);
+      // A batch the daemon refuses as such (too large, malformed) would be refused again on every retry.
+      if (status === 400 || status === 413) discard(batch.length, `the observe daemon refused a batch of ${batch.length} events (${status}); dropping it`);
+      else if (status < 200 || status >= 300) {
+        throw new SDKError(`ingest answered ${status}`, 'LOUSHO_REMOTE_REQUEST_FAILED', { appendHelp: false });
+      }
       outbox.delivered();
       return true;
     } catch (error) {
@@ -368,16 +439,19 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
     }
   };
   /**
-   * Send batch after batch while the last one was full: a backlog (after an
-   * outage) drains at once instead of one batch per interval. Regular flushes
-   * give each POST its own timeout; the final attempt shares one deadline.
+   * Send batch after batch while a cap cut the last one short: a backlog
+   * (after an outage) drains at once instead of one batch per interval.
+   * Regular flushes give each POST its own timeout; the final attempt shares
+   * one deadline.
    */
   const send = async (timeoutMs: number, final: boolean): Promise<void> => {
     const deadline = Date.now() + timeoutMs;
-    let batch = outbox.take(final);
-    while (batch.length > 0) {
+    for (;;) {
+      const batch = outbox.take(final);
+      const cut = outbox.size > 0; // read before the await: events queued meanwhile wait for their own trigger
+      if (batch.length === 0) return;
       if (!(await sendBatch(batch, final ? Math.max(1, deadline - Date.now()) : timeoutMs, final))) return;
-      batch = batch.length < OBSERVE_MAX_BATCH_EVENTS ? [] : outbox.take(final);
+      if (!cut) return;
     }
   };
   const flush = (timeoutMs: number, final = false): Promise<void> => {
@@ -450,17 +524,16 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
    * The process is dying of an uncaught exception or unhandled rejection:
    * Node exits as soon as the monitor returns, so no async send can finish.
    * Send everything pending, oldest first - the batch a regular POST was
-   * carrying included (re-sent events upsert by key) - as successive
-   * batch-sized POSTs that together block for at most 1s.
+   * carrying included (re-sent events upsert by key) - as successive POSTs,
+   * cut like any other batch, that together block for at most 1s.
    */
   const crashFlush = (): void => {
     if (!shutdown()) return;
-    const pending = inFlight.concat(outbox.drain());
-    const batches: IngestEvent[][] = [];
-    for (let i = 0; i < pending.length; i += OBSERVE_MAX_BATCH_EVENTS) batches.push(pending.slice(i, i + OBSERVE_MAX_BATCH_EVENTS));
-    const bodies = batches.map((batch) => JSON.stringify({ batch }));
-    const delivered = blockingPost(`${url}/api/v1/ingest`, headers, bodies, CRASH_FLUSH_TIMEOUT_MS);
-    for (const batch of batches.slice(delivered)) droppedCount += batch.length;
+    const batches = batchesOf(inFlight.concat(outbox.drain()));
+    const delivered = blockingPost(`${url}/api/v1/ingest`, headers, batches.map(bodyOf), CRASH_FLUSH_TIMEOUT_MS);
+    batches.forEach((batch, i) => {
+      if (!delivered[i]) droppedCount += batch.length;
+    });
   };
 
   const exitHooks: Array<[string, () => void]> = [];

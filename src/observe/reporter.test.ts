@@ -376,6 +376,89 @@ describe('observeExporter', () => {
     });
   });
 
+  describe('byte cap', () => {
+    const BUDGET = 4 * 1024 * 1024; // BATCH_BUDGET_BYTES
+    /** A finished span whose input is `bytes` of ASCII. */
+    const bigSpan = (id: string, bytes: number): Span =>
+      makeSpan({ id, attributes: { [GenAiAttr.OPERATION_NAME]: GenAiOperation.CHAT, [GenAiAttr.INPUT_MESSAGES]: 'x'.repeat(bytes) } });
+    /** A fetch that records each body's size and ids, answering `status(n)` to the n-th call (1-based). */
+    function sizedFetch(status: (n: number) => number = () => 202) {
+      const calls: { bytes: number; ids: string[] }[] = [];
+      const fetchFn = vi.fn(async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        const body = String(init?.body);
+        const batch = (JSON.parse(body) as { batch: IngestEvent[] }).batch;
+        calls.push({ bytes: Buffer.byteLength(body), ids: batch.flatMap((e) => (e.type === 'observation' ? [e.data.obs_id] : [])) });
+        return new Response('{}', { status: status(calls.length) });
+      }) as unknown as typeof fetch;
+      return { fetchFn, calls };
+    }
+
+    it('cuts batches of large events at the byte budget, all delivered in order', async () => {
+      const { fetchFn, calls } = sizedFetch();
+      const { r } = reporter({ fetchFn, flushSize: 1000 });
+      for (let i = 0; i < 50; i++) {
+        const span = bigSpan(`big${i}`, 200 * 1024);
+        r.onSpanStart(span);
+        r.onSpanEnd(span);
+      }
+      await r.close();
+      expect(calls.length).toBeGreaterThanOrEqual(3); // ~10MB of events
+      for (const call of calls) expect(call.bytes).toBeLessThanOrEqual(BUDGET);
+      expect(calls.flatMap((c) => c.ids)).toEqual(Array.from({ length: 50 }, (_, i) => `big${i}`));
+      expect(r.dropped).toBe(0);
+    });
+
+    it('drops and counts one event too large for any request, and keeps delivering', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { fetchFn, calls } = sizedFetch();
+      const { r } = reporter({ fetchFn, flushSize: 1000 });
+      for (const span of [bigSpan('huge', 6 * 1024 * 1024), makeSpan({ id: 'after' })]) {
+        r.onSpanStart(span);
+        r.onSpanEnd(span);
+      }
+      expect(r.dropped).toBe(1);
+      expect(warn).toHaveBeenCalledOnce();
+      expect(String(warn.mock.calls[0][0])).toMatch(/larger than the daemon's 5242880-byte request cap/);
+      await r.close();
+      expect(calls.flatMap((c) => c.ids)).toEqual(['after']);
+      expect(r.dropped).toBe(1);
+    });
+
+    it('sends one event over the budget but under the hard cap on its own', async () => {
+      // The input is carried twice (input + attrs): ~4.4MB of event, over the 4MB budget, under the 5MB cap.
+      const { fetchFn, calls } = sizedFetch();
+      const { r } = reporter({ fetchFn, flushSize: 1000 });
+      for (const span of [makeSpan({ id: 'before' }), bigSpan('large', 2.2 * 1024 * 1024), makeSpan({ id: 'after' })]) {
+        r.onSpanStart(span);
+        r.onSpanEnd(span);
+      }
+      await r.close();
+      expect(calls.map((c) => c.ids)).toEqual([['before'], ['large'], ['after']]);
+      expect(r.dropped).toBe(0);
+    });
+
+    it('drops and counts a batch the daemon answers 413, and keeps delivering', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const { fetchFn, calls } = sizedFetch((n) => (n === 1 ? 413 : 202));
+      const { r } = reporter({ fetchFn, flushSize: 2 });
+      const finish = (id: string) => {
+        const span = makeSpan({ id });
+        r.onSpanStart(span);
+        r.onSpanEnd(span);
+      };
+      finish('a');
+      finish('b'); // a size flush: answered 413
+      await vi.waitFor(() => expect(r.dropped).toBe(2));
+      finish('c');
+      finish('d');
+      await r.close();
+      expect(calls[0].ids).toEqual(['a', 'b']);
+      expect(calls.flatMap((c) => c.ids)).toEqual(['a', 'b', 'c', 'd']); // the refused batch is not resent
+      expect(r.dropped).toBe(2); // the refused batch, not requeued
+      expect(String(warn.mock.calls[0][0])).toContain('refused a batch of 2 events (413)');
+    });
+  });
+
   it('clamps maxBuffered to 1 so the deregister survives', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
@@ -469,7 +552,7 @@ describe('observeExporter', () => {
 describe('crash flush', () => {
   const fixture = path.join(__dirname, '__fixtures__', 'crashAfterRun.mts');
   const repoRoot = path.resolve(__dirname, '..', '..');
-  type Mode = 'throw' | 'reject' | 'inflight' | 'handled' | 'capture' | 'backlog';
+  type Mode = 'throw' | 'reject' | 'inflight' | 'handled' | 'capture' | 'backlog' | 'bigbacklog';
 
   /**
    * Run the fixture against an in-test collector; resolves with its exit and
@@ -528,6 +611,14 @@ describe('crash flush', () => {
     expect(batches.flatMap(obsIds)).toEqual(['crash-span', ...Array.from({ length: 1499 }, (_, i) => `crash-span-${i + 1}`)]);
   }, 30_000);
 
+  it('cuts a crash backlog of large events at the byte budget', async () => {
+    const { code, batches } = await crash('bigbacklog');
+    expect(code).toBe(1);
+    expect(batches.length).toBeGreaterThanOrEqual(2); // 30 x 200KB = ~6MB
+    for (const batch of batches) expect(Buffer.byteLength(JSON.stringify({ batch }))).toBeLessThanOrEqual(4 * 1024 * 1024);
+    expect(batches.flatMap(obsIds)).toEqual(['crash-span', ...Array.from({ length: 30 }, (_, i) => `big-${i}`)]);
+  }, 30_000);
+
   it('resends the batch a POST still in flight was carrying when the process died', async () => {
     const { code, batches } = await crash('inflight', true);
     expect(code).toBe(1);
@@ -569,8 +660,8 @@ describe('crash flush', () => {
 
 describe('blockingPost', () => {
   it('delivers nothing to an unreachable collector', () => {
-    expect(blockingPost('http://127.0.0.1:1/api/v1/ingest', {}, ['{}', '{}'], 1000)).toBe(0);
-    expect(blockingPost('http://127.0.0.1:1/api/v1/ingest', {}, [], 1000)).toBe(0);
+    expect(blockingPost('http://127.0.0.1:1/api/v1/ingest', {}, ['{}', '{}'], 1000)).toEqual([false, false]);
+    expect(blockingPost('http://127.0.0.1:1/api/v1/ingest', {}, [], 1000)).toEqual([]);
   });
 
   it('gives up after its timeout', async () => {
@@ -580,7 +671,7 @@ describe('blockingPost', () => {
     const { port } = server.address() as AddressInfo;
     try {
       const t0 = Date.now();
-      expect(blockingPost(`http://127.0.0.1:${port}/`, {}, ['{}'], 200)).toBe(0);
+      expect(blockingPost(`http://127.0.0.1:${port}/`, {}, ['{}'], 200)).toEqual([false]);
       expect(Date.now() - t0).toBeLessThan(1000);
     } finally {
       server.closeAllConnections();

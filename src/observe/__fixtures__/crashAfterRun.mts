@@ -11,6 +11,7 @@
  * - inflight: flushSize 1, so the span's batch is already in a POST the
  *             collector holds open when a timer callback throws
  * - backlog:  1500 spans pending (past the daemon's 1000-event batch cap), then a top-level throw
+ * - bigbacklog: 30 spans of ~200KB input (~6MB, past the byte budget), then a top-level throw
  * - handled:  the script has its own 'uncaughtException' listener, so it
  *             survives the throw, finishes a second span and closes normally
  * - capture:  the same through process.setUncaughtExceptionCaptureCallback (REPL, domains)
@@ -26,14 +27,15 @@ const reporter = observeExporter({
   project: 'crash-fixture',
   agentName: 'crash-fixture',
   heartbeatIntervalMs: 0,
-  ...(mode === 'inflight' ? { flushSize: 1 } : mode === 'backlog' ? { flushSize: 10_000 } : {}),
+  ...(mode === 'inflight' ? { flushSize: 1 } : mode === 'backlog' || mode === 'bigbacklog' ? { flushSize: 10_000 } : {}),
 });
-const finish = (id: string): void => {
-  const span = { id, name: 'invoke_agent crash-fixture', attributes: {}, startTime: Date.now() };
+const finish = (id: string, attributes: Record<string, unknown> = {}): void => {
+  const span = { id, name: 'invoke_agent crash-fixture', attributes, startTime: Date.now() };
   reporter.onSpanStart(span);
   reporter.onSpanEnd({ ...span, endTime: Date.now() });
 };
 finish('crash-span');
+if (mode === 'bigbacklog') for (let i = 0; i < 30; i++) finish(`big-${i}`, { 'gen_ai.input.messages': 'x'.repeat(200 * 1024) });
 if (mode === 'backlog') for (let i = 1; i < 1500; i++) finish(`crash-span-${i}`);
 
 if (mode === 'reject') {
