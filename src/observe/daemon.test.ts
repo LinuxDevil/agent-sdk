@@ -204,6 +204,7 @@ describe('token auth', () => {
     expect((await fetch(url(daemon, '/api/v1/traces'))).status).toBe(401);
     expect((await fetch(url(daemon, '/api/v1/ingest'), { method: 'POST', body: '{}' })).status).toBe(401);
     expect((await fetch(url(daemon, '/health'))).status).toBe(200);
+    expect((await fetch(url(daemon, '/api/v1/scores'), { method: 'POST', body: '{}' })).status).toBe(401);
 
     const { key } = createToken(daemon.db, 'proj');
     const authed = await fetch(url(daemon, '/api/v1/traces'), { headers: { authorization: `Bearer ${key}` } });

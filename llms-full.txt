@@ -14200,6 +14200,14 @@ any child that finished and was already sent.
 Eval scores flow through the same pipe —
 `lousho eval --observe` emits them even when `LOUSHO_OBSERVE` is unset.
 
+Human feedback is a score too. `POST /api/v1/scores` with
+`{ "trace_id", "obs_id"?, "name", "value", "comment"? }` (`value` a number or
+`null`, `name` up to 200 characters, `comment` up to 10 000) adds one score with
+`source: "human"` and answers `201 { "score_id" }`. Each call adds a row, and
+the score is attributed to the trace's agent. An unknown `trace_id` (or an
+`obs_id` that is not in that trace) is a `404`, an empty `name` a `400`. It
+takes the same token as ingest, and `GET /api/v1/scores?trace_id=...` lists it.
+
 ### Trace list API
 
 `GET /api/v1/traces` returns `{ traces, total, limit, offset }`, one row per

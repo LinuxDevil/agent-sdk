@@ -165,3 +165,110 @@ describe('GET /api/v1/scores?aggregate=eval', () => {
     }
   });
 });
+
+const obsEvent = (over: Record<string, unknown> = {}): IngestEvent => ({
+  type: 'observation',
+  data: { obs_id: 'o-root', trace_id: 'tf', kind: 'span', name: 'run', start: T0, agent_id: 'ag-root', ...over },
+} as IngestEvent);
+
+/** POSTs a raw body to the route through a recording ServerResponse stand-in. */
+async function post(database: SqlDatabase, body: unknown): Promise<Captured> {
+  const captured: Captured = { status: 0, body: undefined };
+  const res = {
+    writeHead(status: number) {
+      captured.status = status;
+      return res;
+    },
+    end(chunk?: string) {
+      captured.body = chunk === undefined ? undefined : JSON.parse(chunk);
+    },
+  } as unknown as http.ServerResponse;
+  const matched = matchRoute('POST', '/api/v1/scores');
+  if (!matched) throw new Error('POST scores route not registered');
+  const text = typeof body === 'string' ? body : JSON.stringify(body);
+  await matched.route.handle({
+    db: database,
+    dbPath: ':memory:',
+    req: {} as http.IncomingMessage,
+    res,
+    params: matched.params,
+    query: new URLSearchParams(),
+    readBody: () => Promise.resolve(text),
+  });
+  return captured;
+}
+
+describe('POST /api/v1/scores (human feedback)', () => {
+  const seeded = (): SqlDatabase => {
+    const database = db();
+    ingestBatch(database, [
+      obsEvent(),
+      obsEvent({ obs_id: 'o-child', parent_obs_id: 'o-root', kind: 'generation', agent_id: undefined }),
+      obsEvent({ obs_id: 'o-other', trace_id: 'other' }),
+    ]);
+    return database;
+  };
+
+  it('201s with a score_id, stores source human with the root agent_id, and GET returns it', async () => {
+    const database = seeded();
+    try {
+      const out = await post(database, { trace_id: 'tf', name: 'thumbs', value: 1, comment: 'nice' });
+      expect(out.status).toBe(201);
+      const { score_id } = out.body as { score_id: string };
+      expect(score_id).toMatch(/^[0-9a-f-]{36}$/);
+      const [row] = scoresOf(get(database, 'trace_id=tf'));
+      expect(row).toMatchObject({ score_id, source: 'human', name: 'thumbs', value: 1, comment: 'nice', agent_id: 'ag-root', obs_id: null });
+    } finally {
+      database.close();
+    }
+  });
+
+  it('is append-only: the same body twice makes two rows; null value and obs_id are accepted', async () => {
+    const database = seeded();
+    try {
+      const a = await post(database, { trace_id: 'tf', obs_id: 'o-child', name: 'rating', value: null });
+      const b = await post(database, { trace_id: 'tf', obs_id: 'o-child', name: 'rating', value: null });
+      expect([a.status, b.status]).toEqual([201, 201]);
+      const rows = scoresOf(get(database, 'trace_id=tf'));
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toMatchObject({ obs_id: 'o-child', value: null });
+    } finally {
+      database.close();
+    }
+  });
+
+  it('404s for an unknown trace and for an obs_id outside the trace', async () => {
+    const database = seeded();
+    try {
+      const noTrace = await post(database, { trace_id: 'nope', name: 'x', value: 1 });
+      expect(noTrace.status).toBe(404);
+      expect(noTrace.body).toMatchObject({ code: 'LOUSHO_REQUEST_INVALID' });
+      expect((await post(database, { trace_id: 'tf', obs_id: 'o-other', name: 'x', value: 1 })).status).toBe(404);
+      expect((await post(database, { trace_id: 'tf', obs_id: 'missing', name: 'x', value: 1 })).status).toBe(404);
+      expect(scoresOf(get(database, ''))).toHaveLength(0);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('rejects invalid bodies with LOUSHO_REQUEST_INVALID', async () => {
+    const database = seeded();
+    try {
+      const bad: unknown[] = [
+        { trace_id: 'tf', name: '', value: 1 },
+        { trace_id: 'tf', name: '   ', value: 1 },
+        { trace_id: 'tf', name: 'n'.repeat(201), value: 1 },
+        { trace_id: '', name: 'x', value: 1 },
+        { trace_id: 'tf', name: 'x', value: 'high' },
+        { trace_id: 'tf', name: 'x' },
+        { trace_id: 'tf', name: 'x', value: 1, comment: 'c'.repeat(10_001) },
+        'not json',
+      ];
+      for (const body of bad) {
+        await expect(post(database, body)).rejects.toMatchObject({ code: 'LOUSHO_REQUEST_INVALID' });
+      }
+    } finally {
+      database.close();
+    }
+  });
+});

@@ -8,13 +8,65 @@
  * `GET /api/v1/scores?aggregate=eval` returns the eval-history view's
  * aggregate instead of rows: pass-rate, mean value and last-seen time per
  * eval name (see store.scorePassRates).
+ *
+ * `POST /api/v1/scores` is the human feedback write path (LangSmith "Add
+ * feedback"): `{ trace_id, obs_id?, name, value, comment? }` appends one
+ * `source: 'human'` row and answers `201 { score_id }`. Auth is the daemon's
+ * global API-token check; nothing per-route.
  */
 
+import { randomUUID } from 'node:crypto';
+import { z } from 'zod';
+
 import { SCORE_SOURCES } from '../envelope';
-import { listScores, scorePassRates, type ScoreFilter } from '../store';
-import { badRequest, intParam, sendJson, timeParam, type Route } from './httpKit';
+import { ingestBatch, listScores, scorePassRates, type ScoreFilter } from '../store';
+import { badRequest, intParam, requireJsonBody, sendJson, timeParam, type Route } from './httpKit';
+
+const FEEDBACK_BODY_LIMIT = 64 * 1024;
+
+const feedbackBody = z.object({
+  trace_id: z.string().min(1),
+  obs_id: z.string().optional(),
+  name: z.string().trim().min(1).max(200),
+  value: z.number().finite().nullable(),
+  comment: z.string().max(10_000).optional(),
+});
+
 
 export const scoresRoutes: readonly Route[] = [
+  {
+    method: 'POST',
+    path: '/api/v1/scores',
+    handle: async ({ db, res, readBody }) => {
+      const body = requireJsonBody(feedbackBody, await readBody(FEEDBACK_BODY_LIMIT), 'feedback');
+      const notFound = (error: string) => sendJson(res, 404, { error, code: 'LOUSHO_REQUEST_INVALID' });
+      const root = db
+        .prepare('SELECT agent_id FROM observations WHERE trace_id = ? ORDER BY parent_obs_id IS NULL DESC LIMIT 1')
+        .get(body.trace_id);
+      if (root === undefined) return notFound(`No trace '${body.trace_id}'.`);
+      if (body.obs_id !== undefined) {
+        const inTrace = db.prepare('SELECT 1 AS ok FROM observations WHERE obs_id = ? AND trace_id = ?').get(body.obs_id, body.trace_id);
+        if (inTrace === undefined) return notFound(`No observation '${body.obs_id}' in trace '${body.trace_id}'.`);
+      }
+      const score_id = randomUUID();
+      ingestBatch(db, [
+        {
+          type: 'score',
+          data: {
+            score_id,
+            trace_id: body.trace_id,
+            obs_id: body.obs_id,
+            name: body.name,
+            value: body.value ?? undefined,
+            source: 'human',
+            comment: body.comment,
+            agent_id: typeof root.agent_id === 'string' ? root.agent_id : undefined,
+          },
+        },
+      ]);
+      sendJson(res, 201, { score_id });
+    },
+  },
   {
     method: 'GET',
     path: '/api/v1/scores',
