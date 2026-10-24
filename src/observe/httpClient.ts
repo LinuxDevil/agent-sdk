@@ -33,8 +33,9 @@ export async function observeRequest<T>(
   });
   const body = (await res.json().catch(() => undefined)) as ({ error?: string } & T) | undefined;
   if (!res.ok) {
+    const detail = body?.error ?? res.statusText;
     throw new SDKError(
-      `The observe daemon answered ${res.status} for ${path}: ${body?.error ?? res.statusText}.`,
+      `The observe daemon answered ${res.status} for ${path}: ${detail}${/[.!?]$/.test(detail) ? '' : '.'}`,
       'LOUSHO_REMOTE_REQUEST_FAILED',
       { appendHelp: false }
     );

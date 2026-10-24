@@ -142,6 +142,12 @@ describe('parsePromptRef + fetchPrompt', () => {
     expect(resolved.text).toBe('hello');
     await expect(fetchPrompt(base(daemon), { name: 'mira', version: 9 })).rejects.toMatchObject({ code: 'LOUSHO_REMOTE_REQUEST_FAILED' });
   });
+
+  it('a daemon 404 message ends with exactly one period', async () => {
+    const daemon = await start();
+    const err = await fetchPrompt(base(daemon), { name: 'nope', version: 'latest' }).catch((e: Error) => e);
+    expect((err as Error).message).toMatch(/No prompt 'nope@latest'\.$/);
+  });
 });
 
 describe('registryPrompt', () => {
