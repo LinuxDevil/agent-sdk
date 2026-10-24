@@ -107,6 +107,22 @@ describe('lousho prompt', () => {
     expect(urls[0]).toContain('127.0.0.1:7777');
   });
 
+  it('honours an explicit loopback URL in LOUSHO_OBSERVE over the default port', async () => {
+    const daemon = await start();
+    const d = deps({ env: { LOUSHO_OBSERVE: `http://127.0.0.1:${daemon.port}/` } as NodeJS.ProcessEnv });
+    expect(await runPrompt(['list'], d)).toBe(0);
+    const urls: string[] = [];
+    const spy = deps({
+      env: { LOUSHO_OBSERVE: 'http://127.0.0.1:9000' } as NodeJS.ProcessEnv,
+      fetchFn: (async (input: RequestInfo | URL) => {
+        urls.push(String(input));
+        throw new Error('fetch failed');
+      }) as typeof fetch,
+    });
+    await runPrompt(['list'], spy);
+    expect(urls[0]).toContain('127.0.0.1:9000');
+  });
+
   it('usage errors exit 2; --help prints the help', async () => {
     expect(await runPrompt(['bogus'], deps())).toBe(2);
     expect(await runPrompt(['--help'], deps())).toBe(0);

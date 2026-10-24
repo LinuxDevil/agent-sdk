@@ -92,9 +92,8 @@ function daemonUrl(values: Record<string, string | boolean | (string | boolean)[
   const url = stringValue(values.url);
   if (url !== undefined) return url.replace(/\/+$/, '');
   const port = portValue(spec, values.port, envPort(env));
-  const fromEnv = observeTargetFromEnv(env)?.url;
-  // A bare on-word resolves to the env port, which --port must still override.
-  if (fromEnv !== undefined && !/^http:\/\/127\.0\.0\.1:\d+$/.test(fromEnv)) return fromEnv;
+  // An explicit URL wins; a bare on-word (1/true/on/yes) means "the local daemon", so --port still applies.
+  if (/^https?:\/\//i.test(env.LOUSHO_OBSERVE?.trim() ?? '')) return observeTargetFromEnv(env)?.url ?? `http://127.0.0.1:${port}`;
   return `http://127.0.0.1:${port}`;
 }
 

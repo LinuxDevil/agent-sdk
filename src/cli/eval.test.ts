@@ -234,6 +234,14 @@ describe('lousho eval --observe', () => {
     fake = fakeVitest([result({})]);
     await runEval(['--observe'], { resolveVitest: () => 'v', spawnVitest: fake.spawnVitest, log: () => {} });
     expect(fake.calls[0].env.LOUSHO_OBSERVE).toBe('1');
+    vi.stubEnv('LOUSHO_OBSERVE', 'off');
+    fake = fakeVitest([result({})]);
+    await runEval(['--observe'], { resolveVitest: () => 'v', spawnVitest: fake.spawnVitest, log: () => {} });
+    expect(fake.calls[0].env.LOUSHO_OBSERVE).toBe('1');
+    vi.stubEnv('LOUSHO_OBSERVE', 'banana');
+    fake = fakeVitest([result({})]);
+    await runEval(['--observe'], { resolveVitest: () => 'v', spawnVitest: fake.spawnVitest, log: () => {} });
+    expect(fake.calls[0].env.LOUSHO_OBSERVE).toBe('1');
   });
 
   it('keeps a configured LOUSHO_OBSERVE URL and does nothing without --observe', async () => {

@@ -4,9 +4,9 @@
  * daemon (`lousho observe start`). Wire it explicitly, or let the
  * `LOUSHO_OBSERVE` env do it with zero code changes:
  *
- * - `LOUSHO_OBSERVE=1`/`true` → `http://127.0.0.1:$LOUSHO_OBSERVE_PORT(7777)`
+ * - `LOUSHO_OBSERVE=1`/`true`/`on`/`yes` → `http://127.0.0.1:$LOUSHO_OBSERVE_PORT(7777)`
  * - `LOUSHO_OBSERVE=<url>` → that collector
- * - unset/`0`/`false` → nothing is emitted
+ * - unset/`0`/`false`/`off`/`no`/`none`/`disabled` → nothing is emitted (other junk warns once)
  * - `LOUSHO_OBSERVE_PROJECT` labels rows; `LOUSHO_OBSERVE_TOKEN` sends a bearer.
  *
  * Rules it lives by (the tracing-insights spec):
@@ -453,7 +453,7 @@ const envReporters = new Map<string, ObserveReporter>();
 const envReporterSet = new WeakSet<TraceExporter>();
 
 /**
- * The collector base URL the env points at: `LOUSHO_OBSERVE=1`/`true` →
+ * The collector base URL the env points at: `LOUSHO_OBSERVE=1`/`true`/`on`/`yes` →
  * `http://127.0.0.1:$LOUSHO_OBSERVE_PORT(7777)`, a URL → itself, unset/`0`/
  * `false` → `undefined`. Shared by the reporter, the prompt fetch and the
  * hub client - they must all agree on where the daemon lives.
@@ -467,7 +467,7 @@ export function observeUrlFromEnv(
 /**
  * The `LOUSHO_OBSERVE`-driven reporter, memoized per (agent name, project,
  * url): every `execute()` call resolves the same instance, so an agent never
- * heartbeats twice. `undefined` when the env is unset/`0`/`false`.
+ * heartbeats twice. `undefined` when the env is unset/off-word/junk.
  *
  * `promptUse` is the registry prompt the agent resolved (`createAgent({
  * prompt })`/`LOUSHO_PROMPT`): it is set on the shared reporter, so the last
