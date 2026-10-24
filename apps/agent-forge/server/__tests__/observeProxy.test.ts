@@ -1,8 +1,9 @@
 /**
  * `/observe/**` -> the observe daemon: the studio server forwards the
  * panels' GETs same-origin, because the daemon itself serves no CORS
- * headers. A dead daemon answers 502 with the `lousho observe start` hint,
- * and non-GET methods stay reporter-only (405).
+ * headers. A dead daemon answers 502 with the `lousho observe start` hint;
+ * writes are forwarded only for the allowlist (feedback scores), every other
+ * non-GET stays reporter-only (405).
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'node:http';
@@ -38,8 +39,19 @@ describe('observe proxy', () => {
 
     // A stand-in for `lousho observe`: echoes the path it was asked for.
     daemon = http.createServer((req, res) => {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ echoed: req.url }));
+      let body = '';
+      req.on('data', (chunk: Buffer) => (body += chunk.toString()));
+      req.on('end', () => {
+        res.writeHead(req.method === 'POST' ? 201 : 200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            echoed: req.url,
+            method: req.method,
+            contentType: req.headers['content-type'] ?? null,
+            body: body ? JSON.parse(body) : null,
+          }),
+        );
+      });
     });
     daemon.listen(0, '127.0.0.1');
     await once(daemon, 'listening');
@@ -74,8 +86,17 @@ describe('observe proxy', () => {
     expect(res.body.error).toContain('lousho observe start');
   });
 
-  it('does not forward writes - Studio is read-only over the daemon API', async () => {
-    const res = await request(app).post('/observe/api/v1/ingest').send({ batch: [] });
-    expect(res.status).toBe(405);
+  it('forwards POST /api/v1/scores with its JSON body (the write allowlist)', async () => {
+    const score = { trace_id: 't1', obs_id: 'o1', name: 'feedback', value: 1, comment: 'good' };
+    const res = await request(app).post('/observe/api/v1/scores').send(score);
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({ echoed: '/api/v1/scores', method: 'POST', contentType: 'application/json', body: score });
+  });
+
+  it('does not forward other writes - ingest and unlisted routes stay 405', async () => {
+    expect((await request(app).post('/observe/api/v1/ingest').send({ batch: [] })).status).toBe(405);
+    expect((await request(app).post('/observe/api/v1/traces').send({})).status).toBe(405);
+    expect((await request(app).put('/observe/api/v1/scores').send({})).status).toBe(405);
+    expect((await request(app).delete('/observe/api/v1/scores')).status).toBe(405);
   });
 });

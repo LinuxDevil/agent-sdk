@@ -8,7 +8,10 @@
  * the file. `LOUSHO_OBSERVE_URL` repoints the upstream (another port, or a
  * hosted collector implementing the same ingest/read API).
  *
- * Only GET is forwarded: Studio is a read surface; the ingest endpoint stays
+ * GET is forwarded for every path; writes only for the explicit
+ * {@link WRITE_ROUTES} allowlist (today: human feedback scores), with the
+ * JSON body app.ts's `express.json` (2 MB cap) already parsed. Everything
+ * else non-GET - the ingest endpoint above all - answers 405 and stays
  * reporter-only. `/observe` sits in app.ts's API_PREFIXES, so it carries the
  * same per-launch token requirement as the rest of the studio API.
  */
@@ -18,14 +21,22 @@ const DEFAULT_OBSERVE_URL = 'http://127.0.0.1:7777';
 const PROXY_PREFIX = '/observe';
 const UPSTREAM_TIMEOUT_MS = 8000;
 
+/** The daemon writes Studio may forward (method + path below `/observe`). Add one entry per new write surface. */
+const WRITE_ROUTES: { method: 'POST' | 'PUT'; path: RegExp }[] = [{ method: 'POST', path: /^\/api\/v1\/scores$/ }];
+
+function isAllowedWrite(method: string, path: string): boolean {
+  return WRITE_ROUTES.some((route) => route.method === method && route.path.test(path));
+}
+
 function observeTarget(): string {
   return (process.env.LOUSHO_OBSERVE_URL ?? DEFAULT_OBSERVE_URL).replace(/\/+$/, '');
 }
 
 export function registerObserveProxy(app: Express): void {
   app.use(PROXY_PREFIX, async (req, res) => {
-    if (req.method !== 'GET') {
-      res.status(405).json({ error: 'The observe proxy only forwards GET reads.' });
+    const write = req.method !== 'GET';
+    if (write && !isAllowedWrite(req.method, req.path)) {
+      res.status(405).json({ error: 'The observe proxy only forwards GET reads and allowlisted writes.' });
       return;
     }
     // Which daemon this proxy points at, so the down state can name the right LOUSHO_OBSERVE value.
@@ -37,8 +48,9 @@ export function registerObserveProxy(app: Express): void {
     let response: Response;
     try {
       response = await fetch(upstream, {
-        method: 'GET',
-        headers: { accept: 'application/json' },
+        method: req.method,
+        headers: write ? { accept: 'application/json', 'content-type': 'application/json' } : { accept: 'application/json' },
+        body: write ? JSON.stringify(req.body ?? {}) : undefined,
         signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       });
     } catch {

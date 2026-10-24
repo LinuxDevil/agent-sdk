@@ -59,7 +59,7 @@ describe('screenFor', () => {
     expect(screenFor('#/agents')).toBe('agents');
     expect(screenFor('#/agents/support-bot')).toBe('agents');
     expect(screenFor('#/traces')).toBe('traces');
-    expect(screenFor('#/traces/abc?obs=1')).toBe('traces');
+    expect(screenFor('#/traces/abc?obs=1')).toBe('trace');
     expect(screenFor('#/monitoring?window=24h')).toBe('monitoring');
     expect(screenFor('#/evals/scores')).toBe('scores');
     expect(screenFor('#/evals/datasets')).toBe('evals');

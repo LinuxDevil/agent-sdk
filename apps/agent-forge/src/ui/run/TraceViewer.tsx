@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { nestObservations } from '../../observe/tree';
 import type { ObserveObservationRow, ObserveScoreRow } from '../../observe/types';
 import { EmptyState } from '../EmptyState';
-import { RunInspector } from './RunInspector';
+import { RunInspector, type RunInspectorProps } from './RunInspector';
 import { RunTree } from './RunTree';
 import { Waterfall } from './Waterfall';
 import './run.css';
@@ -14,7 +14,8 @@ export type TraceViewMode = 'tree' | 'waterfall';
 /**
  * Props for {@link TraceViewer}. The caller owns both the selection and the
  * mode; pass `onModeChange` to get a Tree/Waterfall toggle. `now` is the clock
- * open observations run to (defaults to `Date.now()`).
+ * open observations run to (defaults to `Date.now()`). `renderFeedback` is
+ * handed to the inspector (see {@link RunInspectorProps}).
  */
 export interface TraceViewerProps {
   observations: ObserveObservationRow[];
@@ -24,6 +25,7 @@ export interface TraceViewerProps {
   mode: TraceViewMode;
   onModeChange?: (mode: TraceViewMode) => void;
   now?: number;
+  renderFeedback?: RunInspectorProps['renderFeedback'];
 }
 
 const MODES: { mode: TraceViewMode; label: string }[] = [
@@ -49,7 +51,16 @@ function pickInspected(rows: ObserveObservationRow[], selectedObsId: string | nu
  * `RunInspector`. With no valid selection the inspector shows the first
  * failed step (so a failed trace opens on its Error banner), else the root.
  */
-export function TraceViewer({ observations, scores, selectedObsId, onSelect, mode, onModeChange, now }: TraceViewerProps) {
+export function TraceViewer({
+  observations,
+  scores,
+  selectedObsId,
+  onSelect,
+  mode,
+  onModeChange,
+  now,
+  renderFeedback,
+}: TraceViewerProps) {
   const inspected = useMemo(() => pickInspected(observations, selectedObsId), [observations, selectedObsId]);
   if (inspected === undefined) {
     return <EmptyState title="No steps recorded" hint="This trace has no observations yet. Steps appear here as the run reports them." />;
@@ -70,7 +81,7 @@ export function TraceViewer({ observations, scores, selectedObsId, onSelect, mod
         {mode === 'waterfall' ? <Waterfall {...listProps} /> : <RunTree {...listProps} />}
       </div>
       <div className="run-viewer-inspector">
-        <RunInspector observation={inspected} scores={scores} now={now} />
+        <RunInspector observation={inspected} scores={scores} now={now} renderFeedback={renderFeedback} />
       </div>
     </div>
   );

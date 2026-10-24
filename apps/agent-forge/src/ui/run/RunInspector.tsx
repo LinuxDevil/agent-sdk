@@ -13,11 +13,14 @@ import './run.css';
  * the inspector keeps the ones for this observation itself (and, for a root
  * observation, the trace-level scores with `obs_id === null`). `now` is the
  * clock a running observation's duration counts to (defaults to `Date.now()`).
+ * `renderFeedback` adds a control (e.g. a feedback form) under the Feedback
+ * section's score list, for the observation shown.
  */
 export interface RunInspectorProps {
   observation: ObserveObservationRow;
   scores: ObserveScoreRow[];
   now?: number;
+  renderFeedback?: (observation: ObserveObservationRow) => ReactNode;
 }
 
 /** `attrs.error` as a string, else `attrs.error.message`, else a generic line. */
@@ -97,7 +100,7 @@ function Usage({ row }: { row: ObserveObservationRow }) {
  * `MessageView`) → Feedback (scores) → Tokens/Cost/Model → Attributes
  * (`JsonView` of `attrs`, omitted when null). A truncated row says so.
  */
-export function RunInspector({ observation: row, scores, now }: RunInspectorProps) {
+export function RunInspector({ observation: row, scores, now, renderFeedback }: RunInspectorProps) {
   const ms = elapsedMs(row, now ?? Date.now());
   return (
     <div className="run-inspector" data-obs-id={row.obs_id}>
@@ -132,6 +135,7 @@ export function RunInspector({ observation: row, scores, now }: RunInspectorProp
       </div>
       <Section id="feedback" title="Feedback">
         <Feedback scores={scoresFor(row, scores)} />
+        {renderFeedback?.(row)}
       </Section>
       <Section id="usage" title="Tokens, cost and model">
         <Usage row={row} />

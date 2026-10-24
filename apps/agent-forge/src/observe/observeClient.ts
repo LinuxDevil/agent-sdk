@@ -77,6 +77,15 @@ export interface ScoreListFilter {
   limit?: number;
 }
 
+/** The body of {@link ObserveClient.postScore}: `obs_id` omitted scores the whole trace. */
+export interface NewScore {
+  trace_id: string;
+  obs_id?: string;
+  name: string;
+  value: number | null;
+  comment?: string;
+}
+
 export interface InsightsFilter {
   days?: number;
   since?: number;
@@ -106,7 +115,10 @@ export class ObserveClient {
     return `${this.baseUrl}${path}${qs ? `?${qs}` : ''}`;
   }
 
-  private async request<T>(path: string, query?: Record<string, string | number | undefined>): Promise<T> {
+  private async request<T>(
+    path: string,
+    opts: { query?: Record<string, string | number | undefined>; method?: 'GET' | 'POST'; body?: unknown } = {}
+  ): Promise<T> {
     const headers = new Headers({ accept: 'application/json' });
     // The studio token only travels same-origin (to the studio server's
     // proxy, which requires it); a configured remote collector gets no header.
@@ -114,9 +126,15 @@ export class ObserveClient {
       const token = loadStudioToken();
       if (token) headers.set(STUDIO_TOKEN_HEADER, token);
     }
+    const init: RequestInit = { headers };
+    if (opts.method && opts.method !== 'GET') init.method = opts.method;
+    if (opts.body !== undefined) {
+      headers.set('content-type', 'application/json');
+      init.body = JSON.stringify(opts.body);
+    }
     let res: Response;
     try {
-      res = await this.fetchFn(this.url(path, query), { headers });
+      res = await this.fetchFn(this.url(path, opts.query), init);
     } catch {
       throw new ObserveDaemonDownError();
     }
@@ -152,7 +170,7 @@ export class ObserveClient {
 
   /** `GET /api/v1/traces` - the paginated, filterable trace list. */
   listTraces(filter: TraceListFilter = {}): Promise<ObserveTraceList> {
-    return this.request('/api/v1/traces', { ...filter });
+    return this.request('/api/v1/traces', { query: { ...filter } });
   }
 
   /** `GET /api/v1/traces/:id` - flat observation rows + scores; `undefined` on the daemon's 404. */
@@ -167,19 +185,24 @@ export class ObserveClient {
 
   /** `GET /api/v1/agents` - the fleet registry with read-time freshness. */
   async listAgents(project?: string): Promise<ObserveAgentRow[]> {
-    const body = await this.request<{ agents: ObserveAgentRow[] }>('/api/v1/agents', { project });
+    const body = await this.request<{ agents: ObserveAgentRow[] }>('/api/v1/agents', { query: { project } });
     return body.agents;
   }
 
   /** `GET /api/v1/insights` - per-agent cards + rollup series. */
   insights(filter: InsightsFilter = {}): Promise<ObserveInsights> {
-    return this.request('/api/v1/insights', { ...filter });
+    return this.request('/api/v1/insights', { query: { ...filter } });
   }
 
   /** `GET /api/v1/scores` - eval/judge/human score rows. */
   async listScores(filter: ScoreListFilter = {}): Promise<ObserveScoreRow[]> {
-    const body = await this.request<{ scores: ObserveScoreRow[] }>('/api/v1/scores', { ...filter });
+    const body = await this.request<{ scores: ObserveScoreRow[] }>('/api/v1/scores', { query: { ...filter } });
     return body.scores;
+  }
+
+  /** `POST /api/v1/scores` - a human feedback score (append-only); the daemon's 404/400 surface as `ObserveApiError`. */
+  postScore(score: NewScore): Promise<{ score_id: string }> {
+    return this.request('/api/v1/scores', { method: 'POST', body: score });
   }
 }
 

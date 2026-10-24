@@ -18,6 +18,7 @@
  *   POST /runs/:id/fork              -> body: ForkRunRequest; starts the fork, 202 ForkRunResponse
  *   GET  /runs/compare?a=&b=         -> RunComparisonPayload (compareTrajectories)
  *   GET  /observe/**                 -> proxied to the `lousho observe` daemon's read API (observeProxy.ts)
+ *   POST /observe/api/v1/scores      -> proxied too (the proxy's write allowlist: human feedback scores)
  *
  * `WS /agents/:id/stream` is wired separately in wsServer.ts (attached to
  * the same underlying http.Server, since `ws` needs the raw HTTP upgrade
@@ -667,8 +668,9 @@ export function createApp({
   registerProfileRoutes(app, settings);
   registerDeployRoutes(app, agentStore, baseDir);
   // The observe panels' read path: `/observe/**` -> the `lousho observe`
-  // daemon (see observeProxy.ts) - before the SPA fallback so a proxied
-  // GET never gets index.html.
+  // daemon (see observeProxy.ts), plus its small write allowlist (feedback
+  // scores; bodies come from the express.json above) - before the SPA
+  // fallback so a proxied GET never gets index.html.
   registerObserveProxy(app);
   registerStaticClient(app, staticDir);
 
