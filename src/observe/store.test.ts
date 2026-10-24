@@ -222,6 +222,111 @@ describe('traces read', () => {
   });
 });
 
+describe('trace list filters, search, sort and richer rows', () => {
+  // five traces at T0, T0+1s .. T0+4s; t3 is the slowest (2 s), t4 holds the error
+  const seed = (database: SqlDatabase): void => {
+    ingestBatch(database, [
+      heartbeat('a1', T0),
+      obs({ obs_id: 'r1', trace_id: 't1', start: T0, end: T0 + 100, input: 'refund ord_1', cost_usd: 0.5 }),
+      obs({ obs_id: 'r2', trace_id: 't2', start: T0 + 1000, end: T0 + 1500 }),
+      obs({ obs_id: 'r3', trace_id: 't3', start: T0 + 2000, end: T0 + 4000, input: 'ship ord_5', output: 'x'.repeat(300) }),
+      obs({ obs_id: 'r4', trace_id: 't4', start: T0 + 3000, end: T0 + 3050, status: 'error' }),
+      obs({ obs_id: 'g4a', trace_id: 't4', parent_obs_id: 'r4', kind: 'generation', model: 'gpt-x', start: T0 + 3001, end: T0 + 3005 }),
+      obs({
+        obs_id: 'g4b',
+        trace_id: 't4',
+        parent_obs_id: 'r4',
+        kind: 'generation',
+        model: 'gpt-y',
+        status: 'error',
+        attrs: { error: 'upstream 529 overloaded' },
+        start: T0 + 3010,
+        end: T0 + 3020,
+      }),
+      obs({ obs_id: 'r5', trace_id: 't5', start: T0 + 4000, end: T0 + 4300, usage_input_tokens: 900, usage_output_tokens: 100 }),
+    ]);
+  };
+  const ids = (database: SqlDatabase, filter: Partial<Parameters<typeof listTraces>[1]>): string[] =>
+    listTraces(database, { limit: 50, offset: 0, ...filter }).traces.map((t) => t.trace_id);
+
+  it('from/to is a half-open window on trace start', () => {
+    const database = db();
+    try {
+      seed(database);
+      expect(ids(database, { from: T0 + 1000, to: T0 + 3000 })).toEqual(['t3', 't2']);
+      expect(listTraces(database, { from: T0 + 1000, to: T0 + 3000, limit: 50, offset: 0 }).total).toBe(2);
+      // since/until keep their inclusive meaning
+      expect(ids(database, { since: T0 + 1000, until: T0 + 3000 })).toEqual(['t4', 't3', 't2']);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('q searches root name, input and output case-insensitively, with LIKE wildcards escaped', () => {
+    const database = db();
+    try {
+      seed(database);
+      expect(ids(database, { q: 'ord_5' })).toEqual(['t3']);
+      expect(ids(database, { q: 'ORD_5' })).toEqual(['t3']);
+      expect(ids(database, { q: 'ord%' })).toEqual([]);
+      expect(ids(database, { q: 'xxxx' })).toEqual(['t3']);
+      expect(ids(database, { q: 'invoke_agent' })).toHaveLength(5);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('filters by min_duration_ms and by any observation model', () => {
+    const database = db();
+    try {
+      seed(database);
+      expect(ids(database, { min_duration_ms: 1000 })).toEqual(['t3']);
+      expect(ids(database, { model: 'gpt-y' })).toEqual(['t4']);
+      expect(ids(database, { model: 'nope' })).toEqual([]);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('sorts by start (default desc), duration, tokens and cost with a stable trace_id tie-break', () => {
+    const database = db();
+    try {
+      seed(database);
+      expect(ids(database, {})).toEqual(['t5', 't4', 't3', 't2', 't1']);
+      expect(ids(database, { order: 'asc' })).toEqual(['t1', 't2', 't3', 't4', 't5']);
+      expect(ids(database, { sort: 'duration', order: 'desc' })[0]).toBe('t3');
+      expect(ids(database, { sort: 'duration', order: 'asc' })[0]).toBe('t4');
+      expect(ids(database, { sort: 'tokens' })[0]).toBe('t5');
+      expect(ids(database, { sort: 'cost' })[0]).toBe('t1');
+      // t2/t3/t4 tie on cost 0: trace_id breaks it in the same direction
+      expect(ids(database, { sort: 'cost', order: 'asc' })).toEqual(['t2', 't3', 't4', 't5', 't1']);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('rows carry agent_name, first generation model, first error message and 200-char previews', () => {
+    const database = db();
+    try {
+      seed(database);
+      const rows = new Map(listTraces(database, { limit: 50, offset: 0 }).traces.map((t) => [t.trace_id, t]));
+      const t4 = rows.get('t4')!;
+      expect(t4.error_message).toBe('upstream 529 overloaded');
+      expect(t4.model).toBe('gpt-x');
+      expect(t4.agent_name).toBe('a');
+      const t3 = rows.get('t3')!;
+      expect(t3.input_preview).toBe('ship ord_5');
+      expect(t3.output_preview).toBe('x'.repeat(200));
+      expect(t3.error_message).toBeNull();
+      expect(t3.model).toBeNull();
+      expect(rows.get('t2')!.input_preview).toBeNull();
+      expect(rows.get('t2')!.output_preview).toBeNull();
+    } finally {
+      database.close();
+    }
+  });
+});
+
 describe('tokens', () => {
   it('creates a hashed key that verifies, and rejects wrong or missing keys', () => {
     const database = db();

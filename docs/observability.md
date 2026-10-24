@@ -487,6 +487,37 @@ any child that finished and was already sent.
 Eval scores flow through the same pipe —
 `lousho eval --observe` emits them even when `LOUSHO_OBSERVE` is unset.
 
+### Trace list API
+
+`GET /api/v1/traces` returns `{ traces, total, limit, offset }`, one row per
+trace, newest first. Query parameters (all optional):
+
+| Parameter | Meaning |
+| --- | --- |
+| `agent_id`, `session_id`, `project`, `status` | Exact match (`status` is the root observation's, or `running` / `interrupted`). |
+| `from`, `to` | Trace start window in ms epoch, half-open: `from <= start < to`. |
+| `since`, `until` | Older inclusive bounds on each observation's start, kept for existing callers. |
+| `q` | Case-insensitive (ASCII) substring of the root observation's name, input or output. `%` and `_` match literally. |
+| `min_duration_ms` | Traces at least this long (`end - start`). |
+| `model` | Traces where any observation used this model. |
+| `sort` | `start` (default), `duration`, `tokens` (input + output) or `cost`. Ties break on `trace_id`. |
+| `order` | `desc` (default) or `asc`. |
+| `limit`, `offset` | Page size (1-500, default 50) and offset. |
+
+An unknown `sort` or `order`, or a non-numeric `min_duration_ms`, answers
+`400` with code `LOUSHO_REQUEST_INVALID`.
+
+Each row has `trace_id`, `name`, `agent_id`, `session_id`, `start`, `end`,
+`status`, the counts `observations`, `generations`, `tools` and `errors`, the
+sums `input_tokens`, `output_tokens` and `cost_usd`, and:
+
+- `agent_name`: the agent's name from its heartbeat, or `null`.
+- `model`: the first model call's model, or `null`.
+- `error_message`: the first failed observation's `error` attribute (for
+  example `upstream 529 overloaded`), or `null`.
+- `input_preview` / `output_preview`: the first 200 characters of the run's
+  stored input and output, or `null` when none was captured.
+
 ## The built server
 
 The server `lousho build --target=node-server` or `--target=docker` generates
