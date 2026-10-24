@@ -14,7 +14,7 @@ export function agentPath(agentId: string, agents: { id: string }[]): string {
   return unsaved ? '/agents' : `/agents/${encodeURIComponent(agentId)}`;
 }
 
-export type RouteSync = { kind: 'none' } | { kind: 'fallback' } | { kind: 'switch'; id: string };
+export type RouteSync = { kind: 'none' } | { kind: 'canonical' } | { kind: 'fallback' } | { kind: 'switch'; id: string };
 
 /** What a `#/agents/:id` hash asks of the open document once the saved-agent list has loaded. */
 export function routeSyncAction(
@@ -23,7 +23,9 @@ export function routeSyncAction(
   agents: { id: string }[],
   loaded: boolean,
 ): RouteSync {
-  if (routeId === undefined || !loaded || routeId === agentId) return { kind: 'none' };
+  if (!loaded || routeId === agentId) return { kind: 'none' };
+  // Bare #/agents (the nav link, a fallback): name the open agent so a reload reopens it.
+  if (routeId === undefined) return { kind: 'canonical' };
   // Deleted or mistyped: back to bare #/agents and whatever is open, no error screen.
   if (!agents.some((a) => a.id === routeId)) return { kind: 'fallback' };
   return { kind: 'switch', id: routeId };

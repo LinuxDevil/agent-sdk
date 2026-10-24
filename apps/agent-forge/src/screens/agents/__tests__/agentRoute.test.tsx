@@ -15,6 +15,7 @@ import { agentPath, agentRouteId, routeSyncAction } from '../agentRoute';
 import { useAgentRouteSync } from '../useAgentRouteSync';
 import { useLeaveAgentsGuard } from '../useLeaveAgentsGuard';
 import { useScreen } from '../../routes';
+import { ToastProvider } from '../../../ui/Toast';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -25,9 +26,9 @@ function render(node: React.ReactElement) {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
-  act(() => root!.render(node));
+  act(() => root!.render(createElement(ToastProvider, null, node)));
 }
-const rerender = (node: React.ReactElement) => act(() => root!.render(node));
+const rerender = (node: React.ReactElement) => act(() => root!.render(createElement(ToastProvider, null, node)));
 
 function go(hash: string) {
   act(() => {
@@ -75,9 +76,12 @@ describe('agentRouteId / agentPath', () => {
 describe('routeSyncAction', () => {
   const agents = [{ id: 'alpha' }, { id: 'beta' }];
   it('does nothing without an id, before the list loads, or when the id is already open', () => {
-    expect(routeSyncAction(undefined, 'alpha', agents, true)).toEqual({ kind: 'none' });
+    expect(routeSyncAction(undefined, 'alpha', agents, false)).toEqual({ kind: 'none' });
     expect(routeSyncAction('beta', 'alpha', [], false)).toEqual({ kind: 'none' });
     expect(routeSyncAction('alpha', 'alpha', agents, true)).toEqual({ kind: 'none' });
+  });
+  it('names the open agent on bare #/agents once loaded', () => {
+    expect(routeSyncAction(undefined, 'alpha', agents, true)).toEqual({ kind: 'canonical' });
   });
   it('switches to a saved agent and falls back on an unknown one', () => {
     expect(routeSyncAction('beta', 'alpha', agents, true)).toEqual({ kind: 'switch', id: 'beta' });
@@ -97,13 +101,41 @@ describe('useAgentRouteSync', () => {
     expect(appState.switchAgent).toHaveBeenCalledWith('beta');
   });
 
-  it('replaces an unknown agent id with bare #/agents', () => {
+  it('replaces an unknown agent id with bare #/agents, then names the open agent', async () => {
     window.history.replaceState(null, '', '/#/agents/typo');
     const before = window.history.length;
     render(createElement(Probe));
     expect(window.location.hash).toBe('#/agents');
+    await flush();
+    expect(window.location.hash).toBe('#/agents/alpha');
     expect(window.history.length).toBe(before);
     expect(appState.switchAgent).not.toHaveBeenCalled();
+  });
+
+  it('replaces bare #/agents (returning from another screen) with the open agent, so a reload reopens it', () => {
+    window.history.replaceState(null, '', '/#/agents');
+    appState.agentId = 'beta';
+    const before = window.history.length;
+    render(createElement(Probe));
+    expect(window.location.hash).toBe('#/agents/beta');
+    expect(window.history.length).toBe(before);
+  });
+
+  it('leaves a non-Agents hash alone (a move off Agents held for the prompt)', () => {
+    window.history.replaceState(null, '', '/#/traces');
+    render(createElement(Probe));
+    expect(window.location.hash).toBe('#/traces');
+  });
+
+  it('reports a failed open as an error toast and falls back', async () => {
+    appState.switchAgent.mockImplementation(() => Promise.reject(new Error('not found')));
+    window.history.replaceState(null, '', '/#/agents/beta');
+    render(createElement(Probe));
+    await act(async () => {});
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain('Could not open agent beta: not found');
+    // Back on the agent that stayed open, so URL and screen agree.
+    await flush();
+    expect(window.location.hash).toBe('#/agents/alpha');
   });
 
   it('asks before switching away from unsaved changes, and restores the hash on cancel', async () => {
@@ -131,7 +163,7 @@ describe('useAgentRouteSync', () => {
     expect(appState.switchAgent).not.toHaveBeenCalled();
   });
 
-  it('leaves the URL alone on the initial load', () => {
+  it('names the loaded agent once the initial load finishes', () => {
     window.history.replaceState(null, '', '/#/agents');
     appState.agentsLoaded = false;
     appState.agentId = 'untitled-agent';
@@ -139,7 +171,7 @@ describe('useAgentRouteSync', () => {
     appState.agentsLoaded = true;
     appState.agentId = 'alpha';
     rerender(createElement(Probe));
-    expect(window.location.hash).toBe('#/agents');
+    expect(window.location.hash).toBe('#/agents/alpha');
   });
 });
 

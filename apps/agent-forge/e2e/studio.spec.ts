@@ -121,9 +121,22 @@ test('selecting an agent updates the URL, a reload restores it, an unknown id fa
   await page.goto(`/?token=e2e-studio-token#/agents/${second}`);
   await expect(page.locator('.crumbs b')).toHaveText(second);
 
+  // Unknown id: no error screen; falls back to #/agents, which then names the open agent.
   await page.goto('/#/agents/no-such-agent');
-  await expect(page).toHaveURL(/#\/agents$/);
   await expect(page.locator('.canvas-wrap')).toBeVisible();
+  await expect(page).toHaveURL(/#\/agents\/(?!no-such-agent)[^/]+$/);
+
+  // Agents -> Traces -> Agents (the nav link is bare #/agents) -> reload keeps the open agent.
+  await page.locator('.agent-card-main', { hasText: second }).click();
+  await expect(page.locator('.crumbs b')).toHaveText(second);
+  const nav = page.getByRole('navigation', { name: 'Primary' });
+  await nav.getByRole('link', { name: 'Traces' }).click();
+  await expect(page).toHaveURL(/#\/traces$/);
+  await nav.getByRole('link', { name: 'Agents' }).click();
+  await expect(page).toHaveURL(new RegExp(`#/agents/${second}$`));
+  await page.reload();
+  await expect(page.locator('.crumbs b')).toHaveText(second);
+  await expect(page).toHaveURL(new RegExp(`#/agents/${second}$`));
 });
 
 test('unsaved changes ask before switching agents or leaving Agents; cancelling keeps the URL', async ({ page }) => {
