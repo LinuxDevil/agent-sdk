@@ -6,7 +6,7 @@ import { PALETTE_DRAG_MIME, HOOK_DRAG_MIME } from '../canvas/dnd';
 import { AGENT_TEMPLATES, type TemplateId } from '../canvas/templates';
 import { addHookToNode, addNode } from '../canvas/graphMutations';
 import { pickHookTemplate, viewportCentrePosition } from '../canvas/paletteActions';
-import { StatusPill } from './StatusPill';
+import { StatusPill } from '../ui/StatusPill';
 import { errorMessage } from './errorMessage';
 import { tabIds, tabListKeyDown } from './tabs';
 import { agentIdProblem } from '../../shared/agentId';
@@ -60,10 +60,7 @@ function UnsavedAgentCard() {
       <div className="agent-card-top">
         <span className="agent-name">{spec.name}</span>
         {/* "unsaved" is a warning, not a green "all good". */}
-        <span className="status-pill status-unsaved">
-          <span className="dot" aria-hidden="true" />
-          unsaved
-        </span>
+        <StatusPill status="unsaved" />
       </div>
       <div className="agent-meta">
         {spec.provider.model} &middot; {graph.nodes.length} nodes

@@ -1,0 +1,124 @@
+/*
+ * Studio kit primitives: StatusPill tones, EmptyState, Toast.
+ * Base pill shape (.status-pill, .dot) lives in components/layout.css; the
+ * tone classes below decide its colour. Two-class selectors so they beat the
+ * single-class legacy .status-* rules regardless of load order.
+ */
+
+/* ---------- StatusPill tones ---------- */
+.status-pill.pill-ok {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.status-pill.pill-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.status-pill.pill-warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.status-pill.pill-running {
+  background: var(--surface-2);
+  color: var(--info);
+}
+.status-pill.pill-neutral {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+/* ---------- EmptyState ---------- */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+}
+.empty-state-icon {
+  color: var(--text-muted);
+  font-size: 24px;
+  line-height: 1;
+}
+.empty-state-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+.empty-state-hint {
+  margin: 0;
+  font-size: 13px;
+  max-width: 48ch;
+}
+.empty-state-action {
+  margin-top: 4px;
+}
+
+/* ---------- Toast ---------- */
+.toast-stack {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.toast-region {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--info);
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  pointer-events: auto;
+}
+.toast-success {
+  border-left-color: var(--success);
+}
+.toast-error {
+  border-left-color: var(--danger);
+}
+.toast-message {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.toast-action {
+  flex: none;
+}
+.toast-close {
+  flex: none;
+  background: none;
+  border: none;
+  padding: 0 4px;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.toast-close:hover {
+  color: var(--text);
+}
+.toast-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

@@ -3,7 +3,8 @@ import type { TraceListFilter } from './observeClient';
 import { useAgents, useTraces } from './useObserve';
 import type { ObserveTraceRow } from './types';
 import { fmtCost, fmtDateTime, fmtDuration, fmtInt } from './format';
-import { AgentSelect, ObserveError, ObserveStatusPill } from './chrome';
+import { AgentSelect, ObserveError } from './chrome';
+import { StatusPill } from '../ui/StatusPill';
 
 const PAGE_SIZE = 50;
 const STATUS_OPTIONS = ['', 'ok', 'error', 'interrupted'] as const;
@@ -73,7 +74,7 @@ function TraceRow({ trace, onOpen }: { trace: ObserveTraceRow; onOpen: () => voi
       <td>{fmtDateTime(trace.start)}</td>
       <td>{fmtDuration(duration)}</td>
       <td>
-        <ObserveStatusPill status={trace.status} />
+        <StatusPill status={trace.status} />
       </td>
       <td className="observe-num">{fmtInt(trace.observations)}</td>
       <td className="observe-num" title={`${fmtInt(trace.input_tokens)} in / ${fmtInt(trace.output_tokens)} out`}>

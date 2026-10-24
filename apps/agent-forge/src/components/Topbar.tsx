@@ -3,7 +3,7 @@ import { useAppState } from '../state/AppState';
 import { downloadSpec, importSpecFile } from '../persistence/importExport';
 import { ApprovalCard } from './ApprovalCard';
 import { errorMessage } from './errorMessage';
-import { StatusPill } from './StatusPill';
+import { StatusPill } from '../ui/StatusPill';
 import { navigate } from '../router/router';
 import { useRoute } from '../router/useRoute';
 import { NAV_ITEMS, isActive } from '../shell/NavRail';
