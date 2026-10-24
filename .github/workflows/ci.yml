@@ -101,14 +101,22 @@ jobs:
           node-version: '22.19.0'
           cache: 'npm'
       - run: npm ci
-      - run: npm install --no-save --save-prod --legacy-peer-deps ai@7 @ai-sdk/openai@4 @ai-sdk/anthropic@4 ollama-ai-provider-v2@4 zod@4
+      # isolated-vm (optional peer, installed here only) rides the same install so it cannot be
+      # reverted by a later one. Pinned to 6.2.0: 7.x requires Node >= 24 and this job runs 22.19.0.
+      - run: npm install --no-save --save-prod --legacy-peer-deps ai@7 @ai-sdk/openai@4 @ai-sdk/anthropic@4 ollama-ai-provider-v2@4 zod@4 isolated-vm@6.2.0
       - run: npx tsc --noEmit
       - run: npm run test:types
       - run: npm run build
         env:
           NODE_OPTIONS: --max-old-space-size=12288
       - run: npm run build --workspace=packages/create-lousho-agent
+      # Runs the real 'isolate' driver (src/sandbox/isolate.test.ts): Node >= 20 needs
+      # --no-node-snapshot to load isolated-vm; LOUSHO_ISOLATE_TESTS=1 makes that file fail
+      # instead of skip if the module cannot load.
       - run: npx vitest run
+        env:
+          NODE_OPTIONS: --no-node-snapshot
+          LOUSHO_ISOLATE_TESTS: '1'
       - run: docker pull curlimages/curl:8.10.1 && docker pull node:20-alpine && docker pull node:22-slim
       - run: npm run test:docker
         env:
