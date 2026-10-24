@@ -25,7 +25,7 @@ import { migrate } from '../storage/sqlite/migrations';
  * Forward-only migrations for the observe database. `OBSERVE_MIGRATIONS[n]`
  * upgrades a database from `user_version` n to n + 1.
  */
-const OBSERVE_MIGRATIONS: readonly string[] = [
+export const OBSERVE_MIGRATIONS: readonly string[] = [
   `
   -- Fleet registry: one row per reporting agent. status is the last known
   -- state ('healthy' on heartbeat, 'stopped' on deregister); monitoring
@@ -188,6 +188,28 @@ const OBSERVE_MIGRATIONS: readonly string[] = [
     PRIMARY KEY (agent_id, instance_id)
   );
   ALTER TABLE observations ADD COLUMN instance_id TEXT;
+  `,
+  `
+  -- Prompt labels: a movable name per prompt ('prod', 'staging') that points
+  -- at exactly one version - the PRIMARY KEY is that guarantee, so moving a
+  -- label is one upsert. Backfilled from array-form prompts.labels (string
+  -- entries that are not themselves refs - 'latest' or all digits; the
+  -- highest version carrying a label wins). Record-form labels stay in the
+  -- column untouched.
+  CREATE TABLE prompt_labels (
+    name TEXT NOT NULL,
+    label TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (name, label)
+  );
+  INSERT INTO prompt_labels (name, label, version, updated_at)
+    SELECT p.name, j.value, MAX(p.version), MAX(p.created_at)
+    FROM prompts p,
+      json_each(CASE WHEN json_valid(p.labels) AND json_type(p.labels) = 'array' THEN p.labels ELSE '[]' END) j
+    WHERE j.type = 'text' AND j.value <> '' AND j.value <> 'latest' AND j.value GLOB '*[^0-9]*'
+      AND j.value NOT GLOB '*[@/ ]*'
+    GROUP BY p.name, j.value;
   `,
 ];
 

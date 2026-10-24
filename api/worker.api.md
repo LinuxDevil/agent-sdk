@@ -2843,7 +2843,7 @@ interface Principal {
 type PromptCachingOption = 'auto' | false;
 
 // @public
-type PromptRefString = `${string}@${number}` | `${string}@latest`;
+type PromptRefString = `${string}@${string}`;
 
 // @public
 export interface PromptScheduleInput extends ScheduleBase {

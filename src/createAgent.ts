@@ -613,13 +613,14 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
 }
 
 /**
- * A prompt-registry reference as a string type: `'name@3'` or `'name@latest'`.
- * The type is intentionally wider than the runtime parser (see
- * `parsePromptRef`: the name may not contain whitespace, `/` or `@`, and the
- * version is an integer) - it exists so the {@link CreateAgentInstructions}
- * union can tell the ref apart from the deprecated `prompt` alias.
+ * A prompt-registry reference as a string type: `'name@3'`, `'name@latest'`
+ * or `'name@prod'` (a label, moved with `lousho prompt label`). The type is
+ * intentionally wider than the runtime parser (see `parsePromptRef`: the name
+ * and the ref may not contain whitespace, `/` or `@`) - it exists so the
+ * {@link CreateAgentInstructions} union can tell the ref apart from the
+ * deprecated `prompt` alias.
  */
-export type PromptRefString = `${string}@${number}` | `${string}@latest`;
+export type PromptRefString = `${string}@${string}`;
 
 /**
  * The system prompt. `instructions` is the name to use; `prompt` is a
@@ -637,7 +638,7 @@ export type CreateAgentInstructions =
   | {
       /** System prompt for the agent (preferred name); also the embedded fallback of a `prompt` registry ref. */
       instructions?: PerRun<string>;
-      /** A `'name@version'` registry ref (`version` an integer or `latest`, resolved daemon side). */
+      /** A `'name@version'` or `'name@label'` registry ref (`version` an integer or `latest`; `latest` and labels resolve daemon side). */
       prompt?: PromptRefString;
     }
   | {

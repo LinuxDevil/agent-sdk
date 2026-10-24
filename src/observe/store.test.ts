@@ -4,7 +4,9 @@
  * truncation at the 64KB field cap, and token create/verify.
  */
 import { describe, expect, it } from 'vitest';
-import type { SqlDatabase } from '../storage/sqlite/driver';
+import { loadDatabaseSync, type SqlDatabase } from '../storage/sqlite/driver';
+import { migrate } from '../storage/sqlite/migrations';
+import { migrateObserve, OBSERVE_MIGRATIONS } from './schema';
 import { parseIngestEnvelope, type IngestEvent } from './envelope';
 import {
   createToken,
@@ -50,6 +52,32 @@ describe('openDb', () => {
       expect(database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='observations'").get()).toBeDefined();
       expect(database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='hub_entries'").get()).toBeDefined();
       expect(database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='tokens'").get()).toBeDefined();
+    } finally {
+      database.close();
+    }
+  });
+});
+
+describe('prompt_labels migration', () => {
+  it('backfills array-form string labels (highest version wins) and leaves record-form labels alone', () => {
+    const DatabaseSync = loadDatabaseSync();
+    const database = new DatabaseSync(':memory:');
+    try {
+      const index = OBSERVE_MIGRATIONS.findIndex((sql) => sql.includes('CREATE TABLE prompt_labels'));
+      expect(index).toBeGreaterThan(0);
+      migrate(database, OBSERVE_MIGRATIONS.slice(0, index));
+      const insert = database.prepare('INSERT INTO prompts (prompt_id, name, version, labels, created_at) VALUES (?, ?, ?, ?, ?)');
+      insert.run('m1', 'mira', 1, JSON.stringify(['prod', 'canary', 7]), T0);
+      insert.run('m2', 'mira', 2, JSON.stringify(['prod']), T0 + 1);
+      insert.run('m3', 'mira', 3, JSON.stringify({ env: 'staging' }), T0 + 2);
+      insert.run('g1', 'ghost', 1, null, T0);
+      migrateObserve(database);
+      const rows = database.prepare('SELECT name, label, version FROM prompt_labels ORDER BY name, label').all();
+      expect(rows.map((r) => [r.name, r.label, Number(r.version)])).toEqual([
+        ['mira', 'canary', 1],
+        ['mira', 'prod', 2],
+      ]);
+      expect(database.prepare("SELECT labels FROM prompts WHERE prompt_id = 'm3'").get()?.labels).toBe(JSON.stringify({ env: 'staging' }));
     } finally {
       database.close();
     }

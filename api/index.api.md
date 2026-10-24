@@ -4941,7 +4941,7 @@ export function promptInjectionGuardrail(options?: {
 }): IoGuardrail;
 
 // @public
-export type PromptRefString = `${string}@${number}` | `${string}@latest`;
+export type PromptRefString = `${string}@${string}`;
 
 // @public
 export interface PromptScheduleInput extends ScheduleBase {

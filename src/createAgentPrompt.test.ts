@@ -57,6 +57,22 @@ describe('createAgent({ prompt }) - registry fetch', () => {
     expect(systemPrompt(model)).not.toContain('You are embedded.');
   });
 
+  it("resolves a name@label ref: createAgent({ prompt: 'x@prod' })", async () => {
+    const daemon = await start();
+    vi.stubEnv('LOUSHO_OBSERVE', base(daemon));
+    await publishPrompt(base(daemon), { name: 'x', text: 'You are the prod x.', labels: ['prod'] });
+    await publishPrompt(base(daemon), { name: 'x', text: 'You are the newer x.' });
+    const model = mockModel(['ok']);
+
+    const agent = createAgent({ name: 'prompt-agent-label', provider: model, prompt: 'x@prod' });
+    await agent.send('hi');
+    await closeReporter('prompt-agent-label', base(daemon));
+
+    expect(systemPrompt(model)).toContain('You are the prod x.');
+    const uses = daemon.db.prepare('SELECT version FROM prompt_uses').all();
+    expect(uses.map((u) => Number(u.version))).toEqual([1]);
+  });
+
   it('emits a prompt_use event keyed by the run root span (obs_id)', async () => {
     const daemon = await start();
     vi.stubEnv('LOUSHO_OBSERVE', base(daemon));

@@ -1,10 +1,10 @@
 /**
  * The agent-side client of the prompt registry (spec 0001-prompts-context-hub).
  *
- * `createAgent({ prompt: 'name@version' })` and `LOUSHO_PROMPT=name@version`
+ * `createAgent({ prompt: 'name@version' })` (or `'name@label'`) and `LOUSHO_PROMPT=name@version`
  * opt a run into registry-owned instructions: the SDK resolves the ref
  * against the daemon `LOUSHO_OBSERVE` points at (`GET
- * /api/v1/prompts/:name/:version`, where `latest` is resolved daemon side),
+ * /api/v1/prompts/:name/:ref`, where `latest` and labels are resolved daemon side),
  * the fetched text replaces `instructions`, and `instructions` stays the
  * embedded fallback for when the daemon cannot be reached. The publish/list/
  * history calls back `lousho prompt push|list|get`.
@@ -17,29 +17,38 @@
 import { observeRequest } from './httpClient';
 import { observeUrlFromEnv, type PromptUseProvider } from './reporter';
 
-/** A `name@version` reference; `version` is an integer or the daemon-side movable `latest`. */
-export interface PromptRef {
-  name: string;
-  version: number | 'latest';
-}
+/**
+ * A registry reference: `name@<version>` (an integer or the daemon-side
+ * movable `latest`) or `name@<label>` (a label such as `prod`, moved with
+ * `lousho prompt label`; also resolved daemon side).
+ */
+export type PromptRef = { name: string; version: number | 'latest' } | { name: string; label: string };
 
-/** `name@version`: a name without whitespace/`/`/`@`, then `@` and an integer or `latest`. */
-const REF_PATTERN = /^([^\s@/]{1,200})@(\d+|latest)$/;
+/** `name@ref`: a name and a ref, each a path segment without whitespace, `/` or `@`. */
+const REF_PATTERN = /^([^\s@/]{1,200})@([^\s@/]{1,200})$/;
 
 /**
- * Parse `'name@3'`, `'name@latest'` into a {@link PromptRef}; `undefined`
- * when the value is not a registry reference. A bare `'mira'` (no `@`) is
- * deliberately NOT a ref: `prompt` is also the deprecated `instructions`
- * alias, and only the unambiguous `name@version` shape opts into the registry.
+ * Parse `'name@3'`, `'name@latest'`, `'name@prod'` into a {@link PromptRef};
+ * `undefined` when the value is not a registry reference. A bare `'mira'`
+ * (no `@`) is deliberately NOT a ref: `prompt` is also the deprecated
+ * `instructions` alias, and only the unambiguous `name@ref` shape opts into
+ * the registry. All digits is a version, `latest` is latest, anything else a label.
  */
 export function parsePromptRef(value: string | undefined): PromptRef | undefined {
   if (value === undefined) return undefined;
   const match = REF_PATTERN.exec(value.trim());
   if (!match) return undefined;
-  return { name: match[1], version: match[2] === 'latest' ? 'latest' : Number(match[2]) };
+  const [, name, ref] = match;
+  if (ref === 'latest') return { name, version: 'latest' };
+  return /^\d+$/.test(ref) ? { name, version: Number(ref) } : { name, label: ref };
 }
 
-/** The daemon's `prompt` row as served (labels/variables decoded). */
+/** The `:ref` path segment of a {@link PromptRef}: the version, `latest`, or the label. */
+function refSegment(ref: PromptRef): string {
+  return 'label' in ref ? encodeURIComponent(ref.label) : String(ref.version);
+}
+
+/** The daemon's `prompt` row as served: `labels` are the labels pointing at this version (sorted), `variables` decoded. */
 export interface ResolvedPrompt {
   prompt_id: string;
   name: string;
@@ -70,24 +79,43 @@ function request<T>(baseUrl: string, path: string, init: RequestInit, options: P
   return observeRequest<T>(baseUrl, path, init, options.timeoutMs ?? DEFAULT_TIMEOUT_MS, options);
 }
 
-/** `GET /api/v1/prompts/:name/:version`. Throws `LOUSHO_REMOTE_REQUEST_FAILED` on a non-200 (404 included). */
+/** `GET /api/v1/prompts/:name/:ref`. Throws `LOUSHO_REMOTE_REQUEST_FAILED` on a non-200 (404 included). */
 export async function fetchPrompt(baseUrl: string, ref: PromptRef, options: PromptClientOptions = {}): Promise<ResolvedPrompt> {
   const body = await request<{ prompt: ResolvedPrompt }>(
     baseUrl,
-    `/api/v1/prompts/${encodeURIComponent(ref.name)}/${ref.version}`,
+    `/api/v1/prompts/${encodeURIComponent(ref.name)}/${refSegment(ref)}`,
     { method: 'GET' },
     options
   );
   return body.prompt;
 }
 
-/** `POST /api/v1/prompts` - `lousho prompt push`. `created` is false on an identical republish (hash dedupe). */
+/**
+ * `POST /api/v1/prompts` - `lousho prompt push`. An unchanged push (same text
+ * and variables as the latest version) mints no version: `created: false`,
+ * `unchanged: true`, `version` the latest's. Array `labels` move onto the
+ * resulting version either way.
+ */
 export async function publishPrompt(
   baseUrl: string,
   input: { name: string; text: string; labels?: string[] | Record<string, string>; variables?: string[] },
   options: PromptClientOptions = {}
-): Promise<{ prompt: ResolvedPrompt; created: boolean }> {
+): Promise<{ prompt: ResolvedPrompt; created: boolean; version: number; unchanged: boolean }> {
   return request(baseUrl, '/api/v1/prompts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) }, options);
+}
+
+/** `PUT /api/v1/prompts/:name/labels/:label` - `lousho prompt label`. `previous_version` is null for a new label. */
+export async function setPromptLabel(
+  baseUrl: string,
+  input: { name: string; label: string; version: number },
+  options: PromptClientOptions = {}
+): Promise<{ name: string; label: string; version: number; previous_version: number | null }> {
+  return request(
+    baseUrl,
+    `/api/v1/prompts/${encodeURIComponent(input.name)}/labels/${encodeURIComponent(input.label)}`,
+    { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ version: input.version }) },
+    options
+  );
 }
 
 export interface PromptSummary extends ResolvedPrompt {
@@ -122,7 +150,7 @@ export interface RegistryPrompt {
 }
 
 /**
- * Resolve `ref` (`'name@version'`) against the daemon `env`'s
+ * Resolve `ref` (`'name@version'` or `'name@label'`) against the daemon `env`'s
  * `LOUSHO_OBSERVE` points at. Returns `undefined` - the opt-in does not
  * apply - when the env names no daemon (`hasFallback: false` - no embedded
  * instructions - only changes the warning's wording); `LOUSHO_OBSERVE_TOKEN` is sent when set.
