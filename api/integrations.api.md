@@ -436,6 +436,24 @@ interface SandboxAdapter {
 }
 
 // @public
+interface SandboxCallOptions {
+    args?: unknown[];
+}
+
+// @public
+interface SandboxDriver {
+    readonly name?: string;
+    // (undocumented)
+    run(code: string, opts?: SandboxCallOptions): Promise<unknown>;
+}
+
+// @public
+type SandboxDriverName = 'isolate' | 'docker' | 'e2b';
+
+// @public
+type SandboxDriverRef = SandboxDriverName | SandboxDriver;
+
+// @public
 interface SandboxResult {
     // (undocumented)
     exitCode: number;
@@ -565,6 +583,7 @@ interface ToolDescriptor {
     // (undocumented)
     needsApproval?: boolean | ApprovalPredicate;
     requiresSandbox?: boolean;
+    sandbox?: ToolSandboxOptions;
     sandboxExecute?: (args: unknown, sandbox: SandboxAdapter, ctx?: ToolExecutionContext) => Promise<unknown>;
     tool: Tool;
     transient?: boolean;
@@ -611,6 +630,13 @@ class ToolRegistry {
     registerMany(tools: ToolsOption): void;
     size(): number;
     unregister(name: string): boolean;
+}
+
+// @public
+interface ToolSandboxOptions {
+    driver?: SandboxDriverRef;
+    memoryMb?: number;
+    timeoutMs?: number;
 }
 
 // @public

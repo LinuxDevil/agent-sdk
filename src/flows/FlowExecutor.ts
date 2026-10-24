@@ -37,6 +37,7 @@ import {
   toolSpanInit,
 } from '../execution/genAiSpans';
 import { FLOW_NODE_SPAN_NAME, FlowAttr, GenAiAttr, GenAiOperation } from '../execution/semconv';
+import { sandboxErrorKind } from '../sandbox/errors';
 import {
   CompactedLLMProviderError,
   ConfigurationError,
@@ -1368,16 +1369,30 @@ export class FlowExecutor {
       async (toolSpan) => {
         const start = Date.now();
         // The tool gets the run's signal as `ctx.abortSignal`, and the gate's call id.
-        const result = await executeToolWithSandboxGuard(toolName, toolDesc, args, sandbox, context.signal, { toolCallId });
-        recordToolOutcome(
-          toolSpan,
-          { args, result, latencyMs: Date.now() - start },
-          {
-            redactContent: context.redactContent,
-            captureContent: resolveCaptureContent(context.captureContent),
-          }
-        );
-        return result;
+        try {
+          const result = await executeToolWithSandboxGuard(toolName, toolDesc, args, sandbox, context.signal, { toolCallId });
+          recordToolOutcome(
+            toolSpan,
+            { args, result, latencyMs: Date.now() - start },
+            {
+              redactContent: context.redactContent,
+              captureContent: resolveCaptureContent(context.captureContent),
+            }
+          );
+          return result;
+        } catch (error) {
+          // A thrown failure (a code-sandbox boundary failure included) is
+          // recorded with its `sandbox.error` kind before it propagates.
+          recordToolOutcome(
+            toolSpan,
+            { args, result: undefined, error: error instanceof Error ? error.message : String(error), sandboxError: sandboxErrorKind(error), latencyMs: Date.now() - start },
+            {
+              redactContent: context.redactContent,
+              captureContent: resolveCaptureContent(context.captureContent),
+            }
+          );
+          throw error;
+        }
       },
       context.parentSpanId,
       init.kind

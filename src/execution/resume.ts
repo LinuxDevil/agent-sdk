@@ -55,6 +55,7 @@ import type { OAuthTokenStore } from '../oauth/types';
 import { isSignInRequired, settleSignInRequired, signInOwner, signInRequest, SignInPendingError, type SignInRequired } from '../oauth/signIn';
 import { newId } from '../utils/id';
 import { agentRunSpanInit, recordToolOutcome, resolveCaptureContent, toolSpanInit, SUBAGENT_SPAN, type SubagentSpanInfo } from './genAiSpans';
+import { sandboxErrorKind } from '../sandbox/errors';
 import { withSpan, type Span } from './tracing';
 
 /**
@@ -1103,10 +1104,22 @@ async function runApprovedInSpan(ctx: ResumeContext, pending: PendingApproval, s
       try {
         const message = await run();
         const { result, error } = toolResultOf(message);
-        recordToolOutcome(span, { args: pending.args, result, error, latencyMs: Date.now() - startedAt }, { redactContent, captureContent: resolveCaptureContent(executeOptions.captureContent) });
+        // The structured error the model got carries the boundary failure kind, when it was one.
+        const sandboxError = (result as { sandboxError?: unknown } | null | undefined)?.sandboxError;
+        recordToolOutcome(
+          span,
+          { args: pending.args, result, error, sandboxError: typeof sandboxError === 'string' ? sandboxError : undefined, latencyMs: Date.now() - startedAt },
+          { redactContent, captureContent: resolveCaptureContent(executeOptions.captureContent) }
+        );
         return { message };
       } catch (error) {
         if (isSignInRequired(error)) return { signIn: error };
+        // A thrown failure still gets its boundary-failure kind before it propagates.
+        recordToolOutcome(
+          span,
+          { args: pending.args, result: undefined, error: error instanceof Error ? error.message : String(error), sandboxError: sandboxErrorKind(error), latencyMs: Date.now() - startedAt },
+          { redactContent, captureContent: resolveCaptureContent(executeOptions.captureContent) }
+        );
         throw error;
       }
     },

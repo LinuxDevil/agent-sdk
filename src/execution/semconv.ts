@@ -94,6 +94,18 @@ export const ErrorAttr = {
 /** `gen_ai.tool.type` value for tools executed by this SDK's host process. */
 export const TOOL_TYPE_FUNCTION = 'function';
 
+/**
+ * SDK-specific `sandbox.*` attributes of `execute_tool` spans for tools that
+ * run inside a code sandbox (`defineTool({ sandbox })`, spec
+ * 0001-sandboxing). No GenAI convention exists for these yet.
+ */
+export const SandboxAttr = {
+  /** The driver that ran the call (`'isolate'`, a custom driver's `name`, ...); set only on a sandboxed tool's span. */
+  DRIVER: 'sandbox.driver',
+  /** Why the sandbox boundary itself failed: `'timeout'`, `'oom'` or `'driver'`; absent when the tool's own code failed. */
+  ERROR: 'sandbox.error',
+} as const;
+
 /** Attributes specific to this SDK (not part of the GenAI semantic conventions). */
 export const SdkAttr = {
   /** `true` on a span whose token counts are (partly) estimates because the provider reported none. */

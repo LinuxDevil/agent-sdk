@@ -42,6 +42,7 @@ import {
   type ToolCallScope,
 } from './subagentRuntime';
 import { ConfigurationError, isAbortError, isCassetteError, SDKError } from './errors';
+import { sandboxErrorKind } from '../sandbox/errors';
 import { abortReasonOf } from './abortReason';
 import type { HostedTool } from '../tools/hosted';
 import { assertHostedToolsSupported, countHostedCalls, withHostedCalls } from './hostedToolCalls';
@@ -1771,22 +1772,40 @@ export class AgentExecutor {
             concurrency: options.toolConcurrency ?? 'unbounded',
           });
         }
-        const executed = await this.executeToolCall(
-          toolCall,
-          agent,
-          toolRegistry,
-          onToolCall,
-          onToolResult,
-          sandbox,
-          hooks,
-          sessionId,
-          state.messages,
-          signal,
-          onPrepared,
-          // A delegated child's usage is added to this run's totals.
-          (child, errors) => mergeDelegatedUsage(state.usage, child, errors),
-          scope
-        );
+        let executed: ToolCallOutcome;
+        try {
+          executed = await this.executeToolCall(
+            toolCall,
+            agent,
+            toolRegistry,
+            onToolCall,
+            onToolResult,
+            sandbox,
+            hooks,
+            sessionId,
+            state.messages,
+            signal,
+            onPrepared,
+            // A delegated child's usage is added to this run's totals.
+            (child, errors) => mergeDelegatedUsage(state.usage, child, errors),
+            scope
+          );
+        } catch (error) {
+          // A call that throws (instead of settling an error outcome) still
+          // gets its boundary-failure kind on the span before it propagates.
+          recordToolOutcome(
+            toolSpan,
+            {
+              args: undefined,
+              result: undefined,
+              error: error instanceof Error ? error.message : String(error),
+              sandboxError: sandboxErrorKind(error),
+              latencyMs: Date.now() - toolCallStart,
+            },
+            { redactContent, captureContent: resolveCaptureContent(options.captureContent) }
+          );
+          throw error;
+        }
         const parsedArgs =
           executed.args === undefined
             ? parseToolArguments(toolCall, toolCall.function.arguments)
@@ -1797,6 +1816,7 @@ export class AgentExecutor {
             args: parsedArgs,
             result: executed.result,
             error: executed.error,
+            sandboxError: executed.sandboxError,
             latencyMs: Date.now() - toolCallStart,
           },
           { redactContent, captureContent: resolveCaptureContent(options.captureContent) }

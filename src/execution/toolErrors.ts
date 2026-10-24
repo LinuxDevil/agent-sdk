@@ -5,6 +5,8 @@
  * failed sandbox guard) hands the model the object {@link toolErrorResult} builds.
  */
 
+import { sandboxErrorKind } from '../sandbox/errors';
+
 /** Why a tool call produced an error result. */
 export type ToolErrorKind =
   | 'execution'
@@ -53,6 +55,12 @@ export interface ToolErrorResult {
   kind: ToolErrorKind;
   /** The model's id for the call, when the caller supplied it. */
   toolCallId?: string;
+  /**
+   * Set when a `kind: 'sandbox'` failure happened at the sandbox boundary
+   * (`defineTool({ sandbox })`): `'timeout'`, `'oom'` or `'driver'` - the
+   * `sandbox.error` span attribute's value.
+   */
+  sandboxError?: string;
   /** Kind-specific extras, such as `issues` (validation) or `note` (rejected). */
   [extra: string]: unknown;
 }
@@ -90,8 +98,11 @@ export function toolErrorResult(input: ToolErrorInput): ToolErrorResult {
   const kind = input.kind ?? declaredKind(error);
   const err = typeof error === 'string' ? undefined : (error as { name?: unknown; message?: unknown } | null | undefined);
   const raw = typeof error === 'string' ? error : typeof err?.message === 'string' ? err.message : String(error);
+  // A SandboxError's kind ('timeout'|'oom'|'driver') rides along so the span can carry `sandbox.error`.
+  const sandboxError = sandboxErrorKind(error);
   return {
     ...details,
+    ...(sandboxError !== undefined && { sandboxError }),
     error: typeof err?.name === 'string' && err.name ? err.name : DEFAULT_ERROR_NAME[kind],
     toolName,
     message:

@@ -3,6 +3,7 @@ import type { StandardSchemaV1 } from '../utils/zodCompat';
 import type { RunUsage } from '../models/usage';
 import type { Message } from '../providers/llm';
 import { SandboxAdapter } from '../security/sandboxCore';
+import type { ToolSandboxOptions } from '../sandbox/types';
 import type { Principal } from '../auth/types';
 import type { OAuthProvider } from '../oauth/defineOAuthProvider';
 import type { OAuthToken } from '../oauth/types';
@@ -242,6 +243,16 @@ export interface ToolDescriptor {
     sandbox: SandboxAdapter,
     ctx?: ToolExecutionContext
   ) => Promise<unknown>;
+  /**
+   * The code sandbox `execute` runs in - set by `defineTool({ sandbox })`
+   * (spec 0001-sandboxing). The `execute_tool` span records the driver as
+   * `sandbox.driver`, and a boundary failure as `sandbox.error`
+   * (`'timeout' | 'oom' | 'driver'`). The field is how the tool declared it
+   * runs isolated; the actual routing happens inside the `execute` wrapper
+   * `defineTool` built (the driver sees the function's source, not the live
+   * closure), so setting it on a hand-built descriptor only labels it.
+   */
+  sandbox?: ToolSandboxOptions;
 }
 
 /**

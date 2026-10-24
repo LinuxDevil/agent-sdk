@@ -69,6 +69,13 @@ export interface ToolCallOutcome {
    * `approvalTtlMs` applies.
    */
   approvalTtlMs?: number;
+  /**
+   * Set when the call failed at a code-sandbox boundary
+   * (`defineTool({ sandbox })`): `'timeout'`, `'oom'` or `'driver'`. It
+   * becomes the span's `sandbox.error` attribute; the model's error result
+   * carries it as `result.sandboxError`.
+   */
+  sandboxError?: string;
 }
 
 /** Everything a tool call needs from the surrounding execute() run. */
@@ -553,7 +560,12 @@ function thrownToolFailure(toolCall: ToolCall, error: unknown, ctx: ToolCallCont
     { toolName: toolCall.function.name, toolCallId: toolCall.id, error, plainMessage: toolErrorMessage(error) },
     ctx.scope?.runtime.toolErrorMessage
   );
-  return { ...toolFailure(toolCall, 'execution', message), result };
+  return {
+    ...toolFailure(toolCall, 'execution', message),
+    result,
+    // A sandbox boundary failure's kind reaches the span as `sandbox.error`.
+    ...(result.sandboxError !== undefined && { sandboxError: result.sandboxError }),
+  };
 }
 
 /**

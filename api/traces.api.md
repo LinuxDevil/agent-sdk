@@ -4,6 +4,8 @@
 
 ```ts
 
+import { z } from 'zod';
+
 // @public
 export const DEFAULT_TRACE_DIR = ".lousho/traces";
 
@@ -33,10 +35,11 @@ export function observeExporter(options?: ObserveExporterOptions): ObserveReport
 // @public
 export function observeExporterFromEnv(options?: {
     agentName?: string;
+    promptUse?: PromptUseProvider;
     env?: NodeJS.ProcessEnv;
 }): ObserveReporter | undefined;
 
-// @public
+// @public (undocumented)
 export interface ObserveExporterOptions {
     agentName?: string;
     cwd?: string;
@@ -47,6 +50,7 @@ export interface ObserveExporterOptions {
     maxBuffered?: number;
     now?: () => number;
     project?: string;
+    promptUse?: PromptUseProvider;
     registerExitHooks?: boolean;
     requestTimeoutMs?: number;
     sessionId?: string;
@@ -60,8 +64,33 @@ export interface ObserveReporter extends TraceExporter {
     readonly agentId: string;
     close(): Promise<void>;
     readonly dropped: number;
+    promptUse?: PromptUseProvider;
     readonly sessionId: string;
 }
+
+// @public (undocumented)
+type PromptUseData = z.infer<typeof promptUseData>;
+
+// @public
+const promptUseData: z.ZodObject<{
+    obs_id: z.ZodString;
+    prompt_id: z.ZodString;
+    version: z.ZodOptional<z.ZodNumber>;
+}, "strip", z.ZodTypeAny, {
+    obs_id: string;
+    prompt_id: string;
+    version?: number | undefined;
+}, {
+    obs_id: string;
+    prompt_id: string;
+    version?: number | undefined;
+}>;
+
+// @public
+type PromptUseProvider = () => PromptUseRef | undefined;
+
+// @public
+type PromptUseRef = Pick<PromptUseData, 'prompt_id' | 'version'>;
 
 // @public
 export function readTrace(traceId: string, options?: {
@@ -147,7 +176,9 @@ export interface TraceSummary {
 }
 
 // @public
-export function withObserveExporter(explicit: TraceExporter | undefined, agentName: string | undefined): TraceExporter | undefined;
+export function withObserveExporter(explicit: TraceExporter | undefined, agentName: string | undefined, options?: {
+    promptUse?: PromptUseProvider;
+}): TraceExporter | undefined;
 
 // (No @packageDocumentation comment for this package)
 
