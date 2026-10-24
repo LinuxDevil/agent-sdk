@@ -46,6 +46,11 @@ export interface SandboxDriver {
    * instance without one reports `'custom'`.
    */
   readonly name?: string;
+  /**
+   * Evaluate `code` to a function, call it with `opts.args` and resolve with
+   * its result (structured-cloned back). Boundary failures reject with a
+   * `SandboxError` whose `kind` names the cause.
+   */
   run(code: string, opts?: SandboxCallOptions): Promise<unknown>;
 }
 
@@ -84,6 +89,7 @@ export interface SandboxOptions {
 export interface Sandbox {
   /** The resolved driver name: `'isolate'`, or the driver instance's `name`. */
   readonly driver: string;
+  /** Same contract as {@link SandboxDriver.run}. */
   run(code: string, opts?: SandboxCallOptions): Promise<unknown>;
 }
 

@@ -38,6 +38,7 @@ export type PromptUseRef = Pick<PromptUseData, 'prompt_id' | 'version'>;
 /** Resolves the run's registry prompt once fetched; `undefined` means no `prompt_use` is emitted (fetch pending or failed). */
 export type PromptUseProvider = () => PromptUseRef | undefined;
 
+/** Options of {@link observeExporter}; every field defaults so `observeExporter()` alone targets the loopback daemon. */
 export interface ObserveExporterOptions {
   /** Collector base URL (default `http://127.0.0.1:7777`). */
   url?: string;

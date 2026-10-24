@@ -21,22 +21,34 @@ import { toolFailure } from '../tools/built-in/toolFailure';
 import { resolveIdentity, resolveProject } from './identity';
 import { observeUrlFromEnv } from './reporter';
 
+/** The scopes a hub entry can be published under (see {@link HubPublishInput.scope}). */
 export const HUB_SCOPES = ['private', 'fleet'] as const;
+/** `'private'` is visible only to the publishing agent; `'fleet'` to every agent on the daemon. */
 export type HubScope = (typeof HUB_SCOPES)[number];
 
 /** One `hub_entries` row as `GET /api/v1/hub` serves it (`expires_at` is derived: `created_at + ttl`). */
 export interface HubEntry {
+  /** The row's id, assigned by the daemon. */
   entry_id: string;
+  /** The group the entry lives in (e.g. 'facts', 'handoff'). */
   namespace: string;
+  /** The publishing agent's id. */
   agent_id: string | null;
+  /** The key inside the namespace. */
   key: string;
+  /** The stored value (JSON text for non-strings), or `null`. */
   value: string | null;
+  /** `'private'` or `'fleet'`. */
   scope: string;
+  /** Publish time (epoch ms). */
   created_at: number;
+  /** Lifetime in ms, or `null` when the entry does not expire. */
   ttl: number | null;
+  /** `created_at + ttl`, or `null` for non-expiring entries. */
   expires_at: number | null;
 }
 
+/** Options of {@link hub} and {@link hubTools}. */
 export interface HubOptions {
   /** Collector base URL; default `LOUSHO_OBSERVE`'s resolution. */
   url?: string;
@@ -61,28 +73,39 @@ export interface HubOptions {
   env?: NodeJS.ProcessEnv;
 }
 
+/** What {@link Hub.publish} stores. */
 export interface HubPublishInput {
+  /** The group the entry lives in (e.g. 'facts', 'handoff'). */
   namespace: string;
+  /** The key inside the namespace. */
   key: string;
   /** A string is stored as-is; anything else is JSON-encoded. */
   value: unknown;
+  /** `'private'` (default) is visible only to this agent; `'fleet'` to every agent on the daemon. */
   scope?: HubScope;
   /** Lifetime in milliseconds. */
   ttl?: number;
 }
 
+/** The filters {@link Hub.query} accepts. */
 export interface HubQuery {
+  /** Only entries in this namespace; all namespaces when omitted. */
   namespace?: string;
   /** `private` = only this agent's own private entries; `fleet` = all fleet entries; absent = both. */
   scope?: HubScope;
+  /** Only the entry with this key. */
   key?: string;
+  /** At most this many entries (default 100). */
   limit?: number;
 }
 
+/** The Context Hub client {@link hub} returns. */
 export interface Hub {
   /** The `agent_id` entries are published and scoped under (resolved on first call). */
   readonly agentId: string;
+  /** Store a value; resolves with the entry the daemon wrote. */
   publish(input: HubPublishInput): Promise<HubEntry>;
+  /** Read entries matching `filter`; by default own private entries plus all fleet entries. */
   query(filter?: HubQuery): Promise<HubEntry[]>;
 }
 
