@@ -45,6 +45,7 @@ function get(database: SqlDatabase, query: string): Captured {
   if (!matched) throw new Error('scores route not registered');
   matched.route.handle({
     db: database,
+    dbPath: ':memory:',
     req: {} as http.IncomingMessage,
     res,
     params: matched.params,

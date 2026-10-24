@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as nodePath from 'node:path';
 import { defaultPidPath, isObserveDaemon, probeHealth, sameDbPath, startObserveDaemon, type ObserveDaemon } from './daemon';
 import { OBSERVE_SERVICE } from './envelope';
-import { createToken } from './store';
+import { createToken, openDb } from './store';
 
 const T0 = 1_700_000_000_000;
 
@@ -67,7 +67,7 @@ describe('per-db pidfile and db identity', () => {
   });
 
   it('/health reports the absolute db path; sameDbPath compares resolved paths', async () => {
-    const daemon = await start({ dbPath: nodePath.resolve('mem-test.db'), db: (await start()).db });
+    const daemon = await start({ dbPath: 'mem-test.db', db: openDb(':memory:') });
     const health = await probeHealth(daemon.port);
     expect(health?.db).toBe(nodePath.resolve('mem-test.db'));
     expect(sameDbPath(health?.db, 'mem-test.db')).toBe(true);

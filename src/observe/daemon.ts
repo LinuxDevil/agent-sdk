@@ -221,9 +221,7 @@ export async function startObserveDaemon(options: ObserveDaemonOptions = {}): Pr
   if (pidPath !== undefined) {
     fs.mkdirSync(path.dirname(pidPath), { recursive: true });
     // Line 2 is the port, so `stop` can ask this daemon which db it serves.
-    fs.writeFileSync(pidPath, `${process.pid}
-${boundPort}
-`, 'utf8');
+    fs.writeFileSync(pidPath, `${process.pid}\n${boundPort}\n`, 'utf8');
   }
 
   // The monitoring sweep: rewrites agents.status from heartbeat freshness,

@@ -109,9 +109,7 @@ describe('lousho observe', () => {
     const b = await startObserveDaemon({ dbPath: path.join(cwd, 'b.db'), port: 0 });
     daemons.push(b);
     const a = path.join(cwd, 'a.db');
-    fs.writeFileSync(defaultPidPath(a), `${process.pid}
-${b.port}
-`);
+    fs.writeFileSync(defaultPidPath(a), `${process.pid}\n${b.port}\n`);
     const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
     expect(await runObserve(['stop', '--db', a])).toBe(1);
     expect(kill).not.toHaveBeenCalled();
