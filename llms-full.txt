@@ -8397,7 +8397,7 @@ Find a code by area:
 
 | Area | Codes | When you meet them |
 | ---- | ----- | ------------------ |
-| [Configuration](#configuration) | [`LOUSHO_CONFIG_INVALID`](#lousho_config_invalid), [`LOUSHO_CONFIG_MISSING_PROVIDER`](#lousho_config_missing_provider), [`LOUSHO_CONFIG_MISSING_AGENT`](#lousho_config_missing_agent), [`LOUSHO_CONFIG_MISSING_INPUT`](#lousho_config_missing_input), [`LOUSHO_CONFIG_CONFLICTING_OPTIONS`](#lousho_config_conflicting_options), [`LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE`](#lousho_config_missing_checkpoint_store), [`LOUSHO_CONFIG_RESOLVER_FAILED`](#lousho_config_resolver_failed) | A `createAgent()` or executor call that is missing or mixing options, or a config resolver that failed. |
+| [Configuration](#configuration) | [`LOUSHO_CONFIG_INVALID`](#lousho_config_invalid), [`LOUSHO_CONFIG_MISSING_PROVIDER`](#lousho_config_missing_provider), [`LOUSHO_CONFIG_MISSING_AGENT`](#lousho_config_missing_agent), [`LOUSHO_CONFIG_MISSING_INPUT`](#lousho_config_missing_input), [`LOUSHO_CONFIG_CONFLICTING_OPTIONS`](#lousho_config_conflicting_options), [`LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE`](#lousho_config_missing_checkpoint_store), [`LOUSHO_CONFIG_RESOLVER_FAILED`](#lousho_config_resolver_failed), [`LOUSHO_PROMPT_UNRESOLVED`](#lousho_prompt_unresolved) | A `createAgent()` or executor call that is missing or mixing options, or a config resolver that failed. |
 | [Providers and peers](#providers-and-peers) | [`LOUSHO_PROVIDER_SPEC_INVALID`](#lousho_provider_spec_invalid), [`LOUSHO_PROVIDER_UNKNOWN`](#lousho_provider_unknown), [`LOUSHO_PROVIDER_MISSING_API_KEY`](#lousho_provider_missing_api_key), [`LOUSHO_PROVIDER_REQUEST_FAILED`](#lousho_provider_request_failed), [`LOUSHO_PROVIDER_RATE_LIMITED`](#lousho_provider_rate_limited), [`LOUSHO_PEER_MISSING`](#lousho_peer_missing), [`LOUSHO_HOSTED_TOOL_UNSUPPORTED`](#lousho_hosted_tool_unsupported), [`LOUSHO_UNSUPPORTED_CONTENT`](#lousho_unsupported_content) | Resolving a model string, a missing API key or peer package, a failed or rate-limited model request, a hosted tool the provider cannot run, a file the provider cannot send. |
 | [Agent spec files](#agent-spec-files) | [`LOUSHO_SPEC_NOT_FOUND`](#lousho_spec_not_found), [`LOUSHO_SPEC_INVALID`](#lousho_spec_invalid), [`LOUSHO_SPEC_UNKNOWN_FIELD`](#lousho_spec_unknown_field), [`LOUSHO_SPEC_UNSUPPORTED_FORMAT`](#lousho_spec_unsupported_format) | Loading an `AgentSpec` file with `loadSpec()` or `specToAgent()`. |
 | [Tools](#tools) | [`LOUSHO_TOOL_NOT_FOUND`](#lousho_tool_not_found), [`LOUSHO_TOOL_NEEDS_CREDENTIALS`](#lousho_tool_needs_credentials), [`LOUSHO_TOOL_EXECUTION_FAILED`](#lousho_tool_execution_failed), [`LOUSHO_TOOL_ARGS_INVALID`](#lousho_tool_args_invalid), [`LOUSHO_MCP_START_FAILED`](#lousho_mcp_start_failed), [`LOUSHO_MCP_CALL_FAILED`](#lousho_mcp_call_failed) | A tool the model called is unknown, needs credentials, threw, or got invalid arguments; a stdio MCP server did not start or a call to one failed. |
@@ -8490,6 +8490,22 @@ names the option and `error.cause` is what the function threw.
 [Dynamic config](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md#dynamic-config).
 
 **Example:** `createAgent({ provider, model: ({ metadata }) => plans[metadata.plan].model })` with an unknown plan.
+
+### LOUSHO_PROMPT_UNRESOLVED
+
+**Means:** `createAgent({ prompt: 'name@version' })` (or `LOUSHO_PROMPT`) has no
+`instructions` fallback and the prompt could not be fetched: the observe daemon
+is unreachable, answered 404 for that name and version, or `LOUSHO_OBSERVE` is
+not set. The first `send()` rejects and `stream()` ends with an `error` event;
+the model is never called, so the agent never runs without a system prompt. The
+message names the prompt ref.
+
+**Fix:** start the daemon (`lousho observe`) and set `LOUSHO_OBSERVE` to its URL,
+publish the prompt (`lousho prompt push`), or pass `instructions` as the fallback
+(with it set, an unreachable daemon only logs a warning and the run uses the
+embedded text). See [Observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md).
+
+**Example:** `createAgent({ provider, prompt: 'mira@latest' })` with no daemon running.
 
 ## Providers and peers
 
@@ -14083,7 +14099,8 @@ The daemon also serves two stores agents can use at runtime:
 
 - **Prompt registry.** `createAgent({ prompt: 'name@version' })` or
   `LOUSHO_PROMPT` fetches instructions from it at build (`@latest` resolves
-  on the daemon; an unreachable daemon falls back to `instructions`). Every
+  on the daemon; an unreachable daemon falls back to `instructions`; with no
+  `instructions`, the first run fails with `LOUSHO_PROMPT_UNRESOLVED`). Every
   run logs the exact version used. `lousho prompt push` publishes a new
   version.
 - **Context hub.** `hub()` / `hubTools()` let agents publish and query

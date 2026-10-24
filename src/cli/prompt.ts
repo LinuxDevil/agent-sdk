@@ -32,7 +32,8 @@ const HELP = `${USAGE}
 
 Manages the prompt registry a 'lousho observe' collector serves. Agents run with
 createAgent({ prompt: 'name@version' }) or LOUSHO_PROMPT=name@version and fetch their
-instructions here at build (falling back to embedded instructions when the daemon is down).
+instructions here at build (falling back to embedded instructions when the daemon is down; without
+them the run fails with LOUSHO_PROMPT_UNRESOLVED).
 
 Options:
   --name N       'push': the registry name (default: the file's basename, e.g. prompts/mira.txt -> mira; required for '-')
