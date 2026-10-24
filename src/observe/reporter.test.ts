@@ -215,6 +215,118 @@ describe('observeExporter', () => {
     }
   });
 
+  describe('requeue with backoff', () => {
+    /** A fetch whose n-th call answers `outcomes[n]` (the last outcome repeats); every attempt is recorded. */
+    function scriptedFetch(outcomes: Array<'fail' | 'ok'>): { fetchFn: typeof fetch; posted: PostedBatch[] } {
+      const posted: PostedBatch[] = [];
+      const fetchFn = vi.fn(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        const body = JSON.parse(String(init?.body)) as { batch: IngestEvent[] };
+        const outcome = outcomes[Math.min(posted.length, outcomes.length - 1)];
+        posted.push({ url: String(input), events: body.batch });
+        if (outcome === 'fail') throw new TypeError('fetch failed');
+        return new Response('{}', { status: 202 });
+      });
+      return { fetchFn: fetchFn as unknown as typeof fetch, posted };
+    }
+
+    const emit = (r: ObserveReporter, ids: string[]) => {
+      for (const id of ids) {
+        const span = makeSpan({ id });
+        r.onSpanStart(span);
+        r.onSpanEnd(span);
+      }
+    };
+
+    const silenceWarn = () => vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    let warn: ReturnType<typeof silenceWarn>;
+    beforeEach(() => {
+      vi.useFakeTimers();
+      warn = silenceWarn();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+      warn.mockRestore();
+    });
+
+    it('requeues a failed batch and delivers it on the next flush', async () => {
+      const { fetchFn, posted } = scriptedFetch(['fail', 'ok']);
+      const { r } = reporter({ fetchFn, flushIntervalMs: 1000 });
+      emit(r, ['a', 'b', 'c']);
+      await vi.advanceTimersByTimeAsync(1000); // first flush: rejected
+      expect(posted).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1000); // second flush, after the 1s backoff
+      expect(posted).toHaveLength(2);
+      expect(posted[1]!.events).toHaveLength(3);
+      expect(posted[1]!.events.map((e) => e.type === 'observation' && e.data.obs_id)).toEqual(['a', 'b', 'c']);
+      expect(r.dropped).toBe(0);
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    it('evicts oldest events past maxBuffered and counts them', async () => {
+      const { fetchFn, posted } = scriptedFetch(['fail']);
+      const { r } = reporter({ fetchFn, maxBuffered: 4, flushIntervalMs: 1000 });
+      emit(r, ['s0', 's1', 's2', 's3', 's4', 's5']);
+      await vi.advanceTimersByTimeAsync(1000); // flush: rejected, requeued
+      expect(r.dropped).toBe(2);
+      await vi.advanceTimersByTimeAsync(1000); // the retry carries what is still pending
+      expect(posted).toHaveLength(2);
+      expect(posted[1]!.events.map((e) => e.type === 'observation' && e.data.obs_id)).toEqual(['s2', 's3', 's4', 's5']);
+      expect(r.dropped).toBe(2);
+    });
+
+    it('trims a requeued batch from the front when new events arrived during the failed POST', async () => {
+      const posted: PostedBatch[] = [];
+      let reject!: (error: Error) => void;
+      const fetchFn = vi.fn(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        posted.push({ url: String(input), events: (JSON.parse(String(init?.body)) as { batch: IngestEvent[] }).batch });
+        if (posted.length === 1) return new Promise<Response>((_, rej) => (reject = rej));
+        return new Response('{}', { status: 202 });
+      }) as unknown as typeof fetch;
+      const { r } = reporter({ fetchFn, maxBuffered: 4, flushSize: 3, flushIntervalMs: 1000 });
+      emit(r, ['a', 'b', 'c']); // size flush: in flight
+      await vi.advanceTimersByTimeAsync(0);
+      emit(r, ['d', 'e']); // arrive while the POST hangs
+      reject(new TypeError('fetch failed'));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(r.dropped).toBe(1); // a, b, c, d, e requeued into 4 slots: the oldest goes
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(posted.at(-1)!.events.map((e) => e.type === 'observation' && e.data.obs_id)).toEqual(['b', 'c', 'd', 'e']);
+      expect(r.dropped).toBe(1);
+    });
+
+    it('backs off between failed attempts', async () => {
+      const { fetchFn, posted } = scriptedFetch(['fail']);
+      const { r } = reporter({ fetchFn, flushIntervalMs: 100, flushSize: 2 });
+      emit(r, ['a']);
+      await vi.advanceTimersByTimeAsync(100); // attempt 1
+      expect(posted).toHaveLength(1);
+      let failedAt = Date.now();
+      // n = failures so far - 1: 1s, 2s, 4s, 8s, 16s, then the 30s cap
+      for (let n = 0; n < 7; n++) {
+        const retryAt = failedAt + Math.min(2 ** n * 1000, 30_000);
+        emit(r, [`x${n}`, `y${n}`]); // a size flush inside the window must not retry either
+        await vi.advanceTimersByTimeAsync(retryAt - 1 - Date.now());
+        expect(posted).toHaveLength(n + 1);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(posted).toHaveLength(n + 2);
+        failedAt = Date.now();
+      }
+      expect(r.dropped).toBe(0);
+    });
+
+    it('close() makes one final attempt despite the backoff and counts leftovers as dropped', async () => {
+      const { fetchFn, posted } = scriptedFetch(['fail']);
+      const { r } = reporter({ fetchFn, flushIntervalMs: 1000 });
+      emit(r, ['a', 'b']);
+      await vi.advanceTimersByTimeAsync(1000); // rejected; next attempt not before t=2000
+      expect(r.dropped).toBe(0);
+      await r.close();
+      expect(posted).toHaveLength(2);
+      expect(posted[1]!.events.map((e) => e.type)).toEqual(['observation', 'observation', 'agent.deregister']);
+      expect(r.dropped).toBe(3);
+    });
+  });
+
   it('emits a heartbeat immediately when heartbeats are on', async () => {
     const { r, posted } = reporter({ heartbeatIntervalMs: 60_000 });
     await r.close();

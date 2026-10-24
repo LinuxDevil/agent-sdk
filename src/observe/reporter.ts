@@ -14,8 +14,10 @@
  *   id (the `TraceLine.id`), so a resent batch upserts by key.
  * - Flush on size (50), on interval (5s), and on process exit (~2s cap).
  *   Crash loss is accepted and bounded: nothing persists mid run.
- * - The daemon being down, or a full buffer, drops events into a `dropped`
- *   counter and warns ONCE - the reporter never blocks or throws into a run.
+ * - The daemon being down requeues the failed batch and retries with
+ *   exponential backoff (1s base, 30s cap); only events evicted past the
+ *   buffer cap, or still unsent after close()'s final attempt, drop into a
+ *   `dropped` counter. It warns ONCE and never blocks or throws into a run.
  *   Timers are unref'd so observation never keeps a process alive.
  * - Its own HTTP calls are plain `fetch`, outside any span: instrumenting
  *   them would recurse.
@@ -57,7 +59,7 @@ export interface ObserveExporterOptions {
   flushIntervalMs?: number;
   /** Heartbeat cadence (default 60000ms); `0` disables heartbeats. */
   heartbeatIntervalMs?: number;
-  /** Buffer cap; events past it drop into `dropped` (default 5000). */
+  /** Buffer cap; past it the oldest events are evicted into `dropped` (default 5000). */
   maxBuffered?: number;
   /** Per-request timeout (default 5000ms); the exit flush always caps at ~2000ms. */
   requestTimeoutMs?: number;
@@ -81,7 +83,7 @@ export interface ObserveExporterOptions {
 }
 
 export interface ObserveReporter extends TraceExporter {
-  /** Events dropped because the daemon was unreachable or the buffer was full. */
+  /** Events lost for good: evicted past the buffer cap, or still unsent after close()'s final attempt. */
   readonly dropped: number;
   /** This reporter's persisted `agent_id`. */
   readonly agentId: string;
@@ -104,6 +106,57 @@ const DEFAULT_HEARTBEAT_MS = 60_000;
 const DEFAULT_MAX_BUFFERED = 5000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 5000;
 const EXIT_FLUSH_TIMEOUT_MS = 2000;
+const RETRY_BASE_MS = 1000;
+const RETRY_CAP_MS = 30_000;
+
+/** Wait before the next send after `failures` consecutive failed ones (0-based): 1s, 2s, 4s ... capped at 30s. */
+const retryDelayMs = (failures: number): number => Math.min(RETRY_BASE_MS * 2 ** failures, RETRY_CAP_MS);
+
+/**
+ * The reporter's pending events: FIFO, capped at `cap` (the oldest are
+ * evicted first, reported through `onEvict`), and gated by a retry backoff
+ * after a failed send. Every send path - size, interval, exit - goes through
+ * `take` / `delivered` / `failed`, so a failed batch is never lost while
+ * there is room to keep it.
+ */
+function createOutbox(cap: number, now: () => number, onEvict: (count: number) => void) {
+  const items: IngestEvent[] = [];
+  let failures = 0;
+  let retryAt = 0;
+  const trim = (): void => {
+    const over = items.length - cap;
+    if (over <= 0) return;
+    items.splice(0, over);
+    onEvict(over);
+  };
+  return {
+    get size(): number {
+      return items.length;
+    },
+    /** False while backing off from a failed send. */
+    ready(): boolean {
+      return now() >= retryAt;
+    },
+    push(event: IngestEvent): void {
+      items.push(event);
+      trim();
+    },
+    /** Everything pending, for one send - or nothing while backing off, unless `force` (the final attempt). */
+    take(force = false): IngestEvent[] {
+      return force || now() >= retryAt ? items.splice(0, items.length) : [];
+    },
+    delivered(): void {
+      failures = 0;
+      retryAt = 0;
+    },
+    /** Put a failed batch back in front of anything queued since, trim to the cap, and back off. */
+    failed(batch: readonly IngestEvent[]): void {
+      items.unshift(...batch);
+      trim();
+      retryAt = now() + retryDelayMs(failures++);
+    },
+  };
+}
 
 const num = (value: unknown): number | undefined =>
   typeof value === 'number' && Number.isFinite(value) ? value : undefined;
@@ -220,7 +273,6 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
   const requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   let promptUse = options.promptUse;
 
-  const pending: IngestEvent[] = [];
   let droppedCount = 0;
   let closed = false;
   let warned = false;
@@ -232,17 +284,22 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
     if (warned) return;
     warned = true;
     const reason = error instanceof Error ? error.message : String(error);
-    console.warn(`[lousho] observe: ${what} (${reason}); events are counted in 'dropped' and the run is unaffected.`);
+    console.warn(
+      `[lousho] observe: ${what} (${reason}); retrying with backoff, events past the buffer cap are counted in 'dropped' and the run is unaffected.`
+    );
   };
 
+  const outbox = createOutbox(maxBuffered, now, (count) => {
+    droppedCount += count;
+    warnOnce(
+      `buffer is full (${maxBuffered} events); dropping the oldest`,
+      new SDKError('observe buffer full', 'LOUSHO_REMOTE_REQUEST_FAILED', { appendHelp: false })
+    );
+  });
+
   const push = (event: IngestEvent) => {
-    if (pending.length >= maxBuffered) {
-      droppedCount++;
-      warnOnce(`buffer is full (${maxBuffered} events); dropping`, new SDKError('observe buffer full', 'LOUSHO_REMOTE_REQUEST_FAILED', { appendHelp: false }));
-      return;
-    }
-    pending.push(event);
-    if (pending.length >= flushSize) void flush(requestTimeoutMs);
+    outbox.push(event);
+    if (outbox.size >= flushSize && outbox.ready()) void flush(requestTimeoutMs);
   };
 
   const enqueue = (event: IngestEvent) => {
@@ -268,18 +325,21 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
 
   // Flushes are serialized on a chain: a fire-and-forget size flush and the
   // exit flush can overlap, and close() must not resolve while its own POST
-  // is still in flight.
+  // is still in flight. `final` is close()'s last attempt: it ignores the
+  // backoff and counts what it could not send as dropped.
   let chain: Promise<void> = Promise.resolve();
-  const flush = (timeoutMs: number): Promise<void> => {
+  const flush = (timeoutMs: number, final = false): Promise<void> => {
     const run = chain.then(async () => {
-      if (pending.length === 0) return;
-      const batch = pending.splice(0, pending.length);
+      const batch = outbox.take(final);
+      if (batch.length === 0) return;
       try {
         await post(batch, timeoutMs);
+        outbox.delivered();
       } catch (error) {
-        // Drop-and-count by contract: a missing daemon must never slow or fail a run.
-        droppedCount += batch.length;
+        // Never slow or fail a run: requeue for a later retry, drop-and-count only as the last resort.
         warnOnce(`could not reach the observe daemon at ${url}`, error);
+        if (final) droppedCount += batch.length;
+        else outbox.failed(batch);
       }
     });
     chain = run;
@@ -330,11 +390,11 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
         // no process.off in this runtime
       }
     }
-    // Graceful exit: say goodbye, then flush with the ~2s cap. push() directly so a
-    // full buffer can't eat the deregister - one pending event drops instead.
-    if (pending.length >= maxBuffered) pending.splice(0, 1);
+    // Graceful exit: say goodbye, then one final flush with the ~2s cap. push()
+    // directly (enqueue drops after close); a full buffer evicts its oldest event
+    // rather than the deregister.
     push({ type: 'agent.deregister', data: { agent_id: identity.agentId, ts: now() } });
-    await flush(EXIT_FLUSH_TIMEOUT_MS);
+    await flush(EXIT_FLUSH_TIMEOUT_MS, true);
   };
 
   const exitHooks: Array<[string, () => void]> = [];
