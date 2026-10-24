@@ -1,0 +1,108 @@
+/* Command palette (Ctrl/Cmd+K) and the `?` shortcut sheet. Tokens only. */
+.cmdk-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 12vh 16px 16px;
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+}
+
+.cmdk-dialog {
+  width: min(560px, 100%);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  font-family: var(--font-ui);
+  overflow: hidden;
+}
+
+.cmdk-input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+.cmdk-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.cmdk-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+}
+
+.cmdk-option {
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.cmdk-option[aria-selected='true'] {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.cmdk-empty {
+  margin: 0;
+  padding: 14px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.cmdk-sheet {
+  padding: 12px 16px 16px;
+}
+.cmdk-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.cmdk-sheet-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.cmdk-shortcuts {
+  margin: 0;
+  overflow-y: auto;
+}
+.cmdk-shortcut {
+  display: flex;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 13px;
+  border-top: 1px solid var(--border);
+}
+.cmdk-shortcut dt {
+  min-width: 110px;
+}
+.cmdk-shortcut dd {
+  margin: 0;
+  color: var(--text-muted);
+}
+.cmdk-shortcut kbd {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--text);
+}

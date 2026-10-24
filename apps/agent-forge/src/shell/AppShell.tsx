@@ -2,6 +2,7 @@ import './shell.css';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { NARROW_QUERY, useMediaQuery } from '../components/useMediaQuery';
 import { useAppState } from '../state/AppState';
+import { CommandPalette } from '../ui/CommandPalette';
 import { NavRail } from './NavRail';
 
 /** Lets the Studio side panels (rail/inspector drawers) yield when the nav drawer opens - one drawer at a time. */
@@ -62,6 +63,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <ConnectionBanner />
           {children}
         </div>
+        <CommandPalette />
       </div>
     </ShellContext.Provider>
   );

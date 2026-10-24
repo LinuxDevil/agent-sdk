@@ -85,3 +85,29 @@ test('palette items add nodes from the keyboard; hook switch and toggles respond
   await page.keyboard.press('Space');
   await expect(approvalChip).toHaveAttribute('aria-pressed', pressed === 'true' ? 'false' : 'true');
 });
+
+test('Ctrl+K opens the command palette; ? lists the shortcuts', async ({ page }) => {
+  await page.keyboard.press('Control+k');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await expect(palette).toBeVisible();
+  const input = palette.getByRole('combobox', { name: 'Command' });
+  await expect(input).toBeFocused();
+  await expect(palette).toHaveAttribute('aria-modal', 'true');
+  await input.fill('go to traces');
+  await expect(palette.getByRole('listbox', { name: 'Commands' }).getByRole('option')).toHaveText(['Go to Traces']);
+  // the combobox's active descendant is a real, selected option
+  const activeId = await input.getAttribute('aria-activedescendant');
+  await expect(page.locator(`[id="${activeId}"]`)).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Enter');
+  await expect(palette).toHaveCount(0);
+  await expect(page).toHaveURL(/#\/traces$/);
+
+  await page.keyboard.press('?');
+  const sheet = page.getByRole('dialog', { name: 'Keyboard shortcuts' });
+  await expect(sheet).toBeVisible();
+  await expect(sheet).toHaveAttribute('aria-modal', 'true');
+  await expect(sheet.getByRole('heading', { name: 'Keyboard shortcuts' })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Close' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(sheet).toHaveCount(0);
+});

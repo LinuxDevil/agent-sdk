@@ -2,10 +2,11 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const appState = vi.hoisted(() => ({ connected: true }));
+const appState = vi.hoisted(() => ({ connected: true, agents: [], switchAgent: () => Promise.resolve() }));
 vi.mock('../../state/AppState', () => ({ useAppState: () => appState }));
 
 import { AppShell } from '../AppShell';
+import { ToastProvider } from '../../ui/Toast';
 import { NAV_ITEMS, isActive } from '../NavRail';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -28,9 +29,11 @@ function render() {
   root = createRoot(container);
   act(() =>
     root!.render(
-      <AppShell>
-        <p id="screen">screen</p>
-      </AppShell>,
+      <ToastProvider>
+        <AppShell>
+          <p id="screen">screen</p>
+        </AppShell>
+      </ToastProvider>,
     ),
   );
 }
