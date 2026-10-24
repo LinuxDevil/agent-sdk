@@ -630,11 +630,13 @@ trace, newest first. Query parameters (all optional):
 | `q` | Case-insensitive (ASCII) substring of the root observation's name, input or output. `%` and `_` match literally. |
 | `min_duration_ms` | Traces at least this long (`end - start`). |
 | `model` | Traces where any observation used this model. |
+| `prompt` | `<name>` or `<name>@<version>`: traces where any observation ran that registry prompt (linked by a `prompt_use` event), any version or just that one. |
 | `sort` | `start` (default), `duration`, `tokens` (input + output) or `cost`. Ties break on `trace_id`. |
 | `order` | `desc` (default) or `asc`. |
 | `limit`, `offset` | Page size (1-500, default 50) and offset. |
 
-An unknown `sort` or `order`, or a non-numeric `min_duration_ms`, answers
+An unknown `sort` or `order`, a non-numeric `min_duration_ms`, or a `prompt`
+with an empty name or a non-integer version answers
 `400` with code `LOUSHO_REQUEST_INVALID`.
 
 Each row has `trace_id`, `name`, `agent_id`, `session_id`, `start`, `end`,

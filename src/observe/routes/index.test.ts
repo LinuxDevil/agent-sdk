@@ -61,12 +61,16 @@ describe('GET /api/v1/traces query params', () => {
   };
 
   it('accepts the filter, search and sort params', () => {
-    const { status, body } = call('from=1&to=2&q=ord_5&min_duration_ms=10&model=m&sort=duration&order=asc');
+    const { status, body } = call('from=1&to=2&q=ord_5&min_duration_ms=10&model=m&sort=duration&order=asc&prompt=mira@2');
     expect(status).toBe(200);
     expect(body).toMatchObject({ traces: [], total: 0 });
   });
 
-  it.each(['sort=bogus', 'order=sideways', 'min_duration_ms=fast'])('rejects %s with 400 LOUSHO_REQUEST_INVALID', (search) => {
+  it('accepts prompt=<name> without a version', () => {
+    expect(call('prompt=mira').status).toBe(200);
+  });
+
+  it.each(['sort=bogus', 'order=sideways', 'min_duration_ms=fast', 'prompt=', 'prompt=mira@', 'prompt=mira@two', 'prompt=@2', 'prompt=mira@1.5'])('rejects %s with 400 LOUSHO_REQUEST_INVALID', (search) => {
     const { status, body } = call(search);
     expect(status).toBe(400);
     expect(body.code).toBe('LOUSHO_REQUEST_INVALID');

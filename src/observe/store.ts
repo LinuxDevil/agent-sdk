@@ -675,6 +675,8 @@ export interface TraceFilter {
   min_duration_ms?: number;
   /** Traces where any observation used this model. */
   model?: string;
+  /** Traces where any observation is linked (`prompt_uses`) to this registry prompt - any version, or just `version`. */
+  prompt?: { name: string; version?: number };
   /** Default `start`. Ties break on `trace_id` in the same direction. */
   sort?: TraceSort;
   /** Default `desc`. */
@@ -754,8 +756,20 @@ const ROOT_OF = `observations r WHERE r.trace_id = o.trace_id AND r.parent_obs_i
 /** `value` as a LIKE pattern matching it as a literal substring (paired with `ESCAPE '\'`). */
 const likeContains = (value: string): string => `%${value.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 
+/** `AND EXISTS` an observation of the trace linked to the prompt `name` (at `version`, when given). */
+function promptUseExists(prompt: { name: string; version?: number }, arg: SqlArg): string {
+  // `arg` binds positionally, so call it in SQL text order: name, then version.
+  const name = arg(prompt.name);
+  const version = prompt.version === undefined ? '' : ` AND p.version = ${arg(prompt.version)}`;
+  return (
+    ` AND EXISTS (SELECT 1 FROM observations u JOIN prompt_uses pu ON pu.obs_id = u.obs_id` +
+    ` JOIN prompts p ON p.prompt_id = pu.prompt_id` +
+    ` WHERE u.trace_id = o.trace_id AND p.name = ${name}${version})`
+  );
+}
+
 /**
- * The window/duration/model/search filters. They judge the whole trace, so
+ * The window/duration/model/prompt/search filters. They judge the whole trace, so
  * they sit in HAVING; `from`/`to` bound the trace start, half-open.
  */
 function traceHavingExtras(filter: TraceFilter, arg: SqlArg): string {
@@ -768,6 +782,7 @@ function traceHavingExtras(filter: TraceFilter, arg: SqlArg): string {
   if (filter.model !== undefined) {
     having += ` AND EXISTS (SELECT 1 FROM observations m WHERE m.trace_id = o.trace_id AND m.model = ${arg(filter.model)})`;
   }
+  if (filter.prompt !== undefined) having += promptUseExists(filter.prompt, arg);
   if (filter.q) {
     const like = likeContains(filter.q);
     const col = (name: string): string => `r.${name} LIKE ${arg(like)} ESCAPE '\\'`;
