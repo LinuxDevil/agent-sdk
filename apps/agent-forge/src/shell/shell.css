@@ -53,6 +53,13 @@
   border-top: 1px solid var(--border);
   padding-top: 8px;
 }
+.nav-daemon {
+  margin: 0;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
 .nav-item {
   display: block;
   padding: 7px 10px;

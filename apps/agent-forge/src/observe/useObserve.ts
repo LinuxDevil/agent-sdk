@@ -67,7 +67,14 @@ function useObserveQuery<T>(fetcher: () => Promise<T>, deps: readonly unknown[])
 /** `GET /health`, re-probed on `pollMs` (default 5s) so the panels wake up once `lousho observe start` runs. */
 export function useDaemonHealth(pollMs = 5000): ObserveQuery<ObserveHealth | undefined> & { down: boolean } {
   const query = useObserveQuery<ObserveHealth | undefined>(() => observeClient.health(), []);
-  const down = query.error instanceof ObserveDaemonDownError || (query.data === undefined && !query.loading);
+  // `down` is the last *settled* probe's verdict: a re-probe in flight flips
+  // `loading` back on, and must not briefly read as "up" (that remounted the
+  // panels and fired their fetches against a dead daemon every poll).
+  const settledDown = query.error instanceof ObserveDaemonDownError || query.data === undefined;
+  const [down, setDown] = useState(false);
+  useEffect(() => {
+    if (!query.loading) setDown(settledDown);
+  }, [query.loading, settledDown]);
   useEffect(() => {
     if (pollMs <= 0) return undefined;
     const timer = setInterval(query.refresh, pollMs);
