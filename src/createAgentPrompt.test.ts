@@ -8,7 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAgent } from './createAgent';
 import { startObserveDaemon, type ObserveDaemon } from './observe/daemon';
-import { publishPrompt } from './observe/promptClient';
+import { PROMPT_RETRY_WINDOW_MS, publishPrompt } from './observe/promptClient';
 import { observeExporterFromEnv } from './observe/reporter';
 import { mockModel, type MockModel } from './testing';
 import { textOf } from './providers/content';
@@ -20,6 +20,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
   while (daemons.length > 0) await daemons.pop()?.close();
@@ -104,13 +105,120 @@ describe('createAgent({ prompt }) - fallback + conflicts', () => {
     expect(warn.mock.calls.filter((c) => String(c[0]).includes('prompt'))).toHaveLength(1);
   });
 
-  it('falls back to the default instructions when a ref is set but nothing is embedded', async () => {
+  it('rejects with LOUSHO_PROMPT_UNRESOLVED when the prompt cannot be fetched and there is no fallback', async () => {
     vi.stubEnv('LOUSHO_OBSERVE', 'http://127.0.0.1:1');
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     const model = mockModel(['ok']);
-    await createAgent({ name: 'prompt-agent-e', provider: model, prompt: 'mira@1' }).send('hi');
+    const agent = createAgent({ name: 'prompt-agent-e', provider: model, prompt: 'mira@latest' });
+    await expect(agent.send('hi')).rejects.toMatchObject({ code: 'LOUSHO_PROMPT_UNRESOLVED', message: expect.stringContaining('mira@latest') });
+    await expect(agent.send('hi')).rejects.toThrow(/mira@latest.*LOUSHO_OBSERVE/s);
+    await expect(agent.stream('hi').result).rejects.toMatchObject({ code: 'LOUSHO_PROMPT_UNRESOLVED' });
+    expect(model.calls).toHaveLength(0);
     await closeReporter('prompt-agent-e', 'http://127.0.0.1:1');
-    expect(systemPrompt(model)).toContain('You are a helpful assistant.');
+  });
+
+  it('rejects with LOUSHO_PROMPT_UNRESOLVED when the daemon answers 404 for the prompt', async () => {
+    const daemon = await start();
+    vi.stubEnv('LOUSHO_OBSERVE', base(daemon));
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const model = mockModel(['ok']);
+    await expect(createAgent({ name: 'prompt-agent-404', provider: model, prompt: 'ghost@latest' }).send('hi')).rejects.toMatchObject({
+      code: 'LOUSHO_PROMPT_UNRESOLVED',
+    });
+    expect(model.calls).toHaveLength(0);
+    await closeReporter('prompt-agent-404', base(daemon));
+  });
+
+  it('rejects with LOUSHO_PROMPT_UNRESOLVED when no collector is configured and there is no fallback', async () => {
+    vi.stubEnv('LOUSHO_OBSERVE', '');
+    const model = mockModel(['ok']);
+    await expect(createAgent({ name: 'prompt-agent-nocollector', provider: model, prompt: 'mira@latest' }).send('hi')).rejects.toMatchObject({
+      code: 'LOUSHO_PROMPT_UNRESOLVED',
+      message: expect.stringContaining('LOUSHO_OBSERVE'),
+    });
+    expect(model.calls).toHaveLength(0);
+  });
+
+  it('rejects with LOUSHO_PROMPT_UNRESOLVED for a LOUSHO_PROMPT env ref with no instructions', async () => {
+    vi.stubEnv('LOUSHO_OBSERVE', 'http://127.0.0.1:1');
+    vi.stubEnv('LOUSHO_PROMPT', 'envref@latest');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const model = mockModel(['ok']);
+    await expect(createAgent({ name: 'prompt-agent-envref', provider: model }).send('hi')).rejects.toMatchObject({
+      code: 'LOUSHO_PROMPT_UNRESOLVED',
+      message: expect.stringContaining('envref@latest'),
+    });
+    expect(model.calls).toHaveLength(0);
+    await closeReporter('prompt-agent-envref', 'http://127.0.0.1:1');
+  });
+
+  it('retries a failed resolution: the next run succeeds once the daemon is reachable', async () => {
+    const first = await start();
+    const port = first.port;
+    await first.close();
+    daemons.splice(daemons.indexOf(first), 1);
+    const url = `http://127.0.0.1:${port}`;
+    vi.stubEnv('LOUSHO_OBSERVE', url);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const model = mockModel(['ok']);
+    const agent = createAgent({ name: 'prompt-agent-retry', provider: model, prompt: 'mira@latest' });
+    await expect(agent.send('hi')).rejects.toMatchObject({ code: 'LOUSHO_PROMPT_UNRESOLVED' });
+
+    const daemon = await startObserveDaemon({ dbPath: ':memory:', port });
+    daemons.push(daemon);
+    await publishPrompt(url, { name: 'mira', text: 'Registry text after recovery.' });
+    // Inside the retry window the failure stands, even though the daemon is back.
+    await expect(agent.send('hi')).rejects.toMatchObject({ code: 'LOUSHO_PROMPT_UNRESOLVED' });
+    vi.setSystemTime(Date.now() + PROMPT_RETRY_WINDOW_MS + 1);
+    await agent.send('hi');
+    expect(systemPrompt(model)).toContain('Registry text after recovery.');
+    await closeReporter('prompt-agent-retry', url);
+  });
+
+  it('with a fallback and the daemon down, runs inside the retry window make no network call; the first run after it retries', async () => {
+    const first = await start();
+    const port = first.port;
+    await first.close();
+    daemons.splice(daemons.indexOf(first), 1);
+    const url = `http://127.0.0.1:${port}`;
+    vi.stubEnv('LOUSHO_OBSERVE', url);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const realFetch = globalThis.fetch;
+    const promptFetches = vi.fn();
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      if (String(input).includes('/api/v1/prompts')) promptFetches();
+      return realFetch(input, init);
+    });
+    const model = mockModel(['ok', 'ok', 'ok']);
+    const agent = createAgent({ name: 'prompt-agent-window', provider: model, prompt: 'mira@latest', instructions: 'You are embedded.' });
+    await agent.send('hi');
+    expect(systemPrompt(model, 0)).toContain('You are embedded.');
+    const afterFirst = promptFetches.mock.calls.length;
+
+    const started = performance.now();
+    await agent.send('hi again');
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(promptFetches.mock.calls.length).toBe(afterFirst);
+    expect(systemPrompt(model, 1)).toContain('You are embedded.');
+
+    const daemon = await startObserveDaemon({ dbPath: ':memory:', port });
+    daemons.push(daemon);
+    await publishPrompt(url, { name: 'mira', text: 'Registry text after the window.' });
+    vi.setSystemTime(Date.now() + PROMPT_RETRY_WINDOW_MS + 1);
+    await agent.send('hi once more');
+    expect(systemPrompt(model, 2)).toContain('Registry text after the window.');
+    await closeReporter('prompt-agent-window', url);
+  });
+
+  it('falls back to instructions when they exist (no collector: warning text unchanged)', async () => {
+    vi.stubEnv('LOUSHO_OBSERVE', '');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const model = mockModel(['ok']);
+    await createAgent({ name: 'prompt-agent-fb', provider: model, prompt: 'mira@1', instructions: 'You are embedded.' }).send('hi');
+    expect(systemPrompt(model)).toContain('You are embedded.');
+    expect(String(warn.mock.calls[0][0])).toContain('the embedded instructions are used instead.');
   });
 
   it('still treats a non-ref prompt + instructions as the conflicting-aliases error', () => {

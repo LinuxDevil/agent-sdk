@@ -1564,6 +1564,7 @@ async function resolveOption<T>(option: string, value: PerRun<T>, ctx: RunConfig
   try {
     return await value(ctx);
   } catch (error) {
+    if (error instanceof SDKError && error.code === 'LOUSHO_PROMPT_UNRESOLVED') throw error;
     throw new ConfigurationError(
       `createAgent: the '${option}' function threw while resolving this run's config: ${error instanceof Error ? error.message : String(error)}`,
       option,
@@ -1776,21 +1777,42 @@ function agentInstructions(config: CreateAgentConfig): AgentInstructions {
   }
   const env = typeof process !== 'undefined' ? process.env : undefined;
   const ref = promptIsRef ? (config.prompt as string) : config.prompt === undefined ? env?.LOUSHO_PROMPT : undefined;
-  const fetched = ref !== undefined ? registryPrompt(ref, { env }) : undefined;
-  if (ref !== undefined && fetched === undefined) {
+  const embedded = promptIsRef ? config.instructions : (config.instructions ?? config.prompt);
+  if (ref === undefined) return { instructions: embedded, option: config.prompt === undefined ? 'instructions' : 'prompt' };
+  return registryInstructions(ref, embedded, env, config.prompt === undefined ? 'instructions' : 'prompt');
+}
+
+/** The instructions of an agent with a registry `ref`: the fetched text, `embedded` as the fallback, or (without it) a run-time LOUSHO_PROMPT_UNRESOLVED. */
+function registryInstructions(ref: string, embedded: PerRun<string | undefined> | undefined, env: NodeJS.ProcessEnv | undefined, option: AgentInstructions['option']): AgentInstructions {
+  // No embedded fallback: an unresolvable ref fails the run rather than running with no system prompt.
+  const failClosed = embedded === undefined;
+  const fetched = registryPrompt(ref, { env, hasFallback: !failClosed });
+  if (fetched === undefined) {
+    if (failClosed) return { instructions: () => Promise.reject(promptUnresolved(ref, 'LOUSHO_OBSERVE is not set')), option: 'instructions' };
     console.warn(
       `[lousho] prompt: '${ref}' needs a collector to resolve - set LOUSHO_OBSERVE=1 (or a daemon URL); the embedded instructions are used instead.`
     );
-  }
-  const embedded = promptIsRef ? config.instructions : (config.instructions ?? config.prompt);
-  if (fetched === undefined) {
-    return { instructions: embedded, option: config.prompt === undefined ? 'instructions' : 'prompt' };
+    return { instructions: embedded, option };
   }
   return {
     option: 'instructions',
     promptUse: fetched.use,
-    instructions: (ctx) => fetched.text(() => (embedded === undefined ? Promise.resolve(undefined) : resolveOption('instructions', embedded, ctx))),
+    instructions: (ctx) =>
+      fetched.text(() =>
+        embedded === undefined
+          ? Promise.reject(promptUnresolved(ref, 'the observe daemon did not return it'))
+          : resolveOption('instructions', embedded, ctx)
+      ),
   };
+}
+
+/** The error a registry prompt with no `instructions` fallback fails the run with. */
+function promptUnresolved(ref: string, why: string): SDKError {
+  return new SDKError(
+    `Prompt '${ref}' could not be resolved (${why}) and no \`instructions\` fallback is set, so the agent would run with no system prompt. ` +
+      "Start the observe daemon (set LOUSHO_OBSERVE to its URL) or add `instructions` as a fallback.",
+    'LOUSHO_PROMPT_UNRESOLVED'
+  );
 }
 
 /** The default `retry` for models given as strings: as many retries as the `ai` SDK makes on its own. */
