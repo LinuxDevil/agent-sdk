@@ -1,0 +1,94 @@
+/*
+ * Scores screen (#/evals/scores): filters over the per-eval table, then the
+ * expanded eval's trend, checks and latest failures. Colours from
+ * src/theme.css tokens only.
+ */
+
+.scores-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  padding: 16px;
+  font-family: var(--font-ui);
+  color: var(--text);
+}
+
+.scores-toggle {
+  font-weight: 600;
+  text-align: left;
+}
+.scores-name {
+  font-family: var(--font-mono);
+}
+.scores-muted {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.scores-link {
+  font-family: var(--font-mono);
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.scores-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.scores-detail-title {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+.scores-subtitle {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.scores-failures {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.scores-failure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  padding: 6px 8px;
+  border-left: 3px solid var(--danger);
+  background: var(--surface-2);
+  border-radius: 4px;
+  font-size: 12px;
+}
+.scores-when {
+  color: var(--text-faint);
+}
+.scores-value {
+  color: var(--danger);
+  font-weight: 600;
+}
+.scores-comment {
+  flex-basis: 100%;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+  .scores-screen {
+    padding: 12px;
+  }
+}

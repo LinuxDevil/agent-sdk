@@ -7,6 +7,7 @@ import { ObserveView, type ObserveTab } from '../observe/ObserveView';
 import { AgentsScreen } from './agents/AgentsScreen';
 import { TraceScreen } from './traces/TraceScreen';
 import { MonitoringScreen } from './monitoring/MonitoringScreen';
+import { ScoresScreen } from './scores/ScoresScreen';
 import { useLeaveAgentsGuard } from './agents/useLeaveAgentsGuard';
 import { Placeholder } from './Placeholder';
 
@@ -63,8 +64,8 @@ export function useScreen(): ScreenId {
   return screen ?? 'agents';
 }
 
-/** Until the Phase 3 screens land, Traces/Scores are the existing observe panels, one per route. */
-const OBSERVE_TAB: Partial<Record<ScreenId, ObserveTab>> = { traces: 'traces', scores: 'scores' };
+/** Until its Phase 3 screen lands, Traces is the existing observe panel (Scores has its own screen now). */
+const OBSERVE_TAB: Partial<Record<ScreenId, ObserveTab>> = { traces: 'traces' };
 const TAB_PATH: Record<ObserveTab, string> = {
   traces: '/traces',
   scores: '/evals/scores',
@@ -110,6 +111,7 @@ export function Screens() {
   // Same element type at the same position for all three, so the drill-down filter survives a route change.
   if (screen === 'trace') content = <TraceRoute />;
   else if (screen === 'monitoring') content = <MonitoringScreen />;
+  else if (screen === 'scores') content = <ScoresScreen />;
   else if (observeTab) content = <ObserveView tab={observeTab} onTabChange={(tab) => navigate(TAB_PATH[tab])} />;
   else if (placeholder) content = <Placeholder {...placeholder} />;
   else

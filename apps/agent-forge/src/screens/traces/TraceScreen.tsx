@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
-import { ObserveDaemonDownError } from '../../observe/observeClient';
 import { nestObservations } from '../../observe/tree';
 import type { ObserveObservationRow } from '../../observe/types';
-import { useAgents, useDaemonHealth, useTraceDetail } from '../../observe/useObserve';
+import { useAgents, useDaemonDown, useDaemonHealth, useTraceDetail } from '../../observe/useObserve';
 import { navigate } from '../../router/router';
 import { useQueryState } from '../../router/useRoute';
 import { EmptyState } from '../../ui/EmptyState';
@@ -32,15 +31,6 @@ function useNow(running: boolean): number {
   return now;
 }
 
-/** Re-runs `retry` every `pollMs` while `active` (the daemon-down state), so the screen recovers in place. */
-function usePollWhile(active: boolean, retry: () => void, pollMs: number): void {
-  useEffect(() => {
-    if (!active || pollMs <= 0) return undefined;
-    const timer = setInterval(retry, pollMs);
-    return () => clearInterval(timer);
-  }, [active, retry, pollMs]);
-}
-
 function rootOf(rows: ObserveObservationRow[]): ObserveObservationRow | undefined {
   return nestObservations(rows)[0]?.row;
 }
@@ -65,8 +55,7 @@ function useTrace(traceId: string, pollMs: number) {
   // A health flip back to "up" re-fetches the trace at once.
   const detail = useTraceDetail(traceId, health.down);
   const agents = useAgents(undefined, health.down);
-  const down = health.down || detail.error instanceof ObserveDaemonDownError;
-  usePollWhile(down, detail.refresh, pollMs);
+  const down = useDaemonDown(health.down, [detail], pollMs);
 
   const observations = detail.data?.observations;
   const root = useMemo(() => (observations ? rootOf(observations) : undefined), [observations]);
