@@ -12,7 +12,8 @@ test.beforeEach(async ({ page }) => {
 
 test('the page has landmarks, an h1 and a live run status', async ({ page }) => {
   await expect(page.getByRole('banner')).toHaveCount(1);
-  await expect(page.getByRole('navigation')).toHaveCount(1);
+  await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(1);
+  await expect(page.getByRole('navigation', { name: 'Agents and node palette' })).toHaveCount(1);
   await expect(page.getByRole('main')).toHaveCount(1);
   await expect(page.getByRole('complementary', { name: 'Inspector' })).toHaveCount(1);
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Agent Forge');

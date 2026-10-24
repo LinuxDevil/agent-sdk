@@ -1,4 +1,4 @@
-import { useCallback, useSyncExternalStore } from 'react';
+import { useCallback, useRef, useSyncExternalStore } from 'react';
 import { navigate, parseHash, type Route } from './router';
 
 let cachedHash: string | null = null;
@@ -31,18 +31,21 @@ export function useQueryState<T>(
   format: (v: T) => string | null,
 ): [T, (v: T) => void] {
   const route = useRoute();
+  // Held in a ref so the setter keeps its identity when callers pass inline lambdas.
+  const formatRef = useRef(format);
+  formatRef.current = format;
   const value = parse(route.query.get(key));
   const set = useCallback(
     (v: T) => {
       const { path, query } = parseHash(window.location.hash);
       const next = new URLSearchParams(query);
-      const s = format(v);
+      const s = formatRef.current(v);
       if (s === null) next.delete(key);
       else next.set(key, s);
       const qs = next.toString();
       navigate(qs ? `${path}?${qs}` : path, { replace: true });
     },
-    [key, format],
+    [key],
   );
   return [value, set];
 }

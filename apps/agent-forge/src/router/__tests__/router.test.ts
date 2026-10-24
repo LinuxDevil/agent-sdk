@@ -109,3 +109,26 @@ describe('useQueryState', () => {
     expect(result.current[0]).toBe(1);
   });
 });
+
+describe('useQueryState setter identity', () => {
+  it('stays referentially stable across re-renders with inline parse/format lambdas', async () => {
+    navigate('/traces');
+    await tick();
+    const { result } = renderHook(() =>
+      useQueryState<number>(
+        'page',
+        (s) => (s === null ? 1 : Number(s)),
+        (v) => (v === 1 ? null : String(v)),
+      ),
+    );
+    const first = result.current[1];
+    act(() => first(2));
+    await act(tick);
+    expect(result.current[0]).toBe(2);
+    expect(result.current[1]).toBe(first);
+    // The latest format is still used by the stable setter.
+    act(() => first(1));
+    await act(tick);
+    expect(window.location.hash).toBe('#/traces');
+  });
+});
