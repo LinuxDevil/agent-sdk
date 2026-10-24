@@ -22,7 +22,7 @@ import { observeTargetFromEnv } from '../observe/emit';
 import { observeExporterFromEnv, queueObserveEvents, type ObserveReporter } from '../observe/reporter';
 import type { IngestEvent } from '../observe/envelope';
 import { newId } from '../utils/id';
-import type { EvalResult } from './evalResult';
+import { gateFailures, type EvalResult } from './evalResult';
 import { isRemoteTarget } from './remoteTarget';
 
 /**
@@ -44,8 +44,8 @@ export function scoredAgentName(agent: unknown): string | undefined {
  * `name` is `<evalName>/<assertionName>`, llmJudge verdicts land with
  * `source: 'judge'`, everything else `'eval'`. `score_id` is fresh per
  * emission - a re-run is a new row, not an upsert, so eval history keeps
- * every attempt. The closing `<evalName>` row is 1 when every assertion passed, else 0 with the
- * failed assertion names as its comment; a result with no assertions emits nothing.
+ * every attempt. The closing `<evalName>` row is 1 unless a gate assertion failed or the case
+ * threw (else 0, commenting the failed gate names or the error); a result with no assertions emits nothing.
  */
 export function scoreEventsOf(
   result: EvalResult,
@@ -67,18 +67,20 @@ export function scoreEventsOf(
     },
   }));
   if (result.assertions.length === 0) return rows;
-  // The eval-level row: 1 when every assertion passed, else 0 with the failed names as its comment.
+  // The eval-level row follows the eval's own verdict: 1 unless a gate assertion failed or the case threw
+  // (soft failures never fail an eval; they keep their own rows). The comment names the failed gates, or the error.
   // The case label rides on the eval span that owns this trace (`lousho.eval.case`); score events carry no attrs.
-  const failed = result.assertions.filter((assertion) => !assertion.passed).map((assertion) => assertion.name);
+  const failed = gateFailures(result).map((assertion) => assertion.name);
+  const comment = failed.length > 0 ? failed.join('; ') : result.error;
   rows.push({
     type: 'score',
     data: {
       score_id: id(),
       trace_id: options.traceId,
       name: result.name,
-      value: failed.length === 0 ? 1 : 0,
+      value: comment === undefined ? 1 : 0,
       source: 'eval',
-      ...(failed.length > 0 ? { comment: failed.join('; ') } : {}),
+      ...(comment !== undefined ? { comment } : {}),
       ...(options.agentId !== undefined ? { agent_id: options.agentId } : {}),
       ts,
     },

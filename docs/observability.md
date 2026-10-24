@@ -497,7 +497,7 @@ any child that finished and was already sent.
 
 Eval scores flow through the same pipe —
 `lousho eval --observe` emits them even when `LOUSHO_OBSERVE` is unset.
-Each case yields one `<eval>/<check>` row per assertion plus one `<eval>` pass/fail row (1 or 0).
+Each case yields one `<eval>/<check>` row per assertion plus one `<eval>` pass/fail row (1 when every gate check passed, else 0).
 
 Human feedback is a score too. `POST /api/v1/scores` with
 `{ "trace_id", "obs_id"?, "name", "value", "comment"? }` (`value` a number or

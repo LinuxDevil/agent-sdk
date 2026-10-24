@@ -111,6 +111,18 @@ describe('scoreEventsOf', () => {
     expect(scoreEventsOf(result({ assertions: [] }), { traceId: 't' })).toEqual([]);
   });
 
+  it('eval-level row ignores soft failures, and goes to 0 with the error text when the case threw', () => {
+    const lastOf = (r: EvalResult) => {
+      const events = scoreEventsOf(r, { traceId: 't' });
+      return (events[events.length - 1] as Extract<IngestEvent, { type: 'score' }>).data;
+    };
+    const softOnly = lastOf(result()); // completed() gate passes, tone soft fails
+    expect(softOnly).toMatchObject({ name: 'refund eval', value: 1 });
+    expect(softOnly.comment).toBeUndefined();
+    const threw = lastOf(result({ error: 'send() failed', passed: false, assertions: [{ name: 'completed()', kind: 'gate', passed: true, score: 1 }] }));
+    expect(threw).toMatchObject({ value: 0, comment: 'send() failed' });
+  });
+
   it('omits comment and agent_id when absent', () => {
     const events = scoreEventsOf(result({ assertions: [{ name: 'a', kind: 'gate', passed: true, score: 1 }] }), { traceId: 't' });
     const data = (events[0] as Extract<IngestEvent, { type: 'score' }>).data;
