@@ -21,6 +21,7 @@ import {
   defaultDbPath,
   defaultPidPath,
   isObserveDaemon,
+  sameDbPath,
   probeHealth,
   startObserveDaemon,
   type HealthProbe,
@@ -135,6 +136,12 @@ async function runStart(args: string[]): Promise<number> {
     if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
       const health = await probeHealth(port, host);
       if (isObserveDaemon(health)) {
+        if (health.db !== undefined && !sameDbPath(health.db, dbPath)) {
+          console.error(
+            `lousho observe: port ${port} is serving ${health.db}, not ${dbPath}. Pass --port <free> for this db, or stop that daemon first.`
+          );
+          return 1;
+        }
         console.log(`lousho observe: already running on http://${host}:${port} (service ${OBSERVE_SERVICE}, version ${health.version ?? 'unknown'}).`);
         return 0;
       }
@@ -225,8 +232,13 @@ async function runStop(args: string[]): Promise<number> {
   const dbPath = dbPathOf(values.db);
   const pidPath = defaultPidPath(dbPath);
   let pid: number | undefined;
+  let pidPort: number | undefined;
   try {
-    pid = Number(fs.readFileSync(pidPath, 'utf8').trim());
+    // Line 1 is the pid; line 2 (newer daemons) the port it listens on.
+    const [pidLine = '', portLine] = fs.readFileSync(pidPath, 'utf8').split(/\r?\n/);
+    pid = Number(pidLine.trim());
+    const parsedPort = Number(portLine?.trim());
+    if (Number.isInteger(parsedPort) && parsedPort > 0) pidPort = parsedPort;
   } catch {
     pid = undefined;
   }
@@ -235,6 +247,16 @@ async function runStop(args: string[]): Promise<number> {
       `lousho observe: no pidfile at ${pidPath}. If a daemon is running, stop it with Ctrl+C (or 'kill <pid>' / Task Manager).`
     );
     return 1;
+  }
+  if (pidPort !== undefined) {
+    // Never signal a pid whose daemon is serving a different db (or is not ours).
+    const health = await probeHealth(pidPort);
+    if (health !== undefined && (!isObserveDaemon(health) || (health.db !== undefined && !sameDbPath(health.db, dbPath)))) {
+      console.error(
+        `lousho observe: pid ${pid} in ${pidPath} serves ${isObserveDaemon(health) ? health.db : 'another service'}, not ${dbPath}; not signalling it. Remove the stale pidfile if it is wrong.`
+      );
+      return 1;
+    }
   }
   try {
     process.kill(pid, 'SIGTERM');
