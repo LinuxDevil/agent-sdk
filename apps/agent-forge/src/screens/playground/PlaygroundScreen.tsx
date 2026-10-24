@@ -19,6 +19,15 @@ const EMPTY_MESSAGES: PlaygroundMessage[] = [
   { role: 'user', content: '' },
 ];
 
+/** The query keys that name a deep link; the screen remounts (and re-loads) when any of them changes. */
+const DEEP_LINK_KEYS = ['trace', 'fromObs', 'prompt'];
+
+/** `#/playground` keyed on its deep link, so back/forward between two links loads the second one. */
+export function PlaygroundRoute() {
+  const { query } = useRoute();
+  return <PlaygroundScreen key={DEEP_LINK_KEYS.map((k) => query.get(k) ?? '').join('|')} />;
+}
+
 /**
  * `#/playground` - try messages against a model without editing an agent:
  * message rows, `{variable}` inputs, a model picker, tools borrowed from a

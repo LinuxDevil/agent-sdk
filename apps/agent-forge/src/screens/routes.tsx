@@ -8,7 +8,7 @@ import { AgentsScreen } from './agents/AgentsScreen';
 import { TraceScreen } from './traces/TraceScreen';
 import { MonitoringScreen } from './monitoring/MonitoringScreen';
 import { ScoresScreen } from './scores/ScoresScreen';
-import { PlaygroundScreen } from './playground/PlaygroundScreen';
+import { PlaygroundRoute } from './playground/PlaygroundScreen';
 import { useLeaveAgentsGuard } from './agents/useLeaveAgentsGuard';
 import { Placeholder } from './Placeholder';
 
@@ -109,7 +109,7 @@ export function Screens() {
   if (screen === 'trace') content = <TraceRoute />;
   else if (screen === 'monitoring') content = <MonitoringScreen />;
   else if (screen === 'scores') content = <ScoresScreen />;
-  else if (screen === 'playground') content = <PlaygroundScreen />;
+  else if (screen === 'playground') content = <PlaygroundRoute />;
   else if (observeTab) content = <ObserveView tab={observeTab} onTabChange={(tab) => navigate(TAB_PATH[tab])} />;
   else if (placeholder) content = <Placeholder {...placeholder} />;
   else

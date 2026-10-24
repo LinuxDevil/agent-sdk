@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from '../../../ui/__tests__/render';
 import { ToastProvider } from '../../../ui/Toast';
 import type { ObserveObservationRow, ObserveTraceDetail } from '../../../observe/types';
-import { PlaygroundScreen } from '../PlaygroundScreen';
+import { PlaygroundRoute, PlaygroundScreen } from '../PlaygroundScreen';
 
 function gen(over: Partial<ObserveObservationRow> & { obs_id: string }): ObserveObservationRow {
   return {
@@ -272,5 +272,31 @@ describe('PlaygroundScreen', () => {
     const save = button(c, 'Save as new prompt version');
     expect(save.disabled).toBe(true);
     expect(c.querySelector('.pg-save .pg-hint')?.textContent).toContain('system message');
+  });
+});
+
+describe('PlaygroundRoute', () => {
+  it('re-loads when the deep link changes while mounted (back/forward between links)', async () => {
+    server((url) =>
+      url === '/observe/api/v1/prompts/other/latest'
+        ? json(200, { prompt: { ...PROMPT, name: 'other', text: 'Other prompt.' } })
+        : undefined,
+    );
+    window.history.replaceState(null, '', '/#/playground?prompt=greeter');
+    const c = render(
+      <ToastProvider>
+        <PlaygroundRoute />
+      </ToastProvider>,
+    );
+    await waitFor(() => contents(c)[0] === 'You are {persona}.');
+    act(() => {
+      window.location.hash = '#/playground?prompt=other';
+    });
+    await waitFor(() => contents(c)[0] === 'Other prompt.');
+    expect((c.querySelector('.pg-save input') as HTMLInputElement).value).toBe('other');
+    act(() => {
+      window.location.hash = '#/playground?trace=t1&fromObs=g1';
+    });
+    await waitFor(() => contents(c)[1] === 'Hi there');
   });
 });

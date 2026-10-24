@@ -81,6 +81,10 @@ describe('modelFromObservation', () => {
       provider: 'openai',
       model: 'gpt-4o-mini',
     });
+    expect(modelFromObservation(gen({ model: 'openai/gpt-4o', attrs: { 'gen_ai.provider.name': 'openai' } }))).toEqual({
+      provider: 'openai',
+      model: 'gpt-4o',
+    });
     expect(modelFromObservation(gen({ model: 'claude-x' }))).toEqual({ provider: '', model: 'claude-x' });
     expect(modelFromObservation(gen({ model: 'ollama/llama3.2' }))).toEqual({ provider: 'ollama', model: 'llama3.2' });
     expect(modelFromObservation(gen({}))).toBeUndefined();

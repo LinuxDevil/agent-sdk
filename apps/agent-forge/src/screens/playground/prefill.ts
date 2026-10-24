@@ -64,7 +64,8 @@ export function messagesFromObservation(row: ObserveObservationRow): PlaygroundM
 export function modelFromObservation(row: ObserveObservationRow): { provider: string; model: string } | undefined {
   if (!row.model) return undefined;
   const fromAttrs = PROVIDER_ATTRS.map((key) => row.attrs?.[key]).find((v): v is string => typeof v === 'string' && v !== '');
-  if (fromAttrs) return { provider: fromAttrs, model: row.model };
+  // A model already recorded as `provider/model` keeps one prefix, not two.
+  if (fromAttrs) return { provider: fromAttrs, model: row.model.startsWith(`${fromAttrs}/`) ? row.model.slice(fromAttrs.length + 1) : row.model };
   const slash = row.model.indexOf('/');
   return slash > 0 ? { provider: row.model.slice(0, slash), model: row.model.slice(slash + 1) } : { provider: '', model: row.model };
 }
