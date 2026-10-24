@@ -1154,3 +1154,87 @@ export function rollupSeries(
       value: Number(row.value),
     }));
 }
+
+export interface SessionFilter {
+  agent_id?: string;
+  status?: string;
+  /** Session start >= `from` (ms epoch; the window is half-open `[from, to)`). */
+  from?: number;
+  /** Session start < `to`. */
+  to?: number;
+  limit: number;
+  offset: number;
+}
+
+/** One conversation thread: the session row plus its runs' totals. */
+export interface SessionRow {
+  session_id: string;
+  agent_id: string | null;
+  /** The agent's registered name (from its heartbeat), or null. */
+  agent_name: string | null;
+  status: string;
+  started_at: number;
+  ended_at: number | null;
+  /** Distinct traces among the session's observations. */
+  traces: number;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  /** The first 200 characters of the latest-starting trace's root input, or null. */
+  last_input_preview: string | null;
+}
+
+const SESSION_SELECT = `
+  SELECT s.session_id, s.agent_id, s.status, s.started_at, s.ended_at,
+    (SELECT a.name FROM agents a WHERE a.agent_id = s.agent_id) AS agent_name,
+    (SELECT COUNT(DISTINCT o.trace_id) FROM observations o WHERE o.session_id = s.session_id) AS traces,
+    (SELECT COALESCE(SUM(o.usage_input_tokens), 0) FROM observations o WHERE o.session_id = s.session_id) AS input_tokens,
+    (SELECT COALESCE(SUM(o.usage_output_tokens), 0) FROM observations o WHERE o.session_id = s.session_id) AS output_tokens,
+    (SELECT COALESCE(SUM(o.cost_usd), 0) FROM observations o WHERE o.session_id = s.session_id) AS cost_usd,
+    (SELECT substr(r.input, 1, 200) FROM observations r
+      WHERE r.session_id = s.session_id AND r.parent_obs_id IS NULL
+      ORDER BY r.start DESC, r.obs_id DESC LIMIT 1) AS last_input_preview
+  FROM sessions s
+`;
+
+function sessionRow(row: Record<string, unknown>): SessionRow {
+  return {
+    session_id: String(row.session_id),
+    agent_id: nullableText(row.agent_id),
+    agent_name: nullableText(row.agent_name),
+    status: String(row.status),
+    started_at: Number(row.started_at),
+    ended_at: row.ended_at === null || row.ended_at === undefined ? null : Number(row.ended_at),
+    traces: Number(row.traces),
+    input_tokens: Number(row.input_tokens),
+    output_tokens: Number(row.output_tokens),
+    cost_usd: Number(row.cost_usd),
+    last_input_preview: nullableText(row.last_input_preview),
+  };
+}
+
+/** Sessions, newest first (`started_at` desc, `session_id` tiebreak), with the total before paging. */
+export function listSessions(db: SqlDatabase, filter: SessionFilter): { sessions: SessionRow[]; total: number } {
+  const params: (string | number)[] = [];
+  let where = '1 = 1';
+  const add = (clause: string, value: string | number | undefined): void => {
+    if (value === undefined) return;
+    where += ` AND ${clause}`;
+    params.push(value);
+  };
+  add('s.agent_id = ?', filter.agent_id);
+  add('s.status = ?', filter.status);
+  add('s.started_at >= ?', filter.from);
+  add('s.started_at < ?', filter.to);
+  const total = Number(db.prepare(`SELECT COUNT(*) AS n FROM sessions s WHERE ${where}`).get(...params)?.n ?? 0);
+  const rows = db
+    .prepare(`${SESSION_SELECT} WHERE ${where} ORDER BY s.started_at DESC, s.session_id DESC LIMIT ? OFFSET ?`)
+    .all(...params, filter.limit, filter.offset);
+  return { sessions: rows.map(sessionRow), total };
+}
+
+/** One session by id, or undefined. */
+export function getSession(db: SqlDatabase, sessionId: string): SessionRow | undefined {
+  const row = db.prepare(`${SESSION_SELECT} WHERE s.session_id = ?`).get(sessionId);
+  return row ? sessionRow(row) : undefined;
+}

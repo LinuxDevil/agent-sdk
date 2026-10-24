@@ -504,6 +504,22 @@ trace, newest first. Query parameters (all optional):
 | `order` | `desc` (default) or `asc`. |
 | `limit`, `offset` | Page size (1-500, default 50) and offset. |
 
+### Sessions (threads) API
+
+`GET /api/v1/sessions` returns `{ sessions, total, limit, offset }`, newest
+first (`started_at` descending). Query parameters (all optional): `agent_id`,
+`status` (exact match), `from` / `to` (session start in ms epoch, half-open
+`from <= started_at < to`), and `limit` / `offset` (1-500, default 50). Each
+session row is `{ session_id, agent_id, agent_name, status, started_at,
+ended_at, traces, input_tokens, output_tokens, cost_usd, last_input_preview }`:
+`traces` counts distinct trace ids, tokens and cost sum the session's
+observations, and `last_input_preview` is the first 200 characters of the root
+input of its latest trace.
+
+`GET /api/v1/sessions/:id` returns `{ session, traces }` with the traces
+(same rows as the trace list) ordered by start ascending, capped at 500; an
+unknown id is a 404 with code `LOUSHO_REQUEST_INVALID`.
+
 An unknown `sort` or `order`, or a non-numeric `min_duration_ms`, answers
 `400` with code `LOUSHO_REQUEST_INVALID`.
 
