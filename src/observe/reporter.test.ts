@@ -325,6 +325,76 @@ describe('observeExporter', () => {
       expect(posted[1]!.events.map((e) => e.type)).toEqual(['observation', 'observation', 'agent.deregister']);
       expect(r.dropped).toBe(3);
     });
+
+    it('requeues a batch too large to spread into call arguments, and the flush chain survives', async () => {
+      const unhandled: unknown[] = [];
+      const onUnhandled = (reason: unknown) => unhandled.push(reason);
+      process.on('unhandledRejection', onUnhandled);
+      try {
+        // Count events without JSON.parse-ing a ~50MB body twice.
+        const sizes: number[] = [];
+        const fetchFn = vi.fn(async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+          sizes.push(String(init?.body).split('"type":').length - 1);
+          if (sizes.length === 1) throw new TypeError('fetch failed');
+          return new Response('{}', { status: 202 });
+        }) as unknown as typeof fetch;
+        const total = 500_000; // past the spread limit even on a worker thread's larger stack (200k fits there)
+        const { r } = reporter({ fetchFn, maxBuffered: total, flushSize: total + 1, flushIntervalMs: 1000 });
+        for (let i = 0; i < total; i++) r.onSpanEnd({ id: `s${i}`, name: 'n', attributes: {}, startTime: 1, endTime: 2 });
+        await vi.advanceTimersByTimeAsync(1000); // rejected: the whole batch is requeued
+        await vi.advanceTimersByTimeAsync(1000); // the retry still runs and carries all of it
+        expect(sizes).toEqual([total, total]);
+        expect(r.dropped).toBe(0);
+        await r.close();
+        expect(sizes).toHaveLength(3); // the chain still runs close()'s flush (the deregister)
+        await vi.advanceTimersByTimeAsync(10); // let any stray rejection surface
+        expect(unhandled).toEqual([]);
+      } finally {
+        process.off('unhandledRejection', onUnhandled);
+      }
+    }, 60_000);
+  });
+
+  it('clamps maxBuffered to 1 so the deregister survives', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const { r, posted } = reporter({ maxBuffered: 0 });
+      const span = makeSpan();
+      r.onSpanStart(span);
+      r.onSpanEnd(span); // fits in the single slot
+      await r.close(); // the deregister evicts it
+      expect(allEvents(posted).map((e) => e.type)).toEqual(['agent.deregister']);
+      expect(r.dropped).toBe(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('close() aborts a regular flush in flight and sends its batch in the final attempt', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const posted: PostedBatch[] = [];
+      const fetchFn = vi.fn(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        posted.push({ url: String(input), events: (JSON.parse(String(init?.body)) as { batch: IngestEvent[] }).batch });
+        if (posted.length > 1) return new Response('{}', { status: 202 });
+        // The first POST hangs until its signal fires (a daemon that accepted the socket but never answers).
+        return new Promise<Response>((_, reject) => init?.signal?.addEventListener('abort', () => reject(init.signal?.reason)));
+      }) as unknown as typeof fetch;
+      const { r } = reporter({ fetchFn, flushSize: 1, requestTimeoutMs: 60_000 });
+      const span = makeSpan({ id: 'hung' });
+      r.onSpanStart(span);
+      r.onSpanEnd(span); // size flush: in flight, hanging
+      await vi.waitFor(() => expect(posted).toHaveLength(1));
+      const started = Date.now();
+      await r.close();
+      expect(Date.now() - started).toBeLessThan(1000);
+      expect(posted).toHaveLength(2);
+      expect(posted[1]!.events.map((e) => (e.type === 'observation' ? e.data.obs_id : e.type))).toEqual(['hung', 'agent.deregister']);
+      expect(r.dropped).toBe(0);
+      expect(warn).not.toHaveBeenCalled(); // a healthy daemon: no outage warning for the aborted flush
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('emits a heartbeat immediately when heartbeats are on', async () => {

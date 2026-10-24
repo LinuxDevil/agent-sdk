@@ -12,7 +12,9 @@
  * Rules it lives by (the tracing-insights spec):
  * - One event per FINISHED span (`start`+`end`); `obs_id` is the span's own
  *   id (the `TraceLine.id`), so a resent batch upserts by key.
- * - Flush on size (50), on interval (5s), and on process exit (~2s cap).
+ * - Flush on size (50), on interval (5s), and on process exit (~2s cap:
+ *   close() aborts a regular flush still in flight and makes one final
+ *   attempt with the 2s timeout).
  *   Crash loss is accepted and bounded: nothing persists mid run.
  * - The daemon being down requeues the failed batch and retries with
  *   exponential backoff (1s base, 30s cap); only events evicted past the
@@ -59,9 +61,9 @@ export interface ObserveExporterOptions {
   flushIntervalMs?: number;
   /** Heartbeat cadence (default 60000ms); `0` disables heartbeats. */
   heartbeatIntervalMs?: number;
-  /** Buffer cap; past it the oldest events are evicted into `dropped` (default 5000). */
+  /** Buffer cap; past it the oldest events are evicted into `dropped` (default 5000, floor 1). */
   maxBuffered?: number;
-  /** Per-request timeout (default 5000ms); the exit flush always caps at ~2000ms. */
+  /** Per-request timeout (default 5000ms); close() aborts such a request and caps its final attempt at ~2000ms. */
   requestTimeoutMs?: number;
   /** Project dir for `.lousho/identity/`; default `process.cwd()`. */
   cwd?: string;
@@ -120,7 +122,7 @@ const retryDelayMs = (failures: number): number => Math.min(RETRY_BASE_MS * 2 **
  * there is room to keep it.
  */
 function createOutbox(cap: number, now: () => number, onEvict: (count: number) => void) {
-  const items: IngestEvent[] = [];
+  let items: IngestEvent[] = [];
   let failures = 0;
   let retryAt = 0;
   const trim = (): void => {
@@ -150,8 +152,8 @@ function createOutbox(cap: number, now: () => number, onEvict: (count: number) =
       retryAt = 0;
     },
     /** Put a failed batch back in front of anything queued since, trim to the cap, and back off. */
-    failed(batch: readonly IngestEvent[]): void {
-      items.unshift(...batch);
+    failed(batch: IngestEvent[]): void {
+      items = batch.concat(items); // no spread: a batch can hold up to `cap` events, too many for call arguments
       trim();
       retryAt = now() + retryDelayMs(failures++);
     },
@@ -269,7 +271,8 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
   const flushSize = options.flushSize ?? DEFAULT_FLUSH_SIZE;
   const flushIntervalMs = options.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS;
   const heartbeatIntervalMs = options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_MS;
-  const maxBuffered = options.maxBuffered ?? DEFAULT_MAX_BUFFERED;
+  // At least 1: with 0 every event, the deregister included, would be evicted on arrival.
+  const maxBuffered = Math.max(1, options.maxBuffered ?? DEFAULT_MAX_BUFFERED);
   const requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   let promptUse = options.promptUse;
 
@@ -311,12 +314,16 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
     push(event);
   };
 
-  const post = async (events: IngestEvent[], timeoutMs: number): Promise<void> => {
+  /** Aborted by close() so a regular flush in flight can't hold the exit flush past its ~2s cap. */
+  const closing = new AbortController();
+
+  const post = async (events: IngestEvent[], timeoutMs: number, final: boolean): Promise<void> => {
+    const timeout = AbortSignal.timeout(timeoutMs);
     const res = await fetchFn(`${url}/api/v1/ingest`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ batch: events }),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: final ? timeout : AbortSignal.any([timeout, closing.signal]),
     });
     if (!res.ok) {
       throw new SDKError(`ingest answered ${res.status}`, 'LOUSHO_REMOTE_REQUEST_FAILED', { appendHelp: false });
@@ -326,22 +333,26 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
   // Flushes are serialized on a chain: a fire-and-forget size flush and the
   // exit flush can overlap, and close() must not resolve while its own POST
   // is still in flight. `final` is close()'s last attempt: it ignores the
-  // backoff and counts what it could not send as dropped.
+  // backoff and counts what it could not send as dropped. Each link swallows
+  // its own errors: a rejected link would skip every later flush and surface
+  // as an unhandled rejection at the `void flush()` call sites.
   let chain: Promise<void> = Promise.resolve();
+  const send = async (timeoutMs: number, final: boolean): Promise<void> => {
+    const batch = outbox.take(final);
+    if (batch.length === 0) return;
+    try {
+      await post(batch, timeoutMs, final);
+      outbox.delivered();
+    } catch (error) {
+      // Never slow or fail a run: requeue for a later retry, drop-and-count only as the last resort.
+      // close() aborting a regular flush is not an outage: its batch rides along in the final attempt.
+      if (final || !closing.signal.aborted) warnOnce(`could not reach the observe daemon at ${url}`, error);
+      if (final) droppedCount += batch.length;
+      else outbox.failed(batch);
+    }
+  };
   const flush = (timeoutMs: number, final = false): Promise<void> => {
-    const run = chain.then(async () => {
-      const batch = outbox.take(final);
-      if (batch.length === 0) return;
-      try {
-        await post(batch, timeoutMs);
-        outbox.delivered();
-      } catch (error) {
-        // Never slow or fail a run: requeue for a later retry, drop-and-count only as the last resort.
-        warnOnce(`could not reach the observe daemon at ${url}`, error);
-        if (final) droppedCount += batch.length;
-        else outbox.failed(batch);
-      }
-    });
+    const run = chain.then(() => send(timeoutMs, final)).catch(() => undefined);
     chain = run;
     return run;
   };
@@ -390,10 +401,13 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
         // no process.off in this runtime
       }
     }
-    // Graceful exit: say goodbye, then one final flush with the ~2s cap. push()
-    // directly (enqueue drops after close); a full buffer evicts its oldest event
-    // rather than the deregister.
-    push({ type: 'agent.deregister', data: { agent_id: identity.agentId, ts: now() } });
+    // Graceful exit: say goodbye, then one final flush with the ~2s cap. Straight
+    // into the outbox (enqueue drops after close, push could start a regular size
+    // flush); a full buffer evicts its oldest event rather than the deregister.
+    // Aborting `closing` fails a regular flush still in flight at once - its
+    // batch is requeued and rides along in the final attempt.
+    outbox.push({ type: 'agent.deregister', data: { agent_id: identity.agentId, ts: now() } });
+    closing.abort();
     await flush(EXIT_FLUSH_TIMEOUT_MS, true);
   };
 
