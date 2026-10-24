@@ -1,7 +1,8 @@
 /**
  * The 'isolate' driver against an injected `isolated-vm` module, so the
  * timeout/OOM/driver mapping and the memory/timeout forwarding are tested
- * without the native package.
+ * without the native package. The last block runs the real driver against the
+ * native package (compat CI only; see probeIsolatedVm below).
  */
 import { createRequire } from 'node:module';
 import { describe, it, expect } from 'vitest';
@@ -124,6 +125,17 @@ describe('createIsolateDriver', () => {
     const driver = createIsolateDriver(module, LIMITS);
 
     await expect(driver.run('() => 1')).rejects.toMatchObject({ kind: 'driver', driver: 'isolate' });
+  });
+
+  it("maps isolated-vm's own eval timeout (isolate still alive) to a timeout SandboxError", async () => {
+    const { module } = fakeModule({
+      eval: () => {
+        throw new Error('Script execution timed out.');
+      },
+    });
+    const driver = createIsolateDriver(module, LIMITS);
+
+    await expect(driver.run('() => 1')).rejects.toMatchObject({ kind: 'timeout', driver: 'isolate' });
   });
 
   it("passes the code's own error through unchanged", async () => {

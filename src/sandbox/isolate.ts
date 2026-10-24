@@ -117,6 +117,10 @@ async function runIsolated(module: IvmModule, limits: IsolateLimits, code: strin
     if (timedOut) {
       throw new SandboxError(`the sandboxed run exceeded timeoutMs (${limits.timeoutMs} ms)`, 'timeout', DRIVER, { cause: error });
     }
+    // isolated-vm's own eval timeout beat our timer (the isolate is still alive).
+    if (error instanceof Error && /Script execution timed out/i.test(error.message)) {
+      throw new SandboxError(`the sandboxed run exceeded timeoutMs (${limits.timeoutMs} ms)`, 'timeout', DRIVER, { cause: error });
+    }
     // The engine disposed it otherwise: the memory cap is the only configured
     // limit, so a dead isolate means an OOM (or a crash we report the same way).
     if (isolate.isDisposed) {
