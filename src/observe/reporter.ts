@@ -139,7 +139,8 @@ const CRASH_FLUSH_TIMEOUT_MS = 1000;
  */
 const MAX_BUFFERED_BYTES = 32 * 1024 * 1024;
 /**
- * What a crash flush sends at most, newest first kept: the bodies are copied
+ * What a crash flush sends at most, open runs' root starts first, then the
+ * newest of the rest (see {@link crashSlice}): the bodies are copied
  * to the worker synchronously before the 1s wait starts, so the copy is
  * bounded too, and more would not get through in 1s anyway.
  */
@@ -182,6 +183,12 @@ const BATCH_BUDGET_BYTES = 4 * 1024 * 1024;
 interface OutboxEntry {
   json: string;
   bytes: number;
+  /**
+   * An open run's root start (no end queued yet): the outbox trim and the crash
+   * slice keep it over other events, so a run whose children overflow the
+   * buffer still appears. Cleared when the root's end is queued.
+   */
+  pinned?: boolean;
 }
 
 const utf8 = new TextEncoder();
@@ -227,17 +234,54 @@ function batchesOf(entries: readonly OutboxEntry[]): OutboxEntry[][] {
   return batches;
 }
 
-/** The newest of `entries` that fit in `budget` bytes, and how many older ones did not. */
-function newestWithin(entries: readonly OutboxEntry[], budget: number): { kept: OutboxEntry[]; cut: number } {
-  let start = entries.length;
-  for (let total = 0; start > 0 && total + entries[start - 1].bytes <= budget; start--) total += entries[start - 1].bytes;
-  return { kept: entries.slice(start), cut: start };
+/** Add to `keep` the newest of `entries` with this `pinned` flag, while they fit in `budget`; the budget left. */
+function keepNewest(entries: readonly OutboxEntry[], pinned: boolean, budget: number, keep: Set<OutboxEntry>): number {
+  let left = budget;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (Boolean(entry.pinned) !== pinned) continue;
+    if (entry.bytes > left) break;
+    keep.add(entry);
+    left -= entry.bytes;
+  }
+  return left;
+}
+
+/**
+ * What a crash flush sends of `entries` within `budget` bytes: open runs'
+ * root starts first (newest first should they alone pass it), then the newest
+ * of the rest - in queue order, so a start still goes ahead of its children -
+ * and how many did not fit.
+ */
+function crashSlice(entries: readonly OutboxEntry[], budget: number): { kept: OutboxEntry[]; cut: number } {
+  const keep = new Set<OutboxEntry>();
+  keepNewest(entries, false, keepNewest(entries, true, budget, keep), keep);
+  return { kept: entries.filter((entry) => keep.has(entry)), cut: entries.length - keep.size };
+}
+
+/**
+ * The oldest of `items` to evict until at most `cap` events and `byteCap` of
+ * their `bytes` remain - never the newest. Open runs' root starts go only
+ * once nothing else is left to evict; their bytes count against the caps.
+ */
+function evictionsOf(items: readonly OutboxEntry[], cap: number, byteCap: number, bytes: number): { evict: Set<OutboxEntry>; left: number } {
+  const evict = new Set<OutboxEntry>();
+  let left = bytes;
+  const over = (): boolean => items.length - evict.size > cap || left > byteCap;
+  for (const pinned of [false, true]) {
+    for (let i = 0; i < items.length - 1 && over(); i++) {
+      if (Boolean(items[i].pinned) !== pinned) continue;
+      evict.add(items[i]);
+      left -= items[i].bytes;
+    }
+  }
+  return { evict, left };
 }
 
 /**
  * The reporter's pending events: FIFO, capped at `cap` events and `byteCap`
- * bytes (the oldest are evicted first, the newest always stays, reported
- * through `onEvict`), and gated by a retry backoff
+ * bytes (the oldest are evicted first - open runs' root starts last, see
+ * {@link evictionsOf} - the newest always stays, reported through `onEvict`), and gated by a retry backoff
  * after a failed send. Every send path - size, interval, exit - goes through
  * `take` / `delivered` / `failed`, so a failed batch is never lost while
  * there is room to keep it. A batch is cut by {@link batchEnd}, oldest first.
@@ -249,13 +293,12 @@ function createOutbox(cap: number, byteCap: number, now: () => number, onEvict: 
   let retryAt = 0;
   const sizeOf = (entries: readonly OutboxEntry[]): number => entries.reduce((sum, e) => sum + e.bytes, 0);
   const trim = (): void => {
-    let over = Math.max(0, items.length - cap);
-    let left = bytes - sizeOf(items.slice(0, over));
-    for (; left > byteCap && over < items.length - 1; over++) left -= items[over].bytes;
-    if (over === 0) return;
-    items.splice(0, over);
+    if (items.length <= cap && bytes <= byteCap) return;
+    const { evict, left } = evictionsOf(items, cap, byteCap, bytes);
+    if (evict.size === 0) return;
+    items = items.filter((entry) => !evict.has(entry));
     bytes = left;
-    onEvict(over);
+    onEvict(evict.size);
   };
   return {
     get size(): number {
@@ -265,14 +308,15 @@ function createOutbox(cap: number, byteCap: number, now: () => number, onEvict: 
     ready(): boolean {
       return now() >= retryAt;
     },
-    /** Queue `event`; false (nothing queued) when it is too large for any request. */
-    push(event: IngestEvent): boolean {
+    /** Queue `event` (`pinned`: an open run's root start); undefined (nothing queued) when it is too large for any request. */
+    push(event: IngestEvent, pinned = false): OutboxEntry | undefined {
       const entry = entryOf(event);
-      if (!entry) return false;
+      if (!entry) return undefined;
+      if (pinned) entry.pinned = true;
       items.push(entry);
       bytes += entry.bytes;
       trim();
-      return true;
+      return entry;
     },
     /** The oldest batch, for one send - or nothing while backing off, unless `force` (the final attempt). */
     take(force = false): OutboxEntry[] {
@@ -459,18 +503,30 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
     warnDropOnce(why);
   };
 
-  const push = (event: IngestEvent) => {
-    if (!outbox.push(event)) discard(1, `an event is larger than the daemon's ${OBSERVE_MAX_BODY_BYTES}-byte request cap; dropping it`);
+  const push = (event: IngestEvent, pinned: boolean): OutboxEntry | undefined => {
+    const entry = outbox.push(event, pinned);
+    if (!entry) discard(1, `an event is larger than the daemon's ${OBSERVE_MAX_BODY_BYTES}-byte request cap; dropping it`);
     if (outbox.size >= flushSize && outbox.ready()) void flush(requestTimeoutMs);
+    return entry;
   };
 
-  const enqueue = (event: IngestEvent) => {
+  /** Queue `event`; `pinned` marks an open run's root start (see OutboxEntry). The entry, when queued. */
+  const enqueue = (event: IngestEvent, pinned = false): OutboxEntry | undefined => {
     // A span ending after close() has no flush left to catch it - count it as dropped.
     if (closed) {
       droppedCount++;
-      return;
+      return undefined;
     }
-    push(event);
+    return push(event, pinned);
+  };
+
+  /** Each open run's queued root start, by root span id: unpinned once its end is queued. */
+  const openStarts = new Map<string, OutboxEntry>();
+  const closeRoot = (id: string, ended: boolean): void => {
+    const start = openStarts.get(id);
+    openStarts.delete(id);
+    // The end upserts the same obs_id, so the start may go like any event now.
+    if (start && ended) start.pinned = false;
   };
 
   /** Aborted by close() so a regular flush in flight can't hold the exit flush past its ~2s cap. */
@@ -628,12 +684,13 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
    * Node exits as soon as the monitor returns, so no async send can finish.
    * Send what is pending, oldest first - the batch a regular POST was
    * carrying included (re-sent events upsert by key) - as successive POSTs,
-   * cut like any other batch, that together block for at most 1s. Only the
-   * newest CRASH_FLUSH_MAX_BYTES go; older events are counted as dropped.
+   * cut like any other batch, that together block for at most 1s. Only
+   * CRASH_FLUSH_MAX_BYTES go - open runs' root starts, then the newest of the
+   * rest (see {@link crashSlice}); the others are counted as dropped.
    */
   const crashFlush = (): void => {
     if (!shutdown()) return;
-    const { kept, cut } = newestWithin(inFlight.concat(outbox.drain()), CRASH_FLUSH_MAX_BYTES);
+    const { kept, cut } = crashSlice(inFlight.concat(outbox.drain()), CRASH_FLUSH_MAX_BYTES);
     droppedCount += cut;
     const batches = batchesOf(kept);
     const delivered = blockingPost(`${url}/api/v1/ingest`, headers, batches.map(bodyOf), CRASH_FLUSH_TIMEOUT_MS);
@@ -697,7 +754,8 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
       // root span's id (the run's obs_id). Sub-agent runs arrive with
       // parentSpanId set and do neither.
       if (span.parentId !== undefined) return;
-      enqueue({ type: 'observation', data: openObservationOf(span, identity.agentId, fallbackSessionId, now) });
+      const start = enqueue({ type: 'observation', data: openObservationOf(span, identity.agentId, fallbackSessionId, now) }, true);
+      if (start) openStarts.set(span.id, start);
       const use = promptUse?.();
       if (use !== undefined) {
         enqueue({
@@ -709,8 +767,9 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
     },
     onSpanEnd(span) {
       const traceId = targets.get(span.id) ?? span.id;
-      enqueue({ type: 'observation', data: observationOf(span, traceId, identity.agentId, fallbackSessionId, now) });
+      const end = enqueue({ type: 'observation', data: observationOf(span, traceId, identity.agentId, fallbackSessionId, now) });
       if (traceId !== span.id) return;
+      closeRoot(span.id, end !== undefined);
       // The root ended: forget every span of this trace so the map does not grow forever.
       for (const [id, tid] of targets) if (tid === traceId) targets.delete(id);
     },
