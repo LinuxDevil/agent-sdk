@@ -64,7 +64,8 @@ describe('lousho observe', () => {
   });
 
   it('start on the daemon\'s own port reports "already running" and exits 0', async () => {
-    const daemon = await start();
+    const daemon = await startObserveDaemon({ dbPath: dbPath(), port: 0 });
+    daemons.push(daemon);
     expect(await runObserve(['start', '--port', String(daemon.port), '--db', dbPath()])).toBe(0);
     expect(logs.at(-1)).toContain('already running');
   });
@@ -91,6 +92,38 @@ describe('lousho observe', () => {
     expect(await runObserve(['stop', '--db', db])).toBe(0);
     expect(logs.at(-1)).toContain('already gone');
     expect(fs.existsSync(pidPath)).toBe(false);
+  });
+
+  it('start --db b.db against a daemon serving a.db exits 1 naming the other db', async () => {
+    const a = path.join(cwd, 'a.db');
+    const daemon = await startObserveDaemon({ dbPath: a, port: 0 });
+    daemons.push(daemon);
+    expect(await runObserve(['start', '--port', String(daemon.port), '--db', path.join(cwd, 'b.db')])).toBe(1);
+    expect(errors.at(-1)).toContain(`port ${daemon.port} is serving ${path.resolve(a)}`);
+    // the same db is still "already running"
+    expect(await runObserve(['start', '--port', String(daemon.port), '--db', a])).toBe(0);
+    expect(logs.at(-1)).toContain('already running');
+  });
+
+  it('stop --db a.db does not signal a pid whose daemon serves b.db', async () => {
+    const b = await startObserveDaemon({ dbPath: path.join(cwd, 'b.db'), port: 0 });
+    daemons.push(b);
+    const a = path.join(cwd, 'a.db');
+    fs.writeFileSync(defaultPidPath(a), `${process.pid}\n${b.port}\n`);
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    expect(await runObserve(['stop', '--db', a])).toBe(1);
+    expect(kill).not.toHaveBeenCalled();
+    expect(errors.at(-1)).toContain('serves');
+    expect(fs.existsSync(defaultPidPath(a))).toBe(true);
+  });
+
+  it('stop signals the pid when its daemon serves this db', async () => {
+    const a = path.join(cwd, 'a.db');
+    const d = await startObserveDaemon({ dbPath: a, port: 0, pidPath: defaultPidPath(a) });
+    daemons.push(d);
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    expect(await runObserve(['stop', '--db', a])).toBe(0);
+    expect(kill).toHaveBeenCalledWith(process.pid, 'SIGTERM');
   });
 
   it('rebuild-rollups rebuilds the buckets of a local db', async () => {

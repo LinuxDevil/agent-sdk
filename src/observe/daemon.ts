@@ -34,9 +34,23 @@ export function defaultDbPath(homeDir: string = os.homedir()): string {
   return path.join(homeDir, '.lousho', 'observe.db');
 }
 
-/** Where the pidfile goes for a given db path (same directory, fixed name). */
+/**
+ * Where the pidfile goes for a given db path: `<dir>/<db name without .db>.pid`,
+ * so two daemons whose dbs share a folder never share a pidfile
+ * (`observe.db` keeps `observe.pid`).
+ */
 export function defaultPidPath(dbPath: string): string {
-  return path.join(path.dirname(resolveForFs(dbPath)), 'observe.pid');
+  const resolved = resolveForFs(dbPath);
+  const base = path.basename(resolved);
+  const stem = base.toLowerCase().endsWith('.db') && base.length > 3 ? base.slice(0, -3) : base;
+  return path.join(path.dirname(resolved), `${stem}.pid`);
+}
+
+/** Whether two db paths name the same file (resolved; case-insensitive on win32). */
+export function sameDbPath(a: string | undefined, b: string): boolean {
+  if (a === undefined) return false;
+  const norm = (p: string): string => (process.platform === 'win32' ? resolveForFs(p).toLowerCase() : resolveForFs(p));
+  return norm(a) === norm(b);
 }
 
 function resolveForFs(p: string): string {
@@ -154,6 +168,7 @@ export async function startObserveDaemon(options: ObserveDaemonOptions = {}): Pr
     let bodyRead: Promise<string> | undefined;
     const ctx: RouteContext = {
       db,
+      dbPath,
       req,
       res,
       params: match.params,
@@ -205,7 +220,8 @@ export async function startObserveDaemon(options: ObserveDaemonOptions = {}): Pr
   const pidPath = options.pidPath;
   if (pidPath !== undefined) {
     fs.mkdirSync(path.dirname(pidPath), { recursive: true });
-    fs.writeFileSync(pidPath, String(process.pid), 'utf8');
+    // Line 2 is the port, so `stop` can ask this daemon which db it serves.
+    fs.writeFileSync(pidPath, `${process.pid}\n${boundPort}\n`, 'utf8');
   }
 
   // The monitoring sweep: rewrites agents.status from heartbeat freshness,
@@ -250,6 +266,8 @@ export interface HealthProbe {
   service: string;
   ok: boolean;
   version?: string;
+  /** Absolute path of the db the daemon serves. */
+  db?: string;
 }
 
 /**

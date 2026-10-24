@@ -17,6 +17,8 @@ export { sendJson };
 /** What a handler gets: the request, the matched `:params`, the query, the db, and a bounded body reader. */
 export interface RouteContext {
   db: SqlDatabase;
+  /** The db file path the daemon was started with (`:memory:` for tests). */
+  dbPath: string;
   req: http.IncomingMessage;
   res: http.ServerResponse;
   params: Record<string, string>;

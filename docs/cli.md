@@ -273,7 +273,7 @@ are stored under `.lousho/` in the current directory. See
 ```bash
 npx lousho observe start                        # collector on http://127.0.0.1:7777
 npx lousho observe status                       # health + fleet counts
-npx lousho observe stop                         # pidfile + SIGTERM
+npx lousho observe stop                         # <db>.pid + SIGTERM (checks the daemon serves --db)
 npx lousho observe rebuild-rollups              # recompute insight aggregates
 npx lousho observe token create --project myapp # bearer key for non-loopback auth
 ```
@@ -283,7 +283,13 @@ set: traces, fleet monitoring, eval scores, the prompt registry and the
 context hub in one SQLite file (default `~/.lousho/observe.db`). The Studio
 Observe tabs read it. `start` takes `--port` (or `LOUSHO_OBSERVE_PORT`),
 `--db`, `--host`, `--require-token` and a repeatable `--webhook` for alert
-hooks. See [The observe daemon](./observability.md#the-observe-daemon).
+hooks. Each daemon writes its own `<db name>.pid` beside the db
+(`observe.db` gives `observe.pid`), so two dbs in one folder never share a
+pidfile. `start` exits 1 when the port already serves a different db, and
+`stop` refuses to signal when the daemon at the pidfile's port reports another
+db, and falls back to signalling when it cannot verify (unreachable, or an old
+one-line pidfile). See
+[The observe daemon](./observability.md#the-observe-daemon).
 
 ## `lousho prompt`
 
