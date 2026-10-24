@@ -76,6 +76,28 @@ if (typeof fn !== 'function') {
 return fn.apply(undefined, $1);
 `;
 
+/**
+ * What a failed run becomes: our own timer's kill or isolated-vm's eval timeout
+ * is 'timeout'; an isolate the engine disposed is 'oom' (the memory cap is the
+ * only configured limit, so a dead isolate means an OOM or a crash we report
+ * the same way); anything else is the code's own error, crossing unchanged.
+ */
+function classifyFailure(error: unknown, timedOut: boolean, disposed: boolean, limits: IsolateLimits): Error {
+  const engineTimeout = error instanceof Error && /Script execution timed out/i.test(error.message);
+  if (timedOut || engineTimeout) {
+    return new SandboxError(`the sandboxed run exceeded timeoutMs (${limits.timeoutMs} ms)`, 'timeout', DRIVER, { cause: error });
+  }
+  if (disposed) {
+    return new SandboxError(
+      `the sandboxed run exceeded the isolate's memory limit (memoryMb ${limits.memoryMb}) or crashed it`,
+      'oom',
+      DRIVER,
+      { cause: error }
+    );
+  }
+  return error instanceof Error ? error : new Error(typeof error === 'string' ? error : String(error));
+}
+
 async function runIsolated(module: IvmModule, limits: IsolateLimits, code: string, opts?: SandboxCallOptions): Promise<unknown> {
   let isolate: ivm.Isolate;
   try {
@@ -113,26 +135,7 @@ async function runIsolated(module: IvmModule, limits: IsolateLimits, code: strin
       stopped,
     ]);
   } catch (error) {
-    // Our timer disposed the isolate: the run outlasted timeoutMs.
-    if (timedOut) {
-      throw new SandboxError(`the sandboxed run exceeded timeoutMs (${limits.timeoutMs} ms)`, 'timeout', DRIVER, { cause: error });
-    }
-    // isolated-vm's own eval timeout beat our timer (the isolate is still alive).
-    if (error instanceof Error && /Script execution timed out/i.test(error.message)) {
-      throw new SandboxError(`the sandboxed run exceeded timeoutMs (${limits.timeoutMs} ms)`, 'timeout', DRIVER, { cause: error });
-    }
-    // The engine disposed it otherwise: the memory cap is the only configured
-    // limit, so a dead isolate means an OOM (or a crash we report the same way).
-    if (isolate.isDisposed) {
-      throw new SandboxError(
-        `the sandboxed run exceeded the isolate's memory limit (memoryMb ${limits.memoryMb}) or crashed it`,
-        'oom',
-        DRIVER,
-        { cause: error }
-      );
-    }
-    // The code's own error crosses unchanged (it is not a boundary failure).
-    throw error instanceof Error ? error : new Error(typeof error === 'string' ? error : String(error));
+    throw classifyFailure(error, timedOut, isolate.isDisposed, limits);
   } finally {
     clearTimeout(timer);
     if (!isolate.isDisposed) {
