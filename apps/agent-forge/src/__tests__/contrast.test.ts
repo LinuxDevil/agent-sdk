@@ -44,6 +44,9 @@ const PAIRS: [text: string, background: string][] = [
   ['info', 'surface-2'],
   // Primary buttons (Save) draw white text on the filled accent.
   ['on-accent', 'accent-solid'],
+  // DataTable: header sort arrow and hovered/focused row text on the header/row tint.
+  ['accent', 'surface-2'],
+  ['text', 'surface-2'],
 ];
 
 describe('theme contrast', () => {
