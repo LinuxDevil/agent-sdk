@@ -12,6 +12,12 @@
  * - On a transition to `down` the agent crashed (no deregister landed): its
  *   open sessions and unfinished observations flip to `interrupted`, so dead
  *   runs do not look alive.
+ * - Per instance (one reporter process of an agent): while the agent is
+ *   healthy - some process of it still heartbeats - an instance whose own
+ *   heartbeats went quiet past the `stale` boundary (~2 missed beats) is
+ *   dead, not slow: its open runs flip to `interrupted` and it is
+ *   forgotten. When no process of the agent is healthy the agent-level
+ *   `down` path above decides instead.
  * - Check today's error rate (day rollups) against the configured threshold;
  *   the crossing alert fires once per agent per day bucket, so a fleet stuck
  *   over the line warns once, not every 30s.
@@ -24,6 +30,7 @@ import {
   freshnessStatus,
   heartbeatIntervalFromMeta,
   interruptAgentWork,
+  interruptInstance,
   setAgentStatus,
   transaction,
 } from './store';
@@ -59,6 +66,37 @@ export interface SweepPassOptions {
 }
 
 /**
+ * Interrupt the open runs of every instance gone quiet past `stale` while
+ * another process of its agent is still healthy, and forget it. Each
+ * instance is judged on its own heartbeat interval (else the agent's) and on
+ * the daemon's receive times, so a sibling with a slower cadence or a skewed
+ * clock is not taken for dead. "Another process is healthy" is another
+ * healthy instance, or - for an older SDK reporting without an instance -
+ * the agent row's own freshness.
+ */
+function sweepInstances(db: SqlDatabase, now: number): void {
+  const rows = db
+    .prepare(
+      `SELECT i.agent_id, i.instance_id, i.last_heartbeat, i.heartbeat_interval_ms, a.last_heartbeat AS agent_heartbeat, a.meta
+       FROM agent_instances i JOIN agents a ON a.agent_id = i.agent_id`
+    )
+    .all();
+  const age = (ts: unknown): number => Math.max(0, now - Number(ts ?? 0));
+  const healthy = rows.map((row) => {
+    const interval = Number(row.heartbeat_interval_ms ?? heartbeatIntervalFromMeta(row.meta) ?? HEARTBEAT_INTERVAL_DEFAULT_MS);
+    return freshnessStatus(age(row.last_heartbeat), interval) === 'healthy';
+  });
+  rows.forEach((row, i) => {
+    if (healthy[i]) return;
+    const agentInterval = heartbeatIntervalFromMeta(row.meta) ?? HEARTBEAT_INTERVAL_DEFAULT_MS;
+    const otherAlive =
+      rows.some((other, j) => j !== i && healthy[j] && other.agent_id === row.agent_id) ||
+      freshnessStatus(age(row.agent_heartbeat), agentInterval) === 'healthy';
+    if (otherAlive) interruptInstance(db, String(row.agent_id), String(row.instance_id), now);
+  });
+}
+
+/**
  * One sweep pass: recompute statuses, persist transitions, interrupt crashed
  * agents' open work, and return the alerts this pass produced. The row
  * updates run in one transaction (same rule as ingest); alert delivery is
@@ -68,6 +106,7 @@ export function sweepAgents(db: SqlDatabase, now: number = Date.now(), options: 
   const transitions: AgentStatusTransition[] = [];
   const interrupted = new Map<string, { sessions: number; observations: number }>();
   transaction(db, () => {
+    sweepInstances(db, now);
     for (const row of db
       .prepare('SELECT agent_id, project, name, first_seen, last_heartbeat, status, meta FROM agents')
       .all()) {

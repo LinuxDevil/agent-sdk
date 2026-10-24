@@ -29,6 +29,14 @@ export const OBSERVE_MAX_BODY_BYTES = 5 * 1024 * 1024;
 /** `input`/`output` strings longer than this are cut and the row's `truncated` flag set (the flag must survive: Studio shows it). */
 export const OBSERVE_TRUNCATE_CHARS = 64 * 1024;
 
+/**
+ * The attribute a run's root observation carries: the reporter process
+ * (instance) that started the run, the same `instance_id` its heartbeats and
+ * deregister send. Lets the daemon interrupt a killed process's open runs
+ * while another process of the same agent keeps heartbeating.
+ */
+export const OBSERVE_INSTANCE_ATTR = 'lousho.instance_id';
+
 /** One ingest call carries at most this many events; bounds the write transaction's size. */
 export const OBSERVE_MAX_BATCH_EVENTS = 1000;
 
@@ -51,6 +59,12 @@ const agentHeartbeatData = z.object({
   heartbeat_interval_ms: z.number().optional(),
   hostname: z.string().optional(),
   pid: z.number().optional(),
+  /**
+   * The reporting process (random per process; `agent_id` is shared by a
+   * restart and by sibling processes). An empty string counts as absent.
+   * Older daemons strip it.
+   */
+  instance_id: z.string().optional(),
   meta: z.record(z.string(), z.unknown()).optional(),
 });
 /** `agent.deregister` - a graceful exit; the registry row flips to `stopped` instead of aging into `down`. */
@@ -58,10 +72,14 @@ const agentDeregisterData = z.object({
   agent_id: z.string().min(1),
   ts: z.number().optional(),
   reason: z.string().optional(),
+  /** The process that is exiting; only its open runs are interrupted. Empty counts as absent; older daemons strip it. */
+  instance_id: z.string().optional(),
 });
 /**
- * `observation` - one finished span (`obs_id` is the SDK's `TraceLine.id`, so a
- * resent batch upserts by key and `updated_at` gives last-writer-wins). The
+ * `observation` - one finished span, or a run's root span as it opens (no
+ * `end`; the finished span later replaces it, and a finished row is never
+ * reopened). `obs_id` is the SDK's `TraceLine.id`, so a resent batch upserts
+ * by key and `updated_at` gives last-writer-wins. The
  * `usage_*`/`cost_*` fields carry `StepUsage` verbatim; the daemon stores them
  * and never recomputes - `cost_partial` and `usage_estimated` must reach
  * Studio untouched or cost numbers lie.

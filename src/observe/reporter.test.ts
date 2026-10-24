@@ -64,6 +64,10 @@ function reporter(over: Parameters<typeof observeExporter>[0] = {}, fail = false
 const allEvents = (posted: PostedBatch[]): IngestEvent[] => posted.flatMap((p) => p.events);
 const observations = (posted: PostedBatch[]) =>
   allEvents(posted).filter((e): e is Extract<IngestEvent, { type: 'observation' }> => e.type === 'observation');
+/** Finished-span events only: a root span's start also posts an observation, one without `end`. */
+const finished = (posted: PostedBatch[]) => observations(posted).filter((o) => o.data.end !== undefined);
+// The queue-mechanics tests below finish root spans through onSpanEnd alone: an
+// onSpanStart would add the root's eager start event and its own flush (see 'eager root start').
 
 beforeEach(() => {
   cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-reporter-'));
@@ -93,7 +97,7 @@ describe('observeExporter', () => {
     r.onSpanEnd(root);
     await r.close();
 
-    const obs = observations(posted);
+    const obs = finished(posted);
     expect(obs).toHaveLength(2);
     const byRoot = obs.find((o) => o.data.obs_id === 'root')?.data;
     const byChild = obs.find((o) => o.data.obs_id === 'child')?.data;
@@ -115,7 +119,7 @@ describe('observeExporter', () => {
     r.onSpanStart(span);
     r.onSpanEnd(span);
     await r.close();
-    expect(observations(posted).find((o) => o.data.obs_id === 'ended')?.data.status).toBe('ok');
+    expect(finished(posted).find((o) => o.data.obs_id === 'ended')?.data.status).toBe('ok');
   });
 
   it('keeps an open span status unset', async () => {
@@ -124,7 +128,7 @@ describe('observeExporter', () => {
     r.onSpanStart(span);
     r.onSpanEnd(span);
     await r.close();
-    expect(observations(posted).find((o) => o.data.obs_id === 'open')?.data.status).toBeUndefined();
+    expect(finished(posted).find((o) => o.data.obs_id === 'open')?.data.status).toBeUndefined();
   });
 
   it('carries usage/cost/flags verbatim from gen_ai + lousho attrs', async () => {
@@ -148,7 +152,7 @@ describe('observeExporter', () => {
     r.onSpanEnd(span);
     await r.close();
 
-    const d = observations(posted)[0].data;
+    const d = finished(posted)[0].data;
     expect(d.kind).toBe('generation');
     expect(d.model).toBe('m-1');
     expect(d.usage_input_tokens).toBe(100);
@@ -168,7 +172,7 @@ describe('observeExporter', () => {
     r.onSpanStart(span);
     r.onSpanEnd(span);
     await r.close();
-    const d = observations(posted)[0].data;
+    const d = finished(posted)[0].data;
     expect(d.model).toBe('old-m');
     expect(d.usage_input_tokens).toBe(9);
     expect(d.input).toBe('hi');
@@ -179,7 +183,6 @@ describe('observeExporter', () => {
     const { r, posted } = reporter({ flushSize: 3 });
     for (let i = 0; i < 3; i++) {
       const span = makeSpan({ id: `s${i}` });
-      r.onSpanStart(span);
       r.onSpanEnd(span);
     }
     // the size flush is chained microtask work - one turn is enough
@@ -209,7 +212,6 @@ describe('observeExporter', () => {
       const { r } = reporter({ maxBuffered: 2, flushSize: 100 }, true);
       for (let i = 0; i < 5; i++) {
         const span = makeSpan();
-        r.onSpanStart(span);
         r.onSpanEnd(span);
       }
       expect(r.dropped).toBe(3);
@@ -236,7 +238,6 @@ describe('observeExporter', () => {
     const emit = (r: ObserveReporter, ids: string[]) => {
       for (const id of ids) {
         const span = makeSpan({ id });
-        r.onSpanStart(span);
         r.onSpanEnd(span);
       }
     };
@@ -398,7 +399,6 @@ describe('observeExporter', () => {
       const { r } = reporter({ fetchFn, flushSize: 1000 });
       for (let i = 0; i < 50; i++) {
         const span = bigSpan(`big${i}`, 200 * 1024);
-        r.onSpanStart(span);
         r.onSpanEnd(span);
       }
       await r.close();
@@ -413,7 +413,6 @@ describe('observeExporter', () => {
       const { fetchFn, calls } = sizedFetch();
       const { r } = reporter({ fetchFn, flushSize: 1000 });
       for (const span of [bigSpan('huge', 6 * 1024 * 1024), makeSpan({ id: 'after' })]) {
-        r.onSpanStart(span);
         r.onSpanEnd(span);
       }
       expect(r.dropped).toBe(1);
@@ -429,7 +428,6 @@ describe('observeExporter', () => {
       const { fetchFn, calls } = sizedFetch();
       const { r } = reporter({ fetchFn, flushSize: 1000 });
       for (const span of [makeSpan({ id: 'before' }), bigSpan('large', 2.2 * 1024 * 1024), makeSpan({ id: 'after' })]) {
-        r.onSpanStart(span);
         r.onSpanEnd(span);
       }
       await r.close();
@@ -443,7 +441,6 @@ describe('observeExporter', () => {
       const { r } = reporter({ fetchFn, flushSize: 2 });
       const finish = (id: string) => {
         const span = makeSpan({ id });
-        r.onSpanStart(span);
         r.onSpanEnd(span);
       };
       finish('a');
@@ -464,7 +461,6 @@ describe('observeExporter', () => {
     try {
       const { r, posted } = reporter({ maxBuffered: 0 });
       const span = makeSpan();
-      r.onSpanStart(span);
       r.onSpanEnd(span); // fits in the single slot
       await r.close(); // the deregister evicts it
       expect(allEvents(posted).map((e) => e.type)).toEqual(['agent.deregister']);
@@ -486,7 +482,6 @@ describe('observeExporter', () => {
       }) as unknown as typeof fetch;
       const { r } = reporter({ fetchFn, flushSize: 1, requestTimeoutMs: 60_000 });
       const span = makeSpan({ id: 'hung' });
-      r.onSpanStart(span);
       r.onSpanEnd(span); // size flush: in flight, hanging
       await vi.waitFor(() => expect(posted).toHaveLength(1));
       const started = Date.now();
@@ -539,11 +534,108 @@ describe('observeExporter', () => {
     expect(allEvents(posted).filter((e) => e.type === 'agent.deregister')).toHaveLength(1);
   });
 
+  describe('eager root start', () => {
+    it('enqueues and flushes a root span start before the run ends', async () => {
+      const { r, posted } = reporter();
+      const root = makeSpan({ id: 'run', endTime: undefined, attributes: { [GenAiAttr.OPERATION_NAME]: GenAiOperation.INVOKE_AGENT } });
+      r.onSpanStart(root);
+      // no flushSize, no interval: only the eager flush can have sent it
+      await vi.waitFor(() => expect(posted).toHaveLength(1));
+      expect(posted[0].events).toHaveLength(1);
+      const start = posted[0].events[0];
+      expect(start.type).toBe('observation');
+      const data = start.type === 'observation' ? start.data : undefined;
+      expect(data).toMatchObject({ obs_id: 'run', trace_id: 'run', kind: 'span', start: 100, agent_id: r.agentId });
+      // open: no end (stored as end NULL) and no status, so the run reads as running
+      expect(data?.end ?? null).toBeNull();
+      expect(data?.status).toBeUndefined();
+
+      r.onSpanEnd({ ...root, endTime: 180 });
+      await r.close();
+      const ends = observations(posted).filter((o) => o.data.obs_id === 'run' && o.data.end !== undefined);
+      expect(ends.map((o) => [o.data.end, o.data.status])).toEqual([[180, 'ok']]);
+    });
+
+    describe('with fake timers', () => {
+      beforeEach(() => {
+        vi.useFakeTimers();
+      });
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      it('sends no start event for a child span', async () => {
+        const { r, posted } = reporter();
+        r.onSpanStart(makeSpan({ id: 'root', endTime: undefined }));
+        await vi.advanceTimersByTimeAsync(0);
+        expect(posted).toHaveLength(1);
+        r.onSpanStart(makeSpan({ id: 'child', parentId: 'root', endTime: undefined }));
+        await vi.advanceTimersByTimeAsync(10_000); // past any interval a flush could hide behind
+        expect(posted).toHaveLength(1);
+        expect(observations(posted).map((o) => o.data.obs_id)).toEqual(['root']);
+      });
+
+      it('batches the start of runs begun together into one POST', async () => {
+        const { r, posted } = reporter();
+        for (const id of ['r1', 'r2', 'r3']) r.onSpanStart(makeSpan({ id, endTime: undefined }));
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(posted).toHaveLength(1);
+        expect(observations(posted).map((o) => o.data.obs_id)).toEqual(['r1', 'r2', 'r3']);
+      });
+
+      it('does not retry a down daemon early: the eager flush waits out the backoff', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        try {
+          const { r, posted } = reporter({ flushIntervalMs: 100 }, true);
+          r.onSpanStart(makeSpan({ id: 'first', endTime: undefined }));
+          await vi.advanceTimersByTimeAsync(0);
+          expect(posted).toHaveLength(1); // answered 500: backing off 1s
+          r.onSpanStart(makeSpan({ id: 'second', endTime: undefined }));
+          await vi.advanceTimersByTimeAsync(999);
+          expect(posted).toHaveLength(1); // neither the eager flush nor the interval retried inside the backoff
+          await vi.advanceTimersByTimeAsync(100);
+          expect(posted).toHaveLength(2); // the interval retries after it, carrying both starts
+          expect(posted[1].events.map((e) => e.type === 'observation' && e.data.obs_id)).toEqual(['first', 'second']);
+          expect(r.dropped).toBe(0);
+        } finally {
+          warn.mockRestore();
+        }
+      });
+    });
+
+    it('stamps one per-process instance id on heartbeats, run roots and the deregister', async () => {
+      const { r, posted } = reporter({ heartbeatIntervalMs: 60_000 });
+      const root = makeSpan({ id: 'root', endTime: undefined });
+      const child = makeSpan({ id: 'child', parentId: 'root' });
+      r.onSpanStart(root);
+      r.onSpanStart(child);
+      r.onSpanEnd(child);
+      r.onSpanEnd({ ...root, endTime: 200 });
+      await r.close();
+      const events = allEvents(posted);
+      const hb = events.find((e) => e.type === 'agent.heartbeat');
+      const instance = hb?.type === 'agent.heartbeat' ? hb.data.instance_id : undefined;
+      expect(instance).toMatch(/^[0-9a-f-]{36}$/);
+      const attrOf = (id: string) => observations(posted).filter((o) => o.data.obs_id === id).map((o) => o.data.attrs?.['lousho.instance_id']);
+      expect(attrOf('root')).toEqual([instance, instance]); // the start and the end event
+      expect(attrOf('child')).toEqual([undefined]);
+      expect(root.attributes['lousho.instance_id']).toBeUndefined(); // the span itself is not touched
+      const bye = events.find((e) => e.type === 'agent.deregister');
+      expect(bye?.type === 'agent.deregister' && bye.data.instance_id).toBe(instance);
+      // one process, one instance: another reporter here reports the same id
+      const other = reporter({ heartbeatIntervalMs: 60_000 });
+      await other.r.close();
+      const hb2 = allEvents(other.posted).find((e) => e.type === 'agent.heartbeat');
+      expect(hb2?.type === 'agent.heartbeat' && hb2.data.instance_id).toBe(instance);
+      // realm-global: a second copy of this module (dual ESM/CJS load) reads the same id
+      expect((globalThis as Record<symbol, unknown>)[Symbol.for('lousho.observeInstance')]).toBe(instance);
+    });
+  });
+
   it('counts a span ending after close() as dropped', async () => {
     const { r } = reporter();
     await r.close();
     const span = makeSpan();
-    r.onSpanStart(span);
     r.onSpanEnd(span);
     expect(r.dropped).toBe(1);
   });
@@ -587,13 +679,18 @@ describe('crash flush', () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   }
-  const obsIds = (batch: IngestEvent[]): string[] => batch.flatMap((e) => (e.type === 'observation' ? [e.data.obs_id] : []));
+  /** Finished spans' ids; the fixture's spans are run roots, so each also posts a start event (no `end`) first. */
+  const obsIds = (batch: IngestEvent[]): string[] =>
+    batch.flatMap((e) => (e.type === 'observation' && e.data.end !== undefined ? [e.data.obs_id] : []));
+  /** Every observation, start events marked: `<id>:start` / `<id>:end`. */
+  const obsEvents = (batch: IngestEvent[]): string[] =>
+    batch.flatMap((e) => (e.type === 'observation' ? [`${e.data.obs_id}:${e.data.end === undefined ? 'start' : 'end'}`] : []));
 
   it('flushes pending events when the process dies of an uncaught exception', async () => {
     const { code, stderr, batches } = await crash('throw');
     expect(code).toBe(1); // Node's own crash exit code, unchanged
     expect(stderr).toContain('fixture: uncaught exception after run');
-    expect(batches.flatMap(obsIds)).toEqual(['crash-span']);
+    expect(batches.flatMap(obsEvents)).toEqual(['crash-span:start', 'crash-span:end']);
     expect(batches.flat().map((e) => e.type)).toContain('agent.deregister');
   }, 30_000);
 
@@ -607,7 +704,7 @@ describe('crash flush', () => {
   it('sends a crash backlog past the daemon batch cap as successive capped POSTs', async () => {
     const { code, batches } = await crash('backlog');
     expect(code).toBe(1);
-    expect(batches.map((b) => b.length)).toEqual([1000, 501]); // 1500 observations + the deregister, oldest first
+    expect(batches.map((b) => b.length)).toEqual([1000, 1000, 1000, 1]); // 1500 runs x (start + end) + the deregister, oldest first
     expect(batches.flatMap(obsIds)).toEqual(['crash-span', ...Array.from({ length: 1499 }, (_, i) => `crash-span-${i + 1}`)]);
   }, 30_000);
 
@@ -622,7 +719,8 @@ describe('crash flush', () => {
   it('resends the batch a POST still in flight was carrying when the process died', async () => {
     const { code, batches } = await crash('inflight', true);
     expect(code).toBe(1);
-    expect(batches.map(obsIds)).toEqual([['crash-span'], ['crash-span']]);
+    // the POST held open carries the run's start and end; the crash resends both
+    expect(batches.map(obsEvents)).toEqual([['crash-span:start', 'crash-span:end'], ['crash-span:start', 'crash-span:end']]);
   }, 30_000);
 
   it.each([['handled'], ['capture']] as const)('keeps reporting when the script survives the throw itself (%s)', async (mode) => {

@@ -10,7 +10,9 @@
  *   commit or roll back together, so a crash mid-batch leaves no half-trace.
  * - Upsert by row primary key everywhere (`obs_id` is the reporter's
  *   TraceLine.id): a resent batch is idempotent and `updated_at` gives
- *   last-writer-wins.
+ *   last-writer-wins - except that an observation with `end` set is never
+ *   overwritten by one without: a run's root arrives twice (an eager start
+ *   with `end` NULL, then the finished span), in either order.
  * - `rollups` is a disposable derivation, never a second write path: each
  *   batch recomputes the bucket rows it touches with INSERT ... SELECT ...
  *   GROUP BY inside the same transaction (a resend recomputes the same
@@ -27,7 +29,7 @@ import { dirname, resolve } from 'node:path';
 import { loadDatabaseSync, type SqlDatabase } from '../storage/sqlite/driver';
 import { SDKError } from '../execution/errors';
 import { migrateObserve } from './schema';
-import { OBSERVE_TRUNCATE_CHARS, type IngestEvent, type ObservationData } from './envelope';
+import { OBSERVE_INSTANCE_ATTR, OBSERVE_TRUNCATE_CHARS, type IngestEvent, type ObservationData } from './envelope';
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
@@ -90,8 +92,8 @@ const OBS_UPSERT = `
     obs_id, trace_id, session_id, agent_id, parent_obs_id, kind, name,
     start, "end", status, input, output, model,
     usage_input_tokens, usage_output_tokens, usage_cached_tokens, usage_reasoning_tokens,
-    cost_usd, cost_partial, usage_estimated, truncated, attrs, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    cost_usd, cost_partial, usage_estimated, truncated, attrs, instance_id, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(obs_id) DO UPDATE SET
     trace_id = excluded.trace_id,
     session_id = excluded.session_id,
@@ -101,7 +103,8 @@ const OBS_UPSERT = `
     name = excluded.name,
     start = excluded.start,
     "end" = excluded."end",
-    status = excluded.status,
+    -- an open re-send (a requeued start) keeps a verdict the sweep already gave
+    status = CASE WHEN excluded."end" IS NULL THEN COALESCE(excluded.status, observations.status) ELSE excluded.status END,
     input = excluded.input,
     output = excluded.output,
     model = excluded.model,
@@ -114,7 +117,11 @@ const OBS_UPSERT = `
     usage_estimated = excluded.usage_estimated,
     truncated = excluded.truncated,
     attrs = excluded.attrs,
+    instance_id = excluded.instance_id,
     updated_at = excluded.updated_at
+  -- A finished row is final: a run's start event (end NULL) arriving after its
+  -- end event - reordered by a requeue - must not reopen it.
+  WHERE excluded."end" IS NOT NULL OR observations."end" IS NULL
 `;
 
 /** A session row is derived from whatever observations carry its id; there is no session event in the envelope. */
@@ -175,6 +182,67 @@ const PROMPT_USE_UPSERT = `
     version = excluded.version
 `;
 
+const INSTANCE_UPSERT = `
+  INSERT INTO agent_instances (agent_id, instance_id, hostname, pid, heartbeat_interval_ms, first_seen, last_heartbeat)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(agent_id, instance_id) DO UPDATE SET
+    hostname = COALESCE(excluded.hostname, agent_instances.hostname),
+    pid = COALESCE(excluded.pid, agent_instances.pid),
+    heartbeat_interval_ms = COALESCE(excluded.heartbeat_interval_ms, agent_instances.heartbeat_interval_ms),
+    last_heartbeat = MAX(agent_instances.last_heartbeat, excluded.last_heartbeat)
+`;
+
+/** The process a heartbeat came from. */
+interface InstanceBeat {
+  instanceId: string;
+  hostname: string | undefined;
+  pid: number | undefined;
+  intervalMs: number | undefined;
+}
+
+/**
+ * Same-host+pid instances of `agentId` that went silent before `instanceId`
+ * was first seen and have missed at least one of their own beats since -
+ * the process `instanceId` replaced. A live twin (another pid namespace:
+ * `--network host` replicas, hostNetwork pods) keeps heartbeating, so it is
+ * never among them.
+ */
+const REPLACED_INSTANCES = `
+  SELECT old.instance_id FROM agent_instances old
+  JOIN agent_instances cur ON cur.agent_id = old.agent_id AND cur.instance_id = ?
+  WHERE old.agent_id = ? AND old.instance_id != cur.instance_id
+    AND old.hostname = cur.hostname AND old.pid = cur.pid
+    AND old.last_heartbeat < cur.first_seen
+    AND ? - old.last_heartbeat > COALESCE(old.heartbeat_interval_ms, ?)
+`;
+
+/**
+ * Record a heartbeat from one process of `agentId`, at the daemon's receive
+ * time `now`. From its second heartbeat on, an instance on the same host and
+ * pid as an older one that has been silent since before this one was first
+ * seen (REPLACED_INSTANCES) has replaced it - a container restarted as pid 1,
+ * a reused pid - so the old one's open runs flip to 'interrupted'. A single
+ * heartbeat proves nothing (a twin in another pid namespace looks the same),
+ * and a row that still heartbeats is never touched. Everything else - a
+ * sibling, a restart under a new pid, a forgotten instance coming back - is
+ * the sweep's call once an instance goes quiet (sweep.ts).
+ */
+function recordInstance(db: SqlDatabase, agentId: string, beat: InstanceBeat, now: number): void {
+  const seen = db.prepare('SELECT 1 AS k FROM agent_instances WHERE agent_id = ? AND instance_id = ?').get(agentId, beat.instanceId);
+  db.prepare(INSTANCE_UPSERT).run(agentId, beat.instanceId, beat.hostname ?? null, beat.pid ?? null, beat.intervalMs ?? null, now, now);
+  if (!seen || beat.hostname === undefined || beat.pid === undefined) return;
+  const fallback = beat.intervalMs ?? HEARTBEAT_INTERVAL_DEFAULT_MS;
+  for (const row of db.prepare(REPLACED_INSTANCES).all(beat.instanceId, agentId, now, fallback)) {
+    interruptInstance(db, agentId, String(row.instance_id), now);
+  }
+}
+
+/** The reporter instance that started this observation's run (root rows only; older SDKs send none). */
+function instanceOf(data: ObservationData): string | null {
+  const id = data.attrs?.[OBSERVE_INSTANCE_ATTR];
+  return typeof id === 'string' && id !== '' ? id : null; // '' is no instance, like an older SDK
+}
+
 const bool = (value: boolean | undefined): number | null => (value === undefined ? null : value ? 1 : 0);
 
 function writeObservation(db: SqlDatabase, now: number, data: ObservationData): void {
@@ -204,6 +272,7 @@ function writeObservation(db: SqlDatabase, now: number, data: ObservationData): 
     bool(data.usage_estimated),
     cut.truncated || data.truncated === true ? 1 : 0,
     data.attrs === undefined ? null : JSON.stringify(data.attrs),
+    instanceOf(data),
     now
   );
   if (data.session_id !== undefined) {
@@ -226,12 +295,20 @@ function writeEvent(db: SqlDatabase, now: number, event: IngestEvent): void {
         JSON.stringify({ heartbeat_interval_ms: d.heartbeat_interval_ms, hostname: d.hostname, pid: d.pid, ...d.meta }),
         now
       );
+      // An empty instance_id counts as absent (an older SDK) rather than failing the batch.
+      if (d.instance_id) {
+        recordInstance(db, d.agent_id, { instanceId: d.instance_id, hostname: d.hostname, pid: d.pid, intervalMs: d.heartbeat_interval_ms }, now);
+      }
       return;
     }
     case 'agent.deregister': {
       const d = event.data;
       const ts = d.ts ?? now;
       db.prepare(DEREGISTER_UPSERT).run(d.agent_id, ts, ts, now);
+      // A graceful exit with a run still open (SIGINT mid-run): its end never comes.
+      // Only the exiting process's runs: a sibling under the same agent_id lives on.
+      if (!d.instance_id) interruptOpenObservations(db, d.agent_id, now);
+      else interruptInstance(db, d.agent_id, d.instance_id, now);
       return;
     }
     case 'observation':
@@ -269,7 +346,7 @@ function recomputeBucket(db: SqlDatabase, granularity: RollupGranularity, bucket
   db.prepare(
     `WITH roots AS (
        SELECT agent_id, status, cost_usd, usage_input_tokens, usage_output_tokens,
-              COALESCE("end", start) - start AS duration
+              CASE WHEN "end" IS NULL THEN NULL ELSE "end" - start END AS duration
        FROM observations
        WHERE parent_obs_id IS NULL AND agent_id IS NOT NULL AND start >= ? AND start < ?
      )
@@ -279,7 +356,7 @@ function recomputeBucket(db: SqlDatabase, granularity: RollupGranularity, bucket
      UNION ALL SELECT ?, ?, agent_id, 'cost_usd', SUM(COALESCE(cost_usd, 0)) FROM roots GROUP BY agent_id
      UNION ALL SELECT ?, ?, agent_id, 'input_tokens', SUM(COALESCE(usage_input_tokens, 0)) FROM roots GROUP BY agent_id
      UNION ALL SELECT ?, ?, agent_id, 'output_tokens', SUM(COALESCE(usage_output_tokens, 0)) FROM roots GROUP BY agent_id
-     UNION ALL SELECT ?, ?, agent_id, 'latency_ms', SUM(duration) FROM roots GROUP BY agent_id`
+     UNION ALL SELECT ?, ?, agent_id, 'latency_ms', COALESCE(SUM(duration), 0) FROM roots GROUP BY agent_id`
   ).run(
     bucketStart, bucketEnd,
     bucketStart, granularity, bucketStart, granularity, bucketStart, granularity,
@@ -370,10 +447,26 @@ export function interruptAgentWork(db: SqlDatabase, agentId: string, now: number
       "UPDATE sessions SET status = 'interrupted', ended_at = COALESCE(ended_at, ?), updated_at = ? WHERE agent_id = ? AND status = 'active'"
     )
     .run(now, now, agentId);
-  const observations = db
+  // Nobody of this agent heartbeats any more: every instance it had is gone.
+  db.prepare('DELETE FROM agent_instances WHERE agent_id = ?').run(agentId);
+  return { sessions: Number(sessions.changes), observations: interruptOpenObservations(db, agentId, now) };
+}
+
+/** Flip one instance's open observations to 'interrupted' and forget the instance. */
+export function interruptInstance(db: SqlDatabase, agentId: string, instanceId: string, now: number): number {
+  const result = db
+    .prepare(`UPDATE observations SET status = 'interrupted', updated_at = ? WHERE agent_id = ? AND instance_id = ? AND "end" IS NULL`)
+    .run(now, agentId, instanceId);
+  db.prepare('DELETE FROM agent_instances WHERE agent_id = ? AND instance_id = ?').run(agentId, instanceId);
+  return Number(result.changes);
+}
+
+/** Flip `agentId`'s unfinished observations (`end IS NULL`) to 'interrupted'; a later end event still settles them. */
+function interruptOpenObservations(db: SqlDatabase, agentId: string, now: number): number {
+  const result = db
     .prepare('UPDATE observations SET status = \'interrupted\', updated_at = ? WHERE agent_id = ? AND "end" IS NULL')
     .run(now, agentId);
-  return { sessions: Number(sessions.changes), observations: Number(observations.changes) };
+  return Number(result.changes);
 }
 
 /**
@@ -505,6 +598,14 @@ function traceRow(row: Record<string, unknown>): TraceRow {
   };
 }
 
+/**
+ * A trace's status is its root observation's; a root still open (`end` NULL,
+ * no verdict yet - the reporter's eager start) is 'running'.
+ */
+const ROOT_STATUS =
+  `(SELECT CASE WHEN r.status IS NULL AND r."end" IS NULL THEN 'running' ELSE r.status END ` +
+  `FROM observations r WHERE r.trace_id = o.trace_id AND r.parent_obs_id IS NULL LIMIT 1)`;
+
 /** The trace list's WHERE/HAVING pieces, shared by the page query and its total. */
 function traceFilterWhere(filter: TraceFilter): { where: string; having: string; params: (string | number | null)[] } {
   const params: (string | number | null)[] = [];
@@ -527,7 +628,7 @@ function traceFilterWhere(filter: TraceFilter): { where: string; having: string;
   // Written without select aliases so the same clause fits the bare `SELECT o.trace_id` total subquery.
   const having =
     `(${status} IS NULL OR COALESCE(` +
-    `(SELECT r.status FROM observations r WHERE r.trace_id = o.trace_id AND r.parent_obs_id IS NULL LIMIT 1), ` +
+    `${ROOT_STATUS}, ` +
     `CASE WHEN SUM(o.status = 'error') > 0 THEN 'error' ELSE 'ok' END) = ${status2})`;
   return { where, having, params };
 }
@@ -546,7 +647,7 @@ const TRACE_SELECT = `
     MAX(o.agent_id) AS agent_id,
     MAX(o.session_id) AS session_id,
     (SELECT r.name FROM observations r WHERE r.trace_id = o.trace_id AND r.parent_obs_id IS NULL LIMIT 1) AS name,
-    (SELECT r.status FROM observations r WHERE r.trace_id = o.trace_id AND r.parent_obs_id IS NULL LIMIT 1) AS root_status
+    ${ROOT_STATUS} AS root_status
   FROM observations o
 `;
 
@@ -878,8 +979,9 @@ export function insightsAgents(db: SqlDatabase, windowMs: { since: number; until
   const durations = new Map<string, number[]>();
   for (const row of db
     .prepare(
-      `SELECT agent_id, COALESCE("end", start) - start AS d FROM observations
-       WHERE parent_obs_id IS NULL AND agent_id IS NOT NULL AND start >= ? AND start < ?
+      // A run still open (or interrupted) has no latency yet; a zero would drag the percentiles down.
+      `SELECT agent_id, "end" - start AS d FROM observations
+       WHERE parent_obs_id IS NULL AND agent_id IS NOT NULL AND "end" IS NOT NULL AND start >= ? AND start < ?
        ORDER BY agent_id, d`
     )
     .all(windowMs.since, windowMs.until)) {
