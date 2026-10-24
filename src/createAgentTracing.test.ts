@@ -369,11 +369,40 @@ describe('captureContent default on a local collector', () => {
     expect((await chatInput({ captureContent: false })).attributes['gen_ai.input.messages']).toBeUndefined();
   });
 
-  it('redactContent still applies to loopback-captured content', async () => {
+  it('redactContent: false records the deprecated prompt next to the loopback-captured content', async () => {
+    observe('1');
+    const chat = await chatInput({ redactContent: false });
+    expect(chat.attributes['gen_ai.input.messages']).toContain('my key is');
+    expect(chat.attributes.prompt).toBeDefined();
+  });
+
+  it('redactContent: true keeps the deprecated prompt off while gen_ai content is still captured', async () => {
     observe('1');
     const chat = await chatInput({ redactContent: true });
-    // The gen_ai.* attributes follow captureContent; the deprecated ones stay redacted.
-    expect(chat.attributes['gen_ai.input.messages']).toBeDefined();
+    expect(chat.attributes['gen_ai.input.messages']).toContain('my key is');
     expect(chat.attributes.prompt).toBeUndefined();
+  });
+
+  it('resume() captures content by default on loopback', async () => {
+    observe('1');
+    const store = memoryStore();
+    let crashed = false;
+    const flaky = defineTool({
+      name: 'flaky',
+      description: 'Dies once',
+      input: z.object({}),
+      execute: async () => {
+        if (!crashed) {
+          crashed = true;
+          throw new PropagatingToolError('process died');
+        }
+        return 'ok';
+      },
+    });
+    const crashing = createAgent({ provider: mockModel([{ toolCalls: [{ name: 'flaky', id: 'c1' }] }]), tools: [flaky], store });
+    await expect(crashing.send('Go', { sessionId: 'job' })).rejects.toThrow('process died');
+    const exporter = recording();
+    await createAgent({ provider: mockModel(['Done.']), tools: [flaky], store, exporter }).resume('job');
+    expect(exporter.ended.find((span) => op(span) === 'chat')!.attributes['gen_ai.output.messages']).toContain('Done.');
   });
 });

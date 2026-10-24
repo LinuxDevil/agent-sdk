@@ -242,7 +242,12 @@ The exception is a local collector: when `LOUSHO_OBSERVE` points at loopback
 shows the prompt, the model output and the tool arguments and results that
 explain a failure. The data stays in the daemon's db on your machine. Turn it
 off with `captureContent: false`; a collector beyond loopback keeps the
-opt-in default, and `redactContent` still applies.
+opt-in default. The default applies to agents built with `createAgent`.
+
+`redactContent` keeps only the legacy `input`/`prompt`/`args`/`result`
+attributes off; it does not scrub `gen_ai.*` message content. On a loopback
+collector the message text, including any secret typed into a prompt, is
+stored in the local db, so set `captureContent: false` if that is not wanted.
 
 #### Advanced: the executor API
 
