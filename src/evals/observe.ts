@@ -40,11 +40,12 @@ export function scoredAgentName(agent: unknown): string | undefined {
 }
 
 /**
- * One `score` ingest event per `AssertionResult`, the spec's mapping:
+ * One `score` ingest event per `AssertionResult` plus a final eval-level row, the spec's mapping:
  * `name` is `<evalName>/<assertionName>`, llmJudge verdicts land with
  * `source: 'judge'`, everything else `'eval'`. `score_id` is fresh per
  * emission - a re-run is a new row, not an upsert, so eval history keeps
- * every attempt.
+ * every attempt. The closing `<evalName>` row is 1 when every assertion passed, else 0 with the
+ * failed assertion names as its comment; a result with no assertions emits nothing.
  */
 export function scoreEventsOf(
   result: EvalResult,
@@ -52,7 +53,7 @@ export function scoreEventsOf(
 ): IngestEvent[] {
   const ts = (options.now ?? Date.now)();
   const id = options.newId ?? newId;
-  return result.assertions.map((assertion) => ({
+  const rows: IngestEvent[] = result.assertions.map((assertion) => ({
     type: 'score' as const,
     data: {
       score_id: id(),
@@ -65,6 +66,24 @@ export function scoreEventsOf(
       ts,
     },
   }));
+  if (result.assertions.length === 0) return rows;
+  // The eval-level row: 1 when every assertion passed, else 0 with the failed names as its comment.
+  // The case label rides on the eval span that owns this trace (`lousho.eval.case`); score events carry no attrs.
+  const failed = result.assertions.filter((assertion) => !assertion.passed).map((assertion) => assertion.name);
+  rows.push({
+    type: 'score',
+    data: {
+      score_id: id(),
+      trace_id: options.traceId,
+      name: result.name,
+      value: failed.length === 0 ? 1 : 0,
+      source: 'eval',
+      ...(failed.length > 0 ? { comment: failed.join('; ') } : {}),
+      ...(options.agentId !== undefined ? { agent_id: options.agentId } : {}),
+      ts,
+    },
+  });
+  return rows;
 }
 
 /** Whether eval cases emit score events and run inside an `eval` span (the same env check the emit path applies). */
