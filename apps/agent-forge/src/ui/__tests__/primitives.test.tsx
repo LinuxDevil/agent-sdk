@@ -1,27 +1,18 @@
 import { act } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { render as mount } from './render';
 
 import { StatusPill, statusTone, type StatusTone } from '../StatusPill';
 import { EmptyState } from '../EmptyState';
 import { ToastProvider, useToast } from '../Toast';
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-let root: Root | undefined;
 let container: HTMLDivElement;
-
-function render(node: React.ReactNode) {
-  container = document.createElement('div');
-  document.body.appendChild(container);
-  root = createRoot(container);
-  act(() => root!.render(node));
-}
+const render = (node: React.ReactNode) => {
+  container = mount(node);
+};
 
 afterEach(() => {
-  act(() => root?.unmount());
-  root = undefined;
-  container?.remove();
   vi.useRealTimers();
 });
 

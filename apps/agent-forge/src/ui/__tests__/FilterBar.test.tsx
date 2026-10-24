@@ -1,26 +1,17 @@
 import { act } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { cleanup, render as mount, rerender } from './render';
 
 import { FilterBar, type FacetDef } from '../FilterBar';
 import { formatTimeRange, parseTimeRange, toWindow, type TimeRange } from '../TimeRangePicker';
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-let root: Root | undefined;
 let container: HTMLDivElement;
-
-function render(node: React.ReactNode) {
-  container = document.createElement('div');
-  document.body.appendChild(container);
-  root = createRoot(container);
-  act(() => root!.render(node));
-}
+const render = (node: React.ReactNode) => {
+  container = mount(node);
+};
 
 afterEach(() => {
-  act(() => root?.unmount());
-  root = undefined;
-  container?.remove();
   vi.useRealTimers();
 });
 
@@ -71,7 +62,7 @@ describe('FilterBar search', () => {
     act(() => void vi.advanceTimersByTime(1));
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith('ab');
-    act(() => root!.render(ui('zzz')));
+    rerender(ui('zzz'));
     expect(input.value).toBe('zzz');
   });
 
@@ -81,7 +72,7 @@ describe('FilterBar search', () => {
     const second = vi.fn();
     render(<FilterBar facets={[]} search={{ value: '', onChange: first }} />);
     type(container.querySelector('input') as HTMLInputElement, 'q');
-    act(() => root!.render(<FilterBar facets={[]} search={{ value: '', onChange: second }} />));
+    rerender(<FilterBar facets={[]} search={{ value: '', onChange: second }} />);
     act(() => void vi.advanceTimersByTime(250));
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledWith('q');
@@ -92,8 +83,7 @@ describe('FilterBar search', () => {
     const onChange = vi.fn();
     render(<FilterBar facets={[]} search={{ value: '', onChange }} />);
     type(container.querySelector('input') as HTMLInputElement, 'x');
-    act(() => root!.unmount());
-    root = undefined;
+    cleanup();
     vi.advanceTimersByTime(1000);
     expect(onChange).not.toHaveBeenCalled();
   });
@@ -179,11 +169,11 @@ describe('TimeRangePicker re-seeding', () => {
     const b = { from: new Date('2026-04-05T10:30').getTime(), to: new Date('2026-04-06T11:45').getTime() };
     render(ui({ preset: '1h' }));
     expect(inputs()).toHaveLength(0);
-    act(() => root!.render(ui(a)));
+    rerender(ui(a));
     expect(inputs().map((i) => i.value)).toEqual(['2026-03-01T08:00', '2026-03-01T09:00']);
-    act(() => root!.render(ui(b)));
+    rerender(ui(b));
     expect(inputs().map((i) => i.value)).toEqual(['2026-04-05T10:30', '2026-04-06T11:45']);
-    act(() => root!.render(ui({ preset: '24h' })));
+    rerender(ui({ preset: '24h' }));
     expect(inputs()).toHaveLength(0);
   });
 });
