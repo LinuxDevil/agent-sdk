@@ -341,7 +341,7 @@ export function nestedToolCaller(setup: NestedCallSetup): NestedToolCaller {
           const settled = inScript(await runToolCall(toolCall, { ...base, signal, scope, ...(onToolPartial && { onToolPartial }) }));
           recordToolOutcome(
             span,
-            { args: settled.args ?? args, result: settled.result, error: settled.error, latencyMs: Date.now() - started },
+            { args: settled.args ?? args, result: settled.result, error: settled.error, sandboxError: settled.sandboxError, latencyMs: Date.now() - started },
             { redactContent: tracing.redactContent, captureContent: resolveCaptureContent(tracing.captureContent) }
           );
           return settled;

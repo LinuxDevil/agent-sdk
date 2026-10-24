@@ -25,7 +25,7 @@ import { USAGE_EXIT_CODE, parseCommand, stringValue, usageError, type CommandSpe
 import { failsRun, parseResults, renderDriftTable, renderJson, renderJunit, renderTable, unreportedFailures, vitestError, type DriftRow } from './evalReport';
 
 const USAGE =
-  'Usage: lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]';
+  'Usage: lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--observe] [--config vitest.config.ts] [--timeout <ms>]';
 
 /** Parsed `lousho eval` arguments. */
 export interface EvalCliArgs {
@@ -59,6 +59,12 @@ export interface EvalCliArgs {
   drift?: boolean;
   /** With `drift`: compare token usage too. */
   driftUsage?: boolean;
+  /**
+   * Ship eval scores to the observe daemon even when `LOUSHO_OBSERVE` is
+   * unset (emits to its URL when set, else the local default), so CI runs
+   * appear in Studio's score history.
+   */
+  observe?: boolean;
   /** `-h` / `--help` was given: print the usage, run nothing. */
   help?: boolean;
 }
@@ -82,6 +88,8 @@ Options:
   --drift-usage         with --drift: compare token usage too
   --url <base>          run the cases against the agent deployed at <base> instead of in-process
   --token <bearer>      with --url: the bearer token (default LOUSHO_EVAL_TOKEN)
+  --observe             emit eval scores to the observe daemon (LOUSHO_OBSERVE URL when set,
+                        else the local default); on automatically when LOUSHO_OBSERVE is set
   --config <file>       use your own vitest config instead of the generated one
   --timeout <ms>        time limit per case (0 = none; live runs default to 10 minutes)
   -h, --help            show this help
@@ -106,6 +114,7 @@ const SPEC: CommandSpec = {
     replay: { type: 'boolean' },
     drift: { type: 'boolean' },
     'drift-usage': { type: 'boolean' },
+    observe: { type: 'boolean' },
   },
 };
 
@@ -155,6 +164,7 @@ export function parseEvalArgs(rest: string[]): EvalCliArgs {
     replay: v.replay === true || undefined,
     drift: v.drift === true || undefined,
     driftUsage: v['drift-usage'] === true || undefined,
+    observe: v.observe === true || undefined,
   };
   assertOneCassetteMode(args);
   return args;
@@ -247,6 +257,12 @@ export function toRootRelativeGlob(glob: string, cwd: string): string {
   return relative.split(path.sep).join('/');
 }
 
+/** `LOUSHO_OBSERVE` is on unless unset, '0' or 'false' (the reporter's own rule). */
+function observeEnabled(flag: string | undefined): boolean {
+  const value = flag?.trim();
+  return value !== undefined && value !== '' && value !== '0' && value.toLowerCase() !== 'false';
+}
+
 function prepareInvocation(args: EvalCliArgs, cwd: string, workDir: string): VitestInvocation {
   const resultsFile = path.join(workDir, 'results.jsonl');
   fs.writeFileSync(resultsFile, '');
@@ -272,6 +288,9 @@ function prepareInvocation(args: EvalCliArgs, cwd: string, workDir: string): Vit
       ...(args.token ? { [REMOTE_TOKEN_ENV]: args.token } : {}),
       [CASSETTES_ENV]: cassetteMode(args),
       [REMOTE_URL_ENV]: args.url ?? '',
+      // --observe forces score emission in the worker: a set LOUSHO_OBSERVE (a URL)
+      // passes through untouched; unset/'0'/'false' gets pointed at the local default.
+      ...(args.observe && !observeEnabled(process.env.LOUSHO_OBSERVE) ? { LOUSHO_OBSERVE: '1' } : {}),
       [DRIFT_DIR_ENV]: args.drift ? path.join(workDir, 'drift') : '',
       [CONFIG_ENV]: args.config ? toRootRelativeGlob(args.config, cwd) : '',
     },

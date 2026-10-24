@@ -81,6 +81,35 @@ function EnvSelect() {
   );
 }
 
+/**
+ * Build/Observe surface switcher. "Observe" swaps the builder shell for the
+ * observability panels (Traces/Insights/Monitoring/Scores) that read the
+ * `lousho observe` daemon - a separate data source from the studio server.
+ */
+function ViewToggle() {
+  const { view, setView } = useAppState();
+  return (
+    <div className="view-toggle" role="group" aria-label="Studio surface">
+      <button
+        type="button"
+        className={`btn btn-ghost${view === 'build' ? ' active' : ''}`}
+        aria-pressed={view === 'build'}
+        onClick={() => setView('build')}
+      >
+        Build
+      </button>
+      <button
+        type="button"
+        className={`btn btn-ghost${view === 'observe' ? ' active' : ''}`}
+        aria-pressed={view === 'observe'}
+        onClick={() => setView('observe')}
+      >
+        Observe
+      </button>
+    </div>
+  );
+}
+
 function DebugToggle() {
   const { debugMode, setDebugMode, setDrawerTab } = useAppState();
   return (
@@ -285,7 +314,7 @@ interface TopbarProps {
 }
 
 function NarrowTopbar({ openPanel, onTogglePanel }: Omit<TopbarProps, 'narrow'>) {
-  const { spec, dirty, runStatus, debugMode, setDebugMode, setDrawerTab } = useAppState();
+  const { spec, dirty, runStatus, debugMode, setDebugMode, setDrawerTab, view, setView } = useAppState();
   const { actionError, handleRun, handleStop, handleSave, handleImport } = useRunActions();
   const { fileInput, openImport, exportSpec } = useSpecFiles(handleImport);
   const toggle = onTogglePanel ?? (() => undefined);
@@ -305,6 +334,11 @@ function NarrowTopbar({ openPanel, onTogglePanel }: Omit<TopbarProps, 'narrow'>)
     { label: 'Import', onSelect: openImport },
     { label: 'Export', onSelect: exportSpec },
     { label: 'Save', onSelect: () => void handleSave() },
+    // Last: the menu focuses its first item on open (e2e expects Debug).
+    {
+      label: view === 'observe' ? 'Build surface' : 'Observe surface',
+      onSelect: () => setView(view === 'observe' ? 'build' : 'observe'),
+    },
   ];
 
   return (
@@ -364,6 +398,8 @@ function WideTopbar() {
         {dirty && <span className="dirty-dot" title="Unsaved changes" />}
       </div>
       <div className="topbar-spacer" />
+
+      <ViewToggle />
 
       <RunNotices runStatus={runStatus} actionError={actionError} />
 

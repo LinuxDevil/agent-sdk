@@ -18,6 +18,7 @@ import type { AssertionKind, AssertionResult, EvalResult, EvalToolCall } from '.
 import { gateFailures } from './evalResult';
 import { callsFor, describeCalled, diffArgs, isSubsequence, parseToolCalls } from './toolMatch';
 import type { EvalTarget, RemoteExecutionResult } from './remoteTarget';
+import { evalCaseObservation, evalObservationEnabled } from './observe';
 import { SDKError } from '../execution/errors';
 
 /** The judge provider a trajectory eval grades with, set via `defineEval({ judge })`. */
@@ -161,6 +162,10 @@ class TrajectoryContext implements EvalTestContext {
   private readonly results: ExecutionResult[] = [];
   private readonly calls: EvalToolCall[] = [];
   private readonly recorded: AssertionResult[] = [];
+  /** Scores t.judge() produced, consumed by the next check/soft over the same value (it lands `source: 'judge'`). */
+  private judgeScores: number[] = [];
+  /** The eval-case span's id when observing; every send() parents its run under it (one trace per case). */
+  parentSpanId?: string;
   private agent: EvalTarget | undefined;
 
   /**
@@ -191,7 +196,10 @@ class TrajectoryContext implements EvalTestContext {
   async send(message: AgentInput): Promise<ExecutionResult> {
     this.agent ??= typeof this.agentSource === 'function' ? await this.agentSource() : this.agentSource;
     const nested: NestedCall[] = [];
-    const result = await this.agent.send(message, { onEvent: (event) => collectNested(event, nested) });
+    const result = await this.agent.send(message, {
+      onEvent: (event) => collectNested(event, nested),
+      parentSpanId: this.parentSpanId,
+    });
     this.results.push(result);
     this.calls.push(...mergeNested(result.toolCalls ?? [], nested));
     return result;
@@ -269,7 +277,10 @@ class TrajectoryContext implements EvalTestContext {
     if (!this.judgeConfig) throw new SDKError(NO_JUDGE_MESSAGE, 'LOUSHO_EVALS_INVALID');
     if (!this.result) throw new SDKError('t.judge() grades the latest reply - call t.send() first.', 'LOUSHO_EVALS_INVALID', { appendHelp: false });
     const grade = llmJudge({ ...this.judgeConfig, rubric, allowOutsideJudgeRunner: true });
-    return grade(this.result);
+    const value = await grade(this.result);
+    // Remember the verdict: the check/soft the score flows into marks itself judge-sourced.
+    this.judgeScores.push(value);
+    return value;
   }
 
   /** Builds the case's result from everything recorded so far. */
@@ -303,7 +314,18 @@ class TrajectoryContext implements EvalTestContext {
   private scored<T>(kind: AssertionKind, name: string, value: T, check: Check<T>): void {
     const outcome = check.evaluate(value);
     const message = outcome.passed ? undefined : `${kind === 'soft' ? 'soft ' : ''}check '${name}' failed: ${outcome.message ?? 'check did not pass'}`;
-    this.recorded.push({ name, kind, passed: outcome.passed, score: outcome.score, threshold: outcome.threshold, message });
+    // A t.judge() verdict asserted over its own score is a judge-sourced assertion.
+    const judged = typeof value === 'number' ? this.judgeScores.indexOf(value) : -1;
+    if (judged >= 0) this.judgeScores.splice(judged, 1);
+    this.recorded.push({
+      name,
+      kind,
+      passed: outcome.passed,
+      score: outcome.score,
+      threshold: outcome.threshold,
+      message,
+      ...(judged >= 0 ? { source: 'judge' as const } : {}),
+    });
   }
 
   private calledToolProblem(name: string, options: CalledToolOptions): string | undefined {
@@ -340,15 +362,34 @@ export async function runTrajectoryCase(
   file: string | undefined
 ): Promise<EvalResult> {
   const started = Date.now();
-  const context = new TrajectoryContext(spec.agent, spec.judge);
+  // When observing, a factory agent resolves eagerly: the eval span reports to
+  // the resolved agent's own env reporter so the exercised run's spans nest
+  // into the case's trace. Swallow a throw - it resurfaces as the case's error.
+  let agentSource: AgentSource = spec.agent;
+  let exercised: SimpleAgent | EvalTarget | undefined;
+  if (evalObservationEnabled() && typeof agentSource === 'function') {
+    try {
+      exercised = await agentSource();
+      agentSource = exercised;
+    } catch {
+      // the factory's error becomes the case's error at the first send()
+    }
+  }
+  const observation = evalCaseObservation({ evalName: spec.name, caseLabel: label, agent: exercised ?? agentSource });
+  const context = new TrajectoryContext(agentSource, spec.judge);
   let error: string | undefined;
   try {
-    await spec.test(context, c);
+    await observation.run(async (parentSpanId) => {
+      context.parentSpanId = parentSpanId;
+      await spec.test(context, c);
+    });
   } catch (caught) {
     error = caught instanceof Error ? caught.message : String(caught);
   }
   const base = { name: spec.name, case: label, tags: spec.tags ?? [], file };
-  return context.toResult(base, Date.now() - started, error);
+  const result = context.toResult(base, Date.now() - started, error);
+  observation.emit(result);
+  return result;
 }
 
 /** The error message a failed case throws into vitest: every failed gate, one per line. */

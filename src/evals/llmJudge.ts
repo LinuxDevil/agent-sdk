@@ -206,6 +206,14 @@ export function parseJudgeCritique(rawText: string): LLMCritique {
   return reason === undefined ? { score, feedback } : { score, feedback, reason };
 }
 
+/** Scorers llmJudge() built: their assertions emit `source: 'judge'` score rows (observability evaluators). */
+const judgeScorers = new WeakSet<(result: ExecutionResult) => Promise<number>>();
+
+/** True when `fn` is a scorer llmJudge() returned (so evals can mark its assertion `source: 'judge'`). */
+export function isJudgeScorer(fn: unknown): fn is (result: ExecutionResult) => Promise<number> {
+  return typeof fn === 'function' && judgeScorers.has(fn as (result: ExecutionResult) => Promise<number>);
+}
+
 /**
  * Returns a defineEval()-compatible scorer that grades an ExecutionResult's
  * `.text` against `config.rubric` using an LLM judge, via
@@ -213,7 +221,7 @@ export function parseJudgeCritique(rawText: string): LLMCritique {
  * which this codebase's LLMProvider interface does not have).
  */
 export function llmJudge(config: LLMJudgeConfig): (result: ExecutionResult) => Promise<number> {
-  return async (result: ExecutionResult): Promise<number> => {
+  const scorer = async (result: ExecutionResult): Promise<number> => {
     assertInsideJudgeRunner(config, 'llmJudge()');
 
     const responseText = await generateJudgeResponse(config, buildGradePrompt(config.rubric, userInputOf(result), result.text ?? ''));
@@ -221,6 +229,8 @@ export function llmJudge(config: LLMJudgeConfig): (result: ExecutionResult) => P
     const { score } = parseJudgeScore(responseText);
     return score;
   };
+  judgeScorers.add(scorer);
+  return scorer;
 }
 
 /**

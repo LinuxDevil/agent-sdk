@@ -166,7 +166,9 @@ function applyRollup(span: Span, own: UsageRollup): void {
  * tracing backend they use (console, OpenTelemetry, Datadog, ...).
  */
 export interface TraceExporter {
+  /** A span opened; the exporter maps it onto its trace (parents by `span.parentId`). */
   onSpanStart(span: Span): void;
+  /** A span finished (status and end time set) - the finished-observation point for reporters. */
   onSpanEnd(span: Span): void;
 }
 

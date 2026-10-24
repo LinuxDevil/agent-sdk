@@ -132,6 +132,7 @@ const ERROR_CODES: {
     readonly LOUSHO_RUN_ALREADY_ITERATED: "Iterate an AgentRun once; call stream() again for a new run.";
     readonly LOUSHO_SANDBOX_PATH_DENIED: "Write under the sandbox's root (SubprocessSandbox({ root })), or pass the root that should contain the path.";
     readonly LOUSHO_SANDBOX_EGRESS_UNSUPPORTED: "Run on Docker Engine 25.0.5+ for Linux on this host (not Docker Desktop, rootless or a remote daemon), or use network: 'none'.";
+    readonly LOUSHO_SANDBOX_FAILED: "The error's `kind` says which boundary failed ('timeout', 'oom' or 'driver'); raise the limit in sandbox()/defineTool({ sandbox }), or check the driver.";
     readonly LOUSHO_AGENT_EXECUTION_FAILED: "Look at the `cause` for the underlying failure.";
     readonly LOUSHO_FLOW_EXECUTION_FAILED: "Look at the failing `step` and the `cause`.";
     readonly LOUSHO_VALIDATION_FAILED: "Fix the fields listed in `errors`.";

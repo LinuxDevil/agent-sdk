@@ -124,7 +124,7 @@ describe('runEval with a fake vitest', () => {
     const log = vi.fn();
     expect(await runEval(['--help'], { log })).toBe(0);
     const help = String(log.mock.calls[0][0]);
-    for (const flag of ['--tag', '--junit', '--json', '--strict', '--judge', '--record', '--replay', '--drift', '--drift-usage', '--url', '--token', '--config', '--timeout']) {
+    for (const flag of ['--tag', '--junit', '--json', '--strict', '--judge', '--record', '--replay', '--drift', '--drift-usage', '--url', '--token', '--observe', '--config', '--timeout']) {
       expect(help).toMatch(new RegExp(`\\n  ${flag}\\b[^\\n]* {2,}\\S`));
     }
   });
@@ -211,6 +211,41 @@ describe('runEval with a fake vitest', () => {
     await runEval(['--junit', junit, '--json', json], { resolveVitest: () => 'v', spawnVitest: fake.spawnVitest, log: () => {} });
     expect(fs.readFileSync(junit, 'utf8')).toContain('<failure message="nope"');
     expect((JSON.parse(fs.readFileSync(json, 'utf8')) as { summary: { failed: number } }).summary.failed).toBe(1);
+  });
+});
+
+describe('lousho eval --observe', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('parses --observe as a boolean flag', () => {
+    expect(parseEvalArgs(['--observe'])).toMatchObject({ observe: true });
+    expect(parseEvalArgs([]).observe).toBeUndefined();
+  });
+
+  it('points the worker at the local daemon when LOUSHO_OBSERVE is unset or off', async () => {
+    vi.stubEnv('LOUSHO_OBSERVE', '');
+    let fake = fakeVitest([result({})]);
+    await runEval(['--observe'], { resolveVitest: () => 'v', spawnVitest: fake.spawnVitest, log: () => {} });
+    expect(fake.calls[0].env.LOUSHO_OBSERVE).toBe('1');
+
+    vi.stubEnv('LOUSHO_OBSERVE', '0');
+    fake = fakeVitest([result({})]);
+    await runEval(['--observe'], { resolveVitest: () => 'v', spawnVitest: fake.spawnVitest, log: () => {} });
+    expect(fake.calls[0].env.LOUSHO_OBSERVE).toBe('1');
+  });
+
+  it('keeps a configured LOUSHO_OBSERVE URL and does nothing without --observe', async () => {
+    vi.stubEnv('LOUSHO_OBSERVE', 'http://collector.test:9999');
+    let fake = fakeVitest([result({})]);
+    await runEval(['--observe'], { resolveVitest: () => 'v', spawnVitest: fake.spawnVitest, log: () => {} });
+    expect(fake.calls[0].env.LOUSHO_OBSERVE).toBe('http://collector.test:9999');
+
+    vi.stubEnv('LOUSHO_OBSERVE', '');
+    fake = fakeVitest([result({})]);
+    await runEval([], { resolveVitest: () => 'v', spawnVitest: fake.spawnVitest, log: () => {} });
+    expect(fake.calls[0].env.LOUSHO_OBSERVE).toBe('');
   });
 });
 

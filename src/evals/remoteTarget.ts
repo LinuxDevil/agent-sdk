@@ -13,8 +13,13 @@ import { newId } from '../utils/id';
 
 /** What an eval case needs from the thing under test: `send()`. A `createAgent()` agent has it, and so does a remote target. */
 export interface EvalTarget {
-  /** `options.onEvent` receives the run's events; a target that cannot stream them (a remote one) ignores it. */
-  send(input: AgentInput, options?: { onEvent?: (event: AgentEvent) => void }): Promise<ExecutionResult>;
+  /**
+   * `options.onEvent` receives the run's events; a target that cannot stream
+   * them (a remote one) ignores it. `options.parentSpanId` nests the run's
+   * `invoke_agent` span under that span (see SendOptions.parentSpanId); a
+   * remote target emits no local spans and ignores it.
+   */
+  send(input: AgentInput, options?: { onEvent?: (event: AgentEvent) => void; parentSpanId?: string }): Promise<ExecutionResult>;
 }
 
 /** Environment variables `lousho eval --url` / `--token` hand to the vitest worker. */
@@ -73,10 +78,20 @@ function toResult(summary: SessionTurnSummary): RemoteExecutionResult {
 export function remoteTarget(options: RemoteTargetOptions): () => EvalTarget {
   return () => {
     const sessionId = `eval-${newId()}`;
-    return {
+    const target: EvalTarget = {
       send: async (input) => toResult(await runRemoteTurn(options, { sessionId, input, label: LABEL })),
     };
+    remoteTargets.add(target);
+    return target;
   };
+}
+
+/** Targets remoteTarget() built (a deployed agent: its id lives on the other side, so its scores carry no agent_id). */
+const remoteTargets = new WeakSet<EvalTarget>();
+
+/** True when `value` is a remoteTarget()-built target. */
+export function isRemoteTarget(value: unknown): value is EvalTarget {
+  return typeof value === 'object' && value !== null && remoteTargets.has(value as EvalTarget);
 }
 
 /** The target `lousho eval --url` asked for (through the worker's environment), if any. */

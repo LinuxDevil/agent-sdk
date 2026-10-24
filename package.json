@@ -402,6 +402,7 @@
     "@opentelemetry/api": "^1.9.1",
     "ai": "^4.3.19 || ^6.0.0 || ^7.0.0",
     "dockerode": "^5.0.1",
+    "isolated-vm": "^6.2.0 || ^7.0.0",
     "ollama-ai-provider": "^1.2.0",
     "ollama-ai-provider-v2": "^2.0.0 || ^3.0.0 || ^4.0.0",
     "prompts": "^2.4.2",
@@ -434,6 +435,9 @@
       "optional": true
     },
     "dockerode": {
+      "optional": true
+    },
+    "isolated-vm": {
       "optional": true
     },
     "ollama-ai-provider": {

@@ -701,6 +701,7 @@ export interface AssertionResult {
     passed: boolean;
     score: number;
     skipped?: boolean;
+    source?: 'eval' | 'judge';
     threshold?: number;
 }
 
@@ -1454,7 +1455,7 @@ export function createAgentConfigOf(agent: SimpleAgent): CreateAgentConfig | und
 // @public
 export type CreateAgentInstructions = {
     instructions?: PerRun<string>;
-    prompt?: undefined;
+    prompt?: PromptRefString;
 } | {
     instructions?: undefined;
     prompt?: PerRun<string>;
@@ -1700,6 +1701,7 @@ export interface DefineToolOptions<S extends StandardSchemaV1, R> {
     name: string;
     needsApproval?: boolean | ((args: InferSchemaOutput<S>, ctx: ApprovalCheckContext) => ApprovalOutcome | Promise<ApprovalOutcome>);
     requiresSandbox?: boolean;
+    sandbox?: ToolSandboxOptions;
     sandboxExecute?: (args: InferSchemaOutput<S>, sandbox: SandboxAdapter) => Promise<unknown>;
     timeoutMs?: number;
 }
@@ -1971,6 +1973,7 @@ export const ERROR_CODES: {
     readonly LOUSHO_RUN_ALREADY_ITERATED: "Iterate an AgentRun once; call stream() again for a new run.";
     readonly LOUSHO_SANDBOX_PATH_DENIED: "Write under the sandbox's root (SubprocessSandbox({ root })), or pass the root that should contain the path.";
     readonly LOUSHO_SANDBOX_EGRESS_UNSUPPORTED: "Run on Docker Engine 25.0.5+ for Linux on this host (not Docker Desktop, rootless or a remote daemon), or use network: 'none'.";
+    readonly LOUSHO_SANDBOX_FAILED: "The error's `kind` says which boundary failed ('timeout', 'oom' or 'driver'); raise the limit in sandbox()/defineTool({ sandbox }), or check the driver.";
     readonly LOUSHO_AGENT_EXECUTION_FAILED: "Look at the `cause` for the underlying failure.";
     readonly LOUSHO_FLOW_EXECUTION_FAILED: "Look at the failing `step` and the `cause`.";
     readonly LOUSHO_VALIDATION_FAILED: "Fix the fields listed in `errors`.";
@@ -2078,6 +2081,7 @@ export interface EvalResult {
 export interface EvalTarget {
     send(input: AgentInput, options?: {
         onEvent?: (event: AgentEvent) => void;
+        parentSpanId?: string;
     }): Promise<ExecutionResult>;
 }
 
@@ -3115,6 +3119,68 @@ export interface HttpToolOptions {
 }
 
 // @public
+export interface Hub {
+    readonly agentId: string;
+    publish(input: HubPublishInput): Promise<HubEntry>;
+    query(filter?: HubQuery): Promise<HubEntry[]>;
+}
+
+// @public
+export function hub(options?: HubOptions): Hub | undefined;
+
+// @public
+export const HUB_SCOPES: readonly ["private", "fleet"];
+
+// @public
+export interface HubEntry {
+    agent_id: string | null;
+    created_at: number;
+    entry_id: string;
+    expires_at: number | null;
+    key: string;
+    namespace: string;
+    scope: string;
+    ttl: number | null;
+    value: string | null;
+}
+
+// @public
+export interface HubOptions {
+    agentId?: string;
+    agentName?: string;
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+    fetchFn?: typeof fetch;
+    project?: string;
+    timeoutMs?: number;
+    token?: string;
+    url?: string;
+}
+
+// @public
+export interface HubPublishInput {
+    key: string;
+    namespace: string;
+    scope?: HubScope;
+    ttl?: number;
+    value: unknown;
+}
+
+// @public
+export interface HubQuery {
+    key?: string;
+    limit?: number;
+    namespace?: string;
+    scope?: HubScope;
+}
+
+// @public
+export type HubScope = (typeof HUB_SCOPES)[number];
+
+// @public
+export function hubTools(options?: HubOptions): DefinedTool[];
+
+// @public
 export interface ImageContentPart {
     // (undocumented)
     image: string | Uint8Array;
@@ -3251,6 +3317,9 @@ export function isHandoff(value: unknown): value is Handoff;
 
 // @public
 export function isHostedTool(value: unknown): value is HostedTool;
+
+// @public
+export function isJudgeScorer(fn: unknown): fn is (result: ExecutionResult) => Promise<number>;
 
 // @public
 export function isModelActionableProviderErrorCategory(category: CompactedProviderErrorCategory): boolean;
@@ -4871,6 +4940,9 @@ export function promptInjectionGuardrail(options?: {
 }): IoGuardrail;
 
 // @public
+export type PromptRefString = `${string}@${number}` | `${string}@latest`;
+
+// @public
 export interface PromptScheduleInput extends ScheduleBase {
     // (undocumented)
     prompt: string;
@@ -5440,11 +5512,64 @@ interface SafeParser<T> {
 }
 
 // @public
+export interface Sandbox {
+    readonly driver: string;
+    run(code: string, opts?: SandboxCallOptions): Promise<unknown>;
+}
+
+// @public
+export function sandbox(options: SandboxOptions): Sandbox;
+
+// @public
 export interface SandboxAdapter {
     readonly name: string;
     run(cmd: string, args: string[], opts?: SandboxRunOptions): Promise<SandboxResult>;
     writeFile(path: string, content: string): Promise<void>;
 }
+
+// @public
+export const SandboxAttr: {
+    readonly DRIVER: "sandbox.driver";
+    readonly ERROR: "sandbox.error";
+};
+
+// @public
+export interface SandboxCallOptions {
+    args?: unknown[];
+}
+
+// @public
+export interface SandboxDriver {
+    readonly name?: string;
+    run(code: string, opts?: SandboxCallOptions): Promise<unknown>;
+}
+
+// @public
+export type SandboxDriverName = 'isolate' | 'docker' | 'e2b';
+
+// @public
+export function sandboxDriverName(driver: SandboxDriverRef | undefined): string;
+
+// @public
+export type SandboxDriverRef = SandboxDriverName | SandboxDriver;
+
+// @public
+export class SandboxError extends SDKError {
+    constructor(message: string,
+    kind: SandboxErrorKind,
+    driver: string, options?: {
+        cause?: unknown;
+    });
+    readonly driver: string;
+    readonly kind: SandboxErrorKind;
+    readonly toolErrorKind: "sandbox";
+}
+
+// @public
+export type SandboxErrorKind = 'timeout' | 'oom' | 'driver';
+
+// @public
+export function sandboxErrorKind(error: unknown, depth?: number): SandboxErrorKind | undefined;
 
 // @public
 export interface SandboxLimits {
@@ -5457,6 +5582,13 @@ export interface SandboxLimits {
 export type SandboxNetwork = 'none' | 'default' | {
     allow: readonly string[];
 };
+
+// @public
+export interface SandboxOptions {
+    driver: SandboxDriverRef;
+    memoryMb?: number;
+    timeoutMs?: number;
+}
 
 // @public
 export interface SandboxResult {
@@ -6750,6 +6882,7 @@ export interface ToolDescriptor {
     // (undocumented)
     needsApproval?: boolean | ApprovalPredicate;
     requiresSandbox?: boolean;
+    sandbox?: ToolSandboxOptions;
     sandboxExecute?: (args: unknown, sandbox: SandboxAdapter, ctx?: ToolExecutionContext) => Promise<unknown>;
     tool: Tool;
     transient?: boolean;
@@ -6810,6 +6943,7 @@ export interface ToolErrorResult {
     error: string;
     kind: ToolErrorKind;
     message: string;
+    sandboxError?: string;
     toolCallId?: string;
     // (undocumented)
     toolName: string;
@@ -6938,6 +7072,13 @@ interface ToolResumeEvent extends AgentEventBase<'tool.resume'> {
 }
 
 // @public
+export interface ToolSandboxOptions {
+    driver?: SandboxDriverRef;
+    memoryMb?: number;
+    timeoutMs?: number;
+}
+
+// @public
 export interface ToolScopeOptions {
     subagent?: string;
 }
@@ -6985,9 +7126,7 @@ export function toUIMessageStreamResponse(run: AsyncIterable<AgentEvent>, init?:
 
 // @public
 export interface TraceExporter {
-    // (undocumented)
     onSpanEnd(span: Span): void;
-    // (undocumented)
     onSpanStart(span: Span): void;
 }
 

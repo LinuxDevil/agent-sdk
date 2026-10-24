@@ -26,6 +26,7 @@ import type { CallUsage, RunUsage, StepUsage } from '../models/usage';
 import { attachRunUsage, mergeDelegatedUsage, recordStepUsage } from './runUsage';
 import { recordRunFailure } from './runFailure';
 import { TraceExporter, withSpan } from './tracing';
+import { withObserveExporter } from '../observe/reporter';
 import {
   agentRunSpanInit,
   recordToolOutcome,
@@ -41,6 +42,7 @@ import {
   type ToolCallScope,
 } from './subagentRuntime';
 import { ConfigurationError, isAbortError, isCassetteError, SDKError } from './errors';
+import { sandboxErrorKind } from '../sandbox/errors';
 import { abortReasonOf } from './abortReason';
 import type { HostedTool } from '../tools/hosted';
 import { assertHostedToolsSupported, countHostedCalls, withHostedCalls } from './hostedToolCalls';
@@ -829,8 +831,14 @@ export class AgentExecutor {
     // throwing because `provider` was never checked).
     this.validateExecuteOptions(options);
 
+    // `LOUSHO_OBSERVE` fans the run's exporter out with the collector
+    // reporter (a no-op when unset); a delegated child already carries its
+    // lead's composed exporter, so it is not wired twice (src/observe/reporter.ts).
+    const exporter = withObserveExporter(options.exporter, options.agent?.name);
+    const run = exporter === options.exporter ? options : { ...options, exporter };
+
     // The run reports to its listeners through its event sink.
-    return observeRun(options, (observed) => {
+    return observeRun(run, (observed) => {
       // The entire run is wrapped in a top-level 'agent.run' span,
       // whose `id` is threaded as `parentId` into the nested 'llm.generate'
       // and 'tool.call' spans, giving the 3-level span tree its parent/child
@@ -1764,22 +1772,40 @@ export class AgentExecutor {
             concurrency: options.toolConcurrency ?? 'unbounded',
           });
         }
-        const executed = await this.executeToolCall(
-          toolCall,
-          agent,
-          toolRegistry,
-          onToolCall,
-          onToolResult,
-          sandbox,
-          hooks,
-          sessionId,
-          state.messages,
-          signal,
-          onPrepared,
-          // A delegated child's usage is added to this run's totals.
-          (child, errors) => mergeDelegatedUsage(state.usage, child, errors),
-          scope
-        );
+        let executed: ToolCallOutcome;
+        try {
+          executed = await this.executeToolCall(
+            toolCall,
+            agent,
+            toolRegistry,
+            onToolCall,
+            onToolResult,
+            sandbox,
+            hooks,
+            sessionId,
+            state.messages,
+            signal,
+            onPrepared,
+            // A delegated child's usage is added to this run's totals.
+            (child, errors) => mergeDelegatedUsage(state.usage, child, errors),
+            scope
+          );
+        } catch (error) {
+          // A call that throws (instead of settling an error outcome) still
+          // gets its boundary-failure kind on the span before it propagates.
+          recordToolOutcome(
+            toolSpan,
+            {
+              args: undefined,
+              result: undefined,
+              error: error instanceof Error ? error.message : String(error),
+              sandboxError: sandboxErrorKind(error),
+              latencyMs: Date.now() - toolCallStart,
+            },
+            { redactContent, captureContent: resolveCaptureContent(options.captureContent) }
+          );
+          throw error;
+        }
         const parsedArgs =
           executed.args === undefined
             ? parseToolArguments(toolCall, toolCall.function.arguments)
@@ -1790,6 +1816,7 @@ export class AgentExecutor {
             args: parsedArgs,
             result: executed.result,
             error: executed.error,
+            sandboxError: executed.sandboxError,
             latencyMs: Date.now() - toolCallStart,
           },
           { redactContent, captureContent: resolveCaptureContent(options.captureContent) }

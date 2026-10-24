@@ -40,6 +40,8 @@ const entry = {
     'cli/eval': 'src/cli/eval.ts',
     'cli/init': 'src/cli/init.ts',
     'cli/traces': 'src/cli/traces.ts',
+    'cli/observe': 'src/cli/observe.ts',
+    'cli/prompt': 'src/cli/prompt.ts',
     'execution/otel': 'src/execution/otel.ts',
     'execution/hooks': 'src/execution/hooks.ts',
     'storage/sqlite/index': 'src/storage/sqlite/index.ts',
@@ -81,7 +83,7 @@ export default defineConfig([
     treeshake: true,
     minify: false,
     // Optional peers stay external too: tsup would externalize them from package.json anyway.
-    external: ['ai', 'zod', '@opentelemetry/api', 'dockerode', '@modelcontextprotocol/sdk', 'prompts', 'quickjs-emscripten', '@earendil-works/pi-ai'],
+    external: ['ai', 'zod', '@opentelemetry/api', 'dockerode', '@modelcontextprotocol/sdk', 'prompts', 'quickjs-emscripten', 'isolated-vm', '@earendil-works/pi-ai'],
     onSuccess: async () => {
       copyDevUi();
     },

@@ -11,6 +11,18 @@ What is on `main` and not yet on npm. Entries marked **Behavior change** can
 break working code; [Upgrading](docs/upgrading.md) lists each one with its
 opt-out.
 
+### Added
+
+- The `lousho observe` daemon: a local collector (loopback, `http://127.0.0.1:7777`, SQLite at `~/.lousho/observe.db`) that gathers every agent's traces, heartbeats and eval scores when `LOUSHO_OBSERVE` is set — no per-agent code changes. `lousho observe start|status|stop|rebuild-rollups|token create`; a second `start` on a busy port attaches when it is already the observe daemon. See [Observability](docs/observability.md#the-observe-daemon).
+- Agent Forge gains Observe tabs — Traces, Insights, Monitoring, Scores — reading the daemon through a token-gated `/observe/**` proxy on the studio server.
+- Prompt registry: `createAgent({ prompt: 'name@version' })` or `LOUSHO_PROMPT` resolves versioned instructions from the daemon at build (embedded `instructions` are the fallback); every run records the version used. `lousho prompt push|list|get` manages it.
+- Context hub: `hub()` / `hubTools()` publish and query namespaced shared memory scoped `private` (the writing agent) or `fleet` (every agent on the daemon).
+- Fleet monitoring: heartbeat-derived agent status, `agent.deregister` on graceful exit, a crashed agent's open sessions and unfinished observations flip to `interrupted`, and webhook alerts (`--webhook`, `alerts.json`) on down transitions and error-rate thresholds.
+- Eval scores report to the daemon: every `AssertionResult` lands as a score row on the exercised run's trace (`source: eval` or `judge`); `lousho eval --observe` forces emission.
+- `sandbox({ driver: 'isolate' })` runs tool code in an `isolated-vm` V8 isolate (optional peer `isolated-vm`); `defineTool({ sandbox })` opts a tool in, timeouts and OOM map to `sandbox.error` on the tool span. `'docker'` and `'e2b'` driver names are reserved for later drivers.
+
+## [1.0.0-alpha.29] - 2026-10-21
+
 ### Changed
 
 - **Behavior change:** the built node-server and Docker image refuse to start on a non-loopback host when no auth is configured (no `LOUSHO_API_TOKEN`, build token or `auth.ts`), with `LOUSHO_SERVER_UNPROTECTED`. Set a token, add `auth.ts`, bind to `127.0.0.1`, or set `LOUSHO_ALLOW_PUBLIC=1` to serve an open agent on purpose. `lousho build --target=docker` prints the run command with `-e LOUSHO_API_TOKEN=<token>`.
