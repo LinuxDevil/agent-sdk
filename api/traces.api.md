@@ -4,8 +4,6 @@
 
 ```ts
 
-import { z } from 'zod';
-
 // @public
 export const DEFAULT_TRACE_DIR = ".lousho/traces";
 
@@ -68,23 +66,15 @@ export interface ObserveReporter extends TraceExporter {
     readonly sessionId: string;
 }
 
-// @public (undocumented)
-type PromptUseData = z.infer<typeof promptUseData>;
-
 // @public
-const promptUseData: z.ZodObject<{
-    obs_id: z.ZodString;
-    prompt_id: z.ZodString;
-    version: z.ZodOptional<z.ZodNumber>;
-}, "strip", z.ZodTypeAny, {
+interface PromptUseData {
+    // (undocumented)
     obs_id: string;
+    // (undocumented)
     prompt_id: string;
-    version?: number | undefined;
-}, {
-    obs_id: string;
-    prompt_id: string;
-    version?: number | undefined;
-}>;
+    // (undocumented)
+    version?: number;
+}
 
 // @public
 type PromptUseProvider = () => PromptUseRef | undefined;
