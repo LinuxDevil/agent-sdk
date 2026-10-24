@@ -19,6 +19,7 @@
  *   GET  /runs/compare?a=&b=         -> RunComparisonPayload (compareTrajectories)
  *   GET  /observe/**                 -> proxied to the `lousho observe` daemon's read API (observeProxy.ts)
  *   POST /observe/api/v1/scores      -> proxied too (the proxy's write allowlist: human feedback scores)
+ *   POST /playground/run             -> body: PlaygroundRunRequest; streams SSE PlaygroundEvents (playground.ts)
  *
  * `WS /agents/:id/stream` is wired separately in wsServer.ts (attached to
  * the same underlying http.Server, since `ws` needs the raw HTTP upgrade
@@ -61,6 +62,7 @@ import {
 import { DEPLOY_ADAPTERS, isDeployAdapter, runDeploy } from './deployRunner';
 import { checkApiAccess, checkHostAndOrigin, type StudioAccessOptions } from './auth';
 import { registerObserveProxy } from './observeProxy';
+import { registerPlaygroundRoute, type PlaygroundOptions } from './playground';
 
 export interface CreateAppOptions {
   agentStore: AgentStore;
@@ -90,10 +92,12 @@ export interface CreateAppOptions {
    * the Host/Origin check still applies.
    */
   access?: StudioAccessOptions;
+  /** Observe reporter overrides for `POST /playground/run` (tests); see playground.ts. */
+  playgroundObserve?: PlaygroundOptions['observe'];
 }
 
 /** Path prefixes of the API (everything except `/health` and the static client). */
-const API_PREFIXES = ['/agents', '/runs', '/settings', '/workspace', '/observe'];
+const API_PREFIXES = ['/agents', '/runs', '/settings', '/workspace', '/observe', '/playground'];
 
 function asyncRoute(fn: (req: Request, res: Response) => Promise<void>) {
   return (req: Request, res: Response, next: NextFunction) => {
@@ -597,7 +601,7 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
     // `App.tsx` view state, but still refresh-safe) - serve `index.html` and
     // let the client app take over, the same as `vite preview`/most SPA
     // hosts do.
-    app.get(/^(?!\/health|\/agents|\/runs|\/observe).*/, (_req, res) => {
+    app.get(/^(?!\/health|\/agents|\/runs|\/observe|\/playground).*/, (_req, res) => {
       res.sendFile(indexHtml);
     });
   }
@@ -611,6 +615,7 @@ export function createApp({
   settingsStore,
   staticDir,
   access,
+  playgroundObserve,
 }: CreateAppOptions): Express {
   const app = express();
   // No CORS middleware - the client is same-origin (served by
@@ -667,6 +672,7 @@ export function createApp({
   registerProviderKeyRoutes(app, secrets);
   registerProfileRoutes(app, settings);
   registerDeployRoutes(app, agentStore, baseDir);
+  registerPlaygroundRoute(app, { secretsStore: secrets, baseDir, ...(playgroundObserve ? { observe: playgroundObserve } : {}) });
   // The observe panels' read path: `/observe/**` -> the `lousho observe`
   // daemon (see observeProxy.ts), plus its small write allowlist (feedback
   // scores; bodies come from the express.json above) - before the SPA

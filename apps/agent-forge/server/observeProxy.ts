@@ -28,7 +28,8 @@ function isAllowedWrite(method: string, path: string): boolean {
   return WRITE_ROUTES.some((route) => route.method === method && route.path.test(path));
 }
 
-function observeTarget(): string {
+/** The daemon the Studio reads (and playground runs report to): `LOUSHO_OBSERVE_URL`, default loopback :7777. */
+export function observeTarget(): string {
   return (process.env.LOUSHO_OBSERVE_URL ?? DEFAULT_OBSERVE_URL).replace(/\/+$/, '');
 }
 

@@ -26,6 +26,8 @@ export default defineConfig({
       // server (same as prod; it forwards to the `lousho observe` daemon,
       // which serves no CORS headers of its own).
       '/observe': { target: process.env.LOUSHO_STUDIO_API_URL ?? 'http://127.0.0.1:4750', changeOrigin: true },
+      // The playground's SSE run endpoint.
+      '/playground': { target: process.env.LOUSHO_STUDIO_API_URL ?? 'http://127.0.0.1:4750', changeOrigin: true },
     },
   },
   test: {

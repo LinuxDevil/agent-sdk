@@ -2203,6 +2203,59 @@ curl -H "x-lousho-studio-token: $TOKEN" 'localhost:4750/runs/compare?a=weather&b
 The fork is a run of its own: the original run's checkpoints, status and
 chat are unchanged.
 
+## Playground run endpoint
+
+`POST /playground/run` runs a one-off prompt against a model and streams the
+reply as server-sent events. It carries the same access token as the rest of
+the API. The body:
+
+```json
+{
+  "messages": [{ "role": "system", "content": "You are {persona}." }, { "role": "user", "content": "Hi {name}" }],
+  "variables": { "persona": "a pirate", "name": "Ada" },
+  "model": "openai/gpt-4o-mini",
+  "tools": ["current-date"],
+  "promptRef": "greeter@prod"
+}
+```
+
+- `messages` (required): 1 to 200 `{ role, content }`, `role` one of
+  `system`, `user`, `assistant`. They are sent as written; the server adds no
+  system prompt of its own.
+- `variables`: string values. Every `{name}` in every message's content is
+  replaced by `variables.name`; a placeholder with no variable is left as is.
+- `model` (required): `provider/model`, or a bare provider (`mock`). The
+  provider key comes from Settings > Provider keys, then the environment,
+  the same way agent runs resolve it.
+- `tools`: tool names the Studio resolves for agents (`current-date`,
+  `day-name`, `http`, `web-fetch`, `demo-approval`). A tool that needs
+  approval ends the run with `finishReason: "awaiting-approval"`; the
+  playground has no approval flow.
+- `promptRef`: the registry prompt the messages came from (`name`,
+  `name@label` or `name@3`). It is only recorded on the trace; the server
+  does not fetch the prompt.
+
+A bad body gets `400 { error }`. Otherwise the response is `200` with
+`content-type: text/event-stream`, one `data: <json>` frame per event:
+
+| Event | Fields |
+| --- | --- |
+| `delta` | `text`: a chunk of the reply. |
+| `tool_call` | `id`, `name`, `args`: the model called a tool. |
+| `done` | `finishReason`, `text` (the whole reply), `traceId` (the run's trace in the observe daemon), `usage` when known. Last event of a run that finished. |
+| `error` | `message`, `code` when it is an SDK error (`LOUSHO_PROVIDER_UNKNOWN` for an unknown provider, `LOUSHO_PROVIDER_MISSING_API_KEY`, ...). Last event of a run that failed or never started. |
+
+Every stream ends with exactly one `done` or `error`, even a run that stops
+without a result. `usage` has the `run.done` event's usage shape
+(`AgentEventUsage`).
+
+Closing the connection aborts the run. Every run reports to the observe
+daemon the Studio reads (`LOUSHO_OBSERVE_URL`, default
+`http://127.0.0.1:7777`, or `LOUSHO_OBSERVE` when set) as agent
+`playground`, with `lousho.prompt.ref` on the run's root span when
+`promptRef` is given. `LOUSHO_OBSERVE_TOKEN` is sent as the bearer token, for a
+daemon bound beyond loopback. A daemon that is down does not slow or fail the run.
+
 ## Settings, secrets and deploy wiring
 
 The bottom drawer has a **Settings** tab with three parts: provider API keys
@@ -14209,6 +14262,11 @@ The daemon also serves two stores agents can use at runtime:
 - **Context hub.** `hub()` / `hubTools()` let agents publish and query
   namespaced key-values scoped `private` (the writing agent only) or
   `fleet` (every agent on the daemon).
+
+Runs from the Studio playground (`POST /playground/run`, see
+[Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md#playground-run-endpoint)) report as agent
+`playground`; a run started from a registry prompt carries the prompt's ref
+(`name@label`, `name@3`) in its root span's `lousho.prompt.ref` attribute.
 
 Reporting is fire-and-forget and never blocks a run: when the daemon is
 down, the failed batch is requeued and retried with exponential backoff (1 s,

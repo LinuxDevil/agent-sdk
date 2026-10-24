@@ -484,6 +484,11 @@ The daemon also serves two stores agents can use at runtime:
   namespaced key-values scoped `private` (the writing agent only) or
   `fleet` (every agent on the daemon).
 
+Runs from the Studio playground (`POST /playground/run`, see
+[Agent Forge](./agent-forge.md#playground-run-endpoint)) report as agent
+`playground`; a run started from a registry prompt carries the prompt's ref
+(`name@label`, `name@3`) in its root span's `lousho.prompt.ref` attribute.
+
 Reporting is fire-and-forget and never blocks a run: when the daemon is
 down, the failed batch is requeued and retried with exponential backoff (1 s,
 2 s, 4 s ... capped at 30 s), so a daemon restart mid-run loses nothing. A
