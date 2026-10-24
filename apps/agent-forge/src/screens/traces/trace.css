@@ -1,0 +1,117 @@
+/*
+ * Trace screen (#/traces/:traceId): header over the unified trace viewer,
+ * plus the feedback form inside the inspector. Colours from src/theme.css
+ * tokens only.
+ */
+
+.trace-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  padding: 16px;
+  font-family: var(--font-ui);
+  color: var(--text);
+}
+
+.trace-loading {
+  padding: 24px;
+  color: var(--text-muted);
+}
+
+/* ---------- header ---------- */
+.trace-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.trace-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.trace-title h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.trace-copy-link {
+  margin-left: auto;
+}
+.trace-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 0;
+}
+.trace-fact {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+}
+.trace-fact dt {
+  color: var(--text-muted);
+}
+.trace-fact dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.trace-fact a {
+  color: var(--accent);
+}
+.trace-fact code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* ---------- feedback form (inside RunInspector's Feedback section) ---------- */
+.trace-feedback {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+}
+.trace-feedback-choices {
+  display: inline-flex;
+  gap: 4px;
+}
+.trace-feedback-choice[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+}
+.trace-feedback-comment {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.trace-feedback-comment textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  resize: vertical;
+}
+.trace-feedback-comment textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (max-width: 600px) {
+  .trace-screen {
+    padding: 12px;
+  }
+}

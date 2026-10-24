@@ -68,4 +68,26 @@ describe('ObserveClient', () => {
       window.sessionStorage.removeItem('lousho-studio-token');
     }
   });
+
+  it('postScore POSTs the JSON body to /api/v1/scores and returns the score id', async () => {
+    const fetchFn = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      void init;
+      return jsonResponse(201, { score_id: 'sc1' });
+    });
+    const client = clientWith(fetchFn as typeof fetch);
+    const body = { trace_id: 't1', obs_id: 'o1', name: 'feedback', value: 1, comment: 'nice' };
+    expect(await client.postScore(body)).toEqual({ score_id: 'sc1' });
+    const [url, init] = fetchFn.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/observe/api/v1/scores');
+    expect(init.method).toBe('POST');
+    expect(new Headers(init.headers).get('content-type')).toBe('application/json');
+    expect(JSON.parse(init.body as string)).toEqual(body);
+  });
+
+  it('postScore keeps the error semantics: 404 is an ObserveApiError, 502 is daemon down', async () => {
+    const notFound = clientWith((async () => jsonResponse(404, { error: "No trace 'x'." })) as typeof fetch);
+    await expect(notFound.postScore({ trace_id: 'x', name: 'feedback', value: 0 })).rejects.toBeInstanceOf(ObserveApiError);
+    const down = clientWith((async () => jsonResponse(502, {})) as typeof fetch);
+    await expect(down.postScore({ trace_id: 'x', name: 'feedback', value: 0 })).rejects.toBeInstanceOf(ObserveDaemonDownError);
+  });
 });

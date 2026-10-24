@@ -214,6 +214,13 @@ describe('RunInspector', () => {
     expect(pill.classList.contains('pill-running')).toBe(false);
   });
 
+  it('renders the feedback slot inside the Feedback section', () => {
+    const c = render(
+      <RunInspector observation={obs({ obs_id: 'fine' })} scores={[]} renderFeedback={(r) => <form data-for={r.obs_id} />} />,
+    );
+    expect(c.querySelector('[data-section="feedback"] form[data-for="fine"]')).not.toBeNull();
+  });
+
   it('reads attrs.error.message, falling back to a generic line', () => {
     let c = render(<RunInspector observation={obs({ obs_id: 'a', status: 'error', attrs: { error: { message: 'boom' } } })} scores={[]} />);
     expect(c.querySelector('[role="alert"]')?.textContent).toContain('boom');

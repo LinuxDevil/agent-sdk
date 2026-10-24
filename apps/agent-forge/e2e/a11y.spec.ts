@@ -113,7 +113,7 @@ test('Ctrl+K opens the command palette; ? lists the shortcuts', async ({ page })
 });
 
 // One <main>, one h1, the banner and the primary nav on every screen, not just Agents.
-for (const route of ['#/traces', '#/monitoring', '#/settings', '#/playground']) {
+for (const route of ['#/traces', '#/traces/e2e-trace?obs=e2e-obs', '#/monitoring', '#/settings', '#/playground']) {
   test(`${route} keeps the landmarks and exactly one main`, async ({ page }) => {
     await page.goto(`/?token=e2e-studio-token${route}`);
     await expect(page.locator('.screen-main')).toBeVisible();
@@ -125,6 +125,16 @@ for (const route of ['#/traces', '#/monitoring', '#/settings', '#/playground']) 
     await expect(page.getByRole('navigation', { name: 'Primary' }).locator('[aria-current="page"]')).toHaveCount(1);
   });
 }
+
+test('a #/traces/:id deep link with no daemon shows the down state and keeps the URL', async ({ page }) => {
+  // Answer like the studio proxy does for a dead daemon, whatever runs on the machine.
+  await page.route('**/observe/**', (route) =>
+    route.fulfill({ status: 502, contentType: 'application/json', body: '{"error":"down"}' }),
+  );
+  await page.goto('/?token=e2e-studio-token#/traces/e2e-trace?obs=e2e-obs');
+  await expect(page.getByRole('main').getByText('lousho observe start')).toBeVisible();
+  expect(new URL(page.url()).hash).toBe('#/traces/e2e-trace?obs=e2e-obs');
+});
 
 test('#/settings shows the settings panel inside the screen', async ({ page }) => {
   await page.goto('/?token=e2e-studio-token#/settings');

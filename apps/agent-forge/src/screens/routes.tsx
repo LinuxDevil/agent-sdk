@@ -5,6 +5,7 @@ import { Topbar } from '../components/Topbar';
 import { SettingsPanel } from '../components/SettingsPanel';
 import { ObserveView, type ObserveTab } from '../observe/ObserveView';
 import { AgentsScreen } from './agents/AgentsScreen';
+import { TraceScreen } from './traces/TraceScreen';
 import { useLeaveAgentsGuard } from './agents/useLeaveAgentsGuard';
 import { Placeholder } from './Placeholder';
 
@@ -12,6 +13,7 @@ export type ScreenId =
   | 'agents'
   | 'playground'
   | 'traces'
+  | 'trace'
   | 'threads'
   | 'monitoring'
   | 'scores'
@@ -26,7 +28,7 @@ const ROUTES: { pattern: string; screen: ScreenId }[] = [
   { pattern: '/agents/:id', screen: 'agents' },
   { pattern: '/playground', screen: 'playground' },
   { pattern: '/traces', screen: 'traces' },
-  { pattern: '/traces/:traceId', screen: 'traces' },
+  { pattern: '/traces/:traceId', screen: 'trace' },
   { pattern: '/threads', screen: 'threads' },
   { pattern: '/threads/:sessionId', screen: 'threads' },
   { pattern: '/monitoring', screen: 'monitoring' },
@@ -80,6 +82,13 @@ const PLACEHOLDERS: Partial<Record<ScreenId, { title: string; blurb: string }>> 
   hub: { title: 'Context Hub', blurb: 'The shared context namespaces your agents read from, browsable by namespace.' },
 };
 
+/** `#/traces/:traceId`: the trace id comes from the hash; a new id remounts the screen. */
+function TraceRoute() {
+  const { path } = useRoute();
+  const traceId = matchRoute(`#${path}`, ['/traces/:traceId'])?.params.traceId ?? '';
+  return <TraceScreen key={traceId} traceId={traceId} />;
+}
+
 /** Every screen but Agents: the shell top bar over the screen's content. */
 function ScreenFrame({ children }: { children: ReactNode }) {
   return (
@@ -100,7 +109,8 @@ export function Screens() {
   const placeholder = PLACEHOLDERS[screen];
   let content: ReactNode;
   // Same element type at the same position for all three, so the drill-down filter survives a route change.
-  if (observeTab) content = <ObserveView tab={observeTab} onTabChange={(tab) => navigate(TAB_PATH[tab])} />;
+  if (screen === 'trace') content = <TraceRoute />;
+  else if (observeTab) content = <ObserveView tab={observeTab} onTabChange={(tab) => navigate(TAB_PATH[tab])} />;
   else if (placeholder) content = <Placeholder {...placeholder} />;
   else
     content = (
