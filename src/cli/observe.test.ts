@@ -11,7 +11,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultPidPath, startObserveDaemon, type ObserveDaemon } from '../observe/daemon';
-import { runObserve } from './observe';
+import { reporterHint, runObserve } from './observe';
 
 const daemons: ObserveDaemon[] = [];
 const servers: http.Server[] = [];
@@ -41,6 +41,18 @@ async function start(): Promise<ObserveDaemon> {
 }
 
 const dbPath = (): string => path.join(cwd, 'observe.db');
+
+describe('reporterHint', () => {
+  it('says LOUSHO_OBSERVE=1 only for the default loopback port', () => {
+    expect(reporterHint('127.0.0.1', 7777)).toContain('LOUSHO_OBSERVE=1 ');
+  });
+
+  it('names the base url on a non-default port or host', () => {
+    expect(reporterHint('127.0.0.1', 7790)).toContain('LOUSHO_OBSERVE=http://127.0.0.1:7790');
+    expect(reporterHint('127.0.0.1', 7790)).not.toContain('LOUSHO_OBSERVE=1');
+    expect(reporterHint('localhost', 7777)).toContain('LOUSHO_OBSERVE=http://localhost:7777');
+  });
+});
 
 describe('lousho observe', () => {
   it('prints help (0 with --help, 2 with none) and exits 2 on an unknown command', async () => {

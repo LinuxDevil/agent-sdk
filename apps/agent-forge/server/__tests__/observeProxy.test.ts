@@ -60,6 +60,12 @@ describe('observe proxy', () => {
     expect(res.body.echoed).toBe('/api/v1/traces?status=error&limit=10');
   });
 
+  it('answers GET /observe/__target with the daemon url the proxy points at', async () => {
+    const res = await request(app).get('/observe/__target');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ url: daemonUrl });
+  });
+
   it('answers 502 with the start hint when the daemon is down', async () => {
     daemon?.close();
     daemon = undefined;

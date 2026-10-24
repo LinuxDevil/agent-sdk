@@ -113,6 +113,12 @@ function envPort(): number {
   return Number.isInteger(port) && port >= 0 && port <= 65535 ? port : OBSERVE_DEFAULT_PORT;
 }
 
+/** The banner line telling agents how to reach this daemon: `=1` only reaches the default loopback port. */
+export function reporterHint(host: string, port: number): string {
+  const value = host === '127.0.0.1' && port === OBSERVE_DEFAULT_PORT ? '1' : `http://${host}:${port}`;
+  return `lousho observe: agents emit with LOUSHO_OBSERVE=${value} (no auth on loopback).`;
+}
+
 /* ------------------------------------------------------------------- start */
 
 /** `start` hit EADDRINUSE: say who owns the port. 0 = this db's daemon already runs; 1 = anything else. */
@@ -165,7 +171,7 @@ async function runStart(args: string[]): Promise<number> {
         : `lousho observe: bearer auth is ON but no tokens exist yet - create one: lousho observe token create --project <name>${dbPath === defaultDbPath() ? '' : ` --db ${dbPath}`}`
     );
   } else {
-    console.log('lousho observe: agents emit with LOUSHO_OBSERVE=1 (no auth on loopback).');
+    console.log(reporterHint(host, daemon.port));
   }
   if (daemon.alerts.webhooks.length > 0 || daemon.alerts.errorRateThreshold !== undefined) {
     const parts = [

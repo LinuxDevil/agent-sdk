@@ -139,6 +139,17 @@ export class ObserveClient {
     }
   }
 
+  /** The daemon URL reporters should use: the proxy's `__target` (same-origin), or the configured absolute base. `undefined` if unknown. */
+  async target(): Promise<string | undefined> {
+    if (!this.baseUrl.startsWith('/')) return this.baseUrl;
+    try {
+      const body = await this.request<{ url?: unknown }>('/__target');
+      return typeof body.url === 'string' ? body.url : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   /** `GET /api/v1/traces` - the paginated, filterable trace list. */
   listTraces(filter: TraceListFilter = {}): Promise<ObserveTraceList> {
     return this.request('/api/v1/traces', { ...filter });

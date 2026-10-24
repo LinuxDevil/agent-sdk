@@ -28,6 +28,11 @@ export function registerObserveProxy(app: Express): void {
       res.status(405).json({ error: 'The observe proxy only forwards GET reads.' });
       return;
     }
+    // Which daemon this proxy points at, so the down state can name the right LOUSHO_OBSERVE value.
+    if (req.path === '/__target') {
+      res.json({ url: observeTarget() });
+      return;
+    }
     const upstream = `${observeTarget()}${req.originalUrl.slice(PROXY_PREFIX.length)}`;
     let response: Response;
     try {

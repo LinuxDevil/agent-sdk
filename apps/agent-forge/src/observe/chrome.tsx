@@ -1,6 +1,10 @@
 /** Shared bits of the observe panels' chrome: the daemon-down empty state, inline API errors, status pills, filter controls. */
 
+import { useEffect, useState } from 'react';
+import { observeClient } from './observeClient';
 import type { ObserveAgentRow } from './types';
+
+const DEFAULT_OBSERVE_URL = 'http://127.0.0.1:7777';
 
 /** The "All agents" filter select the panels share. */
 export function AgentSelect({
@@ -30,11 +34,23 @@ export function AgentSelect({
  * panels swap in by themselves once `lousho observe start` runs.
  */
 export function ObserveDaemonDown() {
+  const [target, setTarget] = useState<string | undefined>();
+  useEffect(() => {
+    let live = true;
+    void observeClient.target().then((url) => {
+      if (live) setTarget(url);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  // `=1` only reaches the default daemon; any other target must be spelled out.
+  const value = target === undefined || target.replace(/\/+$/, '') === DEFAULT_OBSERVE_URL ? '1' : target;
   return (
     <div className="observe-empty" role="status">
       <p className="observe-empty-title">No data yet - the observe daemon is not reachable.</p>
       <p>
-        Run <code>lousho observe start</code>, then set <code>LOUSHO_OBSERVE=1</code> on your agents; their traces,
+        Run <code>lousho observe start</code>, then set <code>LOUSHO_OBSERVE={value}</code> on your agents; their traces,
         scores and heartbeats show up here automatically.
       </p>
     </div>
