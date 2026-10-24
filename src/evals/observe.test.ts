@@ -54,7 +54,7 @@ afterEach(() => {
 describe('scoreEventsOf', () => {
   it('maps one score row per AssertionResult with the spec naming and source', () => {
     const events = scoreEventsOf(result(), { traceId: 'trace-1', agentId: 'agent-1', now: () => 42, newId: () => 'fresh-id' });
-    expect(events).toHaveLength(2);
+    expect(events).toHaveLength(3);
     expect(events[0]).toEqual({
       type: 'score',
       data: {
@@ -73,6 +73,54 @@ describe('scoreEventsOf', () => {
       source: 'judge',
       comment: 'soft check failed',
     });
+  });
+
+  it('emits an eval-level pass/fail row after the per-assertion rows', () => {
+    const base = { kind: 'gate' as const, score: 1 };
+    const events = scoreEventsOf(
+      result({
+        assertions: [
+          { ...base, name: 'completed()', passed: true },
+          { ...base, name: 'mentions receipt (expected to fail)', passed: false, score: 0 },
+          { ...base, name: 'no tools', passed: true },
+        ],
+      }),
+      { traceId: 'trace-1', agentId: 'agent-1', now: () => 42, newId: () => 'fresh-id' }
+    );
+    expect(events).toHaveLength(4);
+    expect(events[3]).toEqual({
+      type: 'score',
+      data: {
+        score_id: 'fresh-id',
+        trace_id: 'trace-1',
+        name: 'refund eval',
+        value: 0,
+        source: 'eval',
+        comment: 'mentions receipt (expected to fail)',
+        agent_id: 'agent-1',
+        ts: 42,
+      },
+    });
+  });
+
+  it('eval-level row is 1 with no comment when every assertion passed, and absent with zero assertions', () => {
+    const passing = scoreEventsOf(result({ assertions: [{ name: 'a', kind: 'gate', passed: true, score: 1 }] }), { traceId: 't' });
+    const last = passing[passing.length - 1] as Extract<IngestEvent, { type: 'score' }>;
+    expect(last.data).toMatchObject({ name: 'refund eval', value: 1 });
+    expect(last.data.comment).toBeUndefined();
+    expect(scoreEventsOf(result({ assertions: [] }), { traceId: 't' })).toEqual([]);
+  });
+
+  it('eval-level row ignores soft failures, and goes to 0 with the error text when the case threw', () => {
+    const lastOf = (r: EvalResult) => {
+      const events = scoreEventsOf(r, { traceId: 't' });
+      return (events[events.length - 1] as Extract<IngestEvent, { type: 'score' }>).data;
+    };
+    const softOnly = lastOf(result()); // completed() gate passes, tone soft fails
+    expect(softOnly).toMatchObject({ name: 'refund eval', value: 1 });
+    expect(softOnly.comment).toBeUndefined();
+    const threw = lastOf(result({ error: 'send() failed', passed: false, assertions: [{ name: 'completed()', kind: 'gate', passed: true, score: 1 }] }));
+    expect(threw).toMatchObject({ value: 0, comment: 'send() failed' });
   });
 
   it('omits comment and agent_id when absent', () => {
@@ -128,7 +176,7 @@ describe('evalCaseObservation', () => {
     await observation.emit(result());
     await vi.waitFor(() => expect(calls.length).toBeGreaterThan(0));
     const scores = scoreEvents(calls);
-    expect(scores).toHaveLength(2);
+    expect(scores).toHaveLength(3);
     for (const event of scores) {
       expect(event.data.trace_id).toBe(spanId);
       expect(event.data.agent_id).toEqual(expect.any(String));
@@ -149,7 +197,7 @@ describe('evalCaseObservation', () => {
     const span = calls[spanBatch].batch.find((e) => e.type === 'observation' && e.data.name === 'eval e');
     expect(span).toBeDefined();
     const scores = scoreEvents(calls);
-    expect(scores).toHaveLength(2);
+    expect(scores).toHaveLength(3);
     for (const event of scores) expect(event.data.trace_id).toBe((span as Extract<IngestEvent, { type: 'observation' }>).data.obs_id);
   });
 
@@ -216,7 +264,7 @@ describe('evalCaseObservation', () => {
     await second.run(async () => 'ok');
     await second.emit(result());
     const scores = scoreEvents(daemon.calls);
-    expect(scores).toHaveLength(4); // the slow case's scores were queued, not lost
+    expect(scores).toHaveLength(6); // the slow case's scores were queued, not lost
     expect(new Set(scores.map((e) => e.data.trace_id)).size).toBe(2);
   });
 
@@ -233,7 +281,7 @@ describe('evalCaseObservation', () => {
     await second.run(async () => 'ok');
     await second.emit(result());
     const events = daemon.calls.flatMap((c) => c.batch);
-    expect(scoreEvents(daemon.calls)).toHaveLength(4);
+    expect(scoreEvents(daemon.calls)).toHaveLength(6);
     // Each case's eval span lands before its own scores.
     const spanAt = (name: string) => events.findIndex((e) => e.type === 'observation' && e.data.name === name && e.data.end !== undefined);
     const firstScoreAt = events.findIndex((e) => e.type === 'score');
@@ -282,11 +330,11 @@ describe('runTrajectoryCase emission (integration)', () => {
     );
     expect(res.passed).toBe(true);
     expect(res.assertions.find((a) => a.name === 'tone')?.source).toBe('judge');
-    await vi.waitFor(() => expect(scoreEvents(calls)).toHaveLength(2));
+    await vi.waitFor(() => expect(scoreEvents(calls)).toHaveLength(3));
     const scores = scoreEvents(calls);
     const traceIds = new Set(scores.map((e) => e.data.trace_id));
     expect(traceIds.size).toBe(1);
-    expect(scores.map((e) => e.data.name).sort()).toEqual(['scored eval/completed()', 'scored eval/tone']);
+    expect(scores.map((e) => e.data.name).sort()).toEqual(['scored eval', 'scored eval/completed()', 'scored eval/tone']);
     expect(scores.find((e) => e.data.name === 'scored eval/tone')?.data.source).toBe('judge');
     expect(scores.find((e) => e.data.name === 'scored eval/completed()')?.data.source).toBe('eval');
     expect(scores.every((e) => typeof e.data.agent_id === 'string' && e.data.agent_id.length > 0)).toBe(true);
