@@ -109,4 +109,48 @@ describe('ObserveView', () => {
     act(() => back!.click());
     expect(onBack).toHaveBeenCalledTimes(1);
   });
+
+  function stubDaemon() {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/health')) {
+          return new Response(JSON.stringify({ service: 'lousho-observe', ok: true }), { status: 200 });
+        }
+        if (url.includes('/api/v1/agents')) {
+          return new Response(JSON.stringify({ agents: [] }), { status: 200 });
+        }
+        if (url.includes('/api/v1/insights')) {
+          return new Response(JSON.stringify({ window: { since: 0, until: 1 }, agents: [], series: [] }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ traces: [], total: 0, limit: 50, offset: 0 }), { status: 200 });
+      })
+    );
+  }
+
+  async function renderView(node: React.ReactElement) {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root!.render(node);
+    });
+    await flush();
+    await flush();
+  }
+
+  it('hides its own tab strip when the route picks the panel', async () => {
+    stubDaemon();
+    await renderView(<ObserveView tab="traces" onTabChange={() => {}} />);
+    expect(container!.querySelector('[role="tablist"]')).toBeNull();
+    expect(container!.textContent).toContain('No traces match');
+  });
+
+  it('shows Insights under the fleet table on the Monitoring panel', async () => {
+    stubDaemon();
+    await renderView(<ObserveView tab="fleet" onTabChange={() => {}} />);
+    expect(container!.querySelector('[role="tablist"]')).toBeNull();
+    expect(container!.querySelector('[aria-label="Insights"]')).not.toBeNull();
+  });
 });

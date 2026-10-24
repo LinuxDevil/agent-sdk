@@ -101,3 +101,31 @@ test('the Output node is drawn once and the minimap shows the graph', async ({ p
   // The minimap draws one node per canvas node.
   await expect.poll(() => page.locator('.react-flow__minimap-node').count()).toBe(await page.locator('.react-flow__node').count());
 });
+
+/**
+ * Lands on `#/agents` with the session still authenticated: the redirect only
+ * touches the hash, and studioToken.ts has moved `?token=` into sessionStorage.
+ */
+async function expectLanded(page: Page, hash: string) {
+  await expect(page).toHaveURL(new RegExp(`/${hash}$`));
+  expect(await page.evaluate(() => sessionStorage.getItem('lousho-studio-token'))).toBe(TOKEN);
+  await expect(page.locator('.connection-banner')).toHaveCount(0);
+}
+
+test('a ?token= link lands on Agents; the Build toolbar stays on Agents', async ({ page }) => {
+  await page.goto(`/?token=${TOKEN}`);
+  await expectLanded(page, '#/agents');
+  await expect(page.getByRole('button', { name: 'Run', exact: true })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Studio surface' })).toHaveCount(0);
+
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Traces' }).click();
+  await expectLanded(page, '#/traces');
+  await expect(page.locator('.topbar .crumbs')).toHaveText('Traces');
+  for (const name of ['Run', 'Stop', 'Import', 'Export', 'Save', 'Debug']) {
+    await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+  }
+  await expect(page.locator('.env-select')).toHaveCount(0);
+
+  await page.goto(`/?token=${TOKEN}#/no-such-screen`);
+  await expectLanded(page, '#/agents');
+});
