@@ -35,8 +35,9 @@ export function isRunning(row: ObserveObservationRow): boolean {
   return row.end === null;
 }
 
-/** The status to display: `running` for an open observation, else the stored status. */
+/** The status to display: a stored `error` always wins; else `running` for an open observation, else the stored status. */
 export function displayStatus(row: ObserveObservationRow): string | null {
+  if (row.status === 'error') return 'error';
   return isRunning(row) ? 'running' : row.status;
 }
 

@@ -205,6 +205,15 @@ describe('RunInspector', () => {
     expect(c.textContent).toContain('No feedback on this step yet.');
   });
 
+  it('shows the error pill, not "running", for an open observation that failed (error wins)', () => {
+    const c = render(
+      <RunInspector observation={obs({ obs_id: 'open-bad', status: 'error', end: null })} scores={[]} now={T0 + 500} />,
+    );
+    const pill = c.querySelector('.run-inspector-head .status-pill') as HTMLElement;
+    expect(pill.classList.contains('pill-error')).toBe(true);
+    expect(pill.classList.contains('pill-running')).toBe(false);
+  });
+
   it('reads attrs.error.message, falling back to a generic line', () => {
     let c = render(<RunInspector observation={obs({ obs_id: 'a', status: 'error', attrs: { error: { message: 'boom' } } })} scores={[]} />);
     expect(c.querySelector('[role="alert"]')?.textContent).toContain('boom');
