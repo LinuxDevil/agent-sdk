@@ -877,6 +877,22 @@ export function scorePassRates(
   });
 }
 
+/** The reporter-supplied identity and drop count out of a stored `agents.meta` JSON blob; each `null` when absent or malformed. */
+function metaFieldsOf(metaJson: unknown): { hostname: string | null; pid: number | null; dropped: number | null } {
+  const none = { hostname: null, pid: null, dropped: null };
+  if (typeof metaJson !== 'string') return none;
+  try {
+    const meta = JSON.parse(metaJson) as { hostname?: unknown; pid?: unknown; dropped?: unknown };
+    return {
+      hostname: typeof meta.hostname === 'string' ? meta.hostname : null,
+      pid: typeof meta.pid === 'number' ? meta.pid : null,
+      dropped: typeof meta.dropped === 'number' ? meta.dropped : null,
+    };
+  } catch {
+    return none; // malformed meta: freshness still derives from defaults
+  }
+}
+
 export interface AgentRow {
   agent_id: string;
   project: string | null;
@@ -903,19 +919,7 @@ export interface AgentRow {
 export function listAgents(db: SqlDatabase, now: number = Date.now()): AgentRow[] {
   const rows = db.prepare('SELECT * FROM agents ORDER BY COALESCE(last_heartbeat, first_seen) DESC').all();
   return rows.map((row) => {
-    let hostname: string | null = null;
-    let pid: number | null = null;
-    let dropped: number | null = null;
-    if (typeof row.meta === 'string') {
-      try {
-        const meta = JSON.parse(row.meta) as { hostname?: unknown; pid?: unknown; dropped?: unknown };
-        hostname = typeof meta.hostname === 'string' ? meta.hostname : null;
-        pid = typeof meta.pid === 'number' ? meta.pid : null;
-        dropped = typeof meta.dropped === 'number' ? meta.dropped : null;
-      } catch {
-        // malformed meta: freshness still derives from defaults
-      }
-    }
+    const { hostname, pid, dropped } = metaFieldsOf(row.meta);
     const interval = heartbeatIntervalFromMeta(row.meta);
     const lastHeartbeat = row.last_heartbeat === null ? null : Number(row.last_heartbeat);
     const age = lastHeartbeat === null ? null : Math.max(0, now - lastHeartbeat);
