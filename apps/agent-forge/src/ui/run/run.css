@@ -1,0 +1,335 @@
+/*
+ * Trace viewer: RunTree, Waterfall, RunInspector and the TraceViewer layout.
+ * Colours from src/theme.css tokens only. Virtualised rows are a fixed 32px
+ * (VIRTUAL_ROW_HEIGHT in rows.ts) so their names ellipsise and rely on the
+ * title tooltip; plain rows wrap the full name.
+ */
+
+/* ---------- layout ---------- */
+.run-viewer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  min-height: 0;
+  font-family: var(--font-ui);
+  color: var(--text);
+}
+@media (max-width: 900px) {
+  .run-viewer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.run-viewer-steps,
+.run-viewer-inspector {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.run-mode-toggle {
+  display: inline-flex;
+  gap: 2px;
+  margin: 8px;
+  padding: 2px;
+  background: var(--surface-2);
+  border-radius: 6px;
+}
+.run-mode-toggle button {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.run-mode-toggle button[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+/* ---------- shared rows ---------- */
+.run-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+.run-row:hover {
+  background: var(--surface-2);
+}
+.run-row.selected {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+}
+.run-row.run-row-error {
+  border-left-color: var(--danger);
+  color: var(--danger);
+}
+.run-row.run-row-error.selected {
+  background: var(--danger-soft);
+}
+.run-row-virtual {
+  height: 32px;
+  box-sizing: border-box;
+  align-items: center;
+  overflow: hidden;
+}
+.run-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.run-row-virtual .run-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.run-dur {
+  flex: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.run-dur-live {
+  color: var(--info);
+}
+.run-virtual {
+  height: 480px;
+  overflow: auto;
+}
+
+/* ---------- tree ---------- */
+.run-tree-row {
+  padding: 0;
+}
+.run-row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.run-row-virtual .run-row-main {
+  align-items: center;
+  padding-top: 0;
+  padding-bottom: 0;
+  height: 100%;
+}
+.run-kind {
+  display: inline-flex;
+  flex: none;
+  margin-top: 2px;
+  color: var(--text-faint);
+}
+.run-kind-span {
+  color: var(--info);
+}
+.run-kind-generation {
+  color: var(--accent);
+}
+.run-kind-tool {
+  color: var(--warning);
+}
+.run-row-error .run-kind {
+  color: var(--danger);
+}
+.run-model-chip {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.run-tokens {
+  flex: none;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.run-playground-link {
+  flex: none;
+  align-self: center;
+  margin-right: 8px;
+  color: var(--accent);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* ---------- waterfall ---------- */
+.run-axis,
+.run-wf-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 30%) minmax(0, 1fr) 80px;
+  gap: 8px;
+}
+.run-axis {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.run-axis-track {
+  position: relative;
+  height: 14px;
+}
+.run-axis-tick {
+  position: absolute;
+  top: 0;
+  padding-left: 3px;
+  border-left: 1px solid var(--border);
+  white-space: nowrap;
+}
+.run-wf-row {
+  padding: 6px 8px;
+  cursor: pointer;
+}
+.run-wf-track {
+  position: relative;
+  align-self: center;
+  height: 10px;
+  background: var(--surface-2);
+  border-radius: 3px;
+}
+.run-wf-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 2px;
+  border-radius: 3px;
+  background: var(--accent);
+}
+.run-wf-bar-span {
+  background: var(--info);
+}
+.run-wf-bar-tool {
+  background: var(--warning);
+}
+.run-wf-bar-event {
+  background: var(--text-faint);
+}
+.run-wf-bar.running {
+  opacity: 0.6;
+  background: var(--info);
+}
+.run-wf-bar.error {
+  background: var(--danger);
+}
+.run-wf-row .run-dur {
+  text-align: right;
+}
+
+/* ---------- inspector ---------- */
+.run-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+.run-inspector-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.run-inspector-kind {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.run-inspector-name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.run-error-banner {
+  padding: 10px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+.run-truncated-note {
+  margin: 0;
+  color: var(--warning);
+  font-size: 12px;
+}
+.run-section-title {
+  margin: 0 0 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.run-empty-line {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.run-scores {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.run-score {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+}
+.run-score-name {
+  font-weight: 600;
+}
+.run-score-value {
+  font-family: var(--font-mono);
+}
+.run-score-source,
+.run-score-comment {
+  color: var(--text-muted);
+}
+.run-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.run-fact dt {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.run-fact dd {
+  margin: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.run-marker {
+  color: var(--warning);
+}

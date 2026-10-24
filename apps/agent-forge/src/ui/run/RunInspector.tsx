@@ -1,0 +1,146 @@
+import type { ReactNode } from 'react';
+
+import { fmtCost, fmtDuration, fmtInt } from '../../observe/format';
+import type { ObserveObservationRow, ObserveScoreRow } from '../../observe/types';
+import { JsonView } from '../JsonView';
+import { MessageView } from '../MessageView';
+import { StatusPill } from '../StatusPill';
+import { displayName, displayStatus, elapsedMs, isRunning, playgroundHref } from './rows';
+import './run.css';
+
+/**
+ * Props for {@link RunInspector}. `scores` may be the whole trace's scores:
+ * the inspector keeps the ones for this observation itself (and, for a root
+ * observation, the trace-level scores with `obs_id === null`). `now` is the
+ * clock a running observation's duration counts to (defaults to `Date.now()`).
+ */
+export interface RunInspectorProps {
+  observation: ObserveObservationRow;
+  scores: ObserveScoreRow[];
+  now?: number;
+}
+
+/** `attrs.error` as a string, else `attrs.error.message`, else a generic line. */
+function errorText(attrs: Record<string, unknown> | null): string {
+  const error = attrs?.error;
+  if (typeof error === 'string' && error !== '') return error;
+  if (error !== null && typeof error === 'object') {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message !== '') return message;
+  }
+  return 'This step failed.';
+}
+
+function scoresFor(row: ObserveObservationRow, scores: ObserveScoreRow[]): ObserveScoreRow[] {
+  const isRoot = row.parent_obs_id === null;
+  return scores.filter(
+    (s) => s.obs_id === row.obs_id || (isRoot && s.obs_id === null && s.trace_id === row.trace_id),
+  );
+}
+
+function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return (
+    <section className={`run-section run-section-${id}`} data-section={id} aria-label={title}>
+      <h3 className="run-section-title">{title}</h3>
+      {children}
+    </section>
+  );
+}
+
+function Feedback({ scores }: { scores: ObserveScoreRow[] }) {
+  if (scores.length === 0) return <p className="run-empty-line">No feedback on this step yet.</p>;
+  return (
+    <ul className="run-scores">
+      {scores.map((s) => (
+        <li key={s.score_id} className="run-score">
+          <span className="run-score-name">{s.name}</span>
+          <span className="run-score-value">{s.value === null ? '-' : String(s.value)}</span>
+          <span className="run-score-source">{s.source}</span>
+          {s.comment && <span className="run-score-comment">{s.comment}</span>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function Usage({ row }: { row: ObserveObservationRow }) {
+  const markers = [row.cost_partial && 'partial', row.usage_estimated && 'estimated'].filter(Boolean);
+  const facts: [string, ReactNode][] = [
+    ['Input tokens', fmtInt(row.usage_input_tokens)],
+    ['Output tokens', fmtInt(row.usage_output_tokens)],
+    ['Cached tokens', fmtInt(row.usage_cached_tokens)],
+    ['Reasoning tokens', fmtInt(row.usage_reasoning_tokens)],
+    [
+      'Cost',
+      <>
+        {fmtCost(row.cost_usd)}
+        {markers.length > 0 && <span className="run-marker"> ({markers.join(', ')})</span>}
+      </>,
+    ],
+    ['Model', row.model ? <code>{row.model}</code> : '-'],
+  ];
+  return (
+    <dl className="run-facts">
+      {facts.map(([label, value]) => (
+        <div key={label} className="run-fact">
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/**
+ * The selected observation in detail. Sections, in order: Error (only for a
+ * failed step: a red `role="alert"` banner) → Input → Output (both
+ * `MessageView`) → Feedback (scores) → Tokens/Cost/Model → Attributes
+ * (`JsonView` of `attrs`, omitted when null). A truncated row says so.
+ */
+export function RunInspector({ observation: row, scores, now }: RunInspectorProps) {
+  const ms = elapsedMs(row, now ?? Date.now());
+  return (
+    <div className="run-inspector" data-obs-id={row.obs_id}>
+      <header className="run-inspector-head">
+        <span className="run-inspector-kind">{row.kind}</span>
+        <h2 className="run-inspector-name">{displayName(row)}</h2>
+        <StatusPill status={displayStatus(row)} />
+        <span className="run-dur">
+          {fmtDuration(ms)}
+          {isRunning(row) ? ' running' : ''}
+        </span>
+        {row.kind === 'generation' && (
+          <a className="run-playground-link" href={playgroundHref(row.obs_id)}>
+            Open in Playground
+          </a>
+        )}
+      </header>
+      {row.status === 'error' && (
+        <div className="run-error-banner" role="alert" data-section="error">
+          <strong>Error</strong> {errorText(row.attrs)}
+        </div>
+      )}
+      {row.truncated && (
+        <p className="run-truncated-note">Truncated: this step&apos;s input or output was cut at ~64 KB by the reporter.</p>
+      )}
+      {/* MessageView brings its own labelled header, so no Section title here. */}
+      <div className="run-section run-section-input" data-section="input">
+        <MessageView value={row.input} label="Input" />
+      </div>
+      <div className="run-section run-section-output" data-section="output">
+        <MessageView value={row.output} label="Output" />
+      </div>
+      <Section id="feedback" title="Feedback">
+        <Feedback scores={scoresFor(row, scores)} />
+      </Section>
+      <Section id="usage" title="Tokens, cost and model">
+        <Usage row={row} />
+      </Section>
+      {row.attrs !== null && (
+        <Section id="attributes" title="Attributes">
+          <JsonView value={row.attrs} name="attrs" />
+        </Section>
+      )}
+    </div>
+  );
+}
