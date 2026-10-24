@@ -21,6 +21,11 @@
  * - Check today's error rate (day rollups) against the configured threshold;
  *   the crossing alert fires once per agent per day bucket, so a fleet stuck
  *   over the line warns once, not every 30s.
+ *
+ * Retention rides the same loop: with `retentionDays` > 0, the first pass and
+ * then at most one pass per 24h prune finished traces older than the window
+ * (`pruneBefore`; open runs and active sessions are kept). The sweep never
+ * VACUUMs - `lousho observe prune` does that on demand.
  */
 
 import type { SqlDatabase } from '../storage/sqlite/driver';
@@ -31,6 +36,7 @@ import {
   heartbeatIntervalFromMeta,
   interruptAgentWork,
   interruptInstance,
+  pruneBefore,
   setAgentStatus,
   transaction,
 } from './store';
@@ -205,6 +211,11 @@ export interface StatusSweepOptions {
   errorRateThreshold?: number;
   /** Receives each pass's alerts; typically `alerter.post` (alerts.ts). */
   onAlerts?: (alerts: readonly AlertEvent[]) => void;
+  /**
+   * Retention window in days: finished traces older than this are pruned on
+   * the first pass and then at most once per 24h. Unset or `0` never prunes.
+   */
+  retentionDays?: number;
 }
 
 export interface StatusSweep {
@@ -223,7 +234,21 @@ export function startStatusSweep(db: SqlDatabase, options: StatusSweepOptions = 
   const intervalMs = options.intervalMs ?? SWEEP_INTERVAL_MS;
   const now = options.now ?? Date.now;
   const errorRateSeen = new Map<string, number>();
+  const retentionMs = (options.retentionDays ?? 0) * DAY_MS;
+  let lastPruneAt: number | undefined;
+  // Kept apart from the status pass: a failed prune is logged and retried a
+  // day later (not every 30s), and never costs the pass its transitions/alerts.
+  const prune = (at: number): void => {
+    if (retentionMs <= 0 || (lastPruneAt !== undefined && at - lastPruneAt < DAY_MS)) return;
+    lastPruneAt = at;
+    try {
+      pruneBefore(db, at - retentionMs);
+    } catch (error) {
+      console.error('[lousho observe] retention prune failed:', error);
+    }
+  };
   const run = (at: number = now()): SweepResult => {
+    prune(at);
     const result = sweepAgents(db, at, {
       ...(options.errorRateThreshold !== undefined ? { errorRateThreshold: options.errorRateThreshold } : {}),
       errorRateState: errorRateSeen,

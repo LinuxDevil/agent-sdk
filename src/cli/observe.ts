@@ -2,17 +2,19 @@
  * `lousho observe` - the collector daemon command. It owns the single writer
  * to `~/.lousho/observe.db` and serves the ingest + Studio read API.
  *
- *   lousho observe start [--port N] [--db path] [--host H] [--require-token]
+ *   lousho observe start [--port N] [--db path] [--host H] [--require-token] [--retention-days N]
  *   lousho observe status [--port N | --url U]
  *   lousho observe stop [--db path]
  *   lousho observe rebuild-rollups [--db path]
+ *   lousho observe prune --older-than <N>d [--db path]
  *   lousho observe token create --project X [--db path]
  *
  * `start` runs in the foreground (like `lousho dev`). On EADDRINUSE it probes
  * `GET /health`: a `lousho-observe` answer means the daemon is already
  * running (exit 0); anything else is a real port collision. `stop` uses the
- * pidfile `start` wrote beside the db. `token create` is a local db op - it
- * needs no running daemon - and prints the key once (only its hash is kept).
+ * pidfile `start` wrote beside the db. `token create` and `prune` are local db
+ * ops - they need no running daemon (and are safe beside one: WAL, busy
+ * timeout) - and `token create` prints the key once (only its hash is kept).
  */
 
 import * as fs from 'node:fs';
@@ -21,22 +23,24 @@ import {
   defaultDbPath,
   defaultPidPath,
   isObserveDaemon,
+  OBSERVE_RETENTION_DAYS_DEFAULT,
   sameDbPath,
   probeHealth,
   startObserveDaemon,
   urlHost,
   type HealthProbe,
 } from '../observe/daemon';
-import { createToken, hasTokens, openDb, rebuildRollups } from '../observe/store';
+import { createToken, hasTokens, openDb, pruneBefore, rebuildRollups } from '../observe/store';
 import { OBSERVE_DEFAULT_PORT, OBSERVE_SERVICE } from '../observe/envelope';
 import { VERSION } from '../version';
 import { exitCodeFor, parseCommand, portValue, stringValue, usageError, type CommandSpec } from './args';
 
 const USAGE = `Usage: lousho observe <command> [options]
-  observe start [--port N] [--db path] [--host H] [--require-token] [--webhook URL]
+  observe start [--port N] [--db path] [--host H] [--require-token] [--webhook URL] [--retention-days N]
   observe status [--port N] [--url U]
   observe stop [--db path]
   observe rebuild-rollups [--db path]
+  observe prune --older-than <N>d [--db path]
   observe token create --project X [--db path]`;
 
 const HELP = `${USAGE}
@@ -52,18 +56,24 @@ Options:
   --webhook URL     'start': POST alert JSON to this URL when an agent goes down or its error
                     rate spikes (repeatable). Also reads 'alerts.json' beside the db:
                     {"webhooks": [...], "errorRateThreshold": 0.5}
+  --retention-days N
+                    'start': once a day, delete finished traces older than N days (default
+                    ${OBSERVE_RETENTION_DAYS_DEFAULT}; 0 keeps everything). Open runs, active sessions,
+                    rollups, prompts and hub entries are never pruned.
+  --older-than <N>d 'prune': delete finished traces older than N days now, then VACUUM the db
   --url U           'status': the daemon's base URL (default http://127.0.0.1:<port>)
   --project X       'token create': the project the token is labeled for
   -h, --help        show this help`;
 
-type ObserveSubcommand = 'start' | 'status' | 'stop' | 'rebuild-rollups' | 'token';
+type ObserveSubcommand = 'start' | 'status' | 'stop' | 'rebuild-rollups' | 'prune' | 'token';
 
 const SUB_SPECS: Record<ObserveSubcommand, CommandSpec> = {
   start: {
     command: 'observe start',
-    usage: 'Usage: lousho observe start [--port N] [--db path] [--host H] [--require-token] [--webhook URL]',
+    usage: 'Usage: lousho observe start [--port N] [--db path] [--host H] [--require-token] [--webhook URL] [--retention-days N]',
     options: {
       port: { type: 'string' },
+      'retention-days': { type: 'string' },
       db: { type: 'string' },
       host: { type: 'string' },
       'require-token': { type: 'boolean' },
@@ -85,6 +95,11 @@ const SUB_SPECS: Record<ObserveSubcommand, CommandSpec> = {
     usage: 'Usage: lousho observe rebuild-rollups [--db path]',
     options: { db: { type: 'string' } },
   },
+  prune: {
+    command: 'observe prune',
+    usage: 'Usage: lousho observe prune --older-than <N>d [--db path]',
+    options: { db: { type: 'string' }, 'older-than': { type: 'string' } },
+  },
   token: {
     command: 'observe token',
     usage: 'Usage: lousho observe token create --project X [--db path]',
@@ -105,6 +120,25 @@ function stringListValue(value: string | boolean | (string | boolean)[] | undefi
   if (Array.isArray(value)) return value.filter((v): v is string => typeof v === 'string');
   const single = stringValue(value);
   return single === undefined ? [] : [single];
+}
+
+const DAY_MS = 86_400_000;
+
+/** `--retention-days N`: a non-negative integer (0 disables the daily prune), or the default when absent. */
+function retentionDaysValue(spec: CommandSpec, value: string | boolean | (string | boolean)[] | undefined): number {
+  const given = stringValue(value);
+  if (given === undefined) return OBSERVE_RETENTION_DAYS_DEFAULT;
+  if (!/^\d+$/.test(given)) throw usageError(spec, `--retention-days must be a non-negative integer (days; 0 disables pruning), got '${given}'.`);
+  return Number(given);
+}
+
+/** `--older-than <N>d`: a positive whole number of days (`30d`); anything else is a usage error. */
+function olderThanDays(spec: CommandSpec, value: string | boolean | (string | boolean)[] | undefined): number {
+  const given = stringValue(value);
+  if (given === undefined) throw usageError(spec, '--older-than <N>d is required (e.g. --older-than 30d).');
+  const days = Number(/^(\d+)d$/.exec(given)?.[1] ?? 0);
+  if (days <= 0) throw usageError(spec, `--older-than must be a positive number of days like '30d', got '${given}'.`);
+  return days;
 }
 
 function envPort(): number {
@@ -153,11 +187,12 @@ async function runStart(args: string[]): Promise<number> {
   const host = stringValue(values.host) ?? '127.0.0.1';
   const requireToken = values['require-token'] === true;
   const webhooks = stringListValue(values.webhook);
+  const retentionDays = retentionDaysValue(spec, values['retention-days']);
   const pidPath = defaultPidPath(dbPath);
 
   let daemon;
   try {
-    daemon = await startObserveDaemon({ dbPath, port, host, requireToken, pidPath, webhooks });
+    daemon = await startObserveDaemon({ dbPath, port, host, requireToken, pidPath, webhooks, retentionDays });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') return reportPortInUse(port, host, dbPath);
     throw error;
@@ -322,6 +357,32 @@ async function runRebuild(args: string[]): Promise<number> {
   }
 }
 
+/**
+ * `prune`: the retention pass on demand, then VACUUM to hand the space back.
+ * Safe while the daemon runs (WAL + busy timeout): the delete is one
+ * transaction, and VACUUM waits its turn behind ingest.
+ */
+async function runPrune(args: string[]): Promise<number> {
+  const spec = SUB_SPECS.prune;
+  const { values, help } = parseCommand(spec, args);
+  if (help) {
+    console.log(HELP);
+    return 0;
+  }
+  const days = olderThanDays(spec, values['older-than']);
+  const db = openDb(dbPathOf(values.db));
+  try {
+    const counts = pruneBefore(db, Date.now() - days * DAY_MS);
+    console.log(
+      `lousho observe: pruned ${counts.observations} observations, ${counts.scores} scores, ${counts.sessions} sessions older than ${days}d.`
+    );
+    db.exec('VACUUM');
+    return 0;
+  } finally {
+    db.close();
+  }
+}
+
 async function runToken(args: string[]): Promise<number> {
   const spec = SUB_SPECS.token;
   const { values, positionals, help } = parseCommand(spec, args);
@@ -368,6 +429,8 @@ export async function runObserve(rest: string[]): Promise<number> {
         return await runStop(subArgs);
       case 'rebuild-rollups':
         return await runRebuild(subArgs);
+      case 'prune':
+        return await runPrune(subArgs);
       case 'token':
         return await runToken(subArgs);
     }

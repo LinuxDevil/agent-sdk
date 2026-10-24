@@ -36,7 +36,7 @@ lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]
 lousho doctor [agent.yaml|json|agent-dir|agent.ts] [--json] [--ping]
 lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
-lousho observe <start|status|stop|rebuild-rollups|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL]
+lousho observe <start|status|stop|rebuild-rollups|prune|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL] [--retention-days N] [--older-than <N>d]
 lousho prompt <push <file|->|list|get <name[@version|@label]>|label <name> <label> <version>> [--url U] [--port N] [--token T] [--json] [--name N]
 lousho --version
 ```
@@ -275,6 +275,7 @@ npx lousho observe start                        # collector on http://127.0.0.1:
 npx lousho observe status                       # health + fleet counts
 npx lousho observe stop                         # <db>.pid + SIGTERM (checks the daemon serves --db)
 npx lousho observe rebuild-rollups              # recompute insight aggregates
+npx lousho observe prune --older-than 30d       # delete finished runs older than 30 days, then VACUUM
 npx lousho observe token create --project myapp # bearer key for non-loopback auth
 ```
 
@@ -291,6 +292,16 @@ db or the port answers as a different service, and falls back to signalling
 when it cannot verify (unreachable, or an old one-line pidfile). `/health`
 tells which db a daemon serves only to callers on the same machine. See
 [The observe daemon](./observability.md#the-observe-daemon).
+
+`start --retention-days N` sets how long finished runs are kept (default 30;
+`0` keeps everything). Once a day the daemon deletes traces whose
+observations all finished more than N days ago. A trace with any run still
+open, and a session that is still `active`, is kept whatever its age. Rollups,
+prompts and hub entries are never pruned. `prune --older-than <N>d` (whole
+days, N >= 1) does the same pass now, prints the observation, score and session
+counts it deleted, and then runs `VACUUM` to reclaim disk space (the daily pass
+never does). It is safe to run while the daemon is up. A bad N is a usage
+error (exit 2). See [Retention](./observability.md#retention).
 
 ## `lousho prompt`
 
