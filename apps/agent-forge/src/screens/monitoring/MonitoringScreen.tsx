@@ -89,6 +89,11 @@ export function MonitoringScreen() {
   const names = useMemo(() => new Map((agents.data ?? []).map((a) => [a.agent_id, agentLabel(a)])), [agents.data]);
   const labelOf = (id: string) => names.get(id) ?? id.slice(0, 8);
   const rows = insights.data?.series ?? [];
+  // An `agent=` id the fleet doesn't list still filters, so the select offers it too.
+  const agentOptions = useMemo(() => {
+    const fleet = agents.data ?? [];
+    return agentId && !fleet.some((a) => a.agent_id === agentId) ? [...fleet, { agent_id: agentId, name: null }] : fleet;
+  }, [agents.data, agentId]);
 
   if (down)
     return (
@@ -111,7 +116,7 @@ export function MonitoringScreen() {
         <WindowPicker value={win} onChange={setWin} />
         <label className="mon-agent-filter">
           Agent
-          <AgentSelect agents={agents.data} value={agentId} onChange={setAgentId} />
+          <AgentSelect agents={agentOptions} value={agentId} onChange={setAgentId} />
         </label>
       </div>
       {insights.data === undefined && insights.loading ? (

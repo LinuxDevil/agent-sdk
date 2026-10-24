@@ -119,6 +119,48 @@ describe('MonitoringScreen', () => {
     expect(chart(c, 'Latency p95')!.querySelector('circle.tsc-point[data-series="a1"]')).not.toBeNull();
   });
 
+  it('draws per-agent p95 and error rate as one unsummed series per agent', async () => {
+    const w = chartWindow('24h', NOW);
+    const t = w.to - HOUR;
+    daemon([
+      rollup(t, 'a1', 'runs', 4),
+      rollup(t, 'a2', 'runs', 2),
+      rollup(t, 'a1', 'p95_latency_ms', 900),
+      rollup(t, 'a2', 'p95_latency_ms', 400),
+      rollup(t, 'a1', 'error_rate', 0.5),
+      rollup(t, 'a2', 'error_rate', 0.25),
+    ]);
+    const c = render(<MonitoringScreen />);
+    await waitFor(() => chart(c, 'Latency p95') !== null);
+    for (const title of ['Latency p95', 'Error rate']) {
+      const points = chart(c, title)!.querySelectorAll('circle.tsc-point');
+      expect([...points].map((p) => p.getAttribute('data-series'))).toEqual(['a1', 'a2']);
+      // Unsummed: the two agents sit at different heights in the one bucket.
+      expect(points[0]!.getAttribute('cy')).not.toBe(points[1]!.getAttribute('cy'));
+      expect(chart(c, title)!.querySelector('.tsc-legend')?.textContent).toBe('Support botBilling bot');
+    }
+  });
+
+  it('notes the agents left off a per-agent chart past five', async () => {
+    const w = chartWindow('24h', NOW);
+    const ids = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7'];
+    daemon(ids.flatMap((id, i) => [rollup(w.from, id, 'runs', i + 1), rollup(w.from, id, 'p95_latency_ms', 100)]));
+    const c = render(<MonitoringScreen />);
+    await waitFor(() => chart(c, 'Latency p95') !== null);
+    expect(chart(c, 'Latency p95')!.querySelectorAll('circle.tsc-point')).toHaveLength(5);
+    expect(chart(c, 'Latency p95')!.querySelector('.mon-chart-note')?.textContent).toContain('2 more agents not shown');
+  });
+
+  it('offers an agent= id the fleet does not list in the agent select', async () => {
+    window.history.replaceState(null, '', '/#/monitoring?agent=ghost-agent');
+    daemon();
+    const c = render(<MonitoringScreen />);
+    await waitFor(() => fleetRow(c, 'Support bot') !== undefined);
+    const select = c.querySelector('.mon-agent-filter select') as HTMLSelectElement;
+    expect(select.value).toBe('ghost-agent');
+    expect([...select.options].map((o) => o.value)).toEqual(['', 'a1', 'a2', 'ghost-agent']);
+  });
+
   it('navigates to Traces with the clicked bucket as from/to, plus the agent when filtered', async () => {
     window.history.replaceState(null, '', '/#/monitoring?agent=a1');
     const w = chartWindow('24h', NOW);

@@ -12,7 +12,7 @@ export function AgentSelect({
   value,
   onChange,
 }: {
-  agents: ObserveAgentRow[] | undefined;
+  agents: Pick<ObserveAgentRow, 'agent_id' | 'name'>[] | undefined;
   value: string;
   onChange: (agentId: string) => void;
 }) {
