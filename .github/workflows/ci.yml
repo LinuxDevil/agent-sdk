@@ -112,7 +112,8 @@ jobs:
       # installed here only (not in package.json). Node >= 20 needs --no-node-snapshot
       # to load it; LOUSHO_ISOLATE_TESTS=1 makes src/sandbox/isolate.test.ts fail
       # instead of skip if the module cannot load.
-      - run: npm install --no-save --legacy-peer-deps isolated-vm@7.0.1
+      # Pinned to 6.2.0: isolated-vm 7.x requires Node >= 24 and this job runs Node 22.19.0.
+      - run: npm install --no-save --legacy-peer-deps isolated-vm@6.2.0
       - run: npx vitest run
         env:
           NODE_OPTIONS: --no-node-snapshot
