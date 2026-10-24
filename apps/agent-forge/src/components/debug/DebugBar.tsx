@@ -1,6 +1,6 @@
 import { useAppState } from '../../state/AppState';
 import type { DebugStatePayload } from '../../../shared/wireTypes';
-import { JsonTree } from './JsonTree';
+import { JsonView } from '../../ui/JsonView';
 
 type DebugState = DebugStatePayload | undefined;
 
@@ -42,7 +42,7 @@ function LiveMessages({ debugState }: { debugState: DebugState }) {
   return (
     <details style={{ width: '100%' }}>
       <summary>Live message array ({messages.length})</summary>
-      <JsonTree value={messages} defaultExpandDepth={1} />
+      <JsonView value={messages} defaultExpandDepth={1} />
     </details>
   );
 }
