@@ -51,7 +51,7 @@ const agentHeartbeatData = z.object({
   heartbeat_interval_ms: z.number().optional(),
   hostname: z.string().optional(),
   pid: z.number().optional(),
-  meta: z.record(z.unknown()).optional(),
+  meta: z.record(z.string(), z.unknown()).optional(),
 });
 /** `agent.deregister` - a graceful exit; the registry row flips to `stopped` instead of aging into `down`. */
 const agentDeregisterData = z.object({
@@ -90,7 +90,7 @@ const observationData = z.object({
   usage_estimated: z.boolean().optional(),
   truncated: z.boolean().optional(),
   /** The span's full attribute map (`gen_ai.*` names), kept verbatim as JSON. */
-  attrs: z.record(z.unknown()).optional(),
+  attrs: z.record(z.string(), z.unknown()).optional(),
 });
 export type ObservationData = z.infer<typeof observationData>;
 
