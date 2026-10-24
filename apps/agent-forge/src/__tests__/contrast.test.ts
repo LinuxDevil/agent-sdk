@@ -47,6 +47,8 @@ const PAIRS: [text: string, background: string][] = [
   // DataTable: header sort arrow and hovered/focused row text on the header/row tint.
   ['accent', 'surface-2'],
   ['text', 'surface-2'],
+  // Monitoring: the selected window button draws text on the accent tint.
+  ['text', 'accent-soft'],
 ];
 
 describe('theme contrast', () => {

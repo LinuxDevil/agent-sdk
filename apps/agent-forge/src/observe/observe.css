@@ -1,5 +1,5 @@
 /*
- * Observe view (Traces / Insights / Monitoring / Scores) - styles for the
+ * Observe view (Traces / Scores) - styles for the
  * panels reading the observe daemon. Reuses ui/base.css's primitives (.btn,
  * .select, .status-pill, .trace-row/.trace-bar waterfall, .agent-card) and
  * only adds what the panels themselves need.
@@ -287,56 +287,9 @@
   margin-top: 14px;
 }
 
-/* ---------- Insights ---------- */
-.insight-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 10px;
-  margin-bottom: 14px;
-}
-.insight-card {
-  cursor: default;
-  margin-bottom: 0;
-}
-.insight-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-top: 8px;
-}
-.insight-stat {
-  display: flex;
-  flex-direction: column;
-}
-.insight-value {
-  font-weight: 700;
-  font-size: 14px;
-  font-family: var(--font-mono);
-}
+/* Low scores in the Scores table. */
 .insight-bad {
   color: var(--danger);
-}
-.insight-label {
-  font-size: 10px;
-  color: var(--text-faint);
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-.insight-chart {
-  display: flex;
-  align-items: flex-end;
-  gap: 2px;
-  height: 120px;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--surface);
-}
-.insight-bar {
-  flex: 1;
-  min-width: 3px;
-  background: var(--accent);
-  border-radius: 2px 2px 0 0;
 }
 
 /* ---------- Scores ---------- */

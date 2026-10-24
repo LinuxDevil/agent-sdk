@@ -1,0 +1,102 @@
+/*
+ * Monitoring screen (#/monitoring): fleet table over the window / agent
+ * toolbar and the chart grid. Colours from src/theme.css tokens only.
+ */
+
+.mon-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  padding: 16px;
+  font-family: var(--font-ui);
+  color: var(--text);
+}
+
+.mon-agent {
+  font-weight: 600;
+}
+.mon-meta {
+  font-weight: 400;
+  color: var(--text-faint);
+}
+.mon-dropped {
+  padding: 0 6px;
+  border-radius: 999px;
+  color: var(--warning);
+  background: var(--warning-soft);
+  font-weight: 600;
+}
+.mon-link {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.mon-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.mon-windows {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.mon-window {
+  border-radius: 0;
+  font-family: var(--font-mono);
+}
+.mon-window.active {
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 600;
+}
+.mon-agent-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.mon-loading {
+  padding: 24px;
+  color: var(--text-muted);
+}
+
+.mon-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 12px;
+}
+.mon-chart {
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.mon-chart-title {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.mon-chart-note {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+@media (max-width: 480px) {
+  .mon-screen {
+    padding: 12px;
+  }
+  .mon-charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

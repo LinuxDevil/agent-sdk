@@ -146,11 +146,4 @@ describe('ObserveView', () => {
     expect(container!.querySelector('[role="tablist"]')).toBeNull();
     expect(container!.textContent).toContain('No traces match');
   });
-
-  it('shows Insights under the fleet table on the Monitoring panel', async () => {
-    stubDaemon();
-    await renderView(<ObserveView tab="fleet" onTabChange={() => {}} />);
-    expect(container!.querySelector('[role="tablist"]')).toBeNull();
-    expect(container!.querySelector('[aria-label="Insights"]')).not.toBeNull();
-  });
 });
