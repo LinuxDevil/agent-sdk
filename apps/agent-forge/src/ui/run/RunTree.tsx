@@ -96,7 +96,7 @@ function TreeRow({ node, selected, virtual, now, onSelect }: TreeRowProps) {
         <Duration row={row} now={now} />
       </button>
       {row.kind === 'generation' && (
-        <a className="run-playground-link" href={playgroundHref(row.obs_id)} title={`Open ${name} in Playground`}>
+        <a className="run-playground-link" href={playgroundHref(row.trace_id, row.obs_id)} title={`Open ${name} in Playground`}>
           Open in Playground
         </a>
       )}

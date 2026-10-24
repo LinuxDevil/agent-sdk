@@ -10,7 +10,7 @@
  * defines the wire shape of the status/events the server reports back to
  * the app over `GET /agents/:id/status` and `WS /agents/:id/stream`.
  */
-import type { CheckpointStatus, TrajectoryComparison, TrajectoryStep } from '@lousho/build-ai-agent';
+import type { AgentEventUsage, CheckpointStatus, TrajectoryComparison, TrajectoryStep } from '@lousho/build-ai-agent';
 
 /**
  * Status pill states the app's agent list / topbar render (as in the
@@ -292,3 +292,27 @@ export interface ForkRunResponse {
 
 /** `GET /runs/compare?a=&b=` - `compareTrajectories(a, b)`. */
 export type RunComparisonPayload = TrajectoryComparison;
+
+/** One `POST /playground/run` message (server/playground.ts; the Playground screen's editor rows). */
+export interface PlaygroundMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+/** The `POST /playground/run` body. */
+export interface PlaygroundRunRequest {
+  messages: PlaygroundMessage[];
+  variables?: Record<string, string>;
+  /** `provider/model` (`openai/gpt-4o-mini`, `mock`, `ollama/llama3.2`). */
+  model: string;
+  /** Tool names the Studio already resolves (`current-date`, `day-name`, `http`, `web-fetch`, `demo-approval`). */
+  tools?: string[];
+  promptRef?: string;
+}
+
+/** One SSE `data:` payload of the `POST /playground/run` stream; every stream ends with one `done` or `error`. */
+export type PlaygroundEvent =
+  | { type: 'delta'; text: string }
+  | { type: 'tool_call'; id: string; name: string; args: Record<string, unknown> }
+  | { type: 'done'; finishReason: string; text: string; traceId?: string; usage?: AgentEventUsage }
+  | { type: 'error'; message: string; code?: string };

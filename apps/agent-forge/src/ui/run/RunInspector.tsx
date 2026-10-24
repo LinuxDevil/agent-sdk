@@ -113,7 +113,7 @@ export function RunInspector({ observation: row, scores, now, renderFeedback }: 
           {isRunning(row) ? ' running' : ''}
         </span>
         {row.kind === 'generation' && (
-          <a className="run-playground-link" href={playgroundHref(row.obs_id)}>
+          <a className="run-playground-link" href={playgroundHref(row.trace_id, row.obs_id)}>
             Open in Playground
           </a>
         )}

@@ -298,6 +298,31 @@ curl -H "x-lousho-studio-token: $TOKEN" 'localhost:4750/runs/compare?a=weather&b
 The fork is a run of its own: the original run's checkpoints, status and
 chat are unchanged.
 
+## Playground
+
+`#/playground` (Build > Playground in the nav) tries messages against a model
+without editing an agent:
+
+- **Messages**: system, user and assistant rows. Every `{name}` placeholder
+  in any row gets a **Variables** input, in the order the names first appear.
+- **Model**: a provider (the ones with a key under Settings > Provider keys,
+  plus `ollama` and `mock`; `mock` when nothing is configured) and a model
+  name, sent as `provider/model`.
+- **Tools**: pick a saved agent to borrow its tools, then switch each one on
+  or off.
+- **Run** streams the reply as it arrives; **Stop** aborts it. When the run
+  finishes, **Open trace** goes to its trace.
+- **Save as new prompt version** pushes the system message (and its
+  variables) to the prompt registry, under the loaded prompt's name or one
+  you type. It is disabled while there is no system message.
+
+Two links pre-fill it. **Open in Playground** on a generation in a trace
+opens `#/playground?trace=<traceId>&fromObs=<obsId>`, which loads that
+generation's messages and model. `#/playground?prompt=<name>[@<label or
+version>]` loads a registry prompt (latest by default) as the system message
+and records it on the run's trace. Both read the observe daemon: when it is
+down, the Playground says so and keeps an empty editor, and runs still work.
+
 ## Playground run endpoint
 
 `POST /playground/run` runs a one-off prompt against a model and streams the
