@@ -1,0 +1,99 @@
+/* TimeSeriesChart: SVG drawn at real pixel size (no stretched text), tooltip as an HTML overlay. Tokens only. */
+.tsc {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--text);
+}
+.tsc-svg {
+  display: block;
+  overflow: visible;
+}
+.tsc-svg:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.tsc-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+.tsc-axis {
+  stroke: var(--border);
+}
+.tsc-xtick,
+.tsc-ytick {
+  fill: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.tsc-line {
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.tsc-crosshair {
+  stroke: var(--text-muted);
+  stroke-dasharray: 3 3;
+  pointer-events: none;
+}
+.tsc-plot {
+  fill: transparent;
+}
+.tsc-plot.tsc-clickable {
+  cursor: pointer;
+}
+.tsc-tooltip {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  min-width: 120px;
+  padding: 6px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.tsc-tooltip:empty {
+  opacity: 0;
+  padding: 0;
+  border: 0;
+}
+.tsc-tip-time {
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.tsc-tip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tsc-tip-value {
+  margin-left: auto;
+  padding-left: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.tsc-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+.tsc-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 6px 0 0;
+  padding: 0 0 0 48px;
+  list-style: none;
+  color: var(--text-muted);
+}
+.tsc-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
