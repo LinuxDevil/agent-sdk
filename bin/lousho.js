@@ -35,6 +35,8 @@ const USAGE = [
   '      List saved traces (fileTraceExporter) or print one as a span tree.',
   '  lousho observe <start|status|stop|rebuild-rollups|token> [--port N] [--db path] [--host H] [--require-token] [--project X]',
   '      Run the observability collector agents emit to when LOUSHO_OBSERVE=1.',
+  '  lousho prompt <push|list|get> [args] [--url U | --port N] [--token T] [--json]',
+  '      Manage the prompt registry the collector serves: push a file as a new version, list, or get name[@version].',
   '  lousho --version',
   '      Print the package version.',
   '',
@@ -78,6 +80,8 @@ const COMMANDS = new Map([
   ['traces', { module: 'traces', run: 'runTraces' }],
   // The observability collector daemon (src/observe); see src/cli/observe.ts.
   ['observe', { module: 'observe', run: 'runObserve' }],
+  // The prompt registry client of the observe daemon (src/observe); see src/cli/prompt.ts.
+  ['prompt', { module: 'prompt', run: 'runPrompt' }],
 ]);
 
 const BYTE_ORDER_MARK = 0xfeff;

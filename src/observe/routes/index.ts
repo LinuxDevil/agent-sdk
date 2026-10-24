@@ -1,6 +1,6 @@
 /**
  * The daemon's route registry. One file per feature area (ingest, traces,
- * insights, agents, scores, status) exports a `routes` array; this index
+ * insights, agents, scores, status, prompts, hub) exports a `routes` array; this index
  * concatenates them - so a later child spec (prompts, hub, alerts) adds a
  * file here and never touches the daemon's dispatch internals.
  *
@@ -14,8 +14,10 @@ import type * as http from 'node:http';
 import type { SqlDatabase } from '../../storage/sqlite/driver';
 import { SDKError } from '../../execution/errors';
 import { agentsRoutes } from './agents';
+import { hubRoutes } from './hub';
 import { ingestRoutes } from './ingest';
 import { insightsRoutes } from './insights';
+import { promptsRoutes } from './prompts';
 import { scoresRoutes } from './scores';
 import { statusRoutes } from './status';
 import { tracesRoutes } from './traces';
@@ -55,6 +57,8 @@ export const routes: readonly Route[] = [
   ...insightsRoutes,
   ...agentsRoutes,
   ...scoresRoutes,
+  ...promptsRoutes,
+  ...hubRoutes,
 ];
 
 interface CompiledRoute {

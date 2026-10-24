@@ -29,8 +29,14 @@ import { GenAiAttr, GenAiOperation, LegacyAttr, SdkAttr } from '../execution/sem
 import { SDKError } from '../execution/errors';
 import type { Span, TraceExporter } from '../execution/tracing';
 import { VERSION } from '../version';
-import { OBSERVE_DEFAULT_PORT, type IngestEvent, type ObservationData, type ObservationKind } from './envelope';
+import { OBSERVE_DEFAULT_PORT, type IngestEvent, type ObservationData, type ObservationKind, type PromptUseData } from './envelope';
 import { hostName, resolveIdentity, resolveProject } from './identity';
+
+/** The registry prompt a run used (`prompt_use` minus its `obs_id`, which the reporter fills with the root span's id). */
+export type PromptUseRef = Pick<PromptUseData, 'prompt_id' | 'version'>;
+
+/** Resolves the run's registry prompt once fetched; `undefined` means no `prompt_use` is emitted (fetch pending or failed). */
+export type PromptUseProvider = () => PromptUseRef | undefined;
 
 export interface ObserveExporterOptions {
   /** Collector base URL (default `http://127.0.0.1:7777`). */
@@ -63,6 +69,13 @@ export interface ObserveExporterOptions {
   registerExitHooks?: boolean;
   /** Injectable clock (tests); default `Date.now`. */
   now?: () => number;
+  /**
+   * The registry prompt this agent's runs resolved (the `prompt` opt-in).
+   * When a span with no parent starts - a run's root `invoke_agent` - and
+   * this provider returns a ref, a `prompt_use` event is queued with
+   * `obs_id` = that root span's id.
+   */
+  promptUse?: PromptUseProvider;
 }
 
 export interface ObserveReporter extends TraceExporter {
@@ -72,6 +85,13 @@ export interface ObserveReporter extends TraceExporter {
   readonly agentId: string;
   /** The fallback `session_id` (non-session spans). */
   readonly sessionId: string;
+  /**
+   * The registry prompt ref provider (see {@link ObserveExporterOptions.promptUse}).
+   * Mutable because `LOUSHO_OBSERVE` reporters are memoized per agent
+   * name: a later {@link observeExporterFromEnv} call with a prompt sets it
+   * on the shared reporter.
+   */
+  promptUse?: PromptUseProvider;
   /** Deregister, flush once, and release timers/hooks. Idempotent. */
   close(): Promise<void>;
 }
@@ -194,6 +214,7 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
   const heartbeatIntervalMs = options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_MS;
   const maxBuffered = options.maxBuffered ?? DEFAULT_MAX_BUFFERED;
   const requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+  let promptUse = options.promptUse;
 
   const pending: IngestEvent[] = [];
   let droppedCount = 0;
@@ -338,9 +359,27 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
     },
     agentId: identity.agentId,
     sessionId: fallbackSessionId,
+    get promptUse() {
+      return promptUse;
+    },
+    set promptUse(provider: PromptUseProvider | undefined) {
+      promptUse = provider;
+    },
     onSpanStart(span) {
       const parent = span.parentId !== undefined ? targets.get(span.parentId) : undefined;
       targets.set(span.id, parent ?? span.id);
+      // A parentless span is a run's root `invoke_agent`: one `prompt_use`
+      // per run, keyed by the root span's id (the run's obs_id). Sub-agent
+      // runs arrive with parentSpanId set and never re-emit it.
+      if (span.parentId === undefined && promptUse !== undefined) {
+        const use = promptUse();
+        if (use !== undefined) {
+          enqueue({
+            type: 'prompt_use',
+            data: { obs_id: span.id, prompt_id: use.prompt_id, ...(use.version !== undefined ? { version: use.version } : {}) },
+          });
+        }
+      }
     },
     onSpanEnd(span) {
       const traceId = targets.get(span.id) ?? span.id;
@@ -412,22 +451,40 @@ const envReporters = new Map<string, ObserveReporter>();
 const envReporterSet = new WeakSet<TraceExporter>();
 
 /**
+ * The collector base URL the env points at: `LOUSHO_OBSERVE=1`/`true` →
+ * `http://127.0.0.1:$LOUSHO_OBSERVE_PORT(7777)`, a URL → itself, unset/`0`/
+ * `false` → `undefined`. Shared by the reporter, the prompt fetch and the
+ * hub client - they must all agree on where the daemon lives.
+ */
+export function observeUrlFromEnv(
+  env: NodeJS.ProcessEnv | undefined = typeof process !== 'undefined' ? process.env : undefined
+): string | undefined {
+  const flag = env?.LOUSHO_OBSERVE?.trim();
+  if (!flag || flag === '0' || flag.toLowerCase() === 'false' || env === undefined) return undefined;
+  return flag === '1' || flag.toLowerCase() === 'true'
+    ? `http://127.0.0.1:${env.LOUSHO_OBSERVE_PORT || String(OBSERVE_DEFAULT_PORT)}`
+    : flag;
+}
+
+/**
  * The `LOUSHO_OBSERVE`-driven reporter, memoized per (agent name, project,
  * url): every `execute()` call resolves the same instance, so an agent never
  * heartbeats twice. `undefined` when the env is unset/`0`/`false`.
  *
+ * `promptUse` is the registry prompt the agent resolved (`createAgent({
+ * prompt })`/`LOUSHO_PROMPT`): it is set on the shared reporter, so the last
+ * agent built under one name wins.
+ *
  * Pass `env` only in tests.
  */
-export function observeExporterFromEnv(options: { agentName?: string; env?: NodeJS.ProcessEnv } = {}): ObserveReporter | undefined {
+export function observeExporterFromEnv(
+  options: { agentName?: string; promptUse?: PromptUseProvider; env?: NodeJS.ProcessEnv } = {}
+): ObserveReporter | undefined {
   const env = options.env ?? (typeof process !== 'undefined' ? process.env : undefined);
-  const flag = env?.LOUSHO_OBSERVE?.trim();
-  if (!flag || flag === '0' || flag.toLowerCase() === 'false' || env === undefined) return undefined;
-  const url =
-    flag === '1' || flag.toLowerCase() === 'true'
-      ? `http://127.0.0.1:${env.LOUSHO_OBSERVE_PORT || String(OBSERVE_DEFAULT_PORT)}`
-      : flag;
+  const url = observeUrlFromEnv(env);
+  if (url === undefined) return undefined;
   const name = options.agentName ?? 'agent';
-  const project = env.LOUSHO_OBSERVE_PROJECT;
+  const project = env?.LOUSHO_OBSERVE_PROJECT;
   const key = `${name} ${project ?? ''} ${url}`;
   let reporter = envReporters.get(key);
   if (!reporter) {
@@ -435,11 +492,12 @@ export function observeExporterFromEnv(options: { agentName?: string; env?: Node
       url,
       agentName: name,
       ...(project ? { project } : {}),
-      ...(env.LOUSHO_OBSERVE_TOKEN ? { token: env.LOUSHO_OBSERVE_TOKEN } : {}),
+      ...(env?.LOUSHO_OBSERVE_TOKEN ? { token: env.LOUSHO_OBSERVE_TOKEN } : {}),
     });
     envReporters.set(key, reporter);
     envReporterSet.add(reporter);
   }
+  if (options.promptUse !== undefined) reporter.promptUse = options.promptUse;
   return reporter;
 }
 
@@ -454,8 +512,15 @@ function exporterParts(explicit: TraceExporter): readonly TraceExporter[] {
  * sub-agent inherits its lead's exporter - the env step is skipped, so one
  * process reports under ONE agent identity and child spans are not
  * double-posted stamped with two agent_ids.
+ *
+ * `options.promptUse` is the registry prompt the agent resolved; it lands on
+ * the env reporter (the only path to the daemon's ingest API).
  */
-export function withObserveExporter(explicit: TraceExporter | undefined, agentName: string | undefined): TraceExporter | undefined {
+export function withObserveExporter(
+  explicit: TraceExporter | undefined,
+  agentName: string | undefined,
+  options: { promptUse?: PromptUseProvider } = {}
+): TraceExporter | undefined {
   if (explicit && exporterParts(explicit).some((part) => envReporterSet.has(part))) return explicit;
-  return fanOutExporters([explicit, observeExporterFromEnv({ agentName })]);
+  return fanOutExporters([explicit, observeExporterFromEnv({ agentName, ...(options.promptUse ? { promptUse: options.promptUse } : {}) })]);
 }
