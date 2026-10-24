@@ -16,6 +16,7 @@ import { ingestRoutes } from './ingest';
 import { insightsRoutes } from './insights';
 import { promptsRoutes } from './prompts';
 import { scoresRoutes } from './scores';
+import { sessionsRoutes } from './sessions';
 import { statusRoutes } from './status';
 import { tracesRoutes } from './traces';
 import type { Route } from './httpKit';
@@ -31,6 +32,7 @@ const routes: readonly Route[] = [
   ...statusRoutes,
   ...ingestRoutes,
   ...tracesRoutes,
+  ...sessionsRoutes,
   ...insightsRoutes,
   ...agentsRoutes,
   ...scoresRoutes,
