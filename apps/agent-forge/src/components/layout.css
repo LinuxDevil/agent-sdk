@@ -11,27 +11,36 @@
   display: grid;
   grid-template-rows: 48px 1fr 240px;
 }
-/* Observe mode: the panels take the whole content area, no run drawer. */
-.app-observe {
-  grid-template-rows: 48px 1fr;
+/* Every screen but Agents: top bar over the screen, no run drawer. */
+.app-screen {
+  grid-template-rows: 48px minmax(0, 1fr);
 }
-
-/* Build/Observe surface switcher (Topbar.tsx's ViewToggle). */
-.view-toggle {
+.screen-main {
+  min-width: 0;
+  min-height: 0;
   display: flex;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-  flex: none;
+  flex-direction: column;
+  overflow: auto;
 }
-.view-toggle .btn {
-  border: none;
-  border-radius: 0;
-  padding: 5px 10px;
-  font-size: 11.5px;
+.screen-main > .observe,
+.screen-main > .screen-settings {
+  flex: 1;
+  min-height: 0;
 }
-.view-toggle .btn.active {
-  background: var(--accent-soft);
+.screen-placeholder {
+  padding: 32px 24px;
+  max-width: 560px;
+  color: var(--text-muted);
+}
+.screen-placeholder h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  color: var(--text);
+}
+.screen-placeholder p {
+  margin: 0 0 16px;
+}
+.screen-placeholder a {
   color: var(--accent);
 }
 

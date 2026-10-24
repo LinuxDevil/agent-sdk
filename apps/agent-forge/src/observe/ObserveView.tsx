@@ -16,7 +16,7 @@ const TABS = [
   { id: 'fleet', label: 'Monitoring' },
   { id: 'scores', label: 'Scores' },
 ] as const;
-type ObserveTab = (typeof TABS)[number]['id'];
+export type ObserveTab = (typeof TABS)[number]['id'];
 const TAB_IDS: ObserveTab[] = TABS.map((t) => t.id);
 
 /**
@@ -25,10 +25,20 @@ const TAB_IDS: ObserveTab[] = TABS.map((t) => t.id);
  * `/observe` proxy. Cross-panel drill-down (fleet row -> that agent's
  * traces) is just shared state here: `tracesFilter` is owned at the top so
  * another tab can pre-fill it.
+ *
+ * Given `tab`, the route owns the panel: the tab strip is hidden (the left
+ * nav is the only switcher) and drill-downs ask `onTabChange` to navigate.
+ * Monitoring then also shows Insights under the fleet table.
  */
-export function ObserveView() {
+export function ObserveView({
+  tab: routeTab,
+  onTabChange,
+}: { tab?: ObserveTab; onTabChange?: (tab: ObserveTab) => void } = {}) {
   const health = useDaemonHealth();
-  const [tab, setTab] = useState<ObserveTab>('traces');
+  const [ownTab, setOwnTab] = useState<ObserveTab>('traces');
+  const routed = routeTab !== undefined;
+  const tab = routeTab ?? ownTab;
+  const setTab = (next: ObserveTab) => (routed ? onTabChange?.(next) : setOwnTab(next));
   const [tracesFilter, setTracesFilter] = useState<TraceListFilter>({});
   const [traceId, setTraceId] = useState<string | undefined>(undefined);
 
@@ -59,8 +69,24 @@ export function ObserveView() {
       />
     );
   else if (tab === 'insights') body = <InsightsPanel />;
+  else if (tab === 'fleet' && routed)
+    body = (
+      <>
+        <FleetPanel onShowTraces={drillToAgent} />
+        <section aria-label="Insights">
+          <InsightsPanel />
+        </section>
+      </>
+    );
   else if (tab === 'fleet') body = <FleetPanel onShowTraces={drillToAgent} />;
   else body = <ScoresPanel onOpenTrace={drillToTrace} />;
+
+  if (routed)
+    return (
+      <section className="observe" aria-label="Observability">
+        <div className="observe-body">{body}</div>
+      </section>
+    );
 
   const ids = tabIds('observe', tab);
   return (

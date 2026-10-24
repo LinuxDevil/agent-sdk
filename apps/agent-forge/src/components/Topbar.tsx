@@ -5,6 +5,8 @@ import { ApprovalCard } from './ApprovalCard';
 import { errorMessage } from './errorMessage';
 import { StatusPill } from './StatusPill';
 import { navigate } from '../router/router';
+import { useRoute } from '../router/useRoute';
+import { NAV_ITEMS, isActive } from '../shell/NavRail';
 
 function BrandMark() {
   return (
@@ -78,41 +80,6 @@ function EnvSelect() {
     <div className={`env-select${isMock ? ' env-select-mock' : ''}`} title={title}>
       <span className="dot" /> {profileName(activeProfile)} &middot; {provider}
       {isMock && <span className="mock-badge">MOCK</span>}
-    </div>
-  );
-}
-
-/**
- * Build/Observe surface switcher. "Observe" swaps the builder shell for the
- * observability panels (Traces/Insights/Monitoring/Scores) that read the
- * `lousho observe` daemon - a separate data source from the studio server.
- */
-function ViewToggle() {
-  const { view, setView } = useAppState();
-  return (
-    <div className="view-toggle" role="group" aria-label="Studio surface">
-      <button
-        type="button"
-        className={`btn btn-ghost${view === 'build' ? ' active' : ''}`}
-        aria-pressed={view === 'build'}
-        onClick={() => {
-          setView('build');
-          navigate('/agents');
-        }}
-      >
-        Build
-      </button>
-      <button
-        type="button"
-        className={`btn btn-ghost${view === 'observe' ? ' active' : ''}`}
-        aria-pressed={view === 'observe'}
-        onClick={() => {
-          setView('observe');
-          navigate('/traces');
-        }}
-      >
-        Observe
-      </button>
     </div>
   );
 }
@@ -321,7 +288,7 @@ interface TopbarProps {
 }
 
 function NarrowTopbar({ openPanel, onTogglePanel }: Omit<TopbarProps, 'narrow'>) {
-  const { spec, dirty, runStatus, debugMode, setDebugMode, setDrawerTab, view, setView } = useAppState();
+  const { spec, dirty, runStatus, debugMode, setDebugMode, setDrawerTab } = useAppState();
   const { actionError, handleRun, handleStop, handleSave, handleImport } = useRunActions();
   const { fileInput, openImport, exportSpec } = useSpecFiles(handleImport);
   const toggle = onTogglePanel ?? (() => undefined);
@@ -341,11 +308,9 @@ function NarrowTopbar({ openPanel, onTogglePanel }: Omit<TopbarProps, 'narrow'>)
     { label: 'Import', onSelect: openImport },
     { label: 'Export', onSelect: exportSpec },
     { label: 'Save', onSelect: () => void handleSave() },
+    // The old Build/Observe switch's menu entry, kept for muscle memory: Observe is now Traces.
     // Last: the menu focuses its first item on open (e2e expects Debug).
-    {
-      label: view === 'observe' ? 'Build surface' : 'Observe surface',
-      onSelect: () => setView(view === 'observe' ? 'build' : 'observe'),
-    },
+    { label: 'Observe surface', onSelect: () => navigate('/traces') },
   ];
 
   return (
@@ -383,7 +348,29 @@ function NarrowTopbar({ openPanel, onTogglePanel }: Omit<TopbarProps, 'narrow'>)
   );
 }
 
+/**
+ * Off the Agents screen there is nothing to run, import or save: the bar
+ * names the screen and keeps the live run status, nothing else.
+ */
+function ScreenTopbar({ path }: { path: string }) {
+  const { runStatus } = useAppState();
+  const screen = NAV_ITEMS.find((item) => isActive(item, path));
+  return (
+    <header className="topbar">
+      <div className="crumbs">
+        <b>{screen?.label}</b>
+      </div>
+      <div className="topbar-spacer" />
+      <StatusPill status={runStatus?.status ?? 'idle'} live />
+    </header>
+  );
+}
+
+/** The Build toolbar (Run/Stop/Import/Export/Save/Debug, provider pill) renders only on `#/agents`. */
 export function Topbar({ narrow = false, openPanel, onTogglePanel }: TopbarProps = {}) {
+  const { path } = useRoute();
+  const nav = NAV_ITEMS.find((item) => isActive(item, path));
+  if (nav && nav.id !== 'agents') return <ScreenTopbar path={path} />;
   return narrow ? <NarrowTopbar openPanel={openPanel} onTogglePanel={onTogglePanel} /> : <WideTopbar />;
 }
 
@@ -405,8 +392,6 @@ function WideTopbar() {
         {dirty && <span className="dirty-dot" title="Unsaved changes" />}
       </div>
       <div className="topbar-spacer" />
-
-      <ViewToggle />
 
       <RunNotices runStatus={runStatus} actionError={actionError} />
 
