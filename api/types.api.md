@@ -499,7 +499,6 @@ interface SandboxCallOptions {
 // @public
 interface SandboxDriver {
     readonly name?: string;
-    // (undocumented)
     run(code: string, opts?: SandboxCallOptions): Promise<unknown>;
 }
 

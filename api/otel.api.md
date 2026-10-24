@@ -51,9 +51,7 @@ interface SpanStatus {
 
 // @public
 interface TraceExporter {
-    // (undocumented)
     onSpanEnd(span: Span): void;
-    // (undocumented)
     onSpanStart(span: Span): void;
 }
 

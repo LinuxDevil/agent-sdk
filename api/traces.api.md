@@ -39,7 +39,7 @@ export function observeExporterFromEnv(options?: {
     env?: NodeJS.ProcessEnv;
 }): ObserveReporter | undefined;
 
-// @public (undocumented)
+// @public
 export interface ObserveExporterOptions {
     agentName?: string;
     cwd?: string;
@@ -127,9 +127,7 @@ export interface SpanStatus {
 
 // @public
 export interface TraceExporter {
-    // (undocumented)
     onSpanEnd(span: Span): void;
-    // (undocumented)
     onSpanStart(span: Span): void;
 }
 

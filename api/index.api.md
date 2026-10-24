@@ -3118,12 +3118,10 @@ export interface HttpToolOptions {
     validateSSL?: boolean;
 }
 
-// @public (undocumented)
+// @public
 export interface Hub {
     readonly agentId: string;
-    // (undocumented)
     publish(input: HubPublishInput): Promise<HubEntry>;
-    // (undocumented)
     query(filter?: HubQuery): Promise<HubEntry[]>;
 }
 
@@ -3135,27 +3133,18 @@ export const HUB_SCOPES: readonly ["private", "fleet"];
 
 // @public
 export interface HubEntry {
-    // (undocumented)
     agent_id: string | null;
-    // (undocumented)
     created_at: number;
-    // (undocumented)
     entry_id: string;
-    // (undocumented)
     expires_at: number | null;
-    // (undocumented)
     key: string;
-    // (undocumented)
     namespace: string;
-    // (undocumented)
     scope: string;
-    // (undocumented)
     ttl: number | null;
-    // (undocumented)
     value: string | null;
 }
 
-// @public (undocumented)
+// @public
 export interface HubOptions {
     agentId?: string;
     agentName?: string;
@@ -3168,30 +3157,24 @@ export interface HubOptions {
     url?: string;
 }
 
-// @public (undocumented)
+// @public
 export interface HubPublishInput {
-    // (undocumented)
     key: string;
-    // (undocumented)
     namespace: string;
-    // (undocumented)
     scope?: HubScope;
     ttl?: number;
     value: unknown;
 }
 
-// @public (undocumented)
+// @public
 export interface HubQuery {
-    // (undocumented)
     key?: string;
-    // (undocumented)
     limit?: number;
-    // (undocumented)
     namespace?: string;
     scope?: HubScope;
 }
 
-// @public (undocumented)
+// @public
 export type HubScope = (typeof HUB_SCOPES)[number];
 
 // @public
@@ -5531,7 +5514,6 @@ interface SafeParser<T> {
 // @public
 export interface Sandbox {
     readonly driver: string;
-    // (undocumented)
     run(code: string, opts?: SandboxCallOptions): Promise<unknown>;
 }
 
@@ -5559,7 +5541,6 @@ export interface SandboxCallOptions {
 // @public
 export interface SandboxDriver {
     readonly name?: string;
-    // (undocumented)
     run(code: string, opts?: SandboxCallOptions): Promise<unknown>;
 }
 
@@ -7145,9 +7126,7 @@ export function toUIMessageStreamResponse(run: AsyncIterable<AgentEvent>, init?:
 
 // @public
 export interface TraceExporter {
-    // (undocumented)
     onSpanEnd(span: Span): void;
-    // (undocumented)
     onSpanStart(span: Span): void;
 }
 

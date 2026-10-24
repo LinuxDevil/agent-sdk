@@ -2039,7 +2039,6 @@ interface SandboxCallOptions {
 // @public
 interface SandboxDriver {
     readonly name?: string;
-    // (undocumented)
     run(code: string, opts?: SandboxCallOptions): Promise<unknown>;
 }
 
@@ -2790,9 +2789,7 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
 
 // @public
 interface TraceExporter {
-    // (undocumented)
     onSpanEnd(span: Span): void;
-    // (undocumented)
     onSpanStart(span: Span): void;
 }
 
