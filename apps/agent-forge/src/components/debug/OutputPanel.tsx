@@ -1,5 +1,5 @@
 import { useAppState } from '../../state/AppState';
-import { JsonTree } from './JsonTree';
+import { JsonView } from '../../ui/JsonView';
 
 /**
  * The final (or paused-for-approval) `ExecutionResult` as a
@@ -20,7 +20,7 @@ export function OutputPanel() {
             {runStatus.status === 'paused' ? 'Paused ExecutionResult (awaiting approval)' : 'ExecutionResult'}
           </label>
         </div>
-        <JsonTree value={runStatus.result} />
+        <JsonView value={runStatus.result} />
       </div>
     );
   }
@@ -30,7 +30,7 @@ export function OutputPanel() {
       <div className="field">
         <label>Agent spec (no run yet)</label>
       </div>
-      <JsonTree value={spec} />
+      <JsonView value={spec} />
     </div>
   );
 }

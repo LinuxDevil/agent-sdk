@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { JsonTree } from '../components/debug/JsonTree';
+import { JsonView } from '../ui/JsonView';
 import { useTraceDetail } from './useObserve';
 import { flattenObservationTree, nestObservations, traceBounds, type ObservationNode } from './tree';
 import type { ObserveObservationRow, ObserveScoreRow } from './types';
@@ -117,7 +117,7 @@ function ObservationInspector({ row }: { row: ObserveObservationRow }) {
         )}
         {row.attrs && (
           <Field label="Attributes">
-            <JsonTree value={row.attrs} />
+            <JsonView value={row.attrs} />
           </Field>
         )}
       </div>

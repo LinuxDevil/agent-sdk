@@ -1,9 +1,13 @@
 import { useState, type ReactNode } from 'react';
 
-interface JsonTreeProps {
+/**
+ * Props for {@link JsonView}. `defaultExpandDepth` is how many levels open on
+ * first render (default 4); deeper containers start collapsed and expand on click.
+ */
+export interface JsonViewProps {
   value: unknown;
+  /** Key shown before the root value, if any. */
   name?: string;
-  depth?: number;
   defaultExpandDepth?: number;
 }
 
@@ -13,6 +17,13 @@ interface Container {
   /** Text shown after the key for a non-empty container, given its size. */
   summary: (size: number) => string;
   entries: [string, unknown][];
+}
+
+interface NodeProps {
+  value: unknown;
+  name?: string;
+  depth: number;
+  defaultExpandDepth: number;
 }
 
 const SCALAR_CLASS: Record<string, string | undefined> = {
@@ -58,21 +69,17 @@ function describeContainer(value: unknown): Container | undefined {
 }
 
 /** A collapsible container (array or object): toggle, key, summary, children. */
-function Branch({
-  name,
-  container,
-  depth,
-  defaultExpandDepth,
-}: {
-  name?: string;
-  container: Container;
-  depth: number;
-  defaultExpandDepth: number;
-}) {
+function Branch({ name, container, depth, defaultExpandDepth }: Omit<NodeProps, 'value'> & { container: Container }) {
   const [expanded, setExpanded] = useState(depth < defaultExpandDepth);
   return (
     <div className="json-node">
-      <button type="button" className="json-toggle" onClick={() => setExpanded((e) => !e)}>
+      <button
+        type="button"
+        className="json-toggle"
+        aria-expanded={expanded}
+        aria-label={expanded ? 'Collapse' : 'Expand'}
+        onClick={() => setExpanded((e) => !e)}
+      >
         {expanded ? '▾' : '▸'}
       </button>
       {name !== undefined && <span className="json-key">{name}: </span>}
@@ -80,7 +87,7 @@ function Branch({
       {expanded && (
         <div className="json-children">
           {container.entries.map(([k, v]) => (
-            <JsonTree key={k} value={v} name={k} depth={depth + 1} defaultExpandDepth={defaultExpandDepth} />
+            <JsonNode key={k} value={v} name={k} depth={depth + 1} defaultExpandDepth={defaultExpandDepth} />
           ))}
         </div>
       )}
@@ -88,12 +95,7 @@ function Branch({
   );
 }
 
-/**
- * Hand-rolled, collapsible JSON tree - no dependency needed for this.
- * `defaultExpandDepth` keeps the tree from dumping a giant `ExecutionResult`
- * fully expanded on first render.
- */
-export function JsonTree({ value, name, depth = 0, defaultExpandDepth = 2 }: JsonTreeProps) {
+function JsonNode({ value, name, depth, defaultExpandDepth }: NodeProps) {
   const container = describeContainer(value);
   if (!container) return <Row name={name}>{scalarSpan(value)}</Row>;
   if (container.entries.length === 0) {
@@ -104,4 +106,13 @@ export function JsonTree({ value, name, depth = 0, defaultExpandDepth = 2 }: Jso
     );
   }
   return <Branch name={name} container={container} depth={depth} defaultExpandDepth={defaultExpandDepth} />;
+}
+
+/**
+ * Hand-rolled, collapsible JSON tree - no dependency needed for this.
+ * Containers deeper than `defaultExpandDepth` (default 4) start collapsed, so a
+ * giant `ExecutionResult` or deeply nested payload is not dumped fully expanded.
+ */
+export function JsonView({ value, name, defaultExpandDepth = 4 }: JsonViewProps) {
+  return <JsonNode value={value} name={name} depth={0} defaultExpandDepth={defaultExpandDepth} />;
 }
