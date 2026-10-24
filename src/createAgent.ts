@@ -1779,28 +1779,31 @@ function agentInstructions(config: CreateAgentConfig): AgentInstructions {
   const env = typeof process !== 'undefined' ? process.env : undefined;
   const ref = promptIsRef ? (config.prompt as string) : config.prompt === undefined ? env?.LOUSHO_PROMPT : undefined;
   const embedded = promptIsRef ? config.instructions : (config.instructions ?? config.prompt);
-  // No embedded fallback: an unresolvable ref fails the run (LOUSHO_PROMPT_UNRESOLVED) rather than running with no system prompt.
-  const failClosed = ref !== undefined && embedded === undefined;
-  const fetched = ref !== undefined ? registryPrompt(ref, { env, hasFallback: !failClosed }) : undefined;
-  if (ref !== undefined && fetched === undefined) {
-    if (failClosed) {
-      return { instructions: () => Promise.reject(promptUnresolved(ref, 'LOUSHO_OBSERVE is not set')), option: 'instructions' };
-    }
+  if (ref === undefined) return { instructions: embedded, option: config.prompt === undefined ? 'instructions' : 'prompt' };
+  return registryInstructions(ref, embedded, env);
+}
+
+/** The instructions of an agent with a registry `ref`: the fetched text, `embedded` as the fallback, or (without it) a run-time LOUSHO_PROMPT_UNRESOLVED. */
+function registryInstructions(ref: string, embedded: PerRun<string | undefined> | undefined, env: NodeJS.ProcessEnv | undefined): AgentInstructions {
+  // No embedded fallback: an unresolvable ref fails the run rather than running with no system prompt.
+  const failClosed = embedded === undefined;
+  const fetched = registryPrompt(ref, { env, hasFallback: !failClosed });
+  if (fetched === undefined) {
+    if (failClosed) return { instructions: () => Promise.reject(promptUnresolved(ref, 'LOUSHO_OBSERVE is not set')), option: 'instructions' };
     console.warn(
       `[lousho] prompt: '${ref}' needs a collector to resolve - set LOUSHO_OBSERVE=1 (or a daemon URL); the embedded instructions are used instead.`
     );
-  }
-  if (fetched === undefined) {
-    return { instructions: embedded, option: config.prompt === undefined ? 'instructions' : 'prompt' };
+    return { instructions: embedded, option: 'instructions' };
   }
   return {
     option: 'instructions',
     promptUse: fetched.use,
     instructions: (ctx) =>
-      fetched.text(() => {
-        if (embedded === undefined) return Promise.reject(promptUnresolved(ref as string, 'the observe daemon did not return it'));
-        return resolveOption('instructions', embedded, ctx);
-      }),
+      fetched.text(() =>
+        embedded === undefined
+          ? Promise.reject(promptUnresolved(ref, 'the observe daemon did not return it'))
+          : resolveOption('instructions', embedded, ctx)
+      ),
   };
 }
 

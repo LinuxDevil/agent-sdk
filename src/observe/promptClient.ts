@@ -10,8 +10,8 @@
  * history calls back `lousho prompt push|list|get`.
  *
  * `registryPrompt()` is the createAgent wiring: it starts the fetch when the
- * agent is BUILT (the spec's "fetch at build"), memoizes it for the agent's
- * lifetime, and hands the reporter a `prompt_use` ref once the fetch landed.
+ * agent is BUILT (the spec's "fetch at build"), memoizes a successful fetch for the
+ * agent's lifetime (a failed one is retried by the next run), and hands the reporter a `prompt_use` ref once the fetch landed.
  */
 
 import { observeRequest } from './httpClient';
@@ -105,8 +105,8 @@ export async function listPrompts(baseUrl: string, filter: { name?: string; limi
 /**
  * The resolved-or-fallback prompt a `prompt` ref produces for one agent. The
  * fetch starts at construction (agent build) and is memoized for the agent's
- * lifetime; a failure warns once and every run then uses the embedded
- * instructions.
+ * lifetime; a failure warns once, that run uses the embedded instructions and
+ * the next run retries the fetch.
  */
 export interface RegistryPrompt {
   /** The fetched text, or `fallback()` when the fetch failed. */
@@ -138,7 +138,7 @@ export function registryPrompt(
   };
   let warned = false;
   let resolved: ResolvedPrompt | undefined;
-  const pending = (async () => {
+  const attempt = async (): Promise<ResolvedPrompt | undefined> => {
     try {
       const prompt = await fetchPrompt(url, parsed, fetchOptions);
       resolved = prompt;
@@ -155,10 +155,21 @@ export function registryPrompt(
       }
       return undefined;
     }
-  })();
+  };
+  // A success stays cached; a failure is dropped so the next run retries (a daemon that was briefly down at build recovers).
+  let pending: Promise<ResolvedPrompt | undefined> | undefined;
+  const start = (): Promise<ResolvedPrompt | undefined> => {
+    const current = attempt();
+    pending = current;
+    void current.then((prompt) => {
+      if (prompt === undefined && pending === current) pending = undefined;
+    });
+    return current;
+  };
+  void start();
   return {
     ref: parsed,
-    text: async (fallback) => (await pending)?.text ?? (await fallback()),
+    text: async (fallback) => (await (pending ?? start()))?.text ?? (await fallback()),
     use: () => (resolved !== undefined ? { prompt_id: resolved.prompt_id, version: resolved.version } : undefined),
   };
 }

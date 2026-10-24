@@ -110,7 +110,7 @@ describe('createAgent({ prompt }) - fallback + conflicts', () => {
     const model = mockModel(['ok']);
     const agent = createAgent({ name: 'prompt-agent-e', provider: model, prompt: 'mira@latest' });
     await expect(agent.send('hi')).rejects.toMatchObject({ code: 'LOUSHO_PROMPT_UNRESOLVED', message: expect.stringContaining('mira@latest') });
-    await expect(agent.send('hi')).rejects.toThrow(/start the daemon|`instructions`/);
+    await expect(agent.send('hi')).rejects.toThrow(/mira@latest.*LOUSHO_OBSERVE/s);
     await expect(agent.stream('hi').result).rejects.toMatchObject({ code: 'LOUSHO_PROMPT_UNRESOLVED' });
     expect(model.calls).toHaveLength(0);
     await closeReporter('prompt-agent-e', 'http://127.0.0.1:1');
@@ -136,6 +136,39 @@ describe('createAgent({ prompt }) - fallback + conflicts', () => {
       message: expect.stringContaining('LOUSHO_OBSERVE'),
     });
     expect(model.calls).toHaveLength(0);
+  });
+
+  it('rejects with LOUSHO_PROMPT_UNRESOLVED for a LOUSHO_PROMPT env ref with no instructions', async () => {
+    vi.stubEnv('LOUSHO_OBSERVE', 'http://127.0.0.1:1');
+    vi.stubEnv('LOUSHO_PROMPT', 'envref@latest');
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const model = mockModel(['ok']);
+    await expect(createAgent({ name: 'prompt-agent-envref', provider: model }).send('hi')).rejects.toMatchObject({
+      code: 'LOUSHO_PROMPT_UNRESOLVED',
+      message: expect.stringContaining('envref@latest'),
+    });
+    expect(model.calls).toHaveLength(0);
+    await closeReporter('prompt-agent-envref', 'http://127.0.0.1:1');
+  });
+
+  it('retries a failed resolution: the next run succeeds once the daemon is reachable', async () => {
+    const first = await start();
+    const port = first.port;
+    await first.close();
+    daemons.splice(daemons.indexOf(first), 1);
+    const url = `http://127.0.0.1:${port}`;
+    vi.stubEnv('LOUSHO_OBSERVE', url);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const model = mockModel(['ok']);
+    const agent = createAgent({ name: 'prompt-agent-retry', provider: model, prompt: 'mira@latest' });
+    await expect(agent.send('hi')).rejects.toMatchObject({ code: 'LOUSHO_PROMPT_UNRESOLVED' });
+
+    const daemon = await startObserveDaemon({ dbPath: ':memory:', port });
+    daemons.push(daemon);
+    await publishPrompt(url, { name: 'mira', text: 'Registry text after recovery.' });
+    await agent.send('hi');
+    expect(systemPrompt(model)).toContain('Registry text after recovery.');
+    await closeReporter('prompt-agent-retry', url);
   });
 
   it('falls back to instructions when they exist (no collector: warning text unchanged)', async () => {
