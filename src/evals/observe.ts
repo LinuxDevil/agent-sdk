@@ -79,8 +79,8 @@ export interface EvalCaseObservation {
    * putting it in the same trace); a plain `work(undefined)` call when off.
    */
   run<T>(work: (parentSpanId: string | undefined) => Promise<T>): Promise<T>;
-  /** POSTs the case's score events (fire-and-forget); a no-op when observation is off or the case recorded no assertions. */
-  emit(result: EvalResult): void;
+  /** POSTs the case's score events; resolves (never rejects) once they are sent or dropped. A no-op when observation is off or the case recorded no assertions. */
+  emit(result: EvalResult): Promise<void>;
 }
 
 /**
@@ -113,7 +113,9 @@ export function evalCaseObservation(options: {
   return {
     async run<T>(work: (parentSpanId: string | undefined) => Promise<T>): Promise<T> {
       if (!reporter) return work(undefined);
-      return withSpan(
+      // The eval span ends into the reporter's batched outbox; a vitest worker
+      // can exit before the interval flush, leaving the scores' trace_id dangling.
+      const settled = withSpan(
         reporter,
         `eval ${options.evalName}`,
         {
@@ -126,12 +128,17 @@ export function evalCaseObservation(options: {
         },
         options.parentSpanId
       );
+      try {
+        return await settled;
+      } finally {
+        await reporter.flush();
+      }
     },
-    emit(result: EvalResult): void {
+    async emit(result: EvalResult): Promise<void> {
       if (!reporter || traceId === undefined || result.assertions.length === 0) return;
       const events = scoreEventsOf(result, { traceId, ...(scoredName !== undefined ? { agentId: reporter.agentId } : {}) });
-      // Fire-and-forget: emitObserveEvents drops-and-counts, it never throws into the eval.
-      void emitObserveEvents(events, { env });
+      // emitObserveEvents drops-and-counts, it never throws into the eval.
+      await emitObserveEvents(events, { env });
     },
   };
 }

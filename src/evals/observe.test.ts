@@ -135,6 +135,23 @@ describe('evalCaseObservation', () => {
     }
     expect(scores[0].data.name).toBe('refund eval/completed()');
   });
+
+  it('posts the eval span before the score rows, with the same trace_id', async () => {
+    const { fetchFn, calls } = noopFetch();
+    vi.stubGlobal('fetch', fetchFn);
+    const observation = evalCaseObservation({ evalName: 'e', agent: { name: 'eval-flush-scored' }, env: { LOUSHO_OBSERVE: 'http://x' } });
+    await observation.run(async () => {});
+    await observation.emit(result());
+    const spanBatch = calls.findIndex((c) => c.batch.some((e) => e.type === 'observation'));
+    const scoreBatch = calls.findIndex((c) => c.batch.some((e) => e.type === 'score'));
+    expect(spanBatch).toBeGreaterThanOrEqual(0);
+    expect(spanBatch).toBeLessThan(scoreBatch);
+    const span = calls[spanBatch].batch.find((e) => e.type === 'observation' && e.data.name === 'eval e');
+    expect(span).toBeDefined();
+    const scores = scoreEvents(calls);
+    expect(scores).toHaveLength(2);
+    for (const event of scores) expect(event.data.trace_id).toBe((span as Extract<IngestEvent, { type: 'observation' }>).data.obs_id);
+  });
 });
 
 describe('runTrajectoryCase emission (integration)', () => {
