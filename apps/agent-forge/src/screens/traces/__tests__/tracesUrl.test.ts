@@ -6,7 +6,7 @@ const parse = (qs: string) => parseTracesQuery(new URLSearchParams(qs));
 
 describe('tracesUrl', () => {
   it('round-trips every key in a stable order', () => {
-    const qs = '?agent=a1&status=error&model=m&project=p&q=refund&from=10&to=20&sort=cost&order=asc&offset=50';
+    const qs = '?agent=a1&status=error&model=m&project=p&q=refund&prompt=mira%402&from=10&to=20&sort=cost&order=asc&offset=50';
     expect(formatTracesQuery(parse(qs.slice(1)))).toBe(qs);
   });
 
@@ -25,6 +25,7 @@ describe('tracesUrl', () => {
     const filter = toTraceFilter({ offset: 0 }, 100_000_000);
     expect(filter).toMatchObject({ from: 100_000_000 - 86_400_000, to: 100_000_000, limit: 50, offset: 0 });
     expect(toTraceFilter(parse('from=1&to=2&agent=x'), 5)).toMatchObject({ from: 1, to: 2, agent_id: 'x' });
+    expect(toTraceFilter(parse('prompt=mira@2'), 5)).toMatchObject({ prompt: 'mira@2' });
   });
 
   it("remembers the list's last query for the trace screen's way back", () => {

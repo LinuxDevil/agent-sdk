@@ -191,3 +191,36 @@ export interface ObserveInsights {
   agents: ObserveAgentInsights[];
   series: ObserveRollupRow[];
 }
+
+/** One version of a registry prompt (`GET /api/v1/prompts/:name` rows; `labels` = the labels pointing at it, sorted). */
+export interface ObservePromptVersion {
+  prompt_id: string;
+  name: string;
+  version: number;
+  labels: string[];
+  variables: unknown;
+  hash: string | null;
+  text: string | null;
+  created_at: number;
+  /** Observations linked (`prompt_use`) to this version. */
+  uses: number;
+}
+
+/** One row of `GET /api/v1/prompts`: the latest version of a name, with its version count and run uses across versions. */
+export interface ObservePromptRow extends ObservePromptVersion {
+  versions: number;
+}
+
+/** `GET /api/v1/prompts/:name`: the version history, newest first, text included. */
+export interface ObservePromptHistory {
+  name: string;
+  versions: ObservePromptVersion[];
+}
+
+/** `PUT /api/v1/prompts/:name/labels/:label` answer: where the label points now and where it pointed before (null = new label). */
+export interface ObservePromptLabelMove {
+  name: string;
+  label: string;
+  version: number;
+  previous_version: number | null;
+}

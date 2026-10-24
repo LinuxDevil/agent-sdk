@@ -49,6 +49,8 @@ const PAIRS: [text: string, background: string][] = [
   ['text', 'surface-2'],
   // Monitoring: the selected window button draws text on the accent tint.
   ['text', 'accent-soft'],
+  // Prompt label chips, the selected DataTable row and the Traces prompt chip (its x in text-muted) on the accent tint.
+  ['text-muted', 'accent-soft'],
 ];
 
 describe('theme contrast', () => {

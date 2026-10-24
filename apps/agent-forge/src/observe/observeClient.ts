@@ -14,6 +14,9 @@ import type {
   ObserveAgentRow,
   ObserveHealth,
   ObserveInsights,
+  ObservePromptHistory,
+  ObservePromptLabelMove,
+  ObservePromptRow,
   ObserveScorePassRate,
   ObserveScoreRow,
   ObserveSessionDetail,
@@ -71,6 +74,8 @@ interface TraceListQuery {
   model?: string;
   sort?: TraceSort;
   order?: 'asc' | 'desc';
+  /** `<name>` or `<name>@<version>`: traces where any observation ran that registry prompt. */
+  prompt?: string;
 }
 
 export interface TraceListFilter extends TraceListQuery {
@@ -153,7 +158,7 @@ export class ObserveClient {
 
   private async request<T>(
     path: string,
-    opts: { query?: Record<string, string | number | undefined>; method?: 'GET' | 'POST'; body?: unknown } = {}
+    opts: { query?: Record<string, string | number | undefined>; method?: 'GET' | 'POST' | 'PUT'; body?: unknown } = {}
   ): Promise<T> {
     const headers = new Headers({ accept: 'application/json' });
     // The studio token only travels same-origin (to the studio server's
@@ -243,6 +248,30 @@ export class ObserveClient {
   /** `GET /api/v1/insights` - per-agent cards + rollup series. */
   insights(filter: InsightsFilter = {}): Promise<ObserveInsights> {
     return this.request('/api/v1/insights', { query: { ...filter } });
+  }
+
+  /** `GET /api/v1/prompts` - one row per prompt name (its latest version), with version and use counts. */
+  async listPrompts(): Promise<ObservePromptRow[]> {
+    const body = await this.request<{ prompts: ObservePromptRow[] }>('/api/v1/prompts');
+    return body.prompts;
+  }
+
+  /** `GET /api/v1/prompts/:name` - the version history, newest first; `undefined` on the daemon's 404. */
+  async promptVersions(name: string): Promise<ObservePromptHistory | undefined> {
+    try {
+      return await this.request(`/api/v1/prompts/${encodeURIComponent(name)}`);
+    } catch (error) {
+      if (error instanceof ObserveApiError && error.status === 404) return undefined;
+      throw error;
+    }
+  }
+
+  /** `PUT /api/v1/prompts/:name/labels/:label {version}` - point `label` at `version`, moving it off its old one. */
+  movePromptLabel(name: string, label: string, version: number): Promise<ObservePromptLabelMove> {
+    return this.request(`/api/v1/prompts/${encodeURIComponent(name)}/labels/${encodeURIComponent(label)}`, {
+      method: 'PUT',
+      body: { version },
+    });
   }
 
   /** `GET /api/v1/scores` - eval/judge/human score rows. */

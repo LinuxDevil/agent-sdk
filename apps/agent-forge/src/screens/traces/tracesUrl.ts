@@ -1,7 +1,8 @@
 /**
  * The Traces list's filter state, held entirely in the `#/traces?...` query.
  *
- * Keys: `agent` (agent_id), `status`, `model`, `project`, `q`, `from` + `to`
+ * Keys: `agent` (agent_id), `status`, `model`, `project`, `q`, `prompt`
+ * (`<name>` or `<name>@<version>`, the Prompts screen's runs link), `from` + `to`
  * (an absolute half-open window in ms epoch), `sort` (duration|tokens|cost|start)
  * + `order` (asc|desc), and `offset` (paging). The time range has ONE URL
  * representation, `from`/`to`: the default rolling 24h window writes nothing,
@@ -19,7 +20,7 @@ const DEFAULT_WINDOW_MS = 86_400_000;
 
 const SORTS: readonly TraceSort[] = ['start', 'duration', 'tokens', 'cost'];
 /** Text filters, in the order they are written to the URL. */
-const TEXT_KEYS = ['agent', 'status', 'model', 'project', 'q'] as const;
+const TEXT_KEYS = ['agent', 'status', 'model', 'project', 'q', 'prompt'] as const;
 type TextKey = (typeof TEXT_KEYS)[number];
 
 /** The parsed `#/traces` query; absent fields are the defaults. */
@@ -71,6 +72,7 @@ export function toTraceFilter(state: TracesUrlState, now: number): TraceListFilt
     model: state.model,
     project: state.project,
     q: state.q,
+    prompt: state.prompt,
     from: window.from,
     to: window.to,
     sort: state.sort?.key,

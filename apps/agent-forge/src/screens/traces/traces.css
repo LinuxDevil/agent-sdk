@@ -12,3 +12,29 @@
 .traces-detail {
   min-height: 0;
 }
+.traces-prompt-chip {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 2px 4px 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: 12px;
+}
+.traces-prompt-remove {
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 6px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.traces-prompt-remove:hover {
+  color: var(--text);
+}

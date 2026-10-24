@@ -75,6 +75,19 @@ function columns(now: number): Column<ObserveTraceRow>[] {
 const uniqueSorted = (values: (string | null | undefined)[]): string[] =>
   [...new Set(values.filter((v): v is string => Boolean(v)))].sort();
 
+/** The `prompt` filter (set by the Prompts screen's runs link; no facet edits it), removable in place. */
+function PromptChip({ prompt, onRemove }: { prompt: string | undefined; onRemove: () => void }) {
+  if (!prompt) return null;
+  return (
+    <p className="traces-prompt-chip">
+      <span>Prompt: {prompt}</span>
+      <button type="button" className="traces-prompt-remove" aria-label={`Remove prompt filter ${prompt}`} onClick={onRemove}>
+        ×
+      </button>
+    </p>
+  );
+}
+
 function TracesList() {
   const route = useRoute();
   const queryString = route.query.toString();
@@ -90,7 +103,7 @@ function TracesList() {
   // Every filter edit restarts at the first page; replace keeps Back off the filter edits.
   const update = (patch: Partial<TracesUrlState>) =>
     navigate(`/traces${formatTracesQuery({ ...state, offset: 0, ...patch })}`, { replace: true });
-  const setText = (key: 'agent' | 'status' | 'model' | 'project' | 'q') => (v: string | undefined) => update({ [key]: v || undefined });
+  const setText = (key: 'agent' | 'status' | 'model' | 'project' | 'q' | 'prompt') => (v: string | undefined) => update({ [key]: v || undefined });
 
   const range = useRangeFilter(state.window, '24h', (window) => update({ window }));
   const onSort = (next: TableSort | undefined) =>
@@ -114,6 +127,7 @@ function TracesList() {
         facets={facets}
         range={range}
       />
+      <PromptChip prompt={state.prompt} onRemove={() => setText('prompt')(undefined)} />
       <ObserveError error={traces.error} />
       <DataTable
         id="traces"
