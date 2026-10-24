@@ -108,7 +108,15 @@ jobs:
         env:
           NODE_OPTIONS: --max-old-space-size=12288
       - run: npm run build --workspace=packages/create-lousho-agent
+      # The real 'isolate' sandbox driver: isolated-vm is an optional peer, so it is
+      # installed here only (not in package.json). Node >= 20 needs --no-node-snapshot
+      # to load it; LOUSHO_ISOLATE_TESTS=1 makes src/sandbox/isolate.test.ts fail
+      # instead of skip if the module cannot load.
+      - run: npm install --no-save --legacy-peer-deps isolated-vm@7.0.1
       - run: npx vitest run
+        env:
+          NODE_OPTIONS: --no-node-snapshot
+          LOUSHO_ISOLATE_TESTS: '1'
       - run: docker pull curlimages/curl:8.10.1 && docker pull node:20-alpine && docker pull node:22-slim
       - run: npm run test:docker
         env:

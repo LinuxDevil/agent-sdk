@@ -3,9 +3,10 @@
  * timeout/OOM/driver mapping and the memory/timeout forwarding are tested
  * without the native package.
  */
+import { createRequire } from 'node:module';
 import { describe, it, expect } from 'vitest';
-import { createIsolateDriver, ISOLATE_DEFAULTS } from './isolate';
-import { SandboxError } from './errors';
+import { createIsolateDriver, isolateDriver, ISOLATE_DEFAULTS } from './isolate';
+import { SandboxError, sandboxErrorKind } from './errors';
 
 type EvalCall = { code: string; args: unknown[]; options?: { arguments?: { copy?: boolean }; result?: { copy?: boolean; promise?: boolean }; timeout?: number } };
 
@@ -137,4 +138,67 @@ describe('ISOLATE_DEFAULTS', () => {
   it('are the guards a sandbox without its own gets', () => {
     expect(ISOLATE_DEFAULTS).toEqual({ memoryMb: 128, timeoutMs: 5_000 });
   });
+});
+
+/**
+ * The real driver, against the native `isolated-vm` package. Only the `compat`
+ * CI job installs it (`npm install --no-save isolated-vm`) and runs the suite
+ * with `NODE_OPTIONS=--no-node-snapshot` (isolated-vm on Node >= 20 crashes
+ * the process without that flag, so a loadable module alone is not enough).
+ * Everywhere else the block skips; under `LOUSHO_ISOLATE_TESTS=1` (compat)
+ * a missing module or flag fails instead, so CI cannot pass by skipping.
+ */
+function probeIsolatedVm(): { ok: boolean; reason: string } {
+  const needsFlag = Number(process.versions.node.split('.')[0]) >= 20;
+  const hasFlag = `${process.env.NODE_OPTIONS ?? ''} ${process.execArgv.join(' ')}`.includes('--no-node-snapshot');
+  if (needsFlag && !hasFlag) return { ok: false, reason: 'Node >= 20 needs --no-node-snapshot (NODE_OPTIONS) to load isolated-vm' };
+  try {
+    createRequire(import.meta.url)('isolated-vm');
+    return { ok: true, reason: '' };
+  } catch (error) {
+    return { ok: false, reason: `isolated-vm is not loadable: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+
+const probe = probeIsolatedVm();
+/** True when the native isolated-vm loads in this process (so the real-driver block runs). */
+const hasIsolatedVm = probe.ok;
+const isolateRequired = process.env.LOUSHO_ISOLATE_TESTS === '1';
+
+if (isolateRequired && !hasIsolatedVm) {
+  describe('isolate driver (real isolated-vm)', () => {
+    it('is available when LOUSHO_ISOLATE_TESTS=1', () => {
+      throw new Error(`LOUSHO_ISOLATE_TESTS=1 is set but the real isolate driver cannot run: ${probe.reason}`);
+    });
+  });
+}
+
+describe.runIf(hasIsolatedVm)('isolate driver (real isolated-vm)', () => {
+  it('runs a real tool body and returns its value', async () => {
+    const driver = isolateDriver({ memoryMb: 128, timeoutMs: 5_000 });
+    await expect(driver.run('(a, b) => a + b', { args: [2, 40] })).resolves.toBe(42);
+    await expect(driver.run('async (n) => { await null; return { doubled: n * 2 }; }', { args: [21] })).resolves.toEqual({ doubled: 42 });
+  });
+
+  it("passes the code's own error through unchanged", async () => {
+    const driver = isolateDriver({ memoryMb: 128, timeoutMs: 5_000 });
+    const error = await driver.run('() => { throw new RangeError("boom") }').catch((e: unknown) => e);
+    expect(sandboxErrorKind(error)).toBeUndefined();
+    expect((error as Error).message).toContain('boom');
+  });
+
+  it('reports a timeout for a synchronous infinite loop', async () => {
+    const driver = isolateDriver({ memoryMb: 128, timeoutMs: 100 });
+    const error = await driver.run('() => { while (true) {} }').catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SandboxError);
+    expect(sandboxErrorKind(error)).toBe('timeout');
+  }, 15_000);
+
+  it('reports oom for a 256 MB allocation under a 32 MB cap', async () => {
+    const driver = isolateDriver({ memoryMb: 32, timeoutMs: 10_000 });
+    const error = await driver
+      .run('() => { const keep = []; for (let i = 0; i < 256; i++) keep.push(new Array(1024 * 1024 / 8).fill(i)); return keep.length; }')
+      .catch((e: unknown) => e);
+    expect(sandboxErrorKind(error)).toBe('oom');
+  }, 30_000);
 });
