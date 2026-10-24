@@ -1,4 +1,5 @@
 import { useRoute } from '../router/useRoute';
+import { DaemonStatus } from './DaemonStatus';
 
 export type NavSection = 'Build' | 'Observe' | 'Evaluate' | 'Assets' | 'Footer';
 
@@ -70,6 +71,7 @@ export function NavRail({
           </ul>
         );
       })}
+      <DaemonStatus />
     </nav>
   );
 }
