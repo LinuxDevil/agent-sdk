@@ -46,6 +46,7 @@ export const ERROR_CODES = {
   LOUSHO_REGISTRY_UNSAFE_PATH: 'Do not install this item; it asks to write outside its allowed folder or is too large, so tell the registry owner.',
   LOUSHO_REGISTRY_FILE_EXISTS: 'Pass --overwrite to replace the existing file, or move your file away first.',
   LOUSHO_REGISTRY_MANIFEST_MISMATCH: 'Do not install this item: its code reaches for something its permission manifest does not declare; tell the registry owner, who fixes the code or the manifest.',
+  /** A registry `prompt` ref with no `instructions` fallback could not be fetched, so the run is refused. */
   LOUSHO_PROMPT_UNRESOLVED: 'Start the observe daemon (set LOUSHO_OBSERVE to its URL), or pass `instructions` as a fallback.',
   LOUSHO_TOOL_NOT_FOUND: 'Use one of the tool names listed in the message, or register the tool yourself.',
   LOUSHO_TOOL_NEEDS_CREDENTIALS: 'Build the agent with createAgent() and pass the configured tool.',
