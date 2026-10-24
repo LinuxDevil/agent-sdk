@@ -60,8 +60,10 @@ const agentDeregisterData = z.object({
   reason: z.string().optional(),
 });
 /**
- * `observation` - one finished span (`obs_id` is the SDK's `TraceLine.id`, so a
- * resent batch upserts by key and `updated_at` gives last-writer-wins). The
+ * `observation` - one finished span, or a run's root span as it opens (no
+ * `end`; the finished span later replaces it, and a finished row is never
+ * reopened). `obs_id` is the SDK's `TraceLine.id`, so a resent batch upserts
+ * by key and `updated_at` gives last-writer-wins. The
  * `usage_*`/`cost_*` fields carry `StepUsage` verbatim; the daemon stores them
  * and never recomputes - `cost_partial` and `usage_estimated` must reach
  * Studio untouched or cost numbers lie.

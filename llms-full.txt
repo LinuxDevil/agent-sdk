@@ -14132,6 +14132,18 @@ that survives the throw (its own `uncaughtException` handler, or a capture
 callback such as the REPL's) keeps reporting. An explicit `process.exit()` or
 a SIGKILL still loses what is buffered.
 
+Every run is visible from the moment it starts: the reporter sends a run's
+root span (the top `invoke_agent`, the one with no parent) as soon as it
+opens, without waiting for the 5 s interval, and Studio lists that trace as
+`running`. The run's end replaces that row with the final status, usage,
+cost and output, and counts once. So a process killed mid-run (SIGKILL,
+power loss) still leaves its trace behind, and the trace flips to
+`interrupted` when the agent stops heartbeating and the sweep marks it
+`down`. A process that exits gracefully mid-run (SIGINT, SIGTERM) marks its
+open runs `interrupted` right away. Child spans (model calls and tool calls)
+are still sent only when they finish, so a killed run keeps the root and
+any child that finished and was already sent.
+
 Eval scores flow through the same pipe —
 `lousho eval --observe` emits them even when `LOUSHO_OBSERVE` is unset.
 

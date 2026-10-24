@@ -10,7 +10,9 @@
  *   commit or roll back together, so a crash mid-batch leaves no half-trace.
  * - Upsert by row primary key everywhere (`obs_id` is the reporter's
  *   TraceLine.id): a resent batch is idempotent and `updated_at` gives
- *   last-writer-wins.
+ *   last-writer-wins - except that an observation with `end` set is never
+ *   overwritten by one without: a run's root arrives twice (an eager start
+ *   with `end` NULL, then the finished span), in either order.
  * - `rollups` is a disposable derivation, never a second write path: each
  *   batch recomputes the bucket rows it touches with INSERT ... SELECT ...
  *   GROUP BY inside the same transaction (a resend recomputes the same
@@ -101,7 +103,8 @@ const OBS_UPSERT = `
     name = excluded.name,
     start = excluded.start,
     "end" = excluded."end",
-    status = excluded.status,
+    -- an open re-send (a requeued start) keeps a verdict the sweep already gave
+    status = CASE WHEN excluded."end" IS NULL THEN COALESCE(excluded.status, observations.status) ELSE excluded.status END,
     input = excluded.input,
     output = excluded.output,
     model = excluded.model,
@@ -115,6 +118,9 @@ const OBS_UPSERT = `
     truncated = excluded.truncated,
     attrs = excluded.attrs,
     updated_at = excluded.updated_at
+  -- A finished row is final: a run's start event (end NULL) arriving after its
+  -- end event - reordered by a requeue - must not reopen it.
+  WHERE excluded."end" IS NOT NULL OR observations."end" IS NULL
 `;
 
 /** A session row is derived from whatever observations carry its id; there is no session event in the envelope. */
@@ -232,6 +238,8 @@ function writeEvent(db: SqlDatabase, now: number, event: IngestEvent): void {
       const d = event.data;
       const ts = d.ts ?? now;
       db.prepare(DEREGISTER_UPSERT).run(d.agent_id, ts, ts, now);
+      // A graceful exit with a run still open (SIGINT mid-run): its end never comes.
+      interruptOpenObservations(db, d.agent_id, now);
       return;
     }
     case 'observation':
@@ -370,10 +378,15 @@ export function interruptAgentWork(db: SqlDatabase, agentId: string, now: number
       "UPDATE sessions SET status = 'interrupted', ended_at = COALESCE(ended_at, ?), updated_at = ? WHERE agent_id = ? AND status = 'active'"
     )
     .run(now, now, agentId);
-  const observations = db
+  return { sessions: Number(sessions.changes), observations: interruptOpenObservations(db, agentId, now) };
+}
+
+/** Flip `agentId`'s unfinished observations (`end IS NULL`) to 'interrupted'; a later end event still settles them. */
+function interruptOpenObservations(db: SqlDatabase, agentId: string, now: number): number {
+  const result = db
     .prepare('UPDATE observations SET status = \'interrupted\', updated_at = ? WHERE agent_id = ? AND "end" IS NULL')
     .run(now, agentId);
-  return { sessions: Number(sessions.changes), observations: Number(observations.changes) };
+  return Number(result.changes);
 }
 
 /**
@@ -505,6 +518,14 @@ function traceRow(row: Record<string, unknown>): TraceRow {
   };
 }
 
+/**
+ * A trace's status is its root observation's; a root still open (`end` NULL,
+ * no verdict yet - the reporter's eager start) is 'running'.
+ */
+const ROOT_STATUS =
+  `(SELECT CASE WHEN r.status IS NULL AND r."end" IS NULL THEN 'running' ELSE r.status END ` +
+  `FROM observations r WHERE r.trace_id = o.trace_id AND r.parent_obs_id IS NULL LIMIT 1)`;
+
 /** The trace list's WHERE/HAVING pieces, shared by the page query and its total. */
 function traceFilterWhere(filter: TraceFilter): { where: string; having: string; params: (string | number | null)[] } {
   const params: (string | number | null)[] = [];
@@ -527,7 +548,7 @@ function traceFilterWhere(filter: TraceFilter): { where: string; having: string;
   // Written without select aliases so the same clause fits the bare `SELECT o.trace_id` total subquery.
   const having =
     `(${status} IS NULL OR COALESCE(` +
-    `(SELECT r.status FROM observations r WHERE r.trace_id = o.trace_id AND r.parent_obs_id IS NULL LIMIT 1), ` +
+    `${ROOT_STATUS}, ` +
     `CASE WHEN SUM(o.status = 'error') > 0 THEN 'error' ELSE 'ok' END) = ${status2})`;
   return { where, having, params };
 }
@@ -546,7 +567,7 @@ const TRACE_SELECT = `
     MAX(o.agent_id) AS agent_id,
     MAX(o.session_id) AS session_id,
     (SELECT r.name FROM observations r WHERE r.trace_id = o.trace_id AND r.parent_obs_id IS NULL LIMIT 1) AS name,
-    (SELECT r.status FROM observations r WHERE r.trace_id = o.trace_id AND r.parent_obs_id IS NULL LIMIT 1) AS root_status
+    ${ROOT_STATUS} AS root_status
   FROM observations o
 `;
 
@@ -878,8 +899,9 @@ export function insightsAgents(db: SqlDatabase, windowMs: { since: number; until
   const durations = new Map<string, number[]>();
   for (const row of db
     .prepare(
-      `SELECT agent_id, COALESCE("end", start) - start AS d FROM observations
-       WHERE parent_obs_id IS NULL AND agent_id IS NOT NULL AND start >= ? AND start < ?
+      // A run still open (or interrupted) has no latency yet; a zero would drag the percentiles down.
+      `SELECT agent_id, "end" - start AS d FROM observations
+       WHERE parent_obs_id IS NULL AND agent_id IS NOT NULL AND "end" IS NOT NULL AND start >= ? AND start < ?
        ORDER BY agent_id, d`
     )
     .all(windowMs.since, windowMs.until)) {
