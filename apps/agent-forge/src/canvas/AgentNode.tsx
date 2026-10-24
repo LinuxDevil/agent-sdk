@@ -210,7 +210,7 @@ export const NODE_TYPES: Record<string, typeof AgentNode> = Object.fromEntries(
   GRAPH_NODE_TYPES.map((type) => [flowNodeType(type), AgentNode])
 );
 
-/** The MiniMap draws each node in its type's swatch colour (see `.minimap-node-*` in layout.css). */
+/** The MiniMap draws each node in its type's swatch colour (see `.minimap-node-*` in screens/agents/agents.css). */
 export function miniMapNodeClassName(node: { data: Record<string, unknown> }): string {
   const graphNode = (node.data as Partial<AgentNodeData>).graphNode;
   return graphNode ? `minimap-node-${graphNode.type}` : '';
