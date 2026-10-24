@@ -4,7 +4,8 @@ import { useTraceDetail } from './useObserve';
 import { flattenObservationTree, nestObservations, traceBounds, type ObservationNode } from './tree';
 import type { ObserveObservationRow, ObserveScoreRow } from './types';
 import { fmtCost, fmtDateTime, fmtDuration, fmtInt } from './format';
-import { ObserveError, ObserveDaemonDown, ObserveStatusPill } from './chrome';
+import { ObserveError, ObserveDaemonDown } from './chrome';
+import { StatusPill } from '../ui/StatusPill';
 import { ObserveDaemonDownError } from './observeClient';
 
 const KIND_COLOR: Record<string, string> = {
@@ -83,7 +84,7 @@ function ObservationInspector({ row }: { row: ObserveObservationRow }) {
           {row.kind}
         </span>
         <b>{row.name ?? row.obs_id}</b>
-        <ObserveStatusPill status={row.status} />
+        <StatusPill status={row.status} />
       </div>
       <div className="obs-fields">
         {row.model && <Field label="Model"><code>{row.model}</code></Field>}

@@ -66,32 +66,3 @@ export function ObserveError({ error }: { error: Error | undefined }) {
     </div>
   );
 }
-
-/** `ok`/`error`/`interrupted`/`healthy`/… -> the status-pill colour classes shared with the rest of the app. */
-function statusClass(status: string | null | undefined): string {
-  switch (status) {
-    case 'ok':
-    case 'healthy':
-      return 'status-ok';
-    case 'error':
-    case 'down':
-      return 'status-error';
-    case 'interrupted':
-    case 'stale':
-      return 'status-interrupted';
-    case 'running':
-      return 'status-running';
-    default:
-      return 'status-idle';
-  }
-}
-
-export function ObserveStatusPill({ status }: { status: string | null | undefined }) {
-  const label = status ?? 'unknown';
-  return (
-    <span className={`status-pill ${statusClass(status)}`}>
-      <span className="dot" aria-hidden="true" />
-      {label}
-    </span>
-  );
-}

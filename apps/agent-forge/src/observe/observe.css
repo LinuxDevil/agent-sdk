@@ -198,22 +198,6 @@
   flex: none;
 }
 
-/* Statuses the daemon reports that the run-status pill set didn't cover yet. */
-.status-pill.status-ok,
-.status-pill.status-healthy {
-  background: var(--success-soft);
-  color: var(--success);
-}
-.status-pill.status-stale,
-.status-pill.status-interrupted {
-  background: var(--warning-soft);
-  color: var(--warning);
-}
-.status-pill.status-down {
-  background: var(--danger-soft);
-  color: var(--danger);
-}
-
 /* ---------- Trace detail: observation waterfall + inspector ---------- */
 .obs-detail {
   display: flex;

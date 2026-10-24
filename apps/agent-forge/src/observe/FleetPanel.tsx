@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useAgents, useInsights } from './useObserve';
 import type { ObserveAgentRow, ObserveAgentInsights } from './types';
 import { fmtAge, fmtInt, fmtPercent } from './format';
-import { ObserveDaemonDown, ObserveError, ObserveStatusPill } from './chrome';
+import { ObserveDaemonDown, ObserveError } from './chrome';
+import { StatusPill } from '../ui/StatusPill';
 import { ObserveDaemonDownError } from './observeClient';
 
 /** Fleet freshness poll - the Monitoring surface is the "is my fleet up" pane, so it self-refreshes. */
@@ -70,7 +71,7 @@ export function FleetPanel({ onShowTraces }: { onShowTraces: (agentId: string) =
                     </td>
                     <td>{agent.project ?? '-'}</td>
                     <td>
-                      <ObserveStatusPill status={agent.status} />
+                      <StatusPill status={agent.status} />
                     </td>
                     <td title={agent.hostname ? `${agent.hostname}${agent.pid ? ` pid ${agent.pid}` : ''}` : undefined}>
                       {fmtAge(agent.heartbeat_age_ms)}
