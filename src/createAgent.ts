@@ -20,7 +20,7 @@ import { AgentExecutor, ExecuteOptions, ExecutionResult } from './execution/Agen
 import { streamResumed, throwingRun, type AgentRun } from './execution/agentRun';
 import type { AgentEvent } from './execution/agentEvents';
 import type { TraceExporter } from './execution/tracing';
-import { isLoopbackTarget, observeTargetFromEnv } from './observe/emit';
+import { defaultCaptureContent } from './observe/emit';
 import { withObserveExporter, type PromptUseProvider } from './observe/reporter';
 import { parsePromptRef, registryPrompt } from './observe/promptClient';
 import { assertModelSettings, mergeModelSettings } from './execution/modelSettings';
@@ -1074,8 +1074,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   );
   // Content defaults on when the env collector is this machine's own (the trace
   // view cannot explain a failure without it); an explicit setting always wins.
-  const observeTarget = observeTargetFromEnv();
-  const captureContent = config.captureContent ?? (observeTarget && isLoopbackTarget(observeTarget) ? true : undefined);
+  const captureContent = defaultCaptureContent(config.captureContent);
   const tracing: Pick<ExecuteOptions, 'exporter' | 'captureContent' | 'redactContent'> = {
     ...(exporter && { exporter }),
     ...(captureContent !== undefined && { captureContent }),
