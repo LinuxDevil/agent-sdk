@@ -551,13 +551,33 @@ export function observeCounts(db: SqlDatabase): Record<string, number> {
   };
 }
 
+/** The trace list's sort keys: trace start, `end - start`, input + output tokens, or `cost_usd`. */
+export const TRACE_SORTS = ['start', 'duration', 'tokens', 'cost'] as const;
+export type TraceSort = (typeof TRACE_SORTS)[number];
+
 export interface TraceFilter {
   agent_id?: string;
   project?: string;
   status?: string;
   session_id?: string;
+  /** Observation start >= `since` (inclusive). */
   since?: number;
+  /** Observation start <= `until` (inclusive). */
   until?: number;
+  /** Trace start >= `from` (ms epoch; the window is half-open `[from, to)`). */
+  from?: number;
+  /** Trace start < `to` (ms epoch). */
+  to?: number;
+  /** Case-insensitive (ASCII) substring of the root observation's name, input or output. */
+  q?: string;
+  /** Trace `end - start` >= this many milliseconds. */
+  min_duration_ms?: number;
+  /** Traces where any observation used this model. */
+  model?: string;
+  /** Default `start`. Ties break on `trace_id` in the same direction. */
+  sort?: TraceSort;
+  /** Default `desc`. */
+  order?: 'asc' | 'desc';
   limit: number;
   offset: number;
 }
@@ -577,7 +597,19 @@ export interface TraceRow {
   input_tokens: number;
   output_tokens: number;
   cost_usd: number;
+  /** The agent's registered name (from its heartbeat), or null. */
+  agent_name: string | null;
+  /** The first generation's model (by start), or null. */
+  model: string | null;
+  /** The first error observation's `attrs.error` (by start), or null. */
+  error_message: string | null;
+  /** The first 200 characters of the root observation's input, or null. */
+  input_preview: string | null;
+  /** The first 200 characters of the root observation's output, or null. */
+  output_preview: string | null;
 }
+
+const nullableText = (value: unknown): string | null => (value === null || value === undefined ? null : String(value));
 
 function traceRow(row: Record<string, unknown>): TraceRow {
   const rootStatus = row.root_status as string | null;
@@ -597,6 +629,11 @@ function traceRow(row: Record<string, unknown>): TraceRow {
     input_tokens: Number(row.input_tokens),
     output_tokens: Number(row.output_tokens),
     cost_usd: Number(row.cost_usd),
+    agent_name: nullableText(row.agent_name),
+    model: nullableText(row.model),
+    error_message: nullableText(row.error_message),
+    input_preview: nullableText(row.input_preview),
+    output_preview: nullableText(row.output_preview),
   };
 }
 
@@ -608,11 +645,41 @@ const ROOT_STATUS =
   `(SELECT CASE WHEN r.status IS NULL AND r."end" IS NULL THEN 'running' ELSE r.status END ` +
   `FROM observations r WHERE r.trace_id = o.trace_id AND r.parent_obs_id IS NULL LIMIT 1)`;
 
+type SqlArg = (value: string | number | null) => string;
+
+/** The root observation of the grouped trace `o.trace_id`, as a correlated-subquery source. */
+const ROOT_OF = `observations r WHERE r.trace_id = o.trace_id AND r.parent_obs_id IS NULL`;
+
+/** `value` as a LIKE pattern matching it as a literal substring (paired with `ESCAPE '\'`). */
+const likeContains = (value: string): string => `%${value.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+
+/**
+ * The window/duration/model/search filters. They judge the whole trace, so
+ * they sit in HAVING; `from`/`to` bound the trace start, half-open.
+ */
+function traceHavingExtras(filter: TraceFilter, arg: SqlArg): string {
+  let having = '';
+  if (filter.from !== undefined) having += ` AND MIN(o.start) >= ${arg(filter.from)}`;
+  if (filter.to !== undefined) having += ` AND MIN(o.start) < ${arg(filter.to)}`;
+  if (filter.min_duration_ms !== undefined) {
+    having += ` AND MAX(COALESCE(o."end", o.start)) - MIN(o.start) >= ${arg(filter.min_duration_ms)}`;
+  }
+  if (filter.model !== undefined) {
+    having += ` AND EXISTS (SELECT 1 FROM observations m WHERE m.trace_id = o.trace_id AND m.model = ${arg(filter.model)})`;
+  }
+  if (filter.q) {
+    const like = likeContains(filter.q);
+    const col = (name: string): string => `r.${name} LIKE ${arg(like)} ESCAPE '\\'`;
+    having += ` AND EXISTS (SELECT 1 FROM ${ROOT_OF} AND (${col('name')} OR ${col('input')} OR ${col('output')}))`;
+  }
+  return having;
+}
+
 /** The trace list's WHERE/HAVING pieces, shared by the page query and its total. */
 function traceFilterWhere(filter: TraceFilter): { where: string; having: string; params: (string | number | null)[] } {
   const params: (string | number | null)[] = [];
   let where = '1 = 1';
-  const arg = (value: string | number | null): string => {
+  const arg: SqlArg = (value) => {
     params.push(value);
     return '?';
   };
@@ -631,10 +698,12 @@ function traceFilterWhere(filter: TraceFilter): { where: string; having: string;
   const having =
     `(${status} IS NULL OR COALESCE(` +
     `${ROOT_STATUS}, ` +
-    `CASE WHEN SUM(o.status = 'error') > 0 THEN 'error' ELSE 'ok' END) = ${status2})`;
+    `CASE WHEN SUM(o.status = 'error') > 0 THEN 'error' ELSE 'ok' END) = ${status2})` +
+    traceHavingExtras(filter, arg);
   return { where, having, params };
 }
 
+/** Per-trace aggregates; {@link listTraces} splices its WHERE in after the FROM. */
 const TRACE_SELECT = `
   SELECT o.trace_id,
     MIN(o.start) AS start,
@@ -648,17 +717,44 @@ const TRACE_SELECT = `
     SUM(COALESCE(o.cost_usd, 0)) AS cost_usd,
     MAX(o.agent_id) AS agent_id,
     MAX(o.session_id) AS session_id,
-    (SELECT r.name FROM observations r WHERE r.trace_id = o.trace_id AND r.parent_obs_id IS NULL LIMIT 1) AS name,
+    (SELECT r.name FROM ${ROOT_OF} LIMIT 1) AS name,
+    (SELECT substr(r.input, 1, 200) FROM ${ROOT_OF} LIMIT 1) AS input_preview,
+    (SELECT substr(r.output, 1, 200) FROM ${ROOT_OF} LIMIT 1) AS output_preview,
     ${ROOT_STATUS} AS root_status
   FROM observations o
 `;
+
+/**
+ * The page's per-row lookups over the grouped trace `t`: the agent's name,
+ * the first generation's model, and the first error's `attrs.error` (an
+ * error observation without one is skipped, so a bare failed root does not
+ * hide its failing child's message).
+ */
+const TRACE_EXTRAS = `
+  (SELECT a.name FROM agents a WHERE a.agent_id = t.agent_id) AS agent_name,
+  (SELECT m.model FROM observations m WHERE m.trace_id = t.trace_id AND m.kind = 'generation' AND m.model IS NOT NULL
+    ORDER BY m.start, m.obs_id LIMIT 1) AS model,
+  (SELECT json_extract(e.attrs, '$.error') FROM observations e
+    WHERE e.trace_id = t.trace_id AND e.status = 'error' AND json_valid(e.attrs) AND json_extract(e.attrs, '$.error') IS NOT NULL
+    ORDER BY e.start, e.obs_id LIMIT 1) AS error_message`;
+
+/** Whitelisted ORDER BY expressions over the grouped trace `t` (never request text). */
+const TRACE_SORT_SQL: Record<TraceSort, string> = {
+  start: 't.start',
+  duration: '(t."end" - t.start)',
+  tokens: '(t.input_tokens + t.output_tokens)',
+  cost: 't.cost_usd',
+};
 
 export function listTraces(db: SqlDatabase, filter: TraceFilter): { traces: TraceRow[]; total: number } {
   const { where, having, params } = traceFilterWhere(filter);
   const grouped = `FROM observations o WHERE ${where} GROUP BY o.trace_id HAVING ${having}`;
   const total = Number(db.prepare(`SELECT COUNT(*) AS n FROM (SELECT o.trace_id ${grouped})`).get(...params)?.n ?? 0);
+  const dir = filter.order === 'asc' ? 'ASC' : 'DESC';
+  const sortBy = TRACE_SORT_SQL[filter.sort ?? 'start'] ?? TRACE_SORT_SQL.start;
+  const page = `${TRACE_SELECT.replace('FROM observations o', `FROM observations o WHERE ${where}`)} GROUP BY o.trace_id HAVING ${having}`;
   const rows = db
-    .prepare(`${TRACE_SELECT.replace('FROM observations o', `FROM observations o WHERE ${where}`)} GROUP BY o.trace_id HAVING ${having} ORDER BY start DESC LIMIT ? OFFSET ?`)
+    .prepare(`SELECT t.*, ${TRACE_EXTRAS} FROM (${page}) t ORDER BY ${sortBy} ${dir}, t.trace_id ${dir} LIMIT ? OFFSET ?`)
     .all(...params, filter.limit, filter.offset);
   return { traces: rows.map(traceRow), total };
 }
