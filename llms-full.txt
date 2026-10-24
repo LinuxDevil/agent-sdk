@@ -13952,10 +13952,41 @@ OTel content variable below is `true`. Turn it off with `captureContent: false`;
 a collector beyond loopback keeps the opt-in default. The default applies to
 agents built with `createAgent`.
 
-`redactContent` keeps only the legacy `input`/`prompt`/`args`/`result`
-attributes off; it does not scrub `gen_ai.*` message content. On a loopback
-collector the message text, including any secret typed into a prompt, is
-stored in the local db, so set `captureContent: false` if that is not wanted.
+#### Secrets in captured content
+
+Captured content goes through `redactContent` before it is recorded. Unset or
+`true` (the default) runs a built-in scrubber over message text, system
+instructions, tool-call arguments and tool results, and replaces API-key shapes
+with `[redacted]`:
+
+| Shape | Example |
+| --- | --- |
+| `sk-…` (OpenAI, OpenRouter `sk-or-v1-…`, Anthropic `sk-ant-…`) | `sk-or-v1-0123…` |
+| `lsv2_…` (LangSmith) | `lsv2_pt_0123…` |
+| `ghp_…`, `gho_…`, `ghu_…`, `ghs_…`, `ghr_…`, `github_pat_…` (GitHub) | `ghp_0123…` |
+| `AKIA` + 16 characters (AWS access key id) | `AKIAIOSFODNN7EXAMPLE` |
+| `Bearer <token>` (the word stays: `Bearer [redacted]`) | `Bearer eyJhbGci…` |
+
+Each shape needs a long token (16+ characters) after its prefix, so words like
+`sk-learn` or `task-` are left alone. The scrubber catches common key formats,
+not every secret: a password typed into a prompt is still recorded, so set
+`captureContent: false` if content must never reach the local db.
+
+Pass a function to use your own redaction instead of the scrubber. It gets each
+piece of plain text (before JSON encoding) and returns what to record; if it
+throws, that text is recorded as `[redacted]` and the run carries on:
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+
+createAgent({
+  model: 'openai/gpt-4o-mini',
+  redactContent: (text) => text.replace(/\b\d{16}\b/g, '[card]'),
+});
+```
+
+`redactContent: false` records content as is (and also records the deprecated
+`input`/`prompt`/`args`/`result` attributes, see below).
 
 #### Advanced: the executor API
 
@@ -14013,9 +14044,9 @@ spans carry only the GenAI names, not the deprecated ones next to them (fewer
 attributes per span); the default `true` keeps both.
 
 The deprecated content attributes (`input`, `prompt`, `args`, `result`) are
-off by default: `redactContent` defaults to `true`. Pass `redactContent: false`
-to record them as before; `captureContent` governs only the `gen_ai.*` content
-attributes.
+off by default: `redactContent` defaults to `true` (a function counts as `true`
+here). Pass `redactContent: false` to record them as before; `captureContent`
+governs only the `gen_ai.*` content attributes.
 
 ## Local traces
 

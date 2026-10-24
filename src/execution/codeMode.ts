@@ -305,7 +305,7 @@ export interface NestedCallSetup {
   runtime: ToolCallScope['runtime'];
   /** Runs a child agent (a sub-agent an inner call starts). */
   execute: ToolCallScope['execute'];
-  tracing: { exporter?: TraceExporter; redactContent?: boolean; captureContent?: ExecuteOptions['captureContent'] };
+  tracing: { exporter?: TraceExporter; redactContent?: ExecuteOptions['redactContent']; captureContent?: ExecuteOptions['captureContent'] };
   /** The run's `toolConcurrency`: how many inner calls of one script run at once (`Promise.all`). */
   concurrency: ToolConcurrency;
 }

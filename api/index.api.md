@@ -1434,7 +1434,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
     promptCaching?: PromptCachingOption;
     rateLimit?: RateLimitOptions | RateLimiter;
     reasoning?: ReasoningOption;
-    redactContent?: boolean;
+    redactContent?: boolean | ((text: string) => string);
     retry?: WithRetryOptions | false;
     skills?: readonly Skill[];
     store?: AgentStore;
@@ -2184,7 +2184,7 @@ interface ExecuteOptions extends PermissionOptions {
     provider: LLMProvider;
     rateLimiter?: RateLimiter;
     reasoning?: ReasoningOption;
-    redactContent?: boolean;
+    redactContent?: boolean | ((text: string) => string);
     sandbox?: SandboxAdapter;
     sessionBudget?: SessionBudget;
     sessionId?: string;

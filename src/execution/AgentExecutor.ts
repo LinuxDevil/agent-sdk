@@ -468,10 +468,26 @@ export interface ExecuteOptions extends PermissionOptions {
    * leaves out `prompt` and `execute_tool` leaves out `args`/`result`). Set
    * it to false to record them. Token counts, finish reason, tool name and
    * error/latency are never redacted. Permission-decision events still carry
-   * the call's args unless this is explicitly true. The `gen_ai.*` content attributes are governed by
-   * `captureContent` instead.
+   * the call's args unless this is explicitly true (or a function). The `gen_ai.*` content attributes are governed by
+   * `captureContent` instead, but the content they capture goes through this
+   * option first: unset or `true` runs the built-in secret scrubber, which
+   * replaces API-key shapes (`sk-…` including `sk-or-v1-…`/`sk-ant-…`,
+   * `lsv2_…`, `ghp_…`/`github_pat_…`, `AKIA…`, the token after `Bearer `)
+   * with `[redacted]` in message text, system instructions, tool-call
+   * arguments and tool results. A function runs instead of the scrubber on
+   * each piece of plain text (before JSON encoding) and also omits the
+   * deprecated attributes; if it throws, that text becomes `[redacted]`.
+   * `false` scrubs nothing.
+   *
+   * @example
+   * ```ts
+   * await AgentExecutor.execute({
+   *   agent, input, provider, exporter, captureContent: true,
+   *   redactContent: (text) => text.replace(/\b\d{16}\b/g, '[card]'),
+   * });
+   * ```
    */
-  redactContent?: boolean;
+  redactContent?: boolean | ((text: string) => string);
   /**
    * Record message and tool-argument content on the OpenTelemetry GenAI
    * attributes (`gen_ai.input.messages`, `gen_ai.output.messages`,

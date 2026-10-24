@@ -752,7 +752,7 @@ export interface ExecuteOptions extends PermissionOptions {
     provider: LLMProvider;
     rateLimiter?: RateLimiter;
     reasoning?: ReasoningOption;
-    redactContent?: boolean;
+    redactContent?: boolean | ((text: string) => string);
     sandbox?: SandboxAdapter;
     sessionBudget?: SessionBudget;
     sessionId?: string;
