@@ -35,7 +35,23 @@ export const OBSERVE_WRITE_ALLOWLIST: readonly ObserveWrite[] = [
   { method: 'PUT', path: /^\/api\/v1\/prompts\/[^/]+\/labels\/[^/]+$/ },
 ];
 
+/**
+ * A raw path segment the daemon would decode into something other than one
+ * plain name: `.`/`..` (literal or percent-encoded), an encoded `/` or `\`,
+ * or an undecodable escape. The allowlist regexes only see raw segments.
+ */
+function isUnsafeSegment(raw: string): boolean {
+  if (/%2f|%5c/i.test(raw)) return true;
+  try {
+    const decoded = decodeURIComponent(raw);
+    return decoded === '.' || decoded === '..';
+  } catch {
+    return true;
+  }
+}
+
 const isAllowedWrite = (req: Request): boolean =>
+  !req.path.split('/').some(isUnsafeSegment) &&
   OBSERVE_WRITE_ALLOWLIST.some((entry) => entry.method === req.method && entry.path.test(req.path));
 
 /** The JSON body to forward (express.json() already parsed it), or `undefined` when it is over the cap. */

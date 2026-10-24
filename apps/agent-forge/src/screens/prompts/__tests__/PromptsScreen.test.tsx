@@ -5,6 +5,7 @@ import { PromptsScreen } from '../PromptsScreen';
 import { parsePromptParam, parseDiff, promptPath } from '../promptsUrl';
 import { render } from '../../../ui/__tests__/render';
 import { ToastProvider } from '../../../ui/Toast';
+import { parsePromptParam as parsePlaygroundPrompt } from '../../playground/prefill';
 import type { ObservePromptVersion } from '../../../observe/types';
 
 const T0 = new Date(2026, 9, 20, 9, 0, 0).getTime();
@@ -125,6 +126,9 @@ describe('PromptsScreen', () => {
     expect(runs?.getAttribute('href')).toBe('#/traces?prompt=mira@2');
     const playground = [...container.querySelectorAll('a')].find((a) => a.textContent === 'Open in Playground');
     expect(playground?.getAttribute('href')).toBe('#/playground?prompt=mira@2');
+    // ...in the shape the Playground's prefill actually reads.
+    const query = new URLSearchParams(playground!.getAttribute('href')!.split('?')[1]);
+    expect(parsePlaygroundPrompt(query.get('prompt'))).toEqual({ name: 'mira', ref: '2' });
   });
 
   it('renders a side-by-side diff of the two versions in ?diff=a,b, marking added and removed lines', async () => {

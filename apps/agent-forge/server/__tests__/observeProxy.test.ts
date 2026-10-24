@@ -122,6 +122,18 @@ describe('observe proxy', () => {
     expect(res.status).toBe(405);
   });
 
+  it.each([
+    '/observe/api/v1/prompts/%2e%2e/labels/x',
+    '/observe/api/v1/prompts/%2E/labels/x',
+    '/observe/api/v1/prompts/mira/labels/%2e%2E',
+    '/observe/api/v1/prompts/a%2Fb/labels/x',
+    '/observe/api/v1/prompts/a%5cb/labels/x',
+    '/observe/api/v1/prompts/%E0%A4%A/labels/x',
+  ])('keeps an allowlisted shape with a dot, encoded-slash or undecodable segment at 405: %s', async (url) => {
+    const res = await request(app).put(url).send({ version: 1 });
+    expect(res.status).toBe(405);
+  });
+
   it('rejects an allowlisted write whose body is over 1 MiB with 413', async () => {
     const res = await request(app)
       .put('/observe/api/v1/prompts/mira/labels/prod')
