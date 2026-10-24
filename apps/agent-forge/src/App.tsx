@@ -10,6 +10,12 @@ import { BottomDrawer } from './components/BottomDrawer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { NARROW_QUERY, useMediaQuery } from './components/useMediaQuery';
 import { ObserveView } from './observe/ObserveView';
+import { AppShell, useShell } from './shell/AppShell';
+import { useRoute } from './router/useRoute';
+
+/** Until the route table lands, these hash routes show the existing observability panels. */
+const OBSERVE_ROUTES = new Set(['traces', 'monitoring', 'evals']);
+const isObservePath = (path: string) => OBSERVE_ROUTES.has(path.split('/')[1] ?? '');
 
 /**
  * Below 860px the rail and the Inspector are slide-over drawers,
@@ -18,6 +24,12 @@ import { ObserveView } from './observe/ObserveView';
 function useSidePanels() {
   const narrow = useMediaQuery(NARROW_QUERY);
   const [open, setOpen] = useState<SidePanel | undefined>(undefined);
+  const { navOpen } = useShell();
+
+  // One drawer at a time: opening the nav drawer closes a side panel.
+  useEffect(() => {
+    if (navOpen) setOpen(undefined);
+  }, [navOpen]);
 
   useEffect(() => {
     if (!narrow) setOpen(undefined);
@@ -34,28 +46,22 @@ function useSidePanels() {
   return { narrow, open, toggle, close: () => setOpen(undefined) };
 }
 
-/** Says so when the live connection to the studio server drops, instead of going quietly stale. */
-function ConnectionBanner() {
-  const { connected } = useAppState();
-  if (connected) return null;
-  return (
-    <div className="connection-banner" role="alert">
-      Lost the connection to the studio server - reconnecting. Is <code>lousho studio</code> still running?
-    </div>
-  );
-}
-
 function Studio() {
   const panels = useSidePanels();
-  const { view } = useAppState();
+  const { setView } = useAppState();
+  const { path } = useRoute();
+  const observePath = isObservePath(path);
+  // Keeps the (still-present) Build/Observe state in step with the route; the route decides what renders.
+  useEffect(() => {
+    setView(observePath ? 'observe' : 'build');
+  }, [observePath, setView]);
   const shellClass = `shell${panels.open ? ` ${panels.open}-open` : ''}`;
   // Observe mode: the daemon-backed panels take the whole content area
   // (builder rail/canvas/inspector and the run drawer are build-mode chrome).
-  if (view === 'observe') {
+  if (observePath) {
     return (
       <div className="app app-observe">
         <h1 className="visually-hidden">Agent Forge</h1>
-        <ConnectionBanner />
         <Topbar narrow={panels.narrow} openPanel={panels.open} onTogglePanel={panels.toggle} />
         <ObserveView />
       </div>
@@ -64,7 +70,6 @@ function Studio() {
   return (
     <div className="app">
       <h1 className="visually-hidden">Agent Forge</h1>
-      <ConnectionBanner />
       <Topbar narrow={panels.narrow} openPanel={panels.open} onTogglePanel={panels.toggle} />
       <div className={shellClass}>
         <LeftRail />
@@ -83,7 +88,9 @@ export function App() {
       <AppStateProvider>
         {/* Shared by the canvas and the rail's palette (click/keyboard add at the viewport centre). */}
         <ReactFlowProvider>
-          <Studio />
+          <AppShell>
+            <Studio />
+          </AppShell>
         </ReactFlowProvider>
       </AppStateProvider>
     </ErrorBoundary>

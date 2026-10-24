@@ -4,6 +4,7 @@ import { downloadSpec, importSpecFile } from '../persistence/importExport';
 import { ApprovalCard } from './ApprovalCard';
 import { errorMessage } from './errorMessage';
 import { StatusPill } from './StatusPill';
+import { navigate } from '../router/router';
 
 function BrandMark() {
   return (
@@ -94,7 +95,10 @@ function ViewToggle() {
         type="button"
         className={`btn btn-ghost${view === 'build' ? ' active' : ''}`}
         aria-pressed={view === 'build'}
-        onClick={() => setView('build')}
+        onClick={() => {
+          setView('build');
+          navigate('/agents');
+        }}
       >
         Build
       </button>
@@ -102,7 +106,10 @@ function ViewToggle() {
         type="button"
         className={`btn btn-ghost${view === 'observe' ? ' active' : ''}`}
         aria-pressed={view === 'observe'}
-        onClick={() => setView('observe')}
+        onClick={() => {
+          setView('observe');
+          navigate('/traces');
+        }}
       >
         Observe
       </button>
