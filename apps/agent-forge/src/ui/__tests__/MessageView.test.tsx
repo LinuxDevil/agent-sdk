@@ -118,6 +118,26 @@ describe('MessageView', () => {
     expect(button(c, 'JSON')).toBeUndefined();
   });
 
+  it('stringifies non-string tool-call fields instead of crashing', () => {
+    const msgs = [
+      { role: 'assistant', content: [{ type: 'tool_use', name: { odd: 1 } }], tool_calls: [{ id: 7, function: { name: 9, arguments: { city: 'Oslo' } } }] },
+      { role: 'tool', tool_call_id: 42, content: 'ok' },
+    ];
+    const c = render(<MessageView value={JSON.stringify(msgs)} />);
+    const chips = [...c.querySelectorAll('.mv-chip')].map((el) => el.textContent);
+    expect(chips).toEqual(['{"odd":1}', '9{"city":"Oslo"}']);
+    expect(c.querySelector('.mv-call-id')?.textContent).toBe('42');
+  });
+
+  it('renders ~64 KB of valid JSON within the budget', () => {
+    const big = JSON.stringify(Array.from({ length: 4000 }, (_, i) => ({ i, s: 'abcdefgh' })));
+    expect(big.length).toBeGreaterThan(60 * 1024);
+    const start = performance.now();
+    const c = render(<MessageView value={big} />);
+    expect(performance.now() - start).toBeLessThan(50);
+    expect(c.querySelector('.json-node')).not.toBeNull();
+  });
+
   it('copies the exact block string with the copy button', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', { clipboard: { writeText } });
@@ -143,13 +163,22 @@ describe('MessageView', () => {
 describe('JsonView', () => {
   it('expands four levels by default and lets a collapsed level open', () => {
     const c = render(<JsonView value={{ a: { b: { c: { d: { e: 1 } } } } }} />);
-    expect(c.textContent).toContain('d');
+    expect([...c.querySelectorAll('.json-key')].map((k) => k.textContent)).toEqual(['a: ', 'b: ', 'c: ', 'd: ']);
     expect(c.querySelector('.json-num')).toBeNull();
     const collapsed = [...c.querySelectorAll<HTMLButtonElement>('.json-toggle')].find(
       (b) => b.getAttribute('aria-expanded') === 'false',
     );
+    expect(collapsed?.getAttribute('aria-label')).toBe('Toggle d');
     click(collapsed);
+    expect(collapsed?.getAttribute('aria-label')).toBe('Toggle d');
     expect(c.querySelector('.json-num')?.textContent).toBe('1');
+  });
+
+  it('caps a large container at 100 entries with a Show more row', () => {
+    const c = render(<JsonView value={Array.from({ length: 250 }, (_, i) => i)} />);
+    expect(c.querySelectorAll('.json-num')).toHaveLength(100);
+    click(button(c, 'Show 150 more'));
+    expect(c.querySelectorAll('.json-num')).toHaveLength(250);
   });
 
   it('honours an explicit defaultExpandDepth', () => {

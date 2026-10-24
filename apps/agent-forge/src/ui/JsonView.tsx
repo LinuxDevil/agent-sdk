@@ -26,6 +26,9 @@ interface NodeProps {
   defaultExpandDepth: number;
 }
 
+/** Entries rendered per container before a "Show N more" row, so huge arrays stay cheap. */
+const PAGE = 100;
+
 const SCALAR_CLASS: Record<string, string | undefined> = {
   string: 'json-str',
   number: 'json-num',
@@ -71,13 +74,15 @@ function describeContainer(value: unknown): Container | undefined {
 /** A collapsible container (array or object): toggle, key, summary, children. */
 function Branch({ name, container, depth, defaultExpandDepth }: Omit<NodeProps, 'value'> & { container: Container }) {
   const [expanded, setExpanded] = useState(depth < defaultExpandDepth);
+  const [shown, setShown] = useState(PAGE);
+  const hidden = container.entries.length - shown;
   return (
     <div className="json-node">
       <button
         type="button"
         className="json-toggle"
         aria-expanded={expanded}
-        aria-label={expanded ? 'Collapse' : 'Expand'}
+        aria-label={`Toggle ${name ?? 'root'}`}
         onClick={() => setExpanded((e) => !e)}
       >
         {expanded ? '▾' : '▸'}
@@ -86,9 +91,14 @@ function Branch({ name, container, depth, defaultExpandDepth }: Omit<NodeProps, 
       <span className="json-null">{container.summary(container.entries.length)}</span>
       {expanded && (
         <div className="json-children">
-          {container.entries.map(([k, v]) => (
+          {container.entries.slice(0, shown).map(([k, v]) => (
             <JsonNode key={k} value={v} name={k} depth={depth + 1} defaultExpandDepth={defaultExpandDepth} />
           ))}
+          {hidden > 0 && (
+            <button type="button" className="json-toggle" onClick={() => setShown(container.entries.length)}>
+              Show {hidden} more
+            </button>
+          )}
         </div>
       )}
     </div>

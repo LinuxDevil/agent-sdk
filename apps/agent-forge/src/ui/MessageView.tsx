@@ -16,22 +16,22 @@ export interface MessageViewProps {
 type Mode = 'rendered' | 'raw' | 'json';
 type CopyState = 'idle' | 'copied' | 'failed';
 
+/** Fields below come from untrusted payloads: anything not checked is `unknown` and goes through {@link toText}. */
 interface ToolCall {
-  id?: string;
-  function?: { name?: string; arguments?: string };
+  function?: { name?: unknown; arguments?: unknown };
 }
 
 interface ChatMessage {
   role: string;
   content?: unknown;
-  tool_calls?: ToolCall[];
-  tool_call_id?: string;
+  tool_calls?: unknown;
+  tool_call_id?: unknown;
 }
 
 interface ContentPart {
-  type?: string;
-  text?: string;
-  name?: string;
+  type?: unknown;
+  text?: unknown;
+  name?: unknown;
 }
 
 /** Strings longer than this render as a first chunk plus a "Show all" button. */
@@ -41,6 +41,17 @@ const MODE_LABEL: Record<Mode, string> = { rendered: 'Rendered', raw: 'Raw', jso
 const COPY_LABEL: Record<CopyState, string> = { idle: 'Copy', copied: 'Copied', failed: 'Copy failed' };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
+
+/** A payload field as display text: strings as-is, missing as undefined, anything else JSON-stringified. */
+function toText(v: unknown): string | undefined {
+  if (v == null) return undefined;
+  if (typeof v === 'string') return v;
+  try {
+    return JSON.stringify(v) ?? String(v);
+  } catch {
+    return String(v);
+  }
+}
 
 /** Parse JSON objects/arrays only; anything else (plain text, truncated JSON, bare scalars) is text. */
 function parseJson(value: string): { ok: true; data: object } | { ok: false } {
@@ -91,7 +102,7 @@ function Part({ part }: { part: unknown }) {
   if (typeof part === 'string') return <LongText text={part} />;
   const p = (isRecord(part) ? part : {}) as ContentPart;
   if (p.type === 'text' && typeof p.text === 'string') return <LongText text={p.text} />;
-  return <Chip name={p.name ?? p.type ?? 'part'} />;
+  return <Chip name={toText(p.name) ?? toText(p.type) ?? 'part'} />;
 }
 
 function Content({ content }: { content: unknown }) {
@@ -102,18 +113,19 @@ function Content({ content }: { content: unknown }) {
 }
 
 function Bubble({ message }: { message: ChatMessage }) {
-  const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+  const calls = (Array.isArray(message.tool_calls) ? message.tool_calls : []) as (ToolCall | null)[];
+  const callId = toText(message.tool_call_id);
   return (
     <div className="mv-bubble" data-role={message.role}>
       <div className="mv-bubble-head">
         <span className="mv-role">{message.role}</span>
-        {message.tool_call_id && <span className="mv-call-id">{message.tool_call_id}</span>}
+        {callId && <span className="mv-call-id">{callId}</span>}
       </div>
       <Content content={message.content} />
       {calls.length > 0 && (
         <div className="mv-chips">
           {calls.map((call, i) => (
-            <Chip key={call.id ?? i} name={call.function?.name ?? 'tool'} detail={call.function?.arguments} />
+            <Chip key={i} name={toText(call?.function?.name) ?? 'tool'} detail={toText(call?.function?.arguments)} />
           ))}
         </div>
       )}
