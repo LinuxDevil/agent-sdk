@@ -12,7 +12,10 @@
 import { STUDIO_TOKEN_HEADER, loadStudioToken } from '../runtime/studioToken';
 import type {
   ObserveAgentRow,
+  NewHubEntry,
   ObserveHealth,
+  ObserveHubEntry,
+  ObserveHubScope,
   ObserveInsights,
   ObservePromptHistory,
   ObservePromptLabelMove,
@@ -125,6 +128,14 @@ export interface NewScore {
   name: string;
   value: number | null;
   comment?: string;
+}
+
+/** `GET /api/v1/hub` params. `agent_id` is required: the daemon enforces scope against it (no `scope` = every fleet entry plus that agent's private ones; max `limit` 1000). */
+export interface HubEntryFilter {
+  agent_id: string;
+  namespace?: string;
+  scope?: ObserveHubScope;
+  limit?: number;
 }
 
 export interface InsightsFilter {
@@ -272,6 +283,17 @@ export class ObserveClient {
       method: 'PUT',
       body: { version },
     });
+  }
+
+  /** `GET /api/v1/hub` - live (unexpired) Context Hub entries visible to `agent_id`, newest first. */
+  async listHubEntries(filter: HubEntryFilter): Promise<ObserveHubEntry[]> {
+    const body = await this.request<{ entries: ObserveHubEntry[] }>('/api/v1/hub', { query: { ...filter } });
+    return body.entries;
+  }
+
+  /** `POST /api/v1/hub` - upsert one entry (per namespace, agent_id, key); republishing resets `created_at`, so the TTL restarts. */
+  publishHubEntry(entry: NewHubEntry): Promise<{ entry: ObserveHubEntry | undefined; created: boolean }> {
+    return this.request('/api/v1/hub', { method: 'POST', body: entry });
   }
 
   /** `GET /api/v1/scores` - eval/judge/human score rows. */

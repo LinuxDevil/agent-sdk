@@ -171,4 +171,26 @@ describe('ObserveClient', () => {
     const missing = clientWith((async () => jsonResponse(404, { error: "No prompt 'mira@9'." })) as typeof fetch);
     await expect(missing.movePromptLabel('mira', 'prod', 9)).rejects.toMatchObject({ status: 404, message: "No prompt 'mira@9'." });
   });
+  it('listHubEntries sends agent_id plus the optional namespace/scope/limit and returns the entries', async () => {
+    const entry = { entry_id: 'e1', namespace: 'docs', agent_id: 'a1', key: 'k', value: '1', scope: 'fleet', created_at: 1, ttl: null, expires_at: null };
+    const fetchFn = vi.fn(async () => jsonResponse(200, { entries: [entry] }));
+    const client = clientWith(fetchFn as typeof fetch);
+    expect(await client.listHubEntries({ agent_id: 'a1', namespace: 'docs', scope: 'fleet', limit: 1000 })).toEqual([entry]);
+    expect(fetchFn).toHaveBeenCalledWith('/observe/api/v1/hub?agent_id=a1&namespace=docs&scope=fleet&limit=1000', expect.anything());
+    await client.listHubEntries({ agent_id: 'a1' });
+    expect(fetchFn).toHaveBeenLastCalledWith('/observe/api/v1/hub?agent_id=a1', expect.anything());
+  });
+
+  it('publishHubEntry POSTs the entry as JSON to /api/v1/hub', async () => {
+    const fetchFn = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      void init;
+      return jsonResponse(200, { entry: undefined, created: false });
+    });
+    const body = { agent_id: 'a1', namespace: 'docs', key: 'k', value: { a: 1 }, scope: 'fleet' as const, ttl: 60_000 };
+    expect(await clientWith(fetchFn as typeof fetch).publishHubEntry(body)).toMatchObject({ created: false });
+    const [url, init] = fetchFn.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('/observe/api/v1/hub');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual(body);
+  });
 });

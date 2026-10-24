@@ -6,6 +6,7 @@ import { SettingsPanel } from '../components/SettingsPanel';
 import { TracesScreen } from './traces/TracesScreen';
 import { ThreadsScreen } from './threads/ThreadsScreen';
 import { PromptsScreen } from './prompts/PromptsScreen';
+import { HubScreen } from './hub/HubScreen';
 import { AgentsScreen } from './agents/AgentsScreen';
 import { TraceScreen } from './traces/TraceScreen';
 import { MonitoringScreen } from './monitoring/MonitoringScreen';
@@ -69,7 +70,6 @@ export function useScreen(): ScreenId {
 
 const PLACEHOLDERS: Partial<Record<ScreenId, { title: string; blurb: string }>> = {
   evals: { title: 'Evaluations', blurb: 'Datasets, evaluators and annotation queues for scoring runs.' },
-  hub: { title: 'Context Hub', blurb: 'The shared context namespaces your agents read from, browsable by namespace.' },
 };
 
 /** `#/traces/:traceId`: the trace id comes from the hash; a new id remounts the screen. */
@@ -104,6 +104,7 @@ export function Screens() {
   else if (screen === 'playground') content = <PlaygroundRoute />;
   else if (screen === 'threads') content = <ThreadsScreen />;
   else if (screen === 'prompts') content = <PromptsScreen />;
+  else if (screen === 'hub') content = <HubScreen />;
   else if (placeholder) content = <Placeholder {...placeholder} />;
   else
     content = (

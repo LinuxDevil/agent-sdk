@@ -224,3 +224,31 @@ export interface ObservePromptLabelMove {
   version: number;
   previous_version: number | null;
 }
+
+/** A Context Hub entry's visibility: `private` to its writer, or `fleet`-wide. */
+export type ObserveHubScope = 'private' | 'fleet';
+
+/** One row of `GET /api/v1/hub`. `value` is the stored text: JSON-encoded unless it was published as a string. `ttl` is a lifetime in ms from `created_at` (the last publish). */
+export interface ObserveHubEntry {
+  entry_id: string;
+  namespace: string;
+  /** The writer. */
+  agent_id: string | null;
+  key: string;
+  value: string | null;
+  scope: ObserveHubScope;
+  created_at: number;
+  ttl: number | null;
+  expires_at: number | null;
+}
+
+/** `POST /api/v1/hub` body: one entry per (namespace, agent_id, key), upserted; republishing restarts the TTL clock. */
+export interface NewHubEntry {
+  agent_id: string;
+  namespace: string;
+  key: string;
+  /** Any JSON value; a string is stored verbatim. */
+  value: unknown;
+  scope?: ObserveHubScope;
+  ttl?: number;
+}
