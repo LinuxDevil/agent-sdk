@@ -36,7 +36,7 @@ lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]
 lousho doctor [agent.yaml|json|agent-dir|agent.ts] [--json] [--ping]
 lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
-lousho observe <start|status|stop|rebuild-rollups|prune|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL] [--retention-days N] [--older-than <N>d]
+lousho observe <start|status|stop|rebuild-rollups|prune|export|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL] [--retention-days N] [--older-than <N>d] [--since <N>d|<N>h|<N>m] [--agent X] [--out file]
 lousho prompt <push <file|->|list|get <name[@version|@label]>|label <name> <label> <version>> [--url U] [--port N] [--token T] [--json] [--name N]
 lousho --version
 ```
@@ -276,6 +276,7 @@ npx lousho observe status                       # health + fleet counts
 npx lousho observe stop                         # <db>.pid + SIGTERM (checks the daemon serves --db)
 npx lousho observe rebuild-rollups              # recompute insight aggregates
 npx lousho observe prune --older-than 30d       # delete finished runs older than 30 days, then VACUUM
+npx lousho observe export --since 7d --out runs.jsonl # traces as JSONL, one per line
 npx lousho observe token create --project myapp # bearer key for non-loopback auth
 ```
 
@@ -304,6 +305,16 @@ never does). If only the `VACUUM` fails (for example, the db is busy), the
 prune stays committed, the error goes to stderr and the exit code is 0. It is
 safe to run while the daemon is up. A bad N is a usage
 error (exit 2). See [Retention](./observability.md#retention).
+
+`export` writes traces as JSONL: one line per trace, `{ trace, observations,
+scores }` (the same rows the trace API returns), oldest first, with no cap on
+how many. `--since <N>d` (or `<N>h`, `<N>m`) keeps traces that started within
+that window; `--agent X` keeps one agent, matched by `agent_id` or, when no
+agent has that id, by its registered name (a name shared by two agents is a
+usage error, exit 2). Without `--out` the lines go to stdout and nothing else
+does (the count goes to stderr, so a pipe stays clean); `--out file` creates or
+overwrites the file and prints the count to stdout. It reads the db directly, so
+no daemon needs to be running. See [Export](./observability.md#export).
 
 ## `lousho prompt`
 

@@ -7,12 +7,13 @@
  *   lousho observe stop [--db path]
  *   lousho observe rebuild-rollups [--db path]
  *   lousho observe prune --older-than <N>d [--db path]
+ *   lousho observe export [--since <N>d|<N>h|<N>m] [--agent X] [--out file] [--db path]
  *   lousho observe token create --project X [--db path]
  *
  * `start` runs in the foreground (like `lousho dev`). On EADDRINUSE it probes
  * `GET /health`: a `lousho-observe` answer means the daemon is already
  * running (exit 0); anything else is a real port collision. `stop` uses the
- * pidfile `start` wrote beside the db. `token create` and `prune` are local db
+ * pidfile `start` wrote beside the db. `token create`, `prune` and `export` are local db
  * ops - they need no running daemon (and are safe beside one: WAL, busy
  * timeout) - and `token create` prints the key once (only its hash is kept).
  */
@@ -30,7 +31,8 @@ import {
   urlHost,
   type HealthProbe,
 } from '../observe/daemon';
-import { createToken, hasTokens, openDb, pruneBefore, rebuildRollups } from '../observe/store';
+import { createToken, hasTokens, listTraces, openDb, pruneBefore, rebuildRollups, traceDetail, type TraceFilter } from '../observe/store';
+import type { SqlDatabase } from '../storage/sqlite/driver';
 import { OBSERVE_DEFAULT_PORT, OBSERVE_SERVICE } from '../observe/envelope';
 import { VERSION } from '../version';
 import { exitCodeFor, parseCommand, portValue, stringValue, usageError, type CommandSpec } from './args';
@@ -41,6 +43,7 @@ const USAGE = `Usage: lousho observe <command> [options]
   observe stop [--db path]
   observe rebuild-rollups [--db path]
   observe prune --older-than <N>d [--db path]
+  observe export [--since <N>d|<N>h|<N>m] [--agent X] [--out file] [--db path]
   observe token create --project X [--db path]`;
 
 const HELP = `${USAGE}
@@ -61,11 +64,14 @@ Options:
                     ${OBSERVE_RETENTION_DAYS_DEFAULT}; 0 keeps everything). Open runs, active sessions,
                     rollups, prompts and hub entries are never pruned.
   --older-than <N>d 'prune': delete finished traces older than N days now, then VACUUM the db
+  --since <N>d      'export': only traces that started within the last N days (or <N>h / <N>m)
+  --agent X         'export': only this agent (its agent_id, or its name when that names one agent)
+  --out file        'export': write the JSONL to this file instead of stdout
   --url U           'status': the daemon's base URL (default http://127.0.0.1:<port>)
   --project X       'token create': the project the token is labeled for
   -h, --help        show this help`;
 
-type ObserveSubcommand = 'start' | 'status' | 'stop' | 'rebuild-rollups' | 'prune' | 'token';
+type ObserveSubcommand = 'start' | 'status' | 'stop' | 'rebuild-rollups' | 'prune' | 'export' | 'token';
 
 const SUB_SPECS: Record<ObserveSubcommand, CommandSpec> = {
   start: {
@@ -99,6 +105,11 @@ const SUB_SPECS: Record<ObserveSubcommand, CommandSpec> = {
     command: 'observe prune',
     usage: 'Usage: lousho observe prune --older-than <N>d [--db path]',
     options: { db: { type: 'string' }, 'older-than': { type: 'string' } },
+  },
+  export: {
+    command: 'observe export',
+    usage: 'Usage: lousho observe export [--since <N>d|<N>h|<N>m] [--agent X] [--out file] [--db path]',
+    options: { db: { type: 'string' }, since: { type: 'string' }, agent: { type: 'string' }, out: { type: 'string' } },
   },
   token: {
     command: 'observe token',
@@ -139,6 +150,18 @@ function olderThanDays(spec: CommandSpec, value: string | boolean | (string | bo
   const days = Number(/^(\d+)d$/.exec(given)?.[1] ?? 0);
   if (days <= 0) throw usageError(spec, `--older-than must be a positive number of days like '30d', got '${given}'.`);
   return days;
+}
+
+const SINCE_UNIT_MS: Record<string, number> = { d: DAY_MS, h: 3_600_000, m: 60_000 };
+
+/** `--since <N>d|<N>h|<N>m`: a positive whole duration back from now, as a ms epoch; absent means no lower bound. */
+function sinceMs(spec: CommandSpec, value: string | boolean | (string | boolean)[] | undefined): number | undefined {
+  const given = stringValue(value);
+  if (given === undefined) return undefined;
+  const match = /^(\d+)([dhm])$/.exec(given);
+  const count = Number(match?.[1] ?? 0);
+  if (match === null || count <= 0) throw usageError(spec, `--since must be a positive duration like '7d', '12h' or '30m', got '${given}'.`);
+  return Date.now() - count * SINCE_UNIT_MS[match[2]];
 }
 
 function envPort(): number {
@@ -388,6 +411,65 @@ async function runPrune(args: string[]): Promise<number> {
   }
 }
 
+/** `--agent X`: an agent_id as is, else the one registered agent named X; two agents sharing a name is a usage error. */
+function resolveAgent(spec: CommandSpec, db: SqlDatabase, given: string): string {
+  if (db.prepare('SELECT 1 AS hit FROM agents WHERE agent_id = ?').get(given) !== undefined) return given;
+  const named = db.prepare('SELECT agent_id FROM agents WHERE name = ?').all(given).map((r) => String(r.agent_id));
+  if (named.length > 1) throw usageError(spec, `--agent '${given}' names ${named.length} agents (${named.join(', ')}); pass the agent_id.`);
+  return named[0] ?? given;
+}
+
+const EXPORT_PAGE = 500;
+
+/**
+ * `export`: every matching trace as one JSONL line `{ trace, observations, scores }`,
+ * oldest first, paged so the export is not capped. Read-only; needs no daemon.
+ * The count goes to stderr when the lines go to stdout, so a pipe stays clean.
+ */
+async function runExport(args: string[]): Promise<number> {
+  const spec = SUB_SPECS.export;
+  const { values, help } = parseCommand(spec, args);
+  if (help) {
+    console.log(HELP);
+    return 0;
+  }
+  const since = sinceMs(spec, values.since);
+  const out = stringValue(values.out);
+  const db = openDb(dbPathOf(values.db));
+  try {
+    const agentGiven = stringValue(values.agent);
+    const filter: TraceFilter = {
+      from: since,
+      agent_id: agentGiven === undefined ? undefined : resolveAgent(spec, db, agentGiven),
+      sort: 'start',
+      order: 'asc',
+      limit: EXPORT_PAGE,
+      offset: 0,
+    };
+    const lines: string[] = [];
+    for (;;) {
+      const { traces } = listTraces(db, filter);
+      for (const trace of traces) {
+        const detail = traceDetail(db, trace.trace_id);
+        lines.push(JSON.stringify({ trace, observations: detail?.observations ?? [], scores: detail?.scores ?? [] }));
+      }
+      if (traces.length < EXPORT_PAGE) break;
+      filter.offset += EXPORT_PAGE;
+    }
+    const summary = `lousho observe: exported ${lines.length} traces${out === undefined ? '' : ` to ${out}`}.`;
+    if (out === undefined) {
+      for (const line of lines) console.log(line);
+      console.error(summary);
+    } else {
+      fs.writeFileSync(path.resolve(out), lines.map((line) => `${line}\n`).join(''));
+      console.log(summary);
+    }
+    return 0;
+  } finally {
+    db.close();
+  }
+}
+
 async function runToken(args: string[]): Promise<number> {
   const spec = SUB_SPECS.token;
   const { values, positionals, help } = parseCommand(spec, args);
@@ -436,6 +518,8 @@ export async function runObserve(rest: string[]): Promise<number> {
         return await runRebuild(subArgs);
       case 'prune':
         return await runPrune(subArgs);
+      case 'export':
+        return await runExport(subArgs);
       case 'token':
         return await runToken(subArgs);
     }

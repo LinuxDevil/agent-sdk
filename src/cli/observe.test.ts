@@ -229,4 +229,74 @@ describe('lousho observe', () => {
     }
     expect(errors.at(-1)).toContain('--retention-days');
   });
+
+  describe('export', () => {
+    const seed = (file: string): void => {
+      const db = openDb(file);
+      const now = Date.now();
+      ingestBatch(db, [
+        { type: 'agent.heartbeat', data: { agent_id: 'a1', name: 'Alpha' } },
+        { type: 'observation', data: { obs_id: 'o1', trace_id: 't1', agent_id: 'a1', kind: 'span', name: 'root1', start: now - 3 * 3_600_000, end: now - 3 * 3_600_000 + 5, status: 'ok' } },
+        { type: 'observation', data: { obs_id: 'o1c', trace_id: 't1', agent_id: 'a1', parent_obs_id: 'o1', kind: 'generation', name: 'llm', start: now - 3 * 3_600_000 + 1, end: now - 3 * 3_600_000 + 4, status: 'ok' } },
+        { type: 'observation', data: { obs_id: 'o2', trace_id: 't2', agent_id: 'a2', kind: 'span', name: 'root2', start: now - 40 * 86_400_000, end: now - 40 * 86_400_000 + 5, status: 'ok' } },
+        { type: 'observation', data: { obs_id: 'o3', trace_id: 't3', agent_id: 'a1', kind: 'span', name: 'root3', start: now - 1000, end: now - 990, status: 'ok' } },
+      ]);
+      db.close();
+    };
+
+    it('writes one parseable JSONL line per trace, oldest first, with nested observations and scores', async () => {
+      const file = dbPath();
+      seed(file);
+      expect(await runObserve(['export', '--db', file])).toBe(0);
+      const lines = logs.filter((l) => l.startsWith('{'));
+      expect(lines).toHaveLength(3);
+      const parsed = lines.map((l) => JSON.parse(l) as { trace: { trace_id: string }; observations: unknown[]; scores: unknown[] });
+      expect(parsed.map((p) => p.trace.trace_id)).toEqual(['t2', 't1', 't3']);
+      expect(parsed[1].observations).toHaveLength(2);
+      expect(parsed[1].scores).toEqual([]);
+      expect(logs.join('\n')).not.toContain('exported');
+      expect(errors.join('\n')).toContain('exported 3 traces');
+    });
+
+    it('--since and --agent narrow the export (agent matches id or a unique name)', async () => {
+      const file = dbPath();
+      seed(file);
+      expect(await runObserve(['export', '--since', '7d', '--agent', 'a1', '--db', file])).toBe(0);
+      expect(logs.map((l) => (JSON.parse(l) as { trace: { trace_id: string } }).trace.trace_id)).toEqual(['t1', 't3']);
+      logs.length = 0;
+      expect(await runObserve(['export', '--since=2h', '--agent', 'Alpha', '--db', file])).toBe(0);
+      expect(logs.map((l) => (JSON.parse(l) as { trace: { trace_id: string } }).trace.trace_id)).toEqual(['t3']);
+    });
+
+    it('--out writes the file and prints the count to stdout', async () => {
+      const file = dbPath();
+      seed(file);
+      const out = path.join(cwd, 'dump.jsonl');
+      expect(await runObserve(['export', '--out', out, '--db', file])).toBe(0);
+      const text = fs.readFileSync(out, 'utf8');
+      expect(text.trim().split('\n')).toHaveLength(3);
+      expect(text.endsWith('\n')).toBe(true);
+      expect(logs.join('\n')).toContain('exported 3 traces');
+    });
+
+    it('pages past the 500-trace page size and rejects a bad --since', async () => {
+      const file = dbPath();
+      const db = openDb(file);
+      const now = Date.now();
+      ingestBatch(
+        db,
+        Array.from({ length: 520 }, (_, i) => ({
+          type: 'observation' as const,
+          data: { obs_id: `o${i}`, trace_id: `t${i}`, kind: 'span', name: 'x', start: now - 1000 + i, end: now - 1000 + i + 1, status: 'ok' },
+        }))
+      );
+      db.close();
+      expect(await runObserve(['export', '--db', file])).toBe(0);
+      expect(logs).toHaveLength(520);
+      for (const bad of ['7', '0d', '-1d', 'xd', '1.5h']) {
+        expect(await runObserve(['export', `--since=${bad}`, '--db', file])).toBe(2);
+      }
+      expect(errors.at(-1)).toContain('--since');
+    });
+  });
 });

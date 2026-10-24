@@ -542,6 +542,18 @@ give (whole days only), prints how many observations, scores and sessions it
 deleted, then runs `VACUUM`. It is safe while the daemon is running on the
 same db.
 
+### Export
+
+`lousho observe export [--since 7d] [--agent X] [--out file]` dumps traces as
+JSONL for offline analysis or another tool. Each line is one trace:
+`{ "trace": <trace row>, "observations": [...], "scores": [...] }`, the same
+shapes as the trace list and detail APIs, oldest trace first and not capped.
+`--since` takes `<N>d`, `<N>h` or `<N>m` back from now; `--agent` matches an
+`agent_id`, or an agent's name when it names exactly one. Lines go to stdout (the
+count goes to stderr) unless `--out` names a file, which is overwritten. It
+reads the db directly and works without a running daemon. Captured content is
+exported as stored, so treat the file like the db.
+
 ### Trace list API
 
 `GET /api/v1/traces` returns `{ traces, total, limit, offset }`, one row per
