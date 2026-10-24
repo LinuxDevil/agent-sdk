@@ -240,9 +240,13 @@ The exception is a local collector: when `LOUSHO_OBSERVE` points at loopback
 (`1`/`true`, or a URL whose host is `127.0.0.1`, `localhost` or `::1`),
 `createAgent` defaults `captureContent` to `true`, so the daemon's trace view
 shows the prompt, the model output and the tool arguments and results that
-explain a failure. The data stays in the daemon's db on your machine. Turn it
-off with `captureContent: false`; a collector beyond loopback keeps the
-opt-in default. The default applies to agents built with `createAgent`.
+explain a failure. Only the daemon gets that content, and it stays in the
+daemon's db on your machine: the agent's own `exporter` (`fileTraceExporter()`
+files, an OTLP or vendor exporter, the built server's OTel export) still sees
+every span without it, unless the agent sets `captureContent: true` or the
+OTel content variable below is `true`. Turn it off with `captureContent: false`;
+a collector beyond loopback keeps the opt-in default. The default applies to
+agents built with `createAgent`.
 
 `redactContent` keeps only the legacy `input`/`prompt`/`args`/`result`
 attributes off; it does not scrub `gen_ai.*` message content. On a loopback

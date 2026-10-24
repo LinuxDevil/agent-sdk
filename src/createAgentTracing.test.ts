@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { createAgent } from './createAgent';
 import { PropagatingToolError } from './execution/AgentExecutor';
 import { createOtelTraceExporter } from './execution/otel';
+import { observeExporterFromEnv } from './observe/reporter';
 import { fileTraceExporter } from './traces/fileTraceExporter';
 import type { TraceLine } from './traces/format';
 import { withSpan, type Span, type TraceExporter } from './execution/tracing';
@@ -337,53 +338,105 @@ describe('captureContent default on a local collector', () => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
+  /** The ingest bodies the env reporter POSTed; each test gets a fresh reporter through a unique agent name. */
+  let posted: string[] = [];
+  let names = 0;
   const observe = (value: string) => {
+    posted = [];
     vi.stubEnv('LOUSHO_OBSERVE', value);
-    vi.stubGlobal('fetch', async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
+      posted.push(String(init.body));
+      return new Response('{}', { status: 200 });
+    });
+  };
+  const daemonText = async (name: string) => {
+    await observeExporterFromEnv({ agentName: name })?.flush();
+    return posted.join('');
   };
   const chatInput = async (options: { captureContent?: boolean; redactContent?: boolean } = {}) => {
     const exporter = recording();
-    await createAgent({ provider: mockModel(['Hi.']), exporter, ...options }).send('my key is sk-secret123');
-    return exporter.ended.find((span) => op(span) === 'chat')!;
+    const name = `content-default-${++names}`;
+    await createAgent({ name, provider: mockModel(['Hi.']), exporter, ...options }).send('my key is sk-secret123');
+    return { chat: exporter.ended.find((span) => op(span) === 'chat')!, daemon: await daemonText(name) };
   };
 
-  it('captures content by default when LOUSHO_OBSERVE points at loopback', async () => {
+  it('captures content for the loopback daemon only, never for the config exporter', async () => {
     observe('1');
-    const chat = await chatInput();
+    const { chat, daemon } = await chatInput();
+    expect(chat.attributes['gen_ai.input.messages']).toBeUndefined();
+    expect(chat.attributes['gen_ai.output.messages']).toBeUndefined();
+    expect(chat.attributes['gen_ai.request.model']).toBeDefined();
+    expect(daemon).toContain('my key is');
+    expect(daemon).toContain('Hi.');
+  });
+
+  it('keeps content out of fileTraceExporter() files while the loopback daemon gets it', async () => {
+    observe('1');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-traces-'));
+    try {
+      const name = `content-default-${++names}`;
+      await createAgent({ name, provider: mockModel(['Hi.']), exporter: fileTraceExporter({ dir }) }).send('my key is sk-secret123');
+      const files = fs
+        .readdirSync(dir)
+        .flatMap((day) => fs.readdirSync(path.join(dir, day)).map((file) => fs.readFileSync(path.join(dir, day, file), 'utf8')))
+        .join('');
+      expect(files.length).toBeGreaterThan(0);
+      expect(files).not.toContain('sk-secret123');
+      expect(await daemonText(name)).toContain('sk-secret123');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('captureContent: true still reaches every exporter', async () => {
+    observe('1');
+    const { chat, daemon } = await chatInput({ captureContent: true });
     expect(chat.attributes['gen_ai.input.messages']).toContain('my key is');
-    expect(chat.attributes['gen_ai.output.messages']).toContain('Hi.');
+    expect(daemon).toContain('my key is');
+  });
+
+  it('the OTel content env var still reaches every exporter', async () => {
+    observe('1');
+    vi.stubEnv('OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT', 'true');
+    expect((await chatInput()).chat.attributes['gen_ai.input.messages']).toContain('my key is');
   });
 
   it('does not capture by default for a non-loopback collector', async () => {
     observe('http://collector.test:7777');
-    expect((await chatInput()).attributes['gen_ai.input.messages']).toBeUndefined();
+    const { chat, daemon } = await chatInput();
+    expect(chat.attributes['gen_ai.input.messages']).toBeUndefined();
+    expect(daemon).not.toContain('my key is');
   });
 
   it('does not capture by default when LOUSHO_OBSERVE is unset', async () => {
     vi.stubEnv('LOUSHO_OBSERVE', '');
-    expect((await chatInput()).attributes['gen_ai.input.messages']).toBeUndefined();
+    const exporter = recording();
+    await createAgent({ provider: mockModel(['Hi.']), exporter }).send('my key is sk-secret123');
+    expect(exporter.ended.find((span) => op(span) === 'chat')!.attributes['gen_ai.input.messages']).toBeUndefined();
   });
 
   it('captureContent: false wins over the loopback default', async () => {
     observe('1');
-    expect((await chatInput({ captureContent: false })).attributes['gen_ai.input.messages']).toBeUndefined();
+    const { chat, daemon } = await chatInput({ captureContent: false });
+    expect(chat.attributes['gen_ai.input.messages']).toBeUndefined();
+    expect(daemon).not.toContain('my key is');
   });
 
   it('redactContent: false records the deprecated prompt next to the loopback-captured content', async () => {
     observe('1');
-    const chat = await chatInput({ redactContent: false });
-    expect(chat.attributes['gen_ai.input.messages']).toContain('my key is');
+    const { chat, daemon } = await chatInput({ redactContent: false });
     expect(chat.attributes.prompt).toBeDefined();
+    expect(daemon).toContain('my key is');
   });
 
-  it('redactContent: true keeps the deprecated prompt off while gen_ai content is still captured', async () => {
+  it('redactContent: true keeps the deprecated prompt off while the daemon still gets gen_ai content', async () => {
     observe('1');
-    const chat = await chatInput({ redactContent: true });
-    expect(chat.attributes['gen_ai.input.messages']).toContain('my key is');
+    const { chat, daemon } = await chatInput({ redactContent: true });
     expect(chat.attributes.prompt).toBeUndefined();
+    expect(daemon).toContain('my key is');
   });
 
-  it('resume() captures content by default on loopback', async () => {
+  it('resume() captures content for the loopback daemon by default', async () => {
     observe('1');
     const store = memoryStore();
     let crashed = false;
@@ -399,10 +452,12 @@ describe('captureContent default on a local collector', () => {
         return 'ok';
       },
     });
-    const crashing = createAgent({ provider: mockModel([{ toolCalls: [{ name: 'flaky', id: 'c1' }] }]), tools: [flaky], store });
+    const name = `content-default-${++names}`;
+    const crashing = createAgent({ name, provider: mockModel([{ toolCalls: [{ name: 'flaky', id: 'c1' }] }]), tools: [flaky], store });
     await expect(crashing.send('Go', { sessionId: 'job' })).rejects.toThrow('process died');
     const exporter = recording();
-    await createAgent({ provider: mockModel(['Done.']), tools: [flaky], store, exporter }).resume('job');
-    expect(exporter.ended.find((span) => op(span) === 'chat')!.attributes['gen_ai.output.messages']).toContain('Done.');
+    await createAgent({ name, provider: mockModel(['Done.']), tools: [flaky], store, exporter }).resume('job');
+    expect(exporter.ended.find((span) => op(span) === 'chat')!.attributes['gen_ai.output.messages']).toBeUndefined();
+    expect(await daemonText(name)).toContain('Done.');
   });
 });

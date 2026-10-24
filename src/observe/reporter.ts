@@ -781,6 +781,44 @@ function exporterParts(explicit: TraceExporter): readonly TraceExporter[] {
   return composedParts.get(explicit) ?? [explicit];
 }
 
+/** The opt-in `gen_ai.*` content attributes `captureContent` records. */
+const CAPTURED_CONTENT_KEYS = [
+  GenAiAttr.SYSTEM_INSTRUCTIONS,
+  GenAiAttr.INPUT_MESSAGES,
+  GenAiAttr.OUTPUT_MESSAGES,
+  GenAiAttr.TOOL_CALL_ARGUMENTS,
+  GenAiAttr.TOOL_CALL_RESULT,
+] as const;
+
+/** `span` without the captured content (a copy; `span` itself is untouched, and returned as-is when it holds none). */
+function withoutCapturedContent(span: Span): Span {
+  if (!CAPTURED_CONTENT_KEYS.some((key) => key in span.attributes)) return span;
+  const attributes = { ...span.attributes };
+  for (const key of CAPTURED_CONTENT_KEYS) delete attributes[key];
+  return { ...span, attributes };
+}
+
+/**
+ * `exporter` with the captured `gen_ai.*` content kept for its `LOUSHO_OBSERVE`
+ * reporters only: every other part (a `fileTraceExporter()`, an OTLP or vendor
+ * exporter) sees each span without it. createAgent applies this when content
+ * capture is on only because the env collector is loopback - that default is
+ * for the local daemon, not for every exporter the agent has.
+ */
+export function capturedContentForObserveOnly(exporter: TraceExporter | undefined): TraceExporter | undefined {
+  if (!exporter) return undefined;
+  return fanOutExporters(
+    exporterParts(exporter).map((part): TraceExporter =>
+      envReporterSet.has(part)
+        ? part
+        : {
+            onSpanStart: (span) => part.onSpanStart(withoutCapturedContent(span)),
+            onSpanEnd: (span) => part.onSpanEnd(withoutCapturedContent(span)),
+          }
+    )
+  );
+}
+
 /**
  * The exporter a run reports with: the caller's, the env's, or both fanned
  * out. When `explicit` already carries an env reporter - a delegated

@@ -93,7 +93,9 @@ export function isLoopbackTarget(target: ObserveTarget): boolean {
 /**
  * The `captureContent` an agent runs with: the explicit setting when there is
  * one, else on when the env collector is loopback, else `undefined` (the
- * executor then follows the OTel content env var).
+ * executor then follows the OTel content env var). The loopback default is
+ * meant for the daemon alone: createAgent strips that content from its other
+ * exporters (see `capturedContentForObserveOnly`).
  */
 export function defaultCaptureContent(explicit: boolean | undefined, env?: NodeJS.ProcessEnv): boolean | undefined {
   if (explicit !== undefined) return explicit;
