@@ -561,6 +561,27 @@ describe('observeExporter', () => {
     expect(hb?.type === 'agent.heartbeat' && hb.data.project).toBe('testproj');
   });
 
+  it('reports the cumulative dropped count in heartbeat meta', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const { r, posted } = reporter({ heartbeatIntervalMs: 60_000, maxBuffered: 3, flushSize: 100 });
+      for (let i = 0; i < 6; i++) r.onSpanEnd(makeSpan());
+      expect(r.dropped).toBeGreaterThan(0);
+      vi.advanceTimersByTime(60_000);
+      const dropped = r.dropped;
+      await r.close();
+      const beats = allEvents(posted).filter((e) => e.type === 'agent.heartbeat');
+      const last = beats[beats.length - 1];
+      expect(last?.type === 'agent.heartbeat' && typeof last.data.meta?.dropped).toBe('number');
+      expect(last?.type === 'agent.heartbeat' && Number(last.data.meta?.dropped)).toBeGreaterThanOrEqual(1);
+      expect(dropped).toBeGreaterThanOrEqual(1);
+    } finally {
+      warn.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it('sends the bearer token when configured', async () => {
     const { r, posted } = reporter({ token: 'lso_abc' });
     const span = makeSpan();

@@ -573,6 +573,7 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
         ts: now(),
         heartbeat_interval_ms: heartbeatIntervalMs,
         instance_id: processInstance(),
+        meta: { dropped: droppedCount },
         ...(hostName() !== undefined ? { hostname: hostName() } : {}),
         ...(typeof process !== 'undefined' && typeof process.pid === 'number' ? { pid: process.pid } : {}),
       },

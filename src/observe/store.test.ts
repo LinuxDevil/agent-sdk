@@ -153,6 +153,19 @@ describe('ingestBatch', () => {
     }
   });
 
+  it('exposes the latest heartbeat dropped count on the agent row, null when absent', () => {
+    const database = db();
+    try {
+      ingestBatch(database, [heartbeat('old', T0)]);
+      expect(listAgents(database, T0)[0].dropped).toBeNull();
+      ingestBatch(database, [{ type: 'agent.heartbeat', data: { agent_id: 'a1', ts: T0, meta: { dropped: 7 } } }]);
+      ingestBatch(database, [{ type: 'agent.heartbeat', data: { agent_id: 'a1', ts: T0 + 1, meta: { dropped: 9 } } }]);
+      expect(listAgents(database, T0 + 1).find((a) => a.agent_id === 'a1')?.dropped).toBe(9);
+    } finally {
+      database.close();
+    }
+  });
+
   it('derives a session row from observations that carry a session_id', () => {
     const database = db();
     try {
