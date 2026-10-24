@@ -109,16 +109,21 @@ export function useScores(filter: ScoreListFilter, refreshKey?: unknown): Observ
   return useObserveQuery(() => observeClient.listScores(filter), [JSON.stringify(filter), refreshKey]);
 }
 
-/** One eval's score rows (`eval=<name>` plus `filter`); no request while `evalName` is empty. */
+/**
+ * One eval's score rows (`eval=<name>` plus `filter`); no request while
+ * `evalName` is empty. `data` is only ever rows of the current `evalName`:
+ * after a switch it stays undefined (loading) until the new eval's rows land.
+ */
 export function useEvalScores(
   evalName: string,
   filter: Omit<ScoreListFilter, 'eval'>,
   refreshKey?: unknown
 ): ObserveQuery<ObserveScoreRow[] | undefined> {
-  return useObserveQuery(
-    () => (evalName ? observeClient.listScores({ ...filter, eval: evalName }) : Promise.resolve(undefined)),
+  const query = useObserveQuery(
+    async () => (evalName ? { evalName, rows: await observeClient.listScores({ ...filter, eval: evalName }) } : undefined),
     [evalName, JSON.stringify(filter), refreshKey]
   );
+  return { ...query, data: query.data?.evalName === evalName ? query.data.rows : undefined };
 }
 
 export function useScorePassRates(

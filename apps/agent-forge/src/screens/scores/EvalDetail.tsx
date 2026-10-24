@@ -71,7 +71,7 @@ export function EvalDetail({
     body = (
       <>
         <p className="scores-muted" data-eval-runs={runs.count}>
-          {fmtInt(runs.count)} runs, {fmtPercent(runs.passRate)} passed
+          {fmtInt(runs.count)} runs · Run pass rate {fmtPercent(runs.passRate)}
           {rows.length >= EVAL_ROW_LIMIT && ` (newest ${fmtInt(EVAL_ROW_LIMIT)} scores only)`}
         </p>
         <section className="scores-trend" aria-label={`${evalName} pass-rate trend`}>

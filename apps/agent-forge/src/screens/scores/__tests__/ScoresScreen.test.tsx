@@ -45,7 +45,7 @@ function json(status: number, body: unknown): Response {
 
 /** A stand-in daemon behind `/observe`; `down` fails every request like a refused connection. */
 function daemon() {
-  const state = { down: false };
+  const state: { down: boolean; hold?: Promise<void> } = { down: false };
   const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
     if (state.down) throw new TypeError('fetch failed');
     const url = String(input);
@@ -54,6 +54,7 @@ function daemon() {
     if (url.startsWith('/observe/__target')) return json(200, { url: 'http://127.0.0.1:7777' });
     if (url.startsWith('/observe/api/v1/agents')) return json(200, { agents: [{ agent_id: 'a1', name: 'Support bot' }] });
     if (url.startsWith('/observe/api/v1/scores') && q.get('aggregate') === 'eval') return json(200, { evals: RATES });
+    if (url.startsWith('/observe/api/v1/scores') && state.hold) await state.hold;
     if (url.startsWith('/observe/api/v1/scores')) return json(200, { scores: q.get('eval') === 'support' ? SUPPORT_ROWS : [] });
     return json(404, { error: `unexpected ${url}` });
   });
@@ -122,8 +123,14 @@ describe('ScoresScreen', () => {
     const c = render(<ScoresScreen />);
     await waitFor(() => evalRow(c, 'billing') !== undefined);
     const support = evalRow(c, 'support')!;
+    // The aggregate spans every check score, so its columns say "score", not "run".
     expect(support.textContent).toContain('66.7%');
     expect(support.textContent).toContain('6');
+    const headers = [...c.querySelectorAll('thead th')].map((th) => th.textContent);
+    expect(headers).toEqual(expect.arrayContaining(['Score pass rate', 'Scores', 'Mean score']));
+    expect(headers).not.toContain('Pass rate');
+    const passHeader = [...c.querySelectorAll('thead th span[title]')].find((el) => el.textContent === 'Score pass rate')!;
+    expect(passHeader.getAttribute('title')).toContain('every score of the eval');
     expect(calls('aggregate=eval')[0]).toContain(`since=${NOW - 30 * DAY}`);
     // Nothing is expanded, so no per-eval rows are fetched.
     expect(calls('/api/v1/scores').filter((u) => !u.includes('aggregate'))).toEqual([]);
@@ -139,7 +146,7 @@ describe('ScoresScreen', () => {
     expect(calls('eval=support')[0]).toContain('limit=1000');
     const d = detail(c)!;
     expect(d.querySelector('[data-eval-runs]')!.getAttribute('data-eval-runs')).toBe('2');
-    expect(d.textContent).toContain('2 runs, 50.0% passed');
+    expect(d.textContent).toContain('2 runs · Run pass rate 50.0%');
     const checks = [...d.querySelectorAll('[aria-label="support checks"] tbody tr')].map((tr) => tr.textContent);
     expect(checks[0]).toContain('refund');
     expect(checks[0]).toContain('50.0%');
@@ -150,6 +157,23 @@ describe('ScoresScreen', () => {
     expect(failures[1]!.querySelector('a')!.getAttribute('href')).toBe('#/traces/trace-fail');
     expect(failures[1]!.textContent).toContain('expected a refund link');
     expect(evalRow(c, 'support')!.querySelector('.scores-toggle')!.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('shows the loading state, not the previous eval, while a newly opened eval loads', async () => {
+    window.history.replaceState(null, '', '/#/evals/scores?open=support');
+    const { state } = daemon();
+    const c = render(<ScoresScreen />);
+    await waitFor(() => detail(c)?.querySelector('[data-eval-runs]') != null);
+    let release = () => {};
+    state.hold = new Promise((r) => (release = r));
+    act(() => (evalRow(c, 'billing')!.querySelector('.scores-toggle') as HTMLButtonElement).click());
+    await waitFor(() => detail(c)?.getAttribute('data-eval') === 'billing', 5);
+    expect(detail(c)!.textContent).toContain('Loading billing...');
+    expect(detail(c)!.querySelector('[data-eval-runs]')).toBeNull();
+    state.hold = undefined;
+    release();
+    await waitFor(() => detail(c)?.querySelector('[data-eval-runs]') != null);
+    expect(detail(c)!.textContent).toContain('0 runs');
   });
 
   it('draws the trend with one point per bucket', async () => {

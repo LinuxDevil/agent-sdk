@@ -62,6 +62,9 @@ function evalOptions(rates: ObserveScorePassRate[] | undefined, selected: string
   return [...names].sort().map((name) => ({ value: name, label: name, count: count.get(name) }));
 }
 
+/** The aggregate folds every score of an eval, so its figures are per score, not per run. */
+const AGGREGATE_NOTE = "Across every score of the eval: each run's eval-level score plus all its check scores. Expand the eval for the run pass rate.";
+
 function evalColumns(open: string, toggle: (name: string) => void): Column<ObserveScorePassRate>[] {
   return [
     {
@@ -82,9 +85,22 @@ function evalColumns(open: string, toggle: (name: string) => void): Column<Obser
         </button>
       ),
     },
-    { key: 'pass', header: 'Pass rate', align: 'right', render: (r) => fmtPercent(r.pass_rate) },
+    {
+      key: 'pass',
+      header: <span title={AGGREGATE_NOTE}>Score pass rate</span>,
+      label: 'Score pass rate',
+      align: 'right',
+      render: (r) => fmtPercent(r.pass_rate),
+    },
     { key: 'count', header: 'Scores', align: 'right', render: (r) => fmtInt(r.count) },
-    { key: 'mean', header: 'Mean', align: 'right', hideBelow: 480, render: (r) => (r.avg_value === null ? '-' : r.avg_value.toFixed(2)) },
+    {
+      key: 'mean',
+      header: <span title={AGGREGATE_NOTE}>Mean score</span>,
+      label: 'Mean score',
+      align: 'right',
+      hideBelow: 480,
+      render: (r) => (r.avg_value === null ? '-' : r.avg_value.toFixed(2)),
+    },
     { key: 'last', header: 'Last seen', hideBelow: 560, render: (r) => fmtDateTime(r.last_ts) },
   ];
 }
