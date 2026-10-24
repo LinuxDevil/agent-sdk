@@ -14121,6 +14121,16 @@ open sessions flip to `interrupted`), and eval score history. Alerts on
 `down` transitions or error-rate thresholds POST to `--webhook` URLs or an
 `alerts.json` next to the db.
 
+Insights averages runs/day over the days an agent was active in the window
+(from the later of the window start and the agent's first sighting), so an
+agent first seen today with 12 runs reports 12/day, not 12/7. The per-bucket
+series (`GET /api/v1/insights` `series`, hour or day buckets per agent) carries
+`runs`, `errors`, `cost_usd`, `input_tokens`, `output_tokens`,
+`latency_ms`, plus `p95_latency_ms` (over the bucket's finished runs; no row
+when none finished) and `error_rate` (errors / runs). Those two are stored per
+bucket, not summed. A db written by an older daemon lacks them for past
+buckets: run `lousho observe rebuild-rollups` once to backfill.
+
 The daemon also serves two stores agents can use at runtime:
 
 - **Prompt registry.** `createAgent({ prompt: 'name@version' })` (or
