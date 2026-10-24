@@ -174,13 +174,15 @@ const OBSERVE_MIGRATIONS: readonly string[] = [
   -- reports under the same agent_id. A run's root observation carries the
   -- instance that started it, so a killed instance's open runs can be
   -- interrupted while another instance of the agent keeps heartbeating.
-  -- hostname/pid come from the heartbeat (NULL from older SDKs): a new
-  -- instance on the same host and pid means the old one is certainly dead.
+  -- hostname/pid/heartbeat_interval_ms come from the heartbeat (NULL from
+  -- older SDKs). first_seen/last_heartbeat are the DAEMON's receive times, so
+  -- a reporter's skewed clock cannot make a live instance look silent.
   CREATE TABLE agent_instances (
     agent_id TEXT NOT NULL,
     instance_id TEXT NOT NULL,
     hostname TEXT,
     pid INTEGER,
+    heartbeat_interval_ms INTEGER,
     first_seen INTEGER NOT NULL,
     last_heartbeat INTEGER NOT NULL,
     PRIMARY KEY (agent_id, instance_id)

@@ -183,11 +183,12 @@ const PROMPT_USE_UPSERT = `
 `;
 
 const INSTANCE_UPSERT = `
-  INSERT INTO agent_instances (agent_id, instance_id, hostname, pid, first_seen, last_heartbeat)
-  VALUES (?, ?, ?, ?, ?, ?)
+  INSERT INTO agent_instances (agent_id, instance_id, hostname, pid, heartbeat_interval_ms, first_seen, last_heartbeat)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(agent_id, instance_id) DO UPDATE SET
     hostname = COALESCE(excluded.hostname, agent_instances.hostname),
     pid = COALESCE(excluded.pid, agent_instances.pid),
+    heartbeat_interval_ms = COALESCE(excluded.heartbeat_interval_ms, agent_instances.heartbeat_interval_ms),
     last_heartbeat = MAX(agent_instances.last_heartbeat, excluded.last_heartbeat)
 `;
 
@@ -196,25 +197,44 @@ interface InstanceBeat {
   instanceId: string;
   hostname: string | undefined;
   pid: number | undefined;
+  intervalMs: number | undefined;
 }
 
 /**
- * Record a heartbeat from one process of `agentId`. A new instance on the
- * same host AND pid as a known one means that one is dead (a container
- * restarted as pid 1, a reused pid): its open runs flip to 'interrupted' at
- * once. Any other instance - a sibling, a restart under a new pid, an
- * instance already forgotten coming back - interrupts nothing here; the
- * sweep decides once an instance goes quiet (sweep.ts).
+ * Same-host+pid instances of `agentId` that went silent before `instanceId`
+ * was first seen and have missed at least one of their own beats since -
+ * the process `instanceId` replaced. A live twin (another pid namespace:
+ * `--network host` replicas, hostNetwork pods) keeps heartbeating, so it is
+ * never among them.
  */
-function recordInstance(db: SqlDatabase, agentId: string, beat: InstanceBeat, ts: number, now: number): void {
-  if (beat.hostname !== undefined && beat.pid !== undefined) {
-    for (const row of db
-      .prepare('SELECT instance_id FROM agent_instances WHERE agent_id = ? AND instance_id != ? AND hostname = ? AND pid = ?')
-      .all(agentId, beat.instanceId, beat.hostname, beat.pid)) {
-      interruptInstance(db, agentId, String(row.instance_id), now);
-    }
+const REPLACED_INSTANCES = `
+  SELECT old.instance_id FROM agent_instances old
+  JOIN agent_instances cur ON cur.agent_id = old.agent_id AND cur.instance_id = ?
+  WHERE old.agent_id = ? AND old.instance_id != cur.instance_id
+    AND old.hostname = cur.hostname AND old.pid = cur.pid
+    AND old.last_heartbeat < cur.first_seen
+    AND ? - old.last_heartbeat > COALESCE(old.heartbeat_interval_ms, ?)
+`;
+
+/**
+ * Record a heartbeat from one process of `agentId`, at the daemon's receive
+ * time `now`. From its second heartbeat on, an instance on the same host and
+ * pid as an older one that has been silent since before this one was first
+ * seen (REPLACED_INSTANCES) has replaced it - a container restarted as pid 1,
+ * a reused pid - so the old one's open runs flip to 'interrupted'. A single
+ * heartbeat proves nothing (a twin in another pid namespace looks the same),
+ * and a row that still heartbeats is never touched. Everything else - a
+ * sibling, a restart under a new pid, a forgotten instance coming back - is
+ * the sweep's call once an instance goes quiet (sweep.ts).
+ */
+function recordInstance(db: SqlDatabase, agentId: string, beat: InstanceBeat, now: number): void {
+  const seen = db.prepare('SELECT 1 AS k FROM agent_instances WHERE agent_id = ? AND instance_id = ?').get(agentId, beat.instanceId);
+  db.prepare(INSTANCE_UPSERT).run(agentId, beat.instanceId, beat.hostname ?? null, beat.pid ?? null, beat.intervalMs ?? null, now, now);
+  if (!seen || beat.hostname === undefined || beat.pid === undefined) return;
+  const fallback = beat.intervalMs ?? HEARTBEAT_INTERVAL_DEFAULT_MS;
+  for (const row of db.prepare(REPLACED_INSTANCES).all(beat.instanceId, agentId, now, fallback)) {
+    interruptInstance(db, agentId, String(row.instance_id), now);
   }
-  db.prepare(INSTANCE_UPSERT).run(agentId, beat.instanceId, beat.hostname ?? null, beat.pid ?? null, ts, ts);
 }
 
 /** The reporter instance that started this observation's run (root rows only; older SDKs send none). */
@@ -276,7 +296,9 @@ function writeEvent(db: SqlDatabase, now: number, event: IngestEvent): void {
         now
       );
       // An empty instance_id counts as absent (an older SDK) rather than failing the batch.
-      if (d.instance_id) recordInstance(db, d.agent_id, { instanceId: d.instance_id, hostname: d.hostname, pid: d.pid }, ts, now);
+      if (d.instance_id) {
+        recordInstance(db, d.agent_id, { instanceId: d.instance_id, hostname: d.hostname, pid: d.pid, intervalMs: d.heartbeat_interval_ms }, now);
+      }
       return;
     }
     case 'agent.deregister': {

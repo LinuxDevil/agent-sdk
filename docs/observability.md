@@ -458,13 +458,16 @@ power loss) still leaves its trace behind, and the trace flips to
 `down`. Each reporter process also sends a random `instance_id`, because a
 restart or a second process of the same agent reports under the same agent
 id. Processes of one agent running side by side never interrupt each
-other's runs. When a process of an agent goes quiet while another process of
-it keeps heartbeating (a supervisor restarted it under a new pid, or one of
+other's runs while they keep heartbeating, even when they share a hostname
+and pid (`--network host` replicas are all pid 1). When a process of an
+agent goes quiet while another process of it keeps heartbeating (a supervisor restarted it under a new pid, or one of
 several workers died), the sweep marks the quiet process's open runs
-`interrupted` once it has missed about two heartbeats (the `stale` mark). A
+`interrupted` once it has missed about two heartbeats (the `stale` mark),
+judged on that process's own heartbeat interval and on the daemon's clock. A
 restart on the same host with the same pid (a container's pid 1) marks them
-at once. With no process of the agent left, the agent goes `down` and its
-open runs are marked as above. A process that exits gracefully mid-run
+sooner: at the new process's second heartbeat, if the old process has been
+silent since the new one appeared. With no process of the agent left, the
+agent goes `down` and its open runs are marked as above. A process that exits gracefully mid-run
 (SIGINT, SIGTERM) marks its own open runs `interrupted` right away. An agent
 with heartbeats turned off (`heartbeatIntervalMs: 0`) is never swept, so its
 killed runs stay `running`. Child spans (model calls and tool calls)

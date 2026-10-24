@@ -406,14 +406,14 @@ describe('eager root start (end NULL until the end event lands)', () => {
 
 describe('agent instances (one agent_id, several processes over time)', () => {
   /** A heartbeat of agent a1 from one process: `instance` on `host`/`pid`. */
-  const beat = (instance: string | undefined, ts: number, proc: { host?: string; pid?: number } = {}): IngestEvent => ({
+  const beat = (instance: string | undefined, ts: number, proc: { host?: string; pid?: number; interval?: number } = {}): IngestEvent => ({
     type: 'agent.heartbeat',
     data: {
       agent_id: 'a1',
       project: 'proj',
       name: 'a',
       ts,
-      heartbeat_interval_ms: 60_000,
+      heartbeat_interval_ms: proc.interval ?? 60_000,
       ...(instance !== undefined ? { instance_id: instance } : {}),
       ...(proc.host !== undefined ? { hostname: proc.host } : {}),
       ...(proc.pid !== undefined ? { pid: proc.pid } : {}),
@@ -447,14 +447,91 @@ describe('agent instances (one agent_id, several processes over time)', () => {
     }
   });
 
-  it('a restart on the same host and pid (a container restart, pid reuse) interrupts the old instance at once', () => {
+  it('a restart on the same host and pid interrupts the silent old instance at the new one\'s second heartbeat', () => {
     const database = db();
     try {
-      ingestBatch(database, [beat('A', T0, { host: 'c1', pid: 1 }), openRoot('runA', 'A')], T0);
-      ingestBatch(database, [beat('B', T0 + 1_000, { host: 'c1', pid: 1 }), openRoot('runB', 'B')], T0 + 1_000);
+      const c1 = { host: 'c1', pid: 1 }; // a container restarted: pid 1 again
+      ingestBatch(database, [beat('A', T0, c1), openRoot('runA', 'A')], T0);
+      ingestBatch(database, [beat('B', T0 + 1_000, c1), openRoot('runB', 'B')], T0 + 1_000);
+      // one heartbeat proves nothing: a live twin in another pid namespace looks the same
+      expect(traceStatus(database, 'runA')).toBe('running');
+      ingestBatch(database, [beat('B', T0 + 61_000, c1)], T0 + 61_000);
+      // A stayed silent since before B was first seen: it is the process B replaced
       expect(traceStatus(database, 'runA')).toBe('interrupted');
       expect(traceStatus(database, 'runB')).toBe('running');
       expect(instances(database)).toEqual(['B']);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('twins on one host and pid (separate pid namespaces) heartbeating side by side never interrupt each other', () => {
+    const database = db();
+    try {
+      const pid1 = { host: 'node-1', pid: 1 }; // two --network host replicas: same hostname, both pid 1
+      ingestBatch(database, [beat('A', T0, pid1), openRoot('runA', 'A')], T0);
+      ingestBatch(database, [beat('B', T0 + 30_000, pid1), openRoot('runB', 'B')], T0 + 30_000);
+      for (let t = 60_000; t <= 900_000; t += 60_000) {
+        ingestBatch(database, [beat('A', T0 + t, pid1)], T0 + t);
+        ingestBatch(database, [beat('B', T0 + t + 30_000, pid1)], T0 + t + 30_000);
+        sweepAgents(database, T0 + t + 45_000);
+      }
+      expect([traceStatus(database, 'runA'), traceStatus(database, 'runB')]).toEqual(['running', 'running']);
+      expect(instances(database)).toEqual(['A', 'B']);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("a dead instance's delayed final heartbeat landing after its same-pid successor started cannot interrupt the successor", () => {
+    const database = db();
+    try {
+      const c1 = { host: 'c1', pid: 1 };
+      ingestBatch(database, [beat('A', T0, c1), openRoot('runA', 'A')], T0);
+      ingestBatch(database, [beat('B', T0 + 1_000, c1), openRoot('runB', 'B')], T0 + 1_000);
+      // A's last words (stamped earlier, delivered late) arrive after B registered
+      ingestBatch(database, [beat('A', T0 + 500, c1)], T0 + 2_000);
+      ingestBatch(database, [beat('B', T0 + 61_000, c1)], T0 + 61_000);
+      expect(traceStatus(database, 'runB')).toBe('running');
+      // A spoke after B was first seen, so the shortcut leaves it; the sweep catches it at stale
+      expect(traceStatus(database, 'runA')).toBe('running');
+      ingestBatch(database, [beat('B', T0 + 121_000, c1)], T0 + 121_000);
+      sweepAgents(database, T0 + 135_000);
+      expect(traceStatus(database, 'runA')).toBe('interrupted');
+      expect(traceStatus(database, 'runB')).toBe('running');
+    } finally {
+      database.close();
+    }
+  });
+
+  it("judges each instance's silence against its own heartbeat interval", () => {
+    const database = db();
+    try {
+      const fast = { host: 'h1', pid: 10, interval: 10_000 };
+      const slow = { host: 'h1', pid: 60, interval: 60_000 };
+      ingestBatch(database, [beat('S', T0, slow), openRoot('runS', 'S')], T0);
+      ingestBatch(database, [beat('S', T0 + 60_000, slow)], T0 + 60_000);
+      for (let t = 0; t <= 120_000; t += 10_000) ingestBatch(database, [beat('F', T0 + t, fast)], T0 + t); // the agent row now says 10s
+      // S is 60s quiet: past 2 x 10s + 10s, well within its own 2 x 60s + 10s
+      sweepAgents(database, T0 + 120_000);
+      expect(traceStatus(database, 'runS')).toBe('running');
+      expect(instances(database)).toEqual(['F', 'S']);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("judges silence by the daemon's receive time, not the reporter's clock", () => {
+    const database = db();
+    try {
+      const behind = 15 * 60_000; // B's clock runs 15 minutes slow
+      ingestBatch(database, [beat('A', T0, hostA), beat('B', T0 - behind, hostB), openRoot('runB', 'B')], T0);
+      for (let t = 60_000; t <= 300_000; t += 60_000) {
+        ingestBatch(database, [beat('A', T0 + t, hostA), beat('B', T0 + t - behind, hostB)], T0 + t);
+        sweepAgents(database, T0 + t + 5_000);
+      }
+      expect(traceStatus(database, 'runB')).toBe('running');
+      expect(instances(database)).toEqual(['A', 'B']);
     } finally {
       database.close();
     }
