@@ -217,7 +217,8 @@
           "src/observe/identity.ts"
         ],
         "maxCognitive": 28,
-        "reason": "resolveIdentity's hostname/pid/git/persisted-uuid ladder is covered through the reporter tests; each rung is one guarded probe. CRAP still gates."
+        "maxCrap": 40,
+        "reason": "resolveIdentity's hostname/pid/git/persisted-uuid ladder is covered through the reporter tests (~57% - the fs/git probe failure rungs vary by platform); each rung is one guarded probe. Ceilings exempt the probe density and the coverage term; cyclomatic and unit-size still gate."
       },
       {
         "files": [
