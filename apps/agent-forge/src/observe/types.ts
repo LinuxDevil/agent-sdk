@@ -95,6 +95,12 @@ export interface ObserveAgentRow {
   heartbeat_interval_ms: number | null;
   hostname: string | null;
   pid: number | null;
+  /** Cumulative telemetry events the agent's reporter dropped (latest heartbeat); `null` from an older SDK. */
+  dropped: number | null;
+  /** Root runs in today's UTC day rollup bucket. */
+  runs_today: number;
+  /** Errors / runs in today's UTC day bucket (0 with no runs). */
+  error_rate_today: number;
 }
 
 export interface ObserveAgentInsights {

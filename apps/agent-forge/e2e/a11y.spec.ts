@@ -136,6 +136,15 @@ test('a #/traces/:id deep link with no daemon shows the down state and keeps the
   expect(new URL(page.url()).hash).toBe('#/traces/e2e-trace?obs=e2e-obs');
 });
 
+test('#/monitoring with no daemon shows the down state and keeps window/agent in the URL', async ({ page }) => {
+  await page.route('**/observe/**', (route) =>
+    route.fulfill({ status: 502, contentType: 'application/json', body: '{"error":"down"}' }),
+  );
+  await page.goto('/?token=e2e-studio-token#/monitoring?window=7d&agent=e2e-agent');
+  await expect(page.getByRole('main').getByText('lousho observe start')).toBeVisible();
+  expect(new URL(page.url()).hash).toBe('#/monitoring?window=7d&agent=e2e-agent');
+});
+
 test('#/settings shows the settings panel inside the screen', async ({ page }) => {
   await page.goto('/?token=e2e-studio-token#/settings');
   const main = page.getByRole('main');
