@@ -14,8 +14,10 @@
  *   id (the `TraceLine.id`), so a resent batch upserts by key.
  * - Flush on size (50), on interval (5s), and on process exit (~2s cap:
  *   close() aborts a regular flush still in flight and makes one final
- *   attempt with the 2s timeout).
- *   Crash loss is accepted and bounded: nothing persists mid run.
+ *   attempt with the 2s timeout), and on a crash (an uncaught exception or
+ *   unhandled rejection: one POST that blocks the dying process for at most
+ *   1s, see blockingPost.ts; Node's crash output and exit code are untouched).
+ *   SIGKILL loss is accepted and bounded: nothing persists mid run.
  * - The daemon being down requeues the failed batch and retries with
  *   exponential backoff (1s base, 30s cap); only events evicted past the
  *   buffer cap, or still unsent after close()'s final attempt, drop into a
@@ -33,6 +35,7 @@ import { GenAiAttr, GenAiOperation, LegacyAttr, SdkAttr } from '../execution/sem
 import { SDKError } from '../execution/errors';
 import type { Span, TraceExporter } from '../execution/tracing';
 import { VERSION } from '../version';
+import { blockingPost } from './blockingPost';
 import { OBSERVE_DEFAULT_PORT, type IngestEvent, type ObservationData, type ObservationKind, type PromptUseData } from './envelope';
 import { observeTargetFromEnv } from './emit';
 import { hostName, resolveIdentity, resolveProject } from './identity';
@@ -108,6 +111,8 @@ const DEFAULT_HEARTBEAT_MS = 60_000;
 const DEFAULT_MAX_BUFFERED = 5000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 5000;
 const EXIT_FLUSH_TIMEOUT_MS = 2000;
+/** How long a crash may block the dying process to deliver what is pending. */
+const CRASH_FLUSH_TIMEOUT_MS = 1000;
 const RETRY_BASE_MS = 1000;
 const RETRY_CAP_MS = 30_000;
 
@@ -337,9 +342,12 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
   // its own errors: a rejected link would skip every later flush and surface
   // as an unhandled rejection at the `void flush()` call sites.
   let chain: Promise<void> = Promise.resolve();
+  /** The batch a POST is carrying right now: a crash resends it, since that POST can never finish. */
+  let inFlight: IngestEvent[] = [];
   const send = async (timeoutMs: number, final: boolean): Promise<void> => {
     const batch = outbox.take(final);
     if (batch.length === 0) return;
+    inFlight = batch;
     try {
       await post(batch, timeoutMs, final);
       outbox.delivered();
@@ -349,6 +357,8 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
       if (final || !closing.signal.aborted) warnOnce(`could not reach the observe daemon at ${url}`, error);
       if (final) droppedCount += batch.length;
       else outbox.failed(batch);
+    } finally {
+      inFlight = [];
     }
   };
   const flush = (timeoutMs: number, final = false): Promise<void> => {
@@ -390,8 +400,9 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
     timers.push(t);
   }
 
-  const close = async (): Promise<void> => {
-    if (closed) return;
+  /** Stop timers and hooks and queue the goodbye; false when already closed. Shared by close() and the crash flush. */
+  const shutdown = (): boolean => {
+    if (closed) return false;
     closed = true;
     for (const t of timers) clearInterval(t);
     for (const [signal, handler] of exitHooks) {
@@ -401,14 +412,33 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
         // no process.off in this runtime
       }
     }
-    // Graceful exit: say goodbye, then one final flush with the ~2s cap. Straight
-    // into the outbox (enqueue drops after close, push could start a regular size
-    // flush); a full buffer evicts its oldest event rather than the deregister.
-    // Aborting `closing` fails a regular flush still in flight at once - its
-    // batch is requeued and rides along in the final attempt.
+    // Straight into the outbox (enqueue drops after close, push could start a
+    // regular size flush); a full buffer evicts its oldest event rather than the deregister.
     outbox.push({ type: 'agent.deregister', data: { agent_id: identity.agentId, ts: now() } });
+    return true;
+  };
+
+  const close = async (): Promise<void> => {
+    if (!shutdown()) return;
+    // Graceful exit: one final flush with the ~2s cap. Aborting `closing` fails
+    // a regular flush still in flight at once - its batch is requeued and
+    // rides along in the final attempt.
     closing.abort();
     await flush(EXIT_FLUSH_TIMEOUT_MS, true);
+  };
+
+  /**
+   * The process is dying of an uncaught exception or unhandled rejection:
+   * Node exits as soon as the monitor returns, so no async send can finish.
+   * Send everything pending - the batch a regular POST was carrying included
+   * (re-sent events upsert by key) - in one POST that blocks for at most 1s.
+   */
+  const crashFlush = (): void => {
+    if (!shutdown()) return;
+    const batch = inFlight.concat(outbox.take(true));
+    if (!blockingPost(`${url}/api/v1/ingest`, headers, JSON.stringify({ batch }), CRASH_FLUSH_TIMEOUT_MS)) {
+      droppedCount += batch.length;
+    }
   };
 
   const exitHooks: Array<[string, () => void]> = [];
@@ -420,13 +450,27 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
     const onSignal = (code: number) => () => {
       void close().finally(() => process.exit(code));
     };
-    const hooks: Array<[NodeJS.Signals | 'beforeExit', () => void]> = [
+    // 'uncaughtExceptionMonitor' observes a crash without handling it: Node still
+    // prints the error and exits with its own code. It also sees an unhandled
+    // rejection that crashes the process (origin 'unhandledRejection'), and stays
+    // silent when one does not (--unhandled-rejections=warn, or a user listener),
+    // so no 'unhandledRejection' listener is added - adding one would itself stop
+    // the crash. With an 'uncaughtException' listener the process survives: keep
+    // reporting, just flush now.
+    const onCrash = () => {
+      if (process.listenerCount('uncaughtException') > 0) void flush(requestTimeoutMs);
+      else crashFlush();
+    };
+    const hooks: Array<[string, () => void]> = [
       ['beforeExit', onBeforeExit],
       ['SIGINT', onSignal(130)],
       ['SIGTERM', onSignal(143)],
+      ['uncaughtExceptionMonitor', onCrash],
     ];
     for (const [signal, handler] of hooks) {
-      process.once(signal as NodeJS.Signals, handler);
+      // The monitor stays on: a process that survived one throw can still die of the next.
+      if (signal === 'uncaughtExceptionMonitor') process.on(signal, handler);
+      else process.once(signal as NodeJS.Signals, handler);
       exitHooks.push([signal, handler]);
     }
   }

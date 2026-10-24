@@ -325,10 +325,12 @@ export default { fetch, scheduled };
  *    the worker graph via createAgent's LOUSHO_OBSERVE wiring; every access is
  *    guarded by `typeof process === 'undefined'` and degrades to an
  *    in-memory reporter identity on runtimes without builtins.
+ *  - node:worker_threads: src/observe/blockingPost.ts (the reporter's crash
+ *    flush), same guard; a runtime without it reports the send as failed.
  * Only these ids, and only as the argument of a `getBuiltinModule` /
  * `loadBuiltinModule` / `loadNodeModule` call, are exempt; any other `node:` string still fails.
  */
-const WORKER_SAFE_BUILTIN_PROBE = /\b(?:get|load)(?:Node|Builtin)Module\d*(?:\?\.)?\(\s*(["'`])node:(?:module|dns|diagnostics_channel|async_hooks|fs|crypto|os|path)\1\s*\)/g;
+const WORKER_SAFE_BUILTIN_PROBE = /\b(?:get|load)(?:Node|Builtin)Module\d*(?:\?\.)?\(\s*(["'`])node:(?:module|dns|diagnostics_channel|async_hooks|fs|crypto|os|path|worker_threads)\1\s*\)/g;
 
 /** Returns every `node:`-prefixed module specifier referenced in `source`. */
 export function findNodeBuiltinReferences(source: string): string[] {

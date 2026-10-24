@@ -14082,7 +14082,14 @@ down, the failed batch is requeued and retried with exponential backoff (1 s,
 2 s, 4 s ... capped at 30 s), so a daemon restart mid-run loses nothing. Only
 events evicted past the buffer cap (`maxBuffered`, default 5000, oldest
 first) or still unsent after the exit flush's final attempt are dropped and
-counted in the reporter's `dropped`. Eval scores flow through the same pipe —
+counted in the reporter's `dropped`. A process that dies of an uncaught
+exception or an unhandled rejection still reports its last run: the reporter
+watches `uncaughtExceptionMonitor` and sends what it holds in one request that
+holds up the crash for at most 1 s. Node's error output and exit code stay
+as they were, and a script with its own `uncaughtException` handler keeps
+reporting. An explicit `process.exit()` or a SIGKILL still loses what is
+buffered. Eval
+scores flow through the same pipe —
 `lousho eval --observe` emits them even when `LOUSHO_OBSERVE` is unset.
 
 ## The built server
