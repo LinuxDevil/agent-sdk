@@ -78,7 +78,16 @@ export interface ObserveDaemonOptions {
   sweepIntervalMs?: number;
   /** Injectable clock for the sweep (tests); default `Date.now`. */
   nowFn?: () => number;
+  /**
+   * Retention window in days for the sweep's daily prune (default
+   * {@link OBSERVE_RETENTION_DAYS_DEFAULT}). Only a finite number `> 0` enables
+   * it; `0`, a negative value or `NaN` disables pruning.
+   */
+  retentionDays?: number;
 }
+
+/** `lousho observe start`'s default retention window: finished traces older than 30 days are pruned daily. */
+export const OBSERVE_RETENTION_DAYS_DEFAULT = 30;
 
 export interface ObserveDaemon {
   port: number;
@@ -226,13 +235,15 @@ export async function startObserveDaemon(options: ObserveDaemonOptions = {}): Pr
 
   // The monitoring sweep: rewrites agents.status from heartbeat freshness,
   // interrupts a crashed agent's open work, and posts alerts to webhooks
-  // (fire-and-forget; delivery lives in alerts.ts).
+  // (fire-and-forget; delivery lives in alerts.ts). It also runs the daily
+  // retention prune (sweep.ts) - never a VACUUM, which would stall ingest.
   const alerter = createAlerter(alertConfig, options.fetchFn ?? fetch);
   const sweep = startStatusSweep(db, {
     intervalMs: options.sweepIntervalMs,
     now: options.nowFn,
     errorRateThreshold: alertConfig.errorRateThreshold,
     onAlerts: (alerts) => alerter.post(alerts),
+    retentionDays: options.retentionDays ?? OBSERVE_RETENTION_DAYS_DEFAULT,
   });
 
   return {

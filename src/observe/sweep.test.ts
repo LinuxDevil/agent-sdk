@@ -13,7 +13,7 @@ import type { SqlDatabase } from '../storage/sqlite/driver';
 import { loadAlertsFile, resolveAlertConfig, createAlerter, type AlertEvent } from './alerts';
 import { startObserveDaemon, type ObserveDaemon } from './daemon';
 import type { IngestEvent } from './envelope';
-import { ingestBatch, listAgents, openDb } from './store';
+import { ingestBatch, listAgents, openDb, pruneBefore } from './store';
 import { startStatusSweep, sweepAgents } from './sweep';
 
 const T0 = 1_700_000_000_000;
@@ -318,5 +318,156 @@ describe('daemon sweep + GET /api/v1/agents', () => {
       agents: { agent_id: string }[];
     };
     expect(fleet.agents.map((a) => a.agent_id)).toEqual(['a1']);
+  });
+});
+
+describe('retention: pruneBefore', () => {
+  const DAY = 86_400_000;
+  const OLD = T0 - 10 * DAY;
+  const count = (database: SqlDatabase, sql: string): number =>
+    Number(database.prepare(`SELECT COUNT(*) AS n FROM ${sql}`).get()?.n ?? 0);
+
+  function seed(database: SqlDatabase): void {
+    ingestBatch(
+      database,
+      [
+        // an old, finished trace (root + child) with a prompt link and a score
+        obs({ obs_id: 'old-root', trace_id: 't-old', session_id: 's-old', start: OLD, end: OLD + 100 }),
+        obs({ obs_id: 'old-child', trace_id: 't-old', session_id: 's-old', parent_obs_id: 'old-root', start: OLD + 10, end: OLD + 50 }),
+        { type: 'prompt_use', data: { obs_id: 'old-root', prompt_id: 'p1', version: 1 } },
+        { type: 'score', data: { score_id: 'sc-old', trace_id: 't-old', name: 'q', value: 1, source: 'eval', ts: OLD } },
+        // an old trace whose child is still open: kept whole
+        obs({ obs_id: 'mixed-root', trace_id: 't-mixed', session_id: 's-mixed', start: OLD, end: OLD + 100 }),
+        obs({ obs_id: 'mixed-child', trace_id: 't-mixed', session_id: 's-mixed', parent_obs_id: 'mixed-root', start: OLD + 10, end: undefined }),
+        // the reverse: an old open root whose children all finished long ago - kept whole
+        obs({ obs_id: 'rev-root', trace_id: 't-rev', session_id: 's-rev', start: OLD, end: undefined }),
+        obs({ obs_id: 'rev-child', trace_id: 't-rev', session_id: 's-rev', parent_obs_id: 'rev-root', start: OLD + 10, end: OLD + 20 }),
+        // an old open root on its own
+        obs({ obs_id: 'open-root', trace_id: 't-open', session_id: 's-active', start: OLD, end: undefined }),
+        // a fresh trace
+        obs({ obs_id: 'new-root', trace_id: 't-new', session_id: 's-new', start: T0 + 1000, end: T0 + 2000 }),
+        // old / fresh scores for traces whose observations never arrived
+        { type: 'score', data: { score_id: 'sc-orphan', trace_id: 't-gone', name: 'q', value: 0, source: 'eval', ts: OLD } },
+        { type: 'score', data: { score_id: 'sc-orphan-new', trace_id: 't-gone2', name: 'q', value: 0, source: 'eval', ts: T0 + 1 } },
+      ],
+      OLD
+    );
+    // s-old / s-mixed were interrupted long ago; s-active is an old but still active thread
+    database.prepare("UPDATE sessions SET status = 'interrupted' WHERE session_id IN ('s-old', 's-mixed')").run();
+    // an old, ended, still-'active' session no observation references: only the status guard keeps it
+    database
+      .prepare("INSERT INTO sessions (session_id, agent_id, started_at, ended_at, status, updated_at) VALUES ('s-lonely', 'a1', ?, ?, 'active', ?)")
+      .run(OLD, OLD + 5, OLD);
+    database.prepare("INSERT INTO prompts (prompt_id, name, version, created_at) VALUES ('p1', 'greet', 1, ?)").run(OLD);
+    database.prepare(`INSERT INTO hub_entries (entry_id, namespace, "key", value, created_at) VALUES ('h1', 'ns', 'k', 'v', ?)`).run(OLD);
+  }
+
+  it('deletes whole finished traces older than the cutoff and returns the counts', () => {
+    const database = db();
+    seed(database);
+    const rollupsBefore = count(database, 'rollups');
+    expect(rollupsBefore).toBeGreaterThan(0);
+
+    expect(pruneBefore(database, T0)).toEqual({ observations: 2, scores: 2, sessions: 1 });
+
+    expect(count(database, "observations WHERE trace_id = 't-old'")).toBe(0);
+    expect(count(database, "prompt_uses WHERE obs_id = 'old-root'")).toBe(0);
+    expect(count(database, "scores WHERE score_id IN ('sc-old', 'sc-orphan')")).toBe(0);
+    expect(count(database, "scores WHERE score_id = 'sc-orphan-new'")).toBe(1);
+    expect(count(database, "sessions WHERE session_id = 's-old'")).toBe(0);
+    expect(count(database, "sessions WHERE session_id = 's-lonely'")).toBe(1);
+    expect(count(database, "observations WHERE trace_id = 't-new'")).toBe(1);
+    // rollups for the pruned days, prompt versions and hub entries are never touched
+    expect(count(database, 'rollups')).toBe(rollupsBefore);
+    expect(count(database, 'prompts')).toBe(1);
+    expect(count(database, 'hub_entries')).toBe(1);
+  });
+
+  it('keeps open observations, a trace with one open child, and active sessions regardless of age', () => {
+    const database = db();
+    seed(database);
+    // t-old + t-new; sc-old + both orphans; s-old (s-new is still 'active')
+    expect(pruneBefore(database, T0 + 100 * DAY)).toEqual({ observations: 3, scores: 3, sessions: 1 });
+    expect(count(database, "observations WHERE obs_id = 'open-root'")).toBe(1);
+    // not partially deleted: the closed root stays beside its open child, and closed children beside an open root
+    expect(count(database, "observations WHERE trace_id = 't-mixed'")).toBe(2);
+    expect(count(database, "observations WHERE trace_id = 't-rev'")).toBe(2);
+    // the status guard alone keeps an unreferenced old active session
+    expect(count(database, "sessions WHERE session_id = 's-lonely'")).toBe(1);
+    expect(count(database, "sessions WHERE session_id = 's-new'")).toBe(1);
+    // s-mixed is interrupted and old, but its observations still reference it
+    expect(count(database, "sessions WHERE session_id = 's-mixed'")).toBe(1);
+    expect(count(database, "sessions WHERE session_id = 's-active'")).toBe(1);
+    // the fresh trace is past this cutoff too and goes
+    expect(count(database, "observations WHERE trace_id = 't-new'")).toBe(0);
+  });
+
+  it('is a no-op on a second pass', () => {
+    const database = db();
+    seed(database);
+    pruneBefore(database, T0);
+    expect(pruneBefore(database, T0)).toEqual({ observations: 0, scores: 0, sessions: 0 });
+  });
+});
+
+describe('retention: the sweep prune pass', () => {
+  const DAY = 86_400_000;
+  const traceCount = (database: SqlDatabase, traceId: string): number =>
+    Number(database.prepare('SELECT COUNT(*) AS n FROM observations WHERE trace_id = ?').get(traceId)?.n ?? 0);
+
+  it('prunes on the first pass and then at most once per 24h', () => {
+    const database = db();
+    ingestBatch(database, [obs({ obs_id: 'a', trace_id: 'ta', start: T0 - 40 * DAY, end: T0 - 40 * DAY + 1 })], T0);
+    let current = T0;
+    const sweep = startStatusSweep(database, { intervalMs: 0, now: () => current, retentionDays: 30 });
+    sweeps.push(sweep);
+    expect(traceCount(database, 'ta')).toBe(0);
+
+    // a run that ages past the window an hour later waits for the next day's pass
+    ingestBatch(database, [obs({ obs_id: 'b', trace_id: 'tb', start: T0 - 30 * DAY - 1000, end: T0 - 30 * DAY + 1000 })], T0);
+    current = T0 + 3_600_000;
+    sweep.run();
+    expect(traceCount(database, 'tb')).toBe(1);
+    current = T0 + DAY;
+    sweep.run();
+    expect(traceCount(database, 'tb')).toBe(0);
+  });
+
+  it('retentionDays 0, unset, negative or NaN never prunes', () => {
+    for (const retentionDays of [0, undefined, -5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const database = db();
+      ingestBatch(database, [obs({ obs_id: 'a', trace_id: 'ta', start: T0 - 400 * DAY, end: T0 - 400 * DAY + 1 })], T0);
+      const sweep = startStatusSweep(database, { intervalMs: 0, now: () => T0, ...(retentionDays !== undefined ? { retentionDays } : {}) });
+      sweeps.push(sweep);
+      sweep.run(T0 + 2 * DAY);
+      expect(traceCount(database, 'ta')).toBe(1);
+    }
+  });
+
+  it('never VACUUMs from the sweep', () => {
+    const database = db();
+    ingestBatch(database, [obs({ obs_id: 'a', trace_id: 'ta', start: T0 - 40 * DAY, end: T0 - 40 * DAY + 1 })], T0);
+    const exec = vi.spyOn(database, 'exec');
+    const sweep = startStatusSweep(database, { intervalMs: 0, now: () => T0, retentionDays: 30 });
+    sweeps.push(sweep);
+    expect(traceCount(database, 'ta')).toBe(0);
+    sweep.run(T0 + 2 * DAY);
+    expect(exec.mock.calls.some(([sql]) => /VACUUM/i.test(String(sql)))).toBe(false);
+  });
+
+  it('a failing prune pass does not break the status sweep', () => {
+    const database = db();
+    ingestBatch(database, [heartbeat('a1', T0)], T0);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const realPrepare = database.prepare.bind(database);
+    vi.spyOn(database, 'prepare').mockImplementation((sql: string) => {
+      if (sql.includes('DELETE FROM prompt_uses')) throw new Error('disk on fire');
+      return realPrepare(sql);
+    });
+    const sweep = startStatusSweep(database, { intervalMs: 0, now: () => T0, retentionDays: 30 });
+    sweeps.push(sweep);
+    const result = sweep.run(T0 + 310_000);
+    expect(result.transitions).toEqual([expect.objectContaining({ agent_id: 'a1', to: 'down' })]);
+    expect(error.mock.calls.some((args) => String(args[0]).includes('prune'))).toBe(true);
   });
 });

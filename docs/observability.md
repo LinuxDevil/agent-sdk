@@ -521,6 +521,27 @@ the score is attributed to the trace's agent. An unknown `trace_id` (or an
 `obs_id` that is not in that trace) is a `404`, an empty `name` a `400`. It
 takes the same token as ingest, and `GET /api/v1/scores?trace_id=...` lists it.
 
+### Retention
+
+The daemon keeps 30 days of runs by default. On its first sweep after start,
+and then once a day, it deletes every trace whose observations have all
+finished and whose last one ended more than `--retention-days` ago (default
+30; `--retention-days 0` keeps everything). A whole trace goes or stays: one
+still-open observation (`end` unset, a run in progress) keeps the entire trace,
+however old. With a trace go its scores and its prompt-use links; scores older
+than the window whose trace has no observations left go too. A session is
+deleted only when it is not `active`, ended (or, with no end, started) before
+the window, and no remaining observation references it, so an old thread
+that is still active is never pruned.
+
+Pruning never touches the Insights rollups (charts for pruned days stay),
+the prompt registry, hub entries, the agent registry or tokens. The daily
+prune does not `VACUUM`, which would stall ingest; to reclaim disk space, run
+`lousho observe prune --older-than 30d`. It prunes now with the window you
+give (whole days only), prints how many observations, scores and sessions it
+deleted, then runs `VACUUM`. It is safe while the daemon is running on the
+same db.
+
 ### Trace list API
 
 `GET /api/v1/traces` returns `{ traces, total, limit, offset }`, one row per

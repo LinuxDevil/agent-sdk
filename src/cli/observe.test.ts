@@ -11,6 +11,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultPidPath, startObserveDaemon, type ObserveDaemon } from '../observe/daemon';
+import { ingestBatch, openDb } from '../observe/store';
+import { loadDatabaseSync, type SqlDatabase } from '../storage/sqlite/driver';
 import { reporterHint, runObserve } from './observe';
 
 const daemons: ObserveDaemon[] = [];
@@ -154,5 +156,77 @@ describe('lousho observe', () => {
     expect(logs.some((line) => line.includes('token created'))).toBe(true);
     expect(await runObserve(['token', 'create', '--db', db])).toBe(2);
     expect(await runObserve(['token', 'bogus', '--project', 'x', '--db', db])).toBe(2);
+  });
+  it('prune --older-than Nd deletes old finished runs, prints the three counts and keeps open ones', async () => {
+    const file = dbPath();
+    const db = openDb(file);
+    const old = Date.now() - 40 * 86_400_000;
+    ingestBatch(db, [
+      { type: 'observation', data: { obs_id: 'o1', trace_id: 't1', kind: 'span', name: 'x', start: old, end: old + 5, status: 'ok' } },
+      { type: 'observation', data: { obs_id: 'o2', trace_id: 't2', kind: 'span', name: 'x', start: old } },
+    ]);
+    db.close();
+    expect(await runObserve(['prune', '--older-than', '30d', '--db', file])).toBe(0);
+    expect(logs.join('\n')).toContain('pruned 1 observations, 0 scores, 0 sessions');
+    const after = openDb(file);
+    try {
+      expect(after.prepare('SELECT obs_id FROM observations').all().map((r) => r.obs_id)).toEqual(['o2']);
+    } finally {
+      after.close();
+    }
+  });
+
+  it('prune exits 0 with the counts when only the VACUUM after the committed prune fails', async () => {
+    const file = dbPath();
+    const db = openDb(file);
+    const old = Date.now() - 40 * 86_400_000;
+    ingestBatch(db, [{ type: 'observation', data: { obs_id: 'o1', trace_id: 't1', kind: 'span', name: 'x', start: old, end: old + 5, status: 'ok' } }]);
+    db.close();
+    const proto = loadDatabaseSync().prototype as SqlDatabase;
+    const realExec = proto.exec;
+    vi.spyOn(proto, 'exec').mockImplementation(function (this: SqlDatabase, sql: string) {
+      if (/^\s*VACUUM/i.test(sql)) throw new Error('database is locked');
+      return realExec.call(this, sql);
+    });
+    expect(await runObserve(['prune', '--older-than=30d', '--db', file])).toBe(0);
+    expect(logs.join('\n')).toContain('pruned 1 observations, 0 scores, 0 sessions');
+    expect(errors.at(-1)).toContain('pruned, but VACUUM failed: database is locked');
+    vi.restoreAllMocks();
+    const after = openDb(file);
+    try {
+      expect(after.prepare('SELECT COUNT(*) AS n FROM observations').get()?.n).toBe(0);
+    } finally {
+      after.close();
+    }
+  });
+
+  it('prune is safe beside a running daemon on the same db file', async () => {
+    const file = dbPath();
+    const daemon = await startObserveDaemon({ dbPath: file, port: 0, sweepIntervalMs: 0, retentionDays: 0 });
+    daemons.push(daemon);
+    const old = Date.now() - 40 * 86_400_000;
+    ingestBatch(daemon.db, [
+      { type: 'observation', data: { obs_id: 'o1', trace_id: 't1', kind: 'span', name: 'x', start: old, end: old + 5, status: 'ok' } },
+      { type: 'observation', data: { obs_id: 'o2', trace_id: 't2', kind: 'span', name: 'x', start: old } },
+    ]);
+    expect(await runObserve(['prune', '--older-than=30d', '--db', file])).toBe(0);
+    expect(logs.join('\n')).toContain('pruned 1 observations');
+    // the daemon's own connection sees the prune and keeps ingesting
+    expect(daemon.db.prepare('SELECT obs_id FROM observations').all().map((r) => r.obs_id)).toEqual(['o2']);
+    ingestBatch(daemon.db, [{ type: 'observation', data: { obs_id: 'o2', trace_id: 't2', kind: 'span', name: 'x', start: old, end: old + 9, status: 'ok' } }]);
+    expect(daemon.db.prepare('SELECT "end" FROM observations WHERE obs_id = ?').get('o2')?.end).toBe(old + 9);
+  });
+
+  it('prune and start --retention-days reject junk as usage errors', async () => {
+    const file = dbPath();
+    expect(await runObserve(['prune', '--db', file])).toBe(2);
+    for (const bad of ['30', '-1d', '1.5d', 'xd', '30h', '0d']) {
+      expect(await runObserve(['prune', `--older-than=${bad}`, '--db', file])).toBe(2);
+    }
+    expect(errors.at(-1)).toContain('--older-than');
+    for (const bad of ['-1', '1.5', 'x', '']) {
+      expect(await runObserve(['start', `--retention-days=${bad}`, '--db', file, '--port', '0'])).toBe(2);
+    }
+    expect(errors.at(-1)).toContain('--retention-days');
   });
 });
