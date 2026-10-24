@@ -29,7 +29,8 @@
  *   SIGKILL loses the run's unsent child spans; its root start was sent eagerly.
  * - The daemon being down requeues the failed batch and retries with
  *   exponential backoff (1s base, 30s cap); only events evicted past the
- *   buffer cap, or still unsent after close()'s final attempt, drop into a
+ *   buffer cap (5000 events or 32MB, whichever comes first), events past the
+ *   crash flush's 16MB, or still unsent after close()'s final attempt, drop into a
  *   `dropped` counter. It warns ONCE and never blocks or throws into a run.
  *   Timers are unref'd so observation never keeps a process alive.
  * - Its own HTTP calls are plain `fetch`, outside any span: instrumenting
@@ -73,7 +74,7 @@ export interface ObserveExporterOptions {
   flushIntervalMs?: number;
   /** Heartbeat cadence (default 60000ms); `0` disables heartbeats. */
   heartbeatIntervalMs?: number;
-  /** Buffer cap; past it the oldest events are evicted into `dropped` (default 5000, floor 1). */
+  /** Buffer cap in events; past it - or past the 32MB byte budget - the oldest events are evicted into `dropped` (default 5000, floor 1). */
   maxBuffered?: number;
   /** Per-request timeout (default 5000ms); close() aborts such a request and caps its final attempt at ~2000ms. */
   requestTimeoutMs?: number;
@@ -131,6 +132,18 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 5000;
 const EXIT_FLUSH_TIMEOUT_MS = 2000;
 /** How long a crash may block the dying process to deliver what is pending. */
 const CRASH_FLUSH_TIMEOUT_MS = 1000;
+/**
+ * Outbox byte budget: with content capture on, each generation event carries
+ * the conversation (twice: input and attrs), so an event-count cap alone could
+ * hold gigabytes while the daemon is down. Past it the oldest are evicted.
+ */
+const MAX_BUFFERED_BYTES = 32 * 1024 * 1024;
+/**
+ * What a crash flush sends at most, newest first kept: the bodies are copied
+ * to the worker synchronously before the 1s wait starts, so the copy is
+ * bounded too, and more would not get through in 1s anyway.
+ */
+const CRASH_FLUSH_MAX_BYTES = 16 * 1024 * 1024;
 const RETRY_BASE_MS = 1000;
 
 const INSTANCE_KEY = Symbol.for('lousho.observeInstance');
@@ -173,10 +186,16 @@ interface OutboxEntry {
 
 const utf8 = new TextEncoder();
 
+/** UTF-8 length of `text`: Buffer.byteLength where there is a Buffer (no copy), else an encoded copy's length. */
+const byteLengthOf: (text: string) => number =
+  typeof Buffer !== 'undefined' && typeof Buffer.byteLength === 'function'
+    ? (text) => Buffer.byteLength(text, 'utf8')
+    : (text) => utf8.encode(text).length;
+
 /** An event as an outbox entry; `undefined` when its body alone would pass the daemon's hard cap. */
 function entryOf(event: IngestEvent): OutboxEntry | undefined {
   const json = JSON.stringify(event);
-  const bytes = utf8.encode(json).length;
+  const bytes = byteLengthOf(json);
   return ENVELOPE_BYTES + bytes > OBSERVE_MAX_BODY_BYTES ? undefined : { json, bytes };
 }
 
@@ -208,21 +227,34 @@ function batchesOf(entries: readonly OutboxEntry[]): OutboxEntry[][] {
   return batches;
 }
 
+/** The newest of `entries` that fit in `budget` bytes, and how many older ones did not. */
+function newestWithin(entries: readonly OutboxEntry[], budget: number): { kept: OutboxEntry[]; cut: number } {
+  let start = entries.length;
+  for (let total = 0; start > 0 && total + entries[start - 1].bytes <= budget; start--) total += entries[start - 1].bytes;
+  return { kept: entries.slice(start), cut: start };
+}
+
 /**
- * The reporter's pending events: FIFO, capped at `cap` (the oldest are
- * evicted first, reported through `onEvict`), and gated by a retry backoff
+ * The reporter's pending events: FIFO, capped at `cap` events and `byteCap`
+ * bytes (the oldest are evicted first, the newest always stays, reported
+ * through `onEvict`), and gated by a retry backoff
  * after a failed send. Every send path - size, interval, exit - goes through
  * `take` / `delivered` / `failed`, so a failed batch is never lost while
  * there is room to keep it. A batch is cut by {@link batchEnd}, oldest first.
  */
-function createOutbox(cap: number, now: () => number, onEvict: (count: number) => void) {
+function createOutbox(cap: number, byteCap: number, now: () => number, onEvict: (count: number) => void) {
   let items: OutboxEntry[] = [];
+  let bytes = 0;
   let failures = 0;
   let retryAt = 0;
+  const sizeOf = (entries: readonly OutboxEntry[]): number => entries.reduce((sum, e) => sum + e.bytes, 0);
   const trim = (): void => {
-    const over = items.length - cap;
-    if (over <= 0) return;
+    let over = Math.max(0, items.length - cap);
+    let left = bytes - sizeOf(items.slice(0, over));
+    for (; left > byteCap && over < items.length - 1; over++) left -= items[over].bytes;
+    if (over === 0) return;
     items.splice(0, over);
+    bytes = left;
     onEvict(over);
   };
   return {
@@ -238,15 +270,20 @@ function createOutbox(cap: number, now: () => number, onEvict: (count: number) =
       const entry = entryOf(event);
       if (!entry) return false;
       items.push(entry);
+      bytes += entry.bytes;
       trim();
       return true;
     },
     /** The oldest batch, for one send - or nothing while backing off, unless `force` (the final attempt). */
     take(force = false): OutboxEntry[] {
-      return force || now() >= retryAt ? items.splice(0, batchEnd(items, 0)) : [];
+      if (!force && now() < retryAt) return [];
+      const batch = items.splice(0, batchEnd(items, 0));
+      bytes -= sizeOf(batch);
+      return batch;
     },
     /** Everything pending, uncut (the crash flush; counting what a failed final attempt leaves). */
     drain(): OutboxEntry[] {
+      bytes = 0;
       return items.splice(0, items.length);
     },
     delivered(): void {
@@ -256,6 +293,7 @@ function createOutbox(cap: number, now: () => number, onEvict: (count: number) =
     /** Put a failed batch back in front of anything queued since, trim to the cap, and back off. */
     failed(batch: OutboxEntry[]): void {
       items = batch.concat(items); // no spread: keeps call arguments bounded whatever the batch size
+      bytes += sizeOf(batch);
       trim();
       retryAt = now() + retryDelayMs(failures++);
     },
@@ -403,10 +441,10 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
     );
   };
 
-  const outbox = createOutbox(maxBuffered, now, (count) => {
+  const outbox = createOutbox(maxBuffered, MAX_BUFFERED_BYTES, now, (count) => {
     droppedCount += count;
     warnOnce(
-      `buffer is full (${maxBuffered} events); dropping the oldest`,
+      `buffer is full (${maxBuffered} events or ${MAX_BUFFERED_BYTES / (1024 * 1024)}MB); dropping the oldest`,
       new SDKError('observe buffer full', 'LOUSHO_REMOTE_REQUEST_FAILED', { appendHelp: false })
     );
   });
@@ -583,13 +621,16 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
   /**
    * The process is dying of an uncaught exception or unhandled rejection:
    * Node exits as soon as the monitor returns, so no async send can finish.
-   * Send everything pending, oldest first - the batch a regular POST was
+   * Send what is pending, oldest first - the batch a regular POST was
    * carrying included (re-sent events upsert by key) - as successive POSTs,
-   * cut like any other batch, that together block for at most 1s.
+   * cut like any other batch, that together block for at most 1s. Only the
+   * newest CRASH_FLUSH_MAX_BYTES go; older events are counted as dropped.
    */
   const crashFlush = (): void => {
     if (!shutdown()) return;
-    const batches = batchesOf(inFlight.concat(outbox.drain()));
+    const { kept, cut } = newestWithin(inFlight.concat(outbox.drain()), CRASH_FLUSH_MAX_BYTES);
+    droppedCount += cut;
+    const batches = batchesOf(kept);
     const delivered = blockingPost(`${url}/api/v1/ingest`, headers, batches.map(bodyOf), CRASH_FLUSH_TIMEOUT_MS);
     batches.forEach((batch, i) => {
       if (!delivered[i]) droppedCount += batch.length;

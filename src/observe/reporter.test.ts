@@ -433,6 +433,22 @@ describe('observeExporter', () => {
       expect(r.dropped).toBe(0);
     });
 
+    it('evicts the oldest events past the 32MB outbox byte budget and counts them', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      let down = true;
+      const { fetchFn, calls } = sizedFetch(() => (down ? 500 : 202));
+      const { r } = reporter({ fetchFn, flushSize: 10_000 });
+      // ~2MB per event (the input rides twice: input + attrs) x 24 = ~48MB, well under the 5000-event cap.
+      for (let i = 0; i < 24; i++) r.onSpanEnd(bigSpan(`big${i}`, 1024 * 1024));
+      expect(r.dropped).toBeGreaterThanOrEqual(7);
+      expect(r.dropped).toBeLessThanOrEqual(9);
+      const kept = 24 - r.dropped;
+      down = false;
+      await r.flush();
+      await r.flush();
+      expect(calls.flatMap((c) => c.ids)).toEqual(Array.from({ length: kept }, (_, i) => `big${24 - kept + i}`));
+    });
+
     it('drops and counts one event too large for any request, and keeps delivering', async () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       const { fetchFn, calls } = sizedFetch();
@@ -669,7 +685,7 @@ describe('observeExporter', () => {
 describe('crash flush', () => {
   const fixture = path.join(__dirname, '__fixtures__', 'crashAfterRun.mts');
   const repoRoot = path.resolve(__dirname, '..', '..');
-  type Mode = 'throw' | 'reject' | 'inflight' | 'handled' | 'capture' | 'backlog' | 'bigbacklog';
+  type Mode = 'throw' | 'reject' | 'inflight' | 'handled' | 'capture' | 'backlog' | 'bigbacklog' | 'hugebacklog';
 
   /**
    * Run the fixture against an in-test collector; resolves with its exit and
@@ -736,9 +752,24 @@ describe('crash flush', () => {
   it('cuts a crash backlog of large events at the byte budget', async () => {
     const { code, batches } = await crash('bigbacklog');
     expect(code).toBe(1);
-    expect(batches.length).toBeGreaterThanOrEqual(2); // 30 x 200KB = ~6MB
+    expect(batches.length).toBeGreaterThanOrEqual(3); // 31 runs x (start + end) x 2 copies of ~100KB = ~12MB
     for (const batch of batches) expect(Buffer.byteLength(JSON.stringify({ batch }))).toBeLessThanOrEqual(4 * 1024 * 1024);
     expect(batches.flatMap(obsIds)).toEqual(['crash-span', ...Array.from({ length: 30 }, (_, i) => `big-${i}`)]);
+  }, 30_000);
+
+  it('sends only the newest 16MB of a crash backlog and stays within its time bound', async () => {
+    const { code, stderr, batches } = await crash('hugebacklog');
+    expect(code).toBe(1);
+    // The fixture stamps the moment it throws and the reporter's crash flush has its 1s cap (worker start-up included).
+    const thrownAt = Number(/thrown-at=(\d+)/.exec(stderr)?.[1]);
+    const exitedAt = Number(/exit-at=(\d+)/.exec(stderr)?.[1]);
+    expect(exitedAt - thrownAt).toBeLessThan(1500);
+    const bytes = batches.reduce((sum, batch) => sum + Buffer.byteLength(JSON.stringify({ batch })), 0);
+    expect(bytes).toBeLessThanOrEqual(16 * 1024 * 1024 + 64 * 1024);
+    const ids = batches.flatMap(obsIds);
+    expect(ids.length).toBeGreaterThan(0);
+    expect(ids.at(-1)).toBe('huge-199'); // newest first to be kept
+    expect(batches.flat().map((e) => e.type)).toContain('agent.deregister');
   }, 30_000);
 
   it('resends the batch a POST still in flight was carrying when the process died', async () => {
