@@ -1,0 +1,235 @@
+/*
+ * Shared primitives used by more than one screen (buttons, status pills, form
+ * fields, chips, switches). Moved out of layout.css unchanged; imported before
+ * layout.css so the chrome, Agents and drawer rules keep their cascade position.
+ */
+
+/* read by screen readers, not drawn (the page h1, status prefixes). */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 3px var(--success-soft);
+}
+
+.btn {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: filter 0.12s, transform 0.04s;
+}
+.btn:hover {
+  filter: brightness(1.05);
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.btn-primary {
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
+  color: var(--on-accent);
+}
+.btn-success {
+  background: var(--success-soft);
+  border-color: var(--success);
+  color: var(--success);
+}
+.btn-danger {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.btn-ghost {
+  background: transparent;
+}
+.btn[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.status-pill {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.status-pill .dot {
+  width: 5px;
+  height: 5px;
+  box-shadow: none;
+  /* match each status pill's own text color (success/danger/
+     warning/faint, set by .status-running/.status-error/.status-paused/
+     .status-stopped above) instead of always rendering the base `.dot`
+     rule's green - a status pill's dot should reflect that status. */
+  background: currentColor;
+}
+.status-running,
+.status-done {
+  background: var(--success-soft);
+  color: var(--success);
+}
+/* an unsaved agent is a warning, not a green "running". */
+.status-unsaved {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.btn-danger-text {
+  color: var(--danger);
+}
+
+.status-stopped,
+.status-idle {
+  background: var(--surface-2);
+  color: var(--text-faint);
+}
+.status-error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.status-paused {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.node-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.field {
+  margin-bottom: 13px;
+}
+.field label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 5px;
+}
+.field .hint {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  margin-top: 4px;
+}
+.field .hint.field-error {
+  color: var(--danger);
+}
+.input,
+.select,
+.textarea {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 7px 9px;
+  font-size: 12px;
+  font-family: var(--font-ui);
+}
+.textarea {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  min-height: 64px;
+  resize: vertical;
+}
+.input:focus,
+.select:focus,
+.textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+.row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: 20px;
+  padding: 4px 9px 4px 8px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+.chip.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.switch {
+  width: 30px;
+  height: 17px;
+  border-radius: 20px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  position: relative;
+  cursor: pointer;
+  flex: none;
+}
+.switch.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  top: 1.5px;
+  left: 2px;
+  transition: left 0.12s;
+}
+.switch.on::after {
+  left: 15px;
+}
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 0;
+}

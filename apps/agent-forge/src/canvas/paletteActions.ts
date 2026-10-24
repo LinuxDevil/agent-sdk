@@ -1,7 +1,7 @@
 import { HOOK_TEMPLATES, type HookTemplate } from '../hooks/hookTemplates';
 import type { AgentNodeHookPhase, GraphPosition } from '../graph/types';
 
-/** Approximate rendered size of an `.rf-node` (layout.css), used to centre a newly added node. */
+/** Approximate rendered size of an `.rf-node` (screens/agents/agents.css), used to centre a newly added node. */
 const NODE_SIZE = { width: 190, height: 80 };
 
 /**
