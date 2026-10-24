@@ -12,6 +12,10 @@
  * - On a transition to `down` the agent crashed (no deregister landed): its
  *   open sessions and unfinished observations flip to `interrupted`, so dead
  *   runs do not look alive.
+ * - Per instance (one reporter process of an agent): an instance whose own
+ *   heartbeats went quiet past the same `down` threshold gets its open runs
+ *   flipped to `interrupted` and is forgotten - even while another process
+ *   of the same agent keeps the agent itself healthy.
  * - Check today's error rate (day rollups) against the configured threshold;
  *   the crossing alert fires once per agent per day bucket, so a fleet stuck
  *   over the line warns once, not every 30s.
@@ -24,6 +28,7 @@ import {
   freshnessStatus,
   heartbeatIntervalFromMeta,
   interruptAgentWork,
+  interruptInstance,
   setAgentStatus,
   transaction,
 } from './store';
@@ -58,6 +63,17 @@ export interface SweepPassOptions {
   errorRateState?: Map<string, number>;
 }
 
+/** Interrupt the open runs of every instance whose heartbeats aged past `down`, and forget it. */
+function sweepInstances(db: SqlDatabase, now: number): void {
+  for (const row of db
+    .prepare('SELECT i.agent_id, i.instance_id, i.last_heartbeat, a.meta FROM agent_instances i LEFT JOIN agents a ON a.agent_id = i.agent_id')
+    .all()) {
+    const interval = heartbeatIntervalFromMeta(row.meta) ?? HEARTBEAT_INTERVAL_DEFAULT_MS;
+    if (freshnessStatus(Math.max(0, now - Number(row.last_heartbeat)), interval) !== 'down') continue;
+    interruptInstance(db, String(row.agent_id), String(row.instance_id), now);
+  }
+}
+
 /**
  * One sweep pass: recompute statuses, persist transitions, interrupt crashed
  * agents' open work, and return the alerts this pass produced. The row
@@ -68,6 +84,7 @@ export function sweepAgents(db: SqlDatabase, now: number = Date.now(), options: 
   const transitions: AgentStatusTransition[] = [];
   const interrupted = new Map<string, { sessions: number; observations: number }>();
   transaction(db, () => {
+    sweepInstances(db, now);
     for (const row of db
       .prepare('SELECT agent_id, project, name, first_seen, last_heartbeat, status, meta FROM agents')
       .all()) {

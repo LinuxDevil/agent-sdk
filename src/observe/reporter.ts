@@ -17,6 +17,10 @@
  *   process is SIGKILLed is still visible, and turns `interrupted` when its
  *   agent goes down. The end event overwrites that row; child spans stay
  *   end-only so event volume stays flat.
+ * - Every heartbeat, run root and the deregister carry this process's
+ *   `instance_id` (random per process; `agent_id` is shared by restarts
+ *   and siblings), so the daemon can interrupt a killed process's open runs
+ *   while a restarted or sibling process keeps the agent healthy.
  * - Flush on size (50), on interval (5s), and on process exit (~2s cap:
  *   close() aborts a regular flush still in flight and makes one final
  *   attempt with the 2s timeout), and on a crash (an uncaught exception or
@@ -41,7 +45,7 @@ import { SDKError } from '../execution/errors';
 import type { Span, TraceExporter } from '../execution/tracing';
 import { VERSION } from '../version';
 import { blockingPost } from './blockingPost';
-import { OBSERVE_DEFAULT_PORT, OBSERVE_MAX_BATCH_EVENTS, OBSERVE_MAX_BODY_BYTES, type IngestEvent, type ObservationData, type ObservationKind, type PromptUseData } from './envelope';
+import { OBSERVE_DEFAULT_PORT, OBSERVE_INSTANCE_ATTR, OBSERVE_MAX_BATCH_EVENTS, OBSERVE_MAX_BODY_BYTES, type IngestEvent, type ObservationData, type ObservationKind, type PromptUseData } from './envelope';
 import { observeTargetFromEnv } from './emit';
 import { hostName, resolveIdentity, resolveProject } from './identity';
 
@@ -127,6 +131,14 @@ const EXIT_FLUSH_TIMEOUT_MS = 2000;
 /** How long a crash may block the dying process to deliver what is pending. */
 const CRASH_FLUSH_TIMEOUT_MS = 1000;
 const RETRY_BASE_MS = 1000;
+
+let instanceId: string | undefined;
+/**
+ * This process's reporter instance: one per process, shared by every reporter
+ * in it. Drawn on first use, not at import: Cloudflare Workers refuse random
+ * values in global scope.
+ */
+const processInstance = (): string => (instanceId ??= globalThis.crypto.randomUUID());
 const RETRY_CAP_MS = 30_000;
 
 /** Wait before the next send after `failures` consecutive failed ones (0-based): 1s, 2s, 4s ... capped at 30s. */
@@ -332,7 +344,8 @@ function observationOf(span: Span, traceId: string, agentId: string, fallbackSes
     ...(num(attrs[SdkAttr.COST_USD]) !== undefined ? { cost_usd: num(attrs[SdkAttr.COST_USD]) } : {}),
     ...(attrs['lousho.cost_partial'] === true ? { cost_partial: true } : {}),
     ...(attrs[SdkAttr.USAGE_ESTIMATED] === true ? { usage_estimated: true } : {}),
-    attrs,
+    // A run root names the process that started it (see OBSERVE_INSTANCE_ATTR); the span's own map is not touched.
+    attrs: span.parentId === undefined ? { ...attrs, [OBSERVE_INSTANCE_ATTR]: processInstance() } : attrs,
   };
 }
 
@@ -510,6 +523,7 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
         version,
         ts: now(),
         heartbeat_interval_ms: heartbeatIntervalMs,
+        instance_id: processInstance(),
         ...(hostName() !== undefined ? { hostname: hostName() } : {}),
         ...(typeof process !== 'undefined' && typeof process.pid === 'number' ? { pid: process.pid } : {}),
       },
@@ -546,7 +560,7 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
     }
     // Straight into the outbox (enqueue drops after close, push could start a
     // regular size flush); a full buffer evicts its oldest event rather than the deregister.
-    outbox.push({ type: 'agent.deregister', data: { agent_id: identity.agentId, ts: now() } });
+    outbox.push({ type: 'agent.deregister', data: { agent_id: identity.agentId, ts: now(), instance_id: processInstance() } });
     return true;
   };
 

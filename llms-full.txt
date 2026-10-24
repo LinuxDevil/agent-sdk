@@ -14139,8 +14139,17 @@ opens, without waiting for the 5 s interval, and Studio lists that trace as
 cost and output, and counts once. So a process killed mid-run (SIGKILL,
 power loss) still leaves its trace behind, and the trace flips to
 `interrupted` when the agent stops heartbeating and the sweep marks it
-`down`. A process that exits gracefully mid-run (SIGINT, SIGTERM) marks its
-open runs `interrupted` right away. Child spans (model calls and tool calls)
+`down`. Each reporter process also sends a random `instance_id`, because a
+restart or a second process of the same agent reports under the same agent
+id. When an agent comes back in a new process (a supervisor restart, or you
+re-run the script), the new process's first heartbeat marks the old
+process's open runs `interrupted`. When one of several processes of an agent
+goes quiet past the `down` threshold, the sweep marks that process's runs
+`interrupted` while the agent stays healthy. A process that exits gracefully
+mid-run (SIGINT, SIGTERM) marks its own open runs `interrupted` right away.
+An agent with heartbeats turned off (`heartbeatIntervalMs: 0`) is never
+swept, so its killed runs stay `running` until a process of the same agent
+with heartbeats on starts. Child spans (model calls and tool calls)
 are still sent only when they finish, so a killed run keeps the root and
 any child that finished and was already sent.
 

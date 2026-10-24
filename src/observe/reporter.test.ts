@@ -556,39 +556,77 @@ describe('observeExporter', () => {
       expect(ends.map((o) => [o.data.end, o.data.status])).toEqual([[180, 'ok']]);
     });
 
-    it('sends no start event for a child span', async () => {
-      const { r, posted } = reporter();
-      const root = makeSpan({ id: 'root', endTime: undefined });
-      r.onSpanStart(root);
-      await vi.waitFor(() => expect(posted).toHaveLength(1));
-      r.onSpanStart(makeSpan({ id: 'child', parentId: 'root', endTime: undefined }));
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(posted).toHaveLength(1);
-      expect(observations(posted).map((o) => o.data.obs_id)).toEqual(['root']);
-    });
+    describe('with fake timers', () => {
+      beforeEach(() => {
+        vi.useFakeTimers();
+      });
+      afterEach(() => {
+        vi.useRealTimers();
+      });
 
-    it('batches the start of runs begun together into one POST', async () => {
-      const { r, posted } = reporter();
-      for (const id of ['r1', 'r2', 'r3']) r.onSpanStart(makeSpan({ id, endTime: undefined }));
-      await vi.waitFor(() => expect(posted).toHaveLength(1));
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(posted).toHaveLength(1);
-      expect(observations(posted).map((o) => o.data.obs_id)).toEqual(['r1', 'r2', 'r3']);
-    });
-
-    it('does not retry a down daemon early: the eager flush waits out the backoff', async () => {
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-      try {
-        const { r, posted } = reporter({}, true);
-        r.onSpanStart(makeSpan({ id: 'first', endTime: undefined }));
-        await vi.waitFor(() => expect(posted).toHaveLength(1)); // answered 500: backing off 1s
-        r.onSpanStart(makeSpan({ id: 'second', endTime: undefined }));
-        await new Promise((resolve) => setTimeout(resolve, 50));
+      it('sends no start event for a child span', async () => {
+        const { r, posted } = reporter();
+        r.onSpanStart(makeSpan({ id: 'root', endTime: undefined }));
+        await vi.advanceTimersByTimeAsync(0);
         expect(posted).toHaveLength(1);
-        expect(r.dropped).toBe(0);
-      } finally {
-        warn.mockRestore();
-      }
+        r.onSpanStart(makeSpan({ id: 'child', parentId: 'root', endTime: undefined }));
+        await vi.advanceTimersByTimeAsync(10_000); // past any interval a flush could hide behind
+        expect(posted).toHaveLength(1);
+        expect(observations(posted).map((o) => o.data.obs_id)).toEqual(['root']);
+      });
+
+      it('batches the start of runs begun together into one POST', async () => {
+        const { r, posted } = reporter();
+        for (const id of ['r1', 'r2', 'r3']) r.onSpanStart(makeSpan({ id, endTime: undefined }));
+        await vi.advanceTimersByTimeAsync(10_000);
+        expect(posted).toHaveLength(1);
+        expect(observations(posted).map((o) => o.data.obs_id)).toEqual(['r1', 'r2', 'r3']);
+      });
+
+      it('does not retry a down daemon early: the eager flush waits out the backoff', async () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        try {
+          const { r, posted } = reporter({ flushIntervalMs: 100 }, true);
+          r.onSpanStart(makeSpan({ id: 'first', endTime: undefined }));
+          await vi.advanceTimersByTimeAsync(0);
+          expect(posted).toHaveLength(1); // answered 500: backing off 1s
+          r.onSpanStart(makeSpan({ id: 'second', endTime: undefined }));
+          await vi.advanceTimersByTimeAsync(999);
+          expect(posted).toHaveLength(1); // neither the eager flush nor the interval retried inside the backoff
+          await vi.advanceTimersByTimeAsync(100);
+          expect(posted).toHaveLength(2); // the interval retries after it, carrying both starts
+          expect(posted[1].events.map((e) => e.type === 'observation' && e.data.obs_id)).toEqual(['first', 'second']);
+          expect(r.dropped).toBe(0);
+        } finally {
+          warn.mockRestore();
+        }
+      });
+    });
+
+    it('stamps one per-process instance id on heartbeats, run roots and the deregister', async () => {
+      const { r, posted } = reporter({ heartbeatIntervalMs: 60_000 });
+      const root = makeSpan({ id: 'root', endTime: undefined });
+      const child = makeSpan({ id: 'child', parentId: 'root' });
+      r.onSpanStart(root);
+      r.onSpanStart(child);
+      r.onSpanEnd(child);
+      r.onSpanEnd({ ...root, endTime: 200 });
+      await r.close();
+      const events = allEvents(posted);
+      const hb = events.find((e) => e.type === 'agent.heartbeat');
+      const instance = hb?.type === 'agent.heartbeat' ? hb.data.instance_id : undefined;
+      expect(instance).toMatch(/^[0-9a-f-]{36}$/);
+      const attrOf = (id: string) => observations(posted).filter((o) => o.data.obs_id === id).map((o) => o.data.attrs?.['lousho.instance_id']);
+      expect(attrOf('root')).toEqual([instance, instance]); // the start and the end event
+      expect(attrOf('child')).toEqual([undefined]);
+      expect(root.attributes['lousho.instance_id']).toBeUndefined(); // the span itself is not touched
+      const bye = events.find((e) => e.type === 'agent.deregister');
+      expect(bye?.type === 'agent.deregister' && bye.data.instance_id).toBe(instance);
+      // one process, one instance: another reporter here reports the same id
+      const other = reporter({ heartbeatIntervalMs: 60_000 });
+      await other.r.close();
+      const hb2 = allEvents(other.posted).find((e) => e.type === 'agent.heartbeat');
+      expect(hb2?.type === 'agent.heartbeat' && hb2.data.instance_id).toBe(instance);
     });
   });
 

@@ -29,7 +29,7 @@ import { dirname, resolve } from 'node:path';
 import { loadDatabaseSync, type SqlDatabase } from '../storage/sqlite/driver';
 import { SDKError } from '../execution/errors';
 import { migrateObserve } from './schema';
-import { OBSERVE_TRUNCATE_CHARS, type IngestEvent, type ObservationData } from './envelope';
+import { OBSERVE_INSTANCE_ATTR, OBSERVE_TRUNCATE_CHARS, type IngestEvent, type ObservationData } from './envelope';
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
@@ -92,8 +92,8 @@ const OBS_UPSERT = `
     obs_id, trace_id, session_id, agent_id, parent_obs_id, kind, name,
     start, "end", status, input, output, model,
     usage_input_tokens, usage_output_tokens, usage_cached_tokens, usage_reasoning_tokens,
-    cost_usd, cost_partial, usage_estimated, truncated, attrs, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    cost_usd, cost_partial, usage_estimated, truncated, attrs, instance_id, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(obs_id) DO UPDATE SET
     trace_id = excluded.trace_id,
     session_id = excluded.session_id,
@@ -117,6 +117,7 @@ const OBS_UPSERT = `
     usage_estimated = excluded.usage_estimated,
     truncated = excluded.truncated,
     attrs = excluded.attrs,
+    instance_id = excluded.instance_id,
     updated_at = excluded.updated_at
   -- A finished row is final: a run's start event (end NULL) arriving after its
   -- end event - reordered by a requeue - must not reopen it.
@@ -181,6 +182,38 @@ const PROMPT_USE_UPSERT = `
     version = excluded.version
 `;
 
+const INSTANCE_UPSERT = `
+  INSERT INTO agent_instances (agent_id, instance_id, first_seen, last_heartbeat)
+  VALUES (?, ?, ?, ?)
+  ON CONFLICT(agent_id, instance_id) DO UPDATE SET
+    last_heartbeat = MAX(agent_instances.last_heartbeat, excluded.last_heartbeat)
+`;
+
+/**
+ * A heartbeat from `instanceId`. The first one from an instance means the
+ * agent (re)started in a new process: the open runs of its earlier instances
+ * can never finish - a supervisor restart or a re-run comes back well inside
+ * the window the sweep needs to call the agent down - so they flip to
+ * 'interrupted'. A sibling process starting up does the same to a live
+ * sibling's runs; their end event settles them again.
+ */
+function recordInstance(db: SqlDatabase, agentId: string, instanceId: string, ts: number, now: number): void {
+  const known = db.prepare('SELECT 1 AS k FROM agent_instances WHERE agent_id = ? AND instance_id = ?').get(agentId, instanceId);
+  if (!known) {
+    db.prepare(
+      `UPDATE observations SET status = 'interrupted', updated_at = ?
+       WHERE agent_id = ? AND "end" IS NULL AND instance_id IS NOT NULL AND instance_id != ?`
+    ).run(now, agentId, instanceId);
+  }
+  db.prepare(INSTANCE_UPSERT).run(agentId, instanceId, ts, ts);
+}
+
+/** The reporter instance that started this observation's run (root rows only; older SDKs send none). */
+function instanceOf(data: ObservationData): string | null {
+  const id = data.attrs?.[OBSERVE_INSTANCE_ATTR];
+  return typeof id === 'string' ? id : null;
+}
+
 const bool = (value: boolean | undefined): number | null => (value === undefined ? null : value ? 1 : 0);
 
 function writeObservation(db: SqlDatabase, now: number, data: ObservationData): void {
@@ -210,6 +243,7 @@ function writeObservation(db: SqlDatabase, now: number, data: ObservationData): 
     bool(data.usage_estimated),
     cut.truncated || data.truncated === true ? 1 : 0,
     data.attrs === undefined ? null : JSON.stringify(data.attrs),
+    instanceOf(data),
     now
   );
   if (data.session_id !== undefined) {
@@ -232,6 +266,7 @@ function writeEvent(db: SqlDatabase, now: number, event: IngestEvent): void {
         JSON.stringify({ heartbeat_interval_ms: d.heartbeat_interval_ms, hostname: d.hostname, pid: d.pid, ...d.meta }),
         now
       );
+      if (d.instance_id !== undefined) recordInstance(db, d.agent_id, d.instance_id, ts, now);
       return;
     }
     case 'agent.deregister': {
@@ -239,7 +274,9 @@ function writeEvent(db: SqlDatabase, now: number, event: IngestEvent): void {
       const ts = d.ts ?? now;
       db.prepare(DEREGISTER_UPSERT).run(d.agent_id, ts, ts, now);
       // A graceful exit with a run still open (SIGINT mid-run): its end never comes.
-      interruptOpenObservations(db, d.agent_id, now);
+      // Only the exiting process's runs: a sibling under the same agent_id lives on.
+      if (d.instance_id === undefined) interruptOpenObservations(db, d.agent_id, now);
+      else interruptInstance(db, d.agent_id, d.instance_id, now);
       return;
     }
     case 'observation':
@@ -277,7 +314,7 @@ function recomputeBucket(db: SqlDatabase, granularity: RollupGranularity, bucket
   db.prepare(
     `WITH roots AS (
        SELECT agent_id, status, cost_usd, usage_input_tokens, usage_output_tokens,
-              COALESCE("end", start) - start AS duration
+              CASE WHEN "end" IS NULL THEN NULL ELSE "end" - start END AS duration
        FROM observations
        WHERE parent_obs_id IS NULL AND agent_id IS NOT NULL AND start >= ? AND start < ?
      )
@@ -287,7 +324,7 @@ function recomputeBucket(db: SqlDatabase, granularity: RollupGranularity, bucket
      UNION ALL SELECT ?, ?, agent_id, 'cost_usd', SUM(COALESCE(cost_usd, 0)) FROM roots GROUP BY agent_id
      UNION ALL SELECT ?, ?, agent_id, 'input_tokens', SUM(COALESCE(usage_input_tokens, 0)) FROM roots GROUP BY agent_id
      UNION ALL SELECT ?, ?, agent_id, 'output_tokens', SUM(COALESCE(usage_output_tokens, 0)) FROM roots GROUP BY agent_id
-     UNION ALL SELECT ?, ?, agent_id, 'latency_ms', SUM(duration) FROM roots GROUP BY agent_id`
+     UNION ALL SELECT ?, ?, agent_id, 'latency_ms', COALESCE(SUM(duration), 0) FROM roots GROUP BY agent_id`
   ).run(
     bucketStart, bucketEnd,
     bucketStart, granularity, bucketStart, granularity, bucketStart, granularity,
@@ -379,6 +416,15 @@ export function interruptAgentWork(db: SqlDatabase, agentId: string, now: number
     )
     .run(now, now, agentId);
   return { sessions: Number(sessions.changes), observations: interruptOpenObservations(db, agentId, now) };
+}
+
+/** Flip one instance's open observations to 'interrupted' and forget the instance. */
+export function interruptInstance(db: SqlDatabase, agentId: string, instanceId: string, now: number): number {
+  const result = db
+    .prepare(`UPDATE observations SET status = 'interrupted', updated_at = ? WHERE agent_id = ? AND instance_id = ? AND "end" IS NULL`)
+    .run(now, agentId, instanceId);
+  db.prepare('DELETE FROM agent_instances WHERE agent_id = ? AND instance_id = ?').run(agentId, instanceId);
+  return Number(result.changes);
 }
 
 /** Flip `agentId`'s unfinished observations (`end IS NULL`) to 'interrupted'; a later end event still settles them. */
