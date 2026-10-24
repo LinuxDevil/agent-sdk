@@ -513,6 +513,86 @@ describe('observeExporter', () => {
     });
   });
 
+  describe('open run roots through the outbox trim', () => {
+    /** A child of `parent` whose input is `bytes` of ASCII. */
+    const bigChild = (id: string, parent: string, bytes: number): Span => ({
+      ...makeSpan({ id, attributes: { [GenAiAttr.INPUT_MESSAGES]: 'x'.repeat(bytes) } }),
+      parentId: parent,
+    });
+    /** A fetch answering 500 while `down()`, recording each delivered observation as `<id>:start` / `<id>:end`. */
+    function downFetch(down: () => boolean) {
+      const delivered: string[] = [];
+      let calls = 0;
+      const fetchFn = vi.fn(async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        calls++;
+        if (down()) return new Response('{}', { status: 500 });
+        for (const e of (JSON.parse(String(init?.body)) as { batch: IngestEvent[] }).batch) {
+          if (e.type === 'observation') delivered.push(`${e.data.obs_id}:${e.data.end === undefined ? 'start' : 'end'}`);
+        }
+        return new Response('{}', { status: 202 });
+      }) as unknown as typeof fetch;
+      return { fetchFn, delivered, calls: () => calls };
+    }
+    /** Flush until a flush delivers nothing new. */
+    async function drain(r: ObserveReporter, delivered: string[]): Promise<void> {
+      for (let before = -1; before !== delivered.length; ) {
+        before = delivered.length;
+        await r.flush();
+      }
+    }
+    const openRoot = (id: string): Span => makeSpan({ id, endTime: undefined });
+
+    it('keeps an open root start behind 40MB of child events, evicting the children instead', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      let down = true;
+      const { fetchFn, delivered, calls } = downFetch(() => down);
+      const { r } = reporter({ fetchFn, flushSize: 10_000 });
+      r.onSpanStart(openRoot('run'));
+      await vi.waitFor(() => expect(calls()).toBe(1)); // the eager start failed and was requeued
+      // ~2MB per child (the input rides twice) x 20 = ~40MB, past the 32MB byte cap
+      for (let i = 0; i < 20; i++) {
+        const child = bigChild(`c${i}`, 'run', 1024 * 1024);
+        r.onSpanStart(child);
+        r.onSpanEnd(child);
+      }
+      expect(r.dropped).toBeGreaterThanOrEqual(4);
+      const kept = 20 - r.dropped;
+      down = false;
+      await drain(r, delivered);
+      expect(delivered).toEqual(['run:start', ...Array.from({ length: kept }, (_, i) => `c${20 - kept + i}:end`)]);
+    });
+
+    it("lets a closed root's start be evicted again", async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      let down = true;
+      const { fetchFn, delivered, calls } = downFetch(() => down);
+      const { r } = reporter({ fetchFn, flushSize: 10_000 });
+      const root = openRoot('run');
+      r.onSpanStart(root);
+      await vi.waitFor(() => expect(calls()).toBe(1));
+      r.onSpanEnd({ ...root, endTime: 180 });
+      for (let i = 0; i < 20; i++) r.onSpanEnd(bigChild(`c${i}`, 'other', 1024 * 1024));
+      down = false;
+      await drain(r, delivered);
+      expect(delivered).not.toContain('run:start');
+      expect(delivered).not.toContain('run:end');
+    });
+
+    it('still evicts, oldest first, when only open root starts are over the cap', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      let down = true;
+      const { fetchFn, delivered, calls } = downFetch(() => down);
+      const { r } = reporter({ fetchFn, flushSize: 10_000, maxBuffered: 3 });
+      r.onSpanStart(openRoot('r0'));
+      await vi.waitFor(() => expect(calls()).toBe(1));
+      for (let i = 1; i < 6; i++) r.onSpanStart(openRoot(`r${i}`));
+      expect(r.dropped).toBe(3);
+      down = false;
+      await drain(r, delivered);
+      expect(delivered).toEqual(['r3:start', 'r4:start', 'r5:start']);
+    });
+  });
+
   it('clamps maxBuffered to 1 so the deregister survives', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     try {
@@ -722,7 +802,7 @@ describe('observeExporter', () => {
 describe('crash flush', () => {
   const fixture = path.join(__dirname, '__fixtures__', 'crashAfterRun.mts');
   const repoRoot = path.resolve(__dirname, '..', '..');
-  type Mode = 'throw' | 'reject' | 'inflight' | 'handled' | 'capture' | 'backlog' | 'bigbacklog' | 'hugebacklog';
+  type Mode = 'throw' | 'reject' | 'inflight' | 'handled' | 'capture' | 'backlog' | 'bigbacklog' | 'hugebacklog' | 'openroot';
 
   /**
    * Run the fixture against an in-test collector; resolves with its exit and
@@ -805,8 +885,23 @@ describe('crash flush', () => {
     expect(bytes).toBeLessThanOrEqual(16 * 1024 * 1024 + 64 * 1024);
     const ids = batches.flatMap(obsIds);
     expect(ids.length).toBeGreaterThan(0);
-    expect(ids.at(-1)).toBe('huge-199'); // newest first to be kept
+    // Newest kept, sent oldest first under a 1s deadline: a consecutive run of the newest spans, the oldest cut.
+    const first = Number(/huge-(\d+)/.exec(ids[0])?.[1]);
+    expect(first).toBeGreaterThan(0);
+    expect(ids).toEqual(Array.from({ length: ids.length }, (_, i) => `huge-${first + i}`));
     expect(batches.flat().map((e) => e.type)).toContain('agent.deregister');
+  }, 30_000);
+
+  it("keeps an open run's root start in a crash slice past 16MB", async () => {
+    const { code, batches } = await crash('openroot');
+    expect(code).toBe(1);
+    const events = batches.flatMap(obsEvents);
+    expect(events[0]).toBe('open-run:start'); // kept, and ahead of its children
+    const children = events.slice(1);
+    expect(children.length).toBeGreaterThan(0);
+    expect(children.length).toBeLessThan(100); // the oldest children were cut instead
+    const first = Number(/child-(\d+)/.exec(children[0])?.[1]);
+    expect(children).toEqual(Array.from({ length: children.length }, (_, i) => `child-${first + i}:end`));
   }, 30_000);
 
   it('resends the batch a POST still in flight was carrying when the process died', async () => {
