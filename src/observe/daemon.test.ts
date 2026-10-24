@@ -5,9 +5,10 @@
  * port-collision detection.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { isObserveDaemon, probeHealth, startObserveDaemon, type ObserveDaemon } from './daemon';
+import * as nodePath from 'node:path';
+import { defaultPidPath, isObserveDaemon, probeHealth, sameDbPath, startObserveDaemon, type ObserveDaemon } from './daemon';
 import { OBSERVE_SERVICE } from './envelope';
-import { createToken } from './store';
+import { createToken, openDb } from './store';
 
 const T0 = 1_700_000_000_000;
 
@@ -54,6 +55,24 @@ describe('GET /health', () => {
     expect(body.ok).toBe(true);
     expect(typeof body.version).toBe('string');
     expect(isObserveDaemon(await probeHealth(daemon.port))).toBe(true);
+  });
+});
+
+describe('per-db pidfile and db identity', () => {
+  it('names the pidfile after the db so two dbs in one folder never share it', () => {
+    expect(defaultPidPath('/d/a.db')).toBe(nodePath.resolve('/d/a.pid'));
+    expect(defaultPidPath('/d/b.db')).toBe(nodePath.resolve('/d/b.pid'));
+    expect(defaultPidPath('/d/observe.db')).toBe(nodePath.resolve('/d/observe.pid'));
+    expect(defaultPidPath('/d/data.sqlite')).toBe(nodePath.resolve('/d/data.sqlite.pid'));
+  });
+
+  it('/health reports the absolute db path; sameDbPath compares resolved paths', async () => {
+    const daemon = await start({ dbPath: 'mem-test.db', db: openDb(':memory:') });
+    const health = await probeHealth(daemon.port);
+    expect(health?.db).toBe(nodePath.resolve('mem-test.db'));
+    expect(sameDbPath(health?.db, 'mem-test.db')).toBe(true);
+    expect(sameDbPath(health?.db, 'other.db')).toBe(false);
+    expect(sameDbPath(undefined, 'other.db')).toBe(false);
   });
 });
 

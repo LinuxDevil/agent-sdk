@@ -6,6 +6,7 @@
  * row-count surface `lousho observe status` prints.
  */
 
+import * as path from 'node:path';
 import { VERSION } from '../../version';
 import { observeCounts } from '../store';
 import { sendJson, type Route } from './httpKit';
@@ -14,8 +15,9 @@ export const statusRoutes: readonly Route[] = [
   {
     method: 'GET',
     path: '/health',
-    handle: ({ res }) => {
-      sendJson(res, 200, { service: 'lousho-observe', ok: true, version: VERSION });
+    handle: ({ res, dbPath }) => {
+      // `db` lets `start`/`stop` tell which database a port or pid serves.
+      sendJson(res, 200, { service: 'lousho-observe', ok: true, version: VERSION, db: dbPath === ':memory:' ? dbPath : path.resolve(dbPath) });
     },
   },
   {

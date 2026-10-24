@@ -21,6 +21,7 @@ import {
   defaultDbPath,
   defaultPidPath,
   isObserveDaemon,
+  sameDbPath,
   probeHealth,
   startObserveDaemon,
   type HealthProbe,
@@ -114,6 +115,25 @@ function envPort(): number {
 
 /* ------------------------------------------------------------------- start */
 
+/** `start` hit EADDRINUSE: say who owns the port. 0 = this db's daemon already runs; 1 = anything else. */
+async function reportPortInUse(port: number, host: string, dbPath: string): Promise<number> {
+  const health = await probeHealth(port, host);
+  if (!isObserveDaemon(health)) {
+    console.error(
+      `lousho observe: port ${port} is taken by another service (its /health is not ${OBSERVE_SERVICE}). Pass --port <free>, or stop that service.`
+    );
+    return 1;
+  }
+  if (health.db !== undefined && !sameDbPath(health.db, dbPath)) {
+    console.error(
+      `lousho observe: port ${port} is serving ${health.db}, not ${dbPath}. Pass --port <free> for this db, or stop that daemon first.`
+    );
+    return 1;
+  }
+  console.log(`lousho observe: already running on http://${host}:${port} (service ${OBSERVE_SERVICE}, version ${health.version ?? 'unknown'}).`);
+  return 0;
+}
+
 async function runStart(args: string[]): Promise<number> {
   const spec = SUB_SPECS.start;
   const { values, help } = parseCommand(spec, args);
@@ -132,17 +152,7 @@ async function runStart(args: string[]): Promise<number> {
   try {
     daemon = await startObserveDaemon({ dbPath, port, host, requireToken, pidPath, webhooks });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
-      const health = await probeHealth(port, host);
-      if (isObserveDaemon(health)) {
-        console.log(`lousho observe: already running on http://${host}:${port} (service ${OBSERVE_SERVICE}, version ${health.version ?? 'unknown'}).`);
-        return 0;
-      }
-      console.error(
-        `lousho observe: port ${port} is taken by another service (its /health is not ${OBSERVE_SERVICE}). Pass --port <free>, or stop that service.`
-      );
-      return 1;
-    }
+    if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') return reportPortInUse(port, host, dbPath);
     throw error;
   }
 
@@ -215,6 +225,36 @@ async function runStatus(args: string[]): Promise<number> {
 
 /* -------------------------------------------------------------------- stop */
 
+/** The pidfile's pid (line 1) and, for newer daemons, the port it listens on (line 2). */
+function readPidfile(pidPath: string): { pid?: number; port?: number } {
+  let text: string;
+  try {
+    text = fs.readFileSync(pidPath, 'utf8');
+  } catch {
+    return {};
+  }
+  const [pidLine = '', portLine] = text.split(/\r?\n/);
+  const pid = Number(pidLine.trim());
+  const port = Number(portLine?.trim());
+  return {
+    ...(Number.isInteger(pid) && pid > 0 ? { pid } : {}),
+    ...(Number.isInteger(port) && port > 0 ? { port } : {}),
+  };
+}
+
+/**
+ * What the daemon at the pidfile's port serves when that is not `dbPath`
+ * (a different db, or another service); `undefined` when it matches or cannot
+ * be verified (no port recorded, nothing answers).
+ */
+async function stopMismatch(port: number | undefined, dbPath: string): Promise<string | undefined> {
+  if (port === undefined) return undefined;
+  const health = await probeHealth(port);
+  if (health === undefined) return undefined;
+  if (!isObserveDaemon(health)) return 'another service';
+  return health.db !== undefined && !sameDbPath(health.db, dbPath) ? health.db : undefined;
+}
+
 async function runStop(args: string[]): Promise<number> {
   const spec = SUB_SPECS.stop;
   const { values, help } = parseCommand(spec, args);
@@ -224,15 +264,17 @@ async function runStop(args: string[]): Promise<number> {
   }
   const dbPath = dbPathOf(values.db);
   const pidPath = defaultPidPath(dbPath);
-  let pid: number | undefined;
-  try {
-    pid = Number(fs.readFileSync(pidPath, 'utf8').trim());
-  } catch {
-    pid = undefined;
-  }
-  if (pid === undefined || !Number.isInteger(pid) || pid <= 0) {
+  const { pid, port: pidPort } = readPidfile(pidPath);
+  if (pid === undefined) {
     console.error(
       `lousho observe: no pidfile at ${pidPath}. If a daemon is running, stop it with Ctrl+C (or 'kill <pid>' / Task Manager).`
+    );
+    return 1;
+  }
+  const mismatch = await stopMismatch(pidPort, dbPath);
+  if (mismatch !== undefined) {
+    console.error(
+      `lousho observe: pid ${pid} in ${pidPath} serves ${mismatch}, not ${dbPath}; not signalling it. Remove the stale pidfile if it is wrong.`
     );
     return 1;
   }
