@@ -107,7 +107,7 @@ describe('observeExporter', () => {
 
   it('maps an ended span with unset status to ok', async () => {
     const { r, posted } = reporter();
-    const span = makeSpan({ id: 'ended', status: { code: 'unset' }, endTime: 150 });
+    const span = makeSpan({ id: 'ended', endTime: 150 });
     r.onSpanStart(span);
     r.onSpanEnd(span);
     await r.close();
