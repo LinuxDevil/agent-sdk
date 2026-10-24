@@ -1,9 +1,9 @@
 /**
  * `/observe/**` -> the observe daemon: the studio server forwards the
  * panels' GETs same-origin, because the daemon itself serves no CORS
- * headers. A dead daemon answers 502 with the `lousho observe start` hint;
- * writes are forwarded only for the allowlist (feedback scores), every other
- * non-GET stays reporter-only (405).
+ * headers. A dead daemon answers 502 with the `lousho observe start` hint.
+ * Writes go through only when OBSERVE_WRITE_ALLOWLIST names the method and
+ * path (feedback scores, a prompt label move); every other non-GET stays 405.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'node:http';
@@ -13,6 +13,7 @@ import * as os from 'node:os';
 import { once } from 'node:events';
 import request from 'supertest';
 import { createApp } from '../app';
+import { OBSERVE_WRITE_ALLOWLIST } from '../observeProxy';
 import { RunManager } from '../runRegistry';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
@@ -37,7 +38,7 @@ describe('observe proxy', () => {
     });
     app = createApp({ agentStore, runManager, baseDir });
 
-    // A stand-in for `lousho observe`: echoes the path it was asked for.
+    // A stand-in for `lousho observe`: echoes the method, path, content-type and body it was sent.
     daemon = http.createServer((req, res) => {
       let body = '';
       req.on('data', (chunk: Buffer) => (body += chunk.toString()));
@@ -98,5 +99,38 @@ describe('observe proxy', () => {
     expect((await request(app).post('/observe/api/v1/traces').send({})).status).toBe(405);
     expect((await request(app).put('/observe/api/v1/scores').send({})).status).toBe(405);
     expect((await request(app).delete('/observe/api/v1/scores')).status).toBe(405);
+  });
+
+  it('forwards an allowlisted PUT (prompt label move) with its JSON body and content-type', async () => {
+    const res = await request(app).put('/observe/api/v1/prompts/mira/labels/prod').send({ version: 2 });
+    expect(res.status).toBe(200);
+    expect(res.body.method).toBe('PUT');
+    expect(res.body.echoed).toBe('/api/v1/prompts/mira/labels/prod');
+    expect(res.body.contentType).toContain('application/json');
+    expect(res.body.body).toEqual({ version: 2 });
+  });
+
+  it.each([
+    ['post', '/observe/api/v1/prompts'],
+    ['put', '/observe/api/v1/prompts/mira'],
+    ['put', '/observe/api/v1/prompts/mira/labels/prod/extra'],
+    ['delete', '/observe/api/v1/prompts/mira/labels/prod'],
+    ['post', '/observe/api/v1/prompts/mira/labels/prod'],
+    ['post', '/observe/v1/traces'],
+  ] as const)('keeps %s %s at 405', async (method, url) => {
+    const res = await request(app)[method](url).send({ version: 1 });
+    expect(res.status).toBe(405);
+  });
+
+  it('rejects an allowlisted write whose body is over 1 MiB with 413', async () => {
+    const res = await request(app)
+      .put('/observe/api/v1/prompts/mira/labels/prod')
+      .send({ version: 1, pad: 'x'.repeat(1024 * 1024) });
+    expect(res.status).toBe(413);
+  });
+
+  it('exports one write allowlist of method + path pairs: feedback scores and the label move', () => {
+    expect(OBSERVE_WRITE_ALLOWLIST.map((entry) => entry.method)).toEqual(['POST', 'PUT']);
+    expect(OBSERVE_WRITE_ALLOWLIST.every((entry) => entry.path instanceof RegExp)).toBe(true);
   });
 });
