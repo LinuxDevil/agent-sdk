@@ -342,6 +342,13 @@ function writeEvent(db: SqlDatabase, now: number, event: IngestEvent): void {
  * Root-observation metrics of one bucket, per agent - recomputed wholesale
  * (DELETE + INSERT ... SELECT ... GROUP BY), which is what makes a resent
  * batch idempotent: it derives the same rows again rather than adding to them.
+ *
+ * Besides the additive metrics (runs, errors, cost_usd, input_tokens,
+ * output_tokens, latency_ms) each bucket carries two non-additive ones for the
+ * Insights charts: `error_rate` (errors / runs) and `p95_latency_ms` (over the
+ * bucket's closed roots; no row when none closed). They are stored as values,
+ * never summed across buckets. Rows written before they existed are
+ * backfilled by `lousho observe rebuild-rollups`.
  */
 function recomputeBucket(db: SqlDatabase, granularity: RollupGranularity, bucketStart: number, bucketEnd: number): void {
   db.prepare('DELETE FROM rollups WHERE granularity = ? AND bucket_start = ?').run(granularity, bucketStart);
@@ -358,12 +365,42 @@ function recomputeBucket(db: SqlDatabase, granularity: RollupGranularity, bucket
      UNION ALL SELECT ?, ?, agent_id, 'cost_usd', SUM(COALESCE(cost_usd, 0)) FROM roots GROUP BY agent_id
      UNION ALL SELECT ?, ?, agent_id, 'input_tokens', SUM(COALESCE(usage_input_tokens, 0)) FROM roots GROUP BY agent_id
      UNION ALL SELECT ?, ?, agent_id, 'output_tokens', SUM(COALESCE(usage_output_tokens, 0)) FROM roots GROUP BY agent_id
-     UNION ALL SELECT ?, ?, agent_id, 'latency_ms', COALESCE(SUM(duration), 0) FROM roots GROUP BY agent_id`
+     UNION ALL SELECT ?, ?, agent_id, 'latency_ms', COALESCE(SUM(duration), 0) FROM roots GROUP BY agent_id
+     UNION ALL SELECT ?, ?, agent_id, 'error_rate', CAST(COALESCE(SUM(status = 'error'), 0) AS REAL) / COUNT(*) FROM roots GROUP BY agent_id`
   ).run(
     bucketStart, bucketEnd,
     bucketStart, granularity, bucketStart, granularity, bucketStart, granularity,
-    bucketStart, granularity, bucketStart, granularity, bucketStart, granularity
+    bucketStart, granularity, bucketStart, granularity, bucketStart, granularity,
+    bucketStart, granularity
   );
+  insertBucketP95(db, granularity, bucketStart, bucketEnd);
+}
+
+/** One `p95_latency_ms` row per agent with a closed root in the bucket (the percentile, not the raw durations). */
+function insertBucketP95(db: SqlDatabase, granularity: RollupGranularity, bucketStart: number, bucketEnd: number): void {
+  const durations = closedRootDurations(db, bucketStart, bucketEnd);
+  const insert = db.prepare('INSERT INTO rollups (bucket_start, granularity, agent_id, metric, value) VALUES (?, ?, ?, ?, ?)');
+  for (const [agentId, sorted] of durations) {
+    insert.run(bucketStart, granularity, agentId, 'p95_latency_ms', percentile(sorted, 95));
+  }
+}
+
+/** Sorted durations of the finished root runs in `[since, until)`, per agent. */
+function closedRootDurations(db: SqlDatabase, since: number, until: number): Map<string, number[]> {
+  const durations = new Map<string, number[]>();
+  for (const row of db
+    .prepare(
+      // A run still open (or interrupted) has no latency yet; a zero would drag the percentiles down.
+      `SELECT agent_id, "end" - start AS d FROM observations
+       WHERE parent_obs_id IS NULL AND agent_id IS NOT NULL AND "end" IS NOT NULL AND start >= ? AND start < ?
+       ORDER BY agent_id, d`
+    )
+    .all(since, until)) {
+    const list = durations.get(String(row.agent_id)) ?? [];
+    list.push(Number(row.d));
+    durations.set(String(row.agent_id), list);
+  }
+  return durations;
 }
 
 /** Every (granularity, bucket) the batch's observations touch. */
@@ -1054,6 +1091,17 @@ export interface AgentInsights {
   p95_latency_ms: number | null;
 }
 
+/**
+ * Days the agent could have run inside the window: from the later of the
+ * window start and its first sighting (the window start when the agent row is
+ * missing) to the window end, never under one. An agent born today is not
+ * averaged over the six empty days before it existed.
+ */
+function activeDays(windowMs: { since: number; until: number }, firstSeen: number | undefined): number {
+  const from = Math.max(windowMs.since, firstSeen ?? windowMs.since);
+  return Math.max(1, Math.ceil((windowMs.until - from) / DAY_MS));
+}
+
 function percentile(sorted: number[], p: number): number | null {
   if (sorted.length === 0) return null;
   const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
@@ -1066,15 +1114,15 @@ function percentile(sorted: number[], p: number): number | null {
  * latency percentiles are the sanctioned drilldown on `observations`.
  */
 export function insightsAgents(db: SqlDatabase, windowMs: { since: number; until: number }): AgentInsights[] {
-  // Aggregate the day-granularity buckets inside the window; runs_per_day is
-  // averaged over the window's days, not only days that saw traffic.
-  const windowDays = Math.max(1, Math.ceil((windowMs.until - windowMs.since) / DAY_MS));
+  // Aggregate the day-granularity buckets inside the window. Only the additive
+  // metrics: p95_latency_ms / error_rate rows are per-bucket values, not sums.
   const sinceDay = windowMs.since - (windowMs.since % DAY_MS);
   const metrics = new Map<string, Map<string, number>>();
   for (const row of db
     .prepare(
       `SELECT agent_id, metric, SUM(value) AS v FROM rollups
        WHERE granularity = 'day' AND bucket_start >= ? AND bucket_start < ?
+         AND metric IN ('runs', 'errors', 'cost_usd', 'input_tokens', 'output_tokens')
        GROUP BY agent_id, metric`
     )
     .all(sinceDay, windowMs.until)) {
@@ -1083,21 +1131,9 @@ export function insightsAgents(db: SqlDatabase, windowMs: { since: number; until
     m.set(String(row.metric), Number(row.v));
     metrics.set(agentId, m);
   }
-  const durations = new Map<string, number[]>();
-  for (const row of db
-    .prepare(
-      // A run still open (or interrupted) has no latency yet; a zero would drag the percentiles down.
-      `SELECT agent_id, "end" - start AS d FROM observations
-       WHERE parent_obs_id IS NULL AND agent_id IS NOT NULL AND "end" IS NOT NULL AND start >= ? AND start < ?
-       ORDER BY agent_id, d`
-    )
-    .all(windowMs.since, windowMs.until)) {
-    const list = durations.get(String(row.agent_id)) ?? [];
-    list.push(Number(row.d));
-    durations.set(String(row.agent_id), list);
-  }
-  const names = new Map<string, { project: string | null; name: string | null }>();
-  for (const agent of listAgents(db)) names.set(agent.agent_id, { project: agent.project, name: agent.name });
+  const durations = closedRootDurations(db, windowMs.since, windowMs.until);
+  const names = new Map<string, { project: string | null; name: string | null; first_seen: number }>();
+  for (const agent of listAgents(db)) names.set(agent.agent_id, { project: agent.project, name: agent.name, first_seen: agent.first_seen });
   const agentIds = new Set([...metrics.keys(), ...durations.keys()]);
   return [...agentIds].sort().map((agentId) => {
     const m = metrics.get(agentId) ?? new Map<string, number>();
@@ -1109,7 +1145,7 @@ export function insightsAgents(db: SqlDatabase, windowMs: { since: number; until
       project: names.get(agentId)?.project ?? null,
       name: names.get(agentId)?.name ?? null,
       runs,
-      runs_per_day: runs / windowDays,
+      runs_per_day: runs / activeDays(windowMs, names.get(agentId)?.first_seen),
       errors,
       error_rate: runs > 0 ? errors / runs : 0,
       cost_usd: m.get('cost_usd') ?? 0,

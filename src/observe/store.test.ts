@@ -808,3 +808,69 @@ describe('latency rollup', () => {
     }
   });
 });
+
+describe('insights math and per-agent series (O14)', () => {
+  const DAY = 86_400_000;
+
+  it('averages runs/day over the days the agent was active, not the whole window', () => {
+    const database = db();
+    try {
+      // first seen at T0 ("today"), 12 runs since; the window reaches back 7 days
+      ingestBatch(database, [heartbeat('a1', T0), ...Array.from({ length: 12 }, (_, i) => obs({ obs_id: `r${i}`, trace_id: `t${i}`, start: T0 + i, end: T0 + i + 10 }))], T0);
+      const until = T0 + 3_600_000;
+      const [agent] = insightsAgents(database, { since: until - 7 * DAY, until });
+      expect(agent.runs).toBe(12);
+      expect(agent.runs_per_day).toBe(12);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('falls back to the window start when the agent row is missing', () => {
+    const database = db();
+    try {
+      ingestBatch(database, Array.from({ length: 14 }, (_, i) => obs({ obs_id: `r${i}`, trace_id: `t${i}`, start: T0 + i, end: T0 + i + 10 })));
+      const until = T0 + 3_600_000;
+      const [agent] = insightsAgents(database, { since: until - 7 * DAY, until });
+      expect(agent.runs_per_day).toBe(2);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('writes p95_latency_ms and error_rate per bucket, survives rebuild, and stays out of the aggregates', () => {
+    const database = db();
+    try {
+      const otherHour = T0 + 4 * 3_600_000;
+      ingestBatch(database, [
+        ...Array.from({ length: 20 }, (_, i) => obs({ obs_id: `r${i}`, trace_id: `t${i}`, start: T0, end: T0 + (i + 1) * 10, status: i < 5 ? 'error' : 'ok' })),
+        // an open run counts as a run but has no latency
+        obs({ obs_id: 'open', trace_id: 't-open', start: T0, end: undefined, status: undefined }),
+        // a bucket whose only run is still open gets no p95 row
+        obs({ obs_id: 'open2', trace_id: 't-open2', start: otherHour, end: undefined, status: undefined }),
+      ]);
+      const hour = T0 - (T0 % 3_600_000);
+      const other = otherHour - (otherHour % 3_600_000);
+      const check = () => {
+        const rows = rollupSeries(database, { agent_id: 'a1', granularity: 'hour' });
+        const metric = (bucket: number, m: string) => rows.find((r) => r.bucket_start === bucket && r.metric === m);
+        expect(metric(hour, 'p95_latency_ms')).toMatchObject({ agent_id: 'a1', granularity: 'hour', value: 190 });
+        expect(metric(hour, 'error_rate')?.value).toBeCloseTo(5 / 21);
+        expect(metric(other, 'p95_latency_ms')).toBeUndefined();
+        expect(metric(other, 'error_rate')?.value).toBe(0);
+        const day = rollupSeries(database, { agent_id: 'a1', granularity: 'day' });
+        expect(day.find((r) => r.metric === 'p95_latency_ms')?.value).toBe(190);
+      };
+      check();
+      database.exec('DELETE FROM rollups');
+      rebuildRollups(database);
+      check();
+      // p95_latency_ms / error_rate rows sit beside the additive ones: they must never sum into the aggregates
+      const [agent] = insightsAgents(database, { since: T0 - 1, until: T0 + DAY });
+      expect(agent).toMatchObject({ runs: 22, errors: 5, p95_latency_ms: 190 });
+      expect(agent.error_rate).toBeCloseTo(5 / 22);
+    } finally {
+      database.close();
+    }
+  });
+});
