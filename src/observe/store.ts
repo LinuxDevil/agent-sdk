@@ -202,8 +202,10 @@ interface InstanceBeat {
 
 /**
  * Same-host+pid instances of `agentId` that went silent before `instanceId`
- * was first seen and have missed at least one of their own beats since -
- * the process `instanceId` replaced. A live twin (another pid namespace:
+ * was first seen and have missed at least one of their own beats since
+ * (one interval plus FRESHNESS_SLACK_MS: beats ride the reporter's 5s flush
+ * tick, so live gaps run a few seconds past the interval) - the process
+ * `instanceId` replaced. A live twin (another pid namespace:
  * `--network host` replicas, hostNetwork pods) keeps heartbeating, so it is
  * never among them.
  */
@@ -213,7 +215,7 @@ const REPLACED_INSTANCES = `
   WHERE old.agent_id = ? AND old.instance_id != cur.instance_id
     AND old.hostname = cur.hostname AND old.pid = cur.pid
     AND old.last_heartbeat < cur.first_seen
-    AND ? - old.last_heartbeat > COALESCE(old.heartbeat_interval_ms, ?)
+    AND ? - old.last_heartbeat > COALESCE(old.heartbeat_interval_ms, ?) + ?
 `;
 
 /**
@@ -232,7 +234,7 @@ function recordInstance(db: SqlDatabase, agentId: string, beat: InstanceBeat, no
   db.prepare(INSTANCE_UPSERT).run(agentId, beat.instanceId, beat.hostname ?? null, beat.pid ?? null, beat.intervalMs ?? null, now, now);
   if (!seen || beat.hostname === undefined || beat.pid === undefined) return;
   const fallback = beat.intervalMs ?? HEARTBEAT_INTERVAL_DEFAULT_MS;
-  for (const row of db.prepare(REPLACED_INSTANCES).all(beat.instanceId, agentId, now, fallback)) {
+  for (const row of db.prepare(REPLACED_INSTANCES).all(beat.instanceId, agentId, now, fallback, FRESHNESS_SLACK_MS)) {
     interruptInstance(db, agentId, String(row.instance_id), now);
   }
 }

@@ -61,6 +61,14 @@ describe('navigate', () => {
     expect(window.location.hash).toBe('#/traces?status=error');
     expect(window.location.search).toBe('?token=secret');
   });
+  it('takes a target that already starts with # (no ##)', async () => {
+    navigate('#/traces/t1');
+    await tick();
+    expect(window.location.hash).toBe('#/traces/t1');
+    navigate('#agents');
+    await tick();
+    expect(window.location.hash).toBe('#/agents');
+  });
   it('replace does not add a history entry', async () => {
     const before = window.history.length;
     navigate('/a');

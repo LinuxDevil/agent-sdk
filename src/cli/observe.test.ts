@@ -52,6 +52,11 @@ describe('reporterHint', () => {
     expect(reporterHint('127.0.0.1', 7790)).not.toContain('LOUSHO_OBSERVE=1');
     expect(reporterHint('localhost', 7777)).toContain('LOUSHO_OBSERVE=http://localhost:7777');
   });
+
+  it('brackets an IPv6 host', () => {
+    expect(reporterHint('::1', 7777)).toContain('LOUSHO_OBSERVE=http://[::1]:7777 ');
+    expect(reporterHint('[::1]', 7790)).toContain('LOUSHO_OBSERVE=http://[::1]:7790 ');
+  });
 });
 
 describe('lousho observe', () => {

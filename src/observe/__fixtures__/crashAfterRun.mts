@@ -11,7 +11,11 @@
  * - inflight: flushSize 1, so the span's batch is already in a POST the
  *             collector holds open when a timer callback throws
  * - backlog:  1500 spans pending (past the daemon's 1000-event batch cap), then a top-level throw
- * - bigbacklog: 30 spans of ~200KB input (~6MB, past the byte budget), then a top-level throw
+ * - bigbacklog: 30 spans of ~100KB input (~12MB with their start events, input riding twice:
+ *             past the 4MB batch budget, under the crash flush's 16MB), then a top-level throw
+ * - hugebacklog: 200 spans of ~200KB input (~160MB with their start events, past the
+ *             outbox and crash budgets), then a top-level throw; stamps `thrown-at=`
+ *             and `exit-at=` (ms) on stderr
  * - handled:  the script has its own 'uncaughtException' listener, so it
  *             survives the throw, finishes a second span and closes normally
  * - capture:  the same through process.setUncaughtExceptionCaptureCallback (REPL, domains)
@@ -27,7 +31,7 @@ const reporter = observeExporter({
   project: 'crash-fixture',
   agentName: 'crash-fixture',
   heartbeatIntervalMs: 0,
-  ...(mode === 'inflight' ? { flushSize: 1 } : mode === 'backlog' || mode === 'bigbacklog' ? { flushSize: 10_000 } : {}),
+  ...(mode === 'inflight' ? { flushSize: 1 } : mode === 'backlog' || mode === 'bigbacklog' || mode === 'hugebacklog' ? { flushSize: 10_000 } : {}),
 });
 const finish = (id: string, attributes: Record<string, unknown> = {}): void => {
   const span = { id, name: 'invoke_agent crash-fixture', attributes, startTime: Date.now() };
@@ -35,7 +39,12 @@ const finish = (id: string, attributes: Record<string, unknown> = {}): void => {
   reporter.onSpanEnd({ ...span, endTime: Date.now() });
 };
 finish('crash-span');
-if (mode === 'bigbacklog') for (let i = 0; i < 30; i++) finish(`big-${i}`, { 'gen_ai.input.messages': 'x'.repeat(200 * 1024) });
+if (mode === 'bigbacklog') for (let i = 0; i < 30; i++) finish(`big-${i}`, { 'gen_ai.input.messages': 'x'.repeat(100 * 1024) });
+if (mode === 'hugebacklog') {
+  for (let i = 0; i < 200; i++) finish(`huge-${i}`, { 'gen_ai.input.messages': 'x'.repeat(200 * 1024) });
+  process.on('exit', () => process.stderr.write(`exit-at=${Date.now()}\n`));
+  process.stderr.write(`thrown-at=${Date.now()}\n`);
+}
 if (mode === 'backlog') for (let i = 1; i < 1500; i++) finish(`crash-span-${i}`);
 
 if (mode === 'reject') {

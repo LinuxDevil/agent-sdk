@@ -262,6 +262,11 @@ export async function startObserveDaemon(options: ObserveDaemonOptions = {}): Pr
   };
 }
 
+/** `host` as a URL authority host: an IPv6 address (`::1`) is bracketed (`[::1]`), anything else is itself. */
+export function urlHost(host: string): string {
+  return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+}
+
 export interface HealthProbe {
   service: string;
   ok: boolean;
@@ -276,7 +281,7 @@ export interface HealthProbe {
  */
 export async function probeHealth(port: number, host = '127.0.0.1', fetchFn: typeof fetch = fetch): Promise<HealthProbe | undefined> {
   try {
-    const res = await fetchFn(`http://${host}:${port}/health`, { signal: AbortSignal.timeout(2000) });
+    const res = await fetchFn(`http://${urlHost(host)}:${port}/health`, { signal: AbortSignal.timeout(2000) });
     if (!res.ok) return undefined;
     return (await res.json()) as HealthProbe;
   } catch {

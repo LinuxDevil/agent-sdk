@@ -5,10 +5,13 @@
  * port-collision detection.
  */
 import { afterEach, describe, expect, it } from 'vitest';
+import type * as http from 'node:http';
 import * as nodePath from 'node:path';
 import { defaultPidPath, isObserveDaemon, probeHealth, sameDbPath, startObserveDaemon, type ObserveDaemon } from './daemon';
 import { OBSERVE_SERVICE } from './envelope';
 import { createToken, openDb } from './store';
+import type { RouteContext } from './routes/httpKit';
+import { statusRoutes } from './routes/status';
 
 const T0 = 1_700_000_000_000;
 
@@ -73,6 +76,33 @@ describe('per-db pidfile and db identity', () => {
     expect(sameDbPath(health?.db, 'mem-test.db')).toBe(true);
     expect(sameDbPath(health?.db, 'other.db')).toBe(false);
     expect(sameDbPath(undefined, 'other.db')).toBe(false);
+  });
+});
+
+describe('/health db path exposure', () => {
+  /** Call the /health handler as if from `remote`, connected to the daemon's `local` address. */
+  const healthFrom = (remote: string, local: string): Record<string, unknown> => {
+    const health = statusRoutes.find((route) => route.path === '/health')!;
+    let body = '';
+    const res = { writeHead: () => res, end: (text: string) => (body = text) } as unknown as http.ServerResponse;
+    const req = { socket: { remoteAddress: remote, localAddress: local } } as unknown as http.IncomingMessage;
+    void health.handle({ req, res, dbPath: '/home/someone/.lousho/observe.db' } as RouteContext);
+    return JSON.parse(body) as Record<string, unknown>;
+  };
+
+  it('tells only a caller on this machine which db it serves', () => {
+    expect(healthFrom('127.0.0.1', '127.0.0.1').db).toBe(nodePath.resolve('/home/someone/.lousho/observe.db'));
+    expect(healthFrom('::1', '::1').db).toBeDefined();
+    expect(healthFrom('::ffff:127.0.0.1', '::ffff:127.0.0.1').db).toBeDefined();
+    // the CLI probing a daemon bound to this machine's LAN address connects from that same address
+    expect(healthFrom('192.168.1.5', '192.168.1.5').db).toBeDefined();
+  });
+
+  it('keeps the db path (home dir, username) from a remote caller, marker intact', () => {
+    const body = healthFrom('192.168.1.20', '192.168.1.5');
+    expect(body.db).toBeUndefined();
+    expect(body.service).toBe(OBSERVE_SERVICE);
+    expect(body.ok).toBe(true);
   });
 });
 

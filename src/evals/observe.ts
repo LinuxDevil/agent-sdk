@@ -4,21 +4,22 @@
  * When `LOUSHO_OBSERVE` is set (or `lousho eval --observe` set it inside the
  * vitest worker), each eval case runs inside an `eval <name>` span reported
  * to the same collector reporter the exercised agent uses, and the case's
- * assertions POST as `score` ingest events. The span's id becomes the
+ * assertions are queued as `score` ingest events on that reporter's outbox -
+ * after the span, with its retry, buffer cap and exit and crash flushes. The span's id becomes the
  * `trace_id` of both the score rows and the exercised run's spans, so a
  * failing score reaches the run that produced it in one click - the eval
  * harness's own judgement context sits in the same trace as the root span.
  *
  * Emission lives here rather than in recorder.ts because it needs the span,
  * not just the result. Everything degrades silently: `LOUSHO_OBSERVE` unset
- * means no span and no POSTs, and a dead daemon is counted as dropped, never
- * thrown into the eval (see src/observe/emit.ts).
+ * means no span and no POSTs, and a dead daemon is retried or counted as
+ * dropped, never thrown into the eval (see src/observe/reporter.ts).
  */
 
 import { createAgentConfigOf, type SimpleAgent } from '../createAgent';
 import { withSpan } from '../execution/tracing';
-import { emitObserveEvents, observeTargetFromEnv } from '../observe/emit';
-import { observeExporterFromEnv, type ObserveReporter } from '../observe/reporter';
+import { observeTargetFromEnv } from '../observe/emit';
+import { observeExporterFromEnv, queueObserveEvents, type ObserveReporter } from '../observe/reporter';
 import type { IngestEvent } from '../observe/envelope';
 import { newId } from '../utils/id';
 import type { EvalResult } from './evalResult';
@@ -71,11 +72,26 @@ export function evalObservationEnabled(env: NodeJS.ProcessEnv | undefined = type
   return observeTargetFromEnv(env) !== undefined;
 }
 
-/** Cap on each per-case network wait (span flush, score POST): a down daemon must never slow or fail a case. */
+/** Cap on each per-case network wait (span flush, score flush): a down daemon must never slow or fail a case. */
 const EVAL_FLUSH_TIMEOUT_MS = 1000;
 
-/** Reporters whose daemon stopped answering in time; later cases skip the waits (the events still queue and retry on the reporter's own cadence). */
-const unresponsive = new WeakSet<ObserveReporter>();
+/** How long cases skip the waits after a daemon did not answer in time - then the next case tries again. */
+const UNRESPONSIVE_SKIP_MS = 30_000;
+
+/**
+ * Reporters whose daemon stopped answering in time, with when that skip ends.
+ * Meanwhile cases do not wait on a flush; their spans and scores still queue
+ * on the reporter and go out on its own retry cadence.
+ */
+const unresponsiveUntil = new WeakMap<ObserveReporter, number>();
+
+/** Flush `reporter` for at most EVAL_FLUSH_TIMEOUT_MS, unless it is in a skip window; a flush that runs out starts one. */
+async function boundedFlush(reporter: ObserveReporter, now: () => number): Promise<void> {
+  if (now() < (unresponsiveUntil.get(reporter) ?? 0)) return;
+  if (!(await within(reporter.flush(EVAL_FLUSH_TIMEOUT_MS), EVAL_FLUSH_TIMEOUT_MS))) {
+    unresponsiveUntil.set(reporter, now() + UNRESPONSIVE_SKIP_MS);
+  }
+}
 
 /** Resolves when `work` settles or after `ms`, whichever is first; `false` on the timeout. Never rejects. */
 async function within(work: Promise<unknown>, ms: number): Promise<boolean> {
@@ -98,7 +114,7 @@ export interface EvalCaseObservation {
    * putting it in the same trace); a plain `work(undefined)` call when off.
    */
   run<T>(work: (parentSpanId: string | undefined) => Promise<T>): Promise<T>;
-  /** POSTs the case's score events; resolves (never rejects) once they are sent or dropped. A no-op when observation is off or the case recorded no assertions. */
+  /** Queues the case's score events and flushes them (bounded); resolves, never rejects. A no-op when observation is off or the case recorded no assertions. */
   emit(result: EvalResult): Promise<void>;
 }
 
@@ -106,8 +122,10 @@ export interface EvalCaseObservation {
  * The observation context of one eval case. When `LOUSHO_OBSERVE` resolves a
  * target, `run` wraps the case in an `eval <evalName>` span on the scored
  * agent's own env reporter (same memoized instance -> the run's spans nest
- * into this trace); `emit` posts one `score` event per assertion with that
- * span's id as `trace_id` and the scored agent's `agent_id`.
+ * into this trace); `emit` queues one `score` event per assertion on that
+ * reporter, with the span's id as `trace_id` and the scored agent's `agent_id`.
+ * Each wait for the daemon is capped at 1s; one that runs out skips the waits
+ * of the cases in the next 30s.
  */
 export function evalCaseObservation(options: {
   /** The eval's name (the score rows' `<evalName>/...` prefix). */
@@ -120,7 +138,10 @@ export function evalCaseObservation(options: {
   parentSpanId?: string;
   /** Env override (tests); default `process.env`. */
   env?: NodeJS.ProcessEnv;
+  /** Clock for the unresponsive-daemon skip window (tests); default `Date.now`. */
+  now?: () => number;
 }): EvalCaseObservation {
+  const now = options.now ?? Date.now;
   const env = options.env ?? (typeof process !== 'undefined' ? process.env : undefined);
   const scoredName = scoredAgentName(options.agent);
   // The scored agent's reporter is the memoized env reporter under the same
@@ -149,16 +170,14 @@ export function evalCaseObservation(options: {
           options.parentSpanId
         );
       } finally {
-        if (!unresponsive.has(reporter) && !(await within(reporter.flush(EVAL_FLUSH_TIMEOUT_MS), EVAL_FLUSH_TIMEOUT_MS))) unresponsive.add(reporter);
+        await boundedFlush(reporter, now);
       }
     },
     async emit(result: EvalResult): Promise<void> {
       if (!reporter || traceId === undefined || result.assertions.length === 0) return;
-      const events = scoreEventsOf(result, { traceId, ...(scoredName !== undefined ? { agentId: reporter.agentId } : {}) });
-      if (unresponsive.has(reporter)) return;
-      // emitObserveEvents drops-and-counts, it never throws into the eval; a daemon that does not answer in time is skipped for the rest of the run.
-      const sent = emitObserveEvents(events, { env, timeoutMs: EVAL_FLUSH_TIMEOUT_MS });
-      if (!(await within(sent, EVAL_FLUSH_TIMEOUT_MS)) || (await sent) === 0) unresponsive.add(reporter);
+      // On the reporter's outbox the scores go out after the eval span and retry with it.
+      queueObserveEvents(reporter, scoreEventsOf(result, { traceId, ...(scoredName !== undefined ? { agentId: reporter.agentId } : {}) }));
+      await boundedFlush(reporter, now);
     },
   };
 }

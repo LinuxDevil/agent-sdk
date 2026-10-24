@@ -29,8 +29,9 @@
  *   SIGKILL loses the run's unsent child spans; its root start was sent eagerly.
  * - The daemon being down requeues the failed batch and retries with
  *   exponential backoff (1s base, 30s cap); only events evicted past the
- *   buffer cap, or still unsent after close()'s final attempt, drop into a
- *   `dropped` counter. It warns ONCE and never blocks or throws into a run.
+ *   buffer cap (5000 events or 32MB, whichever comes first), events past the
+ *   crash flush's 16MB, or still unsent after close()'s final attempt, drop into a
+ *   `dropped` counter. It warns ONCE per kind (an outage, a drop) and never blocks or throws into a run.
  *   Timers are unref'd so observation never keeps a process alive.
  * - Its own HTTP calls are plain `fetch`, outside any span: instrumenting
  *   them would recurse.
@@ -40,7 +41,7 @@
  * `gen_ai.conversation.id` when the run has a real session.
  */
 
-import { GenAiAttr, GenAiOperation, LegacyAttr, SdkAttr } from '../execution/semconv';
+import { CAPTURE_CONTENT_ENV, GenAiAttr, GenAiOperation, LegacyAttr, SdkAttr } from '../execution/semconv';
 import { SDKError } from '../execution/errors';
 import type { Span, TraceExporter } from '../execution/tracing';
 import { VERSION } from '../version';
@@ -73,7 +74,7 @@ export interface ObserveExporterOptions {
   flushIntervalMs?: number;
   /** Heartbeat cadence (default 60000ms); `0` disables heartbeats. */
   heartbeatIntervalMs?: number;
-  /** Buffer cap; past it the oldest events are evicted into `dropped` (default 5000, floor 1). */
+  /** Buffer cap in events; past it - or past the 32MB byte budget - the oldest events are evicted into `dropped` (default 5000, floor 1). */
   maxBuffered?: number;
   /** Per-request timeout (default 5000ms); close() aborts such a request and caps its final attempt at ~2000ms. */
   requestTimeoutMs?: number;
@@ -111,10 +112,11 @@ export interface ObserveReporter extends TraceExporter {
    */
   promptUse?: PromptUseProvider;
   /**
-   * Send everything pending now, batch after batch, without closing. Resolves
-   * once the outbox is drained or a batch failed (it is then requeued for the
-   * normal retry); never rejects. Callers that must see their spans land
-   * before the process may exit (eval workers) await this.
+   * Send everything pending now, batch after batch, without closing - even
+   * while backing off from a failed send. Resolves once the outbox is drained
+   * or a batch failed (it is then requeued for the normal retry); never
+   * rejects. Callers that must see their spans land before the process may
+   * exit (eval workers) await this.
    * @param timeoutMs Per-request timeout; default the reporter's own.
    */
   flush(timeoutMs?: number): Promise<void>;
@@ -130,6 +132,18 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 5000;
 const EXIT_FLUSH_TIMEOUT_MS = 2000;
 /** How long a crash may block the dying process to deliver what is pending. */
 const CRASH_FLUSH_TIMEOUT_MS = 1000;
+/**
+ * Outbox byte budget: with content capture on, each generation event carries
+ * the conversation (twice: input and attrs), so an event-count cap alone could
+ * hold gigabytes while the daemon is down. Past it the oldest are evicted.
+ */
+const MAX_BUFFERED_BYTES = 32 * 1024 * 1024;
+/**
+ * What a crash flush sends at most, newest first kept: the bodies are copied
+ * to the worker synchronously before the 1s wait starts, so the copy is
+ * bounded too, and more would not get through in 1s anyway.
+ */
+const CRASH_FLUSH_MAX_BYTES = 16 * 1024 * 1024;
 const RETRY_BASE_MS = 1000;
 
 const INSTANCE_KEY = Symbol.for('lousho.observeInstance');
@@ -172,10 +186,16 @@ interface OutboxEntry {
 
 const utf8 = new TextEncoder();
 
+/** UTF-8 length of `text`: Buffer.byteLength where there is a Buffer (no copy), else an encoded copy's length. */
+const byteLengthOf: (text: string) => number =
+  typeof Buffer !== 'undefined' && typeof Buffer.byteLength === 'function'
+    ? (text) => Buffer.byteLength(text, 'utf8')
+    : (text) => utf8.encode(text).length;
+
 /** An event as an outbox entry; `undefined` when its body alone would pass the daemon's hard cap. */
 function entryOf(event: IngestEvent): OutboxEntry | undefined {
   const json = JSON.stringify(event);
-  const bytes = utf8.encode(json).length;
+  const bytes = byteLengthOf(json);
   return ENVELOPE_BYTES + bytes > OBSERVE_MAX_BODY_BYTES ? undefined : { json, bytes };
 }
 
@@ -207,21 +227,34 @@ function batchesOf(entries: readonly OutboxEntry[]): OutboxEntry[][] {
   return batches;
 }
 
+/** The newest of `entries` that fit in `budget` bytes, and how many older ones did not. */
+function newestWithin(entries: readonly OutboxEntry[], budget: number): { kept: OutboxEntry[]; cut: number } {
+  let start = entries.length;
+  for (let total = 0; start > 0 && total + entries[start - 1].bytes <= budget; start--) total += entries[start - 1].bytes;
+  return { kept: entries.slice(start), cut: start };
+}
+
 /**
- * The reporter's pending events: FIFO, capped at `cap` (the oldest are
- * evicted first, reported through `onEvict`), and gated by a retry backoff
+ * The reporter's pending events: FIFO, capped at `cap` events and `byteCap`
+ * bytes (the oldest are evicted first, the newest always stays, reported
+ * through `onEvict`), and gated by a retry backoff
  * after a failed send. Every send path - size, interval, exit - goes through
  * `take` / `delivered` / `failed`, so a failed batch is never lost while
  * there is room to keep it. A batch is cut by {@link batchEnd}, oldest first.
  */
-function createOutbox(cap: number, now: () => number, onEvict: (count: number) => void) {
+function createOutbox(cap: number, byteCap: number, now: () => number, onEvict: (count: number) => void) {
   let items: OutboxEntry[] = [];
+  let bytes = 0;
   let failures = 0;
   let retryAt = 0;
+  const sizeOf = (entries: readonly OutboxEntry[]): number => entries.reduce((sum, e) => sum + e.bytes, 0);
   const trim = (): void => {
-    const over = items.length - cap;
-    if (over <= 0) return;
+    let over = Math.max(0, items.length - cap);
+    let left = bytes - sizeOf(items.slice(0, over));
+    for (; left > byteCap && over < items.length - 1; over++) left -= items[over].bytes;
+    if (over === 0) return;
     items.splice(0, over);
+    bytes = left;
     onEvict(over);
   };
   return {
@@ -237,15 +270,20 @@ function createOutbox(cap: number, now: () => number, onEvict: (count: number) =
       const entry = entryOf(event);
       if (!entry) return false;
       items.push(entry);
+      bytes += entry.bytes;
       trim();
       return true;
     },
     /** The oldest batch, for one send - or nothing while backing off, unless `force` (the final attempt). */
     take(force = false): OutboxEntry[] {
-      return force || now() >= retryAt ? items.splice(0, batchEnd(items, 0)) : [];
+      if (!force && now() < retryAt) return [];
+      const batch = items.splice(0, batchEnd(items, 0));
+      bytes -= sizeOf(batch);
+      return batch;
     },
     /** Everything pending, uncut (the crash flush; counting what a failed final attempt leaves). */
     drain(): OutboxEntry[] {
+      bytes = 0;
       return items.splice(0, items.length);
     },
     delivered(): void {
@@ -255,6 +293,7 @@ function createOutbox(cap: number, now: () => number, onEvict: (count: number) =
     /** Put a failed batch back in front of anything queued since, trim to the cap, and back off. */
     failed(batch: OutboxEntry[]): void {
       items = batch.concat(items); // no spread: keeps call arguments bounded whatever the batch size
+      bytes += sizeOf(batch);
       trim();
       retryAt = now() + retryDelayMs(failures++);
     },
@@ -388,32 +427,36 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
 
   let droppedCount = 0;
   let closed = false;
-  let warned = false;
+  let warnedOutage = false;
+  let warnedDrop = false;
 
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (token) headers.authorization = `Bearer ${token}`;
 
-  const warnOnce = (what: string, error: unknown) => {
-    if (warned) return;
-    warned = true;
+  // Outages and drops warn once each: a drop warning must not hide a later outage.
+  const warnOutageOnce = (what: string, error: unknown) => {
+    if (warnedOutage) return;
+    warnedOutage = true;
     const reason = error instanceof Error ? error.message : String(error);
     console.warn(
       `[lousho] observe: ${what} (${reason}); retrying with backoff, events past the buffer cap are counted in 'dropped' and the run is unaffected.`
     );
   };
+  const warnDropOnce = (what: string) => {
+    if (warnedDrop) return;
+    warnedDrop = true;
+    console.warn(`[lousho] observe: ${what}; dropped events are counted in 'dropped' and the run is unaffected.`);
+  };
 
-  const outbox = createOutbox(maxBuffered, now, (count) => {
+  const outbox = createOutbox(maxBuffered, MAX_BUFFERED_BYTES, now, (count) => {
     droppedCount += count;
-    warnOnce(
-      `buffer is full (${maxBuffered} events); dropping the oldest`,
-      new SDKError('observe buffer full', 'LOUSHO_REMOTE_REQUEST_FAILED', { appendHelp: false })
-    );
+    warnDropOnce(`buffer is full (${maxBuffered} events or ${MAX_BUFFERED_BYTES / (1024 * 1024)}MB); dropping the oldest`);
   });
 
   /** Count events the daemon will never take - too large, or a batch it refused - and warn once. */
   const discard = (count: number, why: string): void => {
     droppedCount += count;
-    warnOnce(why, new SDKError('observe event rejected', 'LOUSHO_REMOTE_REQUEST_FAILED', { appendHelp: false }));
+    warnDropOnce(why);
   };
 
   const push = (event: IngestEvent) => {
@@ -469,7 +512,7 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
     } catch (error) {
       // Never slow or fail a run: requeue for a later retry, drop-and-count only as the last resort.
       // close() aborting a regular flush is not an outage: its batch rides along in the final attempt.
-      if (final || !closing.signal.aborted) warnOnce(`could not reach the observe daemon at ${url}`, error);
+      if (final || !closing.signal.aborted) warnOutageOnce(`could not reach the observe daemon at ${url}`, error);
       if (final) droppedCount += batch.length + outbox.drain().length;
       else outbox.failed(batch);
       return false;
@@ -483,21 +526,22 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
    * Regular flushes give each POST its own timeout; the final attempt shares
    * one deadline.
    */
-  const send = async (timeoutMs: number, final: boolean): Promise<void> => {
+  const send = async (timeoutMs: number, final: boolean, force: boolean): Promise<void> => {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
-      const batch = outbox.take(final);
+      const batch = outbox.take(final || force);
       const cut = outbox.size > 0; // read before the await: events queued meanwhile wait for their own trigger
       if (batch.length === 0) return;
       if (!(await sendBatch(batch, final ? Math.max(1, deadline - Date.now()) : timeoutMs, final))) return;
       if (!cut) return;
     }
   };
-  const flush = (timeoutMs: number, final = false, starting?: () => void): Promise<void> => {
+  /** `force` skips the backoff (an explicit flush(); the final attempt always does). */
+  const flush = (timeoutMs: number, final = false, starting?: () => void, force = false): Promise<void> => {
     const run = chain
       .then(() => {
         starting?.();
-        return send(timeoutMs, final);
+        return send(timeoutMs, final, force);
       })
       .catch(() => undefined);
     chain = run;
@@ -581,13 +625,16 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
   /**
    * The process is dying of an uncaught exception or unhandled rejection:
    * Node exits as soon as the monitor returns, so no async send can finish.
-   * Send everything pending, oldest first - the batch a regular POST was
+   * Send what is pending, oldest first - the batch a regular POST was
    * carrying included (re-sent events upsert by key) - as successive POSTs,
-   * cut like any other batch, that together block for at most 1s.
+   * cut like any other batch, that together block for at most 1s. Only the
+   * newest CRASH_FLUSH_MAX_BYTES go; older events are counted as dropped.
    */
   const crashFlush = (): void => {
     if (!shutdown()) return;
-    const batches = batchesOf(inFlight.concat(outbox.drain()));
+    const { kept, cut } = newestWithin(inFlight.concat(outbox.drain()), CRASH_FLUSH_MAX_BYTES);
+    droppedCount += cut;
+    const batches = batchesOf(kept);
     const delivered = blockingPost(`${url}/api/v1/ingest`, headers, batches.map(bodyOf), CRASH_FLUSH_TIMEOUT_MS);
     batches.forEach((batch, i) => {
       if (!delivered[i]) droppedCount += batch.length;
@@ -629,7 +676,7 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
     }
   }
 
-  return {
+  const reporter: ObserveReporter = {
     get dropped() {
       return droppedCount;
     },
@@ -666,9 +713,28 @@ export function observeExporter(options: ObserveExporterOptions = {}): ObserveRe
       // The root ended: forget every span of this trace so the map does not grow forever.
       for (const [id, tid] of targets) if (tid === traceId) targets.delete(id);
     },
-    flush: (timeoutMs) => flush(timeoutMs ?? requestTimeoutMs),
+    flush: (timeoutMs) => flush(timeoutMs ?? requestTimeoutMs, false, undefined, true),
     close,
   };
+  queues.set(reporter, (events) => {
+    for (const event of events) enqueue(event);
+  });
+  return reporter;
+}
+
+/** Each reporter's own enqueue, for {@link queueObserveEvents}. */
+const queues = new WeakMap<ObserveReporter, (events: readonly IngestEvent[]) => void>();
+
+/**
+ * Queue ingest events that are not spans (eval scores) on `reporter`'s outbox:
+ * they go out after everything queued before them, and share its retry with
+ * backoff, buffer cap and exit and crash flushes. `false` when `reporter` was
+ * not made by {@link observeExporter}.
+ */
+export function queueObserveEvents(reporter: ObserveReporter, events: readonly IngestEvent[]): boolean {
+  const queue = queues.get(reporter);
+  queue?.(events);
+  return queue !== undefined;
 }
 
 /* ------------------------------------------------------- env wiring + fanout */
@@ -779,6 +845,53 @@ export function observeExporterFromEnv(
 /** The parts `explicit` flattens to (itself when it was never composed). */
 function exporterParts(explicit: TraceExporter): readonly TraceExporter[] {
   return composedParts.get(explicit) ?? [explicit];
+}
+
+/** The opt-in `gen_ai.*` content attributes `captureContent` records. */
+const CAPTURED_CONTENT_KEYS = [
+  GenAiAttr.SYSTEM_INSTRUCTIONS,
+  GenAiAttr.INPUT_MESSAGES,
+  GenAiAttr.OUTPUT_MESSAGES,
+  GenAiAttr.TOOL_CALL_ARGUMENTS,
+  GenAiAttr.TOOL_CALL_RESULT,
+] as const;
+
+/** `span` without the captured content (a copy; `span` itself is untouched, and returned as-is when it holds none). */
+function withoutCapturedContent(span: Span): Span {
+  if (!CAPTURED_CONTENT_KEYS.some((key) => key in span.attributes)) return span;
+  const attributes = { ...span.attributes };
+  for (const key of CAPTURED_CONTENT_KEYS) delete attributes[key];
+  return { ...span, attributes };
+}
+
+/** The OTel content env var asks for content on every exporter. */
+const otelContentEnvOn = (): boolean =>
+  typeof process !== 'undefined' && process.env?.[CAPTURE_CONTENT_ENV]?.toLowerCase() === 'true';
+
+/**
+ * The config exporter an agent reports with, given its content settings: when
+ * capture is on only because the env collector is loopback (`captureContent`
+ * true but no `explicit` setting and no OTel content env var), the captured
+ * `gen_ai.*` content is kept for the `LOUSHO_OBSERVE` reporters alone and every
+ * other part (a `fileTraceExporter()`, an OTLP or vendor exporter) sees each
+ * span without it - that default is for the local daemon, not for every
+ * exporter the agent has. Otherwise `exporter` itself.
+ */
+export function capturedContentForObserveOnly(
+  exporter: TraceExporter | undefined,
+  content: { explicit: boolean | undefined; captureContent: boolean | undefined }
+): TraceExporter | undefined {
+  if (!exporter || content.explicit !== undefined || content.captureContent !== true || otelContentEnvOn()) return exporter;
+  return fanOutExporters(
+    exporterParts(exporter).map((part): TraceExporter =>
+      envReporterSet.has(part)
+        ? part
+        : {
+            onSpanStart: (span) => part.onSpanStart(withoutCapturedContent(span)),
+            onSpanEnd: (span) => part.onSpanEnd(withoutCapturedContent(span)),
+          }
+    )
+  );
 }
 
 /**

@@ -287,8 +287,9 @@ hooks. Each daemon writes its own `<db name>.pid` beside the db
 (`observe.db` gives `observe.pid`), so two dbs in one folder never share a
 pidfile. `start` exits 1 when the port already serves a different db, and
 `stop` refuses to signal when the daemon at the pidfile's port reports another
-db, and falls back to signalling when it cannot verify (unreachable, or an old
-one-line pidfile). See
+db or the port answers as a different service, and falls back to signalling
+when it cannot verify (unreachable, or an old one-line pidfile). `/health`
+tells which db a daemon serves only to callers on the same machine. See
 [The observe daemon](./observability.md#the-observe-daemon).
 
 ## `lousho prompt`

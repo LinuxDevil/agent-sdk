@@ -237,12 +237,18 @@ the `gen_ai.*` content attributes are **never recorded by default**. Opt in
 per agent with `createAgent({ exporter, captureContent: true })`.
 
 The exception is a local collector: when `LOUSHO_OBSERVE` points at loopback
-(`1`/`true`, or a URL whose host is `127.0.0.1`, `localhost` or `::1`),
+(`1`/`true`, or a URL whose host is `127.0.0.1`, `localhost` or `::1`;
+a `localhost` port that an SSH tunnel forwards to a remote daemon counts as
+loopback too, so set `captureContent: false` if that daemon must not get content),
 `createAgent` defaults `captureContent` to `true`, so the daemon's trace view
 shows the prompt, the model output and the tool arguments and results that
-explain a failure. The data stays in the daemon's db on your machine. Turn it
-off with `captureContent: false`; a collector beyond loopback keeps the
-opt-in default. The default applies to agents built with `createAgent`.
+explain a failure. Only the daemon gets that content, and it stays in the
+daemon's db on your machine: the agent's own `exporter` (`fileTraceExporter()`
+files, an OTLP or vendor exporter, the built server's OTel export) still sees
+every span without it, unless the agent sets `captureContent: true` or the
+OTel content variable below is `true`. Turn it off with `captureContent: false`;
+a collector beyond loopback keeps the opt-in default. The default applies to
+agents built with `createAgent`.
 
 `redactContent` keeps only the legacy `input`/`prompt`/`args`/`result`
 attributes off; it does not scrub `gen_ai.*` message content. On a loopback
@@ -421,7 +427,8 @@ The daemon also serves two stores agents can use at runtime:
   `instructions`, the run fails with `LOUSHO_PROMPT_UNRESOLVED`). A failed
   fetch is not cached for good: runs in the next 30 seconds resolve at once
   (using `instructions`, or failing), then the next run retries it, so a
-  daemon that was briefly down at build recovers without a restart. Every run logs the exact version
+  daemon that was briefly down at build recovers without a restart. That one
+  run waits for the retry fetch, up to 2.5 seconds. Every run logs the exact version
   used. `lousho prompt push` publishes a new
   version.
 - **Context hub.** `hub()` / `hubTools()` let agents publish and query
@@ -434,16 +441,17 @@ down, the failed batch is requeued and retried with exponential backoff (1 s,
 backlog drains in batches one right after another, each at most 1000 events
 and 4 MB of JSON (under the daemon's per-request caps of 1000 events and
 5 MB). Only these are dropped and counted in the reporter's `dropped`:
-events evicted past the buffer cap (`maxBuffered`, default 5000, oldest
-first); events still unsent after the exit flush's final attempt; a single
+events evicted past the buffer cap (`maxBuffered`, default 5000 events, or
+32 MB of serialized events, whichever comes first; oldest first); events
+past the newest 16 MB when a crash flushes; events still unsent after the exit flush's final attempt; a single
 event too large for any request (over 5 MB serialized, for example with
 content capture on); and a batch the daemon refuses outright (`400`/`413`),
 which is never retried.
 
 A process that dies of an uncaught exception or an unhandled rejection still
 reports its last run: the reporter watches `uncaughtExceptionMonitor` and
-sends what it holds, oldest first, holding up the crash for up to 1 s per
-reporter. Node's error output and exit code stay as they were, and a script
+sends what it holds (the newest 16 MB of it), oldest first, holding up the
+crash for up to 1 s per reporter. Node's error output and exit code stay as they were, and a script
 that survives the throw (its own `uncaughtException` handler, or a capture
 callback such as the REPL's) keeps reporting. An explicit `process.exit()` or
 a SIGKILL still loses what is buffered.
@@ -465,8 +473,10 @@ several workers died), the sweep marks the quiet process's open runs
 `interrupted` once it has missed about two heartbeats (the `stale` mark),
 judged on that process's own heartbeat interval and on the daemon's clock. A
 restart on the same host with the same pid (a container's pid 1) marks them
-sooner: at the new process's second heartbeat, if the old process has been
-silent since the new one appeared. With no process of the agent left, the
+sooner: at the first heartbeat of the new process (after its first) that
+comes more than one heartbeat interval plus 10 seconds after the old
+process's last, if the old process has been silent since the new one
+appeared. With no process of the agent left, the
 agent goes `down` and its open runs are marked as above. A process that exits gracefully mid-run
 (SIGINT, SIGTERM) marks its own open runs `interrupted` right away. An agent
 with heartbeats turned off (`heartbeatIntervalMs: 0`) is never swept, so its

@@ -21,7 +21,7 @@ import { streamResumed, throwingRun, type AgentRun } from './execution/agentRun'
 import type { AgentEvent } from './execution/agentEvents';
 import type { TraceExporter } from './execution/tracing';
 import { defaultCaptureContent } from './observe/emit';
-import { withObserveExporter, type PromptUseProvider } from './observe/reporter';
+import { capturedContentForObserveOnly, withObserveExporter, type PromptUseProvider } from './observe/reporter';
 import { parsePromptRef, registryPrompt } from './observe/promptClient';
 import { assertModelSettings, mergeModelSettings } from './execution/modelSettings';
 import { assertKnownCreateAgentKeys } from './createAgentKeys';
@@ -411,7 +411,8 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    * Record message and tool-argument content on the spans (the `gen_ai.*`
    * content attributes). Off by default because content is sensitive; when
    * omitted it follows `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`,
-   * and is on when `LOUSHO_OBSERVE` points at a loopback collector (set `false`
+   * and is on for the observe daemon alone when `LOUSHO_OBSERVE` points at a
+   * loopback collector (this `exporter` still gets no content then; set `false`
    * to opt out). Only matters with an `exporter`. See `ExecuteOptions.captureContent`.
    */
   captureContent?: boolean;
@@ -1067,14 +1068,17 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
   // Every run of this agent (send, stream, sessions, resume, approvals) is traced.
   // `LOUSHO_OBSERVE` fans the config's exporter out with the collector reporter;
   // unset means the env half is a no-op (see src/observe/reporter.ts).
-  const exporter = withObserveExporter(
-    config.exporter,
-    agentName,
-    resolvedInstructions.promptUse !== undefined ? { promptUse: resolvedInstructions.promptUse } : {}
-  );
   // Content defaults on when the env collector is this machine's own (the trace
   // view cannot explain a failure without it); an explicit setting always wins.
   const captureContent = defaultCaptureContent(config.captureContent);
+  // That default is for the local daemon only: the config's own exporters
+  // (trace files, OTLP, a vendor) keep the content-free default unless the
+  // agent or the OTel content env var asked for content.
+  const exporter = withObserveExporter(
+    capturedContentForObserveOnly(config.exporter, { explicit: config.captureContent, captureContent }),
+    agentName,
+    resolvedInstructions.promptUse !== undefined ? { promptUse: resolvedInstructions.promptUse } : {}
+  );
   const tracing: Pick<ExecuteOptions, 'exporter' | 'captureContent' | 'redactContent'> = {
     ...(exporter && { exporter }),
     ...(captureContent !== undefined && { captureContent }),
