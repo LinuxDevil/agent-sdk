@@ -20,6 +20,7 @@ import { AgentExecutor, ExecuteOptions, ExecutionResult } from './execution/Agen
 import { streamResumed, throwingRun, type AgentRun } from './execution/agentRun';
 import type { AgentEvent } from './execution/agentEvents';
 import type { TraceExporter } from './execution/tracing';
+import { isLoopbackTarget, observeTargetFromEnv } from './observe/emit';
 import { withObserveExporter, type PromptUseProvider } from './observe/reporter';
 import { parsePromptRef, registryPrompt } from './observe/promptClient';
 import { assertModelSettings, mergeModelSettings } from './execution/modelSettings';
@@ -409,8 +410,9 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
   /**
    * Record message and tool-argument content on the spans (the `gen_ai.*`
    * content attributes). Off by default because content is sensitive; when
-   * omitted it follows `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`.
-   * Only matters with an `exporter`. See `ExecuteOptions.captureContent`.
+   * omitted it follows `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`,
+   * and is on when `LOUSHO_OBSERVE` points at a loopback collector (set `false`
+   * to opt out). Only matters with an `exporter`. See `ExecuteOptions.captureContent`.
    */
   captureContent?: boolean;
   /**
@@ -1070,9 +1072,13 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     agentName,
     resolvedInstructions.promptUse !== undefined ? { promptUse: resolvedInstructions.promptUse } : {}
   );
+  // Content defaults on when the env collector is this machine's own (the trace
+  // view cannot explain a failure without it); an explicit setting always wins.
+  const observeTarget = observeTargetFromEnv();
+  const captureContent = config.captureContent ?? (observeTarget && isLoopbackTarget(observeTarget) ? true : undefined);
   const tracing: Pick<ExecuteOptions, 'exporter' | 'captureContent' | 'redactContent'> = {
     ...(exporter && { exporter }),
-    ...(config.captureContent !== undefined && { captureContent: config.captureContent }),
+    ...(captureContent !== undefined && { captureContent }),
     ...(config.redactContent !== undefined && { redactContent: config.redactContent }),
   };
   const checkpoints = config.store?.checkpoints;
