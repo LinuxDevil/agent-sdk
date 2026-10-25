@@ -1,0 +1,241 @@
+/*
+ * Playground screen (#/playground): message editor and variables on the
+ * left, model/tools/actions and the streamed output on the right; one column
+ * at <=860px. Colours from src/theme.css tokens only.
+ */
+
+.pg-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  min-width: 0;
+  font-family: var(--font-ui);
+  color: var(--text);
+}
+
+.pg-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.pg-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.pg-prompt-chip {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: var(--accent-soft);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.pg-notice {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--warning);
+  border-radius: 8px;
+  background: var(--warning-soft);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.pg-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 12px;
+  align-items: start;
+}
+.pg-editor,
+.pg-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.pg-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.pg-panel-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.pg-panel > .btn {
+  align-self: flex-start;
+}
+
+.pg-message-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pg-message {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 8px;
+  border-left: 3px solid var(--border);
+}
+.pg-message-system {
+  border-left-color: var(--accent);
+}
+.pg-message-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.pg-screen select,
+.pg-screen input[type='text'],
+.pg-content {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.pg-content {
+  width: 100%;
+  resize: vertical;
+  font-family: var(--font-mono);
+}
+.pg-screen select:focus-visible,
+.pg-screen input:focus-visible,
+.pg-content:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.pg-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.pg-field input,
+.pg-field select {
+  width: 100%;
+}
+.pg-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+.pg-model {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.pg-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.pg-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.pg-actions {
+  display: flex;
+  gap: 8px;
+}
+.pg-save {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.pg-save .btn {
+  align-self: flex-start;
+}
+.pg-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.pg-output-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.pg-trace-link {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: 12.5px;
+}
+.pg-error {
+  padding: 8px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  background: var(--danger-soft);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.pg-tool-calls {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pg-tool-call {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.pg-stream {
+  margin: 0;
+  max-height: 480px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+@media (max-width: 860px) {
+  .pg-screen {
+    padding: 12px;
+  }
+  .pg-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -96,7 +96,7 @@ describe('RunTree', () => {
     const c = render(<RunTree observations={TRACE} onSelect={() => {}} />);
     const links = [...c.querySelectorAll<HTMLAnchorElement>('.run-tree .run-playground-link')];
     expect(links).toHaveLength(1);
-    expect(links[0]!.getAttribute('href')).toBe('#/playground?fromObs=gen%2F1');
+    expect(links[0]!.getAttribute('href')).toBe('#/playground?trace=tr1&fromObs=gen%2F1');
     expect(links[0]!.textContent).toBe('Open in Playground');
   });
 
@@ -266,7 +266,7 @@ describe('RunInspector', () => {
     expect(usage).toContain('$0.0021 (partial, estimated)');
     expect(usage).toContain('gpt-4o');
     expect(c.querySelector('.run-truncated-note')).not.toBeNull();
-    expect(c.querySelector('.run-inspector .run-playground-link')?.getAttribute('href')).toBe('#/playground?fromObs=g');
+    expect(c.querySelector('.run-inspector .run-playground-link')?.getAttribute('href')).toBe('#/playground?trace=tr1&fromObs=g');
   });
 });
 

@@ -23,7 +23,6 @@ import {
   InMemoryApprovalStore,
   SDKError,
   type AgentEvent,
-  type AgentEventUsage,
   type AgentSpec,
   type Message,
 } from '@lousho/build-ai-agent';
@@ -38,6 +37,7 @@ import {
 import { buildAgentFromSpec } from './buildAgent';
 import { observeTarget } from './observeProxy';
 import type { SecretsStore } from './secretsStore';
+import type { PlaygroundEvent, PlaygroundMessage, PlaygroundRunRequest } from '../shared/wireTypes';
 
 /** The agent name every playground run reports under. */
 const PLAYGROUND_AGENT_NAME = 'playground';
@@ -47,28 +47,7 @@ const PROMPT_REF_ATTR = 'lousho.prompt.ref';
 const ROLES = new Set(['system', 'user', 'assistant']);
 const MAX_MESSAGES = 200;
 
-interface PlaygroundMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-}
-
-/** The validated `POST /playground/run` body. */
-interface PlaygroundRunRequest {
-  messages: PlaygroundMessage[];
-  variables?: Record<string, string>;
-  /** `provider/model` (`openai/gpt-4o-mini`, `mock`, `ollama/llama3.2`). */
-  model: string;
-  /** Tool names the Studio already resolves (`current-date`, `day-name`, `http`, `web-fetch`, `demo-approval`). */
-  tools?: string[];
-  promptRef?: string;
-}
-
-/** One SSE `data:` payload of the stream. */
-export type PlaygroundEvent =
-  | { type: 'delta'; text: string }
-  | { type: 'tool_call'; id: string; name: string; args: Record<string, unknown> }
-  | { type: 'done'; finishReason: string; text: string; traceId?: string; usage?: AgentEventUsage }
-  | { type: 'error'; message: string; code?: string };
+export type { PlaygroundEvent };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);

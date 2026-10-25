@@ -8,6 +8,7 @@ import { AgentsScreen } from './agents/AgentsScreen';
 import { TraceScreen } from './traces/TraceScreen';
 import { MonitoringScreen } from './monitoring/MonitoringScreen';
 import { ScoresScreen } from './scores/ScoresScreen';
+import { PlaygroundRoute } from './playground/PlaygroundScreen';
 import { useLeaveAgentsGuard } from './agents/useLeaveAgentsGuard';
 import { Placeholder } from './Placeholder';
 
@@ -72,10 +73,6 @@ const TAB_PATH: Record<ObserveTab, string> = {
 };
 
 const PLACEHOLDERS: Partial<Record<ScreenId, { title: string; blurb: string }>> = {
-  playground: {
-    title: 'Playground',
-    blurb: 'Try a prompt against different models and settings side by side, without editing an agent.',
-  },
   threads: { title: 'Threads', blurb: 'Multi-turn conversations grouped by session, with every run in each thread.' },
   evals: { title: 'Evaluations', blurb: 'Datasets, evaluators and annotation queues for scoring runs.' },
   prompts: { title: 'Prompts', blurb: 'Versioned prompts you can compare, pin and pull into your agents.' },
@@ -112,6 +109,7 @@ export function Screens() {
   if (screen === 'trace') content = <TraceRoute />;
   else if (screen === 'monitoring') content = <MonitoringScreen />;
   else if (screen === 'scores') content = <ScoresScreen />;
+  else if (screen === 'playground') content = <PlaygroundRoute />;
   else if (observeTab) content = <ObserveView tab={observeTab} onTabChange={(tab) => navigate(TAB_PATH[tab])} />;
   else if (placeholder) content = <Placeholder {...placeholder} />;
   else

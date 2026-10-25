@@ -222,6 +222,53 @@ export class ObserveClient {
   postScore(score: NewScore): Promise<{ score_id: string }> {
     return this.request('/api/v1/scores', { method: 'POST', body: score });
   }
+
+  /** `GET /api/v1/prompts/:name/:ref` (ref = `latest`, a version number or a label); `undefined` on the daemon's 404. */
+  async getPrompt(name: string, ref = 'latest'): Promise<ObservePrompt | undefined> {
+    try {
+      const body = await this.request<{ prompt: ObservePrompt }>(
+        `/api/v1/prompts/${encodeURIComponent(name)}/${encodeURIComponent(ref)}`
+      );
+      return body.prompt;
+    } catch (error) {
+      if (error instanceof ObserveApiError && error.status === 404) return undefined;
+      throw error;
+    }
+  }
+
+  /** `POST /api/v1/prompts` - pushes a new version (`unchanged` when the text matches the latest one). */
+  createPrompt(input: NewPromptVersion): Promise<PromptPushResult> {
+    return this.request('/api/v1/prompts', { method: 'POST', body: input });
+  }
+}
+
+/** One registry prompt version, as `GET /api/v1/prompts/:name/:ref` returns it. */
+export interface ObservePrompt {
+  prompt_id: string;
+  name: string;
+  version: number;
+  labels: string[];
+  /** `null` when the version was pushed without a variable list. */
+  variables: string[] | null;
+  hash: string;
+  text: string;
+  created_at: number;
+}
+
+/** The body of {@link ObserveClient.createPrompt}. */
+export interface NewPromptVersion {
+  name: string;
+  text: string;
+  labels?: string[];
+  variables?: string[];
+}
+
+/** The answer of {@link ObserveClient.createPrompt}: the stored version, and whether it was new. */
+export interface PromptPushResult {
+  prompt: ObservePrompt;
+  created: boolean;
+  version: number;
+  unchanged: boolean;
 }
 
 export const observeClient = new ObserveClient();

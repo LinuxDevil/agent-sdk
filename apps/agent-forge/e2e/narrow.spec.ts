@@ -80,3 +80,16 @@ test('at 1280px the three-column layout has no drawer toggles', async ({ page })
   await expect(page.getByRole('button', { name: 'More actions' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
 });
+
+test('#/playground at 375px stacks into one column with nothing scrolling sideways', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/?token=e2e-studio-token#/playground');
+  const main = page.getByRole('main');
+  await expect(main.getByRole('heading', { name: 'Playground' })).toBeVisible();
+  expect(await horizontalOverflow(page)).toBe(0);
+  expect(await main.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
+  for (const name of ['Run', 'Add message', 'Save as new prompt version']) {
+    const box = await main.getByRole('button', { name, exact: true }).boundingBox();
+    expect(box && box.x >= 0 && box.x + box.width <= 375, `${name} is on-screen`).toBe(true);
+  }
+});

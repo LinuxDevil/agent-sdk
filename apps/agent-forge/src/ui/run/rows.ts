@@ -46,9 +46,9 @@ export function elapsedMs(row: ObserveObservationRow, now: number): number {
   return Math.max(0, (row.end ?? now) - row.start);
 }
 
-/** The href that opens a generation in the Playground. */
-export function playgroundHref(obsId: string): string {
-  return `#/playground?fromObs=${encodeURIComponent(obsId)}`;
+/** The href that opens a generation in the Playground (it loads the trace, then pre-fills from the observation). */
+export function playgroundHref(traceId: string, obsId: string): string {
+  return `#/playground?trace=${encodeURIComponent(traceId)}&fromObs=${encodeURIComponent(obsId)}`;
 }
 
 /** `className` join that drops falsy entries. */
