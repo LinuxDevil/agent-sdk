@@ -9,6 +9,8 @@ import { stubObserve } from './observeStub';
  * palette/hook/toggle controls that work from the keyboard alone.
  */
 test.beforeEach(async ({ page }) => {
+  // The stub goes in before the first load, so shell-level fetches (health) see a live daemon too.
+  await stubObserve(page);
   await page.goto('/?token=e2e-studio-token');
   await expect(page.locator('.app')).toBeVisible();
 });
@@ -126,13 +128,14 @@ async function expectNoSeriousAxeViolations(page: Page, label: string) {
 // Every route in the table (new screens are covered automatically): one <main>, one h1,
 // the banner and the primary nav, and an axe scan of the populated (stubbed daemon) state.
 // Plus the deep-link states that render a different view on the same route.
+// Placeholder routes (/evals/:section, /evals/:section/:id) scan the Placeholder today; when their real
+// screens land, add their endpoints to e2e/observeStub.ts or they get scanned in a 404/empty state.
 const SCANS = [
   ...ROUTES.map(({ pattern, example }) => ({ label: pattern, path: example })),
   ...['/traces?status=error', '/traces/e2e-trace?obs=e2e-obs', '/threads?status=active', '/prompts/e2e-prompt?diff=1,2'].map((path) => ({ label: path, path })),
 ];
 for (const { label, path } of SCANS) {
   test(`${label} keeps the landmarks and passes axe`, async ({ page }) => {
-    await stubObserve(page);
     await page.goto(`/?token=e2e-studio-token#${path}`);
     await expect(page.locator('.app')).toBeVisible();
     await page.waitForLoadState('networkidle');
@@ -199,7 +202,6 @@ test('#/settings shows the settings panel inside the screen', async ({ page }) =
 });
 
 test('the axe scans see the stubbed daemon data, not the down state', async ({ page }) => {
-  await stubObserve(page);
   const main = page.getByRole('main');
   for (const [path, text] of [
     ['/traces', 'Where is my order?'],
@@ -208,6 +210,8 @@ test('the axe scans see the stubbed daemon data, not the down state', async ({ p
     ['/monitoring', 'Support bot'],
     ['/evals/scores', 'e2e-eval'],
     ['/prompts/e2e-prompt', 'how can I help today?'],
+    ['/hub', 'e2e-namespace'],
+    ['/hub/e2e-namespace', 'order-policy'],
   ]) {
     await page.goto(`/?token=e2e-studio-token#${path}`);
     await expect(main.getByText(text).first(), path).toBeVisible();

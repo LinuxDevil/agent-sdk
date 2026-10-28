@@ -1,6 +1,7 @@
 import type { Page, Route } from '@playwright/test';
 import type {
   ObserveAgentRow,
+  ObserveHubEntry,
   ObserveInsights,
   ObservePromptVersion,
   ObserveScoreRow,
@@ -13,7 +14,8 @@ import type {
  * A fake observe daemon behind the studio's `/observe` proxy, so the e2e specs
  * scan the screens' populated states rather than "daemon down". One agent, one
  * thread with one trace (an LLM call and a tool call), one prompt with two
- * versions, and an eval's scores.
+ * versions, an eval's scores, and a Context Hub namespace with a fleet and a
+ * private entry.
  */
 const NOW = Date.now();
 const T0 = NOW - 60_000;
@@ -159,6 +161,19 @@ const promptVersion = (version: number, labels: string[], text: string): Observe
 });
 const promptVersions = [promptVersion(2, ['production'], 'Hello {{customer}}, how can I help today?'), promptVersion(1, [], 'Hello {{customer}}.')];
 
+const hubEntry = (key: string, value: string, scope: ObserveHubEntry['scope'], ttl: number | null): ObserveHubEntry => ({
+  entry_id: `e2e-hub-${key}`,
+  namespace: 'e2e-namespace',
+  agent_id: 'e2e-agent',
+  key,
+  value,
+  scope,
+  created_at: T0,
+  ttl,
+  expires_at: ttl === null ? null : T0 + ttl,
+});
+const hubEntries = [hubEntry('order-policy', '{"returns_days":30}', 'fleet', null), hubEntry('last-customer', 'cust-42', 'private', 24 * HOUR)];
+
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
@@ -181,6 +196,11 @@ export async function stubObserve(page: Page): Promise<void> {
     if (path === '/api/v1/insights') return json(route, insights);
     if (path === '/api/v1/prompts') return json(route, { prompts: [{ ...promptVersions[0], versions: 2, uses: 3 }] });
     if (path === '/api/v1/prompts/e2e-prompt') return json(route, { name: 'e2e-prompt', versions: promptVersions });
+    if (path === '/api/v1/hub' && route.request().method() === 'GET') {
+      const ns = q.get('namespace');
+      const scope = q.get('scope');
+      return json(route, { entries: hubEntries.filter((e) => (!ns || e.namespace === ns) && (!scope || e.scope === scope)) });
+    }
     if (path === '/api/v1/scores') {
       if (q.get('aggregate') === 'eval')
         return json(route, { evals: [{ name: 'e2e-eval', count: 4, passed: 3, pass_rate: 0.75, avg_value: 0.75, last_ts: T0 + 2_000 }] });
