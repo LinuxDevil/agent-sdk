@@ -54,6 +54,8 @@ export default defineConfig({
       BASE_DIR: baseDir,
       LOUSHO_STUDIO_TOKEN: E2E_STUDIO_TOKEN,
       LOUSHO_OBSERVE_URL: E2E_OBSERVE_URL,
+      // No daemon here: keep the LLM-judge loop (server/judge.ts) from polling it.
+      LOUSHO_STUDIO_JUDGE: '0',
     },
     url: `http://127.0.0.1:${port}/health`,
     reuseExistingServer: false,

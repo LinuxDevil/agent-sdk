@@ -14591,10 +14591,15 @@ Agent Forge sends from `LOUSHO_OBSERVE_TOKEN` when it is set):
 | Route | Answer |
 | --- | --- |
 | `POST /api/v1/evaluators/judge-jobs/claim` `{ "max"?: 1..20 (5), "lease_ms"?: 1000..300000 (60000) }` | `200 { "jobs": [{ "job_id", "rule", "trace" }] }` (an empty array when none wait). Each job is leased for `lease_ms`. A lease that runs out puts the job back at the front of the queue. A job whose rule was deleted, disabled or is no longer `judge` is discarded at claim time. `trace` is the same object a code rule receives. |
-| `POST /api/v1/evaluators/judge-jobs/:job_id/result` `{ "value": <0..1 or null>, "comment"?: "<at most 1000 characters>" }` | `201 { "score_id" }`, and the job leaves the queue. An unknown job, or one whose lease ran out, is a `404`. A bad body is a `400`. |
+| `POST /api/v1/evaluators/judge-jobs/:job_id/result` `{ "value": <0..1 or null>, "comment"?: "<at most 1000 characters>" or null }` | `201 { "score_id" }`, and the job leaves the queue. The score is named after the rule as it was at claim time, so a rule renamed while its job is leased scores under its old name. An unknown job, or one whose lease ran out, is a `404`. A bad body is a `400`. |
 
-Agent Forge claims up to 5 jobs every 2 seconds and runs them one at a time.
-A daemon that is down only pauses it, and it logs once per outage.
+Agent Forge claims up to 5 jobs every 2 seconds, with a 60-second lease, and
+runs them one at a time. Each judge call is cut off after 20 seconds, or
+sooner if less of the lease is left (a call cut off scores `value: null` with
+comment `judge_error: timed out after <n> ms`). A claimed job whose lease has
+run out before its turn is not run: it expires and is claimed again later. A
+daemon that is down only pauses the loop, and it logs once per outage. The
+dry run below has the same 20-second cap.
 
 To dry-run a judge rule, use Agent Forge: `POST /observe/api/v1/evaluators/:id/test`
 `{ "trace_id" }` on the Studio server runs the judge on that trace and answers

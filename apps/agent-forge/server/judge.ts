@@ -8,9 +8,11 @@
  * daemon's bounded queue (500), and a job whose lease runs out is requeued.
  *
  * - {@link startJudgeLoop}: every `intervalMs` (default 2000) claim up to 5
- *   jobs from `observeTarget()` (with `LOUSHO_OBSERVE_TOKEN` as the bearer
- *   when set), run them one at a time, post each result. Ticks never
- *   overlap. A daemon that is down or answers non-2xx only skips the tick,
+ *   jobs from `observeTarget()` for `leaseMs` (default 60 s; with
+ *   `LOUSHO_OBSERVE_TOKEN` as the bearer when set), run them one at a time,
+ *   post each result. Each judge call is capped at `judgeTimeoutMs` (default
+ *   20 s) and at what is left of the lease; a job whose lease has run out
+ *   locally is not run (it expires and requeues). Ticks never overlap. A daemon that is down or answers non-2xx only skips the tick,
  *   logged once per outage.
  * - The judge itself ({@link modelJudge}) is one `provider.generate()` call,
  *   with the provider resolved exactly as the playground resolves it
@@ -44,15 +46,23 @@ export interface JudgeResult {
   comment: string | null;
 }
 
-/** Runs one judge rule on one trace; the default is {@link modelJudge}. */
-export type JudgeFn = (rule: JudgeRule, trace: EvaluatorTrace) => Promise<JudgeResult>;
+/**
+ * Runs one judge rule on one trace; the default is {@link modelJudge}.
+ * `signal` aborts when the call's time is up (the result is then a
+ * `judge_error` whether or not the judge honours it).
+ */
+export type JudgeFn = (rule: JudgeRule, trace: EvaluatorTrace, signal: AbortSignal) => Promise<JudgeResult>;
 
 export interface JudgeLoopOptions {
   secretsStore: SecretsStore;
-  /** The project dir; the default judge makes no reporter, so nothing is written under it. */
-  baseDir: string;
   /** Pause between ticks; default 2000 ms. */
   intervalMs?: number;
+  /** The lease asked for on each claim (`lease_ms`); default 60000 ms. */
+  leaseMs?: number;
+  /** Cap on one judge call (also cut to what is left of the job's lease); default 20000 ms. */
+  judgeTimeoutMs?: number;
+  /** The clock lease deadlines run on (tests); default `Date.now`. */
+  now?: () => number;
   /** The fetch daemon calls go through (tests). */
   fetch?: typeof fetch;
   /** The judge; default {@link modelJudge} over `secretsStore`. */
@@ -68,6 +78,10 @@ export interface JudgeLoop {
 }
 
 const CLAIM_MAX = 5;
+const LEASE_MS_DEFAULT = 60_000;
+const JUDGE_TIMEOUT_MS_DEFAULT = 20_000;
+/** Time kept back from a lease to post the result before it runs out. */
+const POST_MARGIN_MS = 1000;
 const DAEMON_TIMEOUT_MS = 8000;
 const FIELD_LIMIT = 8 * 1024;
 const MAX_COMMENT = 1000;
@@ -146,7 +160,7 @@ const judgeError = (error: unknown): JudgeResult => ({
 
 /** The real judge: one model call with the rule's `provider/model`, resolved like the playground's. */
 function modelJudge(secretsStore: SecretsStore): JudgeFn {
-  return async (rule, trace) => {
+  return async (rule, trace, signal) => {
     try {
       const spec: AgentSpec = { name: 'judge', prompt: '', provider: providerOf(rule.config.model) };
       const { provider } = buildAgentFromSpec(spec, 'judge', undefined, { secretsStore });
@@ -156,6 +170,7 @@ function modelJudge(secretsStore: SecretsStore): JudgeFn {
           { role: 'user', content: judgePrompt(trace) },
         ],
         temperature: 0,
+        signal,
       });
       return parseJudgeReply(reply.text);
     } catch (error) {
@@ -172,12 +187,31 @@ function acceptable(result: JudgeResult): JudgeResult {
   return { value, comment: typeof comment === 'string' ? comment.slice(0, MAX_COMMENT) : null };
 }
 
-/** `judge` never throws (a throw becomes a `judge_error` result) and never returns what the daemon would 400. */
-async function runJudge(judge: JudgeFn, rule: JudgeRule, trace: EvaluatorTrace): Promise<JudgeResult> {
+/**
+ * One judge call bounded by `timeoutMs` (its signal aborts then, and a judge
+ * that ignores the signal is no longer waited for). Never throws: a throw or
+ * the timeout becomes a `judge_error` result; never returns what the daemon
+ * would 400.
+ */
+async function runJudge(judge: JudgeFn, rule: JudgeRule, trace: EvaluatorTrace, timeoutMs: number): Promise<JudgeResult> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error(`timed out after ${timeoutMs} ms`);
+      controller.abort(error);
+      reject(error);
+    }, timeoutMs);
+  });
+  const run = Promise.resolve().then(() => judge(rule, trace, controller.signal));
+  // A judge that settles after the timeout must not surface as an unhandled rejection.
+  run.catch(() => undefined);
   try {
-    return acceptable(await judge(rule, trace));
+    return acceptable(await Promise.race([run, timedOut]));
   } catch (error) {
     return judgeError(error);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -212,33 +246,56 @@ export function startJudgeLoop(options: JudgeLoopOptions): JudgeLoop {
   const fetchFn = options.fetch ?? fetch;
   const judge = options.judge ?? modelJudge(options.secretsStore);
   const warn = options.warn ?? ((message: string) => console.warn(message));
+  const now = options.now ?? Date.now;
+  const leaseMs = options.leaseMs ?? LEASE_MS_DEFAULT;
+  const judgeTimeoutMs = options.judgeTimeoutMs ?? JUDGE_TIMEOUT_MS_DEFAULT;
   let stopped = false;
   let down = false;
   let inFlight: Promise<void> | undefined;
 
-  /** A daemon answer: `true` when it was a 2xx; the first failure of an outage is logged. */
+  /** The first failure of an outage is logged; the rest stay quiet until a healthy answer. */
+  const outage = (why: string): void => {
+    if (down) return;
+    down = true;
+    warn(`[lousho studio] judge evaluators paused: the observe daemon at ${observeTarget()} ${why}; retrying.`);
+  };
+
+  /** A daemon answer: `true` when it was a 2xx. */
   const healthy = (response: globalThis.Response | undefined): response is globalThis.Response => {
     if (response?.ok) {
       down = false;
       return true;
     }
-    if (!down) {
-      down = true;
-      const why = response === undefined ? 'unreachable' : `HTTP ${response.status}`;
-      warn(`[lousho studio] judge evaluators paused: the observe daemon at ${observeTarget()} is ${why}; retrying.`);
-    }
+    outage(response === undefined ? 'is unreachable' : `answered HTTP ${response.status}`);
     return false;
   };
 
+  /** The claimed jobs, or `undefined` (an outage) when the daemon did not answer with them. */
+  const claim = async (): Promise<ClaimedJob[] | undefined> => {
+    const claimed = await callDaemon(fetchFn, '/api/v1/evaluators/judge-jobs/claim', { max: CLAIM_MAX, lease_ms: leaseMs });
+    if (claimed === undefined || !claimed.ok) {
+      healthy(claimed);
+      return undefined;
+    }
+    const body = (await claimed.json().catch(() => undefined)) as { jobs?: unknown } | undefined;
+    if (!Array.isArray(body?.jobs)) {
+      outage('answered a claim without a jobs array');
+      return undefined;
+    }
+    down = false;
+    return body.jobs as ClaimedJob[];
+  };
+
   const runTick = async (): Promise<void> => {
-    const claimed = await callDaemon(fetchFn, '/api/v1/evaluators/judge-jobs/claim', { max: CLAIM_MAX });
-    if (!healthy(claimed)) return;
-    const { jobs } = (await claimed.json()) as { jobs: ClaimedJob[] };
-    for (const job of jobs) {
-      if (stopped) return;
-      const result = await runJudge(judge, job.rule, job.trace);
-      const body = { value: result.value, ...(result.comment === null ? {} : { comment: result.comment }) };
-      const posted = await callDaemon(fetchFn, `/api/v1/evaluators/judge-jobs/${encodeURIComponent(job.job_id)}/result`, body);
+    // Measured before the claim, so the local deadline never trails the daemon's.
+    const deadline = now() + leaseMs;
+    const jobs = await claim();
+    for (const job of jobs ?? []) {
+      // What is left of the lease after keeping time back to post; a job out of time is left to expire and requeue.
+      const budget = deadline - now() - POST_MARGIN_MS;
+      if (stopped || budget <= 0) return;
+      const result = await runJudge(judge, job.rule, job.trace, Math.min(judgeTimeoutMs, budget));
+      const posted = await callDaemon(fetchFn, `/api/v1/evaluators/judge-jobs/${encodeURIComponent(job.job_id)}/result`, result);
       // A 404 is a lease that ran out (the job was requeued): not an outage.
       if (posted?.status !== 404 && !healthy(posted)) return;
     }
@@ -269,6 +326,8 @@ export interface JudgeTestRouteOptions {
   judge?: JudgeFn;
   /** The fetch daemon calls go through (tests). */
   fetch?: typeof fetch;
+  /** Cap on the dry run's judge call; default 20000 ms. */
+  judgeTimeoutMs?: number;
 }
 
 const UNREACHABLE = 'The observe daemon is unreachable - run `lousho observe start` to collect agent data.';
@@ -281,15 +340,21 @@ async function passThrough(res: Response, upstream: globalThis.Response): Promis
   res.send(Buffer.from(await upstream.arrayBuffer()));
 }
 
+/** An id the daemon would read as something other than one plain path segment. */
+const unsafeId = (id: string): boolean => id === '.' || id === '..' || /[/\\]/.test(id);
+
 const invalid = (res: Response, status: number, error: string): void => {
   res.status(status).json({ error, code: 'LOUSHO_REQUEST_INVALID' });
 };
 
+/** A judge already bounded by its timeout (see {@link runJudge}). */
+type BoundJudge = (rule: JudgeRule, trace: EvaluatorTrace) => Promise<JudgeResult>;
+
 /** The judge dry run: the trace from the daemon, built as the daemon builds it, then the judge. */
-async function testJudgeRule(req: Request, res: Response, rule: JudgeRule, judge: JudgeFn, fetchFn: typeof fetch): Promise<void> {
+async function testJudgeRule(req: Request, res: Response, rule: JudgeRule, judge: BoundJudge, fetchFn: typeof fetch): Promise<void> {
   const traceId: unknown = (req.body as { trace_id?: unknown } | undefined)?.trace_id;
-  if (typeof traceId !== 'string' || traceId === '') {
-    return invalid(res, 400, 'Invalid evaluator test body: trace_id: must be a non-empty string.');
+  if (typeof traceId !== 'string' || traceId === '' || unsafeId(traceId)) {
+    return invalid(res, 400, 'Invalid evaluator test body: trace_id: must be a non-empty trace id.');
   }
   const detail = await callDaemon(fetchFn, `/api/v1/traces/${encodeURIComponent(traceId)}`);
   if (detail === undefined) return void res.status(502).json({ error: UNREACHABLE });
@@ -297,7 +362,7 @@ async function testJudgeRule(req: Request, res: Response, rule: JudgeRule, judge
   const { observations } = (await detail.json()) as { observations: ObservationRow[] };
   const trace = evaluatorTraceFrom(traceId, observations);
   if (trace === undefined) return invalid(res, 404, `No trace '${traceId}' with a root observation.`);
-  res.status(200).json({ result: await runJudge(judge, rule, trace) });
+  res.status(200).json({ result: await judge(rule, trace) });
 }
 
 /**
@@ -310,12 +375,14 @@ async function testJudgeRule(req: Request, res: Response, rule: JudgeRule, judge
  * is a 502.
  */
 export function registerJudgeTestRoute(app: Express, options: JudgeTestRouteOptions): void {
-  const judge = options.judge ?? modelJudge(options.secretsStore);
+  const judgeFn = options.judge ?? modelJudge(options.secretsStore);
+  const timeoutMs = options.judgeTimeoutMs ?? JUDGE_TIMEOUT_MS_DEFAULT;
+  const judge: BoundJudge = (rule, trace) => runJudge(judgeFn, rule, trace, timeoutMs);
   const fetchFn = options.fetch ?? fetch;
   app.post('/observe/api/v1/evaluators/:id/test', async (req, res, next) => {
     try {
       const id = String(req.params.id);
-      if (id === '.' || id === '..') return invalid(res, 400, 'Invalid evaluator rule id.');
+      if (unsafeId(id)) return invalid(res, 400, 'Invalid evaluator rule id.');
       const rulePath = `/api/v1/evaluators/${encodeURIComponent(id)}`;
       const found = await callDaemon(fetchFn, rulePath);
       if (found === undefined) return void res.status(502).json({ error: UNREACHABLE });

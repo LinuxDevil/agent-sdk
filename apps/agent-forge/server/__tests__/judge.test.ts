@@ -15,7 +15,7 @@ import request from 'supertest';
 import { startObserveDaemon, type ObserveDaemon } from '../../../../src/observe/daemon';
 import { ingestBatch, listScores } from '../../../../src/observe/store';
 import { createApp } from '../app';
-import { judgePrompt, parseJudgeReply, startJudgeLoop, type JudgeFn, type JudgeLoop } from '../judge';
+import { judgePrompt, parseJudgeReply, startJudgeLoop, type JudgeFn, type JudgeLoop, type JudgeLoopOptions } from '../judge';
 import { RunManager } from '../runRegistry';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
@@ -71,8 +71,8 @@ describe('judge loop and test-on-trace', () => {
 
   const onlineScores = (traceId: string) => listScores(daemon.db, { trace_id: traceId, source: 'online', limit: 10 }).scores;
 
-  const loop = (judge: JudgeFn, extra: { warn?: (m: string) => void } = {}): JudgeLoop => {
-    const started = startJudgeLoop({ secretsStore: new SecretsStore(baseDir), baseDir, intervalMs: 60_000, judge, ...extra });
+  const loop = (judge: JudgeFn, extra: Partial<JudgeLoopOptions> = {}): JudgeLoop => {
+    const started = startJudgeLoop({ secretsStore: new SecretsStore(baseDir), intervalMs: 60_000, judge, ...extra });
     loops.push(started);
     return started;
   };
@@ -112,7 +112,7 @@ describe('judge loop and test-on-trace', () => {
     const prevKey = process.env.OPENAI_API_KEY;
     delete process.env.OPENAI_API_KEY;
     try {
-      const started = startJudgeLoop({ secretsStore: new SecretsStore(baseDir), baseDir, intervalMs: 60_000 });
+      const started = startJudgeLoop({ secretsStore: new SecretsStore(baseDir), intervalMs: 60_000 });
       loops.push(started);
       await started.tick();
     } finally {
@@ -156,6 +156,74 @@ describe('judge loop and test-on-trace', () => {
     await daemon.evaluators.idle();
     await loop(async () => ({ value: 0.5, comment: 'y'.repeat(5000) })).tick();
     expect(onlineScores('t2')).toEqual([expect.objectContaining({ value: 0.5, comment: 'y'.repeat(1000) })]);
+  });
+
+  it('aborts a judge call at judgeTimeoutMs and scores it judge_error, even when the judge ignores the signal', async () => {
+    await judgeRuleWithJob();
+    let aborted: unknown;
+    const started = loop(
+      (_rule, _trace, signal) =>
+        new Promise(() => {
+          signal.addEventListener('abort', () => (aborted = signal.reason));
+        }),
+      { judgeTimeoutMs: 100 }
+    );
+    const begun = Date.now();
+    await started.tick();
+    expect(Date.now() - begun).toBeLessThan(2000);
+    expect(aborted).toBeInstanceOf(Error);
+    expect(onlineScores('t1')).toEqual([expect.objectContaining({ value: null, comment: 'judge_error: timed out after 100 ms' })]);
+  });
+
+  it('does not run a claimed job once its lease has run out locally (it expires and requeues)', async () => {
+    await judgeRuleWithJob('t1');
+    seedTrace('t2');
+    daemon.evaluators.notifyRootsEnded(['t2']);
+    await daemon.evaluators.idle();
+    const clock = { now: Date.now() };
+    const judged: string[] = [];
+    const started = loop(
+      async (_rule, trace) => {
+        judged.push(trace.trace_id);
+        clock.now += 60_000; // this call used up the whole lease
+        return { value: 1, comment: null };
+      },
+      { leaseMs: 60_000, now: () => clock.now }
+    );
+    await started.tick();
+    expect(judged).toEqual(['t1']);
+    // t1's result posted (the daemon's own lease is still live); t2 was skipped, still leased until it expires.
+    expect(daemon.evaluators.stats()).toMatchObject({ judge_scored: 1, judge_leased: 1, judge_queued: 0 });
+    expect(onlineScores('t2')).toEqual([]);
+  });
+
+  it('caps a judge call at what is left of the lease', async () => {
+    await judgeRuleWithJob();
+    const clock = { now: Date.now() };
+    let signalled: AbortSignal | undefined;
+    const started = loop(
+      (_rule, _trace, signal) => {
+        signalled = signal;
+        return new Promise(() => undefined);
+      },
+      // A 1150 ms lease minus the 1000 ms post margin leaves 150 ms (the clock stands still).
+      { leaseMs: 1150, judgeTimeoutMs: 20_000, now: () => clock.now }
+    );
+    const begun = Date.now();
+    await started.tick();
+    expect(Date.now() - begun).toBeLessThan(2000);
+    expect(signalled?.aborted).toBe(true);
+    expect(onlineScores('t1')).toEqual([expect.objectContaining({ comment: 'judge_error: timed out after 150 ms' })]);
+  });
+
+  it('warns once per outage for a 2xx claim answer that is not JSON', async () => {
+    const warnings: string[] = [];
+    const notJson = (async () => new Response('<html>proxy</html>', { status: 200, headers: { 'content-type': 'text/html' } })) as typeof fetch;
+    const started = loop(async () => ({ value: 1, comment: null }), { fetch: notJson, warn: (m) => warnings.push(m) });
+    await started.tick();
+    await started.tick();
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('without a jobs array');
   });
 
   it('without a loop the job stays queued (nothing claims it)', async () => {
@@ -222,6 +290,12 @@ describe('judge loop and test-on-trace', () => {
       expect(unknownTrace.status).toBe(404);
       const badBody = await request(app).post(`/observe/api/v1/evaluators/${ruleId}/test`).send({});
       expect(badBody.status).toBe(400);
+      for (const trace_id of ['.', '..', 'a/b', 'a\\b']) {
+        const unsafe = await request(app).post(`/observe/api/v1/evaluators/${ruleId}/test`).send({ trace_id });
+        expect(unsafe.status).toBe(400);
+      }
+      const encodedSlash = await request(app).post('/observe/api/v1/evaluators/a%2Fb/test').send({ trace_id: 't1' });
+      expect(encodedSlash.status).toBe(400);
       process.env.LOUSHO_OBSERVE_URL = 'http://127.0.0.1:1';
       const down = await request(app).post(`/observe/api/v1/evaluators/${ruleId}/test`).send({ trace_id: 't1' });
       expect(down.status).toBe(502);

@@ -374,8 +374,8 @@ describe('judge-job routes', () => {
       }
       const unknown = await call(database, 'POST', '/api/v1/evaluators/judge-jobs/nope/result', { value: 1 }, worker);
       expect(unknown.status).toBe(404);
-      // The leased job survived the bad bodies.
-      expect((await result({ value: 1, comment: 'x'.repeat(1000) })).status).toBe(201);
+      // The leased job survived the bad bodies; a null comment is accepted.
+      expect((await result({ value: 1, comment: null })).status).toBe(201);
       worker.stop();
     });
   });

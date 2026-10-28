@@ -64,9 +64,11 @@ export interface StartStudioServerOptions {
    * The LLM-judge loop (judge.ts) that pulls judge-evaluator jobs from the
    * observe daemon and runs them with this server's provider keys. On by
    * default unless `observe` is `false`; `false` turns it off, an object
-   * overrides its options (`intervalMs`, `fetch`, `judge`, `warn`).
+   * overrides its options (`intervalMs`, `leaseMs`, `judgeTimeoutMs`,
+   * `fetch`, `judge`, `warn`). Launched directly, `LOUSHO_STUDIO_JUDGE=0`
+   * turns it off (the e2e server does).
    */
-  judge?: false | Partial<Omit<JudgeLoopOptions, 'secretsStore' | 'baseDir'>>;
+  judge?: false | Partial<Omit<JudgeLoopOptions, 'secretsStore'>>;
 }
 
 async function listen(server: http.Server, port: number, host: string): Promise<void> {
@@ -123,7 +125,7 @@ export async function startStudioServer(
 
   await listen(server, port, host);
   const judgeOption = options.judge ?? (options.observe === false ? false : {});
-  const judgeLoop = judgeOption === false ? undefined : startJudgeLoop({ ...judgeOption, secretsStore, baseDir });
+  const judgeLoop = judgeOption === false ? undefined : startJudgeLoop({ ...judgeOption, secretsStore });
   const boundPort = (server.address() as { port: number }).port;
   const urlHost = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host.includes(':') ? `[${host}]` : host;
 
@@ -162,7 +164,8 @@ if (isMainModule) {
   // default `apps/agent-forge/dist` lookup in prod mode.
   const staticDir = process.env.NO_STATIC ? false : (process.env.STATIC_DIR ?? undefined);
 
-  startStudioServer({ port, host, baseDir, staticDir })
+  const judge = process.env.LOUSHO_STUDIO_JUDGE === '0' ? false : undefined;
+  startStudioServer({ port, host, baseDir, staticDir, judge })
     .then((handle) => {
       console.log(`[lousho studio] API server listening on http://${host ?? '127.0.0.1'}:${handle.port}`);
       // `lousho studio` mints the token itself and prints this URL; only print it when launched directly.

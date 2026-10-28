@@ -18,7 +18,7 @@
  *   -> `{ jobs: [{ job_id, rule, trace }] }` (possibly empty): leases queued
  *   judge jobs to Agent Forge, which runs them with its provider keys
  *   (judgeJobs.ts). An expired lease requeues the job.
- * - `POST /api/v1/evaluators/judge-jobs/:job_id/result` `{ value: number in [0, 1] | null, comment?: string <= 1000 }`
+ * - `POST /api/v1/evaluators/judge-jobs/:job_id/result` `{ value: number in [0, 1] | null, comment?: string <= 1000 | null }`
  *   -> `201 { score_id }`, the `online` score; an unknown or expired job is a 404.
  *   These two sit before the `:id` routes so `judge-jobs` never reads as a rule id.
  *
@@ -81,7 +81,7 @@ const claimBody = z
   .strict();
 
 const resultBody = z
-  .object({ value: z.number().finite().min(0).max(1).nullable(), comment: z.string().max(1000).optional() })
+  .object({ value: z.number().finite().min(0).max(1).nullable(), comment: z.string().max(1000).nullish() })
   .strict();
 
 const JUDGE_BODY_LIMIT = 16 * 1024;
