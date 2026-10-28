@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest';
 import * as fs from 'node:fs';
+import * as http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {
@@ -328,6 +330,52 @@ describe('lousho eval end to end (real vitest, mockModel fixtures)', () => {
     expect(fs.readFileSync(junit, 'utf8')).toContain(
       "<failure message=\"calledTool('lookup_order') failed: tools called were none\""
     );
+  }, 60_000);
+});
+
+describe('lousho eval over a daemon dataset (real vitest, stub daemon)', () => {
+  const fixture = path.join(FIXTURES, 'dataset.eval.ts');
+  const quietVitest = createVitestSpawner('ignore');
+  const cli = (args: string[]) => {
+    const log = vi.fn();
+    return runEval(args, { log, spawnVitest: quietVitest }).then((code) => ({ code, output: log.mock.calls.map((c) => String(c[0])).join('\n') }));
+  };
+  const examples = [
+    { example_id: 'ex_1', dataset_id: 'ds', input: 'refund 42', expected: 'echo refund 42', source_trace_id: null, created_at: 1 },
+    { example_id: 'ex_2', dataset_id: 'ds', input: 'refund 7', expected: 'echo refund 7', source_trace_id: null, created_at: 2 },
+  ];
+  // Serves `refunds` at GET /api/v1/datasets/refunds; every other request (trace/score emission) gets `{}`.
+  const daemon = http.createServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    const body = req.method === 'GET' && req.url?.startsWith('/api/v1/datasets/refunds') ? { examples, total: examples.length, limit: 1000, offset: 0 } : {};
+    res.end(JSON.stringify(body));
+  });
+
+  beforeAll(() => new Promise<void>((resolve) => daemon.listen(0, '127.0.0.1', resolve)));
+  afterAll(() => new Promise<void>((resolve) => daemon.close(() => resolve())));
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('runs one case per example, reported as #1 and #2', async () => {
+    vi.stubEnv('LOUSHO_OBSERVE', `http://127.0.0.1:${(daemon.address() as AddressInfo).port}`);
+    const json = tempFile('results.json');
+    const { code, output } = await cli([fixture, '--json', json]);
+    expect(code).toBe(0);
+    expect(output).toContain('2 eval(s): 2 passed, 0 failed');
+    const parsed = JSON.parse(fs.readFileSync(json, 'utf8')) as { results: EvalResult[] };
+    expect(parsed.results.map((r) => [r.name, r.case, r.passed])).toEqual([
+      ['dataset refunds', '#1', true],
+      ['dataset refunds', '#2', true],
+    ]);
+  }, 60_000);
+
+  it('fails the eval with LOUSHO_DATASET_UNAVAILABLE when LOUSHO_OBSERVE is not set', async () => {
+    vi.stubEnv('LOUSHO_OBSERVE', '');
+    const { code, output } = await cli([fixture]);
+    expect(code).toBe(1);
+    expect(output).toContain('1 eval(s): 0 passed, 1 failed');
+    expect(output).toContain("defineEval({ dataset: 'refunds' }) needs the observe daemon");
   }, 60_000);
 });
 

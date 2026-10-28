@@ -202,6 +202,51 @@ Pass a **factory** (`agent: () => createAgent(...)`) so each case gets its own
 agent and its own `mockModel` script. With a single shared agent, a scripted
 model runs out of turns on the second case.
 
+#### From the daemon
+
+The cases can also live in the observe daemon's dataset registry (see
+[Observability](./observability.md), `/api/v1/datasets`): create a dataset, add examples to it
+by hand or copy them from a trace you liked, then pass `dataset: 'name'` in
+place of `cases`.
+
+```bash
+curl -X POST "$LOUSHO_OBSERVE/api/v1/datasets" -H 'content-type: application/json' -d '{"name":"refunds"}'
+curl -X POST "$LOUSHO_OBSERVE/api/v1/datasets/refunds/examples" -H 'content-type: application/json' \
+  -d '{"input":"Refund order 42","expected":"refunded"}'
+curl -X POST "$LOUSHO_OBSERVE/api/v1/datasets/refunds/examples" -H 'content-type: application/json' \
+  -d '{"from_trace_id":"<a trace id>"}'
+```
+
+```ts no-run
+import { createAgent, defineEval, includes } from '@lousho/build-ai-agent';
+
+defineEval({
+  name: 'refunds',
+  dataset: 'refunds',
+  agent: () => createAgent({ instructions: 'You handle refunds.' }),
+  async test(t, c) {
+    await t.send(String(c.input));
+    t.completed();
+    if (typeof c.expected === 'string') t.soft('mentions the outcome', t.reply, includes(c.expected));
+  },
+});
+```
+
+When vitest collects the file, `defineEval()` fetches every example of the
+dataset from the daemon `LOUSHO_OBSERVE` points at (sending
+`LOUSHO_OBSERVE_TOKEN` when set) and registers one test per example, oldest
+first: `refunds [#1]`, `refunds [#2]`, .... Each `c` is a `DatasetCase`:
+`{ input, expected, label, example_id, source_trace_id }`, where `input` and
+`expected` are whatever JSON the example holds (`expected` is `null` when
+unset). `LOUSHO_OBSERVE` is read when `defineEval()` is called.
+
+The eval fails with
+[`LOUSHO_DATASET_UNAVAILABLE`](./errors.md#lousho_dataset_unavailable) when
+`LOUSHO_OBSERVE` is not set, the daemon cannot be reached in 10 seconds, the
+dataset does not exist, or it has no examples: an eval that runs nothing never
+passes. Passing both `cases` and `dataset` throws `LOUSHO_EVALS_INVALID`. A
+dataset eval that `lousho eval --tag` filters out is skipped without a fetch.
+
 ## Judge evals
 
 `t.judge(rubric)` grades the latest reply with an LLM and returns a score from

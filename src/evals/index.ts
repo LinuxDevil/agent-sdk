@@ -13,4 +13,5 @@ export * from './checks';
 export * from './evalResult';
 export { compareTrajectories } from './drift';
 export type { TrajectoryComparison, TrajectoryStep, DriftEntry } from './drift';
+export type { DatasetCase } from './dataset';
 export type { EvalJudgeConfig, EvalTestContext, CalledToolOptions, ToolScopeOptions, MaxCostOptions, AgentSource } from './trajectory';

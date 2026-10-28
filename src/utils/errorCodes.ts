@@ -66,6 +66,8 @@ export const ERROR_CODES = {
   /** The built server was asked to listen on a non-loopback host with no route auth. */
   LOUSHO_SERVER_UNPROTECTED:
     'Set LOUSHO_API_TOKEN, add an auth.ts to the agent directory, bind to 127.0.0.1, or set LOUSHO_ALLOW_PUBLIC=1 to serve an open agent on purpose.',
+  /** A `defineEval({ dataset })` dataset could not be fetched from the observe daemon, or is empty. */
+  LOUSHO_DATASET_UNAVAILABLE: 'Start the observe daemon and set LOUSHO_OBSERVE to its URL, and create the dataset the message names with examples in it.',
   LOUSHO_EVALS_INVALID: 'Call the eval helper the way the message says (inside a vitest file, after t.send(), with a judge configured).',
   LOUSHO_TEST_FAILED: 'Read the message: an eval or a mockModel() script did not hold; fix the agent, or the expectation.',
   LOUSHO_CASSETTE_INVALID: 'Record the cassette again (lousho eval --record, or recordReplay mode: record), or fix the file the message names.',
