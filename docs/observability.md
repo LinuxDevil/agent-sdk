@@ -618,6 +618,56 @@ An unknown field, an unknown `kind` or a `config` that does not match the
 `404` with the same code. `updated_at` moves on every `PUT`. The body may be up
 to 128 KiB. Retention never deletes rules.
 
+### Annotation queues
+
+An annotation queue is a named list of traces for a person to review one by
+one. Completing an item writes its scores as human scores, the same
+`source: "human"` rows `POST /api/v1/scores` writes, so they show up in
+`GET /api/v1/scores` and on the trace. The routes take the same token as
+ingest:
+
+| Route | Answer |
+| --- | --- |
+| `POST /api/v1/queues` `{ "name", "rubric"? }` | `201 { queue }`. A taken name is a `409`. |
+| `GET /api/v1/queues?limit&offset` | `{ queues, total, limit, offset }`, newest first. `limit` defaults to 100 (max 1000). |
+| `GET /api/v1/queues/:id` | `{ queue }`. |
+| `DELETE /api/v1/queues/:id` | `204`. The queue's items go with it; scores already written stay. |
+| `POST /api/v1/queues/:id/items` `{ "trace_ids": [...] }` | `201 { added, skipped_existing }`. Takes 1-500 ids, queued in the order given. Every id must name a stored trace, or the answer is a `404` naming the first unknown one and nothing is added. Ids already in the queue are listed in `skipped_existing`, not treated as errors. |
+| `GET /api/v1/queues/:id/items?status&limit&offset` | `{ items, total, limit, offset }`, oldest first. `status` is `pending`, `done` or `skipped`; any other value is a `400`. |
+| `GET /api/v1/queues/:id/next` | `{ item }`, the oldest pending item, or `204` with no body when none is pending. |
+| `POST /api/v1/queues/:id/items/:item/complete` `{ "scores", "reviewer"?, "status"? }` | `{ item, score_ids }`. |
+
+A queue row is `{ queue_id, name, rubric, created_at, counts: { pending, done,
+skipped } }`. An item row is `{ item_id, queue_id, trace_id, status, reviewer,
+created_at, done_at }`, where `reviewer` and `done_at` are `null` until the
+item is finished. `:id` is the `queue_id`.
+
+- `name`: 1-200 characters after trimming, unique.
+- `rubric`: up to 50 entries of `{ "name", "description"?, "min"?, "max"? }`,
+  `[]` by default. Names are 1-200 characters and unique, a description is up
+  to 2000 characters, and `min` may not exceed `max`.
+
+The complete body takes `scores`, up to 50 entries of `{ "name", "value",
+"comment"? }` where `value` is a number or `null`, an optional `reviewer` (up
+to 200 characters) and `status`, which is `done` (the default) or `skipped`.
+Each score is written on the item's trace, and the status, `reviewer` and
+`done_at` are set in the same transaction. When the queue has a rubric, every
+score name must be one of its names and the value must sit within that
+entry's `min` and `max`, or the answer is a `400`. A skip with scores is a
+`400`. Completing an item that is already done or skipped is a `409` and
+writes nothing. An item that is not in the queue is a `404`.
+
+`next` does not claim or lock the item it returns. Asking twice returns the
+same item until someone completes it. The queue is meant for one reviewer
+working locally, so two reviewers on one queue can score the same trace.
+
+Retention never touches queues or items. If an item's trace is pruned, the
+item keeps its `trace_id` and `next` still returns it. Completing it with
+scores is then a `404` naming the trace, and the item stays pending, so skip
+it instead. Bad bodies and unknown fields are a `400` with code
+`LOUSHO_REQUEST_INVALID`, and an unknown queue is a `404` with the same code.
+Bodies may be up to 256 KiB.
+
 ### Retention
 
 The daemon keeps 30 days of runs by default. On its first sweep after start,

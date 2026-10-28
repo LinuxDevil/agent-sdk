@@ -62,9 +62,18 @@ export function openDb(path: string): SqlDatabase {
   return db;
 }
 
-/** `work` in one write transaction (`BEGIN IMMEDIATE`), rolled back when it throws. */
+/** Databases with a `transaction()` open; a nested call joins the outer one. */
+const openTransactions = new WeakSet<SqlDatabase>();
+
+/**
+ * `work` in one write transaction (`BEGIN IMMEDIATE`), rolled back when it
+ * throws. Called inside another `transaction()` on the same db it just runs
+ * `work` there, so a throw rolls back the outer transaction as a whole.
+ */
 export function transaction<T>(db: SqlDatabase, work: () => T): T {
+  if (openTransactions.has(db)) return work();
   db.exec('BEGIN IMMEDIATE');
+  openTransactions.add(db);
   try {
     const result = work();
     db.exec('COMMIT');
@@ -76,6 +85,8 @@ export function transaction<T>(db: SqlDatabase, work: () => T): T {
       // the transaction is already gone; keep the original error
     }
     throw error;
+  } finally {
+    openTransactions.delete(db);
   }
 }
 

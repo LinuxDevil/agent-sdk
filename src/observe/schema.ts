@@ -249,6 +249,31 @@ export const OBSERVE_MIGRATIONS: readonly string[] = [
     updated_at INTEGER NOT NULL
   );
   `,
+  `
+  -- Annotation queues: named lists of traces for a human to review, with an
+  -- optional rubric (JSON array of { name, description?, min?, max? }).
+  -- annotation_items.trace_id is deliberately not a foreign key - retention
+  -- may prune the trace, the item stays. Retention never touches these
+  -- tables. foreign_keys is off, so deleting a queue deletes its items
+  -- explicitly; the CASCADE only documents the intent.
+  CREATE TABLE annotation_queues (
+    queue_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    rubric TEXT NOT NULL DEFAULT '[]',
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE annotation_items (
+    item_id TEXT PRIMARY KEY,
+    queue_id TEXT NOT NULL REFERENCES annotation_queues(queue_id) ON DELETE CASCADE,
+    trace_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','done','skipped')),
+    reviewer TEXT,
+    created_at INTEGER NOT NULL,
+    done_at INTEGER,
+    UNIQUE (queue_id, trace_id)
+  );
+  CREATE INDEX annotation_items_by_status ON annotation_items (queue_id, status, created_at);
+  `,
 ];
 
 /**

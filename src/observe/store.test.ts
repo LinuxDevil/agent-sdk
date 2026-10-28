@@ -403,6 +403,24 @@ describe('transaction', () => {
       database.close();
     }
   });
+
+  it('a nested call joins the outer transaction, so an outer throw undoes the inner writes', () => {
+    const database = db();
+    try {
+      expect(() =>
+        transaction(database, () => {
+          ingestBatch(database, [obs()]);
+          throw new Error('boom');
+        })
+      ).toThrow('boom');
+      expect(observeCounts(database).observations).toBe(0);
+      // and the db is usable for a fresh transaction afterwards
+      ingestBatch(database, [obs()]);
+      expect(observeCounts(database).observations).toBe(1);
+    } finally {
+      database.close();
+    }
+  });
 });
 
 function ingestBatchInner(database: SqlDatabase): void {

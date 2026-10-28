@@ -15,11 +15,11 @@
  * global API-token check; nothing per-route.
  */
 
-import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 
 import { SCORE_SOURCES } from '../envelope';
-import { ingestBatch, listScores, scorePassRates, type ScoreFilter } from '../store';
+import { ScoreTargetMissingError, writeHumanScore } from '../humanScores';
+import { listScores, scorePassRates, type ScoreFilter } from '../store';
 import { badRequest, intParam, requireJsonBody, sendJson, timeParam, type Route } from './httpKit';
 
 const FEEDBACK_BODY_LIMIT = 64 * 1024;
@@ -32,38 +32,21 @@ const feedbackBody = z.object({
   comment: z.string().max(10_000).optional(),
 });
 
-
 export const scoresRoutes: readonly Route[] = [
   {
     method: 'POST',
     path: '/api/v1/scores',
     handle: async ({ db, res, readBody }) => {
       const body = requireJsonBody(feedbackBody, await readBody(FEEDBACK_BODY_LIMIT), 'feedback');
-      const notFound = (error: string) => sendJson(res, 404, { error, code: 'LOUSHO_REQUEST_INVALID' });
-      const root = db
-        .prepare('SELECT agent_id FROM observations WHERE trace_id = ? ORDER BY parent_obs_id IS NULL DESC LIMIT 1')
-        .get(body.trace_id);
-      if (root === undefined) return notFound(`No trace '${body.trace_id}'.`);
-      if (body.obs_id !== undefined) {
-        const inTrace = db.prepare('SELECT 1 AS ok FROM observations WHERE obs_id = ? AND trace_id = ?').get(body.obs_id, body.trace_id);
-        if (inTrace === undefined) return notFound(`No observation '${body.obs_id}' in trace '${body.trace_id}'.`);
+      let score_id: string;
+      try {
+        score_id = writeHumanScore(db, body);
+      } catch (error) {
+        if (error instanceof ScoreTargetMissingError) {
+          return sendJson(res, 404, { error: error.message, code: 'LOUSHO_REQUEST_INVALID' });
+        }
+        throw error;
       }
-      const score_id = randomUUID();
-      ingestBatch(db, [
-        {
-          type: 'score',
-          data: {
-            score_id,
-            trace_id: body.trace_id,
-            obs_id: body.obs_id,
-            name: body.name,
-            value: body.value ?? undefined,
-            source: 'human',
-            comment: body.comment,
-            agent_id: typeof root.agent_id === 'string' ? root.agent_id : undefined,
-          },
-        },
-      ]);
       sendJson(res, 201, { score_id });
     },
   },
