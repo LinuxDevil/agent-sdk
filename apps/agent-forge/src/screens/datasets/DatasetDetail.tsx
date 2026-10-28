@@ -10,7 +10,7 @@ import { useRoute } from '../../router/useRoute';
 import { useDaemonDown, useDataset } from '../../observe/useObserve';
 import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
 import { observeClient } from '../../observe/observeClient';
-import type { ObserveExample } from '../../observe/types';
+import type { ObserveDatasetDetail, ObserveExample } from '../../observe/types';
 import { fmtDateTime } from '../../observe/format';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { EmptyState } from '../../ui/EmptyState';
@@ -90,58 +90,71 @@ function useDeleteExample(name: string, onDeleted: () => void) {
   return { busy, remove };
 }
 
+/** A loaded dataset: its description, the examples page and the opened example. */
+function Examples({
+  name,
+  detail,
+  offset,
+  onChanged,
+}: {
+  name: string;
+  detail: ObserveDatasetDetail;
+  offset: number;
+  onChanged: () => void;
+}) {
+  const [openId, setOpenId] = useState<string | undefined>();
+  const { busy, remove } = useDeleteExample(name, onChanged);
+  const opened = detail.examples.find((e) => e.example_id === openId);
+  return (
+    <>
+      {detail.dataset.description && <p className="datasets-note">{detail.dataset.description}</p>}
+      <DataTable
+        id="dataset-examples"
+        columns={columns((e) => void remove(e), busy)}
+        rows={detail.examples}
+        rowKey={(e) => e.example_id}
+        selectedKey={opened?.example_id}
+        onRowOpen={(e) => setOpenId(e.example_id === openId ? undefined : e.example_id)}
+        page={{
+          offset,
+          limit: EXAMPLES_PAGE_SIZE,
+          total: detail.total,
+          onChange: (next) => navigate(datasetPath(name, next), { replace: true }),
+        }}
+        empty={
+          <EmptyState
+            title="No examples yet"
+            hint="Open a trace and use Add to dataset, or POST examples to /api/v1/datasets/:name/examples."
+          />
+        }
+      />
+      {opened && <ExamplePanel example={opened} />}
+    </>
+  );
+}
+
 /** `#/evals/datasets/:name`; an unknown dataset shows an empty state with the way back. */
 export function DatasetDetail({ name }: { name: string }) {
   const route = useRoute();
   const offset = parseOffset(route.query);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [openId, setOpenId] = useState<string | undefined>();
   const query = useDataset(name, { limit: EXAMPLES_PAGE_SIZE, offset }, refreshKey);
-  const { busy, remove } = useDeleteExample(name, () => setRefreshKey((k) => k + 1));
   const down = useDaemonDown(false, [query]);
-  const examples = query.data?.examples ?? [];
-  const total = query.data?.total ?? 0;
+  const detail = query.data;
 
   // Deleting the last example of a later page leaves it empty: step back a page.
   useEffect(() => {
-    if (query.data && examples.length === 0 && offset > 0 && offset >= total) {
+    if (detail && detail.examples.length === 0 && offset > 0 && offset >= detail.total) {
       navigate(datasetPath(name, Math.max(0, offset - EXAMPLES_PAGE_SIZE)), { replace: true });
     }
-  }, [query.data, examples.length, offset, total, name]);
+  }, [detail, offset, name]);
 
   if (down) return <ObserveDaemonDown />;
-  const opened = examples.find((e) => e.example_id === openId);
   let body;
-  if (query.loading && !query.data) body = <p className="datasets-note">Loading dataset...</p>;
+  if (query.loading && !detail) body = <p className="datasets-note">Loading dataset...</p>;
   else if (query.error) body = <ObserveError error={query.error} />;
-  else if (!query.data) body = <EmptyState title="Dataset not found" hint={`No dataset '${name}'.`} action={<BackLink />} />;
-  else
-    body = (
-      <>
-        {query.data.dataset.description && <p className="datasets-note">{query.data.dataset.description}</p>}
-        <DataTable
-          id="dataset-examples"
-          columns={columns((e) => void remove(e), busy)}
-          rows={examples}
-          rowKey={(e) => e.example_id}
-          selectedKey={opened?.example_id}
-          onRowOpen={(e) => setOpenId(e.example_id === openId ? undefined : e.example_id)}
-          page={{
-            offset,
-            limit: EXAMPLES_PAGE_SIZE,
-            total,
-            onChange: (next) => navigate(datasetPath(name, next), { replace: true }),
-          }}
-          empty={
-            <EmptyState
-              title="No examples yet"
-              hint="Open a trace and use Add to dataset, or POST examples to /api/v1/datasets/:name/examples."
-            />
-          }
-        />
-        {opened && <ExamplePanel example={opened} />}
-      </>
-    );
+  else if (!detail) body = <EmptyState title="Dataset not found" hint={`No dataset '${name}'.`} action={<BackLink />} />;
+  else body = <Examples name={name} detail={detail} offset={offset} onChanged={() => setRefreshKey((k) => k + 1)} />;
 
   return (
     <>
