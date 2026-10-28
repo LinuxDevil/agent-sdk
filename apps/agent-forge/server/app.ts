@@ -19,6 +19,7 @@
  *   GET  /runs/compare?a=&b=         -> RunComparisonPayload (compareTrajectories)
  *   GET  /observe/**                 -> proxied to the `lousho observe` daemon's read API (observeProxy.ts)
  *   POST /observe/api/v1/scores      -> proxied too (the proxy's write allowlist: human feedback scores)
+ *   POST /observe/api/v1/evaluators/:id/test -> a judge rule's dry run here, a code rule forwarded (judge.ts)
  *   POST /playground/run             -> body: PlaygroundRunRequest; streams SSE PlaygroundEvents (playground.ts)
  *
  * `WS /agents/:id/stream` is wired separately in wsServer.ts (attached to
@@ -63,6 +64,7 @@ import { DEPLOY_ADAPTERS, isDeployAdapter, runDeploy } from './deployRunner';
 import { checkApiAccess, checkHostAndOrigin, type StudioAccessOptions } from './auth';
 import { registerObserveProxy } from './observeProxy';
 import { registerPlaygroundRoute, type PlaygroundOptions } from './playground';
+import { registerJudgeTestRoute, type JudgeFn } from './judge';
 
 export interface CreateAppOptions {
   agentStore: AgentStore;
@@ -94,6 +96,8 @@ export interface CreateAppOptions {
   access?: StudioAccessOptions;
   /** Observe reporter overrides for `POST /playground/run` (tests); see playground.ts. */
   playgroundObserve?: PlaygroundOptions['observe'];
+  /** The judge `POST /observe/api/v1/evaluators/:id/test` runs for a judge rule (tests); default the real model call (judge.ts). */
+  judge?: JudgeFn;
 }
 
 /** Path prefixes of the API (everything except `/health` and the static client). */
@@ -616,6 +620,7 @@ export function createApp({
   staticDir,
   access,
   playgroundObserve,
+  judge,
 }: CreateAppOptions): Express {
   const app = express();
   // No CORS middleware - the client is same-origin (served by
@@ -677,6 +682,8 @@ export function createApp({
   // daemon (see observeProxy.ts), plus its small write allowlist (feedback
   // scores; bodies come from the express.json above) - before the SPA
   // fallback so a proxied GET never gets index.html.
+  // Test-on-trace for judge rules runs here (the daemon has no provider keys); before the proxy.
+  registerJudgeTestRoute(app, { secretsStore: secrets, ...(judge ? { judge } : {}) });
   registerObserveProxy(app);
   registerStaticClient(app, staticDir);
 

@@ -8,6 +8,33 @@
 export const DEFAULT_TRACE_DIR = ".lousho/traces";
 
 // @public
+export interface EvaluatorTrace {
+    // (undocumented)
+    agent_id: string | null;
+    // (undocumented)
+    duration_ms: number | null;
+    // (undocumented)
+    end: number | null;
+    error_message: string | null;
+    // (undocumented)
+    input: string | null;
+    // (undocumented)
+    name: string | null;
+    observations: ObservationRow[];
+    // (undocumented)
+    output: string | null;
+    // (undocumented)
+    start: number;
+    // (undocumented)
+    status: string | null;
+    // (undocumented)
+    trace_id: string;
+}
+
+// @public
+export function evaluatorTraceFrom(traceId: string, observations: readonly ObservationRow[]): EvaluatorTrace | undefined;
+
+// @public
 export function fanOutExporters(exporters: readonly (TraceExporter | undefined | null)[]): TraceExporter | undefined;
 
 // @public
@@ -25,6 +52,54 @@ export function listTraces(options?: ListTracesOptions): Promise<TraceSummary[]>
 export interface ListTracesOptions {
     dir?: string;
     limit?: number;
+}
+
+// @public
+export interface ObservationRow {
+    // (undocumented)
+    agent_id: string | null;
+    // (undocumented)
+    attrs: Record<string, unknown> | null;
+    // (undocumented)
+    cost_partial: boolean | null;
+    // (undocumented)
+    cost_usd: number | null;
+    // (undocumented)
+    end: number | null;
+    // (undocumented)
+    input: string | null;
+    // (undocumented)
+    kind: string;
+    // (undocumented)
+    model: string | null;
+    // (undocumented)
+    name: string | null;
+    // (undocumented)
+    obs_id: string;
+    // (undocumented)
+    output: string | null;
+    // (undocumented)
+    parent_obs_id: string | null;
+    // (undocumented)
+    session_id: string | null;
+    // (undocumented)
+    start: number;
+    // (undocumented)
+    status: string | null;
+    // (undocumented)
+    trace_id: string;
+    // (undocumented)
+    truncated: boolean;
+    // (undocumented)
+    usage_cached_tokens: number | null;
+    // (undocumented)
+    usage_estimated: boolean | null;
+    // (undocumented)
+    usage_input_tokens: number | null;
+    // (undocumented)
+    usage_output_tokens: number | null;
+    // (undocumented)
+    usage_reasoning_tokens: number | null;
 }
 
 // @public
