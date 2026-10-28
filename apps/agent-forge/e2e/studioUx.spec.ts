@@ -134,9 +134,14 @@ test('the Output node is drawn once and the minimap shows the graph', async ({ p
 /**
  * Lands on `#/agents` with the session still authenticated: the redirect only
  * touches the hash, and studioToken.ts has moved `?token=` into sessionStorage.
+ * Once the agent list loads, bare `#/agents` is renamed to the open agent's
+ * `#/agents/:id` when one is saved (earlier tests save some), so the check
+ * waits for that to settle and accepts either form instead of racing it.
  */
 async function expectLanded(page: Page, hash: string) {
-  await expect(page).toHaveURL(new RegExp(`/${hash}$`));
+  await page.waitForLoadState('networkidle');
+  const tail = hash === '#/agents' ? '#/agents(/[^/?#]+)?' : hash;
+  await expect(page).toHaveURL(new RegExp(`/${tail}$`));
   expect(await page.evaluate(() => sessionStorage.getItem('lousho-studio-token'))).toBe(TOKEN);
   await expect(page.locator('.connection-banner')).toHaveCount(0);
 }
