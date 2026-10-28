@@ -10,9 +10,9 @@
  *
  * GET is forwarded for every path. Writes are forwarded only when
  * {@link OBSERVE_WRITE_ALLOWLIST} names the method and path - a short list of
- * Studio actions (human feedback scores, moving a prompt label) - with the
- * JSON body app.ts's `express.json` already parsed, re-serialised and capped
- * at 1 MiB. Every other non-GET - the ingest endpoint above all - answers 405
+ * Studio actions (human feedback scores, moving a prompt label, editing a
+ * Context Hub fleet entry) - with the JSON body app.ts's `express.json`
+ * already parsed, re-serialised and capped at 1 MiB. Every other non-GET - the ingest endpoint above all - answers 405
  * and stays reporter-only. `/observe` sits in app.ts's API_PREFIXES, so it
  * carries the same per-launch token requirement as the rest of the studio API.
  */
@@ -33,6 +33,7 @@ export interface ObserveWrite {
 export const OBSERVE_WRITE_ALLOWLIST: readonly ObserveWrite[] = [
   { method: 'POST', path: /^\/api\/v1\/scores$/ },
   { method: 'PUT', path: /^\/api\/v1\/prompts\/[^/]+\/labels\/[^/]+$/ },
+  { method: 'POST', path: /^\/api\/v1\/hub$/ },
 ];
 
 /**

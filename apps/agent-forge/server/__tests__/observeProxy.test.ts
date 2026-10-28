@@ -3,7 +3,7 @@
  * panels' GETs same-origin, because the daemon itself serves no CORS
  * headers. A dead daemon answers 502 with the `lousho observe start` hint.
  * Writes go through only when OBSERVE_WRITE_ALLOWLIST names the method and
- * path (feedback scores, a prompt label move); every other non-GET stays 405.
+ * path (feedback scores, a prompt label move, a hub publish); every other non-GET stays 405.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'node:http';
@@ -101,6 +101,13 @@ describe('observe proxy', () => {
     expect((await request(app).delete('/observe/api/v1/scores')).status).toBe(405);
   });
 
+  it('forwards POST /api/v1/hub (a Context Hub fleet entry edit) with its JSON body', async () => {
+    const entry = { agent_id: 'a1', namespace: 'docs', key: 'k', value: { a: 1 }, scope: 'fleet' };
+    const res = await request(app).post('/observe/api/v1/hub').send(entry);
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({ echoed: '/api/v1/hub', method: 'POST', contentType: 'application/json', body: entry });
+  });
+
   it('forwards an allowlisted PUT (prompt label move) with its JSON body and content-type', async () => {
     const res = await request(app).put('/observe/api/v1/prompts/mira/labels/prod').send({ version: 2 });
     expect(res.status).toBe(200);
@@ -116,6 +123,8 @@ describe('observe proxy', () => {
     ['put', '/observe/api/v1/prompts/mira/labels/prod/extra'],
     ['delete', '/observe/api/v1/prompts/mira/labels/prod'],
     ['post', '/observe/api/v1/prompts/mira/labels/prod'],
+    ['post', '/observe/api/v1/hub/x'],
+    ['put', '/observe/api/v1/hub'],
     ['post', '/observe/v1/traces'],
   ] as const)('keeps %s %s at 405', async (method, url) => {
     const res = await request(app)[method](url).send({ version: 1 });
@@ -141,8 +150,8 @@ describe('observe proxy', () => {
     expect(res.status).toBe(413);
   });
 
-  it('exports one write allowlist of method + path pairs: feedback scores and the label move', () => {
-    expect(OBSERVE_WRITE_ALLOWLIST.map((entry) => entry.method)).toEqual(['POST', 'PUT']);
+  it('exports one write allowlist of method + path pairs: feedback scores, the label move and hub publishes', () => {
+    expect(OBSERVE_WRITE_ALLOWLIST.map((entry) => entry.method)).toEqual(['POST', 'PUT', 'POST']);
     expect(OBSERVE_WRITE_ALLOWLIST.every((entry) => entry.path instanceof RegExp)).toBe(true);
   });
 });

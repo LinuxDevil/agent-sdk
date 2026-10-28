@@ -6,10 +6,11 @@
  * duplicating effect logic.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { observeClient, ObserveDaemonDownError, type InsightsFilter, type ScoreListFilter, type SessionListFilter, type TraceListFilter } from './observeClient';
+import { observeClient, ObserveDaemonDownError, type HubEntryFilter, type InsightsFilter, type ScoreListFilter, type SessionListFilter, type TraceListFilter } from './observeClient';
 import type {
   ObserveAgentRow,
   ObserveHealth,
+  ObserveHubEntry,
   ObserveInsights,
   ObservePromptHistory,
   ObservePromptRow,
@@ -171,4 +172,12 @@ export function usePrompts(refreshKey?: unknown): ObserveQuery<ObservePromptRow[
 
 export function usePromptVersions(name: string, refreshKey?: unknown): ObserveQuery<ObservePromptHistory | undefined> {
   return useObserveQuery(() => observeClient.promptVersions(name), [name, refreshKey]);
+}
+
+/** `GET /api/v1/hub`; `filter` undefined (no viewer agent yet) skips the request and resolves to `[]`. */
+export function useHubEntries(filter: HubEntryFilter | undefined, refreshKey?: unknown): ObserveQuery<ObserveHubEntry[]> {
+  return useObserveQuery(
+    () => (filter === undefined ? Promise.resolve([]) : observeClient.listHubEntries(filter)),
+    [JSON.stringify(filter), refreshKey]
+  );
 }

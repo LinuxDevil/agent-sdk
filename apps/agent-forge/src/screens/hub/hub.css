@@ -1,0 +1,104 @@
+/* Context Hub (#/hub, #/hub/:namespace). Tokens only. */
+.hub-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 16px;
+}
+.hub-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.hub-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.hub-note,
+.hub-crumbs {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.hub-invalid {
+  color: var(--danger);
+}
+.hub-title,
+.hub-section-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.hub-section-title {
+  font-size: 13px;
+}
+.hub-title code,
+.hub-section-title code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.hub-preview {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.hub-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  min-width: 0;
+}
+.hub-entry-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.hub-value {
+  overflow: auto;
+  max-height: 480px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.hub-value-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.hub-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hub-editor-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.hub-editor-text {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  resize: vertical;
+}
+.hub-editor-text[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.hub-editor-actions {
+  display: flex;
+  gap: 8px;
+}
