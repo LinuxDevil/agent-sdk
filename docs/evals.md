@@ -205,9 +205,11 @@ model runs out of turns on the second case.
 #### From the daemon
 
 The cases can also live in the observe daemon's dataset registry (see
-[Observability](./observability.md), `/api/v1/datasets`): create a dataset, add examples to it
+[Datasets](./observability.md#datasets), `/api/v1/datasets`): create a dataset, add examples to it
 by hand or copy them from a trace you liked, then pass `dataset: 'name'` in
-place of `cases`.
+place of `cases`. In Studio, the [Datasets](./agent-forge.md#datasets)
+screen creates datasets and shows their examples, and a trace's **Add to
+dataset** copies it in.
 
 ```bash
 curl -X POST "$LOUSHO_OBSERVE/api/v1/datasets" -H 'content-type: application/json' -d '{"name":"refunds"}'
@@ -324,7 +326,7 @@ the `LOUSHO_EVAL_RESULTS` environment variable, which `lousho eval` sets and
 reads back. This is more robust than a custom vitest reporter: it works across
 vitest versions and worker pools, and needs no module loaded from your project.
 
-With `LOUSHO_OBSERVE` set (or `lousho eval --observe`), each case's `eval` span and score rows are flushed to the collector when the case finishes, each wait capped at 1 second; a collector that is down or silent never fails or noticeably slows a case. The score rows ride the same queue as the spans: they go out after the case's span and, while the collector is down, are kept and retried with it (and sent on exit or crash) instead of being dropped. When a wait runs out, the cases of the next 30 seconds skip the wait (their rows still queue), then the next case tries again. Besides one `<eval>/<check>` score row per assertion, each case emits one `<eval>` score row, 1 when every gate check passed and the case did not throw, 0 otherwise (its comment lists the failed gate checks or the error; soft failures only show in their own rows); the case label is the `lousho.eval.case` attribute of the `eval` span that owns the trace, not an attribute of the score.
+With `LOUSHO_OBSERVE` set (or `lousho eval --observe`), each case's `eval` span and score rows are flushed to the collector when the case finishes, each wait capped at 1 second; a collector that is down or silent never fails or noticeably slows a case. The score rows ride the same queue as the spans: they go out after the case's span and, while the collector is down, are kept and retried with it (and sent on exit or crash) instead of being dropped. When a wait runs out, the cases of the next 30 seconds skip the wait (their rows still queue), then the next case tries again. Besides one `<eval>/<check>` score row per assertion, each case emits one `<eval>` score row, 1 when every gate check passed and the case did not throw, 0 otherwise (its comment lists the failed gate checks or the error; soft failures only show in their own rows); the case label is the `lousho.eval.case` attribute of the `eval` span that owns the trace, not an attribute of the score. Studio's [Scores](./agent-forge.md#scores) screen shows these rows per eval (pass rates, trend, failing checks), next to the `online` scores of [evaluator rules](./agent-forge.md#evaluators) and the `human` scores from feedback and annotation queues.
 
 ### Time limits
 

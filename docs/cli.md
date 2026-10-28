@@ -37,7 +37,7 @@ lousho doctor [agent.yaml|json|agent-dir|agent.ts] [--json] [--ping]
 lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
 lousho observe <start|status|stop|rebuild-rollups|prune|export|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL] [--retention-days N] [--session-idle-minutes N] [--older-than <N>d] [--since <N>d|<N>h|<N>m] [--agent X] [--out file]
-lousho prompt <push <file|->|list|get <name[@version|@label]>|label <name> <label> <version>> [--url U] [--port N] [--token T] [--json] [--name N]
+lousho prompt <push <file|->|list|get <name[@version|@label]>|label <name> <label> <version>> [--url U] [--port N] [--token T] [--json] [--name N] [--labels a,b] [--variables x,y]
 lousho --version
 ```
 
@@ -265,8 +265,12 @@ npx lousho studio --port 5000
 ```
 
 Starts one local server for the Agent Forge API and UI. Agents and run state
-are stored under `.lousho/` in the current directory. See
-[Agent Forge](./agent-forge.md) for the walkthrough.
+are stored under `.lousho/` in the current directory. The app has a left
+navigation: Agents (the builder) and Playground, then Traces, Threads and
+Monitoring, Evaluations (Scores, Datasets, Evaluators, Annotation queues),
+Prompts, Context Hub and Settings; everything past the Playground reads the
+`lousho observe` daemon. See [Agent Forge](./agent-forge.md) for the screens
+and the walkthrough.
 
 ## `lousho observe`
 
@@ -283,7 +287,7 @@ npx lousho observe token create --project myapp # bearer key for non-loopback au
 Runs the local collector every agent reports to when `LOUSHO_OBSERVE` is
 set: traces, fleet monitoring, eval scores, the prompt registry and the
 context hub in one SQLite file (default `~/.lousho/observe.db`). Studio's
-Traces, Threads, Monitoring and Scores screens read it. `start` takes
+[daemon screens](./agent-forge.md#screens) read it. `start` takes
 `--port` (or `LOUSHO_OBSERVE_PORT`), `--db`, `--host`, `--require-token`
 and a repeatable `--webhook` for alert hooks. Each daemon writes its own `<db name>.pid` beside the db
 (`observe.db` gives `observe.pid`), so two dbs in one folder never share a

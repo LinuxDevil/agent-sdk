@@ -443,11 +443,13 @@ beyond loopback (`--require-token` plus `lousho observe token create`).
 
 One SQLite file (default `~/.lousho/observe.db`, WAL mode) holds the fleet's
 observations, sessions, eval scores, prompt versions and shared context.
-`npx lousho studio` renders it in its Traces, Threads, Monitoring and
-Scores screens: trace trees with latency waterfalls, per-agent insights
-(runs/day, p50/p95 latency, cost, error rate), a live fleet monitor
-(heartbeat-derived status — a crashed agent's open sessions flip to
-`interrupted`), and eval score history. Alerts on `down` transitions or
+`npx lousho studio` renders it (see [Agent Forge](./agent-forge.md#screens)):
+Traces and Trace (trace trees with latency waterfalls), Threads, Monitoring
+(a live fleet monitor with heartbeat-derived status — a crashed agent's open
+sessions flip to `interrupted` — over per-agent charts of runs, p95 latency,
+error rate, cost and tokens), Scores, Datasets, Evaluators, Annotation
+queues, Prompts and Context Hub. The Studio's nav shows whether it can reach
+the daemon. Alerts on `down` transitions or
 error-rate thresholds POST to `--webhook` URLs or an `alerts.json` next to
 the db.
 
@@ -484,6 +486,10 @@ The daemon also serves two stores agents can use at runtime:
 - **Context hub.** `hub()` / `hubTools()` let agents publish and query
   namespaced key-values scoped `private` (the writing agent only) or
   `fleet` (every agent on the daemon).
+
+Studio's [Prompts](./agent-forge.md#prompts) screen shows the registry's
+versions, labels and diffs and moves labels, and its
+[Context Hub](./agent-forge.md#context-hub) screen browses the hub.
 
 Runs from the Studio playground (`POST /playground/run`, see
 [Agent Forge](./agent-forge.md#playground-run-endpoint)) report as agent
@@ -561,8 +567,10 @@ takes the same token as ingest, and `GET /api/v1/scores?trace_id=...` lists it.
 ### Datasets
 
 A dataset is a named set of examples to run evals over. Each example is an
-`input` and an optional `expected` value, both any JSON value. The routes take
-the same token as ingest:
+`input` and an optional `expected` value, both any JSON value. Studio's
+[Datasets](./agent-forge.md#datasets) screen lists and creates them, and a
+trace's **Add to dataset** copies the trace in. The routes take the same token
+as ingest:
 
 | Route | Answer |
 | --- | --- |
@@ -591,7 +599,8 @@ An evaluator rule says which new traces to score and how. A `code` rule holds
 the source of a function `(trace) => number | { value, comment }`, and a
 `judge` rule holds a model and a rubric to grade by. The daemon runs `code`
 rules on new traces (see [Online evaluators](#online-evaluators)); `judge`
-rules run through Agent Forge (see [Judge rules](#judge-rules-through-agent-forge)). The routes take the same
+rules run through Agent Forge (see [Judge rules](#judge-rules-through-agent-forge)). Studio's
+[Evaluators](./agent-forge.md#evaluators) screen manages them. The routes take the same
 token as ingest:
 
 | Route | Answer |
@@ -718,8 +727,9 @@ To dry-run a judge rule, use Agent Forge: `POST /observe/api/v1/evaluators/:id/t
 An annotation queue is a named list of traces for a person to review one by
 one. Completing an item writes its scores as human scores, the same
 `source: "human"` rows `POST /api/v1/scores` writes, so they show up in
-`GET /api/v1/scores` and on the trace. The routes take the same token as
-ingest:
+`GET /api/v1/scores` and on the trace. Studio's
+[Annotation queues](./agent-forge.md#annotation-queues) screen creates queues
+and is the review view. The routes take the same token as ingest:
 
 | Route | Answer |
 | --- | --- |
@@ -845,7 +855,8 @@ input of its latest trace. `status` is `active`, `ended` (idle, see below) or
 
 `GET /api/v1/sessions/:id` returns `{ session, traces }` with the traces
 (same rows as the trace list) ordered by start ascending, capped at 500; an
-unknown id is a 404 with code `LOUSHO_REQUEST_INVALID`.
+unknown id is a 404 with code `LOUSHO_REQUEST_INVALID`. Studio's
+[Threads](./agent-forge.md#threads) screen reads these two routes.
 
 ### Idle sessions
 
