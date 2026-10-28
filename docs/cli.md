@@ -36,7 +36,7 @@ lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]
 lousho doctor [agent.yaml|json|agent-dir|agent.ts] [--json] [--ping]
 lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
-lousho observe <start|status|stop|rebuild-rollups|prune|export|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL] [--retention-days N] [--older-than <N>d] [--since <N>d|<N>h|<N>m] [--agent X] [--out file]
+lousho observe <start|status|stop|rebuild-rollups|prune|export|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL] [--retention-days N] [--session-idle-minutes N] [--older-than <N>d] [--since <N>d|<N>h|<N>m] [--agent X] [--out file]
 lousho prompt <push <file|->|list|get <name[@version|@label]>|label <name> <label> <version>> [--url U] [--port N] [--token T] [--json] [--name N]
 lousho --version
 ```
@@ -305,6 +305,15 @@ never does). If only the `VACUUM` fails (for example, the db is busy), the
 prune stays committed, the error goes to stderr and the exit code is 0. It is
 safe to run while the daemon is up. A bad N is a usage
 error (exit 2). See [Retention](./observability.md#retention).
+
+`start --session-idle-minutes N` sets when a conversation counts as finished
+(default 30; `0` turns it off, so a session stays `active` until its agent goes
+down). The daemon's sweep marks a session `ended` once none of its runs is
+still open and nothing in it has started or finished for N minutes; its
+`ended_at` is the time of that last activity. A new run in an `ended` (or
+`interrupted`) session makes it `active` again. Ended sessions are then pruned
+by `--retention-days` like any other finished session. A bad N is a usage
+error (exit 2). See [Idle sessions](./observability.md#idle-sessions).
 
 `export` writes traces as JSONL: one line per trace, `{ trace, observations,
 scores }` (the same rows the trace API returns), oldest first, with no cap on

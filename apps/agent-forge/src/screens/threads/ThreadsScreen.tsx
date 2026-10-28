@@ -34,8 +34,12 @@ import {
   type ThreadsUrlState,
 } from './threadsUrl';
 
-/** Session statuses the daemon writes: `active`, then `interrupted` when the agent's crash sweep closes it. */
-const STATUSES = ['active', 'interrupted'];
+/**
+ * Session statuses the daemon writes: `active`; `ended` once its idle sweep sees
+ * nothing run for the idle window; `interrupted` when the agent's crash sweep
+ * closes it. New activity makes an ended or interrupted session `active` again.
+ */
+const STATUSES = ['active', 'ended', 'interrupted'];
 
 /** The session's span, start to its latest finished observation; `-` while nothing has finished. */
 const span = (s: ObserveSessionRow): number | null => (s.ended_at === null ? null : s.ended_at - s.started_at);

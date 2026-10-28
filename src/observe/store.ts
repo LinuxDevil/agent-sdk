@@ -124,14 +124,28 @@ const OBS_UPSERT = `
   WHERE excluded."end" IS NOT NULL OR observations."end" IS NULL
 `;
 
-/** A session row is derived from whatever observations carry its id; there is no session event in the envelope. */
+/**
+ * New activity in a closed (`ended`/`interrupted`) session: the observation's
+ * latest moment (its end, else its start) is past the session's `ended_at`.
+ * A re-sent or reordered event for activity at or before it is not new.
+ */
+const SESSION_REOPENS = `(sessions.status != 'active'
+  AND (sessions.ended_at IS NULL OR COALESCE(excluded.ended_at, excluded.started_at) > sessions.ended_at))`;
+
+/**
+ * A session row is derived from whatever observations carry its id; there is
+ * no session event in the envelope. New activity reopens a closed session as
+ * if it were inserted fresh: `active`, `ended_at` = this observation's end.
+ */
 const SESSION_UPSERT = `
   INSERT INTO sessions (session_id, agent_id, started_at, ended_at, status, updated_at)
   VALUES (?, ?, ?, ?, 'active', ?)
   ON CONFLICT(session_id) DO UPDATE SET
     agent_id = COALESCE(excluded.agent_id, sessions.agent_id),
     started_at = MIN(sessions.started_at, excluded.started_at),
+    status = CASE WHEN ${SESSION_REOPENS} THEN 'active' ELSE sessions.status END,
     ended_at = CASE
+      WHEN ${SESSION_REOPENS} THEN excluded.ended_at
       WHEN excluded.ended_at IS NULL THEN sessions.ended_at
       WHEN sessions.ended_at IS NULL THEN excluded.ended_at
       ELSE MAX(sessions.ended_at, excluded.ended_at)
@@ -489,6 +503,29 @@ export function interruptAgentWork(db: SqlDatabase, agentId: string, now: number
   // Nobody of this agent heartbeats any more: every instance it had is gone.
   db.prepare('DELETE FROM agent_instances WHERE agent_id = ?').run(agentId);
   return { sessions: Number(sessions.changes), observations: interruptOpenObservations(db, agentId, now) };
+}
+
+/** A session's last activity: its observations' latest end (or start), else the row's own `updated_at`. */
+const SESSION_LAST_ACTIVITY = `COALESCE(
+  (SELECT MAX(COALESCE(o."end", o.start)) FROM observations o WHERE o.session_id = sessions.session_id),
+  sessions.updated_at)`;
+
+/**
+ * The idle close: every `active` session with no open observation (`end IS
+ * NULL`) whose last activity is older than `idleMs` becomes `ended`, with
+ * `ended_at` = that last activity (not `now`). `interrupted` sessions are left
+ * alone; new activity reopens an ended one on ingest. Returns how many ended.
+ */
+export function endIdleSessions(db: SqlDatabase, now: number, idleMs: number): number {
+  const result = db
+    .prepare(
+      `UPDATE sessions SET status = 'ended', ended_at = ${SESSION_LAST_ACTIVITY}, updated_at = ?
+       WHERE status = 'active'
+         AND NOT EXISTS (SELECT 1 FROM observations o WHERE o.session_id = sessions.session_id AND o."end" IS NULL)
+         AND ${SESSION_LAST_ACTIVITY} < ?`
+    )
+    .run(now, now - idleMs);
+  return Number(result.changes);
 }
 
 /** Flip one instance's open observations to 'interrupted' and forget the instance. */

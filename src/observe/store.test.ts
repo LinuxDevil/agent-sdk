@@ -914,3 +914,64 @@ describe('trace list prompt filter', () => {
     }
   });
 });
+
+describe('session reopen on ingest', () => {
+  const session = (database: SqlDatabase) =>
+    database.prepare("SELECT status, ended_at FROM sessions WHERE session_id = 's1'").get();
+  const closed = (status: 'ended' | 'interrupted'): SqlDatabase => {
+    const database = db();
+    ingestBatch(database, [obs({ session_id: 's1', start: T0, end: T0 + 100 })], T0 + 100);
+    database.prepare("UPDATE sessions SET status = ?, ended_at = ? WHERE session_id = 's1'").run(status, T0 + 100);
+    return database;
+  };
+
+  for (const status of ['ended', 'interrupted'] as const) {
+    it(`a new open trace in an ${status} session reopens it`, () => {
+      const database = closed(status);
+      try {
+        ingestBatch(database, [obs({ obs_id: 'o2', trace_id: 't2', session_id: 's1', start: T0 + 5000, end: undefined, status: undefined })]);
+        expect(session(database)).toMatchObject({ status: 'active', ended_at: null });
+      } finally {
+        database.close();
+      }
+    });
+  }
+
+  it('a new finished trace in an ended session reopens it, ending at that trace', () => {
+    const database = closed('ended');
+    try {
+      ingestBatch(database, [obs({ obs_id: 'o2', trace_id: 't2', session_id: 's1', start: T0 + 5000, end: T0 + 6000 })]);
+      expect(session(database)).toMatchObject({ status: 'active', ended_at: T0 + 6000 });
+    } finally {
+      database.close();
+    }
+  });
+
+  it('a stale or reordered event for activity at or before ended_at does not reopen it', () => {
+    const database = closed('ended');
+    try {
+      ingestBatch(database, [
+        // the same finished root re-sent
+        obs({ session_id: 's1', start: T0, end: T0 + 100 }),
+        // a requeued start event for that root
+        obs({ session_id: 's1', start: T0, end: undefined, status: undefined }),
+        // an older child arriving late
+        obs({ obs_id: 'late', parent_obs_id: 'o1', session_id: 's1', start: T0 + 10, end: T0 + 90 }),
+      ]);
+      expect(session(database)).toMatchObject({ status: 'ended', ended_at: T0 + 100 });
+    } finally {
+      database.close();
+    }
+  });
+
+  it('an active session keeps tracking its latest finished observation', () => {
+    const database = db();
+    try {
+      ingestBatch(database, [obs({ session_id: 's1', start: T0, end: T0 + 100 })]);
+      ingestBatch(database, [obs({ obs_id: 'o2', session_id: 's1', start: T0 + 200, end: undefined, status: undefined })]);
+      expect(session(database)).toMatchObject({ status: 'active', ended_at: T0 + 100 });
+    } finally {
+      database.close();
+    }
+  });
+});

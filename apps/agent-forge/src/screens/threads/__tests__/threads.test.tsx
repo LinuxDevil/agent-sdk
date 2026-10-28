@@ -147,6 +147,15 @@ describe('ThreadsScreen list', () => {
     expect(custom?.getAttribute('aria-pressed')).toBe('true');
   });
 
+  it('offers the ended status the idle sweep writes', async () => {
+    const container = await mountAt('#/threads?status=ended');
+    expect(listRequests().at(-1)!.get('status')).toBe('ended');
+    const statusBtn = [...container.querySelectorAll<HTMLButtonElement>('.facet-btn')].find((b) => b.textContent?.startsWith('Status'))!;
+    act(() => statusBtn.click());
+    const options = [...container.querySelectorAll('.facet-pop .facet-opt')].map((o) => o.textContent);
+    expect(options).toEqual(['active', 'ended', 'interrupted']);
+  });
+
   it('opening a row navigates to #/threads/:sessionId', async () => {
     const container = await mountAt('#/threads?status=active');
     const row = container.querySelector<HTMLTableRowElement>('tbody tr[data-row-index="0"]')!;

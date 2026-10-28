@@ -228,6 +228,10 @@ describe('lousho observe', () => {
       expect(await runObserve(['start', `--retention-days=${bad}`, '--db', file, '--port', '0'])).toBe(2);
     }
     expect(errors.at(-1)).toContain('--retention-days');
+    for (const bad of ['-1', '1.5', 'x', '', '30m']) {
+      expect(await runObserve(['start', `--session-idle-minutes=${bad}`, '--db', file, '--port', '0'])).toBe(2);
+    }
+    expect(errors.at(-1)).toContain('--session-idle-minutes');
   });
 
   describe('export', () => {
