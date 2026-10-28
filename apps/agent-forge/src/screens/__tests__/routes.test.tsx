@@ -20,6 +20,7 @@ const appState = vi.hoisted(() => ({
 vi.mock('../../state/AppState', () => ({ useAppState: () => appState }));
 
 import { screenFor, useScreen } from '../routes';
+import { ROUTES } from '../routeTable';
 import { Placeholder } from '../Placeholder';
 import { Topbar } from '../../components/Topbar';
 
@@ -73,6 +74,12 @@ describe('screenFor', () => {
     expect(screenFor('')).toBeNull();
     expect(screenFor('#/')).toBeNull();
     expect(screenFor('#/nope')).toBeNull();
+  });
+  it("gives every route an example path that lands on that route's screen", () => {
+    for (const { pattern, screen, example } of ROUTES) {
+      expect(example.split('/').length, pattern).toBe(pattern.split('/').length);
+      expect(screenFor(`#${example}`), example).toBe(screen);
+    }
   });
 });
 

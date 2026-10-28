@@ -1,4 +1,7 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+import { ROUTES } from '../src/screens/routeTable';
+import { stubObserve } from './observeStub';
 
 /**
  * Keyboard and screen-reader access to the studio - landmarks
@@ -6,6 +9,8 @@ import { test, expect } from '@playwright/test';
  * palette/hook/toggle controls that work from the keyboard alone.
  */
 test.beforeEach(async ({ page }) => {
+  // The stub goes in before the first load, so shell-level fetches (health) see a live daemon too.
+  await stubObserve(page);
   await page.goto('/?token=e2e-studio-token');
   await expect(page.locator('.app')).toBeVisible();
 });
@@ -112,19 +117,49 @@ test('Ctrl+K opens the command palette; ? lists the shortcuts', async ({ page })
   await expect(sheet).toHaveCount(0);
 });
 
-// One <main>, one h1, the banner and the primary nav on every screen, not just Agents.
-for (const route of ['#/traces', '#/traces?status=error', '#/traces/e2e-trace?obs=e2e-obs', '#/threads', '#/threads/s1', '#/threads?status=active', '#/monitoring', '#/evals/scores', '#/prompts', '#/prompts/mira@2?diff=1,2', '#/hub', '#/hub/docs?scope=fleet', '#/settings', '#/playground']) {
-  test(`${route} keeps the landmarks and exactly one main`, async ({ page }) => {
-    await page.goto(`/?token=e2e-studio-token${route}`);
-    await expect(page.locator('.screen-main')).toBeVisible();
+/** Run axe (WCAG 2 A/AA) on the page as it stands; fail on any serious/critical violation, naming the rule and its targets. */
+async function expectNoSeriousAxeViolations(page: Page, label: string) {
+  const { violations } = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+  const serious = violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
+  const report = serious.map((v) => `${v.id} (${v.impact}): ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
+  expect(report, `axe violations on ${label}`).toEqual([]);
+}
+
+// Every route in the table (new screens are covered automatically): one <main>, one h1,
+// the banner and the primary nav, and an axe scan of the populated (stubbed daemon) state.
+// Plus the deep-link states that render a different view on the same route.
+// Placeholder routes (/evals/:section, /evals/:section/:id) scan the Placeholder today; when their real
+// screens land, add their endpoints to e2e/observeStub.ts or they get scanned in a 404/empty state.
+const SCANS = [
+  ...ROUTES.map(({ pattern, example }) => ({ label: pattern, path: example })),
+  ...['/traces?status=error', '/traces/e2e-trace?obs=e2e-obs', '/threads?status=active', '/prompts/e2e-prompt?diff=1,2'].map((path) => ({ label: path, path })),
+];
+for (const { label, path } of SCANS) {
+  test(`${label} keeps the landmarks and passes axe`, async ({ page }) => {
+    await page.goto(`/?token=e2e-studio-token#${path}`);
+    await expect(page.locator('.app')).toBeVisible();
+    await page.waitForLoadState('networkidle');
     await expect(page.getByRole('main')).toHaveCount(1);
     await expect(page.locator('main')).toHaveCount(1);
     await expect(page.getByRole('banner')).toHaveCount(1);
     await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(1);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Agent Forge');
     await expect(page.getByRole('navigation', { name: 'Primary' }).locator('[aria-current="page"]')).toHaveCount(1);
+    await expectNoSeriousAxeViolations(page, path);
   });
 }
+
+test('the command palette passes axe', async ({ page }) => {
+  await page.keyboard.press('Control+k');
+  await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
+  await expectNoSeriousAxeViolations(page, 'command palette');
+});
+
+test('the shortcut sheet passes axe', async ({ page }) => {
+  await page.keyboard.press('?');
+  await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeVisible();
+  await expectNoSeriousAxeViolations(page, 'shortcut sheet');
+});
 
 test('a #/traces/:id deep link with no daemon shows the down state and keeps the URL', async ({ page }) => {
   // Answer like the studio proxy does for a dead daemon, whatever runs on the machine.
@@ -159,4 +194,27 @@ test('#/settings shows the settings panel inside the screen', async ({ page }) =
   const main = page.getByRole('main');
   await expect(main.getByRole('heading', { name: 'Settings' })).toBeAttached();
   await expect(main.getByRole('combobox', { name: 'Active profile' })).toBeVisible();
+  const otel = main.getByRole('switch', { name: 'Enable OTel tracing' });
+  const checked = await otel.getAttribute('aria-checked');
+  await otel.focus();
+  await page.keyboard.press('Space');
+  await expect(otel).toHaveAttribute('aria-checked', checked === 'true' ? 'false' : 'true');
+});
+
+test('the axe scans see the stubbed daemon data, not the down state', async ({ page }) => {
+  const main = page.getByRole('main');
+  for (const [path, text] of [
+    ['/traces', 'Where is my order?'],
+    ['/traces/e2e-trace', 'lookup_order'],
+    ['/threads/e2e-session', 'Where is my order?'],
+    ['/monitoring', 'Support bot'],
+    ['/evals/scores', 'e2e-eval'],
+    ['/prompts/e2e-prompt', 'how can I help today?'],
+    ['/hub', 'e2e-namespace'],
+    ['/hub/e2e-namespace', 'order-policy'],
+  ]) {
+    await page.goto(`/?token=e2e-studio-token#${path}`);
+    await expect(main.getByText(text).first(), path).toBeVisible();
+    await expect(main.getByText('lousho observe start'), path).toHaveCount(0);
+  }
 });
