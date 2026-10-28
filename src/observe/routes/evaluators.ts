@@ -11,6 +11,9 @@
  * - `PUT /api/v1/evaluators/:id` any subset of the create fields; the merged
  *   rule is validated as a whole -> `{ evaluator }`.
  * - `DELETE /api/v1/evaluators/:id` -> `204`.
+ * - `POST /api/v1/evaluators/:id/test` `{ trace_id }` -> `{ result: { value, comment } }`:
+ *   a dry run of the rule on one trace, ignoring `enabled`, `filter` and
+ *   `sample_rate`; no score is written. A `judge` rule is a 409.
  *
  * Auth is the daemon's global API-token check; nothing per-route.
  */
@@ -27,6 +30,7 @@ import {
   updateEvaluatorRule,
   type EvaluatorRuleFields,
 } from '../evaluators';
+import { traceDetail } from '../store';
 import { intParam, requireJsonBody, sendJson, type Route } from './httpKit';
 
 const RULE_BODY_LIMIT = 128 * 1024;
@@ -60,6 +64,8 @@ const createBody = z
   .strict();
 
 const updateBody = z.object(fieldShape).partial().strict();
+
+const testBody = z.object({ trace_id: nonEmpty }).strict();
 
 const configSchemas = {
   code: z.object({ source: z.string().min(1).max(65_536) }).strict(),
@@ -149,6 +155,23 @@ export const evaluatorsRoutes: readonly Route[] = [
       if (updated === 'missing') return notFound(res, params.id);
       if (updated === 'name-taken') return nameTaken(res, fields.name);
       sendJson(res, 200, { evaluator: updated });
+    },
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/evaluators/:id/test',
+    handle: async ({ db, res, params, readBody, evaluators }) => {
+      const { trace_id } = requireJsonBody(testBody, await readBody(RULE_BODY_LIMIT), 'evaluator test');
+      const rule = getEvaluatorRule(db, params.id);
+      if (rule === undefined) return notFound(res, params.id);
+      if (rule.kind === 'judge') {
+        return sendJson(res, 409, { error: 'judge evaluators run through Agent Forge', code: 'LOUSHO_REQUEST_INVALID' });
+      }
+      if (traceDetail(db, trace_id) === undefined) {
+        return sendJson(res, 404, { error: `No trace '${trace_id}'.`, code: 'LOUSHO_REQUEST_INVALID' });
+      }
+      if (evaluators === undefined) throw new Error('the evaluator worker is not running');
+      sendJson(res, 200, { result: await evaluators.runOnce(rule, trace_id) });
     },
   },
   {

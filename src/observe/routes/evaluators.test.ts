@@ -6,6 +6,8 @@ import { describe, expect, it } from 'vitest';
 import type * as http from 'node:http';
 import { openDb } from '../store';
 import type { EvaluatorRuleRow } from '../evaluators';
+import { startEvaluatorWorker, type EvaluatorWorker } from '../evaluatorWorker';
+import { ingestBatch, listScores } from '../store';
 import type { SqlDatabase } from '../../storage/sqlite/driver';
 // Through the registry, production's load order (see scores.test.ts).
 import { matchRoute } from './index';
@@ -20,7 +22,8 @@ async function call(
   database: SqlDatabase,
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   path: string,
-  body?: unknown
+  body?: unknown,
+  evaluators?: EvaluatorWorker
 ): Promise<Captured> {
   const captured: Captured = { status: 0, body: undefined };
   const res = {
@@ -44,6 +47,7 @@ async function call(
     params: matched.params,
     query: new URLSearchParams(search),
     readBody: () => Promise.resolve(text),
+    evaluators,
   });
   return captured;
 }
@@ -212,6 +216,73 @@ describe('evaluator rules API', () => {
       expect(deleted.status).toBe(204);
       expect((await call(database, 'GET', `/api/v1/evaluators/${created.rule_id}`)).status).toBe(404);
       expect((await call(database, 'DELETE', `/api/v1/evaluators/${created.rule_id}`)).status).toBe(404);
+    });
+  });
+});
+
+describe('POST /api/v1/evaluators/:id/test', () => {
+  const seedTrace = (database: SqlDatabase): void => {
+    ingestBatch(database, [
+      {
+        type: 'observation',
+        data: { obs_id: 'root', trace_id: 't1', agent_id: 'ag', kind: 'span', name: 'invoke_agent a', start: 1, end: 11, status: 'ok' },
+      },
+    ]);
+  };
+  const fakeWorker = (database: SqlDatabase, run: (code: string, args: unknown[]) => unknown, available = true) =>
+    startEvaluatorWorker(database, {
+      isolateAvailable: () => available,
+      sandbox: () => ({ driver: 'fake', run: async (code, opts) => run(code, opts?.args ?? []) }),
+    });
+
+  it('dry-runs the rule on the trace, ignoring enabled/filter/sample_rate, and writes no score', async () => {
+    await withDb(async (database) => {
+      seedTrace(database);
+      const created = rule(
+        await create(database, { ...codeRule, enabled: false, sample_rate: 0, filter: { agent_id: 'other' } })
+      );
+      const seen: unknown[] = [];
+      const worker = fakeWorker(database, (code, args) => {
+        seen.push(code, args[0]);
+        return { value: 0.5, comment: 'half' };
+      });
+      const tested = await call(database, 'POST', `/api/v1/evaluators/${created.rule_id}/test`, { trace_id: 't1' }, worker);
+      expect(tested.status).toBe(200);
+      expect(tested.body).toEqual({ result: { value: 0.5, comment: 'half' } });
+      expect(seen[0]).toBe('(trace) => 1');
+      expect(seen[1]).toMatchObject({ trace_id: 't1', agent_id: 'ag', duration_ms: 10, status: 'ok' });
+      expect(listScores(database, { trace_id: 't1', limit: 10 }).scores).toEqual([]);
+    });
+  });
+
+  it('answers isolate_unavailable without the isolate', async () => {
+    await withDb(async (database) => {
+      seedTrace(database);
+      const created = rule(await create(database, codeRule));
+      const worker = fakeWorker(database, () => 1, false);
+      const tested = await call(database, 'POST', `/api/v1/evaluators/${created.rule_id}/test`, { trace_id: 't1' }, worker);
+      expect(tested.body).toEqual({ result: { value: null, comment: 'isolate_unavailable' } });
+    });
+  });
+
+  it('404s an unknown rule or trace, 400s a bad body, 409s a judge rule', async () => {
+    await withDb(async (database) => {
+      seedTrace(database);
+      const worker = fakeWorker(database, () => 1);
+      const code = rule(await create(database, codeRule));
+      const judge = rule(await create(database, judgeRule));
+      const unknownRule = await call(database, 'POST', '/api/v1/evaluators/nope/test', { trace_id: 't1' }, worker);
+      expect(unknownRule.status).toBe(404);
+      const unknownTrace = await call(database, 'POST', `/api/v1/evaluators/${code.rule_id}/test`, { trace_id: 'nope' }, worker);
+      expect(unknownTrace.status).toBe(404);
+      expect(unknownTrace.body).toMatchObject(invalid);
+      await expect(call(database, 'POST', `/api/v1/evaluators/${code.rule_id}/test`, {}, worker)).rejects.toMatchObject(invalid);
+      await expect(
+        call(database, 'POST', `/api/v1/evaluators/${code.rule_id}/test`, { trace_id: 't1', x: 1 }, worker)
+      ).rejects.toMatchObject(invalid);
+      const judged = await call(database, 'POST', `/api/v1/evaluators/${judge.rule_id}/test`, { trace_id: 't1' }, worker);
+      expect(judged.status).toBe(409);
+      expect(judged.body).toEqual({ error: 'judge evaluators run through Agent Forge', code: 'LOUSHO_REQUEST_INVALID' });
     });
   });
 });
