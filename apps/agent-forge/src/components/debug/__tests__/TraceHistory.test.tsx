@@ -127,7 +127,7 @@ describe('TracePanel with trace history', () => {
     mocks.appState.graph = { nodes: [], edges: [] };
   });
 
-  it('lists the agent traces and shows the selected one in the waterfall with kind and error status', async () => {
+  it('lists the agent traces and shows the selected one in the shared trace viewer with kind and error status', async () => {
     const container = render(<TracePanel />);
     await flush();
     expect(mocks.listTraces).toHaveBeenCalledWith('weather');
@@ -136,19 +136,50 @@ describe('TracePanel with trace history', () => {
     act(() => (container.querySelectorAll('[role=option]')[0] as HTMLElement).click());
     await flush();
     expect(mocks.readTrace).toHaveBeenCalledWith('weather', 'trace-new');
-    const rows = [...container.querySelectorAll('.trace-row')];
-    expect(rows.map((row) => row.querySelector('.trace-name')?.textContent)).toEqual([
+    const rows = [...container.querySelectorAll('.run-tree-row')];
+    expect(rows.map((row) => row.querySelector('.run-name')?.textContent)).toEqual([
       'invoke_agent weather',
       'chat gpt-4o-mini',
       'execute_tool get_weather',
     ]);
-    expect(rows[1].querySelector('.trace-kind')?.textContent).toBe('client');
-    expect(rows[2].classList.contains('trace-row-error')).toBe(true);
-    expect(rows[2].querySelector('.trace-bar')?.classList.contains('error')).toBe(true);
-    expect(rows[1].classList.contains('trace-row-error')).toBe(false);
+    expect(rows.map((row) => row.querySelector('.run-kind')?.getAttribute('data-kind'))).toEqual(['span', 'generation', 'tool']);
+    expect(rows[2].classList.contains('run-row-error')).toBe(true);
+    expect(rows[1].classList.contains('run-row-error')).toBe(false);
+    // A failed trace opens on its first error, with the span's message in the Error banner.
+    expect(container.querySelector('.run-inspector')?.getAttribute('data-obs-id')).toBe('trace-new');
+    expect(container.querySelector('[role=alert]')?.textContent).toContain('boom');
+    // Drawer runs are not observe traces: no dead "Open in Playground" link on the model call.
+    act(() => (container.querySelector('[data-obs-id="c1"] .run-row-main') as HTMLElement).click());
+    expect(container.querySelector('.run-inspector')?.getAttribute('data-obs-id')).toBe('c1');
+    expect(container.querySelectorAll('.run-playground-link')).toHaveLength(0);
   });
 
-  it('shows the live spans under a Live entry while a run is active', async () => {
+  it('selecting a step inspects it and highlights its canvas node', async () => {
+    mocks.appState.graph = { nodes: [{ id: 'llm-node', type: 'llm', position: { x: 0, y: 0 }, data: {} }], edges: [] };
+    const container = render(<TracePanel />);
+    await flush();
+    act(() => (container.querySelectorAll('[role=option]')[0] as HTMLElement).click());
+    await flush();
+    const chat = container.querySelector('[data-obs-id="c1"] .run-row-main') as HTMLElement;
+    act(() => chat.click());
+    expect(mocks.appState.setHighlightedNodeId).toHaveBeenLastCalledWith('llm-node');
+    expect(container.querySelector('.run-inspector')?.getAttribute('data-obs-id')).toBe('c1');
+    // A past trace stays in the Trace tab.
+    expect(mocks.appState.setDrawerTab).not.toHaveBeenCalled();
+  });
+
+  it('switches between the tree and the waterfall', async () => {
+    const container = render(<TracePanel />);
+    await flush();
+    act(() => (container.querySelectorAll('[role=option]')[0] as HTMLElement).click());
+    await flush();
+    const waterfall = [...container.querySelectorAll('.run-mode-toggle button')].find((b) => b.textContent === 'Waterfall') as HTMLElement;
+    act(() => waterfall.click());
+    expect(container.querySelectorAll('.run-wf-row')).toHaveLength(3);
+    expect(container.querySelector('.run-tree')).toBeNull();
+  });
+
+  it('shows the live spans under a Live entry while a run is active, running steps ticking', async () => {
     mocks.appState.runStatus = statusOf('running');
     mocks.appState.spans = LIVE_SPANS;
     const container = render(<TracePanel />);
@@ -156,8 +187,24 @@ describe('TracePanel with trace history', () => {
     const options = [...container.querySelectorAll('[role=option]')];
     expect(options[0].textContent).toContain('Live');
     expect(options[0].getAttribute('aria-selected')).toBe('true');
-    expect(container.querySelector('.trace-name')?.textContent).toBe('invoke_agent live-run');
+    expect(container.querySelector('.run-name')?.textContent).toBe('invoke_agent live-run');
+    expect(container.querySelector('.run-tree-row .run-dur')?.textContent).toContain('running');
     expect(mocks.listTraces).not.toHaveBeenCalled();
+  });
+
+  it('jumps to the Logs tab when a live step is selected', async () => {
+    mocks.appState.runStatus = statusOf('running');
+    mocks.appState.spans = LIVE_SPANS;
+    const container = render(<TracePanel />);
+    await flush();
+    act(() => (container.querySelector('.run-row-main') as HTMLElement).click());
+    expect(mocks.appState.setDrawerTab).toHaveBeenCalledWith('logs');
+  });
+
+  it('explains an empty live view', async () => {
+    const container = render(<TracePanel />);
+    await flush();
+    expect(container.textContent).toContain('No spans yet');
   });
 
   it('reloads the list when a run ends', async () => {

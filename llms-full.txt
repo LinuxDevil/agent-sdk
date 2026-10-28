@@ -2061,7 +2061,9 @@ exists.
    reconnects when it is back.
 4. **Watch it in the debug console.** Open the bottom drawer's **Logs**
    tab for a live, filterable log feed of the run (trigger/llm/tool/
-   sandbox/checkpoint/approval events), or **Trace** for a span waterfall.
+   sandbox/checkpoint/approval events), or **Trace** for the run's steps in
+   the same trace viewer the Traces screen uses (a tree or a waterfall, with
+   an inspector for the selected step).
    Turn on **Debug** in the top bar (or set a breakpoint on a node in the
    Inspector) to pause the run at LLM/tool boundaries and step through it
    with the debug bar's **Step**/**Continue** controls; expand "Live
@@ -2076,20 +2078,22 @@ exists.
    server restarted. A list on the left shows the agent's past runs, newest
    first (start time, duration, model calls, tokens in/out, cost, status),
    with a **Live** entry on top while a run is active; choose one to open its
-   spans in the same waterfall, with each span's kind (`internal` or
-   `client`) and failed spans in the error colour. The list refreshes when
-   a run ends. The files are the ones `lousho traces` reads, in
+   steps in the same viewer: each step's kind (model call, tool call or
+   span), model, tokens and duration, failed steps in the error colour with
+   the failure message in the inspector, and steps still running ticking
+   live. Selecting a step highlights its node on the canvas. The list
+   refreshes when a run ends. The files are the ones `lousho traces` reads, in
    `.lousho/agents/<agent id>/traces/<day>/<trace id>.jsonl` under the
    directory `lousho studio` was started in (see
    [Local traces](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md#local-traces)):
    `npx lousho traces --dir .lousho/agents/<agent id>/traces` shows the same
    runs in the terminal, and deleting the agent's folder deletes its traces.
    The tab shows what the spans hold: model and tool names, token counts,
-   cost, durations and error messages, and with the span's tooltip the
-   attributes, which carry prompt and tool content. The server reads traces
-   only from that folder (an id with a path separator is a 400) and never
-   sends the file path to the browser. Keep `.lousho/` out of version
-   control.
+   cost, durations and error messages, and in the inspector's Input,
+   Output and Attributes sections the attributes, which carry prompt and
+   tool content. The server reads traces only from that folder (an id with
+   a path separator is a 400) and never sends the file path to the browser.
+   Keep `.lousho/` out of version control.
 5. **Chat with it.** The **Chat** tab is a separate conversational
    transport (`POST /agents/:id/message`, streamed back over the same
    WebSocket as everything else) - send it a message and it replies in the
@@ -5252,10 +5256,10 @@ npx lousho observe token create --project myapp # bearer key for non-loopback au
 
 Runs the local collector every agent reports to when `LOUSHO_OBSERVE` is
 set: traces, fleet monitoring, eval scores, the prompt registry and the
-context hub in one SQLite file (default `~/.lousho/observe.db`). The Studio
-Observe tabs read it. `start` takes `--port` (or `LOUSHO_OBSERVE_PORT`),
-`--db`, `--host`, `--require-token` and a repeatable `--webhook` for alert
-hooks. Each daemon writes its own `<db name>.pid` beside the db
+context hub in one SQLite file (default `~/.lousho/observe.db`). Studio's
+Traces, Threads, Monitoring and Scores screens read it. `start` takes
+`--port` (or `LOUSHO_OBSERVE_PORT`), `--db`, `--host`, `--require-token`
+and a repeatable `--webhook` for alert hooks. Each daemon writes its own `<db name>.pid` beside the db
 (`observe.db` gives `observe.pid`), so two dbs in one folder never share a
 pidfile. `start` exits 1 when the port already serves a different db, and
 `stop` refuses to signal when the daemon at the pidfile's port reports another
@@ -14333,12 +14337,13 @@ beyond loopback (`--require-token` plus `lousho observe token create`).
 
 One SQLite file (default `~/.lousho/observe.db`, WAL mode) holds the fleet's
 observations, sessions, eval scores, prompt versions and shared context.
-`npx lousho studio` renders it in the Observe tabs: trace trees with latency
-waterfalls, per-agent insights (runs/day, p50/p95 latency, cost, error
-rate), a live fleet monitor (heartbeat-derived status — a crashed agent's
-open sessions flip to `interrupted`), and eval score history. Alerts on
-`down` transitions or error-rate thresholds POST to `--webhook` URLs or an
-`alerts.json` next to the db.
+`npx lousho studio` renders it in its Traces, Threads, Monitoring and
+Scores screens: trace trees with latency waterfalls, per-agent insights
+(runs/day, p50/p95 latency, cost, error rate), a live fleet monitor
+(heartbeat-derived status — a crashed agent's open sessions flip to
+`interrupted`), and eval score history. Alerts on `down` transitions or
+error-rate thresholds POST to `--webhook` URLs or an `alerts.json` next to
+the db.
 
 Insights averages runs/day over the days an agent was active in the window
 (from the later of the window start and the agent's first sighting), so an

@@ -273,6 +273,16 @@ describe('RunInspector', () => {
 describe('TraceViewer', () => {
   const inspected = (c: HTMLElement) => (c.querySelector('.run-inspector') as HTMLElement).dataset.obsId;
 
+  it('hides every Playground link with playgroundLinks={false}', () => {
+    const rows = [obs({ obs_id: 'g', kind: 'generation' })];
+    const shown = render(<TraceViewer observations={rows} scores={[]} selectedObsId="g" onSelect={() => undefined} mode="tree" />);
+    expect(shown.querySelectorAll('.run-playground-link')).toHaveLength(2);
+    const hidden = render(
+      <TraceViewer observations={rows} scores={[]} selectedObsId="g" onSelect={() => undefined} mode="tree" playgroundLinks={false} />,
+    );
+    expect(hidden.querySelectorAll('.run-playground-link')).toHaveLength(0);
+  });
+
   it('opens a failed trace on the earliest error', () => {
     const rows = [
       obs({ obs_id: 'root', status: 'error', start: T0, attrs: { error: 'root failed' } }),

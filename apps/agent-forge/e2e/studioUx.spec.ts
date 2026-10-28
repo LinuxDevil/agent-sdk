@@ -41,6 +41,28 @@ test('a new agent is named what you typed; a finished run says done and labels i
   await expect(page.locator('.chat-msg.user:not(.run-input)')).toHaveCount(0);
 });
 
+test("the drawer's Trace tab shows a finished run in the shared trace viewer", async ({ page }) => {
+  const id = `ux-trace-${Date.now()}`;
+  await page.goto(`/?token=${TOKEN}`);
+  await createAgent(page, id);
+
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.locator('.topbar [role="status"]')).toContainText('done', { timeout: 15_000 });
+
+  await page.getByRole('tab', { name: 'Trace', exact: true }).click();
+  // The saved run is listed; choosing it opens its steps in the tree + inspector.
+  const history = page.getByRole('listbox', { name: 'Trace history' });
+  await expect(history.getByRole('option').first()).toBeVisible({ timeout: 15_000 });
+  await history.getByRole('option').first().click();
+  const tree = page.getByRole('group', { name: 'Run tree' });
+  await expect(tree.locator('.run-tree-row').first()).toBeVisible();
+  await expect(tree.locator('.run-kind[data-kind="generation"]').first()).toBeVisible();
+  await expect(page.locator('.run-inspector')).toBeVisible();
+
+  await page.getByRole('group', { name: 'Trace layout' }).getByRole('button', { name: 'Waterfall' }).click();
+  await expect(page.getByRole('group', { name: 'Waterfall' }).locator('.run-wf-row').first()).toBeVisible();
+});
+
 test('the open agent can be renamed and deleted from the rail', async ({ page }) => {
   const id = `ux-rename-${Date.now()}`;
   const renamed = `${id}-b`;

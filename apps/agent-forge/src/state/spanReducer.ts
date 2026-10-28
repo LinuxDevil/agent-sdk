@@ -14,24 +14,3 @@ export function upsertSpan(spans: SpanEvent[], span: SpanEvent): SpanEvent[] {
   next[idx] = { ...spans[idx], ...span };
   return next;
 }
-
-/** Root spans first, each followed depth-first by its children, sorted by start time within a level - a stable waterfall row order. */
-export function orderSpansForWaterfall(spans: SpanEvent[]): SpanEvent[] {
-  const byParent = new Map<string | undefined, SpanEvent[]>();
-  for (const span of spans) {
-    const list = byParent.get(span.parentId) ?? [];
-    list.push(span);
-    byParent.set(span.parentId, list);
-  }
-  for (const list of byParent.values()) list.sort((a, b) => a.startTime - b.startTime);
-
-  const ordered: SpanEvent[] = [];
-  function visit(parentId: string | undefined) {
-    for (const span of byParent.get(parentId) ?? []) {
-      ordered.push(span);
-      visit(span.id);
-    }
-  }
-  visit(undefined);
-  return ordered;
-}

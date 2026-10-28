@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
 import { nestObservations } from '../../observe/tree';
@@ -9,6 +9,7 @@ import { useQueryState } from '../../router/useRoute';
 import { EmptyState } from '../../ui/EmptyState';
 import { tracesListPath } from './tracesUrl';
 import { TraceViewer, type TraceViewMode } from '../../ui/run/TraceViewer';
+import { useNow } from '../../ui/run/useNow';
 import { TraceFeedback } from './TraceFeedback';
 import { TraceHeader } from './TraceHeader';
 // The shared daemon-down / error presentation is styled there.
@@ -19,18 +20,6 @@ const DEFAULT_POLL_MS = 5000;
 
 const parseObs = (s: string | null): string | null => (s === null || s === '' ? null : s);
 const formatObs = (v: string | null): string | null => v;
-
-/** A clock that ticks every second while `running`, for live durations. */
-function useNow(running: boolean): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!running) return undefined;
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [running]);
-  return now;
-}
 
 function rootOf(rows: ObserveObservationRow[]): ObserveObservationRow | undefined {
   return nestObservations(rows)[0]?.row;

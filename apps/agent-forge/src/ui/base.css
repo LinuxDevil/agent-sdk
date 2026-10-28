@@ -88,39 +88,13 @@
   width: 5px;
   height: 5px;
   box-shadow: none;
-  /* match each status pill's own text color (success/danger/
-     warning/faint, set by .status-running/.status-error/.status-paused/
-     .status-stopped above) instead of always rendering the base `.dot`
-     rule's green - a status pill's dot should reflect that status. */
+  /* match each status pill's own text color (set by the .pill-<tone>
+     classes in ui/primitives.css) instead of always rendering the base
+     `.dot` rule's green - a status pill's dot should reflect that status. */
   background: currentColor;
 }
-.status-running,
-.status-done {
-  background: var(--success-soft);
-  color: var(--success);
-}
-/* an unsaved agent is a warning, not a green "running". */
-.status-unsaved {
-  background: var(--warning-soft);
-  color: var(--warning);
-}
-
 .btn-danger-text {
   color: var(--danger);
-}
-
-.status-stopped,
-.status-idle {
-  background: var(--surface-2);
-  color: var(--text-faint);
-}
-.status-error {
-  background: var(--danger-soft);
-  color: var(--danger);
-}
-.status-paused {
-  background: var(--warning-soft);
-  color: var(--warning);
 }
 
 .node-swatch {
@@ -176,11 +150,6 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-}
-.chip-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
 }
 .chip {
   display: inline-flex;

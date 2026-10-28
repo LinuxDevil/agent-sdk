@@ -23,12 +23,14 @@ import './run.css';
  * Props for {@link RunTree}. `observations` are a trace's flat rows as the
  * daemon returns them (nested here by `parent_obs_id`); `now` is the clock an
  * open observation's running duration counts to (defaults to `Date.now()`).
+ * `playgroundLinks: false` hides the generation rows' "Open in Playground" link.
  */
 export interface RunTreeProps {
   observations: ObserveObservationRow[];
   selectedObsId?: string | null;
   onSelect: (obsId: string) => void;
   now?: number;
+  playgroundLinks?: boolean;
 }
 
 const INDENT_PX = 16;
@@ -65,10 +67,11 @@ interface TreeRowProps {
   selected: boolean;
   virtual: boolean;
   now: number;
+  playgroundLinks: boolean;
   onSelect: (obsId: string) => void;
 }
 
-function TreeRow({ node, selected, virtual, now, onSelect }: TreeRowProps) {
+function TreeRow({ node, selected, virtual, now, playgroundLinks, onSelect }: TreeRowProps) {
   const { row } = node;
   const tokens = totalTokens(row);
   const status = displayStatus(row);
@@ -95,7 +98,7 @@ function TreeRow({ node, selected, virtual, now, onSelect }: TreeRowProps) {
         {tokens !== null && <span className="run-tokens">{fmtInt(tokens)} tok</span>}
         <Duration row={row} now={now} />
       </button>
-      {row.kind === 'generation' && (
+      {playgroundLinks && row.kind === 'generation' && (
         <a className="run-playground-link" href={playgroundHref(row.trace_id, row.obs_id)} title={`Open ${name} in Playground`}>
           Open in Playground
         </a>
@@ -111,7 +114,7 @@ function TreeRow({ node, selected, virtual, now, onSelect }: TreeRowProps) {
  * Generation rows carry an "Open in Playground" link. Above 500 observations
  * the rows render through `VirtualList` at a fixed height.
  */
-export function RunTree({ observations, selectedObsId, onSelect, now }: RunTreeProps) {
+export function RunTree({ observations, selectedObsId, onSelect, now, playgroundLinks = true }: RunTreeProps) {
   const nodes = useFlatNodes(observations);
   const clock = now ?? Date.now();
   const virtual = nodes.length > VIRTUALISE_ABOVE;
@@ -122,6 +125,7 @@ export function RunTree({ observations, selectedObsId, onSelect, now }: RunTreeP
       selected={node.row.obs_id === selectedObsId}
       virtual={virtual}
       now={clock}
+      playgroundLinks={playgroundLinks}
       onSelect={onSelect}
     />
   );
