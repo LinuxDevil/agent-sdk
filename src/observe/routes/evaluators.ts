@@ -32,9 +32,8 @@ import { intParam, requireJsonBody, sendJson, type Route } from './httpKit';
 const RULE_BODY_LIMIT = 128 * 1024;
 
 const KINDS = ['code', 'judge'] as const;
-const kindSchema = z.enum(KINDS, {
-  errorMap: () => ({ message: `must be one of ${KINDS.map((k) => `'${k}'`).join(', ')}` }),
-});
+// `{ message }` is the custom-error form zod 3 and zod 4 both accept.
+const kindSchema = z.enum(KINDS, { message: `must be one of ${KINDS.map((k) => `'${k}'`).join(', ')}` });
 
 const nonEmpty = z.string().min(1);
 
